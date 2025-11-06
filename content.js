@@ -44,18 +44,28 @@ function getDomainType() {
   if (hostname.includes('youtube.com')) return 'youtube';
   if (hostname.includes('linkedin.com')) return 'linkedin';
   if (hostname.includes('github.com') || hostname.includes('ghe.')) return 'github';
+  if (hostname.includes('gitlab.com')) return 'gitlab';
+  if (hostname.includes('bitbucket.org')) return 'bitbucket';
   if (hostname.includes('medium.com')) return 'medium';
+  if (hostname.includes('devto') || hostname.includes('dev.to')) return 'devto';
+  if (hostname.includes('hashnode.com')) return 'hashnode';
+  if (hostname.includes('substack.com')) return 'substack';
   if (hostname.includes('amazon.') || hostname.includes('smile.amazon')) return 'amazon';
+  if (hostname.includes('ebay.')) return 'ebay';
+  if (hostname.includes('etsy.com')) return 'etsy';
+  if (hostname.includes('walmart.com')) return 'walmart';
+  if (hostname.includes('flipkart.com')) return 'flipkart';
+  if (hostname.includes('aliexpress.com')) return 'aliexpress';
+  if (hostname.includes('shopify.')) return 'shopify';
   if (hostname.includes('instagram.com')) return 'instagram';
   if (hostname.includes('facebook.com')) return 'facebook';
   if (hostname.includes('tiktok.com')) return 'tiktok';
-  if (hostname.includes('pinterest.com')) return 'pinterest';
-  if (hostname.includes('tumblr.com')) return 'tumblr';
   if (hostname.includes('threads.net')) return 'threads';
   if (hostname.includes('bluesky.social')) return 'bluesky';
   if (hostname.includes('mastodon')) return 'mastodon';
-  if (hostname.includes('hackernews')) return 'hackernews';
-  if (hostname.includes('news.ycombinator')) return 'hackernews';
+  if (hostname.includes('pinterest.com')) return 'pinterest';
+  if (hostname.includes('tumblr.com')) return 'tumblr';
+  if (hostname.includes('hackernews') || hostname.includes('news.ycombinator')) return 'hackernews';
   if (hostname.includes('producthunt.com')) return 'producthunt';
   if (hostname.includes('dribbble.com')) return 'dribbble';
   if (hostname.includes('behance.net')) return 'behance';
@@ -66,11 +76,6 @@ function getDomainType() {
   if (hostname.includes('pexels.com')) return 'pexels';
   if (hostname.includes('vimeo.com')) return 'vimeo';
   if (hostname.includes('dailymotion.com')) return 'dailymotion';
-  if (hostname.includes('bitbucket.org')) return 'bitbucket';
-  if (hostname.includes('gitlab.com')) return 'gitlab';
-  if (hostname.includes('dev.to')) return 'devto';
-  if (hostname.includes('hashnode.com')) return 'hashnode';
-  if (hostname.includes('substack.com')) return 'substack';
   if (hostname.includes('quora.com')) return 'quora';
   if (hostname.includes('stackoverflow.com')) return 'stackoverflow';
   if (hostname.includes('steamcommunity.com')) return 'steam';
@@ -82,12 +87,6 @@ function getDomainType() {
   if (hostname.includes('netflix.com')) return 'netflix';
   if (hostname.includes('letterboxd.com')) return 'letterboxd';
   if (hostname.includes('goodreads.com')) return 'goodreads';
-  if (hostname.includes('ebay.')) return 'ebay';
-  if (hostname.includes('etsy.com')) return 'etsy';
-  if (hostname.includes('walmart.com')) return 'walmart';
-  if (hostname.includes('flipkart.com')) return 'flipkart';
-  if (hostname.includes('aliexpress.com')) return 'aliexpress';
-  if (hostname.includes('shopify.')) return 'shopify';
   return 'generic';
 }
 
@@ -125,6 +124,7 @@ function findUrl(element, domainType) {
     walmart: findAmazonUrl,
     flipkart: findAmazonUrl,
     aliexpress: findAmazonUrl,
+    shopify: findShopifyUrl,
     instagram: findSocialUrl,
     facebook: findSocialUrl,
     tiktok: findSocialUrl,
@@ -154,8 +154,7 @@ function findUrl(element, domainType) {
     rottentomatoes: findRottenTomatoesUrl,
     netflix: findNetflixUrl,
     letterboxd: findLetterboxdUrl,
-    goodreads: findGoodreadsUrl,
-    shopify: findShopifyUrl
+    goodreads: findGoodreadsUrl
   };
   
   if (handlers[domainType]) {
@@ -168,7 +167,7 @@ function findUrl(element, domainType) {
 }
 
 // ===== ENHANCED TWITTER URL FINDER =====
-
+// Handles nested quoted tweets properly
 function findTwitterUrl(element) {
   // Find ALL articles that contain this element
   let articles = [];
@@ -182,7 +181,7 @@ function findTwitterUrl(element) {
     currentElement = currentElement.parentElement;
   }
   
-  // If we have multiple nested articles, we want the INNERMOST one
+  // If we have multiple nested articles, use the INNERMOST one
   // (the one closest to the element we're hovering over)
   let targetArticle = null;
   
@@ -219,12 +218,7 @@ function findTwitterUrl(element) {
   return null;
 }
 
-// Export for use in content.js
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { findTwitterUrl };
-}
-
-// ===== SITE-SPECIFIC HANDLERS =====
+// ===== OTHER SITE HANDLERS =====
 
 function findRedditUrl(element) {
   const post = element.closest('[data-testid="post-container"], .Post, .post-container, [role="article"]');
@@ -326,7 +320,7 @@ function findHackerNewsUrl(element) {
   const row = element.closest('.athing, tr');
   if (!row) return findGenericUrl(element);
   
-  const link = row.querySelector('a.titlelink, a.titlelink');
+  const link = row.querySelector('a.titlelink');
   if (link?.href) return link.href;
   
   return null;
@@ -475,9 +469,6 @@ function findDiscordUrl(element) {
 }
 
 function findWikipediaUrl(element) {
-  const article = element.closest('article, .mw-article');
-  if (!article) return element.href || findGenericUrl(element);
-  
   return window.location.href;
 }
 
@@ -535,7 +526,7 @@ function findShopifyUrl(element) {
   return null;
 }
 
-// ===== FALLBACK =====
+// ===== GENERIC FALLBACK =====
 
 function findGenericUrl(element) {
   // Look for direct href on clicked element
@@ -707,4 +698,4 @@ browser.storage.onChanged.addListener(function(changes, areaName) {
 
 // Initialize
 loadSettings();
-debug('Extension loaded - supports 50+ websites');
+debug('Extension loaded - supports 50+ websites with enhanced nested tweet detection');
