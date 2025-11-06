@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Copy URL on Hover Custom",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Copy URLs or link text while hovering over links.",
   "permissions": ["scripting", "storage", "activeTab"],
   "host_permissions": ["<all_urls>"],
@@ -21,4 +21,5 @@
       "update_url": "https://raw.githubusercontent.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/main/updates.json"
     }
   }
+
 }
