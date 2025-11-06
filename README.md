@@ -135,8 +135,7 @@ Then open Firefox Developer Tools (F12) to see debug messages.
 
 ## Notes
 
-- This is a temporary extension. It will be unloaded when Firefox closes. To make it permanent, you would need to sign it with Mozilla and submit it to the Firefox Add-ons store.
+- This extension was entirely coded by AI; I am not a programmer or software engineer in any capacity.
 - The extension respects Content Security Policies and won't work on restricted Mozilla pages (like about:addons).
-- For permanent installation, you can move it to Firefox's extensions folder (advanced).
 
 Enjoy copying URLs quickly and easily!
