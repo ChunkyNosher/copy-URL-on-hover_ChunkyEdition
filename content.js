@@ -166,42 +166,75 @@ function findUrl(element, domainType) {
   return findGenericUrl(element);
 }
 
+// ===== TWITTER URL FINDER - CORRECT NESTED TWEET DETECTION =====
+// The key: Find the INNERMOST article that contains the hovered element
+
 function findTwitterUrl(element) {
-  debug('=== TWITTER URL FINDER (Smart Version) ===');
+  debug('=== TWITTER URL FINDER (Innermost Article) ===');
   debug('Hovered element: ' + element.tagName + ' - ' + element.className);
-
-  // Find the closest tweet article to the element being hovered.
-  // This is crucial for distinguishing between the main tweet and a nested/quoted tweet.
-  const closestArticle = element.closest('article');
-
-  if (closestArticle) {
-    debug('Found closest article to the hovered element.');
-
-    // Find all links within this article that point to a status.
-    const statusLinks = closestArticle.querySelectorAll('a[href*="/status/"]');
-    debug(`Found ${statusLinks.length} status links within the article.`);
-
-    if (statusLinks.length > 0) {
-      // The last status link in an article is typically the timestamp link, which is the correct one for that tweet.
-      // This works for both main tweets and quoted tweets.
-      const bestLink = statusLinks[statusLinks.length - 1];
-      debug(`Using the last status link found: ${bestLink.href}`);
-      return bestLink.href;
+  
+  // STRATEGY: Find the INNERMOST <article> that is an ancestor of the hovered element
+  // Twitter wraps each tweet (including nested quotes) in an <article> tag
+  
+  let current = element;
+  let innermostArticle = null;
+  let depth = 0;
+  
+  // Walk UP the DOM and track the innermost article we find
+  while (current && depth < 50) {
+    if (current.tagName === 'ARTICLE') {
+      // Found an article - this is our candidate
+      innermostArticle = current;
+      debug(`Found article at depth ${depth}`);
+      
+      // Keep walking up to see if there are MORE articles
+      // The innermost one will be the last one we find before reaching the root
+      current = current.parentElement;
+      depth++;
+      continue;
     }
-  }
-
-  // Fallback for cases where the article structure isn't found as expected.
-  // This looks for the closest link with a status URL near the hovered element.
-  debug('Could not find a tweet article, trying to find closest status link directly.');
-  const closestLink = element.closest('a[href*="/status/"]');
-  if (closestLink && closestLink.href) {
-    debug(`Found a close status link via fallback: ${closestLink.href}`);
-    return closestLink.href;
+    
+    current = current.parentElement;
+    depth++;
   }
   
-  debug('No Twitter URL found.');
+  // Now we have the innermost article that contains our hovered element
+  if (innermostArticle) {
+    debug(`Using innermost article`);
+    
+    // Find ALL /status/ links in this article
+    const statusLinks = innermostArticle.querySelectorAll('a[href*="/status/"]');
+    debug(`Status links in innermost article: ${statusLinks.length}`);
+    
+    if (statusLinks.length > 0) {
+      // Return the FIRST /status/ link found in this article
+      const url = statusLinks[0].href;
+      debug(`Returning status link: ${url}`);
+      return url;
+    }
+  }
+  
+  // Fallback: if no article found or no status link in article
+  debug('No innermost article found, searching upward for /status/ link');
+  current = element;
+  depth = 0;
+  
+  while (current && depth < 50) {
+    // Try to find a /status/ link within this element
+    const link = current.querySelector('a[href*="/status/"]');
+    if (link && link.href) {
+      debug(`Found /status/ link at depth ${depth}: ${link.href}`);
+      return link.href;
+    }
+    
+    current = current.parentElement;
+    depth++;
+  }
+  
+  debug('No /status/ link found');
   return null;
 }
+
 // ===== OTHER SITE HANDLERS =====
 
 function findRedditUrl(element) {
