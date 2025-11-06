@@ -13,8 +13,6 @@ const DEFAULT_CONFIG = {
   showNotification: true,
   notifColor: '#4CAF50',
   notifDuration: 2000,
-  notifPosition: 'bottom-right',
-  notifSize: 'medium',
   debugMode: false,
   darkMode: true
 };
@@ -38,137 +36,92 @@ function debug(msg) {
   }
 }
 
-// Common clickable elements that might contain URL data attributes
-const CLICKABLE_ELEMENTS = ['DIV', 'SPAN', 'BUTTON'];
-
-// Extract URL from element's data attributes
-function extractUrlFromDataAttributes(element) {
-  const dataAttributes = [
-    'href',
-    'data-href',
-    'data-url',
-    'data-link',
-    'data-target-url'
-  ];
+// Find the actual link URL from an element
+function findLinkUrl(element) {
+  // Direct href attribute
+  if (element.href) {
+    return element.href;
+  }
   
-  for (const attr of dataAttributes) {
-    const value = element.getAttribute(attr);
-    if (value && value.trim()) {
-      const url = value.trim();
-      // Security: Validate URL to prevent XSS attacks
-      // Extract protocol if present
-      const protocolMatch = url.match(/^([a-z][a-z0-9+.-]*):\/\//i);
-      if (protocolMatch) {
-        const protocol = protocolMatch[1].toLowerCase();
-        // Only allow http and https protocols
-        if (protocol === 'http' || protocol === 'https') {
-          return url;
-        }
-        debug('Rejected potentially dangerous URL scheme: ' + url);
-      } else if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../') || url.startsWith('#')) {
-        // Allow relative URLs: absolute paths, relative paths, and anchors
-        return url;
-      } else if (/^[a-z0-9_.\/-]+$/i.test(url)) {
-        // Allow simple alphanumeric paths with forward slashes, dots, underscores, and hyphens
-        return url;
-      } else {
-        debug('Rejected potentially dangerous URL: ' + url);
-      }
+  // Check parent elements for href
+  let parent = element.parentElement;
+  for (let i = 0; i < 10; i++) {
+    if (!parent) break;
+    if (parent.href) {
+      return parent.href;
+    }
+    parent = parent.parentElement;
+  }
+  
+  // Twitter/X specific: Look for links inside the element
+  const link = element.querySelector('a[href]');
+  if (link && link.href) {
+    return link.href;
+  }
+  
+  // Twitter/X: Check for article's associated link
+  const article = element.closest('article');
+  if (article) {
+    const articleLink = article.querySelector('a[href*="twitter.com"], a[href*="x.com"]');
+    if (articleLink && articleLink.href) {
+      return articleLink.href;
     }
   }
   
   return null;
 }
 
-// Detect and extract link information from an element
-function detectLinkElement(element) {
-  if (!element) return null;
-  
-  // Method 1: Direct <a> tag with href
-  if (element.tagName === 'A' && element.href) {
-    debug('Detected traditional <a> tag with href');
-    return { element: element, url: element.href };
+// Get link text
+function getLinkText(element) {
+  // Check if it's a direct link
+  if (element.tagName === 'A') {
+    return element.textContent.trim();
   }
   
-  // Method 2: Closest parent <a> tag with href
-  const closestAnchor = element.closest('a');
-  if (closestAnchor && closestAnchor.href) {
-    debug('Detected parent <a> tag with href');
-    return { element: closestAnchor, url: closestAnchor.href };
+  // Look for link inside
+  const link = element.querySelector('a[href]');
+  if (link) {
+    return link.textContent.trim();
   }
   
-  // Method 3: Element with role="link" and URL in data attributes
-  if (element.getAttribute('role') === 'link') {
-    const url = extractUrlFromDataAttributes(element);
-    if (url) {
-      debug('Detected element with role="link" and data URL: ' + url);
-      return { element: element, url: url };
-    }
-  }
-  
-  // Method 4: Closest parent with role="link" and URL in data attributes
-  const closestRoleLink = element.closest('[role="link"]');
-  if (closestRoleLink) {
-    const url = extractUrlFromDataAttributes(closestRoleLink);
-    if (url) {
-      debug('Detected parent with role="link" and data URL: ' + url);
-      return { element: closestRoleLink, url: url };
-    }
-  }
-  
-  // Method 5: Common clickable elements with URL-like data attributes
-  if (CLICKABLE_ELEMENTS.includes(element.tagName)) {
-    const url = extractUrlFromDataAttributes(element);
-    if (url) {
-      debug('Detected clickable element (' + element.tagName + ') with data URL: ' + url);
-      return { element: element, url: url };
-    }
-  }
-  
-  // Method 6: Check parent clickable elements
-  for (const tagName of CLICKABLE_ELEMENTS) {
-    const closestClickable = element.closest(tagName.toLowerCase());
-    if (closestClickable) {
-      const url = extractUrlFromDataAttributes(closestClickable);
-      if (url) {
-        debug('Detected parent clickable element (' + tagName + ') with data URL: ' + url);
-        return { element: closestClickable, url: url };
-      }
-    }
-  }
-  
-  return null;
+  // Get general text content
+  return element.textContent.trim().substring(0, 100);
 }
 
-// Track mouseover on links
+// Enhanced hover detection for Twitter
 document.addEventListener('mouseover', function(event) {
-  const linkInfo = detectLinkElement(event.target);
+  let target = event.target;
+  let element = null;
   
-  if (linkInfo && linkInfo.element) {
-    const textContent = linkInfo.element.textContent || '';
-    currentHoveredLink = { href: linkInfo.url, textContent: textContent };
-    currentHoveredElement = linkInfo.element;
-    debug('Link hovered: ' + linkInfo.url);
+  // Direct link
+  if (target.tagName === 'A' && target.href) {
+    element = target;
   } else {
-    // Clear state if no link is detected
-    currentHoveredLink = null;
-    currentHoveredElement = null;
+    // Check if it's a Twitter tweet container
+    const article = target.closest('article');
+    if (article) {
+      element = article;
+    } else {
+      // Check for regular link parent
+      element = target.closest('a[href]');
+    }
+  }
+  
+  if (element) {
+    const url = findLinkUrl(element);
+    if (url) {
+      currentHoveredLink = element;
+      currentHoveredElement = element;
+      debug('Element hovered with URL: ' + url);
+    }
   }
 }, true);
 
 // Track mouseout
 document.addEventListener('mouseout', function(event) {
-  // Check if we're leaving the currently tracked element
-  // relatedTarget is where the mouse is moving to
-  if (currentHoveredElement && event.target === currentHoveredElement) {
-    // Only clear if we're moving outside the element (not to a child)
-    // relatedTarget can be null when mouse leaves the browser window
-    if (!event.relatedTarget || !currentHoveredElement.contains(event.relatedTarget)) {
-      currentHoveredLink = null;
-      currentHoveredElement = null;
-      debug('Link unhovered');
-    }
-  }
+  currentHoveredLink = null;
+  currentHoveredElement = null;
+  debug('Element unhovered');
 }, true);
 
 // Show notification
@@ -178,112 +131,33 @@ function showNotification(message) {
   try {
     const notif = document.createElement('div');
     notif.textContent = message;
-    
-    // Determine position styles based on notifPosition setting
-    let positionStyles = '';
-    let animationName = 'slideIn';
-    
-    switch(CONFIG.notifPosition) {
-      case 'top-left':
-        positionStyles = 'top: 20px; left: 20px;';
-        animationName = 'slideInLeft';
-        break;
-      case 'top-right':
-        positionStyles = 'top: 20px; right: 20px;';
-        animationName = 'slideInRight';
-        break;
-      case 'top-center':
-        positionStyles = 'top: 20px; left: 50%; transform: translateX(-50%);';
-        animationName = 'slideInTop';
-        break;
-      case 'bottom-left':
-        positionStyles = 'bottom: 20px; left: 20px;';
-        animationName = 'slideInLeft';
-        break;
-      case 'bottom-right':
-        positionStyles = 'bottom: 20px; right: 20px;';
-        animationName = 'slideInRight';
-        break;
-      case 'bottom-center':
-        positionStyles = 'bottom: 20px; left: 50%; transform: translateX(-50%);';
-        animationName = 'slideInBottom';
-        break;
-      default:
-        positionStyles = 'bottom: 20px; right: 20px;';
-        animationName = 'slideInRight';
-    }
-    
-    // Determine size styles based on notifSize setting
-    let sizeStyles = '';
-    switch(CONFIG.notifSize) {
-      case 'small':
-        sizeStyles = 'padding: 8px 14px; font-size: 12px;';
-        break;
-      case 'medium':
-        sizeStyles = 'padding: 12px 20px; font-size: 14px;';
-        break;
-      case 'large':
-        sizeStyles = 'padding: 16px 26px; font-size: 16px;';
-        break;
-      default:
-        sizeStyles = 'padding: 12px 20px; font-size: 14px;';
-    }
-    
     notif.style.cssText = `
       position: fixed;
-      ${positionStyles}
+      bottom: 20px;
+      right: 20px;
       background: ${CONFIG.notifColor};
       color: #fff;
-      ${sizeStyles}
+      padding: 12px 20px;
       border-radius: 6px;
       z-index: 999999;
+      font-size: 14px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      animation: ${animationName} 0.3s ease-out;
+      animation: slideIn 0.3s ease-out;
     `;
     
-    // Add animation styles
+    // Add animation style
     if (!document.querySelector('style[data-copy-url]')) {
       const style = document.createElement('style');
       style.setAttribute('data-copy-url', 'true');
       style.textContent = `
-        @keyframes slideInRight {
+        @keyframes slideIn {
           from {
             transform: translateX(400px);
             opacity: 0;
           }
           to {
             transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        @keyframes slideInLeft {
-          from {
-            transform: translateX(-400px);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        @keyframes slideInTop {
-          from {
-            transform: translate(-50%, -100px);
-            opacity: 0;
-          }
-          to {
-            transform: translate(-50%, 0);
-            opacity: 1;
-          }
-        }
-        @keyframes slideInBottom {
-          from {
-            transform: translate(-50%, 100px);
-            opacity: 0;
-          }
-          to {
-            transform: translate(-50%, 0);
             opacity: 1;
           }
         }
@@ -316,7 +190,7 @@ function checkModifiers(requireCtrl, requireAlt, requireShift, event) {
 
 // Handle keyboard shortcuts
 document.addEventListener('keydown', function(event) {
-  if (!currentHoveredLink) return;
+  if (!currentHoveredLink && !currentHoveredElement) return;
   
   if (event.target.tagName === 'INPUT' || 
       event.target.tagName === 'TEXTAREA' || 
@@ -325,14 +199,23 @@ document.addEventListener('keydown', function(event) {
   }
   
   const key = event.key.toLowerCase();
+  const element = currentHoveredLink || currentHoveredElement;
+  const url = findLinkUrl(element);
+  
   debug('Key pressed: ' + key + ', Ctrl: ' + event.ctrlKey + ', Alt: ' + event.altKey + ', Shift: ' + event.shiftKey);
+  debug('Element found, URL: ' + url);
   
   if (key === CONFIG.copyUrlKey.toLowerCase() && 
       checkModifiers(CONFIG.copyUrlCtrl, CONFIG.copyUrlAlt, CONFIG.copyUrlShift, event)) {
     event.preventDefault();
     event.stopPropagation();
     
-    const url = currentHoveredLink.href;
+    if (!url) {
+      debug('No URL found on element');
+      showNotification('✗ No URL found');
+      return;
+    }
+    
     debug('Copying URL: ' + url);
     
     navigator.clipboard.writeText(url).then(() => {
@@ -349,7 +232,7 @@ document.addEventListener('keydown', function(event) {
     event.preventDefault();
     event.stopPropagation();
     
-    const text = currentHoveredLink.textContent.trim();
+    const text = getLinkText(element);
     debug('Copying text: ' + text);
     
     navigator.clipboard.writeText(text).then(() => {
