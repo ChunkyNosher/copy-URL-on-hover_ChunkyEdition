@@ -38,6 +38,9 @@ function debug(msg) {
   }
 }
 
+// Common clickable elements that might contain URL data attributes
+const CLICKABLE_ELEMENTS = ['DIV', 'SPAN', 'BUTTON'];
+
 // Extract URL from element's data attributes
 function extractUrlFromDataAttributes(element) {
   const dataAttributes = [
@@ -53,11 +56,21 @@ function extractUrlFromDataAttributes(element) {
     if (value && value.trim()) {
       const url = value.trim();
       // Security: Validate URL to prevent XSS attacks
-      // Only allow http, https, and relative URLs
-      if (url.match(/^(https?:\/\/|\/)/i) || !url.includes(':')) {
+      // Extract protocol if present
+      const protocolMatch = url.match(/^([a-z][a-z0-9+.-]*):\/\//i);
+      if (protocolMatch) {
+        const protocol = protocolMatch[1].toLowerCase();
+        // Only allow http and https protocols
+        if (protocol === 'http' || protocol === 'https') {
+          return url;
+        }
+        debug('Rejected potentially dangerous URL scheme: ' + url);
+      } else if (url.startsWith('/') || !url.includes(':')) {
+        // Allow relative URLs and paths without protocols
         return url;
+      } else {
+        debug('Rejected potentially dangerous URL: ' + url);
       }
-      debug('Rejected potentially dangerous URL scheme: ' + url);
     }
   }
   
@@ -101,8 +114,7 @@ function detectLinkElement(element) {
   }
   
   // Method 5: Common clickable elements with URL-like data attributes
-  const clickableElements = ['DIV', 'SPAN', 'BUTTON'];
-  if (clickableElements.includes(element.tagName)) {
+  if (CLICKABLE_ELEMENTS.includes(element.tagName)) {
     const url = extractUrlFromDataAttributes(element);
     if (url) {
       debug('Detected clickable element (' + element.tagName + ') with data URL: ' + url);
@@ -111,7 +123,7 @@ function detectLinkElement(element) {
   }
   
   // Method 6: Check parent clickable elements
-  for (const tagName of clickableElements) {
+  for (const tagName of CLICKABLE_ELEMENTS) {
     const closestClickable = element.closest(tagName.toLowerCase());
     if (closestClickable) {
       const url = extractUrlFromDataAttributes(closestClickable);
@@ -129,8 +141,9 @@ function detectLinkElement(element) {
 document.addEventListener('mouseover', function(event) {
   const linkInfo = detectLinkElement(event.target);
   
-  if (linkInfo) {
-    currentHoveredLink = { href: linkInfo.url, textContent: linkInfo.element.textContent };
+  if (linkInfo && linkInfo.element) {
+    const textContent = linkInfo.element.textContent || '';
+    currentHoveredLink = { href: linkInfo.url, textContent: textContent };
     currentHoveredElement = linkInfo.element;
     debug('Link hovered: ' + linkInfo.url);
   }
@@ -142,7 +155,8 @@ document.addEventListener('mouseout', function(event) {
   // relatedTarget is where the mouse is moving to
   if (currentHoveredElement && event.target === currentHoveredElement) {
     // Only clear if we're moving outside the element (not to a child)
-    if (!currentHoveredElement.contains(event.relatedTarget)) {
+    // relatedTarget can be null when mouse leaves the browser window
+    if (!event.relatedTarget || !currentHoveredElement.contains(event.relatedTarget)) {
       currentHoveredLink = null;
       currentHoveredElement = null;
       debug('Link unhovered');
