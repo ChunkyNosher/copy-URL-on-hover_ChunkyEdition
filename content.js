@@ -167,17 +167,64 @@ function findUrl(element, domainType) {
   return findGenericUrl(element);
 }
 
-// ===== SITE-SPECIFIC HANDLERS =====
+// ===== ENHANCED TWITTER URL FINDER =====
 
 function findTwitterUrl(element) {
-  const article = element.closest('article');
-  if (!article) return findGenericUrl(element);
+  // Find ALL articles that contain this element
+  let articles = [];
+  let currentElement = element;
   
-  const statusLink = article.querySelector('a[href*="/status/"]');
-  if (statusLink?.href) return statusLink.href;
+  // Walk up the DOM and collect all article ancestors
+  while (currentElement) {
+    if (currentElement.tagName === 'ARTICLE') {
+      articles.push(currentElement);
+    }
+    currentElement = currentElement.parentElement;
+  }
   
+  // If we have multiple nested articles, we want the INNERMOST one
+  // (the one closest to the element we're hovering over)
+  let targetArticle = null;
+  
+  if (articles.length > 0) {
+    // Use the first article found (innermost)
+    targetArticle = articles[0];
+  } else {
+    // Fallback if no article is a direct ancestor
+    targetArticle = element.closest('article');
+  }
+  
+  if (!targetArticle) {
+    debug('No article container found');
+    return null;
+  }
+  
+  // Look for /status/ URLs in the target article
+  const statusLink = targetArticle.querySelector('a[href*="/status/"]');
+  if (statusLink && statusLink.href) {
+    debug('Found status link in target article: ' + statusLink.href);
+    return statusLink.href;
+  }
+  
+  // Fallback: search all links in this article for /status/ URL
+  const allLinks = targetArticle.querySelectorAll('a[href]');
+  for (let link of allLinks) {
+    if (link.href.includes('/status/')) {
+      debug('Found status link in all links: ' + link.href);
+      return link.href;
+    }
+  }
+  
+  debug('No status link found in article');
   return null;
 }
+
+// Export for use in content.js
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { findTwitterUrl };
+}
+
+// ===== SITE-SPECIFIC HANDLERS =====
 
 function findRedditUrl(element) {
   const post = element.closest('[data-testid="post-container"], .Post, .post-container, [role="article"]');
