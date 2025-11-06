@@ -9,47 +9,34 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 3. **popup.html** - Settings popup interface
 4. **popup.js** - Settings popup logic
 5. **background.js** - Background script for content injection
+6. **updates.json** - Auto-update configuration file
 
 ## Installation Instructions
 
-### Step 1: Create the Folder Structure
+### Easy Installation (Recommended - With Auto-Updates)
 
-Create a folder named `copy-url-hover-extension` anywhere on your computer (Desktop or Documents recommended).
+1. Go to the [Releases page](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+2. Download the latest `copy-url-hover-extension.xpi` file
+3. Open your Firefox/Zen Browser
+4. Navigate to `about:addons`
+5. Click the gear icon (⚙️) and select "Install Add-on From File..."
+6. Select the downloaded `.xpi` file
+7. Click "Add" when prompted
 
-Inside that folder, create this structure:
+**Note:** The extension will now automatically check for updates and notify you when a new version is available!
 
-```
-copy-url-hover-extension/
-├── manifest.json
-├── content.js
-├── popup.html
-├── popup.js
-├── background.js
-└── icons/
-    └── icon.png
-```
+### Manual Installation (For Development)
 
-### Step 2: Add Files
-
-Copy all the provided files (manifest.json, content.js, popup.html, popup.js, background.js) into the `copy-url-hover-extension` folder.
-
-### Step 3: Create Icon
-
-Create an `icons` folder inside `copy-url-hover-extension`. Add a 96x96 PNG image named `icon.png` inside it.
-
-**Quick icon solution:** You can download a free link icon from:
-- https://www.flaticon.com/
-- https://material.io/resources/icons/
-- Or create a simple one using Paint/Preview
-
-### Step 4: Load the Extension in Firefox
+If you want to manually load the extension for development:
 
 1. Open Firefox and navigate to: `about:debugging`
 2. Click **"This Firefox"** on the left sidebar
 3. Click **"Load Temporary Add-on"** button
-4. Navigate to your `copy-url-hover-extension` folder
+4. Navigate to the extension folder
 5. Select the **`manifest.json`** file and click "Open"
 6. The extension is now loaded!
+
+**Note:** Temporary add-ons are removed when Firefox restarts and do not receive auto-updates.
 
 ### Step 5: Customize Settings
 
@@ -118,6 +105,33 @@ Then open Firefox Developer Tools (F12) to see debug messages.
 ✓ Works on all websites (except restricted Mozilla pages)  
 ✓ Debug mode for troubleshooting  
 ✓ Automatic settings sync across all tabs  
+✓ **Auto-update functionality** - Get notified when new versions are available
+
+## Auto-Updates
+
+This extension supports automatic updates when installed from a `.xpi` file:
+
+- The extension checks for updates periodically
+- When a new version is available, Firefox/Zen Browser will notify you
+- You can manually check for updates in `about:addons` by clicking the gear icon and selecting "Check for Updates"
+
+### For Developers: Releasing a New Version
+
+To release a new version with auto-updates:
+
+1. Update the `version` field in `manifest.json` (e.g., from `1.0.0` to `1.1.0`)
+2. Update the `version` field in `updates.json` to match
+3. Commit your changes
+4. Create and push a new git tag:
+   ```bash
+   git tag v1.1.0
+   git push origin v1.1.0
+   ```
+5. GitHub Actions will automatically:
+   - Build the `.xpi` file
+   - Create a GitHub release
+   - Upload the `.xpi` as a release asset
+6. Users with the extension installed will be notified of the update
 
 ## Troubleshooting
 

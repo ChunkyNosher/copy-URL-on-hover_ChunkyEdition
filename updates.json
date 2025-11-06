@@ -1,0 +1,12 @@
+{
+  "addons": {
+    "copy-url-hover@chunkynosher.github.io": {
+      "updates": [
+        {
+          "version": "1.0.0",
+          "update_link": "https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases/latest/download/copy-url-hover-extension.xpi"
+        }
+      ]
+    }
+  }
+}

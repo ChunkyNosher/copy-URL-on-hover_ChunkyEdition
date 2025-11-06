@@ -1,0 +1,9 @@
+# Build artifacts
+build/
+*.xpi
+*.zip
+
+# Development
+.DS_Store
+.vscode/
+*.log

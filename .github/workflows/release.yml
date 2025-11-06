@@ -1,0 +1,72 @@
+name: Build and Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from manifest
+        id: get_version
+        run: |
+          VERSION=$(grep -oP '(?<="version": ")[^"]*' manifest.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extension version: $VERSION"
+
+      - name: Create XPI file
+        run: |
+          # Remove .github directory from the package
+          mkdir -p build
+          rsync -av --exclude='.git' --exclude='.github' --exclude='build' --exclude='README.md' . build/
+          cd build
+          zip -r ../copy-url-hover-extension.xpi .
+          cd ..
+          echo "XPI file created successfully"
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: |
+            ## Copy URL on Hover Extension v${{ steps.get_version.outputs.version }}
+
+            ### Installation Instructions
+
+            1. Download the `copy-url-hover-extension.xpi` file below
+            2. Open your Firefox/Zen Browser
+            3. Navigate to `about:addons`
+            4. Click the gear icon and select "Install Add-on From File..."
+            5. Select the downloaded `.xpi` file
+
+            ### Auto-Update Setup
+
+            Once installed, the extension will automatically check for updates and notify you when a new version is available.
+
+            ### What's New
+
+            - Auto-update functionality added
+            - Extension can now be updated automatically without manual installation
+          draft: false
+          prerelease: false
+
+      - name: Upload XPI to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./copy-url-hover-extension.xpi
+          asset_name: copy-url-hover-extension.xpi
+          asset_content_type: application/x-xpinstall
