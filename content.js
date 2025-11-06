@@ -21,6 +21,7 @@ const DEFAULT_CONFIG = {
 
 let CONFIG = { ...DEFAULT_CONFIG };
 let currentHoveredLink = null;
+let currentHoveredElement = null;
 
 // Load settings from storage
 function loadSettings() {
@@ -37,28 +38,136 @@ function debug(msg) {
   }
 }
 
-// Track mouseover on links
-document.addEventListener('mouseover', function(event) {
-  let target = event.target;
-  let link = null;
+// Common clickable elements that might contain URL data attributes
+const CLICKABLE_ELEMENTS = ['DIV', 'SPAN', 'BUTTON'];
+
+// Extract URL from element's data attributes
+function extractUrlFromDataAttributes(element) {
+  const dataAttributes = [
+    'href',
+    'data-href',
+    'data-url',
+    'data-link',
+    'data-target-url'
+  ];
   
-  if (target.tagName === 'A') {
-    link = target;
-  } else {
-    link = target.closest('a');
+  for (const attr of dataAttributes) {
+    const value = element.getAttribute(attr);
+    if (value && value.trim()) {
+      const url = value.trim();
+      // Security: Validate URL to prevent XSS attacks
+      // Extract protocol if present
+      const protocolMatch = url.match(/^([a-z][a-z0-9+.-]*):\/\//i);
+      if (protocolMatch) {
+        const protocol = protocolMatch[1].toLowerCase();
+        // Only allow http and https protocols
+        if (protocol === 'http' || protocol === 'https') {
+          return url;
+        }
+        debug('Rejected potentially dangerous URL scheme: ' + url);
+      } else if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../') || url.startsWith('#')) {
+        // Allow relative URLs: absolute paths, relative paths, and anchors
+        return url;
+      } else if (/^[a-z0-9_.\/-]+$/i.test(url)) {
+        // Allow simple alphanumeric paths with forward slashes, dots, underscores, and hyphens
+        return url;
+      } else {
+        debug('Rejected potentially dangerous URL: ' + url);
+      }
+    }
   }
   
-  if (link && link.href) {
-    currentHoveredLink = link;
-    debug('Link hovered: ' + link.href);
+  return null;
+}
+
+// Detect and extract link information from an element
+function detectLinkElement(element) {
+  if (!element) return null;
+  
+  // Method 1: Direct <a> tag with href
+  if (element.tagName === 'A' && element.href) {
+    debug('Detected traditional <a> tag with href');
+    return { element: element, url: element.href };
+  }
+  
+  // Method 2: Closest parent <a> tag with href
+  const closestAnchor = element.closest('a');
+  if (closestAnchor && closestAnchor.href) {
+    debug('Detected parent <a> tag with href');
+    return { element: closestAnchor, url: closestAnchor.href };
+  }
+  
+  // Method 3: Element with role="link" and URL in data attributes
+  if (element.getAttribute('role') === 'link') {
+    const url = extractUrlFromDataAttributes(element);
+    if (url) {
+      debug('Detected element with role="link" and data URL: ' + url);
+      return { element: element, url: url };
+    }
+  }
+  
+  // Method 4: Closest parent with role="link" and URL in data attributes
+  const closestRoleLink = element.closest('[role="link"]');
+  if (closestRoleLink) {
+    const url = extractUrlFromDataAttributes(closestRoleLink);
+    if (url) {
+      debug('Detected parent with role="link" and data URL: ' + url);
+      return { element: closestRoleLink, url: url };
+    }
+  }
+  
+  // Method 5: Common clickable elements with URL-like data attributes
+  if (CLICKABLE_ELEMENTS.includes(element.tagName)) {
+    const url = extractUrlFromDataAttributes(element);
+    if (url) {
+      debug('Detected clickable element (' + element.tagName + ') with data URL: ' + url);
+      return { element: element, url: url };
+    }
+  }
+  
+  // Method 6: Check parent clickable elements
+  for (const tagName of CLICKABLE_ELEMENTS) {
+    const closestClickable = element.closest(tagName.toLowerCase());
+    if (closestClickable) {
+      const url = extractUrlFromDataAttributes(closestClickable);
+      if (url) {
+        debug('Detected parent clickable element (' + tagName + ') with data URL: ' + url);
+        return { element: closestClickable, url: url };
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Track mouseover on links
+document.addEventListener('mouseover', function(event) {
+  const linkInfo = detectLinkElement(event.target);
+  
+  if (linkInfo && linkInfo.element) {
+    const textContent = linkInfo.element.textContent || '';
+    currentHoveredLink = { href: linkInfo.url, textContent: textContent };
+    currentHoveredElement = linkInfo.element;
+    debug('Link hovered: ' + linkInfo.url);
+  } else {
+    // Clear state if no link is detected
+    currentHoveredLink = null;
+    currentHoveredElement = null;
   }
 }, true);
 
 // Track mouseout
 document.addEventListener('mouseout', function(event) {
-  if (currentHoveredLink) {
-    currentHoveredLink = null;
-    debug('Link unhovered');
+  // Check if we're leaving the currently tracked element
+  // relatedTarget is where the mouse is moving to
+  if (currentHoveredElement && event.target === currentHoveredElement) {
+    // Only clear if we're moving outside the element (not to a child)
+    // relatedTarget can be null when mouse leaves the browser window
+    if (!event.relatedTarget || !currentHoveredElement.contains(event.relatedTarget)) {
+      currentHoveredLink = null;
+      currentHoveredElement = null;
+      debug('Link unhovered');
+    }
   }
 }, true);
 
