@@ -68,11 +68,8 @@ function extractUrlFromDataAttributes(element) {
       } else if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../') || url.startsWith('#')) {
         // Allow relative URLs: absolute paths, relative paths, and anchors
         return url;
-      } else if (/^[a-z0-9_.-]+\.(html|htm|php|asp|aspx|jsp|py|rb)$/i.test(url)) {
-        // Allow simple file paths with common web extensions
-        return url;
-      } else if (!url.includes(':') && !url.includes(',')) {
-        // Allow other simple paths without protocols or data URL indicators
+      } else if (/^[a-z0-9_.\/-]+$/i.test(url)) {
+        // Allow simple alphanumeric paths with forward slashes, dots, underscores, and hyphens
         return url;
       } else {
         debug('Rejected potentially dangerous URL: ' + url);
@@ -152,6 +149,10 @@ document.addEventListener('mouseover', function(event) {
     currentHoveredLink = { href: linkInfo.url, textContent: textContent };
     currentHoveredElement = linkInfo.element;
     debug('Link hovered: ' + linkInfo.url);
+  } else {
+    // Clear state if no link is detected
+    currentHoveredLink = null;
+    currentHoveredElement = null;
   }
 }, true);
 
