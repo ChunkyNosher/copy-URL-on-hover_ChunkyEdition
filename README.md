@@ -149,7 +149,7 @@ To release a new version with auto-updates:
 
 ## Notes
 
-- This extension was entirely coded by AI; I am not a programmer or software engineer in any capacity.
+- This extension was entirely coded by AI and was only intended for my own personal use; I am not a programmer or software engineer in any capacity.
 - The extension respects Content Security Policies and won't work on restricted Mozilla pages (like about:addons).
 
 Enjoy copying URLs quickly and easily!
