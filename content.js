@@ -532,17 +532,69 @@ document.addEventListener('mouseover', function(event) {
 
   // Special, more precise handling for Twitter
   if (domainType === 'twitter') {
-    // Find the closest 'article' which represents a tweet container
+    // IMPORTANT: Find the CLOSEST article to the hovered element (innermost)
+    // This will be the correct tweet if hovering over a nested quote
     const tweetArticle = target.closest('article');
+    
     if (tweetArticle) {
-      // Within that tweet, find the timestamp link. This is the most reliable anchor.
-      const timeElement = tweetArticle.querySelector('a[href*="/status/"] > time');
-      if (timeElement) {
-        // The element to process is the link containing the timestamp.
-        element = timeElement.parentElement;
+      debug(`Found article at: ${tweetArticle.className}`);
+      
+      // Count how many status links are in this article
+      const allStatusLinks = tweetArticle.querySelectorAll('a[href*="/status/"]');
+      debug(`Status links in this article: ${allStatusLinks.length}`);
+      
+      // Print each status link for debugging
+      allStatusLinks.forEach((link, index) => {
+        debug(`  Link ${index}: ${link.href}`);
+      });
+      
+      // CRITICAL: We need the FIRST status link that is a DIRECT child or close relative
+      // For the correct tweet (not nested ones), find the main tweet's status link
+      let mainStatusLink = null;
+      
+      // Try to find the status link that's closest in the DOM tree
+      // Usually it's a direct child of the article or one level deep
+      for (let link of allStatusLinks) {
+        // Check if this is the main tweet's link by seeing if it's in a header section
+        const timeElement = link.querySelector('time');
+        if (timeElement) {
+          debug(`Found status link with time element: ${link.href}`);
+          mainStatusLink = link;
+          break;
+        }
+      }
+      
+      // If no link with time found, use the first one
+      if (!mainStatusLink && allStatusLinks.length > 0) {
+        mainStatusLink = allStatusLinks[0];
+        debug(`Using first status link: ${mainStatusLink.href}`);
+      }
+      
+      if (mainStatusLink) {
+        element = mainStatusLink;
+        debug(`Selected element href: ${element.href}`);
       }
     }
   }
+
+  // Use the old logic for other websites if the new Twitter logic doesn't find anything
+  if (!element) {
+    if (target.tagName === 'A' && target.href) {
+      element = target;
+    } else {
+      element = target.closest('article, [role="article"], .post, [data-testid="post"], [role="link"], .item, [data-id]');
+    }
+  }
+  
+  if (element) {
+    const url = findUrl(element, domainType);
+    if (url) {
+      currentHoveredLink = element;
+      currentHoveredElement = element;
+      debug(`[${domainType}] URL found: ${url}`);
+    }
+  }
+}, true);
 
   // Use the old logic for other websites if the new Twitter logic doesn't find anything
   if (!element) {
