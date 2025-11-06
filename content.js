@@ -166,55 +166,75 @@ function findUrl(element, domainType) {
   return findGenericUrl(element);
 }
 
-// ===== ENHANCED TWITTER URL FINDER =====
-// Handles nested quoted tweets properly
+// ===== ENHANCED TWITTER URL FINDER - DEBUGGING VERSION =====
+// This version provides detailed logging to understand the DOM structure
+
 function findTwitterUrl(element) {
-  // Find ALL articles that contain this element
+  debug('=== TWITTER URL FINDER ===');
+  debug('Hovered element tag: ' + element.tagName);
+  debug('Hovered element class: ' + element.className);
+  
+  // APPROACH 1: Find ALL articles that contain this element
   let articles = [];
   let currentElement = element;
+  let depth = 0;
   
-  // Walk up the DOM and collect all article ancestors
-  while (currentElement) {
+  debug('Walking up the DOM tree...');
+  while (currentElement && depth < 30) {
     if (currentElement.tagName === 'ARTICLE') {
       articles.push(currentElement);
+      debug(`Found ARTICLE at depth ${depth}`);
     }
     currentElement = currentElement.parentElement;
+    depth++;
   }
   
-  // If we have multiple nested articles, use the INNERMOST one
-  // (the one closest to the element we're hovering over)
-  let targetArticle = null;
+  debug(`Total articles found: ${articles.length}`);
   
-  if (articles.length > 0) {
-    // Use the first article found (innermost)
-    targetArticle = articles[0];
-  } else {
-    // Fallback if no article is a direct ancestor
-    targetArticle = element.closest('article');
-  }
-  
-  if (!targetArticle) {
-    debug('No article container found');
-    return null;
-  }
-  
-  // Look for /status/ URLs in the target article
-  const statusLink = targetArticle.querySelector('a[href*="/status/"]');
-  if (statusLink && statusLink.href) {
-    debug('Found status link in target article: ' + statusLink.href);
-    return statusLink.href;
-  }
-  
-  // Fallback: search all links in this article for /status/ URL
-  const allLinks = targetArticle.querySelectorAll('a[href]');
-  for (let link of allLinks) {
-    if (link.href.includes('/status/')) {
-      debug('Found status link in all links: ' + link.href);
-      return link.href;
+  // If we have nested articles, we want to try the INNERMOST first
+  for (let i = 0; i < articles.length; i++) {
+    debug(`Checking article ${i}...`);
+    const article = articles[i];
+    
+    // Look for /status/ URLs in this article
+    const statusLinks = article.querySelectorAll('a[href*="/status/"]');
+    debug(`Status links found in article ${i}: ${statusLinks.length}`);
+    
+    if (statusLinks.length > 0) {
+      // Return the FIRST status link in this article
+      const url = statusLinks[0].href;
+      debug(`Found status URL in article ${i}: ${url}`);
+      return url;
     }
   }
   
-  debug('No status link found in article');
+  // APPROACH 2: If no article found, search upward for any /status/ link
+  debug('No /status/ link found in articles, searching upward...');
+  currentElement = element;
+  depth = 0;
+  
+  while (currentElement && depth < 30) {
+    const link = currentElement.querySelector('a[href*="/status/"]');
+    if (link && link.href) {
+      debug(`Found /status/ link at depth ${depth}: ${link.href}`);
+      return link.href;
+    }
+    currentElement = currentElement.parentElement;
+    depth++;
+  }
+  
+  // APPROACH 3: Brute force - find ANY /status/ link on the page near the hover point
+  debug('Brute force search for /status/ links...');
+  const allStatusLinks = document.querySelectorAll('a[href*="/status/"]');
+  debug(`Total /status/ links on page: ${allStatusLinks.length}`);
+  
+  if (allStatusLinks.length > 0) {
+    const url = allStatusLinks[allStatusLinks.length - 1].href;
+    debug(`Using last /status/ link: ${url}`);
+    return url;
+  }
+  
+  debug('No status link found anywhere');
   return null;
 }
 
