@@ -65,8 +65,14 @@ function extractUrlFromDataAttributes(element) {
           return url;
         }
         debug('Rejected potentially dangerous URL scheme: ' + url);
-      } else if (url.startsWith('/') || !url.includes(':')) {
-        // Allow relative URLs and paths without protocols
+      } else if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../') || url.startsWith('#')) {
+        // Allow relative URLs: absolute paths, relative paths, and anchors
+        return url;
+      } else if (/^[a-z0-9_.-]+\.(html|htm|php|asp|aspx|jsp|py|rb)$/i.test(url)) {
+        // Allow simple file paths with common web extensions
+        return url;
+      } else if (!url.includes(':') && !url.includes(',')) {
+        // Allow other simple paths without protocols or data URL indicators
         return url;
       } else {
         debug('Rejected potentially dangerous URL: ' + url);
