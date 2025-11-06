@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 400px;
+      padding: 15px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      margin: 0;
+    }
+    
+    body.dark-mode {
+      background: #1e1e1e;
+      color: #e0e0e0;
+    }
+    
+    h1 {
+      font-size: 18px;
+      margin: 0 0 15px 0;
+      color: #333;
+    }
+    
+    body.dark-mode h1 {
+      color: #fff;
+    }
+    
+    h2 {
+      font-size: 14px;
+      margin: 15px 0 10px 0;
+      color: #555;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 5px;
+    }
+    
+    body.dark-mode h2 {
+      color: #e0e0e0;
+      border-bottom-color: #66bb6a;
+    }
+    
+    .setting {
+      margin-bottom: 15px;
+      background: white;
+      padding: 12px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    body.dark-mode .setting {
+      background: #2d2d2d;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+      color: #555;
+      font-size: 13px;
+    }
+    
+    body.dark-mode label {
+      color: #b0b0b0;
+    }
+    
+    input[type="text"],
+    input[type="checkbox"],
+    select {
+      padding: 6px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      background: white;
+      color: #333;
+    }
+    
+    body.dark-mode input[type="text"],
+    body.dark-mode input[type="checkbox"],
+    body.dark-mode select {
+      background: #3a3a3a;
+      color: #e0e0e0;
+      border-color: #555;
+    }
+    
+    input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      margin: 0;
+      font-weight: normal;
+    }
+    
+    input[type="checkbox"] {
+      cursor: pointer;
+    }
+    
+    .modifier-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    
+    .modifier-group label {
+      margin: 0;
+      font-weight: normal;
+    }
+    
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    
+    button:hover {
+      background: #45a049;
+    }
+    
+    #resetBtn {
+      background: #999;
+      margin-top: 5px;
+    }
+    
+    #resetBtn:hover {
+      background: #888;
+    }
+    
+    .info {
+      font-size: 12px;
+      color: #666;
+      margin-top: 10px;
+      padding: 10px;
+      background: #e8f5e9;
+      border-radius: 4px;
+      border-left: 3px solid #4CAF50;
+    }
+    
+    body.dark-mode .info {
+      background: #1b5e20;
+      color: #a5d6a7;
+    }
+    
+    .status-msg {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+      text-align: center;
+      font-weight: 500;
+    }
+    
+    .status-msg.success {
+      background: #c8e6c9;
+      color: #2e7d32;
+      display: block;
+    }
+    
+    body.dark-mode .status-msg.success {
+      background: #1b5e20;
+      color: #a5d6a7;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚙️ Copy URL on Hover</h1>
+  
+  <h2>📋 Copy URL Shortcut</h2>
+  <div class="setting">
+    <label for="copyUrlKey">Key:</label>
+    <input type="text" id="copyUrlKey" maxlength="1" placeholder="y">
+    
+    <label style="margin-top: 10px;">Modifier Keys:</label>
+    <div class="modifier-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="copyUrlCtrl">
+        Ctrl
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="copyUrlAlt">
+        Alt
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="copyUrlShift">
+        Shift
+      </label>
+    </div>
+  </div>
+
+  <h2>📋 Copy Text Shortcut</h2>
+  <div class="setting">
+    <label for="copyTextKey">Key:</label>
+    <input type="text" id="copyTextKey" maxlength="1" placeholder="x">
+    
+    <label style="margin-top: 10px;">Modifier Keys:</label>
+    <div class="modifier-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="copyTextCtrl">
+        Ctrl
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="copyTextAlt">
+        Alt
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="copyTextShift">
+        Shift
+      </label>
+    </div>
+  </div>
+
+  <h2>🎨 Appearance</h2>
+  <div class="setting">
+    <label class="checkbox-label">
+      <input type="checkbox" id="showNotification">
+      Show notification on copy
+    </label>
+    
+    <label for="notifColor" style="margin-top: 10px;">Notification color:</label>
+    <input type="text" id="notifColor" placeholder="#4CAF50">
+    
+    <label for="notifDuration" style="margin-top: 10px;">Notification duration (ms):</label>
+    <input type="text" id="notifDuration" placeholder="2000">
+    
+    <label class="checkbox-label" style="margin-top: 10px;">
+      <input type="checkbox" id="darkMode">
+      Dark Mode
+    </label>
+  </div>
+
+  <h2>🔧 Advanced</h2>
+  <div class="setting">
+    <label class="checkbox-label">
+      <input type="checkbox" id="debugMode">
+      Enable debug mode (console logs)
+    </label>
+  </div>
+
+  <button id="saveBtn">✓ Save Settings</button>
+  <button id="resetBtn">↻ Reset to Defaults</button>
+
+  <div class="status-msg" id="statusMsg"></div>
+
+  <div class="info">
+    <strong>Examples:</strong><br>
+    • Check "Ctrl" + set key "C" = Ctrl+C<br>
+    • Check "Ctrl" and "Shift" + set key "Y" = Ctrl+Shift+Y<br>
+    • Leave all unchecked = just press the key<br>
+    <strong>Tip:</strong> Reload tabs after saving to apply changes
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

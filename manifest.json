@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Copy URL on Hover Custom",
+  "version": "1.0",
+  "description": "Copy URLs or link text while hovering over links.",
+  "permissions": ["scripting", "storage", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "Copy URL on Hover Settings",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "icons": {
+    "96": "icons/icon.png"
+  }
+}
