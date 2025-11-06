@@ -14,6 +14,7 @@ const DEFAULT_CONFIG = {
   notifColor: '#4CAF50',
   notifDuration: 2000,
   notifPosition: 'bottom-right',
+  notifSize: 'medium',
   debugMode: false,
   darkMode: true
 };
@@ -103,15 +104,30 @@ function showNotification(message) {
         animationName = 'slideInRight';
     }
     
+    // Determine size styles based on notifSize setting
+    let sizeStyles = '';
+    switch(CONFIG.notifSize) {
+      case 'small':
+        sizeStyles = 'padding: 8px 14px; font-size: 12px;';
+        break;
+      case 'medium':
+        sizeStyles = 'padding: 12px 20px; font-size: 14px;';
+        break;
+      case 'large':
+        sizeStyles = 'padding: 16px 26px; font-size: 16px;';
+        break;
+      default:
+        sizeStyles = 'padding: 12px 20px; font-size: 14px;';
+    }
+    
     notif.style.cssText = `
       position: fixed;
       ${positionStyles}
       background: ${CONFIG.notifColor};
       color: #fff;
-      padding: 12px 20px;
+      ${sizeStyles}
       border-radius: 6px;
       z-index: 999999;
-      font-size: 14px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       animation: ${animationName} 0.3s ease-out;
