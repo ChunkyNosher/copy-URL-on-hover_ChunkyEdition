@@ -25,7 +25,7 @@ jobs:
         run: |
           # Remove .github directory from the package
           mkdir -p build
-          rsync -av --exclude='.git' --exclude='.github' --exclude='build' --exclude='README.md' . build/
+          rsync -av --exclude='.git' --exclude='.github' --exclude='build' --exclude='README.md' --exclude='.gitignore' --exclude='updates.json' . build/
           cd build
           zip -r ../copy-url-hover-extension.xpi .
           cd ..
