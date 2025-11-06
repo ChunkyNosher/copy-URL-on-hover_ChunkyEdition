@@ -166,78 +166,108 @@ function findUrl(element, domainType) {
   return findGenericUrl(element);
 }
 
-// ===== ENHANCED TWITTER URL FINDER - DEBUGGING VERSION =====
-// This version provides detailed logging to understand the DOM structure
+// ===== BEST APPROACH: FIND THE CORRECT TWEET URL =====
+// This uses a smarter strategy to detect which tweet the user is actually hovering over
 
 function findTwitterUrl(element) {
-  debug('=== TWITTER URL FINDER ===');
-  debug('Hovered element tag: ' + element.tagName);
-  debug('Hovered element class: ' + element.className);
+  debug('=== TWITTER URL FINDER (Smart Version) ===');
+  debug('Hovered element: ' + element.tagName + ' - ' + element.className);
   
-  // APPROACH 1: Find ALL articles that contain this element
-  let articles = [];
-  let currentElement = element;
+  // STRATEGY 1: Check if we can walk UP to find the immediate parent /status/ link
+  // This catches text hovers on nested tweets
+  let current = element;
+  let maxDepth = 50;
   let depth = 0;
   
-  debug('Walking up the DOM tree...');
-  while (currentElement && depth < 30) {
-    if (currentElement.tagName === 'ARTICLE') {
-      articles.push(currentElement);
+  while (current && depth < maxDepth) {
+    // Check if current element has a /status/ link as direct child
+    const directStatusLink = current.querySelector(':scope > a[href*="/status/"], :scope > div > a[href*="/status/"]');
+    if (directStatusLink && directStatusLink.href) {
+      debug(`Found direct child status link at depth ${depth}: ${directStatusLink.href}`);
+      return directStatusLink.href;
+    }
+    
+    // If we hit an article, check its status links
+    if (current.tagName === 'ARTICLE') {
       debug(`Found ARTICLE at depth ${depth}`);
+      
+      // Get all status links in this article
+      const statusLinks = current.querySelectorAll('a[href*="/status/"]');
+      debug(`Status links in article: ${statusLinks.length}`);
+      
+      if (statusLinks.length > 0) {
+        // IMPORTANT: For nested tweets, we need to find which one is CLOSEST
+        // Calculate which status link is closest to our hover point
+        let closestLink = null;
+        let closestDistance = Infinity;
+        
+        for (let link of statusLinks) {
+          // Check if this article is a "quote" or nested container
+          // Look for the link that's not in a parent article
+          const rect = link.getBoundingClientRect();
+          const elementRect = element.getBoundingClientRect();
+          
+          // Calculate distance from hover point to link
+          const distance = Math.sqrt(
+            Math.pow(rect.left - elementRect.left, 2) + 
+            Math.pow(rect.top - elementRect.top, 2)
+          );
+          
+          debug(`Status link distance: ${distance.toFixed(2)}`);
+          
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestLink = link;
+          }
+        }
+        
+        if (closestLink) {
+          debug(`Found closest status link: ${closestLink.href}`);
+          return closestLink.href;
+        }
+      }
     }
-    currentElement = currentElement.parentElement;
+    
+    current = current.parentElement;
     depth++;
   }
   
-  debug(`Total articles found: ${articles.length}`);
+  // STRATEGY 2: Find all /status/ links on the page and pick based on proximity
+  debug('Strategy 1 failed, trying proximity-based search...');
+  const allStatusLinks = Array.from(document.querySelectorAll('a[href*="/status/"]'));
+  debug(`Total status links on page: ${allStatusLinks.length}`);
   
-  // If we have nested articles, we want to try the INNERMOST first
-  for (let i = 0; i < articles.length; i++) {
-    debug(`Checking article ${i}...`);
-    const article = articles[i];
+  if (allStatusLinks.length === 0) {
+    return null;
+  }
+  
+  // Find which link is closest to our hover element
+  const elementRect = element.getBoundingClientRect();
+  let closestLink = null;
+  let closestDistance = Infinity;
+  
+  for (let link of allStatusLinks) {
+    const rect = link.getBoundingClientRect();
     
-    // Look for /status/ URLs in this article
-    const statusLinks = article.querySelectorAll('a[href*="/status/"]');
-    debug(`Status links found in article ${i}: ${statusLinks.length}`);
+    // Only consider links that are near the hover point (within viewport)
+    const distance = Math.sqrt(
+      Math.pow(rect.left - elementRect.left, 2) + 
+      Math.pow(rect.top - elementRect.top, 2)
+    );
     
-    if (statusLinks.length > 0) {
-      // Return the FIRST status link in this article
-      const url = statusLinks[0].href;
-      debug(`Found status URL in article ${i}: ${url}`);
-      return url;
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestLink = link;
     }
   }
   
-  // APPROACH 2: If no article found, search upward for any /status/ link
-  debug('No /status/ link found in articles, searching upward...');
-  currentElement = element;
-  depth = 0;
-  
-  while (currentElement && depth < 30) {
-    const link = currentElement.querySelector('a[href*="/status/"]');
-    if (link && link.href) {
-      debug(`Found /status/ link at depth ${depth}: ${link.href}`);
-      return link.href;
-    }
-    currentElement = currentElement.parentElement;
-    depth++;
+  if (closestLink) {
+    debug(`Found closest status link on page: ${closestLink.href}`);
+    return closestLink.href;
   }
   
-  // APPROACH 3: Brute force - find ANY /status/ link on the page near the hover point
-  debug('Brute force search for /status/ links...');
-  const allStatusLinks = document.querySelectorAll('a[href*="/status/"]');
-  debug(`Total /status/ links on page: ${allStatusLinks.length}`);
-  
-  if (allStatusLinks.length > 0) {
-    const url = allStatusLinks[allStatusLinks.length - 1].href;
-    debug(`Using last /status/ link: ${url}`);
-    return url;
-  }
-  
-  debug('No status link found anywhere');
   return null;
 }
-
 // ===== OTHER SITE HANDLERS =====
 
 function findRedditUrl(element) {
