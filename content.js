@@ -13,6 +13,8 @@ const DEFAULT_CONFIG = {
   showNotification: true,
   notifColor: '#4CAF50',
   notifDuration: 2000,
+  notifPosition: 'bottom-right',
+  notifSize: 'medium',
   debugMode: false,
   darkMode: true
 };
@@ -67,33 +69,112 @@ function showNotification(message) {
   try {
     const notif = document.createElement('div');
     notif.textContent = message;
+    
+    // Determine position styles based on notifPosition setting
+    let positionStyles = '';
+    let animationName = 'slideIn';
+    
+    switch(CONFIG.notifPosition) {
+      case 'top-left':
+        positionStyles = 'top: 20px; left: 20px;';
+        animationName = 'slideInLeft';
+        break;
+      case 'top-right':
+        positionStyles = 'top: 20px; right: 20px;';
+        animationName = 'slideInRight';
+        break;
+      case 'top-center':
+        positionStyles = 'top: 20px; left: 50%; transform: translateX(-50%);';
+        animationName = 'slideInTop';
+        break;
+      case 'bottom-left':
+        positionStyles = 'bottom: 20px; left: 20px;';
+        animationName = 'slideInLeft';
+        break;
+      case 'bottom-right':
+        positionStyles = 'bottom: 20px; right: 20px;';
+        animationName = 'slideInRight';
+        break;
+      case 'bottom-center':
+        positionStyles = 'bottom: 20px; left: 50%; transform: translateX(-50%);';
+        animationName = 'slideInBottom';
+        break;
+      default:
+        positionStyles = 'bottom: 20px; right: 20px;';
+        animationName = 'slideInRight';
+    }
+    
+    // Determine size styles based on notifSize setting
+    let sizeStyles = '';
+    switch(CONFIG.notifSize) {
+      case 'small':
+        sizeStyles = 'padding: 8px 14px; font-size: 12px;';
+        break;
+      case 'medium':
+        sizeStyles = 'padding: 12px 20px; font-size: 14px;';
+        break;
+      case 'large':
+        sizeStyles = 'padding: 16px 26px; font-size: 16px;';
+        break;
+      default:
+        sizeStyles = 'padding: 12px 20px; font-size: 14px;';
+    }
+    
     notif.style.cssText = `
       position: fixed;
-      bottom: 20px;
-      right: 20px;
+      ${positionStyles}
       background: ${CONFIG.notifColor};
       color: #fff;
-      padding: 12px 20px;
+      ${sizeStyles}
       border-radius: 6px;
       z-index: 999999;
-      font-size: 14px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      animation: slideIn 0.3s ease-out;
+      animation: ${animationName} 0.3s ease-out;
     `;
     
-    // Add animation style
+    // Add animation styles
     if (!document.querySelector('style[data-copy-url]')) {
       const style = document.createElement('style');
       style.setAttribute('data-copy-url', 'true');
       style.textContent = `
-        @keyframes slideIn {
+        @keyframes slideInRight {
           from {
             transform: translateX(400px);
             opacity: 0;
           }
           to {
             transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        @keyframes slideInLeft {
+          from {
+            transform: translateX(-400px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        @keyframes slideInTop {
+          from {
+            transform: translate(-50%, -100px);
+            opacity: 0;
+          }
+          to {
+            transform: translate(-50%, 0);
+            opacity: 1;
+          }
+        }
+        @keyframes slideInBottom {
+          from {
+            transform: translate(-50%, 100px);
+            opacity: 0;
+          }
+          to {
+            transform: translate(-50%, 0);
             opacity: 1;
           }
         }

@@ -12,6 +12,8 @@ const DEFAULT_SETTINGS = {
   showNotification: true,
   notifColor: '#4CAF50',
   notifDuration: 2000,
+  notifPosition: 'bottom-right',
+  notifSize: 'medium',
   debugMode: false,
   darkMode: true
 };
@@ -32,6 +34,8 @@ function loadSettings() {
     document.getElementById('showNotification').checked = items.showNotification;
     document.getElementById('notifColor').value = items.notifColor;
     document.getElementById('notifDuration').value = items.notifDuration;
+    document.getElementById('notifPosition').value = items.notifPosition;
+    document.getElementById('notifSize').value = items.notifSize;
     document.getElementById('debugMode').checked = items.debugMode;
     document.getElementById('darkMode').checked = items.darkMode;
     
@@ -75,6 +79,8 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     showNotification: document.getElementById('showNotification').checked,
     notifColor: document.getElementById('notifColor').value || '#4CAF50',
     notifDuration: parseInt(document.getElementById('notifDuration').value) || 2000,
+    notifPosition: document.getElementById('notifPosition').value || 'bottom-right',
+    notifSize: document.getElementById('notifSize').value || 'medium',
     debugMode: document.getElementById('debugMode').checked,
     darkMode: document.getElementById('darkMode').checked
   };
