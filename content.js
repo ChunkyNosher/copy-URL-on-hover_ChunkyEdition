@@ -36,55 +36,82 @@ function debug(msg) {
   }
 }
 
-// Find the actual link URL from an element
-function findLinkUrl(element) {
-  // Direct href attribute
-  if (element.href) {
+// Find the tweet URL from an element
+function findTweetUrl(element) {
+  // If element is already an <a> tag, return its href
+  if (element.tagName === 'A' && element.href) {
     return element.href;
   }
   
-  // Check parent elements for href
-  let parent = element.parentElement;
-  for (let i = 0; i < 10; i++) {
-    if (!parent) break;
-    if (parent.href) {
-      return parent.href;
-    }
-    parent = parent.parentElement;
-  }
-  
-  // Twitter/X specific: Look for links inside the element
-  const link = element.querySelector('a[href]');
-  if (link && link.href) {
-    return link.href;
-  }
-  
-  // Twitter/X: Check for article's associated link
+  // Find closest article (Twitter tweet container)
   const article = element.closest('article');
-  if (article) {
-    const articleLink = article.querySelector('a[href*="twitter.com"], a[href*="x.com"]');
-    if (articleLink && articleLink.href) {
-      return articleLink.href;
+  if (!article) {
+    debug('No article found');
+    return null;
+  }
+  
+  // Look for links with href containing /status/ - this is the actual tweet URL
+  const statusLink = article.querySelector('a[href*="/status/"]');
+  if (statusLink && statusLink.href) {
+    debug('Found status link: ' + statusLink.href);
+    return statusLink.href;
+  }
+  
+  // Fallback: Look for any link inside article that's not a profile link
+  const allLinks = article.querySelectorAll('a[href]');
+  for (let link of allLinks) {
+    const url = link.href;
+    // Skip profile links (they have /username or look like profile URLs)
+    // and focus on status links
+    if (url.includes('/status/')) {
+      debug('Found status link (fallback): ' + url);
+      return url;
     }
   }
   
+  // If no status link found, try getting any link that's not a profile
+  for (let link of allLinks) {
+    const url = link.href;
+    // Avoid common navigation links
+    if (!url.includes('/explore') && 
+        !url.includes('/home') && 
+        !url.includes('/messages') && 
+        !url.includes('/notifications')) {
+      if (url.includes('twitter.com') || url.includes('x.com')) {
+        debug('Found alternative link: ' + url);
+        return url;
+      }
+    }
+  }
+  
+  debug('No suitable link found in article');
   return null;
 }
 
-// Get link text
-function getLinkText(element) {
-  // Check if it's a direct link
-  if (element.tagName === 'A') {
-    return element.textContent.trim();
+// Get tweet text (the actual tweet content)
+function getTweetText(element) {
+  const article = element.closest('article');
+  if (!article) {
+    return element.textContent.trim().substring(0, 100);
   }
   
-  // Look for link inside
-  const link = element.querySelector('a[href]');
-  if (link) {
-    return link.textContent.trim();
+  // Find the main tweet text content
+  // Twitter uses role="region" or specific divs for tweet content
+  const tweetContent = article.querySelector('[data-testid="tweet"] div[lang], [role="article"] div[lang]');
+  if (tweetContent) {
+    return tweetContent.textContent.trim().substring(0, 100);
   }
   
-  // Get general text content
+  // Fallback to getting text content excluding header
+  const header = article.querySelector('div[data-testid="User-Name"]');
+  if (header) {
+    // Get all text and remove header text
+    let allText = article.textContent.trim();
+    let headerText = header.textContent.trim();
+    let remaining = allText.replace(headerText, '').trim();
+    return remaining.substring(0, 100);
+  }
+  
   return element.textContent.trim().substring(0, 100);
 }
 
@@ -94,25 +121,25 @@ document.addEventListener('mouseover', function(event) {
   let element = null;
   
   // Direct link
-  if (target.tagName === 'A' && target.href) {
+  if (target.tagName === 'A' && target.href && target.href.includes('/status/')) {
     element = target;
   } else {
-    // Check if it's a Twitter tweet container
+    // Check if hovering over anything in a tweet article
     const article = target.closest('article');
     if (article) {
       element = article;
-    } else {
-      // Check for regular link parent
-      element = target.closest('a[href]');
+      debug('Article found on hover');
     }
   }
   
   if (element) {
-    const url = findLinkUrl(element);
+    const url = findTweetUrl(element);
     if (url) {
       currentHoveredLink = element;
       currentHoveredElement = element;
       debug('Element hovered with URL: ' + url);
+    } else {
+      debug('Element hovered but no URL found');
     }
   }
 }, true);
@@ -121,7 +148,6 @@ document.addEventListener('mouseover', function(event) {
 document.addEventListener('mouseout', function(event) {
   currentHoveredLink = null;
   currentHoveredElement = null;
-  debug('Element unhovered');
 }, true);
 
 // Show notification
@@ -190,7 +216,10 @@ function checkModifiers(requireCtrl, requireAlt, requireShift, event) {
 
 // Handle keyboard shortcuts
 document.addEventListener('keydown', function(event) {
-  if (!currentHoveredLink && !currentHoveredElement) return;
+  if (!currentHoveredLink && !currentHoveredElement) {
+    debug('No element hovered on key press');
+    return;
+  }
   
   if (event.target.tagName === 'INPUT' || 
       event.target.tagName === 'TEXTAREA' || 
@@ -200,10 +229,10 @@ document.addEventListener('keydown', function(event) {
   
   const key = event.key.toLowerCase();
   const element = currentHoveredLink || currentHoveredElement;
-  const url = findLinkUrl(element);
+  const url = findTweetUrl(element);
   
-  debug('Key pressed: ' + key + ', Ctrl: ' + event.ctrlKey + ', Alt: ' + event.altKey + ', Shift: ' + event.shiftKey);
-  debug('Element found, URL: ' + url);
+  debug('Key pressed: ' + key);
+  debug('URL found: ' + url);
   
   if (key === CONFIG.copyUrlKey.toLowerCase() && 
       checkModifiers(CONFIG.copyUrlCtrl, CONFIG.copyUrlAlt, CONFIG.copyUrlShift, event)) {
@@ -211,7 +240,7 @@ document.addEventListener('keydown', function(event) {
     event.stopPropagation();
     
     if (!url) {
-      debug('No URL found on element');
+      debug('No URL found for copy');
       showNotification('✗ No URL found');
       return;
     }
@@ -232,7 +261,7 @@ document.addEventListener('keydown', function(event) {
     event.preventDefault();
     event.stopPropagation();
     
-    const text = getLinkText(element);
+    const text = getTweetText(element);
     debug('Copying text: ' + text);
     
     navigator.clipboard.writeText(text).then(() => {
