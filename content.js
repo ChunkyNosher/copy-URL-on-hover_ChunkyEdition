@@ -166,106 +166,40 @@ function findUrl(element, domainType) {
   return findGenericUrl(element);
 }
 
-// ===== BEST APPROACH: FIND THE CORRECT TWEET URL =====
-// This uses a smarter strategy to detect which tweet the user is actually hovering over
-
 function findTwitterUrl(element) {
   debug('=== TWITTER URL FINDER (Smart Version) ===');
   debug('Hovered element: ' + element.tagName + ' - ' + element.className);
-  
-  // STRATEGY 1: Check if we can walk UP to find the immediate parent /status/ link
-  // This catches text hovers on nested tweets
-  let current = element;
-  let maxDepth = 50;
-  let depth = 0;
-  
-  while (current && depth < maxDepth) {
-    // Check if current element has a /status/ link as direct child
-    const directStatusLink = current.querySelector(':scope > a[href*="/status/"], :scope > div > a[href*="/status/"]');
-    if (directStatusLink && directStatusLink.href) {
-      debug(`Found direct child status link at depth ${depth}: ${directStatusLink.href}`);
-      return directStatusLink.href;
-    }
-    
-    // If we hit an article, check its status links
-    if (current.tagName === 'ARTICLE') {
-      debug(`Found ARTICLE at depth ${depth}`);
-      
-      // Get all status links in this article
-      const statusLinks = current.querySelectorAll('a[href*="/status/"]');
-      debug(`Status links in article: ${statusLinks.length}`);
-      
-      if (statusLinks.length > 0) {
-        // IMPORTANT: For nested tweets, we need to find which one is CLOSEST
-        // Calculate which status link is closest to our hover point
-        let closestLink = null;
-        let closestDistance = Infinity;
-        
-        for (let link of statusLinks) {
-          // Check if this article is a "quote" or nested container
-          // Look for the link that's not in a parent article
-          const rect = link.getBoundingClientRect();
-          const elementRect = element.getBoundingClientRect();
-          
-          // Calculate distance from hover point to link
-          const distance = Math.sqrt(
-            Math.pow(rect.left - elementRect.left, 2) + 
-            Math.pow(rect.top - elementRect.top, 2)
-          );
-          
-          debug(`Status link distance: ${distance.toFixed(2)}`);
-          
-          if (distance < closestDistance) {
-            closestDistance = distance;
-            closestLink = link;
-          }
-        }
-        
-        if (closestLink) {
-          debug(`Found closest status link: ${closestLink.href}`);
-          return closestLink.href;
-        }
-      }
-    }
-    
-    current = current.parentElement;
-    depth++;
-  }
-  
-  // STRATEGY 2: Find all /status/ links on the page and pick based on proximity
-  debug('Strategy 1 failed, trying proximity-based search...');
-  const allStatusLinks = Array.from(document.querySelectorAll('a[href*="/status/"]'));
-  debug(`Total status links on page: ${allStatusLinks.length}`);
-  
-  if (allStatusLinks.length === 0) {
-    return null;
-  }
-  
-  // Find which link is closest to our hover element
-  const elementRect = element.getBoundingClientRect();
-  let closestLink = null;
-  let closestDistance = Infinity;
-  
-  for (let link of allStatusLinks) {
-    const rect = link.getBoundingClientRect();
-    
-    // Only consider links that are near the hover point (within viewport)
-    const distance = Math.sqrt(
-      Math.pow(rect.left - elementRect.left, 2) + 
-      Math.pow(rect.top - elementRect.top, 2)
-    );
-    
-    if (distance < closestDistance) {
-      closestDistance = distance;
-      closestLink = link;
+
+  // Find the closest tweet article to the element being hovered.
+  // This is crucial for distinguishing between the main tweet and a nested/quoted tweet.
+  const closestArticle = element.closest('article');
+
+  if (closestArticle) {
+    debug('Found closest article to the hovered element.');
+
+    // Find all links within this article that point to a status.
+    const statusLinks = closestArticle.querySelectorAll('a[href*="/status/"]');
+    debug(`Found ${statusLinks.length} status links within the article.`);
+
+    if (statusLinks.length > 0) {
+      // The last status link in an article is typically the timestamp link, which is the correct one for that tweet.
+      // This works for both main tweets and quoted tweets.
+      const bestLink = statusLinks[statusLinks.length - 1];
+      debug(`Using the last status link found: ${bestLink.href}`);
+      return bestLink.href;
     }
   }
-  
-  if (closestLink) {
-    debug(`Found closest status link on page: ${closestLink.href}`);
+
+  // Fallback for cases where the article structure isn't found as expected.
+  // This looks for the closest link with a status URL near the hovered element.
+  debug('Could not find a tweet article, trying to find closest status link directly.');
+  const closestLink = element.closest('a[href*="/status/"]');
+  if (closestLink && closestLink.href) {
+    debug(`Found a close status link via fallback: ${closestLink.href}`);
     return closestLink.href;
   }
   
+  debug('No Twitter URL found.');
   return null;
 }
 // ===== OTHER SITE HANDLERS =====
