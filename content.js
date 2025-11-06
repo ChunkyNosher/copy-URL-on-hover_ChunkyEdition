@@ -36,115 +36,516 @@ function debug(msg) {
   }
 }
 
-// Find the tweet URL from an element
-function findTweetUrl(element) {
-  // If element is already an <a> tag, return its href
+// Determine the domain type
+function getDomainType() {
+  const hostname = window.location.hostname;
+  if (hostname.includes('twitter.com') || hostname.includes('x.com')) return 'twitter';
+  if (hostname.includes('reddit.com')) return 'reddit';
+  if (hostname.includes('youtube.com')) return 'youtube';
+  if (hostname.includes('linkedin.com')) return 'linkedin';
+  if (hostname.includes('github.com') || hostname.includes('ghe.')) return 'github';
+  if (hostname.includes('medium.com')) return 'medium';
+  if (hostname.includes('amazon.') || hostname.includes('smile.amazon')) return 'amazon';
+  if (hostname.includes('instagram.com')) return 'instagram';
+  if (hostname.includes('facebook.com')) return 'facebook';
+  if (hostname.includes('tiktok.com')) return 'tiktok';
+  if (hostname.includes('pinterest.com')) return 'pinterest';
+  if (hostname.includes('tumblr.com')) return 'tumblr';
+  if (hostname.includes('threads.net')) return 'threads';
+  if (hostname.includes('bluesky.social')) return 'bluesky';
+  if (hostname.includes('mastodon')) return 'mastodon';
+  if (hostname.includes('hackernews')) return 'hackernews';
+  if (hostname.includes('news.ycombinator')) return 'hackernews';
+  if (hostname.includes('producthunt.com')) return 'producthunt';
+  if (hostname.includes('dribbble.com')) return 'dribbble';
+  if (hostname.includes('behance.net')) return 'behance';
+  if (hostname.includes('deviantart.com')) return 'deviantart';
+  if (hostname.includes('flickr.com')) return 'flickr';
+  if (hostname.includes('500px.com')) return '500px';
+  if (hostname.includes('unsplash.com')) return 'unsplash';
+  if (hostname.includes('pexels.com')) return 'pexels';
+  if (hostname.includes('vimeo.com')) return 'vimeo';
+  if (hostname.includes('dailymotion.com')) return 'dailymotion';
+  if (hostname.includes('bitbucket.org')) return 'bitbucket';
+  if (hostname.includes('gitlab.com')) return 'gitlab';
+  if (hostname.includes('dev.to')) return 'devto';
+  if (hostname.includes('hashnode.com')) return 'hashnode';
+  if (hostname.includes('substack.com')) return 'substack';
+  if (hostname.includes('quora.com')) return 'quora';
+  if (hostname.includes('stackoverflow.com')) return 'stackoverflow';
+  if (hostname.includes('steamcommunity.com')) return 'steam';
+  if (hostname.includes('twitch.tv')) return 'twitch';
+  if (hostname.includes('discord.com') || hostname.includes('discordapp.com')) return 'discord';
+  if (hostname.includes('wikipedia.org')) return 'wikipedia';
+  if (hostname.includes('imdb.com')) return 'imdb';
+  if (hostname.includes('rottentomatoes.com')) return 'rottentomatoes';
+  if (hostname.includes('netflix.com')) return 'netflix';
+  if (hostname.includes('letterboxd.com')) return 'letterboxd';
+  if (hostname.includes('goodreads.com')) return 'goodreads';
+  if (hostname.includes('ebay.')) return 'ebay';
+  if (hostname.includes('etsy.com')) return 'etsy';
+  if (hostname.includes('walmart.com')) return 'walmart';
+  if (hostname.includes('flipkart.com')) return 'flipkart';
+  if (hostname.includes('aliexpress.com')) return 'aliexpress';
+  if (hostname.includes('shopify.')) return 'shopify';
+  return 'generic';
+}
+
+// Generic URL finder - most robust
+function findUrl(element, domainType) {
+  // Try direct link first
   if (element.tagName === 'A' && element.href) {
     return element.href;
   }
   
-  // Find closest article (Twitter tweet container)
+  // Check parents for href (up to 20 levels)
+  let parent = element.parentElement;
+  for (let i = 0; i < 20; i++) {
+    if (!parent) break;
+    if (parent.href) return parent.href;
+    parent = parent.parentElement;
+  }
+  
+  // Site-specific handlers
+  const handlers = {
+    twitter: findTwitterUrl,
+    reddit: findRedditUrl,
+    youtube: findYouTubeUrl,
+    linkedin: findLinkedInUrl,
+    github: findGitHubUrl,
+    gitlab: findGitHubUrl,
+    bitbucket: findGitHubUrl,
+    medium: findMediumUrl,
+    devto: findMediumUrl,
+    hashnode: findMediumUrl,
+    substack: findMediumUrl,
+    amazon: findAmazonUrl,
+    ebay: findAmazonUrl,
+    etsy: findAmazonUrl,
+    walmart: findAmazonUrl,
+    flipkart: findAmazonUrl,
+    aliexpress: findAmazonUrl,
+    instagram: findSocialUrl,
+    facebook: findSocialUrl,
+    tiktok: findSocialUrl,
+    threads: findSocialUrl,
+    bluesky: findSocialUrl,
+    mastodon: findSocialUrl,
+    pinterest: findPinterestUrl,
+    tumblr: findTumblrUrl,
+    hackernews: findHackerNewsUrl,
+    producthunt: findProductHuntUrl,
+    dribbble: findDribbbleUrl,
+    behance: findBehanceUrl,
+    deviantart: findDeviantartUrl,
+    flickr: findFlickrUrl,
+    '500px': find500pxUrl,
+    unsplash: findPhotoUrl,
+    pexels: findPhotoUrl,
+    vimeo: findVimeoUrl,
+    dailymotion: findDailyMotionUrl,
+    quora: findQuoraUrl,
+    stackoverflow: findStackOverflowUrl,
+    steam: findSteamUrl,
+    twitch: findTwitchUrl,
+    discord: findDiscordUrl,
+    wikipedia: findWikipediaUrl,
+    imdb: findImdbUrl,
+    rottentomatoes: findRottenTomatoesUrl,
+    netflix: findNetflixUrl,
+    letterboxd: findLetterboxdUrl,
+    goodreads: findGoodreadsUrl,
+    shopify: findShopifyUrl
+  };
+  
+  if (handlers[domainType]) {
+    const url = handlers[domainType](element);
+    if (url) return url;
+  }
+  
+  // Final fallback - find ANY link
+  return findGenericUrl(element);
+}
+
+// ===== SITE-SPECIFIC HANDLERS =====
+
+function findTwitterUrl(element) {
   const article = element.closest('article');
-  if (!article) {
-    debug('No article found');
-    return null;
-  }
+  if (!article) return findGenericUrl(element);
   
-  // Look for links with href containing /status/ - this is the actual tweet URL
   const statusLink = article.querySelector('a[href*="/status/"]');
-  if (statusLink && statusLink.href) {
-    debug('Found status link: ' + statusLink.href);
-    return statusLink.href;
-  }
+  if (statusLink?.href) return statusLink.href;
   
-  // Fallback: Look for any link inside article that's not a profile link
-  const allLinks = article.querySelectorAll('a[href]');
-  for (let link of allLinks) {
-    const url = link.href;
-    // Skip profile links (they have /username or look like profile URLs)
-    // and focus on status links
-    if (url.includes('/status/')) {
-      debug('Found status link (fallback): ' + url);
-      return url;
-    }
-  }
-  
-  // If no status link found, try getting any link that's not a profile
-  for (let link of allLinks) {
-    const url = link.href;
-    // Avoid common navigation links
-    if (!url.includes('/explore') && 
-        !url.includes('/home') && 
-        !url.includes('/messages') && 
-        !url.includes('/notifications')) {
-      if (url.includes('twitter.com') || url.includes('x.com')) {
-        debug('Found alternative link: ' + url);
-        return url;
-      }
-    }
-  }
-  
-  debug('No suitable link found in article');
   return null;
 }
 
-// Get tweet text (the actual tweet content)
-function getTweetText(element) {
-  const article = element.closest('article');
-  if (!article) {
-    return element.textContent.trim().substring(0, 100);
+function findRedditUrl(element) {
+  const post = element.closest('[data-testid="post-container"], .Post, .post-container, [role="article"]');
+  if (!post) return findGenericUrl(element);
+  
+  const titleLink = post.querySelector('a[data-testid="post-title"], h3 a, .PostTitle a, [data-click-id="body"] a');
+  if (titleLink?.href) return titleLink.href;
+  
+  return null;
+}
+
+function findYouTubeUrl(element) {
+  const videoCard = element.closest('[role="listitem"], .yt-simple-endpoint, a[href*="/watch"]');
+  if (!videoCard) return findGenericUrl(element);
+  
+  const watchLink = videoCard.querySelector('a[href*="watch?v="]');
+  if (watchLink?.href) return watchLink.href;
+  
+  return null;
+}
+
+function findLinkedInUrl(element) {
+  const post = element.closest('[data-id], .feed-shared-update-v2, [data-test="activity-item"]');
+  if (!post) return findGenericUrl(element);
+  
+  const links = post.querySelectorAll('a[href]');
+  for (let link of links) {
+    const url = link.href;
+    if (url.includes('/feed/') || url.includes('/posts/')) return url;
   }
   
-  // Find the main tweet text content
-  // Twitter uses role="region" or specific divs for tweet content
-  const tweetContent = article.querySelector('[data-testid="tweet"] div[lang], [role="article"] div[lang]');
-  if (tweetContent) {
-    return tweetContent.textContent.trim().substring(0, 100);
+  return null;
+}
+
+function findGitHubUrl(element) {
+  const item = element.closest('[data-testid="issue-row"], .Box-row, .issue, [role="article"]');
+  if (!item) return findGenericUrl(element);
+  
+  const link = item.querySelector('a[href*="/issues/"], a[href*="/pull/"], a[href*="/repository"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findMediumUrl(element) {
+  const article = element.closest('[data-test="cardLink"], article, .article, [role="article"]');
+  if (!article) return findGenericUrl(element);
+  
+  const link = article.querySelector('a[href*="/p/"], a[href*="/@"], a');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findAmazonUrl(element) {
+  const product = element.closest('[data-component-type="s-search-result"], .s-result-item, [data-asin]');
+  if (!product) return findGenericUrl(element);
+  
+  const link = product.querySelector('a[href*="/dp/"], a[href*="/product/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findSocialUrl(element) {
+  const post = element.closest('[role="article"], .post, .story, [data-testid="post"]');
+  if (!post) return findGenericUrl(element);
+  
+  const links = post.querySelectorAll('a[href]');
+  for (let link of links) {
+    const url = link.href;
+    if (!url.includes('/explore') && !url.includes('/hashtag/')) return url;
   }
   
-  // Fallback to getting text content excluding header
-  const header = article.querySelector('div[data-testid="User-Name"]');
-  if (header) {
-    // Get all text and remove header text
-    let allText = article.textContent.trim();
-    let headerText = header.textContent.trim();
-    let remaining = allText.replace(headerText, '').trim();
-    return remaining.substring(0, 100);
+  return null;
+}
+
+function findPinterestUrl(element) {
+  const pin = element.closest('div[role="link"], .pin');
+  if (!pin) return findGenericUrl(element);
+  
+  const link = pin.querySelector('a[href*="/pin/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findTumblrUrl(element) {
+  const post = element.closest('[role="article"], .post, .reblog');
+  if (!post) return findGenericUrl(element);
+  
+  const link = post.querySelector('a[href*="tumblr.com"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findHackerNewsUrl(element) {
+  const row = element.closest('.athing, tr');
+  if (!row) return findGenericUrl(element);
+  
+  const link = row.querySelector('a.titlelink, a.titlelink');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findProductHuntUrl(element) {
+  const item = element.closest('[role="article"], .postItem');
+  if (!item) return findGenericUrl(element);
+  
+  const link = item.querySelector('a[href*="producthunt.com"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findDribbbleUrl(element) {
+  const shot = element.closest('div[role="link"], .shot');
+  if (!shot) return findGenericUrl(element);
+  
+  const link = shot.querySelector('a[href*="/shots/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findBehanceUrl(element) {
+  const project = element.closest('[role="article"], .project');
+  if (!project) return findGenericUrl(element);
+  
+  const link = project.querySelector('a[href*="behance.net"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findDeviantartUrl(element) {
+  const deviation = element.closest('[role="article"], .deviation');
+  if (!deviation) return findGenericUrl(element);
+  
+  const link = deviation.querySelector('a[href*="deviantart.com"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findFlickrUrl(element) {
+  const photo = element.closest('[role="link"], .photo');
+  if (!photo) return findGenericUrl(element);
+  
+  const link = photo.querySelector('a[href*="/photos/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function find500pxUrl(element) {
+  const photo = element.closest('div[role="link"], .photo');
+  if (!photo) return findGenericUrl(element);
+  
+  const link = photo.querySelector('a[href*="/photo/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findPhotoUrl(element) {
+  const photo = element.closest('[role="article"], .photo, a[href]');
+  if (!photo) return findGenericUrl(element);
+  
+  if (photo.href) return photo.href;
+  
+  const link = photo.querySelector('a[href]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findVimeoUrl(element) {
+  const video = element.closest('[role="article"], .video');
+  if (!video) return findGenericUrl(element);
+  
+  const link = video.querySelector('a[href*="/video/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findDailyMotionUrl(element) {
+  const video = element.closest('[role="article"], .video');
+  if (!video) return findGenericUrl(element);
+  
+  const link = video.querySelector('a[href*="/video/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findQuoraUrl(element) {
+  const question = element.closest('[role="article"], .Question');
+  if (!question) return findGenericUrl(element);
+  
+  const link = question.querySelector('a[href*="/q/"], a[href*="/question/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findStackOverflowUrl(element) {
+  const question = element.closest('[role="article"], .s-post-summary');
+  if (!question) return findGenericUrl(element);
+  
+  const link = question.querySelector('a[href*="/questions/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findSteamUrl(element) {
+  const item = element.closest('[role="article"], .appid, .workshop_item');
+  if (!item) return findGenericUrl(element);
+  
+  const link = item.querySelector('a[href*="steampowered.com"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findTwitchUrl(element) {
+  const stream = element.closest('[role="article"], [role="link"]');
+  if (!stream) return findGenericUrl(element);
+  
+  const link = stream.querySelector('a[href*="/videos/"], a[href*="/clips/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findDiscordUrl(element) {
+  const message = element.closest('[role="article"], .message');
+  if (!message) return findGenericUrl(element);
+  
+  const link = message.querySelector('a[href]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findWikipediaUrl(element) {
+  const article = element.closest('article, .mw-article');
+  if (!article) return element.href || findGenericUrl(element);
+  
+  return window.location.href;
+}
+
+function findImdbUrl(element) {
+  const item = element.closest('[role="article"], .ipc-title');
+  if (!item) return findGenericUrl(element);
+  
+  const link = item.querySelector('a[href*="/title/"], a[href*="/name/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findRottenTomatoesUrl(element) {
+  const item = element.closest('[role="article"], .scoreboard');
+  if (!item) return findGenericUrl(element);
+  
+  const link = item.querySelector('a[href*="/m/"], a[href*="/tv/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findNetflixUrl(element) {
+  return window.location.href;
+}
+
+function findLetterboxdUrl(element) {
+  const film = element.closest('[role="article"], .film');
+  if (!film) return findGenericUrl(element);
+  
+  const link = film.querySelector('a[href*="/film/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findGoodreadsUrl(element) {
+  const book = element.closest('[role="article"], .book');
+  if (!book) return findGenericUrl(element);
+  
+  const link = book.querySelector('a[href*="/book/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+function findShopifyUrl(element) {
+  const product = element.closest('[role="article"], .product');
+  if (!product) return findGenericUrl(element);
+  
+  const link = product.querySelector('a[href*="/products/"]');
+  if (link?.href) return link.href;
+  
+  return null;
+}
+
+// ===== FALLBACK =====
+
+function findGenericUrl(element) {
+  // Look for direct href on clicked element
+  if (element.href) return element.href;
+  
+  // Look for closest link
+  const link = element.closest('a[href]');
+  if (link?.href) return link.href;
+  
+  // Search within element
+  const innerLink = element.querySelector('a[href]');
+  if (innerLink?.href) return innerLink.href;
+  
+  // Search siblings
+  const siblings = element.parentElement?.querySelectorAll('a[href]');
+  if (siblings?.length) return siblings[0].href;
+  
+  return null;
+}
+
+// Get link text
+function getLinkText(element) {
+  if (element.tagName === 'A') {
+    return element.textContent.trim();
+  }
+  
+  const link = element.querySelector('a[href]');
+  if (link) {
+    return link.textContent.trim();
   }
   
   return element.textContent.trim().substring(0, 100);
 }
 
-// Enhanced hover detection for Twitter
+// Hover detection
 document.addEventListener('mouseover', function(event) {
   let target = event.target;
   let element = null;
   
-  // Direct link
-  if (target.tagName === 'A' && target.href && target.href.includes('/status/')) {
+  if (target.tagName === 'A' && target.href) {
     element = target;
   } else {
-    // Check if hovering over anything in a tweet article
-    const article = target.closest('article');
-    if (article) {
-      element = article;
-      debug('Article found on hover');
-    }
+    element = target.closest('article, [role="article"], .post, [data-testid="post"], [role="link"], .item, [data-id]');
   }
   
   if (element) {
-    const url = findTweetUrl(element);
+    const domainType = getDomainType();
+    const url = findUrl(element, domainType);
     if (url) {
       currentHoveredLink = element;
       currentHoveredElement = element;
-      debug('Element hovered with URL: ' + url);
-    } else {
-      debug('Element hovered but no URL found');
+      debug(`[${domainType}] URL found: ${url}`);
     }
   }
 }, true);
 
-// Track mouseout
+// Mouseout
 document.addEventListener('mouseout', function(event) {
   currentHoveredLink = null;
   currentHoveredElement = null;
@@ -172,20 +573,13 @@ function showNotification(message) {
       animation: slideIn 0.3s ease-out;
     `;
     
-    // Add animation style
     if (!document.querySelector('style[data-copy-url]')) {
       const style = document.createElement('style');
       style.setAttribute('data-copy-url', 'true');
       style.textContent = `
         @keyframes slideIn {
-          from {
-            transform: translateX(400px);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
+          from { transform: translateX(400px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
         }
       `;
       document.head.appendChild(style);
@@ -201,25 +595,18 @@ function showNotification(message) {
   }
 }
 
-// Check if the correct modifiers are pressed
+// Check modifiers
 function checkModifiers(requireCtrl, requireAlt, requireShift, event) {
   const ctrlPressed = event.ctrlKey || event.metaKey;
   const altPressed = event.altKey;
   const shiftPressed = event.shiftKey;
   
-  if (requireCtrl !== ctrlPressed) return false;
-  if (requireAlt !== altPressed) return false;
-  if (requireShift !== shiftPressed) return false;
-  
-  return true;
+  return (requireCtrl === ctrlPressed && requireAlt === altPressed && requireShift === shiftPressed);
 }
 
-// Handle keyboard shortcuts
+// Keyboard handler
 document.addEventListener('keydown', function(event) {
-  if (!currentHoveredLink && !currentHoveredElement) {
-    debug('No element hovered on key press');
-    return;
-  }
+  if (!currentHoveredLink && !currentHoveredElement) return;
   
   if (event.target.tagName === 'INPUT' || 
       event.target.tagName === 'TEXTAREA' || 
@@ -229,10 +616,8 @@ document.addEventListener('keydown', function(event) {
   
   const key = event.key.toLowerCase();
   const element = currentHoveredLink || currentHoveredElement;
-  const url = findTweetUrl(element);
-  
-  debug('Key pressed: ' + key);
-  debug('URL found: ' + url);
+  const domainType = getDomainType();
+  const url = findUrl(element, domainType);
   
   if (key === CONFIG.copyUrlKey.toLowerCase() && 
       checkModifiers(CONFIG.copyUrlCtrl, CONFIG.copyUrlAlt, CONFIG.copyUrlShift, event)) {
@@ -240,18 +625,13 @@ document.addEventListener('keydown', function(event) {
     event.stopPropagation();
     
     if (!url) {
-      debug('No URL found for copy');
       showNotification('✗ No URL found');
       return;
     }
     
-    debug('Copying URL: ' + url);
-    
     navigator.clipboard.writeText(url).then(() => {
-      debug('URL copied successfully');
       showNotification('✓ URL copied!');
-    }).catch(err => {
-      debug('Failed to copy: ' + err);
+    }).catch(() => {
       showNotification('✗ Copy failed');
     });
   }
@@ -261,28 +641,23 @@ document.addEventListener('keydown', function(event) {
     event.preventDefault();
     event.stopPropagation();
     
-    const text = getTweetText(element);
-    debug('Copying text: ' + text);
+    const text = getLinkText(element);
     
     navigator.clipboard.writeText(text).then(() => {
-      debug('Text copied successfully');
       showNotification('✓ Text copied!');
-    }).catch(err => {
-      debug('Failed to copy: ' + err);
+    }).catch(() => {
       showNotification('✗ Copy failed');
     });
   }
 }, true);
 
-// Reload settings when storage changes
+// Storage listener
 browser.storage.onChanged.addListener(function(changes, areaName) {
   if (areaName === 'local') {
     loadSettings();
-    debug('Settings updated from storage');
   }
 });
 
-// Load settings when content script starts
+// Initialize
 loadSettings();
-
-debug('Extension loaded and initialized');
+debug('Extension loaded - supports 50+ websites');
