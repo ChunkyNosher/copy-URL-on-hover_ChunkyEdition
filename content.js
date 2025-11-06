@@ -21,6 +21,7 @@ const DEFAULT_CONFIG = {
 
 let CONFIG = { ...DEFAULT_CONFIG };
 let currentHoveredLink = null;
+let currentHoveredElement = null;
 
 // Load settings from storage
 function loadSettings() {
@@ -37,27 +38,104 @@ function debug(msg) {
   }
 }
 
-// Track mouseover on links
-document.addEventListener('mouseover', function(event) {
-  let target = event.target;
-  let link = null;
+// Extract URL from element's data attributes
+function extractUrlFromDataAttributes(element) {
+  const dataAttributes = [
+    'href',
+    'data-href',
+    'data-url',
+    'data-link',
+    'data-target-url'
+  ];
   
-  if (target.tagName === 'A') {
-    link = target;
-  } else {
-    link = target.closest('a');
+  for (const attr of dataAttributes) {
+    const value = element.getAttribute(attr);
+    if (value && value.trim()) {
+      return value.trim();
+    }
   }
   
-  if (link && link.href) {
-    currentHoveredLink = link;
-    debug('Link hovered: ' + link.href);
+  return null;
+}
+
+// Detect and extract link information from an element
+function detectLinkElement(element) {
+  if (!element) return null;
+  
+  // Method 1: Direct <a> tag with href
+  if (element.tagName === 'A' && element.href) {
+    debug('Detected traditional <a> tag with href');
+    return { element: element, url: element.href };
+  }
+  
+  // Method 2: Closest parent <a> tag with href
+  const closestAnchor = element.closest('a');
+  if (closestAnchor && closestAnchor.href) {
+    debug('Detected parent <a> tag with href');
+    return { element: closestAnchor, url: closestAnchor.href };
+  }
+  
+  // Method 3: Element with role="link" and URL in data attributes
+  if (element.getAttribute('role') === 'link') {
+    const url = extractUrlFromDataAttributes(element);
+    if (url) {
+      debug('Detected element with role="link" and data URL: ' + url);
+      return { element: element, url: url };
+    }
+  }
+  
+  // Method 4: Closest parent with role="link" and URL in data attributes
+  const closestRoleLink = element.closest('[role="link"]');
+  if (closestRoleLink) {
+    const url = extractUrlFromDataAttributes(closestRoleLink);
+    if (url) {
+      debug('Detected parent with role="link" and data URL: ' + url);
+      return { element: closestRoleLink, url: url };
+    }
+  }
+  
+  // Method 5: Common clickable elements with URL-like data attributes
+  const clickableElements = ['DIV', 'SPAN', 'BUTTON'];
+  if (clickableElements.includes(element.tagName)) {
+    const url = extractUrlFromDataAttributes(element);
+    if (url) {
+      debug('Detected clickable element (' + element.tagName + ') with data URL: ' + url);
+      return { element: element, url: url };
+    }
+  }
+  
+  // Method 6: Check parent clickable elements
+  for (const tagName of clickableElements) {
+    const closestClickable = element.closest(tagName.toLowerCase());
+    if (closestClickable) {
+      const url = extractUrlFromDataAttributes(closestClickable);
+      if (url) {
+        debug('Detected parent clickable element (' + tagName + ') with data URL: ' + url);
+        return { element: closestClickable, url: url };
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Track mouseover on links
+document.addEventListener('mouseover', function(event) {
+  const linkInfo = detectLinkElement(event.target);
+  
+  if (linkInfo) {
+    currentHoveredLink = { href: linkInfo.url, textContent: linkInfo.element.textContent };
+    currentHoveredElement = linkInfo.element;
+    debug('Link hovered: ' + linkInfo.url);
   }
 }, true);
 
 // Track mouseout
 document.addEventListener('mouseout', function(event) {
-  if (currentHoveredLink) {
+  // Check if we're leaving the currently tracked element
+  if (currentHoveredElement && event.target === currentHoveredElement) {
     currentHoveredLink = null;
+    currentHoveredElement = null;
     debug('Link unhovered');
   }
 }, true);
