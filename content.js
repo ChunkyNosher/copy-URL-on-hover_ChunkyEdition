@@ -166,72 +166,18 @@ function findUrl(element, domainType) {
   return findGenericUrl(element);
 }
 
-// ===== TWITTER URL FINDER - CORRECT NESTED TWEET DETECTION =====
-// The key: Find the INNERMOST article that contains the hovered element
-
 function findTwitterUrl(element) {
-  debug('=== TWITTER URL FINDER (Innermost Article) ===');
+  debug('=== TWITTER URL FINDER ===');
   debug('Hovered element: ' + element.tagName + ' - ' + element.className);
   
-  // STRATEGY: Find the INNERMOST <article> that is an ancestor of the hovered element
-  // Twitter wraps each tweet (including nested quotes) in an <article> tag
-  
-  let current = element;
-  let innermostArticle = null;
-  let depth = 0;
-  
-  // Walk UP the DOM and track the innermost article we find
-  while (current && depth < 50) {
-    if (current.tagName === 'ARTICLE') {
-      // Found an article - this is our candidate
-      innermostArticle = current;
-      debug(`Found article at depth ${depth}`);
-      
-      // Keep walking up to see if there are MORE articles
-      // The innermost one will be the last one we find before reaching the root
-      current = current.parentElement;
-      depth++;
-      continue;
-    }
-    
-    current = current.parentElement;
-    depth++;
+  // The 'element' passed from the new mouseover listener is already the correct <a> tag.
+  // We just need to return its 'href' attribute.
+  if (element && element.href) {
+    debug(`URL found directly from hovered element: ${element.href}`);
+    return element.href;
   }
   
-  // Now we have the innermost article that contains our hovered element
-  if (innermostArticle) {
-    debug(`Using innermost article`);
-    
-    // Find ALL /status/ links in this article
-    const statusLinks = innermostArticle.querySelectorAll('a[href*="/status/"]');
-    debug(`Status links in innermost article: ${statusLinks.length}`);
-    
-    if (statusLinks.length > 0) {
-      // Return the FIRST /status/ link found in this article
-      const url = statusLinks[0].href;
-      debug(`Returning status link: ${url}`);
-      return url;
-    }
-  }
-  
-  // Fallback: if no article found or no status link in article
-  debug('No innermost article found, searching upward for /status/ link');
-  current = element;
-  depth = 0;
-  
-  while (current && depth < 50) {
-    // Try to find a /status/ link within this element
-    const link = current.querySelector('a[href*="/status/"]');
-    if (link && link.href) {
-      debug(`Found /status/ link at depth ${depth}: ${link.href}`);
-      return link.href;
-    }
-    
-    current = current.parentElement;
-    depth++;
-  }
-  
-  debug('No /status/ link found');
+  debug('No Twitter URL found on the provided element.');
   return null;
 }
 
@@ -582,15 +528,32 @@ function getLinkText(element) {
 document.addEventListener('mouseover', function(event) {
   let target = event.target;
   let element = null;
-  
-  if (target.tagName === 'A' && target.href) {
-    element = target;
-  } else {
-    element = target.closest('article, [role="article"], .post, [data-testid="post"], [role="link"], .item, [data-id]');
+  const domainType = getDomainType();
+
+  // Special, more precise handling for Twitter
+  if (domainType === 'twitter') {
+    // Find the closest 'article' which represents a tweet container
+    const tweetArticle = target.closest('article');
+    if (tweetArticle) {
+      // Within that tweet, find the timestamp link. This is the most reliable anchor.
+      const timeElement = tweetArticle.querySelector('a[href*="/status/"] > time');
+      if (timeElement) {
+        // The element to process is the link containing the timestamp.
+        element = timeElement.parentElement;
+      }
+    }
+  }
+
+  // Use the old logic for other websites if the new Twitter logic doesn't find anything
+  if (!element) {
+    if (target.tagName === 'A' && target.href) {
+      element = target;
+    } else {
+      element = target.closest('article, [role="article"], .post, [data-testid="post"], [role="link"], .item, [data-id]');
+    }
   }
   
   if (element) {
-    const domainType = getDomainType();
     const url = findUrl(element, domainType);
     if (url) {
       currentHoveredLink = element;
