@@ -51,7 +51,13 @@ function extractUrlFromDataAttributes(element) {
   for (const attr of dataAttributes) {
     const value = element.getAttribute(attr);
     if (value && value.trim()) {
-      return value.trim();
+      const url = value.trim();
+      // Security: Validate URL to prevent XSS attacks
+      // Only allow http, https, and relative URLs
+      if (url.match(/^(https?:\/\/|\/)/i) || !url.includes(':')) {
+        return url;
+      }
+      debug('Rejected potentially dangerous URL scheme: ' + url);
     }
   }
   
@@ -133,10 +139,14 @@ document.addEventListener('mouseover', function(event) {
 // Track mouseout
 document.addEventListener('mouseout', function(event) {
   // Check if we're leaving the currently tracked element
+  // relatedTarget is where the mouse is moving to
   if (currentHoveredElement && event.target === currentHoveredElement) {
-    currentHoveredLink = null;
-    currentHoveredElement = null;
-    debug('Link unhovered');
+    // Only clear if we're moving outside the element (not to a child)
+    if (!currentHoveredElement.contains(event.relatedTarget)) {
+      currentHoveredLink = null;
+      currentHoveredElement = null;
+      debug('Link unhovered');
+    }
   }
 }, true);
 
