@@ -167,7 +167,7 @@ function findUrl(element, domainType) {
 }
 
 function findTwitterUrl(element) {
-  debug('=== TWITTER URL FINDER (v3) ===');
+  debug('=== TWITTER URL FINDER ===');
   debug('Hovered element: ' + element.tagName + ' - ' + element.className);
   
   // The 'element' passed from the new mouseover listener is already the correct <a> tag.
