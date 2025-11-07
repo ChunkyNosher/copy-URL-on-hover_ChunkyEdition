@@ -8,12 +8,14 @@
     }
     
     body {
-      width: 400px;
-      padding: 15px;
+      width: 450px;
+      max-height: 600px;
+      padding: 0;
+      margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #f5f5f5;
       color: #333;
-      margin: 0;
+      overflow: hidden;
     }
     
     body.dark-mode {
@@ -21,9 +23,20 @@
       color: #e0e0e0;
     }
     
+    .header {
+      padding: 15px;
+      background: #fff;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    body.dark-mode .header {
+      background: #2d2d2d;
+      border-bottom-color: #555;
+    }
+    
     h1 {
       font-size: 18px;
-      margin: 0 0 15px 0;
+      margin: 0;
       color: #333;
     }
     
@@ -31,17 +44,66 @@
       color: #fff;
     }
     
-    h2 {
-      font-size: 14px;
-      margin: 15px 0 10px 0;
-      color: #555;
+    .tabs {
+      display: flex;
+      background: #fff;
       border-bottom: 2px solid #4CAF50;
-      padding-bottom: 5px;
+      overflow-x: auto;
     }
     
-    body.dark-mode h2 {
-      color: #e0e0e0;
+    body.dark-mode .tabs {
+      background: #2d2d2d;
       border-bottom-color: #66bb6a;
+    }
+    
+    .tab {
+      padding: 12px 20px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: #666;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: all 0.2s;
+      flex: 1;
+      text-align: center;
+    }
+    
+    .tab:hover {
+      background: #f5f5f5;
+      color: #333;
+    }
+    
+    body.dark-mode .tab {
+      color: #aaa;
+    }
+    
+    body.dark-mode .tab:hover {
+      background: #3a3a3a;
+      color: #e0e0e0;
+    }
+    
+    .tab.active {
+      color: #4CAF50;
+      border-bottom: 2px solid #4CAF50;
+      margin-bottom: -2px;
+    }
+    
+    body.dark-mode .tab.active {
+      color: #66bb6a;
+      border-bottom-color: #66bb6a;
+    }
+    
+    .tab-content {
+      display: none;
+      padding: 15px;
+      max-height: 450px;
+      overflow-y: auto;
+    }
+    
+    .tab-content.active {
+      display: block;
     }
     
     .setting {
@@ -70,6 +132,7 @@
     }
     
     input[type="text"],
+    input[type="number"],
     input[type="checkbox"],
     select {
       padding: 6px;
@@ -81,6 +144,7 @@
     }
     
     body.dark-mode input[type="text"],
+    body.dark-mode input[type="number"],
     body.dark-mode select {
       background: #3a3a3a;
       color: #e0e0e0;
@@ -93,7 +157,9 @@
       accent-color: #66bb6a;
     }
     
-    input[type="text"] {
+    input[type="text"],
+    input[type="number"],
+    select {
       width: 100%;
       box-sizing: border-box;
     }
@@ -122,10 +188,21 @@
       font-weight: normal;
     }
     
+    .actions {
+      padding: 15px;
+      background: #fff;
+      border-top: 1px solid #ddd;
+    }
+    
+    body.dark-mode .actions {
+      background: #2d2d2d;
+      border-top-color: #555;
+    }
+    
     button {
       width: 100%;
       padding: 10px;
-      margin-top: 10px;
+      margin-top: 5px;
       background: #4CAF50;
       color: white;
       border: none;
@@ -133,6 +210,7 @@
       cursor: pointer;
       font-weight: 500;
       transition: background 0.2s;
+      font-size: 13px;
     }
     
     button:hover {
@@ -141,26 +219,10 @@
     
     #resetBtn {
       background: #999;
-      margin-top: 5px;
     }
     
     #resetBtn:hover {
       background: #888;
-    }
-    
-    .info {
-      font-size: 12px;
-      color: #666;
-      margin-top: 10px;
-      padding: 10px;
-      background: #e8f5e9;
-      border-radius: 4px;
-      border-left: 3px solid #4CAF50;
-    }
-    
-    body.dark-mode .info {
-      background: #1b5e20;
-      color: #a5d6a7;
     }
     
     .status-msg {
@@ -170,6 +232,7 @@
       display: none;
       text-align: center;
       font-weight: 500;
+      font-size: 12px;
     }
     
     .status-msg.success {
@@ -182,192 +245,264 @@
       background: #1b5e20;
       color: #a5d6a7;
     }
+    
+    .info {
+      font-size: 11px;
+      color: #666;
+      margin-top: 10px;
+      padding: 8px;
+      background: #e8f5e9;
+      border-radius: 4px;
+      border-left: 3px solid #4CAF50;
+    }
+    
+    body.dark-mode .info {
+      background: #1b5e20;
+      color: #a5d6a7;
+    }
   </style>
 </head>
 <body>
-  <h1>⚙️ Copy URL on Hover</h1>
+  <div class="header">
+    <h1>⚙️ Copy URL on Hover</h1>
+  </div>
   
-  <h2>📋 Copy URL Shortcut</h2>
-  <div class="setting">
-    <label for="copyUrlKey">Key:</label>
-    <input type="text" id="copyUrlKey" maxlength="1" placeholder="y">
-    
-    <label style="margin-top: 10px;">Modifier Keys:</label>
-    <div class="modifier-group">
-      <label class="checkbox-label">
-        <input type="checkbox" id="copyUrlCtrl">
-        Ctrl
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="copyUrlAlt">
-        Alt
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="copyUrlShift">
-        Shift
-      </label>
-    </div>
+  <div class="tabs">
+    <button class="tab active" data-tab="copy-url">Copy URL</button>
+    <button class="tab" data-tab="quick-tabs">Quick Tabs</button>
+    <button class="tab" data-tab="appearance">Appearance</button>
+    <button class="tab" data-tab="advanced">Advanced</button>
   </div>
-
-  <h2>📋 Copy Text Shortcut</h2>
-  <div class="setting">
-    <label for="copyTextKey">Key:</label>
-    <input type="text" id="copyTextKey" maxlength="1" placeholder="x">
-    
-    <label style="margin-top: 10px;">Modifier Keys:</label>
-    <div class="modifier-group">
-      <label class="checkbox-label">
-        <input type="checkbox" id="copyTextCtrl">
-        Ctrl
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="copyTextAlt">
-        Alt
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="copyTextShift">
-        Shift
-      </label>
-    </div>
-  </div>
-
-  <h2>🔗 Open Link in New Tab</h2>
-  <div class="setting">
-    <label for="openNewTabKey">Key:</label>
-    <input type="text" id="openNewTabKey" maxlength="1" placeholder="o">
-    
-    <label style="margin-top: 10px;">Modifier Keys:</label>
-    <div class="modifier-group">
-      <label class="checkbox-label">
-        <input type="checkbox" id="openNewTabCtrl">
-        Ctrl
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="openNewTabAlt">
-        Alt
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="openNewTabShift">
-        Shift
-      </label>
-    </div>
-    
-    <label class="checkbox-label" style="margin-top: 10px;">
-      <input type="checkbox" id="openNewTabSwitchFocus">
-      Switch focus to new tab
-    </label>
-  </div>
-
-  <h2>🪟 Quick Tab on Hover</h2>
-  <div class="setting">
-    <label for="quickTabKey">Key to open Quick Tab:</label>
-    <input type="text" id="quickTabKey" maxlength="1" placeholder="q">
-    
-    <label style="margin-top: 10px;">Modifier Keys:</label>
-    <div class="modifier-group">
-      <label class="checkbox-label">
-        <input type="checkbox" id="quickTabCtrl">
-        Ctrl
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="quickTabAlt">
-        Alt
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="quickTabShift">
-        Shift
-      </label>
-    </div>
-    
-    <label for="quickTabCloseKey" style="margin-top: 10px;">Close all Quick Tabs key:</label>
-    <input type="text" id="quickTabCloseKey" placeholder="Escape">
-    
-    <label for="quickTabMaxWindows" style="margin-top: 10px;">Max Quick Tab windows:</label>
-    <input type="text" id="quickTabMaxWindows" placeholder="3">
-    
-    <label for="quickTabDefaultWidth" style="margin-top: 10px;">Default width (px):</label>
-    <input type="text" id="quickTabDefaultWidth" placeholder="800">
-    
-    <label for="quickTabDefaultHeight" style="margin-top: 10px;">Default height (px):</label>
-    <input type="text" id="quickTabDefaultHeight" placeholder="600">
-    
-    <label for="quickTabPosition" style="margin-top: 10px;">Window position:</label>
-    <select id="quickTabPosition">
-      <option value="follow-cursor">Follow Cursor</option>
-      <option value="center">Center</option>
-      <option value="top-left">Top Left</option>
-      <option value="top-right">Top Right</option>
-      <option value="bottom-left">Bottom Left</option>
-      <option value="bottom-right">Bottom Right</option>
-      <option value="custom">Custom Position</option>
-    </select>
-    
-    <div id="customPositionFields" style="display: none; margin-top: 10px;">
-      <label for="quickTabCustomX">Custom X position (px):</label>
-      <input type="text" id="quickTabCustomX" placeholder="100">
+  
+  <!-- Copy URL Tab -->
+  <div id="copy-url-content" class="tab-content active">
+    <div class="setting">
+      <label for="copyUrlKey">📋 Copy URL Key:</label>
+      <input type="text" id="copyUrlKey" maxlength="1" placeholder="y">
       
-      <label for="quickTabCustomY" style="margin-top: 10px;">Custom Y position (px):</label>
-      <input type="text" id="quickTabCustomY" placeholder="100">
+      <label style="margin-top: 10px;">Modifier Keys:</label>
+      <div class="modifier-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="copyUrlCtrl">
+          Ctrl
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="copyUrlAlt">
+          Alt
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="copyUrlShift">
+          Shift
+        </label>
+      </div>
+    </div>
+
+    <div class="setting">
+      <label for="copyTextKey">📝 Copy Text Key:</label>
+      <input type="text" id="copyTextKey" maxlength="1" placeholder="x">
+      
+      <label style="margin-top: 10px;">Modifier Keys:</label>
+      <div class="modifier-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="copyTextCtrl">
+          Ctrl
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="copyTextAlt">
+          Alt
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="copyTextShift">
+          Shift
+        </label>
+      </div>
+    </div>
+
+    <div class="setting">
+      <label for="openNewTabKey">🔗 Open in New Tab Key:</label>
+      <input type="text" id="openNewTabKey" maxlength="1" placeholder="o">
+      
+      <label style="margin-top: 10px;">Modifier Keys:</label>
+      <div class="modifier-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="openNewTabCtrl">
+          Ctrl
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="openNewTabAlt">
+          Alt
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="openNewTabShift">
+          Shift
+        </label>
+      </div>
+      
+      <label class="checkbox-label" style="margin-top: 10px;">
+        <input type="checkbox" id="openNewTabSwitchFocus">
+        Switch focus to new tab
+      </label>
     </div>
   </div>
-
-  <h2>🎨 Appearance</h2>
-  <div class="setting">
-    <label class="checkbox-label">
-      <input type="checkbox" id="showNotification">
-      Show notification on copy
-    </label>
+  
+  <!-- Quick Tabs Tab -->
+  <div id="quick-tabs-content" class="tab-content">
+    <div class="setting">
+      <label for="quickTabKey">🪟 Quick Tab Key:</label>
+      <input type="text" id="quickTabKey" maxlength="1" placeholder="q">
+      
+      <label style="margin-top: 10px;">Modifier Keys:</label>
+      <div class="modifier-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="quickTabCtrl">
+          Ctrl
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="quickTabAlt">
+          Alt
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="quickTabShift">
+          Shift
+        </label>
+      </div>
+    </div>
     
-    <label for="notifColor" style="margin-top: 10px;">Notification color:</label>
-    <input type="text" id="notifColor" placeholder="#4CAF50">
+    <div class="setting">
+      <label for="quickTabCloseKey">Close all Quick Tabs key:</label>
+      <input type="text" id="quickTabCloseKey" placeholder="Escape">
+      
+      <label for="quickTabMaxWindows" style="margin-top: 10px;">Max Quick Tab windows:</label>
+      <input type="number" id="quickTabMaxWindows" placeholder="3" min="1" max="10">
+    </div>
     
-    <label for="notifDuration" style="margin-top: 10px;">Notification duration (ms):</label>
-    <input type="text" id="notifDuration" placeholder="2000">
+    <div class="setting">
+      <label for="quickTabDefaultWidth">Default width (px):</label>
+      <input type="number" id="quickTabDefaultWidth" placeholder="800" min="300">
+      
+      <label for="quickTabDefaultHeight" style="margin-top: 10px;">Default height (px):</label>
+      <input type="number" id="quickTabDefaultHeight" placeholder="600" min="200">
+    </div>
     
-    <label for="notifPosition" style="margin-top: 10px;">Notification position:</label>
-    <select id="notifPosition">
-      <option value="top-left">Top Left</option>
-      <option value="top-center">Top Center</option>
-      <option value="top-right">Top Right</option>
-      <option value="bottom-left">Bottom Left</option>
-      <option value="bottom-center">Bottom Center</option>
-      <option value="bottom-right">Bottom Right</option>
-    </select>
-    
-    <label for="notifSize" style="margin-top: 10px;">Notification size:</label>
-    <select id="notifSize">
-      <option value="small">Small</option>
-      <option value="medium">Medium</option>
-      <option value="large">Large</option>
-    </select>
-    
-    <label class="checkbox-label" style="margin-top: 10px;">
-      <input type="checkbox" id="darkMode">
-      Dark Mode
-    </label>
+    <div class="setting">
+      <label for="quickTabPosition">Window position:</label>
+      <select id="quickTabPosition">
+        <option value="follow-cursor">Follow Cursor</option>
+        <option value="center">Center</option>
+        <option value="top-left">Top Left</option>
+        <option value="top-right">Top Right</option>
+        <option value="bottom-left">Bottom Left</option>
+        <option value="bottom-right">Bottom Right</option>
+        <option value="custom">Custom Position</option>
+      </select>
+      
+      <div id="customPositionFields" style="display: none; margin-top: 10px;">
+        <label for="quickTabCustomX">Custom X position (px):</label>
+        <input type="number" id="quickTabCustomX" placeholder="100">
+        
+        <label for="quickTabCustomY" style="margin-top: 10px;">Custom Y position (px):</label>
+        <input type="number" id="quickTabCustomY" placeholder="100">
+      </div>
+    </div>
   </div>
-
-  <h2>🔧 Advanced</h2>
-  <div class="setting">
-    <label class="checkbox-label">
-      <input type="checkbox" id="debugMode">
-      Enable debug mode (console logs)
-    </label>
+  
+  <!-- Appearance Tab -->
+  <div id="appearance-content" class="tab-content">
+    <div class="setting">
+      <label class="checkbox-label">
+        <input type="checkbox" id="showNotification">
+        Show notification on copy
+      </label>
+      
+      <label class="checkbox-label" style="margin-top: 10px;">
+        <input type="checkbox" id="darkMode">
+        Dark Mode
+      </label>
+    </div>
+    
+    <div class="setting">
+      <label for="notifColor">Notification color:</label>
+      <input type="text" id="notifColor" placeholder="#4CAF50">
+      
+      <label for="notifBorderColor" style="margin-top: 10px;">Border color:</label>
+      <input type="text" id="notifBorderColor" placeholder="#000000">
+      
+      <label for="notifBorderWidth" style="margin-top: 10px;">Border width (px):</label>
+      <input type="number" id="notifBorderWidth" placeholder="1" min="0" max="10">
+    </div>
+    
+    <div class="setting">
+      <label for="notifDuration">Notification duration (ms):</label>
+      <input type="number" id="notifDuration" placeholder="2000" min="500" max="10000">
+      
+      <label for="notifPosition" style="margin-top: 10px;">Position:</label>
+      <select id="notifPosition">
+        <option value="top-left">Top Left</option>
+        <option value="top-center">Top Center</option>
+        <option value="top-right">Top Right</option>
+        <option value="bottom-left">Bottom Left</option>
+        <option value="bottom-center">Bottom Center</option>
+        <option value="bottom-right">Bottom Right</option>
+      </select>
+      
+      <label for="notifSize" style="margin-top: 10px;">Size:</label>
+      <select id="notifSize">
+        <option value="small">Small</option>
+        <option value="medium">Medium</option>
+        <option value="large">Large</option>
+      </select>
+      
+      <label for="notifAnimation" style="margin-top: 10px;">Animation:</label>
+      <select id="notifAnimation">
+        <option value="slide">Slide In</option>
+        <option value="pop">Pop Up</option>
+        <option value="none">No Animation (Fade)</option>
+      </select>
+    </div>
   </div>
-
-  <button id="saveBtn">✓ Save Settings</button>
-  <button id="resetBtn">↻ Reset to Defaults</button>
-
-  <div class="status-msg" id="statusMsg"></div>
-
-  <div class="info">
-    <strong>Examples:</strong><br>
-    • Check "Ctrl" + set key "C" = Ctrl+C<br>
-    • Check "Ctrl" and "Shift" + set key "Y" = Ctrl+Shift+Y<br>
-    • Leave all unchecked = just press the key<br>
-    <strong>Tip:</strong> Reload tabs after saving to apply changes
+  
+  <!-- Advanced Tab -->
+  <div id="advanced-content" class="tab-content">
+    <div class="setting">
+      <label class="checkbox-label">
+        <input type="checkbox" id="debugMode">
+        Enable debug mode (console logs)
+      </label>
+    </div>
+    
+    <div class="info">
+      <strong>Keyboard Shortcuts:</strong><br>
+      • Check "Ctrl" + set key "C" = Ctrl+C<br>
+      • Check "Ctrl" and "Shift" + set key "Y" = Ctrl+Shift+Y<br>
+      • Leave all unchecked = just press the key<br>
+      <br>
+      <strong>Tip:</strong> Reload tabs after saving to apply changes
+    </div>
+  </div>
+  
+  <div class="actions">
+    <button id="saveBtn">✓ Save Settings</button>
+    <button id="resetBtn">↻ Reset to Defaults</button>
+    <div class="status-msg" id="statusMsg"></div>
   </div>
   
   <script src="popup.js"></script>
+  <script>
+    // Tab switching logic
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        // Remove active class from all tabs and contents
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        // Add active class to clicked tab
+        tab.classList.add('active');
+        
+        // Show corresponding content
+        const tabName = tab.dataset.tab;
+        document.getElementById(tabName + '-content').classList.add('active');
+      });
+    });
+  </script>
 </body>
 </html>

@@ -9,3 +9,4 @@ build/
 *.log
 screenshots/
 test.html
+popup_old.html

@@ -34,6 +34,9 @@ const DEFAULT_SETTINGS = {
   notifDuration: 2000,
   notifPosition: 'bottom-right',
   notifSize: 'medium',
+  notifBorderColor: '#000000',
+  notifBorderWidth: 1,
+  notifAnimation: 'slide',
   debugMode: false,
   darkMode: true
 };
@@ -76,6 +79,9 @@ function loadSettings() {
     document.getElementById('notifDuration').value = items.notifDuration;
     document.getElementById('notifPosition').value = items.notifPosition;
     document.getElementById('notifSize').value = items.notifSize;
+    document.getElementById('notifBorderColor').value = items.notifBorderColor;
+    document.getElementById('notifBorderWidth').value = items.notifBorderWidth;
+    document.getElementById('notifAnimation').value = items.notifAnimation;
     document.getElementById('debugMode').checked = items.debugMode;
     document.getElementById('darkMode').checked = items.darkMode;
     
@@ -150,6 +156,9 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     notifDuration: parseInt(document.getElementById('notifDuration').value) || 2000,
     notifPosition: document.getElementById('notifPosition').value || 'bottom-right',
     notifSize: document.getElementById('notifSize').value || 'medium',
+    notifBorderColor: document.getElementById('notifBorderColor').value || '#000000',
+    notifBorderWidth: parseInt(document.getElementById('notifBorderWidth').value) || 1,
+    notifAnimation: document.getElementById('notifAnimation').value || 'slide',
     debugMode: document.getElementById('debugMode').checked,
     darkMode: document.getElementById('darkMode').checked
   };

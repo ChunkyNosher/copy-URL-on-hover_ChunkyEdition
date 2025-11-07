@@ -35,6 +35,9 @@ const DEFAULT_CONFIG = {
   notifDuration: 2000,
   notifPosition: 'bottom-right',
   notifSize: 'medium',
+  notifBorderColor: '#000000',
+  notifBorderWidth: 1,
+  notifAnimation: 'slide',
   debugMode: false,
   darkMode: true
 };
@@ -1559,6 +1562,27 @@ function showNotification(message) {
         break;
     }
     
+    // Get animation name
+    let animationName = '';
+    const animation = CONFIG.notifAnimation || 'slide';
+    switch (animation) {
+      case 'slide':
+        animationName = 'notifSlideIn';
+        break;
+      case 'pop':
+        animationName = 'notifPopIn';
+        break;
+      case 'none':
+        animationName = 'notifFadeIn';
+        break;
+      default:
+        animationName = 'notifSlideIn';
+    }
+    
+    // Border styles
+    const borderWidth = CONFIG.notifBorderWidth || 1;
+    const borderColor = CONFIG.notifBorderColor || '#000000';
+    
     notif.style.cssText = `
       position: fixed;
       ${positionStyles}
@@ -1567,56 +1591,70 @@ function showNotification(message) {
       color: #fff;
       padding: ${padding};
       border-radius: 6px;
+      border: ${borderWidth}px solid ${borderColor};
       z-index: 999999;
       font-size: ${fontSize};
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      animation: slideIn 0.3s ease-out;
+      animation: ${animationName} 0.3s ease-out;
     `;
     
-    // Create animation styles based on position
-    if (!document.querySelector('style[data-copy-url]')) {
+    // Create animation styles based on position and animation type
+    if (!document.querySelector('style[data-copy-url-notif]')) {
       const style = document.createElement('style');
-      style.setAttribute('data-copy-url', 'true');
+      style.setAttribute('data-copy-url-notif', 'true');
       
-      // Different animations based on position
-      let animationKeyframes = '';
       const position = CONFIG.notifPosition || 'bottom-right';
       
+      let slideKeyframes = '';
       if (position.includes('center')) {
-        // For center positions, only animate opacity and vertical movement
         if (position.includes('top')) {
-          animationKeyframes = `
-            @keyframes slideIn {
+          slideKeyframes = `
+            @keyframes notifSlideIn {
               from { opacity: 0; margin-top: -50px; }
               to { opacity: 1; margin-top: 0; }
             }
           `;
         } else {
-          animationKeyframes = `
-            @keyframes slideIn {
+          slideKeyframes = `
+            @keyframes notifSlideIn {
               from { opacity: 0; margin-bottom: -50px; }
               to { opacity: 1; margin-bottom: 0; }
             }
           `;
         }
       } else if (position.includes('right')) {
-        animationKeyframes = `
-          @keyframes slideIn {
+        slideKeyframes = `
+          @keyframes notifSlideIn {
             from { transform: translateX(400px); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
           }
         `;
       } else if (position.includes('left')) {
-        animationKeyframes = `
-          @keyframes slideIn {
+        slideKeyframes = `
+          @keyframes notifSlideIn {
             from { transform: translateX(-400px); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
           }
         `;
       }
       
-      style.textContent = animationKeyframes;
+      const popKeyframes = `
+        @keyframes notifPopIn {
+          0% { transform: scale(0.3); opacity: 0; }
+          50% { transform: scale(1.05); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `;
+      
+      const fadeKeyframes = `
+        @keyframes notifFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `;
+      
+      style.textContent = slideKeyframes + popKeyframes + fadeKeyframes;
       document.head.appendChild(style);
     }
     
@@ -1726,6 +1764,16 @@ function createQuickTabWindow(url) {
   container.style.left = posX + 'px';
   container.style.top = posY + 'px';
   
+  // Create iframe first (needed for button handlers)
+  const iframe = document.createElement('iframe');
+  iframe.src = url;
+  iframe.style.cssText = `
+    flex: 1;
+    border: none;
+    width: 100%;
+    background: white;
+  `;
+  
   // Create title bar
   const titleBar = document.createElement('div');
   titleBar.className = 'copy-url-quicktab-titlebar';
@@ -1736,54 +1784,148 @@ function createQuickTabWindow(url) {
     display: flex;
     align-items: center;
     padding: 0 10px;
-    cursor: move;
     user-select: none;
-    gap: 10px;
+    gap: 5px;
   `;
   
-  // Open in new tab button
-  const openBtn = document.createElement('button');
-  openBtn.textContent = '🔗 Open in New Tab';
-  openBtn.style.cssText = `
-    padding: 5px 10px;
-    background: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    transition: background 0.2s;
+  // Navigation buttons container
+  const navContainer = document.createElement('div');
+  navContainer.style.cssText = `
+    display: flex;
+    gap: 4px;
+    align-items: center;
   `;
-  openBtn.onmouseover = () => openBtn.style.background = '#45a049';
-  openBtn.onmouseout = () => openBtn.style.background = '#4CAF50';
-  openBtn.onclick = (e) => {
-    e.stopPropagation();
-    browser.runtime.sendMessage({ 
-      action: 'openTab', 
-      url: url,
-      switchFocus: CONFIG.openNewTabSwitchFocus 
-    });
-    showNotification('✓ Opened in new tab');
-    debug(`Quick Tab opened URL in new tab: ${url}`);
+  
+  // Helper function to create navigation button
+  const createNavButton = (symbol, title) => {
+    const btn = document.createElement('button');
+    btn.textContent = symbol;
+    btn.title = title;
+    btn.style.cssText = `
+      width: 24px;
+      height: 24px;
+      background: transparent;
+      color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    `;
+    btn.onmouseover = () => btn.style.background = CONFIG.darkMode ? '#444' : '#e0e0e0';
+    btn.onmouseout = () => btn.style.background = 'transparent';
+    return btn;
   };
+  
+  // Back button
+  const backBtn = createNavButton('←', 'Back');
+  backBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (iframe.contentWindow) {
+      try {
+        iframe.contentWindow.history.back();
+      } catch (err) {
+        debug('Cannot navigate back - cross-origin restriction');
+      }
+    }
+  };
+  
+  // Forward button
+  const forwardBtn = createNavButton('→', 'Forward');
+  forwardBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (iframe.contentWindow) {
+      try {
+        iframe.contentWindow.history.forward();
+      } catch (err) {
+        debug('Cannot navigate forward - cross-origin restriction');
+      }
+    }
+  };
+  
+  // Reload button
+  const reloadBtn = createNavButton('↻', 'Reload');
+  reloadBtn.onclick = (e) => {
+    e.stopPropagation();
+    iframe.src = iframe.src;
+  };
+  
+  navContainer.appendChild(backBtn);
+  navContainer.appendChild(forwardBtn);
+  navContainer.appendChild(reloadBtn);
+  
+  // Favicon
+  const favicon = document.createElement('img');
+  favicon.style.cssText = `
+    width: 16px;
+    height: 16px;
+    margin-left: 5px;
+  `;
+  // Extract domain for favicon
+  try {
+    const urlObj = new URL(url);
+    favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
+    favicon.onerror = () => {
+      favicon.style.display = 'none';
+    };
+  } catch (e) {
+    favicon.style.display = 'none';
+  }
   
   // Title text
   const titleText = document.createElement('span');
-  titleText.textContent = 'Quick Tab';
+  titleText.textContent = 'Loading...';
   titleText.style.cssText = `
     flex: 1;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: move;
+    margin: 0 5px;
   `;
+  
+  // Open in new tab button
+  const openBtn = document.createElement('button');
+  openBtn.textContent = '🔗';
+  openBtn.title = 'Open in New Tab';
+  openBtn.style.cssText = `
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  `;
+  openBtn.onmouseover = () => openBtn.style.background = CONFIG.darkMode ? '#444' : '#e0e0e0';
+  openBtn.onmouseout = () => openBtn.style.background = 'transparent';
+  openBtn.onclick = (e) => {
+    e.stopPropagation();
+    browser.runtime.sendMessage({ 
+      action: 'openTab', 
+      url: iframe.src,
+      switchFocus: CONFIG.openNewTabSwitchFocus 
+    });
+    showNotification('✓ Opened in new tab');
+    debug(`Quick Tab opened URL in new tab: ${iframe.src}`);
+  };
   
   // Close button
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '✕';
+  closeBtn.title = 'Close';
   closeBtn.style.cssText = `
     width: 24px;
     height: 24px;
@@ -1798,29 +1940,51 @@ function createQuickTabWindow(url) {
     justify-content: center;
     transition: background 0.2s;
   `;
-  closeBtn.onmouseover = () => closeBtn.style.background = CONFIG.darkMode ? '#444' : '#e0e0e0';
+  closeBtn.onmouseover = () => closeBtn.style.background = CONFIG.darkMode ? '#ff5555' : '#ffcccc';
   closeBtn.onmouseout = () => closeBtn.style.background = 'transparent';
   closeBtn.onclick = (e) => {
     e.stopPropagation();
     closeQuickTabWindow(container);
   };
   
-  titleBar.appendChild(openBtn);
+  titleBar.appendChild(navContainer);
+  titleBar.appendChild(favicon);
   titleBar.appendChild(titleText);
+  titleBar.appendChild(openBtn);
   titleBar.appendChild(closeBtn);
-  
-  // Create iframe
-  const iframe = document.createElement('iframe');
-  iframe.src = url;
-  iframe.style.cssText = `
-    flex: 1;
-    border: none;
-    width: 100%;
-    background: white;
-  `;
   
   container.appendChild(titleBar);
   container.appendChild(iframe);
+  
+  // Try to update title when iframe loads
+  iframe.addEventListener('load', () => {
+    try {
+      // This will fail for cross-origin iframes, but that's okay
+      const iframeTitle = iframe.contentDocument?.title;
+      if (iframeTitle) {
+        titleText.textContent = iframeTitle;
+        titleText.title = iframeTitle;
+      } else {
+        // Fallback to URL
+        try {
+          const urlObj = new URL(iframe.src);
+          titleText.textContent = urlObj.hostname;
+          titleText.title = iframe.src;
+        } catch (e) {
+          titleText.textContent = 'Quick Tab';
+        }
+      }
+    } catch (e) {
+      // Cross-origin - use URL instead
+      try {
+        const urlObj = new URL(iframe.src);
+        titleText.textContent = urlObj.hostname;
+        titleText.title = iframe.src;
+      } catch (err) {
+        titleText.textContent = 'Quick Tab';
+      }
+    }
+  });
   
   // Add to DOM
   document.documentElement.appendChild(container);
@@ -1849,6 +2013,10 @@ function closeQuickTabWindow(container) {
   if (index > -1) {
     quickTabWindows.splice(index, 1);
   }
+  // Clean up resize listeners
+  if (container._resizeCleanup) {
+    container._resizeCleanup();
+  }
   container.remove();
   debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
 }
@@ -1870,6 +2038,11 @@ function makeDraggable(element, handle) {
   let startX, startY, initialX, initialY;
   
   handle.addEventListener('mousedown', (e) => {
+    // Don't drag if clicking on a button or img
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'IMG') {
+      return;
+    }
+    
     isDragging = true;
     startX = e.clientX;
     startY = e.clientY;
@@ -1910,56 +2083,102 @@ function makeResizable(element) {
   // Create resize handles
   const positions = ['se', 'sw', 'ne', 'nw', 'n', 's', 'e', 'w'];
   
+  let currentHandle = null;
+  let isResizing = false;
+  let startX, startY, startWidth, startHeight, startLeft, startTop;
+  
+  const handleMouseMove = (e) => {
+    if (!isResizing || !currentHandle) return;
+    
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    
+    let newWidth = startWidth;
+    let newHeight = startHeight;
+    let newLeft = startLeft;
+    let newTop = startTop;
+    
+    const pos = currentHandle.dataset.position;
+    
+    if (pos.includes('e')) newWidth = Math.max(minWidth, startWidth + dx);
+    if (pos.includes('w')) {
+      newWidth = Math.max(minWidth, startWidth - dx);
+      if (newWidth > minWidth) newLeft = startLeft + dx;
+    }
+    if (pos.includes('s')) newHeight = Math.max(minHeight, startHeight + dy);
+    if (pos.includes('n')) {
+      newHeight = Math.max(minHeight, startHeight - dy);
+      if (newHeight > minHeight) newTop = startTop + dy;
+    }
+    
+    element.style.width = newWidth + 'px';
+    element.style.height = newHeight + 'px';
+    element.style.left = newLeft + 'px';
+    element.style.top = newTop + 'px';
+    
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
+  const handleMouseUp = (e) => {
+    if (isResizing) {
+      isResizing = false;
+      currentHandle = null;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+  
+  // Add global listeners once per element
+  document.addEventListener('mousemove', handleMouseMove, true);
+  document.addEventListener('mouseup', handleMouseUp, true);
+  
+  // Store cleanup function
+  element._resizeCleanup = () => {
+    document.removeEventListener('mousemove', handleMouseMove, true);
+    document.removeEventListener('mouseup', handleMouseUp, true);
+  };
+  
   positions.forEach(pos => {
     const handle = document.createElement('div');
     handle.className = `copy-url-resize-handle resize-${pos}`;
+    handle.dataset.position = pos;
     
     // Style based on position
-    let cursor;
     let styles = 'position: absolute; background: transparent;';
     
     switch (pos) {
       case 'se':
-        cursor = 'nwse-resize';
         styles += 'right: 0; bottom: 0; width: 15px; height: 15px; cursor: nwse-resize;';
         break;
       case 'sw':
-        cursor = 'nesw-resize';
         styles += 'left: 0; bottom: 0; width: 15px; height: 15px; cursor: nesw-resize;';
         break;
       case 'ne':
-        cursor = 'nesw-resize';
         styles += 'right: 0; top: 40px; width: 15px; height: 15px; cursor: nesw-resize;';
         break;
       case 'nw':
-        cursor = 'nwse-resize';
         styles += 'left: 0; top: 40px; width: 15px; height: 15px; cursor: nwse-resize;';
         break;
       case 'n':
-        cursor = 'ns-resize';
         styles += 'top: 40px; left: 15px; right: 15px; height: 5px; cursor: ns-resize;';
         break;
       case 's':
-        cursor = 'ns-resize';
         styles += 'bottom: 0; left: 15px; right: 15px; height: 5px; cursor: ns-resize;';
         break;
       case 'e':
-        cursor = 'ew-resize';
         styles += 'right: 0; top: 55px; bottom: 5px; width: 5px; cursor: ew-resize;';
         break;
       case 'w':
-        cursor = 'ew-resize';
         styles += 'left: 0; top: 55px; bottom: 5px; width: 5px; cursor: ew-resize;';
         break;
     }
     
     handle.style.cssText = styles;
     
-    let isResizing = false;
-    let startX, startY, startWidth, startHeight, startLeft, startTop;
-    
     handle.addEventListener('mousedown', (e) => {
       isResizing = true;
+      currentHandle = handle;
       startX = e.clientX;
       startY = e.clientY;
       const rect = element.getBoundingClientRect();
@@ -1970,38 +2189,6 @@ function makeResizable(element) {
       
       e.preventDefault();
       e.stopPropagation();
-    });
-    
-    document.addEventListener('mousemove', (e) => {
-      if (!isResizing) return;
-      
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      
-      let newWidth = startWidth;
-      let newHeight = startHeight;
-      let newLeft = startLeft;
-      let newTop = startTop;
-      
-      if (pos.includes('e')) newWidth = Math.max(minWidth, startWidth + dx);
-      if (pos.includes('w')) {
-        newWidth = Math.max(minWidth, startWidth - dx);
-        if (newWidth > minWidth) newLeft = startLeft + dx;
-      }
-      if (pos.includes('s')) newHeight = Math.max(minHeight, startHeight + dy);
-      if (pos.includes('n')) {
-        newHeight = Math.max(minHeight, startHeight - dy);
-        if (newHeight > minHeight) newTop = startTop + dy;
-      }
-      
-      element.style.width = newWidth + 'px';
-      element.style.height = newHeight + 'px';
-      element.style.left = newLeft + 'px';
-      element.style.top = newTop + 'px';
-    });
-    
-    document.addEventListener('mouseup', () => {
-      isResizing = false;
     });
     
     element.appendChild(handle);
