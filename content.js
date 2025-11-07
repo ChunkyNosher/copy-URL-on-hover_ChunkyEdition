@@ -1548,13 +1548,11 @@ function showNotification(message, options = {}) {
       initTooltipAnimation();
       
       // Get animation name
-      let animationName = 'tooltipFadeIn';
+      let animationName = '';
       if (CONFIG.tooltipAnimation === 'scale') {
         animationName = 'tooltipScaleIn';
       } else if (CONFIG.tooltipAnimation === 'fade') {
         animationName = 'tooltipFadeIn';
-      } else if (CONFIG.tooltipAnimation === 'none') {
-        animationName = '';
       }
       
       notif.style.cssText = `

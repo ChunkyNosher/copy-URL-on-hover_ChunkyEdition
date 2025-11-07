@@ -193,3 +193,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Load settings on popup open
 loadSettings();
+
+// Set footer version dynamically
+document.addEventListener('DOMContentLoaded', function() {
+  const manifest = browser.runtime.getManifest();
+  const footerElement = document.getElementById('footerVersion');
+  if (footerElement) {
+    footerElement.textContent = `${manifest.name} v${manifest.version}`;
+  }
+});
