@@ -49,7 +49,7 @@ function safeParseInt(value, fallback) {
 }
 
 // Helper function to validate and normalize hex color
-function validateHexColor(color, fallback) {
+function validateHexColor(color, fallback = '#4CAF50') {
   if (!color) return fallback;
   // Remove whitespace
   color = color.trim();
@@ -69,7 +69,13 @@ function updateColorPreview(inputId, previewId) {
   const input = document.getElementById(inputId);
   const preview = document.getElementById(previewId);
   if (input && preview) {
-    const color = validateHexColor(input.value, input.defaultValue || '#4CAF50');
+    // Get the default color from DEFAULT_SETTINGS based on the input id
+    let defaultColor = '#4CAF50';
+    if (inputId === 'tooltipColor') defaultColor = DEFAULT_SETTINGS.tooltipColor;
+    else if (inputId === 'notifColor') defaultColor = DEFAULT_SETTINGS.notifColor;
+    else if (inputId === 'notifBorderColor') defaultColor = DEFAULT_SETTINGS.notifBorderColor;
+    
+    const color = validateHexColor(input.value, defaultColor);
     input.value = color;
     preview.style.backgroundColor = color;
   }
@@ -166,16 +172,16 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',
     
     // Tooltip settings
-    tooltipColor: validateHexColor(document.getElementById('tooltipColor').value, '#4CAF50'),
+    tooltipColor: validateHexColor(document.getElementById('tooltipColor').value, DEFAULT_SETTINGS.tooltipColor),
     tooltipDuration: safeParseInt(document.getElementById('tooltipDuration').value, 1500),
     tooltipAnimation: document.getElementById('tooltipAnimation').value || 'fade',
     
     // Notification settings
-    notifColor: validateHexColor(document.getElementById('notifColor').value, '#4CAF50'),
+    notifColor: validateHexColor(document.getElementById('notifColor').value, DEFAULT_SETTINGS.notifColor),
     notifDuration: safeParseInt(document.getElementById('notifDuration').value, 2000),
     notifPosition: document.getElementById('notifPosition').value || 'bottom-right',
     notifSize: document.getElementById('notifSize').value || 'medium',
-    notifBorderColor: validateHexColor(document.getElementById('notifBorderColor').value, '#000000'),
+    notifBorderColor: validateHexColor(document.getElementById('notifBorderColor').value, DEFAULT_SETTINGS.notifBorderColor),
     notifBorderWidth: safeParseInt(document.getElementById('notifBorderWidth').value, 1),
     notifAnimation: document.getElementById('notifAnimation').value || 'slide',
     
