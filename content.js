@@ -1542,7 +1542,8 @@ function showNotification(message, options = {}) {
     const notif = document.createElement('div');
     notif.textContent = message;
     
-    // If tooltip is requested (for URL copy), show it based on display mode
+    // If tooltip is requested (for URL copy) and display mode is tooltip, show cursor-following popup
+    // Otherwise, if showTooltip is true but mode is 'notification', fall through to regular notification below
     if (showTooltip && CONFIG.notifDisplayMode === 'tooltip') {
       // Ensure tooltip animation is initialized
       initTooltipAnimation();
@@ -1586,7 +1587,7 @@ function showNotification(message, options = {}) {
       return;
     }
     
-    // Regular notification (existing code)
+    // Regular notification for corner display (used for text copy or when display mode is 'notification')
     // Get position styles based on notifPosition setting
     let positionStyles = '';
     let isCenter = false;
