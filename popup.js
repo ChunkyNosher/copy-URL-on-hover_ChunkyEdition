@@ -172,10 +172,10 @@ document.getElementById('darkMode').addEventListener('change', function() {
 // Tab switching logic
 document.addEventListener('DOMContentLoaded', function() {
   // Settings tab switching
-  document.querySelectorAll('.tab').forEach(tab => {
+  document.querySelectorAll('.tab-button').forEach(tab => {
     tab.addEventListener('click', () => {
       // Remove active class from all tabs and contents
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-button').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       
       // Add active class to clicked tab
@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', function() {
       
       // Show corresponding content
       const tabName = tab.dataset.tab;
-      const content = document.getElementById(tabName + '-content');
+      const content = document.getElementById(tabName);
       if (content) {
         content.classList.add('active');
       }
