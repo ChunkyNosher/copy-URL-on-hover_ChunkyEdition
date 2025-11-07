@@ -39,7 +39,8 @@ const DEFAULT_SETTINGS = {
   notifAnimation: 'slide',
   
   debugMode: false,
-  darkMode: true
+  darkMode: true,
+  menuSize: 'medium'
 };
 
 // Helper function to safely parse integer with fallback
@@ -126,8 +127,10 @@ function loadSettings() {
     
     document.getElementById('debugMode').checked = items.debugMode;
     document.getElementById('darkMode').checked = items.darkMode;
+    document.getElementById('menuSize').value = items.menuSize || 'medium';
     
     applyTheme(items.darkMode);
+    applyMenuSize(items.menuSize || 'medium');
   });
 }
 
@@ -137,6 +140,16 @@ function applyTheme(isDark) {
     document.body.classList.add('dark-mode');
   } else {
     document.body.classList.remove('dark-mode');
+  }
+}
+
+// Apply menu size
+function applyMenuSize(size) {
+  document.body.classList.remove('menu-small', 'menu-large');
+  if (size === 'small') {
+    document.body.classList.add('menu-small');
+  } else if (size === 'large') {
+    document.body.classList.add('menu-large');
   }
 }
 
@@ -189,12 +202,14 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     notifAnimation: document.getElementById('notifAnimation').value || 'slide',
     
     debugMode: document.getElementById('debugMode').checked,
-    darkMode: document.getElementById('darkMode').checked
+    darkMode: document.getElementById('darkMode').checked,
+    menuSize: document.getElementById('menuSize').value || 'medium'
   };
   
   browser.storage.local.set(settings, function() {
     showStatus('✓ Settings saved! Reload tabs to apply changes.');
     applyTheme(settings.darkMode);
+    applyMenuSize(settings.menuSize);
   });
 });
 
@@ -211,6 +226,11 @@ document.getElementById('resetBtn').addEventListener('click', function() {
 // Dark mode toggle
 document.getElementById('darkMode').addEventListener('change', function() {
   applyTheme(this.checked);
+});
+
+// Menu size change
+document.getElementById('menuSize').addEventListener('change', function() {
+  applyMenuSize(this.value);
 });
 
 // Tab switching logic
