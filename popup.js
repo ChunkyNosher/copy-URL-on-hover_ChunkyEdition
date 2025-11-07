@@ -49,7 +49,7 @@ function safeParseInt(value, fallback) {
 }
 
 // Helper function to validate and normalize hex color
-function validateHexColor(color, fallback = '#4CAF50') {
+function validateHexColor(color, fallback = DEFAULT_SETTINGS.tooltipColor) {
   if (!color) return fallback;
   // Remove whitespace
   color = color.trim();
@@ -69,12 +69,14 @@ function updateColorPreview(inputId, previewId) {
   const input = document.getElementById(inputId);
   const preview = document.getElementById(previewId);
   if (input && preview) {
-    // Get the default color from DEFAULT_SETTINGS based on the input id
-    let defaultColor = '#4CAF50';
-    if (inputId === 'tooltipColor') defaultColor = DEFAULT_SETTINGS.tooltipColor;
-    else if (inputId === 'notifColor') defaultColor = DEFAULT_SETTINGS.notifColor;
-    else if (inputId === 'notifBorderColor') defaultColor = DEFAULT_SETTINGS.notifBorderColor;
+    // Map input IDs to their default settings
+    const colorDefaults = {
+      'tooltipColor': DEFAULT_SETTINGS.tooltipColor,
+      'notifColor': DEFAULT_SETTINGS.notifColor,
+      'notifBorderColor': DEFAULT_SETTINGS.notifBorderColor
+    };
     
+    const defaultColor = colorDefaults[inputId] || DEFAULT_SETTINGS.tooltipColor;
     const color = validateHexColor(input.value, defaultColor);
     input.value = color;
     preview.style.backgroundColor = color;
