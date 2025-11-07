@@ -1,3 +1,8 @@
+// Browser API compatibility shim for Chrome/Chromium support
+if (typeof browser === 'undefined') {
+  var browser = chrome;
+}
+
 const DEFAULT_SETTINGS = {
   copyUrlKey: 'y',
   copyUrlCtrl: false,

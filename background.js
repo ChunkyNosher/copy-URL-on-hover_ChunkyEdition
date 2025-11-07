@@ -1,7 +1,12 @@
+// Browser API compatibility shim for Chrome/Firefox support
+if (typeof browser === 'undefined') {
+  var browser = chrome;
+}
+
 // Background script handles injecting content script into all tabs
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
-    chrome.scripting.executeScript({
+    browser.scripting.executeScript({
       target: { tabId: tabId },
       files: ['content.js']
     }).catch(err => {
@@ -11,9 +16,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 // Handle messages from content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'openTab') {
-    chrome.tabs.create({
+    browser.tabs.create({
       url: message.url,
       active: message.switchFocus
     });
