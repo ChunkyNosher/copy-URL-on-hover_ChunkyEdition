@@ -41,6 +41,12 @@ const DEFAULT_SETTINGS = {
   darkMode: true
 };
 
+// Helper function to safely parse integer with fallback
+function safeParseInt(value, fallback) {
+  const parsed = parseInt(value);
+  return isNaN(parsed) ? fallback : parsed;
+}
+
 // Load settings
 function loadSettings() {
   browser.storage.local.get(DEFAULT_SETTINGS, function(items) {
@@ -144,20 +150,20 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     quickTabAlt: document.getElementById('quickTabAlt').checked,
     quickTabShift: document.getElementById('quickTabShift').checked,
     quickTabCloseKey: document.getElementById('quickTabCloseKey').value || 'Escape',
-    quickTabMaxWindows: parseInt(document.getElementById('quickTabMaxWindows').value) || 3,
-    quickTabDefaultWidth: parseInt(document.getElementById('quickTabDefaultWidth').value) || 800,
-    quickTabDefaultHeight: parseInt(document.getElementById('quickTabDefaultHeight').value) || 600,
+    quickTabMaxWindows: safeParseInt(document.getElementById('quickTabMaxWindows').value, 3),
+    quickTabDefaultWidth: safeParseInt(document.getElementById('quickTabDefaultWidth').value, 800),
+    quickTabDefaultHeight: safeParseInt(document.getElementById('quickTabDefaultHeight').value, 600),
     quickTabPosition: document.getElementById('quickTabPosition').value || 'follow-cursor',
-    quickTabCustomX: parseInt(document.getElementById('quickTabCustomX').value) || 100,
-    quickTabCustomY: parseInt(document.getElementById('quickTabCustomY').value) || 100,
+    quickTabCustomX: safeParseInt(document.getElementById('quickTabCustomX').value, 100),
+    quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
     
     showNotification: document.getElementById('showNotification').checked,
     notifColor: document.getElementById('notifColor').value || '#4CAF50',
-    notifDuration: parseInt(document.getElementById('notifDuration').value) || 2000,
+    notifDuration: safeParseInt(document.getElementById('notifDuration').value, 2000),
     notifPosition: document.getElementById('notifPosition').value || 'bottom-right',
     notifSize: document.getElementById('notifSize').value || 'medium',
     notifBorderColor: document.getElementById('notifBorderColor').value || '#000000',
-    notifBorderWidth: parseInt(document.getElementById('notifBorderWidth').value) || 1,
+    notifBorderWidth: safeParseInt(document.getElementById('notifBorderWidth').value, 1),
     notifAnimation: document.getElementById('notifAnimation').value || 'slide',
     debugMode: document.getElementById('debugMode').checked,
     darkMode: document.getElementById('darkMode').checked
@@ -184,14 +190,34 @@ document.getElementById('darkMode').addEventListener('change', function() {
   applyTheme(this.checked);
 });
 
-// Quick Tab position change handler
+// Tab switching logic
 document.addEventListener('DOMContentLoaded', function() {
+  // Quick Tab position change handler
   const positionSelect = document.getElementById('quickTabPosition');
   if (positionSelect) {
     positionSelect.addEventListener('change', function() {
       toggleCustomPosition(this.value);
     });
   }
+  
+  // Settings tab switching
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Remove active class from all tabs and contents
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      
+      // Add active class to clicked tab
+      tab.classList.add('active');
+      
+      // Show corresponding content
+      const tabName = tab.dataset.tab;
+      const content = document.getElementById(tabName + '-content');
+      if (content) {
+        content.classList.add('active');
+      }
+    });
+  });
 });
 
 // Load settings on popup open

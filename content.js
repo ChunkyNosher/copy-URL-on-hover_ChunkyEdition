@@ -63,6 +63,9 @@ const DEFAULT_CONFIG = {
   darkMode: true
 };
 
+// Constants
+const GOOGLE_FAVICON_URL = 'https://www.google.com/s2/favicons?domain=';
+
 let CONFIG = { ...DEFAULT_CONFIG };
 let currentHoveredLink = null;
 let currentHoveredElement = null;
@@ -1890,7 +1893,7 @@ function createQuickTabWindow(url) {
   // Extract domain for favicon
   try {
     const urlObj = new URL(url);
-    favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
+    favicon.src = `${GOOGLE_FAVICON_URL}${urlObj.hostname}&sz=32`;
     favicon.onerror = () => {
       favicon.style.display = 'none';
     };
@@ -2247,7 +2250,7 @@ function updateMinimizedTabsManager() {
     favicon.style.cssText = 'width: 16px; height: 16px; flex-shrink: 0;';
     try {
       const urlObj = new URL(tab.url);
-      favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
+      favicon.src = `${GOOGLE_FAVICON_URL}${urlObj.hostname}&sz=32`;
       favicon.onerror = () => { favicon.style.display = 'none'; };
     } catch (e) {
       favicon.style.display = 'none';
