@@ -1,3 +1,24 @@
+// Copy URL on Hover - Enhanced with Quick Tabs
+// 
+// KNOWN LIMITATIONS:
+// 1. Focus Issue (#2): When you click inside a Quick Tab iframe, keyboard shortcuts 
+//    won't work until you click back in the main page. This is a browser security 
+//    limitation - iframes capture keyboard focus.
+//    WORKAROUND: Click anywhere in the main page to restore keyboard shortcuts.
+//
+// 2. Nested Quick Tabs (#3): Cannot open Quick Tabs from inside other Quick Tabs
+//    because cross-origin iframes block script injection for security.
+//    WORKAROUND: Use the "Open in New Tab" button to open links in a real tab.
+//
+// 3. Persistent Quick Tabs (#4): Quick Tabs cannot persist across different browser
+//    tabs because each tab has its own isolated DOM and content script instance.
+//    Browser security prevents cross-tab DOM manipulation.
+//    WORKAROUND: Use the minimize feature to keep tabs accessible while browsing.
+//
+// 4. Zen Browser Theme (#10): Detecting Zen Browser workspace themes requires
+//    access to Zen-specific browser APIs which are not available to content scripts.
+//    Would need a separate WebExtension API or Zen Browser integration.
+
 // Default configuration
 const DEFAULT_CONFIG = {
   copyUrlKey: 'y',
@@ -46,6 +67,7 @@ let CONFIG = { ...DEFAULT_CONFIG };
 let currentHoveredLink = null;
 let currentHoveredElement = null;
 let quickTabWindows = [];
+let minimizedQuickTabs = [];
 let quickTabZIndex = 1000000;
 let lastMouseX = 0;
 let lastMouseY = 0;
@@ -1891,6 +1913,32 @@ function createQuickTabWindow(url) {
     margin: 0 5px;
   `;
   
+  // Minimize button
+  const minimizeBtn = document.createElement('button');
+  minimizeBtn.textContent = '−';
+  minimizeBtn.title = 'Minimize';
+  minimizeBtn.style.cssText = `
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  `;
+  minimizeBtn.onmouseover = () => minimizeBtn.style.background = CONFIG.darkMode ? '#444' : '#e0e0e0';
+  minimizeBtn.onmouseout = () => minimizeBtn.style.background = 'transparent';
+  minimizeBtn.onclick = (e) => {
+    e.stopPropagation();
+    minimizeQuickTab(container, iframe.src, titleText.textContent);
+  };
+  
   // Open in new tab button
   const openBtn = document.createElement('button');
   openBtn.textContent = '🔗';
@@ -1950,6 +1998,7 @@ function createQuickTabWindow(url) {
   titleBar.appendChild(navContainer);
   titleBar.appendChild(favicon);
   titleBar.appendChild(titleText);
+  titleBar.appendChild(minimizeBtn);
   titleBar.appendChild(openBtn);
   titleBar.appendChild(closeBtn);
   
@@ -2024,12 +2073,249 @@ function closeQuickTabWindow(container) {
 // Close all Quick Tab windows
 function closeAllQuickTabWindows() {
   const count = quickTabWindows.length;
-  quickTabWindows.forEach(window => window.remove());
+  quickTabWindows.forEach(window => {
+    if (window._resizeCleanup) {
+      window._resizeCleanup();
+    }
+    window.remove();
+  });
   quickTabWindows = [];
   if (count > 0) {
     showNotification(`✓ Closed ${count} Quick Tab${count > 1 ? 's' : ''}`);
     debug(`All Quick Tab windows closed (${count} total)`);
   }
+}
+
+// Minimize Quick Tab
+function minimizeQuickTab(container, url, title) {
+  const index = quickTabWindows.indexOf(container);
+  if (index > -1) {
+    quickTabWindows.splice(index, 1);
+  }
+  
+  // Store minimized tab info
+  minimizedQuickTabs.push({
+    url: url,
+    title: title || 'Quick Tab',
+    timestamp: Date.now()
+  });
+  
+  // Clean up and hide
+  if (container._resizeCleanup) {
+    container._resizeCleanup();
+  }
+  container.remove();
+  
+  showNotification('✓ Quick Tab minimized');
+  debug(`Quick Tab minimized. Total minimized: ${minimizedQuickTabs.length}`);
+  
+  // Update or create minimized tabs manager
+  updateMinimizedTabsManager();
+}
+
+// Restore minimized Quick Tab
+function restoreQuickTab(index) {
+  if (index < 0 || index >= minimizedQuickTabs.length) return;
+  
+  const tab = minimizedQuickTabs[index];
+  minimizedQuickTabs.splice(index, 1);
+  
+  createQuickTabWindow(tab.url);
+  updateMinimizedTabsManager();
+  
+  debug(`Quick Tab restored from minimized. Remaining minimized: ${minimizedQuickTabs.length}`);
+}
+
+// Delete minimized Quick Tab
+function deleteMinimizedQuickTab(index) {
+  if (index < 0 || index >= minimizedQuickTabs.length) return;
+  
+  minimizedQuickTabs.splice(index, 1);
+  showNotification('✓ Minimized Quick Tab deleted');
+  updateMinimizedTabsManager();
+  
+  debug(`Minimized Quick Tab deleted. Remaining minimized: ${minimizedQuickTabs.length}`);
+}
+
+// Update or create the minimized tabs manager window
+function updateMinimizedTabsManager() {
+  let manager = document.querySelector('.copy-url-minimized-manager');
+  
+  if (minimizedQuickTabs.length === 0) {
+    // Remove manager if no tabs
+    if (manager) {
+      manager.remove();
+    }
+    return;
+  }
+  
+  if (!manager) {
+    // Create new manager
+    manager = document.createElement('div');
+    manager.className = 'copy-url-minimized-manager';
+    manager.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 280px;
+      max-height: 400px;
+      background: ${CONFIG.darkMode ? '#2d2d2d' : '#ffffff'};
+      border: 2px solid ${CONFIG.darkMode ? '#555' : '#ddd'};
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: ${quickTabZIndex + 1000};
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    `;
+    
+    // Manager header
+    const header = document.createElement('div');
+    header.style.cssText = `
+      padding: 10px;
+      background: ${CONFIG.darkMode ? '#1e1e1e' : '#f5f5f5'};
+      border-bottom: 1px solid ${CONFIG.darkMode ? '#555' : '#ddd'};
+      font-weight: 600;
+      font-size: 13px;
+      color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    `;
+    header.textContent = 'Minimized Quick Tabs';
+    
+    // Close manager button
+    const closeManagerBtn = document.createElement('button');
+    closeManagerBtn.textContent = '✕';
+    closeManagerBtn.style.cssText = `
+      width: 20px;
+      height: 20px;
+      background: transparent;
+      color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0;
+    `;
+    closeManagerBtn.onclick = () => {
+      manager.remove();
+    };
+    header.appendChild(closeManagerBtn);
+    
+    manager.appendChild(header);
+    
+    // List container
+    const listContainer = document.createElement('div');
+    listContainer.className = 'minimized-list';
+    listContainer.style.cssText = `
+      overflow-y: auto;
+      max-height: 340px;
+      padding: 5px;
+    `;
+    manager.appendChild(listContainer);
+    
+    document.documentElement.appendChild(manager);
+    
+    // Make draggable
+    makeDraggable(manager, header);
+  }
+  
+  // Update list
+  const listContainer = manager.querySelector('.minimized-list');
+  listContainer.innerHTML = '';
+  
+  minimizedQuickTabs.forEach((tab, index) => {
+    const item = document.createElement('div');
+    item.style.cssText = `
+      padding: 8px;
+      margin: 3px;
+      background: ${CONFIG.darkMode ? '#3a3a3a' : '#f9f9f9'};
+      border: 1px solid ${CONFIG.darkMode ? '#555' : '#ddd'};
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    `;
+    item.onmouseover = () => item.style.background = CONFIG.darkMode ? '#444' : '#f0f0f0';
+    item.onmouseout = () => item.style.background = CONFIG.darkMode ? '#3a3a3a' : '#f9f9f9';
+    
+    // Favicon
+    const favicon = document.createElement('img');
+    favicon.style.cssText = 'width: 16px; height: 16px; flex-shrink: 0;';
+    try {
+      const urlObj = new URL(tab.url);
+      favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
+      favicon.onerror = () => { favicon.style.display = 'none'; };
+    } catch (e) {
+      favicon.style.display = 'none';
+    }
+    
+    // Title
+    const title = document.createElement('span');
+    title.textContent = tab.title;
+    title.style.cssText = `
+      flex: 1;
+      font-size: 12px;
+      color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    `;
+    
+    // Restore button
+    const restoreBtn = document.createElement('button');
+    restoreBtn.textContent = '↑';
+    restoreBtn.title = 'Restore';
+    restoreBtn.style.cssText = `
+      width: 24px;
+      height: 24px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      flex-shrink: 0;
+    `;
+    restoreBtn.onclick = (e) => {
+      e.stopPropagation();
+      restoreQuickTab(index);
+    };
+    
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = '✕';
+    deleteBtn.title = 'Delete';
+    deleteBtn.style.cssText = `
+      width: 24px;
+      height: 24px;
+      background: #f44336;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      flex-shrink: 0;
+    `;
+    deleteBtn.onclick = (e) => {
+      e.stopPropagation();
+      deleteMinimizedQuickTab(index);
+    };
+    
+    item.appendChild(favicon);
+    item.appendChild(title);
+    item.appendChild(restoreBtn);
+    item.appendChild(deleteBtn);
+    
+    // Click on item to restore
+    item.onclick = () => restoreQuickTab(index);
+    
+    listContainer.appendChild(item);
+  });
 }
 
 // Make element draggable
