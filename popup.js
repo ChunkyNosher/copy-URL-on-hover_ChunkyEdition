@@ -224,6 +224,13 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   });
+  
+  // Load version from manifest
+  const manifest = browser.runtime.getManifest();
+  const footerElement = document.getElementById('footerVersion');
+  if (footerElement) {
+    footerElement.textContent = `Copy URL on Hover v${manifest.version}`;
+  }
 });
 
 // Load settings on popup open
