@@ -2181,7 +2181,6 @@ function closeAllQuickTabWindows() {
   // Save state for cross-tab persistence
   saveQuickTabState();
 }
-}
 
 // Minimize Quick Tab
 function minimizeQuickTab(container, url, title) {
