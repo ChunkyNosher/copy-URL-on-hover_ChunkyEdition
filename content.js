@@ -10,6 +10,26 @@ const DEFAULT_CONFIG = {
   copyTextAlt: false,
   copyTextShift: false,
   
+  // Open Link in New Tab settings
+  openNewTabKey: 'o',
+  openNewTabCtrl: false,
+  openNewTabAlt: false,
+  openNewTabShift: false,
+  openNewTabSwitchFocus: false,
+  
+  // Quick Tab on Hover settings
+  quickTabKey: 'q',
+  quickTabCtrl: false,
+  quickTabAlt: false,
+  quickTabShift: false,
+  quickTabCloseKey: 'Escape',
+  quickTabMaxWindows: 3,
+  quickTabDefaultWidth: 800,
+  quickTabDefaultHeight: 600,
+  quickTabPosition: 'follow-cursor',
+  quickTabCustomX: 100,
+  quickTabCustomY: 100,
+  
   showNotification: true,
   notifColor: '#4CAF50',
   notifDuration: 2000,
@@ -22,6 +42,10 @@ const DEFAULT_CONFIG = {
 let CONFIG = { ...DEFAULT_CONFIG };
 let currentHoveredLink = null;
 let currentHoveredElement = null;
+let quickTabWindows = [];
+let quickTabZIndex = 1000000;
+let lastMouseX = 0;
+let lastMouseY = 0;
 
 // Load settings from storage
 function loadSettings() {
@@ -1388,6 +1412,12 @@ function getLinkText(element) {
   return element.textContent.trim().substring(0, 100);
 }
 
+// Track mouse position for Quick Tab placement
+document.addEventListener('mousemove', function(event) {
+  lastMouseX = event.clientX;
+  lastMouseY = event.clientY;
+}, true);
+
 // Hover detection
 document.addEventListener('mouseover', function(event) {
   let target = event.target;
@@ -1609,8 +1639,386 @@ function checkModifiers(requireCtrl, requireAlt, requireShift, event) {
   return (requireCtrl === ctrlPressed && requireAlt === altPressed && requireShift === shiftPressed);
 }
 
+// Check if on a restricted page
+function isRestrictedPage() {
+  const url = window.location.href;
+  return url.startsWith('about:') || 
+         url.startsWith('chrome:') || 
+         url.startsWith('moz-extension:') ||
+         url.startsWith('chrome-extension:');
+}
+
+// Create Quick Tab window
+function createQuickTabWindow(url) {
+  if (isRestrictedPage()) {
+    showNotification('✗ Quick Tab not available on this page');
+    debug('Quick Tab blocked on restricted page');
+    return;
+  }
+  
+  if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) {
+    showNotification(`✗ Maximum ${CONFIG.quickTabMaxWindows} Quick Tabs allowed`);
+    debug(`Maximum Quick Tab windows (${CONFIG.quickTabMaxWindows}) reached`);
+    return;
+  }
+  
+  debug(`Creating Quick Tab for URL: ${url}`);
+  
+  // Create container
+  const container = document.createElement('div');
+  container.className = 'copy-url-quicktab-window';
+  container.style.cssText = `
+    position: fixed;
+    width: ${CONFIG.quickTabDefaultWidth}px;
+    height: ${CONFIG.quickTabDefaultHeight}px;
+    background: ${CONFIG.darkMode ? '#2d2d2d' : '#ffffff'};
+    border: 2px solid ${CONFIG.darkMode ? '#555' : '#ddd'};
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: ${quickTabZIndex++};
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-width: 300px;
+    min-height: 200px;
+  `;
+  
+  // Position the window
+  let posX, posY;
+  switch (CONFIG.quickTabPosition) {
+    case 'follow-cursor':
+      posX = lastMouseX + 10;
+      posY = lastMouseY + 10;
+      break;
+    case 'center':
+      posX = (window.innerWidth - CONFIG.quickTabDefaultWidth) / 2;
+      posY = (window.innerHeight - CONFIG.quickTabDefaultHeight) / 2;
+      break;
+    case 'top-left':
+      posX = 20;
+      posY = 20;
+      break;
+    case 'top-right':
+      posX = window.innerWidth - CONFIG.quickTabDefaultWidth - 20;
+      posY = 20;
+      break;
+    case 'bottom-left':
+      posX = 20;
+      posY = window.innerHeight - CONFIG.quickTabDefaultHeight - 20;
+      break;
+    case 'bottom-right':
+      posX = window.innerWidth - CONFIG.quickTabDefaultWidth - 20;
+      posY = window.innerHeight - CONFIG.quickTabDefaultHeight - 20;
+      break;
+    case 'custom':
+      posX = CONFIG.quickTabCustomX;
+      posY = CONFIG.quickTabCustomY;
+      break;
+    default:
+      posX = lastMouseX + 10;
+      posY = lastMouseY + 10;
+  }
+  
+  // Ensure window stays within viewport
+  posX = Math.max(0, Math.min(posX, window.innerWidth - CONFIG.quickTabDefaultWidth));
+  posY = Math.max(0, Math.min(posY, window.innerHeight - CONFIG.quickTabDefaultHeight));
+  
+  container.style.left = posX + 'px';
+  container.style.top = posY + 'px';
+  
+  // Create title bar
+  const titleBar = document.createElement('div');
+  titleBar.className = 'copy-url-quicktab-titlebar';
+  titleBar.style.cssText = `
+    height: 40px;
+    background: ${CONFIG.darkMode ? '#1e1e1e' : '#f5f5f5'};
+    border-bottom: 1px solid ${CONFIG.darkMode ? '#555' : '#ddd'};
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    cursor: move;
+    user-select: none;
+    gap: 10px;
+  `;
+  
+  // Open in new tab button
+  const openBtn = document.createElement('button');
+  openBtn.textContent = '🔗 Open in New Tab';
+  openBtn.style.cssText = `
+    padding: 5px 10px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: background 0.2s;
+  `;
+  openBtn.onmouseover = () => openBtn.style.background = '#45a049';
+  openBtn.onmouseout = () => openBtn.style.background = '#4CAF50';
+  openBtn.onclick = (e) => {
+    e.stopPropagation();
+    browser.runtime.sendMessage({ 
+      action: 'openTab', 
+      url: url,
+      switchFocus: CONFIG.openNewTabSwitchFocus 
+    });
+    showNotification('✓ Opened in new tab');
+    debug(`Quick Tab opened URL in new tab: ${url}`);
+  };
+  
+  // Title text
+  const titleText = document.createElement('span');
+  titleText.textContent = 'Quick Tab';
+  titleText.style.cssText = `
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `;
+  
+  // Close button
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = `
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  `;
+  closeBtn.onmouseover = () => closeBtn.style.background = CONFIG.darkMode ? '#444' : '#e0e0e0';
+  closeBtn.onmouseout = () => closeBtn.style.background = 'transparent';
+  closeBtn.onclick = (e) => {
+    e.stopPropagation();
+    closeQuickTabWindow(container);
+  };
+  
+  titleBar.appendChild(openBtn);
+  titleBar.appendChild(titleText);
+  titleBar.appendChild(closeBtn);
+  
+  // Create iframe
+  const iframe = document.createElement('iframe');
+  iframe.src = url;
+  iframe.style.cssText = `
+    flex: 1;
+    border: none;
+    width: 100%;
+    background: white;
+  `;
+  
+  container.appendChild(titleBar);
+  container.appendChild(iframe);
+  
+  // Add to DOM
+  document.documentElement.appendChild(container);
+  
+  // Add to tracking array
+  quickTabWindows.push(container);
+  
+  // Make draggable
+  makeDraggable(container, titleBar);
+  
+  // Make resizable
+  makeResizable(container);
+  
+  // Bring to front on click
+  container.addEventListener('mousedown', () => {
+    container.style.zIndex = quickTabZIndex++;
+  });
+  
+  showNotification('✓ Quick Tab opened');
+  debug(`Quick Tab window created. Total windows: ${quickTabWindows.length}`);
+}
+
+// Close Quick Tab window
+function closeQuickTabWindow(container) {
+  const index = quickTabWindows.indexOf(container);
+  if (index > -1) {
+    quickTabWindows.splice(index, 1);
+  }
+  container.remove();
+  debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
+}
+
+// Close all Quick Tab windows
+function closeAllQuickTabWindows() {
+  const count = quickTabWindows.length;
+  quickTabWindows.forEach(window => window.remove());
+  quickTabWindows = [];
+  if (count > 0) {
+    showNotification(`✓ Closed ${count} Quick Tab${count > 1 ? 's' : ''}`);
+    debug(`All Quick Tab windows closed (${count} total)`);
+  }
+}
+
+// Make element draggable
+function makeDraggable(element, handle) {
+  let isDragging = false;
+  let startX, startY, initialX, initialY;
+  
+  handle.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = element.getBoundingClientRect();
+    initialX = rect.left;
+    initialY = rect.top;
+    
+    e.preventDefault();
+  });
+  
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    
+    let newX = initialX + dx;
+    let newY = initialY + dy;
+    
+    // Keep within viewport
+    newX = Math.max(0, Math.min(newX, window.innerWidth - element.offsetWidth));
+    newY = Math.max(0, Math.min(newY, window.innerHeight - element.offsetHeight));
+    
+    element.style.left = newX + 'px';
+    element.style.top = newY + 'px';
+  });
+  
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+  });
+}
+
+// Make element resizable
+function makeResizable(element) {
+  const minWidth = 300;
+  const minHeight = 200;
+  
+  // Create resize handles
+  const positions = ['se', 'sw', 'ne', 'nw', 'n', 's', 'e', 'w'];
+  
+  positions.forEach(pos => {
+    const handle = document.createElement('div');
+    handle.className = `copy-url-resize-handle resize-${pos}`;
+    
+    // Style based on position
+    let cursor;
+    let styles = 'position: absolute; background: transparent;';
+    
+    switch (pos) {
+      case 'se':
+        cursor = 'nwse-resize';
+        styles += 'right: 0; bottom: 0; width: 15px; height: 15px; cursor: nwse-resize;';
+        break;
+      case 'sw':
+        cursor = 'nesw-resize';
+        styles += 'left: 0; bottom: 0; width: 15px; height: 15px; cursor: nesw-resize;';
+        break;
+      case 'ne':
+        cursor = 'nesw-resize';
+        styles += 'right: 0; top: 40px; width: 15px; height: 15px; cursor: nesw-resize;';
+        break;
+      case 'nw':
+        cursor = 'nwse-resize';
+        styles += 'left: 0; top: 40px; width: 15px; height: 15px; cursor: nwse-resize;';
+        break;
+      case 'n':
+        cursor = 'ns-resize';
+        styles += 'top: 40px; left: 15px; right: 15px; height: 5px; cursor: ns-resize;';
+        break;
+      case 's':
+        cursor = 'ns-resize';
+        styles += 'bottom: 0; left: 15px; right: 15px; height: 5px; cursor: ns-resize;';
+        break;
+      case 'e':
+        cursor = 'ew-resize';
+        styles += 'right: 0; top: 55px; bottom: 5px; width: 5px; cursor: ew-resize;';
+        break;
+      case 'w':
+        cursor = 'ew-resize';
+        styles += 'left: 0; top: 55px; bottom: 5px; width: 5px; cursor: ew-resize;';
+        break;
+    }
+    
+    handle.style.cssText = styles;
+    
+    let isResizing = false;
+    let startX, startY, startWidth, startHeight, startLeft, startTop;
+    
+    handle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = element.getBoundingClientRect();
+      startWidth = rect.width;
+      startHeight = rect.height;
+      startLeft = rect.left;
+      startTop = rect.top;
+      
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      let newLeft = startLeft;
+      let newTop = startTop;
+      
+      if (pos.includes('e')) newWidth = Math.max(minWidth, startWidth + dx);
+      if (pos.includes('w')) {
+        newWidth = Math.max(minWidth, startWidth - dx);
+        if (newWidth > minWidth) newLeft = startLeft + dx;
+      }
+      if (pos.includes('s')) newHeight = Math.max(minHeight, startHeight + dy);
+      if (pos.includes('n')) {
+        newHeight = Math.max(minHeight, startHeight - dy);
+        if (newHeight > minHeight) newTop = startTop + dy;
+      }
+      
+      element.style.width = newWidth + 'px';
+      element.style.height = newHeight + 'px';
+      element.style.left = newLeft + 'px';
+      element.style.top = newTop + 'px';
+    });
+    
+    document.addEventListener('mouseup', () => {
+      isResizing = false;
+    });
+    
+    element.appendChild(handle);
+  });
+}
+
+// Check modifiers
 // Keyboard handler
 document.addEventListener('keydown', function(event) {
+  // Handle Quick Tab close on Escape
+  if (event.key === CONFIG.quickTabCloseKey && quickTabWindows.length > 0) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeAllQuickTabWindows();
+    return;
+  }
+  
   if (!currentHoveredLink && !currentHoveredElement) return;
   
   if (event.target.tagName === 'INPUT' || 
@@ -1624,7 +2032,42 @@ document.addEventListener('keydown', function(event) {
   const domainType = getDomainType();
   const url = findUrl(element, domainType);
   
-  if (key === CONFIG.copyUrlKey.toLowerCase() && 
+  // Open Link in New Tab
+  if (key === CONFIG.openNewTabKey.toLowerCase() && 
+      checkModifiers(CONFIG.openNewTabCtrl, CONFIG.openNewTabAlt, CONFIG.openNewTabShift, event)) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    if (!url) {
+      showNotification('✗ No URL found');
+      return;
+    }
+    
+    debug(`Opening URL in new tab: ${url}`);
+    browser.runtime.sendMessage({ 
+      action: 'openTab', 
+      url: url,
+      switchFocus: CONFIG.openNewTabSwitchFocus 
+    });
+    showNotification('✓ Opened in new tab');
+  }
+  
+  // Quick Tab on Hover
+  else if (key === CONFIG.quickTabKey.toLowerCase() && 
+           checkModifiers(CONFIG.quickTabCtrl, CONFIG.quickTabAlt, CONFIG.quickTabShift, event)) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    if (!url) {
+      showNotification('✗ No URL found');
+      return;
+    }
+    
+    createQuickTabWindow(url);
+  }
+  
+  // Copy URL
+  else if (key === CONFIG.copyUrlKey.toLowerCase() && 
       checkModifiers(CONFIG.copyUrlCtrl, CONFIG.copyUrlAlt, CONFIG.copyUrlShift, event)) {
     event.preventDefault();
     event.stopPropagation();
@@ -1641,6 +2084,7 @@ document.addEventListener('keydown', function(event) {
     });
   }
   
+  // Copy Text
   else if (key === CONFIG.copyTextKey.toLowerCase() && 
            checkModifiers(CONFIG.copyTextCtrl, CONFIG.copyTextAlt, CONFIG.copyTextShift, event)) {
     event.preventDefault();
