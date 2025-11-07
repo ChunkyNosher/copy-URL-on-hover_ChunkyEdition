@@ -67,6 +67,10 @@ const DEFAULT_CONFIG = {
 
 // Constants
 const GOOGLE_FAVICON_URL = 'https://www.google.com/s2/favicons?domain=';
+const TOOLTIP_OFFSET_X = 10;
+const TOOLTIP_OFFSET_Y = 10;
+const TOOLTIP_DURATION_MS = 1500;
+const TOOLTIP_FADE_OUT_MS = 200;
 
 let CONFIG = { ...DEFAULT_CONFIG };
 let currentHoveredLink = null;
@@ -76,6 +80,21 @@ let minimizedQuickTabs = [];
 let quickTabZIndex = 1000000;
 let lastMouseX = 0;
 let lastMouseY = 0;
+
+// Initialize tooltip animation styles once
+function initTooltipStyles() {
+  if (document.querySelector('style[data-copy-url-tooltip]')) return;
+  
+  const style = document.createElement('style');
+  style.setAttribute('data-copy-url-tooltip', 'true');
+  style.textContent = `
+    @keyframes tooltipFadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 // Load settings from storage
 function loadSettings() {
@@ -1548,10 +1567,13 @@ function showNotification(message, options = {}) {
     
     // If tooltip is requested (for URL copy), show it near the cursor
     if (showTooltip) {
+      // Ensure tooltip styles are initialized
+      initTooltipStyles();
+      
       notif.style.cssText = `
         position: fixed;
-        left: ${lastMouseX + 10}px;
-        top: ${lastMouseY + 10}px;
+        left: ${lastMouseX + TOOLTIP_OFFSET_X}px;
+        top: ${lastMouseY + TOOLTIP_OFFSET_Y}px;
         background: ${CONFIG.notifColor};
         color: #fff;
         padding: 6px 12px;
@@ -1566,26 +1588,15 @@ function showNotification(message, options = {}) {
         white-space: nowrap;
       `;
       
-      // Add tooltip animation if not already present
-      if (!document.querySelector('style[data-copy-url-tooltip]')) {
-        const style = document.createElement('style');
-        style.setAttribute('data-copy-url-tooltip', 'true');
-        style.textContent = `
-          @keyframes tooltipFadeIn {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-        `;
-        document.head.appendChild(style);
-      }
-      
       document.documentElement.appendChild(notif);
       
-      setTimeout(() => {
+      // Schedule tooltip removal with fade out
+      const removeTooltip = () => {
         notif.style.opacity = '0';
-        notif.style.transition = 'opacity 0.2s';
-        setTimeout(() => notif.remove(), 200);
-      }, 1500);
+        notif.style.transition = `opacity ${TOOLTIP_FADE_OUT_MS}ms`;
+        setTimeout(() => notif.remove(), TOOLTIP_FADE_OUT_MS);
+      };
+      setTimeout(removeTooltip, TOOLTIP_DURATION_MS);
       
       return;
     }
