@@ -2009,14 +2009,6 @@ function makeResizable(element) {
 }
 
 // Check modifiers
-function checkModifiers(requireCtrl, requireAlt, requireShift, event) {
-  const ctrlPressed = event.ctrlKey || event.metaKey;
-  const altPressed = event.altKey;
-  const shiftPressed = event.shiftKey;
-  
-  return (requireCtrl === ctrlPressed && requireAlt === altPressed && requireShift === shiftPressed);
-}
-
 // Keyboard handler
 document.addEventListener('keydown', function(event) {
   // Handle Quick Tab close on Escape
