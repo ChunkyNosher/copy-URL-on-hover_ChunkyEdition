@@ -154,11 +154,17 @@
         /* CRITICAL: Footer stays at bottom */
         .footer {
             display: flex;
+            flex-direction: column;
             gap: 8px;
             padding: 12px 16px;
             background: #252525;
             border-top: 1px solid #3a3a3a;
             flex-shrink: 0;
+        }
+
+        .footer-buttons {
+            display: flex;
+            gap: 8px;
         }
 
         .footer button {
@@ -170,6 +176,27 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
+        }
+
+        .status-msg {
+            text-align: center;
+            font-size: 12px;
+            padding: 6px;
+            border-radius: 4px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .status-msg.success {
+            background: #2a4a2a;
+            color: #4CAF50;
+            opacity: 1;
+        }
+
+        .status-msg.error {
+            background: #4a2a2a;
+            color: #f44336;
+            opacity: 1;
         }
 
         .save-btn {
@@ -271,6 +298,22 @@
                 <div class="setting-group">
                     <label>Open in New Tab Key:</label>
                     <input type="text" id="openNewTabKey" maxlength="1" placeholder="O">
+                    <div class="checkbox-group" style="margin-top: 8px;">
+                        <input type="checkbox" id="openNewTabCtrl">
+                        <label for="openNewTabCtrl">Ctrl</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="openNewTabAlt">
+                        <label for="openNewTabAlt">Alt</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="openNewTabShift">
+                        <label for="openNewTabShift">Shift</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="openNewTabSwitchFocus">
+                        <label for="openNewTabSwitchFocus">Switch focus to new tab</label>
+                    </div>
                 </div>
             </div>
 
@@ -284,6 +327,32 @@
                 </div>
 
                 <div class="setting-group">
+                    <label>Notification Display Mode:</label>
+                    <select id="notifDisplayMode" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
+                        <option value="tooltip">Tooltip</option>
+                        <option value="notification">Notification</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label>Tooltip Color:</label>
+                    <input type="color" id="tooltipColor" value="#4CAF50">
+                </div>
+
+                <div class="setting-group">
+                    <label>Tooltip Duration (ms):</label>
+                    <input type="text" id="tooltipDuration" placeholder="1500" value="1500">
+                </div>
+
+                <div class="setting-group">
+                    <label>Tooltip Animation:</label>
+                    <select id="tooltipAnimation" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
+                        <option value="fade">Fade</option>
+                        <option value="slide">Slide</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
                     <label>Notification Color:</label>
                     <input type="color" id="notifColor" value="#4CAF50">
                 </div>
@@ -291,6 +360,43 @@
                 <div class="setting-group">
                     <label>Notification Duration (ms):</label>
                     <input type="text" id="notifDuration" placeholder="2000" value="2000">
+                </div>
+
+                <div class="setting-group">
+                    <label>Notification Position:</label>
+                    <select id="notifPosition" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
+                        <option value="top-left">Top Left</option>
+                        <option value="top-right">Top Right</option>
+                        <option value="bottom-left">Bottom Left</option>
+                        <option value="bottom-right">Bottom Right</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label>Notification Size:</label>
+                    <select id="notifSize" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
+                        <option value="small">Small</option>
+                        <option value="medium">Medium</option>
+                        <option value="large">Large</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label>Notification Border Color:</label>
+                    <input type="color" id="notifBorderColor" value="#000000">
+                </div>
+
+                <div class="setting-group">
+                    <label>Notification Border Width (px):</label>
+                    <input type="text" id="notifBorderWidth" placeholder="1" value="1">
+                </div>
+
+                <div class="setting-group">
+                    <label>Notification Animation:</label>
+                    <select id="notifAnimation" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
+                        <option value="fade">Fade</option>
+                        <option value="slide">Slide</option>
+                    </select>
                 </div>
 
                 <div class="info-box">
@@ -322,8 +428,11 @@
 
         <!-- Footer -->
         <div class="footer">
-            <button class="save-btn">✓ Save Settings</button>
-            <button class="reset-btn">↻ Reset to Defaults</button>
+            <div class="footer-buttons">
+                <button id="saveBtn" class="save-btn">✓ Save Settings</button>
+                <button id="resetBtn" class="reset-btn">↻ Reset to Defaults</button>
+            </div>
+            <div id="statusMsg" class="status-msg"></div>
         </div>
     </div>
 
