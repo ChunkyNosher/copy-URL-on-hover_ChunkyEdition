@@ -51,6 +51,7 @@ const DEFAULT_CONFIG = {
   quickTabCustomX: 100,
   quickTabCustomY: 100,
   quickTabPersistAcrossTabs: false,
+  quickTabCloseOnOpen: false,
   
   showNotification: true,
   notifColor: '#4CAF50',
@@ -1712,6 +1713,71 @@ function isRestrictedPage() {
          url.startsWith('chrome-extension:');
 }
 
+// Try to inject content script functionality into same-origin iframe
+function tryInjectIntoIframe(iframe) {
+  try {
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      debug('Cannot access iframe document - likely cross-origin');
+      return;
+    }
+    
+    // Check if we can access the iframe (same-origin check)
+    const iframeUrl = iframe.contentWindow.location.href;
+    debug(`Attempting to inject into iframe: ${iframeUrl}`);
+    
+    // Create a script element with our content script's functionality
+    // We'll create a minimal version that enables Quick Tabs within the iframe
+    const script = iframeDoc.createElement('script');
+    script.textContent = `
+      // Minimal Quick Tab support for iframes
+      (function() {
+        if (window.__quickTabEnabled) return; // Already injected
+        window.__quickTabEnabled = true;
+        
+        // Send message to parent to create Quick Tab
+        function createQuickTabInParent(url) {
+          window.parent.postMessage({
+            type: 'CREATE_QUICK_TAB',
+            url: url
+          }, '*');
+        }
+        
+        // Add event listener for link hover
+        document.addEventListener('keydown', function(event) {
+          if (event.key === 'q' && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+            const activeElement = document.elementFromPoint(event.clientX, event.clientY);
+            let link = activeElement?.closest('a');
+            if (!link) {
+              // Try to find hovered link
+              const hovered = document.querySelectorAll(':hover');
+              for (let el of hovered) {
+                if (el.tagName === 'A' && el.href) {
+                  link = el;
+                  break;
+                }
+              }
+            }
+            
+            if (link && link.href) {
+              event.preventDefault();
+              createQuickTabInParent(link.href);
+            }
+          }
+        }, true);
+        
+        console.log('[CopyURLHover] Nested Quick Tab support enabled in iframe');
+      })();
+    `;
+    
+    iframeDoc.head.appendChild(script);
+    debug('Successfully injected Quick Tab support into same-origin iframe');
+  } catch (err) {
+    // Expected for cross-origin iframes
+    debug('Could not inject into iframe (expected for cross-origin): ' + err.message);
+  }
+}
+
 // Create Quick Tab window
 function createQuickTabWindow(url) {
   if (isRestrictedPage()) {
@@ -1968,10 +2034,15 @@ function createQuickTabWindow(url) {
     browser.runtime.sendMessage({ 
       action: 'openTab', 
       url: iframe.src,
-      switchFocus: CONFIG.openNewTabSwitchFocus 
+      switchFocus: true  // Always switch focus when opening from Quick Tab
     });
     showNotification('✓ Opened in new tab');
     debug(`Quick Tab opened URL in new tab: ${iframe.src}`);
+    
+    // Close Quick Tab if setting is enabled
+    if (CONFIG.quickTabCloseOnOpen) {
+      closeQuickTabWindow(container);
+    }
   };
   
   // Close button
@@ -2027,6 +2098,9 @@ function createQuickTabWindow(url) {
           titleText.textContent = 'Quick Tab';
         }
       }
+      
+      // Try to inject content script into same-origin iframe for nested Quick Tabs
+      tryInjectIntoIframe(iframe);
     } catch (e) {
       // Cross-origin - use URL instead
       try {
@@ -2730,6 +2804,18 @@ document.addEventListener('keydown', function(event) {
     });
   }
 }, true);
+
+// Message listener for nested Quick Tabs from iframes
+window.addEventListener('message', function(event) {
+  // Only accept messages from same origin or our iframes
+  if (event.data && event.data.type === 'CREATE_QUICK_TAB') {
+    const url = event.data.url;
+    if (url) {
+      debug(`Received Quick Tab request from iframe: ${url}`);
+      createQuickTabWindow(url);
+    }
+  }
+});
 
 // Storage listener
 browser.storage.onChanged.addListener(function(changes, areaName) {
