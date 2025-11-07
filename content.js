@@ -430,7 +430,8 @@ function findSnapchatUrl(element) {
 }
 
 function findWhatsappUrl(element) {
-  // WhatsApp Web - typically returns current chat URL
+  // WhatsApp Web doesn't use traditional links - it's a single-page app
+  // The current chat/conversation URL is the most relevant URL to copy
   return window.location.href;
 }
 
@@ -572,10 +573,12 @@ function findStackExchangeUrl(element) {
 }
 
 function findServerFaultUrl(element) {
+  // Server Fault uses the same Stack Exchange structure
   return findStackExchangeUrl(element);
 }
 
 function findSuperUserUrl(element) {
+  // Super User uses the same Stack Exchange structure
   return findStackExchangeUrl(element);
 }
 
@@ -1483,12 +1486,14 @@ function showNotification(message) {
     
     // Get position styles based on notifPosition setting
     let positionStyles = '';
+    let isCenter = false;
     switch (CONFIG.notifPosition) {
       case 'top-left':
         positionStyles = 'top: 20px; left: 20px;';
         break;
       case 'top-center':
-        positionStyles = 'top: 20px; left: 50%; transform: translateX(-50%);';
+        positionStyles = 'top: 20px; left: 50%;';
+        isCenter = true;
         break;
       case 'top-right':
         positionStyles = 'top: 20px; right: 20px;';
@@ -1497,7 +1502,8 @@ function showNotification(message) {
         positionStyles = 'bottom: 20px; left: 20px;';
         break;
       case 'bottom-center':
-        positionStyles = 'bottom: 20px; left: 50%; transform: translateX(-50%);';
+        positionStyles = 'bottom: 20px; left: 50%;';
+        isCenter = true;
         break;
       case 'bottom-right':
       default:
@@ -1526,6 +1532,7 @@ function showNotification(message) {
     notif.style.cssText = `
       position: fixed;
       ${positionStyles}
+      ${isCenter ? 'transform: translateX(-50%);' : ''}
       background: ${CONFIG.notifColor};
       color: #fff;
       padding: ${padding};
@@ -1546,7 +1553,24 @@ function showNotification(message) {
       let animationKeyframes = '';
       const position = CONFIG.notifPosition || 'bottom-right';
       
-      if (position.includes('right')) {
+      if (position.includes('center')) {
+        // For center positions, only animate opacity and vertical movement
+        if (position.includes('top')) {
+          animationKeyframes = `
+            @keyframes slideIn {
+              from { opacity: 0; margin-top: -50px; }
+              to { opacity: 1; margin-top: 0; }
+            }
+          `;
+        } else {
+          animationKeyframes = `
+            @keyframes slideIn {
+              from { opacity: 0; margin-bottom: -50px; }
+              to { opacity: 1; margin-bottom: 0; }
+            }
+          `;
+        }
+      } else if (position.includes('right')) {
         animationKeyframes = `
           @keyframes slideIn {
             from { transform: translateX(400px); opacity: 0; }
@@ -1560,22 +1584,6 @@ function showNotification(message) {
             to { transform: translateX(0); opacity: 1; }
           }
         `;
-      } else if (position.includes('center')) {
-        if (position.includes('top')) {
-          animationKeyframes = `
-            @keyframes slideIn {
-              from { transform: translate(-50%, -100px); opacity: 0; }
-              to { transform: translate(-50%, 0); opacity: 1; }
-            }
-          `;
-        } else {
-          animationKeyframes = `
-            @keyframes slideIn {
-              from { transform: translate(-50%, 100px); opacity: 0; }
-              to { transform: translate(-50%, 0); opacity: 1; }
-            }
-          `;
-        }
       }
       
       style.textContent = animationKeyframes;
