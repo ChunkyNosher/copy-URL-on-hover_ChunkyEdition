@@ -3,7 +3,7 @@
 // This is the lightweight version without Quick Tabs functionality.
 // Focus is on core URL and text copying features.
 
-// Browser API compatibility shim for Chrome/Chromium support
+// Browser API compatibility shim for Firefox/Chrome cross-compatibility
 if (typeof browser === 'undefined') {
   var browser = chrome;
 }
