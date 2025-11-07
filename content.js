@@ -81,8 +81,8 @@ let quickTabZIndex = 1000000;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
-// Initialize tooltip animation styles once
-function initTooltipStyles() {
+// Initialize tooltip animation keyframes once
+function initTooltipAnimation() {
   if (document.querySelector('style[data-copy-url-tooltip]')) return;
   
   const style = document.createElement('style');
@@ -1567,8 +1567,8 @@ function showNotification(message, options = {}) {
     
     // If tooltip is requested (for URL copy), show it near the cursor
     if (showTooltip) {
-      // Ensure tooltip styles are initialized
-      initTooltipStyles();
+      // Ensure tooltip animation is initialized
+      initTooltipAnimation();
       
       notif.style.cssText = `
         position: fixed;
