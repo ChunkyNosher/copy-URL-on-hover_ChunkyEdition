@@ -228,3 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Load settings on popup open
 loadSettings();
+
+// Load version from manifest
+const manifest = browser.runtime.getManifest();
+document.getElementById('footerVersion').textContent = `Copy URL on Hover v${manifest.version}`;
