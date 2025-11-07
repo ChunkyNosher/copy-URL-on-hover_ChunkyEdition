@@ -40,21 +40,57 @@ If you want to manually load the extension for development:
 
 ### Step 5: Customize Settings
 
-Click the extension icon in your Firefox toolbar to open the settings popup. You can customize:
+Click the extension icon in your Firefox toolbar to open the settings popup. The settings are now organized into **4 tabs**:
 
-- **Key to copy URL** - Default: `y`
-- **Key to copy text** - Default: `x`
-- **Show notifications** - Toggle copy confirmations
-- **Notification color** - Change the notification appearance
-- **Notification duration** - How long notifications display (in milliseconds)
-- **Debug mode** - Enable console logging for troubleshooting
+#### Copy URL Tab
+- **Copy URL Key** - Default: `y`
+- **Copy Text Key** - Default: `x`
+- **Open in New Tab Key** - Default: `o`
+- **Modifier Keys** - Add Ctrl, Alt, or Shift to any shortcut
+
+#### Quick Tabs Tab
+- **Quick Tab Key** - Default: `q` - Opens a floating iframe window
+- **Close Key** - Default: `Escape` - Closes all Quick Tabs
+- **Max Windows** - Maximum number of Quick Tabs allowed (1-10)
+- **Default Size** - Width and height in pixels
+- **Window Position** - Follow cursor, center, corners, or custom coordinates
+
+#### Appearance Tab
+- **Notifications** - Toggle on/off
+- **Notification Color** - Background color
+- **Border Color & Width** - Customize notification border
+- **Animation** - Choose slide, pop, or fade animations
+- **Position** - Where notifications appear
+- **Size** - Small, medium, or large
+- **Dark Mode** - Toggle dark/light theme
+
+#### Advanced Tab
+- **Debug Mode** - Enable console logging for troubleshooting
 
 ## Usage
 
+### Basic Copy Functions
 1. Hover your mouse over any link on a webpage
-2. Press the configured key (default: **Y** to copy URL, **X** to copy text)
-3. A notification will appear confirming the copy
+2. Press the configured key (default: **Y** to copy URL, **X** to copy text, **O** to open in new tab)
+3. A notification will appear confirming the action
 4. The URL or link text is now in your clipboard
+
+### Quick Tabs Feature
+1. Hover over any link
+2. Press **Q** (or your configured Quick Tab key)
+3. A floating window opens showing the link content
+4. Use the navigation buttons:
+   - **←** Back
+   - **→** Forward
+   - **↻** Reload
+   - **🔗** Open in New Tab
+   - **−** Minimize
+   - **✕** Close
+5. Drag the title bar to move the window
+6. Drag the edges or corners to resize
+7. Click **−** to minimize the tab - it moves to a floating manager
+8. Access minimized tabs from the manager in the bottom-right corner
+9. Click **↑** to restore or **✕** to delete minimized tabs
 
 ## Customization
 
@@ -99,14 +135,51 @@ Then open Firefox Developer Tools (F12) to see debug messages.
 
 ## Features
 
+### Core Features
 ✓ Copy URLs or link text by pressing keyboard shortcuts  
-✓ Visual notifications confirm successful copies  
-✓ Fully customizable through settings popup  
+✓ Open links in new tabs with customizable focus behavior  
+✓ Visual notifications with customizable colors, borders, and animations  
+✓ Fully customizable through tabbed settings popup  
 ✓ **Supports 100+ websites** with site-specific optimized handlers  
 ✓ Works on all websites (except restricted Mozilla pages)  
 ✓ Debug mode for troubleshooting  
 ✓ Automatic settings sync across all tabs  
-✓ **Auto-update functionality** - Get notified when new versions are available
+✓ **Auto-update functionality** - Get notified when new versions are available  
+✓ Dark mode support
+
+### Quick Tabs Features (NEW in v1.4.0)
+✓ Open links in floating, draggable, resizable iframe windows  
+✓ Navigation controls (back, forward, reload)  
+✓ Live favicon and page title display  
+✓ Minimize tabs to a floating manager  
+✓ Restore or delete minimized tabs  
+✓ Multiple Quick Tabs support (configurable limit)  
+✓ Customizable positioning (follow cursor, corners, center, custom)  
+✓ Keyboard shortcuts for quick access  
+✓ Press Escape to close all Quick Tabs at once
+
+### Notification Customization (NEW in v1.4.0)
+✓ Border color and width customization  
+✓ Three animation styles: Slide, Pop, or Fade  
+✓ Six position options  
+✓ Three size options  
+✓ Customizable duration
+
+## Known Limitations
+
+Due to browser security restrictions, the following features have limitations:
+
+1. **Quick Tab Focus**: When you click inside a Quick Tab iframe, keyboard shortcuts won't work until you click back in the main page. This is a browser security feature that prevents iframes from stealing keyboard focus.
+   - **Workaround**: Click anywhere in the main page to restore keyboard shortcuts.
+
+2. **Nested Quick Tabs**: Cannot open Quick Tabs from inside other Quick Tabs because cross-origin iframes block script injection for security.
+   - **Workaround**: Use the "Open in New Tab" button (🔗) to open links from Quick Tabs in a real browser tab.
+
+3. **Cross-Tab Persistence**: Quick Tabs cannot persist across different browser tabs because each tab has its own isolated DOM.
+   - **Workaround**: Use the minimize feature to keep tabs accessible while browsing in the same tab.
+
+4. **Zen Browser Theme Matching**: Detecting Zen Browser workspace themes requires access to Zen-specific browser APIs which are not available to content scripts.
+   - This would require native Zen Browser integration or WebExtension API access.
 
 ## Supported Websites (100+)
 
