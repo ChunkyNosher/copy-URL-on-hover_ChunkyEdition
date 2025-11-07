@@ -1,14 +1,14 @@
-name: Build and Release Extension
+name: Build and Release Extension - Lite Version
 
 on:
   push:
     tags:
-      - 'v*.*.*'      # Matches v1.2.3
-      - 'v*.*.*.*'    # Matches v1.2.3.4
+      - 'v*.*.*L'     # Matches v1.2.3L (L suffix for Lite)
+      - 'v*.*.*.*L'   # Matches v1.2.3.4L
   workflow_dispatch:
 
 jobs:
-  build-and-release:
+  build-and-release-lite:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -22,37 +22,62 @@ jobs:
         run: |
           VERSION=$(grep -oP '(?<="version": ")[^"]*' manifest.json)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extension version: $VERSION"
+          echo "Extension version: $VERSION (Lite)"
 
-      - name: Create XPI file
+      - name: Create XPI file (Lite Version)
         run: |
           # Remove .github directory from the package
           mkdir -p build
           rsync -av --exclude='.git' --exclude='.github' --exclude='build' --exclude='README.md' --exclude='.gitignore' --exclude='updates.json' . build/
           cd build
-          zip -r ../copy-url-hover-extension.xpi .
+          zip -r ../copy-url-hover-lite-extension.xpi .
           cd ..
-          echo "XPI file created successfully"
+          echo "✓ Lite version XPI file created successfully"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: copy-url-hover-extension.xpi
+          files: copy-url-hover-lite-extension.xpi
           append_body: true
           body: |
-            ## Copy URL on Hover Extension v${{ steps.get_version.outputs.version }}
+            ## 🪶 Copy URL on Hover - Lite Edition v${{ steps.get_version.outputs.version }}
+            
+            > **This is the LITE version** - focused on core URL copying functionality without Quick Tabs features.
 
-            ### Installation Instructions
+            ### ✨ What's in the Lite Version?
+            
+            ✓ Copy URLs or link text by pressing keyboard shortcuts  
+            ✓ Open links in new tabs with customizable focus behavior  
+            ✓ Visual notifications with customizable colors, borders, and animations  
+            ✓ **NEW:** Tooltip mode (follows cursor) or Notification mode (fixed corner)  
+            ✓ **NEW:** Customizable tooltip color, animation, and duration  
+            ✓ Fully customizable through settings popup  
+            ✓ Supports 100+ websites with site-specific optimized handlers  
+            ✓ Debug mode for troubleshooting  
+            ✓ Automatic settings sync across all tabs  
+            ✓ Dark mode support
 
-            1. Download the `copy-url-hover-extension.xpi` file below
+            ### 📦 Installation Instructions
+
+            1. Download the `copy-url-hover-lite-extension.xpi` file below
             2. Open your Firefox/Zen Browser
             3. Navigate to `about:addons`
-            4. Click the gear icon and select "Install Add-on From File..."
+            4. Click the gear icon (⚙️) and select "Install Add-on From File..."
             5. Select the downloaded `.xpi` file
+            6. Click "Add" when prompted
 
-            ### Auto-Update Setup
+            ### 🔄 Auto-Update Setup
 
             Once installed, the extension will automatically check for updates and notify you when a new version is available.
+            
+            ### 📝 Differences from Full Version
+            
+            The Lite version **removes** Quick Tabs functionality for a smaller, more focused extension:
+            - ❌ No Quick Tabs (floating iframe windows)
+            - ❌ No Quick Tab navigation controls
+            - ❌ No minimize/restore Quick Tab functionality
+            
+            For the full-featured version with Quick Tabs, check out the main branch releases.
           draft: false
           prerelease: false
         env:
