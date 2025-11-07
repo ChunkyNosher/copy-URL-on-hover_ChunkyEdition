@@ -984,8 +984,8 @@ function findQuoraUrl(element) {
   const question = element.closest('[data-scroll-id], .q-box');
   if (!question) return findGenericUrl(element);
   
-  const link = question.querySelector('a[href^="/"], a.question_link');
-  if (link?.href && link.href.includes('quora.com')) return link.href;
+  const link = question.querySelector('a[href*="/q/"], a[href*="/question/"], a.question_link');
+  if (link?.href) return link.href;
   
   return null;
 }
@@ -1580,4 +1580,4 @@ browser.storage.onChanged.addListener(function(changes, areaName) {
 
 // Initialize
 loadSettings();
-debug('Extension loaded - supports 120+ websites with site-specific optimized handlers');
+debug('Extension loaded - supports 100+ websites with site-specific optimized handlers');
