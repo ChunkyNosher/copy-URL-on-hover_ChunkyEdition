@@ -260,6 +260,37 @@
       background: #1b5e20;
       color: #a5d6a7;
     }
+    
+    .footer {
+      padding: 10px 15px;
+      background: #f5f5f5;
+      border-top: 1px solid #ddd;
+      text-align: center;
+      font-size: 11px;
+      color: #999;
+    }
+    
+    body.dark-mode .footer {
+      background: #1e1e1e;
+      border-top-color: #555;
+      color: #666;
+    }
+    
+    .section-header {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 8px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #e0e0e0;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    body.dark-mode .section-header {
+      color: #e0e0e0;
+      border-bottom-color: #555;
+    }
   </style>
 </head>
 <body>
@@ -359,7 +390,38 @@
     </div>
     
     <div class="setting">
-      <label for="notifColor">Notification color:</label>
+      <div class="section-header">📍 Display Mode (for URL Copy)</div>
+      <label for="notifDisplayMode" style="margin-top: 10px;">Display as:</label>
+      <select id="notifDisplayMode">
+        <option value="tooltip">Tooltip (follows cursor)</option>
+        <option value="notification">Notification (fixed corner)</option>
+      </select>
+      
+      <div class="info">
+        <strong>Tooltip mode:</strong> Shows a small popup near your cursor when copying URLs<br>
+        <strong>Notification mode:</strong> Shows a notification in a fixed corner position
+      </div>
+    </div>
+    
+    <div class="setting">
+      <div class="section-header">🎨 Tooltip Settings</div>
+      <label for="tooltipColor">Tooltip background color:</label>
+      <input type="text" id="tooltipColor" placeholder="#4CAF50">
+      
+      <label for="tooltipDuration" style="margin-top: 10px;">Tooltip duration (ms):</label>
+      <input type="number" id="tooltipDuration" placeholder="1500" min="500" max="10000">
+      
+      <label for="tooltipAnimation" style="margin-top: 10px;">Tooltip animation:</label>
+      <select id="tooltipAnimation">
+        <option value="fade">Fade In</option>
+        <option value="scale">Scale Up</option>
+        <option value="none">No Animation</option>
+      </select>
+    </div>
+    
+    <div class="setting">
+      <div class="section-header">🔔 Notification Settings</div>
+      <label for="notifColor">Notification background color:</label>
       <input type="text" id="notifColor" placeholder="#4CAF50">
       
       <label for="notifBorderColor" style="margin-top: 10px;">Border color:</label>
@@ -367,10 +429,8 @@
       
       <label for="notifBorderWidth" style="margin-top: 10px;">Border width (px):</label>
       <input type="number" id="notifBorderWidth" placeholder="1" min="0" max="10">
-    </div>
-    
-    <div class="setting">
-      <label for="notifDuration">Notification duration (ms):</label>
+      
+      <label for="notifDuration" style="margin-top: 10px;">Notification duration (ms):</label>
       <input type="number" id="notifDuration" placeholder="2000" min="500" max="10000">
       
       <label for="notifPosition" style="margin-top: 10px;">Position:</label>
@@ -422,6 +482,10 @@
     <button id="saveBtn">✓ Save Settings</button>
     <button id="resetBtn">↻ Reset to Defaults</button>
     <div class="status-msg" id="statusMsg"></div>
+  </div>
+  
+  <div class="footer">
+    <span id="footerVersion">Copy URL on Hover Custom - Lite</span>
   </div>
   
   <script src="popup.js"></script>

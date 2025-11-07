@@ -23,6 +23,14 @@ const DEFAULT_CONFIG = {
   openNewTabSwitchFocus: false,
   
   showNotification: true,
+  notifDisplayMode: 'tooltip',
+  
+  // Tooltip settings
+  tooltipColor: '#4CAF50',
+  tooltipDuration: 1500,
+  tooltipAnimation: 'fade',
+  
+  // Notification settings
   notifColor: '#4CAF50',
   notifDuration: 2000,
   notifPosition: 'bottom-right',
@@ -30,6 +38,7 @@ const DEFAULT_CONFIG = {
   notifBorderColor: '#000000',
   notifBorderWidth: 1,
   notifAnimation: 'slide',
+  
   debugMode: false,
   darkMode: true
 };
@@ -37,7 +46,6 @@ const DEFAULT_CONFIG = {
 // Constants
 const TOOLTIP_OFFSET_X = 10;
 const TOOLTIP_OFFSET_Y = 10;
-const TOOLTIP_DURATION_MS = 1500;
 const TOOLTIP_FADE_OUT_MS = 200;
 
 let CONFIG = { ...DEFAULT_CONFIG };
@@ -56,6 +64,10 @@ function initTooltipAnimation() {
     @keyframes tooltipFadeIn {
       from { opacity: 0; transform: translateY(-5px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes tooltipScaleIn {
+      0% { opacity: 0; transform: scale(0.8); }
+      100% { opacity: 1; transform: scale(1); }
     }
   `;
   document.head.appendChild(style);
@@ -1530,25 +1542,34 @@ function showNotification(message, options = {}) {
     const notif = document.createElement('div');
     notif.textContent = message;
     
-    // If tooltip is requested (for URL copy), show it near the cursor
-    if (showTooltip) {
+    // If tooltip is requested (for URL copy) and display mode is tooltip, show cursor-following popup
+    // Otherwise, if showTooltip is true but mode is 'notification', fall through to regular notification below
+    if (showTooltip && CONFIG.notifDisplayMode === 'tooltip') {
       // Ensure tooltip animation is initialized
       initTooltipAnimation();
+      
+      // Get animation name
+      let animationName = '';
+      if (CONFIG.tooltipAnimation === 'scale') {
+        animationName = 'tooltipScaleIn';
+      } else if (CONFIG.tooltipAnimation === 'fade') {
+        animationName = 'tooltipFadeIn';
+      }
       
       notif.style.cssText = `
         position: fixed;
         left: ${lastMouseX + TOOLTIP_OFFSET_X}px;
         top: ${lastMouseY + TOOLTIP_OFFSET_Y}px;
-        background: ${CONFIG.notifColor};
+        background: ${CONFIG.tooltipColor};
         color: #fff;
         padding: 6px 12px;
         border-radius: 4px;
-        border: 1px solid ${CONFIG.notifBorderColor || '#000000'};
+        border: 1px solid rgba(0,0,0,0.2);
         z-index: 999999;
         font-size: 12px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        animation: tooltipFadeIn 0.2s ease-out;
+        ${animationName ? `animation: ${animationName} 0.2s ease-out;` : ''}
         pointer-events: none;
         white-space: nowrap;
       `;
@@ -1561,12 +1582,12 @@ function showNotification(message, options = {}) {
         notif.style.transition = `opacity ${TOOLTIP_FADE_OUT_MS}ms`;
         setTimeout(() => notif.remove(), TOOLTIP_FADE_OUT_MS);
       };
-      setTimeout(removeTooltip, TOOLTIP_DURATION_MS);
+      setTimeout(removeTooltip, CONFIG.tooltipDuration);
       
       return;
     }
     
-    // Regular notification (existing code)
+    // Regular notification for corner display (used for text copy or when display mode is 'notification')
     // Get position styles based on notifPosition setting
     let positionStyles = '';
     let isCenter = false;
