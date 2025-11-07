@@ -1537,13 +1537,58 @@ document.addEventListener('mouseout', function(event) {
 }, true);
 
 // Show notification
-function showNotification(message) {
+function showNotification(message, showTooltip = false) {
   if (!CONFIG.showNotification) return;
   
   try {
     const notif = document.createElement('div');
     notif.textContent = message;
     
+    // If tooltip is requested (for URL copy), show it near the cursor
+    if (showTooltip) {
+      notif.style.cssText = `
+        position: fixed;
+        left: ${lastMouseX + 10}px;
+        top: ${lastMouseY + 10}px;
+        background: ${CONFIG.notifColor};
+        color: #fff;
+        padding: 6px 12px;
+        border-radius: 4px;
+        border: 1px solid ${CONFIG.notifBorderColor || '#000000'};
+        z-index: 999999;
+        font-size: 12px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        animation: tooltipFadeIn 0.2s ease-out;
+        pointer-events: none;
+        white-space: nowrap;
+      `;
+      
+      // Add tooltip animation if not already present
+      if (!document.querySelector('style[data-copy-url-tooltip]')) {
+        const style = document.createElement('style');
+        style.setAttribute('data-copy-url-tooltip', 'true');
+        style.textContent = `
+          @keyframes tooltipFadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+      
+      document.documentElement.appendChild(notif);
+      
+      setTimeout(() => {
+        notif.style.opacity = '0';
+        notif.style.transition = 'opacity 0.2s';
+        setTimeout(() => notif.remove(), 200);
+      }, 1500);
+      
+      return;
+    }
+    
+    // Regular notification (existing code)
     // Get position styles based on notifPosition setting
     let positionStyles = '';
     let isCenter = false;
@@ -2124,9 +2169,6 @@ function createQuickTabWindow(url) {
   // Make draggable
   makeDraggable(container, titleBar);
   
-  // Make resizable
-  makeResizable(container);
-  
   // Bring to front on click
   container.addEventListener('mousedown', () => {
     container.style.zIndex = quickTabZIndex++;
@@ -2134,9 +2176,6 @@ function createQuickTabWindow(url) {
   
   showNotification('✓ Quick Tab opened');
   debug(`Quick Tab window created. Total windows: ${quickTabWindows.length}`);
-  
-  // Save state for cross-tab persistence
-  saveQuickTabState();
 }
 
 // Close Quick Tab window
@@ -2149,15 +2188,8 @@ function closeQuickTabWindow(container) {
   if (container._dragCleanup) {
     container._dragCleanup();
   }
-  // Clean up resize listeners
-  if (container._resizeCleanup) {
-    container._resizeCleanup();
-  }
   container.remove();
   debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
-  
-  // Save state for cross-tab persistence
-  saveQuickTabState();
 }
 
 // Close all Quick Tab windows
@@ -2167,9 +2199,6 @@ function closeAllQuickTabWindows() {
     if (window._dragCleanup) {
       window._dragCleanup();
     }
-    if (window._resizeCleanup) {
-      window._resizeCleanup();
-    }
     window.remove();
   });
   quickTabWindows = [];
@@ -2177,9 +2206,6 @@ function closeAllQuickTabWindows() {
     showNotification(`✓ Closed ${count} Quick Tab${count > 1 ? 's' : ''}`);
     debug(`All Quick Tab windows closed (${count} total)`);
   }
-  
-  // Save state for cross-tab persistence
-  saveQuickTabState();
 }
 
 // Minimize Quick Tab
@@ -2197,9 +2223,6 @@ function minimizeQuickTab(container, url, title) {
   });
   
   // Clean up and hide
-  if (container._resizeCleanup) {
-    container._resizeCleanup();
-  }
   container.remove();
   
   showNotification('✓ Quick Tab minimized');
@@ -2207,9 +2230,6 @@ function minimizeQuickTab(container, url, title) {
   
   // Update or create minimized tabs manager
   updateMinimizedTabsManager();
-  
-  // Save state for cross-tab persistence
-  saveQuickTabState();
 }
 
 // Restore minimized Quick Tab
@@ -2223,9 +2243,6 @@ function restoreQuickTab(index) {
   updateMinimizedTabsManager();
   
   debug(`Quick Tab restored from minimized. Remaining minimized: ${minimizedQuickTabs.length}`);
-  
-  // Save state for cross-tab persistence (createQuickTabWindow already saves, but just to be sure)
-  saveQuickTabState();
 }
 
 // Delete minimized Quick Tab
@@ -2237,9 +2254,6 @@ function deleteMinimizedQuickTab(index) {
   updateMinimizedTabsManager();
   
   debug(`Minimized Quick Tab deleted. Remaining minimized: ${minimizedQuickTabs.length}`);
-  
-  // Save state for cross-tab persistence
-  saveQuickTabState();
 }
 
 // Update or create the minimized tabs manager window
@@ -2423,92 +2437,23 @@ function updateMinimizedTabsManager() {
   });
 }
 
-// Save Quick Tab state to storage for cross-tab persistence
-async function saveQuickTabState() {
-  if (!CONFIG.quickTabPersistAcrossTabs) return;
-  
-  try {
-    const state = {
-      windows: quickTabWindows.map(container => ({
-        url: container.querySelector('iframe')?.src || '',
-        width: parseInt(container.style.width),
-        height: parseInt(container.style.height),
-        left: parseInt(container.style.left),
-        top: parseInt(container.style.top),
-        zIndex: parseInt(container.style.zIndex),
-        title: container.querySelector('span')?.textContent || 'Quick Tab'
-      })),
-      minimized: minimizedQuickTabs,
-      timestamp: Date.now()
-    };
-    
-    // Try session storage first, fallback to local storage
-    const storage = browser.storage.session || browser.storage.local;
-    await storage.set({ quickTabState: state });
-    debug('Quick Tab state saved to storage');
-  } catch (err) {
-    debug('Error saving Quick Tab state: ' + err.message);
-  }
-}
-
-// Restore Quick Tab state from storage
-async function restoreQuickTabState() {
-  if (!CONFIG.quickTabPersistAcrossTabs) return;
-  
-  try {
-    // Try session storage first, fallback to local storage
-    const storage = browser.storage.session || browser.storage.local;
-    const result = await storage.get('quickTabState');
-    const state = result.quickTabState;
-    
-    if (!state || !state.timestamp) return;
-    
-    // Don't restore if state is too old (more than 1 hour)
-    if (Date.now() - state.timestamp > 3600000) {
-      debug('Quick Tab state too old, not restoring');
-      return;
-    }
-    
-    debug('Restoring Quick Tab state from storage');
-    
-    // Restore minimized tabs
-    if (state.minimized && Array.isArray(state.minimized)) {
-      minimizedQuickTabs = state.minimized;
-      updateMinimizedTabsManager();
-    }
-    
-    // Restore open windows
-    if (state.windows && Array.isArray(state.windows)) {
-      for (const windowState of state.windows) {
-        if (!windowState.url) continue;
-        
-        // For now, we'll just recreate the Quick Tabs at default positions
-        // Full position/size restoration would require refactoring createQuickTabWindow
-        // to accept position/size parameters
-        debug(`Restoring Quick Tab: ${windowState.url}`);
-        createQuickTabWindow(windowState.url);
-      }
-    }
-  } catch (err) {
-    debug('Error restoring Quick Tab state: ' + err.message);
-  }
-}
-
-// Clear Quick Tab state from storage
-async function clearQuickTabState() {
-  try {
-    const storage = browser.storage.session || browser.storage.local;
-    await storage.remove('quickTabState');
-    debug('Quick Tab state cleared from storage');
-  } catch (err) {
-    debug('Error clearing Quick Tab state: ' + err.message);
-  }
-}
-
 // Make element draggable
 function makeDraggable(element, handle) {
   let isDragging = false;
   let startX, startY, initialX, initialY;
+  let rafId = null;
+  let pendingX = null;
+  let pendingY = null;
+  
+  const updatePosition = () => {
+    if (pendingX !== null && pendingY !== null) {
+      element.style.left = pendingX + 'px';
+      element.style.top = pendingY + 'px';
+      pendingX = null;
+      pendingY = null;
+    }
+    rafId = null;
+  };
   
   const handleMouseMove = (e) => {
     if (!isDragging) return;
@@ -2523,14 +2468,34 @@ function makeDraggable(element, handle) {
     newX = Math.max(0, Math.min(newX, window.innerWidth - element.offsetWidth));
     newY = Math.max(0, Math.min(newY, window.innerHeight - element.offsetHeight));
     
-    element.style.left = newX + 'px';
-    element.style.top = newY + 'px';
+    // Store the new position
+    pendingX = newX;
+    pendingY = newY;
+    
+    // Schedule update using requestAnimationFrame for smoother performance
+    if (!rafId) {
+      rafId = requestAnimationFrame(updatePosition);
+    }
     
     e.preventDefault();
   };
   
   const handleMouseUp = () => {
-    isDragging = false;
+    if (isDragging) {
+      isDragging = false;
+      // Cancel any pending animation frame
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      // Apply any pending position immediately
+      if (pendingX !== null && pendingY !== null) {
+        element.style.left = pendingX + 'px';
+        element.style.top = pendingY + 'px';
+        pendingX = null;
+        pendingY = null;
+      }
+    }
   };
   
   const handleMouseDown = (e) => {
@@ -2561,132 +2526,10 @@ function makeDraggable(element, handle) {
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp, true);
     window.removeEventListener('mouseup', handleMouseUp, true);
-  };
-}
-
-// Make element resizable
-function makeResizable(element) {
-  const minWidth = 300;
-  const minHeight = 200;
-  
-  // Create resize handles
-  const positions = ['se', 'sw', 'ne', 'nw', 'n', 's', 'e', 'w'];
-  
-  let currentHandle = null;
-  let isResizing = false;
-  let startX, startY, startWidth, startHeight, startLeft, startTop;
-  
-  const handleMouseMove = (e) => {
-    if (!isResizing || !currentHandle) return;
-    
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    
-    let newWidth = startWidth;
-    let newHeight = startHeight;
-    let newLeft = startLeft;
-    let newTop = startTop;
-    
-    const pos = currentHandle.dataset.position;
-    
-    if (pos.includes('e')) newWidth = Math.max(minWidth, startWidth + dx);
-    if (pos.includes('w')) {
-      newWidth = Math.max(minWidth, startWidth - dx);
-      if (newWidth > minWidth) newLeft = startLeft + dx;
-    }
-    if (pos.includes('s')) newHeight = Math.max(minHeight, startHeight + dy);
-    if (pos.includes('n')) {
-      newHeight = Math.max(minHeight, startHeight - dy);
-      if (newHeight > minHeight) newTop = startTop + dy;
-    }
-    
-    element.style.width = newWidth + 'px';
-    element.style.height = newHeight + 'px';
-    element.style.left = newLeft + 'px';
-    element.style.top = newTop + 'px';
-    
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  
-  const handleMouseUp = (e) => {
-    if (isResizing) {
-      isResizing = false;
-      currentHandle = null;
-      if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+    if (rafId) {
+      cancelAnimationFrame(rafId);
     }
   };
-  
-  // Add global listeners once per element
-  document.addEventListener('mousemove', handleMouseMove, { capture: true, passive: false });
-  document.addEventListener('mouseup', handleMouseUp, true);
-  // Also listen on window to catch mouseup events that occur outside the browser window
-  window.addEventListener('mouseup', handleMouseUp, true);
-  
-  // Store cleanup function
-  element._resizeCleanup = () => {
-    document.removeEventListener('mousemove', handleMouseMove, true);
-    document.removeEventListener('mouseup', handleMouseUp, true);
-    window.removeEventListener('mouseup', handleMouseUp, true);
-  };
-  
-  positions.forEach(pos => {
-    const handle = document.createElement('div');
-    handle.className = `copy-url-resize-handle resize-${pos}`;
-    handle.dataset.position = pos;
-    
-    // Style based on position
-    let styles = 'position: absolute; background: transparent;';
-    
-    switch (pos) {
-      case 'se':
-        styles += 'right: 0; bottom: 0; width: 20px; height: 20px; cursor: nwse-resize;';
-        break;
-      case 'sw':
-        styles += 'left: 0; bottom: 0; width: 20px; height: 20px; cursor: nesw-resize;';
-        break;
-      case 'ne':
-        styles += 'right: 0; top: 40px; width: 20px; height: 20px; cursor: nesw-resize;';
-        break;
-      case 'nw':
-        styles += 'left: 0; top: 40px; width: 20px; height: 20px; cursor: nwse-resize;';
-        break;
-      case 'n':
-        styles += 'top: 40px; left: 20px; right: 20px; height: 8px; cursor: ns-resize;';
-        break;
-      case 's':
-        styles += 'bottom: 0; left: 20px; right: 20px; height: 8px; cursor: ns-resize;';
-        break;
-      case 'e':
-        styles += 'right: 0; top: 60px; bottom: 8px; width: 8px; cursor: ew-resize;';
-        break;
-      case 'w':
-        styles += 'left: 0; top: 60px; bottom: 8px; width: 8px; cursor: ew-resize;';
-        break;
-    }
-    
-    handle.style.cssText = styles;
-    
-    handle.addEventListener('mousedown', (e) => {
-      isResizing = true;
-      currentHandle = handle;
-      startX = e.clientX;
-      startY = e.clientY;
-      const rect = element.getBoundingClientRect();
-      startWidth = rect.width;
-      startHeight = rect.height;
-      startLeft = rect.left;
-      startTop = rect.top;
-      
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    
-    element.appendChild(handle);
-  });
 }
 
 // Check modifiers
@@ -2759,7 +2602,7 @@ document.addEventListener('keydown', function(event) {
     }
     
     navigator.clipboard.writeText(url).then(() => {
-      showNotification('✓ URL copied!');
+      showNotification('✓ URL copied!', true);  // Show tooltip for URL copy
     }).catch(() => {
       showNotification('✗ Copy failed');
     });
@@ -2807,25 +2650,7 @@ browser.storage.onChanged.addListener(function(changes, areaName) {
   }
 });
 
-// Visibility change listener for cross-tab persistence
-document.addEventListener('visibilitychange', function() {
-  if (!document.hidden && CONFIG.quickTabPersistAcrossTabs) {
-    // Tab became visible, restore Quick Tabs if persistence is enabled
-    restoreQuickTabState();
-  } else if (document.hidden && CONFIG.quickTabPersistAcrossTabs) {
-    // Tab became hidden, save current state
-    saveQuickTabState();
-  }
-});
-
 // Initialize
 loadSettings();
-
-// Restore Quick Tabs if persistence is enabled (after a short delay to let settings load)
-setTimeout(() => {
-  if (CONFIG.quickTabPersistAcrossTabs) {
-    restoreQuickTabState();
-  }
-}, 100);
 
 debug('Extension loaded - supports 100+ websites with site-specific optimized handlers');
