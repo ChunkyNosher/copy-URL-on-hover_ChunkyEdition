@@ -1537,8 +1537,10 @@ document.addEventListener('mouseout', function(event) {
 }, true);
 
 // Show notification
-function showNotification(message, showTooltip = false) {
+function showNotification(message, options = {}) {
   if (!CONFIG.showNotification) return;
+  
+  const showTooltip = options.tooltip || false;
   
   try {
     const notif = document.createElement('div');
@@ -2602,7 +2604,7 @@ document.addEventListener('keydown', function(event) {
     }
     
     navigator.clipboard.writeText(url).then(() => {
-      showNotification('✓ URL copied!', true);  // Show tooltip for URL copy
+      showNotification('✓ URL copied!', { tooltip: true });
     }).catch(() => {
       showNotification('✗ Copy failed');
     });
