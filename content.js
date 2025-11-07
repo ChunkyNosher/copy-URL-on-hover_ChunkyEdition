@@ -194,9 +194,15 @@ function findRedditUrl(element) {
 }
 
 function findYouTubeUrl(element) {
-  const videoCard = element.closest('[role="listitem"], .yt-simple-endpoint, a[href*="/watch"]');
+  // Use modern YouTube selectors for better performance
+  const videoCard = element.closest('ytd-rich-grid-media, ytd-thumbnail, ytd-video-renderer, ytd-grid-video-renderer, a[href*="/watch"]');
   if (!videoCard) return findGenericUrl(element);
   
+  // Look for the thumbnail link first (most reliable)
+  const thumbnailLink = videoCard.querySelector('a#thumbnail[href*="watch?v="]');
+  if (thumbnailLink?.href) return thumbnailLink.href;
+  
+  // Fallback to any watch link
   const watchLink = videoCard.querySelector('a[href*="watch?v="]');
   if (watchLink?.href) return watchLink.href;
   
@@ -576,25 +582,6 @@ document.addEventListener('mouseover', function(event) {
       }
     }
   }
-
-  // Use the old logic for other websites if the new Twitter logic doesn't find anything
-  if (!element) {
-    if (target.tagName === 'A' && target.href) {
-      element = target;
-    } else {
-      element = target.closest('article, [role="article"], .post, [data-testid="post"], [role="link"], .item, [data-id]');
-    }
-  }
-  
-  if (element) {
-    const url = findUrl(element, domainType);
-    if (url) {
-      currentHoveredLink = element;
-      currentHoveredElement = element;
-      debug(`[${domainType}] URL found: ${url}`);
-    }
-  }
-}, true);
 
   // Use the old logic for other websites if the new Twitter logic doesn't find anything
   if (!element) {
