@@ -17,6 +17,14 @@ const DEFAULT_SETTINGS = {
   openNewTabSwitchFocus: false,
   
   showNotification: true,
+  notifDisplayMode: 'tooltip',
+  
+  // Tooltip settings
+  tooltipColor: '#4CAF50',
+  tooltipDuration: 1500,
+  tooltipAnimation: 'fade',
+  
+  // Notification settings
   notifColor: '#4CAF50',
   notifDuration: 2000,
   notifPosition: 'bottom-right',
@@ -24,6 +32,7 @@ const DEFAULT_SETTINGS = {
   notifBorderColor: '#000000',
   notifBorderWidth: 1,
   notifAnimation: 'slide',
+  
   debugMode: false,
   darkMode: true
 };
@@ -55,6 +64,14 @@ function loadSettings() {
     document.getElementById('openNewTabSwitchFocus').checked = items.openNewTabSwitchFocus;
     
     document.getElementById('showNotification').checked = items.showNotification;
+    document.getElementById('notifDisplayMode').value = items.notifDisplayMode;
+    
+    // Tooltip settings
+    document.getElementById('tooltipColor').value = items.tooltipColor;
+    document.getElementById('tooltipDuration').value = items.tooltipDuration;
+    document.getElementById('tooltipAnimation').value = items.tooltipAnimation;
+    
+    // Notification settings
     document.getElementById('notifColor').value = items.notifColor;
     document.getElementById('notifDuration').value = items.notifDuration;
     document.getElementById('notifPosition').value = items.notifPosition;
@@ -62,6 +79,7 @@ function loadSettings() {
     document.getElementById('notifBorderColor').value = items.notifBorderColor;
     document.getElementById('notifBorderWidth').value = items.notifBorderWidth;
     document.getElementById('notifAnimation').value = items.notifAnimation;
+    
     document.getElementById('debugMode').checked = items.debugMode;
     document.getElementById('darkMode').checked = items.darkMode;
     
@@ -110,6 +128,14 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     openNewTabSwitchFocus: document.getElementById('openNewTabSwitchFocus').checked,
     
     showNotification: document.getElementById('showNotification').checked,
+    notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',
+    
+    // Tooltip settings
+    tooltipColor: document.getElementById('tooltipColor').value || '#4CAF50',
+    tooltipDuration: safeParseInt(document.getElementById('tooltipDuration').value, 1500),
+    tooltipAnimation: document.getElementById('tooltipAnimation').value || 'fade',
+    
+    // Notification settings
     notifColor: document.getElementById('notifColor').value || '#4CAF50',
     notifDuration: safeParseInt(document.getElementById('notifDuration').value, 2000),
     notifPosition: document.getElementById('notifPosition').value || 'bottom-right',
@@ -117,6 +143,7 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     notifBorderColor: document.getElementById('notifBorderColor').value || '#000000',
     notifBorderWidth: safeParseInt(document.getElementById('notifBorderWidth').value, 1),
     notifAnimation: document.getElementById('notifAnimation').value || 'slide',
+    
     debugMode: document.getElementById('debugMode').checked,
     darkMode: document.getElementById('darkMode').checked
   };
