@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Copy URL on Hover Custom",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with navigation, minimize, and more.",
   "permissions": ["scripting", "storage", "activeTab"],
   "host_permissions": ["<all_urls>"],

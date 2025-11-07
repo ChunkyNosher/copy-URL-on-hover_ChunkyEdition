@@ -147,7 +147,7 @@ Then open Firefox Developer Tools (F12) to see debug messages.
 ✓ **Auto-update functionality** - Get notified when new versions are available  
 ✓ Dark mode support
 
-### Quick Tabs Features (NEW in v1.4.0)
+### Quick Tabs Features (NEW in v1.4.0, Enhanced in v1.4.1)
 ✓ Open links in floating, draggable, resizable iframe windows  
 ✓ Navigation controls (back, forward, reload)  
 ✓ Live favicon and page title display  
@@ -157,6 +157,11 @@ Then open Firefox Developer Tools (F12) to see debug messages.
 ✓ Customizable positioning (follow cursor, corners, center, custom)  
 ✓ Keyboard shortcuts for quick access  
 ✓ Press Escape to close all Quick Tabs at once
+✓ **NEW**: Cross-tab persistence - Quick Tabs remain visible across browser tabs (optional)
+✓ **NEW**: Nested Quick Tabs support for same-origin iframes
+✓ **NEW**: Close Quick Tab on open - automatically close and switch to tab when opening in new tab (optional)
+✓ **IMPROVED**: Better drag and resize performance with larger hit zones
+✓ **FIXED**: Mouse tracking glitches resolved
 
 ### Notification Customization (NEW in v1.4.0)
 ✓ Border color and width customization  
@@ -172,14 +177,18 @@ Due to browser security restrictions, the following features have limitations:
 1. **Quick Tab Focus**: When you click inside a Quick Tab iframe, keyboard shortcuts won't work until you click back in the main page. This is a browser security feature that prevents iframes from stealing keyboard focus.
    - **Workaround**: Click anywhere in the main page to restore keyboard shortcuts.
 
-2. **Nested Quick Tabs**: Cannot open Quick Tabs from inside other Quick Tabs because cross-origin iframes block script injection for security.
-   - **Workaround**: Use the "Open in New Tab" button (🔗) to open links from Quick Tabs in a real browser tab.
+2. **Nested Quick Tabs**: Fully supported for same-origin iframes only. Cross-origin iframes block script injection for security.
+   - **✓ NEW**: Same-origin iframes now support nested Quick Tabs automatically
+   - **Workaround for cross-origin**: Use the "Open in New Tab" button (🔗) to open links from Quick Tabs in a real browser tab.
 
-3. **Cross-Tab Persistence**: Quick Tabs cannot persist across different browser tabs because each tab has its own isolated DOM.
-   - **Workaround**: Use the minimize feature to keep tabs accessible while browsing in the same tab.
+3. **Cross-Tab Persistence**: ✓ **NOW AVAILABLE** as an optional feature!
+   - Enable "Persist Quick Tabs across browser tabs" in Quick Tabs settings
+   - Quick Tabs will remain visible when switching between browser tabs
+   - State is saved and restored automatically
 
 4. **Zen Browser Theme Matching**: Detecting Zen Browser workspace themes requires access to Zen-specific browser APIs which are not available to content scripts.
    - This would require native Zen Browser integration or WebExtension API access.
+   - **Workaround**: Use the built-in Dark Mode setting which works in all browsers
 
 ## Supported Websites (100+)
 

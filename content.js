@@ -1737,25 +1737,27 @@ function tryInjectIntoIframe(iframe) {
         
         // Send message to parent to create Quick Tab
         function createQuickTabInParent(url) {
+          // Get the parent origin for secure message passing
+          const parentOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) 
+            || window.location.origin;
           window.parent.postMessage({
             type: 'CREATE_QUICK_TAB',
             url: url
-          }, '*');
+          }, parentOrigin);
         }
         
         // Add event listener for link hover
         document.addEventListener('keydown', function(event) {
           if (event.key === 'q' && !event.ctrlKey && !event.altKey && !event.shiftKey) {
-            const activeElement = document.elementFromPoint(event.clientX, event.clientY);
-            let link = activeElement?.closest('a');
-            if (!link) {
-              // Try to find hovered link
-              const hovered = document.querySelectorAll(':hover');
-              for (let el of hovered) {
-                if (el.tagName === 'A' && el.href) {
-                  link = el;
-                  break;
-                }
+            // For keyboard events, we need to find the currently hovered element
+            let link = null;
+            
+            // Try to find hovered link using :hover pseudo-class
+            const hovered = document.querySelectorAll(':hover');
+            for (let el of hovered) {
+              if (el.tagName === 'A' && el.href) {
+                link = el;
+                break;
               }
             }
             
@@ -2481,36 +2483,11 @@ async function restoreQuickTabState() {
       for (const windowState of state.windows) {
         if (!windowState.url) continue;
         
-        // Create the Quick Tab
-        const container = document.createElement('div');
-        container.className = 'copy-url-quicktab-window';
-        container.style.cssText = `
-          position: fixed;
-          width: ${windowState.width || CONFIG.quickTabDefaultWidth}px;
-          height: ${windowState.height || CONFIG.quickTabDefaultHeight}px;
-          left: ${windowState.left || 100}px;
-          top: ${windowState.top || 100}px;
-          background: ${CONFIG.darkMode ? '#2d2d2d' : '#ffffff'};
-          border: 2px solid ${CONFIG.darkMode ? '#555' : '#ddd'};
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-          z-index: ${windowState.zIndex || quickTabZIndex++};
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          min-width: 300px;
-          min-height: 200px;
-        `;
-        
-        // Create a simplified version with just iframe and basic controls
-        // (reusing the full createQuickTabWindow would be complex due to all the event handlers)
-        const iframe = document.createElement('iframe');
-        iframe.src = windowState.url;
-        iframe.style.cssText = 'flex: 1; border: none; width: 100%; background: white;';
-        
-        // For now, just show a simple restoration message and let user recreate tabs manually
-        // Full restoration with all controls would require significant refactoring
-        debug(`Would restore Quick Tab: ${windowState.url}`);
+        // For now, we'll just recreate the Quick Tabs at default positions
+        // Full position/size restoration would require refactoring createQuickTabWindow
+        // to accept position/size parameters
+        debug(`Restoring Quick Tab: ${windowState.url}`);
+        createQuickTabWindow(windowState.url);
       }
     }
   } catch (err) {
@@ -2807,6 +2784,13 @@ document.addEventListener('keydown', function(event) {
 
 // Message listener for nested Quick Tabs from iframes
 window.addEventListener('message', function(event) {
+  // Validate origin - only accept from same origin or about:blank iframes
+  const currentOrigin = window.location.origin;
+  if (event.origin !== currentOrigin && event.origin !== 'null') {
+    debug(`Rejected message from unauthorized origin: ${event.origin}`);
+    return;
+  }
+  
   // Only accept messages from same origin or our iframes
   if (event.data && event.data.type === 'CREATE_QUICK_TAB') {
     const url = event.data.url;
