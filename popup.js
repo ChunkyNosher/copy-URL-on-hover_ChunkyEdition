@@ -57,26 +57,27 @@ function validateHexColor(color, fallback = DEFAULT_SETTINGS.tooltipColor) {
   if (!color.startsWith('#')) {
     color = '#' + color;
   }
-  // Validate hex format
+  // Validate hex format (6-character format only)
   if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
     return color.toUpperCase();
   }
   return fallback;
 }
 
+// Color input to settings mapping
+const COLOR_DEFAULTS = {
+  'tooltipColor': 'tooltipColor',
+  'notifColor': 'notifColor',
+  'notifBorderColor': 'notifBorderColor'
+};
+
 // Update color preview box
 function updateColorPreview(inputId, previewId) {
   const input = document.getElementById(inputId);
   const preview = document.getElementById(previewId);
   if (input && preview) {
-    // Map input IDs to their default settings
-    const colorDefaults = {
-      'tooltipColor': DEFAULT_SETTINGS.tooltipColor,
-      'notifColor': DEFAULT_SETTINGS.notifColor,
-      'notifBorderColor': DEFAULT_SETTINGS.notifBorderColor
-    };
-    
-    const defaultColor = colorDefaults[inputId] || DEFAULT_SETTINGS.tooltipColor;
+    const settingKey = COLOR_DEFAULTS[inputId];
+    const defaultColor = settingKey ? DEFAULT_SETTINGS[settingKey] : DEFAULT_SETTINGS.tooltipColor;
     const color = validateHexColor(input.value, defaultColor);
     input.value = color;
     preview.style.backgroundColor = color;
