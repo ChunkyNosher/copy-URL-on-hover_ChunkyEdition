@@ -59,6 +59,71 @@ let currentHoveredElement = null;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
+// ============================================================
+// QUICK TABS INTEGRATION - DOM Marker Bridge
+// ============================================================
+
+const QUICKTABS_MARKER_ID = 'quicktabs-link-marker';
+let quickTabsMarker = null;
+
+// Create marker element for Quick Tabs communication
+function initQuickTabsMarker() {
+  // Check if marker already exists
+  quickTabsMarker = document.getElementById(QUICKTABS_MARKER_ID);
+  
+  if (!quickTabsMarker) {
+    quickTabsMarker = document.createElement('div');
+    quickTabsMarker.id = QUICKTABS_MARKER_ID;
+    quickTabsMarker.style.display = 'none';
+    quickTabsMarker.style.pointerEvents = 'none';
+    
+    // Append to body when it's available
+    if (document.body) {
+      document.body.appendChild(quickTabsMarker);
+      debug('Quick Tabs marker created');
+    } else {
+      // Wait for DOM to be ready
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.appendChild(quickTabsMarker);
+        debug('Quick Tabs marker created (DOMContentLoaded)');
+      });
+    }
+  }
+}
+
+// Update Quick Tabs marker with current hovered link
+function updateQuickTabsMarker(url, title) {
+  if (!quickTabsMarker) {
+    initQuickTabsMarker();
+  }
+  
+  if (quickTabsMarker) {
+    if (url && url.trim() !== '') {
+      quickTabsMarker.setAttribute('data-hovered-url', url);
+      quickTabsMarker.setAttribute('data-hovered-title', title || url);
+      quickTabsMarker.setAttribute('data-state', 'hovering');
+      debug('Updated Quick Tabs marker: ' + url);
+    } else {
+      quickTabsMarker.removeAttribute('data-hovered-url');
+      quickTabsMarker.removeAttribute('data-hovered-title');
+      quickTabsMarker.setAttribute('data-state', 'idle');
+      debug('Cleared Quick Tabs marker');
+    }
+  }
+}
+
+// Initialize marker on load - wait for DOM to be ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initQuickTabsMarker);
+} else {
+  // DOM is already ready
+  initQuickTabsMarker();
+}
+
+// ============================================================
+// END QUICK TABS INTEGRATION
+// ============================================================
+
 // Initialize tooltip animation keyframes once
 function initTooltipAnimation() {
   if (document.querySelector('style[data-copy-url-tooltip]')) return;
@@ -1524,6 +1589,10 @@ document.addEventListener('mouseover', function(event) {
     if (url) {
       currentHoveredLink = element;
       currentHoveredElement = element;
+      
+      // Update Quick Tabs marker
+      updateQuickTabsMarker(url, getLinkText(element));
+      
       debug(`[${domainType}] URL found: ${url}`);
     } else {
       debug(`[${domainType}] No URL found for element`);
@@ -1535,6 +1604,9 @@ document.addEventListener('mouseover', function(event) {
 document.addEventListener('mouseout', function(event) {
   currentHoveredLink = null;
   currentHoveredElement = null;
+  
+  // Clear Quick Tabs marker
+  updateQuickTabsMarker(null, null);
 }, true);
 
 // Show notification

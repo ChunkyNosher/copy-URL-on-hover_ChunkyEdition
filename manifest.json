@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Copy URL on Hover Custom - Lite",
-  "version": "1.4.6.1",
-  "description": "Copy URLs or link text while hovering over links. Lightweight version without Quick Tabs.",
+  "version": "1.5.0",
+  "description": "Copy URLs or link text while hovering over links. Includes Quick Tabs integration for Zen Browser.",
   "permissions": ["scripting", "storage", "activeTab"],
   "host_permissions": ["<all_urls>"],
   "action": {
@@ -22,4 +22,5 @@
     }
   }
 }
+
 
