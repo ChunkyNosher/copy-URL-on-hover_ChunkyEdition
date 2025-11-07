@@ -102,10 +102,50 @@ Then open Firefox Developer Tools (F12) to see debug messages.
 ✓ Copy URLs or link text by pressing keyboard shortcuts  
 ✓ Visual notifications confirm successful copies  
 ✓ Fully customizable through settings popup  
+✓ **Supports 100+ websites** with site-specific optimized handlers  
 ✓ Works on all websites (except restricted Mozilla pages)  
 ✓ Debug mode for troubleshooting  
 ✓ Automatic settings sync across all tabs  
 ✓ **Auto-update functionality** - Get notified when new versions are available
+
+## Supported Websites (100+)
+
+The extension has unique, optimized handlers for over 100 popular websites across multiple categories:
+
+### Social Media (13)
+Twitter/X, Reddit, LinkedIn, Instagram, Facebook, TikTok, Threads, Bluesky, Mastodon, Snapchat, WhatsApp, Telegram
+
+### Video Platforms (7)
+YouTube, Vimeo, DailyMotion, Twitch, Rumble, Odysee, Bitchute
+
+### Developer Platforms (12)
+GitHub, GitLab, Bitbucket, Stack Overflow, Stack Exchange, Server Fault, Super User, CodePen, JSFiddle, Replit, Glitch, CodeSandbox
+
+### Blogging Platforms (8)
+Medium, Dev.to, Hashnode, Substack, WordPress, Blogger, Ghost, Notion
+
+### E-commerce (12)
+Amazon, eBay, Etsy, Walmart, Flipkart, AliExpress, Alibaba, Shopify, Target, Best Buy, Newegg, Wish
+
+### Image & Design Platforms (13)
+Pinterest, Tumblr, Dribbble, Behance, DeviantArt, Flickr, 500px, Unsplash, Pexels, Pixabay, ArtStation, Imgur, Giphy
+
+### News & Discussion (8)
+Hacker News, Product Hunt, Quora, Discord, Slack, Lobsters, Google News, Feedly
+
+### Entertainment & Media (13)
+Wikipedia, IMDb, Rotten Tomatoes, Netflix, Letterboxd, Goodreads, MyAnimeList, AniList, Kitsu, Last.fm, Spotify, SoundCloud, Bandcamp
+
+### Gaming (6)
+Steam Community, Steam Store, Epic Games, GOG, Itch.io, GameJolt
+
+### Professional & Learning (7)
+Coursera, Udemy, edX, Khan Academy, Skillshare, Pluralsight, Udacity
+
+### Other (5)
+Archive.org, Patreon, Ko-fi, Buy Me a Coffee, Gumroad
+
+**Plus a generic fallback handler that works on any website!**
 
 ## Auto-Updates
 
