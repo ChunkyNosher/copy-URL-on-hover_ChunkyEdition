@@ -98,7 +98,7 @@
     .tab-content {
       display: none;
       padding: 15px;
-      max-height: 450px;
+      max-height: 400px;
       overflow-y: auto;
     }
     
@@ -402,6 +402,26 @@
         
         <label for="quickTabCustomY" style="margin-top: 10px;">Custom Y position (px):</label>
         <input type="number" id="quickTabCustomY" placeholder="100">
+      </div>
+    </div>
+    
+    <div class="setting">
+      <label class="checkbox-label">
+        <input type="checkbox" id="quickTabPersistAcrossTabs">
+        Persist Quick Tabs across browser tabs
+      </label>
+      <div class="info" style="margin-top: 8px;">
+        When enabled, Quick Tabs remain visible when switching between browser tabs. Otherwise, Quick Tabs are specific to each tab.
+      </div>
+    </div>
+    
+    <div class="setting">
+      <label class="checkbox-label">
+        <input type="checkbox" id="quickTabCloseOnOpen">
+        Close Quick Tab when opening in new tab
+      </label>
+      <div class="info" style="margin-top: 8px;">
+        When enabled, clicking "Open in New Tab" (🔗) will close the Quick Tab and switch focus to the newly opened tab.
       </div>
     </div>
   </div>

@@ -28,6 +28,8 @@ const DEFAULT_SETTINGS = {
   quickTabPosition: 'follow-cursor',
   quickTabCustomX: 100,
   quickTabCustomY: 100,
+  quickTabPersistAcrossTabs: false,
+  quickTabCloseOnOpen: false,
   
   showNotification: true,
   notifColor: '#4CAF50',
@@ -79,6 +81,8 @@ function loadSettings() {
     document.getElementById('quickTabPosition').value = items.quickTabPosition;
     document.getElementById('quickTabCustomX').value = items.quickTabCustomX;
     document.getElementById('quickTabCustomY').value = items.quickTabCustomY;
+    document.getElementById('quickTabPersistAcrossTabs').checked = items.quickTabPersistAcrossTabs;
+    document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
     
     document.getElementById('showNotification').checked = items.showNotification;
     document.getElementById('notifColor').value = items.notifColor;
@@ -156,6 +160,8 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     quickTabPosition: document.getElementById('quickTabPosition').value || 'follow-cursor',
     quickTabCustomX: safeParseInt(document.getElementById('quickTabCustomX').value, 100),
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
+    quickTabPersistAcrossTabs: document.getElementById('quickTabPersistAcrossTabs').checked,
+    quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     
     showNotification: document.getElementById('showNotification').checked,
     notifColor: document.getElementById('notifColor').value || '#4CAF50',
