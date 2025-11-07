@@ -1,21 +1,29 @@
 # Firefox Extension: Copy URL on Hover - Lite Version
 
-This is a lightweight version of the Copy URL on Hover extension, focused solely on the core URL and text copying functionality. This lite version **does not include Quick Tabs** features.
+This is a lightweight version of the Copy URL on Hover extension, focused on core URL and text copying functionality **with Quick Tabs integration support**.
 
-## What's Different in the Lite Version?
+## ✨ Quick Tabs Integration (v1.7.0+)
 
-The lite version removes all Quick Tabs functionality, making it:
-- **Simpler** - fewer settings and features to manage
-- **Lighter** - smaller codebase and memory footprint
-- **Focused** - concentrated on the core URL copying functionality
+**NEW!** This extension now integrates with the [Quick Tabs Zen Browser mod](https://github.com/ChunkyNosher/Quick-Tabs) to enable opening hovered links in Quick Tabs with a simple keyboard shortcut!
 
-### Features Removed
-- Quick Tabs (floating iframe windows)
-- Quick Tab navigation controls
-- Minimize/restore Quick Tab functionality
-- Quick Tab positioning and sizing options
+### How It Works
+1. Hover your mouse over any link on a webpage
+2. Press **Ctrl+E** (default shortcut in Quick Tabs)
+3. The link opens in a Quick Tab floating window!
 
-### Features Retained
+This works on **100+ websites** including YouTube, Twitter, Reddit, GitHub, and more!
+
+### Prerequisites
+- **Zen Browser** with [Fx-Autoconfig](https://github.com/MrOtherGuy/fx-autoconfig/)
+- [Quick Tabs uc.js](https://github.com/ChunkyNosher/Quick-Tabs) installed
+- This extension (v1.7.0+)
+
+### Technical Details
+The extension creates a hidden marker element in webpages that Quick Tabs observes. When you hover over a link, the marker updates with the link's URL and title, allowing Quick Tabs to open it when you press Ctrl+E. This solves [issue #5](https://github.com/ChunkyNosher/Quick-Tabs/issues/5) in the Quick Tabs repository.
+
+## Features
+
+### Core Features
 ✓ Copy URLs or link text by pressing keyboard shortcuts  
 ✓ Open links in new tabs with customizable focus behavior  
 ✓ Visual notifications with customizable colors, borders, and animations  
@@ -26,7 +34,12 @@ The lite version removes all Quick Tabs functionality, making it:
 ✓ Automatic settings sync across all tabs  
 ✓ Dark mode support
 
-For the full-featured version with Quick Tabs, please use the main branch.
+### Quick Tabs Integration
+✓ DOM marker bridge for seamless Quick Tabs integration  
+✓ Real-time link detection and sharing with Quick Tabs  
+✓ Works with all 100+ supported websites  
+✓ Minimal performance overhead  
+✓ No impact if Quick Tabs is not installed
 
 ## Files Included
 
@@ -88,10 +101,25 @@ Click the extension icon in your Firefox toolbar to open the settings popup. The
 
 ## Usage
 
+### Quick Tabs Integration (Zen Browser)
+
+**NEW in v1.7.0!** Open hovered links in Quick Tabs:
+
+1. Install [Quick Tabs uc.js](https://github.com/ChunkyNosher/Quick-Tabs) in your Zen Browser
+2. Load this extension (v1.7.0+)
+3. Navigate to any website (YouTube, Twitter, Reddit, etc.)
+4. Hover your mouse over any link
+5. Press **Ctrl+E** (or your configured Quick Tabs shortcut)
+6. The link opens in a Quick Tab floating window!
+
+**Debugging**: Enable debug mode in settings to see console logs:
+- `CopyURL: Quick Tabs marker created` - Integration is active
+- `CopyURL: Updated Quick Tabs marker: <url>` - Link detected
+- `CopyURL: Cleared Quick Tabs marker` - Mouse moved away
+
 ### Basic Copy Functions
 1. Hover your mouse over any link on a webpage
 2. Press the configured key (default: **Y** to copy URL, **X** to copy text, **O** to open in new tab)
-3. A notification will appear confirming the action
 3. A notification will appear confirming the action
 4. The URL or link text is now in your clipboard
 
@@ -140,6 +168,7 @@ Then open Firefox Developer Tools (F12) to see debug messages.
 
 ✓ Copy URLs or link text by pressing keyboard shortcuts  
 ✓ Open links in new tabs with customizable focus behavior  
+✓ **Quick Tabs integration** - Open hovered links in Quick Tabs (Zen Browser)  
 ✓ Visual notifications with customizable colors, borders, and animations  
 ✓ Fully customizable through settings popup  
 ✓ **Supports 100+ websites** with site-specific optimized handlers  
