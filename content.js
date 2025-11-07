@@ -13,6 +13,8 @@ const DEFAULT_CONFIG = {
   showNotification: true,
   notifColor: '#4CAF50',
   notifDuration: 2000,
+  notifPosition: 'bottom-right',
+  notifSize: 'medium',
   debugMode: false,
   darkMode: true
 };
@@ -1478,30 +1480,105 @@ function showNotification(message) {
   try {
     const notif = document.createElement('div');
     notif.textContent = message;
+    
+    // Get position styles based on notifPosition setting
+    let positionStyles = '';
+    switch (CONFIG.notifPosition) {
+      case 'top-left':
+        positionStyles = 'top: 20px; left: 20px;';
+        break;
+      case 'top-center':
+        positionStyles = 'top: 20px; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'top-right':
+        positionStyles = 'top: 20px; right: 20px;';
+        break;
+      case 'bottom-left':
+        positionStyles = 'bottom: 20px; left: 20px;';
+        break;
+      case 'bottom-center':
+        positionStyles = 'bottom: 20px; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'bottom-right':
+      default:
+        positionStyles = 'bottom: 20px; right: 20px;';
+        break;
+    }
+    
+    // Get size styles based on notifSize setting
+    let fontSize = '14px';
+    let padding = '12px 20px';
+    switch (CONFIG.notifSize) {
+      case 'small':
+        fontSize = '12px';
+        padding = '8px 14px';
+        break;
+      case 'medium':
+        fontSize = '14px';
+        padding = '12px 20px';
+        break;
+      case 'large':
+        fontSize = '16px';
+        padding = '16px 26px';
+        break;
+    }
+    
     notif.style.cssText = `
       position: fixed;
-      bottom: 20px;
-      right: 20px;
+      ${positionStyles}
       background: ${CONFIG.notifColor};
       color: #fff;
-      padding: 12px 20px;
+      padding: ${padding};
       border-radius: 6px;
       z-index: 999999;
-      font-size: 14px;
+      font-size: ${fontSize};
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       animation: slideIn 0.3s ease-out;
     `;
     
+    // Create animation styles based on position
     if (!document.querySelector('style[data-copy-url]')) {
       const style = document.createElement('style');
       style.setAttribute('data-copy-url', 'true');
-      style.textContent = `
-        @keyframes slideIn {
-          from { transform: translateX(400px); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
+      
+      // Different animations based on position
+      let animationKeyframes = '';
+      const position = CONFIG.notifPosition || 'bottom-right';
+      
+      if (position.includes('right')) {
+        animationKeyframes = `
+          @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+          }
+        `;
+      } else if (position.includes('left')) {
+        animationKeyframes = `
+          @keyframes slideIn {
+            from { transform: translateX(-400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+          }
+        `;
+      } else if (position.includes('center')) {
+        if (position.includes('top')) {
+          animationKeyframes = `
+            @keyframes slideIn {
+              from { transform: translate(-50%, -100px); opacity: 0; }
+              to { transform: translate(-50%, 0); opacity: 1; }
+            }
+          `;
+        } else {
+          animationKeyframes = `
+            @keyframes slideIn {
+              from { transform: translate(-50%, 100px); opacity: 0; }
+              to { transform: translate(-50%, 0); opacity: 1; }
+            }
+          `;
         }
-      `;
+      }
+      
+      style.textContent = animationKeyframes;
       document.head.appendChild(style);
     }
     
