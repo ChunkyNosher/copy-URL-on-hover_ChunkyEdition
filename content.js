@@ -590,14 +590,24 @@ document.addEventListener('mouseover', function(event) {
     } else {
       element = target.closest('article, [role="article"], .post, [data-testid="post"], [role="link"], .item, [data-id]');
     }
+    
+    // Fallback: if no container found, use the target itself
+    // This allows site-specific handlers to traverse the DOM with their own logic
+    if (!element) {
+      element = target;
+      debug(`[${domainType}] No specific container found, using target element: ${target.tagName}`);
+    }
   }
   
   if (element) {
+    debug(`[${domainType}] Element detected, attempting URL detection...`);
     const url = findUrl(element, domainType);
     if (url) {
       currentHoveredLink = element;
       currentHoveredElement = element;
       debug(`[${domainType}] URL found: ${url}`);
+    } else {
+      debug(`[${domainType}] No URL found for element`);
     }
   }
 }, true);
