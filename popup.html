@@ -1,529 +1,332 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <style>
-    * {
-      box-sizing: border-box;
-    }
-    
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: #1e1e1e;
-      color: #e0e0e0;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      width: 400px;
-      overflow: hidden;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copy URL on Hover Settings</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-    .popup-container {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      overflow: hidden;
-    }
-    
-    body.dark-mode {
-      background: #1e1e1e;
-      color: #e0e0e0;
-    }
-    
-    .header {
-      background: #2a2a2a;
-      padding: 16px;
-      border-bottom: 2px solid #4CAF50;
-      flex-shrink: 0;
-    }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1e1e1e;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 400px;
+            overflow: hidden;
+        }
 
-    
-    body.dark-mode .header {
-      background: #2d2d2d;
-      border-bottom-color: #555;
-    }
-    
-    h1 {
-      font-size: 18px;
-      margin: 0;
-      color: #333;
-    }
-    
-    body.dark-mode h1 {
-      color: #fff;
-    }
-    
-    .tabs {
-      display: flex;
-      gap: 0;
-      background: #252525;
-      border-bottom: 1px solid #3a3a3a;
-      flex-shrink: 0;
-    }
-    
-    .content {
-        flex: 1;
-        overflow-y: auto;
-        overflow-x: hidden;
-        flex-shrink: 1;
-        min-height: 0;
-    }
+        .popup-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
 
-    
-    body.dark-mode .tabs {
-      background: #2d2d2d;
-      border-bottom-color: #66bb6a;
-    }
-    
-    .tab {
-      padding: 12px 20px;
-      cursor: pointer;
-      border: none;
-      background: transparent;
-      color: #666;
-      font-size: 13px;
-      font-weight: 500;
-      white-space: nowrap;
-      transition: all 0.2s;
-      flex: 1;
-      text-align: center;
-    }
-    
-    .tab:hover {
-      background: #f5f5f5;
-      color: #333;
-    }
-    
-    body.dark-mode .tab {
-      color: #aaa;
-    }
-    
-    body.dark-mode .tab:hover {
-      background: #3a3a3a;
-      color: #e0e0e0;
-    }
-    
-    .tab.active {
-      color: #4CAF50;
-      border-bottom: 2px solid #4CAF50;
-      margin-bottom: -2px;
-    }
-    
-    body.dark-mode .tab.active {
-      color: #66bb6a;
-      border-bottom-color: #66bb6a;
-    }
-    
-    .tab-content {
-      display: none;
-      padding: 15px;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-    
-    .tab-content.active {
-      display: block;
-    }
-    
-    .setting {
-      margin-bottom: 15px;
-      background: white;
-      padding: 12px;
-      border-radius: 6px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    
-    body.dark-mode .setting {
-      background: #2d2d2d;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    }
-    
-    label {
-      display: block;
-      margin-bottom: 5px;
-      font-weight: 500;
-      color: #555;
-      font-size: 13px;
-    }
-    
-    body.dark-mode label {
-      color: #b0b0b0;
-    }
-    
-    input[type="text"],
-    input[type="number"],
-    input[type="checkbox"],
-    select {
-      padding: 6px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 13px;
-      background: white;
-      color: #333;
-    }
-    
-    body.dark-mode input[type="text"],
-    body.dark-mode input[type="number"],
-    body.dark-mode select {
-      background: #3a3a3a;
-      color: #e0e0e0;
-      border-color: #555;
-    }
-    
-    body.dark-mode input[type="checkbox"] {
-      background: #3a3a3a;
-      border-color: #555;
-      accent-color: #66bb6a;
-    }
-    
-    input[type="text"],
-    input[type="number"],
-    select {
-      width: 100%;
-      box-sizing: border-box;
-    }
-    
-    .checkbox-label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      margin: 0;
-      font-weight: normal;
-    }
-    
-    input[type="checkbox"] {
-      cursor: pointer;
-    }
-    
-    .modifier-group {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    
-    .modifier-group label {
-      margin: 0;
-      font-weight: normal;
-    }
-    
-    .actions {
-      padding: 15px;
-      background: #fff;
-      border-top: 1px solid #ddd;
-    }
-    
-    body.dark-mode .actions {
-      background: #2d2d2d;
-      border-top-color: #555;
-    }
-    
-    button {
-      width: 100%;
-      padding: 10px;
-      margin-top: 5px;
-      background: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: background 0.2s;
-      font-size: 13px;
-    }
-    
-    button:hover {
-      background: #45a049;
-    }
-    
-    #resetBtn {
-      background: #999;
-    }
-    
-    #resetBtn:hover {
-      background: #888;
-    }
-    
-    .status-msg {
-      margin-top: 10px;
-      padding: 10px;
-      border-radius: 4px;
-      display: none;
-      text-align: center;
-      font-weight: 500;
-      font-size: 12px;
-    }
-    
-    .status-msg.success {
-      background: #c8e6c9;
-      color: #2e7d32;
-      display: block;
-    }
-    
-    body.dark-mode .status-msg.success {
-      background: #1b5e20;
-      color: #a5d6a7;
-    }
-    
-    .info {
-      font-size: 11px;
-      color: #666;
-      margin-top: 10px;
-      padding: 8px;
-      background: #e8f5e9;
-      border-radius: 4px;
-      border-left: 3px solid #4CAF50;
-    }
-    
-    body.dark-mode .info {
-      background: #1b5e20;
-      color: #a5d6a7;
-    }
-    
-    .footer {
-      display: flex;
-      gap: 8px;
-      padding: 12px 16px;
-      background: #252525;
-      border-top: 1px solid #3a3a3a;
-      flex-shrink: 0;
-    }
-    
-    body.dark-mode .footer {
-      background: #1e1e1e;
-      border-top-color: #555;
-      color: #666;
-    }
-    
-    .section-header {
-      font-weight: 600;
-      color: #333;
-      margin-bottom: 8px;
-      padding-bottom: 5px;
-      border-bottom: 1px solid #e0e0e0;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    body.dark-mode .section-header {
-      color: #e0e0e0;
-      border-bottom-color: #555;
-    }
+        .header {
+            background: #2a2a2a;
+            padding: 16px;
+            border-bottom: 2px solid #4CAF50;
+            flex-shrink: 0;
+        }
 
-    .content::-webkit-scrollbar {
-        width: 8px;
-    }
-    
-    .content::-webkit-scrollbar-track {
-        background: #2a2a2a;
-    }
-    
-    .content::-webkit-scrollbar-thumb {
-        background: #4a4a4a;
-        border-radius: 4px;
-    }
-    
-    .content::-webkit-scrollbar-thumb:hover {
-        background: #5a5a5a;
-    }
-  </style>
+        .header h1 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            background: #252525;
+            border-bottom: 1px solid #3a3a3a;
+            flex-shrink: 0;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 12px 16px;
+            background: transparent;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button:hover {
+            color: #e0e0e0;
+            background: #2a2a2a;
+        }
+
+        .tab-button.active {
+            color: #4CAF50;
+            border-bottom-color: #4CAF50;
+        }
+
+        /* CRITICAL: Scrollable content area */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            flex-shrink: 1;
+            min-height: 0;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 16px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .setting-group {
+            margin-bottom: 20px;
+        }
+
+        .setting-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+
+        .setting-group input[type="text"],
+        .setting-group input[type="color"] {
+            width: 100%;
+            padding: 8px 10px;
+            background: #3a3a3a;
+            border: 1px solid #4a4a4a;
+            color: #e0e0e0;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .setting-group input[type="text"]:focus,
+        .setting-group input[type="color"]:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .info-box {
+            background: #2a4a2a;
+            border-left: 3px solid #4CAF50;
+            padding: 12px;
+            margin-bottom: 16px;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .info-box strong {
+            color: #4CAF50;
+        }
+
+        /* CRITICAL: Footer stays at bottom */
+        .footer {
+            display: flex;
+            gap: 8px;
+            padding: 12px 16px;
+            background: #252525;
+            border-top: 1px solid #3a3a3a;
+            flex-shrink: 0;
+        }
+
+        .footer button {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .save-btn {
+            background: #4CAF50;
+            color: #fff;
+        }
+
+        .save-btn:hover {
+            background: #45a049;
+        }
+
+        .reset-btn {
+            background: #666;
+            color: #e0e0e0;
+        }
+
+        .reset-btn:hover {
+            background: #777;
+        }
+
+        /* Scrollbar styling */
+        .content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .content::-webkit-scrollbar-track {
+            background: #2a2a2a;
+        }
+
+        .content::-webkit-scrollbar-thumb {
+            background: #4a4a4a;
+            border-radius: 4px;
+        }
+
+        .content::-webkit-scrollbar-thumb:hover {
+            background: #5a5a5a;
+        }
+    </style>
 </head>
 <body>
-  <div class="header">
-    <h1>⚙️ Copy URL on Hover - Lite</h1>
-  </div>
-  
-  <div class="tabs">
-    <button class="tab active" data-tab="copy-url">Copy URL</button>
-    <button class="tab" data-tab="appearance">Appearance</button>
-    <button class="tab" data-tab="advanced">Advanced</button>
-  </div>
-  
-  <!-- Copy URL Tab -->
-  <div id="copy-url-content" class="tab-content active">
-    <div class="setting">
-      <label for="copyUrlKey">📋 Copy URL Key:</label>
-      <input type="text" id="copyUrlKey" maxlength="1" placeholder="y">
-      
-      <label style="margin-top: 10px;">Modifier Keys:</label>
-      <div class="modifier-group">
-        <label class="checkbox-label">
-          <input type="checkbox" id="copyUrlCtrl">
-          Ctrl
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="copyUrlAlt">
-          Alt
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="copyUrlShift">
-          Shift
-        </label>
-      </div>
+    <div class="popup-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>⚙️ Copy URL on Hover - Lite</h1>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-button active" data-tab="copy-url">Copy URL</button>
+            <button class="tab-button" data-tab="appearance">Appearance</button>
+            <button class="tab-button" data-tab="advanced">Advanced</button>
+        </div>
+
+        <!-- Scrollable Content Area -->
+        <div class="content">
+            <!-- Tab 1: Copy URL -->
+            <div id="copy-url" class="tab-content active">
+                <div class="info-box">
+                    <strong>Keyboard Shortcuts:</strong><br>
+                    • Check "Ctrl" + set key "C" = Ctrl+C<br>
+                    • Check "Ctrl" and "Shift" + set key "Y" = Ctrl+Shift+Y<br>
+                    • Leave all unchecked = just press the key
+                </div>
+
+                <div class="setting-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="copyUrlCtrl">
+                        <label for="copyUrlCtrl">Ctrl</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="copyUrlAlt">
+                        <label for="copyUrlAlt">Alt</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="copyUrlShift">
+                        <label for="copyUrlShift">Shift</label>
+                    </div>
+                    <label>Copy URL Key:</label>
+                    <input type="text" id="copyUrlKey" maxlength="1" placeholder="Y">
+                </div>
+
+                <div class="setting-group">
+                    <label>Copy Text Key:</label>
+                    <input type="text" id="copyTextKey" maxlength="1" placeholder="X">
+                    <div class="checkbox-group" style="margin-top: 8px;">
+                        <input type="checkbox" id="copyTextCtrl">
+                        <label for="copyTextCtrl">Ctrl</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="copyTextAlt">
+                        <label for="copyTextAlt">Alt</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="copyTextShift">
+                        <label for="copyTextShift">Shift</label>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label>Open in New Tab Key:</label>
+                    <input type="text" id="openNewTabKey" maxlength="1" placeholder="O">
+                </div>
+            </div>
+
+            <!-- Tab 2: Appearance -->
+            <div id="appearance" class="tab-content">
+                <div class="setting-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="darkMode" checked>
+                        <label for="darkMode">Dark Mode</label>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label>Notification Color:</label>
+                    <input type="color" id="notifColor" value="#4CAF50">
+                </div>
+
+                <div class="setting-group">
+                    <label>Notification Duration (ms):</label>
+                    <input type="text" id="notifDuration" placeholder="2000" value="2000">
+                </div>
+
+                <div class="info-box">
+                    <strong>Tip:</strong> Reload tabs after saving to apply changes
+                </div>
+            </div>
+
+            <!-- Tab 3: Advanced -->
+            <div id="advanced" class="tab-content">
+                <div class="setting-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="showNotification" checked>
+                        <label for="showNotification">Show Copy Notifications</label>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="debugMode">
+                        <label for="debugMode">Enable debug mode (console logs)</label>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <strong>Debug Mode:</strong> When enabled, detailed logs will appear in the browser console (F12). Useful for troubleshooting.
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <button class="save-btn">✓ Save Settings</button>
+            <button class="reset-btn">↻ Reset to Defaults</button>
+        </div>
     </div>
 
-    <div class="setting">
-      <label for="copyTextKey">📝 Copy Text Key:</label>
-      <input type="text" id="copyTextKey" maxlength="1" placeholder="x">
-      
-      <label style="margin-top: 10px;">Modifier Keys:</label>
-      <div class="modifier-group">
-        <label class="checkbox-label">
-          <input type="checkbox" id="copyTextCtrl">
-          Ctrl
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="copyTextAlt">
-          Alt
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="copyTextShift">
-          Shift
-        </label>
-      </div>
-    </div>
-
-    <div class="setting">
-      <label for="openNewTabKey">🔗 Open in New Tab Key:</label>
-      <input type="text" id="openNewTabKey" maxlength="1" placeholder="o">
-      
-      <label style="margin-top: 10px;">Modifier Keys:</label>
-      <div class="modifier-group">
-        <label class="checkbox-label">
-          <input type="checkbox" id="openNewTabCtrl">
-          Ctrl
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="openNewTabAlt">
-          Alt
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" id="openNewTabShift">
-          Shift
-        </label>
-      </div>
-      
-      <label class="checkbox-label" style="margin-top: 10px;">
-        <input type="checkbox" id="openNewTabSwitchFocus">
-        Switch focus to new tab
-      </label>
-    </div>
-  </div>
-  
-  <!-- Appearance Tab -->
-  <div id="appearance-content" class="tab-content">
-    <div class="setting">
-      <label class="checkbox-label">
-        <input type="checkbox" id="showNotification">
-        Show notification on copy
-      </label>
-      
-      <label class="checkbox-label" style="margin-top: 10px;">
-        <input type="checkbox" id="darkMode">
-        Dark Mode
-      </label>
-    </div>
-    
-    <div class="setting">
-      <div class="section-header">📍 Display Mode (for URL Copy)</div>
-      <label for="notifDisplayMode" style="margin-top: 10px;">Display as:</label>
-      <select id="notifDisplayMode">
-        <option value="tooltip">Tooltip (follows cursor)</option>
-        <option value="notification">Notification (fixed corner)</option>
-      </select>
-      
-      <div class="info">
-        <strong>Tooltip mode:</strong> Shows a small popup near your cursor when copying URLs<br>
-        <strong>Notification mode:</strong> Shows a notification in a fixed corner position
-      </div>
-    </div>
-    
-    <div class="setting">
-      <div class="section-header">🎨 Tooltip Settings</div>
-      <label for="tooltipColor">Tooltip background color:</label>
-      <input type="text" id="tooltipColor" placeholder="#4CAF50">
-      
-      <label for="tooltipDuration" style="margin-top: 10px;">Tooltip duration (ms):</label>
-      <input type="number" id="tooltipDuration" placeholder="1500" min="500" max="10000">
-      
-      <label for="tooltipAnimation" style="margin-top: 10px;">Tooltip animation:</label>
-      <select id="tooltipAnimation">
-        <option value="fade">Fade In</option>
-        <option value="scale">Scale Up</option>
-        <option value="none">No Animation</option>
-      </select>
-    </div>
-    
-    <div class="setting">
-      <div class="section-header">🔔 Notification Settings</div>
-      <label for="notifColor">Notification background color:</label>
-      <input type="text" id="notifColor" placeholder="#4CAF50">
-      
-      <label for="notifBorderColor" style="margin-top: 10px;">Border color:</label>
-      <input type="text" id="notifBorderColor" placeholder="#000000">
-      
-      <label for="notifBorderWidth" style="margin-top: 10px;">Border width (px):</label>
-      <input type="number" id="notifBorderWidth" placeholder="1" min="0" max="10">
-      
-      <label for="notifDuration" style="margin-top: 10px;">Notification duration (ms):</label>
-      <input type="number" id="notifDuration" placeholder="2000" min="500" max="10000">
-      
-      <label for="notifPosition" style="margin-top: 10px;">Position:</label>
-      <select id="notifPosition">
-        <option value="top-left">Top Left</option>
-        <option value="top-center">Top Center</option>
-        <option value="top-right">Top Right</option>
-        <option value="bottom-left">Bottom Left</option>
-        <option value="bottom-center">Bottom Center</option>
-        <option value="bottom-right">Bottom Right</option>
-      </select>
-      
-      <label for="notifSize" style="margin-top: 10px;">Size:</label>
-      <select id="notifSize">
-        <option value="small">Small</option>
-        <option value="medium">Medium</option>
-        <option value="large">Large</option>
-      </select>
-      
-      <label for="notifAnimation" style="margin-top: 10px;">Animation:</label>
-      <select id="notifAnimation">
-        <option value="slide">Slide In</option>
-        <option value="pop">Pop Up</option>
-        <option value="none">No Animation (Fade)</option>
-      </select>
-    </div>
-  </div>
-  
-  <!-- Advanced Tab -->
-  <div id="advanced-content" class="tab-content">
-    <div class="setting">
-      <label class="checkbox-label">
-        <input type="checkbox" id="debugMode">
-        Enable debug mode (console logs)
-      </label>
-    </div>
-    
-    <div class="info">
-      <strong>Keyboard Shortcuts:</strong><br>
-      • Check "Ctrl" + set key "C" = Ctrl+C<br>
-      • Check "Ctrl" and "Shift" + set key "Y" = Ctrl+Shift+Y<br>
-      • Leave all unchecked = just press the key<br>
-      <br>
-      <strong>Tip:</strong> Reload tabs after saving to apply changes
-    </div>
-  </div>
-  
-  <div class="actions">
-    <button id="saveBtn">✓ Save Settings</button>
-    <button id="resetBtn">↻ Reset to Defaults</button>
-    <div class="status-msg" id="statusMsg"></div>
-  </div>
-  
-  <div class="footer">
-    <span id="footerVersion">Copy URL on Hover Custom - Lite</span>
-  </div>
-  
-  <script src="popup.js"></script>
+    <script src="popup.js"></script>
 </body>
 </html>
