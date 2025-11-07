@@ -1938,6 +1938,7 @@ function createQuickTabWindow(url) {
     padding: 0 10px;
     user-select: none;
     gap: 5px;
+    cursor: move;
   `;
   
   // Navigation buttons container
@@ -2039,7 +2040,6 @@ function createQuickTabWindow(url) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    cursor: move;
     margin: 0 5px;
   `;
   
