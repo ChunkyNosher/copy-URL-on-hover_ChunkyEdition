@@ -80,12 +80,12 @@ function initQuickTabsMarker() {
     // Append to body when it's available
     if (document.body) {
       document.body.appendChild(quickTabsMarker);
-      console.log('CopyURL: Quick Tabs marker created');
+      debug('Quick Tabs marker created');
     } else {
       // Wait for DOM to be ready
       document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(quickTabsMarker);
-        console.log('CopyURL: Quick Tabs marker created (DOMContentLoaded)');
+        debug('Quick Tabs marker created (DOMContentLoaded)');
       });
     }
   }
@@ -102,18 +102,23 @@ function updateQuickTabsMarker(url, title) {
       quickTabsMarker.setAttribute('data-hovered-url', url);
       quickTabsMarker.setAttribute('data-hovered-title', title || url);
       quickTabsMarker.setAttribute('data-state', 'hovering');
-      console.log('CopyURL: Updated Quick Tabs marker:', url);
+      debug('Updated Quick Tabs marker: ' + url);
     } else {
       quickTabsMarker.removeAttribute('data-hovered-url');
       quickTabsMarker.removeAttribute('data-hovered-title');
       quickTabsMarker.setAttribute('data-state', 'idle');
-      console.log('CopyURL: Cleared Quick Tabs marker');
+      debug('Cleared Quick Tabs marker');
     }
   }
 }
 
-// Initialize marker on load
-initQuickTabsMarker();
+// Initialize marker on load - wait for DOM to be ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initQuickTabsMarker);
+} else {
+  // DOM is already ready
+  initQuickTabsMarker();
+}
 
 // ============================================================
 // END QUICK TABS INTEGRATION

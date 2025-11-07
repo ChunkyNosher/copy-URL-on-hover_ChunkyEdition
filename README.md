@@ -113,9 +113,9 @@ Click the extension icon in your Firefox toolbar to open the settings popup. The
 6. The link opens in a Quick Tab floating window!
 
 **Debugging**: Enable debug mode in settings to see console logs:
-- `CopyURL: Quick Tabs marker created` - Integration is active
-- `CopyURL: Updated Quick Tabs marker: <url>` - Link detected
-- `CopyURL: Cleared Quick Tabs marker` - Mouse moved away
+- `[CopyURLHover] Quick Tabs marker created` - Integration is active
+- `[CopyURLHover] Updated Quick Tabs marker: <url>` - Link detected
+- `[CopyURLHover] Cleared Quick Tabs marker` - Mouse moved away
 
 ### Basic Copy Functions
 1. Hover your mouse over any link on a webpage
