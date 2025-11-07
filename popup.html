@@ -98,7 +98,7 @@
     .tab-content {
       display: none;
       padding: 15px;
-      height: 550px;
+      height: 520px;
       overflow-y: auto;
     }
     
@@ -180,7 +180,6 @@
     .modifier-group {
       display: flex;
       gap: 10px;
-      flex-wrap: wrap;
     }
     
     .modifier-group label {
@@ -259,6 +258,20 @@
     body.dark-mode .info {
       background: #1b5e20;
       color: #a5d6a7;
+    }
+    
+    .footer-version {
+      text-align: center;
+      font-size: 11px;
+      color: #999;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #ddd;
+    }
+    
+    body.dark-mode .footer-version {
+      color: #666;
+      border-top-color: #444;
     }
   </style>
 </head>
@@ -504,6 +517,7 @@
     <button id="saveBtn">✓ Save Settings</button>
     <button id="resetBtn">↻ Reset to Defaults</button>
     <div class="status-msg" id="statusMsg"></div>
+    <div class="footer-version">Copy URL on Hover v1.4.2</div>
   </div>
   
   <script src="popup.js"></script>
