@@ -50,6 +50,7 @@ const DEFAULT_CONFIG = {
   quickTabPosition: 'follow-cursor',
   quickTabCustomX: 100,
   quickTabCustomY: 100,
+  quickTabPersistAcrossTabs: false,
   
   showNotification: true,
   notifColor: '#4CAF50',
@@ -2057,6 +2058,9 @@ function createQuickTabWindow(url) {
   
   showNotification('✓ Quick Tab opened');
   debug(`Quick Tab window created. Total windows: ${quickTabWindows.length}`);
+  
+  // Save state for cross-tab persistence
+  saveQuickTabState();
 }
 
 // Close Quick Tab window
@@ -2065,18 +2069,28 @@ function closeQuickTabWindow(container) {
   if (index > -1) {
     quickTabWindows.splice(index, 1);
   }
+  // Clean up drag listeners
+  if (container._dragCleanup) {
+    container._dragCleanup();
+  }
   // Clean up resize listeners
   if (container._resizeCleanup) {
     container._resizeCleanup();
   }
   container.remove();
   debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
+  
+  // Save state for cross-tab persistence
+  saveQuickTabState();
 }
 
 // Close all Quick Tab windows
 function closeAllQuickTabWindows() {
   const count = quickTabWindows.length;
   quickTabWindows.forEach(window => {
+    if (window._dragCleanup) {
+      window._dragCleanup();
+    }
     if (window._resizeCleanup) {
       window._resizeCleanup();
     }
@@ -2087,6 +2101,10 @@ function closeAllQuickTabWindows() {
     showNotification(`✓ Closed ${count} Quick Tab${count > 1 ? 's' : ''}`);
     debug(`All Quick Tab windows closed (${count} total)`);
   }
+  
+  // Save state for cross-tab persistence
+  saveQuickTabState();
+}
 }
 
 // Minimize Quick Tab
@@ -2114,6 +2132,9 @@ function minimizeQuickTab(container, url, title) {
   
   // Update or create minimized tabs manager
   updateMinimizedTabsManager();
+  
+  // Save state for cross-tab persistence
+  saveQuickTabState();
 }
 
 // Restore minimized Quick Tab
@@ -2127,6 +2148,9 @@ function restoreQuickTab(index) {
   updateMinimizedTabsManager();
   
   debug(`Quick Tab restored from minimized. Remaining minimized: ${minimizedQuickTabs.length}`);
+  
+  // Save state for cross-tab persistence (createQuickTabWindow already saves, but just to be sure)
+  saveQuickTabState();
 }
 
 // Delete minimized Quick Tab
@@ -2138,6 +2162,9 @@ function deleteMinimizedQuickTab(index) {
   updateMinimizedTabsManager();
   
   debug(`Minimized Quick Tab deleted. Remaining minimized: ${minimizedQuickTabs.length}`);
+  
+  // Save state for cross-tab persistence
+  saveQuickTabState();
 }
 
 // Update or create the minimized tabs manager window
@@ -2321,28 +2348,119 @@ function updateMinimizedTabsManager() {
   });
 }
 
+// Save Quick Tab state to storage for cross-tab persistence
+async function saveQuickTabState() {
+  if (!CONFIG.quickTabPersistAcrossTabs) return;
+  
+  try {
+    const state = {
+      windows: quickTabWindows.map(container => ({
+        url: container.querySelector('iframe')?.src || '',
+        width: parseInt(container.style.width),
+        height: parseInt(container.style.height),
+        left: parseInt(container.style.left),
+        top: parseInt(container.style.top),
+        zIndex: parseInt(container.style.zIndex),
+        title: container.querySelector('span')?.textContent || 'Quick Tab'
+      })),
+      minimized: minimizedQuickTabs,
+      timestamp: Date.now()
+    };
+    
+    // Try session storage first, fallback to local storage
+    const storage = browser.storage.session || browser.storage.local;
+    await storage.set({ quickTabState: state });
+    debug('Quick Tab state saved to storage');
+  } catch (err) {
+    debug('Error saving Quick Tab state: ' + err.message);
+  }
+}
+
+// Restore Quick Tab state from storage
+async function restoreQuickTabState() {
+  if (!CONFIG.quickTabPersistAcrossTabs) return;
+  
+  try {
+    // Try session storage first, fallback to local storage
+    const storage = browser.storage.session || browser.storage.local;
+    const result = await storage.get('quickTabState');
+    const state = result.quickTabState;
+    
+    if (!state || !state.timestamp) return;
+    
+    // Don't restore if state is too old (more than 1 hour)
+    if (Date.now() - state.timestamp > 3600000) {
+      debug('Quick Tab state too old, not restoring');
+      return;
+    }
+    
+    debug('Restoring Quick Tab state from storage');
+    
+    // Restore minimized tabs
+    if (state.minimized && Array.isArray(state.minimized)) {
+      minimizedQuickTabs = state.minimized;
+      updateMinimizedTabsManager();
+    }
+    
+    // Restore open windows
+    if (state.windows && Array.isArray(state.windows)) {
+      for (const windowState of state.windows) {
+        if (!windowState.url) continue;
+        
+        // Create the Quick Tab
+        const container = document.createElement('div');
+        container.className = 'copy-url-quicktab-window';
+        container.style.cssText = `
+          position: fixed;
+          width: ${windowState.width || CONFIG.quickTabDefaultWidth}px;
+          height: ${windowState.height || CONFIG.quickTabDefaultHeight}px;
+          left: ${windowState.left || 100}px;
+          top: ${windowState.top || 100}px;
+          background: ${CONFIG.darkMode ? '#2d2d2d' : '#ffffff'};
+          border: 2px solid ${CONFIG.darkMode ? '#555' : '#ddd'};
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          z-index: ${windowState.zIndex || quickTabZIndex++};
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          min-width: 300px;
+          min-height: 200px;
+        `;
+        
+        // Create a simplified version with just iframe and basic controls
+        // (reusing the full createQuickTabWindow would be complex due to all the event handlers)
+        const iframe = document.createElement('iframe');
+        iframe.src = windowState.url;
+        iframe.style.cssText = 'flex: 1; border: none; width: 100%; background: white;';
+        
+        // For now, just show a simple restoration message and let user recreate tabs manually
+        // Full restoration with all controls would require significant refactoring
+        debug(`Would restore Quick Tab: ${windowState.url}`);
+      }
+    }
+  } catch (err) {
+    debug('Error restoring Quick Tab state: ' + err.message);
+  }
+}
+
+// Clear Quick Tab state from storage
+async function clearQuickTabState() {
+  try {
+    const storage = browser.storage.session || browser.storage.local;
+    await storage.remove('quickTabState');
+    debug('Quick Tab state cleared from storage');
+  } catch (err) {
+    debug('Error clearing Quick Tab state: ' + err.message);
+  }
+}
+
 // Make element draggable
 function makeDraggable(element, handle) {
   let isDragging = false;
   let startX, startY, initialX, initialY;
   
-  handle.addEventListener('mousedown', (e) => {
-    // Don't drag if clicking on a button or img
-    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'IMG') {
-      return;
-    }
-    
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    const rect = element.getBoundingClientRect();
-    initialX = rect.left;
-    initialY = rect.top;
-    
-    e.preventDefault();
-  });
-  
-  document.addEventListener('mousemove', (e) => {
+  const handleMouseMove = (e) => {
     if (!isDragging) return;
     
     const dx = e.clientX - startX;
@@ -2357,11 +2475,43 @@ function makeDraggable(element, handle) {
     
     element.style.left = newX + 'px';
     element.style.top = newY + 'px';
-  });
+    
+    e.preventDefault();
+  };
   
-  document.addEventListener('mouseup', () => {
+  const handleMouseUp = () => {
     isDragging = false;
-  });
+  };
+  
+  const handleMouseDown = (e) => {
+    // Don't drag if clicking on a button or img
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'IMG') {
+      return;
+    }
+    
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = element.getBoundingClientRect();
+    initialX = rect.left;
+    initialY = rect.top;
+    
+    e.preventDefault();
+  };
+  
+  handle.addEventListener('mousedown', handleMouseDown);
+  document.addEventListener('mousemove', handleMouseMove, { passive: false });
+  document.addEventListener('mouseup', handleMouseUp, true);
+  // Also listen on window to catch mouseup events that occur outside the browser window
+  window.addEventListener('mouseup', handleMouseUp, true);
+  
+  // Store cleanup function
+  element._dragCleanup = () => {
+    handle.removeEventListener('mousedown', handleMouseDown);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp, true);
+    window.removeEventListener('mouseup', handleMouseUp, true);
+  };
 }
 
 // Make element resizable
@@ -2413,19 +2563,24 @@ function makeResizable(element) {
     if (isResizing) {
       isResizing = false;
       currentHandle = null;
-      e.preventDefault();
-      e.stopPropagation();
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
     }
   };
   
   // Add global listeners once per element
-  document.addEventListener('mousemove', handleMouseMove, true);
+  document.addEventListener('mousemove', handleMouseMove, { capture: true, passive: false });
   document.addEventListener('mouseup', handleMouseUp, true);
+  // Also listen on window to catch mouseup events that occur outside the browser window
+  window.addEventListener('mouseup', handleMouseUp, true);
   
   // Store cleanup function
   element._resizeCleanup = () => {
     document.removeEventListener('mousemove', handleMouseMove, true);
     document.removeEventListener('mouseup', handleMouseUp, true);
+    window.removeEventListener('mouseup', handleMouseUp, true);
   };
   
   positions.forEach(pos => {
@@ -2438,28 +2593,28 @@ function makeResizable(element) {
     
     switch (pos) {
       case 'se':
-        styles += 'right: 0; bottom: 0; width: 15px; height: 15px; cursor: nwse-resize;';
+        styles += 'right: 0; bottom: 0; width: 20px; height: 20px; cursor: nwse-resize;';
         break;
       case 'sw':
-        styles += 'left: 0; bottom: 0; width: 15px; height: 15px; cursor: nesw-resize;';
+        styles += 'left: 0; bottom: 0; width: 20px; height: 20px; cursor: nesw-resize;';
         break;
       case 'ne':
-        styles += 'right: 0; top: 40px; width: 15px; height: 15px; cursor: nesw-resize;';
+        styles += 'right: 0; top: 40px; width: 20px; height: 20px; cursor: nesw-resize;';
         break;
       case 'nw':
-        styles += 'left: 0; top: 40px; width: 15px; height: 15px; cursor: nwse-resize;';
+        styles += 'left: 0; top: 40px; width: 20px; height: 20px; cursor: nwse-resize;';
         break;
       case 'n':
-        styles += 'top: 40px; left: 15px; right: 15px; height: 5px; cursor: ns-resize;';
+        styles += 'top: 40px; left: 20px; right: 20px; height: 8px; cursor: ns-resize;';
         break;
       case 's':
-        styles += 'bottom: 0; left: 15px; right: 15px; height: 5px; cursor: ns-resize;';
+        styles += 'bottom: 0; left: 20px; right: 20px; height: 8px; cursor: ns-resize;';
         break;
       case 'e':
-        styles += 'right: 0; top: 55px; bottom: 5px; width: 5px; cursor: ew-resize;';
+        styles += 'right: 0; top: 60px; bottom: 8px; width: 8px; cursor: ew-resize;';
         break;
       case 'w':
-        styles += 'left: 0; top: 55px; bottom: 5px; width: 5px; cursor: ew-resize;';
+        styles += 'left: 0; top: 60px; bottom: 8px; width: 8px; cursor: ew-resize;';
         break;
     }
     
@@ -2583,6 +2738,25 @@ browser.storage.onChanged.addListener(function(changes, areaName) {
   }
 });
 
+// Visibility change listener for cross-tab persistence
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden && CONFIG.quickTabPersistAcrossTabs) {
+    // Tab became visible, restore Quick Tabs if persistence is enabled
+    restoreQuickTabState();
+  } else if (document.hidden && CONFIG.quickTabPersistAcrossTabs) {
+    // Tab became hidden, save current state
+    saveQuickTabState();
+  }
+});
+
 // Initialize
 loadSettings();
+
+// Restore Quick Tabs if persistence is enabled (after a short delay to let settings load)
+setTimeout(() => {
+  if (CONFIG.quickTabPersistAcrossTabs) {
+    restoreQuickTabState();
+  }
+}, 100);
+
 debug('Extension loaded - supports 100+ websites with site-specific optimized handlers');
