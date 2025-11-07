@@ -48,6 +48,42 @@ function safeParseInt(value, fallback) {
   return isNaN(parsed) ? fallback : parsed;
 }
 
+// Helper function to validate and normalize hex color
+function validateHexColor(color, fallback = DEFAULT_SETTINGS.tooltipColor) {
+  if (!color) return fallback;
+  // Remove whitespace
+  color = color.trim();
+  // Add # if missing
+  if (!color.startsWith('#')) {
+    color = '#' + color;
+  }
+  // Validate hex format (6-character format only)
+  if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+    return color.toUpperCase();
+  }
+  return fallback;
+}
+
+// Color input to settings mapping
+const COLOR_DEFAULTS = {
+  'tooltipColor': 'tooltipColor',
+  'notifColor': 'notifColor',
+  'notifBorderColor': 'notifBorderColor'
+};
+
+// Update color preview box
+function updateColorPreview(inputId, previewId) {
+  const input = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  if (input && preview) {
+    const settingKey = COLOR_DEFAULTS[inputId];
+    const defaultColor = settingKey ? DEFAULT_SETTINGS[settingKey] : DEFAULT_SETTINGS.tooltipColor;
+    const color = validateHexColor(input.value, defaultColor);
+    input.value = color;
+    preview.style.backgroundColor = color;
+  }
+}
+
 // Load settings
 function loadSettings() {
   browser.storage.local.get(DEFAULT_SETTINGS, function(items) {
@@ -73,15 +109,18 @@ function loadSettings() {
     
     // Tooltip settings
     document.getElementById('tooltipColor').value = items.tooltipColor;
+    updateColorPreview('tooltipColor', 'tooltipColorPreview');
     document.getElementById('tooltipDuration').value = items.tooltipDuration;
     document.getElementById('tooltipAnimation').value = items.tooltipAnimation;
     
     // Notification settings
     document.getElementById('notifColor').value = items.notifColor;
+    updateColorPreview('notifColor', 'notifColorPreview');
     document.getElementById('notifDuration').value = items.notifDuration;
     document.getElementById('notifPosition').value = items.notifPosition;
     document.getElementById('notifSize').value = items.notifSize;
     document.getElementById('notifBorderColor').value = items.notifBorderColor;
+    updateColorPreview('notifBorderColor', 'notifBorderColorPreview');
     document.getElementById('notifBorderWidth').value = items.notifBorderWidth;
     document.getElementById('notifAnimation').value = items.notifAnimation;
     
@@ -136,16 +175,16 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',
     
     // Tooltip settings
-    tooltipColor: document.getElementById('tooltipColor').value || '#4CAF50',
+    tooltipColor: validateHexColor(document.getElementById('tooltipColor').value, DEFAULT_SETTINGS.tooltipColor),
     tooltipDuration: safeParseInt(document.getElementById('tooltipDuration').value, 1500),
     tooltipAnimation: document.getElementById('tooltipAnimation').value || 'fade',
     
     // Notification settings
-    notifColor: document.getElementById('notifColor').value || '#4CAF50',
+    notifColor: validateHexColor(document.getElementById('notifColor').value, DEFAULT_SETTINGS.notifColor),
     notifDuration: safeParseInt(document.getElementById('notifDuration').value, 2000),
     notifPosition: document.getElementById('notifPosition').value || 'bottom-right',
     notifSize: document.getElementById('notifSize').value || 'medium',
-    notifBorderColor: document.getElementById('notifBorderColor').value || '#000000',
+    notifBorderColor: validateHexColor(document.getElementById('notifBorderColor').value, DEFAULT_SETTINGS.notifBorderColor),
     notifBorderWidth: safeParseInt(document.getElementById('notifBorderWidth').value, 1),
     notifAnimation: document.getElementById('notifAnimation').value || 'slide',
     
@@ -201,6 +240,25 @@ document.addEventListener('DOMContentLoaded', function() {
   if (footerElement) {
     footerElement.textContent = `${manifest.name} v${manifest.version}`;
   }
+  
+  // Add color input event listeners
+  const colorInputs = [
+    { inputId: 'tooltipColor', previewId: 'tooltipColorPreview' },
+    { inputId: 'notifColor', previewId: 'notifColorPreview' },
+    { inputId: 'notifBorderColor', previewId: 'notifBorderColorPreview' }
+  ];
+  
+  colorInputs.forEach(({ inputId, previewId }) => {
+    const input = document.getElementById(inputId);
+    if (input) {
+      input.addEventListener('input', () => {
+        updateColorPreview(inputId, previewId);
+      });
+      input.addEventListener('blur', () => {
+        updateColorPreview(inputId, previewId);
+      });
+    }
+  });
 });
 
 // Load settings on popup open

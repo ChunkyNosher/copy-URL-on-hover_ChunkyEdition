@@ -113,6 +113,25 @@
             font-size: 12px;
         }
 
+        .color-input-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .color-input-wrapper input {
+            flex: 1;
+        }
+
+        .color-preview {
+            width: 40px;
+            height: 34px;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
         .setting-group input[type="text"]:focus,
         .setting-group input[type="color"]:focus {
             outline: none;
@@ -135,6 +154,16 @@
             margin: 0;
             cursor: pointer;
             font-size: 12px;
+        }
+
+        .checkbox-inline-group {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+
+        .checkbox-separate {
+            margin-top: 8px;
         }
 
         .info-box {
@@ -197,6 +226,14 @@
             background: #4a2a2a;
             color: #f44336;
             opacity: 1;
+        }
+
+        .footer-version {
+            text-align: center;
+            font-size: 11px;
+            color: #888;
+            padding-top: 8px;
+            border-top: 1px solid #3a3a3a;
         }
 
         .save-btn {
@@ -262,55 +299,61 @@
                 </div>
 
                 <div class="setting-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="copyUrlCtrl">
-                        <label for="copyUrlCtrl">Ctrl</label>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="copyUrlAlt">
-                        <label for="copyUrlAlt">Alt</label>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="copyUrlShift">
-                        <label for="copyUrlShift">Shift</label>
-                    </div>
                     <label>Copy URL Key:</label>
+                    <div class="checkbox-inline-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="copyUrlCtrl">
+                            <label for="copyUrlCtrl">Ctrl</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="copyUrlAlt">
+                            <label for="copyUrlAlt">Alt</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="copyUrlShift">
+                            <label for="copyUrlShift">Shift</label>
+                        </div>
+                    </div>
                     <input type="text" id="copyUrlKey" maxlength="1" placeholder="Y">
                 </div>
 
                 <div class="setting-group">
                     <label>Copy Text Key:</label>
+                    <div class="checkbox-inline-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="copyTextCtrl">
+                            <label for="copyTextCtrl">Ctrl</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="copyTextAlt">
+                            <label for="copyTextAlt">Alt</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="copyTextShift">
+                            <label for="copyTextShift">Shift</label>
+                        </div>
+                    </div>
                     <input type="text" id="copyTextKey" maxlength="1" placeholder="X">
-                    <div class="checkbox-group" style="margin-top: 8px;">
-                        <input type="checkbox" id="copyTextCtrl">
-                        <label for="copyTextCtrl">Ctrl</label>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="copyTextAlt">
-                        <label for="copyTextAlt">Alt</label>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="copyTextShift">
-                        <label for="copyTextShift">Shift</label>
-                    </div>
                 </div>
 
                 <div class="setting-group">
                     <label>Open in New Tab Key:</label>
+                    <div class="checkbox-inline-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="openNewTabCtrl">
+                            <label for="openNewTabCtrl">Ctrl</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="openNewTabAlt">
+                            <label for="openNewTabAlt">Alt</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="openNewTabShift">
+                            <label for="openNewTabShift">Shift</label>
+                        </div>
+                    </div>
                     <input type="text" id="openNewTabKey" maxlength="1" placeholder="O">
-                    <div class="checkbox-group" style="margin-top: 8px;">
-                        <input type="checkbox" id="openNewTabCtrl">
-                        <label for="openNewTabCtrl">Ctrl</label>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="openNewTabAlt">
-                        <label for="openNewTabAlt">Alt</label>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="openNewTabShift">
-                        <label for="openNewTabShift">Shift</label>
-                    </div>
-                    <div class="checkbox-group">
+                    <div class="checkbox-group checkbox-separate">
                         <input type="checkbox" id="openNewTabSwitchFocus">
                         <label for="openNewTabSwitchFocus">Switch focus to new tab</label>
                     </div>
@@ -335,8 +378,11 @@
                 </div>
 
                 <div class="setting-group">
-                    <label>Tooltip Color:</label>
-                    <input type="color" id="tooltipColor" value="#4CAF50">
+                    <label>Tooltip Color (Hex):</label>
+                    <div class="color-input-wrapper">
+                        <input type="text" id="tooltipColor" placeholder="#4CAF50" value="#4CAF50" pattern="^#[0-9A-Fa-f]{6}$">
+                        <div class="color-preview" id="tooltipColorPreview"></div>
+                    </div>
                 </div>
 
                 <div class="setting-group">
@@ -353,8 +399,11 @@
                 </div>
 
                 <div class="setting-group">
-                    <label>Notification Color:</label>
-                    <input type="color" id="notifColor" value="#4CAF50">
+                    <label>Notification Color (Hex):</label>
+                    <div class="color-input-wrapper">
+                        <input type="text" id="notifColor" placeholder="#4CAF50" value="#4CAF50" pattern="^#[0-9A-Fa-f]{6}$">
+                        <div class="color-preview" id="notifColorPreview"></div>
+                    </div>
                 </div>
 
                 <div class="setting-group">
@@ -382,8 +431,11 @@
                 </div>
 
                 <div class="setting-group">
-                    <label>Notification Border Color:</label>
-                    <input type="color" id="notifBorderColor" value="#000000">
+                    <label>Notification Border Color (Hex):</label>
+                    <div class="color-input-wrapper">
+                        <input type="text" id="notifBorderColor" placeholder="#000000" value="#000000" pattern="^#[0-9A-Fa-f]{6}$">
+                        <div class="color-preview" id="notifBorderColorPreview"></div>
+                    </div>
                 </div>
 
                 <div class="setting-group">
@@ -433,6 +485,7 @@
                 <button id="resetBtn" class="reset-btn">↻ Reset to Defaults</button>
             </div>
             <div id="statusMsg" class="status-msg"></div>
+            <div id="footerVersion" class="footer-version"></div>
         </div>
     </div>
 
