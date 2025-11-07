@@ -1,4 +1,4 @@
-# Changelog - Version 1.7.0L (Quick Tabs Integration)
+# Changelog - Version 1.5.0L (Quick Tabs Integration)
 
 ## Major Feature Release - Quick Tabs Integration
 
@@ -59,7 +59,7 @@ Works with all 100+ websites already supported by the extension, including:
 To use this feature, you need:
 1. **Zen Browser** with [Fx-Autoconfig](https://github.com/MrOtherGuy/fx-autoconfig/) installed
 2. **Quick Tabs uc.js** from https://github.com/ChunkyNosher/Quick-Tabs
-3. This extension (v1.7.0) installed
+3. This extension (v1.5.0) installed
 
 ### 🚀 Usage
 
@@ -85,11 +85,11 @@ On the Quick Tabs side (browser console - Ctrl+Shift+J):
 
 **Modified:**
 - `content.js`: Added Quick Tabs marker bridge code (initialization, update, and clear functions)
-- `manifest.json`: Version 1.4.6.1 → 1.7.0
-- `updates.json`: Updated version to 1.7.0
+- `manifest.json`: Version 1.4.6.1 → 1.5.0
+- `updates.json`: Updated version to 1.5.0
 
 **New:**
-- `CHANGELOG_v1.7.0.md`: This changelog
+- `CHANGELOG_v1.5.0.md`: This changelog
 
 ### 🔗 Related Links
 
@@ -116,10 +116,10 @@ On the Quick Tabs side (browser console - Ctrl+Shift+J):
 
 ### 🔄 Migration Notes
 
-No breaking changes or settings changes. Simply update to v1.7.0 to enable Quick Tabs integration.
+No breaking changes or settings changes. Simply update to v1.5.0 to enable Quick Tabs integration.
 
-**Note:** This version is labeled as "1.7.0L" where "L" signifies it's a "Lite" version without the full Quick Tabs iframe implementation inside the extension itself, relying instead on the external Quick Tabs uc.js script.
+**Note:** This version is labeled as "1.5.0L" where "L" signifies it's a "Lite" version without the full Quick Tabs iframe implementation inside the extension itself, relying instead on the external Quick Tabs uc.js script.
 
 ---
 
-**Full Changelog**: v1.4.6.1...v1.7.0
+**Full Changelog**: v1.4.6.1...v1.5.0
