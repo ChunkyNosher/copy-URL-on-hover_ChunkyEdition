@@ -2,7 +2,7 @@
 
 This is a lightweight version of the Copy URL on Hover extension, focused on core URL and text copying functionality **with Quick Tabs integration support**.
 
-## ✨ Quick Tabs Integration (v1.7.0+)
+## ✨ Quick Tabs Integration (v1.5.0+)
 
 **NEW!** This extension now integrates with the [Quick Tabs Zen Browser mod](https://github.com/ChunkyNosher/Quick-Tabs) to enable opening hovered links in Quick Tabs with a simple keyboard shortcut!
 
@@ -16,7 +16,7 @@ This works on **100+ websites** including YouTube, Twitter, Reddit, GitHub, and 
 ### Prerequisites
 - **Zen Browser** with [Fx-Autoconfig](https://github.com/MrOtherGuy/fx-autoconfig/)
 - [Quick Tabs uc.js](https://github.com/ChunkyNosher/Quick-Tabs) installed
-- This extension (v1.7.0+)
+- This extension (v1.5.0+)
 
 ### Technical Details
 The extension creates a hidden marker element in webpages that Quick Tabs observes. When you hover over a link, the marker updates with the link's URL and title, allowing Quick Tabs to open it when you press Ctrl+E. This solves [issue #5](https://github.com/ChunkyNosher/Quick-Tabs/issues/5) in the Quick Tabs repository.
