@@ -231,6 +231,86 @@
     </div>
   </div>
 
+  <h2>🔗 Open Link in New Tab</h2>
+  <div class="setting">
+    <label for="openNewTabKey">Key:</label>
+    <input type="text" id="openNewTabKey" maxlength="1" placeholder="o">
+    
+    <label style="margin-top: 10px;">Modifier Keys:</label>
+    <div class="modifier-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="openNewTabCtrl">
+        Ctrl
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="openNewTabAlt">
+        Alt
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="openNewTabShift">
+        Shift
+      </label>
+    </div>
+    
+    <label class="checkbox-label" style="margin-top: 10px;">
+      <input type="checkbox" id="openNewTabSwitchFocus">
+      Switch focus to new tab
+    </label>
+  </div>
+
+  <h2>🪟 Quick Tab on Hover</h2>
+  <div class="setting">
+    <label for="quickTabKey">Key to open Quick Tab:</label>
+    <input type="text" id="quickTabKey" maxlength="1" placeholder="q">
+    
+    <label style="margin-top: 10px;">Modifier Keys:</label>
+    <div class="modifier-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="quickTabCtrl">
+        Ctrl
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="quickTabAlt">
+        Alt
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="quickTabShift">
+        Shift
+      </label>
+    </div>
+    
+    <label for="quickTabCloseKey" style="margin-top: 10px;">Close all Quick Tabs key:</label>
+    <input type="text" id="quickTabCloseKey" placeholder="Escape">
+    
+    <label for="quickTabMaxWindows" style="margin-top: 10px;">Max Quick Tab windows:</label>
+    <input type="text" id="quickTabMaxWindows" placeholder="3">
+    
+    <label for="quickTabDefaultWidth" style="margin-top: 10px;">Default width (px):</label>
+    <input type="text" id="quickTabDefaultWidth" placeholder="800">
+    
+    <label for="quickTabDefaultHeight" style="margin-top: 10px;">Default height (px):</label>
+    <input type="text" id="quickTabDefaultHeight" placeholder="600">
+    
+    <label for="quickTabPosition" style="margin-top: 10px;">Window position:</label>
+    <select id="quickTabPosition">
+      <option value="follow-cursor">Follow Cursor</option>
+      <option value="center">Center</option>
+      <option value="top-left">Top Left</option>
+      <option value="top-right">Top Right</option>
+      <option value="bottom-left">Bottom Left</option>
+      <option value="bottom-right">Bottom Right</option>
+      <option value="custom">Custom Position</option>
+    </select>
+    
+    <div id="customPositionFields" style="display: none; margin-top: 10px;">
+      <label for="quickTabCustomX">Custom X position (px):</label>
+      <input type="text" id="quickTabCustomX" placeholder="100">
+      
+      <label for="quickTabCustomY" style="margin-top: 10px;">Custom Y position (px):</label>
+      <input type="text" id="quickTabCustomY" placeholder="100">
+    </div>
+  </div>
+
   <h2>🎨 Appearance</h2>
   <div class="setting">
     <label class="checkbox-label">

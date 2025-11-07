@@ -9,6 +9,26 @@ const DEFAULT_SETTINGS = {
   copyTextAlt: false,
   copyTextShift: false,
   
+  // Open Link in New Tab settings
+  openNewTabKey: 'o',
+  openNewTabCtrl: false,
+  openNewTabAlt: false,
+  openNewTabShift: false,
+  openNewTabSwitchFocus: false,
+  
+  // Quick Tab on Hover settings
+  quickTabKey: 'q',
+  quickTabCtrl: false,
+  quickTabAlt: false,
+  quickTabShift: false,
+  quickTabCloseKey: 'Escape',
+  quickTabMaxWindows: 3,
+  quickTabDefaultWidth: 800,
+  quickTabDefaultHeight: 600,
+  quickTabPosition: 'follow-cursor',
+  quickTabCustomX: 100,
+  quickTabCustomY: 100,
+  
   showNotification: true,
   notifColor: '#4CAF50',
   notifDuration: 2000,
@@ -31,6 +51,26 @@ function loadSettings() {
     document.getElementById('copyTextAlt').checked = items.copyTextAlt;
     document.getElementById('copyTextShift').checked = items.copyTextShift;
     
+    // Open Link in New Tab settings
+    document.getElementById('openNewTabKey').value = items.openNewTabKey;
+    document.getElementById('openNewTabCtrl').checked = items.openNewTabCtrl;
+    document.getElementById('openNewTabAlt').checked = items.openNewTabAlt;
+    document.getElementById('openNewTabShift').checked = items.openNewTabShift;
+    document.getElementById('openNewTabSwitchFocus').checked = items.openNewTabSwitchFocus;
+    
+    // Quick Tab on Hover settings
+    document.getElementById('quickTabKey').value = items.quickTabKey;
+    document.getElementById('quickTabCtrl').checked = items.quickTabCtrl;
+    document.getElementById('quickTabAlt').checked = items.quickTabAlt;
+    document.getElementById('quickTabShift').checked = items.quickTabShift;
+    document.getElementById('quickTabCloseKey').value = items.quickTabCloseKey;
+    document.getElementById('quickTabMaxWindows').value = items.quickTabMaxWindows;
+    document.getElementById('quickTabDefaultWidth').value = items.quickTabDefaultWidth;
+    document.getElementById('quickTabDefaultHeight').value = items.quickTabDefaultHeight;
+    document.getElementById('quickTabPosition').value = items.quickTabPosition;
+    document.getElementById('quickTabCustomX').value = items.quickTabCustomX;
+    document.getElementById('quickTabCustomY').value = items.quickTabCustomY;
+    
     document.getElementById('showNotification').checked = items.showNotification;
     document.getElementById('notifColor').value = items.notifColor;
     document.getElementById('notifDuration').value = items.notifDuration;
@@ -40,6 +80,7 @@ function loadSettings() {
     document.getElementById('darkMode').checked = items.darkMode;
     
     applyTheme(items.darkMode);
+    toggleCustomPosition(items.quickTabPosition);
   });
 }
 
@@ -49,6 +90,14 @@ function applyTheme(isDark) {
     document.body.classList.add('dark-mode');
   } else {
     document.body.classList.remove('dark-mode');
+  }
+}
+
+// Toggle custom position fields visibility
+function toggleCustomPosition(position) {
+  const customFields = document.getElementById('customPositionFields');
+  if (customFields) {
+    customFields.style.display = position === 'custom' ? 'block' : 'none';
   }
 }
 
@@ -75,6 +124,26 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     copyTextCtrl: document.getElementById('copyTextCtrl').checked,
     copyTextAlt: document.getElementById('copyTextAlt').checked,
     copyTextShift: document.getElementById('copyTextShift').checked,
+    
+    // Open Link in New Tab settings
+    openNewTabKey: document.getElementById('openNewTabKey').value || 'o',
+    openNewTabCtrl: document.getElementById('openNewTabCtrl').checked,
+    openNewTabAlt: document.getElementById('openNewTabAlt').checked,
+    openNewTabShift: document.getElementById('openNewTabShift').checked,
+    openNewTabSwitchFocus: document.getElementById('openNewTabSwitchFocus').checked,
+    
+    // Quick Tab on Hover settings
+    quickTabKey: document.getElementById('quickTabKey').value || 'q',
+    quickTabCtrl: document.getElementById('quickTabCtrl').checked,
+    quickTabAlt: document.getElementById('quickTabAlt').checked,
+    quickTabShift: document.getElementById('quickTabShift').checked,
+    quickTabCloseKey: document.getElementById('quickTabCloseKey').value || 'Escape',
+    quickTabMaxWindows: parseInt(document.getElementById('quickTabMaxWindows').value) || 3,
+    quickTabDefaultWidth: parseInt(document.getElementById('quickTabDefaultWidth').value) || 800,
+    quickTabDefaultHeight: parseInt(document.getElementById('quickTabDefaultHeight').value) || 600,
+    quickTabPosition: document.getElementById('quickTabPosition').value || 'follow-cursor',
+    quickTabCustomX: parseInt(document.getElementById('quickTabCustomX').value) || 100,
+    quickTabCustomY: parseInt(document.getElementById('quickTabCustomY').value) || 100,
     
     showNotification: document.getElementById('showNotification').checked,
     notifColor: document.getElementById('notifColor').value || '#4CAF50',
@@ -104,6 +173,16 @@ document.getElementById('resetBtn').addEventListener('click', function() {
 // Dark mode toggle
 document.getElementById('darkMode').addEventListener('change', function() {
   applyTheme(this.checked);
+});
+
+// Quick Tab position change handler
+document.addEventListener('DOMContentLoaded', function() {
+  const positionSelect = document.getElementById('quickTabPosition');
+  if (positionSelect) {
+    positionSelect.addEventListener('change', function() {
+      toggleCustomPosition(this.value);
+    });
+  }
 });
 
 // Load settings on popup open
