@@ -60,33 +60,52 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 
 // ============================================================
-// QUICK TABS INTEGRATION - postMessage Bridge
+// QUICK TABS INTEGRATION - Firefox Preferences Bridge
 // ============================================================
 
-// Update Quick Tabs by posting a message to the chrome window
+// Track the currently hovered link for Quick Tabs integration
+let currentQuickTabsLink = null;
+
+// Update Quick Tabs by sending hover data to background script
+// Background script will write to Firefox preferences (browser.storage.local)
 function updateQuickTabs(url, title) {
   if (url && url.trim() !== '') {
-    // Send the message to the privileged browser chrome environment
-    window.postMessage({
-      direction: "from-content-to-chrome",
-      type: 'QUICKTABS_URL_HOVER',
-      payload: {
-        url: url,
-        title: title || url,
-        state: 'hovering'
-      }
-    }, "*"); // Use "*" for the target origin as we are targeting the browser chrome
-    debug('Posted Quick Tabs hover message: ' + url);
+    // Avoid duplicate updates
+    if (currentQuickTabsLink === url) {
+      return;
+    }
+    
+    currentQuickTabsLink = url;
+    
+    // Send message to background script to update preferences
+    browser.runtime.sendMessage({
+      type: 'HOVER_DETECTED',
+      action: 'SET_LINK',
+      url: url,
+      title: title || url,
+      timestamp: Date.now()
+    }).catch(e => {
+      debug('Failed to send hover message to background: ' + e.message);
+    });
+    
+    debug('Sent Quick Tabs hover message to background: ' + url);
   } else {
-    // Send a message to clear the state
-    window.postMessage({
-      direction: "from-content-to-chrome",
-      type: 'QUICKTABS_URL_HOVER',
-      payload: {
-        state: 'idle'
-      }
-    }, "*");
-    debug('Posted Quick Tabs clear message');
+    // Clear the current link
+    if (currentQuickTabsLink === null) {
+      return;
+    }
+    
+    currentQuickTabsLink = null;
+    
+    // Send message to background script to clear preferences
+    browser.runtime.sendMessage({
+      type: 'HOVER_DETECTED',
+      action: 'CLEAR_LINK'
+    }).catch(e => {
+      debug('Failed to send clear message to background: ' + e.message);
+    });
+    
+    debug('Sent Quick Tabs clear message to background');
   }
 }
 
