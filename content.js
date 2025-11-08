@@ -1840,7 +1840,7 @@ function tryInjectIntoIframe(iframe) {
 }
 
 // Create Quick Tab window
-function createQuickTabWindow(url) {
+function createQuickTabWindow(url, width, height, left, top) {
   if (isRestrictedPage()) {
     showNotification('✗ Quick Tab not available on this page');
     debug('Quick Tab blocked on restricted page');
@@ -1855,13 +1855,17 @@ function createQuickTabWindow(url) {
   
   debug(`Creating Quick Tab for URL: ${url}`);
   
+  // Use provided dimensions or defaults
+  const windowWidth = width || CONFIG.quickTabDefaultWidth;
+  const windowHeight = height || CONFIG.quickTabDefaultHeight;
+  
   // Create container
   const container = document.createElement('div');
   container.className = 'copy-url-quicktab-window';
   container.style.cssText = `
     position: fixed;
-    width: ${CONFIG.quickTabDefaultWidth}px;
-    height: ${CONFIG.quickTabDefaultHeight}px;
+    width: ${windowWidth}px;
+    height: ${windowHeight}px;
     background: ${CONFIG.darkMode ? '#2d2d2d' : '#ffffff'};
     border: 2px solid ${CONFIG.darkMode ? '#555' : '#ddd'};
     border-radius: 8px;
@@ -1876,43 +1880,51 @@ function createQuickTabWindow(url) {
   
   // Position the window
   let posX, posY;
-  switch (CONFIG.quickTabPosition) {
-    case 'follow-cursor':
-      posX = lastMouseX + 10;
-      posY = lastMouseY + 10;
-      break;
-    case 'center':
-      posX = (window.innerWidth - CONFIG.quickTabDefaultWidth) / 2;
-      posY = (window.innerHeight - CONFIG.quickTabDefaultHeight) / 2;
-      break;
-    case 'top-left':
-      posX = 20;
-      posY = 20;
-      break;
-    case 'top-right':
-      posX = window.innerWidth - CONFIG.quickTabDefaultWidth - 20;
-      posY = 20;
-      break;
-    case 'bottom-left':
-      posX = 20;
-      posY = window.innerHeight - CONFIG.quickTabDefaultHeight - 20;
-      break;
-    case 'bottom-right':
-      posX = window.innerWidth - CONFIG.quickTabDefaultWidth - 20;
-      posY = window.innerHeight - CONFIG.quickTabDefaultHeight - 20;
-      break;
-    case 'custom':
-      posX = CONFIG.quickTabCustomX;
-      posY = CONFIG.quickTabCustomY;
-      break;
-    default:
-      posX = lastMouseX + 10;
-      posY = lastMouseY + 10;
+  
+  // If position is provided (from restore), use it
+  if (left !== undefined && top !== undefined) {
+    posX = left;
+    posY = top;
+  } else {
+    // Otherwise calculate based on settings
+    switch (CONFIG.quickTabPosition) {
+      case 'follow-cursor':
+        posX = lastMouseX + 10;
+        posY = lastMouseY + 10;
+        break;
+      case 'center':
+        posX = (window.innerWidth - windowWidth) / 2;
+        posY = (window.innerHeight - windowHeight) / 2;
+        break;
+      case 'top-left':
+        posX = 20;
+        posY = 20;
+        break;
+      case 'top-right':
+        posX = window.innerWidth - windowWidth - 20;
+        posY = 20;
+        break;
+      case 'bottom-left':
+        posX = 20;
+        posY = window.innerHeight - windowHeight - 20;
+        break;
+      case 'bottom-right':
+        posX = window.innerWidth - windowWidth - 20;
+        posY = window.innerHeight - windowHeight - 20;
+        break;
+      case 'custom':
+        posX = CONFIG.quickTabCustomX;
+        posY = CONFIG.quickTabCustomY;
+        break;
+      default:
+        posX = lastMouseX + 10;
+        posY = lastMouseY + 10;
+    }
   }
   
   // Ensure window stays within viewport
-  posX = Math.max(0, Math.min(posX, window.innerWidth - CONFIG.quickTabDefaultWidth));
-  posY = Math.max(0, Math.min(posY, window.innerHeight - CONFIG.quickTabDefaultHeight));
+  posX = Math.max(0, Math.min(posX, window.innerWidth - windowWidth));
+  posY = Math.max(0, Math.min(posY, window.innerHeight - windowHeight));
   
   container.style.left = posX + 'px';
   container.style.top = posY + 'px';
@@ -2195,6 +2207,54 @@ function createQuickTabWindow(url) {
   
   showNotification('✓ Quick Tab opened');
   debug(`Quick Tab window created. Total windows: ${quickTabWindows.length}`);
+  
+  // Save state to background if persistence is enabled
+  if (CONFIG.quickTabPersistAcrossTabs) {
+    saveQuickTabState();
+  }
+}
+
+// Save Quick Tab state to background script
+function saveQuickTabState() {
+  if (!CONFIG.quickTabPersistAcrossTabs) return;
+  
+  const state = quickTabWindows.map(container => {
+    const iframe = container.querySelector('iframe');
+    const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
+    const rect = container.getBoundingClientRect();
+    
+    return {
+      url: iframe?.src || '',
+      title: titleText?.textContent || 'Quick Tab',
+      width: rect.width,
+      height: rect.height,
+      left: rect.left,
+      top: rect.top
+    };
+  });
+  
+  browser.runtime.sendMessage({
+    action: 'saveQuickTabState',
+    quickTabs: state
+  }).catch(err => {
+    debug('Failed to save Quick Tab state:', err);
+  });
+}
+
+// Restore Quick Tab state from background script
+function restoreQuickTabState(quickTabs) {
+  if (!CONFIG.quickTabPersistAcrossTabs || !quickTabs || quickTabs.length === 0) return;
+  
+  debug(`Restoring ${quickTabs.length} Quick Tab(s)`);
+  
+  quickTabs.forEach(tab => {
+    if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) {
+      return;
+    }
+    
+    // Create the Quick Tab with saved position and size
+    createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top);
+  });
 }
 
 // Close Quick Tab window
@@ -2213,6 +2273,11 @@ function closeQuickTabWindow(container) {
   }
   container.remove();
   debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
+  
+  // Save state to background if persistence is enabled
+  if (CONFIG.quickTabPersistAcrossTabs) {
+    saveQuickTabState();
+  }
 }
 
 // Close all Quick Tab windows
@@ -2231,6 +2296,15 @@ function closeAllQuickTabWindows() {
   if (count > 0) {
     showNotification(`✓ Closed ${count} Quick Tab${count > 1 ? 's' : ''}`);
     debug(`All Quick Tab windows closed (${count} total)`);
+  }
+  
+  // Clear state in background if persistence is enabled
+  if (CONFIG.quickTabPersistAcrossTabs) {
+    browser.runtime.sendMessage({
+      action: 'clearQuickTabState'
+    }).catch(err => {
+      debug('Failed to clear Quick Tab state:', err);
+    });
   }
 }
 
@@ -2840,6 +2914,13 @@ window.addEventListener('message', function(event) {
 browser.storage.onChanged.addListener(function(changes, areaName) {
   if (areaName === 'local') {
     loadSettings();
+  }
+});
+
+// Message listener for background script communication
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'restoreQuickTabs') {
+    restoreQuickTabState(message.quickTabs);
   }
 });
 
