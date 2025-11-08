@@ -36,6 +36,19 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }).then(() => {
                 console.log('[CopyURL-BG] Preference updated:', message.url);
                 sendResponse({ success: true });
+                // ---------------------------------------------------------------
+                // SYNC TO DOM FOR UC.JS BRIDGE
+                // ---------------------------------------------------------------
+                browser.tabs.query({}, (tabs) => {
+                    tabs.forEach(tab => {
+                        browser.tabs.sendMessage(tab.id, {
+                            type: 'SYNC_TO_DOM',
+                            url: message.url || '',
+                            title: message.title || '',
+                            state: 'hovering'
+                        }).catch(() => {});
+                    });
+                });
             }).catch(error => {
                 console.error('[CopyURL-BG] Failed to set preference:', error);
                 sendResponse({ success: false, error: error.message });
@@ -54,6 +67,19 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }).then(() => {
                 console.log('[CopyURL-BG] Preference cleared');
                 sendResponse({ success: true });
+                // ---------------------------------------------------------------
+                // SYNC TO DOM FOR UC.JS BRIDGE
+                // ---------------------------------------------------------------
+                browser.tabs.query({}, (tabs) => {
+                    tabs.forEach(tab => {
+                        browser.tabs.sendMessage(tab.id, {
+                            type: 'SYNC_TO_DOM',
+                            url: '',
+                            title: '',
+                            state: 'idle'
+                        }).catch(() => {});
+                    });
+                });
             }).catch(error => {
                 console.error('[CopyURL-BG] Failed to clear preference:', error);
                 sendResponse({ success: false, error: error.message });
