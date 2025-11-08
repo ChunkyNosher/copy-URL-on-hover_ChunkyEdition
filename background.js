@@ -1,18 +1,18 @@
 // Browser API compatibility shim for Chrome/Firefox support
 if (typeof browser === 'undefined') {
-  var browser = chrome;
+    var browser = chrome;
 }
 
 // Background script handles injecting content script into all tabs
 browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete') {
-    browser.scripting.executeScript({
-      target: { tabId: tabId },
-      files: ['content.js']
-    }).catch(err => {
-      // Silently fail for restricted pages
-    });
-  }
+    if (changeInfo.status === 'complete') {
+        browser.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['content.js']
+        }).catch(err => {
+            // Silently fail for restricted pages
+        });
+    }
 });
 
 // ============================================================
@@ -21,74 +21,74 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // Handle messages from content script
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  
-  // Handle Quick Tabs hover detection messages
-  if (message.type === 'HOVER_DETECTED') {
     
-    if (message.action === 'SET_LINK') {
-      // Write to browser.storage.local (which maps to Firefox preferences)
-      browser.storage.local.set({
-        quicktabs_hovered_url: message.url || '',
-        quicktabs_hovered_title: message.title || '',
-        quicktabs_hovered_state: 'hovering',
-        quicktabs_hover_timestamp: message.timestamp || Date.now()
-      }).then(() => {
-        console.log('[CopyURL-BG] Preference updated:', message.url);
-        sendResponse({ success: true });
-      }).catch(error => {
-        console.error('[CopyURL-BG] Failed to set preference:', error);
-        sendResponse({ success: false, error: error.message });
-      });
-      
-      // Return true to indicate we'll respond asynchronously
-      return true;
+    // Handle Quick Tabs hover detection messages
+    if (message.type === 'HOVER_DETECTED') {
+        
+        if (message.action === 'SET_LINK') {
+            // Write to browser.storage.local (which maps to Firefox preferences)
+            browser.storage.local.set({
+                quicktabs_hovered_url: message.url || '',
+                quicktabs_hovered_title: message.title || '',
+                quicktabs_hovered_state: 'hovering',
+                quicktabs_hover_timestamp: message.timestamp || Date.now()
+            }).then(() => {
+                console.log('[CopyURL-BG] Preference updated:', message.url);
+                sendResponse({ success: true });
+            }).catch(error => {
+                console.error('[CopyURL-BG] Failed to set preference:', error);
+                sendResponse({ success: false, error: error.message });
+            });
+            
+            // Return true to indicate we'll respond asynchronously
+            return true;
+        }
+        
+        else if (message.action === 'CLEAR_LINK') {
+            // Clear the preference
+            browser.storage.local.set({
+                quicktabs_hovered_url: '',
+                quicktabs_hovered_title: '',
+                quicktabs_hovered_state: 'idle',
+                quicktabs_hover_timestamp: null
+            }).then(() => {
+                console.log('[CopyURL-BG] Preference cleared');
+                sendResponse({ success: true });
+            }).catch(error => {
+                console.error('[CopyURL-BG] Failed to clear preference:', error);
+                sendResponse({ success: false, error: error.message });
+            });
+            
+            return true;
+        }
     }
     
-    else if (message.action === 'CLEAR_LINK') {
-      // Clear the preference
-      browser.storage.local.set({
-        quicktabs_hovered_url: '',
-        quicktabs_hovered_title: '',
-        quicktabs_hovered_state: 'idle',
-        quicktabs_hover_timestamp: null
-      }).then(() => {
-        console.log('[CopyURL-BG] Preference cleared');
-        sendResponse({ success: true });
-      }).catch(error => {
-        console.error('[CopyURL-BG] Failed to clear preference:', error);
-        sendResponse({ success: false, error: error.message });
-      });
-      
-      return true;
+    // Handle REQUEST_LINK messages (for Quick Tabs to query current state)
+    else if (message.type === 'REQUEST_LINK') {
+        browser.storage.local.get([
+            'quicktabs_hovered_url',
+            'quicktabs_hovered_title',
+            'quicktabs_hovered_state'
+        ]).then(result => {
+            console.log('[CopyURL-BG] Sending link status:', result);
+            sendResponse({
+                success: true,
+                data: result
+            });
+        }).catch(error => {
+            sendResponse({ success: false, error: error.message });
+        });
+        
+        return true;
     }
-  }
-  
-  // Handle REQUEST_LINK messages (for Quick Tabs to query current state)
-  else if (message.type === 'REQUEST_LINK') {
-    browser.storage.local.get([
-      'quicktabs_hovered_url',
-      'quicktabs_hovered_title',
-      'quicktabs_hovered_state'
-    ]).then(result => {
-      console.log('[CopyURL-BG] Sending link status:', result);
-      sendResponse({
-        success: true,
-        data: result
-      });
-    }).catch(error => {
-      sendResponse({ success: false, error: error.message });
-    });
     
-    return true;
-  }
-  
-  // Handle open tab requests
-  else if (message.action === 'openTab') {
-    browser.tabs.create({
-      url: message.url,
-      active: message.switchFocus
-    });
-  }
+    // Handle open tab requests
+    else if (message.action === 'openTab') {
+        browser.tabs.create({
+            url: message.url,
+            active: message.switchFocus
+        });
+    }
 });
 
 console.log('[CopyURL-BG] Background script loaded with Quick Tabs integration');
