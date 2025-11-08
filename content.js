@@ -55,6 +55,14 @@ const DEFAULT_CONFIG = {
   quickTabEnableResize: true,
   
   showNotification: true,
+  notifDisplayMode: 'tooltip',
+  
+  // Tooltip settings
+  tooltipColor: '#4CAF50',
+  tooltipDuration: 1500,
+  tooltipAnimation: 'fade',
+  
+  // Notification settings
   notifColor: '#4CAF50',
   notifDuration: 2000,
   notifPosition: 'bottom-right',
@@ -62,8 +70,10 @@ const DEFAULT_CONFIG = {
   notifBorderColor: '#000000',
   notifBorderWidth: 1,
   notifAnimation: 'slide',
+  
   debugMode: false,
-  darkMode: true
+  darkMode: true,
+  menuSize: 'medium'
 };
 
 // Constants
