@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS = {
   quickTabCustomY: 100,
   quickTabPersistAcrossTabs: false,
   quickTabCloseOnOpen: false,
+  quickTabEnableResize: true,
   
   showNotification: true,
   notifColor: '#4CAF50',
@@ -83,6 +84,7 @@ function loadSettings() {
     document.getElementById('quickTabCustomY').value = items.quickTabCustomY;
     document.getElementById('quickTabPersistAcrossTabs').checked = items.quickTabPersistAcrossTabs;
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
+    document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
     
     document.getElementById('showNotification').checked = items.showNotification;
     document.getElementById('notifColor').value = items.notifColor;
@@ -162,6 +164,7 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
     quickTabPersistAcrossTabs: document.getElementById('quickTabPersistAcrossTabs').checked,
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
+    quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
     
     showNotification: document.getElementById('showNotification').checked,
     notifColor: document.getElementById('notifColor').value || '#4CAF50',

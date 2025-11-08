@@ -52,6 +52,7 @@ const DEFAULT_CONFIG = {
   quickTabCustomY: 100,
   quickTabPersistAcrossTabs: false,
   quickTabCloseOnOpen: false,
+  quickTabEnableResize: true,
   
   showNotification: true,
   notifColor: '#4CAF50',
@@ -2182,6 +2183,11 @@ function createQuickTabWindow(url) {
   // Make draggable
   makeDraggable(container, titleBar);
   
+  // Make resizable if enabled
+  if (CONFIG.quickTabEnableResize) {
+    makeResizable(container);
+  }
+  
   // Bring to front on click
   container.addEventListener('mousedown', () => {
     container.style.zIndex = quickTabZIndex++;
@@ -2201,6 +2207,10 @@ function closeQuickTabWindow(container) {
   if (container._dragCleanup) {
     container._dragCleanup();
   }
+  // Clean up resize listeners
+  if (container._resizeCleanup) {
+    container._resizeCleanup();
+  }
   container.remove();
   debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
 }
@@ -2211,6 +2221,9 @@ function closeAllQuickTabWindows() {
   quickTabWindows.forEach(window => {
     if (window._dragCleanup) {
       window._dragCleanup();
+    }
+    if (window._resizeCleanup) {
+      window._resizeCleanup();
     }
     window.remove();
   });
@@ -2471,6 +2484,13 @@ function makeDraggable(element, handle) {
   const handleMouseMove = (e) => {
     if (!isDragging) return;
     
+    // Additional safety check: ensure mouse button is still pressed
+    if (e.buttons === 0) {
+      // Mouse button was released but we missed the mouseup event
+      handleMouseUp();
+      return;
+    }
+    
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     
@@ -2493,27 +2513,33 @@ function makeDraggable(element, handle) {
     e.preventDefault();
   };
   
-  const handleMouseUp = () => {
-    if (isDragging) {
-      isDragging = false;
-      // Cancel any pending animation frame
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      // Apply any pending position immediately
-      if (pendingX !== null && pendingY !== null) {
-        element.style.left = pendingX + 'px';
-        element.style.top = pendingY + 'px';
-        pendingX = null;
-        pendingY = null;
-      }
+  const handleMouseUp = (e) => {
+    // Always reset dragging state, even if called multiple times
+    isDragging = false;
+    
+    // Cancel any pending animation frame
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    
+    // Apply any pending position immediately
+    if (pendingX !== null && pendingY !== null) {
+      element.style.left = pendingX + 'px';
+      element.style.top = pendingY + 'px';
+      pendingX = null;
+      pendingY = null;
     }
   };
   
   const handleMouseDown = (e) => {
     // Don't drag if clicking on a button or img
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'IMG') {
+      return;
+    }
+    
+    // Only start dragging on left mouse button
+    if (e.button !== 0) {
       return;
     }
     
@@ -2527,21 +2553,175 @@ function makeDraggable(element, handle) {
     e.preventDefault();
   };
   
+  // Also handle mouseleave to ensure we stop dragging if mouse leaves the document
+  const handleMouseLeave = (e) => {
+    if (isDragging && e.buttons === 0) {
+      handleMouseUp(e);
+    }
+  };
+  
   handle.addEventListener('mousedown', handleMouseDown);
   document.addEventListener('mousemove', handleMouseMove, { passive: false });
   document.addEventListener('mouseup', handleMouseUp, true);
+  document.addEventListener('mouseleave', handleMouseLeave, true);
   // Also listen on window to catch mouseup events that occur outside the browser window
   window.addEventListener('mouseup', handleMouseUp, true);
+  window.addEventListener('blur', handleMouseUp, true);
   
   // Store cleanup function
   element._dragCleanup = () => {
     handle.removeEventListener('mousedown', handleMouseDown);
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp, true);
+    document.removeEventListener('mouseleave', handleMouseLeave, true);
     window.removeEventListener('mouseup', handleMouseUp, true);
+    window.removeEventListener('blur', handleMouseUp, true);
     if (rafId) {
       cancelAnimationFrame(rafId);
     }
+  };
+}
+
+// Make Quick Tab window resizable
+function makeResizable(element) {
+  const minWidth = 300;
+  const minHeight = 200;
+  const handleSize = 10;
+  
+  // Create resize handles
+  const handles = {
+    'se': { cursor: 'se-resize', bottom: 0, right: 0 },
+    'sw': { cursor: 'sw-resize', bottom: 0, left: 0 },
+    'ne': { cursor: 'ne-resize', top: 0, right: 0 },
+    'nw': { cursor: 'nw-resize', top: 0, left: 0 },
+    'e': { cursor: 'e-resize', top: handleSize, right: 0, bottom: handleSize },
+    'w': { cursor: 'w-resize', top: handleSize, left: 0, bottom: handleSize },
+    's': { cursor: 's-resize', bottom: 0, left: handleSize, right: handleSize },
+    'n': { cursor: 'n-resize', top: 0, left: handleSize, right: handleSize }
+  };
+  
+  const resizeHandleElements = [];
+  
+  Object.entries(handles).forEach(([direction, style]) => {
+    const handle = document.createElement('div');
+    handle.className = 'copy-url-resize-handle';
+    handle.style.cssText = `
+      position: absolute;
+      ${style.top !== undefined ? `top: ${style.top}px;` : ''}
+      ${style.bottom !== undefined ? `bottom: ${style.bottom}px;` : ''}
+      ${style.left !== undefined ? `left: ${style.left}px;` : ''}
+      ${style.right !== undefined ? `right: ${style.right}px;` : ''}
+      ${direction.includes('e') || direction.includes('w') ? `width: ${handleSize}px;` : ''}
+      ${direction.includes('n') || direction.includes('s') ? `height: ${handleSize}px;` : ''}
+      ${direction.length === 2 ? `width: ${handleSize}px; height: ${handleSize}px;` : ''}
+      cursor: ${style.cursor};
+      z-index: 10;
+    `;
+    
+    let isResizing = false;
+    let startX, startY, startWidth, startHeight, startLeft, startTop;
+    
+    const handleMouseDown = (e) => {
+      if (e.button !== 0) return;
+      
+      isResizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = element.getBoundingClientRect();
+      startWidth = rect.width;
+      startHeight = rect.height;
+      startLeft = rect.left;
+      startTop = rect.top;
+      
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    
+    const handleMouseMove = (e) => {
+      if (!isResizing) return;
+      
+      // Safety check for lost mouseup
+      if (e.buttons === 0) {
+        handleMouseUp();
+        return;
+      }
+      
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      let newLeft = startLeft;
+      let newTop = startTop;
+      
+      // Adjust based on direction
+      if (direction.includes('e')) {
+        newWidth = Math.max(minWidth, startWidth + dx);
+      }
+      if (direction.includes('w')) {
+        const maxDx = startWidth - minWidth;
+        const constrainedDx = Math.min(dx, maxDx);
+        newWidth = startWidth - constrainedDx;
+        newLeft = startLeft + constrainedDx;
+      }
+      if (direction.includes('s')) {
+        newHeight = Math.max(minHeight, startHeight + dy);
+      }
+      if (direction.includes('n')) {
+        const maxDy = startHeight - minHeight;
+        const constrainedDy = Math.min(dy, maxDy);
+        newHeight = startHeight - constrainedDy;
+        newTop = startTop + constrainedDy;
+      }
+      
+      // Keep within viewport
+      if (newLeft < 0) {
+        newWidth += newLeft;
+        newLeft = 0;
+      }
+      if (newTop < 0) {
+        newHeight += newTop;
+        newTop = 0;
+      }
+      if (newLeft + newWidth > window.innerWidth) {
+        newWidth = window.innerWidth - newLeft;
+      }
+      if (newTop + newHeight > window.innerHeight) {
+        newHeight = window.innerHeight - newTop;
+      }
+      
+      element.style.width = newWidth + 'px';
+      element.style.height = newHeight + 'px';
+      element.style.left = newLeft + 'px';
+      element.style.top = newTop + 'px';
+      
+      e.preventDefault();
+    };
+    
+    const handleMouseUp = () => {
+      isResizing = false;
+    };
+    
+    handle.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove, { passive: false });
+    document.addEventListener('mouseup', handleMouseUp, true);
+    window.addEventListener('mouseup', handleMouseUp, true);
+    window.addEventListener('blur', handleMouseUp, true);
+    
+    element.appendChild(handle);
+    resizeHandleElements.push({ handle, handleMouseDown, handleMouseMove, handleMouseUp });
+  });
+  
+  // Store cleanup function
+  element._resizeCleanup = () => {
+    resizeHandleElements.forEach(({ handle, handleMouseDown, handleMouseMove, handleMouseUp }) => {
+      handle.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp, true);
+      window.removeEventListener('mouseup', handleMouseUp, true);
+      window.removeEventListener('blur', handleMouseUp, true);
+      handle.remove();
+    });
   };
 }
 
