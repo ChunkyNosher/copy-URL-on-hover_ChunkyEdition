@@ -1,4 +1,5 @@
 // Browser API compatibility shim for Chrome/Firefox support
+
 if (typeof browser === 'undefined') {
     var browser = chrome;
 }
@@ -42,9 +43,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
             // Return true to indicate we'll respond asynchronously
             return true;
-        }
-        
-        else if (message.action === 'CLEAR_LINK') {
+            
+        } else if (message.action === 'CLEAR_LINK') {
             // Clear the preference
             browser.storage.local.set({
                 quicktabs_hovered_url: '',
@@ -61,10 +61,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
             return true;
         }
-    }
-    
-    // Handle REQUEST_LINK messages (for Quick Tabs to query current state)
-    else if (message.type === 'REQUEST_LINK') {
+        
+    } else if (message.type === 'REQUEST_LINK') {
+        // Handle REQUEST_LINK messages (for Quick Tabs to query current state)
         browser.storage.local.get([
             'quicktabs_hovered_url',
             'quicktabs_hovered_title',
@@ -80,15 +79,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         
         return true;
-    }
-    
-    // Handle open tab requests
-    else if (message.action === 'openTab') {
+        
+    } else if (message.action === 'openTab') {
+        // Handle open tab requests
         browser.tabs.create({
             url: message.url,
             active: message.switchFocus
         });
     }
+    
 });
 
 console.log('[CopyURL-BG] Background script loaded with Quick Tabs integration');
