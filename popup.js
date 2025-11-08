@@ -1,3 +1,8 @@
+// Browser API compatibility shim for Firefox/Chrome cross-compatibility
+if (typeof browser === 'undefined') {
+  var browser = chrome;
+}
+
 const DEFAULT_SETTINGS = {
   copyUrlKey: 'y',
   copyUrlCtrl: false,
@@ -16,7 +21,7 @@ const DEFAULT_SETTINGS = {
   openNewTabShift: false,
   openNewTabSwitchFocus: false,
   
-  // Quick Tab on Hover settings
+  // Quick Tab settings
   quickTabKey: 'q',
   quickTabCtrl: false,
   quickTabAlt: false,
@@ -30,8 +35,17 @@ const DEFAULT_SETTINGS = {
   quickTabCustomY: 100,
   quickTabPersistAcrossTabs: false,
   quickTabCloseOnOpen: false,
+  quickTabEnableResize: true,
   
   showNotification: true,
+  notifDisplayMode: 'tooltip',
+  
+  // Tooltip settings
+  tooltipColor: '#4CAF50',
+  tooltipDuration: 1500,
+  tooltipAnimation: 'fade',
+  
+  // Notification settings
   notifColor: '#4CAF50',
   notifDuration: 2000,
   notifPosition: 'bottom-right',
@@ -39,14 +53,52 @@ const DEFAULT_SETTINGS = {
   notifBorderColor: '#000000',
   notifBorderWidth: 1,
   notifAnimation: 'slide',
+  
   debugMode: false,
-  darkMode: true
+  darkMode: true,
+  menuSize: 'medium'
 };
 
 // Helper function to safely parse integer with fallback
 function safeParseInt(value, fallback) {
   const parsed = parseInt(value);
   return isNaN(parsed) ? fallback : parsed;
+}
+
+// Helper function to validate and normalize hex color
+function validateHexColor(color, fallback = DEFAULT_SETTINGS.tooltipColor) {
+  if (!color) return fallback;
+  // Remove whitespace
+  color = color.trim();
+  // Add # if missing
+  if (!color.startsWith('#')) {
+    color = '#' + color;
+  }
+  // Validate hex format (6-character format only)
+  if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+    return color.toUpperCase();
+  }
+  return fallback;
+}
+
+// Color input to settings mapping
+const COLOR_DEFAULTS = {
+  'tooltipColor': 'tooltipColor',
+  'notifColor': 'notifColor',
+  'notifBorderColor': 'notifBorderColor'
+};
+
+// Update color preview box
+function updateColorPreview(inputId, previewId) {
+  const input = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  if (input && preview) {
+    const settingKey = COLOR_DEFAULTS[inputId];
+    const defaultColor = settingKey ? DEFAULT_SETTINGS[settingKey] : DEFAULT_SETTINGS.tooltipColor;
+    const color = validateHexColor(input.value, defaultColor);
+    input.value = color;
+    preview.style.backgroundColor = color;
+  }
 }
 
 // Load settings
@@ -69,7 +121,7 @@ function loadSettings() {
     document.getElementById('openNewTabShift').checked = items.openNewTabShift;
     document.getElementById('openNewTabSwitchFocus').checked = items.openNewTabSwitchFocus;
     
-    // Quick Tab on Hover settings
+    // Quick Tab settings
     document.getElementById('quickTabKey').value = items.quickTabKey;
     document.getElementById('quickTabCtrl').checked = items.quickTabCtrl;
     document.getElementById('quickTabAlt').checked = items.quickTabAlt;
@@ -83,20 +135,35 @@ function loadSettings() {
     document.getElementById('quickTabCustomY').value = items.quickTabCustomY;
     document.getElementById('quickTabPersistAcrossTabs').checked = items.quickTabPersistAcrossTabs;
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
+    document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
+    toggleCustomPosition(items.quickTabPosition);
     
     document.getElementById('showNotification').checked = items.showNotification;
+    document.getElementById('notifDisplayMode').value = items.notifDisplayMode;
+    
+    // Tooltip settings
+    document.getElementById('tooltipColor').value = items.tooltipColor;
+    updateColorPreview('tooltipColor', 'tooltipColorPreview');
+    document.getElementById('tooltipDuration').value = items.tooltipDuration;
+    document.getElementById('tooltipAnimation').value = items.tooltipAnimation;
+    
+    // Notification settings
     document.getElementById('notifColor').value = items.notifColor;
+    updateColorPreview('notifColor', 'notifColorPreview');
     document.getElementById('notifDuration').value = items.notifDuration;
     document.getElementById('notifPosition').value = items.notifPosition;
     document.getElementById('notifSize').value = items.notifSize;
     document.getElementById('notifBorderColor').value = items.notifBorderColor;
+    updateColorPreview('notifBorderColor', 'notifBorderColorPreview');
     document.getElementById('notifBorderWidth').value = items.notifBorderWidth;
     document.getElementById('notifAnimation').value = items.notifAnimation;
+    
     document.getElementById('debugMode').checked = items.debugMode;
     document.getElementById('darkMode').checked = items.darkMode;
+    document.getElementById('menuSize').value = items.menuSize || 'medium';
     
     applyTheme(items.darkMode);
-    toggleCustomPosition(items.quickTabPosition);
+    applyMenuSize(items.menuSize || 'medium');
   });
 }
 
@@ -106,6 +173,16 @@ function applyTheme(isDark) {
     document.body.classList.add('dark-mode');
   } else {
     document.body.classList.remove('dark-mode');
+  }
+}
+
+// Apply menu size
+function applyMenuSize(size) {
+  document.body.classList.remove('menu-small', 'menu-large');
+  if (size === 'small') {
+    document.body.classList.add('menu-small');
+  } else if (size === 'large') {
+    document.body.classList.add('menu-large');
   }
 }
 
@@ -148,7 +225,7 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     openNewTabShift: document.getElementById('openNewTabShift').checked,
     openNewTabSwitchFocus: document.getElementById('openNewTabSwitchFocus').checked,
     
-    // Quick Tab on Hover settings
+    // Quick Tab settings
     quickTabKey: document.getElementById('quickTabKey').value || 'q',
     quickTabCtrl: document.getElementById('quickTabCtrl').checked,
     quickTabAlt: document.getElementById('quickTabAlt').checked,
@@ -162,22 +239,34 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
     quickTabPersistAcrossTabs: document.getElementById('quickTabPersistAcrossTabs').checked,
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
+    quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
     
     showNotification: document.getElementById('showNotification').checked,
-    notifColor: document.getElementById('notifColor').value || '#4CAF50',
+    notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',
+    
+    // Tooltip settings
+    tooltipColor: validateHexColor(document.getElementById('tooltipColor').value, DEFAULT_SETTINGS.tooltipColor),
+    tooltipDuration: safeParseInt(document.getElementById('tooltipDuration').value, 1500),
+    tooltipAnimation: document.getElementById('tooltipAnimation').value || 'fade',
+    
+    // Notification settings
+    notifColor: validateHexColor(document.getElementById('notifColor').value, DEFAULT_SETTINGS.notifColor),
     notifDuration: safeParseInt(document.getElementById('notifDuration').value, 2000),
     notifPosition: document.getElementById('notifPosition').value || 'bottom-right',
     notifSize: document.getElementById('notifSize').value || 'medium',
-    notifBorderColor: document.getElementById('notifBorderColor').value || '#000000',
+    notifBorderColor: validateHexColor(document.getElementById('notifBorderColor').value, DEFAULT_SETTINGS.notifBorderColor),
     notifBorderWidth: safeParseInt(document.getElementById('notifBorderWidth').value, 1),
     notifAnimation: document.getElementById('notifAnimation').value || 'slide',
+    
     debugMode: document.getElementById('debugMode').checked,
-    darkMode: document.getElementById('darkMode').checked
+    darkMode: document.getElementById('darkMode').checked,
+    menuSize: document.getElementById('menuSize').value || 'medium'
   };
   
   browser.storage.local.set(settings, function() {
     showStatus('✓ Settings saved! Reload tabs to apply changes.');
     applyTheme(settings.darkMode);
+    applyMenuSize(settings.menuSize);
   });
 });
 
@@ -196,21 +285,23 @@ document.getElementById('darkMode').addEventListener('change', function() {
   applyTheme(this.checked);
 });
 
+// Menu size change
+document.getElementById('menuSize').addEventListener('change', function() {
+  applyMenuSize(this.value);
+});
+
+// Quick Tab position change
+document.getElementById('quickTabPosition').addEventListener('change', function() {
+  toggleCustomPosition(this.value);
+});
+
 // Tab switching logic
 document.addEventListener('DOMContentLoaded', function() {
-  // Quick Tab position change handler
-  const positionSelect = document.getElementById('quickTabPosition');
-  if (positionSelect) {
-    positionSelect.addEventListener('change', function() {
-      toggleCustomPosition(this.value);
-    });
-  }
-  
   // Settings tab switching
-  document.querySelectorAll('.tab').forEach(tab => {
+  document.querySelectorAll('.tab-button').forEach(tab => {
     tab.addEventListener('click', () => {
       // Remove active class from all tabs and contents
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-button').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       
       // Add active class to clicked tab
@@ -218,19 +309,38 @@ document.addEventListener('DOMContentLoaded', function() {
       
       // Show corresponding content
       const tabName = tab.dataset.tab;
-      const content = document.getElementById(tabName + '-content');
+      const content = document.getElementById(tabName);
       if (content) {
         content.classList.add('active');
       }
     });
   });
   
-  // Load version from manifest
+  // Set footer version dynamically
   const manifest = browser.runtime.getManifest();
   const footerElement = document.getElementById('footerVersion');
   if (footerElement) {
-    footerElement.textContent = `Copy URL on Hover v${manifest.version}`;
+    footerElement.textContent = `${manifest.name} v${manifest.version}`;
   }
+  
+  // Add color input event listeners
+  const colorInputs = [
+    { inputId: 'tooltipColor', previewId: 'tooltipColorPreview' },
+    { inputId: 'notifColor', previewId: 'notifColorPreview' },
+    { inputId: 'notifBorderColor', previewId: 'notifBorderColorPreview' }
+  ];
+  
+  colorInputs.forEach(({ inputId, previewId }) => {
+    const input = document.getElementById(inputId);
+    if (input) {
+      input.addEventListener('input', () => {
+        updateColorPreview(inputId, previewId);
+      });
+      input.addEventListener('blur', () => {
+        updateColorPreview(inputId, previewId);
+      });
+    }
+  });
 });
 
 // Load settings on popup open
