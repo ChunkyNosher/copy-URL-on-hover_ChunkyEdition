@@ -113,6 +113,23 @@ function updateQuickTabs(url, title) {
 // END QUICK TABS INTEGRATION
 // ============================================================
 
+// ---------------------------------------------------------------
+// DOM SYNC LISTENER FOR UC.JS BRIDGE
+// ---------------------------------------------------------------
+// Listen for messages from background script to sync to DOM
+// This allows uc.js scripts to read the hovered link data
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'SYNC_TO_DOM') {
+        // Write to document element attributes so uc.js can read them
+        document.documentElement.setAttribute('data-quicktabs-hovered-url', message.url || '');
+        document.documentElement.setAttribute('data-quicktabs-hovered-title', message.title || '');
+        document.documentElement.setAttribute('data-quicktabs-hovered-state', message.state || 'idle');
+        document.documentElement.setAttribute('data-quicktabs-timestamp', Date.now());
+        
+        console.log('[CopyURL-Content] DOM sync:', { url: message.url, state: message.state });
+    }
+});
+
 // Initialize tooltip animation keyframes once
 function initTooltipAnimation() {
   if (document.querySelector('style[data-copy-url-tooltip]')) return;
