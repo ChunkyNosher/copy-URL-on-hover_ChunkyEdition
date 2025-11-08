@@ -60,34 +60,22 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 
 // ============================================================
-// QUICK TABS INTEGRATION - postMessage Bridge
+// QUICK TABS INTEGRATION - sendAsyncMessage Bridge
 // ============================================================
 
-// Update Quick Tabs by posting a message to the chrome window
+// Update Quick Tabs by sending a message to the privileged chrome script
 function updateQuickTabs(url, title) {
-  if (url && url.trim() !== '') {
-    // Send the message to the privileged browser chrome environment
-    window.postMessage({
-      direction: "from-content-to-chrome",
-      type: 'QUICKTABS_URL_HOVER',
-      payload: {
-        url: url,
-        title: title || url,
-        state: 'hovering'
-      }
-    }, "*"); // Use "*" for the target origin as we are targeting the browser chrome
-    debug('Posted Quick Tabs hover message: ' + url);
-  } else {
-    // Send a message to clear the state
-    window.postMessage({
-      direction: "from-content-to-chrome",
-      type: 'QUICKTABS_URL_HOVER',
-      payload: {
-        state: 'idle'
-      }
-    }, "*");
-    debug('Posted Quick Tabs clear message');
-  }
+    if (typeof sendAsyncMessage !== 'function') return;
+
+    if (url && url.trim() !== '') {
+        // Send the message to the privileged browser chrome environment
+        sendAsyncMessage('CopyURLHover:Hover', { url: url, title: title || getLinkText(currentHoveredElement) });
+        debug(`Posted Quick Tabs hover message: ${url}`);
+    } else {
+        // Send a message to clear the state
+        sendAsyncMessage('CopyURLHover:Clear');
+        debug('Posted Quick Tabs clear message');
+    }
 }
 
 // ============================================================
