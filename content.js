@@ -511,6 +511,54 @@ browser.storage.onChanged.addListener((changes, areaName) => {
         });
       }
       
+      // Also check for Quick Tabs that are now pinned to a different page
+      // These should be closed even if the URL is still in storage
+      quickTabWindows.forEach(container => {
+        const iframe = container.querySelector('iframe');
+        if (!iframe) return;
+        
+        const tabInStorage = newValue.find(t => t.url === iframe.src && !t.minimized);
+        if (tabInStorage && tabInStorage.pinnedToUrl && tabInStorage.pinnedToUrl !== currentPageUrl) {
+          debug(`Closing Quick Tab ${iframe.src} because it's now pinned to ${tabInStorage.pinnedToUrl}`);
+          closeQuickTabWindow(container, false); // false = don't broadcast again
+        }
+      });
+      
+      // Update position and size of existing Quick Tabs from storage
+      quickTabWindows.forEach(container => {
+        const iframe = container.querySelector('iframe');
+        if (!iframe) return;
+        
+        const tabInStorage = newValue.find(t => t.url === iframe.src && !t.minimized);
+        if (tabInStorage) {
+          // Update position if it changed
+          if (tabInStorage.left !== undefined && tabInStorage.top !== undefined) {
+            const currentLeft = parseFloat(container.style.left);
+            const currentTop = parseFloat(container.style.top);
+            
+            // Only update if position actually changed (with small tolerance for rounding)
+            if (Math.abs(currentLeft - tabInStorage.left) > 1 || Math.abs(currentTop - tabInStorage.top) > 1) {
+              container.style.left = tabInStorage.left + 'px';
+              container.style.top = tabInStorage.top + 'px';
+              debug(`Updated Quick Tab ${iframe.src} position to (${tabInStorage.left}, ${tabInStorage.top})`);
+            }
+          }
+          
+          // Update size if it changed
+          if (tabInStorage.width !== undefined && tabInStorage.height !== undefined) {
+            const currentWidth = parseFloat(container.style.width);
+            const currentHeight = parseFloat(container.style.height);
+            
+            // Only update if size actually changed (with small tolerance for rounding)
+            if (Math.abs(currentWidth - tabInStorage.width) > 1 || Math.abs(currentHeight - tabInStorage.height) > 1) {
+              container.style.width = tabInStorage.width + 'px';
+              container.style.height = tabInStorage.height + 'px';
+              debug(`Updated Quick Tab ${iframe.src} size to ${tabInStorage.width}x${tabInStorage.height}`);
+            }
+          }
+        }
+      });
+      
       // Only create Quick Tabs that don't already exist
       newValue.filter(t => {
         if (t.minimized) return false;
@@ -1573,8 +1621,9 @@ function findFeedlyUrl(element) {
 // ===== ENTERTAINMENT & MEDIA HANDLERS =====
 
 function findWikipediaUrl(element) {
-  // Wikipedia typically refers to the current article
-  return window.location.href;
+  // Only return URL if hovering over an actual link element
+  // Don't default to current page URL
+  return findGenericUrl(element);
 }
 
 function findImdbUrl(element) {
@@ -1888,14 +1937,19 @@ function findGenericUrl(element) {
   const link = element.closest('a[href]');
   if (link?.href) return link.href;
   
-  // Search within element
-  const innerLink = element.querySelector('a[href]');
-  if (innerLink?.href) return innerLink.href;
+  // Only search within element if it's a clear container (article, div with specific roles, etc.)
+  // Don't search for unrelated links
+  if (element.tagName === 'ARTICLE' || 
+      element.getAttribute('role') === 'article' || 
+      element.getAttribute('role') === 'link' ||
+      element.classList.contains('post') ||
+      element.hasAttribute('data-testid') ||
+      element.hasAttribute('data-id')) {
+    const innerLink = element.querySelector('a[href]');
+    if (innerLink?.href) return innerLink.href;
+  }
   
-  // Search siblings
-  const siblings = element.parentElement?.querySelectorAll('a[href]');
-  if (siblings?.length) return siblings[0].href;
-  
+  // Don't search siblings - that's too broad and causes false positives
   return null;
 }
 
@@ -1996,8 +2050,15 @@ document.addEventListener('mouseover', function(event) {
       currentHoveredElement = element;
       debug(`[${domainType}] URL found: ${url}`);
     } else {
+      // Clear hover state if no URL found - prevents false positives
+      currentHoveredLink = null;
+      currentHoveredElement = null;
       debug(`[${domainType}] No URL found for element`);
     }
+  } else {
+    // Clear hover state if no valid element
+    currentHoveredLink = null;
+    currentHoveredElement = null;
   }
 }, true);
 
@@ -2383,7 +2444,26 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
   
   // Create iframe first (needed for button handlers)
   const iframe = document.createElement('iframe');
-  iframe.src = url;
+  
+  // For cross-origin iframes created via broadcast when tab is hidden,
+  // defer loading until tab becomes visible to prevent autoplay in background
+  if (document.hidden && fromBroadcast) {
+    iframe.setAttribute('data-deferred-src', url);
+    
+    // Load the iframe when tab becomes visible
+    const loadWhenVisible = () => {
+      if (!document.hidden) {
+        iframe.src = iframe.getAttribute('data-deferred-src');
+        iframe.removeAttribute('data-deferred-src');
+        document.removeEventListener('visibilitychange', loadWhenVisible);
+      }
+    };
+    document.addEventListener('visibilitychange', loadWhenVisible);
+  } else {
+    // Load immediately for foreground tabs or manually created Quick Tabs
+    iframe.src = url;
+  }
+  
   iframe.style.cssText = `
     flex: 1;
     border: none;
@@ -2688,6 +2768,13 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       
       // Try to inject content script into same-origin iframe for nested Quick Tabs
       tryInjectIntoIframe(iframe);
+      
+      // If this tab is hidden (Quick Tab created via broadcast while tab was in background),
+      // pause any media that might have started playing
+      if (document.hidden) {
+        pauseMediaInIframe(iframe);
+        debug(`Paused media in newly created Quick Tab because tab is hidden: ${iframe.src}`);
+      }
     } catch (e) {
       // Cross-origin - use URL instead
       try {
