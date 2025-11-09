@@ -102,6 +102,7 @@ const DEFAULT_CONFIG = {
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
   quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
+  quickTabYouTubeTimestampSync: false, // Experimental: Sync YouTube timestamps across tabs
   
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -3847,6 +3848,11 @@ document.addEventListener('visibilitychange', () => {
     // Page is now hidden (user switched to another tab)
     debug('Page hidden - pausing media in Quick Tabs');
     pauseAllQuickTabMedia();
+    
+    // If YouTube timestamp sync is enabled, save timestamps before hiding
+    if (CONFIG.quickTabYouTubeTimestampSync) {
+      saveYouTubeTimestamps();
+    }
   } else {
     // Page is now visible (user switched back to this tab)
     debug('Page visible - resuming media in Quick Tabs');
@@ -3858,6 +3864,11 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('blur', () => {
   debug('Window blur - pausing media in Quick Tabs');
   pauseAllQuickTabMedia();
+  
+  // Save YouTube timestamps on blur
+  if (CONFIG.quickTabYouTubeTimestampSync) {
+    saveYouTubeTimestamps();
+  }
 });
 
 window.addEventListener('focus', () => {
@@ -3866,5 +3877,107 @@ window.addEventListener('focus', () => {
 });
 
 // ==================== END MEDIA PLAYBACK CONTROL ====================
+
+// ==================== YOUTUBE TIMESTAMP SYNCHRONIZATION ====================
+// Experimental feature: Sync YouTube video timestamps across tabs
+
+function isYouTubeUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be');
+  } catch (e) {
+    return false;
+  }
+}
+
+function getYouTubeTimestamp(iframe) {
+  try {
+    // Try to access iframe content (only works for same-origin)
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) return null;
+    
+    // Look for YouTube video player
+    const video = iframeDoc.querySelector('video');
+    if (video && !video.paused && video.currentTime > 0) {
+      return Math.floor(video.currentTime);
+    }
+    
+    return null;
+  } catch (err) {
+    // Cross-origin iframe - can't access directly
+    // YouTube embeds are cross-origin, so this won't work
+    // We would need to use YouTube's iframe API for this
+    debug('Cannot access YouTube timestamp in cross-origin iframe');
+    return null;
+  }
+}
+
+function updateYouTubeUrlWithTimestamp(url, timestamp) {
+  try {
+    const urlObj = new URL(url);
+    
+    // For youtube.com/watch URLs
+    if (urlObj.pathname === '/watch' || urlObj.pathname.startsWith('/watch')) {
+      urlObj.searchParams.set('t', timestamp + 's');
+      return urlObj.toString();
+    }
+    
+    // For youtu.be URLs
+    if (urlObj.hostname === 'youtu.be') {
+      urlObj.searchParams.set('t', timestamp + 's');
+      return urlObj.toString();
+    }
+    
+    // For embedded URLs (/embed/)
+    if (urlObj.pathname.startsWith('/embed/')) {
+      urlObj.searchParams.set('start', timestamp);
+      return urlObj.toString();
+    }
+    
+    return url;
+  } catch (e) {
+    return url;
+  }
+}
+
+function saveYouTubeTimestamps() {
+  if (!CONFIG.quickTabYouTubeTimestampSync) return;
+  
+  let updated = false;
+  
+  quickTabWindows.forEach(container => {
+    const iframe = container.querySelector('iframe');
+    if (!iframe || !iframe.src) return;
+    
+    // Only process YouTube URLs
+    if (!isYouTubeUrl(iframe.src)) return;
+    
+    const timestamp = getYouTubeTimestamp(iframe);
+    if (timestamp && timestamp > 0) {
+      const newUrl = updateYouTubeUrlWithTimestamp(iframe.src, timestamp);
+      if (newUrl !== iframe.src) {
+        debug(`Updating YouTube Quick Tab URL with timestamp ${timestamp}s: ${newUrl}`);
+        iframe.src = newUrl;
+        updated = true;
+      }
+    }
+  });
+  
+  // Save to storage if any URLs were updated
+  if (updated && CONFIG.quickTabPersistAcrossTabs) {
+    saveQuickTabsToStorage();
+  }
+}
+
+// Periodically save timestamps for playing YouTube videos (every 5 seconds)
+if (CONFIG.quickTabYouTubeTimestampSync) {
+  setInterval(() => {
+    if (!document.hidden && CONFIG.quickTabYouTubeTimestampSync) {
+      saveYouTubeTimestamps();
+    }
+  }, 5000);
+}
+
+// ==================== END YOUTUBE TIMESTAMP SYNCHRONIZATION ====================
 
 debug('Extension loaded - supports 100+ websites with site-specific optimized handlers');
