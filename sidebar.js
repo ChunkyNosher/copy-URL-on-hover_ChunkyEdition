@@ -50,8 +50,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'createQuickTab') {
         addQuickTab(message.url, message.title || 'Untitled', sender.url);
         sendResponse({ success: true });
+        return true
     } else if (message.action === 'getQuickTabsCount') {
         sendResponse({ count: quickTabsStore.size });
+        return true
     }
     return true; // Keep channel open for async response
 });
