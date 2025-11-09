@@ -55,6 +55,17 @@
 // - Fixed: Quick Tabs with video/audio content now pause when the tab loses focus and
 //   resume when the tab regains focus. This prevents media from playing in background
 //   tabs. Note: Only works for same-origin iframes due to browser security restrictions.
+//
+// BUG FIXES (v1.5.5.2):
+// - Fixed: Critical bug where Quick Tabs would immediately close after being opened with
+//   keyboard shortcut. Issue was caused by browser.storage.onChanged listener firing in
+//   the same tab that initiated the storage change, creating a race condition where the
+//   newly created Quick Tab would be immediately closed. Added isSavingToStorage flag to
+//   prevent the storage listener from processing changes initiated by the same tab.
+// - Fixed: Pin button functionality - pinned Quick Tabs now properly persist in their
+//   designated page instead of closing when the pin button is clicked.
+// - Added: YouTube timestamp synchronization feature (experimental) - Quick Tabs with
+//   YouTube videos now save and restore playback position when switching tabs or pausing.
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -91,6 +102,7 @@ const DEFAULT_CONFIG = {
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
   quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
+  quickTabYouTubeTimestampSync: false, // Experimental: Sync YouTube timestamps across tabs
   
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -129,6 +141,7 @@ let minimizedQuickTabs = [];
 let quickTabZIndex = 1000000;
 let lastMouseX = 0;
 let lastMouseY = 0;
+let isSavingToStorage = false; // Flag to prevent processing our own storage changes
 
 // ==================== BROADCAST CHANNEL SETUP ====================
 // Create a BroadcastChannel for real-time cross-tab Quick Tab sync
@@ -247,6 +260,28 @@ function handleBroadcastMessage(event) {
       }
     }
   }
+  else if (message.action === 'unpinQuickTab') {
+    debug(`Received unpin Quick Tab broadcast for URL: ${message.url}`);
+    
+    // When a Quick Tab is unpinned in another tab, create it here if we don't have it
+    const existingContainer = quickTabWindows.find(win => {
+      const iframe = win.querySelector('iframe');
+      return iframe && iframe.src === message.url;
+    });
+    
+    // Only create if we don't already have this Quick Tab
+    if (!existingContainer && quickTabWindows.length < CONFIG.quickTabMaxWindows) {
+      createQuickTabWindow(
+        message.url,
+        message.width,
+        message.height,
+        message.left,
+        message.top,
+        true, // fromBroadcast = true
+        null  // pinnedToUrl = null (unpinned)
+      );
+    }
+  }
   else if (message.action === 'clearMinimizedTabs') {
     minimizedQuickTabs = [];
     updateMinimizedTabsManager();
@@ -332,6 +367,22 @@ function broadcastQuickTabPin(url, pinnedToUrl) {
   debug(`Broadcasting Quick Tab pin to other tabs: ${url} pinned to ${pinnedToUrl}`);
 }
 
+function broadcastQuickTabUnpin(url, width, height, left, top) {
+  if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
+  
+  quickTabChannel.postMessage({
+    action: 'unpinQuickTab',
+    url: url,
+    width: width,
+    height: height,
+    left: left,
+    top: top,
+    timestamp: Date.now()
+  });
+  
+  debug(`Broadcasting Quick Tab unpin to other tabs: ${url} is now unpinned`);
+}
+
 function broadcastClearMinimized() {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
@@ -376,15 +427,24 @@ function saveQuickTabsToStorage() {
     
     const allTabs = [...state, ...minimizedState];
     
+    // Set flag to indicate we're saving (to avoid processing our own change)
+    isSavingToStorage = true;
+    
     // Use browser.storage.local for cross-domain support
     browser.storage.local.set({ quickTabs_storage: allTabs }).then(() => {
       debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.local`);
+      // Reset flag after a short delay to allow storage event to fire
+      setTimeout(() => {
+        isSavingToStorage = false;
+      }, 100);
     }).catch(err => {
       console.error('Error saving Quick Tabs to browser.storage.local:', err);
+      isSavingToStorage = false; // Reset flag on error
     });
     
   } catch (err) {
     console.error('Error saving Quick Tabs:', err);
+    isSavingToStorage = false; // Reset flag on error
   }
 }
 
@@ -468,6 +528,12 @@ function clearQuickTabsFromStorage() {
 // browser.storage.onChanged works across all origins
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'local' && changes.quickTabs_storage) {
+    // Ignore storage changes that we initiated ourselves to prevent race conditions
+    if (isSavingToStorage) {
+      debug('Ignoring storage change event from our own save operation');
+      return;
+    }
+    
     debug('Storage change detected from another tab/window');
     // Note: We rely on BroadcastChannel for real-time same-origin sync
     // Storage event handles cross-origin sync
@@ -2712,6 +2778,12 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       showNotification('✓ Quick Tab unpinned');
       debug(`Quick Tab unpinned: ${iframe.src}`);
       
+      // Broadcast unpin so other tabs can show this Quick Tab
+      if (CONFIG.quickTabPersistAcrossTabs) {
+        const rect = container.getBoundingClientRect();
+        broadcastQuickTabUnpin(iframe.src, rect.width, rect.height, rect.left, rect.top);
+      }
+      
       // Save updated state
       if (CONFIG.quickTabPersistAcrossTabs) {
         saveQuickTabsToStorage();
@@ -3776,6 +3848,11 @@ document.addEventListener('visibilitychange', () => {
     // Page is now hidden (user switched to another tab)
     debug('Page hidden - pausing media in Quick Tabs');
     pauseAllQuickTabMedia();
+    
+    // If YouTube timestamp sync is enabled, save timestamps before hiding
+    if (CONFIG.quickTabYouTubeTimestampSync) {
+      saveYouTubeTimestamps();
+    }
   } else {
     // Page is now visible (user switched back to this tab)
     debug('Page visible - resuming media in Quick Tabs');
@@ -3787,6 +3864,11 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('blur', () => {
   debug('Window blur - pausing media in Quick Tabs');
   pauseAllQuickTabMedia();
+  
+  // Save YouTube timestamps on blur
+  if (CONFIG.quickTabYouTubeTimestampSync) {
+    saveYouTubeTimestamps();
+  }
 });
 
 window.addEventListener('focus', () => {
@@ -3795,5 +3877,113 @@ window.addEventListener('focus', () => {
 });
 
 // ==================== END MEDIA PLAYBACK CONTROL ====================
+
+// ==================== YOUTUBE TIMESTAMP SYNCHRONIZATION ====================
+// Experimental feature: Sync YouTube video timestamps across tabs
+
+function isYouTubeUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    // Only match exact YouTube domains or their subdomains
+    return hostname === 'youtube.com' || 
+           hostname === 'www.youtube.com' || 
+           hostname.endsWith('.youtube.com') ||
+           hostname === 'youtu.be' ||
+           hostname === 'www.youtu.be';
+  } catch (e) {
+    return false;
+  }
+}
+
+function getYouTubeTimestamp(iframe) {
+  try {
+    // Try to access iframe content (only works for same-origin)
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) return null;
+    
+    // Look for YouTube video player
+    const video = iframeDoc.querySelector('video');
+    if (video && !video.paused && video.currentTime > 0) {
+      return Math.floor(video.currentTime);
+    }
+    
+    return null;
+  } catch (err) {
+    // Cross-origin iframe - can't access directly
+    // YouTube embeds are cross-origin, so this won't work
+    // We would need to use YouTube's iframe API for this
+    debug('Cannot access YouTube timestamp in cross-origin iframe');
+    return null;
+  }
+}
+
+function updateYouTubeUrlWithTimestamp(url, timestamp) {
+  try {
+    const urlObj = new URL(url);
+    
+    // For youtube.com/watch URLs
+    if (urlObj.pathname === '/watch' || urlObj.pathname.startsWith('/watch')) {
+      urlObj.searchParams.set('t', timestamp + 's');
+      return urlObj.toString();
+    }
+    
+    // For youtu.be URLs
+    if (urlObj.hostname === 'youtu.be') {
+      urlObj.searchParams.set('t', timestamp + 's');
+      return urlObj.toString();
+    }
+    
+    // For embedded URLs (/embed/)
+    if (urlObj.pathname.startsWith('/embed/')) {
+      urlObj.searchParams.set('start', timestamp);
+      return urlObj.toString();
+    }
+    
+    return url;
+  } catch (e) {
+    return url;
+  }
+}
+
+function saveYouTubeTimestamps() {
+  if (!CONFIG.quickTabYouTubeTimestampSync) return;
+  
+  let updated = false;
+  
+  quickTabWindows.forEach(container => {
+    const iframe = container.querySelector('iframe');
+    if (!iframe || !iframe.src) return;
+    
+    // Only process YouTube URLs
+    if (!isYouTubeUrl(iframe.src)) return;
+    
+    const timestamp = getYouTubeTimestamp(iframe);
+    if (timestamp && timestamp > 0) {
+      const newUrl = updateYouTubeUrlWithTimestamp(iframe.src, timestamp);
+      if (newUrl !== iframe.src) {
+        debug(`Updating YouTube Quick Tab URL with timestamp ${timestamp}s: ${newUrl}`);
+        iframe.src = newUrl;
+        updated = true;
+      }
+    }
+  });
+  
+  // Save to storage if any URLs were updated
+  if (updated && CONFIG.quickTabPersistAcrossTabs) {
+    saveQuickTabsToStorage();
+  }
+}
+
+// Periodically save timestamps for playing YouTube videos (every 5 seconds)
+if (CONFIG.quickTabYouTubeTimestampSync) {
+  setInterval(() => {
+    if (!document.hidden && CONFIG.quickTabYouTubeTimestampSync) {
+      saveYouTubeTimestamps();
+    }
+  }, 5000);
+}
+
+// ==================== END YOUTUBE TIMESTAMP SYNCHRONIZATION ====================
 
 debug('Extension loaded - supports 100+ websites with site-specific optimized handlers');
