@@ -34,6 +34,11 @@
 //   origins.
 // - Added: Duplicate detection when restoring Quick Tabs to prevent multiple instances
 //   of the same URL from being created.
+// - Fixed: Quick Tab position and size now persist when switching tabs. Move and resize
+//   broadcast handlers now save to storage.
+// - Added: Pin Quick Tab feature - pin a Quick Tab to a specific page URL. Pinned Quick
+//   Tabs only appear on the page they're pinned to, while unpinned Quick Tabs appear
+//   across all tabs/domains.
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -135,6 +140,16 @@ function handleBroadcastMessage(event) {
   if (message.action === 'createQuickTab') {
     debug(`Received Quick Tab broadcast from another tab: ${message.url}`);
     
+    // Filter based on pin status - only show unpinned Quick Tabs via broadcast
+    // Pinned Quick Tabs are handled by storage restore based on current page URL
+    if (message.pinnedToUrl) {
+      const currentPageUrl = window.location.href;
+      if (message.pinnedToUrl !== currentPageUrl) {
+        debug(`Skipping pinned Quick Tab broadcast (pinned to ${message.pinnedToUrl}, current: ${currentPageUrl})`);
+        return;
+      }
+    }
+    
     // Create the Quick Tab window with the same properties
     // Pass true for fromBroadcast to prevent re-broadcasting
     createQuickTabWindow(
@@ -143,7 +158,8 @@ function handleBroadcastMessage(event) {
       message.height,
       message.left,
       message.top,
-      true // fromBroadcast = true
+      true, // fromBroadcast = true
+      message.pinnedToUrl
     );
   }
   else if (message.action === 'closeQuickTab') {
@@ -175,6 +191,8 @@ function handleBroadcastMessage(event) {
     if (container) {
       container.style.left = message.left + 'px';
       container.style.top = message.top + 'px';
+      // Save to storage so position persists when switching tabs
+      saveQuickTabsToStorage();
     }
   }
   else if (message.action === 'resizeQuickTab') {
@@ -189,6 +207,8 @@ function handleBroadcastMessage(event) {
     if (container) {
       container.style.width = message.width + 'px';
       container.style.height = message.height + 'px';
+      // Save to storage so size persists when switching tabs
+      saveQuickTabsToStorage();
     }
   }
   else if (message.action === 'clearMinimizedTabs') {
@@ -197,7 +217,7 @@ function handleBroadcastMessage(event) {
   }
 }
 
-function broadcastQuickTabCreation(url, width, height, left, top) {
+function broadcastQuickTabCreation(url, width, height, left, top, pinnedToUrl = null) {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
@@ -207,6 +227,7 @@ function broadcastQuickTabCreation(url, width, height, left, top) {
     height: height || CONFIG.quickTabDefaultHeight,
     left: left,
     top: top,
+    pinnedToUrl: pinnedToUrl,
     timestamp: Date.now()
   });
   
@@ -293,7 +314,8 @@ function saveQuickTabsToStorage() {
         height: rect.height,
         left: rect.left,
         top: rect.top,
-        minimized: false
+        minimized: false,
+        pinnedToUrl: container._pinnedToUrl || null
       };
     });
     
@@ -326,6 +348,9 @@ function restoreQuickTabsFromStorage() {
     
     debug(`Restoring ${tabs.length} Quick Tabs from browser.storage.local`);
     
+    // Get current page URL for pin filtering
+    const currentPageUrl = window.location.href;
+    
     // Check if we already have Quick Tabs with the same URLs to prevent duplicates
     const existingUrls = new Set(quickTabWindows.map(win => {
       const iframe = win.querySelector('iframe');
@@ -341,16 +366,36 @@ function restoreQuickTabsFromStorage() {
         return;
       }
       
+      // Filter based on pin status
+      if (tab.pinnedToUrl) {
+        // Only restore pinned Quick Tabs on the page they're pinned to
+        if (tab.pinnedToUrl !== currentPageUrl) {
+          debug(`Skipping pinned Quick Tab (pinned to ${tab.pinnedToUrl}, current: ${currentPageUrl})`);
+          return;
+        }
+      }
+      
       if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) return;
       
       // Pass true for fromBroadcast to prevent re-broadcasting when restoring from storage
       // This fixes the duplication bug where restored tabs would broadcast and create duplicates
-      createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top, true);
+      createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top, true, tab.pinnedToUrl);
     });
     
-    // Restore minimized tabs (also check for duplicates)
+    // Restore minimized tabs (also check for duplicates and pin status)
     const existingMinimizedUrls = new Set(minimizedQuickTabs.map(t => t.url));
-    const minimized = tabs.filter(t => t.minimized && !existingMinimizedUrls.has(t.url));
+    const minimized = tabs.filter(t => {
+      if (!t.minimized) return false;
+      if (existingMinimizedUrls.has(t.url)) return false;
+      
+      // Filter based on pin status
+      if (t.pinnedToUrl && t.pinnedToUrl !== currentPageUrl) {
+        debug(`Skipping minimized pinned Quick Tab (pinned to ${t.pinnedToUrl}, current: ${currentPageUrl})`);
+        return false;
+      }
+      
+      return true;
+    });
     
     if (minimized.length > 0) {
       minimizedQuickTabs.push(...minimized);
@@ -389,10 +434,24 @@ browser.storage.onChanged.addListener((changes, areaName) => {
           return iframe ? iframe.src : null;
         }).filter(url => url !== null));
         
+        // Get current page URL for pin filtering
+        const currentPageUrl = window.location.href;
+        
         // Only create Quick Tabs that don't already exist
-        newTabs.filter(t => !t.minimized && !existingUrls.has(t.url)).forEach(tab => {
+        newTabs.filter(t => {
+          if (t.minimized) return false;
+          if (existingUrls.has(t.url)) return false;
+          
+          // Filter based on pin status
+          if (t.pinnedToUrl && t.pinnedToUrl !== currentPageUrl) {
+            debug(`Skipping pinned Quick Tab from storage event (pinned to ${t.pinnedToUrl}, current: ${currentPageUrl})`);
+            return false;
+          }
+          
+          return true;
+        }).forEach(tab => {
           if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) return;
-          createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top, true);
+          createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top, true, tab.pinnedToUrl);
         });
       }
     }
@@ -2159,7 +2218,7 @@ function tryInjectIntoIframe(iframe) {
 }
 
 // Create Quick Tab window
-function createQuickTabWindow(url, width, height, left, top, fromBroadcast = false) {
+function createQuickTabWindow(url, width, height, left, top, fromBroadcast = false, pinnedToUrl = null) {
   if (isRestrictedPage()) {
     showNotification('✗ Quick Tab not available on this page');
     debug('Quick Tab blocked on restricted page');
@@ -2466,6 +2525,57 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
   titleBar.appendChild(navContainer);
   titleBar.appendChild(favicon);
   titleBar.appendChild(titleText);
+  
+  // Pin button (before minimize button)
+  const pinBtn = document.createElement('button');
+  pinBtn.textContent = pinnedToUrl ? '📌' : '📍';
+  pinBtn.title = pinnedToUrl ? `Pinned to: ${pinnedToUrl}` : 'Pin to current page';
+  pinBtn.style.cssText = `
+    width: 24px;
+    height: 24px;
+    background: ${pinnedToUrl ? (CONFIG.darkMode ? '#444' : '#e0e0e0') : 'transparent'};
+    color: ${CONFIG.darkMode ? '#e0e0e0' : '#333'};
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  `;
+  pinBtn.onmouseover = () => pinBtn.style.background = CONFIG.darkMode ? '#444' : '#e0e0e0';
+  pinBtn.onmouseout = () => pinBtn.style.background = pinnedToUrl ? (CONFIG.darkMode ? '#444' : '#e0e0e0') : 'transparent';
+  pinBtn.onclick = (e) => {
+    e.stopPropagation();
+    
+    // Toggle pin state
+    if (container._pinnedToUrl) {
+      // Unpin
+      container._pinnedToUrl = null;
+      pinBtn.textContent = '📍';
+      pinBtn.title = 'Pin to current page';
+      pinBtn.style.background = 'transparent';
+      showNotification('✓ Quick Tab unpinned');
+      debug(`Quick Tab unpinned: ${iframe.src}`);
+    } else {
+      // Pin to current page URL
+      const currentPageUrl = window.location.href;
+      container._pinnedToUrl = currentPageUrl;
+      pinBtn.textContent = '📌';
+      pinBtn.title = `Pinned to: ${currentPageUrl}`;
+      pinBtn.style.background = CONFIG.darkMode ? '#444' : '#e0e0e0';
+      showNotification('✓ Quick Tab pinned to this page');
+      debug(`Quick Tab pinned to: ${currentPageUrl}`);
+    }
+    
+    // Save updated state
+    if (CONFIG.quickTabPersistAcrossTabs) {
+      saveQuickTabsToStorage();
+    }
+  };
+  
+  titleBar.appendChild(pinBtn);
   titleBar.appendChild(minimizeBtn);
   titleBar.appendChild(openBtn);
   titleBar.appendChild(closeBtn);
@@ -2509,6 +2619,9 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
   // Add to DOM
   document.documentElement.appendChild(container);
   
+  // Store the pinned URL on the container
+  container._pinnedToUrl = pinnedToUrl;
+  
   // Add to tracking array
   quickTabWindows.push(container);
   
@@ -2531,7 +2644,7 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
   // Broadcast to other tabs using BroadcastChannel for real-time sync
   // Only broadcast if this wasn't created from a broadcast (prevent infinite loop)
   if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
-    broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY);
+    broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl);
     saveQuickTabsToStorage();
   }
 }
