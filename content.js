@@ -10,14 +10,18 @@
 //    because cross-origin iframes block script injection for security.
 //    WORKAROUND: Use the "Open in New Tab" button to open links in a real tab.
 //
-// 3. Persistent Quick Tabs (#4): Quick Tabs cannot persist across different browser
-//    tabs because each tab has its own isolated DOM and content script instance.
-//    Browser security prevents cross-tab DOM manipulation.
-//    WORKAROUND: Use the minimize feature to keep tabs accessible while browsing.
-//
-// 4. Zen Browser Theme (#10): Detecting Zen Browser workspace themes requires
+// 3. Zen Browser Theme (#10): Detecting Zen Browser workspace themes requires
 //    access to Zen-specific browser APIs which are not available to content scripts.
 //    Would need a separate WebExtension API or Zen Browser integration.
+//
+// BUG FIXES (v1.5.4):
+// - Fixed: Opening Quick Tab via keyboard shortcut would create multiple tabs up to 
+//   the limit due to BroadcastChannel infinite loop. Now Quick Tabs created from 
+//   broadcasts are marked with fromBroadcast=true to prevent re-broadcasting.
+// - Fixed: Quick Tabs now sync across ALL domains, not just same domain tabs.
+// - Fixed: Quick Tab position and size changes now sync across all tabs.
+// - Fixed: Closing a Quick Tab in one tab now closes it in all tabs.
+// - Fixed: Quick Tabs can now be moved outside webpage boundaries.
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -50,11 +54,10 @@ const DEFAULT_CONFIG = {
   quickTabPosition: 'follow-cursor',
   quickTabCustomX: 100,
   quickTabCustomY: 100,
-  quickTabPersistAcrossTabs: false,
+  quickTabPersistAcrossTabs: true,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
   quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
-  quickTabUseSidebar: false, // Use browser sidebar instead of floating windows
   
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -121,17 +124,60 @@ function handleBroadcastMessage(event) {
     debug(`Received Quick Tab broadcast from another tab: ${message.url}`);
     
     // Create the Quick Tab window with the same properties
+    // Pass true for fromBroadcast to prevent re-broadcasting
     createQuickTabWindow(
       message.url,
       message.width,
       message.height,
       message.left,
-      message.top
+      message.top,
+      true // fromBroadcast = true
     );
+  }
+  else if (message.action === 'closeQuickTab') {
+    debug(`Received close Quick Tab broadcast for URL: ${message.url}`);
+    
+    // Find and close the Quick Tab with matching URL
+    const container = quickTabWindows.find(win => {
+      const iframe = win.querySelector('iframe');
+      return iframe && iframe.src === message.url;
+    });
+    
+    if (container) {
+      closeQuickTabWindow(container, false); // false = don't broadcast again
+    }
   }
   else if (message.action === 'closeAllQuickTabs') {
     debug('Received close all Quick Tabs broadcast');
-    closeAllQuickTabWindows();
+    closeAllQuickTabWindows(false); // false = don't broadcast again
+  }
+  else if (message.action === 'moveQuickTab') {
+    debug(`Received move Quick Tab broadcast for URL: ${message.url}`);
+    
+    // Find and move the Quick Tab with matching URL
+    const container = quickTabWindows.find(win => {
+      const iframe = win.querySelector('iframe');
+      return iframe && iframe.src === message.url;
+    });
+    
+    if (container) {
+      container.style.left = message.left + 'px';
+      container.style.top = message.top + 'px';
+    }
+  }
+  else if (message.action === 'resizeQuickTab') {
+    debug(`Received resize Quick Tab broadcast for URL: ${message.url}`);
+    
+    // Find and resize the Quick Tab with matching URL
+    const container = quickTabWindows.find(win => {
+      const iframe = win.querySelector('iframe');
+      return iframe && iframe.src === message.url;
+    });
+    
+    if (container) {
+      container.style.width = message.width + 'px';
+      container.style.height = message.height + 'px';
+    }
   }
   else if (message.action === 'clearMinimizedTabs') {
     minimizedQuickTabs = [];
@@ -155,6 +201,18 @@ function broadcastQuickTabCreation(url, width, height, left, top) {
   debug(`Broadcasting Quick Tab creation to other tabs: ${url}`);
 }
 
+function broadcastQuickTabClose(url) {
+  if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
+  
+  quickTabChannel.postMessage({
+    action: 'closeQuickTab',
+    url: url,
+    timestamp: Date.now()
+  });
+  
+  debug(`Broadcasting Quick Tab close to other tabs: ${url}`);
+}
+
 function broadcastCloseAll() {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
@@ -162,6 +220,34 @@ function broadcastCloseAll() {
     action: 'closeAllQuickTabs',
     timestamp: Date.now()
   });
+}
+
+function broadcastQuickTabMove(url, left, top) {
+  if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
+  
+  quickTabChannel.postMessage({
+    action: 'moveQuickTab',
+    url: url,
+    left: left,
+    top: top,
+    timestamp: Date.now()
+  });
+  
+  debug(`Broadcasting Quick Tab move to other tabs: ${url}`);
+}
+
+function broadcastQuickTabResize(url, width, height) {
+  if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
+  
+  quickTabChannel.postMessage({
+    action: 'resizeQuickTab',
+    url: url,
+    width: width,
+    height: height,
+    timestamp: Date.now()
+  });
+  
+  debug(`Broadcasting Quick Tab resize to other tabs: ${url}`);
 }
 
 function broadcastClearMinimized() {
@@ -2023,7 +2109,7 @@ function tryInjectIntoIframe(iframe) {
 }
 
 // Create Quick Tab window
-function createQuickTabWindow(url, width, height, left, top) {
+function createQuickTabWindow(url, width, height, left, top, fromBroadcast = false) {
   if (isRestrictedPage()) {
     showNotification('✗ Quick Tab not available on this page');
     debug('Quick Tab blocked on restricted page');
@@ -2393,18 +2479,24 @@ function createQuickTabWindow(url, width, height, left, top) {
   debug(`Quick Tab window created. Total windows: ${quickTabWindows.length}`);
   
   // Broadcast to other tabs using BroadcastChannel for real-time sync
-  if (CONFIG.quickTabPersistAcrossTabs) {
+  // Only broadcast if this wasn't created from a broadcast (prevent infinite loop)
+  if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
     broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY);
     saveQuickTabsToStorage();
   }
 }
 
 // Close Quick Tab window
-function closeQuickTabWindow(container) {
+function closeQuickTabWindow(container, broadcast = true) {
   const index = quickTabWindows.indexOf(container);
   if (index > -1) {
     quickTabWindows.splice(index, 1);
   }
+  
+  // Get URL before removing the container
+  const iframe = container.querySelector('iframe');
+  const url = iframe ? iframe.src : null;
+  
   // Clean up drag listeners
   if (container._dragCleanup) {
     container._dragCleanup();
@@ -2416,14 +2508,15 @@ function closeQuickTabWindow(container) {
   container.remove();
   debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
   
-  // Save state to background if persistence is enabled
-  if (CONFIG.quickTabPersistAcrossTabs) {
-    saveQuickTabState();
+  // Broadcast close to other tabs if enabled
+  if (broadcast && url && CONFIG.quickTabPersistAcrossTabs) {
+    broadcastQuickTabClose(url);
+    saveQuickTabsToStorage();
   }
 }
 
 // Close all Quick Tab windows
-function closeAllQuickTabWindows() {
+function closeAllQuickTabWindows(broadcast = true) {
   const count = quickTabWindows.length;
   quickTabWindows.forEach(window => {
     if (window._dragCleanup) {
@@ -2441,7 +2534,7 @@ function closeAllQuickTabWindows() {
   }
   
   // Broadcast to other tabs and clear storage
-  if (CONFIG.quickTabPersistAcrossTabs) {
+  if (broadcast && CONFIG.quickTabPersistAcrossTabs) {
     broadcastCloseAll();
     clearQuickTabsFromStorage();
   }
@@ -2747,9 +2840,8 @@ function makeDraggable(element, handle) {
     let newX = e.clientX - offsetX;
     let newY = e.clientY - offsetY;
     
-    // Keep within viewport
-    newX = Math.max(0, Math.min(newX, window.innerWidth - element.offsetWidth));
-    newY = Math.max(0, Math.min(newY, window.innerHeight - element.offsetHeight));
+    // Allow Quick Tabs to move outside viewport boundaries
+    // No constraints applied - can be moved anywhere including outside screen
     
     // Store the new position
     pendingX = newX;
@@ -2786,6 +2878,14 @@ function makeDraggable(element, handle) {
     if (pendingX !== null && pendingY !== null) {
       element.style.left = pendingX + 'px';
       element.style.top = pendingY + 'px';
+      
+      // Broadcast move to other tabs
+      const iframe = element.querySelector('iframe');
+      if (iframe && CONFIG.quickTabPersistAcrossTabs) {
+        broadcastQuickTabMove(iframe.src, pendingX, pendingY);
+        saveQuickTabsToStorage();
+      }
+      
       pendingX = null;
       pendingY = null;
     }
@@ -2982,21 +3082,8 @@ function makeResizable(element) {
         newTop = startTop + constrainedDy;
       }
       
-      // Keep within viewport
-      if (newLeft < 0) {
-        newWidth += newLeft;
-        newLeft = 0;
-      }
-      if (newTop < 0) {
-        newHeight += newTop;
-        newTop = 0;
-      }
-      if (newLeft + newWidth > window.innerWidth) {
-        newWidth = window.innerWidth - newLeft;
-      }
-      if (newTop + newHeight > window.innerHeight) {
-        newHeight = window.innerHeight - newTop;
-      }
+      // Allow Quick Tabs to be resized beyond viewport boundaries
+      // No viewport constraints applied
       
       // Store pending resize
       pendingResize = { width: newWidth, height: newHeight, left: newLeft, top: newTop };
@@ -3025,6 +3112,16 @@ function makeResizable(element) {
         element.style.height = pendingResize.height + 'px';
         element.style.left = pendingResize.left + 'px';
         element.style.top = pendingResize.top + 'px';
+        
+        // Broadcast resize to other tabs
+        const iframe = element.querySelector('iframe');
+        if (iframe && CONFIG.quickTabPersistAcrossTabs) {
+          broadcastQuickTabResize(iframe.src, pendingResize.width, pendingResize.height);
+          // Also broadcast the position change if it was adjusted
+          broadcastQuickTabMove(iframe.src, pendingResize.left, pendingResize.top);
+          saveQuickTabsToStorage();
+        }
+        
         pendingResize = null;
       }
     };
@@ -3169,6 +3266,16 @@ browser.storage.onChanged.addListener(function(changes, areaName) {
   if (areaName === 'local') {
     loadSettings();
   }
+});
+
+// Runtime message listener for background script messages
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'tabActivated') {
+    debug('Tab activated, checking for stored Quick Tabs');
+    restoreQuickTabsFromStorage();
+    sendResponse({ received: true });
+  }
+  return true; // Keep channel open for async response
 });
 
 // Initialize
