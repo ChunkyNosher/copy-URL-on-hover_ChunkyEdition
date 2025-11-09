@@ -58,12 +58,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Clear Quick Tab state for this tab
     quickTabStates.delete(tabId);
   } else if (message.action === 'createQuickTab') {
-    // Forward Quick Tab creation to sidebar (sidebar will handle via runtime.onMessage)
-    // Also send success response back to content script
-    sendResponse({ success: true });
+    // Forward Quick Tab creation message to the sidebar
+    // The sidebar panel listens for this message via browser.runtime.onMessage
+    console.log('[Background] Forwarding createQuickTab to sidebar:', message);
+    
+    // Send message to the sidebar extension page
+    // Note: This uses the broadcast approach - all listeners will receive it
+    browser.runtime.sendMessage({
+        action: 'createQuickTab',
+        url: message.url,
+        title: message.title || document.title,
+        sourceTabId: tabId  // Tell sidebar which tab it came from (optional)
+    }).then(response => {
+        console.log('[Background] Sidebar responded:', response);
+        sendResponse({ success: true });
+    }).catch(err => {
+        console.error('[Background] Error forwarding to sidebar:', err);
+        // Still send success response to content script
+        // The content script already showed the notification
+        sendResponse({ success: true });
+    });
+    
+    // Return true to indicate we'll respond asynchronously
     return true;
-  }
-});
+}
 
 // Handle sidePanel toggle for Chrome (optional)
 if (chrome.sidePanel) {
