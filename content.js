@@ -259,6 +259,28 @@ function handleBroadcastMessage(event) {
       }
     }
   }
+  else if (message.action === 'unpinQuickTab') {
+    debug(`Received unpin Quick Tab broadcast for URL: ${message.url}`);
+    
+    // When a Quick Tab is unpinned in another tab, create it here if we don't have it
+    const existingContainer = quickTabWindows.find(win => {
+      const iframe = win.querySelector('iframe');
+      return iframe && iframe.src === message.url;
+    });
+    
+    // Only create if we don't already have this Quick Tab
+    if (!existingContainer && quickTabWindows.length < CONFIG.quickTabMaxWindows) {
+      createQuickTabWindow(
+        message.url,
+        message.width,
+        message.height,
+        message.left,
+        message.top,
+        true, // fromBroadcast = true
+        null  // pinnedToUrl = null (unpinned)
+      );
+    }
+  }
   else if (message.action === 'clearMinimizedTabs') {
     minimizedQuickTabs = [];
     updateMinimizedTabsManager();
@@ -342,6 +364,22 @@ function broadcastQuickTabPin(url, pinnedToUrl) {
   });
   
   debug(`Broadcasting Quick Tab pin to other tabs: ${url} pinned to ${pinnedToUrl}`);
+}
+
+function broadcastQuickTabUnpin(url, width, height, left, top) {
+  if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
+  
+  quickTabChannel.postMessage({
+    action: 'unpinQuickTab',
+    url: url,
+    width: width,
+    height: height,
+    left: left,
+    top: top,
+    timestamp: Date.now()
+  });
+  
+  debug(`Broadcasting Quick Tab unpin to other tabs: ${url} is now unpinned`);
 }
 
 function broadcastClearMinimized() {
@@ -2738,6 +2776,12 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       pinBtn.style.background = 'transparent';
       showNotification('✓ Quick Tab unpinned');
       debug(`Quick Tab unpinned: ${iframe.src}`);
+      
+      // Broadcast unpin so other tabs can show this Quick Tab
+      if (CONFIG.quickTabPersistAcrossTabs) {
+        const rect = container.getBoundingClientRect();
+        broadcastQuickTabUnpin(iframe.src, rect.width, rect.height, rect.left, rect.top);
+      }
       
       // Save updated state
       if (CONFIG.quickTabPersistAcrossTabs) {
