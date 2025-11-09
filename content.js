@@ -94,6 +94,177 @@ let quickTabZIndex = 1000000;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
+// ==================== BROADCAST CHANNEL SETUP ====================
+// Create a BroadcastChannel for real-time cross-tab Quick Tab sync
+let quickTabChannel = null;
+
+function initializeBroadcastChannel() {
+  if (quickTabChannel) return; // Already initialized
+  
+  try {
+    quickTabChannel = new BroadcastChannel('quick-tabs-sync');
+    debug('BroadcastChannel initialized for Quick Tab sync');
+    
+    // Listen for Quick Tab creation messages from other tabs
+    quickTabChannel.onmessage = handleBroadcastMessage;
+    
+  } catch (err) {
+    console.error('Failed to create BroadcastChannel:', err);
+    debug('BroadcastChannel not available - using localStorage fallback only');
+  }
+}
+
+function handleBroadcastMessage(event) {
+  const message = event.data;
+  
+  if (message.action === 'createQuickTab') {
+    debug(`Received Quick Tab broadcast from another tab: ${message.url}`);
+    
+    // Create the Quick Tab window with the same properties
+    createQuickTabWindow(
+      message.url,
+      message.width,
+      message.height,
+      message.left,
+      message.top
+    );
+  }
+  else if (message.action === 'closeAllQuickTabs') {
+    debug('Received close all Quick Tabs broadcast');
+    closeAllQuickTabWindows();
+  }
+  else if (message.action === 'clearMinimizedTabs') {
+    minimizedQuickTabs = [];
+    updateMinimizedTabsManager();
+  }
+}
+
+function broadcastQuickTabCreation(url, width, height, left, top) {
+  if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
+  
+  quickTabChannel.postMessage({
+    action: 'createQuickTab',
+    url: url,
+    width: width || CONFIG.quickTabDefaultWidth,
+    height: height || CONFIG.quickTabDefaultHeight,
+    left: left,
+    top: top,
+    timestamp: Date.now()
+  });
+  
+  debug(`Broadcasting Quick Tab creation to other tabs: ${url}`);
+}
+
+function broadcastCloseAll() {
+  if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
+  
+  quickTabChannel.postMessage({
+    action: 'closeAllQuickTabs',
+    timestamp: Date.now()
+  });
+}
+
+function broadcastClearMinimized() {
+  if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
+  
+  quickTabChannel.postMessage({
+    action: 'clearMinimizedTabs',
+    timestamp: Date.now()
+  });
+}
+
+// ==================== END BROADCAST CHANNEL SETUP ====================
+
+// ==================== LOCALSTORAGE PERSISTENCE ====================
+
+function saveQuickTabsToStorage() {
+  if (!CONFIG.quickTabPersistAcrossTabs) return;
+  
+  try {
+    const state = quickTabWindows.map(container => {
+      const iframe = container.querySelector('iframe');
+      const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
+      const rect = container.getBoundingClientRect();
+      
+      return {
+        url: iframe?.src || '',
+        title: titleText?.textContent || 'Quick Tab',
+        width: rect.width,
+        height: rect.height,
+        left: rect.left,
+        top: rect.top,
+        minimized: false
+      };
+    });
+    
+    // Also include minimized tabs
+    const minimizedState = minimizedQuickTabs.map(tab => ({
+      ...tab,
+      minimized: true
+    }));
+    
+    const allTabs = [...state, ...minimizedState];
+    
+    localStorage.setItem('quickTabs_storage', JSON.stringify(allTabs));
+    debug(`Saved ${allTabs.length} Quick Tabs to localStorage`);
+    
+  } catch (err) {
+    console.error('Error saving Quick Tabs to localStorage:', err);
+  }
+}
+
+function restoreQuickTabsFromStorage() {
+  if (!CONFIG.quickTabPersistAcrossTabs) return;
+  
+  try {
+    const stored = localStorage.getItem('quickTabs_storage');
+    if (!stored) return;
+    
+    const tabs = JSON.parse(stored);
+    if (!Array.isArray(tabs) || tabs.length === 0) return;
+    
+    debug(`Restoring ${tabs.length} Quick Tabs from localStorage`);
+    
+    // Restore non-minimized tabs
+    const normalTabs = tabs.filter(t => !t.minimized);
+    normalTabs.forEach(tab => {
+      if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) return;
+      createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top);
+    });
+    
+    // Restore minimized tabs
+    const minimized = tabs.filter(t => t.minimized);
+    minimizedQuickTabs = minimized;
+    
+    if (minimizedQuickTabs.length > 0) {
+      updateMinimizedTabsManager();
+    }
+    
+  } catch (err) {
+    console.error('Error restoring Quick Tabs from localStorage:', err);
+  }
+}
+
+function clearQuickTabsFromStorage() {
+  try {
+    localStorage.removeItem('quickTabs_storage');
+    debug('Cleared Quick Tabs from localStorage');
+  } catch (err) {
+    console.error('Error clearing localStorage:', err);
+  }
+}
+
+// Listen for storage changes from other tabs
+window.addEventListener('storage', function(event) {
+  if (event.key === 'quickTabs_storage' && event.newValue) {
+    debug('Storage event detected from another tab');
+    // Note: We rely on BroadcastChannel for real-time sync
+    // Storage event is just a fallback/backup mechanism
+  }
+});
+
+// ==================== END LOCALSTORAGE PERSISTENCE ====================
+
 // Initialize tooltip animation keyframes once
 function initTooltipAnimation() {
   if (document.querySelector('style[data-copy-url-tooltip]')) return;
@@ -1859,24 +2030,7 @@ function createQuickTabWindow(url, width, height, left, top) {
     return;
   }
   
-  // If sidebar mode is enabled, send message to sidebar instead
-  if (CONFIG.quickTabUseSidebar) {
-    chrome.runtime.sendMessage({
-      action: 'createQuickTab',
-      url: url,
-      title: document.title
-    }).then(response => {
-      if (response && response.success) {
-        showNotification('✓ Quick Tab opened (sidebar API)');
-      }
-    }).catch(err => {
-      console.error('Error creating Quick Tab in sidebar:', err);
-      showNotification('✗ Failed to create Quick Tab in sidebar');
-    });
-    return;
-  }
-  
-  // Otherwise, use floating window mode (existing logic)
+  // Check max windows limit
   if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) {
     showNotification(`✗ Maximum ${CONFIG.quickTabMaxWindows} Quick Tabs allowed`);
     debug(`Maximum Quick Tab windows (${CONFIG.quickTabMaxWindows}) reached`);
@@ -2238,53 +2392,11 @@ function createQuickTabWindow(url, width, height, left, top) {
   showNotification('✓ Quick Tab opened');
   debug(`Quick Tab window created. Total windows: ${quickTabWindows.length}`);
   
-  // Save state to background if persistence is enabled
+  // Broadcast to other tabs using BroadcastChannel for real-time sync
   if (CONFIG.quickTabPersistAcrossTabs) {
-    saveQuickTabState();
+    broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY);
+    saveQuickTabsToStorage();
   }
-}
-
-// Save Quick Tab state to background script
-function saveQuickTabState() {
-  if (!CONFIG.quickTabPersistAcrossTabs) return;
-  
-  const state = quickTabWindows.map(container => {
-    const iframe = container.querySelector('iframe');
-    const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
-    const rect = container.getBoundingClientRect();
-    
-    return {
-      url: iframe?.src || '',
-      title: titleText?.textContent || 'Quick Tab',
-      width: rect.width,
-      height: rect.height,
-      left: rect.left,
-      top: rect.top
-    };
-  });
-  
-  browser.runtime.sendMessage({
-    action: 'saveQuickTabState',
-    quickTabs: state
-  }).catch(err => {
-    debug('Failed to save Quick Tab state:', err);
-  });
-}
-
-// Restore Quick Tab state from background script
-function restoreQuickTabState(quickTabs) {
-  if (!CONFIG.quickTabPersistAcrossTabs || !quickTabs || quickTabs.length === 0) return;
-  
-  debug(`Restoring ${quickTabs.length} Quick Tab(s)`);
-  
-  quickTabs.forEach(tab => {
-    if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) {
-      return;
-    }
-    
-    // Create the Quick Tab with saved position and size
-    createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top);
-  });
 }
 
 // Close Quick Tab window
@@ -2328,13 +2440,10 @@ function closeAllQuickTabWindows() {
     debug(`All Quick Tab windows closed (${count} total)`);
   }
   
-  // Clear state in background if persistence is enabled
+  // Broadcast to other tabs and clear storage
   if (CONFIG.quickTabPersistAcrossTabs) {
-    browser.runtime.sendMessage({
-      action: 'clearQuickTabState'
-    }).catch(err => {
-      debug('Failed to clear Quick Tab state:', err);
-    });
+    broadcastCloseAll();
+    clearQuickTabsFromStorage();
   }
 }
 
@@ -2360,6 +2469,11 @@ function minimizeQuickTab(container, url, title) {
   
   // Update or create minimized tabs manager
   updateMinimizedTabsManager();
+  
+  // Save to storage if persistence is enabled
+  if (CONFIG.quickTabPersistAcrossTabs) {
+    saveQuickTabsToStorage();
+  }
 }
 
 // Restore minimized Quick Tab
@@ -2575,6 +2689,7 @@ function makeDraggable(element, handle) {
   let pendingX = null;
   let pendingY = null;
   let lastUpdateTime = 0;
+  let dragOverlay = null; // Expanded hit area overlay
   
   // Get update rate from config (default 360 Hz = ~2.78ms interval)
   // This allows position updates to keep up with high refresh rate monitors
@@ -2590,6 +2705,30 @@ function makeDraggable(element, handle) {
       lastUpdateTime = performance.now();
       pendingX = null;
       pendingY = null;
+    }
+  };
+  
+  const createDragOverlay = () => {
+    // Create an invisible overlay that extends beyond the Quick Tab bounds
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 999999999;
+      cursor: move;
+      pointer-events: auto;
+    `;
+    document.documentElement.appendChild(overlay);
+    return overlay;
+  };
+  
+  const removeDragOverlay = () => {
+    if (dragOverlay) {
+      dragOverlay.remove();
+      dragOverlay = null;
     }
   };
   
@@ -2634,6 +2773,9 @@ function makeDraggable(element, handle) {
     // Always reset dragging state, even if called multiple times
     isDragging = false;
     
+    // Remove the expanded overlay
+    removeDragOverlay();
+    
     // Clear any update interval
     if (updateIntervalId) {
       clearInterval(updateIntervalId);
@@ -2662,6 +2804,9 @@ function makeDraggable(element, handle) {
     
     isDragging = true;
     
+    // Create the expanded drag overlay
+    dragOverlay = createDragOverlay();
+    
     // Calculate the offset between the mouse position and the element's top-left corner
     const rect = element.getBoundingClientRect();
     offsetX = e.clientX - rect.left;
@@ -2689,6 +2834,7 @@ function makeDraggable(element, handle) {
   
   // Store cleanup function
   element._dragCleanup = () => {
+    removeDragOverlay();
     handle.removeEventListener('mousedown', handleMouseDown);
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mousemove', handleMouseMove);
@@ -2742,11 +2888,40 @@ function makeResizable(element) {
     let startX, startY, startWidth, startHeight, startLeft, startTop;
     let animationFrameId = null;
     let pendingResize = null;
+    let resizeOverlay = null;
+    
+    const createResizeOverlay = () => {
+      // Create an invisible overlay that extends beyond the Quick Tab bounds
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 999999999;
+        cursor: ${style.cursor};
+        pointer-events: auto;
+      `;
+      document.documentElement.appendChild(overlay);
+      return overlay;
+    };
+    
+    const removeResizeOverlay = () => {
+      if (resizeOverlay) {
+        resizeOverlay.remove();
+        resizeOverlay = null;
+      }
+    };
     
     const handleMouseDown = (e) => {
       if (e.button !== 0) return;
       
       isResizing = true;
+      
+      // Create the expanded resize overlay
+      resizeOverlay = createResizeOverlay();
+      
       startX = e.clientX;
       startY = e.clientY;
       const rect = element.getBoundingClientRect();
@@ -2836,6 +3011,10 @@ function makeResizable(element) {
     
     const handleMouseUp = () => {
       isResizing = false;
+      
+      // Remove the expanded overlay
+      removeResizeOverlay();
+      
       // Apply any pending resize immediately
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
@@ -2857,12 +3036,13 @@ function makeResizable(element) {
     window.addEventListener('blur', handleMouseUp, true);
     
     element.appendChild(handle);
-    resizeHandleElements.push({ handle, handleMouseDown, handleMouseMove, handleMouseUp });
+    resizeHandleElements.push({ handle, handleMouseDown, handleMouseMove, handleMouseUp, removeResizeOverlay });
   });
   
   // Store cleanup function
   element._resizeCleanup = () => {
-    resizeHandleElements.forEach(({ handle, handleMouseDown, handleMouseMove, handleMouseUp }) => {
+    resizeHandleElements.forEach(({ handle, handleMouseDown, handleMouseMove, handleMouseUp, removeResizeOverlay }) => {
+      removeResizeOverlay();
       handle.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp, true);
@@ -2991,14 +3171,18 @@ browser.storage.onChanged.addListener(function(changes, areaName) {
   }
 });
 
-// Message listener for background script communication
-browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'restoreQuickTabs') {
-    restoreQuickTabState(message.quickTabs);
-  }
-});
-
 // Initialize
 loadSettings();
+
+// Initialize BroadcastChannel for cross-tab sync
+initializeBroadcastChannel();
+
+// Restore Quick Tabs from localStorage on page load
+// Only restore if no Quick Tabs currently exist and persistence is enabled
+if (quickTabWindows.length === 0 && minimizedQuickTabs.length === 0) {
+  setTimeout(() => {
+    restoreQuickTabsFromStorage();
+  }, 100); // Small delay to ensure page is ready
+}
 
 debug('Extension loaded - supports 100+ websites with site-specific optimized handlers');
