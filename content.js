@@ -22,6 +22,8 @@
 // - Fixed: Quick Tab position and size changes now sync across all tabs.
 // - Fixed: Closing a Quick Tab in one tab now closes it in all tabs.
 // - Fixed: Quick Tabs can now be moved outside webpage boundaries.
+// - Fixed: Quick Tabs reappearing after page reload even when closed. Storage is now
+//   always updated when tabs are closed, regardless of broadcast state.
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -2508,10 +2510,14 @@ function closeQuickTabWindow(container, broadcast = true) {
   container.remove();
   debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
   
+  // Always save updated state to storage after closing
+  if (CONFIG.quickTabPersistAcrossTabs) {
+    saveQuickTabsToStorage();
+  }
+  
   // Broadcast close to other tabs if enabled
   if (broadcast && url && CONFIG.quickTabPersistAcrossTabs) {
     broadcastQuickTabClose(url);
-    saveQuickTabsToStorage();
   }
 }
 
@@ -2533,10 +2539,14 @@ function closeAllQuickTabWindows(broadcast = true) {
     debug(`All Quick Tab windows closed (${count} total)`);
   }
   
-  // Broadcast to other tabs and clear storage
+  // Always clear storage when all tabs are closed
+  if (CONFIG.quickTabPersistAcrossTabs) {
+    clearQuickTabsFromStorage();
+  }
+  
+  // Broadcast to other tabs if enabled
   if (broadcast && CONFIG.quickTabPersistAcrossTabs) {
     broadcastCloseAll();
-    clearQuickTabsFromStorage();
   }
 }
 
