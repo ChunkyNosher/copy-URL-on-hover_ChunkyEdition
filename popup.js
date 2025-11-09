@@ -36,6 +36,7 @@ const DEFAULT_SETTINGS = {
   quickTabPersistAcrossTabs: false,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
+  quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
   
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -82,13 +83,13 @@ function validateHexColor(color, fallback = DEFAULT_SETTINGS.tooltipColor) {
 }
 
 // Color input to settings mapping
-const COLOR_DEFAULTS = {
-  'tooltipColor': 'tooltipColor',
-  'notifColor': 'notifColor',
-  'notifBorderColor': 'notifBorderColor'
-};
+const COLOR_INPUTS = [
+  { textId: 'tooltipColor', pickerId: 'tooltipColorPicker', settingKey: 'tooltipColor' },
+  { textId: 'notifColor', pickerId: 'notifColorPicker', settingKey: 'notifColor' },
+  { textId: 'notifBorderColor', pickerId: 'notifBorderColorPicker', settingKey: 'notifBorderColor' }
+];
 
-// Update color preview box
+// Update color preview box (deprecated - now using native color input)
 function updateColorPreview(inputId, previewId) {
   const input = document.getElementById(inputId);
   const preview = document.getElementById(previewId);
@@ -99,6 +100,15 @@ function updateColorPreview(inputId, previewId) {
     input.value = color;
     preview.style.backgroundColor = color;
   }
+}
+
+// Sync text input with color picker
+function syncColorInputs(textInput, colorPicker) {
+  if (!textInput || !colorPicker) return;
+  
+  const color = validateHexColor(textInput.value);
+  textInput.value = color;
+  colorPicker.value = color;
 }
 
 // Load settings
@@ -136,6 +146,7 @@ function loadSettings() {
     document.getElementById('quickTabPersistAcrossTabs').checked = items.quickTabPersistAcrossTabs;
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
+    document.getElementById('quickTabUpdateRate').value = items.quickTabUpdateRate || 360;
     toggleCustomPosition(items.quickTabPosition);
     
     document.getElementById('showNotification').checked = items.showNotification;
@@ -143,18 +154,18 @@ function loadSettings() {
     
     // Tooltip settings
     document.getElementById('tooltipColor').value = items.tooltipColor;
-    updateColorPreview('tooltipColor', 'tooltipColorPreview');
+    document.getElementById('tooltipColorPicker').value = items.tooltipColor;
     document.getElementById('tooltipDuration').value = items.tooltipDuration;
     document.getElementById('tooltipAnimation').value = items.tooltipAnimation;
     
     // Notification settings
     document.getElementById('notifColor').value = items.notifColor;
-    updateColorPreview('notifColor', 'notifColorPreview');
+    document.getElementById('notifColorPicker').value = items.notifColor;
     document.getElementById('notifDuration').value = items.notifDuration;
     document.getElementById('notifPosition').value = items.notifPosition;
     document.getElementById('notifSize').value = items.notifSize;
     document.getElementById('notifBorderColor').value = items.notifBorderColor;
-    updateColorPreview('notifBorderColor', 'notifBorderColorPreview');
+    document.getElementById('notifBorderColorPicker').value = items.notifBorderColor;
     document.getElementById('notifBorderWidth').value = items.notifBorderWidth;
     document.getElementById('notifAnimation').value = items.notifAnimation;
     
@@ -240,6 +251,7 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     quickTabPersistAcrossTabs: document.getElementById('quickTabPersistAcrossTabs').checked,
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
+    quickTabUpdateRate: safeParseInt(document.getElementById('quickTabUpdateRate').value, 360),
     
     showNotification: document.getElementById('showNotification').checked,
     notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',
@@ -323,21 +335,29 @@ document.addEventListener('DOMContentLoaded', function() {
     footerElement.textContent = `${manifest.name} v${manifest.version}`;
   }
   
-  // Add color input event listeners
-  const colorInputs = [
-    { inputId: 'tooltipColor', previewId: 'tooltipColorPreview' },
-    { inputId: 'notifColor', previewId: 'notifColorPreview' },
-    { inputId: 'notifBorderColor', previewId: 'notifBorderColorPreview' }
-  ];
-  
-  colorInputs.forEach(({ inputId, previewId }) => {
-    const input = document.getElementById(inputId);
-    if (input) {
-      input.addEventListener('input', () => {
-        updateColorPreview(inputId, previewId);
+  // Add color input event listeners to sync text and picker inputs
+  COLOR_INPUTS.forEach(({ textId, pickerId }) => {
+    const textInput = document.getElementById(textId);
+    const pickerInput = document.getElementById(pickerId);
+    
+    if (textInput && pickerInput) {
+      // When text input changes, update picker
+      textInput.addEventListener('input', () => {
+        const color = validateHexColor(textInput.value);
+        textInput.value = color;
+        pickerInput.value = color;
       });
-      input.addEventListener('blur', () => {
-        updateColorPreview(inputId, previewId);
+      
+      textInput.addEventListener('blur', () => {
+        const color = validateHexColor(textInput.value);
+        textInput.value = color;
+        pickerInput.value = color;
+      });
+      
+      // When picker changes, update text input
+      pickerInput.addEventListener('input', () => {
+        const color = pickerInput.value.toUpperCase();
+        textInput.value = color;
       });
     }
   });

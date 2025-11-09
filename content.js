@@ -53,6 +53,7 @@ const DEFAULT_CONFIG = {
   quickTabPersistAcrossTabs: false,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
+  quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
   
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -2551,18 +2552,26 @@ function updateMinimizedTabsManager() {
 function makeDraggable(element, handle) {
   let isDragging = false;
   let startX, startY, initialX, initialY;
-  let rafId = null;
+  let updateIntervalId = null;
   let pendingX = null;
   let pendingY = null;
+  let lastUpdateTime = 0;
+  
+  // Get update rate from config (default 360 Hz = ~2.78ms interval)
+  // This allows position updates to keep up with high refresh rate monitors
+  const getUpdateInterval = () => {
+    const updatesPerSecond = CONFIG.quickTabUpdateRate || 360;
+    return 1000 / updatesPerSecond; // Convert Hz to milliseconds
+  };
   
   const updatePosition = () => {
     if (pendingX !== null && pendingY !== null) {
       element.style.left = pendingX + 'px';
       element.style.top = pendingY + 'px';
+      lastUpdateTime = performance.now();
       pendingX = null;
       pendingY = null;
     }
-    rafId = null;
   };
   
   const handleMouseMove = (e) => {
@@ -2589,9 +2598,15 @@ function makeDraggable(element, handle) {
     pendingX = newX;
     pendingY = newY;
     
-    // Schedule update using requestAnimationFrame for smoother performance
-    if (!rafId) {
-      rafId = requestAnimationFrame(updatePosition);
+    // Immediate update strategy to prevent "slip out" on high refresh rate monitors
+    // Check if enough time has passed since last update
+    const now = performance.now();
+    const timeSinceLastUpdate = now - lastUpdateTime;
+    const minInterval = getUpdateInterval();
+    
+    if (timeSinceLastUpdate >= minInterval) {
+      // Update immediately if interval has passed
+      updatePosition();
     }
     
     e.preventDefault();
@@ -2601,10 +2616,10 @@ function makeDraggable(element, handle) {
     // Always reset dragging state, even if called multiple times
     isDragging = false;
     
-    // Cancel any pending animation frame
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
+    // Clear any update interval
+    if (updateIntervalId) {
+      clearInterval(updateIntervalId);
+      updateIntervalId = null;
     }
     
     // Apply any pending position immediately
@@ -2633,6 +2648,7 @@ function makeDraggable(element, handle) {
     const rect = element.getBoundingClientRect();
     initialX = rect.left;
     initialY = rect.top;
+    lastUpdateTime = performance.now();
     
     e.preventDefault();
   };
@@ -2656,12 +2672,13 @@ function makeDraggable(element, handle) {
   element._dragCleanup = () => {
     handle.removeEventListener('mousedown', handleMouseDown);
     document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp, true);
     document.removeEventListener('mouseleave', handleMouseLeave, true);
     window.removeEventListener('mouseup', handleMouseUp, true);
     window.removeEventListener('blur', handleMouseUp, true);
-    if (rafId) {
-      cancelAnimationFrame(rafId);
+    if (updateIntervalId) {
+      clearInterval(updateIntervalId);
     }
   };
 }

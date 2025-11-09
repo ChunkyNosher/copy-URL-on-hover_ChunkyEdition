@@ -131,8 +131,28 @@
             align-items: center;
         }
 
-        .color-input-wrapper input {
+        .color-input-wrapper input[type="text"] {
             flex: 1;
+        }
+
+        .color-input-wrapper input[type="color"] {
+            width: 50px;
+            height: 34px;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+            background: transparent;
+            padding: 2px;
+        }
+
+        .color-input-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        .color-input-wrapper input[type="color"]::-webkit-color-swatch {
+            border: none;
+            border-radius: 3px;
         }
 
         .color-preview {
@@ -482,7 +502,7 @@
                     <label>Tooltip Color (Hex):</label>
                     <div class="color-input-wrapper">
                         <input type="text" id="tooltipColor" placeholder="#4CAF50" value="#4CAF50" pattern="^#[0-9A-Fa-f]{6}$">
-                        <div class="color-preview" id="tooltipColorPreview"></div>
+                        <input type="color" id="tooltipColorPicker" value="#4CAF50" title="Pick a color">
                     </div>
                 </div>
 
@@ -503,7 +523,7 @@
                     <label>Notification Color (Hex):</label>
                     <div class="color-input-wrapper">
                         <input type="text" id="notifColor" placeholder="#4CAF50" value="#4CAF50" pattern="^#[0-9A-Fa-f]{6}$">
-                        <div class="color-preview" id="notifColorPreview"></div>
+                        <input type="color" id="notifColorPicker" value="#4CAF50" title="Pick a color">
                     </div>
                 </div>
 
@@ -535,7 +555,7 @@
                     <label>Notification Border Color (Hex):</label>
                     <div class="color-input-wrapper">
                         <input type="text" id="notifBorderColor" placeholder="#000000" value="#000000" pattern="^#[0-9A-Fa-f]{6}$">
-                        <div class="color-preview" id="notifBorderColorPreview"></div>
+                        <input type="color" id="notifBorderColorPicker" value="#000000" title="Pick a color">
                     </div>
                 </div>
 
@@ -566,6 +586,14 @@
                         <option value="medium">Medium (Default)</option>
                         <option value="large">Large (20% larger)</option>
                     </select>
+                </div>
+
+                <div class="setting-group">
+                    <label>Quick Tab Position Update Rate (Hz):</label>
+                    <input type="text" id="quickTabUpdateRate" placeholder="360" value="360">
+                    <small style="display: block; margin-top: 4px; color: #888; font-size: 11px;">
+                        Higher values (e.g., 360) provide smoother dragging on high refresh rate monitors. Lower values use less CPU.
+                    </small>
                 </div>
 
                 <div class="setting-group">
