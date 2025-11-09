@@ -37,7 +37,6 @@ const DEFAULT_SETTINGS = {
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
   quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
-  quickTabYouTubeTimestampSync: false, // Experimental: Sync YouTube timestamps across tabs
   
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -147,7 +146,6 @@ function loadSettings() {
     document.getElementById('quickTabPersistAcrossTabs').checked = items.quickTabPersistAcrossTabs !== false;
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
-    document.getElementById('quickTabYouTubeTimestampSync').checked = items.quickTabYouTubeTimestampSync || false;
     document.getElementById('quickTabUpdateRate').value = items.quickTabUpdateRate || 360;
     toggleCustomPosition(items.quickTabPosition);
     
@@ -253,7 +251,6 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     quickTabPersistAcrossTabs: document.getElementById('quickTabPersistAcrossTabs').checked,
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
-    quickTabYouTubeTimestampSync: document.getElementById('quickTabYouTubeTimestampSync').checked,
     quickTabUpdateRate: safeParseInt(document.getElementById('quickTabUpdateRate').value, 360),
     
     showNotification: document.getElementById('showNotification').checked,
