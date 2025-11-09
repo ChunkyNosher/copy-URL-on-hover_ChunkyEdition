@@ -24,6 +24,16 @@
 // - Fixed: Quick Tabs can now be moved outside webpage boundaries.
 // - Fixed: Quick Tabs reappearing after page reload even when closed. Storage is now
 //   always updated when tabs are closed, regardless of broadcast state.
+//
+// BUG FIXES (v1.5.4.1):
+// - Fixed: Quick Tab duplication bug when navigating between pages on the same domain
+//   (e.g., switching between Wikipedia pages). Restored Quick Tabs now pass 
+//   fromBroadcast=true to prevent re-broadcasting and creating duplicates.
+// - Fixed: Quick Tabs now persist across different domains (e.g., Wikipedia to YouTube)
+//   by switching from localStorage to browser.storage.local which is shared across all
+//   origins.
+// - Added: Duplicate detection when restoring Quick Tabs to prevent multiple instances
+//   of the same URL from being created.
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -263,7 +273,9 @@ function broadcastClearMinimized() {
 
 // ==================== END BROADCAST CHANNEL SETUP ====================
 
-// ==================== LOCALSTORAGE PERSISTENCE ====================
+// ==================== BROWSER STORAGE PERSISTENCE ====================
+// Using browser.storage.local instead of localStorage to support cross-domain persistence
+// browser.storage.local is shared across all tabs regardless of origin
 
 function saveQuickTabsToStorage() {
   if (!CONFIG.quickTabPersistAcrossTabs) return;
@@ -293,65 +305,101 @@ function saveQuickTabsToStorage() {
     
     const allTabs = [...state, ...minimizedState];
     
-    localStorage.setItem('quickTabs_storage', JSON.stringify(allTabs));
-    debug(`Saved ${allTabs.length} Quick Tabs to localStorage`);
+    // Use browser.storage.local for cross-domain support
+    browser.storage.local.set({ quickTabs_storage: allTabs }).then(() => {
+      debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.local`);
+    }).catch(err => {
+      console.error('Error saving Quick Tabs to browser.storage.local:', err);
+    });
     
   } catch (err) {
-    console.error('Error saving Quick Tabs to localStorage:', err);
+    console.error('Error saving Quick Tabs:', err);
   }
 }
 
 function restoreQuickTabsFromStorage() {
   if (!CONFIG.quickTabPersistAcrossTabs) return;
   
-  try {
-    const stored = localStorage.getItem('quickTabs_storage');
-    if (!stored) return;
+  browser.storage.local.get('quickTabs_storage').then(result => {
+    const tabs = result.quickTabs_storage;
+    if (!tabs || !Array.isArray(tabs) || tabs.length === 0) return;
     
-    const tabs = JSON.parse(stored);
-    if (!Array.isArray(tabs) || tabs.length === 0) return;
+    debug(`Restoring ${tabs.length} Quick Tabs from browser.storage.local`);
     
-    debug(`Restoring ${tabs.length} Quick Tabs from localStorage`);
+    // Check if we already have Quick Tabs with the same URLs to prevent duplicates
+    const existingUrls = new Set(quickTabWindows.map(win => {
+      const iframe = win.querySelector('iframe');
+      return iframe ? iframe.src : null;
+    }).filter(url => url !== null));
     
     // Restore non-minimized tabs
     const normalTabs = tabs.filter(t => !t.minimized);
     normalTabs.forEach(tab => {
+      // Skip if we already have a Quick Tab with this URL (prevents duplicates)
+      if (existingUrls.has(tab.url)) {
+        debug(`Skipping duplicate Quick Tab: ${tab.url}`);
+        return;
+      }
+      
       if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) return;
-      createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top);
+      
+      // Pass true for fromBroadcast to prevent re-broadcasting when restoring from storage
+      // This fixes the duplication bug where restored tabs would broadcast and create duplicates
+      createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top, true);
     });
     
-    // Restore minimized tabs
-    const minimized = tabs.filter(t => t.minimized);
-    minimizedQuickTabs = minimized;
+    // Restore minimized tabs (also check for duplicates)
+    const existingMinimizedUrls = new Set(minimizedQuickTabs.map(t => t.url));
+    const minimized = tabs.filter(t => t.minimized && !existingMinimizedUrls.has(t.url));
     
-    if (minimizedQuickTabs.length > 0) {
+    if (minimized.length > 0) {
+      minimizedQuickTabs.push(...minimized);
       updateMinimizedTabsManager();
     }
     
-  } catch (err) {
-    console.error('Error restoring Quick Tabs from localStorage:', err);
-  }
+  }).catch(err => {
+    console.error('Error restoring Quick Tabs from browser.storage.local:', err);
+  });
 }
 
 function clearQuickTabsFromStorage() {
-  try {
-    localStorage.removeItem('quickTabs_storage');
-    debug('Cleared Quick Tabs from localStorage');
-  } catch (err) {
-    console.error('Error clearing localStorage:', err);
-  }
+  browser.storage.local.remove('quickTabs_storage').then(() => {
+    debug('Cleared Quick Tabs from browser.storage.local');
+  }).catch(err => {
+    console.error('Error clearing browser.storage.local:', err);
+  });
 }
 
-// Listen for storage changes from other tabs
-window.addEventListener('storage', function(event) {
-  if (event.key === 'quickTabs_storage' && event.newValue) {
-    debug('Storage event detected from another tab');
-    // Note: We rely on BroadcastChannel for real-time sync
-    // Storage event is just a fallback/backup mechanism
+// Listen for storage changes from other tabs/windows
+// browser.storage.onChanged works across all origins
+browser.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.quickTabs_storage) {
+    debug('Storage change detected from another tab/window');
+    // Note: We rely on BroadcastChannel for real-time same-origin sync
+    // Storage event handles cross-origin sync
+    
+    // Only restore if the change came from another context
+    // and we don't already have these Quick Tabs
+    if (changes.quickTabs_storage.newValue) {
+      const newTabs = changes.quickTabs_storage.newValue;
+      if (Array.isArray(newTabs)) {
+        // Get current URLs to avoid duplicates
+        const existingUrls = new Set(quickTabWindows.map(win => {
+          const iframe = win.querySelector('iframe');
+          return iframe ? iframe.src : null;
+        }).filter(url => url !== null));
+        
+        // Only create Quick Tabs that don't already exist
+        newTabs.filter(t => !t.minimized && !existingUrls.has(t.url)).forEach(tab => {
+          if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) return;
+          createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top, true);
+        });
+      }
+    }
   }
 });
 
-// ==================== END LOCALSTORAGE PERSISTENCE ====================
+// ==================== END BROWSER STORAGE PERSISTENCE ====================
 
 // Initialize tooltip animation keyframes once
 function initTooltipAnimation() {
