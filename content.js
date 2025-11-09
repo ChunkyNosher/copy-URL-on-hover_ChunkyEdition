@@ -1867,7 +1867,7 @@ function createQuickTabWindow(url, width, height, left, top) {
       title: document.title
     }).then(response => {
       if (response && response.success) {
-        showNotification('✓ Quick Tab opened in sidebar');
+        showNotification('✓ Quick Tab opened (sidebar API)');
       }
     }).catch(err => {
       console.error('Error creating Quick Tab in sidebar:', err);
@@ -2570,7 +2570,7 @@ function updateMinimizedTabsManager() {
 // Make element draggable
 function makeDraggable(element, handle) {
   let isDragging = false;
-  let startX, startY, initialX, initialY;
+  let offsetX = 0, offsetY = 0; // Store click offset within the element
   let updateIntervalId = null;
   let pendingX = null;
   let pendingY = null;
@@ -2603,11 +2603,10 @@ function makeDraggable(element, handle) {
       return;
     }
     
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    
-    let newX = initialX + dx;
-    let newY = initialY + dy;
+    // Calculate new position based on current mouse position minus the offset
+    // This keeps the element at the same relative position to the cursor
+    let newX = e.clientX - offsetX;
+    let newY = e.clientY - offsetY;
     
     // Keep within viewport
     newX = Math.max(0, Math.min(newX, window.innerWidth - element.offsetWidth));
@@ -2662,11 +2661,12 @@ function makeDraggable(element, handle) {
     }
     
     isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
+    
+    // Calculate the offset between the mouse position and the element's top-left corner
     const rect = element.getBoundingClientRect();
-    initialX = rect.left;
-    initialY = rect.top;
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    
     lastUpdateTime = performance.now();
     
     e.preventDefault();
@@ -2740,6 +2740,8 @@ function makeResizable(element) {
     
     let isResizing = false;
     let startX, startY, startWidth, startHeight, startLeft, startTop;
+    let animationFrameId = null;
+    let pendingResize = null;
     
     const handleMouseDown = (e) => {
       if (e.button !== 0) return;
@@ -2755,6 +2757,17 @@ function makeResizable(element) {
       
       e.preventDefault();
       e.stopPropagation();
+    };
+    
+    const applyResize = () => {
+      if (pendingResize) {
+        element.style.width = pendingResize.width + 'px';
+        element.style.height = pendingResize.height + 'px';
+        element.style.left = pendingResize.left + 'px';
+        element.style.top = pendingResize.top + 'px';
+        pendingResize = null;
+        animationFrameId = null;
+      }
     };
     
     const handleMouseMove = (e) => {
@@ -2810,16 +2823,31 @@ function makeResizable(element) {
         newHeight = window.innerHeight - newTop;
       }
       
-      element.style.width = newWidth + 'px';
-      element.style.height = newHeight + 'px';
-      element.style.left = newLeft + 'px';
-      element.style.top = newTop + 'px';
+      // Store pending resize
+      pendingResize = { width: newWidth, height: newHeight, left: newLeft, top: newTop };
+      
+      // Schedule update using requestAnimationFrame for smooth resizing
+      if (!animationFrameId) {
+        animationFrameId = requestAnimationFrame(applyResize);
+      }
       
       e.preventDefault();
     };
     
     const handleMouseUp = () => {
       isResizing = false;
+      // Apply any pending resize immediately
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+      if (pendingResize) {
+        element.style.width = pendingResize.width + 'px';
+        element.style.height = pendingResize.height + 'px';
+        element.style.left = pendingResize.left + 'px';
+        element.style.top = pendingResize.top + 'px';
+        pendingResize = null;
+      }
     };
     
     handle.addEventListener('mousedown', handleMouseDown);

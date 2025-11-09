@@ -81,7 +81,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Return true to indicate we'll respond asynchronously
     return true;
-}
+  }
+});
 
 // Handle sidePanel toggle for Chrome (optional)
 if (chrome.sidePanel) {
