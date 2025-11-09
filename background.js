@@ -5,6 +5,20 @@
 // Store Quick Tab states per tab
 const quickTabStates = new Map();
 
+// Listen for tab switches to restore Quick Tabs
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  console.log('[Background] Tab activated:', activeInfo.tabId);
+  
+  // Message the activated tab to potentially restore Quick Tabs from storage
+  chrome.tabs.sendMessage(activeInfo.tabId, {
+    action: 'tabActivated',
+    tabId: activeInfo.tabId
+  }).catch(err => {
+    // Content script might not be ready yet, that's OK
+    console.log('[Background] Could not message tab (content script not ready)');
+  });
+});
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
     chrome.scripting.executeScript({
