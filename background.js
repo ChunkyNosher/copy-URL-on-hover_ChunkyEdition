@@ -1,5 +1,6 @@
 // Background script handles injecting content script into all tabs
 // and manages Quick Tab state persistence across tabs
+// Also handles sidebar panel communication
 
 // Store Quick Tab states per tab
 const quickTabStates = new Map();
@@ -31,7 +32,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   quickTabStates.delete(tabId);
 });
 
-// Handle messages from content script
+// Handle messages from content script and sidebar
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
   
@@ -56,5 +57,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === 'clearQuickTabState' && tabId) {
     // Clear Quick Tab state for this tab
     quickTabStates.delete(tabId);
+  } else if (message.action === 'createQuickTab') {
+    // Forward Quick Tab creation to sidebar (sidebar will handle via runtime.onMessage)
+    // Also send success response back to content script
+    sendResponse({ success: true });
+    return true;
   }
 });
+
+// Handle sidePanel toggle for Chrome (optional)
+if (chrome.sidePanel) {
+  chrome.action.onClicked.addListener((tab) => {
+    chrome.sidePanel.open({ windowId: tab.windowId }).catch(err => {
+      console.log('Side panel not supported or error:', err);
+    });
+  });
+}

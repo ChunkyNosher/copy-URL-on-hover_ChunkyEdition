@@ -37,6 +37,7 @@ const DEFAULT_SETTINGS = {
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
   quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
+  quickTabUseSidebar: false, // Use browser sidebar instead of floating windows
   
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -147,6 +148,7 @@ function loadSettings() {
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
     document.getElementById('quickTabUpdateRate').value = items.quickTabUpdateRate || 360;
+    document.getElementById('quickTabUseSidebar').checked = items.quickTabUseSidebar || false;
     toggleCustomPosition(items.quickTabPosition);
     
     document.getElementById('showNotification').checked = items.showNotification;
@@ -252,6 +254,7 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
     quickTabUpdateRate: safeParseInt(document.getElementById('quickTabUpdateRate').value, 360),
+    quickTabUseSidebar: document.getElementById('quickTabUseSidebar').checked,
     
     showNotification: document.getElementById('showNotification').checked,
     notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',

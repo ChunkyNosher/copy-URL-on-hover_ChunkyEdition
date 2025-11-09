@@ -54,6 +54,7 @@ const DEFAULT_CONFIG = {
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
   quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
+  quickTabUseSidebar: false, // Use browser sidebar instead of floating windows
   
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -1858,6 +1859,24 @@ function createQuickTabWindow(url, width, height, left, top) {
     return;
   }
   
+  // If sidebar mode is enabled, send message to sidebar instead
+  if (CONFIG.quickTabUseSidebar) {
+    chrome.runtime.sendMessage({
+      action: 'createQuickTab',
+      url: url,
+      title: document.title
+    }).then(response => {
+      if (response && response.success) {
+        showNotification('✓ Quick Tab opened in sidebar');
+      }
+    }).catch(err => {
+      console.error('Error creating Quick Tab in sidebar:', err);
+      showNotification('✗ Failed to create Quick Tab in sidebar');
+    });
+    return;
+  }
+  
+  // Otherwise, use floating window mode (existing logic)
   if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) {
     showNotification(`✗ Maximum ${CONFIG.quickTabMaxWindows} Quick Tabs allowed`);
     debug(`Maximum Quick Tab windows (${CONFIG.quickTabMaxWindows}) reached`);
