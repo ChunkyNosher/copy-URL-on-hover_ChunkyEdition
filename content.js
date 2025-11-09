@@ -3884,7 +3884,13 @@ window.addEventListener('focus', () => {
 function isYouTubeUrl(url) {
   try {
     const urlObj = new URL(url);
-    return urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be');
+    const hostname = urlObj.hostname.toLowerCase();
+    // Only match exact YouTube domains or their subdomains
+    return hostname === 'youtube.com' || 
+           hostname === 'www.youtube.com' || 
+           hostname.endsWith('.youtube.com') ||
+           hostname === 'youtu.be' ||
+           hostname === 'www.youtu.be';
   } catch (e) {
     return false;
   }
