@@ -55,6 +55,17 @@
 // - Fixed: Quick Tabs with video/audio content now pause when the tab loses focus and
 //   resume when the tab regains focus. This prevents media from playing in background
 //   tabs. Note: Only works for same-origin iframes due to browser security restrictions.
+//
+// BUG FIXES (v1.5.5.2):
+// - Fixed: Critical bug where Quick Tabs would immediately close after being opened with
+//   keyboard shortcut. Issue was caused by browser.storage.onChanged listener firing in
+//   the same tab that initiated the storage change, creating a race condition where the
+//   newly created Quick Tab would be immediately closed. Added isSavingToStorage flag to
+//   prevent the storage listener from processing changes initiated by the same tab.
+// - Fixed: Pin button functionality - pinned Quick Tabs now properly persist in their
+//   designated page instead of closing when the pin button is clicked.
+// - Added: YouTube timestamp synchronization feature (experimental) - Quick Tabs with
+//   YouTube videos now save and restore playback position when switching tabs or pausing.
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -129,6 +140,7 @@ let minimizedQuickTabs = [];
 let quickTabZIndex = 1000000;
 let lastMouseX = 0;
 let lastMouseY = 0;
+let isSavingToStorage = false; // Flag to prevent processing our own storage changes
 
 // ==================== BROADCAST CHANNEL SETUP ====================
 // Create a BroadcastChannel for real-time cross-tab Quick Tab sync
@@ -376,15 +388,24 @@ function saveQuickTabsToStorage() {
     
     const allTabs = [...state, ...minimizedState];
     
+    // Set flag to indicate we're saving (to avoid processing our own change)
+    isSavingToStorage = true;
+    
     // Use browser.storage.local for cross-domain support
     browser.storage.local.set({ quickTabs_storage: allTabs }).then(() => {
       debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.local`);
+      // Reset flag after a short delay to allow storage event to fire
+      setTimeout(() => {
+        isSavingToStorage = false;
+      }, 100);
     }).catch(err => {
       console.error('Error saving Quick Tabs to browser.storage.local:', err);
+      isSavingToStorage = false; // Reset flag on error
     });
     
   } catch (err) {
     console.error('Error saving Quick Tabs:', err);
+    isSavingToStorage = false; // Reset flag on error
   }
 }
 
@@ -468,6 +489,12 @@ function clearQuickTabsFromStorage() {
 // browser.storage.onChanged works across all origins
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'local' && changes.quickTabs_storage) {
+    // Ignore storage changes that we initiated ourselves to prevent race conditions
+    if (isSavingToStorage) {
+      debug('Ignoring storage change event from our own save operation');
+      return;
+    }
+    
     debug('Storage change detected from another tab/window');
     // Note: We rely on BroadcastChannel for real-time same-origin sync
     // Storage event handles cross-origin sync
