@@ -14,6 +14,10 @@
 //    access to Zen-specific browser APIs which are not available to content scripts.
 //    Would need a separate WebExtension API or Zen Browser integration.
 //
+// 4. Cross-Origin Media Control: Cannot pause/resume media in cross-origin iframes
+//    due to browser security restrictions. Media control only works for same-origin
+//    iframes (e.g., Quick Tabs opened from the same domain).
+//
 // BUG FIXES (v1.5.4):
 // - Fixed: Opening Quick Tab via keyboard shortcut would create multiple tabs up to 
 //   the limit due to BroadcastChannel infinite loop. Now Quick Tabs created from 
@@ -39,6 +43,18 @@
 // - Added: Pin Quick Tab feature - pin a Quick Tab to a specific page URL. Pinned Quick
 //   Tabs only appear on the page they're pinned to, while unpinned Quick Tabs appear
 //   across all tabs/domains.
+//
+// BUG FIXES (v1.5.5):
+// - Fixed: Quick Tab close now syncs across different domains. browser.storage.onChanged
+//   listener now detects when Quick Tabs are removed from storage and closes them locally.
+// - Added: Enhanced debug mode with throttled logging (every 0.5s) during drag/resize
+//   operations showing coordinates and dimensions.
+// - Fixed: Pinned Quick Tabs now close ALL other instances across all tabs when pinned.
+//   When a Quick Tab is pinned to a page, it broadcasts a pin message to close instances
+//   in other tabs, ensuring only the pinned instance exists.
+// - Fixed: Quick Tabs with video/audio content now pause when the tab loses focus and
+//   resume when the tab regains focus. This prevents media from playing in background
+//   tabs. Note: Only works for same-origin iframes due to browser security restrictions.
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -211,6 +227,26 @@ function handleBroadcastMessage(event) {
       saveQuickTabsToStorage();
     }
   }
+  else if (message.action === 'pinQuickTab') {
+    debug(`Received pin Quick Tab broadcast for URL: ${message.url}`);
+    
+    // When a Quick Tab is pinned in another tab, close it in this tab
+    // (unless this tab is the one it's pinned to, but that's handled by the pinning tab itself)
+    const currentPageUrl = window.location.href;
+    
+    // If this tab is NOT the page where the Quick Tab is pinned, close it
+    if (currentPageUrl !== message.pinnedToUrl) {
+      const container = quickTabWindows.find(win => {
+        const iframe = win.querySelector('iframe');
+        return iframe && iframe.src === message.url;
+      });
+      
+      if (container) {
+        debug(`Closing Quick Tab ${message.url} because it was pinned to ${message.pinnedToUrl}`);
+        closeQuickTabWindow(container, false); // false = don't broadcast again
+      }
+    }
+  }
   else if (message.action === 'clearMinimizedTabs') {
     minimizedQuickTabs = [];
     updateMinimizedTabsManager();
@@ -281,6 +317,19 @@ function broadcastQuickTabResize(url, width, height) {
   });
   
   debug(`Broadcasting Quick Tab resize to other tabs: ${url}`);
+}
+
+function broadcastQuickTabPin(url, pinnedToUrl) {
+  if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
+  
+  quickTabChannel.postMessage({
+    action: 'pinQuickTab',
+    url: url,
+    pinnedToUrl: pinnedToUrl,
+    timestamp: Date.now()
+  });
+  
+  debug(`Broadcasting Quick Tab pin to other tabs: ${url} pinned to ${pinnedToUrl}`);
 }
 
 function broadcastClearMinimized() {
@@ -423,37 +472,61 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     // Note: We rely on BroadcastChannel for real-time same-origin sync
     // Storage event handles cross-origin sync
     
-    // Only restore if the change came from another context
-    // and we don't already have these Quick Tabs
-    if (changes.quickTabs_storage.newValue) {
-      const newTabs = changes.quickTabs_storage.newValue;
-      if (Array.isArray(newTabs)) {
-        // Get current URLs to avoid duplicates
-        const existingUrls = new Set(quickTabWindows.map(win => {
-          const iframe = win.querySelector('iframe');
-          return iframe ? iframe.src : null;
-        }).filter(url => url !== null));
-        
-        // Get current page URL for pin filtering
-        const currentPageUrl = window.location.href;
-        
-        // Only create Quick Tabs that don't already exist
-        newTabs.filter(t => {
-          if (t.minimized) return false;
-          if (existingUrls.has(t.url)) return false;
-          
-          // Filter based on pin status
-          if (t.pinnedToUrl && t.pinnedToUrl !== currentPageUrl) {
-            debug(`Skipping pinned Quick Tab from storage event (pinned to ${t.pinnedToUrl}, current: ${currentPageUrl})`);
-            return false;
+    const newValue = changes.quickTabs_storage.newValue;
+    const oldValue = changes.quickTabs_storage.oldValue;
+    
+    // Handle case where storage was cleared (all Quick Tabs closed)
+    if (!newValue || (Array.isArray(newValue) && newValue.length === 0)) {
+      debug('Quick Tabs storage cleared - closing all local Quick Tabs');
+      // Close all Quick Tabs without broadcasting (already handled by initiating tab)
+      closeAllQuickTabWindows(false);
+      return;
+    }
+    
+    if (Array.isArray(newValue)) {
+      // Get current URLs
+      const existingUrls = new Set(quickTabWindows.map(win => {
+        const iframe = win.querySelector('iframe');
+        return iframe ? iframe.src : null;
+      }).filter(url => url !== null));
+      
+      // Get new URLs from storage
+      const newUrls = new Set(newValue.filter(t => !t.minimized).map(t => t.url));
+      
+      // Get current page URL for pin filtering
+      const currentPageUrl = window.location.href;
+      
+      // Find Quick Tabs that were removed from storage (closed in another tab)
+      const removedUrls = Array.from(existingUrls).filter(url => !newUrls.has(url));
+      if (removedUrls.length > 0) {
+        debug(`Closing ${removedUrls.length} Quick Tabs that were removed from storage`);
+        removedUrls.forEach(url => {
+          const container = quickTabWindows.find(win => {
+            const iframe = win.querySelector('iframe');
+            return iframe && iframe.src === url;
+          });
+          if (container) {
+            closeQuickTabWindow(container, false); // false = don't broadcast again
           }
-          
-          return true;
-        }).forEach(tab => {
-          if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) return;
-          createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top, true, tab.pinnedToUrl);
         });
       }
+      
+      // Only create Quick Tabs that don't already exist
+      newValue.filter(t => {
+        if (t.minimized) return false;
+        if (existingUrls.has(t.url)) return false;
+        
+        // Filter based on pin status
+        if (t.pinnedToUrl && t.pinnedToUrl !== currentPageUrl) {
+          debug(`Skipping pinned Quick Tab from storage event (pinned to ${t.pinnedToUrl}, current: ${currentPageUrl})`);
+          return false;
+        }
+        
+        return true;
+      }).forEach(tab => {
+        if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) return;
+        createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top, true, tab.pinnedToUrl);
+      });
     }
   }
 });
@@ -2558,6 +2631,11 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       pinBtn.style.background = 'transparent';
       showNotification('✓ Quick Tab unpinned');
       debug(`Quick Tab unpinned: ${iframe.src}`);
+      
+      // Save updated state
+      if (CONFIG.quickTabPersistAcrossTabs) {
+        saveQuickTabsToStorage();
+      }
     } else {
       // Pin to current page URL
       const currentPageUrl = window.location.href;
@@ -2567,11 +2645,17 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       pinBtn.style.background = CONFIG.darkMode ? '#444' : '#e0e0e0';
       showNotification('✓ Quick Tab pinned to this page');
       debug(`Quick Tab pinned to: ${currentPageUrl}`);
-    }
-    
-    // Save updated state
-    if (CONFIG.quickTabPersistAcrossTabs) {
-      saveQuickTabsToStorage();
+      
+      // When pinning, close ALL other instances of this Quick Tab across all tabs
+      // First, broadcast the pin action to close instances in other tabs
+      if (CONFIG.quickTabPersistAcrossTabs) {
+        broadcastQuickTabPin(iframe.src, currentPageUrl);
+      }
+      
+      // Save updated state (this will also close the Quick Tab in other tabs via storage sync)
+      if (CONFIG.quickTabPersistAcrossTabs) {
+        saveQuickTabsToStorage();
+      }
     }
   };
   
@@ -2954,6 +3038,8 @@ function makeDraggable(element, handle) {
   let pendingY = null;
   let lastUpdateTime = 0;
   let dragOverlay = null; // Expanded hit area overlay
+  let debugLogIntervalId = null; // For debug logging every 0.5 seconds
+  let lastDebugLogTime = 0;
   
   // Get update rate from config (default 360 Hz = ~2.78ms interval)
   // This allows position updates to keep up with high refresh rate monitors
@@ -3018,9 +3104,17 @@ function makeDraggable(element, handle) {
     pendingX = newX;
     pendingY = newY;
     
+    // Debug logging every 0.5 seconds while dragging
+    const now = performance.now();
+    if (CONFIG.debugMode && (now - lastDebugLogTime) >= 500) {
+      const iframe = element.querySelector('iframe');
+      const url = iframe ? iframe.src : 'unknown';
+      debug(`[DRAG] Quick Tab being moved - URL: ${url}, Position: (${Math.round(newX)}, ${Math.round(newY)})`);
+      lastDebugLogTime = now;
+    }
+    
     // Immediate update strategy to prevent "slip out" on high refresh rate monitors
     // Check if enough time has passed since last update
-    const now = performance.now();
     const timeSinceLastUpdate = now - lastUpdateTime;
     const minInterval = getUpdateInterval();
     
@@ -3049,6 +3143,13 @@ function makeDraggable(element, handle) {
     if (pendingX !== null && pendingY !== null) {
       element.style.left = pendingX + 'px';
       element.style.top = pendingY + 'px';
+      
+      // Debug log final position
+      if (CONFIG.debugMode) {
+        const iframe = element.querySelector('iframe');
+        const url = iframe ? iframe.src : 'unknown';
+        debug(`[DRAG] Quick Tab move completed - URL: ${url}, Final Position: (${Math.round(pendingX)}, ${Math.round(pendingY)})`);
+      }
       
       // Broadcast move to other tabs
       const iframe = element.querySelector('iframe');
@@ -3084,6 +3185,14 @@ function makeDraggable(element, handle) {
     offsetY = e.clientY - rect.top;
     
     lastUpdateTime = performance.now();
+    lastDebugLogTime = performance.now(); // Reset debug log timer
+    
+    // Debug log drag start
+    if (CONFIG.debugMode) {
+      const iframe = element.querySelector('iframe');
+      const url = iframe ? iframe.src : 'unknown';
+      debug(`[DRAG] Quick Tab drag started - URL: ${url}, Start Position: (${Math.round(rect.left)}, ${Math.round(rect.top)})`);
+    }
     
     e.preventDefault();
   };
@@ -3160,6 +3269,7 @@ function makeResizable(element) {
     let animationFrameId = null;
     let pendingResize = null;
     let resizeOverlay = null;
+    let lastDebugLogTime = 0; // For debug logging every 0.5 seconds
     
     const createResizeOverlay = () => {
       // Create an invisible overlay that extends beyond the Quick Tab bounds
@@ -3200,6 +3310,15 @@ function makeResizable(element) {
       startHeight = rect.height;
       startLeft = rect.left;
       startTop = rect.top;
+      
+      lastDebugLogTime = performance.now(); // Reset debug log timer
+      
+      // Debug log resize start
+      if (CONFIG.debugMode) {
+        const iframe = element.querySelector('iframe');
+        const url = iframe ? iframe.src : 'unknown';
+        debug(`[RESIZE] Quick Tab resize started - URL: ${url}, Start Size: ${Math.round(startWidth)}x${Math.round(startHeight)}, Position: (${Math.round(startLeft)}, ${Math.round(startTop)})`);
+      }
       
       e.preventDefault();
       e.stopPropagation();
@@ -3256,6 +3375,15 @@ function makeResizable(element) {
       // Allow Quick Tabs to be resized beyond viewport boundaries
       // No viewport constraints applied
       
+      // Debug logging every 0.5 seconds while resizing
+      const now = performance.now();
+      if (CONFIG.debugMode && (now - lastDebugLogTime) >= 500) {
+        const iframe = element.querySelector('iframe');
+        const url = iframe ? iframe.src : 'unknown';
+        debug(`[RESIZE] Quick Tab being resized - URL: ${url}, Size: ${Math.round(newWidth)}x${Math.round(newHeight)}, Position: (${Math.round(newLeft)}, ${Math.round(newTop)})`);
+        lastDebugLogTime = now;
+      }
+      
       // Store pending resize
       pendingResize = { width: newWidth, height: newHeight, left: newLeft, top: newTop };
       
@@ -3283,6 +3411,13 @@ function makeResizable(element) {
         element.style.height = pendingResize.height + 'px';
         element.style.left = pendingResize.left + 'px';
         element.style.top = pendingResize.top + 'px';
+        
+        // Debug log final resize
+        if (CONFIG.debugMode) {
+          const iframe = element.querySelector('iframe');
+          const url = iframe ? iframe.src : 'unknown';
+          debug(`[RESIZE] Quick Tab resize completed - URL: ${url}, Final Size: ${Math.round(pendingResize.width)}x${Math.round(pendingResize.height)}, Position: (${Math.round(pendingResize.left)}, ${Math.round(pendingResize.top)})`);
+        }
         
         // Broadcast resize to other tabs
         const iframe = element.querySelector('iframe');
@@ -3462,5 +3597,116 @@ if (quickTabWindows.length === 0 && minimizedQuickTabs.length === 0) {
     restoreQuickTabsFromStorage();
   }, 100); // Small delay to ensure page is ready
 }
+
+// ==================== MEDIA PLAYBACK CONTROL ====================
+// Pause/resume media in Quick Tab iframes when page visibility changes
+// This prevents videos/audio from playing in background tabs
+
+function pauseMediaInIframe(iframe) {
+  try {
+    // Try to access iframe content (will fail for cross-origin)
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) return;
+    
+    // Pause all video and audio elements
+    const videos = iframeDoc.querySelectorAll('video');
+    const audios = iframeDoc.querySelectorAll('audio');
+    
+    videos.forEach(video => {
+      if (!video.paused) {
+        video.pause();
+        // Mark that we paused it so we can resume later
+        video.dataset.pausedByExtension = 'true';
+      }
+    });
+    
+    audios.forEach(audio => {
+      if (!audio.paused) {
+        audio.pause();
+        audio.dataset.pausedByExtension = 'true';
+      }
+    });
+    
+    debug(`Paused media in Quick Tab iframe: ${iframe.src}`);
+  } catch (err) {
+    // Cross-origin iframe - can't control media directly
+    // As a fallback, we can try to send a postMessage to the iframe
+    // but this requires the iframe to implement a listener
+    debug(`Cannot pause media in cross-origin iframe: ${iframe.src}`);
+  }
+}
+
+function resumeMediaInIframe(iframe) {
+  try {
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) return;
+    
+    // Resume videos and audios that we paused
+    const videos = iframeDoc.querySelectorAll('video[data-paused-by-extension="true"]');
+    const audios = iframeDoc.querySelectorAll('audio[data-paused-by-extension="true"]');
+    
+    videos.forEach(video => {
+      video.play().catch(() => {
+        // Autoplay might be blocked, ignore error
+      });
+      delete video.dataset.pausedByExtension;
+    });
+    
+    audios.forEach(audio => {
+      audio.play().catch(() => {
+        // Autoplay might be blocked, ignore error
+      });
+      delete audio.dataset.pausedByExtension;
+    });
+    
+    debug(`Resumed media in Quick Tab iframe: ${iframe.src}`);
+  } catch (err) {
+    debug(`Cannot resume media in cross-origin iframe: ${iframe.src}`);
+  }
+}
+
+function pauseAllQuickTabMedia() {
+  quickTabWindows.forEach(container => {
+    const iframe = container.querySelector('iframe');
+    if (iframe) {
+      pauseMediaInIframe(iframe);
+    }
+  });
+}
+
+function resumeAllQuickTabMedia() {
+  quickTabWindows.forEach(container => {
+    const iframe = container.querySelector('iframe');
+    if (iframe) {
+      resumeMediaInIframe(iframe);
+    }
+  });
+}
+
+// Listen for page visibility changes
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // Page is now hidden (user switched to another tab)
+    debug('Page hidden - pausing media in Quick Tabs');
+    pauseAllQuickTabMedia();
+  } else {
+    // Page is now visible (user switched back to this tab)
+    debug('Page visible - resuming media in Quick Tabs');
+    resumeAllQuickTabMedia();
+  }
+});
+
+// Also pause media when window loses focus (additional safety)
+window.addEventListener('blur', () => {
+  debug('Window blur - pausing media in Quick Tabs');
+  pauseAllQuickTabMedia();
+});
+
+window.addEventListener('focus', () => {
+  debug('Window focus - resuming media in Quick Tabs');
+  resumeAllQuickTabMedia();
+});
+
+// ==================== END MEDIA PLAYBACK CONTROL ====================
 
 debug('Extension loaded - supports 100+ websites with site-specific optimized handlers');
