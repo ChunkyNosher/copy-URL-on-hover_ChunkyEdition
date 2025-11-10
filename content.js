@@ -449,10 +449,10 @@ function saveQuickTabsToStorage() {
         minimized: false,
         pinnedToUrl: container._pinnedToUrl || null
       };
-    });
+    }).filter(tab => tab.url && tab.url.trim() !== ''); // Filter out Quick Tabs with empty URLs
     
     // Also include minimized tabs
-    const minimizedState = minimizedQuickTabs.map(tab => ({
+    const minimizedState = minimizedQuickTabs.filter(tab => tab.url && tab.url.trim() !== '').map(tab => ({
       ...tab,
       minimized: true
     }));
@@ -501,7 +501,7 @@ function restoreQuickTabsFromStorage() {
     }).filter(url => url !== null));
     
     // Restore non-minimized tabs
-    const normalTabs = tabs.filter(t => !t.minimized);
+    const normalTabs = tabs.filter(t => !t.minimized && t.url && t.url.trim() !== '');
     normalTabs.forEach(tab => {
       // Skip if we already have a Quick Tab with this URL (prevents duplicates)
       if (existingUrls.has(tab.url)) {
@@ -529,6 +529,7 @@ function restoreQuickTabsFromStorage() {
     const existingMinimizedUrls = new Set(minimizedQuickTabs.map(t => t.url));
     const minimized = tabs.filter(t => {
       if (!t.minimized) return false;
+      if (!t.url || t.url.trim() === '') return false; // Skip empty URLs
       if (existingMinimizedUrls.has(t.url)) return false;
       
       // Filter based on pin status
@@ -667,6 +668,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
       // Only create Quick Tabs that don't already exist
       newValue.filter(t => {
         if (t.minimized) return false;
+        if (!t.url || t.url.trim() === '') return false; // Skip empty URLs
         if (existingUrls.has(t.url)) return false;
         
         // Filter based on pin status
@@ -2461,6 +2463,12 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
   if (isRestrictedPage()) {
     showNotification('✗ Quick Tab not available on this page');
     debug('Quick Tab blocked on restricted page');
+    return;
+  }
+  
+  // Validate URL
+  if (!url || url.trim() === '') {
+    debug('Cannot create Quick Tab with empty URL');
     return;
   }
   
