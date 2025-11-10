@@ -1,9 +1,58 @@
 // Background script handles injecting content script into all tabs
 // and manages Quick Tab state persistence across tabs
 // Also handles sidebar panel communication
+// Also handles webRequest to remove X-Frame-Options for Quick Tabs
 
 // Store Quick Tab states per tab
 const quickTabStates = new Map();
+
+// ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
+// This allows Quick Tabs to load any website, bypassing clickjacking protection
+// Security Note: This removes X-Frame-Options and CSP frame-ancestors headers
+// which normally prevent websites from being embedded in iframes. This makes
+// the extension potentially vulnerable to clickjacking attacks if a malicious
+// website tricks the user into clicking on a Quick Tab overlay. Use with caution.
+
+browser.webRequest.onHeadersReceived.addListener(
+  (details) => {
+    // Only modify headers for sub_frame requests (iframes)
+    // This prevents modifying headers for main page loads
+    if (details.type !== 'sub_frame') {
+      return {};
+    }
+
+    const headers = details.responseHeaders;
+    const modifiedHeaders = headers.filter(header => {
+      const name = header.name.toLowerCase();
+      // Remove X-Frame-Options header (blocks iframe embedding)
+      if (name === 'x-frame-options') {
+        console.log(`[Quick Tabs] Removed X-Frame-Options header for: ${details.url}`);
+        return false;
+      }
+      // Remove Content-Security-Policy frame-ancestors directive
+      if (name === 'content-security-policy') {
+        // Remove frame-ancestors directive from CSP
+        const originalValue = header.value;
+        header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
+        if (header.value !== originalValue) {
+          console.log(`[Quick Tabs] Removed frame-ancestors from CSP for: ${details.url}`);
+        }
+        // If CSP is now empty, remove the header entirely
+        if (header.value.trim() === '') {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    return { responseHeaders: modifiedHeaders };
+  },
+  { urls: ['<all_urls>'] },
+  ['blocking', 'responseHeaders']
+);
+
+// ==================== END X-FRAME-OPTIONS BYPASS ====================
+
 
 // Listen for tab switches to restore Quick Tabs
 chrome.tabs.onActivated.addListener(async (activeInfo) => {

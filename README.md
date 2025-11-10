@@ -170,6 +170,17 @@ Then open Firefox Developer Tools (F12) to see debug messages.
 ✓ Three size options  
 ✓ Customizable duration
 
+## Security Notice
+
+**X-Frame-Options Bypass**: This extension modifies HTTP response headers to allow Quick Tabs to display any website in an iframe, bypassing the X-Frame-Options and Content-Security-Policy frame-ancestors headers. This is necessary for Quick Tabs to work with sites like YouTube that normally prevent iframe embedding.
+
+**⚠️ Security Risk**: Removing these headers disables clickjacking protection for iframed content. While this feature enables Quick Tabs to work universally, it could theoretically be exploited by malicious websites to trick you into clicking on hidden iframe overlays. The extension only affects iframes, not main page loads, minimizing the risk.
+
+**Use at your own discretion.** If you're concerned about this security risk, you can:
+- Only open Quick Tabs from trusted websites
+- Disable the extension when browsing untrusted sites
+- Review the source code to verify the implementation
+
 ## Known Limitations
 
 Due to browser security restrictions, the following features have limitations:
