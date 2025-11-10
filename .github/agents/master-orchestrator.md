@@ -42,16 +42,20 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 ## Extension Architecture Context (v1.5.5+)
 
 **Current Technology Stack - CRITICAL FOR ROUTING:**
-- **Manifest Version:** v2 (not v3)
-- **Primary APIs:** navigator.clipboard, browser.storage.sync, browser.runtime, browser.webRequest, browser.tabs
-- **Core Features:** Quick Tabs (floating iframes), keyboard shortcuts, site-specific handlers, notifications
+- **Manifest Version:** v3
+- **Primary APIs:** navigator.clipboard, browser.storage.sync/session/local, browser.runtime, browser.webRequest, browser.tabs
+- **Core Features:** Quick Tabs (floating iframes), keyboard shortcuts, site-specific handlers, notifications, state management
 - **Browser Targets:** Firefox, Zen Browser (Firefox-based)
+- **Storage Strategy:** Dual-layer (sync + session) for Quick Tab state
 
 **File Structure:**
 - content.js (~56KB): Site handlers, Quick Tabs, clipboard operations, keyboard shortcuts
-- background.js: webRequest header modification, tab management, content injection
+- background.js: webRequest header modification, tab management, content injection, storage sync broadcasting
+- state-manager.js: Centralized Quick Tab state management (sync + session storage)
 - popup.html/popup.js: Settings with 4 tabs
-- manifest.json: Permissions including webRequest, webRequestBlocking, <all_urls>
+- options_page.html/options_page.js: Options page for Quick Tab settings
+- sidebar/panel.html/panel.js: Sidebar panel for live state debugging
+- manifest.json: Permissions including webRequest, webRequestBlocking, <all_urls>, options_ui, sidebar_action
 
 ## Agent Capabilities Reference
 

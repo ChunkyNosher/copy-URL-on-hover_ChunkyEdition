@@ -38,21 +38,28 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 **Current Repository Architecture (v1.5.5+):**
 - **content.js** (~56KB): Main functionality with site-specific handlers, Quick Tabs, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle management, content script injection, browser API compatibility
+- **background.js**: Tab lifecycle management, content script injection, browser API compatibility, storage sync broadcasting
+- **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
-- **manifest.json**: Manifest v2 configuration with permissions, webRequest API, content_scripts
+- **options_page.html/options_page.js**: Options page for Quick Tab settings management
+- **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
+- **manifest.json**: Manifest v3 configuration with permissions, webRequest API, options_ui, sidebar_action
 
 **Key Systems:**
 - CONFIG object: Central configuration with user settings
 - Site-specific handlers: URL detection logic for 100+ sites
 - Quick Tabs: Floating iframe windows with drag/resize
+- QuickTabStateManager: Dual-layer storage (sync + session) for state management
 - Notifications: Customizable visual feedback system
-- Storage: Settings synchronized via browser.storage.sync
+- Storage: browser.storage.sync for settings and Quick Tab state, browser.storage.local for user config
 
 **Critical APIs to Use - PRIORITIZE THESE:**
 
 1. **Clipboard API** (navigator.clipboard.writeText) - For any copy functionality
-2. **Storage API** (browser.storage.sync/local) - For settings and persistence
+2. **Storage API** (browser.storage.sync/session/local) - For settings and persistence
+   - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)
+   - browser.storage.session: Fast ephemeral Quick Tab state (quick_tabs_session) - Firefox 115+
+   - browser.storage.local: User config and large data
 3. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - For component communication
 4. **webRequest API** (onHeadersReceived) - For iframe/loading features
 5. **Tabs API** (browser.tabs.*) - For tab-related features
@@ -61,6 +68,7 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 **Browser-Specific Considerations:**
 - **Firefox:** Full WebExtension API support, standard browser.* namespace
+- **Firefox 115+:** browser.storage.session support for fast ephemeral storage
 - **Zen Browser:** Additional theme system, workspace management, custom UI elements
 - Test all features on both browsers to ensure consistent UX
 - Provide fallbacks for Zen-specific features when running on standard Firefox
