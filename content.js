@@ -243,8 +243,11 @@ function handleBroadcastMessage(event) {
     if (container) {
       container.style.left = message.left + 'px';
       container.style.top = message.top + 'px';
-      // Save to storage so position persists when switching tabs
-      saveQuickTabsToStorage();
+      // Note: Don't save to storage here - the initiating tab already saved
+      // This prevents race conditions and redundant saves
+      if (CONFIG.debugMode) {
+        debug(`[SYNC] Updated Quick Tab position via broadcast: (${message.left}, ${message.top})`);
+      }
     }
   }
   else if (message.action === 'resizeQuickTab') {
@@ -261,8 +264,11 @@ function handleBroadcastMessage(event) {
     if (container) {
       container.style.width = message.width + 'px';
       container.style.height = message.height + 'px';
-      // Save to storage so size persists when switching tabs
-      saveQuickTabsToStorage();
+      // Note: Don't save to storage here - the initiating tab already saved
+      // This prevents race conditions and redundant saves
+      if (CONFIG.debugMode) {
+        debug(`[SYNC] Updated Quick Tab size via broadcast: ${message.width}x${message.height}`);
+      }
     }
   }
   else if (message.action === 'pinQuickTab') {
@@ -3316,9 +3322,9 @@ function makeDraggable(element, handle) {
     pendingX = newX;
     pendingY = newY;
     
-    // Debug logging every 0.5 seconds while dragging
+    // Debug logging every 100ms while dragging (increased frequency for debug mode)
     const now = performance.now();
-    if (CONFIG.debugMode && (now - lastDebugLogTime) >= 500) {
+    if (CONFIG.debugMode && (now - lastDebugLogTime) >= 100) {
       const iframe = element.querySelector('iframe');
       const url = iframe ? iframe.src : 'unknown';
       debug(`[DRAG] Quick Tab being moved - URL: ${url}, Position: (${Math.round(newX)}, ${Math.round(newY)})`);
@@ -3590,9 +3596,9 @@ function makeResizable(element) {
       // Allow Quick Tabs to be resized beyond viewport boundaries
       // No viewport constraints applied
       
-      // Debug logging every 0.5 seconds while resizing
+      // Debug logging every 100ms while resizing (increased frequency for debug mode)
       const now = performance.now();
-      if (CONFIG.debugMode && (now - lastDebugLogTime) >= 500) {
+      if (CONFIG.debugMode && (now - lastDebugLogTime) >= 100) {
         const iframe = element.querySelector('iframe');
         const url = iframe ? iframe.src : 'unknown';
         debug(`[RESIZE] Quick Tab being resized - URL: ${url}, Size: ${Math.round(newWidth)}x${Math.round(newHeight)}, Position: (${Math.round(newLeft)}, ${Math.round(newTop)})`);
