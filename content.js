@@ -2823,12 +2823,15 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       pinBtn.title = 'Pin to current page';
       pinBtn.style.background = 'transparent';
       showNotification('✓ Quick Tab unpinned');
-      debug(`Quick Tab unpinned: ${iframe.src}`);
+      debug(`Quick Tab unpinned: ${iframe.src || iframe.getAttribute('data-deferred-src')}`);
       
       // Broadcast unpin so other tabs can show this Quick Tab
       if (CONFIG.quickTabPersistAcrossTabs) {
         const rect = container.getBoundingClientRect();
-        broadcastQuickTabUnpin(iframe.src, rect.width, rect.height, rect.left, rect.top);
+        const url = iframe.src || iframe.getAttribute('data-deferred-src');
+        if (url) {
+          broadcastQuickTabUnpin(url, rect.width, rect.height, rect.left, rect.top);
+        }
       }
       
       // Save updated state
@@ -2848,7 +2851,10 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       // When pinning, close ALL other instances of this Quick Tab across all tabs
       // First, broadcast the pin action to close instances in other tabs
       if (CONFIG.quickTabPersistAcrossTabs) {
-        broadcastQuickTabPin(iframe.src, currentPageUrl);
+        const url = iframe.src || iframe.getAttribute('data-deferred-src');
+        if (url) {
+          broadcastQuickTabPin(url, currentPageUrl);
+        }
       }
       
       // Save updated state (this will also close the Quick Tab in other tabs via storage sync)
@@ -2946,9 +2952,9 @@ function closeQuickTabWindow(container, broadcast = true) {
     quickTabWindows.splice(index, 1);
   }
   
-  // Get URL before removing the container
+  // Get URL before removing the container (check both src and data-deferred-src)
   const iframe = container.querySelector('iframe');
-  const url = iframe ? iframe.src : null;
+  const url = iframe ? (iframe.src || iframe.getAttribute('data-deferred-src')) : null;
   
   // Clean up drag listeners
   if (container._dragCleanup) {
@@ -3360,8 +3366,11 @@ function makeDraggable(element, handle) {
       // Broadcast move to other tabs
       const iframe = element.querySelector('iframe');
       if (iframe && CONFIG.quickTabPersistAcrossTabs) {
-        broadcastQuickTabMove(iframe.src, pendingX, pendingY);
-        saveQuickTabsToStorage();
+        const url = iframe.src || iframe.getAttribute('data-deferred-src');
+        if (url) {
+          broadcastQuickTabMove(url, pendingX, pendingY);
+          saveQuickTabsToStorage();
+        }
       }
       
       pendingX = null;
@@ -3621,17 +3630,20 @@ function makeResizable(element) {
         // Debug log final resize
         if (CONFIG.debugMode) {
           const iframe = element.querySelector('iframe');
-          const url = iframe ? iframe.src : 'unknown';
+          const url = iframe ? (iframe.src || iframe.getAttribute('data-deferred-src')) : 'unknown';
           debug(`[RESIZE] Quick Tab resize completed - URL: ${url}, Final Size: ${Math.round(pendingResize.width)}x${Math.round(pendingResize.height)}, Position: (${Math.round(pendingResize.left)}, ${Math.round(pendingResize.top)})`);
         }
         
         // Broadcast resize to other tabs
         const iframe = element.querySelector('iframe');
         if (iframe && CONFIG.quickTabPersistAcrossTabs) {
-          broadcastQuickTabResize(iframe.src, pendingResize.width, pendingResize.height);
-          // Also broadcast the position change if it was adjusted
-          broadcastQuickTabMove(iframe.src, pendingResize.left, pendingResize.top);
-          saveQuickTabsToStorage();
+          const url = iframe.src || iframe.getAttribute('data-deferred-src');
+          if (url) {
+            broadcastQuickTabResize(url, pendingResize.width, pendingResize.height);
+            // Also broadcast the position change if it was adjusted
+            broadcastQuickTabMove(url, pendingResize.left, pendingResize.top);
+            saveQuickTabsToStorage();
+          }
         }
         
         pendingResize = null;
