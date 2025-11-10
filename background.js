@@ -162,19 +162,21 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   
   // Handle Quick Tab creation
   if (message.action === 'CREATE_QUICK_TAB') {
-    console.log('[Background] Received create Quick Tab:', message.url);
+    console.log('[Background] Received create Quick Tab:', message.url, 'ID:', message.id);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
-    // Check if tab already exists in global state
-    const existingIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+    // Check if tab already exists in global state by ID (not URL)
+    // This allows multiple Quick Tabs with the same URL
+    const existingIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
     
     if (existingIndex !== -1) {
       // Update existing entry
       globalQuickTabState.tabs[existingIndex] = {
+        id: message.id,
         url: message.url,
         left: message.left,
         top: message.top,
@@ -187,6 +189,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     } else {
       // Add new entry
       globalQuickTabState.tabs.push({
+        id: message.id,
         url: message.url,
         left: message.left,
         top: message.top,
@@ -228,15 +231,15 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   
   // Handle Quick Tab close
   if (message.action === 'CLOSE_QUICK_TAB') {
-    console.log('[Background] Received close Quick Tab:', message.url);
+    console.log('[Background] Received close Quick Tab:', message.url, 'ID:', message.id);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
-    // Remove from global state
-    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+    // Remove from global state by ID (not URL) to avoid closing wrong duplicate
+    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
     if (tabIndex !== -1) {
       globalQuickTabState.tabs.splice(tabIndex, 1);
       globalQuickTabState.lastUpdate = Date.now();
@@ -246,6 +249,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         tabs.forEach(tab => {
           browser.tabs.sendMessage(tab.id, {
             action: 'CLOSE_QUICK_TAB_FROM_BACKGROUND',
+            id: message.id,
             url: message.url
           }).catch(() => {});
         });
@@ -280,22 +284,24 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   
   // Handle position and size updates from content scripts
   if (message.action === 'UPDATE_QUICK_TAB_POSITION') {
-    console.log('[Background] Received position update:', message.url, message.left, message.top);
+    console.log('[Background] Received position update:', message.url, 'ID:', message.id, message.left, message.top);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
-    // Update global state
-    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+    // Update global state by ID (not URL) to avoid updating wrong duplicate
+    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
     if (tabIndex !== -1) {
       globalQuickTabState.tabs[tabIndex].left = message.left;
       globalQuickTabState.tabs[tabIndex].top = message.top;
       if (message.width !== undefined) globalQuickTabState.tabs[tabIndex].width = message.width;
       if (message.height !== undefined) globalQuickTabState.tabs[tabIndex].height = message.height;
     } else {
+      // Tab doesn't exist in global state - add it
       globalQuickTabState.tabs.push({
+        id: message.id,
         url: message.url,
         left: message.left,
         top: message.top,
@@ -310,6 +316,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       tabs.forEach(tab => {
         browser.tabs.sendMessage(tab.id, {
           action: 'UPDATE_QUICK_TAB_FROM_BACKGROUND',
+          id: message.id,
           url: message.url,
           left: message.left,
           top: message.top,
