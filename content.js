@@ -449,10 +449,10 @@ function saveQuickTabsToStorage() {
       return {
         url: url,
         title: titleText?.textContent || 'Quick Tab',
-        width: rect.width,
-        height: rect.height,
-        left: rect.left,
-        top: rect.top,
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
         minimized: false,
         pinnedToUrl: container._pinnedToUrl || null
       };
@@ -3021,7 +3021,20 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
   // Only broadcast if this wasn't created from a broadcast (prevent infinite loop)
   if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
     broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl);
-    saveQuickTabsToStorage();
+    
+    // Notify background script for state coordination
+    browser.runtime.sendMessage({
+      action: 'CREATE_QUICK_TAB',
+      url: url,
+      left: Math.round(posX),
+      top: Math.round(posY),
+      width: Math.round(windowWidth),
+      height: Math.round(windowHeight),
+      pinnedToUrl: pinnedToUrl,
+      title: 'Quick Tab' // Will be updated when iframe loads
+    }).catch(err => {
+      debug('Error notifying background of Quick Tab creation:', err);
+    });
   }
 }
 
@@ -3047,9 +3060,14 @@ function closeQuickTabWindow(container, broadcast = true) {
   container.remove();
   debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
   
-  // Always save updated state to storage after closing
-  if (CONFIG.quickTabPersistAcrossTabs) {
-    saveQuickTabsToStorage();
+  // Notify background script for state coordination
+  if (CONFIG.quickTabPersistAcrossTabs && url) {
+    browser.runtime.sendMessage({
+      action: 'CLOSE_QUICK_TAB',
+      url: url
+    }).catch(err => {
+      debug('Error notifying background of Quick Tab close:', err);
+    });
   }
   
   // Broadcast close to other tabs if enabled
@@ -3410,10 +3428,10 @@ function makeDraggable(element, handle) {
           browser.runtime.sendMessage({
             action: 'UPDATE_QUICK_TAB_POSITION',
             url: url,
-            left: pendingX,
-            top: pendingY,
-            width: rect.width,
-            height: rect.height
+            left: Math.round(pendingX),
+            top: Math.round(pendingY),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
           }).catch(err => {
             debug('Error sending position update to background:', err);
           });
@@ -3479,16 +3497,16 @@ function makeDraggable(element, handle) {
           browser.runtime.sendMessage({
             action: 'UPDATE_QUICK_TAB_POSITION',
             url: url,
-            left: pendingX,
-            top: pendingY,
-            width: rect.width,
-            height: rect.height
+            left: Math.round(pendingX),
+            top: Math.round(pendingY),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
           }).catch(err => {
             debug('Error sending position update to background:', err);
           });
           
           // KEEP the BroadcastChannel call for redundancy (same-origin tabs)
-          broadcastQuickTabMove(url, pendingX, pendingY);
+          broadcastQuickTabMove(url, Math.round(pendingX), Math.round(pendingY));
           
           // NOTE: Background script now handles storage save
           // No need to call saveQuickTabsToStorage() here
@@ -3765,17 +3783,17 @@ function makeResizable(element) {
             browser.runtime.sendMessage({
               action: 'UPDATE_QUICK_TAB_POSITION',
               url: url,
-              left: pendingResize.left,
-              top: pendingResize.top,
-              width: pendingResize.width,
-              height: pendingResize.height
+              left: Math.round(pendingResize.left),
+              top: Math.round(pendingResize.top),
+              width: Math.round(pendingResize.width),
+              height: Math.round(pendingResize.height)
             }).catch(err => {
               debug('Error sending resize update to background:', err);
             });
             
             // KEEP the BroadcastChannel calls for redundancy (same-origin tabs)
-            broadcastQuickTabResize(url, pendingResize.width, pendingResize.height);
-            broadcastQuickTabMove(url, pendingResize.left, pendingResize.top);
+            broadcastQuickTabResize(url, Math.round(pendingResize.width), Math.round(pendingResize.height));
+            broadcastQuickTabMove(url, Math.round(pendingResize.left), Math.round(pendingResize.top));
             
             // NOTE: Background script now handles storage save
             // No need to call saveQuickTabsToStorage() here
@@ -3964,6 +3982,36 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ success: true });
   }
   
+  // NEW: Handle Quick Tab close from background
+  if (message.action === 'CLOSE_QUICK_TAB_FROM_BACKGROUND') {
+    const container = quickTabWindows.find(win => {
+      const iframe = win.querySelector('iframe');
+      if (!iframe) return false;
+      const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+      return iframeSrc === message.url;
+    });
+    
+    if (container) {
+      closeQuickTabWindow(container, false); // false = don't broadcast again
+      debug(`Closed Quick Tab ${message.url} from background command`);
+    }
+    
+    sendResponse({ success: true });
+  }
+  
+  // NEW: Handle clear all Quick Tabs command
+  if (message.action === 'CLEAR_ALL_QUICK_TABS') {
+    // Close all Quick Tab windows
+    while (quickTabWindows.length > 0) {
+      closeQuickTabWindow(quickTabWindows[0], false);
+    }
+    // Clear minimized tabs
+    minimizedQuickTabs = [];
+    updateMinimizedTabsManager();
+    debug('Cleared all Quick Tabs');
+    sendResponse({ success: true });
+  }
+  
   // NEW: Handle full state sync from background on tab activation
   if (message.action === 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND') {
     const state = message.state;
@@ -4115,10 +4163,10 @@ document.addEventListener('visibilitychange', () => {
           browser.runtime.sendMessage({
             action: 'UPDATE_QUICK_TAB_POSITION',
             url: url,
-            left: rect.left,
-            top: rect.top,
-            width: rect.width,
-            height: rect.height
+            left: Math.round(rect.left),
+            top: Math.round(rect.top),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
           }).catch(err => {
             debug('Error sending visibility change update to background:', err);
           });

@@ -292,6 +292,38 @@ document.getElementById('resetBtn').addEventListener('click', function() {
   }
 });
 
+// Clear Quick Tab storage button
+document.getElementById('clearStorageBtn').addEventListener('click', async function() {
+  if (confirm('This will clear all saved Quick Tab positions and state. Are you sure?')) {
+    try {
+      // Clear sync storage
+      await browser.storage.sync.remove('quick_tabs_state_v2');
+      
+      // Clear session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        await browser.storage.session.remove('quick_tabs_session');
+      }
+      
+      showStatus('✓ Quick Tab storage cleared!');
+      
+      // Notify all tabs to close their Quick Tabs
+      browser.tabs.query({}).then(tabs => {
+        tabs.forEach(tab => {
+          browser.tabs.sendMessage(tab.id, {
+            action: 'CLEAR_ALL_QUICK_TABS'
+          }).catch(() => {
+            // Content script might not be loaded in this tab
+          });
+        });
+      });
+      
+    } catch (err) {
+      showStatus('✗ Error clearing storage: ' + err.message);
+      console.error('Error clearing Quick Tab storage:', err);
+    }
+  }
+});
+
 // Dark mode toggle
 document.getElementById('darkMode').addEventListener('change', function() {
   applyTheme(this.checked);
