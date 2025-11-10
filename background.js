@@ -57,48 +57,106 @@ initializeGlobalState();
 
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
 // This allows Quick Tabs to load any website, bypassing clickjacking protection
+// ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
+// Firefox Manifest V3 - Supports blocking webRequest
+// This allows Quick Tabs to load any website, bypassing clickjacking protection
 // Security Note: This removes X-Frame-Options and CSP frame-ancestors headers
 // which normally prevent websites from being embedded in iframes. This makes
 // the extension potentially vulnerable to clickjacking attacks if a malicious
 // website tricks the user into clicking on a Quick Tab overlay. Use with caution.
 
+console.log('[Quick Tabs] Initializing Firefox MV3 X-Frame-Options bypass...');
+
+// Track modified URLs for debugging
+const modifiedUrls = new Set();
+
 browser.webRequest.onHeadersReceived.addListener(
   (details) => {
-    // Only modify headers for sub_frame requests (iframes)
-    // This prevents modifying headers for main page loads
-    if (details.type !== 'sub_frame') {
-      return {};
-    }
+    console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
 
     const headers = details.responseHeaders;
     const modifiedHeaders = headers.filter(header => {
       const name = header.name.toLowerCase();
+      
       // Remove X-Frame-Options header (blocks iframe embedding)
       if (name === 'x-frame-options') {
-        console.log(`[Quick Tabs] Removed X-Frame-Options header for: ${details.url}`);
+        console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${details.url}`);
+        modifiedUrls.add(details.url);
         return false;
       }
+      
       // Remove Content-Security-Policy frame-ancestors directive
       if (name === 'content-security-policy') {
-        // Remove frame-ancestors directive from CSP
         const originalValue = header.value;
+        // Remove frame-ancestors directive from CSP
         header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
-        if (header.value !== originalValue) {
-          console.log(`[Quick Tabs] Removed frame-ancestors from CSP for: ${details.url}`);
-        }
+        
         // If CSP is now empty, remove the header entirely
-        if (header.value.trim() === '') {
+        if (header.value.trim() === '' || header.value.trim() === ';') {
+          console.log(`[Quick Tabs] ✓ Removed empty CSP from ${details.url}`);
+          modifiedUrls.add(details.url);
+          return false;
+        }
+        
+        // Log if we modified it
+        if (header.value !== originalValue) {
+          console.log(`[Quick Tabs] ✓ Modified CSP for ${details.url}`);
+          modifiedUrls.add(details.url);
+        }
+      }
+      
+      // Remove restrictive Cross-Origin-Resource-Policy
+      if (name === 'cross-origin-resource-policy') {
+        const value = header.value.toLowerCase();
+        if (value === 'same-origin' || value === 'same-site') {
+          console.log(`[Quick Tabs] ✓ Removed CORP: ${header.value} from ${details.url}`);
+          modifiedUrls.add(details.url);
           return false;
         }
       }
+      
       return true;
     });
 
     return { responseHeaders: modifiedHeaders };
   },
-  { urls: ['<all_urls>'] },
-  ['blocking', 'responseHeaders']
+  {
+    urls: ['<all_urls>'],
+    types: ['sub_frame']  // Only iframes - filter at registration for better performance
+  },
+  ['blocking', 'responseHeaders']  // Firefox MV3 allows 'blocking'
 );
+
+// Log successful iframe loads
+browser.webRequest.onCompleted.addListener(
+  (details) => {
+    if (modifiedUrls.has(details.url)) {
+      console.log(`[Quick Tabs] ✅ Successfully loaded iframe: ${details.url}`);
+      // Clean up old URLs to prevent memory leak
+      if (modifiedUrls.size > 100) {
+        modifiedUrls.clear();
+      }
+    }
+  },
+  {
+    urls: ['<all_urls>'],
+    types: ['sub_frame']
+  }
+);
+
+// Log failed iframe loads
+browser.webRequest.onErrorOccurred.addListener(
+  (details) => {
+    console.error(`[Quick Tabs] ❌ Failed to load iframe: ${details.url}`);
+    console.error(`[Quick Tabs] Error: ${details.error}`);
+  },
+  {
+    urls: ['<all_urls>'],
+    types: ['sub_frame']
+  }
+);
+
+console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
 
 // ==================== END X-FRAME-OPTIONS BYPASS ====================
 
