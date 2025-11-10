@@ -2902,11 +2902,22 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       showNotification('✓ Quick Tab unpinned');
       debug(`Quick Tab unpinned: ${iframe.src || iframe.getAttribute('data-deferred-src')}`);
       
+      // Notify background script to update pin state
+      const quickTabId = container.dataset.quickTabId;
+      if (quickTabId) {
+        browser.runtime.sendMessage({
+          action: 'UPDATE_QUICK_TAB_PIN',
+          id: quickTabId,
+          pinnedToUrl: null
+        }).catch(err => {
+          debug('Error notifying background of Quick Tab unpin:', err);
+        });
+      }
+      
       // Broadcast unpin so other tabs can show this Quick Tab
       if (CONFIG.quickTabPersistAcrossTabs) {
         const rect = container.getBoundingClientRect();
         const url = iframe.src || iframe.getAttribute('data-deferred-src');
-        const quickTabId = container.dataset.quickTabId;
         if (url && quickTabId) {
           broadcastQuickTabUnpin(quickTabId, url, rect.width, rect.height, rect.left, rect.top);
         }
@@ -2926,11 +2937,22 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       showNotification('✓ Quick Tab pinned to this page');
       debug(`Quick Tab pinned to: ${currentPageUrl}`);
       
+      // Notify background script to update pin state
+      const quickTabId = container.dataset.quickTabId;
+      if (quickTabId) {
+        browser.runtime.sendMessage({
+          action: 'UPDATE_QUICK_TAB_PIN',
+          id: quickTabId,
+          pinnedToUrl: currentPageUrl
+        }).catch(err => {
+          debug('Error notifying background of Quick Tab pin:', err);
+        });
+      }
+      
       // When pinning, close ALL other instances of this Quick Tab across all tabs
       // First, broadcast the pin action to close instances in other tabs
       if (CONFIG.quickTabPersistAcrossTabs) {
         const url = iframe.src || iframe.getAttribute('data-deferred-src');
-        const quickTabId = container.dataset.quickTabId;
         if (url && quickTabId) {
           broadcastQuickTabPin(quickTabId, url, currentPageUrl);
         }

@@ -354,6 +354,48 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true;
   }
   
+  // Handle Quick Tab pin/unpin updates
+  if (message.action === 'UPDATE_QUICK_TAB_PIN') {
+    console.log('[Background] Received pin update:', message.id, 'pinnedToUrl:', message.pinnedToUrl);
+    
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+    
+    // Update global state
+    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      globalQuickTabState.tabs[tabIndex].pinnedToUrl = message.pinnedToUrl;
+      globalQuickTabState.lastUpdate = Date.now();
+      
+      // Save to storage
+      browser.storage.sync.set({ 
+        quick_tabs_state_v2: {
+          tabs: globalQuickTabState.tabs,
+          timestamp: Date.now()
+        }
+      }).catch(err => {
+        console.error('[Background] Error saving pin state to storage:', err);
+      });
+      
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session.set({
+          quick_tabs_session: {
+            tabs: globalQuickTabState.tabs,
+            timestamp: Date.now()
+          }
+        }).catch(err => {
+          console.error('[Background] Error saving to session storage:', err);
+        });
+      }
+    }
+    
+    sendResponse({ success: true });
+    return true;
+  }
+  
   if (message.action === 'UPDATE_QUICK_TAB_SIZE') {
     console.log('[Background] Received size update:', message.url, message.width, message.height);
     
@@ -492,7 +534,15 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     
     // UPDATE: Sync globalQuickTabState with storage changes
     const newValue = changes.quick_tabs_state_v2.newValue;
-    if (newValue && newValue.tabs) {
+    
+    // Handle storage being cleared (newValue is undefined)
+    if (!newValue || !newValue.tabs) {
+      // Storage was cleared - reset global state
+      globalQuickTabState.tabs = [];
+      globalQuickTabState.lastUpdate = Date.now();
+      console.log('[Background] Storage cleared, reset global state');
+    } else {
+      // Storage was updated - sync global state
       // Only update if storage has MORE tabs than our global state
       // This prevents overwriting global state with stale data
       if (newValue.tabs.length >= globalQuickTabState.tabs.length) {
