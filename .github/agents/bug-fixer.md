@@ -37,9 +37,12 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 
 **Current Repository Architecture (v1.5.5+):**
 - **content.js** (~56KB): Main functionality with site-specific handlers, Quick Tabs, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle management, content script injection, browser API compatibility
+- **background.js**: Tab lifecycle management, content script injection, browser API compatibility, storage sync broadcasting
+- **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
-- **manifest.json**: Manifest v2 configuration with permissions, webRequest API, content_scripts
+- **options_page.html/options_page.js**: Options page for Quick Tab settings management
+- **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
+- **manifest.json**: Manifest v3 configuration with permissions, webRequest API, options_ui, sidebar_action
 
 **Critical APIs Currently Used - PRIORITIZE THESE:**
 
@@ -48,10 +51,12 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
    - Common issues: Permissions, timing, focus requirements
    - Fallback: document.execCommand('copy')
 
-2. **WebExtension Storage API** (browser.storage.sync, browser.storage.local)
-   - Settings persistence across browser sessions
-   - Common issues: Storage quota, sync vs local confusion, serialization
-   - Debug: Check browser.storage.onChanged listeners
+2. **WebExtension Storage API** (browser.storage.sync, browser.storage.session, browser.storage.local)
+   - Quick Tab state: browser.storage.sync (key: quick_tabs_state_v2) + browser.storage.session (key: quick_tabs_session)
+   - Settings: browser.storage.sync (key: quick_tab_settings)
+   - User config: browser.storage.local (DEFAULT_CONFIG)
+   - Common issues: Storage quota, sync vs local confusion, serialization, session storage availability (Firefox 115+)
+   - Debug: Check browser.storage.onChanged listeners in both content.js and background.js
 
 3. **browser.runtime API** (sendMessage, onMessage)
    - Message passing between content, background, and popup
@@ -86,11 +91,15 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 **Quick Tabs System:**
 - Floating iframe windows with drag/resize functionality
 - Minimized tab manager in bottom-right corner
-- Common issues: iframe loading, X-Frame-Options blocking, state persistence
-- Debug: Check webRequest header modifications, iframe.src assignment
+- State management via QuickTabStateManager (state-manager.js)
+- Dual-layer storage: browser.storage.sync (persistent) + browser.storage.session (fast ephemeral)
+- Real-time sync via browser.storage.onChanged events in background.js
+- Common issues: iframe loading, X-Frame-Options blocking, state persistence, storage sync delays
+- Debug: Check webRequest header modifications, iframe.src assignment, storage change listeners
 
 **Browser Compatibility:**
 - **Firefox:** Standard WebExtension APIs, full browser.* namespace support
+- **Firefox 115+:** browser.storage.session support for fast ephemeral storage
 - **Zen Browser:** Built on Firefox, may have custom themes, workspaces, and UI modifications
 - Test fixes on both browsers to ensure consistent behavior
 - Account for Zen-specific features (workspace themes, split views) when debugging
@@ -117,7 +126,13 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
    - Check: return true for async responses, sender.tab exists, recipient listening
    - Fix: Add error handling in .catch(), verify message action names match
 
-6. **Site-Specific Handler Failures:**
+6. **Quick Tab State Sync Issues:**
+   - Check: browser.storage.onChanged listener in background.js, storage keys (quick_tabs_state_v2, quick_tabs_session)
+   - Check: isSavingToStorage flag to prevent race conditions
+   - Debug: Verify background.js broadcasts state changes to all tabs
+   - Fix: Ensure event page mode (persistent: false) in manifest, check session storage availability
+
+7. **Site-Specific Handler Failures:**
    - Check: DOM selectors still valid, URL patterns match
    - Fix: Update selectors, add fallback to generic handler
 

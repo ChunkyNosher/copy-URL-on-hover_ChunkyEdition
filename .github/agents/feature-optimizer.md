@@ -32,13 +32,19 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 
 **Current Repository Architecture (v1.5.5+):**
 - **content.js** (~56KB): Main functionality, site handlers, Quick Tabs, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle, content injection, webRequest header modification
+- **background.js**: Tab lifecycle, content injection, webRequest header modification, storage sync broadcasting
+- **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs
-- **manifest.json**: Manifest v2 with permissions for webRequest, storage, tabs
+- **options_page.html/options_page.js**: Options page for Quick Tab settings management
+- **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
+- **manifest.json**: Manifest v3 with permissions for webRequest, storage, tabs, options_ui, sidebar_action
 
 **Core APIs - Leverage These:**
 1. **Clipboard API** - For copy operations
-2. **Storage API** (browser.storage.sync/local) - For persistence
+2. **Storage API** (browser.storage.sync/session/local) - For persistence
+   - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)
+   - browser.storage.session: Fast ephemeral Quick Tab state (quick_tabs_session) - Firefox 115+
+   - browser.storage.local: User config and large data
 3. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - For communication
 4. **webRequest API** (onHeadersReceived) - For iframe header modification
 5. **Tabs API** (browser.tabs.*) - For tab operations

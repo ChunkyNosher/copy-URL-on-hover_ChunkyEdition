@@ -31,13 +31,19 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 
 **Current Repository Architecture (v1.5.5+):**
 - **content.js** (~56KB): Main functionality, site handlers, Quick Tabs, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle, webRequest header modification, content injection
+- **background.js**: Tab lifecycle, webRequest header modification, content injection, storage sync broadcasting
+- **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs
-- **manifest.json**: Manifest v2 with webRequest, storage, tabs permissions
+- **options_page.html/options_page.js**: Options page for Quick Tab settings management
+- **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
+- **manifest.json**: Manifest v3 with webRequest, storage, tabs permissions, options_ui, sidebar_action
 
 **Critical APIs - Debug These First:**
 1. **Clipboard API** (navigator.clipboard.writeText) - Copy failures
-2. **Storage API** (browser.storage.sync/local) - Persistence bugs
+2. **Storage API** (browser.storage.sync/session/local) - Persistence bugs
+   - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)
+   - browser.storage.session: Fast ephemeral Quick Tab state (quick_tabs_session) - Firefox 115+
+   - browser.storage.local: User config and large data
 3. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Communication failures
 4. **webRequest API** (onHeadersReceived) - iframe loading bugs
 5. **Tabs API** (browser.tabs.*) - Tab switching bugs
