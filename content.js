@@ -717,7 +717,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
       });
       
       // Only create Quick Tabs that don't already exist
-      newValue.filter(t => {
+      newValue.tabs.filter(t => {
         if (t.minimized) return false;
         if (!t.url || t.url.trim() === '') return false; // Skip empty URLs
         if (existingUrls.has(t.url)) return false;
