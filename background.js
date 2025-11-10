@@ -14,6 +14,47 @@ let globalQuickTabState = {
   lastUpdate: 0
 };
 
+// Flag to track initialization status
+let isInitialized = false;
+
+// Initialize global state from storage on extension startup
+async function initializeGlobalState() {
+  if (isInitialized) return;
+  
+  try {
+    // Try session storage first (faster)
+    let result;
+    if (typeof browser.storage.session !== 'undefined') {
+      result = await browser.storage.session.get('quick_tabs_session');
+      if (result && result.quick_tabs_session && result.quick_tabs_session.tabs) {
+        globalQuickTabState.tabs = result.quick_tabs_session.tabs;
+        globalQuickTabState.lastUpdate = result.quick_tabs_session.timestamp;
+        isInitialized = true;
+        console.log('[Background] Initialized from session storage:', globalQuickTabState.tabs.length, 'tabs');
+        return;
+      }
+    }
+    
+    // Fall back to sync storage
+    result = await browser.storage.sync.get('quick_tabs_state_v2');
+    if (result && result.quick_tabs_state_v2 && result.quick_tabs_state_v2.tabs) {
+      globalQuickTabState.tabs = result.quick_tabs_state_v2.tabs;
+      globalQuickTabState.lastUpdate = result.quick_tabs_state_v2.timestamp;
+      isInitialized = true;
+      console.log('[Background] Initialized from sync storage:', globalQuickTabState.tabs.length, 'tabs');
+    } else {
+      isInitialized = true;
+      console.log('[Background] No saved state found, starting with empty state');
+    }
+  } catch (err) {
+    console.error('[Background] Error initializing global state:', err);
+    isInitialized = true; // Mark as initialized even on error to prevent blocking
+  }
+}
+
+// Call initialization immediately
+initializeGlobalState();
+
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
 // This allows Quick Tabs to load any website, bypassing clickjacking protection
 // Security Note: This removes X-Frame-Options and CSP frame-ancestors headers
@@ -114,13 +155,137 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 // Handle messages from content script and sidebar
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
   
   // ==================== REAL-TIME STATE COORDINATION ====================
+  
+  // Handle Quick Tab creation
+  if (message.action === 'CREATE_QUICK_TAB') {
+    console.log('[Background] Received create Quick Tab:', message.url);
+    
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+    
+    // Check if tab already exists in global state
+    const existingIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+    
+    if (existingIndex !== -1) {
+      // Update existing entry
+      globalQuickTabState.tabs[existingIndex] = {
+        url: message.url,
+        left: message.left,
+        top: message.top,
+        width: message.width,
+        height: message.height,
+        pinnedToUrl: message.pinnedToUrl || null,
+        title: message.title || 'Quick Tab',
+        minimized: message.minimized || false
+      };
+    } else {
+      // Add new entry
+      globalQuickTabState.tabs.push({
+        url: message.url,
+        left: message.left,
+        top: message.top,
+        width: message.width,
+        height: message.height,
+        pinnedToUrl: message.pinnedToUrl || null,
+        title: message.title || 'Quick Tab',
+        minimized: message.minimized || false
+      });
+    }
+    
+    globalQuickTabState.lastUpdate = Date.now();
+    
+    // Save to storage for persistence
+    browser.storage.sync.set({ 
+      quick_tabs_state_v2: {
+        tabs: globalQuickTabState.tabs,
+        timestamp: Date.now()
+      }
+    }).catch(err => {
+      console.error('[Background] Error saving created tab to storage:', err);
+    });
+    
+    // Also save to session storage if available
+    if (typeof browser.storage.session !== 'undefined') {
+      browser.storage.session.set({
+        quick_tabs_session: {
+          tabs: globalQuickTabState.tabs,
+          timestamp: Date.now()
+        }
+      }).catch(err => {
+        console.error('[Background] Error saving to session storage:', err);
+      });
+    }
+    
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  // Handle Quick Tab close
+  if (message.action === 'CLOSE_QUICK_TAB') {
+    console.log('[Background] Received close Quick Tab:', message.url);
+    
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+    
+    // Remove from global state
+    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+    if (tabIndex !== -1) {
+      globalQuickTabState.tabs.splice(tabIndex, 1);
+      globalQuickTabState.lastUpdate = Date.now();
+      
+      // Broadcast to all tabs
+      browser.tabs.query({}).then(tabs => {
+        tabs.forEach(tab => {
+          browser.tabs.sendMessage(tab.id, {
+            action: 'CLOSE_QUICK_TAB_FROM_BACKGROUND',
+            url: message.url
+          }).catch(() => {});
+        });
+      });
+      
+      // Save updated state to storage
+      browser.storage.sync.set({ 
+        quick_tabs_state_v2: {
+          tabs: globalQuickTabState.tabs,
+          timestamp: Date.now()
+        }
+      }).catch(err => {
+        console.error('[Background] Error saving after close:', err);
+      });
+      
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session.set({
+          quick_tabs_session: {
+            tabs: globalQuickTabState.tabs,
+            timestamp: Date.now()
+          }
+        }).catch(err => {
+          console.error('[Background] Error saving to session storage:', err);
+        });
+      }
+    }
+    
+    sendResponse({ success: true });
+    return true;
+  }
+  
   // Handle position and size updates from content scripts
   if (message.action === 'UPDATE_QUICK_TAB_POSITION') {
     console.log('[Background] Received position update:', message.url, message.left, message.top);
+    
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
     
     // Update global state
     const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
@@ -166,12 +331,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.error('[Background] Error saving to storage.sync:', err);
     });
     
+    // Also save to session storage if available
+    if (typeof browser.storage.session !== 'undefined') {
+      browser.storage.session.set({
+        quick_tabs_session: {
+          tabs: globalQuickTabState.tabs,
+          timestamp: Date.now()
+        }
+      }).catch(err => {
+        console.error('[Background] Error saving to session storage:', err);
+      });
+    }
+    
     sendResponse({ success: true });
     return true;
   }
   
   if (message.action === 'UPDATE_QUICK_TAB_SIZE') {
     console.log('[Background] Received size update:', message.url, message.width, message.height);
+    
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
     
     // Update global state
     const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
@@ -216,6 +398,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }).catch(err => {
       console.error('[Background] Error saving to storage.sync:', err);
     });
+    
+    // Also save to session storage if available
+    if (typeof browser.storage.session !== 'undefined') {
+      browser.storage.session.set({
+        quick_tabs_session: {
+          tabs: globalQuickTabState.tabs,
+          timestamp: Date.now()
+        }
+      }).catch(err => {
+        console.error('[Background] Error saving to session storage:', err);
+      });
+    }
     
     sendResponse({ success: true });
     return true;
@@ -288,6 +482,19 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   // Broadcast Quick Tab state changes
   if (areaName === 'sync' && changes.quick_tabs_state_v2) {
     console.log('[Background] Quick Tab state changed, broadcasting to all tabs');
+    
+    // UPDATE: Sync globalQuickTabState with storage changes
+    const newValue = changes.quick_tabs_state_v2.newValue;
+    if (newValue && newValue.tabs) {
+      // Only update if storage has MORE tabs than our global state
+      // This prevents overwriting global state with stale data
+      if (newValue.tabs.length >= globalQuickTabState.tabs.length) {
+        globalQuickTabState.tabs = newValue.tabs;
+        globalQuickTabState.lastUpdate = newValue.timestamp;
+        console.log('[Background] Updated global state from storage:', globalQuickTabState.tabs.length, 'tabs');
+      }
+    }
+    
     browser.tabs.query({}).then(tabs => {
       tabs.forEach(tab => {
         browser.tabs.sendMessage(tab.id, { 
