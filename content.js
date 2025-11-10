@@ -174,6 +174,20 @@ function handleBroadcastMessage(event) {
   if (message.action === 'createQuickTab') {
     debug(`Received Quick Tab broadcast from another tab: ${message.url}`);
     
+    // Check if we already have a Quick Tab with this URL (prevents duplicates from self-messaging)
+    // Also check data-deferred-src for iframes that haven't loaded yet
+    const existingContainer = quickTabWindows.find(win => {
+      const iframe = win.querySelector('iframe');
+      if (!iframe) return false;
+      const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+      return iframeSrc === message.url;
+    });
+    
+    if (existingContainer) {
+      debug(`Skipping duplicate Quick Tab from broadcast: ${message.url}`);
+      return;
+    }
+    
     // Filter based on pin status - only show unpinned Quick Tabs via broadcast
     // Pinned Quick Tabs are handled by storage restore based on current page URL
     if (message.pinnedToUrl) {
@@ -199,10 +213,12 @@ function handleBroadcastMessage(event) {
   else if (message.action === 'closeQuickTab') {
     debug(`Received close Quick Tab broadcast for URL: ${message.url}`);
     
-    // Find and close the Quick Tab with matching URL
+    // Find and close the Quick Tab with matching URL (including deferred iframes)
     const container = quickTabWindows.find(win => {
       const iframe = win.querySelector('iframe');
-      return iframe && iframe.src === message.url;
+      if (!iframe) return false;
+      const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+      return iframeSrc === message.url;
     });
     
     if (container) {
@@ -216,10 +232,12 @@ function handleBroadcastMessage(event) {
   else if (message.action === 'moveQuickTab') {
     debug(`Received move Quick Tab broadcast for URL: ${message.url}`);
     
-    // Find and move the Quick Tab with matching URL
+    // Find and move the Quick Tab with matching URL (including deferred iframes)
     const container = quickTabWindows.find(win => {
       const iframe = win.querySelector('iframe');
-      return iframe && iframe.src === message.url;
+      if (!iframe) return false;
+      const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+      return iframeSrc === message.url;
     });
     
     if (container) {
@@ -232,10 +250,12 @@ function handleBroadcastMessage(event) {
   else if (message.action === 'resizeQuickTab') {
     debug(`Received resize Quick Tab broadcast for URL: ${message.url}`);
     
-    // Find and resize the Quick Tab with matching URL
+    // Find and resize the Quick Tab with matching URL (including deferred iframes)
     const container = quickTabWindows.find(win => {
       const iframe = win.querySelector('iframe');
-      return iframe && iframe.src === message.url;
+      if (!iframe) return false;
+      const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+      return iframeSrc === message.url;
     });
     
     if (container) {
@@ -256,7 +276,9 @@ function handleBroadcastMessage(event) {
     if (currentPageUrl !== message.pinnedToUrl) {
       const container = quickTabWindows.find(win => {
         const iframe = win.querySelector('iframe');
-        return iframe && iframe.src === message.url;
+        if (!iframe) return false;
+        const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+        return iframeSrc === message.url;
       });
       
       if (container) {
@@ -271,7 +293,9 @@ function handleBroadcastMessage(event) {
     // When a Quick Tab is unpinned in another tab, create it here if we don't have it
     const existingContainer = quickTabWindows.find(win => {
       const iframe = win.querySelector('iframe');
-      return iframe && iframe.src === message.url;
+      if (!iframe) return false;
+      const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+      return iframeSrc === message.url;
     });
     
     // Only create if we don't already have this Quick Tab
@@ -412,8 +436,11 @@ function saveQuickTabsToStorage() {
       const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
       const rect = container.getBoundingClientRect();
       
+      // Get URL from either src or data-deferred-src for deferred iframes
+      const url = iframe?.src || iframe?.getAttribute('data-deferred-src') || '';
+      
       return {
-        url: iframe?.src || '',
+        url: url,
         title: titleText?.textContent || 'Quick Tab',
         width: rect.width,
         height: rect.height,
@@ -466,9 +493,11 @@ function restoreQuickTabsFromStorage() {
     const currentPageUrl = window.location.href;
     
     // Check if we already have Quick Tabs with the same URLs to prevent duplicates
+    // Also check data-deferred-src for iframes that haven't loaded yet
     const existingUrls = new Set(quickTabWindows.map(win => {
       const iframe = win.querySelector('iframe');
-      return iframe ? iframe.src : null;
+      if (!iframe) return null;
+      return iframe.src || iframe.getAttribute('data-deferred-src');
     }).filter(url => url !== null));
     
     // Restore non-minimized tabs
@@ -555,10 +584,11 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     }
     
     if (Array.isArray(newValue)) {
-      // Get current URLs
+      // Get current URLs (including deferred iframes)
       const existingUrls = new Set(quickTabWindows.map(win => {
         const iframe = win.querySelector('iframe');
-        return iframe ? iframe.src : null;
+        if (!iframe) return null;
+        return iframe.src || iframe.getAttribute('data-deferred-src');
       }).filter(url => url !== null));
       
       // Get new URLs from storage
@@ -574,7 +604,9 @@ browser.storage.onChanged.addListener((changes, areaName) => {
         removedUrls.forEach(url => {
           const container = quickTabWindows.find(win => {
             const iframe = win.querySelector('iframe');
-            return iframe && iframe.src === url;
+            if (!iframe) return false;
+            const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+            return iframeSrc === url;
           });
           if (container) {
             closeQuickTabWindow(container, false); // false = don't broadcast again
@@ -588,9 +620,10 @@ browser.storage.onChanged.addListener((changes, areaName) => {
         const iframe = container.querySelector('iframe');
         if (!iframe) return;
         
-        const tabInStorage = newValue.find(t => t.url === iframe.src && !t.minimized);
+        const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+        const tabInStorage = newValue.find(t => t.url === iframeSrc && !t.minimized);
         if (tabInStorage && tabInStorage.pinnedToUrl && tabInStorage.pinnedToUrl !== currentPageUrl) {
-          debug(`Closing Quick Tab ${iframe.src} because it's now pinned to ${tabInStorage.pinnedToUrl}`);
+          debug(`Closing Quick Tab ${iframeSrc} because it's now pinned to ${tabInStorage.pinnedToUrl}`);
           closeQuickTabWindow(container, false); // false = don't broadcast again
         }
       });
@@ -600,7 +633,8 @@ browser.storage.onChanged.addListener((changes, areaName) => {
         const iframe = container.querySelector('iframe');
         if (!iframe) return;
         
-        const tabInStorage = newValue.find(t => t.url === iframe.src && !t.minimized);
+        const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+        const tabInStorage = newValue.find(t => t.url === iframeSrc && !t.minimized);
         if (tabInStorage) {
           // Update position if it changed
           if (tabInStorage.left !== undefined && tabInStorage.top !== undefined) {
