@@ -536,23 +536,21 @@ function restoreQuickTabsFromStorage() {
     // Get current page URL for pin filtering
     const currentPageUrl = window.location.href;
     
-    // Check if we already have Quick Tabs with the same URLs to prevent duplicates
-    // Also check data-deferred-src for iframes that haven't loaded yet
-    const existingUrls = new Set(quickTabWindows.map(win => {
-      const iframe = win.querySelector('iframe');
-      if (!iframe) return null;
-      return iframe.src || iframe.getAttribute('data-deferred-src');
-    }).filter(url => url !== null));
+    // NEW: Build a map of existing Quick Tabs by URL
+    const existingQuickTabs = new Map();
+    quickTabWindows.forEach(container => {
+      const iframe = container.querySelector('iframe');
+      if (iframe) {
+        const url = iframe.src || iframe.getAttribute('data-deferred-src');
+        if (url) {
+          existingQuickTabs.set(url, container);
+        }
+      }
+    });
     
-    // Restore non-minimized tabs
+    // Process all tabs from storage
     const normalTabs = tabs.filter(t => !t.minimized && t.url && t.url.trim() !== '');
     normalTabs.forEach(tab => {
-      // Skip if we already have a Quick Tab with this URL (prevents duplicates)
-      if (existingUrls.has(tab.url)) {
-        debug(`Skipping duplicate Quick Tab: ${tab.url}`);
-        return;
-      }
-      
       // Filter based on pin status
       if (tab.pinnedToUrl) {
         // Only restore pinned Quick Tabs on the page they're pinned to
@@ -562,6 +560,37 @@ function restoreQuickTabsFromStorage() {
         }
       }
       
+      // NEW: Check if this Quick Tab already exists
+      if (existingQuickTabs.has(tab.url)) {
+        // UPDATE the existing Quick Tab instead of skipping it
+        const container = existingQuickTabs.get(tab.url);
+        
+        // Update position
+        const currentLeft = parseFloat(container.style.left) || 0;
+        const currentTop = parseFloat(container.style.top) || 0;
+        if (tab.left !== undefined && tab.top !== undefined) {
+          if (Math.abs(currentLeft - tab.left) > 1 || Math.abs(currentTop - tab.top) > 1) {
+            container.style.left = tab.left + 'px';
+            container.style.top = tab.top + 'px';
+            debug(`Updated existing Quick Tab ${tab.url} position to (${tab.left}, ${tab.top})`);
+          }
+        }
+        
+        // Update size
+        const currentWidth = parseFloat(container.style.width) || 0;
+        const currentHeight = parseFloat(container.style.height) || 0;
+        if (tab.width !== undefined && tab.height !== undefined) {
+          if (Math.abs(currentWidth - tab.width) > 1 || Math.abs(currentHeight - tab.height) > 1) {
+            container.style.width = tab.width + 'px';
+            container.style.height = tab.height + 'px';
+            debug(`Updated existing Quick Tab ${tab.url} size to ${tab.width}x${tab.height}`);
+          }
+        }
+        
+        return; // Don't create a new one
+      }
+      
+      // Create new Quick Tab if it doesn't exist and we haven't hit the limit
       if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) return;
       
       // Pass true for fromBroadcast to prevent re-broadcasting when restoring from storage
@@ -3303,6 +3332,8 @@ function makeDraggable(element, handle) {
   let dragOverlay = null; // Expanded hit area overlay
   let debugLogIntervalId = null; // For debug logging every 0.5 seconds
   let lastDebugLogTime = 0;
+  let lastSaveTime = 0; // For throttled saves during drag
+  const SAVE_THROTTLE_MS = 500; // Save every 500ms during drag
   
   // Get update rate from config (default 360 Hz = ~2.78ms interval)
   // This allows position updates to keep up with high refresh rate monitors
@@ -3367,8 +3398,31 @@ function makeDraggable(element, handle) {
     pendingX = newX;
     pendingY = newY;
     
-    // Debug logging every 100ms while dragging (increased frequency for debug mode)
+    // NEW: Throttled save during drag to prevent data loss on rapid tab switches
     const now = performance.now();
+    if (now - lastSaveTime >= SAVE_THROTTLE_MS) {
+      const iframe = element.querySelector('iframe');
+      if (iframe && CONFIG.quickTabPersistAcrossTabs) {
+        const url = iframe.src || iframe.getAttribute('data-deferred-src');
+        if (url) {
+          const rect = element.getBoundingClientRect();
+          // Send to background for immediate broadcast
+          browser.runtime.sendMessage({
+            action: 'UPDATE_QUICK_TAB_POSITION',
+            url: url,
+            left: pendingX,
+            top: pendingY,
+            width: rect.width,
+            height: rect.height
+          }).catch(err => {
+            debug('Error sending position update to background:', err);
+          });
+          lastSaveTime = now;
+        }
+      }
+    }
+    
+    // Debug logging every 100ms while dragging (increased frequency for debug mode)
     if (CONFIG.debugMode && (now - lastDebugLogTime) >= 100) {
       const iframe = element.querySelector('iframe');
       const url = iframe ? iframe.src : 'unknown';
@@ -3414,13 +3468,30 @@ function makeDraggable(element, handle) {
         debug(`[DRAG] Quick Tab move completed - URL: ${url}, Final Position: (${Math.round(pendingX)}, ${Math.round(pendingY)})`);
       }
       
-      // Broadcast move to other tabs
+      // Send to background for real-time cross-origin sync
       const iframe = element.querySelector('iframe');
       if (iframe && CONFIG.quickTabPersistAcrossTabs) {
         const url = iframe.src || iframe.getAttribute('data-deferred-src');
         if (url) {
+          const rect = element.getBoundingClientRect();
+          
+          // Send to background for immediate broadcast
+          browser.runtime.sendMessage({
+            action: 'UPDATE_QUICK_TAB_POSITION',
+            url: url,
+            left: pendingX,
+            top: pendingY,
+            width: rect.width,
+            height: rect.height
+          }).catch(err => {
+            debug('Error sending position update to background:', err);
+          });
+          
+          // KEEP the BroadcastChannel call for redundancy (same-origin tabs)
           broadcastQuickTabMove(url, pendingX, pendingY);
-          saveQuickTabsToStorage();
+          
+          // NOTE: Background script now handles storage save
+          // No need to call saveQuickTabsToStorage() here
         }
       }
       
@@ -3685,15 +3756,29 @@ function makeResizable(element) {
           debug(`[RESIZE] Quick Tab resize completed - URL: ${url}, Final Size: ${Math.round(pendingResize.width)}x${Math.round(pendingResize.height)}, Position: (${Math.round(pendingResize.left)}, ${Math.round(pendingResize.top)})`);
         }
         
-        // Broadcast resize to other tabs
+        // Send to background for real-time cross-origin sync
         const iframe = element.querySelector('iframe');
         if (iframe && CONFIG.quickTabPersistAcrossTabs) {
           const url = iframe.src || iframe.getAttribute('data-deferred-src');
           if (url) {
+            // Send combined position and size update to background
+            browser.runtime.sendMessage({
+              action: 'UPDATE_QUICK_TAB_POSITION',
+              url: url,
+              left: pendingResize.left,
+              top: pendingResize.top,
+              width: pendingResize.width,
+              height: pendingResize.height
+            }).catch(err => {
+              debug('Error sending resize update to background:', err);
+            });
+            
+            // KEEP the BroadcastChannel calls for redundancy (same-origin tabs)
             broadcastQuickTabResize(url, pendingResize.width, pendingResize.height);
-            // Also broadcast the position change if it was adjusted
             broadcastQuickTabMove(url, pendingResize.left, pendingResize.top);
-            saveQuickTabsToStorage();
+            
+            // NOTE: Background script now handles storage save
+            // No need to call saveQuickTabsToStorage() here
           }
         }
         
@@ -3850,6 +3935,64 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     restoreQuickTabsFromStorage();
     sendResponse({ received: true });
   }
+  
+  // NEW: Handle real-time position/size updates from background
+  if (message.action === 'UPDATE_QUICK_TAB_FROM_BACKGROUND') {
+    const container = quickTabWindows.find(win => {
+      const iframe = win.querySelector('iframe');
+      if (!iframe) return false;
+      const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+      return iframeSrc === message.url;
+    });
+    
+    if (container) {
+      // Update position
+      if (message.left !== undefined && message.top !== undefined) {
+        container.style.left = message.left + 'px';
+        container.style.top = message.top + 'px';
+      }
+      
+      // Update size
+      if (message.width !== undefined && message.height !== undefined) {
+        container.style.width = message.width + 'px';
+        container.style.height = message.height + 'px';
+      }
+      
+      debug(`Updated Quick Tab ${message.url} from background: pos(${message.left}, ${message.top}), size(${message.width}x${message.height})`);
+    }
+    
+    sendResponse({ success: true });
+  }
+  
+  // NEW: Handle full state sync from background on tab activation
+  if (message.action === 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND') {
+    const state = message.state;
+    if (state && state.tabs) {
+      state.tabs.forEach(tab => {
+        const container = quickTabWindows.find(win => {
+          const iframe = win.querySelector('iframe');
+          if (!iframe) return false;
+          const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
+          return iframeSrc === tab.url;
+        });
+        
+        if (container) {
+          // Update existing Quick Tab
+          if (tab.left !== undefined && tab.top !== undefined) {
+            container.style.left = tab.left + 'px';
+            container.style.top = tab.top + 'px';
+          }
+          if (tab.width !== undefined && tab.height !== undefined) {
+            container.style.width = tab.width + 'px';
+            container.style.height = tab.height + 'px';
+          }
+          debug(`Synced Quick Tab ${tab.url} from background state`);
+        }
+      });
+    }
+    sendResponse({ success: true });
+  }
+  
   return true; // Keep channel open for async response
 });
 
@@ -3958,6 +4101,30 @@ document.addEventListener('visibilitychange', () => {
     // Page is now hidden (user switched to another tab)
     debug('Page hidden - pausing media in Quick Tabs');
     pauseAllQuickTabMedia();
+    
+    // NEW: Force save Quick Tab state when user switches away from this tab
+    debug('Tab hidden - forcing Quick Tab state save');
+    if (CONFIG.quickTabPersistAcrossTabs && quickTabWindows.length > 0) {
+      // Send current state to background for immediate broadcast
+      quickTabWindows.forEach(container => {
+        const iframe = container.querySelector('iframe');
+        const rect = container.getBoundingClientRect();
+        const url = iframe?.src || iframe?.getAttribute('data-deferred-src');
+        
+        if (url) {
+          browser.runtime.sendMessage({
+            action: 'UPDATE_QUICK_TAB_POSITION',
+            url: url,
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height
+          }).catch(err => {
+            debug('Error sending visibility change update to background:', err);
+          });
+        }
+      });
+    }
   } else {
     // Page is now visible (user switched back to this tab)
     debug('Page visible - resuming media in Quick Tabs');
