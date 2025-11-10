@@ -155,3 +155,42 @@ if (chrome.sidePanel) {
     });
   });
 }
+
+// ==================== STORAGE SYNC BROADCASTING ====================
+// Listen for sync storage changes and broadcast them to all tabs
+// This enables real-time Quick Tab state synchronization across all tabs
+browser.storage.onChanged.addListener((changes, areaName) => {
+  console.log('[Background] Storage changed:', areaName, Object.keys(changes));
+  
+  // Broadcast Quick Tab state changes
+  if (areaName === 'sync' && changes.quick_tabs_state_v2) {
+    console.log('[Background] Quick Tab state changed, broadcasting to all tabs');
+    browser.tabs.query({}).then(tabs => {
+      tabs.forEach(tab => {
+        browser.tabs.sendMessage(tab.id, { 
+          action: 'SYNC_QUICK_TAB_STATE', 
+          state: changes.quick_tabs_state_v2.newValue 
+        }).catch(err => {
+          // Content script might not be loaded in this tab
+        });
+      });
+    });
+  }
+  
+  // Broadcast settings changes
+  if (areaName === 'sync' && changes.quick_tab_settings) {
+    console.log('[Background] Settings changed, broadcasting to all tabs');
+    browser.tabs.query({}).then(tabs => {
+      tabs.forEach(tab => {
+        browser.tabs.sendMessage(tab.id, {
+          action: 'SETTINGS_UPDATED',
+          settings: changes.quick_tab_settings.newValue
+        }).catch(err => {
+          // Content script might not be loaded in this tab
+        });
+      });
+    });
+  }
+});
+
+// ==================== END STORAGE SYNC BROADCASTING ====================

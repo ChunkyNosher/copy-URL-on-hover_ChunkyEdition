@@ -430,8 +430,9 @@ function broadcastClearMinimized() {
 // ==================== END BROADCAST CHANNEL SETUP ====================
 
 // ==================== BROWSER STORAGE PERSISTENCE ====================
-// Using browser.storage.local instead of localStorage to support cross-domain persistence
-// browser.storage.local is shared across all tabs regardless of origin
+// Using browser.storage.sync instead of browser.storage.local for cross-device sync
+// browser.storage.sync is shared across all tabs and syncs across devices
+// Also using browser.storage.session for fast ephemeral reads (Firefox 115+)
 
 function saveQuickTabsToStorage() {
   if (!CONFIG.quickTabPersistAcrossTabs) return;
@@ -468,15 +469,29 @@ function saveQuickTabsToStorage() {
     // Set flag to indicate we're saving (to avoid processing our own change)
     isSavingToStorage = true;
     
-    // Use browser.storage.local for cross-domain support
-    browser.storage.local.set({ quickTabs_storage: allTabs }).then(() => {
-      debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.local`);
+    // Create state object with timestamp
+    const stateObject = {
+      tabs: allTabs,
+      timestamp: Date.now()
+    };
+    
+    // Save to browser.storage.sync for persistence and cross-device sync
+    browser.storage.sync.set({ quick_tabs_state_v2: stateObject }).then(() => {
+      debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.sync`);
+      
+      // Also save to session storage if available (faster reads)
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session.set({ quick_tabs_session: stateObject }).catch(err => {
+          // Session storage not available, that's OK
+        });
+      }
+      
       // Reset flag after a short delay to allow storage event to fire
       setTimeout(() => {
         isSavingToStorage = false;
       }, 100);
     }).catch(err => {
-      console.error('Error saving Quick Tabs to browser.storage.local:', err);
+      console.error('Error saving Quick Tabs to browser.storage.sync:', err);
       isSavingToStorage = false; // Reset flag on error
     });
     
@@ -489,11 +504,34 @@ function saveQuickTabsToStorage() {
 function restoreQuickTabsFromStorage() {
   if (!CONFIG.quickTabPersistAcrossTabs) return;
   
-  browser.storage.local.get('quickTabs_storage').then(result => {
-    const tabs = result.quickTabs_storage;
+  // Try session storage first (faster), fall back to sync storage
+  const loadState = async () => {
+    try {
+      // Try session storage first if available
+      if (typeof browser.storage.session !== 'undefined') {
+        const sessionResult = await browser.storage.session.get('quick_tabs_session');
+        if (sessionResult && sessionResult.quick_tabs_session && sessionResult.quick_tabs_session.tabs) {
+          return sessionResult.quick_tabs_session.tabs;
+        }
+      }
+      
+      // Fall back to sync storage
+      const syncResult = await browser.storage.sync.get('quick_tabs_state_v2');
+      if (syncResult && syncResult.quick_tabs_state_v2 && syncResult.quick_tabs_state_v2.tabs) {
+        return syncResult.quick_tabs_state_v2.tabs;
+      }
+      
+      return null;
+    } catch (err) {
+      console.error('Error loading Quick Tab state:', err);
+      return null;
+    }
+  };
+  
+  loadState().then(tabs => {
     if (!tabs || !Array.isArray(tabs) || tabs.length === 0) return;
     
-    debug(`Restoring ${tabs.length} Quick Tabs from browser.storage.local`);
+    debug(`Restoring ${tabs.length} Quick Tabs from browser.storage`);
     
     // Get current page URL for pin filtering
     const currentPageUrl = window.location.href;
@@ -553,22 +591,29 @@ function restoreQuickTabsFromStorage() {
     }
     
   }).catch(err => {
-    console.error('Error restoring Quick Tabs from browser.storage.local:', err);
+    console.error('Error restoring Quick Tabs from browser.storage:', err);
   });
 }
 
 function clearQuickTabsFromStorage() {
-  browser.storage.local.remove('quickTabs_storage').then(() => {
-    debug('Cleared Quick Tabs from browser.storage.local');
+  browser.storage.sync.remove('quick_tabs_state_v2').then(() => {
+    debug('Cleared Quick Tabs from browser.storage.sync');
+    
+    // Also clear session storage if available
+    if (typeof browser.storage.session !== 'undefined') {
+      browser.storage.session.remove('quick_tabs_session').catch(() => {
+        // Session storage not available, that's OK
+      });
+    }
   }).catch(err => {
-    console.error('Error clearing browser.storage.local:', err);
+    console.error('Error clearing browser.storage.sync:', err);
   });
 }
 
 // Listen for storage changes from other tabs/windows
 // browser.storage.onChanged works across all origins
 browser.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.quickTabs_storage) {
+  if (areaName === 'sync' && changes.quick_tabs_state_v2) {
     // Ignore storage changes that we initiated ourselves to prevent race conditions
     if (isSavingToStorage) {
       debug('Ignoring storage change event from our own save operation');
@@ -579,18 +624,18 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     // Note: We rely on BroadcastChannel for real-time same-origin sync
     // Storage event handles cross-origin sync
     
-    const newValue = changes.quickTabs_storage.newValue;
-    const oldValue = changes.quickTabs_storage.oldValue;
+    const newValue = changes.quick_tabs_state_v2.newValue;
+    const oldValue = changes.quick_tabs_state_v2.oldValue;
     
     // Handle case where storage was cleared (all Quick Tabs closed)
-    if (!newValue || (Array.isArray(newValue) && newValue.length === 0)) {
+    if (!newValue || !newValue.tabs || (Array.isArray(newValue.tabs) && newValue.tabs.length === 0)) {
       debug('Quick Tabs storage cleared - closing all local Quick Tabs');
       // Close all Quick Tabs without broadcasting (already handled by initiating tab)
       closeAllQuickTabWindows(false);
       return;
     }
     
-    if (Array.isArray(newValue)) {
+    if (Array.isArray(newValue.tabs)) {
       // Get current URLs (including deferred iframes)
       const existingUrls = new Set(quickTabWindows.map(win => {
         const iframe = win.querySelector('iframe');
@@ -599,7 +644,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
       }).filter(url => url !== null));
       
       // Get new URLs from storage
-      const newUrls = new Set(newValue.filter(t => !t.minimized).map(t => t.url));
+      const newUrls = new Set(newValue.tabs.filter(t => !t.minimized).map(t => t.url));
       
       // Get current page URL for pin filtering
       const currentPageUrl = window.location.href;
@@ -628,7 +673,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
         if (!iframe) return;
         
         const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
-        const tabInStorage = newValue.find(t => t.url === iframeSrc && !t.minimized);
+        const tabInStorage = newValue.tabs.find(t => t.url === iframeSrc && !t.minimized);
         if (tabInStorage && tabInStorage.pinnedToUrl && tabInStorage.pinnedToUrl !== currentPageUrl) {
           debug(`Closing Quick Tab ${iframeSrc} because it's now pinned to ${tabInStorage.pinnedToUrl}`);
           closeQuickTabWindow(container, false); // false = don't broadcast again
@@ -641,7 +686,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
         if (!iframe) return;
         
         const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
-        const tabInStorage = newValue.find(t => t.url === iframeSrc && !t.minimized);
+        const tabInStorage = newValue.tabs.find(t => t.url === iframeSrc && !t.minimized);
         if (tabInStorage) {
           // Update position if it changed
           if (tabInStorage.left !== undefined && tabInStorage.top !== undefined) {
