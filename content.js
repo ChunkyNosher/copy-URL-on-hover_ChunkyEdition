@@ -195,6 +195,47 @@ let quickTabChannel = null;
 // Generate unique tab instance ID to prevent self-reception of broadcasts
 const tabInstanceId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+// ==================== FIREFOX CONTAINER SUPPORT (v1.5.7+) ====================
+// Cache the current tab's cookieStoreId for container isolation
+let currentCookieStoreId = null;
+
+/**
+ * Get the current tab's cookieStoreId for Firefox Container support
+ * @returns {Promise<string>} The cookieStoreId (e.g., "firefox-container-1" or "firefox-default")
+ */
+async function getCurrentCookieStoreId() {
+  // Return cached value if available
+  if (currentCookieStoreId) {
+    return currentCookieStoreId;
+  }
+  
+  try {
+    // Query for the current tab
+    const tabs = await browser.tabs.query({
+      active: true,
+      currentWindow: true
+    });
+    
+    if (tabs && tabs.length > 0) {
+      currentCookieStoreId = tabs[0].cookieStoreId || "firefox-default";
+      debug(`Detected container: ${currentCookieStoreId}`);
+      return currentCookieStoreId;
+    }
+    
+    // Fallback to default container
+    currentCookieStoreId = "firefox-default";
+    return currentCookieStoreId;
+  } catch (err) {
+    console.error('[QuickTabs] Error getting cookieStoreId:', err);
+    currentCookieStoreId = "firefox-default";
+    return currentCookieStoreId;
+  }
+}
+
+// Initialize cookieStoreId detection immediately
+getCurrentCookieStoreId();
+// ==================== END FIREFOX CONTAINER SUPPORT ====================
+
 function initializeBroadcastChannel() {
   if (quickTabChannel) return; // Already initialized
   
@@ -494,10 +535,13 @@ function broadcastClearMinimized() {
 // browser.storage.sync is shared across all tabs and syncs across devices
 // Also using browser.storage.session for fast ephemeral reads (Firefox 115+)
 
-function saveQuickTabsToStorage() {
+async function saveQuickTabsToStorage() {
   if (!CONFIG.quickTabPersistAcrossTabs) return;
   
   try {
+    // Get current container ID
+    const cookieStoreId = await getCurrentCookieStoreId();
+    
     const state = quickTabWindows.map(container => {
       const iframe = container.querySelector('iframe');
       const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
@@ -530,19 +574,23 @@ function saveQuickTabsToStorage() {
     // Set flag to indicate we're saving (to avoid processing our own change)
     isSavingToStorage = true;
     
-    // Create state object with timestamp
-    const stateObject = {
+    // Load existing state for all containers
+    const existingData = await browser.storage.sync.get('quick_tabs_state_v2') || {};
+    const containerStates = existingData.quick_tabs_state_v2 || {};
+    
+    // Update state for this specific container
+    containerStates[cookieStoreId] = {
       tabs: allTabs,
       timestamp: Date.now()
     };
     
     // Save to browser.storage.sync for persistence and cross-device sync
-    browser.storage.sync.set({ quick_tabs_state_v2: stateObject }).then(() => {
-      debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.sync`);
+    browser.storage.sync.set({ quick_tabs_state_v2: containerStates }).then(() => {
+      debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.sync for container ${cookieStoreId}`);
       
       // Also save to session storage if available (faster reads)
       if (typeof browser.storage.session !== 'undefined') {
-        browser.storage.session.set({ quick_tabs_session: stateObject }).catch(err => {
+        browser.storage.session.set({ quick_tabs_session: containerStates }).catch(err => {
           // Session storage not available, that's OK
         });
       }
@@ -562,8 +610,11 @@ function saveQuickTabsToStorage() {
   }
 }
 
-function restoreQuickTabsFromStorage() {
+async function restoreQuickTabsFromStorage() {
   if (!CONFIG.quickTabPersistAcrossTabs) return;
+  
+  // Get current container ID
+  const cookieStoreId = await getCurrentCookieStoreId();
   
   // Try session storage first (faster), fall back to sync storage
   const loadState = async () => {
@@ -571,15 +622,23 @@ function restoreQuickTabsFromStorage() {
       // Try session storage first if available
       if (typeof browser.storage.session !== 'undefined') {
         const sessionResult = await browser.storage.session.get('quick_tabs_session');
-        if (sessionResult && sessionResult.quick_tabs_session && sessionResult.quick_tabs_session.tabs) {
-          return sessionResult.quick_tabs_session.tabs;
+        if (sessionResult && sessionResult.quick_tabs_session) {
+          const containerStates = sessionResult.quick_tabs_session;
+          // Check if container-aware format
+          if (containerStates[cookieStoreId] && containerStates[cookieStoreId].tabs) {
+            return containerStates[cookieStoreId].tabs;
+          }
         }
       }
       
       // Fall back to sync storage
       const syncResult = await browser.storage.sync.get('quick_tabs_state_v2');
-      if (syncResult && syncResult.quick_tabs_state_v2 && syncResult.quick_tabs_state_v2.tabs) {
-        return syncResult.quick_tabs_state_v2.tabs;
+      if (syncResult && syncResult.quick_tabs_state_v2) {
+        const containerStates = syncResult.quick_tabs_state_v2;
+        // Check if container-aware format
+        if (containerStates[cookieStoreId] && containerStates[cookieStoreId].tabs) {
+          return containerStates[cookieStoreId].tabs;
+        }
       }
       
       return null;
@@ -592,7 +651,7 @@ function restoreQuickTabsFromStorage() {
   loadState().then(tabs => {
     if (!tabs || !Array.isArray(tabs) || tabs.length === 0) return;
     
-    debug(`Restoring ${tabs.length} Quick Tabs from browser.storage`);
+    debug(`Restoring ${tabs.length} Quick Tabs from browser.storage for container ${cookieStoreId}`);
     
     // Get current page URL for pin filtering
     const currentPageUrl = window.location.href;
