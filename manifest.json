@@ -27,11 +27,9 @@
         "default_icon": "icons/icon.png"
     },
     "background": {
-        "service_worker": "background.js",
         "scripts": [
             "background.js"
         ],
-        "type": "module"
     },
     "content_scripts": [
         {
@@ -65,3 +63,4 @@
         }
     }
 }
+
