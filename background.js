@@ -8,16 +8,19 @@ const quickTabStates = new Map();
 
 // ==================== REAL-TIME STATE COORDINATOR ====================
 // Global state hub for real-time Quick Tab synchronization across all tabs
+// Container-aware since v1.5.7: State keyed by cookieStoreId for Firefox Container isolation
 // This provides instant cross-origin sync (< 50ms latency)
 let globalQuickTabState = {
-  tabs: [],
-  lastUpdate: 0
+  // Keyed by cookieStoreId (e.g., "firefox-default", "firefox-container-1")
+  containers: {
+    "firefox-default": { tabs: [], lastUpdate: 0 }
+  }
 };
 
 // Flag to track initialization status
 let isInitialized = false;
 
-// Initialize global state from storage on extension startup
+// Initialize global state from storage on extension startup (container-aware)
 async function initializeGlobalState() {
   if (isInitialized) return;
   
@@ -26,22 +29,50 @@ async function initializeGlobalState() {
     let result;
     if (typeof browser.storage.session !== 'undefined') {
       result = await browser.storage.session.get('quick_tabs_session');
-      if (result && result.quick_tabs_session && result.quick_tabs_session.tabs) {
-        globalQuickTabState.tabs = result.quick_tabs_session.tabs;
-        globalQuickTabState.lastUpdate = result.quick_tabs_session.timestamp;
+      if (result && result.quick_tabs_session) {
+        // Check if it's container-aware format (object with container keys)
+        if (typeof result.quick_tabs_session === 'object' && !Array.isArray(result.quick_tabs_session.tabs)) {
+          // New container-aware format
+          globalQuickTabState.containers = result.quick_tabs_session;
+        } else if (result.quick_tabs_session.tabs) {
+          // Old format: migrate to container-aware
+          globalQuickTabState.containers = {
+            "firefox-default": {
+              tabs: result.quick_tabs_session.tabs,
+              lastUpdate: result.quick_tabs_session.timestamp || Date.now()
+            }
+          };
+        }
         isInitialized = true;
-        console.log('[Background] Initialized from session storage:', globalQuickTabState.tabs.length, 'tabs');
+        const totalTabs = Object.values(globalQuickTabState.containers).reduce((sum, c) => sum + (c.tabs?.length || 0), 0);
+        console.log('[Background] Initialized from session storage:', totalTabs, 'tabs across', Object.keys(globalQuickTabState.containers).length, 'containers');
         return;
       }
     }
     
     // Fall back to sync storage
     result = await browser.storage.sync.get('quick_tabs_state_v2');
-    if (result && result.quick_tabs_state_v2 && result.quick_tabs_state_v2.tabs) {
-      globalQuickTabState.tabs = result.quick_tabs_state_v2.tabs;
-      globalQuickTabState.lastUpdate = result.quick_tabs_state_v2.timestamp;
+    if (result && result.quick_tabs_state_v2) {
+      // Check if it's container-aware format
+      if (typeof result.quick_tabs_state_v2 === 'object' && !Array.isArray(result.quick_tabs_state_v2.tabs)) {
+        // New container-aware format
+        globalQuickTabState.containers = result.quick_tabs_state_v2;
+      } else if (result.quick_tabs_state_v2.tabs) {
+        // Old format: migrate to container-aware
+        globalQuickTabState.containers = {
+          "firefox-default": {
+            tabs: result.quick_tabs_state_v2.tabs,
+            lastUpdate: result.quick_tabs_state_v2.timestamp || Date.now()
+          }
+        };
+        // Save migrated format back to storage
+        browser.storage.sync.set({
+          quick_tabs_state_v2: globalQuickTabState.containers
+        }).catch(err => console.error('[Background] Error saving migrated state:', err));
+      }
       isInitialized = true;
-      console.log('[Background] Initialized from sync storage:', globalQuickTabState.tabs.length, 'tabs');
+      const totalTabs = Object.values(globalQuickTabState.containers).reduce((sum, c) => sum + (c.tabs?.length || 0), 0);
+      console.log('[Background] Initialized from sync storage:', totalTabs, 'tabs across', Object.keys(globalQuickTabState.containers).length, 'containers');
     } else {
       isInitialized = true;
       console.log('[Background] No saved state found, starting with empty state');
@@ -161,7 +192,7 @@ console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
 // ==================== END X-FRAME-OPTIONS BYPASS ====================
 
 
-// Listen for tab switches to restore Quick Tabs
+// Listen for tab switches to restore Quick Tabs (container-aware)
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
   console.log('[Background] Tab activated:', activeInfo.tabId);
   
@@ -174,14 +205,27 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
     console.log('[Background] Could not message tab (content script not ready)');
   });
   
-  // Also send current global state for immediate sync
-  if (globalQuickTabState.tabs.length > 0) {
-    chrome.tabs.sendMessage(activeInfo.tabId, {
-      action: 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND',
-      state: globalQuickTabState
-    }).catch(() => {
-      // Content script might not be ready yet, that's OK
-    });
+  // Get the tab's cookieStoreId to send only relevant state
+  try {
+    const tab = await browser.tabs.get(activeInfo.tabId);
+    const cookieStoreId = tab.cookieStoreId || 'firefox-default';
+    
+    // Send container-specific state for immediate sync
+    if (globalQuickTabState.containers[cookieStoreId] && 
+        globalQuickTabState.containers[cookieStoreId].tabs.length > 0) {
+      chrome.tabs.sendMessage(activeInfo.tabId, {
+        action: 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND',
+        state: {
+          tabs: globalQuickTabState.containers[cookieStoreId].tabs,
+          lastUpdate: globalQuickTabState.containers[cookieStoreId].lastUpdate
+        },
+        cookieStoreId: cookieStoreId
+      }).catch(() => {
+        // Content script might not be ready yet, that's OK
+      });
+    }
+  } catch (err) {
+    console.error('[Background] Error getting tab info:', err);
   }
 });
 
@@ -218,22 +262,31 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   
   // ==================== REAL-TIME STATE COORDINATION ====================
   
-  // Handle Quick Tab creation
+  // Handle Quick Tab creation (container-aware)
   if (message.action === 'CREATE_QUICK_TAB') {
-    console.log('[Background] Received create Quick Tab:', message.url, 'ID:', message.id);
+    console.log('[Background] Received create Quick Tab:', message.url, 'ID:', message.id, 'Container:', message.cookieStoreId);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+    
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+    
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+    
     // Check if tab already exists in global state by ID (not URL)
     // This allows multiple Quick Tabs with the same URL
-    const existingIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
+    const existingIndex = containerState.tabs.findIndex(t => t.id === message.id);
     
     if (existingIndex !== -1) {
       // Update existing entry
-      globalQuickTabState.tabs[existingIndex] = {
+      containerState.tabs[existingIndex] = {
         id: message.id,
         url: message.url,
         left: message.left,
@@ -246,7 +299,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       };
     } else {
       // Add new entry
-      globalQuickTabState.tabs.push({
+      containerState.tabs.push({
         id: message.id,
         url: message.url,
         left: message.left,
@@ -259,14 +312,11 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       });
     }
     
-    globalQuickTabState.lastUpdate = Date.now();
+    containerState.lastUpdate = Date.now();
     
     // Save to storage for persistence
     browser.storage.sync.set({ 
-      quick_tabs_state_v2: {
-        tabs: globalQuickTabState.tabs,
-        timestamp: Date.now()
-      }
+      quick_tabs_state_v2: globalQuickTabState.containers
     }).catch(err => {
       console.error('[Background] Error saving created tab to storage:', err);
     });
@@ -274,51 +324,73 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     // Also save to session storage if available
     if (typeof browser.storage.session !== 'undefined') {
       browser.storage.session.set({
-        quick_tabs_session: {
-          tabs: globalQuickTabState.tabs,
-          timestamp: Date.now()
-        }
+        quick_tabs_session: globalQuickTabState.containers
       }).catch(err => {
         console.error('[Background] Error saving to session storage:', err);
       });
     }
     
+    // Broadcast ONLY to tabs in the same container
+    browser.tabs.query({ cookieStoreId: cookieStoreId }).then(tabs => {
+      tabs.forEach(tab => {
+        browser.tabs.sendMessage(tab.id, {
+          action: 'CREATE_QUICK_TAB_FROM_BACKGROUND',
+          id: message.id,
+          url: message.url,
+          left: message.left,
+          top: message.top,
+          width: message.width,
+          height: message.height,
+          title: message.title,
+          cookieStoreId: cookieStoreId
+        }).catch(() => {});
+      });
+    });
+    
     sendResponse({ success: true });
     return true;
   }
   
-  // Handle Quick Tab close
+  // Handle Quick Tab close (container-aware)
   if (message.action === 'CLOSE_QUICK_TAB') {
-    console.log('[Background] Received close Quick Tab:', message.url, 'ID:', message.id);
+    console.log('[Background] Received close Quick Tab:', message.url, 'ID:', message.id, 'Container:', message.cookieStoreId);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+    
+    // Check if container state exists
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      sendResponse({ success: false, error: 'Container state not found' });
+      return true;
+    }
+    
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+    
     // Remove from global state by ID (not URL) to avoid closing wrong duplicate
-    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
     if (tabIndex !== -1) {
-      globalQuickTabState.tabs.splice(tabIndex, 1);
-      globalQuickTabState.lastUpdate = Date.now();
+      containerState.tabs.splice(tabIndex, 1);
+      containerState.lastUpdate = Date.now();
       
-      // Broadcast to all tabs
-      browser.tabs.query({}).then(tabs => {
+      // Broadcast to all tabs in the SAME container
+      browser.tabs.query({ cookieStoreId: cookieStoreId }).then(tabs => {
         tabs.forEach(tab => {
           browser.tabs.sendMessage(tab.id, {
             action: 'CLOSE_QUICK_TAB_FROM_BACKGROUND',
             id: message.id,
-            url: message.url
+            url: message.url,
+            cookieStoreId: cookieStoreId
           }).catch(() => {});
         });
       });
       
       // Save updated state to storage
       browser.storage.sync.set({ 
-        quick_tabs_state_v2: {
-          tabs: globalQuickTabState.tabs,
-          timestamp: Date.now()
-        }
+        quick_tabs_state_v2: globalQuickTabState.containers
       }).catch(err => {
         console.error('[Background] Error saving after close:', err);
       });
@@ -326,10 +398,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       // Also save to session storage if available
       if (typeof browser.storage.session !== 'undefined') {
         browser.storage.session.set({
-          quick_tabs_session: {
-            tabs: globalQuickTabState.tabs,
-            timestamp: Date.now()
-          }
+          quick_tabs_session: globalQuickTabState.containers
         }).catch(err => {
           console.error('[Background] Error saving to session storage:', err);
         });
@@ -340,25 +409,34 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true;
   }
   
-  // Handle position and size updates from content scripts
+  // Handle position and size updates from content scripts (container-aware)
   if (message.action === 'UPDATE_QUICK_TAB_POSITION') {
-    console.log('[Background] Received position update:', message.url, 'ID:', message.id, message.left, message.top);
+    console.log('[Background] Received position update:', message.url, 'ID:', message.id, message.left, message.top, 'Container:', message.cookieStoreId);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+    
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+    
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+    
     // Update global state by ID (not URL) to avoid updating wrong duplicate
-    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
     if (tabIndex !== -1) {
-      globalQuickTabState.tabs[tabIndex].left = message.left;
-      globalQuickTabState.tabs[tabIndex].top = message.top;
-      if (message.width !== undefined) globalQuickTabState.tabs[tabIndex].width = message.width;
-      if (message.height !== undefined) globalQuickTabState.tabs[tabIndex].height = message.height;
+      containerState.tabs[tabIndex].left = message.left;
+      containerState.tabs[tabIndex].top = message.top;
+      if (message.width !== undefined) containerState.tabs[tabIndex].width = message.width;
+      if (message.height !== undefined) containerState.tabs[tabIndex].height = message.height;
     } else {
       // Tab doesn't exist in global state - add it
-      globalQuickTabState.tabs.push({
+      containerState.tabs.push({
         id: message.id,
         url: message.url,
         left: message.left,
@@ -367,10 +445,10 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         height: message.height
       });
     }
-    globalQuickTabState.lastUpdate = Date.now();
+    containerState.lastUpdate = Date.now();
     
-    // Broadcast to ALL tabs immediately for real-time cross-origin sync
-    browser.tabs.query({}).then(tabs => {
+    // Broadcast to tabs in the SAME container immediately for real-time sync
+    browser.tabs.query({ cookieStoreId: cookieStoreId }).then(tabs => {
       tabs.forEach(tab => {
         browser.tabs.sendMessage(tab.id, {
           action: 'UPDATE_QUICK_TAB_FROM_BACKGROUND',
@@ -379,7 +457,8 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
           left: message.left,
           top: message.top,
           width: message.width,
-          height: message.height
+          height: message.height,
+          cookieStoreId: cookieStoreId
         }).catch(() => {
           // Content script might not be loaded in this tab
         });
@@ -388,10 +467,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     
     // Also save to storage.sync for persistence (async, non-blocking)
     browser.storage.sync.set({ 
-      quick_tabs_state_v2: {
-        tabs: globalQuickTabState.tabs,
-        timestamp: Date.now()
-      }
+      quick_tabs_state_v2: globalQuickTabState.containers
     }).catch(err => {
       console.error('[Background] Error saving to storage.sync:', err);
     });
@@ -399,10 +475,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     // Also save to session storage if available
     if (typeof browser.storage.session !== 'undefined') {
       browser.storage.session.set({
-        quick_tabs_session: {
-          tabs: globalQuickTabState.tabs,
-          timestamp: Date.now()
-        }
+        quick_tabs_session: globalQuickTabState.containers
       }).catch(err => {
         console.error('[Background] Error saving to session storage:', err);
       });
@@ -412,27 +485,33 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true;
   }
   
-  // Handle Quick Tab pin/unpin updates
+  // Handle Quick Tab pin/unpin updates (container-aware)
   if (message.action === 'UPDATE_QUICK_TAB_PIN') {
-    console.log('[Background] Received pin update:', message.id, 'pinnedToUrl:', message.pinnedToUrl);
+    console.log('[Background] Received pin update:', message.id, 'pinnedToUrl:', message.pinnedToUrl, 'Container:', message.cookieStoreId);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+    
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+    
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+    
     // Update global state
-    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
     if (tabIndex !== -1) {
-      globalQuickTabState.tabs[tabIndex].pinnedToUrl = message.pinnedToUrl;
-      globalQuickTabState.lastUpdate = Date.now();
+      containerState.tabs[tabIndex].pinnedToUrl = message.pinnedToUrl;
+      containerState.lastUpdate = Date.now();
       
       // Save to storage
       browser.storage.sync.set({ 
-        quick_tabs_state_v2: {
-          tabs: globalQuickTabState.tabs,
-          timestamp: Date.now()
-        }
+        quick_tabs_state_v2: globalQuickTabState.containers
       }).catch(err => {
         console.error('[Background] Error saving pin state to storage:', err);
       });
@@ -440,8 +519,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       // Also save to session storage if available
       if (typeof browser.storage.session !== 'undefined') {
         browser.storage.session.set({
-          quick_tabs_session: {
-            tabs: globalQuickTabState.tabs,
+          quick_tabs_session: globalQuickTabState.containers
             timestamp: Date.now()
           }
         }).catch(err => {
@@ -570,6 +648,26 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true;
   }
 });
+
+// ==================== KEYBOARD COMMAND LISTENER ====================
+// Handle keyboard shortcuts defined in manifest.json
+browser.commands.onCommand.addListener((command) => {
+  if (command === 'toggle-minimized-manager') {
+    console.log('[Background] Toggle minimized manager command received');
+    
+    // Send message to active tab
+    browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+      if (tabs.length > 0) {
+        browser.tabs.sendMessage(tabs[0].id, {
+          action: 'TOGGLE_MINIMIZED_MANAGER'
+        }).catch(err => {
+          console.error('[Background] Error sending toggle command:', err);
+        });
+      }
+    });
+  }
+});
+// ==================== END KEYBOARD COMMAND LISTENER ====================
 
 // Handle sidePanel toggle for Chrome (optional)
 if (chrome.sidePanel) {
