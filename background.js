@@ -57,48 +57,106 @@ initializeGlobalState();
 
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
 // This allows Quick Tabs to load any website, bypassing clickjacking protection
+// ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
+// Firefox Manifest V3 - Supports blocking webRequest
+// This allows Quick Tabs to load any website, bypassing clickjacking protection
 // Security Note: This removes X-Frame-Options and CSP frame-ancestors headers
 // which normally prevent websites from being embedded in iframes. This makes
 // the extension potentially vulnerable to clickjacking attacks if a malicious
 // website tricks the user into clicking on a Quick Tab overlay. Use with caution.
 
+console.log('[Quick Tabs] Initializing Firefox MV3 X-Frame-Options bypass...');
+
+// Track modified URLs for debugging
+const modifiedUrls = new Set();
+
 browser.webRequest.onHeadersReceived.addListener(
   (details) => {
-    // Only modify headers for sub_frame requests (iframes)
-    // This prevents modifying headers for main page loads
-    if (details.type !== 'sub_frame') {
-      return {};
-    }
+    console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
 
     const headers = details.responseHeaders;
     const modifiedHeaders = headers.filter(header => {
       const name = header.name.toLowerCase();
+      
       // Remove X-Frame-Options header (blocks iframe embedding)
       if (name === 'x-frame-options') {
-        console.log(`[Quick Tabs] Removed X-Frame-Options header for: ${details.url}`);
+        console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${details.url}`);
+        modifiedUrls.add(details.url);
         return false;
       }
+      
       // Remove Content-Security-Policy frame-ancestors directive
       if (name === 'content-security-policy') {
-        // Remove frame-ancestors directive from CSP
         const originalValue = header.value;
+        // Remove frame-ancestors directive from CSP
         header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
-        if (header.value !== originalValue) {
-          console.log(`[Quick Tabs] Removed frame-ancestors from CSP for: ${details.url}`);
-        }
+        
         // If CSP is now empty, remove the header entirely
-        if (header.value.trim() === '') {
+        if (header.value.trim() === '' || header.value.trim() === ';') {
+          console.log(`[Quick Tabs] ✓ Removed empty CSP from ${details.url}`);
+          modifiedUrls.add(details.url);
+          return false;
+        }
+        
+        // Log if we modified it
+        if (header.value !== originalValue) {
+          console.log(`[Quick Tabs] ✓ Modified CSP for ${details.url}`);
+          modifiedUrls.add(details.url);
+        }
+      }
+      
+      // Remove restrictive Cross-Origin-Resource-Policy
+      if (name === 'cross-origin-resource-policy') {
+        const value = header.value.toLowerCase();
+        if (value === 'same-origin' || value === 'same-site') {
+          console.log(`[Quick Tabs] ✓ Removed CORP: ${header.value} from ${details.url}`);
+          modifiedUrls.add(details.url);
           return false;
         }
       }
+      
       return true;
     });
 
     return { responseHeaders: modifiedHeaders };
   },
-  { urls: ['<all_urls>'] },
-  ['blocking', 'responseHeaders']
+  {
+    urls: ['<all_urls>'],
+    types: ['sub_frame']  // Only iframes - filter at registration for better performance
+  },
+  ['blocking', 'responseHeaders']  // Firefox MV3 allows 'blocking'
 );
+
+// Log successful iframe loads
+browser.webRequest.onCompleted.addListener(
+  (details) => {
+    if (modifiedUrls.has(details.url)) {
+      console.log(`[Quick Tabs] ✅ Successfully loaded iframe: ${details.url}`);
+      // Clean up old URLs to prevent memory leak
+      if (modifiedUrls.size > 100) {
+        modifiedUrls.clear();
+      }
+    }
+  },
+  {
+    urls: ['<all_urls>'],
+    types: ['sub_frame']
+  }
+);
+
+// Log failed iframe loads
+browser.webRequest.onErrorOccurred.addListener(
+  (details) => {
+    console.error(`[Quick Tabs] ❌ Failed to load iframe: ${details.url}`);
+    console.error(`[Quick Tabs] Error: ${details.error}`);
+  },
+  {
+    urls: ['<all_urls>'],
+    types: ['sub_frame']
+  }
+);
+
+console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
 
 // ==================== END X-FRAME-OPTIONS BYPASS ====================
 
@@ -162,19 +220,21 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   
   // Handle Quick Tab creation
   if (message.action === 'CREATE_QUICK_TAB') {
-    console.log('[Background] Received create Quick Tab:', message.url);
+    console.log('[Background] Received create Quick Tab:', message.url, 'ID:', message.id);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
-    // Check if tab already exists in global state
-    const existingIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+    // Check if tab already exists in global state by ID (not URL)
+    // This allows multiple Quick Tabs with the same URL
+    const existingIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
     
     if (existingIndex !== -1) {
       // Update existing entry
       globalQuickTabState.tabs[existingIndex] = {
+        id: message.id,
         url: message.url,
         left: message.left,
         top: message.top,
@@ -187,6 +247,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     } else {
       // Add new entry
       globalQuickTabState.tabs.push({
+        id: message.id,
         url: message.url,
         left: message.left,
         top: message.top,
@@ -228,15 +289,15 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   
   // Handle Quick Tab close
   if (message.action === 'CLOSE_QUICK_TAB') {
-    console.log('[Background] Received close Quick Tab:', message.url);
+    console.log('[Background] Received close Quick Tab:', message.url, 'ID:', message.id);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
-    // Remove from global state
-    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+    // Remove from global state by ID (not URL) to avoid closing wrong duplicate
+    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
     if (tabIndex !== -1) {
       globalQuickTabState.tabs.splice(tabIndex, 1);
       globalQuickTabState.lastUpdate = Date.now();
@@ -246,6 +307,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         tabs.forEach(tab => {
           browser.tabs.sendMessage(tab.id, {
             action: 'CLOSE_QUICK_TAB_FROM_BACKGROUND',
+            id: message.id,
             url: message.url
           }).catch(() => {});
         });
@@ -280,22 +342,24 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   
   // Handle position and size updates from content scripts
   if (message.action === 'UPDATE_QUICK_TAB_POSITION') {
-    console.log('[Background] Received position update:', message.url, message.left, message.top);
+    console.log('[Background] Received position update:', message.url, 'ID:', message.id, message.left, message.top);
     
     // Wait for initialization if needed
     if (!isInitialized) {
       await initializeGlobalState();
     }
     
-    // Update global state
-    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+    // Update global state by ID (not URL) to avoid updating wrong duplicate
+    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
     if (tabIndex !== -1) {
       globalQuickTabState.tabs[tabIndex].left = message.left;
       globalQuickTabState.tabs[tabIndex].top = message.top;
       if (message.width !== undefined) globalQuickTabState.tabs[tabIndex].width = message.width;
       if (message.height !== undefined) globalQuickTabState.tabs[tabIndex].height = message.height;
     } else {
+      // Tab doesn't exist in global state - add it
       globalQuickTabState.tabs.push({
+        id: message.id,
         url: message.url,
         left: message.left,
         top: message.top,
@@ -310,6 +374,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       tabs.forEach(tab => {
         browser.tabs.sendMessage(tab.id, {
           action: 'UPDATE_QUICK_TAB_FROM_BACKGROUND',
+          id: message.id,
           url: message.url,
           left: message.left,
           top: message.top,
@@ -341,6 +406,48 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       }).catch(err => {
         console.error('[Background] Error saving to session storage:', err);
       });
+    }
+    
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  // Handle Quick Tab pin/unpin updates
+  if (message.action === 'UPDATE_QUICK_TAB_PIN') {
+    console.log('[Background] Received pin update:', message.id, 'pinnedToUrl:', message.pinnedToUrl);
+    
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+    
+    // Update global state
+    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      globalQuickTabState.tabs[tabIndex].pinnedToUrl = message.pinnedToUrl;
+      globalQuickTabState.lastUpdate = Date.now();
+      
+      // Save to storage
+      browser.storage.sync.set({ 
+        quick_tabs_state_v2: {
+          tabs: globalQuickTabState.tabs,
+          timestamp: Date.now()
+        }
+      }).catch(err => {
+        console.error('[Background] Error saving pin state to storage:', err);
+      });
+      
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session.set({
+          quick_tabs_session: {
+            tabs: globalQuickTabState.tabs,
+            timestamp: Date.now()
+          }
+        }).catch(err => {
+          console.error('[Background] Error saving to session storage:', err);
+        });
+      }
     }
     
     sendResponse({ success: true });
@@ -485,7 +592,15 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     
     // UPDATE: Sync globalQuickTabState with storage changes
     const newValue = changes.quick_tabs_state_v2.newValue;
-    if (newValue && newValue.tabs) {
+    
+    // Handle storage being cleared (newValue is undefined)
+    if (!newValue || !newValue.tabs) {
+      // Storage was cleared - reset global state
+      globalQuickTabState.tabs = [];
+      globalQuickTabState.lastUpdate = Date.now();
+      console.log('[Background] Storage cleared, reset global state');
+    } else {
+      // Storage was updated - sync global state
       // Only update if storage has MORE tabs than our global state
       // This prevents overwriting global state with stale data
       if (newValue.tabs.length >= globalQuickTabState.tabs.length) {
