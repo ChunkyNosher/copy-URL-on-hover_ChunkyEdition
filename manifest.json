@@ -27,9 +27,8 @@
         "default_icon": "icons/icon.png"
     },
     "background": {
-        "scripts": [
-            "background.js"
-        ]
+        "scripts": ["background.js"],
+        "persistent": true
     },
     "content_scripts": [
         {
@@ -63,5 +62,6 @@
         }
     }
 }
+
 
 
