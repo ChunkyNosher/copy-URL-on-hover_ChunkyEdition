@@ -148,6 +148,24 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 let isSavingToStorage = false; // Flag to prevent processing our own storage changes
 
+// ==================== Z-INDEX MANAGEMENT FOR MULTIPLE QUICK TABS ====================
+/**
+ * Bring a Quick Tab to the front (highest z-index)
+ * Called when user interacts with a Quick Tab (click, focus, or after drag)
+ * @param {HTMLElement} container - The Quick Tab container element
+ */
+function bringQuickTabToFront(container) {
+  if (!container) return;
+  
+  // Only update if this isn't already the topmost
+  const currentZ = parseInt(container.style.zIndex) || 0;
+  if (currentZ < quickTabZIndex - 1) {
+    container.style.zIndex = quickTabZIndex++;
+    debug(`Brought Quick Tab to front with z-index ${container.style.zIndex}`);
+  }
+}
+// ==================== END Z-INDEX MANAGEMENT ====================
+
 // ==================== SLOT NUMBER TRACKING FOR DEBUG MODE ====================
 // Track Quick Tab slot numbers for debug mode display
 let quickTabSlots = new Map(); // Maps quickTabId → slot number
@@ -3213,9 +3231,9 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
     makeResizable(container);
   }
   
-  // Bring to front on click
+  // Bring to front on click (z-index management)
   container.addEventListener('mousedown', () => {
-    container.style.zIndex = quickTabZIndex++;
+    bringQuickTabToFront(container);
   });
   
   showNotification('✓ Quick Tab opened');
@@ -3676,6 +3694,9 @@ function makeDraggable(element, handle) {
     // Ignore non-primary buttons and clicks on buttons/images
     if (e.button !== 0) return;
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'IMG') return;
+    
+    // Bring this Quick Tab to front when user starts interacting
+    bringQuickTabToFront(element);
     
     // Start dragging
     isDragging = true;
