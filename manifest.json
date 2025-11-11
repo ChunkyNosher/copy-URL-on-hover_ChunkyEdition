@@ -1,39 +1,67 @@
 {
-  "manifest_version": 3,
-  "name": "Copy URL on Hover Custom",
-  "version": "1.5.5.9",
-  "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with navigation, minimize, and more.",
-  "permissions": ["scripting", "storage", "activeTab", "webRequest"],
-  "host_permissions": ["<all_urls>"],
-  "action": {
-    "default_title": "Copy URL on Hover Settings",
-    "default_popup": "popup.html"
-  },
-  "options_ui": {
-    "page": "options_page.html",
-    "browser_style": true
-  },
-  "sidebar_action": {
-    "default_panel": "sidebar/panel.html",
-    "default_title": "Quick Tabs Manager",
-    "default_icon": "icons/icon.png"
-  },
-  "background": {
-    "scripts": ["background.js"]
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["state-manager.js"],
-      "matches": ["<all_urls>"]
+    "manifest_version": 3,
+    "name": "Copy URL on Hover Custom",
+    "version": "1.5.5.9",
+    "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with navigation, minimize, and more.",
+    "permissions": [
+        "scripting",
+        "storage",
+        "activeTab",
+        "webRequest",
+        "webRequestBlocking"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "action": {
+        "default_title": "Copy URL on Hover Settings",
+        "default_popup": "popup.html"
+    },
+    "options_ui": {
+        "page": "options_page.html",
+        "browser_style": true
+    },
+    "sidebar_action": {
+        "default_panel": "sidebar/panel.html",
+        "default_title": "Quick Tabs Manager",
+        "default_icon": "icons/icon.png"
+    },
+    "background": {
+        "service_worker": "background.js",
+        "scripts": [
+            "background.js"
+        ],
+        "type": "module"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": false
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "state-manager.js"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "icons": {
+        "96": "icons/icon.png"
+    },
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "copy-url-hover@chunkynosher.github.io",
+            "update_url": "https://raw.githubusercontent.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/main/updates.json"
+        }
     }
-  ],
-  "icons": {
-    "96": "icons/icon.png"
-  },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "copy-url-hover@chunkynosher.github.io",
-      "update_url": "https://raw.githubusercontent.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/main/updates.json"
-    }
-  }
 }
