@@ -1,8 +1,8 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.6** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management.
+**Version 1.5.7** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with Firefox Container support.
 
-This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration for isolated browsing contexts.
 
 ## 📁 Repository Structure
 
@@ -18,18 +18,22 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ### Core Features
 ✓ **Quick URL Copying** - Press keyboard shortcuts while hovering over links  
 ✓ **Quick Tabs** - Floating, draggable, resizable iframe windows with full navigation  
+✓ **Firefox Container Support (NEW v1.5.7)** - Quick Tabs isolated by Firefox Container  
 ✓ **Cross-Tab Sync** - Quick Tabs persist across all browser tabs (BroadcastChannel + browser.storage)  
+✓ **Z-Index Management (NEW v1.5.7)** - Multiple Quick Tabs layer correctly based on interaction  
 ✓ **Pin to Page** - Pin Quick Tabs to specific pages  
 ✓ **Auto-Updates** - Automatic extension updates via GitHub releases  
 ✓ **100+ Site Handlers** - Optimized for popular websites  
 ✓ **Debug Mode** - Slot number tracking and enhanced logging  
 ✓ **Dark Mode** - Full dark theme support
 
-### Quick Tabs v1.5.6 Features
+### Quick Tabs v1.5.7 Features
+✓ **NEW**: Firefox Container Integration - Quick Tabs respect container boundaries  
+✓ **NEW**: Smart Z-Index Management - Most recently interacted tab always on top  
 ✓ Navigation controls (back, forward, reload, open in new tab)  
-✓ **NEW**: Pointer Events API for drag/resize (eliminates drag slipping)  
-✓ **NEW**: Tab switch handling during drag (pointercancel event)  
-✓ **FIXED**: Slot numbers reset when all Quick Tabs closed  
+✓ Pointer Events API for drag/resize (eliminates drag slipping)  
+✓ Tab switch handling during drag (pointercancel event)  
+✓ Slot numbers reset when all Quick Tabs closed  
 ✓ Drag to move with setPointerCapture (no escape at high speeds)  
 ✓ Resize from any edge/corner with pointer capture  
 ✓ Minimize to floating manager  
@@ -37,20 +41,33 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ✓ Multiple instances with unique ID tracking  
 ✓ Slot number labels in debug mode (persistent across tabs)
 
-### Modern API Framework (v1.5.6)
-- **Pointer Events API** - Reliable drag/resize with setPointerCapture (no slipping)
-- **browser.storage.sync** - Persistent cross-device state (quick_tabs_state_v2)
+### Modern API Framework (v1.5.7)
+- **Pointer Events API** - Reliable drag/resize with setPointerCapture
+- **Firefox Container API** - Container-aware state management with `contextualIdentities`
+- **browser.storage.sync** - Container-keyed persistent storage
 - **browser.storage.session** - Fast ephemeral state (Firefox 115+)
-- **BroadcastChannel** - Real-time same-origin sync (<10ms latency)
+- **BroadcastChannel** - Real-time same-origin sync with container filtering
 - **Runtime Messaging** - Cross-origin sync via background script
 - **ID-based Tracking** - Prevents duplicate instance conflicts
 
-### Why Pointer Events API?
-✅ **Eliminates drag slipping** - Pointer capture prevents Quick Tabs from escaping cursor during fast movements  
-✅ **Handles tab switches** - pointercancel event provides explicit hook for emergency saves  
-✅ **Touch/Pen support** - Unified API for mouse, touch, and stylus input  
-✅ **Better performance** - Direct updates (no requestAnimationFrame delays)  
-✅ **Cleaner code** - 30% fewer lines, easier to maintain
+### What's New in v1.5.7?
+
+✅ **Firefox Container Integration**
+- Quick Tabs are now fully isolated by Firefox Container
+- Personal, Work, Banking containers each have their own Quick Tab state
+- Container detection is automatic with fallback to default
+- Seamless migration from v1.5.6 with no data loss
+
+✅ **Z-Index Management**
+- Multiple Quick Tabs now properly layer
+- Most recently clicked or dragged tab comes to foreground
+- No more hidden Quick Tabs behind others
+
+✅ **Container-Aware Architecture**
+- State keyed by `cookieStoreId` (e.g., "firefox-container-1")
+- BroadcastChannel messages filtered by container
+- Background script only broadcasts to same-container tabs
+- Automatic `getCurrentCookieStoreId()` detection
 
 ## 🚀 Installation
 
@@ -136,6 +153,8 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 
 **X-Frame-Options Bypass**: The extension removes X-Frame-Options and CSP frame-ancestors headers to allow Quick Tabs to display any website in iframes. This is necessary for universal compatibility but removes clickjacking protection for iframed content.
 
+**Firefox Container Isolation (v1.5.7+)**: Quick Tabs now respect Firefox Container boundaries, providing an additional layer of isolation for sensitive browsing contexts (e.g., Banking, Work containers).
+
 **Use at your own discretion.** Only open Quick Tabs from trusted websites or disable the extension when browsing untrusted sites.
 
 ## 🐛 Known Limitations
@@ -208,6 +227,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.6  
+**Current Version**: 1.5.7  
 **Last Updated**: 2025-11-11  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

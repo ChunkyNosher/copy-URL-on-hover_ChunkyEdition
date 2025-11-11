@@ -35,8 +35,8 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.6+):**
-- **content.js** (~4300 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
+**Current Repository Architecture (v1.5.7+):**
+- **content.js** (~4500 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
 - **background.js**: Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
@@ -46,7 +46,7 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 
 **Critical APIs Currently Used - PRIORITIZE THESE:**
 
-1. **Pointer Events API** (setPointerCapture, pointercancel) - NEW in v1.5.6
+1. **Pointer Events API** (setPointerCapture, pointercancel) - NEW in v1.5.7
    - Primary drag/resize mechanism for Quick Tabs
    - Common issues: Pointer capture not released, pointercancel not firing
    - Replaces: Mouse events + requestAnimationFrame

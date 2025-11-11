@@ -30,28 +30,79 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.6+):**
-- **content.js** (~4300 lines): Main functionality, site handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle, content injection, webRequest header modification (Manifest v2 required), storage sync broadcasting
-- **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
+**Current Repository Architecture (v1.5.7+):**
+- **content.js** (~4500 lines): Main functionality, site handlers, Quick Tabs with Pointer Events API, Firefox Container support, notifications, keyboard shortcuts, z-index management
+- **background.js** (~660 lines): Container-aware tab lifecycle, content injection, webRequest header modification (Manifest v2 required), container-keyed storage sync broadcasting
+- **state-manager.js**: Container-aware Quick Tab state management using browser.storage.sync and browser.storage.session with automatic cookieStoreId detection
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
 - **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions for webRequest, storage, tabs, options_ui, sidebar_action
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions for webRequest, storage, tabs, contextualIdentities, cookies, options_ui, sidebar_action, commands
 
 **Core APIs - Leverage These:**
-1. **Pointer Events API** (NEW in v1.5.6) - For drag/resize with setPointerCapture (eliminates slipping)
-2. **Clipboard API** - For copy operations
-3. **Storage API** (browser.storage.sync/session/local) - For persistence
-   - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)
-   - browser.storage.session: Fast ephemeral Quick Tab state (quick_tabs_session) - Firefox 115+
+1. **Pointer Events API** (v1.5.6+) - For drag/resize with setPointerCapture (eliminates slipping)
+2. **Firefox Container API** (NEW v1.5.7) - Container isolation with `contextualIdentities` and `cookieStoreId`
+3. **Clipboard API** - For copy operations
+4. **Storage API** (browser.storage.sync/session/local) - For persistence
+   - browser.storage.sync: Container-keyed Quick Tab state (quick_tabs_state_v2[cookieStoreId]), settings
+   - browser.storage.session: Fast ephemeral container-keyed state (quick_tabs_session[cookieStoreId]) - Firefox 115+
    - browser.storage.local: User config and large data
-4. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - For communication
-5. **webRequest API** (onHeadersReceived) - For iframe header modification (requires Manifest v2)
-6. **BroadcastChannel API** - For real-time same-origin Quick Tab sync
-7. **Tabs API** (browser.tabs.*) - For tab operations
-8. **Keyboard Events** - For shortcuts
-9. **DOM Manipulation** - For UI elements
+5. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Container-aware communication
+6. **webRequest API** (onHeadersReceived) - For iframe header modification (requires Manifest v2)
+6. **BroadcastChannel API** - For real-time same-origin Quick Tab sync (container-filtered in v1.5.7+)
+7. **Tabs API** (browser.tabs.*) - For tab operations and container queries
+8. **Commands API** (browser.commands) - For keyboard shortcuts (e.g., toggle minimized manager)
+9. **Keyboard Events** - For shortcuts
+10. **DOM Manipulation** - For UI elements
+
+**Firefox Container Integration Pattern (v1.5.7+):**
+```javascript
+// 1. Auto-detect container with caching
+async function getCurrentCookieStoreId() {
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+  return tabs[0]?.cookieStoreId || "firefox-default";
+}
+
+// 2. Use wrapper for automatic cookieStoreId inclusion
+async function sendRuntimeMessage(message) {
+  const cookieStoreId = await getCurrentCookieStoreId();
+  return browser.runtime.sendMessage({ ...message, cookieStoreId });
+}
+
+// 3. Container-keyed storage structure
+const containerStates = {
+  "firefox-default": { tabs: [], timestamp: 0 },
+  "firefox-container-1": { tabs: [], timestamp: 0 }
+};
+
+// 4. Filter BroadcastChannel by container
+quickTabChannel.onmessage = async (event) => {
+  const currentCookieStore = await getCurrentCookieStoreId();
+  if (event.data.cookieStoreId !== currentCookieStore) return;
+  // Process message...
+};
+
+// 5. Background script filters broadcasts by container
+browser.tabs.query({ cookieStoreId }).then(tabs => {
+  tabs.forEach(tab => {
+    browser.tabs.sendMessage(tab.id, message);
+  });
+});
+```
+
+**Z-Index Management Pattern (v1.5.7+):**
+```javascript
+// Bring Quick Tab to front on interaction
+function bringQuickTabToFront(container) {
+  const currentZ = parseInt(container.style.zIndex) || 0;
+  if (currentZ < quickTabZIndex - 1) {
+    container.style.zIndex = quickTabZIndex++;
+  }
+}
+
+// Call on pointerdown and mousedown
+container.addEventListener('mousedown', () => bringQuickTabToFront(container));
+```
 
 ## Feature-Optimizer Methodology
 
