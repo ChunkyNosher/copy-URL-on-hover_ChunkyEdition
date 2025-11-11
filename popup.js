@@ -294,20 +294,17 @@ document.getElementById('resetBtn').addEventListener('click', function() {
 
 // Clear Quick Tab storage button
 document.getElementById('clearStorageBtn').addEventListener('click', async function() {
-  if (confirm('This will clear ALL extension data including Quick Tab positions, settings, and state. Are you sure?')) {
+  if (confirm('This will clear Quick Tab positions and state. Your settings and keybinds will be preserved. Are you sure?')) {
     try {
-      // Clear ALL sync storage created by the extension
-      await browser.storage.sync.clear();
+      // Only clear Quick Tab state, preserve all settings
+      await browser.storage.sync.remove('quick_tabs_state_v2');
       
-      // Clear ALL session storage if available
+      // Clear session storage if available
       if (typeof browser.storage.session !== 'undefined') {
-        await browser.storage.session.clear();
+        await browser.storage.session.remove('quick_tabs_session');
       }
       
-      // Clear ALL local storage
-      await browser.storage.local.clear();
-      
-      showStatus('✓ All extension storage cleared!');
+      showStatus('✓ Quick Tab storage cleared! Settings preserved.');
       
       // Notify all tabs to close their Quick Tabs
       browser.tabs.query({}).then(tabs => {
@@ -319,11 +316,6 @@ document.getElementById('clearStorageBtn').addEventListener('click', async funct
           });
         });
       });
-      
-      // Reload settings UI after a short delay
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
       
     } catch (err) {
       showStatus('✗ Error clearing storage: ' + err.message);

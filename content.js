@@ -148,16 +148,49 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 let isSavingToStorage = false; // Flag to prevent processing our own storage changes
 
+// ==================== SLOT NUMBER TRACKING FOR DEBUG MODE ====================
+// Track Quick Tab slot numbers for debug mode display
+let quickTabSlots = new Map(); // Maps quickTabId → slot number
+let availableSlots = []; // Stack of freed slot numbers
+let nextSlotNumber = 1;
+
+function assignQuickTabSlot(quickTabId) {
+  let slotNumber;
+  
+  if (availableSlots.length > 0) {
+    // Reuse lowest available slot number
+    availableSlots.sort((a, b) => a - b);
+    slotNumber = availableSlots.shift();
+  } else {
+    // Assign new slot
+    slotNumber = nextSlotNumber++;
+  }
+  
+  quickTabSlots.set(quickTabId, slotNumber);
+  return slotNumber;
+}
+
+function releaseQuickTabSlot(quickTabId) {
+  const slotNumber = quickTabSlots.get(quickTabId);
+  if (slotNumber !== undefined) {
+    availableSlots.push(slotNumber);
+    quickTabSlots.delete(quickTabId);
+  }
+}
+
 // ==================== BROADCAST CHANNEL SETUP ====================
 // Create a BroadcastChannel for real-time cross-tab Quick Tab sync
 let quickTabChannel = null;
+
+// Generate unique tab instance ID to prevent self-reception of broadcasts
+const tabInstanceId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 function initializeBroadcastChannel() {
   if (quickTabChannel) return; // Already initialized
   
   try {
     quickTabChannel = new BroadcastChannel('quick-tabs-sync');
-    debug('BroadcastChannel initialized for Quick Tab sync');
+    debug(`BroadcastChannel initialized for Quick Tab sync (Instance ID: ${tabInstanceId})`);
     
     // Listen for Quick Tab creation messages from other tabs
     quickTabChannel.onmessage = handleBroadcastMessage;
@@ -168,8 +201,27 @@ function initializeBroadcastChannel() {
   }
 }
 
+// Normalize URL for comparison (removes hash and query parameters)
+// Used for pin URL comparisons to avoid URL fragment/query differences
+function normalizeUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    // Remove hash and query parameters for pin comparison
+    return `${urlObj.origin}${urlObj.pathname}`;
+  } catch (e) {
+    // If URL parsing fails, return original URL
+    return url;
+  }
+}
+
 function handleBroadcastMessage(event) {
   const message = event.data;
+  
+  // Ignore broadcasts from ourselves to prevent self-reception bugs
+  if (message.senderId === tabInstanceId) {
+    debug(`Ignoring broadcast from self (Instance ID: ${tabInstanceId})`);
+    return;
+  }
   
   if (message.action === 'createQuickTab') {
     debug(`Received Quick Tab broadcast from another tab: ${message.url} (ID: ${message.id})`);
@@ -265,10 +317,11 @@ function handleBroadcastMessage(event) {
     
     // When a Quick Tab is pinned in another tab, close it in this tab
     // (unless this tab is the one it's pinned to, but that's handled by the pinning tab itself)
-    const currentPageUrl = window.location.href;
+    const currentPageUrl = normalizeUrl(window.location.href);
+    const pinnedPageUrl = normalizeUrl(message.pinnedToUrl);
     
     // If this tab is NOT the page where the Quick Tab is pinned, close it
-    if (currentPageUrl !== message.pinnedToUrl) {
+    if (currentPageUrl !== pinnedPageUrl) {
       const container = quickTabWindows.find(win => {
         return win.dataset.quickTabId === message.id;
       });
@@ -319,6 +372,7 @@ function broadcastQuickTabCreation(url, width, height, left, top, pinnedToUrl = 
     left: left,
     top: top,
     pinnedToUrl: pinnedToUrl,
+    senderId: tabInstanceId,
     timestamp: Date.now()
   });
   
@@ -332,6 +386,7 @@ function broadcastQuickTabClose(quickTabId, url) {
     action: 'closeQuickTab',
     id: quickTabId,
     url: url,
+    senderId: tabInstanceId,
     timestamp: Date.now()
   });
   
@@ -343,6 +398,7 @@ function broadcastCloseAll() {
   
   quickTabChannel.postMessage({
     action: 'closeAllQuickTabs',
+    senderId: tabInstanceId,
     timestamp: Date.now()
   });
 }
@@ -356,6 +412,7 @@ function broadcastQuickTabMove(quickTabId, url, left, top) {
     url: url,
     left: left,
     top: top,
+    senderId: tabInstanceId,
     timestamp: Date.now()
   });
   
@@ -371,6 +428,7 @@ function broadcastQuickTabResize(quickTabId, url, width, height) {
     url: url,
     width: width,
     height: height,
+    senderId: tabInstanceId,
     timestamp: Date.now()
   });
   
@@ -385,6 +443,7 @@ function broadcastQuickTabPin(quickTabId, url, pinnedToUrl) {
     id: quickTabId,
     url: url,
     pinnedToUrl: pinnedToUrl,
+    senderId: tabInstanceId,
     timestamp: Date.now()
   });
   
@@ -402,6 +461,7 @@ function broadcastQuickTabUnpin(quickTabId, url, width, height, left, top) {
     height: height,
     left: left,
     top: top,
+    senderId: tabInstanceId,
     timestamp: Date.now()
   });
   
@@ -691,10 +751,11 @@ browser.storage.onChanged.addListener((changes, areaName) => {
         const iframe = container.querySelector('iframe');
         if (!iframe) return;
         
-        const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
-        const tabInStorage = newValue.tabs.find(t => t.url === iframeSrc && !t.minimized);
+        // BUG FIX: Use ID-based lookup instead of URL to avoid affecting wrong duplicate instances
+        const quickTabId = container.dataset.quickTabId;
+        const tabInStorage = newValue.tabs.find(t => t.id === quickTabId && !t.minimized);
         if (tabInStorage && tabInStorage.pinnedToUrl && tabInStorage.pinnedToUrl !== currentPageUrl) {
-          debug(`Closing Quick Tab ${iframeSrc} because it's now pinned to ${tabInStorage.pinnedToUrl}`);
+          debug(`Closing Quick Tab ${quickTabId} because it's now pinned to ${tabInStorage.pinnedToUrl}`);
           closeQuickTabWindow(container, false); // false = don't broadcast again
         }
       });
@@ -704,8 +765,9 @@ browser.storage.onChanged.addListener((changes, areaName) => {
         const iframe = container.querySelector('iframe');
         if (!iframe) return;
         
-        const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
-        const tabInStorage = newValue.tabs.find(t => t.url === iframeSrc && !t.minimized);
+        // BUG FIX: Use ID-based lookup instead of URL to avoid updating wrong duplicate instances
+        const quickTabId = container.dataset.quickTabId;
+        const tabInStorage = newValue.tabs.find(t => t.id === quickTabId && !t.minimized);
         if (tabInStorage) {
           // Update position if it changed
           if (tabInStorage.left !== undefined && tabInStorage.top !== undefined) {
@@ -716,7 +778,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
             if (Math.abs(currentLeft - tabInStorage.left) > 1 || Math.abs(currentTop - tabInStorage.top) > 1) {
               container.style.left = tabInStorage.left + 'px';
               container.style.top = tabInStorage.top + 'px';
-              debug(`Updated Quick Tab ${iframe.src} position to (${tabInStorage.left}, ${tabInStorage.top})`);
+              debug(`Updated Quick Tab ${quickTabId} position to (${tabInStorage.left}, ${tabInStorage.top})`);
             }
           }
           
@@ -729,7 +791,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
             if (Math.abs(currentWidth - tabInStorage.width) > 1 || Math.abs(currentHeight - tabInStorage.height) > 1) {
               container.style.width = tabInStorage.width + 'px';
               container.style.height = tabInStorage.height + 'px';
-              debug(`Updated Quick Tab ${iframe.src} size to ${tabInStorage.width}x${tabInStorage.height}`);
+              debug(`Updated Quick Tab ${quickTabId} size to ${tabInStorage.width}x${tabInStorage.height}`);
             }
           }
         }
@@ -2869,6 +2931,29 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
   titleBar.appendChild(favicon);
   titleBar.appendChild(titleText);
   
+  // Slot number label for debug mode
+  if (CONFIG.debugMode) {
+    const slotNumber = assignQuickTabSlot(quickTabId);
+    
+    const slotLabel = document.createElement('span');
+    slotLabel.className = 'quicktab-slot-label';
+    slotLabel.textContent = `Slot ${slotNumber}`;
+    slotLabel.style.cssText = `
+      font-size: 11px;
+      color: ${CONFIG.darkMode ? '#888' : '#666'};
+      margin-left: 8px;
+      margin-right: 5px;
+      font-weight: normal;
+      font-family: monospace;
+      background: ${CONFIG.darkMode ? '#333' : '#f0f0f0'};
+      padding: 2px 6px;
+      border-radius: 3px;
+      white-space: nowrap;
+    `;
+    
+    titleBar.appendChild(slotLabel);
+  }
+  
   // Pin button (before minimize button)
   const pinBtn = document.createElement('button');
   pinBtn.textContent = pinnedToUrl ? '📌' : '📍';
@@ -2923,10 +3008,8 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
         }
       }
       
-      // Save updated state
-      if (CONFIG.quickTabPersistAcrossTabs) {
-        saveQuickTabsToStorage();
-      }
+      // NOTE: Don't call saveQuickTabsToStorage() here - background script handles storage
+      // via UPDATE_QUICK_TAB_PIN message handler. Calling it here causes double-save race condition
     } else {
       // Pin to current page URL
       const currentPageUrl = window.location.href;
@@ -2958,10 +3041,9 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
         }
       }
       
-      // Save updated state (this will also close the Quick Tab in other tabs via storage sync)
-      if (CONFIG.quickTabPersistAcrossTabs) {
-        saveQuickTabsToStorage();
-      }
+      // NOTE: Don't call saveQuickTabsToStorage() here - background script handles storage
+      // via UPDATE_QUICK_TAB_PIN message handler. Calling it here causes double-save race condition
+      // that triggers the isSavingToStorage flag timeout bug (Bug #2)
     }
   };
   
@@ -3071,6 +3153,11 @@ function closeQuickTabWindow(container, broadcast = true) {
   const iframe = container.querySelector('iframe');
   const url = iframe ? (iframe.src || iframe.getAttribute('data-deferred-src')) : null;
   const quickTabId = container.dataset.quickTabId;
+  
+  // Release slot number for reuse in debug mode
+  if (quickTabId && CONFIG.debugMode) {
+    releaseQuickTabSlot(quickTabId);
+  }
   
   // Clean up drag listeners
   if (container._dragCleanup) {

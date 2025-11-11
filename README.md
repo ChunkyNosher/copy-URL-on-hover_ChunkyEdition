@@ -1,288 +1,188 @@
 # Firefox Extension: Copy URL on Hover
 
-This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links.
+**Version 1.5.5.10** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management.
 
-## Files Included
+This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-1. **manifest.json** - Extension configuration file
-2. **content.js** - Main script that runs on web pages
-3. **popup.html** - Settings popup interface
-4. **popup.js** - Settings popup logic
-5. **background.js** - Background script for content injection
-6. **updates.json** - Auto-update configuration file
+## 📁 Repository Structure
 
-## Installation Instructions
+- **Source Files**: `manifest.json`, `content.js`, `popup.html`, `popup.js`, `background.js`, `state-manager.js`
+- **Documentation**: `/docs/` folder organized by type:
+  - `/docs/changelogs/` - Version changelogs
+  - `/docs/implementation-summaries/` - Feature implementation notes
+  - `/docs/security-summaries/` - Security audit reports
+  - `/docs/manual/` - Guides and architecture documentation
 
-### Easy Installation (Recommended - With Auto-Updates)
-
-1. Go to the [Releases page](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
-2. Download the latest `copy-url-hover-extension.xpi` file
-3. Open your Firefox/Zen Browser
-4. Navigate to `about:addons`
-5. Click the gear icon (⚙️) and select "Install Add-on From File..."
-6. Select the downloaded `.xpi` file
-7. Click "Add" when prompted
-
-**Note:** The extension will now automatically check for updates and notify you when a new version is available!
-
-### Manual Installation (For Development)
-
-If you want to manually load the extension for development:
-
-1. Open Firefox and navigate to: `about:debugging`
-2. Click **"This Firefox"** on the left sidebar
-3. Click **"Load Temporary Add-on"** button
-4. Navigate to the extension folder
-5. Select the **`manifest.json`** file and click "Open"
-6. The extension is now loaded!
-
-**Note:** Temporary add-ons are removed when Firefox restarts and do not receive auto-updates.
-
-### Step 5: Customize Settings
-
-Click the extension icon in your Firefox toolbar to open the settings popup. The settings are now organized into **4 tabs**:
-
-#### Copy URL Tab
-- **Copy URL Key** - Default: `y`
-- **Copy Text Key** - Default: `x`
-- **Open in New Tab Key** - Default: `o`
-- **Modifier Keys** - Add Ctrl, Alt, or Shift to any shortcut
-
-#### Quick Tabs Tab
-- **Quick Tab Key** - Default: `q` - Opens a floating iframe window
-- **Close Key** - Default: `Escape` - Closes all Quick Tabs
-- **Max Windows** - Maximum number of Quick Tabs allowed (1-10)
-- **Default Size** - Width and height in pixels
-- **Window Position** - Follow cursor, center, corners, or custom coordinates
-
-#### Appearance Tab
-- **Notifications** - Toggle on/off
-- **Notification Color** - Background color
-- **Border Color & Width** - Customize notification border
-- **Animation** - Choose slide, pop, or fade animations
-- **Position** - Where notifications appear
-- **Size** - Small, medium, or large
-- **Dark Mode** - Toggle dark/light theme
-
-#### Advanced Tab
-- **Debug Mode** - Enable console logging for troubleshooting
-
-## Usage
-
-### Basic Copy Functions
-1. Hover your mouse over any link on a webpage
-2. Press the configured key (default: **Y** to copy URL, **X** to copy text, **O** to open in new tab)
-3. A notification will appear confirming the action
-4. The URL or link text is now in your clipboard
-
-### Quick Tabs Feature
-1. Hover over any link
-2. Press **Q** (or your configured Quick Tab key)
-3. A floating window opens showing the link content
-4. Use the navigation buttons:
-   - **←** Back
-   - **→** Forward
-   - **↻** Reload
-   - **🔗** Open in New Tab
-   - **−** Minimize
-   - **✕** Close
-5. Drag the title bar to move the window
-6. Drag the edges or corners to resize
-7. Click **−** to minimize the tab - it moves to a floating manager
-8. Access minimized tabs from the manager in the bottom-right corner
-9. Click **↑** to restore or **✕** to delete minimized tabs
-
-## Customization
-
-### Changing Default Keyboard Shortcuts
-
-Edit `content.js` and modify these lines:
-
-```javascript
-const CONFIG = {
-  COPY_URL_KEY: 'y',    // Change this to any key
-  COPY_TEXT_KEY: 'x',   // Change this to any key
-  // ... other settings
-};
-```
-
-### Changing Notification Style
-
-Still in `content.js`, modify the `CONFIG` object:
-
-```javascript
-const CONFIG = {
-  SHOW_NOTIFICATION: true,
-  NOTIFICATION_DURATION: 2000,      // milliseconds
-  NOTIFICATION_COLOR: '#4CAF50',    // green
-  NOTIFICATION_TEXT_COLOR: '#fff',  // white
-  // ...
-};
-```
-
-### Enabling Debug Mode
-
-Edit `content.js`:
-
-```javascript
-const CONFIG = {
-  // ...
-  DEBUG_MODE: true  // Set to true for console logs
-};
-```
-
-Then open Firefox Developer Tools (F12) to see debug messages.
-
-## Features
+## ✨ Key Features
 
 ### Core Features
-✓ Copy URLs or link text by pressing keyboard shortcuts  
-✓ Open links in new tabs with customizable focus behavior  
-✓ Visual notifications with customizable colors, borders, and animations  
-✓ Fully customizable through tabbed settings popup  
-✓ **Supports 100+ websites** with site-specific optimized handlers  
-✓ Works on all websites (except restricted Mozilla pages)  
-✓ Debug mode for troubleshooting  
-✓ Automatic settings sync across all tabs  
-✓ **Auto-update functionality** - Get notified when new versions are available  
-✓ Dark mode support
+✓ **Quick URL Copying** - Press keyboard shortcuts while hovering over links  
+✓ **Quick Tabs** - Floating, draggable, resizable iframe windows with full navigation  
+✓ **Cross-Tab Sync** - Quick Tabs persist across all browser tabs (BroadcastChannel + browser.storage)  
+✓ **Pin to Page** - Pin Quick Tabs to specific pages  
+✓ **Auto-Updates** - Automatic extension updates via GitHub releases  
+✓ **100+ Site Handlers** - Optimized for popular websites  
+✓ **Debug Mode** - Slot number tracking and enhanced logging  
+✓ **Dark Mode** - Full dark theme support
 
-### Quick Tabs Features (NEW in v1.4.0, Enhanced in v1.4.1)
-✓ Open links in floating, draggable, resizable iframe windows  
-✓ Navigation controls (back, forward, reload)  
-✓ Live favicon and page title display  
-✓ Minimize tabs to a floating manager  
-✓ Restore or delete minimized tabs  
-✓ Multiple Quick Tabs support (configurable limit)  
-✓ Customizable positioning (follow cursor, corners, center, custom)  
-✓ Keyboard shortcuts for quick access  
-✓ Press Escape to close all Quick Tabs at once
-✓ **NEW**: Cross-tab persistence - Quick Tabs remain visible across browser tabs (optional)
-✓ **NEW**: Nested Quick Tabs support for same-origin iframes
-✓ **NEW**: Close Quick Tab on open - automatically close and switch to tab when opening in new tab (optional)
-✓ **IMPROVED**: Better drag and resize performance with larger hit zones
-✓ **FIXED**: Mouse tracking glitches resolved
+### Quick Tabs v1.5.5.10 Features
+✓ Navigation controls (back, forward, reload, open in new tab)  
+✓ Drag to move, resize from any edge/corner  
+✓ Minimize to floating manager  
+✓ Pin tabs to specific pages  
+✓ Multiple instances with unique ID tracking  
+✓ **NEW**: Slot number labels in debug mode  
+✓ **FIXED**: Position sync bugs (no more jumping to original position)  
+✓ **FIXED**: Pin/unpin no longer causes tabs to close  
+✓ **FIXED**: Duplicate instance handling with ID-based tracking
 
-### Notification Customization (NEW in v1.4.0)
-✓ Border color and width customization  
-✓ Three animation styles: Slide, Pop, or Fade  
-✓ Six position options  
-✓ Three size options  
-✓ Customizable duration
+### State Management Architecture
+- **browser.storage.sync** - Persistent cross-device state (quick_tabs_state_v2)
+- **browser.storage.session** - Fast ephemeral state (Firefox 115+)
+- **BroadcastChannel** - Real-time same-origin sync (<10ms latency)
+- **Runtime Messaging** - Cross-origin sync via background script
+- **ID-based Tracking** - Prevents duplicate instance conflicts
 
-## Security Notice
+## 🚀 Installation
 
-**X-Frame-Options Bypass**: This extension modifies HTTP response headers to allow Quick Tabs to display any website in an iframe, bypassing the X-Frame-Options and Content-Security-Policy frame-ancestors headers. This is necessary for Quick Tabs to work with sites like YouTube that normally prevent iframe embedding.
+### Easy Installation (Recommended)
 
-**⚠️ Security Risk**: Removing these headers disables clickjacking protection for iframed content. While this feature enables Quick Tabs to work universally, it could theoretically be exploited by malicious websites to trick you into clicking on hidden iframe overlays. The extension only affects iframes, not main page loads, minimizing the risk.
+1. Go to the [Releases page](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+2. Download the latest `copy-url-hover-extension.xpi`
+3. Open Firefox/Zen Browser → `about:addons`
+4. Click gear icon (⚙️) → "Install Add-on From File..."
+5. Select the `.xpi` file and confirm
 
-**Use at your own discretion.** If you're concerned about this security risk, you can:
-- Only open Quick Tabs from trusted websites
-- Disable the extension when browsing untrusted sites
-- Review the source code to verify the implementation
+**Auto-updates enabled** - You'll be notified when new versions are available.
 
-## Known Limitations
+### Manual Installation (Development)
 
-Due to browser security restrictions, the following features have limitations:
+1. Navigate to `about:debugging` in Firefox
+2. Click "This Firefox" → "Load Temporary Add-on"
+3. Select `manifest.json` from the extension folder
+4. Extension loaded! (Removed on browser restart)
 
-1. **Quick Tab Focus**: When you click inside a Quick Tab iframe, keyboard shortcuts won't work until you click back in the main page. This is a browser security feature that prevents iframes from stealing keyboard focus.
-   - **Workaround**: Click anywhere in the main page to restore keyboard shortcuts.
+## 📖 Usage
 
-2. **Nested Quick Tabs**: Fully supported for same-origin iframes only. Cross-origin iframes block script injection for security.
-   - **✓ NEW**: Same-origin iframes now support nested Quick Tabs automatically
-   - **Workaround for cross-origin**: Use the "Open in New Tab" button (🔗) to open links from Quick Tabs in a real browser tab.
+### Basic Copy Functions
+1. Hover over any link
+2. Press:
+   - **Y** - Copy URL
+   - **X** - Copy link text
+   - **O** - Open in new tab
+3. Notification confirms the action
 
-3. **Cross-Tab Persistence**: ✓ **NOW AVAILABLE** as an optional feature!
-   - Enable "Persist Quick Tabs across browser tabs" in Quick Tabs settings
-   - Quick Tabs will remain visible when switching between browser tabs
-   - State is saved and restored automatically
+### Quick Tabs
+1. Hover over a link
+2. Press **Q** to open Quick Tab
+3. Use controls:
+   - **←→** Navigate (back/forward)
+   - **↻** Reload
+   - **📍** Pin to current page
+   - **−** Minimize
+   - **🔗** Open in new tab
+   - **✕** Close
+4. **Drag** title bar to move
+5. **Drag** edges/corners to resize
+6. **Pin** to keep Quick Tab only on specific pages
+7. **Press Esc** to close all Quick Tabs
 
-4. **Zen Browser Theme Matching**: Detecting Zen Browser workspace themes requires access to Zen-specific browser APIs which are not available to content scripts.
-   - This would require native Zen Browser integration or WebExtension API access.
-   - **Workaround**: Use the built-in Dark Mode setting which works in all browsers
+### Debug Mode
+Enable in settings to see:
+- **Slot numbers** on Quick Tab toolbars (e.g., "Slot 1", "Slot 2")
+- Slot numbers reuse freed slots (lowest first)
+- Enhanced console logging for troubleshooting
 
-## Supported Websites (100+)
+## ⚙️ Settings
 
-The extension has unique, optimized handlers for over 100 popular websites across multiple categories:
+Access settings by clicking the extension icon. Organized into 4 tabs:
 
-### Social Media (13)
-Twitter/X, Reddit, LinkedIn, Instagram, Facebook, TikTok, Threads, Bluesky, Mastodon, Snapchat, WhatsApp, Telegram
+### Copy URL Tab
+- Keyboard shortcuts for copy URL, copy text, open in new tab
+- Modifier keys (Ctrl, Alt, Shift)
 
-### Video Platforms (7)
-YouTube, Vimeo, DailyMotion, Twitch, Rumble, Odysee, Bitchute
+### Quick Tabs Tab
+- Quick Tab keyboard shortcut (default: Q)
+- Close all shortcut (default: Escape)
+- Max windows (1-10)
+- Default size and position
+- Cross-tab persistence toggle
+- Close on open toggle
 
-### Developer Platforms (12)
-GitHub, GitLab, Bitbucket, Stack Overflow, Stack Exchange, Server Fault, Super User, CodePen, JSFiddle, Replit, Glitch, CodeSandbox
+### Appearance Tab
+- Notification style (tooltip or notification)
+- Colors, borders, animations
+- Position and size
+- Dark mode toggle
+- Debug mode toggle
 
-### Blogging Platforms (8)
-Medium, Dev.to, Hashnode, Substack, WordPress, Blogger, Ghost, Notion
+### Advanced Tab
+- Clear Quick Tab Storage (preserves settings!)
+- Reset settings to defaults
 
-### E-commerce (12)
-Amazon, eBay, Etsy, Walmart, Flipkart, AliExpress, Alibaba, Shopify, Target, Best Buy, Newegg, Wish
+## 🔒 Security Notice
 
-### Image & Design Platforms (13)
-Pinterest, Tumblr, Dribbble, Behance, DeviantArt, Flickr, 500px, Unsplash, Pexels, Pixabay, ArtStation, Imgur, Giphy
+**X-Frame-Options Bypass**: This extension removes X-Frame-Options and CSP frame-ancestors headers to allow Quick Tabs to display any website in iframes. This is necessary for universal compatibility but removes clickjacking protection for iframed content.
 
-### News & Discussion (8)
-Hacker News, Product Hunt, Quora, Discord, Slack, Lobsters, Google News, Feedly
+**Use at your own discretion.** Only open Quick Tabs from trusted websites or disable the extension when browsing untrusted sites.
 
-### Entertainment & Media (13)
-Wikipedia, IMDb, Rotten Tomatoes, Netflix, Letterboxd, Goodreads, MyAnimeList, AniList, Kitsu, Last.fm, Spotify, SoundCloud, Bandcamp
+## 🐛 Known Limitations
 
-### Gaming (6)
-Steam Community, Steam Store, Epic Games, GOG, Itch.io, GameJolt
+1. **Quick Tab Focus**: Clicking inside a Quick Tab iframe captures keyboard focus. Click the main page to restore shortcuts.
 
-### Professional & Learning (7)
-Coursera, Udemy, edX, Khan Academy, Skillshare, Pluralsight, Udacity
+2. **Nested Quick Tabs**: Only works for same-origin iframes. Use "Open in New Tab" button for cross-origin links.
 
-### Other (5)
-Archive.org, Patreon, Ko-fi, Buy Me a Coffee, Gumroad
+3. **Zen Browser Themes**: Cannot detect Zen workspace themes (requires native API access). Use built-in dark mode instead.
 
-**Plus a generic fallback handler that works on any website!**
+## 📚 Documentation
 
-## Auto-Updates
+- **Changelogs**: See `/docs/changelogs/` for version history
+- **Architecture**: See `/docs/manual/quick-tab-sync-architecture.md`
+- **Bug Fixes**: See `/docs/manual/v1-5-5-9-critical-bug-analysis.md` for v1.5.5.10 fixes
+- **Testing Guide**: See `/docs/manual/TESTING_GUIDE_ISSUE_51.md`
 
-This extension supports automatic updates when installed from a `.xpi` file:
+## 🛠️ Development
 
-- The extension checks for updates periodically
-- When a new version is available, Firefox/Zen Browser will notify you
-- You can manually check for updates in `about:addons` by clicking the gear icon and selecting "Check for Updates"
+### Releasing a New Version
 
-### For Developers: Releasing a New Version
-
-To release a new version with auto-updates:
-
-1. Update the `version` field in `manifest.json` (e.g., from `1.0.0` to `1.1.0`)
-2. Update the `version` field in `updates.json` to match
-3. Commit your changes
-4. Create and push a new git tag:
+1. Update `version` in `manifest.json`
+2. Commit changes
+3. Create and push git tag:
    ```bash
-   git tag v1.1.0
-   git push origin v1.1.0
+   git tag v1.x.x
+   git push origin v1.x.x
    ```
-5. GitHub Actions will automatically:
-   - Build the `.xpi` file
-   - Create a GitHub release
-   - Upload the `.xpi` as a release asset
-6. Users with the extension installed will be notified of the update
+4. GitHub Actions builds `.xpi` and creates release
+5. Users receive auto-update notifications
 
-## Troubleshooting
+### Testing
 
-**Extension doesn't appear in toolbar?**
-- Make sure you're on the `about:debugging` page and loaded the extension correctly
+See `/docs/manual/TESTING_GUIDE_ISSUE_51.md` for comprehensive testing procedures.
 
-**Shortcuts don't work?**
-- Reload the webpage (F5) after changing settings
-- Check that you're not in an input field or textarea
-- Enable debug mode to see what keys are being pressed
+## 🌐 Supported Websites (100+)
 
-**Settings don't save?**
-- Make sure you clicked the "Save Settings" button
-- Try resetting to defaults
+Optimized handlers for:
+- Social Media (Twitter/X, Reddit, LinkedIn, Instagram, Facebook, etc.)
+- Video Platforms (YouTube, Vimeo, Twitch, etc.)
+- Developer Platforms (GitHub, GitLab, Stack Overflow, etc.)
+- E-commerce (Amazon, eBay, Etsy, etc.)
+- News & Blogs (Medium, Dev.to, Hashnode, etc.)
+- And many more!
 
-## Notes
+**Plus generic fallback handler for any website.**
 
-- This extension was entirely coded by AI and was only intended for my own personal use; I am not a programmer or software engineer in any capacity.
-- The extension respects Content Security Policies and won't work on restricted Mozilla pages (like about:addons).
+## 📝 Notes
 
-Enjoy copying URLs quickly and easily!
+- This extension was coded by AI as a personal project
+- Not affiliated with Mozilla or Firefox
+- Respects Content Security Policies (won't work on restricted Mozilla pages)
+
+## 📄 License
+
+See repository for license information.
+
+---
+
+**Current Version**: 1.5.5.10  
+**Last Updated**: 2025-11-11  
+**Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
