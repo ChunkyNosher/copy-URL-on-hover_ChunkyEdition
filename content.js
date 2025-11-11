@@ -484,7 +484,7 @@ async function broadcastQuickTabClose(quickTabId, url) {
   debug(`Broadcasting Quick Tab close to other tabs: ${url} (ID: ${quickTabId})`);
 }
 
-function broadcastCloseAll() {
+async function broadcastCloseAll() {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
@@ -564,11 +564,13 @@ async function broadcastQuickTabUnpin(quickTabId, url, width, height, left, top)
   debug(`Broadcasting Quick Tab unpin to other tabs: ${url} (ID: ${quickTabId}) is now unpinned`);
 }
 
-function broadcastClearMinimized() {
+async function broadcastClearMinimized() {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
     action: 'clearMinimizedTabs',
+    cookieStoreId: await getCurrentCookieStoreId(),
+    senderId: tabInstanceId,
     timestamp: Date.now()
   });
 }
@@ -3110,7 +3112,7 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       const quickTabId = container.dataset.quickTabId;
       if (quickTabId) {
         sendRuntimeMessage({
-      action: \'UPDATE_QUICK_TAB_PIN\',
+          action: 'UPDATE_QUICK_TAB_PIN',
           id: quickTabId,
           pinnedToUrl: null
         }).catch(err => {
@@ -3143,7 +3145,7 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       const quickTabId = container.dataset.quickTabId;
       if (quickTabId) {
         sendRuntimeMessage({
-      action: \'UPDATE_QUICK_TAB_PIN\',
+      action: 'UPDATE_QUICK_TAB_PIN',
           id: quickTabId,
           pinnedToUrl: currentPageUrl
         }).catch(err => {
@@ -3246,7 +3248,7 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
     
     // Notify background script for state coordination
     sendRuntimeMessage({
-      action: \'CREATE_QUICK_TAB\',
+      action: 'CREATE_QUICK_TAB',
       id: quickTabId,
       url: url,
       left: Math.round(posX),
@@ -3292,7 +3294,7 @@ function closeQuickTabWindow(container, broadcast = true) {
   // Notify background script for state coordination
   if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
     sendRuntimeMessage({
-      action: \'CLOSE_QUICK_TAB\',
+      action: 'CLOSE_QUICK_TAB',
       id: quickTabId,
       url: url
     }).catch(err => {
@@ -3640,7 +3642,7 @@ function makeDraggable(element, handle) {
     
     // INTEGRATION POINT 1: Send to background script for real-time cross-origin coordination
     sendRuntimeMessage({
-      action: \'UPDATE_QUICK_TAB_POSITION\',
+      action: 'UPDATE_QUICK_TAB_POSITION',
       id: quickTabId,
       url: url,
       left: Math.round(newLeft),
@@ -3668,7 +3670,7 @@ function makeDraggable(element, handle) {
     
     // INTEGRATION POINT 1: Send to background for coordination
     sendRuntimeMessage({
-      action: \'UPDATE_QUICK_TAB_POSITION\',
+      action: 'UPDATE_QUICK_TAB_POSITION',
       id: quickTabId,
       url: url,
       left: Math.round(finalLeft),
@@ -3969,7 +3971,7 @@ function makeResizable(element) {
       
       // Send to background for coordination
       sendRuntimeMessage({
-      action: \'UPDATE_QUICK_TAB_POSITION\',
+      action: 'UPDATE_QUICK_TAB_POSITION',
         id: quickTabId,
         url: url,
         left: Math.round(newLeft),
@@ -3995,7 +3997,7 @@ function makeResizable(element) {
       
       // Final save to all layers
       sendRuntimeMessage({
-      action: \'UPDATE_QUICK_TAB_POSITION\',
+      action: 'UPDATE_QUICK_TAB_POSITION',
         id: quickTabId,
         url: url,
         left: Math.round(finalLeft),
@@ -4540,7 +4542,7 @@ document.addEventListener('visibilitychange', () => {
         if (url && quickTabId) {
           // Send to background immediately (don't wait for throttle)
           sendRuntimeMessage({
-      action: \'UPDATE_QUICK_TAB_POSITION\',
+      action: 'UPDATE_QUICK_TAB_POSITION',
             id: quickTabId,
             url: url,
             left: Math.round(rect.left),

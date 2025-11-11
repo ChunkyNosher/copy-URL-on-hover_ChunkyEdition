@@ -520,8 +520,6 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       if (typeof browser.storage.session !== 'undefined') {
         browser.storage.session.set({
           quick_tabs_session: globalQuickTabState.containers
-            timestamp: Date.now()
-          }
         }).catch(err => {
           console.error('[Background] Error saving to session storage:', err);
         });
