@@ -178,6 +178,16 @@ function releaseQuickTabSlot(quickTabId) {
   }
 }
 
+function resetQuickTabSlots() {
+  // Reset all slot tracking when all Quick Tabs are closed
+  quickTabSlots.clear();
+  availableSlots = [];
+  nextSlotNumber = 1;
+  if (CONFIG.debugMode) {
+    debug('[SLOTS] Reset slot numbering - next Quick Tab will be Slot 1');
+  }
+}
+
 // ==================== BROADCAST CHANNEL SETUP ====================
 // Create a BroadcastChannel for real-time cross-tab Quick Tab sync
 let quickTabChannel = null;
@@ -677,6 +687,11 @@ function restoreQuickTabsFromStorage() {
 function clearQuickTabsFromStorage() {
   browser.storage.sync.remove('quick_tabs_state_v2').then(() => {
     debug('Cleared Quick Tabs from browser.storage.sync');
+    
+    // Reset slot numbering when storage is cleared
+    if (CONFIG.debugMode) {
+      resetQuickTabSlots();
+    }
     
     // Also clear session storage if available
     if (typeof browser.storage.session !== 'undefined') {
@@ -3191,6 +3206,12 @@ function closeQuickTabWindow(container, broadcast = true) {
 function closeAllQuickTabWindows(broadcast = true) {
   const count = quickTabWindows.length;
   quickTabWindows.forEach(window => {
+    // Release slot number for each Quick Tab in debug mode
+    const quickTabId = window.dataset.quickTabId;
+    if (quickTabId && CONFIG.debugMode) {
+      releaseQuickTabSlot(quickTabId);
+    }
+    
     if (window._dragCleanup) {
       window._dragCleanup();
     }
@@ -3200,6 +3221,12 @@ function closeAllQuickTabWindows(broadcast = true) {
     window.remove();
   });
   quickTabWindows = [];
+  
+  // Reset slot numbering when all Quick Tabs are closed
+  if (CONFIG.debugMode) {
+    resetQuickTabSlots();
+  }
+  
   if (count > 0) {
     showNotification(`✓ Closed ${count} Quick Tab${count > 1 ? 's' : ''}`);
     debug(`All Quick Tab windows closed (${count} total)`);
@@ -3451,39 +3478,23 @@ function updateMinimizedTabsManager() {
 }
 
 // Make element draggable
+// ==================== MAKE DRAGGABLE WITH POINTER EVENTS ====================
+// Uses Pointer Events API with setPointerCapture for reliable drag without slipping
+// Integrates with BroadcastChannel, browser.storage.sync, and browser.runtime messaging
 function makeDraggable(element, handle) {
   let isDragging = false;
-  let offsetX = 0, offsetY = 0; // Store click offset within the element
-  let updateIntervalId = null;
-  let pendingX = null;
-  let pendingY = null;
-  let lastUpdateTime = 0;
-  let dragOverlay = null; // Expanded hit area overlay
-  let debugLogIntervalId = null; // For debug logging every 0.5 seconds
+  let offsetX = 0, offsetY = 0;
+  let currentPointerId = null;
+  let dragOverlay = null;
+  let lastThrottledSaveTime = 0;
   let lastDebugLogTime = 0;
-  let lastSaveTime = 0; // For throttled saves during drag
-  const SAVE_THROTTLE_MS = 500; // Save every 500ms during drag
+  const THROTTLE_SAVE_MS = 500; // Save every 500ms during drag
+  const DEBUG_LOG_INTERVAL_MS = 100; // Debug log every 100ms
   
-  // Get update rate from config (default 360 Hz = ~2.78ms interval)
-  // This allows position updates to keep up with high refresh rate monitors
-  const getUpdateInterval = () => {
-    const updatesPerSecond = CONFIG.quickTabUpdateRate || 360;
-    return 1000 / updatesPerSecond; // Convert Hz to milliseconds
-  };
-  
-  const updatePosition = () => {
-    if (pendingX !== null && pendingY !== null) {
-      element.style.left = pendingX + 'px';
-      element.style.top = pendingY + 'px';
-      lastUpdateTime = performance.now();
-      pendingX = null;
-      pendingY = null;
-    }
-  };
-  
+  // Create full-screen overlay during drag to prevent pointer escape
   const createDragOverlay = () => {
-    // Create an invisible overlay that extends beyond the Quick Tab bounds
     const overlay = document.createElement('div');
+    overlay.className = 'copy-url-drag-overlay';
     overlay.style.cssText = `
       position: fixed;
       top: 0;
@@ -3491,8 +3502,9 @@ function makeDraggable(element, handle) {
       right: 0;
       bottom: 0;
       z-index: 999999999;
-      cursor: move;
+      cursor: grabbing;
       pointer-events: auto;
+      background: transparent;
     `;
     document.documentElement.appendChild(overlay);
     return overlay;
@@ -3505,206 +3517,274 @@ function makeDraggable(element, handle) {
     }
   };
   
-  const handleMouseMove = (e) => {
-    if (!isDragging) return;
-    
-    // Additional safety check: ensure mouse button is still pressed
-    if (e.buttons === 0) {
-      // Mouse button was released but we missed the mouseup event
-      handleMouseUp();
-      return;
-    }
-    
-    // Calculate new position based on current mouse position minus the offset
-    // This keeps the element at the same relative position to the cursor
-    let newX = e.clientX - offsetX;
-    let newY = e.clientY - offsetY;
-    
-    // Allow Quick Tabs to move outside viewport boundaries
-    // No constraints applied - can be moved anywhere including outside screen
-    
-    // Store the new position
-    pendingX = newX;
-    pendingY = newY;
-    
-    // NEW: Throttled save during drag to prevent data loss on rapid tab switches
+  // Throttled save during drag (integrates with browser.runtime.sendMessage)
+  const throttledSaveDuringDrag = (newLeft, newTop) => {
     const now = performance.now();
-    if (now - lastSaveTime >= SAVE_THROTTLE_MS) {
-      const iframe = element.querySelector('iframe');
-      if (iframe && CONFIG.quickTabPersistAcrossTabs) {
-        const url = iframe.src || iframe.getAttribute('data-deferred-src');
-        const quickTabId = element.dataset.quickTabId;
-        if (url && quickTabId) {
-          const rect = element.getBoundingClientRect();
-          // Send to background for immediate broadcast
-          browser.runtime.sendMessage({
-            action: 'UPDATE_QUICK_TAB_POSITION',
-            id: quickTabId,
-            url: url,
-            left: Math.round(pendingX),
-            top: Math.round(pendingY),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height)
-          }).catch(err => {
-            debug('Error sending position update to background:', err);
-          });
-          lastSaveTime = now;
-        }
-      }
-    }
+    if (now - lastThrottledSaveTime < THROTTLE_SAVE_MS) return;
     
-    // Debug logging every 100ms while dragging (increased frequency for debug mode)
-    if (CONFIG.debugMode && (now - lastDebugLogTime) >= 100) {
-      const iframe = element.querySelector('iframe');
-      const url = iframe ? iframe.src : 'unknown';
-      debug(`[DRAG] Quick Tab being moved - URL: ${url}, Position: (${Math.round(newX)}, ${Math.round(newY)})`);
-      lastDebugLogTime = now;
-    }
+    lastThrottledSaveTime = now;
     
-    // Immediate update strategy to prevent "slip out" on high refresh rate monitors
-    // Check if enough time has passed since last update
-    const timeSinceLastUpdate = now - lastUpdateTime;
-    const minInterval = getUpdateInterval();
+    // Get Quick Tab metadata
+    const iframe = element.querySelector('iframe');
+    if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
     
-    if (timeSinceLastUpdate >= minInterval) {
-      // Update immediately if interval has passed
-      updatePosition();
-    }
+    const url = iframe.src || iframe.getAttribute('data-deferred-src');
+    const quickTabId = element.dataset.quickTabId;
+    if (!url || !quickTabId) return;
     
-    e.preventDefault();
+    const rect = element.getBoundingClientRect();
+    
+    // INTEGRATION POINT 1: Send to background script for real-time cross-origin coordination
+    browser.runtime.sendMessage({
+      action: 'UPDATE_QUICK_TAB_POSITION',
+      id: quickTabId,
+      url: url,
+      left: Math.round(newLeft),
+      top: Math.round(newTop),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    }).catch(err => {
+      debug('[POINTER] Error sending throttled position update to background:', err);
+    });
+    
+    // INTEGRATION POINT 2: BroadcastChannel for same-origin real-time sync (redundant but fast)
+    broadcastQuickTabMove(quickTabId, url, Math.round(newLeft), Math.round(newTop));
   };
   
-  const handleMouseUp = (e) => {
-    // Always reset dragging state, even if called multiple times
-    isDragging = false;
+  // Final save on drag end (integrates with all three layers)
+  const finalSaveOnDragEnd = (finalLeft, finalTop) => {
+    const iframe = element.querySelector('iframe');
+    if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
     
-    // Remove the expanded overlay
-    removeDragOverlay();
+    const url = iframe.src || iframe.getAttribute('data-deferred-src');
+    const quickTabId = element.dataset.quickTabId;
+    if (!url || !quickTabId) return;
     
-    // Clear any update interval
-    if (updateIntervalId) {
-      clearInterval(updateIntervalId);
-      updateIntervalId = null;
-    }
+    const rect = element.getBoundingClientRect();
     
-    // Apply any pending position immediately
-    if (pendingX !== null && pendingY !== null) {
-      element.style.left = pendingX + 'px';
-      element.style.top = pendingY + 'px';
-      
-      // Debug log final position
-      if (CONFIG.debugMode) {
-        const iframe = element.querySelector('iframe');
-        const url = iframe ? iframe.src : 'unknown';
-        debug(`[DRAG] Quick Tab move completed - URL: ${url}, Final Position: (${Math.round(pendingX)}, ${Math.round(pendingY)})`);
-      }
-      
-      // Send to background for real-time cross-origin sync
-      const iframe = element.querySelector('iframe');
-      if (iframe && CONFIG.quickTabPersistAcrossTabs) {
-        const url = iframe.src || iframe.getAttribute('data-deferred-src');
-        const quickTabId = element.dataset.quickTabId;
-        if (url && quickTabId) {
-          const rect = element.getBoundingClientRect();
-          
-          // Send to background for immediate broadcast
-          browser.runtime.sendMessage({
-            action: 'UPDATE_QUICK_TAB_POSITION',
-            id: quickTabId,
-            url: url,
-            left: Math.round(pendingX),
-            top: Math.round(pendingY),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height)
-          }).catch(err => {
-            debug('Error sending position update to background:', err);
-          });
-          
-          // KEEP the BroadcastChannel call for redundancy (same-origin tabs)
-          broadcastQuickTabMove(quickTabId, url, Math.round(pendingX), Math.round(pendingY));
-          
-          // NOTE: Background script now handles storage save
-          // No need to call saveQuickTabsToStorage() here
-        }
-      }
-      
-      pendingX = null;
-      pendingY = null;
-    }
+    // INTEGRATION POINT 1: Send to background for coordination
+    browser.runtime.sendMessage({
+      action: 'UPDATE_QUICK_TAB_POSITION',
+      id: quickTabId,
+      url: url,
+      left: Math.round(finalLeft),
+      top: Math.round(finalTop),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    }).catch(err => {
+      debug('[POINTER] Error sending final position to background:', err);
+    });
+    
+    // INTEGRATION POINT 2: BroadcastChannel for same-origin tabs
+    broadcastQuickTabMove(quickTabId, url, Math.round(finalLeft), Math.round(finalTop));
+    
+    // NOTE: Background script now handles storage.sync saves
+    // This prevents race conditions with isSavingToStorage flag
   };
   
-  const handleMouseDown = (e) => {
-    // Don't drag if clicking on a button or img
-    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'IMG') {
-      return;
-    }
+  // =========================
+  // POINTER EVENT HANDLERS
+  // =========================
+  
+  const handlePointerDown = (e) => {
+    // Ignore non-primary buttons and clicks on buttons/images
+    if (e.button !== 0) return;
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'IMG') return;
     
-    // Only start dragging on left mouse button
-    if (e.button !== 0) {
-      return;
-    }
-    
+    // Start dragging
     isDragging = true;
+    currentPointerId = e.pointerId;
     
-    // Create the expanded drag overlay
-    dragOverlay = createDragOverlay();
+    // CRITICAL: Capture all future pointer events to this element
+    // This prevents "drag slipping" even during very fast mouse movements
+    handle.setPointerCapture(e.pointerId);
     
-    // Calculate the offset between the mouse position and the element's top-left corner
+    // Calculate offset from mouse to element top-left
     const rect = element.getBoundingClientRect();
     offsetX = e.clientX - rect.left;
     offsetY = e.clientY - rect.top;
     
-    lastUpdateTime = performance.now();
-    lastDebugLogTime = performance.now(); // Reset debug log timer
+    // Create full-screen overlay for maximum capture area
+    dragOverlay = createDragOverlay();
     
-    // Debug log drag start
+    // Update cursor
+    handle.style.cursor = 'grabbing';
+    element.style.cursor = 'grabbing';
+    
+    // Reset timing trackers
+    lastThrottledSaveTime = performance.now();
+    lastDebugLogTime = performance.now();
+    
     if (CONFIG.debugMode) {
-      const iframe = element.querySelector('iframe');
-      const url = iframe ? iframe.src : 'unknown';
-      debug(`[DRAG] Quick Tab drag started - URL: ${url}, Start Position: (${Math.round(rect.left)}, ${Math.round(rect.top)})`);
+      const url = element.querySelector('iframe')?.src || 'unknown';
+      debug(`[POINTER DOWN] Drag started - Pointer ID: ${e.pointerId}, URL: ${url}, Start: (${Math.round(rect.left)}, ${Math.round(rect.top)})`);
     }
     
     e.preventDefault();
   };
   
-  // Also handle mouseleave to ensure we stop dragging if mouse leaves the document
-  const handleMouseLeave = (e) => {
-    if (isDragging && e.buttons === 0) {
-      handleMouseUp(e);
+  const handlePointerMove = (e) => {
+    if (!isDragging) return;
+    
+    // Verify pointer is still captured (safety check)
+    if (e.pointerId !== currentPointerId) return;
+    
+    // Calculate new position (direct, no RAF delay)
+    const newLeft = e.clientX - offsetX;
+    const newTop = e.clientY - offsetY;
+    
+    // IMMEDIATE POSITION UPDATE (no requestAnimationFrame)
+    // This eliminates the 16ms delay that causes stale positions
+    element.style.left = newLeft + 'px';
+    element.style.top = newTop + 'px';
+    
+    // Throttled save during drag (500ms intervals)
+    throttledSaveDuringDrag(newLeft, newTop);
+    
+    // Debug logging (throttled to 100ms intervals)
+    if (CONFIG.debugMode) {
+      const now = performance.now();
+      if (now - lastDebugLogTime >= DEBUG_LOG_INTERVAL_MS) {
+        const url = element.querySelector('iframe')?.src || 'unknown';
+        debug(`[POINTER MOVE] Dragging - URL: ${url}, Position: (${Math.round(newLeft)}, ${Math.round(newTop)})`);
+        lastDebugLogTime = now;
+      }
+    }
+    
+    e.preventDefault();
+  };
+  
+  const handlePointerUp = (e) => {
+    if (!isDragging) return;
+    if (e.pointerId !== currentPointerId) return;
+    
+    isDragging = false;
+    
+    // Get final position
+    const rect = element.getBoundingClientRect();
+    const finalLeft = rect.left;
+    const finalTop = rect.top;
+    
+    // Release pointer capture (automatic, but explicit is clearer)
+    handle.releasePointerCapture(e.pointerId);
+    
+    // Remove overlay
+    removeDragOverlay();
+    
+    // Restore cursor
+    handle.style.cursor = 'grab';
+    element.style.cursor = 'default';
+    
+    // FINAL SAVE - integrates with all three sync layers
+    finalSaveOnDragEnd(finalLeft, finalTop);
+    
+    if (CONFIG.debugMode) {
+      const url = element.querySelector('iframe')?.src || 'unknown';
+      debug(`[POINTER UP] Drag ended - URL: ${url}, Final Position: (${Math.round(finalLeft)}, ${Math.round(finalTop)})`);
     }
   };
   
-  handle.addEventListener('mousedown', handleMouseDown);
-  document.addEventListener('mousemove', handleMouseMove, { passive: false });
-  document.addEventListener('mouseup', handleMouseUp, true);
-  document.addEventListener('mouseleave', handleMouseLeave, true);
-  // Also listen on window to catch mouseup events that occur outside the browser window
-  window.addEventListener('mouseup', handleMouseUp, true);
-  window.addEventListener('blur', handleMouseUp, true);
+  const handlePointerCancel = (e) => {
+    if (!isDragging) return;
+    
+    // CRITICAL FOR ISSUE #51: Handle tab switches during drag
+    // This event fires when:
+    // - User switches tabs mid-drag (document.hidden becomes true)
+    // - Browser interrupts the drag operation
+    // - Touch input is cancelled
+    
+    isDragging = false;
+    
+    // Get current position before cleanup
+    const rect = element.getBoundingClientRect();
+    const currentLeft = rect.left;
+    const currentTop = rect.top;
+    
+    // Release capture
+    if (currentPointerId !== null) {
+      try {
+        handle.releasePointerCapture(currentPointerId);
+      } catch (err) {
+        // Capture may already be released
+        debug('[POINTER CANCEL] Capture already released');
+      }
+    }
+    
+    // Remove overlay
+    removeDragOverlay();
+    
+    // Restore cursor
+    handle.style.cursor = 'grab';
+    element.style.cursor = 'default';
+    
+    // EMERGENCY SAVE - ensures position is saved even if drag was interrupted
+    finalSaveOnDragEnd(currentLeft, currentTop);
+    
+    if (CONFIG.debugMode) {
+      const url = element.querySelector('iframe')?.src || 'unknown';
+      debug(`[POINTER CANCEL] Drag cancelled - URL: ${url}, Saved Position: (${Math.round(currentLeft)}, ${Math.round(currentTop)})`);
+    }
+  };
   
-  // Store cleanup function
+  const handleLostPointerCapture = (e) => {
+    // This fires when capture is released (either explicitly or automatically)
+    // Useful for cleanup verification
+    
+    if (CONFIG.debugMode) {
+      debug(`[LOST CAPTURE] Pointer capture released - Pointer ID: ${e.pointerId}`);
+    }
+    
+    // Ensure cleanup
+    isDragging = false;
+    removeDragOverlay();
+    handle.style.cursor = 'grab';
+    element.style.cursor = 'default';
+  };
+  
+  // =========================
+  // ATTACH EVENT LISTENERS
+  // =========================
+  
+  handle.addEventListener('pointerdown', handlePointerDown);
+  handle.addEventListener('pointermove', handlePointerMove);
+  handle.addEventListener('pointerup', handlePointerUp);
+  handle.addEventListener('pointercancel', handlePointerCancel);
+  handle.addEventListener('lostpointercapture', handleLostPointerCapture);
+  
+  // Also handle window/document level events for safety
+  window.addEventListener('blur', () => {
+    if (isDragging) {
+      handlePointerCancel({ pointerId: currentPointerId });
+    }
+  });
+  
+  // Store cleanup function for when Quick Tab is closed
   element._dragCleanup = () => {
     removeDragOverlay();
-    handle.removeEventListener('mousedown', handleMouseDown);
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp, true);
-    document.removeEventListener('mouseleave', handleMouseLeave, true);
-    window.removeEventListener('mouseup', handleMouseUp, true);
-    window.removeEventListener('blur', handleMouseUp, true);
-    if (updateIntervalId) {
-      clearInterval(updateIntervalId);
+    handle.removeEventListener('pointerdown', handlePointerDown);
+    handle.removeEventListener('pointermove', handlePointerMove);
+    handle.removeEventListener('pointerup', handlePointerUp);
+    handle.removeEventListener('pointercancel', handlePointerCancel);
+    handle.removeEventListener('lostpointercapture', handleLostPointerCapture);
+    
+    if (CONFIG.debugMode) {
+      debug('[CLEANUP] Drag event listeners removed');
     }
   };
 }
+// ==================== END MAKE DRAGGABLE ====================
 
-// Make Quick Tab window resizable
+// ==================== MAKE RESIZABLE WITH POINTER EVENTS ====================
+// Uses Pointer Events API for each resize handle direction
+// Integrates with BroadcastChannel and browser.runtime messaging
 function makeResizable(element) {
   const minWidth = 300;
   const minHeight = 200;
   const handleSize = 10;
+  const THROTTLE_SAVE_MS = 500;
+  const DEBUG_LOG_INTERVAL_MS = 100;
   
-  // Create resize handles
+  // Define resize handles (unchanged)
   const handles = {
     'se': { cursor: 'se-resize', bottom: 0, right: 0 },
     'sw': { cursor: 'sw-resize', bottom: 0, left: 0 },
@@ -3735,15 +3815,15 @@ function makeResizable(element) {
     `;
     
     let isResizing = false;
+    let currentPointerId = null;
     let startX, startY, startWidth, startHeight, startLeft, startTop;
-    let animationFrameId = null;
-    let pendingResize = null;
     let resizeOverlay = null;
-    let lastDebugLogTime = 0; // For debug logging every 0.5 seconds
+    let lastThrottledSaveTime = 0;
+    let lastDebugLogTime = 0;
     
     const createResizeOverlay = () => {
-      // Create an invisible overlay that extends beyond the Quick Tab bounds
       const overlay = document.createElement('div');
+      overlay.className = 'copy-url-resize-overlay';
       overlay.style.cssText = `
         position: fixed;
         top: 0;
@@ -3753,6 +3833,7 @@ function makeResizable(element) {
         z-index: 999999999;
         cursor: ${style.cursor};
         pointer-events: auto;
+        background: transparent;
       `;
       document.documentElement.appendChild(overlay);
       return overlay;
@@ -3765,14 +3846,77 @@ function makeResizable(element) {
       }
     };
     
-    const handleMouseDown = (e) => {
+    // Throttled save during resize
+    const throttledSaveDuringResize = (newWidth, newHeight, newLeft, newTop) => {
+      const now = performance.now();
+      if (now - lastThrottledSaveTime < THROTTLE_SAVE_MS) return;
+      
+      lastThrottledSaveTime = now;
+      
+      const iframe = element.querySelector('iframe');
+      if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
+      
+      const url = iframe.src || iframe.getAttribute('data-deferred-src');
+      const quickTabId = element.dataset.quickTabId;
+      if (!url || !quickTabId) return;
+      
+      // Send to background for coordination
+      browser.runtime.sendMessage({
+        action: 'UPDATE_QUICK_TAB_POSITION',
+        id: quickTabId,
+        url: url,
+        left: Math.round(newLeft),
+        top: Math.round(newTop),
+        width: Math.round(newWidth),
+        height: Math.round(newHeight)
+      }).catch(err => {
+        debug('[POINTER] Error sending throttled resize update:', err);
+      });
+      
+      // BroadcastChannel for same-origin sync
+      broadcastQuickTabResize(quickTabId, url, Math.round(newWidth), Math.round(newHeight));
+      broadcastQuickTabMove(quickTabId, url, Math.round(newLeft), Math.round(newTop));
+    };
+    
+    const finalSaveOnResizeEnd = (finalWidth, finalHeight, finalLeft, finalTop) => {
+      const iframe = element.querySelector('iframe');
+      if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
+      
+      const url = iframe.src || iframe.getAttribute('data-deferred-src');
+      const quickTabId = element.dataset.quickTabId;
+      if (!url || !quickTabId) return;
+      
+      // Final save to all layers
+      browser.runtime.sendMessage({
+        action: 'UPDATE_QUICK_TAB_POSITION',
+        id: quickTabId,
+        url: url,
+        left: Math.round(finalLeft),
+        top: Math.round(finalTop),
+        width: Math.round(finalWidth),
+        height: Math.round(finalHeight)
+      }).catch(err => {
+        debug('[POINTER] Error sending final resize to background:', err);
+      });
+      
+      broadcastQuickTabResize(quickTabId, url, Math.round(finalWidth), Math.round(finalHeight));
+      broadcastQuickTabMove(quickTabId, url, Math.round(finalLeft), Math.round(finalTop));
+    };
+    
+    // =========================
+    // POINTER EVENT HANDLERS
+    // =========================
+    
+    const handlePointerDown = (e) => {
       if (e.button !== 0) return;
       
       isResizing = true;
+      currentPointerId = e.pointerId;
       
-      // Create the expanded resize overlay
-      resizeOverlay = createResizeOverlay();
+      // Capture pointer to prevent escape during resize
+      handle.setPointerCapture(e.pointerId);
       
+      // Store initial state
       startX = e.clientX;
       startY = e.clientY;
       const rect = element.getBoundingClientRect();
@@ -3781,38 +3925,25 @@ function makeResizable(element) {
       startLeft = rect.left;
       startTop = rect.top;
       
-      lastDebugLogTime = performance.now(); // Reset debug log timer
+      // Create overlay
+      resizeOverlay = createResizeOverlay();
       
-      // Debug log resize start
+      // Reset timing
+      lastThrottledSaveTime = performance.now();
+      lastDebugLogTime = performance.now();
+      
       if (CONFIG.debugMode) {
-        const iframe = element.querySelector('iframe');
-        const url = iframe ? iframe.src : 'unknown';
-        debug(`[RESIZE] Quick Tab resize started - URL: ${url}, Start Size: ${Math.round(startWidth)}x${Math.round(startHeight)}, Position: (${Math.round(startLeft)}, ${Math.round(startTop)})`);
+        const url = element.querySelector('iframe')?.src || 'unknown';
+        debug(`[POINTER DOWN] Resize started - Direction: ${direction}, URL: ${url}, Start Size: ${Math.round(startWidth)}x${Math.round(startHeight)}`);
       }
       
       e.preventDefault();
       e.stopPropagation();
     };
     
-    const applyResize = () => {
-      if (pendingResize) {
-        element.style.width = pendingResize.width + 'px';
-        element.style.height = pendingResize.height + 'px';
-        element.style.left = pendingResize.left + 'px';
-        element.style.top = pendingResize.top + 'px';
-        pendingResize = null;
-        animationFrameId = null;
-      }
-    };
-    
-    const handleMouseMove = (e) => {
+    const handlePointerMove = (e) => {
       if (!isResizing) return;
-      
-      // Safety check for lost mouseup
-      if (e.buttons === 0) {
-        handleMouseUp();
-        return;
-      }
+      if (e.pointerId !== currentPointerId) return;
       
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
@@ -3822,7 +3953,7 @@ function makeResizable(element) {
       let newLeft = startLeft;
       let newTop = startTop;
       
-      // Adjust based on direction
+      // Calculate new dimensions based on resize direction
       if (direction.includes('e')) {
         newWidth = Math.max(minWidth, startWidth + dx);
       }
@@ -3842,108 +3973,124 @@ function makeResizable(element) {
         newTop = startTop + constrainedDy;
       }
       
-      // Allow Quick Tabs to be resized beyond viewport boundaries
-      // No viewport constraints applied
+      // IMMEDIATE UPDATE (no RAF)
+      element.style.width = newWidth + 'px';
+      element.style.height = newHeight + 'px';
+      element.style.left = newLeft + 'px';
+      element.style.top = newTop + 'px';
       
-      // Debug logging every 100ms while resizing (increased frequency for debug mode)
-      const now = performance.now();
-      if (CONFIG.debugMode && (now - lastDebugLogTime) >= 100) {
-        const iframe = element.querySelector('iframe');
-        const url = iframe ? iframe.src : 'unknown';
-        debug(`[RESIZE] Quick Tab being resized - URL: ${url}, Size: ${Math.round(newWidth)}x${Math.round(newHeight)}, Position: (${Math.round(newLeft)}, ${Math.round(newTop)})`);
-        lastDebugLogTime = now;
-      }
+      // Throttled save during resize
+      throttledSaveDuringResize(newWidth, newHeight, newLeft, newTop);
       
-      // Store pending resize
-      pendingResize = { width: newWidth, height: newHeight, left: newLeft, top: newTop };
-      
-      // Schedule update using requestAnimationFrame for smooth resizing
-      if (!animationFrameId) {
-        animationFrameId = requestAnimationFrame(applyResize);
+      // Debug logging
+      if (CONFIG.debugMode) {
+        const now = performance.now();
+        if (now - lastDebugLogTime >= DEBUG_LOG_INTERVAL_MS) {
+          const url = element.querySelector('iframe')?.src || 'unknown';
+          debug(`[POINTER MOVE] Resizing - URL: ${url}, Size: ${Math.round(newWidth)}x${Math.round(newHeight)}, Position: (${Math.round(newLeft)}, ${Math.round(newTop)})`);
+          lastDebugLogTime = now;
+        }
       }
       
       e.preventDefault();
     };
     
-    const handleMouseUp = () => {
+    const handlePointerUp = (e) => {
+      if (!isResizing) return;
+      if (e.pointerId !== currentPointerId) return;
+      
       isResizing = false;
       
-      // Remove the expanded overlay
+      // Get final dimensions
+      const rect = element.getBoundingClientRect();
+      const finalWidth = rect.width;
+      const finalHeight = rect.height;
+      const finalLeft = rect.left;
+      const finalTop = rect.top;
+      
+      // Release capture
+      handle.releasePointerCapture(e.pointerId);
+      
+      // Remove overlay
       removeResizeOverlay();
       
-      // Apply any pending resize immediately
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
-      }
-      if (pendingResize) {
-        element.style.width = pendingResize.width + 'px';
-        element.style.height = pendingResize.height + 'px';
-        element.style.left = pendingResize.left + 'px';
-        element.style.top = pendingResize.top + 'px';
-        
-        // Debug log final resize
-        if (CONFIG.debugMode) {
-          const iframe = element.querySelector('iframe');
-          const url = iframe ? (iframe.src || iframe.getAttribute('data-deferred-src')) : 'unknown';
-          debug(`[RESIZE] Quick Tab resize completed - URL: ${url}, Final Size: ${Math.round(pendingResize.width)}x${Math.round(pendingResize.height)}, Position: (${Math.round(pendingResize.left)}, ${Math.round(pendingResize.top)})`);
-        }
-        
-        // Send to background for real-time cross-origin sync
-        const iframe = element.querySelector('iframe');
-        if (iframe && CONFIG.quickTabPersistAcrossTabs) {
-          const url = iframe.src || iframe.getAttribute('data-deferred-src');
-          const quickTabId = element.dataset.quickTabId;
-          if (url && quickTabId) {
-            // Send combined position and size update to background
-            browser.runtime.sendMessage({
-              action: 'UPDATE_QUICK_TAB_POSITION',
-              id: quickTabId,
-              url: url,
-              left: Math.round(pendingResize.left),
-              top: Math.round(pendingResize.top),
-              width: Math.round(pendingResize.width),
-              height: Math.round(pendingResize.height)
-            }).catch(err => {
-              debug('Error sending resize update to background:', err);
-            });
-            
-            // KEEP the BroadcastChannel calls for redundancy (same-origin tabs)
-            broadcastQuickTabResize(quickTabId, url, Math.round(pendingResize.width), Math.round(pendingResize.height));
-            broadcastQuickTabMove(quickTabId, url, Math.round(pendingResize.left), Math.round(pendingResize.top));
-            
-            // NOTE: Background script now handles storage save
-            // No need to call saveQuickTabsToStorage() here
-          }
-        }
-        
-        pendingResize = null;
+      // Final save
+      finalSaveOnResizeEnd(finalWidth, finalHeight, finalLeft, finalTop);
+      
+      if (CONFIG.debugMode) {
+        const url = element.querySelector('iframe')?.src || 'unknown';
+        debug(`[POINTER UP] Resize ended - URL: ${url}, Final Size: ${Math.round(finalWidth)}x${Math.round(finalHeight)}, Position: (${Math.round(finalLeft)}, ${Math.round(finalTop)})`);
       }
     };
     
-    handle.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mousemove', handleMouseMove, { passive: false });
-    document.addEventListener('mouseup', handleMouseUp, true);
-    window.addEventListener('mouseup', handleMouseUp, true);
-    window.addEventListener('blur', handleMouseUp, true);
+    const handlePointerCancel = (e) => {
+      if (!isResizing) return;
+      
+      // Handle interruption during resize
+      isResizing = false;
+      
+      const rect = element.getBoundingClientRect();
+      
+      if (currentPointerId !== null) {
+        try {
+          handle.releasePointerCapture(currentPointerId);
+        } catch (err) {
+          debug('[POINTER CANCEL] Resize capture already released');
+        }
+      }
+      
+      removeResizeOverlay();
+      
+      // Emergency save
+      finalSaveOnResizeEnd(rect.width, rect.height, rect.left, rect.top);
+      
+      if (CONFIG.debugMode) {
+        const url = element.querySelector('iframe')?.src || 'unknown';
+        debug(`[POINTER CANCEL] Resize cancelled - URL: ${url}, Saved Size: ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+      }
+    };
+    
+    // Attach listeners
+    handle.addEventListener('pointerdown', handlePointerDown);
+    handle.addEventListener('pointermove', handlePointerMove);
+    handle.addEventListener('pointerup', handlePointerUp);
+    handle.addEventListener('pointercancel', handlePointerCancel);
     
     element.appendChild(handle);
-    resizeHandleElements.push({ handle, handleMouseDown, handleMouseMove, handleMouseUp, removeResizeOverlay });
+    resizeHandleElements.push({ 
+      handle, 
+      handlePointerDown, 
+      handlePointerMove, 
+      handlePointerUp, 
+      handlePointerCancel,
+      removeResizeOverlay 
+    });
   });
   
   // Store cleanup function
   element._resizeCleanup = () => {
-    resizeHandleElements.forEach(({ handle, handleMouseDown, handleMouseMove, handleMouseUp, removeResizeOverlay }) => {
+    resizeHandleElements.forEach(({ 
+      handle, 
+      handlePointerDown, 
+      handlePointerMove, 
+      handlePointerUp, 
+      handlePointerCancel,
+      removeResizeOverlay 
+    }) => {
       removeResizeOverlay();
-      handle.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp, true);
-      window.removeEventListener('mouseup', handleMouseUp, true);
-      window.removeEventListener('blur', handleMouseUp, true);
+      handle.removeEventListener('pointerdown', handlePointerDown);
+      handle.removeEventListener('pointermove', handlePointerMove);
+      handle.removeEventListener('pointerup', handlePointerUp);
+      handle.removeEventListener('pointercancel', handlePointerCancel);
       handle.remove();
     });
+    
+    if (CONFIG.debugMode) {
+      debug('[CLEANUP] Resize event listeners removed');
+    }
   };
 }
+// ==================== END MAKE RESIZABLE ====================
 
 // Check modifiers
 // Keyboard handler
@@ -4257,16 +4404,17 @@ function resumeAllQuickTabMedia() {
 }
 
 // Listen for page visibility changes
+// ==================== VISIBILITY CHANGE HANDLER ====================
+// CRITICAL FOR ISSUE #51: Force save when user switches tabs
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     // Page is now hidden (user switched to another tab)
-    debug('Page hidden - pausing media in Quick Tabs');
+    debug('[VISIBILITY] Page hidden - pausing media and force-saving state');
     pauseAllQuickTabMedia();
     
-    // NEW: Force save Quick Tab state when user switches away from this tab
-    debug('Tab hidden - forcing Quick Tab state save');
+    // FORCE SAVE: Ensure all Quick Tab positions/sizes are saved before tab becomes inactive
+    // This prevents position loss when user switches tabs during or immediately after drag
     if (CONFIG.quickTabPersistAcrossTabs && quickTabWindows.length > 0) {
-      // Send current state to background for immediate broadcast
       quickTabWindows.forEach(container => {
         const iframe = container.querySelector('iframe');
         const rect = container.getBoundingClientRect();
@@ -4274,6 +4422,7 @@ document.addEventListener('visibilitychange', () => {
         const quickTabId = container.dataset.quickTabId;
         
         if (url && quickTabId) {
+          // Send to background immediately (don't wait for throttle)
           browser.runtime.sendMessage({
             action: 'UPDATE_QUICK_TAB_POSITION',
             id: quickTabId,
@@ -4281,19 +4430,23 @@ document.addEventListener('visibilitychange', () => {
             left: Math.round(rect.left),
             top: Math.round(rect.top),
             width: Math.round(rect.width),
-            height: Math.round(rect.height)
+            height: Math.round(rect.height),
+            source: 'visibilitychange' // Mark source for debugging
           }).catch(err => {
-            debug('Error sending visibility change update to background:', err);
+            debug('[VISIBILITY] Error sending emergency save to background:', err);
           });
         }
       });
+      
+      debug(`[VISIBILITY] Emergency saved ${quickTabWindows.length} Quick Tab positions before tab switch`);
     }
   } else {
     // Page is now visible (user switched back to this tab)
-    debug('Page visible - resuming media in Quick Tabs');
+    debug('[VISIBILITY] Page visible - resuming media');
     resumeAllQuickTabMedia();
   }
 });
+// ==================== END VISIBILITY CHANGE HANDLER ====================
 
 // Also pause media when window loses focus (additional safety)
 window.addEventListener('blur', () => {

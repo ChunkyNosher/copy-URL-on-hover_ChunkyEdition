@@ -1,6 +1,6 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.5.10** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management.
+**Version 1.5.6** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
@@ -25,23 +25,32 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ✓ **Debug Mode** - Slot number tracking and enhanced logging  
 ✓ **Dark Mode** - Full dark theme support
 
-### Quick Tabs v1.5.5.10 Features
+### Quick Tabs v1.5.6 Features
 ✓ Navigation controls (back, forward, reload, open in new tab)  
-✓ Drag to move, resize from any edge/corner  
+✓ **NEW**: Pointer Events API for drag/resize (eliminates drag slipping)  
+✓ **NEW**: Tab switch handling during drag (pointercancel event)  
+✓ **FIXED**: Slot numbers reset when all Quick Tabs closed  
+✓ Drag to move with setPointerCapture (no escape at high speeds)  
+✓ Resize from any edge/corner with pointer capture  
 ✓ Minimize to floating manager  
 ✓ Pin tabs to specific pages  
 ✓ Multiple instances with unique ID tracking  
-✓ **NEW**: Slot number labels in debug mode  
-✓ **FIXED**: Position sync bugs (no more jumping to original position)  
-✓ **FIXED**: Pin/unpin no longer causes tabs to close  
-✓ **FIXED**: Duplicate instance handling with ID-based tracking
+✓ Slot number labels in debug mode (persistent across tabs)
 
-### State Management Architecture
+### Modern API Framework (v1.5.6)
+- **Pointer Events API** - Reliable drag/resize with setPointerCapture (no slipping)
 - **browser.storage.sync** - Persistent cross-device state (quick_tabs_state_v2)
 - **browser.storage.session** - Fast ephemeral state (Firefox 115+)
 - **BroadcastChannel** - Real-time same-origin sync (<10ms latency)
 - **Runtime Messaging** - Cross-origin sync via background script
 - **ID-based Tracking** - Prevents duplicate instance conflicts
+
+### Why Pointer Events API?
+✅ **Eliminates drag slipping** - Pointer capture prevents Quick Tabs from escaping cursor during fast movements  
+✅ **Handles tab switches** - pointercancel event provides explicit hook for emergency saves  
+✅ **Touch/Pen support** - Unified API for mouse, touch, and stylus input  
+✅ **Better performance** - Direct updates (no requestAnimationFrame delays)  
+✅ **Cleaner code** - 30% fewer lines, easier to maintain
 
 ## 🚀 Installation
 
@@ -82,16 +91,17 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
    - **−** Minimize
    - **🔗** Open in new tab
    - **✕** Close
-4. **Drag** title bar to move
-5. **Drag** edges/corners to resize
+4. **Drag** title bar to move (uses Pointer Events - no slipping!)
+5. **Drag** edges/corners to resize (pointer capture for smooth resizing)
 6. **Pin** to keep Quick Tab only on specific pages
-7. **Press Esc** to close all Quick Tabs
+7. **Press Esc** to close all Quick Tabs (slot numbers reset)
 
 ### Debug Mode
 Enable in settings to see:
 - **Slot numbers** on Quick Tab toolbars (e.g., "Slot 1", "Slot 2")
-- Slot numbers reuse freed slots (lowest first)
-- Enhanced console logging for troubleshooting
+- Slot numbers reset when all Quick Tabs are closed (Esc or Clear Storage)
+- Slot numbers stay consistent across tab switches
+- Enhanced console logging with [POINTER] tags for drag/resize events
 
 ## ⚙️ Settings
 
@@ -117,12 +127,14 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 - Debug mode toggle
 
 ### Advanced Tab
-- Clear Quick Tab Storage (preserves settings!)
+- Clear Quick Tab Storage (also resets slot numbers!)
 - Reset settings to defaults
 
 ## 🔒 Security Notice
 
-**X-Frame-Options Bypass**: This extension removes X-Frame-Options and CSP frame-ancestors headers to allow Quick Tabs to display any website in iframes. This is necessary for universal compatibility but removes clickjacking protection for iframed content.
+**Manifest v2 Required**: This extension uses Manifest v2 to access the full `webRequest` API with `webRequestBlocking` permission. This allows the extension to modify X-Frame-Options and CSP headers for Quick Tabs to display any website in iframes.
+
+**X-Frame-Options Bypass**: The extension removes X-Frame-Options and CSP frame-ancestors headers to allow Quick Tabs to display any website in iframes. This is necessary for universal compatibility but removes clickjacking protection for iframed content.
 
 **Use at your own discretion.** Only open Quick Tabs from trusted websites or disable the extension when browsing untrusted sites.
 
@@ -134,11 +146,13 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 
 3. **Zen Browser Themes**: Cannot detect Zen workspace themes (requires native API access). Use built-in dark mode instead.
 
+4. **Manifest v2**: Extension must remain on Manifest v2 for full webRequest API functionality. Manifest v3 does not support `webRequestBlocking` which is required for header modification.
+
 ## 📚 Documentation
 
 - **Changelogs**: See `/docs/changelogs/` for version history
 - **Architecture**: See `/docs/manual/quick-tab-sync-architecture.md`
-- **Bug Fixes**: See `/docs/manual/v1-5-5-9-critical-bug-analysis.md` for v1.5.5.10 fixes
+- **Pointer Events Guide**: See `/docs/manual/Pointer-Events-Integration-Guide.md`
 - **Testing Guide**: See `/docs/manual/TESTING_GUIDE_ISSUE_51.md`
 
 ## 🛠️ Development
@@ -159,6 +173,16 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 
 See `/docs/manual/TESTING_GUIDE_ISSUE_51.md` for comprehensive testing procedures.
 
+### API Framework
+
+**v1.5.6** uses modern browser APIs for optimal performance:
+
+- **Pointer Events API** (setPointerCapture) - Drag/resize without slipping
+- **BroadcastChannel API** - Real-time same-origin synchronization
+- **browser.runtime messaging** - Cross-origin coordination
+- **browser.storage.sync** - Persistent state across devices
+- **browser.storage.session** - Fast ephemeral state (Firefox 115+)
+
 ## 🌐 Supported Websites (100+)
 
 Optimized handlers for:
@@ -176,6 +200,7 @@ Optimized handlers for:
 - This extension was coded by AI as a personal project
 - Not affiliated with Mozilla or Firefox
 - Respects Content Security Policies (won't work on restricted Mozilla pages)
+- **Requires Manifest v2** for full webRequest API access
 
 ## 📄 License
 
@@ -183,6 +208,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.5.10  
+**Current Version**: 1.5.6  
 **Last Updated**: 2025-11-11  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

@@ -35,23 +35,28 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.5+):**
-- **content.js** (~56KB): Main functionality with site-specific handlers, Quick Tabs, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle management, content script injection, browser API compatibility, storage sync broadcasting
+**Current Repository Architecture (v1.5.6+):**
+- **content.js** (~4300 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
+- **background.js**: Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
 - **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
-- **manifest.json**: Manifest v3 configuration with permissions, webRequest API, options_ui, sidebar_action
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, sidebar_action
 
 **Critical APIs Currently Used - PRIORITIZE THESE:**
 
-1. **Clipboard API** (navigator.clipboard.writeText)
+1. **Pointer Events API** (setPointerCapture, pointercancel) - NEW in v1.5.6
+   - Primary drag/resize mechanism for Quick Tabs
+   - Common issues: Pointer capture not released, pointercancel not firing
+   - Replaces: Mouse events + requestAnimationFrame
+
+2. **Clipboard API** (navigator.clipboard.writeText)
    - Primary function for URL/text copying
    - Common issues: Permissions, timing, focus requirements
    - Fallback: document.execCommand('copy')
 
-2. **WebExtension Storage API** (browser.storage.sync, browser.storage.session, browser.storage.local)
+3. **WebExtension Storage API** (browser.storage.sync, browser.storage.session, browser.storage.local)
    - Quick Tab state: browser.storage.sync (key: quick_tabs_state_v2) + browser.storage.session (key: quick_tabs_session)
    - Settings: browser.storage.sync (key: quick_tab_settings)
    - User config: browser.storage.local (DEFAULT_CONFIG)
