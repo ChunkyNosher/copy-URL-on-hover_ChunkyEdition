@@ -36,26 +36,31 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 ## Extension Architecture Knowledge
 
-**Current Repository Architecture (v1.5.5+):**
-- **content.js** (~56KB): Main functionality with site-specific handlers, Quick Tabs, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle management, content script injection, browser API compatibility, storage sync broadcasting
+**Current Repository Architecture (v1.5.6+):**
+- **content.js** (~4300 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
+- **background.js**: Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
 - **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
-- **manifest.json**: Manifest v3 configuration with permissions, webRequest API, options_ui, sidebar_action
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, sidebar_action
 
 **Key Systems:**
 - CONFIG object: Central configuration with user settings
 - Site-specific handlers: URL detection logic for 100+ sites
-- Quick Tabs: Floating iframe windows with drag/resize
+- Quick Tabs: Floating iframe windows with Pointer Events API drag/resize (setPointerCapture)
 - QuickTabStateManager: Dual-layer storage (sync + session) for state management
 - Notifications: Customizable visual feedback system
 - Storage: browser.storage.sync for settings and Quick Tab state, browser.storage.local for user config
 
 **Critical APIs to Use - PRIORITIZE THESE:**
 
-1. **Clipboard API** (navigator.clipboard.writeText) - For any copy functionality
+1. **Pointer Events API** (setPointerCapture, pointercancel) - NEW in v1.5.6
+   - For drag/resize without slipping (replaces mouse events + RAF)
+   - Handles tab switches during drag (pointercancel)
+   - Touch/pen support automatically included
+
+2. **Clipboard API** (navigator.clipboard.writeText) - For any copy functionality
 2. **Storage API** (browser.storage.sync/session/local) - For settings and persistence
    - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)
    - browser.storage.session: Fast ephemeral Quick Tab state (quick_tabs_session) - Firefox 115+
