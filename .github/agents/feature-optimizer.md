@@ -457,6 +457,19 @@ async function initializeStateSyncasync () {
    - Validate new capabilities work
    - Check for regressions
 
+## Documentation Organization
+
+When creating markdown documentation files, always save them to the appropriate `docs/` subdirectory:
+
+- **Feature implementation guides** → `docs/manual/`
+- **Architecture documents** → `docs/manual/`
+- **Testing guides** → `docs/manual/`
+- **Implementation summaries** → `docs/implementation-summaries/` (use format: `IMPLEMENTATION-SUMMARY-{description}.md`)
+- **Security summaries** → `docs/security-summaries/` (use format: `SECURITY-SUMMARY-v{version}.md`)
+- **Miscellaneous documentation** → `docs/misc/`
+
+**DO NOT** save markdown files to the root directory (except README.md).
+
 ## Output Format
 
 When implementing features, provide:

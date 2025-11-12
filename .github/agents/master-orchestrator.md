@@ -446,6 +446,24 @@ Performance Goals: [Metrics]
 Browser Compatibility: [Firefox and Zen Browser]
 ```
 
+## Documentation Organization
+
+When creating markdown documentation files, always save them to the appropriate `docs/` subdirectory:
+
+- **Bug analysis documents** → `docs/manual/`
+- **Testing guides** → `docs/manual/`
+- **Implementation guides** → `docs/manual/`
+- **Architecture documents** → `docs/manual/`
+- **Implementation summaries** → `docs/implementation-summaries/` (use format: `IMPLEMENTATION-SUMMARY-{description}.md`)
+- **Changelogs** → `docs/changelogs/` (use format: `CHANGELOG-v{version}.md`)
+- **Security summaries** → `docs/security-summaries/` (use format: `SECURITY-SUMMARY-v{version}.md`)
+- **Release summaries** → `docs/misc/` (use format: `RELEASE-SUMMARY-v{version}.md`)
+- **Miscellaneous documentation** → `docs/misc/`
+
+**DO NOT** save markdown files to the root directory (except README.md).
+
+Instruct all agents to follow this documentation organization when creating files.
+
 ## Output Format
 
 When orchestrating tasks, provide:

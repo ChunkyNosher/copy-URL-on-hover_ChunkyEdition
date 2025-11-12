@@ -6,6 +6,9 @@
  * URL handlers have been extracted to features/url-handlers/ for better maintainability.
  */
 
+// Verify content script is loading
+console.log('[Copy-URL-on-Hover] Content script loaded at:', new Date().toISOString());
+
 // Import core modules
 import { ConfigManager, DEFAULT_CONFIG, CONSTANTS } from './core/config.js';
 import { StateManager } from './core/state.js';
@@ -19,10 +22,15 @@ import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { getLinkText } from './features/url-handlers/generic.js';
 
 // Initialize core systems
+console.log('[Copy-URL-on-Hover] Initializing core systems...');
 const configManager = new ConfigManager();
+console.log('[Copy-URL-on-Hover] ConfigManager initialized');
 const stateManager = new StateManager();
+console.log('[Copy-URL-on-Hover] StateManager initialized');
 const eventBus = new EventBus();
+console.log('[Copy-URL-on-Hover] EventBus initialized');
 const urlRegistry = new URLHandlerRegistry();
+console.log('[Copy-URL-on-Hover] URLHandlerRegistry initialized');
 
 // Load configuration
 let CONFIG = { ...DEFAULT_CONFIG };
@@ -30,8 +38,11 @@ let CONFIG = { ...DEFAULT_CONFIG };
 // Initialize extension
 (async function initExtension() {
   try {
+    console.log('[Copy-URL-on-Hover] Starting extension initialization...');
+    
     // Load user configuration
     CONFIG = await configManager.load();
+    console.log('[Copy-URL-on-Hover] Configuration loaded');
     
     // Enable debug mode if configured
     if (CONFIG.debugMode) {
@@ -44,13 +55,16 @@ let CONFIG = { ...DEFAULT_CONFIG };
     stateManager.setState({
       quickTabZIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
     });
+    console.log('[Copy-URL-on-Hover] State initialized');
     
     debug('Extension initialized successfully');
     
     // Start main functionality
     await initMainFeatures();
+    console.log('[Copy-URL-on-Hover] Main features initialized successfully');
   } catch (err) {
-    console.error('[Extension] Initialization failed:', err);
+    console.error('[Copy-URL-on-Hover] Critical Init Error:', err);
+    alert('Copy-URL-on-Hover failed to initialize. Check console for details.');
   }
 })();
 
@@ -160,10 +174,27 @@ function setupHoverDetection() {
 }
 
 /**
+ * Check if element is an input field or editable
+ */
+function isInputField(element) {
+  return element && (
+    element.tagName === 'INPUT' || 
+    element.tagName === 'TEXTAREA' || 
+    element.isContentEditable || 
+    element.closest('[contenteditable="true"]')
+  );
+}
+
+/**
  * Set up keyboard shortcuts
  */
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', async function(event) {
+    // Ignore if typing in an interactive field
+    if (isInputField(event.target)) {
+      return;
+    }
+    
     const hoveredLink = stateManager.get('currentHoveredLink');
     const hoveredElement = stateManager.get('currentHoveredElement');
     

@@ -405,6 +405,19 @@ When assigned a refactoring task:
 - Update version numbers appropriately
 - **Note which APIs were affected by refactoring**
 
+## Documentation Organization
+
+When creating markdown documentation files, always save them to the appropriate `docs/` subdirectory:
+
+- **Bug analysis documents** → `docs/manual/`
+- **Testing guides** → `docs/manual/`
+- **Implementation guides** → `docs/manual/`
+- **Architecture documents** → `docs/manual/`
+- **Security summaries** → `docs/security-summaries/` (use format: `SECURITY-SUMMARY-v{version}.md`)
+- **Miscellaneous documentation** → `docs/misc/`
+
+**DO NOT** save markdown files to the root directory (except README.md).
+
 ## Output Format
 
 When refactoring code, provide:
