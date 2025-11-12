@@ -143,7 +143,7 @@ export const image_designHandlers = {
   behance: findBehanceUrl,
   deviantart: findDeviantartUrl,
   flickr: findFlickrUrl,
-  500px: find500pxUrl,
+  '500px': find500pxUrl,
   unsplash: findUnsplashUrl,
   pexels: findPexelsUrl,
   pixabay: findPixabayUrl,
