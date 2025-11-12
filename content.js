@@ -148,6 +148,172 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 let isSavingToStorage = false; // Flag to prevent processing our own storage changes
 
+// ==================== SAVE QUEUE SYSTEM ====================
+// Promise-based save queue with batching and conflict resolution
+
+class SaveQueue {
+  constructor() {
+    this.queue = [];
+    this.flushTimer = null;
+    this.flushDelay = 50; // Batch saves within 50ms window
+    this.processing = false;
+    this.vectorClock = new Map(); // Track causal order
+    this.saveId = 0;
+  }
+  
+  /**
+   * Enqueue a save operation and return a promise that resolves when confirmed
+   * @param {SaveOperation} operation - The save operation to queue
+   * @returns {Promise<void>} Resolves when background confirms save
+   */
+  enqueue(operation) {
+    return new Promise((resolve, reject) => {
+      // Increment vector clock for this tab
+      const currentCount = this.vectorClock.get(tabInstanceId) || 0;
+      this.vectorClock.set(tabInstanceId, currentCount + 1);
+      
+      // Add vector clock to operation
+      operation.vectorClock = new Map(this.vectorClock);
+      operation.saveId = `save_${tabInstanceId}_${this.saveId++}`;
+      operation.resolve = resolve;
+      operation.reject = reject;
+      operation.timestamp = Date.now();
+      
+      // Check for duplicate operations (same Quick Tab, same action)
+      const existingIndex = this.queue.findIndex(op => 
+        op.quickTabId === operation.quickTabId && 
+        op.type === operation.type &&
+        op.timestamp > Date.now() - 100 // Within last 100ms
+      );
+      
+      if (existingIndex !== -1) {
+        // Replace existing operation with newer data
+        debug(`[SAVE QUEUE] Deduplicating ${operation.type} for ${operation.quickTabId}`);
+        const oldOp = this.queue[existingIndex];
+        oldOp.reject(new Error('Superseded by newer save'));
+        this.queue[existingIndex] = operation;
+      } else {
+        // Add new operation
+        this.queue.push(operation);
+        debug(`[SAVE QUEUE] Enqueued ${operation.type} for ${operation.quickTabId} (Queue size: ${this.queue.length})`);
+      }
+      
+      // Schedule flush
+      this.scheduleFlush();
+    });
+  }
+  
+  /**
+   * Schedule a flush after delay (debounced)
+   */
+  scheduleFlush() {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+    }
+    
+    this.flushTimer = setTimeout(() => {
+      this.flush();
+    }, this.flushDelay);
+  }
+  
+  /**
+   * Flush queue immediately - send all pending operations to background
+   */
+  async flush() {
+    if (this.queue.length === 0 || this.processing) {
+      return;
+    }
+    
+    this.processing = true;
+    this.flushTimer = null;
+    
+    // Take all pending operations
+    const operations = this.queue.splice(0);
+    
+    debug(`[SAVE QUEUE] Flushing ${operations.length} operations to background`);
+    
+    try {
+      // Send batch to background
+      const response = await browser.runtime.sendMessage({
+        action: 'BATCH_QUICK_TAB_UPDATE',
+        operations: operations.map(op => ({
+          type: op.type,
+          quickTabId: op.quickTabId,
+          data: op.data,
+          priority: op.priority,
+          timestamp: op.timestamp,
+          vectorClock: Array.from(op.vectorClock.entries()),
+          saveId: op.saveId
+        })),
+        tabInstanceId: tabInstanceId
+      });
+      
+      if (response && response.success) {
+        // Resolve all promises
+        operations.forEach(op => {
+          if (op.resolve) {
+            op.resolve();
+          }
+        });
+        debug(`[SAVE QUEUE] Batch save confirmed by background`);
+      } else {
+        throw new Error(response?.error || 'Unknown error');
+      }
+      
+    } catch (err) {
+      console.error('[SAVE QUEUE] Batch save failed:', err);
+      
+      // Reject all promises
+      operations.forEach(op => {
+        if (op.reject) {
+          op.reject(err);
+        }
+      });
+      
+      // Optional: Retry logic
+      if (operations.length > 0 && operations[0].retryCount < 3) {
+        debug('[SAVE QUEUE] Retrying failed saves...');
+        operations.forEach(op => {
+          op.retryCount = (op.retryCount || 0) + 1;
+          this.queue.push(op);
+        });
+        this.scheduleFlush();
+      }
+    } finally {
+      this.processing = false;
+    }
+  }
+  
+  /**
+   * Clear queue without sending (use when tab is closing)
+   */
+  clear() {
+    this.queue.forEach(op => {
+      if (op.reject) {
+        op.reject(new Error('Queue cleared'));
+      }
+    });
+    this.queue = [];
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+  }
+  
+  size() {
+    return this.queue.length;
+  }
+}
+
+// Global save queue instance
+const saveQueue = new SaveQueue();
+
+// Flush queue when tab is about to close
+window.addEventListener('beforeunload', () => {
+  saveQueue.flush(); // Synchronous flush attempt
+});
+// ==================== END SAVE QUEUE SYSTEM ====================
+
 // ==================== Z-INDEX MANAGEMENT FOR MULTIPLE QUICK TABS ====================
 /**
  * Bring a Quick Tab to the front (highest z-index)
@@ -582,80 +748,96 @@ async function broadcastClearMinimized() {
 // browser.storage.sync is shared across all tabs and syncs across devices
 // Also using browser.storage.session for fast ephemeral reads (Firefox 115+)
 
-async function saveQuickTabsToStorage() {
-  if (!CONFIG.quickTabPersistAcrossTabs) return;
+// ==================== SAVE QUICK TABS (QUEUE-BASED) ====================
+/**
+ * Save Quick Tab state via save queue (returns promise)
+ * @param {string} operationType - 'create', 'update', 'delete', 'minimize', 'restore'
+ * @param {string} quickTabId - Unique Quick Tab ID
+ * @returns {Promise<void>} Resolves when background confirms save
+ */
+async function saveQuickTabState(operationType, quickTabId, additionalData = {}) {
+  if (!CONFIG.quickTabPersistAcrossTabs) {
+    return Promise.resolve();
+  }
   
-  try {
-    // Get current container ID
-    const cookieStoreId = await getCurrentCookieStoreId();
+  // Build current state for this Quick Tab
+  let quickTabData = null;
+  
+  if (operationType === 'delete') {
+    // For delete, only need ID
+    quickTabData = { id: quickTabId };
+  } else {
+    // Find Quick Tab container
+    const container = quickTabWindows.find(w => w.dataset.quickTabId === quickTabId);
+    if (!container && operationType !== 'minimize') {
+      debug(`[SAVE] Quick Tab ${quickTabId} not found, skipping save`);
+      return Promise.resolve();
+    }
     
-    const state = quickTabWindows.map(container => {
+    if (operationType === 'minimize') {
+      // For minimize, get data from minimizedQuickTabs array
+      const minTab = minimizedQuickTabs.find(t => t.id === quickTabId);
+      if (minTab) {
+        quickTabData = { ...minTab };
+      }
+    } else {
+      // Build state from container
       const iframe = container.querySelector('iframe');
       const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
       const rect = container.getBoundingClientRect();
-      
-      // Get URL from either src or data-deferred-src for deferred iframes
       const url = iframe?.src || iframe?.getAttribute('data-deferred-src') || '';
       
-      return {
-        id: container.dataset.quickTabId, // Include ID
+      quickTabData = {
+        id: quickTabId,
         url: url,
         title: titleText?.textContent || 'Quick Tab',
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
         left: Math.round(rect.left),
         top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        pinnedToUrl: container._pinnedToUrl || null,
+        slotNumber: CONFIG.debugMode ? (quickTabSlots.get(quickTabId) || null) : null,
         minimized: false,
-        pinnedToUrl: container._pinnedToUrl || null
+        ...additionalData
       };
-    }).filter(tab => tab.url && tab.url.trim() !== ''); // Filter out Quick Tabs with empty URLs
-    
-    // Also include minimized tabs
-    const minimizedState = minimizedQuickTabs.filter(tab => tab.url && tab.url.trim() !== '').map(tab => ({
-      ...tab,
-      minimized: true
-    }));
-    
-    const allTabs = [...state, ...minimizedState];
-    
-    // Set flag to indicate we're saving (to avoid processing our own change)
-    isSavingToStorage = true;
-    
-    // Load existing state for all containers
-    const existingData = await browser.storage.sync.get('quick_tabs_state_v2') || {};
-    const containerStates = existingData.quick_tabs_state_v2 || {};
-    
-    // Update state for this specific container
-    containerStates[cookieStoreId] = {
-      tabs: allTabs,
-      timestamp: Date.now()
-    };
-    
-    // Save to browser.storage.sync for persistence and cross-device sync
-    browser.storage.sync.set({ quick_tabs_state_v2: containerStates }).then(() => {
-      debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.sync for container ${cookieStoreId}`);
-      
-      // Also save to session storage if available (faster reads)
-      if (typeof browser.storage.session !== 'undefined') {
-        browser.storage.session.set({ quick_tabs_session: containerStates }).catch(err => {
-          // Session storage not available, that's OK
-        });
-      }
-      
-      // Reset flag after a short delay to allow storage event to fire
-      setTimeout(() => {
-        isSavingToStorage = false;
-      }, 100);
-    }).catch(err => {
-      console.error('Error saving Quick Tabs to browser.storage.sync:', err);
-      isSavingToStorage = false; // Reset flag on error
-    });
-    
-  } catch (err) {
-    console.error('Error saving Quick Tabs:', err);
-    isSavingToStorage = false; // Reset flag on error
+    }
   }
+  
+  // Enqueue save operation
+  return saveQueue.enqueue({
+    type: operationType,
+    quickTabId: quickTabId,
+    data: quickTabData,
+    priority: operationType === 'create' ? 2 : 1 // High priority for creates
+  });
 }
+
+/**
+ * Legacy function - now delegates to queue-based system
+ * Kept for backward compatibility with existing code
+ */
+async function saveQuickTabsToStorage() {
+  if (!CONFIG.quickTabPersistAcrossTabs) return;
+  
+  // Save all Quick Tabs via queue
+  const promises = [];
+  
+  quickTabWindows.forEach(container => {
+    const quickTabId = container.dataset.quickTabId;
+    if (quickTabId) {
+      promises.push(saveQuickTabState('update', quickTabId));
+    }
+  });
+  
+  minimizedQuickTabs.forEach(tab => {
+    if (tab.id) {
+      promises.push(saveQuickTabState('minimize', tab.id));
+    }
+  });
+  
+  return Promise.all(promises);
+}
+// ==================== END SAVE QUICK TABS ====================
 
 async function restoreQuickTabsFromStorage() {
   if (!CONFIG.quickTabPersistAcrossTabs) return;
@@ -812,132 +994,108 @@ function clearQuickTabsFromStorage() {
 
 // Listen for storage changes from other tabs/windows
 // browser.storage.onChanged works across all origins
-browser.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'sync' && changes.quick_tabs_state_v2) {
-    // Ignore storage changes that we initiated ourselves to prevent race conditions
-    if (isSavingToStorage) {
-      debug('Ignoring storage change event from our own save operation');
-      return;
-    }
+// ==================== STATE SYNC FROM COORDINATOR ====================
+// Receive canonical state from background and update local Quick Tabs
+
+browser.runtime.onMessage.addListener((message, sender) => {
+  if (message.action === 'SYNC_STATE_FROM_COORDINATOR') {
+    const canonicalState = message.state;
     
-    debug('Storage change detected from another tab/window');
-    // Note: We rely on BroadcastChannel for real-time same-origin sync
-    // Storage event handles cross-origin sync
+    debug(`[SYNC] Received canonical state from coordinator: ${canonicalState.tabs.length} tabs`);
     
-    const newValue = changes.quick_tabs_state_v2.newValue;
-    const oldValue = changes.quick_tabs_state_v2.oldValue;
-    
-    // Handle case where storage was cleared (all Quick Tabs closed)
-    if (!newValue || !newValue.tabs || (Array.isArray(newValue.tabs) && newValue.tabs.length === 0)) {
-      debug('Quick Tabs storage cleared - closing all local Quick Tabs');
-      // Close all Quick Tabs without broadcasting (already handled by initiating tab)
-      closeAllQuickTabWindows(false);
-      return;
-    }
-    
-    if (Array.isArray(newValue.tabs)) {
-      // Get current URLs (including deferred iframes)
-      const existingUrls = new Set(quickTabWindows.map(win => {
-        const iframe = win.querySelector('iframe');
-        if (!iframe) return null;
-        return iframe.src || iframe.getAttribute('data-deferred-src');
-      }).filter(url => url !== null));
-      
-      // Get new URLs from storage
-      const newUrls = new Set(newValue.tabs.filter(t => !t.minimized).map(t => t.url));
-      
-      // Get current page URL for pin filtering
-      const currentPageUrl = window.location.href;
-      
-      // Find Quick Tabs that were removed from storage (closed in another tab)
-      const removedUrls = Array.from(existingUrls).filter(url => !newUrls.has(url));
-      if (removedUrls.length > 0) {
-        debug(`Closing ${removedUrls.length} Quick Tabs that were removed from storage`);
-        removedUrls.forEach(url => {
-          const container = quickTabWindows.find(win => {
-            const iframe = win.querySelector('iframe');
-            if (!iframe) return false;
-            const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
-            return iframeSrc === url;
-          });
-          if (container) {
-            closeQuickTabWindow(container, false); // false = don't broadcast again
-          }
-        });
-      }
-      
-      // Also check for Quick Tabs that are now pinned to a different page
-      // These should be closed even if the URL is still in storage
-      quickTabWindows.forEach(container => {
-        const iframe = container.querySelector('iframe');
-        if (!iframe) return;
-        
-        // BUG FIX: Use ID-based lookup instead of URL to avoid affecting wrong duplicate instances
-        const quickTabId = container.dataset.quickTabId;
-        const tabInStorage = newValue.tabs.find(t => t.id === quickTabId && !t.minimized);
-        if (tabInStorage && tabInStorage.pinnedToUrl && tabInStorage.pinnedToUrl !== currentPageUrl) {
-          debug(`Closing Quick Tab ${quickTabId} because it's now pinned to ${tabInStorage.pinnedToUrl}`);
-          closeQuickTabWindow(container, false); // false = don't broadcast again
-        }
-      });
-      
-      // Update position and size of existing Quick Tabs from storage
-      quickTabWindows.forEach(container => {
-        const iframe = container.querySelector('iframe');
-        if (!iframe) return;
-        
-        // BUG FIX: Use ID-based lookup instead of URL to avoid updating wrong duplicate instances
-        const quickTabId = container.dataset.quickTabId;
-        const tabInStorage = newValue.tabs.find(t => t.id === quickTabId && !t.minimized);
-        if (tabInStorage) {
-          // Update position if it changed
-          if (tabInStorage.left !== undefined && tabInStorage.top !== undefined) {
-            const currentLeft = parseFloat(container.style.left);
-            const currentTop = parseFloat(container.style.top);
-            
-            // Only update if position actually changed (with small tolerance for rounding)
-            if (Math.abs(currentLeft - tabInStorage.left) > 1 || Math.abs(currentTop - tabInStorage.top) > 1) {
-              container.style.left = tabInStorage.left + 'px';
-              container.style.top = tabInStorage.top + 'px';
-              debug(`Updated Quick Tab ${quickTabId} position to (${tabInStorage.left}, ${tabInStorage.top})`);
-            }
-          }
-          
-          // Update size if it changed
-          if (tabInStorage.width !== undefined && tabInStorage.height !== undefined) {
-            const currentWidth = parseFloat(container.style.width);
-            const currentHeight = parseFloat(container.style.height);
-            
-            // Only update if size actually changed (with small tolerance for rounding)
-            if (Math.abs(currentWidth - tabInStorage.width) > 1 || Math.abs(currentHeight - tabInStorage.height) > 1) {
-              container.style.width = tabInStorage.width + 'px';
-              container.style.height = tabInStorage.height + 'px';
-              debug(`Updated Quick Tab ${quickTabId} size to ${tabInStorage.width}x${tabInStorage.height}`);
-            }
-          }
-        }
-      });
-      
-      // Only create Quick Tabs that don't already exist
-      newValue.tabs.filter(t => {
-        if (t.minimized) return false;
-        if (!t.url || t.url.trim() === '') return false; // Skip empty URLs
-        if (existingUrls.has(t.url)) return false;
-        
-        // Filter based on pin status
-        if (t.pinnedToUrl && t.pinnedToUrl !== currentPageUrl) {
-          debug(`Skipping pinned Quick Tab from storage event (pinned to ${t.pinnedToUrl}, current: ${currentPageUrl})`);
-          return false;
-        }
-        
-        return true;
-      }).forEach(tab => {
-        if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) return;
-        createQuickTabWindow(tab.url, tab.width, tab.height, tab.left, tab.top, true, tab.pinnedToUrl);
-      });
-    }
+    syncLocalStateWithCanonical(canonicalState);
   }
 });
+
+function syncLocalStateWithCanonical(canonicalState) {
+  if (!canonicalState || !canonicalState.tabs) return;
+  
+  const currentPageUrl = window.location.href;
+  
+  // Build map of canonical tabs by ID
+  const canonicalById = new Map();
+  canonicalState.tabs.forEach(tab => {
+    if (tab.id) {
+      canonicalById.set(tab.id, tab);
+    }
+  });
+  
+  // Update or remove local Quick Tabs based on canonical state
+  quickTabWindows.forEach((container, index) => {
+    const quickTabId = container.dataset.quickTabId;
+    const canonical = canonicalById.get(quickTabId);
+    
+    if (!canonical) {
+      // Tab doesn't exist in canonical state - close it
+      debug(`[SYNC] Closing Quick Tab ${quickTabId} (not in canonical state)`);
+      closeQuickTabWindow(container, false);
+    } else if (canonical.minimized) {
+      // Tab should be minimized
+      const iframe = container.querySelector('iframe');
+      const url = iframe?.src || iframe?.getAttribute('data-deferred-src');
+      debug(`[SYNC] Minimizing Quick Tab ${quickTabId} per canonical state`);
+      minimizeQuickTab(container, url, canonical.title);
+    } else {
+      // Update position/size from canonical state
+      if (canonical.left !== undefined && canonical.top !== undefined) {
+        const currentLeft = parseFloat(container.style.left);
+        const currentTop = parseFloat(container.style.top);
+        
+        if (Math.abs(currentLeft - canonical.left) > 5 || Math.abs(currentTop - canonical.top) > 5) {
+          container.style.left = canonical.left + 'px';
+          container.style.top = canonical.top + 'px';
+          debug(`[SYNC] Updated Quick Tab ${quickTabId} position from canonical: (${canonical.left}, ${canonical.top})`);
+        }
+      }
+      
+      if (canonical.width !== undefined && canonical.height !== undefined) {
+        const currentWidth = parseFloat(container.style.width);
+        const currentHeight = parseFloat(container.style.height);
+        
+        if (Math.abs(currentWidth - canonical.width) > 5 || Math.abs(currentHeight - canonical.height) > 5) {
+          container.style.width = canonical.width + 'px';
+          container.style.height = canonical.height + 'px';
+          debug(`[SYNC] Updated Quick Tab ${quickTabId} size from canonical: ${canonical.width}x${canonical.height}`);
+        }
+      }
+    }
+  });
+  
+  // Create Quick Tabs that exist in canonical but not locally
+  canonicalState.tabs.forEach(canonicalTab => {
+    if (canonicalTab.minimized) return; // Handle minimized separately
+    
+    // Check if tab should be visible on this page (pin filtering)
+    if (canonicalTab.pinnedToUrl && canonicalTab.pinnedToUrl !== currentPageUrl) {
+      return;
+    }
+    
+    // Check if we already have this Quick Tab
+    const exists = quickTabWindows.some(w => w.dataset.quickTabId === canonicalTab.id);
+    
+    if (!exists && quickTabWindows.length < CONFIG.quickTabMaxWindows) {
+      debug(`[SYNC] Creating Quick Tab ${canonicalTab.id} from canonical state`);
+      createQuickTabWindow(
+        canonicalTab.url,
+        canonicalTab.width,
+        canonicalTab.height,
+        canonicalTab.left,
+        canonicalTab.top,
+        true, // fromBroadcast = true (don't save again)
+        canonicalTab.pinnedToUrl,
+        canonicalTab.id
+      );
+    }
+  });
+  
+  // Sync minimized tabs
+  const canonicalMinimized = canonicalState.tabs.filter(t => t.minimized);
+  minimizedQuickTabs = canonicalMinimized;
+  updateMinimizedTabsManager(true); // true = fromSync
+  
+  debug(`[SYNC] Local state synchronized with canonical state`);
+}
+// ==================== END STATE SYNC ====================
 
 // ==================== END BROWSER STORAGE PERSISTENCE ====================
 
@@ -3120,17 +3278,16 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
         });
       }
       
-      // Broadcast unpin so other tabs can show this Quick Tab
-      if (CONFIG.quickTabPersistAcrossTabs) {
-        const rect = container.getBoundingClientRect();
-        const url = iframe.src || iframe.getAttribute('data-deferred-src');
-        if (url && quickTabId) {
-          broadcastQuickTabUnpin(quickTabId, url, rect.width, rect.height, rect.left, rect.top);
-        }
+      // Save unpin via queue
+      if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
+        saveQuickTabState('update', quickTabId, {
+          pinnedToUrl: null
+        }).then(() => {
+          debug(`Quick Tab ${quickTabId} unpinned and saved`);
+        }).catch(err => {
+          console.error(`Failed to save unpin for ${quickTabId}:`, err);
+        });
       }
-      
-      // NOTE: Don't call saveQuickTabsToStorage() here - background script handles storage
-      // via UPDATE_QUICK_TAB_PIN message handler. Calling it here causes double-save race condition
     } else {
       // Pin to current page URL
       const currentPageUrl = window.location.href;
@@ -3141,30 +3298,17 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       showNotification('✓ Quick Tab pinned to this page');
       debug(`Quick Tab pinned to: ${currentPageUrl}`);
       
-      // Notify background script to update pin state
+      // Save pin via queue
       const quickTabId = container.dataset.quickTabId;
-      if (quickTabId) {
-        sendRuntimeMessage({
-      action: 'UPDATE_QUICK_TAB_PIN',
-          id: quickTabId,
+      if (quickTabId && CONFIG.quickTabPersistAcrossTabs) {
+        saveQuickTabState('update', quickTabId, {
           pinnedToUrl: currentPageUrl
+        }).then(() => {
+          debug(`Quick Tab ${quickTabId} pinned and saved`);
         }).catch(err => {
-          debug('Error notifying background of Quick Tab pin:', err);
+          console.error(`Failed to save pin for ${quickTabId}:`, err);
         });
       }
-      
-      // When pinning, close ALL other instances of this Quick Tab across all tabs
-      // First, broadcast the pin action to close instances in other tabs
-      if (CONFIG.quickTabPersistAcrossTabs) {
-        const url = iframe.src || iframe.getAttribute('data-deferred-src');
-        if (url && quickTabId) {
-          broadcastQuickTabPin(quickTabId, url, currentPageUrl);
-        }
-      }
-      
-      // NOTE: Don't call saveQuickTabsToStorage() here - background script handles storage
-      // via UPDATE_QUICK_TAB_PIN message handler. Calling it here causes double-save race condition
-      // that triggers the isSavingToStorage flag timeout bug (Bug #2)
     }
   };
   
@@ -3241,24 +3385,20 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
   showNotification('✓ Quick Tab opened');
   debug(`Quick Tab window created. Total windows: ${quickTabWindows.length}`);
   
-  // Broadcast to other tabs using BroadcastChannel for real-time sync
-  // Only broadcast if this wasn't created from a broadcast (prevent infinite loop)
+  // Save via queue-based system (replaces both broadcast and background message)
   if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
-    broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl, quickTabId);
-    
-    // Notify background script for state coordination
-    sendRuntimeMessage({
-      action: 'CREATE_QUICK_TAB',
-      id: quickTabId,
+    saveQuickTabState('create', quickTabId, {
       url: url,
-      left: Math.round(posX),
-      top: Math.round(posY),
-      width: Math.round(windowWidth),
-      height: Math.round(windowHeight),
-      pinnedToUrl: pinnedToUrl,
-      title: 'Quick Tab' // Will be updated when iframe loads
+      width: windowWidth,
+      height: windowHeight,
+      left: posX,
+      top: posY,
+      pinnedToUrl: pinnedToUrl
+    }).then(() => {
+      debug(`Quick Tab ${quickTabId} creation saved and confirmed`);
     }).catch(err => {
-      debug('Error notifying background of Quick Tab creation:', err);
+      console.error(`Failed to save Quick Tab ${quickTabId}:`, err);
+      showNotification('⚠️ Quick Tab save failed');
     });
   }
 }
@@ -3291,20 +3431,11 @@ function closeQuickTabWindow(container, broadcast = true) {
   container.remove();
   debug(`Quick Tab window closed. ID: ${quickTabId}, Remaining windows: ${quickTabWindows.length}`);
   
-  // Notify background script for state coordination
+  // Save deletion via queue-based system
   if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
-    sendRuntimeMessage({
-      action: 'CLOSE_QUICK_TAB',
-      id: quickTabId,
-      url: url
-    }).catch(err => {
-      debug('Error notifying background of Quick Tab close:', err);
+    saveQuickTabState('delete', quickTabId).catch(err => {
+      debug('Error saving Quick Tab deletion:', err);
     });
-  }
-  
-  // Broadcast close to other tabs if enabled
-  if (broadcast && quickTabId && CONFIG.quickTabPersistAcrossTabs) {
-    broadcastQuickTabClose(quickTabId, url);
   }
 }
 
@@ -3356,8 +3487,11 @@ function minimizeQuickTab(container, url, title) {
     quickTabWindows.splice(index, 1);
   }
   
+  const quickTabId = container.dataset.quickTabId;
+  
   // Store minimized tab info
   minimizedQuickTabs.push({
+    id: quickTabId, // Add ID for queue-based saves
     url: url,
     title: title || 'Quick Tab',
     timestamp: Date.now()
@@ -3372,9 +3506,11 @@ function minimizeQuickTab(container, url, title) {
   // Update or create minimized tabs manager
   updateMinimizedTabsManager();
   
-  // Save to storage if persistence is enabled
-  if (CONFIG.quickTabPersistAcrossTabs) {
-    saveQuickTabsToStorage();
+  // Save to storage via queue if persistence is enabled
+  if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
+    saveQuickTabState('minimize', quickTabId).catch(err => {
+      debug('Error saving minimized Quick Tab:', err);
+    });
   }
 }
 
@@ -3385,8 +3521,15 @@ function restoreQuickTab(index) {
   const tab = minimizedQuickTabs[index];
   minimizedQuickTabs.splice(index, 1);
   
-  createQuickTabWindow(tab.url);
+  createQuickTabWindow(tab.url, undefined, undefined, undefined, undefined, false, null, tab.id);
   updateMinimizedTabsManager();
+  
+  // Save restore operation via queue
+  if (CONFIG.quickTabPersistAcrossTabs && tab.id) {
+    saveQuickTabState('restore', tab.id).catch(err => {
+      debug('Error saving restored Quick Tab:', err);
+    });
+  }
   
   debug(`Quick Tab restored from minimized. Remaining minimized: ${minimizedQuickTabs.length}`);
 }
@@ -3662,30 +3805,18 @@ function makeDraggable(element, handle) {
     const iframe = element.querySelector('iframe');
     if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
     
-    const url = iframe.src || iframe.getAttribute('data-deferred-src');
     const quickTabId = element.dataset.quickTabId;
-    if (!url || !quickTabId) return;
+    if (!quickTabId) return;
     
-    const rect = element.getBoundingClientRect();
-    
-    // INTEGRATION POINT 1: Send to background for coordination
-    sendRuntimeMessage({
-      action: 'UPDATE_QUICK_TAB_POSITION',
-      id: quickTabId,
-      url: url,
-      left: Math.round(finalLeft),
-      top: Math.round(finalTop),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height)
+    // Save via queue
+    saveQuickTabState('update', quickTabId, {
+      left: finalLeft,
+      top: finalTop
+    }).then(() => {
+      debug(`Quick Tab ${quickTabId} position saved: (${finalLeft}, ${finalTop})`);
     }).catch(err => {
-      debug('[POINTER] Error sending final position to background:', err);
+      console.error(`Failed to save position for ${quickTabId}:`, err);
     });
-    
-    // INTEGRATION POINT 2: BroadcastChannel for same-origin tabs
-    broadcastQuickTabMove(quickTabId, url, Math.round(finalLeft), Math.round(finalTop));
-    
-    // NOTE: Background script now handles storage.sync saves
-    // This prevents race conditions with isSavingToStorage flag
   };
   
   // =========================
@@ -3965,51 +4096,38 @@ function makeResizable(element) {
       const iframe = element.querySelector('iframe');
       if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
       
-      const url = iframe.src || iframe.getAttribute('data-deferred-src');
       const quickTabId = element.dataset.quickTabId;
-      if (!url || !quickTabId) return;
+      if (!quickTabId) return;
       
-      // Send to background for coordination
-      sendRuntimeMessage({
-      action: 'UPDATE_QUICK_TAB_POSITION',
-        id: quickTabId,
-        url: url,
-        left: Math.round(newLeft),
-        top: Math.round(newTop),
-        width: Math.round(newWidth),
-        height: Math.round(newHeight)
+      // Save via queue (will be batched)
+      saveQuickTabState('update', quickTabId, {
+        left: newLeft,
+        top: newTop,
+        width: newWidth,
+        height: newHeight
       }).catch(err => {
-        debug('[POINTER] Error sending throttled resize update:', err);
+        debug('[POINTER] Error during throttled resize save:', err);
       });
-      
-      // BroadcastChannel for same-origin sync
-      broadcastQuickTabResize(quickTabId, url, Math.round(newWidth), Math.round(newHeight));
-      broadcastQuickTabMove(quickTabId, url, Math.round(newLeft), Math.round(newTop));
     };
     
     const finalSaveOnResizeEnd = (finalWidth, finalHeight, finalLeft, finalTop) => {
       const iframe = element.querySelector('iframe');
       if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
       
-      const url = iframe.src || iframe.getAttribute('data-deferred-src');
       const quickTabId = element.dataset.quickTabId;
-      if (!url || !quickTabId) return;
+      if (!quickTabId) return;
       
-      // Final save to all layers
-      sendRuntimeMessage({
-      action: 'UPDATE_QUICK_TAB_POSITION',
-        id: quickTabId,
-        url: url,
-        left: Math.round(finalLeft),
-        top: Math.round(finalTop),
-        width: Math.round(finalWidth),
-        height: Math.round(finalHeight)
+      // Save via queue
+      saveQuickTabState('update', quickTabId, {
+        left: finalLeft,
+        top: finalTop,
+        width: finalWidth,
+        height: finalHeight
+      }).then(() => {
+        debug(`Quick Tab ${quickTabId} resize saved: ${finalWidth}x${finalHeight} at (${finalLeft}, ${finalTop})`);
       }).catch(err => {
-        debug('[POINTER] Error sending final resize to background:', err);
+        console.error(`Failed to save resize for ${quickTabId}:`, err);
       });
-      
-      broadcastQuickTabResize(quickTabId, url, Math.round(finalWidth), Math.round(finalHeight));
-      broadcastQuickTabMove(quickTabId, url, Math.round(finalLeft), Math.round(finalTop));
     };
     
     // =========================
