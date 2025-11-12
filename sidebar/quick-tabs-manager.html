@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Quick Tabs Manager</title>
+  <link rel="stylesheet" href="quick-tabs-manager.css">
+</head>
+<body>
+  <div class="sidebar-header">
+    <h1>Quick Tabs Manager</h1>
+    <div class="header-actions">
+      <button id="closeMinimized" class="btn-secondary" title="Close all minimized Quick Tabs">
+        Close Minimized
+      </button>
+      <button id="closeAll" class="btn-danger" title="Close all Quick Tabs (active + minimized)">
+        Close All
+      </button>
+    </div>
+  </div>
+
+  <div class="sidebar-stats">
+    <span id="totalTabs">0 Quick Tabs</span>
+    <span id="lastSync">Last sync: Never</span>
+  </div>
+
+  <div id="containersList" class="containers-list">
+    <!-- Dynamically populated by quick-tabs-manager.js -->
+  </div>
+
+  <div id="emptyState" class="empty-state" style="display: none;">
+    <div class="empty-icon">📭</div>
+    <div class="empty-text">No Quick Tabs</div>
+    <div class="empty-hint">Press Q while hovering over a link to create one</div>
+  </div>
+
+  <script src="quick-tabs-manager.js"></script>
+</body>
+</html>

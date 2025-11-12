@@ -36,9 +36,10 @@
   },
   
   "sidebar_action": {
-    "default_panel": "sidebar/panel.html",
+    "default_panel": "sidebar/quick-tabs-manager.html",
     "default_title": "Quick Tabs Manager",
-    "default_icon": "icons/icon.png"
+    "default_icon": "icons/icon.png",
+    "open_at_install": false
   },
   
   "background": {
