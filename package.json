@@ -1,6 +1,6 @@
 {
   "name": "copy-url-on-hover-chunkyedition",
-  "version": "1.5.8.4",
+  "version": "1.5.8.6",
   "description": "Copy URL on Hover extension with modular architecture",
   "type": "module",
   "private": true,
@@ -9,7 +9,7 @@
     "build:prod": "npm run clean && rollup -c --environment BUILD:production && npm run copy-assets",
     "watch": "rollup -c --watch",
     "clean": "rm -rf dist && mkdir -p dist",
-    "copy-assets": "cp background.js popup.html popup.js options_page.html options_page.js state-manager.js dist/ && cp -r icons sidebar dist/ && sed 's/\"version\": \"1.5.8.3\"/\"version\": \"1.5.8.4\"/' manifest.json > dist/manifest.json"
+    "copy-assets": "cp background.js popup.html popup.js options_page.html options_page.js state-manager.js manifest.json dist/ && cp -r icons sidebar dist/"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.0",
