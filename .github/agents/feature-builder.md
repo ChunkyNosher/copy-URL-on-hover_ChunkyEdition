@@ -36,35 +36,38 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 ## Extension Architecture Knowledge
 
-**Current Repository Architecture (v1.5.8+):**
-- **content.js** (~4500 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
-- **background.js** (~970 lines): Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting, sidebar toggle command listener
+**Current Repository Architecture (v1.5.8.1+):**
+- **content.js** (~5700 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts, floating Quick Tabs Manager panel
+- **background.js** (~970 lines): Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting, panel toggle command listener
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
-- **sidebar/quick-tabs-manager.html/js/css** (NEW v1.5.8): Native Firefox sidebar for managing Quick Tabs across all containers with action buttons
-- **sidebar/panel.html/panel.js**: Legacy debugging panel (replaced by quick-tabs-manager in v1.5.8)
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, sidebar_action, commands
+- **sidebar/quick-tabs-manager.html/js/css** (LEGACY v1.5.8): Replaced by floating panel in v1.5.8.1
+- **sidebar/panel.html/panel.js**: Legacy debugging panel
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, commands (NO sidebar_action - replaced with floating panel)
 
 **Key Systems:**
 - CONFIG object: Central configuration with user settings
 - Site-specific handlers: URL detection logic for 100+ sites
 - Quick Tabs: Floating iframe windows with Pointer Events API drag/resize (setPointerCapture)
-- Sidebar Manager: Native Firefox sidebar for Quick Tab management with container categorization (v1.5.8+)
+- Floating Panel Manager: Persistent, draggable, resizable panel for Quick Tab management with container categorization (v1.5.8.1+)
 - QuickTabStateManager: Dual-layer storage (sync + session) for state management
 - Notifications: Customizable visual feedback system
-- Storage: browser.storage.sync for settings and Quick Tab state, browser.storage.local for user config
+- Storage: browser.storage.sync for settings and Quick Tab state, browser.storage.local for user config and panel state
 
 **Critical APIs to Use - PRIORITIZE THESE:**
 
-1. **Firefox Sidebar API** (sidebarAction) - NEW in v1.5.8
-   - Native sidebar for Quick Tabs management
-   - ONE instance shared across all tabs in window
+1. **Content Script Panel Injection** - NEW in v1.5.8.1
+   - Persistent floating panel injected into page DOM
+   - Works in Zen Browser (where Firefox Sidebar API is disabled)
+   - Draggable and resizable with Pointer Events API
+   - Position/size persistence via browser.storage.local
    - Container categorization with visual indicators
-   - Action buttons: Close Minimized, Close All
+   - Action buttons: Close Minimized, Close All, Go to Tab
 
 2. **Pointer Events API** (setPointerCapture, pointercancel) - v1.5.7
    - For drag/resize without slipping (replaces mouse events + RAF)
+   - Used for Quick Tabs AND floating panel
    - Handles tab switches during drag (pointercancel)
    - Touch/pen support automatically included
 
@@ -77,13 +80,13 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 5. **Storage API** (browser.storage.sync/session/local) - For settings and persistence
    - browser.storage.sync: Container-keyed Quick Tab state (quick_tabs_state_v2[cookieStoreId]), settings
    - browser.storage.session: Fast ephemeral state (quick_tabs_session[cookieStoreId]) - Firefox 115+
-   - browser.storage.local: User config and large data
-6. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - For component communication (sidebar <-> content)
+   - browser.storage.local: User config, large data, panel state (quick_tabs_panel_state)
+6. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - For component communication (background <-> content, panel actions)
 7. **webRequest API** (onHeadersReceived) - For iframe/loading features
 8. **Tabs API** (browser.tabs.*) - For tab-related features and container queries
-9. **Commands API** (browser.commands) - For keyboard shortcuts (e.g., Ctrl+Shift+M for sidebar)
-6. **Keyboard Events** (addEventListener) - For shortcuts
-7. **DOM Manipulation** (createElement, appendChild) - For UI elements
+9. **Commands API** (browser.commands) - For keyboard shortcuts (e.g., Ctrl+Alt+Z for panel toggle)
+10. **Keyboard Events** (addEventListener) - For shortcuts
+11. **DOM Manipulation** (createElement, appendChild) - For UI elements and panel injection
 
 **Browser-Specific Considerations:**
 - **Firefox:** Full WebExtension API support, standard browser.* namespace

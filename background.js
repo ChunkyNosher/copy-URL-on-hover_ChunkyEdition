@@ -969,23 +969,40 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
 // ==================== KEYBOARD COMMANDS ====================
-// Listen for keyboard commands (e.g., Ctrl+Shift+M to toggle sidebar)
-browser.commands.onCommand.addListener((command) => {
-  if (command === 'toggle-minimized-manager') {
-    // Toggle sidebar visibility
-    browser.sidebarAction.isOpen({}).then(isOpen => {
-      if (isOpen) {
-        browser.sidebarAction.close();
-      } else {
-        browser.sidebarAction.open();
+// Listen for keyboard commands to toggle floating panel
+browser.commands.onCommand.addListener(async (command) => {
+  if (command === 'toggle-quick-tabs-manager') {
+    // Get active tab in current window
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      
+      if (tabs.length === 0) {
+        console.error('[QuickTabsManager] No active tab found');
+        return;
       }
-    }).catch(err => {
-      // Fallback for older Firefox versions
-      console.log('[Background] Toggling sidebar (fallback)');
-      browser.sidebarAction.toggle().catch(toggleErr => {
-        console.error('[Background] Error toggling sidebar:', toggleErr);
+      
+      const activeTab = tabs[0];
+      
+      // Send message to content script to toggle panel
+      browser.tabs.sendMessage(activeTab.id, {
+        action: 'TOGGLE_QUICK_TABS_PANEL'
+      }).catch(err => {
+        console.error('[QuickTabsManager] Error sending toggle message:', err);
+        // Content script may not be loaded yet - inject it
+        browser.tabs.executeScript(activeTab.id, {
+          file: 'content.js'
+        }).then(() => {
+          // Try again after injection
+          browser.tabs.sendMessage(activeTab.id, {
+            action: 'TOGGLE_QUICK_TABS_PANEL'
+          });
+        });
       });
-    });
+      
+      console.log('[QuickTabsManager] Toggle command sent to tab', activeTab.id);
+    } catch (err) {
+      console.error('[QuickTabsManager] Error handling toggle command:', err);
+    }
   }
 });
 // ==================== END KEYBOARD COMMANDS ====================
