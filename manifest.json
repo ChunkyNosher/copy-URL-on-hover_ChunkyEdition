@@ -18,7 +18,6 @@
     "toggle-quick-tabs-manager": {
       "suggested_key": {
         "default": "Ctrl+Alt+Z",
-        "mac": "Command+Option+Z"
       },
       "description": "Toggle Quick Tabs Manager panel"
     }
@@ -64,3 +63,4 @@
     }
   }
 }
+
