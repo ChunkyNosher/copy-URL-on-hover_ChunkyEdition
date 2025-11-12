@@ -86,6 +86,219 @@ async function initializeGlobalState() {
 // Call initialization immediately
 initializeGlobalState();
 
+// ==================== STATE COORDINATOR ====================
+// Manages canonical Quick Tab state across all tabs with conflict resolution
+
+class StateCoordinator {
+  constructor() {
+    this.globalState = {
+      tabs: [],
+      timestamp: 0,
+      version: 1 // Increment on breaking changes
+    };
+    this.pendingConfirmations = new Map(); // saveId → {tabId, resolve, reject}
+    this.tabVectorClocks = new Map(); // tabId → vector clock
+    this.initialized = false;
+  }
+  
+  /**
+   * Initialize from storage
+   */
+  async initialize() {
+    if (this.initialized) return;
+    
+    try {
+      // Try session storage first
+      if (typeof browser.storage.session !== 'undefined') {
+        const result = await browser.storage.session.get('quick_tabs_session');
+        if (result && result.quick_tabs_session && result.quick_tabs_session.tabs) {
+          this.globalState = result.quick_tabs_session;
+          this.initialized = true;
+          console.log('[STATE COORDINATOR] Initialized from session storage:', this.globalState.tabs.length, 'tabs');
+          return;
+        }
+      }
+      
+      // Fall back to sync storage
+      const result = await browser.storage.sync.get('quick_tabs_state_v2');
+      if (result && result.quick_tabs_state_v2) {
+        // Handle container-aware format from existing code
+        if (typeof result.quick_tabs_state_v2 === 'object' && !Array.isArray(result.quick_tabs_state_v2.tabs)) {
+          // Container-aware format - merge all containers into single state
+          const allTabs = [];
+          for (const containerId in result.quick_tabs_state_v2) {
+            const containerData = result.quick_tabs_state_v2[containerId];
+            if (containerData && containerData.tabs) {
+              allTabs.push(...containerData.tabs);
+            }
+          }
+          this.globalState.tabs = allTabs;
+          this.globalState.timestamp = Date.now();
+        } else if (result.quick_tabs_state_v2.tabs) {
+          this.globalState = result.quick_tabs_state_v2;
+        }
+        this.initialized = true;
+        console.log('[STATE COORDINATOR] Initialized from sync storage:', this.globalState.tabs.length, 'tabs');
+      } else {
+        this.initialized = true;
+        console.log('[STATE COORDINATOR] No saved state, starting fresh');
+      }
+    } catch (err) {
+      console.error('[STATE COORDINATOR] Error initializing:', err);
+      this.initialized = true;
+    }
+  }
+  
+  /**
+   * Process batch update from a tab
+   */
+  async processBatchUpdate(tabId, operations, tabInstanceId) {
+    await this.initialize();
+    
+    console.log(`[STATE COORDINATOR] Processing ${operations.length} operations from tab ${tabId}`);
+    
+    // Rebuild vector clock from operations
+    const tabVectorClock = new Map();
+    operations.forEach(op => {
+      if (op.vectorClock) {
+        op.vectorClock.forEach(([key, value]) => {
+          tabVectorClock.set(key, Math.max(tabVectorClock.get(key) || 0, value));
+        });
+      }
+    });
+    this.tabVectorClocks.set(tabInstanceId, tabVectorClock);
+    
+    // Process each operation
+    for (const op of operations) {
+      await this.processOperation(op);
+    }
+    
+    // Save to storage
+    await this.persistState();
+    
+    // Broadcast to all tabs
+    await this.broadcastState();
+    
+    console.log('[STATE COORDINATOR] Batch update complete');
+    return { success: true };
+  }
+  
+  /**
+   * Process a single operation
+   */
+  async processOperation(op) {
+    const { type, quickTabId, data } = op;
+    
+    switch (type) {
+      case 'create':
+        // Check if already exists
+        const existingIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+        if (existingIndex === -1) {
+          this.globalState.tabs.push(data);
+          console.log(`[STATE COORDINATOR] Created Quick Tab ${quickTabId}`);
+        } else {
+          // Update existing
+          this.globalState.tabs[existingIndex] = { ...this.globalState.tabs[existingIndex], ...data };
+          console.log(`[STATE COORDINATOR] Updated existing Quick Tab ${quickTabId}`);
+        }
+        break;
+        
+      case 'update':
+        const updateIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+        if (updateIndex !== -1) {
+          this.globalState.tabs[updateIndex] = { ...this.globalState.tabs[updateIndex], ...data };
+          console.log(`[STATE COORDINATOR] Updated Quick Tab ${quickTabId}`);
+        }
+        break;
+        
+      case 'delete':
+        const deleteIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+        if (deleteIndex !== -1) {
+          this.globalState.tabs.splice(deleteIndex, 1);
+          console.log(`[STATE COORDINATOR] Deleted Quick Tab ${quickTabId}`);
+        }
+        break;
+        
+      case 'minimize':
+        const minIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+        if (minIndex !== -1) {
+          this.globalState.tabs[minIndex].minimized = true;
+          console.log(`[STATE COORDINATOR] Minimized Quick Tab ${quickTabId}`);
+        } else if (data) {
+          // Add minimized tab if not in state
+          this.globalState.tabs.push({ ...data, minimized: true });
+        }
+        break;
+        
+      case 'restore':
+        const restoreIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+        if (restoreIndex !== -1) {
+          this.globalState.tabs[restoreIndex].minimized = false;
+          console.log(`[STATE COORDINATOR] Restored Quick Tab ${quickTabId}`);
+        }
+        break;
+    }
+    
+    this.globalState.timestamp = Date.now();
+  }
+  
+  /**
+   * Persist state to storage
+   */
+  async persistState() {
+    try {
+      await browser.storage.sync.set({ 
+        quick_tabs_state_v2: this.globalState 
+      });
+      
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        await browser.storage.session.set({ 
+          quick_tabs_session: this.globalState 
+        });
+      }
+      
+      console.log('[STATE COORDINATOR] Persisted state to storage');
+    } catch (err) {
+      console.error('[STATE COORDINATOR] Error persisting state:', err);
+      throw err;
+    }
+  }
+  
+  /**
+   * Broadcast canonical state to all tabs
+   */
+  async broadcastState() {
+    try {
+      const tabs = await browser.tabs.query({});
+      
+      for (const tab of tabs) {
+        browser.tabs.sendMessage(tab.id, {
+          action: 'SYNC_STATE_FROM_COORDINATOR',
+          state: this.globalState
+        }).catch(() => {
+          // Content script not loaded in this tab, that's OK
+        });
+      }
+      
+      console.log(`[STATE COORDINATOR] Broadcasted state to ${tabs.length} tabs`);
+    } catch (err) {
+      console.error('[STATE COORDINATOR] Error broadcasting state:', err);
+    }
+  }
+  
+  /**
+   * Get current state
+   */
+  getState() {
+    return this.globalState;
+  }
+}
+
+// Global state coordinator instance
+const stateCoordinator = new StateCoordinator();
+// ==================== END STATE COORDINATOR ====================
+
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
 // This allows Quick Tabs to load any website, bypassing clickjacking protection
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
@@ -259,6 +472,25 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // Handle messages from content script and sidebar
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
+  
+  // ==================== PROMISE-BASED SAVE QUEUE HANDLER ====================
+  // NEW: Handle batch updates from save queue
+  if (message.action === 'BATCH_QUICK_TAB_UPDATE') {
+    try {
+      const result = await stateCoordinator.processBatchUpdate(
+        tabId, 
+        message.operations,
+        message.tabInstanceId
+      );
+      sendResponse(result); // { success: true }
+      return true; // Keep channel open for async response
+    } catch (err) {
+      console.error('[Background] Batch update failed:', err);
+      sendResponse({ success: false, error: err.message });
+      return true;
+    }
+  }
+  // ==================== END SAVE QUEUE HANDLER ====================
   
   // ==================== REAL-TIME STATE COORDINATION ====================
   
