@@ -54,7 +54,9 @@ export class URLHandlerRegistry {
     let parent = element.parentElement;
     for (let i = 0; i < 20; i++) {
       if (!parent) break;
-      if (parent.href) return parent.href;
+      if (parent.tagName === 'A' && parent.href) {
+        return parent.href;
+      }
       parent = parent.parentElement;
     }
     

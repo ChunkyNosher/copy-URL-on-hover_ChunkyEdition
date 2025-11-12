@@ -138,12 +138,13 @@ function setupHoverDetection() {
     // Find URL using the modular URL registry
     const url = urlRegistry.findURL(element, domainType);
     
+    // Always set element, URL can be null
+    stateManager.setState({
+      currentHoveredLink: url || null,  // Set to null if not found
+      currentHoveredElement: element
+    });
+    
     if (url) {
-      stateManager.setState({
-        currentHoveredLink: url,
-        currentHoveredElement: element
-      });
-      
       eventBus.emit(Events.HOVER_START, { url, element, domainType });
     }
   });
@@ -166,28 +167,32 @@ function setupKeyboardShortcuts() {
     const hoveredLink = stateManager.get('currentHoveredLink');
     const hoveredElement = stateManager.get('currentHoveredElement');
     
-    if (!hoveredLink) return;
+    // Don't exit early - some shortcuts don't need a URL!
     
-    // Check for copy URL shortcut
+    // Check for copy URL shortcut (needs URL)
     if (checkShortcut(event, CONFIG.copyUrlKey, CONFIG.copyUrlCtrl, CONFIG.copyUrlAlt, CONFIG.copyUrlShift)) {
+      if (!hoveredLink) return; // Only check for this specific shortcut
       event.preventDefault();
       await handleCopyURL(hoveredLink);
     }
     
-    // Check for copy text shortcut
+    // Check for copy text shortcut (doesn't need URL)
     else if (checkShortcut(event, CONFIG.copyTextKey, CONFIG.copyTextCtrl, CONFIG.copyTextAlt, CONFIG.copyTextShift)) {
+      if (!hoveredElement) return; // Only needs element
       event.preventDefault();
       await handleCopyText(hoveredElement);
     }
     
-    // Check for Quick Tab shortcut
+    // Check for Quick Tab shortcut (needs URL)
     else if (checkShortcut(event, CONFIG.quickTabKey, CONFIG.quickTabCtrl, CONFIG.quickTabAlt, CONFIG.quickTabShift)) {
+      if (!hoveredLink) return;
       event.preventDefault();
       await handleCreateQuickTab(hoveredLink);
     }
     
-    // Check for open in new tab shortcut
+    // Check for open in new tab shortcut (needs URL)
     else if (checkShortcut(event, CONFIG.openNewTabKey, CONFIG.openNewTabCtrl, CONFIG.openNewTabAlt, CONFIG.openNewTabShift)) {
+      if (!hoveredLink) return;
       event.preventDefault();
       await handleOpenInNewTab(hoveredLink);
     }

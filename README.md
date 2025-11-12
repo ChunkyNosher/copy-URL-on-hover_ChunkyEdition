@@ -1,10 +1,10 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.8.2** - A feature-rich Firefox/Zen Browser extension with modular architecture for quick URL copying and advanced Quick Tab management with Firefox Container support and Floating Panel Manager.
+**Version 1.5.8.4** - A feature-rich Firefox/Zen Browser extension with modular architecture for quick URL copying and advanced Quick Tab management with Firefox Container support and Floating Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration and a floating Quick Tabs Manager panel that works in Zen Browser.
 
-## 📁 Repository Structure (v1.5.8.2 - Modular Architecture)
+## 📁 Repository Structure (v1.5.8.4 - Modular Architecture)
 
 **Source Files (New Modular Structure)**:
 - **`src/`** - Modular source code
