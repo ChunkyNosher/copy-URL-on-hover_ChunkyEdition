@@ -36,7 +36,7 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 ## Extension Architecture Knowledge
 
-**Current Repository Architecture (v1.5.8.2 - Modular Architecture):**
+**Current Repository Architecture (v1.5.8.3 - Modular Architecture):**
 - **content.js** (modular structure): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts, floating Quick Tabs Manager panel
 - **background.js** (~970 lines): Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting, panel toggle command listener
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
@@ -50,7 +50,7 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 - CONFIG object: Central configuration with user settings
 - Site-specific handlers: URL detection logic for 100+ sites
 - Quick Tabs: Floating iframe windows with Pointer Events API drag/resize (setPointerCapture)
-- Floating Panel Manager: Persistent, draggable, resizable panel for Quick Tab management with container categorization (v1.5.8.2 - Modular Architecture)
+- Floating Panel Manager: Persistent, draggable, resizable panel for Quick Tab management with container categorization (v1.5.8.3 - Modular Architecture)
 - QuickTabStateManager: Dual-layer storage (sync + session) for state management
 - Notifications: Customizable visual feedback system
 - Storage: browser.storage.sync for settings and Quick Tab state, browser.storage.local for user config and panel state
