@@ -29,8 +29,8 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.6+):**
-- **content.js** (~4300 lines): Main functionality, site handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
+**Current Repository Architecture (v1.5.7+):**
+- **content.js** (~4500 lines): Main functionality, site handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
 - **background.js**: Tab lifecycle, webRequest header modification (Manifest v2 required), content injection, storage sync broadcasting
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs
@@ -39,7 +39,7 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 - **manifest.json**: **Manifest v2** (required for webRequestBlocking) with webRequest, storage, tabs permissions, options_ui, sidebar_action
 
 **Critical APIs - Debug These First:**
-1. **Pointer Events API** (setPointerCapture, pointercancel) - Drag/resize bugs (NEW in v1.5.6)
+1. **Pointer Events API** (setPointerCapture, pointercancel) - Drag/resize bugs (NEW in v1.5.7)
 2. **Clipboard API** (navigator.clipboard.writeText) - Copy failures
 3. **Storage API** (browser.storage.sync/session/local) - Persistence bugs
    - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)

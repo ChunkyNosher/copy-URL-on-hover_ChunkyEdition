@@ -148,6 +148,24 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 let isSavingToStorage = false; // Flag to prevent processing our own storage changes
 
+// ==================== Z-INDEX MANAGEMENT FOR MULTIPLE QUICK TABS ====================
+/**
+ * Bring a Quick Tab to the front (highest z-index)
+ * Called when user interacts with a Quick Tab (click, focus, or after drag)
+ * @param {HTMLElement} container - The Quick Tab container element
+ */
+function bringQuickTabToFront(container) {
+  if (!container) return;
+  
+  // Only update if this isn't already the topmost
+  const currentZ = parseInt(container.style.zIndex) || 0;
+  if (currentZ < quickTabZIndex - 1) {
+    container.style.zIndex = quickTabZIndex++;
+    debug(`Brought Quick Tab to front with z-index ${container.style.zIndex}`);
+  }
+}
+// ==================== END Z-INDEX MANAGEMENT ====================
+
 // ==================== SLOT NUMBER TRACKING FOR DEBUG MODE ====================
 // Track Quick Tab slot numbers for debug mode display
 let quickTabSlots = new Map(); // Maps quickTabId → slot number
@@ -195,6 +213,60 @@ let quickTabChannel = null;
 // Generate unique tab instance ID to prevent self-reception of broadcasts
 const tabInstanceId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+// ==================== FIREFOX CONTAINER SUPPORT (v1.5.7+) ====================
+// Cache the current tab's cookieStoreId for container isolation
+let currentCookieStoreId = null;
+
+/**
+ * Get the current tab's cookieStoreId for Firefox Container support
+ * @returns {Promise<string>} The cookieStoreId (e.g., "firefox-container-1" or "firefox-default")
+ */
+async function getCurrentCookieStoreId() {
+  // Return cached value if available
+  if (currentCookieStoreId) {
+    return currentCookieStoreId;
+  }
+  
+  try {
+    // Query for the current tab
+    const tabs = await browser.tabs.query({
+      active: true,
+      currentWindow: true
+    });
+    
+    if (tabs && tabs.length > 0) {
+      currentCookieStoreId = tabs[0].cookieStoreId || "firefox-default";
+      debug(`Detected container: ${currentCookieStoreId}`);
+      return currentCookieStoreId;
+    }
+    
+    // Fallback to default container
+    currentCookieStoreId = "firefox-default";
+    return currentCookieStoreId;
+  } catch (err) {
+    console.error('[QuickTabs] Error getting cookieStoreId:', err);
+    currentCookieStoreId = "firefox-default";
+    return currentCookieStoreId;
+  }
+}
+
+// Initialize cookieStoreId detection immediately
+getCurrentCookieStoreId();
+
+/**
+ * Wrapper for browser.runtime.sendMessage that automatically includes cookieStoreId
+ * @param {Object} message - The message to send
+ * @returns {Promise} - Promise resolving to the response
+ */
+async function sendRuntimeMessage(message) {
+  const cookieStoreId = await getCurrentCookieStoreId();
+  return browser.runtime.sendMessage({
+    ...message,
+    cookieStoreId: cookieStoreId
+  });
+}
+// ==================== END FIREFOX CONTAINER SUPPORT ====================
+
 function initializeBroadcastChannel() {
   if (quickTabChannel) return; // Already initialized
   
@@ -224,12 +296,19 @@ function normalizeUrl(url) {
   }
 }
 
-function handleBroadcastMessage(event) {
+async function handleBroadcastMessage(event) {
   const message = event.data;
   
   // Ignore broadcasts from ourselves to prevent self-reception bugs
   if (message.senderId === tabInstanceId) {
     debug(`Ignoring broadcast from self (Instance ID: ${tabInstanceId})`);
+    return;
+  }
+  
+  // FIREFOX CONTAINER FILTERING: Ignore messages from different containers
+  const currentCookieStore = await getCurrentCookieStoreId();
+  if (message.cookieStoreId && message.cookieStoreId !== currentCookieStore) {
+    debug(`Ignoring broadcast from different container (${message.cookieStoreId} != ${currentCookieStore})`);
     return;
   }
   
@@ -370,7 +449,7 @@ function handleBroadcastMessage(event) {
   }
 }
 
-function broadcastQuickTabCreation(url, width, height, left, top, pinnedToUrl = null, quickTabId = null) {
+async function broadcastQuickTabCreation(url, width, height, left, top, pinnedToUrl = null, quickTabId = null) {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
@@ -382,6 +461,7 @@ function broadcastQuickTabCreation(url, width, height, left, top, pinnedToUrl = 
     left: left,
     top: top,
     pinnedToUrl: pinnedToUrl,
+    cookieStoreId: await getCurrentCookieStoreId(),
     senderId: tabInstanceId,
     timestamp: Date.now()
   });
@@ -389,13 +469,14 @@ function broadcastQuickTabCreation(url, width, height, left, top, pinnedToUrl = 
   debug(`Broadcasting Quick Tab creation to other tabs: ${url} (ID: ${quickTabId})`);
 }
 
-function broadcastQuickTabClose(quickTabId, url) {
+async function broadcastQuickTabClose(quickTabId, url) {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
     action: 'closeQuickTab',
     id: quickTabId,
     url: url,
+    cookieStoreId: await getCurrentCookieStoreId(),
     senderId: tabInstanceId,
     timestamp: Date.now()
   });
@@ -403,17 +484,18 @@ function broadcastQuickTabClose(quickTabId, url) {
   debug(`Broadcasting Quick Tab close to other tabs: ${url} (ID: ${quickTabId})`);
 }
 
-function broadcastCloseAll() {
+async function broadcastCloseAll() {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
     action: 'closeAllQuickTabs',
+    cookieStoreId: await getCurrentCookieStoreId(),
     senderId: tabInstanceId,
     timestamp: Date.now()
   });
 }
 
-function broadcastQuickTabMove(quickTabId, url, left, top) {
+async function broadcastQuickTabMove(quickTabId, url, left, top) {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
@@ -422,6 +504,7 @@ function broadcastQuickTabMove(quickTabId, url, left, top) {
     url: url,
     left: left,
     top: top,
+    cookieStoreId: await getCurrentCookieStoreId(),
     senderId: tabInstanceId,
     timestamp: Date.now()
   });
@@ -429,7 +512,7 @@ function broadcastQuickTabMove(quickTabId, url, left, top) {
   debug(`Broadcasting Quick Tab move to other tabs: ${url} (ID: ${quickTabId})`);
 }
 
-function broadcastQuickTabResize(quickTabId, url, width, height) {
+async function broadcastQuickTabResize(quickTabId, url, width, height) {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
@@ -438,6 +521,7 @@ function broadcastQuickTabResize(quickTabId, url, width, height) {
     url: url,
     width: width,
     height: height,
+    cookieStoreId: await getCurrentCookieStoreId(),
     senderId: tabInstanceId,
     timestamp: Date.now()
   });
@@ -445,7 +529,7 @@ function broadcastQuickTabResize(quickTabId, url, width, height) {
   debug(`Broadcasting Quick Tab resize to other tabs: ${url} (ID: ${quickTabId})`);
 }
 
-function broadcastQuickTabPin(quickTabId, url, pinnedToUrl) {
+async function broadcastQuickTabPin(quickTabId, url, pinnedToUrl) {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
@@ -453,6 +537,7 @@ function broadcastQuickTabPin(quickTabId, url, pinnedToUrl) {
     id: quickTabId,
     url: url,
     pinnedToUrl: pinnedToUrl,
+    cookieStoreId: await getCurrentCookieStoreId(),
     senderId: tabInstanceId,
     timestamp: Date.now()
   });
@@ -460,7 +545,7 @@ function broadcastQuickTabPin(quickTabId, url, pinnedToUrl) {
   debug(`Broadcasting Quick Tab pin to other tabs: ${url} (ID: ${quickTabId}) pinned to ${pinnedToUrl}`);
 }
 
-function broadcastQuickTabUnpin(quickTabId, url, width, height, left, top) {
+async function broadcastQuickTabUnpin(quickTabId, url, width, height, left, top) {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
@@ -471,6 +556,7 @@ function broadcastQuickTabUnpin(quickTabId, url, width, height, left, top) {
     height: height,
     left: left,
     top: top,
+    cookieStoreId: await getCurrentCookieStoreId(),
     senderId: tabInstanceId,
     timestamp: Date.now()
   });
@@ -478,11 +564,13 @@ function broadcastQuickTabUnpin(quickTabId, url, width, height, left, top) {
   debug(`Broadcasting Quick Tab unpin to other tabs: ${url} (ID: ${quickTabId}) is now unpinned`);
 }
 
-function broadcastClearMinimized() {
+async function broadcastClearMinimized() {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
   
   quickTabChannel.postMessage({
     action: 'clearMinimizedTabs',
+    cookieStoreId: await getCurrentCookieStoreId(),
+    senderId: tabInstanceId,
     timestamp: Date.now()
   });
 }
@@ -494,10 +582,13 @@ function broadcastClearMinimized() {
 // browser.storage.sync is shared across all tabs and syncs across devices
 // Also using browser.storage.session for fast ephemeral reads (Firefox 115+)
 
-function saveQuickTabsToStorage() {
+async function saveQuickTabsToStorage() {
   if (!CONFIG.quickTabPersistAcrossTabs) return;
   
   try {
+    // Get current container ID
+    const cookieStoreId = await getCurrentCookieStoreId();
+    
     const state = quickTabWindows.map(container => {
       const iframe = container.querySelector('iframe');
       const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
@@ -530,19 +621,23 @@ function saveQuickTabsToStorage() {
     // Set flag to indicate we're saving (to avoid processing our own change)
     isSavingToStorage = true;
     
-    // Create state object with timestamp
-    const stateObject = {
+    // Load existing state for all containers
+    const existingData = await browser.storage.sync.get('quick_tabs_state_v2') || {};
+    const containerStates = existingData.quick_tabs_state_v2 || {};
+    
+    // Update state for this specific container
+    containerStates[cookieStoreId] = {
       tabs: allTabs,
       timestamp: Date.now()
     };
     
     // Save to browser.storage.sync for persistence and cross-device sync
-    browser.storage.sync.set({ quick_tabs_state_v2: stateObject }).then(() => {
-      debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.sync`);
+    browser.storage.sync.set({ quick_tabs_state_v2: containerStates }).then(() => {
+      debug(`Saved ${allTabs.length} Quick Tabs to browser.storage.sync for container ${cookieStoreId}`);
       
       // Also save to session storage if available (faster reads)
       if (typeof browser.storage.session !== 'undefined') {
-        browser.storage.session.set({ quick_tabs_session: stateObject }).catch(err => {
+        browser.storage.session.set({ quick_tabs_session: containerStates }).catch(err => {
           // Session storage not available, that's OK
         });
       }
@@ -562,8 +657,11 @@ function saveQuickTabsToStorage() {
   }
 }
 
-function restoreQuickTabsFromStorage() {
+async function restoreQuickTabsFromStorage() {
   if (!CONFIG.quickTabPersistAcrossTabs) return;
+  
+  // Get current container ID
+  const cookieStoreId = await getCurrentCookieStoreId();
   
   // Try session storage first (faster), fall back to sync storage
   const loadState = async () => {
@@ -571,15 +669,23 @@ function restoreQuickTabsFromStorage() {
       // Try session storage first if available
       if (typeof browser.storage.session !== 'undefined') {
         const sessionResult = await browser.storage.session.get('quick_tabs_session');
-        if (sessionResult && sessionResult.quick_tabs_session && sessionResult.quick_tabs_session.tabs) {
-          return sessionResult.quick_tabs_session.tabs;
+        if (sessionResult && sessionResult.quick_tabs_session) {
+          const containerStates = sessionResult.quick_tabs_session;
+          // Check if container-aware format
+          if (containerStates[cookieStoreId] && containerStates[cookieStoreId].tabs) {
+            return containerStates[cookieStoreId].tabs;
+          }
         }
       }
       
       // Fall back to sync storage
       const syncResult = await browser.storage.sync.get('quick_tabs_state_v2');
-      if (syncResult && syncResult.quick_tabs_state_v2 && syncResult.quick_tabs_state_v2.tabs) {
-        return syncResult.quick_tabs_state_v2.tabs;
+      if (syncResult && syncResult.quick_tabs_state_v2) {
+        const containerStates = syncResult.quick_tabs_state_v2;
+        // Check if container-aware format
+        if (containerStates[cookieStoreId] && containerStates[cookieStoreId].tabs) {
+          return containerStates[cookieStoreId].tabs;
+        }
       }
       
       return null;
@@ -592,7 +698,7 @@ function restoreQuickTabsFromStorage() {
   loadState().then(tabs => {
     if (!tabs || !Array.isArray(tabs) || tabs.length === 0) return;
     
-    debug(`Restoring ${tabs.length} Quick Tabs from browser.storage`);
+    debug(`Restoring ${tabs.length} Quick Tabs from browser.storage for container ${cookieStoreId}`);
     
     // Get current page URL for pin filtering
     const currentPageUrl = window.location.href;
@@ -3005,7 +3111,7 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       // Notify background script to update pin state
       const quickTabId = container.dataset.quickTabId;
       if (quickTabId) {
-        browser.runtime.sendMessage({
+        sendRuntimeMessage({
           action: 'UPDATE_QUICK_TAB_PIN',
           id: quickTabId,
           pinnedToUrl: null
@@ -3038,8 +3144,8 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       // Notify background script to update pin state
       const quickTabId = container.dataset.quickTabId;
       if (quickTabId) {
-        browser.runtime.sendMessage({
-          action: 'UPDATE_QUICK_TAB_PIN',
+        sendRuntimeMessage({
+      action: 'UPDATE_QUICK_TAB_PIN',
           id: quickTabId,
           pinnedToUrl: currentPageUrl
         }).catch(err => {
@@ -3127,9 +3233,9 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
     makeResizable(container);
   }
   
-  // Bring to front on click
+  // Bring to front on click (z-index management)
   container.addEventListener('mousedown', () => {
-    container.style.zIndex = quickTabZIndex++;
+    bringQuickTabToFront(container);
   });
   
   showNotification('✓ Quick Tab opened');
@@ -3141,7 +3247,7 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
     broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl, quickTabId);
     
     // Notify background script for state coordination
-    browser.runtime.sendMessage({
+    sendRuntimeMessage({
       action: 'CREATE_QUICK_TAB',
       id: quickTabId,
       url: url,
@@ -3187,7 +3293,7 @@ function closeQuickTabWindow(container, broadcast = true) {
   
   // Notify background script for state coordination
   if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
-    browser.runtime.sendMessage({
+    sendRuntimeMessage({
       action: 'CLOSE_QUICK_TAB',
       id: quickTabId,
       url: url
@@ -3535,7 +3641,7 @@ function makeDraggable(element, handle) {
     const rect = element.getBoundingClientRect();
     
     // INTEGRATION POINT 1: Send to background script for real-time cross-origin coordination
-    browser.runtime.sendMessage({
+    sendRuntimeMessage({
       action: 'UPDATE_QUICK_TAB_POSITION',
       id: quickTabId,
       url: url,
@@ -3563,7 +3669,7 @@ function makeDraggable(element, handle) {
     const rect = element.getBoundingClientRect();
     
     // INTEGRATION POINT 1: Send to background for coordination
-    browser.runtime.sendMessage({
+    sendRuntimeMessage({
       action: 'UPDATE_QUICK_TAB_POSITION',
       id: quickTabId,
       url: url,
@@ -3590,6 +3696,9 @@ function makeDraggable(element, handle) {
     // Ignore non-primary buttons and clicks on buttons/images
     if (e.button !== 0) return;
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'IMG') return;
+    
+    // Bring this Quick Tab to front when user starts interacting
+    bringQuickTabToFront(element);
     
     // Start dragging
     isDragging = true;
@@ -3861,8 +3970,8 @@ function makeResizable(element) {
       if (!url || !quickTabId) return;
       
       // Send to background for coordination
-      browser.runtime.sendMessage({
-        action: 'UPDATE_QUICK_TAB_POSITION',
+      sendRuntimeMessage({
+      action: 'UPDATE_QUICK_TAB_POSITION',
         id: quickTabId,
         url: url,
         left: Math.round(newLeft),
@@ -3887,8 +3996,8 @@ function makeResizable(element) {
       if (!url || !quickTabId) return;
       
       // Final save to all layers
-      browser.runtime.sendMessage({
-        action: 'UPDATE_QUICK_TAB_POSITION',
+      sendRuntimeMessage({
+      action: 'UPDATE_QUICK_TAB_POSITION',
         id: quickTabId,
         url: url,
         left: Math.round(finalLeft),
@@ -4262,6 +4371,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // NEW: Handle clear all Quick Tabs command
   if (message.action === 'CLEAR_ALL_QUICK_TABS') {
     // Close all Quick Tab windows
+  
+  // Handle toggle minimized manager command
+  if (message.action === 'TOGGLE_MINIMIZED_MANAGER') {
+    // This will be implemented in Phase 2
+    // For now, just acknowledge
+    debug('Toggle minimized manager command received (not yet implemented)');
+    sendResponse({ success: true });
+    return true;
+  }
     while (quickTabWindows.length > 0) {
       closeQuickTabWindow(quickTabWindows[0], false);
     }
@@ -4423,8 +4541,8 @@ document.addEventListener('visibilitychange', () => {
         
         if (url && quickTabId) {
           // Send to background immediately (don't wait for throttle)
-          browser.runtime.sendMessage({
-            action: 'UPDATE_QUICK_TAB_POSITION',
+          sendRuntimeMessage({
+      action: 'UPDATE_QUICK_TAB_POSITION',
             id: quickTabId,
             url: url,
             left: Math.round(rect.left),
