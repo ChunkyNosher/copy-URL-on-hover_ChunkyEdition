@@ -36,38 +36,52 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 ## Extension Architecture Knowledge
 
-**Current Repository Architecture (v1.5.7+):**
+**Current Repository Architecture (v1.5.8+):**
 - **content.js** (~4500 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting
+- **background.js** (~970 lines): Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting, sidebar toggle command listener
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
-- **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, sidebar_action
+- **sidebar/quick-tabs-manager.html/js/css** (NEW v1.5.8): Native Firefox sidebar for managing Quick Tabs across all containers with action buttons
+- **sidebar/panel.html/panel.js**: Legacy debugging panel (replaced by quick-tabs-manager in v1.5.8)
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, sidebar_action, commands
 
 **Key Systems:**
 - CONFIG object: Central configuration with user settings
 - Site-specific handlers: URL detection logic for 100+ sites
 - Quick Tabs: Floating iframe windows with Pointer Events API drag/resize (setPointerCapture)
+- Sidebar Manager: Native Firefox sidebar for Quick Tab management with container categorization (v1.5.8+)
 - QuickTabStateManager: Dual-layer storage (sync + session) for state management
 - Notifications: Customizable visual feedback system
 - Storage: browser.storage.sync for settings and Quick Tab state, browser.storage.local for user config
 
 **Critical APIs to Use - PRIORITIZE THESE:**
 
-1. **Pointer Events API** (setPointerCapture, pointercancel) - NEW in v1.5.7
+1. **Firefox Sidebar API** (sidebarAction) - NEW in v1.5.8
+   - Native sidebar for Quick Tabs management
+   - ONE instance shared across all tabs in window
+   - Container categorization with visual indicators
+   - Action buttons: Close Minimized, Close All
+
+2. **Pointer Events API** (setPointerCapture, pointercancel) - v1.5.7
    - For drag/resize without slipping (replaces mouse events + RAF)
    - Handles tab switches during drag (pointercancel)
    - Touch/pen support automatically included
 
-2. **Clipboard API** (navigator.clipboard.writeText) - For any copy functionality
-2. **Storage API** (browser.storage.sync/session/local) - For settings and persistence
-   - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)
-   - browser.storage.session: Fast ephemeral Quick Tab state (quick_tabs_session) - Firefox 115+
+3. **Firefox Container API** (contextualIdentities) - v1.5.7
+   - Container-aware state management
+   - cookieStoreId-based storage keys
+   - Container filtering for BroadcastChannel
+
+4. **Clipboard API** (navigator.clipboard.writeText) - For any copy functionality
+5. **Storage API** (browser.storage.sync/session/local) - For settings and persistence
+   - browser.storage.sync: Container-keyed Quick Tab state (quick_tabs_state_v2[cookieStoreId]), settings
+   - browser.storage.session: Fast ephemeral state (quick_tabs_session[cookieStoreId]) - Firefox 115+
    - browser.storage.local: User config and large data
-3. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - For component communication
-4. **webRequest API** (onHeadersReceived) - For iframe/loading features
-5. **Tabs API** (browser.tabs.*) - For tab-related features
+6. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - For component communication (sidebar <-> content)
+7. **webRequest API** (onHeadersReceived) - For iframe/loading features
+8. **Tabs API** (browser.tabs.*) - For tab-related features and container queries
+9. **Commands API** (browser.commands) - For keyboard shortcuts (e.g., Ctrl+Shift+M for sidebar)
 6. **Keyboard Events** (addEventListener) - For shortcuts
 7. **DOM Manipulation** (createElement, appendChild) - For UI elements
 

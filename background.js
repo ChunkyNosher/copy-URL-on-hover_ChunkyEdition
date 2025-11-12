@@ -967,3 +967,25 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 });
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
+
+// ==================== KEYBOARD COMMANDS ====================
+// Listen for keyboard commands (e.g., Ctrl+Shift+M to toggle sidebar)
+browser.commands.onCommand.addListener((command) => {
+  if (command === 'toggle-minimized-manager') {
+    // Toggle sidebar visibility
+    browser.sidebarAction.isOpen({}).then(isOpen => {
+      if (isOpen) {
+        browser.sidebarAction.close();
+      } else {
+        browser.sidebarAction.open();
+      }
+    }).catch(err => {
+      // Fallback for older Firefox versions
+      console.log('[Background] Toggling sidebar (fallback)');
+      browser.sidebarAction.toggle().catch(toggleErr => {
+        console.error('[Background] Error toggling sidebar:', toggleErr);
+      });
+    });
+  }
+});
+// ==================== END KEYBOARD COMMANDS ====================

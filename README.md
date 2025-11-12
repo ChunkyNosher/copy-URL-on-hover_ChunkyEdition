@@ -1,12 +1,13 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.7** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with Firefox Container support.
+**Version 1.5.8** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with Firefox Container support and Sidebar Manager.
 
-This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration for isolated browsing contexts.
+This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration and a native sidebar Quick Tabs Manager.
 
 ## 📁 Repository Structure
 
 - **Source Files**: `manifest.json`, `content.js`, `popup.html`, `popup.js`, `background.js`, `state-manager.js`
+- **Sidebar**: `sidebar/quick-tabs-manager.html`, `sidebar/quick-tabs-manager.js`, `sidebar/quick-tabs-manager.css`
 - **Documentation**: `/docs/` folder organized by type:
   - `/docs/changelogs/` - Version changelogs
   - `/docs/implementation-summaries/` - Feature implementation notes
@@ -18,30 +19,43 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ### Core Features
 ✓ **Quick URL Copying** - Press keyboard shortcuts while hovering over links  
 ✓ **Quick Tabs** - Floating, draggable, resizable iframe windows with full navigation  
-✓ **Firefox Container Support (NEW v1.5.7)** - Quick Tabs isolated by Firefox Container  
+✓ **Firefox Container Support (v1.5.7)** - Quick Tabs isolated by Firefox Container  
+✓ **Sidebar Quick Tabs Manager (NEW v1.5.8)** - Native Firefox sidebar for managing all Quick Tabs  
 ✓ **Cross-Tab Sync** - Quick Tabs persist across all browser tabs (BroadcastChannel + browser.storage)  
-✓ **Z-Index Management (NEW v1.5.7)** - Multiple Quick Tabs layer correctly based on interaction  
+✓ **Z-Index Management (v1.5.7)** - Multiple Quick Tabs layer correctly based on interaction  
 ✓ **Pin to Page** - Pin Quick Tabs to specific pages  
 ✓ **Auto-Updates** - Automatic extension updates via GitHub releases  
 ✓ **100+ Site Handlers** - Optimized for popular websites  
 ✓ **Debug Mode** - Slot number tracking and enhanced logging  
 ✓ **Dark Mode** - Full dark theme support
 
-### Quick Tabs v1.5.7 Features
-✓ **NEW**: Firefox Container Integration - Quick Tabs respect container boundaries  
-✓ **NEW**: Smart Z-Index Management - Most recently interacted tab always on top  
+### Quick Tabs Manager Sidebar (v1.5.8)
+✓ **NEW**: Native Firefox Sidebar - Replaces floating minimized manager  
+✓ **NEW**: Container Categorization - Quick Tabs grouped by Firefox Container  
+✓ **NEW**: Action Buttons - "Close Minimized" and "Close All" buttons  
+✓ **NEW**: Go to Tab - Jump to the browser tab containing a Quick Tab  
+✓ **NEW**: Keyboard Shortcut - Press `Ctrl+Shift+M` to toggle sidebar  
+✓ **NEW**: Position Restoration - Minimized tabs restore to original position  
+✓ Real-time Updates - Sidebar auto-refreshes as Quick Tabs change  
+✓ Visual Indicators - Green (active) and Yellow (minimized) status dots  
+✓ Persistent State - ONE instance shared across all tabs in the window
+
+### Quick Tabs Features
+✓ **Firefox Container Integration** - Quick Tabs respect container boundaries  
+✓ **Smart Z-Index Management** - Most recently interacted tab always on top  
 ✓ Navigation controls (back, forward, reload, open in new tab)  
 ✓ Pointer Events API for drag/resize (eliminates drag slipping)  
 ✓ Tab switch handling during drag (pointercancel event)  
 ✓ Slot numbers reset when all Quick Tabs closed  
 ✓ Drag to move with setPointerCapture (no escape at high speeds)  
 ✓ Resize from any edge/corner with pointer capture  
-✓ Minimize to floating manager  
+✓ Minimize to sidebar manager  
 ✓ Pin tabs to specific pages  
 ✓ Multiple instances with unique ID tracking  
 ✓ Slot number labels in debug mode (persistent across tabs)
 
-### Modern API Framework (v1.5.7)
+### Modern API Framework (v1.5.8)
+- **Firefox Sidebar API** - Native sidebar for Quick Tabs management
 - **Pointer Events API** - Reliable drag/resize with setPointerCapture
 - **Firefox Container API** - Container-aware state management with `contextualIdentities`
 - **browser.storage.sync** - Container-keyed persistent storage
@@ -49,25 +63,28 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 - **BroadcastChannel** - Real-time same-origin sync with container filtering
 - **Runtime Messaging** - Cross-origin sync via background script
 - **ID-based Tracking** - Prevents duplicate instance conflicts
+- **Commands API** - Keyboard shortcuts for sidebar toggle
 
-### What's New in v1.5.7?
+### What's New in v1.5.8?
 
-✅ **Firefox Container Integration**
-- Quick Tabs are now fully isolated by Firefox Container
-- Personal, Work, Banking containers each have their own Quick Tab state
-- Container detection is automatic with fallback to default
-- Seamless migration from v1.5.6 with no data loss
+✅ **Sidebar Quick Tabs Manager**
+- Replaced floating minimized manager with native Firefox sidebar
+- ONE persistent instance shared across all tabs in the window
+- No more cross-tab sync issues with minimized tabs
+- Container-aware categorization with visual indicators
+- Action buttons: "Close Minimized" and "Close All"
+- "Go to Tab" button to switch to the tab containing a Quick Tab
+- Press `Ctrl+Shift+M` (or `Cmd+Shift+M` on Mac) to toggle sidebar
 
-✅ **Z-Index Management**
-- Multiple Quick Tabs now properly layer
-- Most recently clicked or dragged tab comes to foreground
-- No more hidden Quick Tabs behind others
+✅ **Position Restoration**
+- Minimized Quick Tabs now save position and size
+- Restoring a minimized tab returns it to original location
+- No more defaulting to bottom-right corner
 
-✅ **Container-Aware Architecture**
-- State keyed by `cookieStoreId` (e.g., "firefox-container-1")
-- BroadcastChannel messages filtered by container
-- Background script only broadcasts to same-container tabs
-- Automatic `getCurrentCookieStoreId()` detection
+✅ **Enhanced State Management**
+- Added `activeTabId` field to track which browser tab contains each Quick Tab
+- Improved storage schema for minimized tabs
+- Better integration with Firefox Container isolation
 
 ## 🚀 Installation
 
@@ -105,12 +122,31 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
    - **←→** Navigate (back/forward)
    - **↻** Reload
    - **📍** Pin to current page
-   - **−** Minimize
+   - **−** Minimize to sidebar
    - **🔗** Open in new tab
    - **✕** Close
 4. **Drag** title bar to move (uses Pointer Events - no slipping!)
 5. **Drag** edges/corners to resize (pointer capture for smooth resizing)
 6. **Pin** to keep Quick Tab only on specific pages
+7. **Press Esc** to close all Quick Tabs (slot numbers reset)
+
+### Sidebar Quick Tabs Manager (NEW v1.5.8)
+1. **Press `Ctrl+Shift+M`** (or `Cmd+Shift+M` on Mac) to open/close sidebar
+2. **Or** right-click toolbar → View Sidebar → Quick Tabs Manager
+3. Sidebar shows:
+   - All Quick Tabs organized by Firefox Container
+   - Green indicator (🟢) for active Quick Tabs
+   - Yellow indicator (🟡) for minimized Quick Tabs
+   - Tab metadata (position, size, slot number)
+4. **Click** on any Quick Tab to:
+   - **🔗 Go to Tab** - Switch to the browser tab containing this Quick Tab
+   - **➖ Minimize** - Minimize an active Quick Tab
+   - **↑ Restore** - Restore a minimized Quick Tab to original position
+   - **✕ Close** - Close the Quick Tab
+5. **Action Buttons**:
+   - **Close Minimized** - Close all minimized Quick Tabs
+   - **Close All** - Close ALL Quick Tabs (active + minimized)
+6. Sidebar updates in real-time as Quick Tabs change
 7. **Press Esc** to close all Quick Tabs (slot numbers reset)
 
 ### Debug Mode
@@ -194,13 +230,16 @@ See `/docs/manual/TESTING_GUIDE_ISSUE_51.md` for comprehensive testing procedure
 
 ### API Framework
 
-**v1.5.6** uses modern browser APIs for optimal performance:
+**v1.5.8** uses modern browser APIs for optimal performance:
 
+- **Firefox Sidebar API** (sidebarAction) - Native sidebar for Quick Tabs management
 - **Pointer Events API** (setPointerCapture) - Drag/resize without slipping
+- **Firefox Container API** (contextualIdentities) - Container-aware state management
 - **BroadcastChannel API** - Real-time same-origin synchronization
 - **browser.runtime messaging** - Cross-origin coordination
 - **browser.storage.sync** - Persistent state across devices
 - **browser.storage.session** - Fast ephemeral state (Firefox 115+)
+- **Commands API** - Keyboard shortcuts (e.g., Ctrl+Shift+M for sidebar toggle)
 
 ## 🌐 Supported Websites (100+)
 
@@ -227,6 +266,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.7  
-**Last Updated**: 2025-11-11  
+**Current Version**: 1.5.8  
+**Last Updated**: 2025-11-12  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
