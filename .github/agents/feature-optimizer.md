@@ -30,30 +30,32 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.7+):**
+**Current Repository Architecture (v1.5.8+):**
 - **content.js** (~4500 lines): Main functionality, site handlers, Quick Tabs with Pointer Events API, Firefox Container support, notifications, keyboard shortcuts, z-index management
-- **background.js** (~660 lines): Container-aware tab lifecycle, content injection, webRequest header modification (Manifest v2 required), container-keyed storage sync broadcasting
+- **background.js** (~970 lines): Container-aware tab lifecycle, content injection, webRequest header modification (Manifest v2 required), container-keyed storage sync broadcasting, sidebar toggle command listener
 - **state-manager.js**: Container-aware Quick Tab state management using browser.storage.sync and browser.storage.session with automatic cookieStoreId detection
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
-- **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
+- **sidebar/quick-tabs-manager.html/js/css** (NEW v1.5.8): Native Firefox sidebar for managing Quick Tabs across all containers with action buttons
+- **sidebar/panel.html/panel.js**: Legacy debugging panel (replaced by quick-tabs-manager in v1.5.8)
 - **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions for webRequest, storage, tabs, contextualIdentities, cookies, options_ui, sidebar_action, commands
 
 **Core APIs - Leverage These:**
-1. **Pointer Events API** (v1.5.6+) - For drag/resize with setPointerCapture (eliminates slipping)
-2. **Firefox Container API** (NEW v1.5.7) - Container isolation with `contextualIdentities` and `cookieStoreId`
-3. **Clipboard API** - For copy operations
-4. **Storage API** (browser.storage.sync/session/local) - For persistence
+1. **Firefox Sidebar API** (NEW v1.5.8) - Native sidebar for Quick Tabs management with container categorization
+2. **Pointer Events API** (v1.5.6+) - For drag/resize with setPointerCapture (eliminates slipping)
+3. **Firefox Container API** (v1.5.7) - Container isolation with `contextualIdentities` and `cookieStoreId`
+4. **Clipboard API** - For copy operations
+5. **Storage API** (browser.storage.sync/session/local) - For persistence
    - browser.storage.sync: Container-keyed Quick Tab state (quick_tabs_state_v2[cookieStoreId]), settings
    - browser.storage.session: Fast ephemeral container-keyed state (quick_tabs_session[cookieStoreId]) - Firefox 115+
    - browser.storage.local: User config and large data
-5. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Container-aware communication
-6. **webRequest API** (onHeadersReceived) - For iframe header modification (requires Manifest v2)
-6. **BroadcastChannel API** - For real-time same-origin Quick Tab sync (container-filtered in v1.5.7+)
-7. **Tabs API** (browser.tabs.*) - For tab operations and container queries
-8. **Commands API** (browser.commands) - For keyboard shortcuts (e.g., toggle minimized manager)
-9. **Keyboard Events** - For shortcuts
-10. **DOM Manipulation** - For UI elements
+6. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Container-aware communication
+7. **webRequest API** (onHeadersReceived) - For iframe header modification (requires Manifest v2)
+8. **BroadcastChannel API** - For real-time same-origin Quick Tab sync (container-filtered in v1.5.7+)
+9. **Tabs API** (browser.tabs.*) - For tab operations and container queries
+10. **Commands API** (browser.commands) - For keyboard shortcuts (e.g., Ctrl+Shift+M to toggle sidebar)
+11. **Keyboard Events** - For shortcuts
+12. **DOM Manipulation** - For UI elements
 
 **Firefox Container Integration Pattern (v1.5.7+):**
 ```javascript
@@ -102,6 +104,76 @@ function bringQuickTabToFront(container) {
 
 // Call on pointerdown and mousedown
 container.addEventListener('mousedown', () => bringQuickTabToFront(container));
+```
+
+**Sidebar Quick Tabs Manager Pattern (NEW v1.5.8):**
+```javascript
+// Sidebar replaces the floating minimized manager
+// ONE persistent instance shared across all tabs in the window
+
+// 1. Sidebar loads container info from Firefox API
+async function loadContainerInfo() {
+  const containers = await browser.contextualIdentities.query({});
+  // Map containers with icons, colors, names
+}
+
+// 2. Sidebar loads Quick Tabs state from storage
+async function loadQuickTabsState() {
+  const result = await browser.storage.sync.get('quick_tabs_state_v2');
+  // Container-keyed structure: { "firefox-container-1": { tabs: [...] } }
+}
+
+// 3. Sidebar renders UI with container categorization
+function renderUI() {
+  // Group Quick Tabs by container
+  // Show active (green) and minimized (yellow) indicators
+  // Display action buttons: Close Minimized, Close All
+}
+
+// 4. Sidebar sends commands to content scripts
+async function minimizeQuickTab(quickTabId) {
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+  await browser.tabs.sendMessage(tabs[0].id, {
+    action: 'MINIMIZE_QUICK_TAB',
+    quickTabId: quickTabId
+  });
+}
+
+// 5. Content scripts handle sidebar commands
+browser.runtime.onMessage.addListener((message) => {
+  if (message.action === 'MINIMIZE_QUICK_TAB') {
+    // Find Quick Tab container and minimize it
+  }
+  if (message.action === 'RESTORE_QUICK_TAB') {
+    // Restore Quick Tab from storage with position preservation
+  }
+});
+
+// 6. Keyboard shortcut toggles sidebar
+browser.commands.onCommand.addListener((command) => {
+  if (command === 'toggle-minimized-manager') {
+    browser.sidebarAction.toggle();
+  }
+});
+```
+
+**Minimized Quick Tab State (v1.5.8+):**
+```javascript
+// Full state saved for minimized tabs (enables position restoration)
+{
+  id: "qt_123",
+  url: "https://example.com",
+  title: "Example",
+  left: 100,      // Position preserved
+  top: 200,       // Position preserved  
+  width: 800,     // Size preserved
+  height: 600,    // Size preserved
+  minimized: true,
+  activeTabId: 5, // Which browser tab contains this Quick Tab
+  pinnedToUrl: null,
+  slotNumber: 1,
+  timestamp: 1699123456789
+}
 ```
 
 ## Feature-Optimizer Methodology
