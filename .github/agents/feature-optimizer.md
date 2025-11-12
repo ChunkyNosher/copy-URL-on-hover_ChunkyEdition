@@ -30,32 +30,32 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8+):**
-- **content.js** (~4500 lines): Main functionality, site handlers, Quick Tabs with Pointer Events API, Firefox Container support, notifications, keyboard shortcuts, z-index management
-- **background.js** (~970 lines): Container-aware tab lifecycle, content injection, webRequest header modification (Manifest v2 required), container-keyed storage sync broadcasting, sidebar toggle command listener
+**Current Repository Architecture (v1.5.8.1+):**
+- **content.js** (~5700 lines): Main functionality, site handlers, Quick Tabs with Pointer Events API, Firefox Container support, notifications, keyboard shortcuts, z-index management, floating Quick Tabs Manager panel
+- **background.js** (~970 lines): Container-aware tab lifecycle, content injection, webRequest header modification (Manifest v2 required), container-keyed storage sync broadcasting, panel toggle command listener
 - **state-manager.js**: Container-aware Quick Tab state management using browser.storage.sync and browser.storage.session with automatic cookieStoreId detection
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
-- **sidebar/quick-tabs-manager.html/js/css** (NEW v1.5.8): Native Firefox sidebar for managing Quick Tabs across all containers with action buttons
-- **sidebar/panel.html/panel.js**: Legacy debugging panel (replaced by quick-tabs-manager in v1.5.8)
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions for webRequest, storage, tabs, contextualIdentities, cookies, options_ui, sidebar_action, commands
+- **sidebar/quick-tabs-manager.html/js/css**: LEGACY (v1.5.8) - Replaced by floating panel in v1.5.8.1
+- **sidebar/panel.html/panel.js**: Legacy debugging panel
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions for webRequest, storage, tabs, contextualIdentities, cookies, options_ui, commands (NO sidebar_action - replaced with floating panel)
 
 **Core APIs - Leverage These:**
-1. **Firefox Sidebar API** (NEW v1.5.8) - Native sidebar for Quick Tabs management with container categorization
-2. **Pointer Events API** (v1.5.6+) - For drag/resize with setPointerCapture (eliminates slipping)
+1. **Content Script Panel Injection** (NEW v1.5.8.1) - Persistent floating panel injected into page DOM, works in Zen Browser
+2. **Pointer Events API** (v1.5.6+) - For drag/resize with setPointerCapture for Quick Tabs AND panel
 3. **Firefox Container API** (v1.5.7) - Container isolation with `contextualIdentities` and `cookieStoreId`
 4. **Clipboard API** - For copy operations
 5. **Storage API** (browser.storage.sync/session/local) - For persistence
    - browser.storage.sync: Container-keyed Quick Tab state (quick_tabs_state_v2[cookieStoreId]), settings
    - browser.storage.session: Fast ephemeral container-keyed state (quick_tabs_session[cookieStoreId]) - Firefox 115+
-   - browser.storage.local: User config and large data
-6. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Container-aware communication
+   - browser.storage.local: User config, large data, panel state (quick_tabs_panel_state) - NEW in v1.5.8.1
+6. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Container-aware communication, panel toggle
 7. **webRequest API** (onHeadersReceived) - For iframe header modification (requires Manifest v2)
 8. **BroadcastChannel API** - For real-time same-origin Quick Tab sync (container-filtered in v1.5.7+)
 9. **Tabs API** (browser.tabs.*) - For tab operations and container queries
-10. **Commands API** (browser.commands) - For keyboard shortcuts (e.g., Ctrl+Shift+M to toggle sidebar)
+10. **Commands API** (browser.commands) - For keyboard shortcuts (Ctrl+Alt+Z to toggle panel)
 11. **Keyboard Events** - For shortcuts
-12. **DOM Manipulation** - For UI elements
+12. **DOM Manipulation** - For UI elements and panel injection
 
 **Firefox Container Integration Pattern (v1.5.7+):**
 ```javascript

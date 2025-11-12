@@ -35,52 +35,61 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8+):**
-- **content.js** (~4500 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting
+**Current Repository Architecture (v1.5.8.1+):**
+- **content.js** (~5700 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts, floating Quick Tabs Manager panel
+- **background.js**: Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting, panel toggle command listener
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
-- **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, sidebar_action
+- **sidebar/quick-tabs-manager.html/js/css**: LEGACY (v1.5.8) - Replaced by floating panel in v1.5.8.1
+- **sidebar/panel.html/panel.js**: Legacy debugging panel
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, commands (NO sidebar_action - replaced with floating panel)
 
 **Critical APIs Currently Used - PRIORITIZE THESE:**
 
-1. **Pointer Events API** (setPointerCapture, pointercancel) - NEW in v1.5.8
-   - Primary drag/resize mechanism for Quick Tabs
-   - Common issues: Pointer capture not released, pointercancel not firing
+1. **Content Script Panel Injection** - NEW in v1.5.8.1
+   - Persistent floating panel injected into page DOM
+   - Common issues: Timing of injection, panel persistence across navigation, z-index conflicts
+   - Works in Zen Browser (where Firefox Sidebar API is disabled)
+   - Debug: Check panel creation, visibility state, position/size persistence
+
+2. **Pointer Events API** (setPointerCapture, pointercancel) - v1.5.7
+   - Primary drag/resize mechanism for Quick Tabs AND floating panel
+   - Common issues: Pointer capture not released, pointercancel not firing, drag conflicts
    - Replaces: Mouse events + requestAnimationFrame
 
-2. **Clipboard API** (navigator.clipboard.writeText)
+3. **Clipboard API** (navigator.clipboard.writeText)
    - Primary function for URL/text copying
    - Common issues: Permissions, timing, focus requirements
    - Fallback: document.execCommand('copy')
 
-3. **WebExtension Storage API** (browser.storage.sync, browser.storage.session, browser.storage.local)
+4. **WebExtension Storage API** (browser.storage.sync, browser.storage.session, browser.storage.local)
    - Quick Tab state: browser.storage.sync (key: quick_tabs_state_v2) + browser.storage.session (key: quick_tabs_session)
+   - Panel state: browser.storage.local (key: quick_tabs_panel_state) - NEW in v1.5.8.1
    - Settings: browser.storage.sync (key: quick_tab_settings)
    - User config: browser.storage.local (DEFAULT_CONFIG)
    - Common issues: Storage quota, sync vs local confusion, serialization, session storage availability (Firefox 115+)
    - Debug: Check browser.storage.onChanged listeners in both content.js and background.js
 
-3. **browser.runtime API** (sendMessage, onMessage)
+5. **browser.runtime API** (sendMessage, onMessage)
    - Message passing between content, background, and popup
+   - NEW: Panel toggle command (TOGGLE_QUICK_TABS_PANEL) in v1.5.8.1
    - Common issues: Async response handling, return true for async
    - Debug: Verify sender context and message routing
 
-4. **browser.webRequest API** (onHeadersReceived)
+6. **browser.webRequest API** (onHeadersReceived)
    - Modifies X-Frame-Options and CSP headers for Quick Tabs
    - Common issues: Manifest permissions, filter patterns, timing
    - Debug: Check webRequest blocking mode and response header modifications
 
-5. **Keyboard Event Handlers** (document.addEventListener('keydown'))
+7. **Keyboard Event Handlers** (document.addEventListener('keydown'))
    - Core shortcut system (Y for URL, X for text, Q for Quick Tab, O for new tab)
    - Common issues: Event target conflicts (input fields), modifier key detection
    - Debug: Verify event.preventDefault and stopPropagation
 
-6. **DOM Manipulation** (createElement, appendChild, style manipulation)
-   - Quick Tab floating windows, notification system
-   - Common issues: CSP blocking, injection timing, element cleanup
+8. **DOM Manipulation** (createElement, appendChild, style manipulation)
+   - Quick Tab floating windows, notification system, floating panel injection
+   - Common issues: CSP blocking, injection timing, element cleanup, panel conflicts with page content
    - Debug: Check for memory leaks with removed elements
 
 7. **browser.tabs API** (query, sendMessage, create, update)

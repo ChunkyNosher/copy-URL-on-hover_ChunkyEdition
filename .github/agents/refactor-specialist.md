@@ -35,27 +35,32 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.5+):**
-- **content.js** (~56KB): Main functionality with site-specific handlers, Quick Tabs, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle management, content script injection, browser API compatibility, storage sync broadcasting
+**Current Repository Architecture (v1.5.8.1+):**
+- **content.js** (~5700 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts, floating Quick Tabs Manager panel
+- **background.js** (~970 lines): Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting, panel toggle command listener
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
-- **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
-- **manifest.json**: Manifest v3 configuration with permissions, webRequest API, options_ui, sidebar_action
+- **sidebar/quick-tabs-manager.html/js/css**: LEGACY (v1.5.8) - Replaced by floating panel in v1.5.8.1
+- **sidebar/panel.html/panel.js**: Legacy debugging panel
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, commands (NO sidebar_action - replaced with floating panel)
 
 **Critical APIs to Preserve - PRIORITIZE THESE:**
 
-1. **Clipboard API** (navigator.clipboard.writeText) - URL/text copying
-2. **Storage API** (browser.storage.sync/session/local) - Settings and state persistence
+1. **Content Script Panel Injection** - Persistent floating panel (NEW in v1.5.8.1)
+2. **Pointer Events API** (setPointerCapture, pointercancel) - Drag/resize for Quick Tabs AND panel (v1.5.7+)
+3. **Clipboard API** (navigator.clipboard.writeText) - URL/text copying
+4. **Storage API** (browser.storage.sync/session/local) - Settings and state persistence
    - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)
    - browser.storage.session: Fast ephemeral Quick Tab state (quick_tabs_session) - Firefox 115+
-   - browser.storage.local: User config and large data
-3. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Component communication
-4. **webRequest API** (onHeadersReceived) - Header modification for Quick Tabs
-5. **Tabs API** (browser.tabs.*) - Tab management
-6. **Keyboard Events** (addEventListener) - Shortcut system
-7. **DOM Manipulation** (createElement, appendChild) - UI construction
+   - browser.storage.local: User config, large data, panel state (quick_tabs_panel_state) - NEW in v1.5.8.1
+5. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Component communication, panel toggle
+6. **webRequest API** (onHeadersReceived) - Header modification for Quick Tabs (requires Manifest v2)
+7. **Firefox Container API** (contextualIdentities) - Container-aware state management (v1.5.7+)
+8. **Tabs API** (browser.tabs.*) - Tab management
+9. **Commands API** (browser.commands) - Keyboard shortcuts (Ctrl+Alt+Z for panel toggle)
+10. **Keyboard Events** (addEventListener) - Shortcut system
+11. **DOM Manipulation** (createElement, appendChild) - UI construction, panel injection
 
 ## Refactoring Principles
 

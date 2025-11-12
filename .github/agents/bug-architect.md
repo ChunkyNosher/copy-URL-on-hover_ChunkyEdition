@@ -29,28 +29,30 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8+):**
-- **content.js** (~4500 lines): Main functionality, site handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts
-- **background.js**: Tab lifecycle, webRequest header modification (Manifest v2 required), content injection, storage sync broadcasting
+**Current Repository Architecture (v1.5.8.1+):**
+- **content.js** (~5700 lines): Main functionality, site handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts, floating Quick Tabs Manager panel
+- **background.js**: Tab lifecycle, webRequest header modification (Manifest v2 required), content injection, storage sync broadcasting, panel toggle command listener
 - **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page for Quick Tab settings management
-- **sidebar/panel.html/panel.js**: Sidebar panel for live Quick Tab state debugging
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with webRequest, storage, tabs permissions, options_ui, sidebar_action
+- **sidebar/quick-tabs-manager.html/js/css**: LEGACY (v1.5.8) - Replaced by floating panel in v1.5.8.1
+- **sidebar/panel.html/panel.js**: Legacy debugging panel
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with webRequest, storage, tabs permissions, options_ui, commands (NO sidebar_action - replaced with floating panel)
 
 **Critical APIs - Debug These First:**
-1. **Pointer Events API** (setPointerCapture, pointercancel) - Drag/resize bugs (NEW in v1.5.8)
-2. **Clipboard API** (navigator.clipboard.writeText) - Copy failures
-3. **Storage API** (browser.storage.sync/session/local) - Persistence bugs
+1. **Content Script Panel Injection** - Panel visibility, position/size persistence, z-index conflicts (NEW in v1.5.8.1)
+2. **Pointer Events API** (setPointerCapture, pointercancel) - Drag/resize bugs for Quick Tabs AND panel (v1.5.7+)
+3. **Clipboard API** (navigator.clipboard.writeText) - Copy failures
+4. **Storage API** (browser.storage.sync/session/local) - Persistence bugs
    - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)
    - browser.storage.session: Fast ephemeral Quick Tab state (quick_tabs_session) - Firefox 115+
-   - browser.storage.local: User config and large data
-4. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Communication failures
-5. **webRequest API** (onHeadersReceived) - iframe loading bugs (requires Manifest v2 with webRequestBlocking)
-6. **BroadcastChannel API** - Real-time same-origin sync failures
-7. **Tabs API** (browser.tabs.*) - Tab switching bugs
-8. **Keyboard Events** - Shortcut conflicts
-9. **DOM Manipulation** - State synchronization bugs
+   - browser.storage.local: User config, large data, panel state (quick_tabs_panel_state) - NEW in v1.5.8.1
+5. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Communication failures, panel toggle command
+6. **webRequest API** (onHeadersReceived) - iframe loading bugs (requires Manifest v2 with webRequestBlocking)
+7. **BroadcastChannel API** - Real-time same-origin sync failures
+8. **Tabs API** (browser.tabs.*) - Tab switching bugs
+9. **Keyboard Events** - Shortcut conflicts (Ctrl+Alt+Z for panel toggle)
+10. **DOM Manipulation** - State synchronization bugs, panel injection timing
 
 ## Bug-Architect Methodology
 

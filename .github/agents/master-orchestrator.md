@@ -39,40 +39,47 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Ensure comprehensive testing on both Firefox and Zen Browser
 - **Validate that current APIs (clipboard, storage, webRequest) still function correctly**
 
-## Extension Architecture Context (v1.5.5+)
+## Extension Architecture Context (v1.5.8.1+)
 
 **Current Technology Stack - CRITICAL FOR ROUTING:**
-- **Manifest Version:** v3
-- **Primary APIs:** navigator.clipboard, browser.storage.sync/session/local, browser.runtime, browser.webRequest, browser.tabs
-- **Core Features:** Quick Tabs (floating iframes), keyboard shortcuts, site-specific handlers, notifications, state management
+- **Manifest Version:** v2 (required for webRequestBlocking)
+- **Primary APIs:** Content script panel injection, Pointer Events (setPointerCapture), navigator.clipboard, browser.storage.sync/session/local, browser.runtime, browser.webRequest, browser.tabs, contextualIdentities, browser.commands
+- **Core Features:** Quick Tabs (floating iframes), floating Quick Tabs Manager panel, keyboard shortcuts, site-specific handlers, notifications, container-aware state management
 - **Browser Targets:** Firefox, Zen Browser (Firefox-based)
-- **Storage Strategy:** Dual-layer (sync + session) for Quick Tab state
+- **Storage Strategy:** Dual-layer (sync + session) for Quick Tab state, local storage for panel state
 
 **File Structure:**
-- content.js (~56KB): Site handlers, Quick Tabs, clipboard operations, keyboard shortcuts
-- background.js: webRequest header modification, tab management, content injection, storage sync broadcasting
-- state-manager.js: Centralized Quick Tab state management (sync + session storage)
+- content.js (~5700 lines): Site handlers, Quick Tabs with Pointer Events API, clipboard operations, keyboard shortcuts, floating panel injection
+- background.js (~970 lines): webRequest header modification, tab management, content injection, storage sync broadcasting, panel toggle command listener
+- state-manager.js: Container-aware Quick Tab state management (sync + session storage)
 - popup.html/popup.js: Settings with 4 tabs
 - options_page.html/options_page.js: Options page for Quick Tab settings
-- sidebar/panel.html/panel.js: Sidebar panel for live state debugging
-- manifest.json: Permissions including webRequest, webRequestBlocking, <all_urls>, options_ui, sidebar_action
+- sidebar/quick-tabs-manager.html/js/css: LEGACY (v1.5.8) - Replaced by floating panel in v1.5.8.1
+- sidebar/panel.html/panel.js: Legacy debugging panel
+- manifest.json: Permissions including webRequest, webRequestBlocking, <all_urls>, options_ui, commands (NO sidebar_action - replaced with floating panel)
 
 ## Agent Capabilities Reference
 
 ### @bug-fixer
 **Best for:**
+- Floating panel injection and visibility issues
+- Pointer Events API bugs (setPointerCapture, drag/resize)
 - Clipboard API failures (navigator.clipboard.writeText)
-- Storage sync issues (browser.storage.sync/local)
+- Storage sync issues (browser.storage.sync/local/session)
+- Panel state persistence (browser.storage.local)
 - Message passing problems (browser.runtime.sendMessage/onMessage)
 - webRequest header modification bugs (X-Frame-Options, CSP)
 - Quick Tabs loading failures (iframe, X-Frame-Options blocking)
-- Keyboard shortcut conflicts
+- Keyboard shortcut conflicts (including panel toggle Ctrl+Alt+Z)
 - Site-specific handler breakage
+- Container API issues (contextualIdentities)
 - Cross-browser compatibility bugs (Firefox, Zen Browser)
 
 **Specializations:**
 - WebExtension API debugging
 - Content script context issues
+- Panel injection timing and DOM conflicts
+- Pointer Events API troubleshooting
 - Storage quota and serialization
 - Async message handling
 - Header modification timing
@@ -108,7 +115,9 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Extending site-specific handler registry
 - Adding storage-backed settings
 - Implementing new message types
-- Creating draggable/resizable UI elements
+- Creating draggable/resizable UI elements with Pointer Events API
+- Building floating panels injected via content script
+- Container-aware feature implementation
 
 ### @refactor-specialist
 **Best for:**
@@ -129,8 +138,11 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 
 **Current Extension APIs Expertise:**
 - Clipboard API patterns
-- Storage abstraction layers
+- Storage abstraction layers (sync/session/local)
 - Message routing optimization
+- Pointer Events API for drag/resize
+- Container-aware state management
+- Panel injection and lifecycle management
 - webRequest header modification patterns
 
 ## Request Routing Logic
