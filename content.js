@@ -4123,7 +4123,6 @@ function makeResizable(element) {
         debug('[POINTER] Error during throttled resize save:', err);
       });
     };
-    };
     
     const finalSaveOnResizeEnd = (finalWidth, finalHeight, finalLeft, finalTop) => {
       const iframe = element.querySelector('iframe');
