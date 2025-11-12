@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Copy URL on Hover Custom",
-  "version": "1.5.8",
+  "version": "1.5.8.1",
   "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with navigation, minimize, and more.",
   
   "permissions": [
@@ -15,12 +15,12 @@
   ],
   
   "commands": {
-    "toggle-minimized-manager": {
+    "toggle-quick-tabs-manager": {
       "suggested_key": {
-        "default": "Ctrl+Shift+M",
-        "mac": "Command+Shift+M"
+        "default": "Ctrl+Alt+Z",
+        "mac": "Command+Option+Z"
       },
-      "description": "Toggle minimized Quick Tabs manager visibility"
+      "description": "Toggle Quick Tabs Manager panel"
     }
   },
   
@@ -33,13 +33,6 @@
   "options_ui": {
     "page": "options_page.html",
     "browser_style": true
-  },
-  
-  "sidebar_action": {
-    "default_panel": "sidebar/quick-tabs-manager.html",
-    "default_title": "Quick Tabs Manager",
-    "default_icon": "icons/icon.png",
-    "open_at_install": false
   },
   
   "background": {
