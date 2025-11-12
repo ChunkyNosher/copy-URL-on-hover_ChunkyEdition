@@ -35,7 +35,7 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.2 - Modular Refactoring Complete):**
+**Current Repository Architecture (v1.5.8.3 - Modular Refactoring Complete):**
 - **src/**: Modular source code organized by functionality
   - **src/content.js** (~400 lines): Main entry point, coordinates modules, keyboard shortcuts, basic UI
   - **src/core/**: Core modules (config.js, state.js, events.js) - Configuration, state management, event bus
@@ -49,7 +49,7 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 - **options_page.html/options_page.js**: Options page for Quick Tab settings
 - **Build System**: package.json, rollup.config.js, BUILD.md
 - **Legacy Reference**: content-legacy.js (original monolithic file preserved)
-- **manifest.json**: Manifest v2 (webRequestBlocking required) - updated to v1.5.8.2
+- **manifest.json**: Manifest v2 (webRequestBlocking required) - updated to v1.5.8.3
 
 **Critical APIs to Preserve - PRIORITIZE THESE:**
 
