@@ -29,7 +29,7 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.3 - Modular Refactoring):**
+**Current Repository Architecture (v1.5.8.4 - Modular Refactoring):**
 - **src/content.js** (~400 lines): Main entry point, coordinates between modules, keyboard shortcuts, basic UI
 - **src/core/**: Core modules (config.js, state.js, events.js) - Configuration management, centralized state, event bus
 - **src/features/url-handlers/**: 11 categorized modules with 104 URL handler functions (social-media, video, developer, blogging, ecommerce, image-design, news-discussion, entertainment, gaming, learning, other)
