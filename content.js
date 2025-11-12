@@ -3501,8 +3501,11 @@ function minimizeQuickTab(container, url, title) {
     quickTabWindows.splice(index, 1);
   }
   
+  const quickTabId = container.dataset.quickTabId;
+  
   // Store minimized tab info
   minimizedQuickTabs.push({
+    id: quickTabId, // Add ID for queue-based saves
     url: url,
     title: title || 'Quick Tab',
     timestamp: Date.now()
@@ -3517,9 +3520,11 @@ function minimizeQuickTab(container, url, title) {
   // Update or create minimized tabs manager
   updateMinimizedTabsManager();
   
-  // Save to storage if persistence is enabled
-  if (CONFIG.quickTabPersistAcrossTabs) {
-    saveQuickTabsToStorage();
+  // Save to storage via queue if persistence is enabled
+  if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
+    saveQuickTabState('minimize', quickTabId).catch(err => {
+      debug('Error saving minimized Quick Tab:', err);
+    });
   }
 }
 
@@ -3530,8 +3535,15 @@ function restoreQuickTab(index) {
   const tab = minimizedQuickTabs[index];
   minimizedQuickTabs.splice(index, 1);
   
-  createQuickTabWindow(tab.url);
+  createQuickTabWindow(tab.url, undefined, undefined, undefined, undefined, false, null, tab.id);
   updateMinimizedTabsManager();
+  
+  // Save restore operation via queue
+  if (CONFIG.quickTabPersistAcrossTabs && tab.id) {
+    saveQuickTabState('restore', tab.id).catch(err => {
+      debug('Error saving restored Quick Tab:', err);
+    });
+  }
   
   debug(`Quick Tab restored from minimized. Remaining minimized: ${minimizedQuickTabs.length}`);
 }
@@ -3807,30 +3819,18 @@ function makeDraggable(element, handle) {
     const iframe = element.querySelector('iframe');
     if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
     
-    const url = iframe.src || iframe.getAttribute('data-deferred-src');
     const quickTabId = element.dataset.quickTabId;
-    if (!url || !quickTabId) return;
+    if (!quickTabId) return;
     
-    const rect = element.getBoundingClientRect();
-    
-    // INTEGRATION POINT 1: Send to background for coordination
-    sendRuntimeMessage({
-      action: 'UPDATE_QUICK_TAB_POSITION',
-      id: quickTabId,
-      url: url,
-      left: Math.round(finalLeft),
-      top: Math.round(finalTop),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height)
+    // Save via queue
+    saveQuickTabState('update', quickTabId, {
+      left: finalLeft,
+      top: finalTop
+    }).then(() => {
+      debug(`Quick Tab ${quickTabId} position saved: (${finalLeft}, ${finalTop})`);
     }).catch(err => {
-      debug('[POINTER] Error sending final position to background:', err);
+      console.error(`Failed to save position for ${quickTabId}:`, err);
     });
-    
-    // INTEGRATION POINT 2: BroadcastChannel for same-origin tabs
-    broadcastQuickTabMove(quickTabId, url, Math.round(finalLeft), Math.round(finalTop));
-    
-    // NOTE: Background script now handles storage.sync saves
-    // This prevents race conditions with isSavingToStorage flag
   };
   
   // =========================
@@ -4110,51 +4110,39 @@ function makeResizable(element) {
       const iframe = element.querySelector('iframe');
       if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
       
-      const url = iframe.src || iframe.getAttribute('data-deferred-src');
       const quickTabId = element.dataset.quickTabId;
-      if (!url || !quickTabId) return;
+      if (!quickTabId) return;
       
-      // Send to background for coordination
-      sendRuntimeMessage({
-      action: 'UPDATE_QUICK_TAB_POSITION',
-        id: quickTabId,
-        url: url,
-        left: Math.round(newLeft),
-        top: Math.round(newTop),
-        width: Math.round(newWidth),
-        height: Math.round(newHeight)
+      // Save via queue (will be batched)
+      saveQuickTabState('update', quickTabId, {
+        left: newLeft,
+        top: newTop,
+        width: newWidth,
+        height: newHeight
       }).catch(err => {
-        debug('[POINTER] Error sending throttled resize update:', err);
+        debug('[POINTER] Error during throttled resize save:', err);
       });
-      
-      // BroadcastChannel for same-origin sync
-      broadcastQuickTabResize(quickTabId, url, Math.round(newWidth), Math.round(newHeight));
-      broadcastQuickTabMove(quickTabId, url, Math.round(newLeft), Math.round(newTop));
+    };
     };
     
     const finalSaveOnResizeEnd = (finalWidth, finalHeight, finalLeft, finalTop) => {
       const iframe = element.querySelector('iframe');
       if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
       
-      const url = iframe.src || iframe.getAttribute('data-deferred-src');
       const quickTabId = element.dataset.quickTabId;
-      if (!url || !quickTabId) return;
+      if (!quickTabId) return;
       
-      // Final save to all layers
-      sendRuntimeMessage({
-      action: 'UPDATE_QUICK_TAB_POSITION',
-        id: quickTabId,
-        url: url,
-        left: Math.round(finalLeft),
-        top: Math.round(finalTop),
-        width: Math.round(finalWidth),
-        height: Math.round(finalHeight)
+      // Save via queue
+      saveQuickTabState('update', quickTabId, {
+        left: finalLeft,
+        top: finalTop,
+        width: finalWidth,
+        height: finalHeight
+      }).then(() => {
+        debug(`Quick Tab ${quickTabId} resize saved: ${finalWidth}x${finalHeight} at (${finalLeft}, ${finalTop})`);
       }).catch(err => {
-        debug('[POINTER] Error sending final resize to background:', err);
+        console.error(`Failed to save resize for ${quickTabId}:`, err);
       });
-      
-      broadcastQuickTabResize(quickTabId, url, Math.round(finalWidth), Math.round(finalHeight));
-      broadcastQuickTabMove(quickTabId, url, Math.round(finalLeft), Math.round(finalTop));
     };
     
     // =========================
