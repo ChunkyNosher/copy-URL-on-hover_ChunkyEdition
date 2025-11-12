@@ -38,7 +38,7 @@ jobs:
       - name: Package .xpi Archive
         working-directory: ./dist
         run: |
-          zip -r -FS ../copy-url-hover-${{ github.ref_name }}.xpi * -x "*.DS_Store" -x "*.map"
+          zip -r -1 -FS ../copy-url-hover-${{ github.ref_name }}.xpi * -x '*.DS_Store' -x '*.map'
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
