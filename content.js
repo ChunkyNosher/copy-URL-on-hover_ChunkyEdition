@@ -3278,17 +3278,16 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
         });
       }
       
-      // Broadcast unpin so other tabs can show this Quick Tab
-      if (CONFIG.quickTabPersistAcrossTabs) {
-        const rect = container.getBoundingClientRect();
-        const url = iframe.src || iframe.getAttribute('data-deferred-src');
-        if (url && quickTabId) {
-          broadcastQuickTabUnpin(quickTabId, url, rect.width, rect.height, rect.left, rect.top);
-        }
+      // Save unpin via queue
+      if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
+        saveQuickTabState('update', quickTabId, {
+          pinnedToUrl: null
+        }).then(() => {
+          debug(`Quick Tab ${quickTabId} unpinned and saved`);
+        }).catch(err => {
+          console.error(`Failed to save unpin for ${quickTabId}:`, err);
+        });
       }
-      
-      // NOTE: Don't call saveQuickTabsToStorage() here - background script handles storage
-      // via UPDATE_QUICK_TAB_PIN message handler. Calling it here causes double-save race condition
     } else {
       // Pin to current page URL
       const currentPageUrl = window.location.href;
@@ -3299,30 +3298,17 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast = fal
       showNotification('✓ Quick Tab pinned to this page');
       debug(`Quick Tab pinned to: ${currentPageUrl}`);
       
-      // Notify background script to update pin state
+      // Save pin via queue
       const quickTabId = container.dataset.quickTabId;
-      if (quickTabId) {
-        sendRuntimeMessage({
-      action: 'UPDATE_QUICK_TAB_PIN',
-          id: quickTabId,
+      if (quickTabId && CONFIG.quickTabPersistAcrossTabs) {
+        saveQuickTabState('update', quickTabId, {
           pinnedToUrl: currentPageUrl
+        }).then(() => {
+          debug(`Quick Tab ${quickTabId} pinned and saved`);
         }).catch(err => {
-          debug('Error notifying background of Quick Tab pin:', err);
+          console.error(`Failed to save pin for ${quickTabId}:`, err);
         });
       }
-      
-      // When pinning, close ALL other instances of this Quick Tab across all tabs
-      // First, broadcast the pin action to close instances in other tabs
-      if (CONFIG.quickTabPersistAcrossTabs) {
-        const url = iframe.src || iframe.getAttribute('data-deferred-src');
-        if (url && quickTabId) {
-          broadcastQuickTabPin(quickTabId, url, currentPageUrl);
-        }
-      }
-      
-      // NOTE: Don't call saveQuickTabsToStorage() here - background script handles storage
-      // via UPDATE_QUICK_TAB_PIN message handler. Calling it here causes double-save race condition
-      // that triggers the isSavingToStorage flag timeout bug (Bug #2)
     }
   };
   
