@@ -4387,7 +4387,7 @@ browser.storage.onChanged.addListener(function(changes, areaName) {
 });
 
 // Runtime message listener for background script messages
-browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === 'tabActivated') {
     debug('Tab activated, checking for stored Quick Tabs');
     restoreQuickTabsFromStorage();
