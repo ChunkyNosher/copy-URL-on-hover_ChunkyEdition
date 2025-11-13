@@ -1,0 +1,139 @@
+# ==============================================================================
+# CODECOV CONFIGURATION
+# ==============================================================================
+# Configures test coverage tracking and reporting
+# ==============================================================================
+
+# -----------------------------------------------------------------------------
+# Coverage calculation precision
+# -----------------------------------------------------------------------------
+coverage:
+  # Decimal places in coverage percentages
+  precision: 0
+  # OPTIONS: 0 | 1 | 2
+  # BEST: 0 (e.g., "75%" not "75.43%")
+  # WHY: Easier to read, less noise
+  
+  # Rounding direction
+  round: down
+  # OPTIONS: down | up | nearest
+  # BEST: down (conservative, "74.9%" rounds to "74%")
+  # WHY: Better to under-report than over-report
+
+  # -----------------------------------------------------------------------------
+  # Coverage status checks (pass/fail gates)
+  # -----------------------------------------------------------------------------
+  status:
+    # Project-wide coverage requirements
+    project:
+      default:
+        # Target coverage percentage
+        target: 70%
+        # OPTIONS: 0%-100% or "auto"
+        # BEST: 70% (achievable for browser extensions)
+        # WHY: 100% is unrealistic, 70% is good quality
+        
+        # Allowed coverage drop
+        threshold: 5%
+        # OPTIONS: 0%-100%
+        # BEST: 5% (some flexibility)
+        # WHY: Small refactors may temporarily drop coverage
+        
+        # Don't fail CI if coverage drops
+        informational: true
+        # OPTIONS: true | false
+        # BEST: true (while building test suite)
+        # WHY: Don't block PRs early in testing journey
+    
+    # Coverage requirements for NEW code only
+    patch:
+      default:
+        target: 50%
+        # OPTIONS: 0%-100% or "auto"
+        # BEST: 50% (half of new code tested)
+        # WHY: Lower than project target (gradual improvement)
+        
+        threshold: 10%
+        # OPTIONS: 0%-100%
+        # BEST: 10% (more lenient for new code)
+        
+        informational: true
+        # OPTIONS: true | false
+        # BEST: true (don't fail Copilot PRs for coverage)
+
+# -----------------------------------------------------------------------------
+# Files to ignore from coverage calculation
+# -----------------------------------------------------------------------------
+ignore:
+  - "dist/**"              # Built/bundled code
+  - "node_modules/**"      # Dependencies
+  - "coverage/**"          # Coverage reports themselves
+  - "**/*.test.js"         # Test files (don't measure test coverage)
+  - "**/*.spec.js"         # Test files
+  - ".github/**"           # GitHub config files
+  - "tests/**"             # Test directory
+  - "docs/**"              # Documentation
+  - "*.config.js"          # Config files (eslint, prettier, etc.)
+  - "*.config.cjs"         # Config files
+# OPTIONS: Any file pattern
+# BEST FOR YOU: Exclude all non-source code
+# WHY: Only measure coverage of actual extension code
+
+# -----------------------------------------------------------------------------
+# PR comment configuration
+# -----------------------------------------------------------------------------
+comment:
+  # Comment layout sections
+  layout: "reach,diff,flags,tree"
+  # OPTIONS: reach | diff | flags | tree | file
+  # BEST: reach,diff,flags,tree (comprehensive)
+  # MEANINGS:
+  #   reach: Coverage percentage
+  #   diff: Coverage change since last commit
+  #   flags: Coverage by flag (see below)
+  #   tree: File-by-file coverage tree
+  
+  # When to post comments
+  behavior: default
+  # OPTIONS: default | once | new | spammy
+  # BEST: default (updates existing comment)
+  # WHY: Cleaner than multiple comments
+  
+  # Only comment if coverage changed
+  require_changes: true
+  # OPTIONS: true | false
+  # BEST: true (reduces noise)
+  # WHY: No need to comment "Coverage: 75% (no change)"
+
+# -----------------------------------------------------------------------------
+# Coverage flags for different code sections
+# -----------------------------------------------------------------------------
+# WHY: Track coverage separately for different parts of codebase
+flags:
+  # Feature code coverage
+  features:
+    paths:
+      - "src/features/**/*.js"
+    # OPTIONS: Any path patterns
+    # BEST FOR YOU: Separate features from core
+    # WHY: See which features need more tests
+  
+  # Core extension code coverage
+  core:
+    paths:
+      - "*.js"                    # Root JS files (background.js, popup.js, etc.)
+      - "src/**/*.js"             # All src except features
+      - "!src/features/**"        # Exclude features (tracked separately)
+    # NOTE: "!" means exclude
+    # BEST FOR YOU: Separate tracking
+    # WHY: Core code should have higher coverage than features
+
+# -----------------------------------------------------------------------------
+# GitHub integration
+# -----------------------------------------------------------------------------
+github_checks:
+  # Show coverage check in PR status checks
+  annotations: true
+  # OPTIONS: true | false
+  # BEST: true (inline file annotations)
+  # WHY: See which lines aren't covered directly in PR
