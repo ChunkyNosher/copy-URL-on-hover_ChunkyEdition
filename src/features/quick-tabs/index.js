@@ -9,6 +9,7 @@
 
 import { createQuickTabWindow } from './window.js';
 import { MinimizedManager } from './minimized-manager.js';
+import { PanelManager } from './panel.js';
 import { CONSTANTS } from '../../core/config.js';
 
 /**
@@ -18,6 +19,7 @@ class QuickTabsManager {
   constructor() {
     this.tabs = new Map(); // id -> QuickTabWindow instance
     this.minimizedManager = new MinimizedManager();
+    this.panelManager = null; // Initialized after construction with reference to this
     this.currentZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
     this.eventBus = null;
     this.Events = null;
@@ -26,11 +28,16 @@ class QuickTabsManager {
   /**
    * Initialize the Quick Tabs manager
    */
-  init(eventBus, Events) {
+  async init(eventBus, Events) {
     this.eventBus = eventBus;
     this.Events = Events;
 
     console.log('[QuickTabsManager] Initializing...');
+
+    // Initialize panel manager (v1.5.8.12 - floating panel instead of sidebar)
+    this.panelManager = new PanelManager(this);
+    await this.panelManager.init();
+    console.log('[QuickTabsManager] Panel manager initialized');
 
     // Listen for Quick Tab creation events from EventBus
     this.eventBus.on(Events.QUICK_TAB_REQUESTED, options => {
@@ -175,6 +182,33 @@ class QuickTabsManager {
   restoreQuickTab(id) {
     console.log('[QuickTabsManager] Restoring Quick Tab:', id);
     return this.minimizedManager.restore(id);
+  }
+
+  /**
+   * Minimize Quick Tab by ID (called from panel)
+   */
+  minimizeById(id) {
+    const tabWindow = this.tabs.get(id);
+    if (tabWindow && tabWindow.minimize) {
+      tabWindow.minimize();
+    }
+  }
+
+  /**
+   * Restore Quick Tab by ID (called from panel)
+   */
+  restoreById(id) {
+    return this.restoreQuickTab(id);
+  }
+
+  /**
+   * Close Quick Tab by ID (called from panel)
+   */
+  closeById(id) {
+    const tabWindow = this.tabs.get(id);
+    if (tabWindow && tabWindow.destroy) {
+      tabWindow.destroy();
+    }
   }
 
   /**
@@ -387,9 +421,9 @@ const quickTabsManager = new QuickTabsManager();
  * Initialize Quick Tabs feature
  * Called from content.js during initialization
  */
-export function initQuickTabs(eventBus, Events) {
+export async function initQuickTabs(eventBus, Events) {
   console.log('[QuickTabs] Initializing Quick Tabs feature module...');
-  quickTabsManager.init(eventBus, Events);
+  await quickTabsManager.init(eventBus, Events);
   console.log('[QuickTabs] Quick Tabs feature module initialized');
   return quickTabsManager;
 }
