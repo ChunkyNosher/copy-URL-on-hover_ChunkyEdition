@@ -1,6 +1,6 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.8.10** - A feature-rich Firefox/Zen Browser extension with **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab management with Firefox Container support and Floating Panel Manager.
+**Version 1.5.8.11** - A feature-rich Firefox/Zen Browser extension with **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab management with Firefox Container support and Floating Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration and a floating Quick Tabs Manager panel that works in Zen Browser.
 
@@ -81,18 +81,21 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 
 ### Quick Tabs Features
 
+✓ **Complete UI Restoration (v1.5.8.11)** - Full Quick Tab interface with all controls  
+✓ **Favicon Display** - Website icons shown in Quick Tab titlebar  
+✓ **Dynamic Title Updates** - Shows actual webpage titles or hostnames  
+✓ **Open in New Tab** - 🔗 button to open Quick Tab content in browser tab  
+✓ **Pin to Page** - 📍📌 Pin Quick Tabs to specific pages  
+✓ **8-Direction Resize** - Resize from all edges and corners (v1.5.8.11)  
+✓ **Position/Size Persistence** - State syncs across tabs (fixes #35 & #51)  
+✓ **Pointer Events API** - Drag/resize with setPointerCapture (no escape)  
+✓ **Emergency State Save** - pointercancel handling for tab switches  
 ✓ **Firefox Container Integration** - Quick Tabs respect container boundaries  
 ✓ **Smart Z-Index Management** - Most recently interacted tab always on top  
-✓ Navigation controls (back, forward, reload, open in new tab)  
-✓ Pointer Events API for drag/resize (eliminates drag slipping)  
-✓ Tab switch handling during drag (pointercancel event)  
-✓ Slot numbers reset when all Quick Tabs closed  
-✓ Drag to move with setPointerCapture (no escape at high speeds)  
-✓ Resize from any edge/corner with pointer capture  
+✓ Navigation controls (back, forward, reload)  
 ✓ Minimize to sidebar manager  
-✓ Pin tabs to specific pages  
 ✓ Multiple instances with unique ID tracking  
-✓ Slot number labels in debug mode (persistent across tabs)
+✓ Slot numbers in debug mode (persistent across tabs)
 
 ### Modern API Framework (v1.5.8.10)
 
@@ -110,6 +113,38 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 - **Runtime Messaging** - Cross-origin sync via background script
 - **ID-based Tracking** - Prevents duplicate instance conflicts
 - **Commands API** - Keyboard shortcuts for panel toggle (Ctrl+Alt+Z)
+
+### What's New in v1.5.8.11? 🎉
+
+✅ **Quick Tabs Full UI Restoration**
+
+- **Complete Titlebar** - Favicon, dynamic title, and all control buttons restored
+- **Favicon Rendering** - Shows website icons using Google Favicon API
+- **Dynamic Title Updates** - Automatically updates with webpage title or hostname
+- **Open in New Tab Button** - 🔗 button to open Quick Tab content in browser tab
+- **Pin Button** - 📍/📌 toggle to pin Quick Tabs to specific pages
+- **Visual Feedback** - Pin button changes color and icon when pinned
+
+✅ **8-Direction Resize (Fix #3)**
+
+- **All Edges and Corners** - Resize from any of 8 handles (N, S, E, W, NE, NW, SE, SW)
+- **Pointer Events API** - setPointerCapture ensures smooth resizing without escape
+- **Min/Max Constraints** - 400x300 minimum size enforced
+- **Emergency Saves** - pointercancel handling preserves state on interruptions
+
+✅ **Position/Size Persistence (Fixes #35 & #51)**
+
+- **Cross-Tab Sync** - Position and size persist across all browser tabs
+- **Throttled Updates** - 100ms throttling during drag/resize for performance
+- **Final Save** - Emergency save on pointercancel (tab switch during drag)
+- **Background Coordination** - Runtime messaging for cross-tab state sync
+- **Pin State Sync** - Pin/unpin broadcasts to all tabs via background script
+
+✅ **UX Improvements**
+
+- **Removed Confusing Toggle** - "Persist Quick Tabs Across Tabs" always enabled
+- **Simplified Settings** - Cleaner Quick Tabs configuration panel
+- **Better Performance** - Optimized state management with throttling
 
 ### What's New in v1.5.8.10? 🎉
 
@@ -138,41 +173,6 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 - **Better Testability** - Modular structure enables easier unit testing
 - **Improved Scalability** - EventBus enables features to scale independently
 - **Reduced Technical Debt** - Removed duplicated DOM logic and utilities
-
-### What's New in v1.5.9.0?
-
-✅ **Critical Architecture Fix - Quick Tabs UI Restored**
-
-- **FIXED: Quick Tabs Now Visible** - Restored missing Quick Tab UI rendering logic identified in v1589-quick-tabs-root-cause.md
-- **Implemented Quick Tabs Feature Module** - Complete Quick Tab window creation, drag, resize, minimize functionality
-- **Modular Architecture Complete** - Following modular-architecture-blueprint.md design principles
-- **Separation of Concerns** - Quick Tabs and Notifications now fully modularized
-- **EventBus Integration** - Quick Tabs properly listen to QUICK_TAB_REQUESTED events
-- **Background Message Support** - Cross-tab Quick Tab restoration via runtime messaging
-- **Z-Index Management** - Multiple Quick Tabs properly stack with focus handling
-- **Pointer Events API** - Reliable drag/resize with setPointerCapture (no escape)
-
-✅ **New Modular Features**
-
-- **Quick Tabs Module** (`src/features/quick-tabs/`)
-  - `index.js` - QuickTabsManager singleton with EventBus listeners
-  - `quick-tab-window.js` - QuickTabWindow class for individual tab windows
-  - `minimized-manager.js` - MinimizedManager for tracking minimized tabs
-- **Notifications Module** (`src/features/notifications/`)
-  - `index.js` - NotificationManager with tooltip/toast support
-  - Separated CSS animations and styles
-  - Config-aware notification display
-- **UI Components** (`src/ui/`)
-  - `components.js` - Reusable UI component helpers
-  - Foundation for future UI components
-
-✅ **Content Script Refactoring**
-
-- Main entry point now pure orchestrator (delegates to feature modules)
-- Removed inline Quick Tab UI logic (now in feature module)
-- Removed inline notification logic (now in notification module)
-- Clean imports with proper initialization order
-- Feature managers exported to window for debugging
 
 ### What's New in v1.5.8.9?
 
@@ -298,15 +298,13 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 1. Hover over a link
 2. Press **Q** to open Quick Tab
 3. Use controls:
-   - **←→** Navigate (back/forward)
-   - **↻** Reload
-   - **📍** Pin to current page
+   - **🔗** Open in new tab (opens Quick Tab content in browser tab)
+   - **📍/📌** Pin to current page (pin/unpin toggle)
    - **−** Minimize to sidebar
-   - **🔗** Open in new tab
    - **✕** Close
 4. **Drag** title bar to move (uses Pointer Events - no slipping!)
-5. **Drag** edges/corners to resize (pointer capture for smooth resizing)
-6. **Pin** to keep Quick Tab only on specific pages
+5. **Resize** from any edge or corner (8 handles total)
+6. **Pin** to keep Quick Tab only on specific pages (pinned tabs won't show on other pages)
 7. **Press Esc** to close all Quick Tabs (slot numbers reset)
 
 ### Quick Tabs Manager Floating Panel (NEW v1.5.8.1)
@@ -355,8 +353,8 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 - Close all shortcut (default: Escape)
 - Max windows (1-10)
 - Default size and position
-- Cross-tab persistence toggle
-- Close on open toggle
+- Close on open toggle (close Quick Tab when opening in new tab)
+- **Note:** Quick Tabs always persist across browser tabs (no toggle needed)
 
 ### Appearance Tab
 
@@ -719,6 +717,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.8.7  
+**Current Version**: 1.5.8.11  
 **Last Updated**: 2025-11-13  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

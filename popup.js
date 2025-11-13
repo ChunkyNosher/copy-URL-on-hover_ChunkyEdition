@@ -33,7 +33,6 @@ const DEFAULT_SETTINGS = {
   quickTabPosition: 'follow-cursor',
   quickTabCustomX: 100,
   quickTabCustomY: 100,
-  quickTabPersistAcrossTabs: true,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
   quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
@@ -143,7 +142,6 @@ function loadSettings() {
     document.getElementById('quickTabPosition').value = items.quickTabPosition;
     document.getElementById('quickTabCustomX').value = items.quickTabCustomX;
     document.getElementById('quickTabCustomY').value = items.quickTabCustomY;
-    document.getElementById('quickTabPersistAcrossTabs').checked = items.quickTabPersistAcrossTabs !== false;
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
     document.getElementById('quickTabUpdateRate').value = items.quickTabUpdateRate || 360;
@@ -248,7 +246,6 @@ document.getElementById('saveBtn').addEventListener('click', function() {
     quickTabPosition: document.getElementById('quickTabPosition').value || 'follow-cursor',
     quickTabCustomX: safeParseInt(document.getElementById('quickTabCustomX').value, 100),
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
-    quickTabPersistAcrossTabs: document.getElementById('quickTabPersistAcrossTabs').checked,
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
     quickTabUpdateRate: safeParseInt(document.getElementById('quickTabUpdateRate').value, 360),
