@@ -5,9 +5,7 @@ module.exports = {
     node: true,
     webextensions: true
   },
-  extends: [
-    'eslint:recommended'
-  ],
+  extends: ['eslint:recommended'],
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module'
@@ -18,29 +16,32 @@ module.exports = {
   },
   rules: {
     // Possible Errors
-    'no-console': 'off',  // Allow console.log for extension debugging
-    'no-unused-vars': ['warn', { 
-      argsIgnorePattern: '^_',
-      varsIgnorePattern: '^_' 
-    }],
-    
+    'no-console': 'off', // Allow console.log for extension debugging
+    'no-unused-vars': [
+      'warn',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_'
+      }
+    ],
+
     // Best Practices
     'no-var': 'error',
     'prefer-const': 'warn',
     'prefer-arrow-callback': 'warn',
     'no-eval': 'error',
     'no-implied-eval': 'error',
-    
+
     // Security
     'no-new-func': 'error',
     'no-script-url': 'error',
-    
+
     // Browser Extension Specific
     'no-restricted-globals': ['error', 'window.eval'],
-    
+
     // Style (handled by Prettier mostly)
-    'semi': ['warn', 'always'],
-    'quotes': ['warn', 'single', { avoidEscape: true }]
+    semi: ['warn', 'always'],
+    quotes: ['warn', 'single', { avoidEscape: true }]
   },
   overrides: [
     {
@@ -50,15 +51,10 @@ module.exports = {
         node: true
       },
       parserOptions: {
-        sourceType: 'module',  // Allow ES modules in rollup.config.js
+        sourceType: 'module', // Allow ES modules in rollup.config.js
         ecmaVersion: 'latest'
       }
     }
   ],
-  ignorePatterns: [
-    'node_modules/',
-    'dist/',
-    '*.min.js',
-    'coverage/'
-  ]
+  ignorePatterns: ['node_modules/', 'dist/', '*.min.js', 'coverage/']
 };
