@@ -17,10 +17,12 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 
 **Moved from `src/utils/` to `src/core/`:**
 
+
 - ✅ `dom.js` - DOM manipulation utilities
 - ✅ `browser-api.js` - Browser API wrappers
 
 **Rationale:** These are core utilities used throughout the extension and belong with other core modules (config, state, events).
+
 
 **Impact:**
 
@@ -52,6 +54,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
    - Dark mode variants
    - Slot badge styles for debug mode
 
+
 **CSS Injection Strategy:**
 
 - CSS is inlined as JavaScript strings in modules that use them
@@ -71,12 +74,14 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 2. **`src/features/notifications/toast.js`** (2,071 bytes)
    - Handles toast notifications (for Quick Tabs feature)
    - Appears in configured corner (top-right, bottom-left, etc.)
+
    - Exports `showToast(message, type, config)`
 
 **Updated `src/features/notifications/index.js`:**
 
 - Now acts as coordinator between toast and tooltip modules
 - Imports and re-exports `showTooltip` and `showToast`
+
 - CSS content inlined as string constant
 - NotificationManager delegates to appropriate module based on `notifDisplayMode`
 
@@ -84,6 +89,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 
 - Clear separation: tooltip for Copy URL, toast for Quick Tabs
 - Each notification type can be tested independently
+
 - Easier to add new notification types in the future
 
 ### 4. Quick Tabs Module Refinement
@@ -111,6 +117,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
    - Lists package contents
    - Validates package size (>50KB minimum)
 
+
 4. **Enhanced release notes:**
    - Includes architecture information
    - Documents modular structure
@@ -120,6 +127,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 
 - Comprehensive guide to build and packaging process
 - Documents Rollup bundling strategy
+
 - Explains CSS handling
 - Lists common issues and solutions
 - File size comparisons and validation checklist
@@ -127,6 +135,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 ### 6. Documentation Updates
 
 **Updated README.md:**
+
 
 - Changed version from 1.5.9.0 to 1.5.8.10
 - Added "Hybrid Modular/EventBus Architecture" description
@@ -136,12 +145,14 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 
 **Updated all Copilot agent files:**
 
+
 - `feature-optimizer.md` ✅
 - `bug-architect.md` ✅
 - `bug-fixer.md` ✅
 - `feature-builder.md` ✅
 - `master-orchestrator.md` ✅
 - `refactor-specialist.md` ✅
+
 
 **All agents now reference:**
 
@@ -212,6 +223,7 @@ src/
 │   └── css/  ← NEW DIRECTORY
 │       ├── base.css
 │       ├── notifications.css
+
 │       └── quick-tabs.css
 └── utils/
     ├── debug.js  ← ONLY debug.js remains
@@ -225,11 +237,13 @@ src/
 **Rollup Configuration (`rollup.config.js`):**
 
 ```javascript
+
 {
   input: 'src/content.js',
   output: {
     file: 'dist/content.js',
     format: 'iife',  // Immediately Invoked Function Expression
+
     sourcemap: !production
   },
   plugins: [resolve(), commonjs()]
@@ -238,11 +252,13 @@ src/
 
 **What Gets Bundled:**
 
+
 - All JavaScript modules starting from `src/content.js`
 - CSS inlined as JavaScript strings
 - Total bundle size: ~96KB (production, no source maps)
 
 **What Doesn't Get Bundled:**
+
 
 - `background.js` (standalone script)
 - `popup.js`, `options_page.js` (standalone scripts)
@@ -278,27 +294,32 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ✓ dist/manifest.json version is 1.5.8.10
 ✓ No src/ directory in dist/
 ✓ XPI package created (253,630 bytes uncompressed)
+
 ```
 
 ### Manual Testing Checklist
 
 - [ ] Quick Tabs create successfully
 - [ ] Quick Tabs drag/resize works
+
 - [ ] Quick Tabs minimize/restore works
 - [ ] Notifications show for Copy URL (tooltip)
 - [ ] Notifications show for Quick Tabs (toast)
 - [ ] Container isolation works
 - [ ] Extension loads in Firefox
+
 - [ ] Extension loads in Zen Browser
 
 ## Benefits of This Architecture
 
 ### 1. Better Separation of Concerns
 
+
 - **Core utilities** in `core/` (config, state, events, dom, browser-api)
 - **Features** in `features/` (quick-tabs, notifications, url-handlers)
 - **UI** in `ui/` (components, CSS)
 - **Debug** in `utils/` (debug utilities only)
+
 
 ### 2. Improved Maintainability
 
@@ -308,6 +329,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 
 ### 3. Enhanced Testability
 
+
 - Each module can be tested independently
 - Mocking is simpler with clear module boundaries
 - Integration tests can target specific features
@@ -315,6 +337,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ### 4. Scalability
 
 - EventBus enables features to communicate without tight coupling
+
 - New features can be added by creating new modules
 - CSS can be organized per-feature
 
@@ -324,17 +347,20 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 - Source files can't leak into production packages
 - Size checks ensure bundle isn't corrupted
 
+
 ## Migration Notes
 
 ### For Developers
 
 **If you're adding new features:**
 
+
 1. Create module in appropriate `src/features/` subdirectory
 2. Import core utilities from `src/core/`
 3. Add CSS to `src/ui/css/` and inline in your module
 4. Register with EventBus in feature's `index.js`
 5. Test build with `npm run build:prod`
+
 
 **If you're modifying existing features:**
 
@@ -346,6 +372,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ### For CI/CD
 
 **Release workflow now includes:**
+
 
 - Pre-build testing
 - Build output validation
@@ -364,15 +391,18 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 
 - `src/core/dom.js` (copied from utils)
 - `src/core/browser-api.js` (copied from utils)
+
 - `src/features/notifications/toast.js` (new)
 - `src/features/notifications/tooltip.js` (new)
 - `src/features/quick-tabs/window.js` (renamed from quick-tab-window.js)
 - `src/ui/css/base.css` (new)
 - `src/ui/css/notifications.css` (new)
+
 - `src/ui/css/quick-tabs.css` (new)
 - `docs/manual/build-and-packaging-guide.md` (new)
 
 ### Modified (14 files)
+
 
 - `manifest.json` (version 1.5.8.10)
 - `package.json` (version 1.5.8.10)
@@ -380,12 +410,14 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 - `src/core/index.js` (added dom and browser-api exports)
 - `src/features/notifications/index.js` (modularized)
 - `src/features/quick-tabs/index.js` (updated import)
+
 - `.github/workflows/release.yml` (enhanced validation)
 - `README.md` (v1.5.8.10 documentation)
 - `.github/copilot-instructions.md` (v1.5.8.10, architecture type)
 - `.github/agents/feature-optimizer.md` (v1.5.8.10 architecture)
 - `.github/agents/bug-architect.md` (v1.5.8.10 architecture)
 - `.github/agents/bug-fixer.md` (v1.5.8.10 architecture)
+
 - `.github/agents/feature-builder.md` (v1.5.8.10 architecture)
 - `.github/agents/master-orchestrator.md` (v1.5.8.10 architecture)
 - `.github/agents/refactor-specialist.md` (v1.5.8.10 architecture)
@@ -405,6 +437,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ### Phase 2: Testing
 
 - Manual testing on Firefox
+
 - Manual testing on Zen Browser
 - Validate all features work
 - Check XPI package installs correctly
@@ -413,6 +446,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 
 - Create git tag `v1.5.8.10`
 - Push tag to trigger release workflow
+
 - Workflow builds, validates, and packages .xpi
 - GitHub release created with .xpi artifact
 
@@ -420,6 +454,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 
 - Watch for any installation issues
 - Monitor auto-update process
+
 - Check for any bug reports
 
 ## Success Criteria
