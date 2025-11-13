@@ -1,0 +1,53 @@
+name: Web Extension Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    name: Validate Firefox Extension
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      # Install Mozilla's web-ext tool globally
+      - name: Install web-ext
+        run: npm install --global web-ext
+      
+      # Lint the extension
+      - name: Lint extension source
+        run: |
+          web-ext lint \
+            --source-dir=. \
+            --ignore-files="*.md" "node_modules/**" "dist/**" ".github/**" "docs/**" "src/**" \
+            --warnings-as-errors \
+            --pretty \
+            --output=text
+        # Checks:
+        # - Manifest structure and permissions
+        # - Deprecated API usage
+        # - Firefox compatibility issues
+      
+      # Build and validate
+      - name: Build extension
+        run: |
+          npm ci
+          npm run build:prod
+      
+      - name: Validate built extension
+        run: |
+          web-ext lint --source-dir=dist/ --warnings-as-errors
+
+# HOW COPILOT + DEEPSOURCE USE THIS:
+# - web-ext finds Firefox-specific issues
+# - DeepSource finds general JavaScript issues
+# - Copilot combines both for comprehensive browser extension review
+# - Example: web-ext warns about deprecated API + DeepSource suggests modern alternative

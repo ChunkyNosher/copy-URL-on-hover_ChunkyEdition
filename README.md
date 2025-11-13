@@ -1,12 +1,13 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.8.4** - A feature-rich Firefox/Zen Browser extension with modular architecture for quick URL copying and advanced Quick Tab management with Firefox Container support and Floating Panel Manager.
+**Version 1.5.8.7** - A feature-rich Firefox/Zen Browser extension with modular architecture for quick URL copying and advanced Quick Tab management with Firefox Container support and Floating Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration and a floating Quick Tabs Manager panel that works in Zen Browser.
 
-## 📁 Repository Structure (v1.5.8.4 - Modular Architecture)
+## 📁 Repository Structure (v1.5.8.7 - Modular Architecture with Enhanced Debugging)
 
 **Source Files (New Modular Structure)**:
+
 - **`src/`** - Modular source code
   - **`src/core/`** - Core modules (config.js, state.js, events.js)
   - **`src/features/`** - Feature modules
@@ -26,6 +27,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ## ✨ Key Features
 
 ### Core Features
+
 ✓ **Quick URL Copying** - Press keyboard shortcuts while hovering over links  
 ✓ **Quick Tabs** - Floating, draggable, resizable iframe windows with full navigation  
 ✓ **Firefox Container Support (v1.5.7)** - Quick Tabs isolated by Firefox Container  
@@ -39,6 +41,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ✓ **Dark Mode** - Full dark theme support
 
 ### Quick Tabs Manager Floating Panel (v1.5.8.1)
+
 ✓ **NEW**: Persistent Floating Panel - Works in Zen Browser where sidebar is disabled  
 ✓ **NEW**: Draggable & Resizable - Move and resize from any edge or corner  
 ✓ **NEW**: Position Memory - Panel remembers position and size across sessions  
@@ -51,6 +54,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ✓ Persistent State - Survives page navigation and browser restarts
 
 ### Quick Tabs Features
+
 ✓ **Firefox Container Integration** - Quick Tabs respect container boundaries  
 ✓ **Smart Z-Index Management** - Most recently interacted tab always on top  
 ✓ Navigation controls (back, forward, reload, open in new tab)  
@@ -65,6 +69,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ✓ Slot number labels in debug mode (persistent across tabs)
 
 ### Modern API Framework (v1.5.8.1)
+
 - **Floating Panel Injection** - Content script injects persistent panel into page DOM
 - **Pointer Events API** - Reliable drag/resize with setPointerCapture
 - **Firefox Container API** - Container-aware state management with `contextualIdentities`
@@ -76,9 +81,40 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 - **ID-based Tracking** - Prevents duplicate instance conflicts
 - **Commands API** - Keyboard shortcuts for panel toggle (Ctrl+Alt+Z)
 
+### What's New in v1.5.8.7?
+
+✅ **Enhanced Code Quality Infrastructure**
+
+- Added comprehensive GitHub Actions workflows for code quality checks
+- Integrated DeepSource for advanced static analysis and security scanning
+- Added ESLint, Prettier, and Jest configurations for better code consistency
+- CodeQL security analysis for vulnerability detection
+- Automated test coverage tracking with Codecov
+- Web extension validation with Mozilla's web-ext tool
+- All workflows optimized to work with GitHub Copilot for enhanced code reviews
+
+✅ **Improved Debugging Capabilities**
+
+- Added aggressive logging throughout initialization process
+- Enhanced error handling with detailed error messages
+- Global error handlers for unhandled exceptions and promise rejections
+- Defensive fallbacks in ConfigManager for robust configuration loading
+- Debug markers to verify script execution at critical points
+- Comprehensive debugging guide added to README
+- Build validation checks to prevent ES6 import/export issues
+
+✅ **Better Development Experience**
+
+- Created barrel files (index.js) for cleaner module imports
+- Enhanced build process with bundle integrity validation
+- Improved CI/CD pipeline with sanity checks
+- Better error messages for troubleshooting
+- Development-focused documentation updates
+
 ### What's New in v1.5.8.2?
 
 ✅ **Modular Architecture Refactoring**
+
 - Complete refactoring of content.js from monolithic 180KB file to modular structure
 - URL handlers extracted into 11 categorized modules (social-media, video, developer, blogging, ecommerce, image-design, news-discussion, entertainment, gaming, learning, other)
 - Core functionality separated into reusable modules (config, state, events, utilities)
@@ -92,6 +128,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ### What's New in v1.5.8.1?
 
 ✅ **Floating Quick Tabs Manager Panel**
+
 - Replaced Firefox sidebar with persistent floating panel
 - Works in Zen Browser where sidebar API is disabled
 - Draggable panel with Pointer Events API (no slipping!)
@@ -105,6 +142,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 - Auto-refresh every 2 seconds to stay in sync with Quick Tabs
 
 ✅ **Zen Browser Compatibility**
+
 - Extension now works fully in Zen Browser
 - No dependency on Firefox Sidebar API
 - Panel injected via content script for universal compatibility
@@ -131,6 +169,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ## 📖 Usage
 
 ### Basic Copy Functions
+
 1. Hover over any link
 2. Press:
    - **Y** - Copy URL
@@ -139,6 +178,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 3. Notification confirms the action
 
 ### Quick Tabs
+
 1. Hover over a link
 2. Press **Q** to open Quick Tab
 3. Use controls:
@@ -154,6 +194,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 7. **Press Esc** to close all Quick Tabs (slot numbers reset)
 
 ### Quick Tabs Manager Floating Panel (NEW v1.5.8.1)
+
 1. **Press `Ctrl+Alt+Z`** (or `Cmd+Option+Z` on Mac) to open/close panel
 2. Panel shows:
    - All Quick Tabs organized by Firefox Container
@@ -175,7 +216,9 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 9. **Press Esc** to close all Quick Tabs (slot numbers reset)
 
 ### Debug Mode
+
 Enable in settings to see:
+
 - **Slot numbers** on Quick Tab toolbars (e.g., "Slot 1", "Slot 2")
 - Slot numbers reset when all Quick Tabs are closed (Esc or Clear Storage)
 - Slot numbers stay consistent across tab switches
@@ -186,10 +229,12 @@ Enable in settings to see:
 Access settings by clicking the extension icon. Organized into 4 tabs:
 
 ### Copy URL Tab
+
 - Keyboard shortcuts for copy URL, copy text, open in new tab
 - Modifier keys (Ctrl, Alt, Shift)
 
 ### Quick Tabs Tab
+
 - Quick Tab keyboard shortcut (default: Q)
 - Close all shortcut (default: Escape)
 - Max windows (1-10)
@@ -198,6 +243,7 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 - Close on open toggle
 
 ### Appearance Tab
+
 - Notification style (tooltip or notification)
 - Colors, borders, animations
 - Position and size
@@ -205,6 +251,7 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 - Debug mode toggle
 
 ### Advanced Tab
+
 - Clear Quick Tab Storage (also resets slot numbers!)
 - Reset settings to defaults
 
@@ -234,6 +281,269 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 - **Architecture**: See `/docs/manual/quick-tab-sync-architecture.md`
 - **Pointer Events Guide**: See `/docs/manual/Pointer-Events-Integration-Guide.md`
 - **Testing Guide**: See `/docs/manual/TESTING_GUIDE_ISSUE_51.md`
+
+## 🔧 Debugging the Extension
+
+If the extension is not working or appears to be in a non-functional state, follow these steps to diagnose and fix the issue.
+
+### Quick Debug Checklist
+
+1. **Check if the content script is loading**:
+   - Open any web page
+   - Press **F12** or **Ctrl+Shift+J** to open the browser console
+   - Look for logs starting with `[Copy-URL-on-Hover]`
+   - You should see:
+     ```
+     [Copy-URL-on-Hover] Script loaded! @ 2025-11-13T04:05:38.690Z
+     [Copy-URL-on-Hover] All module imports completed successfully
+     [Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓
+     ```
+
+2. **Test the debug marker**:
+   - In the console, type: `window.CUO_debug_marker`
+   - Should return: `"JS executed to top of file!"`
+   - If `undefined`, the script failed to load or crashed early
+
+3. **Check initialization status**:
+   - In the console, type: `window.CUO_initialized`
+   - Should return: `true`
+   - If `false` or `undefined`, initialization failed
+
+### Debugging v1.5.8.6+ (Modular Architecture)
+
+The modular architecture (v1.5.8.6+) introduced a new build system. If the extension is not working:
+
+#### 1. Verify Bundle Integrity
+
+**Check for ES6 imports/exports in the built file** (these break browser loading):
+
+```bash
+# In the extension directory
+grep "^import " dist/content.js
+grep "^export " dist/content.js
+```
+
+- **If you see output**: The bundle is broken! ES6 modules cannot be used directly in content scripts.
+- **If no output**: Bundle is correctly flattened ✓
+
+#### 2. Validate Build Output
+
+```bash
+# Check bundle size (should be ~60-80KB)
+ls -lh dist/content.js
+
+# Verify key classes are present
+grep "ConfigManager" dist/content.js
+grep "StateManager" dist/content.js
+grep "EventBus" dist/content.js
+```
+
+All `grep` commands should return matches. If not, the build is incomplete.
+
+#### 3. Rebuild from Scratch
+
+```bash
+# Clean and rebuild
+npm run clean
+npm ci  # Fresh install of dependencies
+npm run build:prod
+
+# Verify the build
+ls -lh dist/
+```
+
+#### 4. Check Browser Console for Errors
+
+Open the console and look for:
+
+- **Syntax errors**: Usually means the bundle has ES6 imports/exports
+- **Module not found**: Build didn't include all dependencies
+- **Undefined variables**: Missing exports or incorrect bundling
+
+### Common Issues and Solutions
+
+#### Issue: Extension loads but keyboard shortcuts don't work
+
+**Symptoms**:
+
+- Console shows successful initialization
+- No errors in console
+- Pressing Y/X/Q does nothing
+
+**Solutions**:
+
+1. **Check if page has focus**:
+   - Click on the main page (not inside a Quick Tab or address bar)
+   - Quick Tabs capture keyboard focus when clicked
+
+2. **Verify shortcuts in settings**:
+   - Click extension icon → Check keyboard shortcuts
+   - Make sure shortcuts aren't conflicting with page shortcuts
+
+3. **Enable Debug Mode**:
+   - Extension icon → Advanced tab → Enable Debug Mode
+   - Check console for keyboard event logs
+
+#### Issue: Quick Tabs not opening
+
+**Symptoms**:
+
+- Pressing Q does nothing
+- No error messages
+
+**Solutions**:
+
+1. **Check Quick Tab settings**:
+   - Extension icon → Quick Tabs tab
+   - Ensure "Cross-tab persistence" is enabled
+   - Try adjusting max windows setting
+
+2. **Clear Quick Tab storage**:
+   - Extension icon → Advanced tab → Clear Quick Tab Storage
+   - Try opening a Quick Tab again
+
+3. **Check for iframe restrictions**:
+   - Some sites block iframes (e.g., banks, government sites)
+   - Try on a different site (e.g., Wikipedia, GitHub)
+
+#### Issue: Extension completely broken after update
+
+**Symptoms**:
+
+- No console logs at all
+- `window.CUO_debug_marker` is undefined
+- Extension icon might be grayed out
+
+**Solutions**:
+
+1. **Verify installation**:
+   - Go to `about:addons`
+   - Check if extension is enabled
+   - Check for error messages
+
+2. **Check manifest.json**:
+
+   ```bash
+   # Verify manifest in dist/
+   cat dist/manifest.json
+   ```
+
+   - Should show version 1.5.8.7 or higher
+   - Should have `"manifest_version": 2`
+   - Should have content_scripts pointing to `"content.js"`
+
+3. **Reinstall the extension**:
+   - Download latest .xpi from [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+   - Uninstall old version from `about:addons`
+   - Install new .xpi file
+
+4. **Check Firefox version**:
+   - Extension requires Firefox 115+ for all features
+   - Some features use `browser.storage.session` (Firefox 115+)
+
+#### Issue: Extension works but no notifications appear
+
+**Symptoms**:
+
+- Keyboard shortcuts work (URL is copied)
+- No visual feedback
+
+**Solutions**:
+
+1. **Check notification settings**:
+   - Extension icon → Appearance tab
+   - Ensure "Show notification" is enabled
+   - Try different notification styles (tooltip vs notification)
+
+2. **Check site CSP**:
+   - Some sites block injected content via Content Security Policy
+   - Try on a different site
+
+### Advanced Debugging
+
+#### Enable Maximum Logging
+
+1. **Enable Debug Mode**:
+   - Extension icon → Advanced tab → Enable Debug Mode
+2. **Check all log categories**:
+
+   ```javascript
+   // In browser console
+   // Shows all extension state
+   window.CUO_debug_marker;
+   window.CUO_initialized;
+
+   // Force enable debug (temporary)
+   localStorage.setItem('debugMode', 'true');
+   ```
+
+3. **Monitor initialization steps**:
+   - Look for logs with `STEP:` prefix
+   - Shows exactly where initialization stops if it fails
+
+#### Check Storage State
+
+```javascript
+// In browser console
+// Check configuration
+browser.storage.local.get().then(console.log);
+
+// Check Quick Tab state
+browser.storage.sync.get('quick_tabs_state_v2').then(console.log);
+
+// Check session state (Firefox 115+)
+browser.storage.session.get().then(console.log);
+```
+
+#### Test with Minimal Content Script
+
+If all else fails, create a minimal test:
+
+1. **Create test file** `test-content.js`:
+
+   ```javascript
+   alert('Extension content script is running!');
+   console.log('Extension test script loaded');
+   ```
+
+2. **Temporarily modify manifest.json**:
+
+   ```json
+   "content_scripts": [{
+     "matches": ["<all_urls>"],
+     "js": ["test-content.js"],
+     "run_at": "document_idle"
+   }]
+   ```
+
+3. **Reload extension** and visit any page
+   - If alert appears: Extension loading works, issue is in main code
+   - If no alert: Extension installation or manifest is broken
+
+### Error Messages Reference
+
+| Error Message                            | Meaning                    | Solution                                            |
+| ---------------------------------------- | -------------------------- | --------------------------------------------------- |
+| `browser.storage.local is not available` | Browser API not accessible | Check Firefox version, reload extension             |
+| `import` or `export` in bundle           | Build is broken            | Rebuild: `npm run clean && npm run build:prod`      |
+| `ConfigManager is not defined`           | Bundle missing classes     | Rebuild with all dependencies                       |
+| `CRITICAL INITIALIZATION ERROR`          | Init failed                | Check console for specific error, rebuild if needed |
+| No logs at all                           | Script not loading         | Check manifest.json, verify file paths              |
+
+### Getting Help
+
+If none of these steps work:
+
+1. **Collect diagnostic info**:
+   - Firefox version
+   - Extension version
+   - Full browser console output (copy all logs)
+   - Steps to reproduce
+
+2. **Open an issue** on GitHub with:
+   - Diagnostic info from step 1
+   - What you've already tried
+   - Screenshots of console errors
 
 ## 🛠️ Development
 
@@ -270,6 +580,7 @@ See `/docs/manual/TESTING_GUIDE_ISSUE_51.md` for comprehensive testing procedure
 ## 🌐 Supported Websites (100+)
 
 Optimized handlers for:
+
 - Social Media (Twitter/X, Reddit, LinkedIn, Instagram, Facebook, etc.)
 - Video Platforms (YouTube, Vimeo, Twitch, etc.)
 - Developer Platforms (GitHub, GitLab, Stack Overflow, etc.)
@@ -292,6 +603,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.8.1  
-**Last Updated**: 2025-11-12  
+**Current Version**: 1.5.8.7  
+**Last Updated**: 2025-11-13  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
