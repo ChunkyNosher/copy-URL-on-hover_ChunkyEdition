@@ -399,19 +399,19 @@ export class PanelManager {
    */
   async init() {
     debug('[PanelManager] Initializing...');
-    
+
     // Inject CSS
     this.injectStyles();
-    
+
     // Load saved state
     await this.loadPanelState();
-    
+
     // Create panel (hidden by default)
     this.createPanel();
-    
+
     // Set up message listener for toggle command
     this.setupMessageListener();
-    
+
     debug('[PanelManager] Initialized');
   }
 
@@ -423,12 +423,12 @@ export class PanelManager {
     if (document.getElementById('quick-tabs-manager-panel-styles')) {
       return;
     }
-    
+
     const style = document.createElement('style');
     style.id = 'quick-tabs-manager-panel-styles';
     style.textContent = PANEL_CSS;
     document.head.appendChild(style);
-    
+
     debug('[PanelManager] Styles injected');
   }
 
@@ -440,41 +440,41 @@ export class PanelManager {
       debug('[PanelManager] Panel already exists');
       return;
     }
-    
+
     // Create panel container
     const container = document.createElement('div');
     container.innerHTML = PANEL_HTML;
     const panel = container.firstElementChild;
-    
+
     // Apply saved position and size
     panel.style.left = this.panelState.left + 'px';
     panel.style.top = this.panelState.top + 'px';
     panel.style.width = this.panelState.width + 'px';
     panel.style.height = this.panelState.height + 'px';
-    
+
     // Show panel if it was open before
     if (this.panelState.isOpen) {
       panel.style.display = 'flex';
       this.isOpen = true;
     }
-    
+
     // Append to body
     document.documentElement.appendChild(panel);
     this.panel = panel;
-    
+
     // Make draggable
     const header = panel.querySelector('.panel-header');
     this.makePanelDraggable(panel, header);
-    
+
     // Make resizable
     this.makePanelResizable(panel);
-    
+
     // Setup event listeners
     this.setupPanelEventListeners(panel);
-    
+
     // Initialize content
     this.updatePanelContent();
-    
+
     debug('[PanelManager] Panel created');
   }
 
@@ -498,9 +498,9 @@ export class PanelManager {
    */
   async savePanelState() {
     if (!this.panel) return;
-    
+
     const rect = this.panel.getBoundingClientRect();
-    
+
     this.panelState = {
       left: Math.round(rect.left),
       top: Math.round(rect.top),
@@ -508,7 +508,7 @@ export class PanelManager {
       height: Math.round(rect.height),
       isOpen: this.isOpen
     };
-    
+
     try {
       await browser.storage.local.set({ quick_tabs_panel_state: this.panelState });
       debug('[PanelManager] Saved panel state');
@@ -524,7 +524,7 @@ export class PanelManager {
     if (!this.panel) {
       this.createPanel();
     }
-    
+
     if (this.isOpen) {
       this.close();
     } else {
@@ -539,27 +539,27 @@ export class PanelManager {
     if (!this.panel) {
       this.createPanel();
     }
-    
+
     this.panel.style.display = 'flex';
     this.isOpen = true;
     this.panelState.isOpen = true;
-    
+
     // Bring to front
     this.panel.style.zIndex = '999999999';
-    
+
     // Update content immediately
     this.updatePanelContent();
-    
+
     // Start auto-refresh
     if (!this.updateInterval) {
       this.updateInterval = setInterval(() => {
         this.updatePanelContent();
       }, 2000);
     }
-    
+
     // Save state
     this.savePanelState();
-    
+
     debug('[PanelManager] Panel opened');
   }
 
@@ -571,16 +571,16 @@ export class PanelManager {
       this.panel.style.display = 'none';
       this.isOpen = false;
       this.panelState.isOpen = false;
-      
+
       // Stop auto-refresh
       if (this.updateInterval) {
         clearInterval(this.updateInterval);
         this.updateInterval = null;
       }
-      
+
       // Save state
       this.savePanelState();
-      
+
       debug('[PanelManager] Panel closed');
     }
   }
@@ -596,13 +596,13 @@ export class PanelManager {
           console.error('[PanelManager] Message from unknown sender:', sender);
           return;
         }
-        
+
         if (message.action === 'TOGGLE_QUICK_TABS_PANEL') {
           this.toggle();
           return Promise.resolve({ success: true });
         }
       });
-      
+
       debug('[PanelManager] Message listener setup');
     }
   }
@@ -613,44 +613,44 @@ export class PanelManager {
   setupPanelEventListeners(panel) {
     // Close button
     const closeBtn = panel.querySelector('.panel-close');
-    closeBtn.addEventListener('click', (e) => {
+    closeBtn.addEventListener('click', e => {
       e.stopPropagation();
       this.close();
     });
-    
+
     // Minimize button (same as close for now)
     const minimizeBtn = panel.querySelector('.panel-minimize');
-    minimizeBtn.addEventListener('click', (e) => {
+    minimizeBtn.addEventListener('click', e => {
       e.stopPropagation();
       this.close();
     });
-    
+
     // Close Minimized button
     const closeMinimizedBtn = panel.querySelector('#panel-closeMinimized');
-    closeMinimizedBtn.addEventListener('click', async (e) => {
+    closeMinimizedBtn.addEventListener('click', async e => {
       e.stopPropagation();
       await this.closeMinimizedQuickTabs();
     });
-    
+
     // Close All button
     const closeAllBtn = panel.querySelector('#panel-closeAll');
-    closeAllBtn.addEventListener('click', async (e) => {
+    closeAllBtn.addEventListener('click', async e => {
       e.stopPropagation();
       await this.closeAllQuickTabs();
     });
-    
+
     // Delegated listener for Quick Tab item actions
     const containersList = panel.querySelector('#panel-containersList');
-    containersList.addEventListener('click', async (e) => {
+    containersList.addEventListener('click', async e => {
       const button = e.target.closest('button[data-action]');
       if (!button) return;
-      
+
       e.stopPropagation();
-      
+
       const action = button.dataset.action;
       const quickTabId = button.dataset.quickTabId;
       const tabId = button.dataset.tabId;
-      
+
       switch (action) {
         case 'goToTab':
           await this.goToTab(parseInt(tabId));
@@ -665,11 +665,11 @@ export class PanelManager {
           await this.closeQuickTab(quickTabId);
           break;
       }
-      
+
       // Update panel after action
       setTimeout(() => this.updatePanelContent(), 100);
     });
-    
+
     debug('[PanelManager] Event listeners setup');
   }
 
@@ -678,63 +678,64 @@ export class PanelManager {
    */
   makePanelDraggable(panel, handle) {
     let isDragging = false;
-    let offsetX = 0, offsetY = 0;
+    let offsetX = 0,
+      offsetY = 0;
     let currentPointerId = null;
-    
-    const handlePointerDown = (e) => {
+
+    const handlePointerDown = e => {
       if (e.button !== 0) return; // Only left click
       if (e.target.classList.contains('panel-btn')) return; // Ignore buttons
-      
+
       isDragging = true;
       currentPointerId = e.pointerId;
-      
+
       // Capture pointer
       handle.setPointerCapture(e.pointerId);
-      
+
       // Calculate offset
       const rect = panel.getBoundingClientRect();
       offsetX = e.clientX - rect.left;
       offsetY = e.clientY - rect.top;
-      
+
       handle.style.cursor = 'grabbing';
       e.preventDefault();
     };
-    
-    const handlePointerMove = (e) => {
+
+    const handlePointerMove = e => {
       if (!isDragging || e.pointerId !== currentPointerId) return;
-      
+
       // Calculate new position
       const newLeft = e.clientX - offsetX;
       const newTop = e.clientY - offsetY;
-      
+
       // Apply position
       panel.style.left = newLeft + 'px';
       panel.style.top = newTop + 'px';
-      
+
       e.preventDefault();
     };
-    
-    const handlePointerUp = (e) => {
+
+    const handlePointerUp = e => {
       if (!isDragging || e.pointerId !== currentPointerId) return;
-      
+
       isDragging = false;
       handle.releasePointerCapture(e.pointerId);
       handle.style.cursor = 'grab';
-      
+
       // Save final position
       this.savePanelState();
     };
-    
-    const handlePointerCancel = (e) => {
+
+    const handlePointerCancel = e => {
       if (!isDragging) return;
-      
+
       isDragging = false;
       handle.style.cursor = 'grab';
-      
+
       // Save position
       this.savePanelState();
     };
-    
+
     // Attach listeners
     handle.addEventListener('pointerdown', handlePointerDown);
     handle.addEventListener('pointermove', handlePointerMove);
@@ -749,19 +750,19 @@ export class PanelManager {
     const minWidth = 250;
     const minHeight = 300;
     const handleSize = 10;
-    
+
     // Define resize handles
     const handles = {
-      'n': { cursor: 'n-resize', top: 0, left: handleSize, right: handleSize, height: handleSize },
-      's': { cursor: 's-resize', bottom: 0, left: handleSize, right: handleSize, height: handleSize },
-      'e': { cursor: 'e-resize', right: 0, top: handleSize, bottom: handleSize, width: handleSize },
-      'w': { cursor: 'w-resize', left: 0, top: handleSize, bottom: handleSize, width: handleSize },
-      'ne': { cursor: 'ne-resize', top: 0, right: 0, width: handleSize, height: handleSize },
-      'nw': { cursor: 'nw-resize', top: 0, left: 0, width: handleSize, height: handleSize },
-      'se': { cursor: 'se-resize', bottom: 0, right: 0, width: handleSize, height: handleSize },
-      'sw': { cursor: 'sw-resize', bottom: 0, left: 0, width: handleSize, height: handleSize }
+      n: { cursor: 'n-resize', top: 0, left: handleSize, right: handleSize, height: handleSize },
+      s: { cursor: 's-resize', bottom: 0, left: handleSize, right: handleSize, height: handleSize },
+      e: { cursor: 'e-resize', right: 0, top: handleSize, bottom: handleSize, width: handleSize },
+      w: { cursor: 'w-resize', left: 0, top: handleSize, bottom: handleSize, width: handleSize },
+      ne: { cursor: 'ne-resize', top: 0, right: 0, width: handleSize, height: handleSize },
+      nw: { cursor: 'nw-resize', top: 0, left: 0, width: handleSize, height: handleSize },
+      se: { cursor: 'se-resize', bottom: 0, right: 0, width: handleSize, height: handleSize },
+      sw: { cursor: 'sw-resize', bottom: 0, left: 0, width: handleSize, height: handleSize }
     };
-    
+
     Object.entries(handles).forEach(([direction, style]) => {
       const handle = document.createElement('div');
       handle.className = `panel-resize-handle ${direction}`;
@@ -776,18 +777,18 @@ export class PanelManager {
         cursor: ${style.cursor};
         z-index: 10;
       `;
-      
+
       let isResizing = false;
       let currentPointerId = null;
       let startX, startY, startWidth, startHeight, startLeft, startTop;
-      
-      const handlePointerDown = (e) => {
+
+      const handlePointerDown = e => {
         if (e.button !== 0) return;
-        
+
         isResizing = true;
         currentPointerId = e.pointerId;
         handle.setPointerCapture(e.pointerId);
-        
+
         startX = e.clientX;
         startY = e.clientY;
         const rect = panel.getBoundingClientRect();
@@ -795,22 +796,22 @@ export class PanelManager {
         startHeight = rect.height;
         startLeft = rect.left;
         startTop = rect.top;
-        
+
         e.preventDefault();
         e.stopPropagation();
       };
-      
-      const handlePointerMove = (e) => {
+
+      const handlePointerMove = e => {
         if (!isResizing || e.pointerId !== currentPointerId) return;
-        
+
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        
+
         let newWidth = startWidth;
         let newHeight = startHeight;
         let newLeft = startLeft;
         let newTop = startTop;
-        
+
         // Calculate new dimensions based on direction
         if (direction.includes('e')) {
           newWidth = Math.max(minWidth, startWidth + dx);
@@ -830,39 +831,39 @@ export class PanelManager {
           newHeight = startHeight - constrainedDy;
           newTop = startTop + constrainedDy;
         }
-        
+
         // Apply new dimensions
         panel.style.width = newWidth + 'px';
         panel.style.height = newHeight + 'px';
         panel.style.left = newLeft + 'px';
         panel.style.top = newTop + 'px';
-        
+
         e.preventDefault();
       };
-      
-      const handlePointerUp = (e) => {
+
+      const handlePointerUp = e => {
         if (!isResizing || e.pointerId !== currentPointerId) return;
-        
+
         isResizing = false;
         handle.releasePointerCapture(e.pointerId);
-        
+
         // Save final size/position
         this.savePanelState();
       };
-      
-      const handlePointerCancel = (e) => {
+
+      const handlePointerCancel = e => {
         if (!isResizing) return;
-        
+
         isResizing = false;
         this.savePanelState();
       };
-      
+
       // Attach listeners
       handle.addEventListener('pointerdown', handlePointerDown);
       handle.addEventListener('pointermove', handlePointerMove);
       handle.addEventListener('pointerup', handlePointerUp);
       handle.addEventListener('pointercancel', handlePointerCancel);
-      
+
       panel.appendChild(handle);
     });
   }
@@ -872,12 +873,12 @@ export class PanelManager {
    */
   async updatePanelContent() {
     if (!this.panel || !this.isOpen) return;
-    
+
     const totalTabsEl = this.panel.querySelector('#panel-totalTabs');
     const lastSyncEl = this.panel.querySelector('#panel-lastSync');
     const containersList = this.panel.querySelector('#panel-containersList');
     const emptyState = this.panel.querySelector('#panel-emptyState');
-    
+
     // Load Quick Tabs state from storage
     let quickTabsState = {};
     try {
@@ -889,11 +890,11 @@ export class PanelManager {
       console.error('[PanelManager] Error loading Quick Tabs state:', err);
       return;
     }
-    
+
     // Calculate totals
     let totalTabs = 0;
     let latestTimestamp = 0;
-    
+
     Object.keys(quickTabsState).forEach(cookieStoreId => {
       const containerState = quickTabsState[cookieStoreId];
       if (containerState && containerState.tabs) {
@@ -903,17 +904,17 @@ export class PanelManager {
         }
       }
     });
-    
+
     // Update stats
     totalTabsEl.textContent = `${totalTabs} Quick Tab${totalTabs !== 1 ? 's' : ''}`;
-    
+
     if (latestTimestamp > 0) {
       const date = new Date(latestTimestamp);
       lastSyncEl.textContent = `Last sync: ${date.toLocaleTimeString()}`;
     } else {
       lastSyncEl.textContent = 'Last sync: Never';
     }
-    
+
     // Show/hide empty state
     if (totalTabs === 0) {
       containersList.style.display = 'none';
@@ -923,7 +924,7 @@ export class PanelManager {
       containersList.style.display = 'block';
       emptyState.style.display = 'none';
     }
-    
+
     // Load container info
     let containersData = {};
     try {
@@ -937,7 +938,7 @@ export class PanelManager {
           };
         });
       }
-      
+
       // Always add default container
       containersData['firefox-default'] = {
         name: 'Default',
@@ -947,25 +948,25 @@ export class PanelManager {
     } catch (err) {
       console.error('[PanelManager] Error loading container info:', err);
     }
-    
+
     // Clear and rebuild containers list
     containersList.innerHTML = '';
-    
+
     // Sort containers: Default first, then alphabetically
     const sortedContainers = Object.keys(containersData).sort((a, b) => {
       if (a === 'firefox-default') return -1;
       if (b === 'firefox-default') return 1;
       return containersData[a].name.localeCompare(containersData[b].name);
     });
-    
+
     sortedContainers.forEach(cookieStoreId => {
       const containerInfo = containersData[cookieStoreId];
       const containerState = quickTabsState[cookieStoreId];
-      
+
       if (!containerState || !containerState.tabs || containerState.tabs.length === 0) {
         return; // Skip empty containers
       }
-      
+
       this.renderContainerSection(containersList, cookieStoreId, containerInfo, containerState);
     });
   }
@@ -975,21 +976,21 @@ export class PanelManager {
    */
   getContainerIcon(icon) {
     const iconMap = {
-      'fingerprint': '🔒',
-      'briefcase': '💼',
-      'dollar': '💰',
-      'cart': '🛒',
-      'circle': '⭕',
-      'gift': '🎁',
-      'vacation': '🏖️',
-      'food': '🍴',
-      'fruit': '🍎',
-      'pet': '🐾',
-      'tree': '🌳',
-      'chill': '❄️',
-      'fence': '🚧'
+      fingerprint: '🔒',
+      briefcase: '💼',
+      dollar: '💰',
+      cart: '🛒',
+      circle: '⭕',
+      gift: '🎁',
+      vacation: '🏖️',
+      food: '🍴',
+      fruit: '🍎',
+      pet: '🐾',
+      tree: '🌳',
+      chill: '❄️',
+      fence: '🚧'
     };
-    
+
     return iconMap[icon] || '📁';
   }
 
@@ -999,7 +1000,7 @@ export class PanelManager {
   renderContainerSection(containersList, cookieStoreId, containerInfo, containerState) {
     const section = document.createElement('div');
     section.className = 'panel-container-section';
-    
+
     // Header
     const header = document.createElement('h3');
     header.className = 'panel-container-header';
@@ -1008,21 +1009,21 @@ export class PanelManager {
       <span class="panel-container-name">${containerInfo.name}</span>
       <span class="panel-container-count">(${containerState.tabs.length} tab${containerState.tabs.length !== 1 ? 's' : ''})</span>
     `;
-    
+
     section.appendChild(header);
-    
+
     // Tabs
     const activeTabs = containerState.tabs.filter(t => !t.minimized);
     const minimizedTabs = containerState.tabs.filter(t => t.minimized);
-    
+
     activeTabs.forEach(tab => {
       section.appendChild(this.renderQuickTabItem(tab, false));
     });
-    
+
     minimizedTabs.forEach(tab => {
       section.appendChild(this.renderQuickTabItem(tab, true));
     });
-    
+
     containersList.appendChild(section);
   }
 
@@ -1032,46 +1033,47 @@ export class PanelManager {
   renderQuickTabItem(tab, isMinimized) {
     const item = document.createElement('div');
     item.className = `panel-quick-tab-item ${isMinimized ? 'minimized' : 'active'}`;
-    
+
     // Indicator
     const indicator = document.createElement('span');
     indicator.className = `panel-status-indicator ${isMinimized ? 'yellow' : 'green'}`;
-    
+
     // Favicon
     const favicon = document.createElement('img');
     favicon.className = 'panel-favicon';
     try {
       const urlObj = new URL(tab.url);
       favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
-      favicon.onerror = () => favicon.style.display = 'none';
+      favicon.onerror = () => (favicon.style.display = 'none');
     } catch (e) {
       favicon.style.display = 'none';
     }
-    
+
     // Info
     const info = document.createElement('div');
     info.className = 'panel-tab-info';
-    
+
     const title = document.createElement('div');
     title.className = 'panel-tab-title';
     title.textContent = tab.title || 'Quick Tab';
-    
+
     const meta = document.createElement('div');
     meta.className = 'panel-tab-meta';
-    
+
     let metaParts = [];
     if (isMinimized) metaParts.push('Minimized');
     if (tab.activeTabId) metaParts.push(`Tab ${tab.activeTabId}`);
-    if (tab.width && tab.height) metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
+    if (tab.width && tab.height)
+      metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
     meta.textContent = metaParts.join(' • ');
-    
+
     info.appendChild(title);
     info.appendChild(meta);
-    
+
     // Actions
     const actions = document.createElement('div');
     actions.className = 'panel-tab-actions';
-    
+
     if (!isMinimized) {
       // Go to Tab button
       if (tab.activeTabId) {
@@ -1083,7 +1085,7 @@ export class PanelManager {
         goToBtn.dataset.tabId = tab.activeTabId;
         actions.appendChild(goToBtn);
       }
-      
+
       // Minimize button
       const minBtn = document.createElement('button');
       minBtn.className = 'panel-btn-icon';
@@ -1102,7 +1104,7 @@ export class PanelManager {
       restoreBtn.dataset.quickTabId = tab.id;
       actions.appendChild(restoreBtn);
     }
-    
+
     // Close button
     const closeBtn = document.createElement('button');
     closeBtn.className = 'panel-btn-icon';
@@ -1111,13 +1113,13 @@ export class PanelManager {
     closeBtn.dataset.action = 'close';
     closeBtn.dataset.quickTabId = tab.id;
     actions.appendChild(closeBtn);
-    
+
     // Assemble
     item.appendChild(indicator);
     item.appendChild(favicon);
     item.appendChild(info);
     item.appendChild(actions);
-    
+
     return item;
   }
 
@@ -1128,22 +1130,22 @@ export class PanelManager {
     try {
       const result = await browser.storage.sync.get('quick_tabs_state_v2');
       if (!result || !result.quick_tabs_state_v2) return;
-      
+
       const state = result.quick_tabs_state_v2;
       let hasChanges = false;
-      
+
       Object.keys(state).forEach(cookieStoreId => {
         if (state[cookieStoreId] && state[cookieStoreId].tabs) {
           const originalLength = state[cookieStoreId].tabs.length;
           state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !t.minimized);
-          
+
           if (state[cookieStoreId].tabs.length !== originalLength) {
             hasChanges = true;
             state[cookieStoreId].timestamp = Date.now();
           }
         }
       });
-      
+
       if (hasChanges) {
         await browser.storage.sync.set({ quick_tabs_state_v2: state });
         debug('[PanelManager] Closed all minimized Quick Tabs');
@@ -1160,15 +1162,17 @@ export class PanelManager {
   async closeAllQuickTabs() {
     try {
       await browser.storage.sync.remove('quick_tabs_state_v2');
-      
+
       // Notify all tabs
       const tabs = await browser.tabs.query({});
       tabs.forEach(tab => {
-        browser.tabs.sendMessage(tab.id, {
-          action: 'CLEAR_ALL_QUICK_TABS'
-        }).catch(() => {});
+        browser.tabs
+          .sendMessage(tab.id, {
+            action: 'CLEAR_ALL_QUICK_TABS'
+          })
+          .catch(() => {});
       });
-      
+
       debug('[PanelManager] Closed all Quick Tabs');
       this.updatePanelContent();
     } catch (err) {
@@ -1196,7 +1200,7 @@ export class PanelManager {
     if (this.quickTabsManager && this.quickTabsManager.minimizeById) {
       this.quickTabsManager.minimizeById(quickTabId);
     }
-    
+
     // Update panel after short delay
     setTimeout(() => this.updatePanelContent(), 100);
   }
@@ -1209,7 +1213,7 @@ export class PanelManager {
     if (this.quickTabsManager && this.quickTabsManager.restoreById) {
       this.quickTabsManager.restoreById(quickTabId);
     }
-    
+
     // Update panel after short delay
     setTimeout(() => this.updatePanelContent(), 100);
   }
@@ -1222,7 +1226,7 @@ export class PanelManager {
     if (this.quickTabsManager && this.quickTabsManager.closeById) {
       this.quickTabsManager.closeById(quickTabId);
     }
-    
+
     // Update panel after short delay
     setTimeout(() => this.updatePanelContent(), 100);
   }
