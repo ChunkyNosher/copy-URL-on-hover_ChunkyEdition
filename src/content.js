@@ -4,7 +4,7 @@
  *
  * This file serves as the main entry point and coordinates between modules.
  * URL handlers have been extracted to features/url-handlers/ for better maintainability.
- * 
+ *
  * v1.5.8.8 Changes: Eager loading - all features initialize at once regardless of config.
  */
 

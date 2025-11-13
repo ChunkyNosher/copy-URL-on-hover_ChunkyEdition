@@ -4,55 +4,55 @@
 
 # Language and tone
 language: en-US
-tone_instructions: "Focus on logic correctness, security issues, and browser extension best practices. Be concise but thorough."
+tone_instructions: 'Focus on logic correctness, security issues, and browser extension best practices. Be concise but thorough.'
 
 reviews:
   # Review profile (assertive = detailed feedback)
   profile: assertive
-  
+
   # Auto-review configuration
   auto_review:
     enabled: true
     drafts: false
-    
+
     # CRITICAL: Empty list means review ALL PRs including bots
     # This fixes the "Bot user detected, review skipped" issue
     ignore_usernames: []
-  
+
   # Show high-level summary of changes
   high_level_summary: true
   high_level_summary_in_walkthrough: true
-  
+
   # Post review status (show when reviews happen/skip)
   review_status: true
-  
+
   # Path-specific instructions
   path_instructions:
-    - path: "background.js"
+    - path: 'background.js'
       instructions: |
         This is a browser extension background script. Pay attention to:
         - Message passing security (validate sender origins)
         - Async error handling in storage operations
         - Container isolation logic (cookieStoreId checks)
         - Storage quota management (100KB limit for sync)
-    
-    - path: "state-manager.js"
+
+    - path: 'state-manager.js'
       instructions: |
         State management module. Check for:
         - Race conditions in async operations
         - Proper container isolation
         - Memory leaks (WeakMap usage)
         - Error propagation
-    
-    - path: "**/*.test.js"
+
+    - path: '**/*.test.js'
       instructions: |
         Test files. Verify:
         - Edge cases are covered
         - Error scenarios are tested
         - Mocks are properly set up
         - Coverage is comprehensive
-    
-    - path: "manifest.json"
+
+    - path: 'manifest.json'
       instructions: |
         Extension manifest. Ensure:
         - Manifest V2 compliance (required for webRequestBlocking)
@@ -65,7 +65,7 @@ reviews:
     # ESLint integration
     eslint:
       enabled: true
-    
+
     # Secret detection
     gitleaks:
       enabled: true
@@ -81,6 +81,6 @@ knowledge_base:
   code_guidelines:
     enabled: true
     filePatterns:
-      - "**/.github/copilot-instructions.md"
-      - "**/README.md"
-      - "**/docs/**/*.md"
+      - '**/.github/copilot-instructions.md'
+      - '**/README.md'
+      - '**/docs/**/*.md'
