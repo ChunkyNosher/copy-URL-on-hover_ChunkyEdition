@@ -79,13 +79,47 @@ export class ConfigManager {
    * Load configuration from browser storage
    */
   async load() {
+    console.log('[ConfigManager] Starting configuration load...');
     try {
+      // Verify browser.storage is available
+      if (!browser || !browser.storage || !browser.storage.local) {
+        console.error('[ConfigManager] browser.storage.local is not available!');
+        console.warn('[ConfigManager] Using DEFAULT_CONFIG as fallback');
+        this.config = { ...DEFAULT_CONFIG };
+        return this.config;
+      }
+      
+      console.log('[ConfigManager] Calling browser.storage.local.get...');
       // Load all settings from storage (popup.js saves them as individual keys)
       const result = await browser.storage.local.get(DEFAULT_CONFIG);
+      
+      console.log('[ConfigManager] Storage get completed, processing result...');
+      if (!result || typeof result !== 'object') {
+        console.warn('[ConfigManager] Invalid storage result, using DEFAULT_CONFIG');
+        this.config = { ...DEFAULT_CONFIG };
+        return this.config;
+      }
+      
+      // Merge with defaults (user settings override defaults)
       this.config = { ...DEFAULT_CONFIG, ...result };
+      
+      console.log('[ConfigManager] Configuration loaded successfully');
+      console.log('[ConfigManager] Config summary:', {
+        debugMode: this.config.debugMode,
+        quickTabPersistAcrossTabs: this.config.quickTabPersistAcrossTabs,
+        totalKeys: Object.keys(this.config).length
+      });
+      
     } catch (err) {
-      console.error('[Config] Failed to load configuration:', err);
+      console.error('[ConfigManager] Exception during load:', {
+        message: err.message,
+        stack: err.stack,
+        name: err.name
+      });
+      console.warn('[ConfigManager] Falling back to DEFAULT_CONFIG due to exception');
+      this.config = { ...DEFAULT_CONFIG };
     }
+    
     return this.config;
   }
 

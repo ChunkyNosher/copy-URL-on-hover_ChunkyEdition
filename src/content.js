@@ -1,25 +1,64 @@
 /**
  * Copy URL on Hover - Enhanced with Quick Tabs
- * Main Content Script Entry Point (Modular Architecture v1.5.8.2)
+ * Main Content Script Entry Point (Modular Architecture v1.5.8.7)
  * 
  * This file serves as the main entry point and coordinates between modules.
  * URL handlers have been extracted to features/url-handlers/ for better maintainability.
  */
 
-// Verify content script is loading
-console.log('[Copy-URL-on-Hover] Content script loaded at:', new Date().toISOString());
+// CRITICAL: Early detection marker - must execute first
+console.log('[Copy-URL-on-Hover] Script loaded! @', new Date().toISOString());
+try {
+  window.CUO_debug_marker = 'JS executed to top of file!';
+  console.log('[Copy-URL-on-Hover] Debug marker set successfully');
+} catch (e) {
+  console.error('[Copy-URL-on-Hover] CRITICAL: Failed to set window marker', e);
+}
+
+// Global error handler to catch all unhandled errors
+window.addEventListener('error', function (event) {
+  console.error('[Copy-URL-on-Hover] GLOBAL ERROR:', {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    error: event.error,
+    stack: event.error?.stack
+  });
+});
+
+// Unhandled promise rejection handler
+window.addEventListener('unhandledrejection', function (event) {
+  console.error('[Copy-URL-on-Hover] UNHANDLED PROMISE REJECTION:', {
+    reason: event.reason,
+    promise: event.promise
+  });
+});
+
+console.log('[Copy-URL-on-Hover] Global error handlers installed');
 
 // Import core modules
+console.log('[Copy-URL-on-Hover] Starting module imports...');
 import { ConfigManager, DEFAULT_CONFIG, CONSTANTS } from './core/config.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: config.js');
 import { StateManager } from './core/state.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: state.js');
 import { EventBus, Events } from './core/events.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: events.js');
 import { debug, enableDebug, disableDebug } from './utils/debug.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: debug.js');
 import { copyToClipboard, getStorage, setStorage, sendMessageToBackground } from './utils/browser-api.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: browser-api.js');
 import { createElement } from './utils/dom.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: dom.js');
 
 // Import URL handlers
 import { URLHandlerRegistry } from './features/url-handlers/index.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: url-handlers/index.js');
 import { getLinkText } from './features/url-handlers/generic.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: url-handlers/generic.js');
+
+console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
 // Initialize core systems
 console.log('[Copy-URL-on-Hover] Initializing core systems...');
@@ -38,33 +77,78 @@ let CONFIG = { ...DEFAULT_CONFIG };
 // Initialize extension
 (async function initExtension() {
   try {
-    console.log('[Copy-URL-on-Hover] Starting extension initialization...');
+    console.log('[Copy-URL-on-Hover] STEP: Starting extension initialization...');
     
-    // Load user configuration
-    CONFIG = await configManager.load();
-    console.log('[Copy-URL-on-Hover] Configuration loaded');
-    
-    // Enable debug mode if configured
-    if (CONFIG.debugMode) {
-      enableDebug();
-      eventBus.enableDebug();
-      debug('Debug mode enabled');
+    console.log('[Copy-URL-on-Hover] STEP: Loading user configuration...');
+    // Load user configuration with defensive error handling
+    try {
+      CONFIG = await configManager.load();
+      console.log('[Copy-URL-on-Hover] ✓ Configuration loaded successfully');
+      console.log('[Copy-URL-on-Hover] Config values:', {
+        debugMode: CONFIG.debugMode,
+        quickTabPersistAcrossTabs: CONFIG.quickTabPersistAcrossTabs,
+        // Log a few key config values for debugging
+        hasDefaultConfig: CONFIG !== null && CONFIG !== undefined
+      });
+    } catch (configErr) {
+      console.error('[Copy-URL-on-Hover] ERROR: Failed to load configuration:', configErr);
+      console.log('[Copy-URL-on-Hover] Falling back to DEFAULT_CONFIG');
+      CONFIG = { ...DEFAULT_CONFIG };
     }
     
+    console.log('[Copy-URL-on-Hover] STEP: Enabling debug mode if configured...');
+    // Enable debug mode if configured
+    if (CONFIG.debugMode) {
+      try {
+        enableDebug();
+        eventBus.enableDebug();
+        debug('Debug mode enabled');
+        console.log('[Copy-URL-on-Hover] ✓ Debug mode activated');
+      } catch (debugErr) {
+        console.error('[Copy-URL-on-Hover] ERROR: Failed to enable debug mode:', debugErr);
+      }
+    }
+    
+    console.log('[Copy-URL-on-Hover] STEP: Initializing state...');
     // Initialize state
-    stateManager.setState({
-      quickTabZIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
-    });
-    console.log('[Copy-URL-on-Hover] State initialized');
+    try {
+      stateManager.setState({
+        quickTabZIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
+      });
+      console.log('[Copy-URL-on-Hover] ✓ State initialized');
+    } catch (stateErr) {
+      console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize state:', stateErr);
+      throw stateErr;  // State is critical, re-throw
+    }
     
     debug('Extension initialized successfully');
     
+    console.log('[Copy-URL-on-Hover] STEP: Starting main features...');
     // Start main functionality
     await initMainFeatures();
-    console.log('[Copy-URL-on-Hover] Main features initialized successfully');
+    console.log('[Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓');
+    
+    // Set success marker
+    window.CUO_initialized = true;
+    console.log('[Copy-URL-on-Hover] Extension is ready for use!');
+    
   } catch (err) {
-    console.error('[Copy-URL-on-Hover] Critical Init Error:', err);
-    alert('Copy-URL-on-Hover failed to initialize. Check console for details.');
+    console.error('[Copy-URL-on-Hover] ❌ CRITICAL INITIALIZATION ERROR ❌');
+    console.error('[Copy-URL-on-Hover] Error details:', {
+      message: err.message,
+      stack: err.stack,
+      name: err.name
+    });
+    
+    // Try to show user-friendly error
+    try {
+      const errorMsg = `Copy-URL-on-Hover failed to initialize.\n\nError: ${err.message}\n\nPlease check the browser console (F12) for details.`;
+      console.error('[Copy-URL-on-Hover] User will see alert:', errorMsg);
+      // Uncomment for production debugging:
+      // alert(errorMsg);
+    } catch (alertErr) {
+      console.error('[Copy-URL-on-Hover] Could not show error alert:', alertErr);
+    }
   }
 })();
 

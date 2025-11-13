@@ -1,0 +1,203 @@
+name: Code Quality Checks
+
+# WHEN THIS RUNS:
+# - On every push to main or develop branch
+# - On every pull request to main or develop
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+# WHAT IT DOES:
+# Runs 4 parallel jobs: lint, format check, build, and web-ext validation
+# GitHub Copilot reads results from all jobs to inform its PR reviews
+# DeepSource runs separately on its own infrastructure (no workflow needed)
+
+jobs:
+  # JOB 1: ESLint - Check JavaScript quality
+  lint:
+    name: ESLint Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Get the code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # Step 2: Set up Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'  # Cache npm packages for faster runs
+      
+      # Step 3: Install dependencies from package.json
+      - name: Install dependencies
+        run: npm ci  # ci is faster and more reliable than install
+      
+      # Step 4: Run ESLint
+      - name: Run ESLint
+        run: npm run lint
+        # If this fails, GitHub Copilot will see the errors and suggest fixes
+      
+      # Step 5: Generate ESLint report for annotations
+      - name: Generate ESLint report
+        if: always()  # Run even if linting failed
+        run: |
+          npx eslint . --format json --output-file eslint-report.json || true
+      
+      # Step 6: Upload ESLint results for Copilot to read
+      - name: Annotate code with ESLint results
+        if: always()
+        uses: ataylorme/eslint-annotate-action@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          report-json: "eslint-report.json"
+        # This creates inline annotations on your PR that Copilot can see
+
+  # JOB 2: Prettier - Check code formatting
+  format-check:
+    name: Prettier Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      # Check if code is formatted correctly
+      - name: Check Prettier formatting
+        run: npm run format:check
+        # If this fails, files need formatting
+        # Copilot will suggest running "npm run format" to fix
+      
+      # Show which files need formatting if check fails
+      - name: Show unformatted files
+        if: failure()
+        run: |
+          echo "::error::The following files need formatting:"
+          npx prettier --list-different .
+
+  # JOB 3: Build - Ensure extension compiles
+  build:
+    name: Build Extension
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      # Build the extension
+      - name: Build production bundle
+        run: npm run build:prod
+        # If this fails, there's a syntax or build error
+      
+      # Validate no ES6 imports/exports in bundle (CRITICAL for browser compatibility)
+      - name: Check bundle has no imports/exports
+        run: |
+          if grep -q "^import " dist/content.js; then
+            echo "ERROR: dist/content.js contains import statements"
+            exit 1
+          fi
+          if grep -q "^export " dist/content.js; then
+            echo "ERROR: dist/content.js contains export statements"
+            exit 1
+          fi
+          echo "✓ Bundle validation passed - no imports/exports found"
+      
+      # Check bundle size and key classes
+      - name: Verify bundle integrity
+        run: |
+          ls -lh dist/content.js
+          echo "Checking for key classes..."
+          grep -q "ConfigManager" dist/content.js && echo "✓ ConfigManager found"
+          grep -q "StateManager" dist/content.js && echo "✓ StateManager found"
+          grep -q "EventBus" dist/content.js && echo "✓ EventBus found"
+      
+      # Validate the built manifest.json
+      - name: Validate manifest.json
+        run: |
+          node -e "
+          const manifest = require('./dist/manifest.json');
+          console.log('✓ Manifest version:', manifest.version);
+          console.log('✓ Manifest V2 (required for webRequestBlocking):', manifest.manifest_version === 2);
+          if (manifest.manifest_version !== 2) {
+            console.error('ERROR: Extension requires Manifest V2 for webRequestBlocking');
+            process.exit(1);
+          }
+          console.log('✓ Manifest validation passed');
+          "
+      
+      # Check for required permissions
+      - name: Validate permissions
+        run: |
+          node -e "
+          const manifest = require('./dist/manifest.json');
+          const required = ['storage', 'tabs', 'webRequest', 'webRequestBlocking'];
+          const missing = required.filter(p => !manifest.permissions.includes(p));
+          if (missing.length > 0) {
+            console.error('ERROR: Missing required permissions:', missing);
+            process.exit(1);
+          }
+          console.log('✓ All required permissions present');
+          "
+      
+      # Save built files for other jobs or download
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-build
+          path: dist/
+          retention-days: 7  # Keep for 7 days
+
+  # JOB 4: Web Extension Linter
+  web-ext-lint:
+    name: Firefox Extension Validator
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      # Install Mozilla's web-ext tool
+      - name: Install web-ext
+        run: npm install --global web-ext
+      
+      # Validate extension structure and manifest
+      - name: Lint extension with web-ext
+        run: |
+          web-ext lint \
+            --source-dir=. \
+            --ignore-files="*.md" "node_modules/**" "dist/**" ".github/**" "docs/**" "src/**" \
+            --pretty \
+            --output=text
+        # This checks for Firefox-specific issues
+        # Copilot uses these results to catch browser extension mistakes
+
+# RESULT: 
+# All 4 jobs must pass for the PR to be mergeable
+# GitHub Copilot reads all failures and suggests fixes in its review
+# DeepSource analyzes separately and posts its own findings
