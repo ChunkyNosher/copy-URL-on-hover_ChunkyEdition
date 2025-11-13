@@ -11,9 +11,6 @@ export default [
       format: 'iife',
       sourcemap: !production
     },
-    plugins: [
-      resolve(),
-      commonjs()
-    ]
+    plugins: [resolve(), commonjs()]
   }
 ];

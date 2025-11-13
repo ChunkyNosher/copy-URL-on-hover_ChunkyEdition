@@ -13,17 +13,17 @@ async function getCurrentCookieStoreId() {
       active: true,
       currentWindow: true
     });
-    
+
     if (tabs && tabs.length > 0) {
       // Default to "firefox-default" if cookieStoreId is missing
-      return tabs[0].cookieStoreId || "firefox-default";
+      return tabs[0].cookieStoreId || 'firefox-default';
     }
-    
+
     // Fallback to default container
-    return "firefox-default";
+    return 'firefox-default';
   } catch (err) {
     console.error('[QuickTabStateManager] Error getting cookieStoreId:', err);
-    return "firefox-default";
+    return 'firefox-default';
   }
 }
 
@@ -32,7 +32,7 @@ async function getCurrentCookieStoreId() {
  * Uses a dual-layer storage approach:
  * - browser.storage.sync: Persistent storage that syncs across devices (container-aware since v1.5.7)
  * - browser.storage.session: Fast ephemeral storage for current session (Firefox 115+)
- * 
+ *
  * Container-aware storage structure (v1.5.7+):
  * {
  *   "quick_tabs_state_v2": {
@@ -47,12 +47,13 @@ export class QuickTabStateManager {
     // Storage keys
     this.stateKey = 'quick_tabs_state_v2';
     this.sessionKey = 'quick_tabs_session';
-    
+
     // Feature detection for browser.storage.session (Firefox 115+)
-    this.hasSessionStorage = typeof browser !== 'undefined' && 
-                             browser.storage && 
-                             typeof browser.storage.session !== 'undefined';
-    
+    this.hasSessionStorage =
+      typeof browser !== 'undefined' &&
+      browser.storage &&
+      typeof browser.storage.session !== 'undefined';
+
     // Debug logging
     this.debug = false;
   }
@@ -86,45 +87,47 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     this.log(`Saving ${tabs.length} Quick Tabs for container: ${cookieStoreId}`);
-    
+
     try {
       // Load existing state for all containers
-      const existingData = await browser.storage.sync.get(this.stateKey) || {};
+      const existingData = (await browser.storage.sync.get(this.stateKey)) || {};
       const containerStates = existingData[this.stateKey] || {};
-      
+
       // Update state for this specific container
       containerStates[cookieStoreId] = {
         tabs: tabs || [],
         timestamp: Date.now()
       };
-      
+
       // Save back to storage
       const promises = [];
-      
+
       // Save to sync storage
       promises.push(
-        browser.storage.sync.set({ 
-          [this.stateKey]: containerStates 
-        })
+        browser.storage.sync
+          .set({
+            [this.stateKey]: containerStates
+          })
           .then(() => this.log(`Saved to sync storage for ${cookieStoreId}`))
           .catch(err => console.error('Error saving to sync storage:', err))
       );
-      
+
       // Also save to session storage if available
       if (this.hasSessionStorage) {
         promises.push(
-          browser.storage.session.set({ 
-            [this.sessionKey]: containerStates 
-          })
+          browser.storage.session
+            .set({
+              [this.sessionKey]: containerStates
+            })
             .then(() => this.log(`Saved to session storage for ${cookieStoreId}`))
             .catch(err => console.error('Error saving to session storage:', err))
         );
       }
-      
+
       await Promise.all(promises);
-      
+
       return containerStates[cookieStoreId];
     } catch (err) {
       console.error('[QuickTabStateManager] Error in save():', err);
@@ -143,9 +146,9 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     this.log(`Loading Quick Tab state for container: ${cookieStoreId}`);
-    
+
     try {
       // Try session storage first (faster)
       if (this.hasSessionStorage) {
@@ -153,34 +156,37 @@ export class QuickTabStateManager {
         if (sessionResult && sessionResult[this.sessionKey]) {
           const containerStates = sessionResult[this.sessionKey];
           if (containerStates[cookieStoreId]) {
-            this.log(`Loaded ${containerStates[cookieStoreId].tabs.length} tabs from session storage`);
+            this.log(
+              `Loaded ${containerStates[cookieStoreId].tabs.length} tabs from session storage`
+            );
             return containerStates[cookieStoreId];
           }
         }
       }
-      
+
       // Fall back to sync storage
       const syncResult = await browser.storage.sync.get(this.stateKey);
       if (syncResult && syncResult[this.stateKey]) {
         const containerStates = syncResult[this.stateKey];
-        
+
         // Populate session storage for faster future reads
         if (this.hasSessionStorage) {
-          await browser.storage.session.set({ 
-            [this.sessionKey]: containerStates 
-          }).catch(err => console.error('Error populating session storage:', err));
+          await browser.storage.session
+            .set({
+              [this.sessionKey]: containerStates
+            })
+            .catch(err => console.error('Error populating session storage:', err));
         }
-        
+
         if (containerStates[cookieStoreId]) {
           this.log(`Loaded ${containerStates[cookieStoreId].tabs.length} tabs from sync storage`);
           return containerStates[cookieStoreId];
         }
       }
-      
+
       // No state found for this container
       this.log(`No saved state found for ${cookieStoreId}, returning empty state`);
       return { tabs: [], timestamp: Date.now() };
-      
     } catch (err) {
       console.error('[QuickTabStateManager] Error loading Quick Tab state:', err);
       return { tabs: [], timestamp: Date.now() };
@@ -199,7 +205,7 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     const currentState = await this.load(cookieStoreId);
     const updatedTabs = currentState.tabs.map(tab =>
       tab.url === url ? { ...tab, left, top } : tab
@@ -219,7 +225,7 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     const currentState = await this.load(cookieStoreId);
     const updatedTabs = currentState.tabs.map(tab =>
       tab.url === url ? { ...tab, width, height } : tab
@@ -237,9 +243,9 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     const currentState = await this.load(cookieStoreId);
-    
+
     // Check if tab already exists
     const existingIndex = currentState.tabs.findIndex(t => t.url === tab.url);
     if (existingIndex !== -1) {
@@ -249,7 +255,7 @@ export class QuickTabStateManager {
       // Add new tab
       currentState.tabs.push(tab);
     }
-    
+
     return await this.save(currentState.tabs, cookieStoreId);
   }
 
@@ -263,7 +269,7 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     const currentState = await this.load(cookieStoreId);
     const updatedTabs = currentState.tabs.filter(tab => tab.url !== url);
     return await this.save(updatedTabs, cookieStoreId);
@@ -278,36 +284,38 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     this.log(`Clearing all Quick Tabs from storage for container: ${cookieStoreId}`);
-    
+
     try {
       // Load existing state for all containers
-      const existingData = await browser.storage.sync.get(this.stateKey) || {};
+      const existingData = (await browser.storage.sync.get(this.stateKey)) || {};
       const containerStates = existingData[this.stateKey] || {};
-      
+
       // Clear only this container's tabs
       containerStates[cookieStoreId] = {
         tabs: [],
         timestamp: Date.now()
       };
-      
+
       const promises = [];
-      
+
       // Save updated state to sync storage
       promises.push(
-        browser.storage.sync.set({ [this.stateKey]: containerStates })
+        browser.storage.sync
+          .set({ [this.stateKey]: containerStates })
           .catch(err => console.error('Error clearing sync storage:', err))
       );
-      
+
       // Update session storage if available
       if (this.hasSessionStorage) {
         promises.push(
-          browser.storage.session.set({ [this.sessionKey]: containerStates })
+          browser.storage.session
+            .set({ [this.sessionKey]: containerStates })
             .catch(err => console.error('Error clearing session storage:', err))
         );
       }
-      
+
       await Promise.all(promises);
       return { tabs: [], timestamp: Date.now() };
     } catch (err) {
@@ -326,7 +334,7 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     const currentState = await this.load(cookieStoreId);
     return currentState.tabs.find(tab => tab.url === url) || null;
   }
@@ -342,7 +350,7 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     const currentState = await this.load(cookieStoreId);
     const updatedTabs = currentState.tabs.map(tab =>
       tab.url === tabUrl ? { ...tab, pinnedToUrl } : tab
@@ -360,7 +368,7 @@ export class QuickTabStateManager {
     if (!cookieStoreId) {
       cookieStoreId = await getCurrentCookieStoreId();
     }
-    
+
     const currentState = await this.load(cookieStoreId);
     const updatedTabs = currentState.tabs.map(tab =>
       tab.url === tabUrl ? { ...tab, pinnedToUrl: null } : tab

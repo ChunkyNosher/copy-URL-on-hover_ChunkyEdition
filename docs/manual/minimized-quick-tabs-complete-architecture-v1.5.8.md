@@ -13,17 +13,20 @@
 This document provides a complete implementation guide for upgrading the minimized Quick Tabs menu system with:
 
 **Architecture Improvements**:
+
 - **Popover API** for native browser z-index management and accessibility
 - **Shadow DOM** for complete style isolation from host pages
 - **BroadcastChannel** for real-time same-origin sync (<5ms latency)
 - **browser.storage.sync** + **browser.runtime messaging** for cross-origin coordination
 
 **Bug Fixes** (Original Issues):
+
 1. ✅ Position loss on restore - full state preservation (position, size, pin status, slot number)
 2. ✅ Missing modern API integration - complete Pointer Events + storage + messaging integration
 3. ✅ Cross-tab persistence failure - robust three-layer sync architecture
 
 **New Features**:
+
 1. ✅ "Close All" button - closes all minimized Quick Tabs without affecting active ones
 2. ✅ Minimize the manager itself - toggle keyboard shortcut + extension popup menu
 3. ✅ Persistent slot numbers - slot numbers survive minimize/restore and page switches
@@ -87,6 +90,7 @@ This document provides a complete implementation guide for upgrading the minimiz
 ### Existing Code (content.js lines 2800-3000)
 
 **Current Minimize Function**:
+
 ```javascript
 function minimizeQuickTab(container, url, title) {
   // PROBLEM: Only stores url, title, timestamp
@@ -96,10 +100,10 @@ function minimizeQuickTab(container, url, title) {
     timestamp: Date.now()
   });
   // MISSING: left, top, width, height, pinnedToUrl, id, slotNumber
-  
+
   container.remove();
   updateMinimizedTabsManager();
-  
+
   if (CONFIG.quickTabPersistAcrossTabs) {
     saveQuickTabsToStorage(); // Incomplete state
   }
@@ -107,23 +111,25 @@ function minimizeQuickTab(container, url, title) {
 ```
 
 **Current Restore Function**:
+
 ```javascript
 function restoreQuickTab(index) {
   const tab = minimizedQuickTabs[index];
   minimizedQuickTabs.splice(index, 1);
-  
+
   // BUG: No position/size parameters
   createQuickTabWindow(tab.url); // Uses defaults → bottom-right corner
-  
+
   updateMinimizedTabsManager();
 }
 ```
 
 **Current Manager Creation**:
+
 ```javascript
 function updateMinimizedTabsManager() {
   let manager = document.querySelector('.copy-url-minimized-manager');
-  
+
   // PROBLEM: Recreated from scratch each time
   // PROBLEM: No position persistence
   // PROBLEM: Fixed position (bottom: 20px, right: 20px)
@@ -133,7 +139,7 @@ function updateMinimizedTabsManager() {
     right: 20px;
     // No saved position restoration
   `;
-  
+
   // PROBLEM: Not isolated with Shadow DOM
   // PROBLEM: No Popover API for z-index management
 }
@@ -148,6 +154,7 @@ function updateMinimizedTabsManager() {
 **Root Cause**: Incomplete state object in `minimizedQuickTabs[]`
 
 **Current Flow**:
+
 ```
 minimizeQuickTab() → stores {url, title, timestamp}
                       ❌ LOSES: left, top, width, height, id, pinnedToUrl, slotNumber
@@ -158,6 +165,7 @@ restoreQuickTab() → calls createQuickTabWindow(url)
 ```
 
 **Fix**: Store complete state:
+
 ```javascript
 {
   id: quickTabId,              // ✅ Unique identifier
@@ -181,26 +189,28 @@ restoreQuickTab() → calls createQuickTabWindow(url)
 **Current APIs Used**: ❌ None  
 **Should Use**:
 
-| API | Current | Should Be | Purpose |
-|-----|---------|-----------|---------|
-| Popover API | ❌ No | ✅ Yes | Z-index management, accessibility |
-| Shadow DOM | ❌ No | ✅ Yes | Style isolation from webpage |
-| Pointer Events | ✅ Yes (Quick Tabs) | ✅ Yes (extend to manager) | Reliable drag without slipping |
-| BroadcastChannel | ❌ No | ✅ Yes | Real-time same-origin sync |
-| browser.runtime | ❌ No | ✅ Yes | Cross-origin coordination |
-| browser.storage.sync | ⚠️ Partial | ✅ Full | Complete state persistence |
+| API                  | Current             | Should Be                  | Purpose                           |
+| -------------------- | ------------------- | -------------------------- | --------------------------------- |
+| Popover API          | ❌ No               | ✅ Yes                     | Z-index management, accessibility |
+| Shadow DOM           | ❌ No               | ✅ Yes                     | Style isolation from webpage      |
+| Pointer Events       | ✅ Yes (Quick Tabs) | ✅ Yes (extend to manager) | Reliable drag without slipping    |
+| BroadcastChannel     | ❌ No               | ✅ Yes                     | Real-time same-origin sync        |
+| browser.runtime      | ❌ No               | ✅ Yes                     | Cross-origin coordination         |
+| browser.storage.sync | ⚠️ Partial          | ✅ Full                    | Complete state persistence        |
 
 ---
 
 ### Issue #3: Cross-Tab Persistence Failure
 
 **Current Problems**:
+
 1. Manager recreated from scratch in each tab
 2. No BroadcastChannel for real-time sync
 3. Manager position not saved to storage
 4. No background.js coordination
 
 **Fix Strategy**:
+
 - Shadow DOM + Popover API for persistent manager UI
 - BroadcastChannel for instant same-origin updates
 - background.js broadcasts for cross-origin sync
@@ -213,6 +223,7 @@ restoreQuickTab() → calls createQuickTabWindow(url)
 ### Enhanced Storage Schema
 
 **Old Schema** (v1.5.6):
+
 ```javascript
 {
   quick_tabs_state_v2: {
@@ -221,25 +232,26 @@ restoreQuickTab() → calls createQuickTabWindow(url)
       // minimized tabs mixed with active tabs
       // NO minimized manager position
       // NO slot numbers
-    ]
+    ];
   }
 }
 ```
 
 **New Schema** (v1.5.8):
+
 ```javascript
 {
   quick_tabs_state_v2: {
     tabs: [
       // Active tabs
       { id, url, left, top, width, height, pinnedToUrl, slotNumber, minimized: false },
-      
+
       // Minimized tabs (full state)
       { id, url, left, top, width, height, pinnedToUrl, slotNumber, minimized: true }
     ],
     timestamp: Date.now()
   },
-  
+
   // NEW: Minimized manager state
   minimized_manager_state: {
     position: { left: 20, top: 500 },
@@ -262,6 +274,7 @@ restoreQuickTab() → calls createQuickTabWindow(url)
 **Location**: content.js, line ~2850 (before `updateMinimizedTabsManager()`)
 
 **Add new function**:
+
 ```javascript
 // ==================== CREATE MINIMIZED MANAGER HOST ====================
 // Creates Shadow DOM host with Popover API for the minimized Quick Tabs manager
@@ -272,17 +285,21 @@ let minimizedManagerElement = null;
 function createMinimizedManagerHost() {
   // Check if host already exists
   if (minimizedManagerHost) {
-    return { host: minimizedManagerHost, shadowRoot: minimizedManagerShadowRoot, manager: minimizedManagerElement };
+    return {
+      host: minimizedManagerHost,
+      shadowRoot: minimizedManagerShadowRoot,
+      manager: minimizedManagerElement
+    };
   }
-  
+
   // Create host container
   const host = document.createElement('div');
   host.id = 'minimized-quick-tabs-host';
   host.setAttribute('popover', 'manual'); // Manual popover = stays open until explicitly closed
-  
+
   // Create Shadow DOM for complete style isolation
   const shadowRoot = host.attachShadow({ mode: 'closed' });
-  
+
   // Add styles inside Shadow DOM (isolated from page CSS)
   const style = document.createElement('style');
   style.textContent = `
@@ -461,88 +478,91 @@ function createMinimizedManagerHost() {
       font-size: 13px;
     }
   `;
-  
+
   shadowRoot.appendChild(style);
-  
+
   // Create manager element
   const manager = document.createElement('div');
   manager.className = 'minimized-manager';
-  
+
   // Header
   const header = document.createElement('div');
   header.className = 'header';
-  
+
   const title = document.createElement('span');
   title.className = 'header-title';
   title.textContent = '📋 Minimized Quick Tabs';
   header.appendChild(title);
-  
+
   // Close All button
   const closeAllBtn = document.createElement('button');
   closeAllBtn.className = 'header-btn close-all-btn';
   closeAllBtn.textContent = 'Close All';
   closeAllBtn.title = 'Close all minimized Quick Tabs (does not affect active Quick Tabs)';
-  closeAllBtn.onclick = (e) => {
+  closeAllBtn.onclick = e => {
     e.stopPropagation();
     closeAllMinimizedQuickTabs();
   };
   header.appendChild(closeAllBtn);
-  
+
   // Minimize manager button
   const minimizeManagerBtn = document.createElement('button');
   minimizeManagerBtn.className = 'header-btn minimize-manager-btn';
   minimizeManagerBtn.textContent = '−';
   minimizeManagerBtn.title = 'Minimize this window (Ctrl+Shift+M to restore)';
-  minimizeManagerBtn.onclick = (e) => {
+  minimizeManagerBtn.onclick = e => {
     e.stopPropagation();
     toggleMinimizedManager();
   };
   header.appendChild(minimizeManagerBtn);
-  
+
   // Close manager button
   const closeManagerBtn = document.createElement('button');
   closeManagerBtn.className = 'header-btn';
   closeManagerBtn.textContent = '✕';
   closeManagerBtn.title = 'Hide minimized tabs manager';
-  closeManagerBtn.onclick = (e) => {
+  closeManagerBtn.onclick = e => {
     e.stopPropagation();
     hideMinimizedManager();
   };
   header.appendChild(closeManagerBtn);
-  
+
   manager.appendChild(header);
-  
+
   // List container
   const listContainer = document.createElement('div');
   listContainer.className = 'list-container';
   manager.appendChild(listContainer);
-  
+
   shadowRoot.appendChild(manager);
   document.documentElement.appendChild(host);
-  
+
   // Make header draggable with Pointer Events
   makeDraggable(manager, header, host);
-  
+
   // Store references
   minimizedManagerHost = host;
   minimizedManagerShadowRoot = shadowRoot;
   minimizedManagerElement = manager;
-  
+
   // Try to restore saved position from storage
-  browser.storage.sync.get('minimized_manager_state').then(result => {
-    if (result && result.minimized_manager_state && result.minimized_manager_state.position) {
-      const pos = result.minimized_manager_state.position;
-      manager.style.setProperty('--manager-right', `${pos.right}px`);
-      manager.style.setProperty('--manager-bottom', `${pos.bottom}px`);
-      debug(`Restored minimized manager position: right=${pos.right}, bottom=${pos.bottom}`);
-    }
-  }).catch(() => {
-    debug('Could not restore minimized manager position (using defaults)');
-  });
-  
+  browser.storage.sync
+    .get('minimized_manager_state')
+    .then(result => {
+      if (result && result.minimized_manager_state && result.minimized_manager_state.position) {
+        const pos = result.minimized_manager_state.position;
+        manager.style.setProperty('--manager-right', `${pos.right}px`);
+        manager.style.setProperty('--manager-bottom', `${pos.bottom}px`);
+        debug(`Restored minimized manager position: right=${pos.right}, bottom=${pos.bottom}`);
+      }
+    })
+    .catch(() => {
+      debug('Could not restore minimized manager position (using defaults)');
+    });
+
   // Show popover
   host.showPopover();
-  
+
   return { host, shadowRoot, manager };
 }
 // ==================== END CREATE MINIMIZED MANAGER HOST ====================
@@ -553,6 +573,7 @@ function createMinimizedManagerHost() {
 **Location**: content.js, replace existing `minimizeQuickTab()` function (line ~2800)
 
 **Replace with**:
+
 ```javascript
 // ==================== MINIMIZE QUICK TAB (ENHANCED) ====================
 // Stores COMPLETE Quick Tab state for perfect restoration
@@ -561,13 +582,13 @@ function minimizeQuickTab(container, url, title) {
   if (index > -1) {
     quickTabWindows.splice(index, 1);
   }
-  
+
   // Get COMPLETE state before removing container
   const iframe = container.querySelector('iframe');
   const rect = container.getBoundingClientRect();
   const quickTabId = container.dataset.quickTabId;
   const pinnedToUrl = container._pinnedToUrl || null;
-  
+
   // Get slot number if debug mode is enabled
   let slotNumber = null;
   if (CONFIG.debugMode && quickTabId) {
@@ -575,7 +596,7 @@ function minimizeQuickTab(container, url, title) {
     // CRITICAL: Do NOT release slot - we want to preserve it for restore
     debug(`[MINIMIZE] Preserving Slot ${slotNumber} for Quick Tab ${quickTabId}`);
   }
-  
+
   // Build COMPLETE minimized state object
   const minimizedTab = {
     id: quickTabId,
@@ -590,10 +611,10 @@ function minimizeQuickTab(container, url, title) {
     minimized: true,
     timestamp: Date.now()
   };
-  
+
   // Add to minimized array
   minimizedQuickTabs.push(minimizedTab);
-  
+
   // Clean up drag/resize listeners
   if (container._dragCleanup) {
     container._dragCleanup();
@@ -601,30 +622,34 @@ function minimizeQuickTab(container, url, title) {
   if (container._resizeCleanup) {
     container._resizeCleanup();
   }
-  
+
   // Remove from DOM
   container.remove();
-  
+
   showNotification('✓ Quick Tab minimized');
-  debug(`Quick Tab minimized with full state. ID: ${quickTabId}, Slot: ${slotNumber}, Position: (${minimizedTab.left}, ${minimizedTab.top})`);
-  
+  debug(
+    `Quick Tab minimized with full state. ID: ${quickTabId}, Slot: ${slotNumber}, Position: (${minimizedTab.left}, ${minimizedTab.top})`
+  );
+
   // Update UI
   updateMinimizedTabsManager();
-  
+
   // Save to storage if persistence is enabled
   if (CONFIG.quickTabPersistAcrossTabs) {
     saveQuickTabsToStorage();
-    
+
     // Notify background script for cross-origin coordination
-    browser.runtime.sendMessage({
-      action: 'MINIMIZE_QUICK_TAB',
-      id: quickTabId,
-      url: url,
-      state: minimizedTab
-    }).catch(err => {
-      debug('Error notifying background of minimize:', err);
-    });
-    
+    browser.runtime
+      .sendMessage({
+        action: 'MINIMIZE_QUICK_TAB',
+        id: quickTabId,
+        url: url,
+        state: minimizedTab
+      })
+      .catch(err => {
+        debug('Error notifying background of minimize:', err);
+      });
+
     // Broadcast to other same-origin tabs
     broadcastQuickTabMinimize(quickTabId, url, minimizedTab);
   }
@@ -637,15 +662,16 @@ function minimizeQuickTab(container, url, title) {
 **Location**: content.js, replace existing `restoreQuickTab()` function (line ~2823)
 
 **Replace with**:
+
 ```javascript
 // ==================== RESTORE QUICK TAB (ENHANCED) ====================
 // Restores Quick Tab with original position, size, pin status, AND SLOT NUMBER
 function restoreQuickTab(index, fromBroadcast = false) {
   if (index < 0 || index >= minimizedQuickTabs.length) return;
-  
+
   const tab = minimizedQuickTabs[index];
   minimizedQuickTabs.splice(index, 1);
-  
+
   // Check max windows limit
   if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) {
     showNotification(`✗ Maximum ${CONFIG.quickTabMaxWindows} Quick Tabs allowed`);
@@ -655,52 +681,56 @@ function restoreQuickTab(index, fromBroadcast = false) {
     updateMinimizedTabsManager();
     return;
   }
-  
+
   // CRITICAL: Restore slot number BEFORE creating Quick Tab
   // This ensures the same slot is assigned when Quick Tab is created
   if (CONFIG.debugMode && tab.id && tab.slotNumber !== null && tab.slotNumber !== undefined) {
     // Re-assign the EXACT same slot number (don't use assignQuickTabSlot)
     quickTabSlots.set(tab.id, tab.slotNumber);
-    
+
     // Remove from available slots if it was freed
     const slotIndex = availableSlots.indexOf(tab.slotNumber);
     if (slotIndex > -1) {
       availableSlots.splice(slotIndex, 1);
       debug(`[RESTORE] Removed Slot ${tab.slotNumber} from available pool`);
     }
-    
+
     debug(`[RESTORE] Restored Slot ${tab.slotNumber} for Quick Tab ${tab.id}`);
   }
-  
+
   // Restore with COMPLETE state (position, size, pin status, ID, slot number)
   createQuickTabWindow(
     tab.url,
     tab.width,
     tab.height,
-    tab.left,   // ✅ CRITICAL: Restore original position
-    tab.top,    // ✅ CRITICAL: Restore original position
+    tab.left, // ✅ CRITICAL: Restore original position
+    tab.top, // ✅ CRITICAL: Restore original position
     fromBroadcast,
     tab.pinnedToUrl,
-    tab.id      // ✅ Maintain same ID (and therefore same slot number)
+    tab.id // ✅ Maintain same ID (and therefore same slot number)
   );
-  
+
   updateMinimizedTabsManager();
-  
-  debug(`Quick Tab restored with full state. ID: ${tab.id}, Slot: ${tab.slotNumber}, Position: (${tab.left}, ${tab.top}), Size: ${tab.width}x${tab.height}`);
-  
+
+  debug(
+    `Quick Tab restored with full state. ID: ${tab.id}, Slot: ${tab.slotNumber}, Position: (${tab.left}, ${tab.top}), Size: ${tab.width}x${tab.height}`
+  );
+
   // Save updated state to storage
   if (CONFIG.quickTabPersistAcrossTabs) {
     saveQuickTabsToStorage();
-    
+
     // Notify background script
-    browser.runtime.sendMessage({
-      action: 'RESTORE_QUICK_TAB',
-      id: tab.id,
-      url: tab.url
-    }).catch(err => {
-      debug('Error notifying background of restore:', err);
-    });
-    
+    browser.runtime
+      .sendMessage({
+        action: 'RESTORE_QUICK_TAB',
+        id: tab.id,
+        url: tab.url
+      })
+      .catch(err => {
+        debug('Error notifying background of restore:', err);
+      });
+
     // Broadcast to other same-origin tabs (if not from broadcast)
     if (!fromBroadcast) {
       broadcastQuickTabRestore(tab.id, tab.url);
@@ -715,17 +745,18 @@ function restoreQuickTab(index, fromBroadcast = false) {
 **Location**: content.js, after `restoreQuickTab()` function
 
 **Add new functions**:
+
 ```javascript
 // ==================== NEW FEATURE: CLOSE ALL MINIMIZED QUICK TABS ====================
 // Closes all minimized Quick Tabs without affecting active Quick Tabs
 function closeAllMinimizedQuickTabs() {
   const count = minimizedQuickTabs.length;
-  
+
   if (count === 0) {
     showNotification('ℹ️ No minimized Quick Tabs to close');
     return;
   }
-  
+
   // Release slot numbers for all minimized tabs
   if (CONFIG.debugMode) {
     minimizedQuickTabs.forEach(tab => {
@@ -735,20 +766,20 @@ function closeAllMinimizedQuickTabs() {
       }
     });
   }
-  
+
   // Clear array
   minimizedQuickTabs = [];
-  
+
   showNotification(`✓ Closed ${count} minimized Quick Tab${count > 1 ? 's' : ''}`);
   debug(`Closed all minimized Quick Tabs (${count} total)`);
-  
+
   // Update UI
   updateMinimizedTabsManager();
-  
+
   // Save to storage
   if (CONFIG.quickTabPersistAcrossTabs) {
     saveQuickTabsToStorage();
-    
+
     // Broadcast to other tabs
     broadcastClearMinimized();
   }
@@ -767,42 +798,46 @@ function toggleMinimizedManager() {
     }
     return;
   }
-  
+
   // Check current visibility state
   const isVisible = minimizedManagerHost.matches(':popover-open');
-  
+
   if (isVisible) {
     // Hide (minimize) the manager
     minimizedManagerHost.hidePopover();
-    
+
     // Save state to storage
-    browser.storage.sync.set({
-      minimized_manager_state: {
-        position: getCurrentManagerPosition(),
-        isVisible: false,
-        lastToggle: Date.now()
-      }
-    }).catch(err => {
-      debug('Error saving minimized manager state:', err);
-    });
-    
+    browser.storage.sync
+      .set({
+        minimized_manager_state: {
+          position: getCurrentManagerPosition(),
+          isVisible: false,
+          lastToggle: Date.now()
+        }
+      })
+      .catch(err => {
+        debug('Error saving minimized manager state:', err);
+      });
+
     showNotification('✓ Minimized tabs manager hidden');
     debug('Minimized manager hidden (toggle)');
   } else {
     // Show (restore) the manager
     minimizedManagerHost.showPopover();
-    
+
     // Save state to storage
-    browser.storage.sync.set({
-      minimized_manager_state: {
-        position: getCurrentManagerPosition(),
-        isVisible: true,
-        lastToggle: Date.now()
-      }
-    }).catch(err => {
-      debug('Error saving minimized manager state:', err);
-    });
-    
+    browser.storage.sync
+      .set({
+        minimized_manager_state: {
+          position: getCurrentManagerPosition(),
+          isVisible: true,
+          lastToggle: Date.now()
+        }
+      })
+      .catch(err => {
+        debug('Error saving minimized manager state:', err);
+      });
+
     showNotification('✓ Minimized tabs manager shown');
     debug('Minimized manager shown (toggle)');
   }
@@ -811,7 +846,7 @@ function toggleMinimizedManager() {
 // Helper: Get current manager position
 function getCurrentManagerPosition() {
   if (!minimizedManagerElement) return { right: 32, bottom: 32 };
-  
+
   const rect = minimizedManagerElement.getBoundingClientRect();
   return {
     right: Math.round(window.innerWidth - rect.right),
@@ -822,20 +857,22 @@ function getCurrentManagerPosition() {
 // Hide minimized manager
 function hideMinimizedManager() {
   if (!minimizedManagerHost) return;
-  
+
   minimizedManagerHost.hidePopover();
-  
+
   // Save state to storage
-  browser.storage.sync.set({
-    minimized_manager_state: {
-      position: getCurrentManagerPosition(),
-      isVisible: false,
-      lastToggle: Date.now()
-    }
-  }).catch(err => {
-    debug('Error saving minimized manager state:', err);
-  });
-  
+  browser.storage.sync
+    .set({
+      minimized_manager_state: {
+        position: getCurrentManagerPosition(),
+        isVisible: false,
+        lastToggle: Date.now()
+      }
+    })
+    .catch(err => {
+      debug('Error saving minimized manager state:', err);
+    });
+
   debug('Minimized manager hidden');
 }
 // ==================== END TOGGLE MINIMIZED MANAGER ====================
@@ -846,6 +883,7 @@ function hideMinimizedManager() {
 **Location**: content.js, replace existing `updateMinimizedTabsManager()` function
 
 **Replace with**:
+
 ```javascript
 // ==================== UPDATE MINIMIZED TABS MANAGER (SHADOW DOM) ====================
 // Creates or updates the minimized Quick Tabs manager using Shadow DOM + Popover API
@@ -857,22 +895,22 @@ function updateMinimizedTabsManager(fromBroadcast = false) {
     }
     return;
   }
-  
+
   // Create host if it doesn't exist
   if (!minimizedManagerHost) {
     createMinimizedManagerHost();
   }
-  
+
   // Get list container from Shadow DOM
   const listContainer = minimizedManagerShadowRoot.querySelector('.list-container');
   if (!listContainer) {
     debug('Error: Could not find list container in Shadow DOM');
     return;
   }
-  
+
   // Clear existing items
   listContainer.innerHTML = '';
-  
+
   // If no minimized tabs, show empty state
   if (minimizedQuickTabs.length === 0) {
     const emptyState = document.createElement('div');
@@ -881,33 +919,35 @@ function updateMinimizedTabsManager(fromBroadcast = false) {
     listContainer.appendChild(emptyState);
     return;
   }
-  
+
   // Render each minimized tab
   minimizedQuickTabs.forEach((tab, index) => {
     const item = document.createElement('div');
     item.className = 'list-item';
-    
+
     // Favicon
     const favicon = document.createElement('img');
     favicon.className = 'favicon';
     try {
       const urlObj = new URL(tab.url);
       favicon.src = `${GOOGLE_FAVICON_URL}${urlObj.hostname}&sz=32`;
-      favicon.onerror = () => { favicon.style.display = 'none'; };
+      favicon.onerror = () => {
+        favicon.style.display = 'none';
+      };
     } catch (e) {
       favicon.style.display = 'none';
     }
-    
+
     // Text container
     const textContainer = document.createElement('div');
     textContainer.className = 'item-text';
-    
+
     // Title
     const titleSpan = document.createElement('div');
     titleSpan.className = 'item-title';
     titleSpan.textContent = tab.title;
     titleSpan.title = tab.title;
-    
+
     // Metadata
     const metadataSpan = document.createElement('div');
     metadataSpan.className = 'item-metadata';
@@ -919,46 +959,46 @@ function updateMinimizedTabsManager(fromBroadcast = false) {
       metaText += `, Slot ${tab.slotNumber}`;
     }
     metadataSpan.textContent = metaText;
-    
+
     textContainer.appendChild(titleSpan);
     textContainer.appendChild(metadataSpan);
-    
+
     // Restore button
     const restoreBtn = document.createElement('button');
     restoreBtn.className = 'item-btn';
     restoreBtn.textContent = '↑';
     restoreBtn.title = 'Restore';
-    restoreBtn.onclick = (e) => {
+    restoreBtn.onclick = e => {
       e.stopPropagation();
       restoreQuickTab(index);
     };
-    
+
     // Delete button
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'item-btn delete-btn';
     deleteBtn.textContent = '✕';
     deleteBtn.title = 'Delete';
-    deleteBtn.onclick = (e) => {
+    deleteBtn.onclick = e => {
       e.stopPropagation();
       deleteMinimizedQuickTab(index);
     };
-    
+
     item.appendChild(favicon);
     item.appendChild(textContainer);
     item.appendChild(restoreBtn);
     item.appendChild(deleteBtn);
-    
+
     // Click on item to restore
     item.onclick = () => restoreQuickTab(index);
-    
+
     listContainer.appendChild(item);
   });
-  
+
   // Show popover if hidden
   if (!minimizedManagerHost.matches(':popover-open')) {
     minimizedManagerHost.showPopover();
   }
-  
+
   // Broadcast update if enabled and not from broadcast
   if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
     broadcastMinimizedManagerUpdate();
@@ -980,7 +1020,7 @@ function updateMinimizedTabsManager(fromBroadcast = false) {
   "manifest_version": 2,
   "name": "Copy URL on Hover Custom",
   "version": "1.5.8",
-  
+
   "commands": {
     "toggle-minimized-manager": {
       "suggested_key": {
@@ -990,14 +1030,8 @@ function updateMinimizedTabsManager(fromBroadcast = false) {
       "description": "Toggle minimized Quick Tabs manager visibility"
     }
   },
-  
-  "permissions": [
-    "storage",
-    "tabs",
-    "webRequest",
-    "webRequestBlocking",
-    "<all_urls>"
-  ]
+
+  "permissions": ["storage", "tabs", "webRequest", "webRequestBlocking", "<all_urls>"]
 }
 ```
 
@@ -1012,18 +1046,20 @@ function updateMinimizedTabsManager(fromBroadcast = false) {
 ```javascript
 // ==================== KEYBOARD COMMAND LISTENER ====================
 // Handle keyboard shortcuts defined in manifest.json
-browser.commands.onCommand.addListener((command) => {
+browser.commands.onCommand.addListener(command => {
   if (command === 'toggle-minimized-manager') {
     console.log('[Background] Toggle minimized manager command received');
-    
+
     // Send message to active tab
     browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
       if (tabs.length > 0) {
-        browser.tabs.sendMessage(tabs[0].id, {
-          action: 'TOGGLE_MINIMIZED_MANAGER'
-        }).catch(err => {
-          console.error('[Background] Error sending toggle command:', err);
-        });
+        browser.tabs
+          .sendMessage(tabs[0].id, {
+            action: 'TOGGLE_MINIMIZED_MANAGER'
+          })
+          .catch(err => {
+            console.error('[Background] Error sending toggle command:', err);
+          });
       }
     });
   }
@@ -1038,11 +1074,11 @@ browser.commands.onCommand.addListener((command) => {
 ```javascript
 // Add to existing runtime.onMessage.addListener
 
-  // Handle toggle minimized manager command
-  if (message.action === 'TOGGLE_MINIMIZED_MANAGER') {
-    toggleMinimizedManager();
-    sendResponse({ success: true });
-  }
+// Handle toggle minimized manager command
+if (message.action === 'TOGGLE_MINIMIZED_MANAGER') {
+  toggleMinimizedManager();
+  sendResponse({ success: true });
+}
 ```
 
 ---
@@ -1063,22 +1099,25 @@ browser.commands.onCommand.addListener((command) => {
 </div>
 
 <script>
-// Add this to popup.js or inline script
-document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', () => {
-  // Send message to active tab
-  browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
-    if (tabs.length > 0) {
-      browser.tabs.sendMessage(tabs[0].id, {
-        action: 'TOGGLE_MINIMIZED_MANAGER'
-      }).then(() => {
-        // Close popup after action
-        window.close();
-      }).catch(err => {
-        console.error('Error toggling minimized manager:', err);
-      });
-    }
+  // Add this to popup.js or inline script
+  document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', () => {
+    // Send message to active tab
+    browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+      if (tabs.length > 0) {
+        browser.tabs
+          .sendMessage(tabs[0].id, {
+            action: 'TOGGLE_MINIMIZED_MANAGER'
+          })
+          .then(() => {
+            // Close popup after action
+            window.close();
+          })
+          .catch(err => {
+            console.error('Error toggling minimized manager:', err);
+          });
+      }
+    });
   });
-});
 </script>
 ```
 
@@ -1089,6 +1128,7 @@ document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', (
 ### Test #1: Position Persistence on Minimize/Restore
 
 **Steps**:
+
 1. Open Quick Tab at position (800, 200) with size 600x400
 2. Minimize the Quick Tab
 3. Verify minimized manager shows metadata: `Pos: (800, 200), Size: 600x400`
@@ -1101,6 +1141,7 @@ document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', (
 ### Test #2: Slot Number Persistence (Debug Mode)
 
 **Steps**:
+
 1. Enable debug mode in options
 2. Open Quick Tab A → shows "Slot 1"
 3. Open Quick Tab B → shows "Slot 2"
@@ -1117,10 +1158,11 @@ document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', (
 ### Test #3: Close All Button
 
 **Steps**:
+
 1. Open 3 Quick Tabs (A, B, C)
 2. Minimize Quick Tab A and Quick Tab B (C remains active)
 3. Click "Close All" button in minimized manager
-4. **Expected**: 
+4. **Expected**:
    - Minimized tabs A and B are deleted
    - Active Quick Tab C remains open
    - Minimized manager hides (no tabs left)
@@ -1131,6 +1173,7 @@ document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', (
 ### Test #4: Manager Minimize Toggle
 
 **Steps**:
+
 1. Minimize 2 Quick Tabs
 2. Minimized manager appears
 3. Click minimize button (−) in manager header
@@ -1144,6 +1187,7 @@ document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', (
 ### Test #5: Manager Minimize Toggle via Extension Popup
 
 **Steps**:
+
 1. Minimize 2 Quick Tabs
 2. Click extension icon in toolbar
 3. Click "Toggle Visibility (Ctrl+Shift+M)" button
@@ -1158,6 +1202,7 @@ document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', (
 ### Test #6: Cross-Tab Sync with Shadow DOM
 
 **Steps**:
+
 1. Tab 1 (Wikipedia): Minimize Quick Tab
 2. Switch to Tab 2 (YouTube)
 3. **Expected**: Minimized manager appears with the minimized tab
@@ -1241,15 +1286,17 @@ document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', (
 ✅ **Issue #3 Fixed**: Minimized tabs menu persists perfectly across tabs with three-layer sync (Shadow DOM + BroadcastChannel + background.js)  
 ✅ **Feature #1 Added**: "Close All" button closes all minimized Quick Tabs without affecting active ones  
 ✅ **Feature #2 Added**: Manager can be minimized/restored via keyboard shortcut (Ctrl+Shift+M) or extension popup button  
-✅ **Feature #3 Added**: Slot numbers persist through minimize/restore and page switches (debug mode)  
+✅ **Feature #3 Added**: Slot numbers persist through minimize/restore and page switches (debug mode)
 
-**Performance Impact**: Minimal  
+**Performance Impact**: Minimal
+
 - Shadow DOM isolation prevents style conflicts
 - Popover API native z-index management (no manual z-index++)
 - BroadcastChannel <5ms latency for same-origin sync
 - background.js <100ms latency for cross-origin sync
 
-**User Experience Improvement**: Significant  
+**User Experience Improvement**: Significant
+
 - Predictable restore behavior (always returns to minimized position/size)
 - Persistent slot numbers for easier tracking in debug mode
 - Convenient "Close All" button for batch operations

@@ -1,9 +1,11 @@
 # GitHub Actions Workflow Files for Code Quality Tools - Updated with DeepSource
 
 ## Purpose
+
 This document provides complete, copy-paste-ready GitHub Actions workflow files for all code quality and review tools, **now optimized with DeepSource instead of SonarCloud**. Each workflow is explained with comments showing how it works and integrates with GitHub Copilot Agent.
 
 **What Changed:**
+
 - ✅ **Added:** DeepSource integration guide (no workflow needed - it's a GitHub App)
 - ✅ **Enhanced:** `.deepsource.toml` configuration for your repository
 - ❌ **Removed:** SonarCloud (redundant with DeepSource, higher false positives)
@@ -12,6 +14,7 @@ This document provides complete, copy-paste-ready GitHub Actions workflow files 
 ---
 
 ## Table of Contents
+
 1. [Main Code Quality Workflow (Combined)](#main-workflow)
 2. [CodeQL Security Analysis](#codeql-workflow)
 3. [Test Coverage with Jest + Codecov](#test-coverage-workflow)
@@ -36,9 +39,9 @@ name: Code Quality Checks
 # - On every pull request to main or develop
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 # WHAT IT DOES:
 # Runs 4 parallel jobs: lint, format check, build, and web-ext validation
@@ -50,67 +53,67 @@ jobs:
   lint:
     name: ESLint Check
     runs-on: ubuntu-latest
-    
+
     steps:
       # Step 1: Get the code
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       # Step 2: Set up Node.js environment
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'  # Cache npm packages for faster runs
-      
+          cache: 'npm' # Cache npm packages for faster runs
+
       # Step 3: Install dependencies from package.json
       - name: Install dependencies
-        run: npm ci  # ci is faster and more reliable than install
-      
+        run: npm ci # ci is faster and more reliable than install
+
       # Step 4: Run ESLint
       - name: Run ESLint
         run: npm run lint
         # If this fails, GitHub Copilot will see the errors and suggest fixes
-      
+
       # Step 5: Generate ESLint report for annotations
       - name: Generate ESLint report
-        if: always()  # Run even if linting failed
+        if: always() # Run even if linting failed
         run: |
           npx eslint . --format json --output-file eslint-report.json || true
-      
+
       # Step 6: Upload ESLint results for Copilot to read
       - name: Annotate code with ESLint results
         if: always()
         uses: ataylorme/eslint-annotate-action@v2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-          report-json: "eslint-report.json"
+          report-json: 'eslint-report.json'
         # This creates inline annotations on your PR that Copilot can see
 
   # JOB 2: Prettier - Check code formatting
   format-check:
     name: Prettier Format Check
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       # Check if code is formatted correctly
       - name: Check Prettier formatting
         run: npm run format:check
         # If this fails, files need formatting
         # Copilot will suggest running "npm run format" to fix
-      
+
       # Show which files need formatting if check fails
       - name: Show unformatted files
         if: failure()
@@ -122,25 +125,25 @@ jobs:
   build:
     name: Build Extension
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       # Build the extension
       - name: Build production bundle
         run: npm run build:prod
         # If this fails, there's a syntax or build error
-      
+
       # Validate the built manifest.json
       - name: Validate manifest.json
         run: |
@@ -154,7 +157,7 @@ jobs:
           }
           console.log('✓ Manifest validation passed');
           "
-      
+
       # Check for required permissions
       - name: Validate permissions
         run: |
@@ -168,33 +171,33 @@ jobs:
           }
           console.log('✓ All required permissions present');
           "
-      
+
       # Save built files for other jobs or download
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: extension-build
           path: dist/
-          retention-days: 7  # Keep for 7 days
+          retention-days: 7 # Keep for 7 days
 
   # JOB 4: Web Extension Linter
   web-ext-lint:
     name: Firefox Extension Validator
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-      
+
       # Install Mozilla's web-ext tool
       - name: Install web-ext
         run: npm install --global web-ext
-      
+
       # Validate extension structure and manifest
       - name: Lint extension with web-ext
         run: |
@@ -206,13 +209,14 @@ jobs:
         # This checks for Firefox-specific issues
         # Copilot uses these results to catch browser extension mistakes
 
-# RESULT: 
+# RESULT:
 # All 4 jobs must pass for the PR to be mergeable
 # GitHub Copilot reads all failures and suggests fixes in its review
 # DeepSource analyzes separately and posts its own findings
 ```
 
 **How Copilot + DeepSource Use This:**
+
 - Copilot sees when ESLint fails and reads the specific errors
 - DeepSource also runs ESLint (via `.deepsource.toml`) with additional checks
 - If DeepSource finds issues ESLint missed, Copilot reads those too
@@ -227,7 +231,7 @@ jobs:
 CodeQL finds security vulnerabilities that ESLint and DeepSource miss.
 
 ```yaml
-name: "CodeQL Security Analysis"
+name: 'CodeQL Security Analysis'
 
 # WHEN THIS RUNS:
 # - On every push to main branch
@@ -235,11 +239,11 @@ name: "CodeQL Security Analysis"
 # - Weekly on Monday at 6am (to catch new vulnerability patterns)
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
-    - cron: '0 6 * * 1'  # Every Monday at 6am UTC
+    - cron: '0 6 * * 1' # Every Monday at 6am UTC
 
 # WHAT IT DOES:
 # Scans JavaScript code for security vulnerabilities, logic bugs, and unsafe patterns
@@ -250,23 +254,23 @@ jobs:
   analyze:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
-    
+
     # REQUIRED: Security permissions to write results
     permissions:
       security-events: write
       contents: read
       pull-requests: read
-    
+
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'javascript' ]
-    
+        language: ['javascript']
+
     steps:
       # Step 1: Get the code
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       # Step 2: Initialize CodeQL
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
@@ -274,19 +278,18 @@ jobs:
           languages: ${{ matrix.language }}
           # Use extended security queries for browser extensions
           queries: security-extended,security-and-quality
-      
+
       # Step 3: Build code (autobuild for JavaScript)
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
-      
+
       # Step 4: Run CodeQL analysis
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:${{matrix.language}}"
+          category: '/language:${{matrix.language}}'
         # This uploads results to GitHub Security tab
         # Copilot Code Review automatically reads these results
-
 # RESULT:
 # - Security alerts appear in GitHub Security tab
 # - Copilot sees vulnerabilities and explains them in PR reviews
@@ -304,6 +307,7 @@ jobs:
 ```
 
 **How Copilot Uses This:**
+
 - Copilot **natively runs** CodeQL on your PR changes
 - It sees HIGH/CRITICAL security findings immediately
 - It explains vulnerabilities in plain English
@@ -322,45 +326,45 @@ name: Test Coverage
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
     name: Run Tests with Coverage
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       # Run Jest tests with coverage enabled
       - name: Run tests with coverage
         run: npm run test:coverage
         # This generates coverage/lcov.info file
         # Both Codecov AND DeepSource will read this file
-      
+
       # Upload coverage to Codecov
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}  # Not needed for public repos
+          token: ${{ secrets.CODECOV_TOKEN }} # Not needed for public repos
           files: ./coverage/lcov.info
           flags: javascript
           name: codecov-umbrella
           fail_ci_if_error: true
         # Codecov comments on PR with coverage changes
-      
+
       # Upload coverage report as artifact
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -368,10 +372,9 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
-      
+
       # IMPORTANT: DeepSource automatically reads coverage/lcov.info
       # No additional upload step needed - it detects the file automatically
-
 # HOW COPILOT + DEEPSOURCE USE THIS:
 # 1. Codecov posts PR comment: "Coverage decreased by 2.3%"
 # 2. DeepSource analyzes which specific lines aren't covered
@@ -383,6 +386,7 @@ jobs:
 ```
 
 **Enhanced Coverage Analysis:**
+
 - Codecov: Shows overall trends
 - DeepSource: Shows which uncovered lines are highest risk
 - Copilot: Suggests specific tests based on both tools
@@ -400,26 +404,26 @@ name: Web Extension Validation
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   validate:
     name: Validate Firefox Extension
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-      
+
       # Install Mozilla's web-ext tool globally
       - name: Install web-ext
         run: npm install --global web-ext
-      
+
       # Lint the extension
       - name: Lint extension source
         run: |
@@ -433,17 +437,17 @@ jobs:
         # - Manifest structure and permissions
         # - Deprecated API usage
         # - Firefox compatibility issues
-      
+
       # Build and validate
       - name: Build extension
         run: |
           npm ci
           npm run build:prod
-      
+
       - name: Validate built extension
         run: |
           web-ext lint --source-dir=dist/ --warnings-as-errors
-      
+
       # Test loading in Firefox (optional)
       - name: Test extension loads
         run: |
@@ -475,7 +479,7 @@ name: Auto-Format Code
 
 on:
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 # Important: This needs write permissions
 permissions:
@@ -485,37 +489,36 @@ jobs:
   format:
     name: Auto-Format with Prettier
     runs-on: ubuntu-latest
-    
+
     steps:
       # Check out with the PR branch
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}  # The PR branch
+          ref: ${{ github.head_ref }} # The PR branch
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       # Run Prettier to format all files
       - name: Run Prettier
         run: npm run format
-      
+
       # Commit and push changes if any
       - name: Commit formatting changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "style: auto-format code with Prettier [skip ci]"
-          commit_user_name: "github-actions[bot]"
-          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: 'style: auto-format code with Prettier [skip ci]'
+          commit_user_name: 'github-actions[bot]'
+          commit_user_email: 'github-actions[bot]@users.noreply.github.com'
         # The [skip ci] prevents infinite loop of formatting runs
-
 # NOTE: DeepSource also has Autofix™ AI that can fix style + logic issues
 # This Prettier workflow is faster for formatting-only changes
 # DeepSource Autofix handles more complex issues like refactoring
@@ -558,13 +561,13 @@ enabled = true
   [analyzers.meta]
   # Specify environments for accurate analysis
   environment = ["nodejs", "browser"]
-  
+
   # Browser extension-specific settings
   plugins = ["webextensions"]
-  
+
   # Style configuration
   style_guide = "airbnb"  # Or "standard", "google"
-  
+
   # Dialect for modern JavaScript
   dialect = "typescript"  # Handles both JS and TS
 
@@ -638,12 +641,14 @@ enabled = true
    - ✅ Notify on Slack/Email (optional)
 
 **What Autofix™ AI Does:**
+
 - Analyzes issues with full context (not just the line)
 - Generates fixes using LLMs
 - Creates pull requests with explanations
 - ~90-100% fix accuracy (vs 30% with old rule-based system)
 
 **Example Autofix PR:**
+
 ```
 Title: "[DeepSource] Fix: Remove unused variable and improve error handling"
 
@@ -848,17 +853,17 @@ Push fixes → All checks re-run → Merge when green ✅
 
 Each tool has a specific role:
 
-| Tool | Specialization | Speed | False Positives |
-|------|---------------|-------|-----------------|
-| **ESLint** | JS quality, common mistakes | Fast | Very Low |
-| **Prettier** | Code formatting only | Very Fast | None |
-| **CodeQL** | Security vulnerabilities | Medium | Very Low |
-| **Jest** | Test execution | Fast | N/A |
-| **Codecov** | Coverage tracking | Fast | None |
-| **web-ext** | Firefox compatibility | Fast | Low |
-| **DeepSource** | Comprehensive (bugs, quality, security, debt) | Fast | <5% |
-| **CodeRabbit** | AI review, explanations | Medium | Medium |
-| **Copilot** | Synthesis + AI reasoning | Medium | Low |
+| Tool           | Specialization                                | Speed     | False Positives |
+| -------------- | --------------------------------------------- | --------- | --------------- |
+| **ESLint**     | JS quality, common mistakes                   | Fast      | Very Low        |
+| **Prettier**   | Code formatting only                          | Very Fast | None            |
+| **CodeQL**     | Security vulnerabilities                      | Medium    | Very Low        |
+| **Jest**       | Test execution                                | Fast      | N/A             |
+| **Codecov**    | Coverage tracking                             | Fast      | None            |
+| **web-ext**    | Firefox compatibility                         | Fast      | Low             |
+| **DeepSource** | Comprehensive (bugs, quality, security, debt) | Fast      | <5%             |
+| **CodeRabbit** | AI review, explanations                       | Medium    | Medium          |
+| **Copilot**    | Synthesis + AI reasoning                      | Medium    | Low             |
 
 **Key Insight:** DeepSource provides the comprehensive analysis layer that catches issues ESLint misses, while maintaining low false positives (<5%).
 
@@ -895,6 +900,7 @@ repository/
 - `GITHUB_TOKEN` - Automatically provided (no setup needed)
 
 **No secrets needed for:**
+
 - DeepSource (uses GitHub App authentication)
 - CodeRabbit (uses GitHub App)
 - Qodo (uses GitHub App)
@@ -946,27 +952,32 @@ repository/
 ## Troubleshooting
 
 **DeepSource not commenting on PRs:**
+
 - Check DeepSource dashboard: Is the repo activated?
 - Go to Settings → Integrations → GitHub
 - Verify "Comment on pull requests" is enabled
 - Check `.deepsource.toml` syntax with https://validate.deepsource.io/
 
 **ESLint failing with too many errors:**
+
 - Start with warnings only: Change rules from `'error'` to `'warn'`
 - Fix gradually over multiple PRs
 - Use `// eslint-disable-next-line rule-name` for exceptions
 
 **CodeQL not finding issues:**
+
 - Check languages array includes `'javascript'`
 - Verify `permissions: security-events: write` is set
 - Enable "Code scanning" in repository security settings
 
 **Coverage not uploading to DeepSource:**
+
 - Ensure `coverage/lcov.info` is generated by Jest
 - Check DeepSource → Settings → Test Coverage is enabled
 - Verify `.deepsource.toml` has `test-coverage` analyzer
 
 **Workflows taking too long:**
+
 - Enable npm caching: `cache: 'npm'` in setup-node steps
 - Run jobs in parallel (they already are by default)
 - Use `npm ci` instead of `npm install`
