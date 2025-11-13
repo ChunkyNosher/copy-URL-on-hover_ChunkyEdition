@@ -16,12 +16,14 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 ### 1. Core Utilities Reorganization
 
 **Moved from `src/utils/` to `src/core/`:**
+
 - ✅ `dom.js` - DOM manipulation utilities
 - ✅ `browser-api.js` - Browser API wrappers
 
 **Rationale:** These are core utilities used throughout the extension and belong with other core modules (config, state, events).
 
 **Impact:**
+
 - Updated `src/core/index.js` to export both modules
 - Updated `src/content.js` import from `./utils/browser-api.js` to `./core/browser-api.js`
 - `src/utils/` now contains only `debug.js` (debug-specific utilities)
@@ -51,6 +53,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
    - Slot badge styles for debug mode
 
 **CSS Injection Strategy:**
+
 - CSS is inlined as JavaScript strings in modules that use them
 - Dynamically injected via `<style>` elements at runtime
 - This ensures CSS is bundled into `dist/content.js` during Rollup build
@@ -71,12 +74,14 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
    - Exports `showToast(message, type, config)`
 
 **Updated `src/features/notifications/index.js`:**
+
 - Now acts as coordinator between toast and tooltip modules
 - Imports and re-exports `showTooltip` and `showToast`
 - CSS content inlined as string constant
 - NotificationManager delegates to appropriate module based on `notifDisplayMode`
 
 **Benefits:**
+
 - Clear separation: tooltip for Copy URL, toast for Quick Tabs
 - Each notification type can be tested independently
 - Easier to add new notification types in the future
@@ -84,6 +89,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 ### 4. Quick Tabs Module Refinement
 
 **Renamed `src/features/quick-tabs/quick-tab-window.js` → `window.js`**
+
 - Follows architecture guideline naming convention
 - Updated import in `src/features/quick-tabs/index.js`
 - No functional changes, just naming consistency
@@ -111,6 +117,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
    - Links to architecture documentation
 
 **Created `docs/manual/build-and-packaging-guide.md`:**
+
 - Comprehensive guide to build and packaging process
 - Documents Rollup bundling strategy
 - Explains CSS handling
@@ -120,6 +127,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 ### 6. Documentation Updates
 
 **Updated README.md:**
+
 - Changed version from 1.5.9.0 to 1.5.8.10
 - Added "Hybrid Modular/EventBus Architecture" description
 - Documented new directory structure
@@ -127,6 +135,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 - Updated Modern API Framework section
 
 **Updated all Copilot agent files:**
+
 - `feature-optimizer.md` ✅
 - `bug-architect.md` ✅
 - `bug-fixer.md` ✅
@@ -135,6 +144,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 - `refactor-specialist.md` ✅
 
 **All agents now reference:**
+
 - v1.5.8.10 architecture
 - Hybrid Modular/EventBus structure
 - Updated file locations (core vs utils)
@@ -142,6 +152,7 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 - Enhanced build validation
 
 **Updated `.github/copilot-instructions.md`:**
+
 - Version updated to 1.5.8.10
 - Architecture type specified as "Hybrid Modular/EventBus Architecture (Architecture #10)"
 
@@ -212,6 +223,7 @@ src/
 ### Build Process
 
 **Rollup Configuration (`rollup.config.js`):**
+
 ```javascript
 {
   input: 'src/content.js',
@@ -225,11 +237,13 @@ src/
 ```
 
 **What Gets Bundled:**
+
 - All JavaScript modules starting from `src/content.js`
 - CSS inlined as JavaScript strings
 - Total bundle size: ~96KB (production, no source maps)
 
 **What Doesn't Get Bundled:**
+
 - `background.js` (standalone script)
 - `popup.js`, `options_page.js` (standalone scripts)
 - HTML files, icons, sidebar files
@@ -238,12 +252,14 @@ src/
 ### XPI Packaging
 
 **Command (in release workflow):**
+
 ```bash
 cd dist/
 zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ```
 
 **Package Contents (16 files, ~250KB):**
+
 - `content.js` (bundled, ~96KB)
 - `background.js`, `popup.js`, `options_page.js`, `state-manager.js`
 - `manifest.json` (v1.5.8.10)
@@ -278,27 +294,32 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ## Benefits of This Architecture
 
 ### 1. Better Separation of Concerns
+
 - **Core utilities** in `core/` (config, state, events, dom, browser-api)
 - **Features** in `features/` (quick-tabs, notifications, url-handlers)
 - **UI** in `ui/` (components, CSS)
 - **Debug** in `utils/` (debug utilities only)
 
 ### 2. Improved Maintainability
+
 - CSS separated from JavaScript
 - Notifications split into toast and tooltip
 - Easier to locate and modify specific functionality
 
 ### 3. Enhanced Testability
+
 - Each module can be tested independently
 - Mocking is simpler with clear module boundaries
 - Integration tests can target specific features
 
 ### 4. Scalability
+
 - EventBus enables features to communicate without tight coupling
 - New features can be added by creating new modules
 - CSS can be organized per-feature
 
 ### 5. Build Safety
+
 - Automated validation prevents packaging errors
 - Source files can't leak into production packages
 - Size checks ensure bundle isn't corrupted
@@ -308,6 +329,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ### For Developers
 
 **If you're adding new features:**
+
 1. Create module in appropriate `src/features/` subdirectory
 2. Import core utilities from `src/core/`
 3. Add CSS to `src/ui/css/` and inline in your module
@@ -315,6 +337,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 5. Test build with `npm run build:prod`
 
 **If you're modifying existing features:**
+
 1. DOM utilities: Import from `core/dom.js` (not `utils/dom.js`)
 2. Browser API: Import from `core/browser-api.js` (not `utils/browser-api.js`)
 3. CSS: Add to existing CSS files in `ui/css/` or create new one
@@ -323,12 +346,14 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ### For CI/CD
 
 **Release workflow now includes:**
+
 - Pre-build testing
 - Build output validation
 - Package verification
 - Architecture documentation in release notes
 
 **No changes needed to:**
+
 - Code quality workflows
 - Test coverage workflows
 - Linting workflows
@@ -336,6 +361,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ## Files Changed
 
 ### Created (9 files)
+
 - `src/core/dom.js` (copied from utils)
 - `src/core/browser-api.js` (copied from utils)
 - `src/features/notifications/toast.js` (new)
@@ -347,6 +373,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 - `docs/manual/build-and-packaging-guide.md` (new)
 
 ### Modified (14 files)
+
 - `manifest.json` (version 1.5.8.10)
 - `package.json` (version 1.5.8.10)
 - `src/content.js` (updated imports, version, header)
@@ -364,28 +391,33 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 - `.github/agents/refactor-specialist.md` (v1.5.8.10 architecture)
 
 ### Deleted (1 file)
+
 - `src/features/quick-tabs/quick-tab-window.js` (renamed to window.js)
 
 ## Rollout Plan
 
 ### Phase 1: Merge to Main ✅
+
 - Merge this PR to main branch
 - CI/CD validates build and tests
 - No deployment yet
 
 ### Phase 2: Testing
+
 - Manual testing on Firefox
 - Manual testing on Zen Browser
 - Validate all features work
 - Check XPI package installs correctly
 
 ### Phase 3: Release
+
 - Create git tag `v1.5.8.10`
 - Push tag to trigger release workflow
 - Workflow builds, validates, and packages .xpi
 - GitHub release created with .xpi artifact
 
 ### Phase 4: Monitoring
+
 - Watch for any installation issues
 - Monitor auto-update process
 - Check for any bug reports
@@ -405,6 +437,7 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 Version 1.5.8.10 successfully implements the Hybrid Modular/EventBus Architecture, providing a solid foundation for future development. The refactoring improves code organization, maintainability, and testability while ensuring the build and packaging process is robust and well-validated.
 
 The extension is now better positioned to:
+
 - Add new features without tight coupling
 - Scale to support more complex functionality
 - Maintain code quality with clear module boundaries
@@ -413,6 +446,7 @@ The extension is now better positioned to:
 ---
 
 **Next Steps:**
+
 1. Complete manual testing (Phase 2)
 2. Create release tag (Phase 3)
 3. Monitor deployment (Phase 4)
@@ -420,6 +454,7 @@ The extension is now better positioned to:
 5. Explore further CSS modularization for Quick Tabs
 
 **Related Documentation:**
+
 - `docs/manual/hybrid-architecture-implementation.md` - Architecture design
 - `docs/manual/build-and-packaging-guide.md` - Build process
 - `.github/workflows/release.yml` - Release automation
