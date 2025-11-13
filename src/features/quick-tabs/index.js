@@ -93,14 +93,10 @@ class QuickTabsManager {
       onDestroy: tabId => this.handleDestroy(tabId),
       onMinimize: tabId => this.handleMinimize(tabId),
       onFocus: tabId => this.handleFocus(tabId),
-      onPositionChange: (tabId, left, top) =>
-        this.handlePositionChange(tabId, left, top),
-      onPositionChangeEnd: (tabId, left, top) =>
-        this.handlePositionChangeEnd(tabId, left, top),
-      onSizeChange: (tabId, width, height) =>
-        this.handleSizeChange(tabId, width, height),
-      onSizeChangeEnd: (tabId, width, height) =>
-        this.handleSizeChangeEnd(tabId, width, height),
+      onPositionChange: (tabId, left, top) => this.handlePositionChange(tabId, left, top),
+      onPositionChangeEnd: (tabId, left, top) => this.handlePositionChangeEnd(tabId, left, top),
+      onSizeChange: (tabId, width, height) => this.handleSizeChange(tabId, width, height),
+      onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height),
       onPin: (tabId, pinnedToUrl) => this.handlePin(tabId, pinnedToUrl),
       onUnpin: tabId => this.handleUnpin(tabId)
     });
@@ -226,10 +222,7 @@ class QuickTabsManager {
       this.positionChangeThrottle = {};
     }
 
-    if (
-      this.positionChangeThrottle[id] &&
-      now - this.positionChangeThrottle[id] < 100
-    ) {
+    if (this.positionChangeThrottle[id] && now - this.positionChangeThrottle[id] < 100) {
       return;
     }
 
@@ -286,10 +279,7 @@ class QuickTabsManager {
       this.sizeChangeThrottle = {};
     }
 
-    if (
-      this.sizeChangeThrottle[id] &&
-      now - this.sizeChangeThrottle[id] < 100
-    ) {
+    if (this.sizeChangeThrottle[id] && now - this.sizeChangeThrottle[id] < 100) {
       return;
     }
 
