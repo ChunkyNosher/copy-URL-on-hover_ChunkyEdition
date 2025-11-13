@@ -15,6 +15,7 @@ This release replaces the Firefox Sidebar API with a **persistent, draggable, re
 **Problem:** Zen Browser disables `sidebar.verticalTabs` to maintain a clean UI, making the Firefox Sidebar API unavailable. The extension's Quick Tabs Manager relied on this API, breaking functionality in Zen Browser.
 
 **Solution:** Implement a content script-injected floating panel that:
+
 - Persists across page navigations
 - Provides the same functionality as the sidebar
 - Works in both Zen Browser and Firefox
@@ -29,6 +30,7 @@ This release replaces the Firefox Sidebar API with a **persistent, draggable, re
 **File:** `src/features/quick-tabs/panel.js` (NEW - 900+ lines)
 
 #### Core Capabilities:
+
 - ✅ **Persistent Across Navigation** - Panel re-injects on page load, doesn't close
 - ✅ **Draggable** - Move panel anywhere using Pointer Events API
 - ✅ **8-Direction Resize** - Resize from all edges and corners
@@ -39,6 +41,7 @@ This release replaces the Firefox Sidebar API with a **persistent, draggable, re
 - ✅ **Z-Index Management** - Panel at 999999999 (always above Quick Tabs)
 
 #### UI Features:
+
 - Green/yellow status indicators (active/minimized tabs)
 - Action buttons: Close Minimized, Close All
 - Per-tab actions: Go to Tab, Minimize, Restore, Close
@@ -48,6 +51,7 @@ This release replaces the Firefox Sidebar API with a **persistent, draggable, re
 - Last sync timestamp
 
 #### Technical Implementation:
+
 - **Injection Method:** Content script injects div into `documentElement`
 - **Drag/Resize:** Pointer Events API with `setPointerCapture()`
 - **State Persistence:** `browser.storage.local` (key: `quick_tabs_panel_state`)
@@ -75,38 +79,47 @@ This release replaces the Firefox Sidebar API with a **persistent, draggable, re
 ## 🐛 Bug Fixes
 
 ### Issue #35: Quick Tabs Persistence Across Tabs
+
 **Status:** ✅ FIXED
 
 **Previous Behavior:**
+
 - Quick Tabs state not persisting when switching tabs
 - Position/size lost on tab switch
 - Minimized tabs disappeared
 
 **Fix:**
+
 - Panel uses `browser.storage.sync` for Quick Tabs state
 - Panel re-reads state on every refresh (2-second interval)
 - State keyed by container for proper isolation
 
 ### Issue #43: Minimized Quick Tabs Visibility
+
 **Status:** ✅ FIXED
 
 **Previous Behavior:**
+
 - Minimized Quick Tabs not visible in manager
 - No way to restore without reopening tab
 
 **Fix:**
+
 - Panel displays all minimized tabs with yellow indicators
 - Restore button available for each minimized tab
 - Container categorization preserved
 
 ### Issue #51: Quick Tabs UI Functionality
+
 **Status:** ✅ FIXED
 
 **Previous Behavior:**
+
 - UI elements not fully functional
 - Some controls missing or broken
 
 **Fix:**
+
 - Complete UI implementation in panel
 - All controls functional (minimize, restore, close, go to tab)
 - Action buttons work correctly
@@ -118,6 +131,7 @@ This release replaces the Firefox Sidebar API with a **persistent, draggable, re
 ### Architecture Updates
 
 **New Module:**
+
 ```
 src/features/quick-tabs/
   ├── index.js         (Updated - panel integration)
@@ -127,6 +141,7 @@ src/features/quick-tabs/
 ```
 
 **Key APIs Used:**
+
 1. **Pointer Events API** - Drag/resize with pointer capture
 2. **browser.storage.local** - Panel state persistence
 3. **browser.storage.sync** - Quick Tabs state (container-aware)
@@ -137,9 +152,10 @@ src/features/quick-tabs/
 ### Message Handling
 
 **New Message Type:**
+
 ```javascript
 {
-  action: 'TOGGLE_QUICK_TABS_PANEL'
+  action: 'TOGGLE_QUICK_TABS_PANEL';
 }
 ```
 
@@ -149,6 +165,7 @@ src/features/quick-tabs/
 ### Storage Schema
 
 **Panel State (browser.storage.local):**
+
 ```javascript
 {
   quick_tabs_panel_state: {
@@ -162,6 +179,7 @@ src/features/quick-tabs/
 ```
 
 **Quick Tabs State (browser.storage.sync):**
+
 ```javascript
 {
   quick_tabs_state_v2: {
@@ -187,11 +205,13 @@ src/features/quick-tabs/
 ## 📦 Build Changes
 
 ### Bundle Size Increase
+
 - **Previous:** ~96KB
 - **Current:** ~116KB (+20KB)
 - **Reason:** Addition of PanelManager class (~900 lines)
 
 ### Dependencies
+
 - No new dependencies added
 - Uses existing browser APIs only
 
@@ -200,6 +220,7 @@ src/features/quick-tabs/
 ## 📝 Documentation Updates
 
 ### Updated Files:
+
 1. **README.md**
    - Version updated to 1.5.8.12
    - Added "What's New in v1.5.8.12" section
@@ -233,6 +254,7 @@ src/features/quick-tabs/
 ### Manual Testing Checklist:
 
 #### Panel Functionality:
+
 - [ ] Press `Ctrl+Alt+Z` to toggle panel
 - [ ] Drag panel by header to move
 - [ ] Resize panel from all 8 directions
@@ -241,6 +263,7 @@ src/features/quick-tabs/
 - [ ] Switch tabs and verify panel state persists
 
 #### Quick Tabs Integration:
+
 - [ ] Create Quick Tab with Q key
 - [ ] Verify tab appears in panel with green indicator
 - [ ] Click "Minimize" in panel → tab should minimize
@@ -250,6 +273,7 @@ src/features/quick-tabs/
 - [ ] Click "Go to Tab" → browser should switch to that tab
 
 #### Container Testing:
+
 - [ ] Create Quick Tabs in multiple Firefox Containers
 - [ ] Verify tabs grouped by container in panel
 - [ ] Verify container icons and names display
@@ -257,6 +281,7 @@ src/features/quick-tabs/
 - [ ] Test close all across containers
 
 #### Edge Cases:
+
 - [ ] Open panel on restricted pages (about:, chrome:)
 - [ ] Test with CSP-restricted pages
 - [ ] Test with very long tab titles
@@ -268,16 +293,19 @@ src/features/quick-tabs/
 ## ⚠️ Known Limitations
 
 ### 1. Panel Not Available on Restricted Pages
+
 **Pages:** `about:*`, `chrome:*`, `moz-extension:*`  
 **Reason:** Content scripts cannot inject on these pages  
 **Workaround:** None - browser security restriction
 
 ### 2. CSP Restrictions (Rare)
+
 **Issue:** Very strict Content Security Policies may block inline styles  
 **Likelihood:** Extremely rare (styles injected as `<style>` element)  
 **Workaround:** Panel may not display correctly on affected pages
 
 ### 3. Z-Index Conflicts (Theoretical)
+
 **Issue:** Pages with z-index > 999999999 may overlap panel  
 **Likelihood:** Virtually impossible (practical z-index limit)  
 **Workaround:** None needed
@@ -287,11 +315,13 @@ src/features/quick-tabs/
 ## 🔐 Security Summary
 
 ### CodeQL Analysis
+
 - **Status:** ✅ PASSED
 - **Alerts:** 0
 - **Languages Scanned:** JavaScript
 
 ### Security Considerations:
+
 1. **Message Sender Validation** - Panel validates all runtime messages
 2. **No eval() or innerHTML** - Safe DOM manipulation only
 3. **CSP Compliant** - Styles injected as `<style>` elements
@@ -309,11 +339,13 @@ src/features/quick-tabs/
 **New Features:** Persistent floating panel replaces sidebar functionality
 
 **Data Migration:**
+
 - Quick Tabs state: No migration needed (same schema)
 - Panel state: New storage key (`quick_tabs_panel_state`)
 - Sidebar state: Legacy (not removed for backward compatibility)
 
 **User Impact:**
+
 - Users will see panel instead of sidebar
 - Keyboard shortcut (`Ctrl+Alt+Z`) now toggles panel
 - All Quick Tabs functionality preserved
@@ -337,20 +369,21 @@ src/features/quick-tabs/
 
 ## 📌 Version Comparison
 
-| Feature | v1.5.8.11 | v1.5.8.12 |
-|---------|-----------|-----------|
+| Feature               | v1.5.8.11       | v1.5.8.12                 |
+| --------------------- | --------------- | ------------------------- |
 | Quick Tabs Manager UI | Firefox Sidebar | Persistent Floating Panel |
-| Zen Browser Support | ❌ Broken | ✅ Full Support |
-| Panel Toggle | Sidebar API | Ctrl+Alt+Z |
-| Panel Draggable | N/A | ✅ Yes |
-| Panel Resizable | N/A | ✅ 8 directions |
-| Position Memory | N/A | ✅ Yes |
-| Bundle Size | ~96KB | ~116KB |
-| Issues Fixed | - | #35, #43, #51 |
+| Zen Browser Support   | ❌ Broken       | ✅ Full Support           |
+| Panel Toggle          | Sidebar API     | Ctrl+Alt+Z                |
+| Panel Draggable       | N/A             | ✅ Yes                    |
+| Panel Resizable       | N/A             | ✅ 8 directions           |
+| Position Memory       | N/A             | ✅ Yes                    |
+| Bundle Size           | ~96KB           | ~116KB                    |
+| Issues Fixed          | -               | #35, #43, #51             |
 
 ---
 
 **Next Release Preview (v1.5.9.0+):**
+
 - Potential enhancements to panel UI
 - Additional Quick Tabs features
 - Performance optimizations

@@ -12,7 +12,6 @@ This release replaces the Firefox Sidebar API with a persistent, draggable, resi
 
 **Key Improvements:**
 
-
 - ✅ **Persistent Floating Panel** - New `PanelManager` class with full drag/resize capabilities
 - ✅ **Zen Browser Compatibility** - No dependency on Firefox Sidebar API (which is disabled in Zen)
 - ✅ **Ctrl+Alt+Z Toggle** - Keyboard shortcut now toggles the floating panel instead of sidebar
@@ -22,7 +21,6 @@ This release replaces the Firefox Sidebar API with a persistent, draggable, resi
 - ✅ **Container-Aware Display** - Quick Tabs grouped by Firefox Container with visual indicators
 - ✅ **Enhanced Actions** - Close Minimized, Close All, Go to Tab, Minimize/Restore per-tab
 
-
 **Technical Details:**
 
 - Panel injected into page DOM (not sidebar)
@@ -30,7 +28,6 @@ This release replaces the Firefox Sidebar API with a persistent, draggable, resi
 - State persisted to `browser.storage.local`
 - Survives page navigation via re-injection
 - ~900 lines of new code in `src/features/quick-tabs/panel.js`
-
 
 **Fixes:**
 
