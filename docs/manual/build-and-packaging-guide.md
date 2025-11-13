@@ -65,6 +65,7 @@ npm run build
 ```
 
 **Steps:**
+
 1. `npm run clean` - Removes old `dist/` directory
 2. `rollup -c` - Bundles `src/content.js` → `dist/content.js` (with source maps)
 3. `npm run copy-assets` - Copies non-bundled files to `dist/`
@@ -76,6 +77,7 @@ npm run build:prod
 ```
 
 **Steps:**
+
 1. `npm run clean` - Removes old `dist/` directory
 2. `rollup -c --environment BUILD:production` - Bundles without source maps
 3. `npm run copy-assets` - Copies non-bundled files to `dist/`
@@ -110,6 +112,7 @@ Watches for changes in `src/` and rebuilds automatically.
 ### What Gets Bundled
 
 Rollup follows all `import` statements starting from `src/content.js` and bundles:
+
 - ✅ `core/config.js`, `core/state.js`, `core/events.js`
 - ✅ `core/dom.js`, `core/browser-api.js` (moved from utils/)
 - ✅ `utils/debug.js`
@@ -137,6 +140,7 @@ CSS files in `src/ui/css/` are **NOT** imported as external files. Instead:
 3. This ensures CSS is bundled into `content.js` and loaded at runtime
 
 **Example:** In `features/notifications/index.js`:
+
 ```javascript
 const notificationsCss = `
   /* CSS content here */
@@ -206,7 +210,8 @@ Before releasing, the workflow automatically validates:
 
 **Cause:** Import path is incorrect or module doesn't exist.
 
-**Solution:** 
+**Solution:**
+
 1. Check import paths use correct relative paths
 2. Verify file exists at expected location
 3. Check for typos in filenames
@@ -216,6 +221,7 @@ Before releasing, the workflow automatically validates:
 **Cause:** Rollup didn't include all modules.
 
 **Solution:**
+
 1. Ensure all modules are imported (not just referenced)
 2. Check for circular dependencies
 3. Verify `rollup.config.js` settings
@@ -225,6 +231,7 @@ Before releasing, the workflow automatically validates:
 **Cause:** Missing files or incorrect manifest.
 
 **Solution:**
+
 1. Verify `dist/manifest.json` has correct version
 2. Check all files listed in manifest exist in `dist/`
 3. Run `web-ext lint --source-dir=dist/`
@@ -234,16 +241,17 @@ Before releasing, the workflow automatically validates:
 **Cause:** CSS files not properly inlined.
 
 **Solution:**
+
 1. Ensure CSS is included as string constant in JS
 2. Verify CSS injection code runs
 3. Check browser console for errors
 
 ## File Size Comparison
 
-| File | v1.5.9.0 (Before) | v1.5.8.10 (After) | Notes |
-|------|------------------|-------------------|-------|
-| content.js (bundled) | ~98KB | ~96KB | Slightly smaller due to better modularization |
-| Total .xpi size | ~250KB | ~250KB | Similar (all essential files included) |
+| File                 | v1.5.9.0 (Before) | v1.5.8.10 (After) | Notes                                         |
+| -------------------- | ----------------- | ----------------- | --------------------------------------------- |
+| content.js (bundled) | ~98KB             | ~96KB             | Slightly smaller due to better modularization |
+| Total .xpi size      | ~250KB            | ~250KB            | Similar (all essential files included)        |
 
 ## Architecture Benefits
 
