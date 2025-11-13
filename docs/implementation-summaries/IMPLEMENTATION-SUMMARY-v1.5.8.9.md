@@ -17,37 +17,43 @@ Version 1.5.8.9 addresses critical bugs identified in v1.5.8.8 that prevented co
 ### 1. Fixed "Open in New Tab" Feature ✅
 
 **Problem:**
+
 - Action name mismatch between content script and background script
 - Content script sent `action: 'openInNewTab'`
 - Background script expected `action: 'openTab'`
 - Result: Notification showed but no tab opened
 
 **Solution:**
+
 - Changed `src/content.js` line 426 from `'openInNewTab'` to `'openTab'`
 - Now matches background.js message handler (line 834)
 
 **Files Changed:**
+
 - `src/content.js` - handleOpenInNewTab() function
 
 ### 2. Implemented Quick Tab Creation Logic ✅
 
 **Problem:**
+
 - handleCreateQuickTab() was just a stub with event emission
 - No actual Quick Tab creation code
 - Only logged to console, no functionality
 
 **Solution:**
+
 - Added full Quick Tab creation implementation
 - Sends message to background script with all required parameters
 - Includes generateQuickTabId() helper function for unique IDs
 - Uses mouse position from state for tab placement
 
 **Implementation:**
+
 ```javascript
 async function handleCreateQuickTab(url) {
   debug('Creating Quick Tab for:', url);
   eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
-  
+
   try {
     await sendMessageToBackground({
       action: 'CREATE_QUICK_TAB',
@@ -61,7 +67,7 @@ async function handleCreateQuickTab(url) {
       cookieStoreId: 'firefox-default',
       minimized: false
     });
-    
+
     showNotification('✓ Quick Tab created!', 'success');
     debug('Quick Tab created successfully');
   } catch (err) {
@@ -76,70 +82,101 @@ function generateQuickTabId() {
 ```
 
 **Files Changed:**
+
 - `src/content.js` - handleCreateQuickTab() and generateQuickTabId() functions
 
 ### 3. Fixed Notification Border Width Parsing ✅
 
 **Problem:**
+
 - Border width could be stored as string instead of number
 - Template literal would output `"undefinedpx"` or `"5px"` with string
 - Visual rendering issues with incorrect border width
 
 **Solution:**
+
 - Added `parseInt()` with fallback to 1
 - Ensures numeric value for CSS border property
 
 **Implementation:**
+
 ```javascript
 const borderWidth = parseInt(CONFIG.notifBorderWidth) || 1;
 // ...
-border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`
+border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`;
 ```
 
 **Files Changed:**
+
 - `src/content.js` - showToast() function
 
 ### 4. Added CSS Animations for Notifications ✅
 
 **Problem:**
+
 - CONFIG.notifAnimation and CONFIG.tooltipAnimation values were never used
 - Notifications appeared instantly with no animation
 - Only opacity transitions existed
 
 **Solution:**
+
 - Added CSS keyframe animations in initMainFeatures()
 - Created slide, fade, and bounce animations
 - Applied animation classes to both toast and tooltip notifications
 
 **CSS Animations Added:**
+
 ```css
 @keyframes slideInRight {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes slideInLeft {
-  from { transform: translateX(-100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
 }
 ```
 
 **Animation Classes:**
+
 - `.cuo-anim-slide` - Slide in from right
 - `.cuo-anim-fade` - Fade in
 - `.cuo-anim-bounce` - Bounce effect
 
 **Files Changed:**
+
 - `src/content.js` - initMainFeatures(), showToast(), showTooltip() functions
 
 ---
@@ -149,15 +186,18 @@ border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`
 ### 1. Enhanced CodeRabbit Configuration ✅
 
 **Changes:**
+
 - Added `base_branches` pattern matching for bot-created branches
 - Includes `deepsource-transform-*` and `copilot/**` patterns
 - Set `review_status: false` to hide skip messages
 - Enables code reviews for bot PRs (DeepSource, Copilot)
 
 **Files Changed:**
+
 - `.coderabbit.yaml`
 
 **Benefits:**
+
 - CodeRabbit now reviews DeepSource autofix PRs
 - Cleaner PR interface without "review skipped" messages
 - Better integration with automated tooling
@@ -165,6 +205,7 @@ border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`
 ### 2. Improved Codecov Integration ✅
 
 **Changes:**
+
 - Added `fetch-depth: 0` for better coverage comparison
 - Added `continue-on-error: true` so coverage uploads even if tests fail
 - Added explicit environment variable for Codecov token
@@ -172,9 +213,11 @@ border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`
 - Upload coverage report as artifact for manual review
 
 **Files Changed:**
+
 - `.github/workflows/test-coverage.yml`
 
 **Benefits:**
+
 - More reliable coverage reporting
 - Better historical comparison
 - Artifact download for debugging
@@ -185,6 +228,7 @@ border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`
 ## Version Updates
 
 ### Files Updated:
+
 - `manifest.json` - Version changed from 1.5.8.8 to 1.5.8.9
 - `package.json` - Version changed from 1.5.8.8 to 1.5.8.9
 - `README.md` - Added "What's New in v1.5.8.9" section
@@ -200,13 +244,16 @@ border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`
 ## Documentation Improvements
 
 ### New Documentation:
+
 - `docs/implementation-summaries/IMPLEMENTATION-SUMMARY-v1.5.8.9.md` (this file)
 
 ### Moved Documentation:
+
 - `docs/manual/v1588-complete-fix-plan.md` → `docs/implementation-summaries/`
 - `docs/manual/fix-pr78-issues.md` → `docs/implementation-summaries/`
 
 ### Updated Documentation:
+
 - `README.md` - Added v1.5.8.9 changelog section
 
 ---
@@ -214,6 +261,7 @@ border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`
 ## Testing
 
 ### Build Status: ✅ PASSING
+
 ```
 npm run build - SUCCESS
 - Bundle size: ~60-80KB (unchanged)
@@ -222,6 +270,7 @@ npm run build - SUCCESS
 ```
 
 ### Test Status: ✅ PASSING
+
 ```
 npm test - 3/3 tests passing
 - Extension Configuration tests
@@ -230,6 +279,7 @@ npm test - 3/3 tests passing
 ```
 
 ### Lint Status: ⚠️ Pre-existing warnings only
+
 ```
 npm run lint - 98 problems (9 errors, 89 warnings)
 - All issues are pre-existing from v1.5.8.8
@@ -270,6 +320,7 @@ Based on v1588-complete-fix-plan.md testing checklist:
 ## Migration Notes
 
 **No migration needed.** Update from v1.5.8.8 to v1.5.8.9 is seamless:
+
 1. All existing settings preserved
 2. No configuration changes required
 3. No storage schema changes
