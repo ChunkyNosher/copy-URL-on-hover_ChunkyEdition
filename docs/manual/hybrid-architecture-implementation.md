@@ -8,6 +8,7 @@
 ## 1. Executive Summary
 
 This guide details how to migrate the most recent version of the extension to the most robust and scalable modular architecture (Hybrid Architecture #10: Feature Modules + Core Services + EventBus). It addresses:
+
 - Breaking out UI from content.js
 - Restoring Quick Tabs as overlays
 - Modularizing notifications
@@ -52,6 +53,7 @@ src/
 ## 3. Migration Steps
 
 ### 3.1. Create Modular Notification System
+
 - Move "showTooltip" and "showToast" into features/notifications/
   - notifications/index.js should export { showTooltip, showToast }
   - Use CSS modules (features/notifications/toast.css, tooltip.css)
@@ -59,6 +61,7 @@ src/
 - Ensure only Copy URL shows with tooltip; only Quick Tab shows with toast (see 3.3)
 
 ### 3.2. Restore Quick Tab UI Module
+
 - Create features/quick-tabs/window.js:
   - Exports: createQuickTabWindow(opts), destroyQuickTab(id), etc.
   - Handles DOM rendering for overlays, drag/move/resize/minimize
@@ -70,6 +73,7 @@ src/
   - Listen for browser.runtime.onMessage for cross-tab/restore triggers
 
 ### 3.3. Decouple Content.js and Use EventBus Exclusively
+
 - content.js only listens for global events (keyboard, mouse, API-ready)
 - On shortcut, emit event: EventBus.emit(Events.QUICK_TAB_REQUESTED, data)
 - Notification logic: if (event.type === copyUrl) showTooltip(...); else if (event.type === quickTab) showToast(...);
@@ -77,6 +81,7 @@ src/
 - Ensure each feature registers itself with EventBus in its own index.js
 
 ### 3.4. Improve Core Utilities
+
 - core/config.js: Always retrieve config as individual keys from browser.storage.local, not nested object
 - core/state.js: Singleton with public API for common shared state and feature-local state
 - core/events.js: Robust EventBus supporting on, off, emit, once; global singleton
@@ -84,16 +89,19 @@ src/
 - core/browser-api.js: Thin wrappers for messaging, storage, tab APIs
 
 ### 3.5. Modularize URL Handlers
+
 - features/url-handlers/index.js is the public registry
 - Add new sites as new files under url-handlers/
 - Each handler registers with the main registry
 
 ### 3.6. UI Component Breakdown
+
 - All overlays (quick tab windows, notification toasts, tooltips, minimized bar) should be small, idiomatic modules
 - Each uses CSS from ui/css/ directory
 - Avoid duplicating DOM logic - all widget creation via ui/components.js
 
 ### 3.7. Testing, Build, and Maintenance
+
 - Add end-to-end integration test for quick tab workflow: creation → minimize → restore → close
 - Validate notification UIs via isolated test harness
 - Confirm all modules are imported in entry (content.js), not only referenced
@@ -138,6 +146,7 @@ src/
 ---
 
 **Migration Time Estimate:**
+
 - Core migration: 2-3 days
 - Feature module wiring: 2 days
 - UI/notification refactor: 1 day
