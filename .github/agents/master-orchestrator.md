@@ -43,22 +43,22 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Ensure comprehensive testing on both Firefox and Zen Browser
 - **Validate that current APIs (clipboard, storage, webRequest) still function correctly**
 
-## Extension Architecture Context (v1.5.8.7+)
+## Extension Architecture Context (v1.5.8.8+)
 
 **Current Technology Stack - CRITICAL FOR ROUTING:**
 
-- **Version:** v1.5.8.7 with modular architecture and enhanced code quality infrastructure
+- **Version:** v1.5.8.8 with eager feature loading and enhanced code quality infrastructure
 - **Manifest Version:** v2 (required for webRequestBlocking)
 - **Primary APIs:** Content script panel injection, Pointer Events, navigator.clipboard, browser.storage.sync/session/local, browser.runtime, browser.webRequest, browser.tabs, contextualIdentities, browser.commands
 - **Core Features:** Quick Tabs (floating iframes), floating Quick Tabs Manager panel, keyboard shortcuts, site-specific handlers, notifications, container-aware state management
 - **Browser Targets:** Firefox, Zen Browser (Firefox-based)
 - **Storage Strategy:** Dual-layer (sync + session) for Quick Tab state, local storage for panel state
-- **Code Quality:** ESLint, Prettier, Jest, CodeQL, DeepSource, GitHub Actions CI/CD
+- **Code Quality:** ESLint, Prettier, Jest, CodeQL, DeepSource, CodeRabbit, GitHub Actions CI/CD
 
 **File Structure:**
 
 - **Modular Source** (v1.5.8.2+):
-  - src/content.js (~435 lines): Main entry point with enhanced logging
+  - src/content.js (~570 lines): Main entry point with enhanced logging and eager loading (v1.5.8.8)
   - src/core/: config.js, state.js, events.js, index.js (barrel file)
   - src/features/url-handlers/: 11 categorized modules (104 handlers)
   - src/utils/: debug.js, dom.js, browser-api.js, index.js (barrel file)
@@ -67,10 +67,14 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - state-manager.js: Container-aware Quick Tab state management
 - popup.html/popup.js: Settings UI with 4 tabs
 - manifest.json: Permissions, commands, options_ui
-- **Testing & CI/CD** (NEW v1.5.8.7):
+- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.8):
   - tests/setup.js: Jest setup with browser API mocks
+  - tests/example.test.js: Example tests for Codecov integration (NEW v1.5.8.8)
   - .github/workflows/: code-quality.yml, codeql-analysis.yml, test-coverage.yml, webext-lint.yml, auto-format.yml
-  - .eslintrc.js, .prettierrc.js, jest.config.js, .deepsource.toml
+  - .eslintrc.cjs, .prettierrc.cjs, jest.config.cjs
+  - .deepsource.toml: Fixed configuration (v1.5.8.8)
+  - .coderabbit.yaml: CodeRabbit AI review configuration (NEW v1.5.8.8)
+  - .github/copilot-instructions.md: Project-specific AI guidance (NEW v1.5.8.8)
 
 ## Agent Capabilities Reference
 

@@ -54,6 +54,14 @@ module.exports = {
         sourceType: 'module', // Allow ES modules in rollup.config.js
         ecmaVersion: 'latest'
       }
+    },
+    {
+      // Jest test files
+      files: ['tests/**/*.js', '**/*.test.js', '**/*.spec.js'],
+      env: {
+        jest: true,
+        node: true
+      }
     }
   ],
   ignorePatterns: ['node_modules/', 'dist/', '*.min.js', 'coverage/']
