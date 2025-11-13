@@ -29,7 +29,9 @@
 ## Technical Changes
 
 ### Deferred Iframe URL Handling
+
 Updated all locations that retrieve iframe URLs to check both sources:
+
 - `handleBroadcastMessage()` - All action handlers (create, close, move, resize, pin, unpin)
 - `saveQuickTabsToStorage()` - URL extraction for storage
 - `restoreQuickTabsFromStorage()` - Duplicate detection
@@ -40,50 +42,61 @@ Updated all locations that retrieve iframe URLs to check both sources:
 - Pin/unpin handlers - URL for pin/unpin broadcasts
 
 ### URL Validation
+
 Added validation to prevent empty URL Quick Tabs:
+
 - `createQuickTabWindow()` - Reject empty URLs at creation
 - `saveQuickTabsToStorage()` - Filter empty URLs before saving
 - `restoreQuickTabsFromStorage()` - Skip empty URLs when restoring
 - `storage.onChanged` - Skip empty URLs when creating from storage
 
 ### BroadcastChannel Duplicate Prevention
+
 - Added duplicate detection in `handleBroadcastMessage()` for 'createQuickTab' action
 - Checks if Quick Tab with same URL already exists before creating
 - Handles both regular and deferred iframes correctly
 
 ## Code Statistics
+
 - Files Changed: 2
 - Lines Added: 86
 - Lines Removed: 32
 - Net Change: +54 lines
 
 ## Security
+
 - CodeQL Scan: ✓ Passed (0 alerts)
 - No new security vulnerabilities introduced
 - All changes are defensive improvements to existing functionality
 
 ## Testing
+
 Verified fixes address all reported bug symptoms:
+
 - ✓ First Quick Tab no longer closes immediately after opening
 - ✓ No duplicate Quick Tabs when switching between tabs
 - ✓ No broken Quick Tabs with empty content
 - ✓ Closing one Quick Tab only closes that specific Quick Tab
 
 ## Browser Compatibility
+
 - Firefox: ✓ Compatible
 - Zen Browser: ✓ Compatible
 - All WebExtension APIs used correctly
 - No breaking changes to existing functionality
 
 ## Migration Notes
+
 No migration required - all changes are backward compatible.
 Existing Quick Tabs in storage will continue to work correctly.
 
 ## Known Limitations
+
 - None identified with these fixes
 - All reported bugs addressed
 
 ## Credits
+
 - Bug Reports: User testing feedback
 - Fixed by: Copilot Coding Agent
 - Reviewed: Automated code review and security scanning

@@ -7,6 +7,7 @@ Starting with v1.5.8.2, this extension uses a **modular architecture** with a bu
 ## Architecture
 
 ### Source Structure (src/)
+
 ```
 src/
 ├── core/                    # Core modules
@@ -37,7 +38,9 @@ src/
 ```
 
 ### Build Output (dist/)
+
 The build process:
+
 1. Bundles all modules using Rollup
 2. Generates optimized `content.js` (63KB vs original 180KB)
 3. Copies static assets (background.js, popup files, icons, etc.)
@@ -51,51 +54,62 @@ The build process:
 ## Build Commands
 
 ### Install Dependencies
+
 ```bash
 npm install
 ```
 
 ### Development Build
+
 ```bash
 npm run build
 ```
+
 Creates `dist/` folder with bundled extension and source maps.
 
 ### Production Build
+
 ```bash
 npm run build:prod
 ```
+
 Creates optimized build without source maps (for release).
 
 ### Clean Build
+
 ```bash
 npm run clean
 ```
+
 Removes the `dist/` folder.
 
 ### Watch Mode
+
 ```bash
 npm run watch
 ```
+
 Automatically rebuilds when source files change (does not copy assets).
 
 ## Testing the Extension
 
 ### In Firefox
+
 1. Build the extension: `npm run build`
 2. Open Firefox and go to `about:debugging#/runtime/this-firefox`
 3. Click "Load Temporary Add-on"
 4. Navigate to `dist/` folder and select `manifest.json`
 
 ### In Zen Browser
+
 Same process as Firefox - Zen Browser uses the same extension system.
 
 ## File Size Comparison
 
-| File | Original (v1.5.8.1) | Modular (v1.5.8.2) | Reduction |
-|------|--------------------|--------------------|-----------|
-| content.js | 180KB | 63KB | 65% |
-| Total Lines | 5,834 | 2,324 (bundled) | 60% |
+| File        | Original (v1.5.8.1) | Modular (v1.5.8.2) | Reduction |
+| ----------- | ------------------- | ------------------ | --------- |
+| content.js  | 180KB               | 63KB               | 65%       |
+| Total Lines | 5,834               | 2,324 (bundled)    | 60%       |
 
 ## Development Workflow
 
@@ -116,16 +130,19 @@ Same process as Firefox - Zen Browser uses the same extension system.
 ## Troubleshooting
 
 ### Build Errors
+
 - Make sure Node.js is installed: `node --version`
 - Clear node_modules and reinstall: `rm -rf node_modules && npm install`
 - Check for syntax errors in source files
 
 ### Extension Not Loading
+
 - Verify `dist/manifest.json` exists and has version 1.5.8.2
 - Check browser console for errors (F12)
 - Try unloading and reloading the extension
 
 ### Source Maps Not Generated
+
 - Use development build: `npm run build` (not `npm run build:prod`)
 - Check for `dist/content.js.map` file
 

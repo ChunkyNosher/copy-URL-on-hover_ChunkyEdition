@@ -135,7 +135,7 @@ Multiple layers of protection:
 ✓ Manifest V2 compliant (current version)  
 ✓ No deprecated APIs used  
 ✓ Proper permission declarations  
-✓ Content Security Policy compliant  
+✓ Content Security Policy compliant
 
 ### Privacy Considerations
 
@@ -150,13 +150,14 @@ Multiple layers of protection:
 ✓ No remote code loading  
 ✓ No cryptocurrency mining  
 ✓ No ads or sponsored content  
-✓ Clear permission usage  
+✓ Clear permission usage
 
 ## Conclusion
 
 **Security Rating:** ✓ SECURE
 
 All changes in v1.5.5.4 maintain or improve security posture:
+
 - No new vulnerabilities introduced
 - Added input validation improves security
 - CodeQL scan shows zero alerts

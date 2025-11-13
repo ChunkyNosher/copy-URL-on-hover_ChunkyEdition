@@ -54,7 +54,7 @@ export class StateManager {
   setState(updates) {
     const oldState = { ...this.state };
     this.state = { ...this.state, ...updates };
-    
+
     // Notify listeners for each changed key
     Object.keys(updates).forEach(key => {
       if (oldState[key] !== updates[key]) {

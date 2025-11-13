@@ -1,6 +1,7 @@
 # Automated GitHub Workflow for Building and Releasing Firefox Extension (.xpi)
 
 **Purpose**: Create a robust GitHub Actions workflow that automatically:
+
 1. Installs Node.js & dependencies
 2. Builds the modular extension (bundles /src to /dist)
 3. Packages the extension as a .xpi (from dist/)
@@ -33,23 +34,23 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-      
+
       - name: Install Dependencies
         run: npm install
-      
+
       - name: Build Extension
         run: npm run build
-      
+
       - name: Package .xpi Archive
         working-directory: ./dist
         run: |
           zip -r -FS ../copy-url-hover-${{ github.ref_name }}.xpi * -x "*.DS_Store"
-      
+
       - name: Upload .xpi to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -83,6 +84,7 @@ jobs:
 ## Manual Testing
 
 **To test the workflow:**
+
 1. Push a tag like `v1.5.8.2` to GitHub:
    ```bash
    git tag v1.5.8.2
