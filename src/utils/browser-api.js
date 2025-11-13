@@ -103,7 +103,7 @@ export async function copyToClipboard(text) {
     return true;
   } catch (err) {
     console.error('[Browser API] Failed to copy to clipboard:', err);
-    
+
     // Fallback to execCommand
     try {
       const textarea = document.createElement('textarea');
@@ -175,13 +175,13 @@ export async function getContainer(containerId) {
 export function isApiSupported(apiPath) {
   const parts = apiPath.split('.');
   let current = browser;
-  
+
   for (const part of parts) {
     if (!current || !current[part]) {
       return false;
     }
     current = current[part];
   }
-  
+
   return true;
 }

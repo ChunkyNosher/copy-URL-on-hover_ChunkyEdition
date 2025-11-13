@@ -12,7 +12,7 @@
  */
 export function createElement(tag, attributes = {}, children = null) {
   const element = document.createElement(tag);
-  
+
   // Set attributes
   Object.entries(attributes).forEach(([key, value]) => {
     if (key === 'className') {
@@ -26,7 +26,7 @@ export function createElement(tag, attributes = {}, children = null) {
       element.setAttribute(key, value);
     }
   });
-  
+
   // Add children
   if (children) {
     if (typeof children === 'string') {
@@ -43,7 +43,7 @@ export function createElement(tag, attributes = {}, children = null) {
       element.appendChild(children);
     }
   }
-  
+
   return element;
 }
 
@@ -62,10 +62,11 @@ export function findClosest(element, selector) {
  * @param {Element|string} elementOrSelector - Element or CSS selector
  */
 export function removeElement(elementOrSelector) {
-  const element = typeof elementOrSelector === 'string' 
-    ? document.querySelector(elementOrSelector)
-    : elementOrSelector;
-    
+  const element =
+    typeof elementOrSelector === 'string'
+      ? document.querySelector(elementOrSelector)
+      : elementOrSelector;
+
   if (element && element.parentNode) {
     element.parentNode.removeChild(element);
   }
@@ -78,11 +79,9 @@ export function removeElement(elementOrSelector) {
  */
 export function isVisible(element) {
   if (!element) return false;
-  
+
   const style = window.getComputedStyle(element);
-  return style.display !== 'none' && 
-         style.visibility !== 'hidden' && 
-         style.opacity !== '0';
+  return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
 }
 
 /**
@@ -92,7 +91,7 @@ export function isVisible(element) {
  */
 export function getElementPosition(element) {
   if (!element) return { x: 0, y: 0, width: 0, height: 0 };
-  
+
   const rect = element.getBoundingClientRect();
   return {
     x: rect.left,
@@ -110,7 +109,7 @@ export function getElementPosition(element) {
  */
 export function setElementPosition(element, x, y) {
   if (!element) return;
-  
+
   element.style.left = `${x}px`;
   element.style.top = `${y}px`;
 }
@@ -123,7 +122,7 @@ export function setElementPosition(element, x, y) {
  */
 export function setElementSize(element, width, height) {
   if (!element) return;
-  
+
   element.style.width = `${width}px`;
   element.style.height = `${height}px`;
 }

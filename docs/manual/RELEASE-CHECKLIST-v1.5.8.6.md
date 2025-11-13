@@ -9,17 +9,20 @@
 
 ## What Was Fixed
 
-**Problem:** 
+**Problem:**
+
 - Keyboard shortcuts (copy URL, Quick Tabs, open new tab) didn't work
 - Debug mode never showed console messages
 - Only "Copy Text" key worked
 
 **Root Cause:**
+
 - Modular content.js looked for 'userConfig' key in storage
 - popup.js saves settings as individual keys (copyUrlKey, debugMode, etc.)
 - Result: Extension always used default settings, ignoring user preferences
 
 **Solution:**
+
 - Changed ConfigManager to read individual storage keys
 - Now properly loads user settings from popup.js
 - Keyboard shortcuts and debug mode work correctly
@@ -36,19 +39,21 @@
 ✓ CodeQL security scan (0 vulnerabilities)  
 ✓ XPI packaging (no .map files included)  
 ✓ Configuration loading logic verified  
-✓ Build process tested  
+✓ Build process tested
 
 ## How to Release
 
 ### Option 1: Automatic Release (Recommended)
 
 1. **Merge this PR to main:**
+
    ```bash
    # On GitHub, merge the PR titled:
    # "Fix config loading mismatch causing keyboard shortcuts to fail (v1.5.8.6)"
    ```
 
 2. **Create and push git tag:**
+
    ```bash
    git checkout main
    git pull origin main
@@ -129,12 +134,14 @@ After installation, verify the fix:
 ## Expected Behavior After Fix
 
 ### Before (v1.5.8.5 - Broken)
+
 - ✗ Keyboard shortcuts use default keys only
 - ✗ Debug mode never enables
 - ✗ Custom settings ignored
 - ✓ Copy text works (because it uses default 'X')
 
 ### After (v1.5.8.6 - Fixed)
+
 - ✓ Keyboard shortcuts use configured keys
 - ✓ Debug mode enables when set
 - ✓ All custom settings work

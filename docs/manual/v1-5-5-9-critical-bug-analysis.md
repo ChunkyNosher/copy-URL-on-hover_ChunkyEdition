@@ -13,6 +13,7 @@ After comprehensive code analysis and web research into browser extension storag
 ## Bug #1: Quick Tabs Jump to Original Position When New Tab Opens
 
 ### Reproduction Steps
+
 1. Open Wikipedia Tab 1 (WP1)
 2. Create Quick Tab 1 (QT1) by hovering link and pressing 'Q'
 3. Move QT1 to bottom left corner
@@ -27,9 +28,11 @@ After comprehensive code analysis and web research into browser extension storag
 **Storage Listener Race Condition with Asynchronous State Updates**
 
 According to Chrome developer documentation[237]:
+
 > "When anything changes in storage, that event fires."
 
 According to Google Groups discussion on concurrent storage updates[246]:
+
 > "Due to the concurrency of event handlers, it might happen that some data gets lost (for example when 2 handlers get the same state and then try to write 'their' state). Is there any way to prevent race conditions in such case? In particular, the Storage API doesn't support transactions, so you may run into race conditions in any situation where you have multiple parts [writing]."
 
 **The Failure Sequence:**
@@ -73,16 +76,16 @@ T=150ms:  QT1 visually jumps from (100, 500) back to (200, 150)
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'sync' && changes.quick_tabs_state_v2) {
     const newValue = changes.quick_tabs_state_v2.newValue;
-    
+
     // Update existing Quick Tabs from storage
     quickTabWindows.forEach(container => {
       const iframe = container.querySelector('iframe');
       const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
       const tabInStorage = newValue.tabs.find(t => t.url === iframeSrc);
       //                                           ^^^ BUG: Finds by URL, not ID!
-      
+
       if (tabInStorage) {
-        container.style.left = tabInStorage.left + 'px';  // ← Overwrites correct position
+        container.style.left = tabInStorage.left + 'px'; // ← Overwrites correct position
         container.style.top = tabInStorage.top + 'px';
       }
     });
@@ -114,12 +117,12 @@ const tabInStorage = newValue.tabs.find(t => t.id === quickTabId && !t.minimized
 quickTabWindows.forEach(container => {
   const quickTabId = container.dataset.quickTabId;
   const tabInStorage = newValue.tabs.find(t => t.id === quickTabId);
-  
+
   if (tabInStorage) {
     // Only update if storage timestamp is NEWER than last local update
     const lastLocalUpdate = container.dataset.lastPositionUpdate || 0;
     const storageTimestamp = newValue.timestamp || 0;
-    
+
     if (storageTimestamp > lastLocalUpdate) {
       container.style.left = tabInStorage.left + 'px';
       container.style.top = tabInStorage.top + 'px';
@@ -146,11 +149,11 @@ let pendingStateUpdate = false;
 
 function debouncedSaveToStorage() {
   pendingStateUpdate = true;
-  
+
   if (saveTimeout) {
     clearTimeout(saveTimeout);
   }
-  
+
   saveTimeout = setTimeout(() => {
     browser.storage.sync.set({
       quick_tabs_state_v2: {
@@ -168,6 +171,7 @@ function debouncedSaveToStorage() {
 ## Bug #2: Pinned Quick Tab Immediately Closes Itself When Pinned
 
 ### Reproduction Steps
+
 1. Open WP1, create QT1 and QT2
 2. Pin QT1 FIRST, then move to top left corner
 3. Switch to WP2 (previously unloaded) - only QT2 visible ✓ Correct
@@ -182,26 +186,27 @@ function debouncedSaveToStorage() {
 **Double Storage Save Triggers Self-Closure via Expired Flag**
 
 The bug occurs because pinning triggers **TWO separate storage saves**:
+
 1. Background's response to UPDATE_QUICK_TAB_PIN message
 2. Content script's saveQuickTabsToStorage() call
 
 **Code in content.js pin button (lines ~890-930):**
 
 ```javascript
-pinBtn.onclick = (e) => {
+pinBtn.onclick = e => {
   const currentPageUrl = window.location.href;
   container._pinnedToUrl = currentPageUrl;
-  
+
   // Save 1: Tell background about pin state
   browser.runtime.sendMessage({
     action: 'UPDATE_QUICK_TAB_PIN',
     id: quickTabId,
-    pinnedToUrl: currentPageUrl  
+    pinnedToUrl: currentPageUrl
   });
-  
+
   // Save 2: Also save entire state locally
   if (CONFIG.quickTabPersistAcrossTabs) {
-    saveQuickTabsToStorage();  // ← TRIGGERS SECOND SAVE
+    saveQuickTabsToStorage(); // ← TRIGGERS SECOND SAVE
   }
 };
 ```
@@ -213,9 +218,10 @@ if (message.action === 'UPDATE_QUICK_TAB_PIN') {
   const tabIndex = globalQuickTabState.tabs.findIndex(t => t.id === message.id);
   if (tabIndex !== -1) {
     globalQuickTabState.tabs[tabIndex].pinnedToUrl = message.pinnedToUrl;
-    
+
     // Save to storage
-    browser.storage.sync.set({  // ← FIRST SAVE
+    browser.storage.sync.set({
+      // ← FIRST SAVE
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         timestamp: Date.now()
@@ -255,11 +261,13 @@ T=135ms:  **WAIT - shouldn't close...**
 When user pins QT in WP2, the pinnedToUrl is captured from `window.location.href`.
 
 But Wikipedia URLs can have variations:
+
 - `https://en.wikipedia.org/wiki/Main_Page`
 - `https://en.wikipedia.org/wiki/Main_Page#Section`
 - `https://en.wikipedia.org/wiki/Main_Page?action=edit`
 
 If user scrolled to a section (hash changed) between:
+
 1. Pin action (captures `https://en.wikipedia.org/wiki/Main_Page#Top`)
 2. Broadcast reception (currentPageUrl is `https://en.wikipedia.org/wiki/Main_Page#Bottom`)
 
@@ -288,7 +296,7 @@ function normalizeUrl(url) {
 if (message.action === 'pinQuickTab') {
   const currentPageUrl = normalizeUrl(window.location.href);
   const pinnedPageUrl = normalizeUrl(message.pinnedToUrl);
-  
+
   if (currentPageUrl !== pinnedPageUrl) {
     // Close Quick Tab
   }
@@ -307,7 +315,7 @@ function broadcastQuickTabPin(quickTabId, url, pinnedToUrl) {
     id: quickTabId,
     url: url,
     pinnedToUrl: pinnedToUrl,
-    senderId: tabInstanceId  // ← Add sender ID
+    senderId: tabInstanceId // ← Add sender ID
   });
 }
 
@@ -317,7 +325,7 @@ if (message.action === 'pinQuickTab') {
   if (message.senderId === tabInstanceId) {
     return;
   }
-  
+
   // ... rest of handler
 }
 ```
@@ -326,20 +334,20 @@ if (message.action === 'pinQuickTab') {
 
 ```javascript
 // In pin button handler:
-pinBtn.onclick = (e) => {
+pinBtn.onclick = e => {
   const currentPageUrl = window.location.href;
   container._pinnedToUrl = currentPageUrl;
-  
+
   // ONLY notify background - let background handle storage
   browser.runtime.sendMessage({
     action: 'UPDATE_QUICK_TAB_PIN',
     id: quickTabId,
     pinnedToUrl: currentPageUrl
   });
-  
+
   // Broadcast for immediate cross-tab sync
   broadcastQuickTabPin(quickTabId, url, currentPageUrl);
-  
+
   // REMOVE THIS:
   // if (CONFIG.quickTabPersistAcrossTabs) {
   //   saveQuickTabsToStorage();  // ← DELETE - background will save
@@ -352,8 +360,9 @@ pinBtn.onclick = (e) => {
 ## Bug #3: Duplicate Quick Tab Instances Flicker and Disappear
 
 ### Reproduction Steps
+
 1. **Close and reopen Zen Browser** (important - clears background state)
-2. Open WP1, create QT1, move to top left corner  
+2. Open WP1, create QT1, move to top left corner
 3. Create **SECOND instance of QT1** (same URL, different Quick Tab)
 4. **BUG:** Second QT1 immediately moves to top left (same position as first)
 5. Drag second QT1 to bottom left
@@ -361,6 +370,7 @@ pinBtn.onclick = (e) => {
 7. **BUG:** Second QT1 eventually disappears completely
 
 ### Reproduction Steps (Variant 3.1)
+
 1. Close and reopen Zen Browser
 2. Open WP1, create QT1, move to top left
 3. Create second instance of QT1
@@ -376,6 +386,7 @@ pinBtn.onclick = (e) => {
 **URL-Based Lookup Causes Duplicate Instance Conflicts**
 
 According to JavaScript documentation on array methods[239][248]:
+
 > "The findIndex() method returns the index (position) of the first element that passes a test."
 
 The bug occurs because storage updates use `find()` which returns **FIRST** match by URL, not by ID.
@@ -385,16 +396,16 @@ The bug occurs because storage updates use `find()` which returns **FIRST** matc
 ```javascript
 browser.storage.onChanged.addListener((changes, areaName) => {
   const newValue = changes.quick_tabs_state_v2.newValue;
-  
+
   // Update existing Quick Tabs
   quickTabWindows.forEach(container => {
     const iframe = container.querySelector('iframe');
     const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
-    
+
     // BUG: Finds FIRST tab with matching URL, ignores ID!
     const tabInStorage = newValue.tabs.find(t => t.url === iframeSrc);
     //                                       ^^^ WRONG!
-    
+
     if (tabInStorage) {
       // Updates BOTH instances to FIRST instance's position
       container.style.left = tabInStorage.left + 'px';
@@ -498,17 +509,19 @@ normalTabs.forEach(tab => {
     // ...
     return; // Don't create a new one
   }
-  
+
   // ... create new Quick Tab
 });
 ```
 
 After multiple storage updates, a full restoration might run that:
+
 1. Detects two containers with SAME URL but DIFFERENT IDs
 2. Considers second instance a duplicate
 3. Removes it to enforce uniqueness
 
 Or background script's globalQuickTabState gets corrupted:
+
 1. Background loses track of second instance
 2. Storage save only includes first instance
 3. storage.onChanged fires with only one tab
@@ -522,12 +535,12 @@ Or background script's globalQuickTabState gets corrupted:
 // In content.js storage listener:
 browser.storage.onChanged.addListener((changes, areaName) => {
   const newValue = changes.quick_tabs_state_v2.newValue;
-  
+
   quickTabWindows.forEach(container => {
     // FIX: Use ID instead of URL
     const quickTabId = container.dataset.quickTabId;
     const tabInStorage = newValue.tabs.find(t => t.id === quickTabId);
-    
+
     if (tabInStorage) {
       // Now updates correct instance
       container.style.left = tabInStorage.left + 'px';
@@ -546,25 +559,34 @@ const rect = element.getBoundingClientRect();
 
 browser.runtime.sendMessage({
   action: 'UPDATE_QUICK_TAB_POSITION',
-  id: quickTabId,  // ← Always include ID
+  id: quickTabId, // ← Always include ID
   left: Math.round(rect.left),
   top: Math.round(rect.top)
 });
 
-broadcastQuickTabMove(quickTabId, url, rect.left, rect.top);  // ← Pass ID
+broadcastQuickTabMove(quickTabId, url, rect.left, rect.top); // ← Pass ID
 ```
 
 **Solution 3: Add Duplicate Prevention**
 
 ```javascript
 // In createQuickTabWindow():
-function createQuickTabWindow(url, width, height, left, top, fromBroadcast, pinnedToUrl, quickTabId) {
+function createQuickTabWindow(
+  url,
+  width,
+  height,
+  left,
+  top,
+  fromBroadcast,
+  pinnedToUrl,
+  quickTabId
+) {
   // Check for existing Quick Tab with SAME ID (not URL)
   if (quickTabId) {
     const existingContainer = quickTabWindows.find(win => {
       return win.dataset.quickTabId === quickTabId;
     });
-    
+
     if (existingContainer) {
       debug(`Quick Tab with ID ${quickTabId} already exists, updating position instead`);
       existingContainer.style.left = left + 'px';
@@ -572,7 +594,7 @@ function createQuickTabWindow(url, width, height, left, top, fromBroadcast, pinn
       return; // Don't create duplicate
     }
   }
-  
+
   // ... rest of creation code
 }
 ```
@@ -598,13 +620,16 @@ if (CONFIG.debugMode) {
 ## Additional Feature Request: "Clear Quick Tabs Storage" Button Fix
 
 ### Current Behavior
+
 The "Clear Quick Tabs Storage" button in settings resets **ALL** extension settings including:
+
 - Keyboard shortcuts
-- Display preferences  
+- Display preferences
 - Theme settings
 - Quick Tab position/size defaults
 
 ### Expected Behavior
+
 Should **ONLY** clear Quick Tab state (open tabs, positions), NOT user preferences.
 
 ### The Fix
@@ -614,7 +639,8 @@ Should **ONLY** clear Quick Tab state (open tabs, positions), NOT user preferenc
 ```javascript
 // BEFORE (BROKEN):
 document.getElementById('clearStorageBtn').addEventListener('click', () => {
-  browser.storage.sync.clear().then(() => {  // ← Clears EVERYTHING!
+  browser.storage.sync.clear().then(() => {
+    // ← Clears EVERYTHING!
     alert('Storage cleared');
   });
 });
@@ -636,9 +662,11 @@ document.getElementById('clearStorageBtn').addEventListener('click', () => {
 ## Additional Feature Request: Debug Mode Slot Number Labels
 
 ### Request
+
 Add visible slot number labels on Quick Tab toolbars in debug mode showing order opened.
 
 ### Behavior
+
 - First Quick Tab opened → Label shows "Slot 1"
 - Second Quick Tab opened → Label shows "Slot 2"
 - If Slots 1 and 4 close, remaining tabs keep their numbers
@@ -656,7 +684,7 @@ let nextSlotNumber = 1;
 
 function assignQuickTabSlot(quickTabId) {
   let slotNumber;
-  
+
   if (availableSlots.length > 0) {
     // Reuse lowest available slot number
     availableSlots.sort((a, b) => a - b);
@@ -665,7 +693,7 @@ function assignQuickTabSlot(quickTabId) {
     // Assign new slot
     slotNumber = nextSlotNumber++;
   }
-  
+
   quickTabSlots.set(quickTabId, slotNumber);
   return slotNumber;
 }
@@ -686,7 +714,7 @@ function releaseQuickTabSlot(quickTabId) {
 
 if (CONFIG.debugMode) {
   const slotNumber = assignQuickTabSlot(quickTabId);
-  
+
   const slotLabel = document.createElement('span');
   slotLabel.className = 'quicktab-slot-label';
   slotLabel.textContent = `Slot ${slotNumber}`;
@@ -700,7 +728,7 @@ if (CONFIG.debugMode) {
     padding: 2px 6px;
     border-radius: 3px;
   `;
-  
+
   titleBar.appendChild(slotLabel);
 }
 ```
@@ -711,12 +739,12 @@ if (CONFIG.debugMode) {
 // In closeQuickTabWindow():
 function closeQuickTabWindow(container, broadcast = true) {
   const quickTabId = container.dataset.quickTabId;
-  
+
   // Release slot number for reuse
   if (quickTabId && CONFIG.debugMode) {
     releaseQuickTabSlot(quickTabId);
   }
-  
+
   // ... rest of close logic
 }
 ```
@@ -750,6 +778,7 @@ If Slot 2 was closed, next Quick Tab would show "Slot 2".
 ### Files to Modify
 
 **1. content.js - Lines ~1570-1600 (storage.onChanged listener)**
+
 ```javascript
 // Change from URL-based to ID-based lookup
 const quickTabId = container.dataset.quickTabId;
@@ -757,29 +786,34 @@ const tabInStorage = newValue.tabs.find(t => t.id === quickTabId);
 ```
 
 **2. content.js - Lines ~890-930 (pin button handler)**
+
 ```javascript
 // Remove redundant saveQuickTabsToStorage() call
 // Add sender ID to broadcasts to prevent self-reception
 ```
 
 **3. content.js - Lines ~500-550 (broadcastQuickTabPin)**
+
 ```javascript
 // Add tabInstanceId to prevent self-reception
 // Normalize URLs before comparison
 ```
 
 **4. background.js - Lines ~200-260 (UPDATE_QUICK_TAB_POSITION handler)**
+
 ```javascript
 // Add debouncing to batch rapid updates
 // Add timestamp to saved state for conflict resolution
 ```
 
 **5. popup.js or settings.js (Clear Storage button)**
+
 ```javascript
 // Change from storage.sync.clear() to storage.sync.remove('quick_tabs_state_v2')
 ```
 
 **6. content.js - Lines ~600-700 (createQuickTabWindow)**
+
 ```javascript
 // Add slot number tracking and label in debug mode
 // Add duplicate ID detection
@@ -790,7 +824,7 @@ const tabInStorage = newValue.tabs.find(t => t.id === quickTabId);
 After applying fixes:
 
 - [ ] **Bug #1:** Create QT1, move to corner, create QT2 → QT1 stays in place
-- [ ] **Bug #1:** Move QT2, create QT3 → QT2 stays in place  
+- [ ] **Bug #1:** Move QT2, create QT3 → QT2 stays in place
 - [ ] **Bug #2:** Pin QT in WP1 → doesn't close itself
 - [ ] **Bug #2:** Pin QT in WP2 → doesn't close itself
 - [ ] **Bug #3:** After browser restart, create two QT1 instances → both track independently
@@ -808,6 +842,7 @@ All three bugs stem from fundamental architectural issues:
 ### 1. Asynchronous Storage Race Conditions
 
 According to Mozilla Discourse[243]:
+
 > "browser.storage API is asynchronous and thus too slow... While I am requesting my own setting... the website JS has already called the 'non-faked' JS API, circumventing/ignoring my add-on. So here we are: A typical race condition that results in a bug."
 
 **Impact:** Position updates lost, stale data overwrites current state.
@@ -835,20 +870,24 @@ Both background and content scripts save full state, triggering multiple storage
 ## Priority Recommendations
 
 ### Critical (Must Fix)
+
 1. ✅ Change all storage lookups from URL to ID-based
-2. ✅ Add sender ID to broadcasts to prevent self-reception  
+2. ✅ Add sender ID to broadcasts to prevent self-reception
 3. ✅ Remove redundant saveQuickTabsToStorage() calls
 
 ### High Priority
+
 4. ✅ Normalize URLs before pin comparison
 5. ✅ Add timestamp-based conflict resolution
 6. ✅ Fix "Clear Storage" button to preserve settings
 
-### Medium Priority  
+### Medium Priority
+
 7. ✅ Implement debug mode slot numbers
 8. ✅ Add debouncing to background storage saves
 
 ### Low Priority (Enhancement)
+
 9. Implement full transaction-like storage updates
 10. Add storage conflict resolution UI
 

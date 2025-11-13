@@ -10,6 +10,7 @@ Version 1.5.8.2 represents a **major architectural refactoring** of the extensio
 ## 🏗️ Architectural Changes
 
 ### Modular Code Organization
+
 - ✅ **Refactored content.js** from monolithic 180KB (5,834 lines) to modular structure
 - ✅ **Created `src/` directory** with organized modules:
   - `src/core/` - Core modules (config, state, events)
@@ -20,6 +21,7 @@ Version 1.5.8.2 represents a **major architectural refactoring** of the extensio
 - ✅ **Reduced bundle size** by 65% (180KB → 63KB)
 
 ### URL Handler Modules (104 handlers extracted)
+
 1. **social-media.js** - Twitter, Reddit, LinkedIn, Instagram, Facebook, TikTok, Threads, Bluesky, Mastodon, Snapchat, WhatsApp, Telegram
 2. **video.js** - YouTube, Vimeo, DailyMotion, Twitch, Rumble, Odysee, Bitchute
 3. **developer.js** - GitHub, GitLab, Bitbucket, Stack Overflow, Stack Exchange, CodePen, JSFiddle, Replit, Glitch, CodeSandbox
@@ -33,6 +35,7 @@ Version 1.5.8.2 represents a **major architectural refactoring** of the extensio
 11. **other.js** - Archive.org, Patreon, Ko-fi, Buy Me a Coffee, Gumroad
 
 ### Core Modules
+
 - **config.js** - Configuration management with reactive updates
 - **state.js** - Centralized state management with pub/sub
 - **events.js** - Event bus for inter-module communication
@@ -43,6 +46,7 @@ Version 1.5.8.2 represents a **major architectural refactoring** of the extensio
 ## 📦 Build System
 
 ### New Build Workflow
+
 ```bash
 npm install          # Install dependencies
 npm run build        # Build for development
@@ -52,6 +56,7 @@ npm run clean        # Clean dist folder
 ```
 
 ### Build Output
+
 - **dist/content.js** - Bundled content script (63KB)
 - **dist/content.js.map** - Source map for debugging
 - All static files copied to `dist/` for deployment
@@ -59,19 +64,22 @@ npm run clean        # Clean dist folder
 ## 📚 Documentation
 
 ### New Documentation Files
+
 - ✅ **BUILD.md** - Complete build instructions
 - ✅ Updated **README.md** with v1.5.8.2 architecture details
-- ✅ Updated **agent files** (.github/agents/*.md) with new structure
+- ✅ Updated **agent files** (.github/agents/\*.md) with new structure
 - ✅ Preserved **modular-architecture-refactor.md** in docs/manual/
 
 ## 🔄 Migration Notes
 
 ### For Users
+
 - **No changes required** - Extension works identically to v1.5.8.1
 - All features preserved with zero functionality loss
 - Settings and data automatically migrate
 
 ### For Developers
+
 - **Source code** now in `src/` directory
 - **Build required** before testing (run `npm run build`)
 - **Legacy code** preserved in `content-legacy.js` for reference
@@ -79,29 +87,33 @@ npm run clean        # Clean dist folder
 
 ## ⚡ Performance Improvements
 
-| Metric | v1.5.8.1 | v1.5.8.2 | Improvement |
-|--------|----------|----------|-------------|
-| Bundle Size | 180KB | 63KB | **65% reduction** |
-| Source Lines | 5,834 | 2,324 (bundled) | **60% reduction** |
-| Module Count | 1 monolithic | 20 modules | **Better organization** |
-| Load Time | ~350ms | ~100ms (estimated) | **~70% faster** |
+| Metric       | v1.5.8.1     | v1.5.8.2           | Improvement             |
+| ------------ | ------------ | ------------------ | ----------------------- |
+| Bundle Size  | 180KB        | 63KB               | **65% reduction**       |
+| Source Lines | 5,834        | 2,324 (bundled)    | **60% reduction**       |
+| Module Count | 1 monolithic | 20 modules         | **Better organization** |
+| Load Time    | ~350ms       | ~100ms (estimated) | **~70% faster**         |
 
 ## 🔧 Technical Details
 
 ### Browser Compatibility
+
 - ✅ **Firefox** - Fully supported
 - ✅ **Zen Browser** - Fully supported
 - ✅ **Manifest v2** - Required for webRequestBlocking
 
 ### Breaking Changes
+
 - **None** - 100% backward compatible with v1.5.8.1
 
 ### Known Issues
+
 - Same limitations as v1.5.8.1 (documented in content.js header)
 
 ## 🚀 What's Next
 
 This modular architecture enables:
+
 - Easier addition of new site handlers
 - Potential for lazy-loading modules
 - Better unit testing capabilities
@@ -111,6 +123,7 @@ This modular architecture enables:
 ## 📝 Files Changed
 
 ### New Files
+
 - `src/core/config.js`
 - `src/core/state.js`
 - `src/core/events.js`
@@ -125,12 +138,14 @@ This modular architecture enables:
 - `BUILD.md`
 
 ### Modified Files
+
 - `manifest.json` (version 1.5.8.1 → 1.5.8.2)
 - `README.md` (added modular architecture section)
 - `.github/agents/*.md` (updated architecture documentation)
 - `.gitignore` (added dist/, node_modules/)
 
 ### Renamed Files
+
 - `content.js` → `content-legacy.js` (preserved for reference)
 
 ## 🎯 Goals Achieved

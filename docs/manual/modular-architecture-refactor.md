@@ -18,16 +18,16 @@ This document provides a **complete architectural redesign** of the copy-URL-on-
 
 ### Benefits vs. Drawbacks Analysis
 
-| Benefits | Drawbacks |
-|----------|-----------|
-| ✅ **Maintainability:** Easier to find and fix bugs | ⚠️ **Initial complexity:** More files to manage |
+| Benefits                                                         | Drawbacks                                                     |
+| ---------------------------------------------------------------- | ------------------------------------------------------------- |
+| ✅ **Maintainability:** Easier to find and fix bugs              | ⚠️ **Initial complexity:** More files to manage               |
 | ✅ **Team collaboration:** Multiple devs can work simultaneously | ⚠️ **Load time:** Multiple file loads (mitigated by bundling) |
-| ✅ **Code reusability:** Modules can be reused across projects | ⚠️ **Build process:** May need bundler like Webpack/Rollup |
-| ✅ **Testing:** Isolated modules easier to unit test | ⚠️ **Debugging:** Need source maps for production |
-| ✅ **Performance:** Load only needed modules | ⚠️ **API design:** Requires careful interface planning |
-| ✅ **Scalability:** Add features without bloating core | |
-| ✅ **File size limits:** Avoid browser extension limits | |
-| ✅ **Code organization:** Clear separation of concerns | |
+| ✅ **Code reusability:** Modules can be reused across projects   | ⚠️ **Build process:** May need bundler like Webpack/Rollup    |
+| ✅ **Testing:** Isolated modules easier to unit test             | ⚠️ **Debugging:** Need source maps for production             |
+| ✅ **Performance:** Load only needed modules                     | ⚠️ **API design:** Requires careful interface planning        |
+| ✅ **Scalability:** Add features without bloating core           |                                                               |
+| ✅ **File size limits:** Avoid browser extension limits          |                                                               |
+| ✅ **Code organization:** Clear separation of concerns           |                                                               |
 
 **Verdict:** The benefits **far outweigh** the drawbacks, especially for a project this size.
 
@@ -54,6 +54,7 @@ This document provides a **complete architectural redesign** of the copy-URL-on-
 ### Problem 1: Monolithic content.js (154KB)
 
 **Current structure:**
+
 ```
 content.js (154,035 bytes)
 ├── Configuration & constants (500 lines)
@@ -68,6 +69,7 @@ content.js (154,035 bytes)
 ```
 
 **Issues:**
+
 - 🔴 **Browser may fail to load** (as seen in v1.5.8.1)
 - 🔴 **Impossible to navigate** - 5000+ lines in one file
 - 🔴 **Merge conflicts** if multiple people work on it
@@ -78,6 +80,7 @@ content.js (154,035 bytes)
 ### Problem 2: Tight Coupling
 
 Functions directly reference global variables, making it impossible to:
+
 - Test functions in isolation
 - Reuse code in other contexts
 - Replace implementations without refactoring entire file
@@ -85,6 +88,7 @@ Functions directly reference global variables, making it impossible to:
 ### Problem 3: No Clear Module Boundaries
 
 Everything has access to everything else, leading to:
+
 - Unintentional dependencies
 - Hard to understand data flow
 - Difficult to reason about side effects
@@ -161,18 +165,21 @@ Everything has access to everything else, leading to:
 ### Module Loading Strategy
 
 **Tier 1 - Always Loaded (Critical Path):**
+
 - content.js (entry point)
 - config.js (configuration)
 - state.js (shared state)
 - events.js (event bus)
 
 **Tier 2 - Lazy Loaded (On First Use):**
+
 - URL handlers (when user hovers over first link)
 - Clipboard (when user first copies)
 - Quick Tabs (when user creates first Quick Tab)
 - Panel (when user opens panel)
 
 **Tier 3 - Chunked (Split by Site Category):**
+
 - social-media.js (loaded only on social media sites)
 - developer.js (loaded only on GitHub, GitLab, etc.)
 - ecommerce.js (loaded only on Amazon, eBay, etc.)
@@ -184,6 +191,7 @@ Everything has access to everything else, leading to:
 ### 3.1 Core Modules (Always Loaded)
 
 #### `core/config.js` (2KB)
+
 **Responsibility:** Extension configuration and default settings
 
 ```javascript
@@ -197,7 +205,7 @@ export class ConfigManager {
     quickTabKey: 'q',
     // ... all config
   }
-  
+
   async load()
   async save(config)
   get(key)
@@ -207,11 +215,13 @@ export class ConfigManager {
 ```
 
 **Why separate:** Configuration is used by all modules but changes infrequently. Keeping it separate allows:
+
 - Easy testing with mock configs
 - Hot-reloading during development
 - Validation in one place
 
 #### `core/state.js` (2KB)
+
 **Responsibility:** Centralized state management (Redux-like pattern)
 
 ```javascript
@@ -228,7 +238,7 @@ export class StateManager {
     }
     this.listeners = []
   }
-  
+
   getState()
   setState(newState)
   subscribe(callback)
@@ -236,11 +246,13 @@ export class StateManager {
 ```
 
 **Why separate:** Having a single source of truth for application state:
+
 - Makes debugging easier (can inspect entire app state)
 - Enables time-travel debugging
 - Prevents state sync bugs between modules
 
 #### `core/events.js` (4KB)
+
 **Responsibility:** Event bus for inter-module communication
 
 ```javascript
@@ -251,7 +263,7 @@ export class EventBus {
   constructor() {
     this.events = new Map()
   }
-  
+
   on(eventName, callback)
   off(eventName, callback)
   emit(eventName, data)
@@ -270,6 +282,7 @@ export const Events = {
 ```
 
 **Why separate:** Event-driven architecture:
+
 - Modules don't need to know about each other
 - Easy to add new features without modifying existing code
 - Better for debugging (can log all events)
@@ -281,6 +294,7 @@ export const Events = {
 #### `features/url-handlers/` (40KB total, split into 5 files)
 
 **Structure:**
+
 ```
 url-handlers/
 ├── index.js (5KB) - Main handler, domain detection
@@ -291,12 +305,14 @@ url-handlers/
 ```
 
 **Why separate:** The URL handlers are 40KB of code, but:
+
 - Not all sites are visited in one session
 - Can split by category (social media vs developer vs ecommerce)
 - Load category handlers on-demand based on current domain
 - Reduces initial parse time by 75%
 
 **API:**
+
 ```javascript
 // index.js
 export class URLHandlerRegistry {
@@ -304,7 +320,7 @@ export class URLHandlerRegistry {
     this.handlers = new Map()
     this.eventBus = eventBus
   }
-  
+
   async loadHandlersForDomain(domain)
   findURL(element, domainType)
   registerHandler(domainType, handler)
@@ -321,6 +337,7 @@ export const socialMediaHandlers = {
 #### `features/clipboard/` (5KB total)
 
 **Structure:**
+
 ```
 clipboard/
 ├── url-copier.js (2.5KB)
@@ -328,11 +345,13 @@ clipboard/
 ```
 
 **Why separate:** Clipboard operations are:
+
 - Self-contained (no dependencies on Quick Tabs)
 - Used independently
 - Can be tested in isolation
 
 **API:**
+
 ```javascript
 // url-copier.js
 export class URLCopier {
@@ -340,7 +359,7 @@ export class URLCopier {
     this.eventBus = eventBus
     this.notificationService = notificationService
   }
-  
+
   async copyURL(url)
   async copyToClipboard(text)
 }
@@ -349,6 +368,7 @@ export class URLCopier {
 #### `features/quick-tabs/` (35KB total, split into 4 files)
 
 **Structure:**
+
 ```
 quick-tabs/
 ├── creator.js (10KB) - Quick Tab creation & positioning
@@ -358,12 +378,14 @@ quick-tabs/
 ```
 
 **Why separate by feature aspect:**
+
 - **creator.js** - Creating Quick Tabs is separate from managing them
 - **manager.js** - Managing lifecycle (minimize/restore/close)
 - **drag-handler.js** - Drag/resize is complex and reusable (also used by panel)
 - **storage-sync.js** - Storage logic is independent and testable
 
 **API:**
+
 ```javascript
 // creator.js
 export class QuickTabCreator {
@@ -372,7 +394,7 @@ export class QuickTabCreator {
     this.eventBus = eventBus
     this.dragHandler = dragHandler
   }
-  
+
   createQuickTab(url, width, height, left, top)
   calculatePosition(config)
 }
@@ -384,7 +406,7 @@ export class QuickTabManager {
     this.eventBus = eventBus
     this.quickTabs = []
   }
-  
+
   minimize(quickTabId)
   restore(quickTabId)
   close(quickTabId)
@@ -397,7 +419,7 @@ export class DragHandler {
   constructor(eventBus) {
     this.eventBus = eventBus
   }
-  
+
   makeDraggable(element, handle, options)
   makeResizable(element, options)
 }
@@ -406,6 +428,7 @@ export class DragHandler {
 #### `features/panel/` (15KB total)
 
 **Structure:**
+
 ```
 panel/
 ├── panel-ui.js (8KB) - Panel DOM creation, events
@@ -413,11 +436,13 @@ panel/
 ```
 
 **Why separate:**
+
 - Panel UI is complex and should be isolated
 - Rendering logic can be optimized independently
 - Already caused file size issues when in content.js
 
 **API:**
+
 ```javascript
 // panel-ui.js
 export class PanelUI {
@@ -426,7 +451,7 @@ export class PanelUI {
     this.renderer = renderer
     this.storage = storage
   }
-  
+
   create()
   toggle()
   show()
@@ -439,7 +464,7 @@ export class PanelRenderer {
   constructor(storage) {
     this.storage = storage
   }
-  
+
   async renderContainers()
   renderQuickTabItem(tab)
   updateStats(totalTabs, lastSync)
@@ -451,6 +476,7 @@ export class PanelRenderer {
 ### 3.3 UI Component Modules (10KB total)
 
 #### `ui/notifications.js` (4KB)
+
 **Responsibility:** Toast notifications and tooltips
 
 ```javascript
@@ -462,6 +488,7 @@ export class NotificationService {
 ```
 
 #### `ui/tooltips.js` (3KB)
+
 **Responsibility:** Hover tooltips
 
 ```javascript
@@ -473,6 +500,7 @@ export class TooltipManager {
 ```
 
 #### `ui/animations.js` (3KB)
+
 **Responsibility:** CSS animations and transitions
 
 ```javascript
@@ -484,6 +512,7 @@ export class AnimationHelper {
 ```
 
 **Why separate UI components:**
+
 - Reusable across features
 - Can be themed independently
 - Easier to create a consistent design system
@@ -588,6 +617,7 @@ copy-URL-on-hover_ChunkyEdition/
 5. Test each module in isolation
 
 **Success Criteria:**
+
 - ✅ Core modules have no dependencies on content.js
 - ✅ Unit tests pass for each core module
 - ✅ Extension still loads (content.js unchanged)
@@ -602,58 +632,58 @@ copy-URL-on-hover_ChunkyEdition/
 
 ```javascript
 // content.js (new entry point)
-import { ConfigManager } from './core/config.js'
-import { StateManager } from './core/state.js'
-import { EventBus, Events } from './core/events.js'
+import { ConfigManager } from './core/config.js';
+import { StateManager } from './core/state.js';
+import { EventBus, Events } from './core/events.js';
 
 class ExtensionBootstrap {
   constructor() {
-    this.config = new ConfigManager()
-    this.state = new StateManager()
-    this.eventBus = new EventBus()
-    this.loadedModules = new Map()
+    this.config = new ConfigManager();
+    this.state = new StateManager();
+    this.eventBus = new EventBus();
+    this.loadedModules = new Map();
   }
-  
+
   async init() {
-    await this.config.load()
-    await this.loadCriticalModules()
-    this.setupEventListeners()
+    await this.config.load();
+    await this.loadCriticalModules();
+    this.setupEventListeners();
   }
-  
+
   async loadModule(modulePath) {
     if (this.loadedModules.has(modulePath)) {
-      return this.loadedModules.get(modulePath)
+      return this.loadedModules.get(modulePath);
     }
-    
-    const module = await import(modulePath)
-    this.loadedModules.set(modulePath, module)
-    return module
+
+    const module = await import(modulePath);
+    this.loadedModules.set(modulePath, module);
+    return module;
   }
-  
+
   async loadCriticalModules() {
     // Load URL handlers on first hover
     this.eventBus.once(Events.HOVER_START, async () => {
-      const handlers = await this.loadModule('./features/url-handlers/index.js')
-      handlers.init(this.eventBus, this.config)
-    })
-    
+      const handlers = await this.loadModule('./features/url-handlers/index.js');
+      handlers.init(this.eventBus, this.config);
+    });
+
     // Load clipboard on first copy
     this.eventBus.once(Events.URL_COPIED, async () => {
-      const clipboard = await this.loadModule('./features/clipboard/url-copier.js')
-      clipboard.init(this.eventBus, this.config)
-    })
-    
+      const clipboard = await this.loadModule('./features/clipboard/url-copier.js');
+      clipboard.init(this.eventBus, this.config);
+    });
+
     // Load Quick Tabs on first creation
     this.eventBus.once(Events.QUICK_TAB_CREATED, async () => {
-      const quickTabs = await this.loadModule('./features/quick-tabs/creator.js')
-      quickTabs.init(this.eventBus, this.config, this.state)
-    })
+      const quickTabs = await this.loadModule('./features/quick-tabs/creator.js');
+      quickTabs.init(this.eventBus, this.config, this.state);
+    });
   }
 }
 
 // Bootstrap the extension
-const app = new ExtensionBootstrap()
-app.init()
+const app = new ExtensionBootstrap();
+app.init();
 ```
 
 ---
@@ -668,45 +698,45 @@ app.init()
 // features/url-handlers/index.js
 export class URLHandlerRegistry {
   constructor() {
-    this.handlers = new Map()
-    this.loadedCategories = new Set()
+    this.handlers = new Map();
+    this.loadedCategories = new Set();
   }
-  
+
   async loadCategory(category) {
-    if (this.loadedCategories.has(category)) return
-    
-    let module
+    if (this.loadedCategories.has(category)) return;
+
+    let module;
     switch (category) {
       case 'social':
-        module = await import('./social-media.js')
-        break
+        module = await import('./social-media.js');
+        break;
       case 'developer':
-        module = await import('./developer.js')
-        break
+        module = await import('./developer.js');
+        break;
       case 'ecommerce':
-        module = await import('./ecommerce.js')
-        break
+        module = await import('./ecommerce.js');
+        break;
       default:
-        module = await import('./generic.js')
+        module = await import('./generic.js');
     }
-    
-    this.registerHandlers(module.handlers)
-    this.loadedCategories.add(category)
+
+    this.registerHandlers(module.handlers);
+    this.loadedCategories.add(category);
   }
-  
+
   detectCategory(domain) {
-    if (domain.includes('twitter') || domain.includes('reddit')) return 'social'
-    if (domain.includes('github') || domain.includes('gitlab')) return 'developer'
-    if (domain.includes('amazon') || domain.includes('ebay')) return 'ecommerce'
-    return 'generic'
+    if (domain.includes('twitter') || domain.includes('reddit')) return 'social';
+    if (domain.includes('github') || domain.includes('gitlab')) return 'developer';
+    if (domain.includes('amazon') || domain.includes('ebay')) return 'ecommerce';
+    return 'generic';
   }
-  
+
   async findURL(element, domain) {
-    const category = this.detectCategory(domain)
-    await this.loadCategory(category)
-    
-    const handler = this.handlers.get(domain)
-    return handler ? handler(element) : null
+    const category = this.detectCategory(domain);
+    await this.loadCategory(category);
+
+    const handler = this.handlers.get(domain);
+    return handler ? handler(element) : null;
   }
 }
 ```
@@ -714,13 +744,14 @@ export class URLHandlerRegistry {
 #### Step 2.2: Extract Handlers by Category
 
 **Social Media (`social-media.js`):**
+
 ```javascript
 export const handlers = {
   twitter: findTwitterUrl,
   reddit: findRedditUrl,
-  linkedin: findLinkedInUrl,
+  linkedin: findLinkedInUrl
   // ... all social media handlers
-}
+};
 
 function findTwitterUrl(element) {
   // Twitter-specific logic
@@ -728,26 +759,29 @@ function findTwitterUrl(element) {
 ```
 
 **Developer Platforms (`developer.js`):**
+
 ```javascript
 export const handlers = {
   github: findGitHubUrl,
   gitlab: findGitLabUrl,
-  stackoverflow: findStackOverflowUrl,
+  stackoverflow: findStackOverflowUrl
   // ... all developer platform handlers
-}
+};
 ```
 
 **Ecommerce (`ecommerce.js`):**
+
 ```javascript
 export const handlers = {
   amazon: findAmazonUrl,
   ebay: findEbayUrl,
-  etsy: findEtsyUrl,
+  etsy: findEtsyUrl
   // ... all ecommerce handlers
-}
+};
 ```
 
 **Generic Fallback (`generic.js`):**
+
 ```javascript
 export function findGenericUrl(element) {
   // Generic URL finding logic
@@ -767,21 +801,21 @@ export function findGenericUrl(element) {
 // features/quick-tabs/creator.js
 export class QuickTabCreator {
   constructor(config, eventBus, dragHandler) {
-    this.config = config
-    this.eventBus = eventBus
-    this.dragHandler = dragHandler
+    this.config = config;
+    this.eventBus = eventBus;
+    this.dragHandler = dragHandler;
   }
-  
+
   createQuickTab(url, options = {}) {
-    const { width, height, left, top } = this.calculateDimensions(options)
-    
-    const container = this.buildDOM(url, width, height)
-    this.positionContainer(container, left, top)
-    
+    const { width, height, left, top } = this.calculateDimensions(options);
+
+    const container = this.buildDOM(url, width, height);
+    this.positionContainer(container, left, top);
+
     // Make draggable/resizable
-    this.dragHandler.makeDraggable(container, container.querySelector('.titlebar'))
-    this.dragHandler.makeResizable(container)
-    
+    this.dragHandler.makeDraggable(container, container.querySelector('.titlebar'));
+    this.dragHandler.makeResizable(container);
+
     // Emit event
     this.eventBus.emit(Events.QUICK_TAB_CREATED, {
       id: container.dataset.quickTabId,
@@ -790,15 +824,15 @@ export class QuickTabCreator {
       height,
       left,
       top
-    })
-    
-    return container
+    });
+
+    return container;
   }
-  
+
   calculateDimensions(options) {
     // Calculate width, height, position based on config
   }
-  
+
   buildDOM(url, width, height) {
     // Build Quick Tab DOM structure
   }
@@ -811,44 +845,44 @@ export class QuickTabCreator {
 // features/quick-tabs/manager.js
 export class QuickTabManager {
   constructor(storage, eventBus) {
-    this.storage = storage
-    this.eventBus = eventBus
-    this.quickTabs = []
-    
-    this.eventBus.on(Events.QUICK_TAB_CREATED, (data) => {
-      this.quickTabs.push(data)
-      this.storage.save(this.quickTabs)
-    })
+    this.storage = storage;
+    this.eventBus = eventBus;
+    this.quickTabs = [];
+
+    this.eventBus.on(Events.QUICK_TAB_CREATED, data => {
+      this.quickTabs.push(data);
+      this.storage.save(this.quickTabs);
+    });
   }
-  
+
   minimize(quickTabId) {
-    const tab = this.quickTabs.find(t => t.id === quickTabId)
-    if (!tab) return
-    
-    tab.minimized = true
-    this.storage.save(this.quickTabs)
-    this.eventBus.emit(Events.QUICK_TAB_MINIMIZED, { id: quickTabId })
+    const tab = this.quickTabs.find(t => t.id === quickTabId);
+    if (!tab) return;
+
+    tab.minimized = true;
+    this.storage.save(this.quickTabs);
+    this.eventBus.emit(Events.QUICK_TAB_MINIMIZED, { id: quickTabId });
   }
-  
+
   restore(quickTabId) {
-    const tab = this.quickTabs.find(t => t.id === quickTabId)
-    if (!tab) return
-    
-    tab.minimized = false
-    this.storage.save(this.quickTabs)
-    this.eventBus.emit(Events.QUICK_TAB_RESTORED, { id: quickTabId })
+    const tab = this.quickTabs.find(t => t.id === quickTabId);
+    if (!tab) return;
+
+    tab.minimized = false;
+    this.storage.save(this.quickTabs);
+    this.eventBus.emit(Events.QUICK_TAB_RESTORED, { id: quickTabId });
   }
-  
+
   close(quickTabId) {
-    this.quickTabs = this.quickTabs.filter(t => t.id !== quickTabId)
-    this.storage.save(this.quickTabs)
-    this.eventBus.emit(Events.QUICK_TAB_CLOSED, { id: quickTabId })
+    this.quickTabs = this.quickTabs.filter(t => t.id !== quickTabId);
+    this.storage.save(this.quickTabs);
+    this.eventBus.emit(Events.QUICK_TAB_CLOSED, { id: quickTabId });
   }
-  
+
   closeAll() {
-    this.quickTabs = []
-    this.storage.clear()
-    this.eventBus.emit(Events.QUICK_TAB_ALL_CLOSED)
+    this.quickTabs = [];
+    this.storage.clear();
+    this.eventBus.emit(Events.QUICK_TAB_ALL_CLOSED);
   }
 }
 ```
@@ -859,40 +893,41 @@ export class QuickTabManager {
 // features/quick-tabs/drag-handler.js
 export class DragHandler {
   constructor(eventBus) {
-    this.eventBus = eventBus
+    this.eventBus = eventBus;
   }
-  
+
   makeDraggable(element, handle, options = {}) {
-    let isDragging = false
-    let currentPointerId = null
-    let offsetX = 0, offsetY = 0
-    
-    const handlePointerDown = (e) => {
+    let isDragging = false;
+    let currentPointerId = null;
+    let offsetX = 0,
+      offsetY = 0;
+
+    const handlePointerDown = e => {
       // ... pointer down logic
-    }
-    
-    const handlePointerMove = (e) => {
+    };
+
+    const handlePointerMove = e => {
       // ... pointer move logic
-      this.eventBus.emit('drag:move', { element, x: e.clientX, y: e.clientY })
-    }
-    
-    const handlePointerUp = (e) => {
+      this.eventBus.emit('drag:move', { element, x: e.clientX, y: e.clientY });
+    };
+
+    const handlePointerUp = e => {
       // ... pointer up logic
-      this.eventBus.emit('drag:end', { element })
-    }
-    
-    handle.addEventListener('pointerdown', handlePointerDown)
-    handle.addEventListener('pointermove', handlePointerMove)
-    handle.addEventListener('pointerup', handlePointerUp)
-    
+      this.eventBus.emit('drag:end', { element });
+    };
+
+    handle.addEventListener('pointerdown', handlePointerDown);
+    handle.addEventListener('pointermove', handlePointerMove);
+    handle.addEventListener('pointerup', handlePointerUp);
+
     // Return cleanup function
     return () => {
-      handle.removeEventListener('pointerdown', handlePointerDown)
-      handle.removeEventListener('pointermove', handlePointerMove)
-      handle.removeEventListener('pointerup', handlePointerUp)
-    }
+      handle.removeEventListener('pointerdown', handlePointerDown);
+      handle.removeEventListener('pointermove', handlePointerMove);
+      handle.removeEventListener('pointerup', handlePointerUp);
+    };
   }
-  
+
   makeResizable(element, options = {}) {
     // Similar structure for resizing
   }
@@ -905,35 +940,35 @@ export class DragHandler {
 // features/quick-tabs/storage-sync.js
 export class StorageSync {
   constructor(eventBus) {
-    this.eventBus = eventBus
-    this.channel = new BroadcastChannel('quick-tabs-sync')
-    
-    this.channel.onmessage = (event) => {
-      this.handleBroadcast(event.data)
-    }
-    
-    this.eventBus.on(Events.QUICK_TAB_CREATED, (data) => {
-      this.broadcast('create', data)
-    })
+    this.eventBus = eventBus;
+    this.channel = new BroadcastChannel('quick-tabs-sync');
+
+    this.channel.onmessage = event => {
+      this.handleBroadcast(event.data);
+    };
+
+    this.eventBus.on(Events.QUICK_TAB_CREATED, data => {
+      this.broadcast('create', data);
+    });
   }
-  
+
   async save(quickTabs) {
-    await browser.storage.sync.set({ quick_tabs_state_v2: quickTabs })
+    await browser.storage.sync.set({ quick_tabs_state_v2: quickTabs });
   }
-  
+
   async load() {
-    const result = await browser.storage.sync.get('quick_tabs_state_v2')
-    return result.quick_tabs_state_v2 || []
+    const result = await browser.storage.sync.get('quick_tabs_state_v2');
+    return result.quick_tabs_state_v2 || [];
   }
-  
+
   broadcast(action, data) {
-    this.channel.postMessage({ action, data, senderId: this.tabId })
+    this.channel.postMessage({ action, data, senderId: this.tabId });
   }
-  
+
   handleBroadcast(message) {
-    if (message.senderId === this.tabId) return
-    
-    this.eventBus.emit(`broadcast:${message.action}`, message.data)
+    if (message.senderId === this.tabId) return;
+
+    this.eventBus.emit(`broadcast:${message.action}`, message.data);
   }
 }
 ```
@@ -943,6 +978,7 @@ export class StorageSync {
 ### Phase 4: Extract Panel & UI (Week 4)
 
 Similar structure to Quick Tabs extraction, creating:
+
 - `features/panel/panel-ui.js`
 - `features/panel/panel-renderer.js`
 - `ui/notifications.js`
@@ -955,6 +991,7 @@ Similar structure to Quick Tabs extraction, creating:
 #### Why We Need a Build System
 
 With modules split across many files, we need a **bundler** to:
+
 1. Combine modules into a single file for production (browser extension limitation)
 2. Transpile ES6+ syntax for compatibility
 3. Minify code for smaller file sizes
@@ -963,16 +1000,18 @@ With modules split across many files, we need a **bundler** to:
 #### Option 1: Rollup (Recommended for Libraries/Extensions)
 
 **Benefits:**
+
 - ✅ Tree-shaking (removes unused code)
 - ✅ Smaller output bundles
 - ✅ Simple configuration
 - ✅ Native ES6 module support
 
 **`rollup.config.js`:**
+
 ```javascript
-import resolve from '@rollup/plugin-node-resolve'
-import commonjs from '@rollup/plugin-commonjs'
-import { terser } from 'rollup-plugin-terser'
+import resolve from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
+import { terser } from 'rollup-plugin-terser';
 
 export default {
   input: 'src/content.js',
@@ -986,10 +1025,11 @@ export default {
     commonjs(),
     terser() // Minify for production
   ]
-}
+};
 ```
 
 **Build commands:**
+
 ```bash
 # Development (with source maps)
 rollup -c --watch
@@ -1001,14 +1041,16 @@ rollup -c --environment BUILD:production
 #### Option 2: Webpack (More Features, Heavier)
 
 **Benefits:**
+
 - ✅ Hot module replacement
 - ✅ Asset management (images, CSS)
 - ✅ Code splitting
 - ✅ Larger ecosystem
 
 **`webpack.config.js`:**
+
 ```javascript
-const path = require('path')
+const path = require('path');
 
 module.exports = {
   mode: process.env.NODE_ENV || 'development',
@@ -1036,7 +1078,7 @@ module.exports = {
       }
     ]
   }
-}
+};
 ```
 
 #### Updated `package.json`
@@ -1070,11 +1112,11 @@ module.exports = {
   "manifest_version": 2,
   "name": "Copy URL on Hover Custom",
   "version": "2.0.0",
-  
+
   "background": {
     "scripts": ["dist/background.js"]
   },
-  
+
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
@@ -1082,7 +1124,7 @@ module.exports = {
       "run_at": "document_idle"
     }
   ],
-  
+
   "browser_action": {
     "default_popup": "dist/popup.html"
   }
@@ -1107,41 +1149,42 @@ module.exports = {
 // User hovers over link and presses 'Q'
 
 // 1. content.js detects keyboard event
-document.addEventListener('keydown', (e) => {
+document.addEventListener('keydown', e => {
   if (e.key === 'q') {
     eventBus.emit(Events.QUICK_TAB_REQUESTED, {
       url: currentHoveredURL,
       element: currentHoveredElement
-    })
+    });
   }
-})
+});
 
 // 2. quick-tabs/creator.js listens for event
-eventBus.on(Events.QUICK_TAB_REQUESTED, async (data) => {
-  const quickTab = await quickTabCreator.createQuickTab(data.url)
-  eventBus.emit(Events.QUICK_TAB_CREATED, quickTab)
-})
+eventBus.on(Events.QUICK_TAB_REQUESTED, async data => {
+  const quickTab = await quickTabCreator.createQuickTab(data.url);
+  eventBus.emit(Events.QUICK_TAB_CREATED, quickTab);
+});
 
 // 3. quick-tabs/manager.js updates state
-eventBus.on(Events.QUICK_TAB_CREATED, (quickTab) => {
+eventBus.on(Events.QUICK_TAB_CREATED, quickTab => {
   state.setState({
     quickTabs: [...state.getState().quickTabs, quickTab]
-  })
-})
+  });
+});
 
 // 4. quick-tabs/storage-sync.js saves to storage
-eventBus.on(Events.QUICK_TAB_CREATED, async (quickTab) => {
-  await storageSync.save(state.getState().quickTabs)
-  storageSync.broadcast('create', quickTab)
-})
+eventBus.on(Events.QUICK_TAB_CREATED, async quickTab => {
+  await storageSync.save(state.getState().quickTabs);
+  storageSync.broadcast('create', quickTab);
+});
 
 // 5. ui/notifications.js shows confirmation
-eventBus.on(Events.QUICK_TAB_CREATED, (quickTab) => {
-  notificationService.showNotification('✓ Quick Tab created')
-})
+eventBus.on(Events.QUICK_TAB_CREATED, quickTab => {
+  notificationService.showNotification('✓ Quick Tab created');
+});
 ```
 
 **Key Benefits:**
+
 - Each module only knows about the event bus
 - Easy to add new features (just listen to events)
 - Can disable features by not loading modules
@@ -1157,49 +1200,49 @@ eventBus.on(Events.QUICK_TAB_CREATED, (quickTab) => {
 
 ```javascript
 // tests/unit/config.test.js
-import { ConfigManager } from '../../src/core/config.js'
+import { ConfigManager } from '../../src/core/config.js';
 
 describe('ConfigManager', () => {
-  let config
-  
+  let config;
+
   beforeEach(() => {
-    config = new ConfigManager()
-  })
-  
+    config = new ConfigManager();
+  });
+
   test('loads default config', async () => {
-    await config.load()
-    expect(config.get('copyUrlKey')).toBe('y')
-  })
-  
+    await config.load();
+    expect(config.get('copyUrlKey')).toBe('y');
+  });
+
   test('saves config changes', async () => {
-    config.set('copyUrlKey', 'c')
-    await config.save()
-    expect(config.get('copyUrlKey')).toBe('c')
-  })
-})
+    config.set('copyUrlKey', 'c');
+    await config.save();
+    expect(config.get('copyUrlKey')).toBe('c');
+  });
+});
 ```
 
 ```javascript
 // tests/unit/url-handlers.test.js
-import { URLHandlerRegistry } from '../../src/features/url-handlers/index.js'
+import { URLHandlerRegistry } from '../../src/features/url-handlers/index.js';
 
 describe('URLHandlerRegistry', () => {
-  let registry
-  
+  let registry;
+
   beforeEach(() => {
-    registry = new URLHandlerRegistry()
-  })
-  
+    registry = new URLHandlerRegistry();
+  });
+
   test('detects social media category', () => {
-    expect(registry.detectCategory('twitter.com')).toBe('social')
-    expect(registry.detectCategory('reddit.com')).toBe('social')
-  })
-  
+    expect(registry.detectCategory('twitter.com')).toBe('social');
+    expect(registry.detectCategory('reddit.com')).toBe('social');
+  });
+
   test('loads handlers on demand', async () => {
-    await registry.loadCategory('social')
-    expect(registry.loadedCategories.has('social')).toBe(true)
-  })
-})
+    await registry.loadCategory('social');
+    expect(registry.loadedCategories.has('social')).toBe(true);
+  });
+});
 ```
 
 ### Integration Testing
@@ -1208,34 +1251,34 @@ describe('URLHandlerRegistry', () => {
 
 ```javascript
 // tests/integration/quick-tabs.test.js
-import { QuickTabCreator } from '../../src/features/quick-tabs/creator.js'
-import { QuickTabManager } from '../../src/features/quick-tabs/manager.js'
-import { EventBus } from '../../src/core/events.js'
+import { QuickTabCreator } from '../../src/features/quick-tabs/creator.js';
+import { QuickTabManager } from '../../src/features/quick-tabs/manager.js';
+import { EventBus } from '../../src/core/events.js';
 
 describe('Quick Tabs Integration', () => {
-  let creator, manager, eventBus
-  
+  let creator, manager, eventBus;
+
   beforeEach(() => {
-    eventBus = new EventBus()
-    creator = new QuickTabCreator({}, eventBus, mockDragHandler)
-    manager = new QuickTabManager(mockStorage, eventBus)
-  })
-  
+    eventBus = new EventBus();
+    creator = new QuickTabCreator({}, eventBus, mockDragHandler);
+    manager = new QuickTabManager(mockStorage, eventBus);
+  });
+
   test('creating Quick Tab updates manager state', () => {
-    const quickTab = creator.createQuickTab('https://example.com')
-    
-    expect(manager.getAll()).toHaveLength(1)
-    expect(manager.getAll()[0].url).toBe('https://example.com')
-  })
-  
+    const quickTab = creator.createQuickTab('https://example.com');
+
+    expect(manager.getAll()).toHaveLength(1);
+    expect(manager.getAll()[0].url).toBe('https://example.com');
+  });
+
   test('minimizing Quick Tab updates state', () => {
-    const quickTab = creator.createQuickTab('https://example.com')
-    manager.minimize(quickTab.id)
-    
-    const state = manager.getAll()[0]
-    expect(state.minimized).toBe(true)
-  })
-})
+    const quickTab = creator.createQuickTab('https://example.com');
+    manager.minimize(quickTab.id);
+
+    const state = manager.getAll()[0];
+    expect(state.minimized).toBe(true);
+  });
+});
 ```
 
 ---
@@ -1275,6 +1318,7 @@ Memory Usage:
 ```
 
 **Performance Gains:**
+
 - 🚀 **10x faster initial load** (350ms → 35ms)
 - 🚀 **5x less memory** initially (15MB → 3MB)
 - 🚀 **On-demand loading** - only load what's used
@@ -1286,12 +1330,12 @@ Instead of loading all 100+ URL handlers, load only relevant ones:
 ```javascript
 // Load only when on Twitter
 if (window.location.hostname.includes('twitter.com')) {
-  import('./features/url-handlers/social-media.js')
+  import('./features/url-handlers/social-media.js');
 }
 
 // Load only when on GitHub
 if (window.location.hostname.includes('github.com')) {
-  import('./features/url-handlers/developer.js')
+  import('./features/url-handlers/developer.js');
 }
 ```
 
@@ -1309,11 +1353,11 @@ if (window.location.hostname.includes('github.com')) {
 
 ```javascript
 // ✅ Good
-export class QuickTabCreator { }
-export function createQuickTab() { }
+export class QuickTabCreator {}
+export function createQuickTab() {}
 
 // ❌ Avoid
-export default QuickTabCreator
+export default QuickTabCreator;
 ```
 
 #### 2. Dependency Injection
@@ -1324,16 +1368,16 @@ export default QuickTabCreator
 // ✅ Good
 class QuickTabCreator {
   constructor(config, eventBus, dragHandler) {
-    this.config = config
-    this.eventBus = eventBus
-    this.dragHandler = dragHandler
+    this.config = config;
+    this.eventBus = eventBus;
+    this.dragHandler = dragHandler;
   }
 }
 
 // ❌ Avoid
 class QuickTabCreator {
   constructor() {
-    this.config = window.globalConfig // Tight coupling
+    this.config = window.globalConfig; // Tight coupling
   }
 }
 ```
@@ -1344,10 +1388,10 @@ class QuickTabCreator {
 
 ```javascript
 // ✅ Good
-eventBus.emit(Events.QUICK_TAB_CREATED, { id, url })
+eventBus.emit(Events.QUICK_TAB_CREATED, { id, url });
 
 // ❌ Avoid
-quickTabManager.onQuickTabCreated({ id, url }) // Direct coupling
+quickTabManager.onQuickTabCreated({ id, url }); // Direct coupling
 ```
 
 #### 4. Error Handling
@@ -1375,10 +1419,10 @@ async createQuickTab(url) {
 
 ```javascript
 // ✅ Good
-setState({ quickTabs: [...state.quickTabs, newQuickTab] })
+setState({ quickTabs: [...state.quickTabs, newQuickTab] });
 
 // ❌ Avoid
-state.quickTabs.push(newQuickTab)
+state.quickTabs.push(newQuickTab);
 ```
 
 ---
@@ -1478,12 +1522,14 @@ By refactoring to a modular architecture:
 ### When to Refactor?
 
 **✅ Refactor NOW if:**
+
 - Extension is broken (file too large)
 - Adding new features is difficult
 - Bugs are hard to track down
 - Multiple people working on codebase
 
 **⚠️ Wait if:**
+
 - Extension is stable and working
 - No plans for new features
 - Solo developer with small codebase
@@ -1496,21 +1542,25 @@ By refactoring to a modular architecture:
 ## 12. References & Resources
 
 ### Documentation
+
 - [WebExtensions API](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions)
 - [ES6 Modules](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules)
 - [Rollup.js Guide](https://rollupjs.org/guide/en/)
 - [Webpack Documentation](https://webpack.js.org/concepts/)
 
 ### Architecture Patterns
+
 - [Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
 - [SOLID Principles](https://en.wikipedia.org/wiki/SOLID)
 - [Event-Driven Architecture](https://en.wikipedia.org/wiki/Event-driven_architecture)
 
 ### Testing
+
 - [Jest Testing Framework](https://jestjs.io/)
 - [Testing Best Practices](https://kentcdodds.com/blog/common-mistakes-with-react-testing-library)
 
 ### Performance
+
 - [Web.dev Performance](https://web.dev/performance/)
 - [Lazy Loading Modules](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#dynamic_imports)
 

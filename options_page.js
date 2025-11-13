@@ -35,7 +35,7 @@ async function loadSettings() {
   try {
     const result = await browser.storage.sync.get(SETTINGS_KEY);
     const settings = result[SETTINGS_KEY] || DEFAULT_SETTINGS;
-    
+
     // Populate form fields
     document.getElementById('enableQuickTabs').checked = settings.enableQuickTabs;
     document.getElementById('maxQuickTabs').value = settings.maxQuickTabs;
@@ -44,7 +44,7 @@ async function loadSettings() {
     document.getElementById('syncAcrossTabs').checked = settings.syncAcrossTabs;
     document.getElementById('persistAcrossSessions').checked = settings.persistAcrossSessions;
     document.getElementById('enableDebugLogging').checked = settings.enableDebugLogging;
-    
+
     console.log('Settings loaded:', settings);
   } catch (err) {
     console.error('Error loading settings:', err);
@@ -66,20 +66,22 @@ async function saveSettings() {
       persistAcrossSessions: document.getElementById('persistAcrossSessions').checked,
       enableDebugLogging: document.getElementById('enableDebugLogging').checked
     };
-    
+
     await browser.storage.sync.set({ [SETTINGS_KEY]: settings });
     console.log('Settings saved:', settings);
     showStatus('Settings saved successfully!', 'success');
-    
+
     // Notify all tabs about settings change
     const tabs = await browser.tabs.query({});
     for (const tab of tabs) {
-      browser.tabs.sendMessage(tab.id, {
-        action: 'SETTINGS_UPDATED',
-        settings: settings
-      }).catch(() => {
-        // Ignore errors for tabs where content script isn't loaded
-      });
+      browser.tabs
+        .sendMessage(tab.id, {
+          action: 'SETTINGS_UPDATED',
+          settings: settings
+        })
+        .catch(() => {
+          // Ignore errors for tabs where content script isn't loaded
+        });
     }
   } catch (err) {
     console.error('Error saving settings:', err);
@@ -95,10 +97,10 @@ async function updateStorageInfo() {
     // Try to load state from sync storage
     const syncResult = await browser.storage.sync.get(STATE_KEY);
     const state = syncResult[STATE_KEY];
-    
+
     if (state && state.tabs) {
       document.getElementById('currentTabCount').textContent = state.tabs.length;
-      
+
       if (state.timestamp) {
         const date = new Date(state.timestamp);
         document.getElementById('lastUpdated').textContent = date.toLocaleString();
@@ -117,10 +119,11 @@ async function updateStorageInfo() {
  * Check if session storage is available
  */
 function checkSessionStorageAvailability() {
-  const hasSessionStorage = typeof browser !== 'undefined' && 
-                            browser.storage && 
-                            typeof browser.storage.session !== 'undefined';
-  
+  const hasSessionStorage =
+    typeof browser !== 'undefined' &&
+    browser.storage &&
+    typeof browser.storage.session !== 'undefined';
+
   const statusElement = document.getElementById('sessionStorageStatus');
   if (hasSessionStorage) {
     statusElement.textContent = '✓ Available (Firefox 115+)';
@@ -138,27 +141,29 @@ async function clearStorage() {
   if (!confirm('Are you sure you want to clear all Quick Tabs? This action cannot be undone.')) {
     return;
   }
-  
+
   try {
     // Clear from sync storage
     await browser.storage.sync.remove(STATE_KEY);
-    
+
     // Clear from session storage if available
     if (typeof browser.storage.session !== 'undefined') {
       await browser.storage.session.remove(SESSION_KEY);
     }
-    
+
     showStatus('All Quick Tabs cleared successfully!', 'success');
     await updateStorageInfo();
-    
+
     // Notify all tabs to close Quick Tabs
     const tabs = await browser.tabs.query({});
     for (const tab of tabs) {
-      browser.tabs.sendMessage(tab.id, {
-        action: 'CLEAR_ALL_QUICK_TABS'
-      }).catch(() => {
-        // Ignore errors for tabs where content script isn't loaded
-      });
+      browser.tabs
+        .sendMessage(tab.id, {
+          action: 'CLEAR_ALL_QUICK_TABS'
+        })
+        .catch(() => {
+          // Ignore errors for tabs where content script isn't loaded
+        });
     }
   } catch (err) {
     console.error('Error clearing storage:', err);
@@ -173,10 +178,10 @@ async function showCurrentState() {
   try {
     const syncResult = await browser.storage.sync.get(STATE_KEY);
     const state = syncResult[STATE_KEY];
-    
+
     const debugOutput = document.getElementById('debugOutput');
     const debugContent = document.getElementById('debugContent');
-    
+
     debugContent.textContent = JSON.stringify(state, null, 2);
     debugOutput.style.display = 'block';
   } catch (err) {
@@ -192,11 +197,11 @@ async function exportState() {
   try {
     const syncResult = await browser.storage.sync.get(STATE_KEY);
     const state = syncResult[STATE_KEY];
-    
+
     const dataStr = JSON.stringify(state, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = `quick-tabs-state-${Date.now()}.json`;
@@ -204,7 +209,7 @@ async function exportState() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     showStatus('State exported successfully!', 'success');
   } catch (err) {
     console.error('Error exporting state:', err);
@@ -220,7 +225,7 @@ function showStatus(message, type) {
   statusElement.textContent = message;
   statusElement.className = `status ${type}`;
   statusElement.style.display = 'block';
-  
+
   // Auto-hide after 3 seconds
   setTimeout(() => {
     statusElement.style.display = 'none';
