@@ -36,21 +36,37 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 ## Extension Architecture Knowledge
 
-**Current Repository Architecture (v1.5.8.4 - Modular Architecture):**
-- **content.js** (modular structure): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts, floating Quick Tabs Manager panel
-- **background.js** (~970 lines): Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting, panel toggle command listener
-- **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
-- **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
-- **options_page.html/options_page.js**: Options page for Quick Tab settings management
-- **sidebar/quick-tabs-manager.html/js/css** (LEGACY v1.5.8): Replaced by floating panel in v1.5.8.1
-- **sidebar/panel.html/panel.js**: Legacy debugging panel
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, commands (NO sidebar_action - replaced with floating panel)
+**Current Repository Architecture (v1.5.8.7+):**
+- **Modular Source** (v1.5.8.2+):
+  - **`src/content.js`**: Main entry point with enhanced logging and error handling
+  - **`src/core/`**: config.js, state.js, events.js, index.js (barrel file)
+  - **`src/features/url-handlers/`**: 11 categorized modules (104 handlers total)
+  - **`src/utils/`**: debug.js, dom.js, browser-api.js, index.js (barrel file)
+  - **`dist/content.js`**: Built bundle (~60-80KB, MUST NOT contain ES6 imports/exports)
+- **Build System**: Rollup bundler with validation checks
+- **background.js** (~970 lines): Tab lifecycle management, content injection, webRequest modification, storage sync
+- **state-manager.js**: Quick Tab state management using browser.storage.sync and browser.storage.session
+- **popup.html/popup.js**: Settings UI with 4 tabs
+- **options_page.html/options_page.js**: Options page
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking)
+- **Testing**: Jest with browser API mocks (tests/setup.js)
+- **CI/CD Workflows** (NEW v1.5.8.7):
+  - `.github/workflows/code-quality.yml`: ESLint, Prettier, Build, web-ext validation
+  - `.github/workflows/codeql-analysis.yml`: Security analysis
+  - `.github/workflows/test-coverage.yml`: Jest + Codecov
+  - `.github/workflows/webext-lint.yml`: Firefox validation
+  - `.github/workflows/auto-format.yml`: Auto-formatting
+- **Code Quality Tools**:
+  - `.deepsource.toml`: DeepSource configuration for static analysis
+  - `.eslintrc.js`: ESLint rules for browser extensions
+  - `.prettierrc.js`: Code formatting rules
+  - `jest.config.js`: Test configuration
 
 **Key Systems:**
 - CONFIG object: Central configuration with user settings
-- Site-specific handlers: URL detection logic for 100+ sites
+- Site-specific handlers: URL detection logic for 100+ sites (modularized in v1.5.8.2+)
 - Quick Tabs: Floating iframe windows with Pointer Events API drag/resize (setPointerCapture)
-- Floating Panel Manager: Persistent, draggable, resizable panel for Quick Tab management with container categorization (v1.5.8.4 - Modular Architecture)
+- Floating Panel Manager: Persistent, draggable, resizable panel for Quick Tab management with container categorization
 - QuickTabStateManager: Dual-layer storage (sync + session) for state management
 - Notifications: Customizable visual feedback system
 - Storage: browser.storage.sync for settings and Quick Tab state, browser.storage.local for user config and panel state
@@ -170,6 +186,9 @@ When implementing a new feature:
    - **Validate on both Firefox and Zen Browser**
    - Test Zen workspace integration if applicable
    - **Verify all used APIs function correctly**
+   - **Run linters**: `npm run lint` and `npm run format:check`
+   - **Run tests**: `npm run test` (if applicable)
+   - **Build and validate**: `npm run build:prod`
 
 5. **Documentation:**
    - Add code comments explaining feature logic
@@ -178,6 +197,75 @@ When implementing a new feature:
    - Note any known limitations
    - Include browser-specific notes
    - **Document which APIs are used**
+
+## Code Quality and Testing (v1.5.8.7+)
+
+**Before Implementing Features:**
+
+1. **Check Existing Code Quality Tools:**
+   - Run `npm run lint` to catch potential issues early
+   - Run `npm run format:check` to ensure code style consistency
+   - Review `.eslintrc.js` for coding standards
+
+2. **Use Modular Structure:**
+   - Add new URL handlers to `src/features/url-handlers/` categorized modules
+   - Add new utilities to `src/utils/`
+   - Use barrel files (`index.js`) for cleaner imports
+   - Never add ES6 imports/exports to dist/ files (only src/)
+
+3. **Follow Defensive Programming:**
+   - Always validate browser API availability
+   - Add fallbacks for configuration loading
+   - Use try/catch blocks for async operations
+   - Log errors with detailed context
+
+**After Implementing Features:**
+
+1. **Local Validation:**
+   ```bash
+   npm run lint           # Check for code quality issues
+   npm run format         # Auto-format code
+   npm run build:prod     # Build production bundle
+   npm run test          # Run tests (if available)
+   ```
+
+2. **Bundle Validation:**
+   ```bash
+   # Verify no ES6 imports/exports
+   grep "^import " dist/content.js  # Should be empty
+   grep "^export " dist/content.js  # Should be empty
+   
+   # Verify bundle size
+   ls -lh dist/content.js  # Should be ~60-80KB
+   ```
+
+3. **CI/CD Workflows:**
+   - All PRs automatically run:
+     - ESLint checks
+     - Prettier formatting checks
+     - Build validation
+     - CodeQL security analysis
+     - web-ext Firefox validation
+   - Check GitHub Actions status before merging
+
+4. **DeepSource Integration:**
+   - Automatic static analysis on all commits
+   - Reviews code quality, security, and complexity
+   - Provides Autofix™ AI suggestions for improvements
+   - Check DeepSource comments on PRs
+
+**Testing Checklist:**
+- [ ] Feature works in Firefox
+- [ ] Feature works in Zen Browser
+- [ ] No console errors
+- [ ] Settings persist correctly
+- [ ] Dark mode compatibility
+- [ ] Keyboard shortcuts don't conflict
+- [ ] ESLint passes (`npm run lint`)
+- [ ] Prettier passes (`npm run format:check`)
+- [ ] Build succeeds (`npm run build:prod`)
+- [ ] Bundle has no ES6 imports/exports
+- [ ] Tests pass (`npm run test`)
 
 ## Implementation Examples
 

@@ -35,15 +35,29 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.1+):**
-- **content.js** (~5700 lines): Main functionality with site-specific handlers, Quick Tabs with Pointer Events API, notifications, keyboard shortcuts, floating Quick Tabs Manager panel
-- **background.js**: Tab lifecycle management, content script injection, webRequest header modification (Manifest v2 required), storage sync broadcasting, panel toggle command listener
-- **state-manager.js**: Centralized Quick Tab state management using browser.storage.sync and browser.storage.session
-- **popup.html/popup.js**: Settings UI with 4 tabs (Copy URL, Quick Tabs, Appearance, Advanced)
-- **options_page.html/options_page.js**: Options page for Quick Tab settings management
-- **sidebar/quick-tabs-manager.html/js/css**: LEGACY (v1.5.8) - Replaced by floating panel in v1.5.8.1
-- **sidebar/panel.html/panel.js**: Legacy debugging panel
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) with permissions, webRequest API, options_ui, commands (NO sidebar_action - replaced with floating panel)
+**Current Repository Architecture (v1.5.8.7+):**
+- **Modular Source** (v1.5.8.2+): 
+  - **`src/content.js`**: Main entry point with enhanced logging and error handling
+  - **`src/core/`**: config.js, state.js, events.js, index.js (barrel file)
+  - **`src/features/url-handlers/`**: 11 categorized modules (104 handlers total)
+  - **`src/utils/`**: debug.js, dom.js, browser-api.js, index.js (barrel file)
+  - **`dist/content.js`**: Built bundle (~60-80KB, MUST NOT contain ES6 imports/exports)
+- **Build System**: Rollup bundler with validation checks
+- **Legacy Files**: background.js, popup.html/popup.js, state-manager.js, options_page.html/options_page.js
+- **Sidebar**: sidebar/quick-tabs-manager.html/js/css (LEGACY v1.5.8) - Replaced by floating panel
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking)
+- **Testing**: Jest with browser API mocks (tests/setup.js)
+- **CI/CD Workflows** (NEW v1.5.8.7):
+  - `.github/workflows/code-quality.yml`: ESLint, Prettier, Build, web-ext validation
+  - `.github/workflows/codeql-analysis.yml`: Security analysis
+  - `.github/workflows/test-coverage.yml`: Jest + Codecov
+  - `.github/workflows/webext-lint.yml`: Firefox validation
+  - `.github/workflows/auto-format.yml`: Auto-formatting
+- **Code Quality Tools**:
+  - `.deepsource.toml`: DeepSource configuration for static analysis
+  - `.eslintrc.js`: ESLint rules for browser extensions
+  - `.prettierrc.js`: Code formatting rules
+  - `jest.config.js`: Test configuration
 
 **Critical APIs Currently Used - PRIORITIZE THESE:**
 
@@ -200,18 +214,77 @@ When assigned a bug issue:
    - Update DEBUG_MODE logging for future diagnosis
    - Ensure fix works on both browser variants
    - **Maintain compatibility with current manifest.json permissions**
+   - **Run linters**: `npm run lint` and `npm run format:check`
+   - **Build and validate**: `npm run build:prod` and verify no ES6 imports/exports in dist/content.js
 
 4. **Validate:**
    - Test the specific bug scenario
    - Perform regression testing on related features (especially clipboard, storage)
+   - **Run tests**: `npm run test` (if tests exist)
    - Document the fix in code comments
    - Verify on Firefox and Zen Browser
+   - **Check CI/CD workflows pass** (code-quality, codeql-analysis, webext-lint)
 
 5. **Document:**
    - Explain what caused the bug (reference specific API if applicable)
    - Describe why this fix resolves it
    - Note any edge cases or limitations
    - Mention browser-specific considerations
+
+## Debugging Tools and Workflows (v1.5.8.7+)
+
+**Enhanced Debugging Capabilities:**
+
+1. **Console Logging Strategy:**
+   - All logs prefixed with `[Copy-URL-on-Hover]`
+   - Step-by-step initialization logs with `STEP:` prefix
+   - Success markers: `✓` for successful operations
+   - Error markers: `❌` for critical failures
+   - Check markers: `window.CUO_debug_marker` and `window.CUO_initialized`
+
+2. **Global Error Handlers:**
+   - Window error handler for unhandled exceptions
+   - Unhandled promise rejection handler
+   - Both log detailed error information to console
+
+3. **ConfigManager Defensive Loading:**
+   - Multiple fallback levels for configuration loading
+   - Validates browser.storage.local availability
+   - Always returns DEFAULT_CONFIG if loading fails
+   - Logs every step of configuration loading process
+
+4. **Bundle Validation:**
+   - CI/CD checks for ES6 imports/exports in dist/content.js
+   - Build validation ensures key classes present (ConfigManager, StateManager, EventBus)
+   - Bundle size verification (~60-80KB expected)
+
+5. **Code Quality Workflows:**
+   - **ESLint**: `npm run lint` - catches common JavaScript errors
+   - **Prettier**: `npm run format:check` - validates code formatting
+   - **CodeQL**: Automatic security vulnerability scanning
+   - **web-ext**: `npx web-ext lint --source-dir=.` - Firefox-specific validation
+   - **DeepSource**: Automatic comprehensive static analysis (configured in .deepsource.toml)
+
+6. **Testing Infrastructure:**
+   - Jest test framework with browser API mocks (tests/setup.js)
+   - Run tests: `npm run test`
+   - Coverage: `npm run test:coverage`
+   - Browser API mocks for storage, runtime, tabs, contextualIdentities
+
+7. **Debugging Checklist for Non-Functional Extension:**
+   - Check console for `[Copy-URL-on-Hover]` logs
+   - Verify `window.CUO_debug_marker` is set
+   - Verify `window.CUO_initialized === true`
+   - Check dist/content.js for import/export statements (should be none)
+   - Verify bundle contains ConfigManager, StateManager, EventBus
+   - Check browser.storage.local for configuration
+   - Enable Debug Mode in settings for verbose logging
+
+8. **Common Build Issues:**
+   - **ES6 imports in bundle**: Run `grep "^import " dist/content.js` (should be empty)
+   - **Missing classes**: Run `grep "ConfigManager" dist/content.js` (should find matches)
+   - **Wrong file copied**: Ensure copy-assets script doesn't overwrite dist/content.js
+   - **Old build**: Run `npm run clean && npm run build:prod`
 
 ## Documentation Organization
 

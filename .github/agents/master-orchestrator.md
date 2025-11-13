@@ -39,24 +39,32 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Ensure comprehensive testing on both Firefox and Zen Browser
 - **Validate that current APIs (clipboard, storage, webRequest) still function correctly**
 
-## Extension Architecture Context (v1.5.8.1+)
+## Extension Architecture Context (v1.5.8.7+)
 
 **Current Technology Stack - CRITICAL FOR ROUTING:**
+- **Version:** v1.5.8.7 with modular architecture and enhanced code quality infrastructure
 - **Manifest Version:** v2 (required for webRequestBlocking)
-- **Primary APIs:** Content script panel injection, Pointer Events (setPointerCapture), navigator.clipboard, browser.storage.sync/session/local, browser.runtime, browser.webRequest, browser.tabs, contextualIdentities, browser.commands
+- **Primary APIs:** Content script panel injection, Pointer Events, navigator.clipboard, browser.storage.sync/session/local, browser.runtime, browser.webRequest, browser.tabs, contextualIdentities, browser.commands
 - **Core Features:** Quick Tabs (floating iframes), floating Quick Tabs Manager panel, keyboard shortcuts, site-specific handlers, notifications, container-aware state management
 - **Browser Targets:** Firefox, Zen Browser (Firefox-based)
 - **Storage Strategy:** Dual-layer (sync + session) for Quick Tab state, local storage for panel state
+- **Code Quality:** ESLint, Prettier, Jest, CodeQL, DeepSource, GitHub Actions CI/CD
 
 **File Structure:**
-- content.js (~5700 lines): Site handlers, Quick Tabs with Pointer Events API, clipboard operations, keyboard shortcuts, floating panel injection
-- background.js (~970 lines): webRequest header modification, tab management, content injection, storage sync broadcasting, panel toggle command listener
-- state-manager.js: Container-aware Quick Tab state management (sync + session storage)
-- popup.html/popup.js: Settings with 4 tabs
-- options_page.html/options_page.js: Options page for Quick Tab settings
-- sidebar/quick-tabs-manager.html/js/css: LEGACY (v1.5.8) - Replaced by floating panel in v1.5.8.1
-- sidebar/panel.html/panel.js: Legacy debugging panel
-- manifest.json: Permissions including webRequest, webRequestBlocking, <all_urls>, options_ui, commands (NO sidebar_action - replaced with floating panel)
+- **Modular Source** (v1.5.8.2+):
+  - src/content.js (~435 lines): Main entry point with enhanced logging
+  - src/core/: config.js, state.js, events.js, index.js (barrel file)
+  - src/features/url-handlers/: 11 categorized modules (104 handlers)
+  - src/utils/: debug.js, dom.js, browser-api.js, index.js (barrel file)
+  - dist/content.js: Built bundle (~60-80KB, no ES6 imports/exports)
+- background.js: webRequest modifications, tab management, storage sync
+- state-manager.js: Container-aware Quick Tab state management
+- popup.html/popup.js: Settings UI with 4 tabs
+- manifest.json: Permissions, commands, options_ui
+- **Testing & CI/CD** (NEW v1.5.8.7):
+  - tests/setup.js: Jest setup with browser API mocks
+  - .github/workflows/: code-quality.yml, codeql-analysis.yml, test-coverage.yml, webext-lint.yml, auto-format.yml
+  - .eslintrc.js, .prettierrc.js, jest.config.js, .deepsource.toml
 
 ## Agent Capabilities Reference
 
