@@ -33,10 +33,10 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.7+):**
+**Current Repository Architecture (v1.5.8.8+):**
 
 - **Modular Source** (v1.5.8.2+):
-  - **src/content.js** (~435 lines): Main entry point with enhanced logging and error handling
+  - **src/content.js** (~570 lines): Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.8)
   - **src/core/**: config.js, state.js, events.js, index.js (barrel file)
   - **src/features/url-handlers/**: 11 categorized modules (104 handlers total)
   - **src/utils/**: debug.js, dom.js, browser-api.js, index.js (barrel file)
@@ -47,11 +47,14 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
 - **manifest.json**: **Manifest v2** (required for webRequestBlocking)
-- **Testing & CI/CD** (NEW v1.5.8.7):
+- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.8):
   - Jest with browser API mocks (tests/setup.js)
+  - Example tests (tests/example.test.js) - NEW v1.5.8.8
   - GitHub Actions workflows: code-quality, codeql-analysis, test-coverage, webext-lint, auto-format
-  - ESLint (.eslintrc.js), Prettier (.prettierrc.js), Jest (jest.config.js)
-  - DeepSource static analysis (.deepsource.toml)
+  - ESLint (.eslintrc.cjs), Prettier (.prettierrc.cjs), Jest (jest.config.cjs)
+  - DeepSource static analysis (.deepsource.toml) - Fixed v1.5.8.8
+  - CodeRabbit AI review (.coderabbit.yaml) - NEW v1.5.8.8
+  - Copilot instructions (.github/copilot-instructions.md) - NEW v1.5.8.8
 
 **Core APIs - Leverage These:**
 

@@ -38,11 +38,11 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.7+):**
+**Current Repository Architecture (v1.5.8.8+):**
 
 - **Modular Source** (v1.5.8.2+):
   - **src/**: Modular source code organized by functionality
-    - **src/content.js** (~435 lines): Main entry point with enhanced logging and error handling
+    - **src/content.js** (~570 lines): Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.8)
     - **src/core/**: config.js, state.js, events.js, index.js (barrel file)
     - **src/features/url-handlers/**: 11 categorized modules (104 handlers total)
     - **src/utils/**: debug.js, dom.js, browser-api.js, index.js (barrel file)
@@ -53,18 +53,20 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 - **state-manager.js**: Centralized Quick Tab state (browser.storage.sync/session)
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **manifest.json**: Manifest v2 (webRequestBlocking required)
-- **Testing**: Jest with browser API mocks (tests/setup.js)
-- **CI/CD Workflows** (NEW v1.5.8.7):
+- **Testing**: Jest with browser API mocks (tests/setup.js, tests/example.test.js - NEW v1.5.8.8)
+- **CI/CD Workflows** (v1.5.8.7+, enhanced v1.5.8.8):
   - `.github/workflows/code-quality.yml`: ESLint, Prettier, Build, web-ext
   - `.github/workflows/codeql-analysis.yml`: Security analysis
   - `.github/workflows/test-coverage.yml`: Jest + Codecov
   - `.github/workflows/webext-lint.yml`: Firefox validation
   - `.github/workflows/auto-format.yml`: Auto-formatting
-- **Code Quality Tools**:
-  - `.deepsource.toml`: DeepSource static analysis
-  - `.eslintrc.js`: ESLint browser extension rules
-  - `.prettierrc.js`: Code formatting standards
-  - `jest.config.js`: Test configuration
+- **Code Quality Tools** (enhanced v1.5.8.8):
+  - `.deepsource.toml`: DeepSource static analysis (fixed invalid options)
+  - `.coderabbit.yaml`: CodeRabbit AI review configuration (NEW)
+  - `.github/copilot-instructions.md`: Project-specific AI guidance (NEW)
+  - `.eslintrc.cjs`: ESLint rules with jest environment support
+  - `.prettierrc.cjs`: Code formatting standards
+  - `jest.config.cjs`: Test configuration
 
 **Critical APIs to Preserve - PRIORITIZE THESE:**
 
@@ -105,7 +107,7 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 - Test Zen-specific features (themes, workspaces) still function
 - **Validate all 7 core APIs still work correctly after refactoring**
 
-**Code Quality Standards (v1.5.8.7+):**
+**Code Quality Standards (v1.5.8.8+):**
 
 - Follow existing style conventions (camelCase, 2-space indent)
 - Improve code readability and self-documentation
@@ -118,7 +120,7 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 - **Validate bundle**: No ES6 imports/exports in dist/content.js
 - **Check CI/CD workflows pass**: All GitHub Actions must succeed
 
-**Refactoring Workflow (v1.5.8.7+):**
+**Refactoring Workflow (v1.5.8.8+):**
 
 1. **Pre-Refactoring Validation:**
 

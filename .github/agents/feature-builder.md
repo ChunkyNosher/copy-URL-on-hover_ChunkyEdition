@@ -39,10 +39,10 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 ## Extension Architecture Knowledge
 
-**Current Repository Architecture (v1.5.8.7+):**
+**Current Repository Architecture (v1.5.8.8+):**
 
 - **Modular Source** (v1.5.8.2+):
-  - **`src/content.js`**: Main entry point with enhanced logging and error handling
+  - **`src/content.js`**: Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.8)
   - **`src/core/`**: config.js, state.js, events.js, index.js (barrel file)
   - **`src/features/url-handlers/`**: 11 categorized modules (104 handlers total)
   - **`src/utils/`**: debug.js, dom.js, browser-api.js, index.js (barrel file)
@@ -53,18 +53,20 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
 - **manifest.json**: **Manifest v2** (required for webRequestBlocking)
-- **Testing**: Jest with browser API mocks (tests/setup.js)
-- **CI/CD Workflows** (NEW v1.5.8.7):
+- **Testing**: Jest with browser API mocks (tests/setup.js, tests/example.test.js - NEW v1.5.8.8)
+- **CI/CD Workflows** (v1.5.8.7+, enhanced v1.5.8.8):
   - `.github/workflows/code-quality.yml`: ESLint, Prettier, Build, web-ext validation
   - `.github/workflows/codeql-analysis.yml`: Security analysis
   - `.github/workflows/test-coverage.yml`: Jest + Codecov
   - `.github/workflows/webext-lint.yml`: Firefox validation
   - `.github/workflows/auto-format.yml`: Auto-formatting
-- **Code Quality Tools**:
-  - `.deepsource.toml`: DeepSource configuration for static analysis
-  - `.eslintrc.js`: ESLint rules for browser extensions
-  - `.prettierrc.js`: Code formatting rules
-  - `jest.config.js`: Test configuration
+- **Code Quality Tools** (enhanced v1.5.8.8):
+  - `.deepsource.toml`: DeepSource configuration (fixed invalid options)
+  - `.coderabbit.yaml`: CodeRabbit AI review configuration (NEW)
+  - `.github/copilot-instructions.md`: Project-specific AI guidance (NEW)
+  - `.eslintrc.cjs`: ESLint rules with jest environment support
+  - `.prettierrc.cjs`: Code formatting rules
+  - `jest.config.cjs`: Test configuration
 
 **Key Systems:**
 
@@ -209,7 +211,7 @@ When implementing a new feature:
    - Include browser-specific notes
    - **Document which APIs are used**
 
-## Code Quality and Testing (v1.5.8.7+)
+## Code Quality and Testing (v1.5.8.8+)
 
 **Before Implementing Features:**
 
