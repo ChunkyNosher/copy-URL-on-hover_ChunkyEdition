@@ -39,34 +39,40 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 ## Extension Architecture Knowledge
 
-**Current Repository Architecture (v1.5.8.9+):**
+**Current Repository Architecture (v1.5.8.10 - Hybrid Modular/EventBus):**
 
-- **Modular Source** (v1.5.8.2+):
-  - **`src/content.js`**: Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.9)
-  - **`src/core/`**: config.js, state.js, events.js, index.js (barrel file)
-  - **`src/features/url-handlers/`**: 11 categorized modules (104 handlers total)
-  - **`src/utils/`**: debug.js, dom.js, browser-api.js, index.js (barrel file)
-  - **`dist/content.js`**: Built bundle (~60-80KB, MUST NOT contain ES6 imports/exports)
-- **Build System**: Rollup bundler with validation checks
-- **background.js** (~970 lines): Tab lifecycle management, content injection, webRequest modification, storage sync
-- **state-manager.js**: Quick Tab state management using browser.storage.sync and browser.storage.session
+- **Hybrid Modular Source** (v1.5.8.10+):
+  - **src/content.js**: Main entry point - orchestrates all features via EventBus
+  - **src/core/**: config.js, state.js, events.js, dom.js, browser-api.js, index.js (barrel file)
+    - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.8.10
+  - **src/features/**: Feature modules (EventBus-driven)
+    - **quick-tabs/**: index.js, window.js (renamed from quick-tab-window.js), minimized-manager.js
+    - **notifications/**: index.js, toast.js (NEW), tooltip.js (NEW) - fully modularized
+    - **url-handlers/**: 11 categorized modules (104 handlers total)
+  - **src/ui/**: components.js, css/ (NEW v1.5.8.10)
+    - **css/**: base.css, notifications.css, quick-tabs.css - modular CSS system
+  - **src/utils/**: debug.js, index.js (dom.js and browser-api.js moved to core/)
+  - **dist/content.js**: Built bundle (~96KB, MUST NOT contain ES6 imports/exports)
+- **Build System**: Rollup bundler with comprehensive validation checks (v1.5.8.10+)
+  - Validates build output (file existence, sizes, no source leaks)
+  - XPI package verification before release
+  - See docs/manual/build-and-packaging-guide.md
+- **Architecture Documentation**: 
+  - docs/manual/hybrid-architecture-implementation.md - Architecture #10 design
+  - docs/manual/build-and-packaging-guide.md - Build and packaging process
+- **background.js** (~970 lines): Container-aware tab lifecycle, content injection, webRequest header modification, storage sync
+- **state-manager.js**: Container-aware Quick Tab state management
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking)
-- **Testing**: Jest with browser API mocks (tests/setup.js, tests/example.test.js - NEW v1.5.8.8)
-- **CI/CD Workflows** (v1.5.8.7+, enhanced v1.5.8.8):
-  - `.github/workflows/code-quality.yml`: ESLint, Prettier, Build, web-ext validation
-  - `.github/workflows/codeql-analysis.yml`: Security analysis
-  - `.github/workflows/test-coverage.yml`: Jest + Codecov
-  - `.github/workflows/webext-lint.yml`: Firefox validation
-  - `.github/workflows/auto-format.yml`: Auto-formatting
-- **Code Quality Tools** (enhanced v1.5.8.8):
-  - `.deepsource.toml`: DeepSource configuration (fixed invalid options)
-  - `.coderabbit.yaml`: CodeRabbit AI review configuration (NEW)
-  - `.github/copilot-instructions.md`: Project-specific AI guidance (NEW)
-  - `.eslintrc.cjs`: ESLint rules with jest environment support
-  - `.prettierrc.cjs`: Code formatting rules
-  - `jest.config.cjs`: Test configuration
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.8.10
+- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.10):
+  - Jest with browser API mocks (tests/setup.js)
+  - Example tests (tests/example.test.js)
+  - GitHub Actions workflows: code-quality, codeql-analysis, test-coverage, webext-lint, auto-format, release (enhanced)
+  - ESLint (.eslintrc.cjs), Prettier (.prettierrc.cjs), Jest (jest.config.cjs)
+  - DeepSource static analysis (.deepsource.toml)
+  - CodeRabbit AI review (.coderabbit.yaml)
+  - Copilot instructions (.github/copilot-instructions.md)
 
 **Key Systems:**
 
@@ -211,7 +217,7 @@ When implementing a new feature:
    - Include browser-specific notes
    - **Document which APIs are used**
 
-## Code Quality and Testing (v1.5.8.9+)
+## Code Quality and Testing (v1.5.8.10+)
 
 **Before Implementing Features:**
 
