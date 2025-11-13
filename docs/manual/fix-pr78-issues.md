@@ -44,18 +44,18 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-    
+
     # Force review of bot PRs by setting this to true
     # This overrides CodeRabbit's built-in bot detection
     base_branches:
       - main
       - develop
-      - deepsource-transform-*  # Matches DeepSource autofix branches
-    
+      - deepsource-transform-* # Matches DeepSource autofix branches
+
     # Empty list alone isn't enough for hardcoded bots
     # Must explicitly enable for specific branch patterns
     ignore_usernames: []
-  
+
   # CRITICAL: Set this to false to not see the "Review skipped" message
   # This way it silently reviews everything
   review_status: false
@@ -66,6 +66,7 @@ reviews:
 Instead of having DeepSource create PRs for formatting, configure it to commit directly to the branch:
 
 **In DeepSource dashboard:**
+
 1. Go to Repository Settings → Autofix™
 2. Change mode from "Pull Request" to "Direct Commit"
 3. Formatting changes will be committed directly to PRs, not create separate PRs
@@ -91,32 +92,32 @@ name: Test Coverage
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   test:
     name: Run Tests with Coverage
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       # Run Jest tests with coverage
       - name: Run tests with coverage
         run: npm run test:coverage
-      
+
       # Upload to Codecov with v4 action (latest)
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -125,8 +126,8 @@ jobs:
           files: ./coverage/lcov.info
           flags: javascript
           name: codecov-umbrella
-          fail_ci_if_error: false  # Don't fail if Codecov has issues
-          verbose: true  # Show detailed logs
+          fail_ci_if_error: false # Don't fail if Codecov has issues
+          verbose: true # Show detailed logs
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 ```
@@ -162,28 +163,28 @@ tone_instructions: 'Focus on logic correctness, security issues, and browser ext
 
 reviews:
   profile: assertive
-  
+
   auto_review:
     enabled: true
     drafts: false
-    
+
     # Enable review for all branches including bot-created ones
     base_branches:
       - main
       - develop
-      - 'deepsource-transform-*'  # DeepSource autofix branches
-      - 'copilot/**'  # Copilot Agent branches
-    
+      - 'deepsource-transform-*' # DeepSource autofix branches
+      - 'copilot/**' # Copilot Agent branches
+
     # Empty list = don't ignore anyone
     ignore_usernames: []
-  
+
   # Hide the "Review skipped" message for cleaner PRs
   # Set to true if you want to see when reviews are skipped
   review_status: false
-  
+
   high_level_summary: true
   high_level_summary_in_walkthrough: true
-  
+
   path_instructions:
     - path: 'background.js'
       instructions: |
@@ -192,7 +193,7 @@ reviews:
         - Async error handling
         - Container isolation
         - Storage quota management
-    
+
     - path: 'state-manager.js'
       instructions: |
         State management. Check:
@@ -200,21 +201,21 @@ reviews:
         - Proper container isolation
         - Memory leaks
         - Error propagation
-    
+
     - path: '**/*.test.js'
       instructions: |
         Test files. Verify:
         - Edge cases covered
         - Error scenarios tested
         - Mocks properly set up
-    
+
     - path: 'manifest.json'
       instructions: |
         Extension manifest. Ensure:
         - Manifest V2 compliance
         - Minimal permissions
         - CSP configured
-  
+
   tools:
     eslint:
       enabled: true
@@ -235,6 +236,7 @@ knowledge_base:
 ```
 
 **Key changes:**
+
 - ✅ Added `base_branches` with pattern matching for DeepSource branches
 - ✅ Changed `review_status: false` to hide skip messages
 - ✅ Kept `ignore_usernames: []` for good measure
@@ -250,34 +252,34 @@ name: Test Coverage
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   test:
     name: Run Tests with Coverage
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history for better coverage comparison
-      
+          fetch-depth: 0 # Fetch all history for better coverage comparison
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Run tests with coverage
         run: npm run test:coverage
-        continue-on-error: true  # Don't fail workflow if tests fail, still upload coverage
-      
+        continue-on-error: true # Don't fail workflow if tests fail, still upload coverage
+
       # Upload to Codecov
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -290,7 +292,7 @@ jobs:
           verbose: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      
+
       # Upload coverage for DeepSource
       - name: Upload coverage to DeepSource
         run: |
@@ -301,7 +303,7 @@ jobs:
           else
             echo "⚠ No coverage report found"
           fi
-      
+
       - name: Upload coverage report as artifact
         uses: actions/upload-artifact@v4
         if: always()
@@ -312,6 +314,7 @@ jobs:
 ```
 
 **Key improvements:**
+
 - ✅ Added `fetch-depth: 0` for better coverage comparison
 - ✅ Added `continue-on-error: true` so coverage uploads even if tests fail
 - ✅ Added explicit environment variable for Codecov token
@@ -336,11 +339,11 @@ describe('Extension Configuration', () => {
     // Simple smoke test
     expect(true).toBe(true);
   });
-  
+
   test('storage limits should be correct', () => {
     const SYNC_QUOTA = 100 * 1024; // 100KB
     const LOCAL_QUOTA = 10 * 1024 * 1024; // 10MB
-    
+
     expect(SYNC_QUOTA).toBe(102400);
     expect(LOCAL_QUOTA).toBe(10485760);
   });
@@ -348,18 +351,14 @@ describe('Extension Configuration', () => {
 
 describe('Container Identifiers', () => {
   test('should recognize firefox container patterns', () => {
-    const validIds = [
-      'firefox-default',
-      'firefox-container-1',
-      'firefox-container-personal',
-    ];
-    
+    const validIds = ['firefox-default', 'firefox-container-1', 'firefox-container-personal'];
+
     const invalidIds = ['', 'chrome-default', null];
-    
+
     validIds.forEach(id => {
       expect(id).toMatch(/^firefox-/);
     });
-    
+
     invalidIds.forEach(id => {
       if (id) {
         expect(id).not.toMatch(/^firefox-/);
@@ -370,6 +369,7 @@ describe('Container Identifiers', () => {
 ```
 
 **Run tests locally to verify:**
+
 ```bash
 npm test
 ```
@@ -396,6 +396,7 @@ This will generate `coverage/lcov.info` that Codecov and DeepSource can read.
 ### Long-term Fixes (apply to repository):
 
 1. **Update `.coderabbit.yaml`**
+
    ```bash
    # Replace file with updated version above
    git add .coderabbit.yaml
@@ -408,6 +409,7 @@ This will generate `coverage/lcov.info` that Codecov and DeepSource can read.
    - Install for your repository
 
 3. **Update test-coverage workflow**
+
    ```bash
    # Replace .github/workflows/test-coverage.yml with updated version
    git add .github/workflows/test-coverage.yml
@@ -416,6 +418,7 @@ This will generate `coverage/lcov.info` that Codecov and DeepSource can read.
    ```
 
 4. **Create initial test file**
+
    ```bash
    mkdir -p tests
    # Create tests/example.test.js with content above
@@ -438,17 +441,19 @@ This will generate `coverage/lcov.info` that Codecov and DeepSource can read.
 **If you don't want to fight with CodeRabbit:**
 
 **Option 1: Let bot PRs skip CodeRabbit**
+
 - DeepSource PRs are usually safe (just formatting)
 - Focus CodeRabbit on human/Copilot PRs only
 - Manually review DeepSource changes before merging
 
 **Option 2: Disable CodeRabbit for formatting PRs**
+
 - Add label "skip-coderabbit" to DeepSource PRs
 - Update `.coderabbit.yaml`:
   ```yaml
   reviews:
     labels:
-      - "!skip-coderabbit"  # Don't review if this label present
+      - '!skip-coderabbit' # Don't review if this label present
   ```
 
 ---
