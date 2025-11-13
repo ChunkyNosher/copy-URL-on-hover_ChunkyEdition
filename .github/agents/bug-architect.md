@@ -32,42 +32,48 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.9+):**
+**Current Repository Architecture (v1.5.9.0+):**
 
-- **Modular Source** (v1.5.8.2+):
-  - **src/content.js** (~600 lines): Main entry point with enhanced logging, error handling, eager loading, and CSS animations (v1.5.8.9)
-  - **src/core/**: config.js, state.js, events.js, index.js (barrel file)
-  - **src/features/url-handlers/**: 11 categorized modules (104 handlers total)
-  - **src/utils/**: debug.js, dom.js, browser-api.js, index.js (barrel file)
-  - **dist/content.js**: Built bundle (~60-80KB, MUST NOT contain ES6 imports/exports)
+- **Modular Source** (v1.5.9.0 - FULLY MODULARIZED):
+  - **src/content.js** (~500 lines): Main entry point - pure orchestrator that imports and coordinates all features
+  - **src/core/**: config.js, state.js, events.js
+  - **src/features/**: All feature modules (EXPANDED in v1.5.9.0)
+    - **quick-tabs/**: index.js (QuickTabsManager), quick-tab-window.js (QuickTabWindow class), minimized-manager.js
+    - **notifications/**: index.js (NotificationManager with tooltip/toast)
+    - **url-handlers/**: 11 categorized modules (104 handlers total)
+  - **src/ui/**: components.js (reusable UI helpers), css/ directory
+  - **src/utils/**: debug.js, dom.js, browser-api.js
+  - **dist/content.js**: Built bundle (~70-90KB, MUST NOT contain ES6 imports/exports)
 - **Build System**: Rollup with validation checks
 - **background.js**: Tab lifecycle, webRequest modifications, storage sync, panel toggle
-- **state-manager.js**: Quick Tab state management
-- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.9):
+- **state-manager.js**: Quick Tab state management (legacy)
+- **Testing & CI/CD** (v1.5.8.7+, maintained in v1.5.9.0):
   - Jest with browser API mocks (tests/setup.js, tests/example.test.js)
   - GitHub Actions workflows for code quality, security, testing
   - ESLint (with jest environment), Prettier, CodeQL, web-ext validation
-  - DeepSource static analysis (fixed config v1.5.8.8)
-  - CodeRabbit AI review with bot PR support (enhanced v1.5.8.9)
-  - Improved Codecov integration (v1.5.8.9)
-  - Copilot instructions (NEW v1.5.8.8)
+  - DeepSource static analysis
+  - CodeRabbit AI review with bot PR support
+  - Codecov integration
+  - Copilot instructions
 - **manifest.json**: Manifest v2 (webRequestBlocking required)
 
 **Critical APIs - Debug These First:**
 
-1. **Content Script Panel Injection** - Panel visibility, position/size persistence, z-index conflicts (NEW in v1.5.8.1)
-2. **Pointer Events API** (setPointerCapture, pointercancel) - Drag/resize bugs for Quick Tabs AND panel (v1.5.7+)
-3. **Clipboard API** (navigator.clipboard.writeText) - Copy failures
-4. **Storage API** (browser.storage.sync/session/local) - Persistence bugs
+1. **Quick Tabs Feature Module** - UI rendering, EventBus listeners, window lifecycle (CRITICAL FIX in v1.5.9.0)
+2. **Notifications Feature Module** - Tooltip/toast display, CSS animations (NEW in v1.5.9.0)
+3. **Content Script Panel Injection** - Panel visibility, position/size persistence, z-index conflicts
+4. **Pointer Events API** (setPointerCapture, pointercancel) - Drag/resize bugs for Quick Tabs AND panel
+5. **Clipboard API** (navigator.clipboard.writeText) - Copy failures
+6. **Storage API** (browser.storage.sync/session/local) - Persistence bugs
    - browser.storage.sync: Quick Tab state (quick_tabs_state_v2), settings (quick_tab_settings)
    - browser.storage.session: Fast ephemeral Quick Tab state (quick_tabs_session) - Firefox 115+
-   - browser.storage.local: User config, large data, panel state (quick_tabs_panel_state) - NEW in v1.5.8.1
-5. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Communication failures, panel toggle command
-6. **webRequest API** (onHeadersReceived) - iframe loading bugs (requires Manifest v2 with webRequestBlocking)
-7. **BroadcastChannel API** - Real-time same-origin sync failures
-8. **Tabs API** (browser.tabs.\*) - Tab switching bugs
-9. **Keyboard Events** - Shortcut conflicts (Ctrl+Alt+Z for panel toggle)
-10. **DOM Manipulation** - State synchronization bugs, panel injection timing
+   - browser.storage.local: User config, large data, panel state (quick_tabs_panel_state)
+7. **Runtime Messaging** (browser.runtime.sendMessage/onMessage) - Communication failures, panel toggle command
+8. **webRequest API** (onHeadersReceived) - iframe loading bugs (requires Manifest v2 with webRequestBlocking)
+9. **BroadcastChannel API** - Real-time same-origin sync failures
+10. **Tabs API** (browser.tabs.\*) - Tab switching bugs
+11. **Keyboard Events** - Shortcut conflicts (Ctrl+Alt+Z for panel toggle)
+12. **DOM Manipulation** - State synchronization bugs, panel injection timing
 
 ## Bug-Architect Methodology
 

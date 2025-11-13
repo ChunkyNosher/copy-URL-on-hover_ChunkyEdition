@@ -1,11 +1,15 @@
 /**
  * Copy URL on Hover - Enhanced with Quick Tabs
- * Main Content Script Entry Point (Modular Architecture v1.5.8.8)
+ * Main Content Script Entry Point (Modular Architecture v1.5.9.0)
  *
  * This file serves as the main entry point and coordinates between modules.
  * URL handlers have been extracted to features/url-handlers/ for better maintainability.
  *
- * v1.5.8.8 Changes: Eager loading - all features initialize at once regardless of config.
+ * v1.5.9.0 Changes:
+ * - Restored Quick Tabs UI logic (fixes v1.5.8.9 bug)
+ * - Implemented modular Quick Tabs feature
+ * - Implemented modular Notifications feature
+ * - Follows modular-architecture-blueprint.md
  */
 
 // CRITICAL: Early detection marker - must execute first
@@ -47,23 +51,24 @@ import { StateManager } from './core/state.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: state.js');
 import { EventBus, Events } from './core/events.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: events.js');
-import { debug, enableDebug, disableDebug } from './utils/debug.js';
+import { debug, enableDebug } from './utils/debug.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: debug.js');
-import {
-  copyToClipboard,
-  getStorage,
-  setStorage,
-  sendMessageToBackground
-} from './utils/browser-api.js';
+import { copyToClipboard, sendMessageToBackground } from './utils/browser-api.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: browser-api.js');
-import { createElement } from './utils/dom.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: dom.js');
 
 // Import URL handlers
 import { URLHandlerRegistry } from './features/url-handlers/index.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: url-handlers/index.js');
 import { getLinkText } from './features/url-handlers/generic.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: url-handlers/generic.js');
+
+// Import Quick Tabs feature (v1.5.9.0 - CRITICAL FIX)
+import { initQuickTabs } from './features/quick-tabs/index.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: quick-tabs/index.js');
+
+// Import Notifications feature (v1.5.9.0)
+import { initNotifications } from './features/notifications/index.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: notifications/index.js');
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -77,6 +82,10 @@ const eventBus = new EventBus();
 console.log('[Copy-URL-on-Hover] EventBus initialized');
 const urlRegistry = new URLHandlerRegistry();
 console.log('[Copy-URL-on-Hover] URLHandlerRegistry initialized');
+
+// Feature managers (initialized after config is loaded)
+let quickTabsManager = null;
+let notificationManager = null;
 
 // Load configuration
 let CONFIG = { ...DEFAULT_CONFIG };
@@ -128,6 +137,25 @@ let CONFIG = { ...DEFAULT_CONFIG };
       throw stateErr; // State is critical, re-throw
     }
 
+    console.log('[Copy-URL-on-Hover] STEP: Initializing feature modules...');
+    // Initialize Quick Tabs feature (v1.5.9.0 - CRITICAL FIX)
+    try {
+      quickTabsManager = initQuickTabs(eventBus, Events);
+      console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized');
+    } catch (qtErr) {
+      console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:', qtErr);
+      // Don't throw - allow other features to work
+    }
+
+    // Initialize Notifications feature (v1.5.9.0)
+    try {
+      notificationManager = initNotifications(CONFIG, stateManager);
+      console.log('[Copy-URL-on-Hover] ✓ Notifications feature initialized');
+    } catch (notifErr) {
+      console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Notifications:', notifErr);
+      // Don't throw - allow other features to work
+    }
+
     debug('Extension initialized successfully');
 
     console.log('[Copy-URL-on-Hover] STEP: Starting main features...');
@@ -162,38 +190,9 @@ let CONFIG = { ...DEFAULT_CONFIG };
  * Initialize main features
  */
 async function initMainFeatures() {
-  // This function will be populated with the remaining content.js functionality
-  // For now, we'll load it from the legacy content file
   debug('Loading main features...');
 
-  // Add CSS animations for notifications
-  const styleElement = document.createElement('style');
-  styleElement.textContent = `
-    @keyframes slideInRight {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-    
-    @keyframes slideInLeft {
-      from { transform: translateX(-100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-    
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
-    }
-    
-    .cuo-anim-slide { animation: slideInRight 0.3s ease-out; }
-    .cuo-anim-fade { animation: fadeIn 0.3s ease-out; }
-    .cuo-anim-bounce { animation: bounce 0.5s ease-out; }
-  `;
-  document.head.appendChild(styleElement);
+  // Note: Notification styles now injected by notifications module (v1.5.9.0)
 
   // Track mouse position for Quick Tab placement
   document.addEventListener(
@@ -211,11 +210,8 @@ async function initMainFeatures() {
   // Set up keyboard shortcuts
   setupKeyboardShortcuts();
 
-  // Initialize Quick Tabs (always load, runtime checks handle enabled state)
-  await initQuickTabs();
-
-  // Initialize Panel Manager (always load, runtime checks handle enabled state)
-  await initPanelManager();
+  // Note: Quick Tabs now initialized in main initExtension (v1.5.9.0)
+  // Note: Panel Manager is separate feature - not reimplemented in modular architecture yet
 }
 
 /**
@@ -496,145 +492,17 @@ async function handleOpenInNewTab(url) {
 
 /**
  * Show notification to user
+ * v1.5.9.0 - Now delegates to notification manager
  */
 function showNotification(message, type = 'info') {
-  if (!CONFIG.showNotification) return;
-
-  // Simple notification implementation
-  // Full implementation will be in ui/notifications.js module
   debug('Notification:', message, type);
 
-  if (CONFIG.notifDisplayMode === 'tooltip') {
-    showTooltip(message);
+  // Delegate to notification manager
+  if (notificationManager) {
+    notificationManager.showNotification(message, type);
   } else {
-    showToast(message, type);
+    console.warn('[Content] Notification manager not initialized, skipping notification');
   }
-}
-
-/**
- * Show tooltip notification
- */
-function showTooltip(message) {
-  const existing = document.getElementById('copy-url-tooltip');
-  if (existing) existing.remove();
-
-  const mouseX = stateManager.get('lastMouseX') || 0;
-  const mouseY = stateManager.get('lastMouseY') || 0;
-
-  // Determine animation class
-  let animClass = 'cuo-anim-fade';
-  if (CONFIG.tooltipAnimation === 'bounce') {
-    animClass = 'cuo-anim-bounce';
-  }
-
-  const tooltip = createElement(
-    'div',
-    {
-      id: 'copy-url-tooltip',
-      className: animClass,
-      style: {
-        position: 'fixed',
-        left: `${mouseX + CONSTANTS.TOOLTIP_OFFSET_X}px`,
-        top: `${mouseY + CONSTANTS.TOOLTIP_OFFSET_Y}px`,
-        backgroundColor: CONFIG.tooltipColor,
-        color: 'white',
-        padding: '8px 12px',
-        borderRadius: '4px',
-        fontSize: '14px',
-        zIndex: '999999999',
-        pointerEvents: 'none',
-        opacity: '1'
-      }
-    },
-    message
-  );
-
-  document.body.appendChild(tooltip);
-
-  setTimeout(() => {
-    tooltip.style.opacity = '0';
-    tooltip.style.transition = 'opacity 0.2s';
-    setTimeout(() => tooltip.remove(), CONSTANTS.TOOLTIP_FADE_OUT_MS);
-  }, CONFIG.tooltipDuration);
-}
-
-/**
- * Show toast notification
- */
-function showToast(message, type) {
-  const existing = document.getElementById('copy-url-toast');
-  if (existing) existing.remove();
-
-  const positions = {
-    'top-left': { top: '20px', left: '20px' },
-    'top-right': { top: '20px', right: '20px' },
-    'bottom-left': { bottom: '20px', left: '20px' },
-    'bottom-right': { bottom: '20px', right: '20px' }
-  };
-
-  const pos = positions[CONFIG.notifPosition] || positions['bottom-right'];
-
-  // Determine animation class
-  let animClass = 'cuo-anim-fade'; // Default
-  if (CONFIG.notifAnimation === 'slide') {
-    animClass = 'cuo-anim-slide';
-  } else if (CONFIG.notifAnimation === 'bounce') {
-    animClass = 'cuo-anim-bounce';
-  }
-
-  // Ensure border width is a number
-  const borderWidth = parseInt(CONFIG.notifBorderWidth) || 1;
-
-  const toast = createElement(
-    'div',
-    {
-      id: 'copy-url-toast',
-      className: animClass,
-      style: {
-        position: 'fixed',
-        ...pos,
-        backgroundColor: CONFIG.notifColor,
-        color: 'white',
-        padding: '12px 20px',
-        borderRadius: '4px',
-        fontSize: '14px',
-        zIndex: '999999999',
-        border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-      }
-    },
-    message
-  );
-
-  document.body.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, CONFIG.notifDuration);
-}
-
-/**
- * Initialize Quick Tabs functionality
- * Note: Always initialized in v1.5.8.8+, runtime checks handle enabled state
- */
-async function initQuickTabs() {
-  debug('Initializing Quick Tabs (eager loading in v1.5.8.8)...');
-  // Quick Tabs implementation will be loaded from quick-tabs module
-  // Even if disabled via CONFIG, initialization happens to ensure all code is loaded
-  // Runtime checks within Quick Tabs features will respect the enabled state
-}
-
-/**
- * Initialize Panel Manager
- * Note: Always initialized in v1.5.8.8+, runtime checks handle enabled state
- */
-async function initPanelManager() {
-  debug('Initializing Panel Manager (eager loading in v1.5.8.8)...');
-  // Panel implementation will be loaded from panel module
-  // Even if disabled via CONFIG, initialization happens to ensure all code is loaded
-  // Runtime checks within Panel Manager features will respect the enabled state
 }
 
 // Export for testing and module access
@@ -644,6 +512,8 @@ if (typeof window !== 'undefined') {
     stateManager,
     eventBus,
     urlRegistry,
+    quickTabsManager,
+    notificationManager,
     CONFIG
   };
 }

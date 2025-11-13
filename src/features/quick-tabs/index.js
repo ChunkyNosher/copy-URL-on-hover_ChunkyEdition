@@ -1,0 +1,232 @@
+/**
+ * Quick Tabs Feature Module
+ * Main entrypoint for Quick Tabs functionality
+ *
+ * v1.5.9.0 - Restored missing Quick Tab UI logic
+ * Fixes issue identified in v1589-quick-tabs-root-cause.md
+ * Follows architecture from modular-architecture-blueprint.md
+ */
+
+import { createQuickTabWindow } from './quick-tab-window.js';
+import { MinimizedManager } from './minimized-manager.js';
+import { CONSTANTS } from '../../core/config.js';
+
+/**
+ * QuickTabsManager - Singleton manager for all Quick Tab instances
+ */
+class QuickTabsManager {
+  constructor() {
+    this.tabs = new Map(); // id -> QuickTabWindow instance
+    this.minimizedManager = new MinimizedManager();
+    this.currentZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+    this.eventBus = null;
+    this.Events = null;
+  }
+
+  /**
+   * Initialize the Quick Tabs manager
+   */
+  init(eventBus, Events) {
+    this.eventBus = eventBus;
+    this.Events = Events;
+
+    console.log('[QuickTabsManager] Initializing...');
+
+    // Listen for Quick Tab creation events from EventBus
+    this.eventBus.on(Events.QUICK_TAB_REQUESTED, options => {
+      console.log('[QuickTabsManager] QUICK_TAB_REQUESTED event received:', options);
+      this.createQuickTab(options);
+    });
+
+    // Listen for background script messages
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime.onMessage.addListener((message, sender) => {
+        // Validate sender
+        if (!sender.id || sender.id !== browser.runtime.id) {
+          console.error('[QuickTabsManager] Message from unknown sender:', sender);
+          return;
+        }
+
+        if (message.action === 'CREATE_QUICK_TAB_FROM_BACKGROUND') {
+          console.log('[QuickTabsManager] Background message received:', message);
+          this.createQuickTab(message);
+        }
+      });
+    }
+
+    console.log('[QuickTabsManager] Initialized successfully');
+  }
+
+  /**
+   * Create a new Quick Tab window
+   */
+  createQuickTab(options) {
+    console.log('[QuickTabsManager] Creating Quick Tab with options:', options);
+
+    // Generate ID if not provided
+    const id = options.id || this.generateId();
+
+    // Check if already exists
+    if (this.tabs.has(id)) {
+      console.warn('[QuickTabsManager] Quick Tab already exists:', id);
+      const existingTab = this.tabs.get(id);
+      existingTab.updateZIndex(++this.currentZIndex);
+      return existingTab;
+    }
+
+    // Increment z-index for new tab
+    this.currentZIndex++;
+
+    // Create Quick Tab window with callbacks
+    const tabWindow = createQuickTabWindow({
+      id,
+      url: options.url,
+      left: options.left || 100,
+      top: options.top || 100,
+      width: options.width || 800,
+      height: options.height || 600,
+      title: options.title || 'Quick Tab',
+      cookieStoreId: options.cookieStoreId || 'firefox-default',
+      minimized: options.minimized || false,
+      zIndex: this.currentZIndex,
+      onDestroy: tabId => this.handleDestroy(tabId),
+      onMinimize: tabId => this.handleMinimize(tabId),
+      onFocus: tabId => this.handleFocus(tabId)
+    });
+
+    // Store the tab
+    this.tabs.set(id, tabWindow);
+
+    // Emit creation event
+    if (this.eventBus && this.Events) {
+      this.eventBus.emit(this.Events.QUICK_TAB_CREATED, {
+        id,
+        url: options.url
+      });
+    }
+
+    console.log('[QuickTabsManager] Quick Tab created successfully:', id);
+    return tabWindow;
+  }
+
+  /**
+   * Handle Quick Tab destruction
+   */
+  handleDestroy(id) {
+    console.log('[QuickTabsManager] Handling destroy for:', id);
+    this.tabs.delete(id);
+    this.minimizedManager.remove(id);
+
+    // Emit destruction event
+    if (this.eventBus && this.Events) {
+      this.eventBus.emit(this.Events.QUICK_TAB_CLOSED, { id });
+    }
+
+    // Reset z-index if all tabs are closed
+    if (this.tabs.size === 0) {
+      this.currentZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+      console.log('[QuickTabsManager] All tabs closed, reset z-index');
+    }
+  }
+
+  /**
+   * Handle Quick Tab minimize
+   */
+  handleMinimize(id) {
+    console.log('[QuickTabsManager] Handling minimize for:', id);
+    const tabWindow = this.tabs.get(id);
+    if (tabWindow) {
+      this.minimizedManager.add(id, tabWindow);
+
+      // Emit minimize event
+      if (this.eventBus && this.Events) {
+        this.eventBus.emit(this.Events.QUICK_TAB_MINIMIZED, { id });
+      }
+    }
+  }
+
+  /**
+   * Handle Quick Tab focus (bring to front)
+   */
+  handleFocus(id) {
+    console.log('[QuickTabsManager] Bringing to front:', id);
+    const tabWindow = this.tabs.get(id);
+    if (tabWindow) {
+      this.currentZIndex++;
+      tabWindow.updateZIndex(this.currentZIndex);
+
+      // Emit focus event
+      if (this.eventBus && this.Events) {
+        this.eventBus.emit(this.Events.QUICK_TAB_FOCUSED, { id });
+      }
+    }
+  }
+
+  /**
+   * Restore a minimized Quick Tab
+   */
+  restoreQuickTab(id) {
+    console.log('[QuickTabsManager] Restoring Quick Tab:', id);
+    return this.minimizedManager.restore(id);
+  }
+
+  /**
+   * Get a Quick Tab by ID
+   */
+  getQuickTab(id) {
+    return this.tabs.get(id);
+  }
+
+  /**
+   * Get all Quick Tabs
+   */
+  getAllQuickTabs() {
+    return Array.from(this.tabs.values());
+  }
+
+  /**
+   * Get all minimized Quick Tabs
+   */
+  getMinimizedQuickTabs() {
+    return this.minimizedManager.getAll();
+  }
+
+  /**
+   * Close all Quick Tabs
+   */
+  closeAll() {
+    console.log('[QuickTabsManager] Closing all Quick Tabs');
+    for (const tabWindow of this.tabs.values()) {
+      tabWindow.destroy();
+    }
+    this.tabs.clear();
+    this.minimizedManager.clear();
+    this.currentZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+  }
+
+  /**
+   * Generate unique Quick Tab ID
+   */
+  generateId() {
+    return `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+
+// Create singleton instance
+const quickTabsManager = new QuickTabsManager();
+
+/**
+ * Initialize Quick Tabs feature
+ * Called from content.js during initialization
+ */
+export function initQuickTabs(eventBus, Events) {
+  console.log('[QuickTabs] Initializing Quick Tabs feature module...');
+  quickTabsManager.init(eventBus, Events);
+  console.log('[QuickTabs] Quick Tabs feature module initialized');
+  return quickTabsManager;
+}
+
+/**
+ * Export manager instance for direct access if needed
+ */
+export { quickTabsManager };
