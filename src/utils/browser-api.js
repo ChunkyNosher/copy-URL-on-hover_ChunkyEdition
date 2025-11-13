@@ -12,7 +12,7 @@ export async function sendMessageToBackground(message) {
   try {
     return await browser.runtime.sendMessage(message);
   } catch (err) {
-    console.error('[Browser API] Failed to send message to background:', err);
+    console.error("[Browser API] Failed to send message to background:", err);
     throw err;
   }
 }
@@ -23,7 +23,7 @@ export async function sendMessageToBackground(message) {
  * @param {string} storageType - Storage type (local, sync, or session)
  * @returns {Promise<object>} Storage data
  */
-export async function getStorage(keys, storageType = 'local') {
+export async function getStorage(keys, storageType = "local") {
   try {
     const storage = browser.storage[storageType];
     if (!storage) {
@@ -31,7 +31,7 @@ export async function getStorage(keys, storageType = 'local') {
     }
     return await storage.get(keys);
   } catch (err) {
-    console.error('[Browser API] Failed to get storage:', err);
+    console.error("[Browser API] Failed to get storage:", err);
     throw err;
   }
 }
@@ -42,7 +42,7 @@ export async function getStorage(keys, storageType = 'local') {
  * @param {string} storageType - Storage type (local, sync, or session)
  * @returns {Promise<void>}
  */
-export async function setStorage(data, storageType = 'local') {
+export async function setStorage(data, storageType = "local") {
   try {
     const storage = browser.storage[storageType];
     if (!storage) {
@@ -50,7 +50,7 @@ export async function setStorage(data, storageType = 'local') {
     }
     await storage.set(data);
   } catch (err) {
-    console.error('[Browser API] Failed to set storage:', err);
+    console.error("[Browser API] Failed to set storage:", err);
     throw err;
   }
 }
@@ -61,7 +61,7 @@ export async function setStorage(data, storageType = 'local') {
  * @param {string} storageType - Storage type (local, sync, or session)
  * @returns {Promise<void>}
  */
-export async function removeStorage(keys, storageType = 'local') {
+export async function removeStorage(keys, storageType = "local") {
   try {
     const storage = browser.storage[storageType];
     if (!storage) {
@@ -69,7 +69,7 @@ export async function removeStorage(keys, storageType = 'local') {
     }
     await storage.remove(keys);
   } catch (err) {
-    console.error('[Browser API] Failed to remove storage:', err);
+    console.error("[Browser API] Failed to remove storage:", err);
     throw err;
   }
 }
@@ -79,7 +79,7 @@ export async function removeStorage(keys, storageType = 'local') {
  * @param {string} storageType - Storage type (local, sync, or session)
  * @returns {Promise<void>}
  */
-export async function clearStorage(storageType = 'local') {
+export async function clearStorage(storageType = "local") {
   try {
     const storage = browser.storage[storageType];
     if (!storage) {
@@ -87,7 +87,7 @@ export async function clearStorage(storageType = 'local') {
     }
     await storage.clear();
   } catch (err) {
-    console.error('[Browser API] Failed to clear storage:', err);
+    console.error("[Browser API] Failed to clear storage:", err);
     throw err;
   }
 }
@@ -102,21 +102,21 @@ export async function copyToClipboard(text) {
     await navigator.clipboard.writeText(text);
     return true;
   } catch (err) {
-    console.error('[Browser API] Failed to copy to clipboard:', err);
-    
+    console.error("[Browser API] Failed to copy to clipboard:", err);
+
     // Fallback to execCommand
     try {
-      const textarea = document.createElement('textarea');
+      const textarea = document.createElement("textarea");
       textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
       document.body.appendChild(textarea);
       textarea.select();
-      const success = document.execCommand('copy');
+      const success = document.execCommand("copy");
       document.body.removeChild(textarea);
       return success;
     } catch (fallbackErr) {
-      console.error('[Browser API] Fallback copy also failed:', fallbackErr);
+      console.error("[Browser API] Fallback copy also failed:", fallbackErr);
       return false;
     }
   }
@@ -128,10 +128,13 @@ export async function copyToClipboard(text) {
  */
 export async function getCurrentTab() {
   try {
-    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const tabs = await browser.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
     return tabs[0] || null;
   } catch (err) {
-    console.error('[Browser API] Failed to get current tab:', err);
+    console.error("[Browser API] Failed to get current tab:", err);
     return null;
   }
 }
@@ -145,7 +148,7 @@ export async function createTab(options) {
   try {
     return await browser.tabs.create(options);
   } catch (err) {
-    console.error('[Browser API] Failed to create tab:', err);
+    console.error("[Browser API] Failed to create tab:", err);
     throw err;
   }
 }
@@ -158,11 +161,13 @@ export async function createTab(options) {
 export async function getContainer(containerId) {
   try {
     if (browser.contextualIdentities && browser.contextualIdentities.get) {
-      return await browser.contextualIdentities.get(`firefox-container-${containerId}`);
+      return await browser.contextualIdentities.get(
+        `firefox-container-${containerId}`,
+      );
     }
     return null;
   } catch (err) {
-    console.error('[Browser API] Failed to get container:', err);
+    console.error("[Browser API] Failed to get container:", err);
     return null;
   }
 }
@@ -173,15 +178,15 @@ export async function getContainer(containerId) {
  * @returns {boolean} True if API is supported
  */
 export function isApiSupported(apiPath) {
-  const parts = apiPath.split('.');
+  const parts = apiPath.split(".");
   let current = browser;
-  
+
   for (const part of parts) {
     if (!current || !current[part]) {
       return false;
     }
     current = current[part];
   }
-  
+
   return true;
 }

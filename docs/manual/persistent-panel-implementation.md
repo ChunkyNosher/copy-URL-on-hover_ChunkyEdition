@@ -104,10 +104,12 @@ This document provides a complete implementation guide for **replacing the Firef
 ### Strategy: Content Script Injection (Persistent Panel)
 
 Instead of using:
+
 - ❌ `sidebar_action` (doesn't work in Zen Browser)
 - ❌ `browser_action` popup (closes when clicked outside)
 
 We use:
+
 - ✅ **Content script** that injects a **floating div** into the page
 - ✅ Panel is **persistent** (doesn't auto-close)
 - ✅ Panel **survives page navigation** (re-injected on each page load)
@@ -115,13 +117,13 @@ We use:
 
 ### Key Differences from Quick Tabs
 
-| Feature | Quick Tabs | Manager Panel |
-|---------|-----------|---------------|
-| Z-Index | 1000000+ | 999999999 (always on top) |
-| Drag Handle | Title bar | Entire header bar |
-| Resize | All edges/corners | All edges/corners |
-| Persistence | browser.storage.sync | browser.storage.local (panel state) |
-| Toggle | N/A | Keyboard shortcut + click outside to hide |
+| Feature     | Quick Tabs           | Manager Panel                             |
+| ----------- | -------------------- | ----------------------------------------- |
+| Z-Index     | 1000000+             | 999999999 (always on top)                 |
+| Drag Handle | Title bar            | Entire header bar                         |
+| Resize      | All edges/corners    | All edges/corners                         |
+| Persistence | browser.storage.sync | browser.storage.local (panel state)       |
+| Toggle      | N/A                  | Keyboard shortcut + click outside to hide |
 
 ---
 
@@ -167,6 +169,7 @@ We use:
 #### Step 1.1: Update `manifest.json`
 
 **Current:**
+
 ```json
 {
   "sidebar_action": {
@@ -175,7 +178,7 @@ We use:
     "default_icon": "icons/icon.png",
     "open_at_install": false
   },
-  
+
   "commands": {
     "toggle-minimized-manager": {
       "suggested_key": {
@@ -189,6 +192,7 @@ We use:
 ```
 
 **NEW (v1.5.9):**
+
 ```json
 {
   "commands": {
@@ -213,37 +217,50 @@ We use:
 // ==================== QUICK TABS MANAGER PANEL TOGGLE ====================
 // Listen for keyboard command to toggle floating panel
 browser.commands.onCommand.addListener(async (command) => {
-  if (command === 'toggle-quick-tabs-manager') {
+  if (command === "toggle-quick-tabs-manager") {
     // Get active tab in current window
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      
+      const tabs = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+
       if (tabs.length === 0) {
-        console.error('[QuickTabsManager] No active tab found');
+        console.error("[QuickTabsManager] No active tab found");
         return;
       }
-      
+
       const activeTab = tabs[0];
-      
+
       // Send message to content script to toggle panel
-      browser.tabs.sendMessage(activeTab.id, {
-        action: 'TOGGLE_QUICK_TABS_PANEL'
-      }).catch(err => {
-        console.error('[QuickTabsManager] Error sending toggle message:', err);
-        // Content script may not be loaded yet - inject it
-        browser.tabs.executeScript(activeTab.id, {
-          file: 'content.js'
-        }).then(() => {
-          // Try again after injection
-          browser.tabs.sendMessage(activeTab.id, {
-            action: 'TOGGLE_QUICK_TABS_PANEL'
-          });
+      browser.tabs
+        .sendMessage(activeTab.id, {
+          action: "TOGGLE_QUICK_TABS_PANEL",
+        })
+        .catch((err) => {
+          console.error(
+            "[QuickTabsManager] Error sending toggle message:",
+            err,
+          );
+          // Content script may not be loaded yet - inject it
+          browser.tabs
+            .executeScript(activeTab.id, {
+              file: "content.js",
+            })
+            .then(() => {
+              // Try again after injection
+              browser.tabs.sendMessage(activeTab.id, {
+                action: "TOGGLE_QUICK_TABS_PANEL",
+              });
+            });
         });
-      });
-      
-      console.log('[QuickTabsManager] Toggle command sent to tab', activeTab.id);
+
+      console.log(
+        "[QuickTabsManager] Toggle command sent to tab",
+        activeTab.id,
+      );
     } catch (err) {
-      console.error('[QuickTabsManager] Error handling toggle command:', err);
+      console.error("[QuickTabsManager] Error handling toggle command:", err);
     }
   }
 });
@@ -634,7 +651,7 @@ let panelState = {
   top: 100,
   width: 350,
   height: 500,
-  isOpen: false
+  isOpen: false,
 };
 
 /**
@@ -643,61 +660,61 @@ let panelState = {
 function createQuickTabsPanel() {
   // Check if panel already exists
   if (quickTabsPanel) {
-    debug('[Panel] Panel already exists');
+    debug("[Panel] Panel already exists");
     return;
   }
-  
+
   // Inject CSS
-  const style = document.createElement('style');
-  style.id = 'quick-tabs-manager-panel-styles';
+  const style = document.createElement("style");
+  style.id = "quick-tabs-manager-panel-styles";
   style.textContent = PANEL_CSS;
   document.head.appendChild(style);
-  
+
   // Create panel container
-  const container = document.createElement('div');
+  const container = document.createElement("div");
   container.innerHTML = PANEL_HTML;
   const panel = container.firstElementChild;
-  
+
   // Load saved panel state from storage
-  browser.storage.local.get('quick_tabs_panel_state').then(result => {
+  browser.storage.local.get("quick_tabs_panel_state").then((result) => {
     if (result && result.quick_tabs_panel_state) {
       panelState = { ...panelState, ...result.quick_tabs_panel_state };
-      
+
       // Apply saved position and size
-      panel.style.left = panelState.left + 'px';
-      panel.style.top = panelState.top + 'px';
-      panel.style.width = panelState.width + 'px';
-      panel.style.height = panelState.height + 'px';
-      
+      panel.style.left = panelState.left + "px";
+      panel.style.top = panelState.top + "px";
+      panel.style.width = panelState.width + "px";
+      panel.style.height = panelState.height + "px";
+
       // Show panel if it was open before
       if (panelState.isOpen) {
-        panel.style.display = 'flex';
+        panel.style.display = "flex";
         isPanelOpen = true;
       }
     }
   });
-  
+
   // Append to body
   document.documentElement.appendChild(panel);
   quickTabsPanel = panel;
-  
+
   // Make draggable
-  const header = panel.querySelector('.panel-header');
+  const header = panel.querySelector(".panel-header");
   makePanelDraggable(panel, header);
-  
+
   // Make resizable
   makePanelResizable(panel);
-  
+
   // Setup panel event listeners
   setupPanelEventListeners(panel);
-  
+
   // Initialize panel content
   updatePanelContent();
-  
+
   // Auto-refresh every 2 seconds
   setInterval(updatePanelContent, 2000);
-  
-  debug('[Panel] Quick Tabs Manager panel created and injected');
+
+  debug("[Panel] Quick Tabs Manager panel created and injected");
 }
 
 /**
@@ -707,29 +724,29 @@ function toggleQuickTabsPanel() {
   if (!quickTabsPanel) {
     createQuickTabsPanel();
   }
-  
+
   if (isPanelOpen) {
     // Hide panel
-    quickTabsPanel.style.display = 'none';
+    quickTabsPanel.style.display = "none";
     isPanelOpen = false;
     panelState.isOpen = false;
   } else {
     // Show panel
-    quickTabsPanel.style.display = 'flex';
+    quickTabsPanel.style.display = "flex";
     isPanelOpen = true;
     panelState.isOpen = true;
-    
+
     // Bring to front
-    quickTabsPanel.style.zIndex = '999999999';
-    
+    quickTabsPanel.style.zIndex = "999999999";
+
     // Update content immediately
     updatePanelContent();
   }
-  
+
   // Save state
   savePanelState();
-  
-  debug(`[Panel] Panel toggled: ${isPanelOpen ? 'OPEN' : 'CLOSED'}`);
+
+  debug(`[Panel] Panel toggled: ${isPanelOpen ? "OPEN" : "CLOSED"}`);
 }
 
 /**
@@ -737,20 +754,22 @@ function toggleQuickTabsPanel() {
  */
 function savePanelState() {
   if (!quickTabsPanel) return;
-  
+
   const rect = quickTabsPanel.getBoundingClientRect();
-  
+
   panelState = {
     left: Math.round(rect.left),
     top: Math.round(rect.top),
     width: Math.round(rect.width),
     height: Math.round(rect.height),
-    isOpen: isPanelOpen
+    isOpen: isPanelOpen,
   };
-  
-  browser.storage.local.set({ quick_tabs_panel_state: panelState }).catch(err => {
-    debug('[Panel] Error saving panel state:', err);
-  });
+
+  browser.storage.local
+    .set({ quick_tabs_panel_state: panelState })
+    .catch((err) => {
+      debug("[Panel] Error saving panel state:", err);
+    });
 }
 // ==================== END QUICK TABS MANAGER PANEL INJECTION ====================
 ```
@@ -772,68 +791,69 @@ function savePanelState() {
  */
 function makePanelDraggable(panel, handle) {
   let isDragging = false;
-  let offsetX = 0, offsetY = 0;
+  let offsetX = 0,
+    offsetY = 0;
   let currentPointerId = null;
-  
+
   const handlePointerDown = (e) => {
     if (e.button !== 0) return; // Only left click
-    if (e.target.classList.contains('panel-btn')) return; // Ignore buttons
-    
+    if (e.target.classList.contains("panel-btn")) return; // Ignore buttons
+
     isDragging = true;
     currentPointerId = e.pointerId;
-    
+
     // Capture pointer
     handle.setPointerCapture(e.pointerId);
-    
+
     // Calculate offset
     const rect = panel.getBoundingClientRect();
     offsetX = e.clientX - rect.left;
     offsetY = e.clientY - rect.top;
-    
-    handle.style.cursor = 'grabbing';
+
+    handle.style.cursor = "grabbing";
     e.preventDefault();
   };
-  
+
   const handlePointerMove = (e) => {
     if (!isDragging || e.pointerId !== currentPointerId) return;
-    
+
     // Calculate new position
     const newLeft = e.clientX - offsetX;
     const newTop = e.clientY - offsetY;
-    
+
     // Apply position
-    panel.style.left = newLeft + 'px';
-    panel.style.top = newTop + 'px';
-    
+    panel.style.left = newLeft + "px";
+    panel.style.top = newTop + "px";
+
     e.preventDefault();
   };
-  
+
   const handlePointerUp = (e) => {
     if (!isDragging || e.pointerId !== currentPointerId) return;
-    
+
     isDragging = false;
     handle.releasePointerCapture(e.pointerId);
-    handle.style.cursor = 'grab';
-    
+    handle.style.cursor = "grab";
+
     // Save final position
     savePanelState();
   };
-  
+
   const handlePointerCancel = (e) => {
     if (!isDragging) return;
-    
+
     isDragging = false;
-    handle.style.cursor = 'grab';
-    
+    handle.style.cursor = "grab";
+
     // Save position
     savePanelState();
   };
-  
+
   // Attach listeners
-  handle.addEventListener('pointerdown', handlePointerDown);
-  handle.addEventListener('pointermove', handlePointerMove);
-  handle.addEventListener('pointerup', handlePointerUp);
-  handle.addEventListener('pointercancel', handlePointerCancel);
+  handle.addEventListener("pointerdown", handlePointerDown);
+  handle.addEventListener("pointermove", handlePointerMove);
+  handle.addEventListener("pointerup", handlePointerUp);
+  handle.addEventListener("pointercancel", handlePointerCancel);
 }
 // ==================== END PANEL DRAG IMPLEMENTATION ====================
 ```
@@ -852,45 +872,93 @@ function makePanelResizable(panel) {
   const minWidth = 250;
   const minHeight = 300;
   const handleSize = 10;
-  
+
   // Define resize handles
   const handles = {
-    'n': { cursor: 'n-resize', top: 0, left: handleSize, right: handleSize, height: handleSize },
-    's': { cursor: 's-resize', bottom: 0, left: handleSize, right: handleSize, height: handleSize },
-    'e': { cursor: 'e-resize', right: 0, top: handleSize, bottom: handleSize, width: handleSize },
-    'w': { cursor: 'w-resize', left: 0, top: handleSize, bottom: handleSize, width: handleSize },
-    'ne': { cursor: 'ne-resize', top: 0, right: 0, width: handleSize, height: handleSize },
-    'nw': { cursor: 'nw-resize', top: 0, left: 0, width: handleSize, height: handleSize },
-    'se': { cursor: 'se-resize', bottom: 0, right: 0, width: handleSize, height: handleSize },
-    'sw': { cursor: 'sw-resize', bottom: 0, left: 0, width: handleSize, height: handleSize }
+    n: {
+      cursor: "n-resize",
+      top: 0,
+      left: handleSize,
+      right: handleSize,
+      height: handleSize,
+    },
+    s: {
+      cursor: "s-resize",
+      bottom: 0,
+      left: handleSize,
+      right: handleSize,
+      height: handleSize,
+    },
+    e: {
+      cursor: "e-resize",
+      right: 0,
+      top: handleSize,
+      bottom: handleSize,
+      width: handleSize,
+    },
+    w: {
+      cursor: "w-resize",
+      left: 0,
+      top: handleSize,
+      bottom: handleSize,
+      width: handleSize,
+    },
+    ne: {
+      cursor: "ne-resize",
+      top: 0,
+      right: 0,
+      width: handleSize,
+      height: handleSize,
+    },
+    nw: {
+      cursor: "nw-resize",
+      top: 0,
+      left: 0,
+      width: handleSize,
+      height: handleSize,
+    },
+    se: {
+      cursor: "se-resize",
+      bottom: 0,
+      right: 0,
+      width: handleSize,
+      height: handleSize,
+    },
+    sw: {
+      cursor: "sw-resize",
+      bottom: 0,
+      left: 0,
+      width: handleSize,
+      height: handleSize,
+    },
   };
-  
+
   Object.entries(handles).forEach(([direction, style]) => {
-    const handle = document.createElement('div');
+    const handle = document.createElement("div");
     handle.className = `panel-resize-handle ${direction}`;
     handle.style.cssText = `
       position: absolute;
-      ${style.top !== undefined ? `top: ${style.top}px;` : ''}
-      ${style.bottom !== undefined ? `bottom: ${style.bottom}px;` : ''}
-      ${style.left !== undefined ? `left: ${style.left}px;` : ''}
-      ${style.right !== undefined ? `right: ${style.right}px;` : ''}
-      ${style.width ? `width: ${style.width}px;` : ''}
-      ${style.height ? `height: ${style.height}px;` : ''}
+      ${style.top !== undefined ? `top: ${style.top}px;` : ""}
+      ${style.bottom !== undefined ? `bottom: ${style.bottom}px;` : ""}
+      ${style.left !== undefined ? `left: ${style.left}px;` : ""}
+      ${style.right !== undefined ? `right: ${style.right}px;` : ""}
+      ${style.width ? `width: ${style.width}px;` : ""}
+      ${style.height ? `height: ${style.height}px;` : ""}
       cursor: ${style.cursor};
       z-index: 10;
     `;
-    
+
     let isResizing = false;
     let currentPointerId = null;
     let startX, startY, startWidth, startHeight, startLeft, startTop;
-    
+
     const handlePointerDown = (e) => {
       if (e.button !== 0) return;
-      
+
       isResizing = true;
       currentPointerId = e.pointerId;
       handle.setPointerCapture(e.pointerId);
-      
+
       startX = e.clientX;
       startY = e.clientY;
       const rect = panel.getBoundingClientRect();
@@ -898,74 +966,74 @@ function makePanelResizable(panel) {
       startHeight = rect.height;
       startLeft = rect.left;
       startTop = rect.top;
-      
+
       e.preventDefault();
       e.stopPropagation();
     };
-    
+
     const handlePointerMove = (e) => {
       if (!isResizing || e.pointerId !== currentPointerId) return;
-      
+
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      
+
       let newWidth = startWidth;
       let newHeight = startHeight;
       let newLeft = startLeft;
       let newTop = startTop;
-      
+
       // Calculate new dimensions based on direction
-      if (direction.includes('e')) {
+      if (direction.includes("e")) {
         newWidth = Math.max(minWidth, startWidth + dx);
       }
-      if (direction.includes('w')) {
+      if (direction.includes("w")) {
         const maxDx = startWidth - minWidth;
         const constrainedDx = Math.min(dx, maxDx);
         newWidth = startWidth - constrainedDx;
         newLeft = startLeft + constrainedDx;
       }
-      if (direction.includes('s')) {
+      if (direction.includes("s")) {
         newHeight = Math.max(minHeight, startHeight + dy);
       }
-      if (direction.includes('n')) {
+      if (direction.includes("n")) {
         const maxDy = startHeight - minHeight;
         const constrainedDy = Math.min(dy, maxDy);
         newHeight = startHeight - constrainedDy;
         newTop = startTop + constrainedDy;
       }
-      
+
       // Apply new dimensions
-      panel.style.width = newWidth + 'px';
-      panel.style.height = newHeight + 'px';
-      panel.style.left = newLeft + 'px';
-      panel.style.top = newTop + 'px';
-      
+      panel.style.width = newWidth + "px";
+      panel.style.height = newHeight + "px";
+      panel.style.left = newLeft + "px";
+      panel.style.top = newTop + "px";
+
       e.preventDefault();
     };
-    
+
     const handlePointerUp = (e) => {
       if (!isResizing || e.pointerId !== currentPointerId) return;
-      
+
       isResizing = false;
       handle.releasePointerCapture(e.pointerId);
-      
+
       // Save final size/position
       savePanelState();
     };
-    
+
     const handlePointerCancel = (e) => {
       if (!isResizing) return;
-      
+
       isResizing = false;
       savePanelState();
     };
-    
+
     // Attach listeners
-    handle.addEventListener('pointerdown', handlePointerDown);
-    handle.addEventListener('pointermove', handlePointerMove);
-    handle.addEventListener('pointerup', handlePointerUp);
-    handle.addEventListener('pointercancel', handlePointerCancel);
-    
+    handle.addEventListener("pointerdown", handlePointerDown);
+    handle.addEventListener("pointermove", handlePointerMove);
+    handle.addEventListener("pointerup", handlePointerUp);
+    handle.addEventListener("pointercancel", handlePointerCancel);
+
     panel.appendChild(handle);
   });
 }
@@ -988,56 +1056,56 @@ function makePanelResizable(panel) {
  */
 function setupPanelEventListeners(panel) {
   // Close button
-  const closeBtn = panel.querySelector('.panel-close');
-  closeBtn.addEventListener('click', (e) => {
+  const closeBtn = panel.querySelector(".panel-close");
+  closeBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleQuickTabsPanel(); // Close panel
   });
-  
+
   // Minimize button (same as close for now)
-  const minimizeBtn = panel.querySelector('.panel-minimize');
-  minimizeBtn.addEventListener('click', (e) => {
+  const minimizeBtn = panel.querySelector(".panel-minimize");
+  minimizeBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleQuickTabsPanel(); // Hide panel
   });
-  
+
   // Close Minimized button
-  const closeMinimizedBtn = panel.querySelector('#panel-closeMinimized');
-  closeMinimizedBtn.addEventListener('click', async (e) => {
+  const closeMinimizedBtn = panel.querySelector("#panel-closeMinimized");
+  closeMinimizedBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
     await closeMinimizedTabsFromPanel();
   });
-  
+
   // Close All button
-  const closeAllBtn = panel.querySelector('#panel-closeAll');
-  closeAllBtn.addEventListener('click', async (e) => {
+  const closeAllBtn = panel.querySelector("#panel-closeAll");
+  closeAllBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
     await closeAllTabsFromPanel();
   });
-  
+
   // Delegated listener for Quick Tab item actions
-  const containersList = panel.querySelector('#panel-containersList');
-  containersList.addEventListener('click', async (e) => {
-    const button = e.target.closest('button[data-action]');
+  const containersList = panel.querySelector("#panel-containersList");
+  containersList.addEventListener("click", async (e) => {
+    const button = e.target.closest("button[data-action]");
     if (!button) return;
-    
+
     e.stopPropagation();
-    
+
     const action = button.dataset.action;
     const quickTabId = button.dataset.quickTabId;
     const tabId = button.dataset.tabId;
-    
+
     switch (action) {
-      case 'goToTab':
+      case "goToTab":
         await browser.tabs.update(parseInt(tabId), { active: true });
         break;
-      case 'minimize':
+      case "minimize":
         await minimizeQuickTabFromPanel(quickTabId);
         break;
-      case 'restore':
+      case "restore":
         await restoreQuickTabFromPanel(quickTabId);
         break;
-      case 'close':
+      case "close":
         await closeQuickTabFromPanel(quickTabId);
         break;
     }
@@ -1049,30 +1117,32 @@ function setupPanelEventListeners(panel) {
  */
 async function closeMinimizedTabsFromPanel() {
   try {
-    const result = await browser.storage.sync.get('quick_tabs_state_v2');
+    const result = await browser.storage.sync.get("quick_tabs_state_v2");
     if (!result || !result.quick_tabs_state_v2) return;
-    
+
     const state = result.quick_tabs_state_v2;
     let hasChanges = false;
-    
-    Object.keys(state).forEach(cookieStoreId => {
+
+    Object.keys(state).forEach((cookieStoreId) => {
       if (state[cookieStoreId] && state[cookieStoreId].tabs) {
         const originalLength = state[cookieStoreId].tabs.length;
-        state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !t.minimized);
-        
+        state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(
+          (t) => !t.minimized,
+        );
+
         if (state[cookieStoreId].tabs.length !== originalLength) {
           hasChanges = true;
           state[cookieStoreId].timestamp = Date.now();
         }
       }
     });
-    
+
     if (hasChanges) {
       await browser.storage.sync.set({ quick_tabs_state_v2: state });
-      debug('[Panel] Closed all minimized Quick Tabs');
+      debug("[Panel] Closed all minimized Quick Tabs");
     }
   } catch (err) {
-    console.error('[Panel] Error closing minimized tabs:', err);
+    console.error("[Panel] Error closing minimized tabs:", err);
   }
 }
 
@@ -1081,19 +1151,21 @@ async function closeMinimizedTabsFromPanel() {
  */
 async function closeAllTabsFromPanel() {
   try {
-    await browser.storage.sync.remove('quick_tabs_state_v2');
-    
+    await browser.storage.sync.remove("quick_tabs_state_v2");
+
     // Notify all tabs
     const tabs = await browser.tabs.query({});
-    tabs.forEach(tab => {
-      browser.tabs.sendMessage(tab.id, {
-        action: 'CLEAR_ALL_QUICK_TABS'
-      }).catch(() => {});
+    tabs.forEach((tab) => {
+      browser.tabs
+        .sendMessage(tab.id, {
+          action: "CLEAR_ALL_QUICK_TABS",
+        })
+        .catch(() => {});
     });
-    
-    debug('[Panel] Closed all Quick Tabs');
+
+    debug("[Panel] Closed all Quick Tabs");
   } catch (err) {
-    console.error('[Panel] Error closing all tabs:', err);
+    console.error("[Panel] Error closing all tabs:", err);
   }
 }
 
@@ -1101,13 +1173,15 @@ async function closeAllTabsFromPanel() {
  * Minimize Quick Tab from panel
  */
 async function minimizeQuickTabFromPanel(quickTabId) {
-  const container = quickTabWindows.find(w => w.dataset.quickTabId === quickTabId);
+  const container = quickTabWindows.find(
+    (w) => w.dataset.quickTabId === quickTabId,
+  );
   if (container) {
-    const iframe = container.querySelector('iframe');
-    const url = iframe?.src || iframe?.getAttribute('data-deferred-src');
-    const titleEl = container.querySelector('.copy-url-quicktab-titlebar span');
-    const title = titleEl?.textContent || 'Quick Tab';
-    
+    const iframe = container.querySelector("iframe");
+    const url = iframe?.src || iframe?.getAttribute("data-deferred-src");
+    const titleEl = container.querySelector(".copy-url-quicktab-titlebar span");
+    const title = titleEl?.textContent || "Quick Tab";
+
     minimizeQuickTab(container, url, title);
   }
 }
@@ -1123,7 +1197,9 @@ async function restoreQuickTabFromPanel(quickTabId) {
  * Close Quick Tab from panel
  */
 async function closeQuickTabFromPanel(quickTabId) {
-  const container = quickTabWindows.find(w => w.dataset.quickTabId === quickTabId);
+  const container = quickTabWindows.find(
+    (w) => w.dataset.quickTabId === quickTabId,
+  );
   if (container) {
     closeQuickTabWindow(container);
   }
@@ -1143,29 +1219,29 @@ async function closeQuickTabFromPanel(quickTabId) {
  */
 async function updatePanelContent() {
   if (!quickTabsPanel || !isPanelOpen) return;
-  
-  const totalTabsEl = quickTabsPanel.querySelector('#panel-totalTabs');
-  const lastSyncEl = quickTabsPanel.querySelector('#panel-lastSync');
-  const containersList = quickTabsPanel.querySelector('#panel-containersList');
-  const emptyState = quickTabsPanel.querySelector('#panel-emptyState');
-  
+
+  const totalTabsEl = quickTabsPanel.querySelector("#panel-totalTabs");
+  const lastSyncEl = quickTabsPanel.querySelector("#panel-lastSync");
+  const containersList = quickTabsPanel.querySelector("#panel-containersList");
+  const emptyState = quickTabsPanel.querySelector("#panel-emptyState");
+
   // Load Quick Tabs state
   let quickTabsState = {};
   try {
-    const result = await browser.storage.sync.get('quick_tabs_state_v2');
+    const result = await browser.storage.sync.get("quick_tabs_state_v2");
     if (result && result.quick_tabs_state_v2) {
       quickTabsState = result.quick_tabs_state_v2;
     }
   } catch (err) {
-    debug('[Panel] Error loading Quick Tabs state:', err);
+    debug("[Panel] Error loading Quick Tabs state:", err);
     return;
   }
-  
+
   // Calculate totals
   let totalTabs = 0;
   let latestTimestamp = 0;
-  
-  Object.keys(quickTabsState).forEach(cookieStoreId => {
+
+  Object.keys(quickTabsState).forEach((cookieStoreId) => {
     const containerState = quickTabsState[cookieStoreId];
     if (containerState && containerState.tabs) {
       totalTabs += containerState.tabs.length;
@@ -1174,70 +1250,79 @@ async function updatePanelContent() {
       }
     }
   });
-  
+
   // Update stats
-  totalTabsEl.textContent = `${totalTabs} Quick Tab${totalTabs !== 1 ? 's' : ''}`;
-  
+  totalTabsEl.textContent = `${totalTabs} Quick Tab${totalTabs !== 1 ? "s" : ""}`;
+
   if (latestTimestamp > 0) {
     const date = new Date(latestTimestamp);
     lastSyncEl.textContent = `Last sync: ${date.toLocaleTimeString()}`;
   } else {
-    lastSyncEl.textContent = 'Last sync: Never';
+    lastSyncEl.textContent = "Last sync: Never";
   }
-  
+
   // Show/hide empty state
   if (totalTabs === 0) {
-    containersList.style.display = 'none';
-    emptyState.style.display = 'flex';
+    containersList.style.display = "none";
+    emptyState.style.display = "flex";
     return;
   } else {
-    containersList.style.display = 'block';
-    emptyState.style.display = 'none';
+    containersList.style.display = "block";
+    emptyState.style.display = "none";
   }
-  
+
   // Load container info
   let containersData = {};
   try {
-    if (typeof browser.contextualIdentities !== 'undefined') {
+    if (typeof browser.contextualIdentities !== "undefined") {
       const containers = await browser.contextualIdentities.query({});
-      containers.forEach(container => {
+      containers.forEach((container) => {
         containersData[container.cookieStoreId] = {
           name: container.name,
           icon: getContainerIconForPanel(container.icon),
-          color: container.color
+          color: container.color,
         };
       });
     }
-    
+
     // Always add default container
-    containersData['firefox-default'] = {
-      name: 'Default',
-      icon: '📁',
-      color: 'grey'
+    containersData["firefox-default"] = {
+      name: "Default",
+      icon: "📁",
+      color: "grey",
     };
   } catch (err) {
-    debug('[Panel] Error loading container info:', err);
+    debug("[Panel] Error loading container info:", err);
   }
-  
+
   // Clear and rebuild containers list
-  containersList.innerHTML = '';
-  
+  containersList.innerHTML = "";
+
   // Sort containers
   const sortedContainers = Object.keys(containersData).sort((a, b) => {
-    if (a === 'firefox-default') return -1;
-    if (b === 'firefox-default') return 1;
+    if (a === "firefox-default") return -1;
+    if (b === "firefox-default") return 1;
     return containersData[a].name.localeCompare(containersData[b].name);
   });
-  
-  sortedContainers.forEach(cookieStoreId => {
+
+  sortedContainers.forEach((cookieStoreId) => {
     const containerInfo = containersData[cookieStoreId];
     const containerState = quickTabsState[cookieStoreId];
-    
-    if (!containerState || !containerState.tabs || containerState.tabs.length === 0) {
+
+    if (
+      !containerState ||
+      !containerState.tabs ||
+      containerState.tabs.length === 0
+    ) {
       return; // Skip empty containers
     }
-    
-    renderPanelContainerSection(containersList, cookieStoreId, containerInfo, containerState);
+
+    renderPanelContainerSection(
+      containersList,
+      cookieStoreId,
+      containerInfo,
+      containerState,
+    );
   });
 }
 
@@ -1246,53 +1331,58 @@ async function updatePanelContent() {
  */
 function getContainerIconForPanel(icon) {
   const iconMap = {
-    'fingerprint': '🔒',
-    'briefcase': '💼',
-    'dollar': '💰',
-    'cart': '🛒',
-    'circle': '⭕',
-    'gift': '🎁',
-    'vacation': '🏖️',
-    'food': '🍴',
-    'fruit': '🍎',
-    'pet': '🐾',
-    'tree': '🌳',
-    'chill': '❄️',
-    'fence': '🚧'
+    fingerprint: "🔒",
+    briefcase: "💼",
+    dollar: "💰",
+    cart: "🛒",
+    circle: "⭕",
+    gift: "🎁",
+    vacation: "🏖️",
+    food: "🍴",
+    fruit: "🍎",
+    pet: "🐾",
+    tree: "🌳",
+    chill: "❄️",
+    fence: "🚧",
   };
-  return iconMap[icon] || '📁';
+  return iconMap[icon] || "📁";
 }
 
 /**
  * Render container section in panel
  */
-function renderPanelContainerSection(containersList, cookieStoreId, containerInfo, containerState) {
-  const section = document.createElement('div');
-  section.className = 'panel-container-section';
-  
+function renderPanelContainerSection(
+  containersList,
+  cookieStoreId,
+  containerInfo,
+  containerState,
+) {
+  const section = document.createElement("div");
+  section.className = "panel-container-section";
+
   // Header
-  const header = document.createElement('h3');
-  header.className = 'panel-container-header';
+  const header = document.createElement("h3");
+  header.className = "panel-container-header";
   header.innerHTML = `
     <span class="panel-container-icon">${containerInfo.icon}</span>
     <span class="panel-container-name">${containerInfo.name}</span>
-    <span class="panel-container-count">(${containerState.tabs.length} tab${containerState.tabs.length !== 1 ? 's' : ''})</span>
+    <span class="panel-container-count">(${containerState.tabs.length} tab${containerState.tabs.length !== 1 ? "s" : ""})</span>
   `;
-  
+
   section.appendChild(header);
-  
+
   // Tabs
-  const activeTabs = containerState.tabs.filter(t => !t.minimized);
-  const minimizedTabs = containerState.tabs.filter(t => t.minimized);
-  
-  activeTabs.forEach(tab => {
+  const activeTabs = containerState.tabs.filter((t) => !t.minimized);
+  const minimizedTabs = containerState.tabs.filter((t) => t.minimized);
+
+  activeTabs.forEach((tab) => {
     section.appendChild(renderPanelQuickTabItem(tab, false));
   });
-  
-  minimizedTabs.forEach(tab => {
+
+  minimizedTabs.forEach((tab) => {
     section.appendChild(renderPanelQuickTabItem(tab, true));
   });
-  
+
   containersList.appendChild(section);
 }
 
@@ -1300,94 +1390,95 @@ function renderPanelContainerSection(containersList, cookieStoreId, containerInf
  * Render Quick Tab item in panel
  */
 function renderPanelQuickTabItem(tab, isMinimized) {
-  const item = document.createElement('div');
-  item.className = `panel-quick-tab-item ${isMinimized ? 'minimized' : 'active'}`;
-  
+  const item = document.createElement("div");
+  item.className = `panel-quick-tab-item ${isMinimized ? "minimized" : "active"}`;
+
   // Indicator
-  const indicator = document.createElement('span');
-  indicator.className = `panel-status-indicator ${isMinimized ? 'yellow' : 'green'}`;
-  
+  const indicator = document.createElement("span");
+  indicator.className = `panel-status-indicator ${isMinimized ? "yellow" : "green"}`;
+
   // Favicon
-  const favicon = document.createElement('img');
-  favicon.className = 'panel-favicon';
+  const favicon = document.createElement("img");
+  favicon.className = "panel-favicon";
   try {
     const urlObj = new URL(tab.url);
     favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
-    favicon.onerror = () => favicon.style.display = 'none';
+    favicon.onerror = () => (favicon.style.display = "none");
   } catch (e) {
-    favicon.style.display = 'none';
+    favicon.style.display = "none";
   }
-  
+
   // Info
-  const info = document.createElement('div');
-  info.className = 'panel-tab-info';
-  
-  const title = document.createElement('div');
-  title.className = 'panel-tab-title';
-  title.textContent = tab.title || 'Quick Tab';
-  
-  const meta = document.createElement('div');
-  meta.className = 'panel-tab-meta';
-  
+  const info = document.createElement("div");
+  info.className = "panel-tab-info";
+
+  const title = document.createElement("div");
+  title.className = "panel-tab-title";
+  title.textContent = tab.title || "Quick Tab";
+
+  const meta = document.createElement("div");
+  meta.className = "panel-tab-meta";
+
   let metaParts = [];
-  if (isMinimized) metaParts.push('Minimized');
+  if (isMinimized) metaParts.push("Minimized");
   if (tab.activeTabId) metaParts.push(`Tab ${tab.activeTabId}`);
-  if (tab.width && tab.height) metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
-  meta.textContent = metaParts.join(' • ');
-  
+  if (tab.width && tab.height)
+    metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
+  meta.textContent = metaParts.join(" • ");
+
   info.appendChild(title);
   info.appendChild(meta);
-  
+
   // Actions
-  const actions = document.createElement('div');
-  actions.className = 'panel-tab-actions';
-  
+  const actions = document.createElement("div");
+  actions.className = "panel-tab-actions";
+
   if (!isMinimized) {
     // Go to Tab button
     if (tab.activeTabId) {
-      const goToBtn = document.createElement('button');
-      goToBtn.className = 'panel-btn-icon';
-      goToBtn.textContent = '🔗';
-      goToBtn.title = 'Go to Tab';
-      goToBtn.dataset.action = 'goToTab';
+      const goToBtn = document.createElement("button");
+      goToBtn.className = "panel-btn-icon";
+      goToBtn.textContent = "🔗";
+      goToBtn.title = "Go to Tab";
+      goToBtn.dataset.action = "goToTab";
       goToBtn.dataset.tabId = tab.activeTabId;
       actions.appendChild(goToBtn);
     }
-    
+
     // Minimize button
-    const minBtn = document.createElement('button');
-    minBtn.className = 'panel-btn-icon';
-    minBtn.textContent = '➖';
-    minBtn.title = 'Minimize';
-    minBtn.dataset.action = 'minimize';
+    const minBtn = document.createElement("button");
+    minBtn.className = "panel-btn-icon";
+    minBtn.textContent = "➖";
+    minBtn.title = "Minimize";
+    minBtn.dataset.action = "minimize";
     minBtn.dataset.quickTabId = tab.id;
     actions.appendChild(minBtn);
   } else {
     // Restore button
-    const restoreBtn = document.createElement('button');
-    restoreBtn.className = 'panel-btn-icon';
-    restoreBtn.textContent = '↑';
-    restoreBtn.title = 'Restore';
-    restoreBtn.dataset.action = 'restore';
+    const restoreBtn = document.createElement("button");
+    restoreBtn.className = "panel-btn-icon";
+    restoreBtn.textContent = "↑";
+    restoreBtn.title = "Restore";
+    restoreBtn.dataset.action = "restore";
     restoreBtn.dataset.quickTabId = tab.id;
     actions.appendChild(restoreBtn);
   }
-  
+
   // Close button
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'panel-btn-icon';
-  closeBtn.textContent = '✕';
-  closeBtn.title = 'Close';
-  closeBtn.dataset.action = 'close';
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "panel-btn-icon";
+  closeBtn.textContent = "✕";
+  closeBtn.title = "Close";
+  closeBtn.dataset.action = "close";
   closeBtn.dataset.quickTabId = tab.id;
   actions.appendChild(closeBtn);
-  
+
   // Assemble
   item.appendChild(indicator);
   item.appendChild(favicon);
   item.appendChild(info);
   item.appendChild(actions);
-  
+
   return item;
 }
 // ==================== END PANEL CONTENT UPDATE ====================
@@ -1405,14 +1496,14 @@ function renderPanelQuickTabItem(tab, isMinimized) {
 // Runtime message listener - ADD this new case
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // ... existing cases ...
-  
+
   // NEW: Handle toggle panel command from background script
-  if (message.action === 'TOGGLE_QUICK_TABS_PANEL') {
+  if (message.action === "TOGGLE_QUICK_TABS_PANEL") {
     toggleQuickTabsPanel();
     sendResponse({ success: true });
     return true;
   }
-  
+
   return true;
 });
 ```
@@ -1425,7 +1516,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // ==================== INITIALIZE PANEL ON PAGE LOAD ====================
 // Create panel when page loads (hidden by default)
 // Panel will be shown when user presses Ctrl+Alt+Z
-window.addEventListener('load', () => {
+window.addEventListener("load", () => {
   // Small delay to ensure page is fully loaded
   setTimeout(() => {
     createQuickTabsPanel();
@@ -1513,12 +1604,12 @@ window.addEventListener('load', () => {
 
 ### User Experience Changes
 
-| Feature | Sidebar (v1.5.8) | Panel (v1.5.9) |
-|---------|------------------|----------------|
-| Activation | Native sidebar toggle | Keyboard shortcut only |
-| Position | Fixed left/right edge | Draggable anywhere |
-| Persistence | Browser-managed | Extension-managed |
-| Resize | Browser-managed | User-controlled |
+| Feature     | Sidebar (v1.5.8)      | Panel (v1.5.9)         |
+| ----------- | --------------------- | ---------------------- |
+| Activation  | Native sidebar toggle | Keyboard shortcut only |
+| Position    | Fixed left/right edge | Draggable anywhere     |
+| Persistence | Browser-managed       | Extension-managed      |
+| Resize      | Browser-managed       | User-controlled        |
 
 ---
 
@@ -1562,9 +1653,9 @@ Add transparency slider for panel background.
 
 ## 9. Document Changelog
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0.0 | 2025-11-11 | Initial document - Persistent floating panel implementation |
+| Version | Date       | Changes                                                     |
+| ------- | ---------- | ----------------------------------------------------------- |
+| 1.0.0   | 2025-11-11 | Initial document - Persistent floating panel implementation |
 
 ---
 

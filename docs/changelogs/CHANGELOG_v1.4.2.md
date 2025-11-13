@@ -22,12 +22,14 @@ This is a hotfix release that addresses a critical syntax error that broke the e
 ### 🔧 Technical Details
 
 **Files Changed:**
+
 - `content.js`: Fixed syntax error (removed extra closing brace)
 - `popup.html`: Increased body width from 450px to 550px
 - `manifest.json`: Version 1.4.1 → 1.4.2
 - `updates.json`: Updated version to 1.4.2
 
 **Root Cause:**
+
 - An extra closing brace `}` was accidentally added at line 2184 in content.js
 - This created a syntax error that prevented the entire script from executing
 - The error broke all URL detection functionality including:
