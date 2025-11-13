@@ -1,0 +1,19 @@
+[github_app]
+# Run on draft PRs (KEY SETTING!)
+feedback_on_draft_pr = true
+
+# Trigger on these events
+handle_pr_actions = ['opened', 'reopened', 'ready_for_review', 'synchronize']
+
+# Run these commands automatically
+pr_commands = ["/review --pr_reviewer.incremental_review=true"]
+
+# Enable push trigger for continuous reviews
+handle_push_trigger = true
+push_commands = ["/review --pr_reviewer.incremental_review=true"]
+
+[pr_reviewer]
+# Only review new changes (faster)
+incremental_review = true
+require_security_review = true
+extra_instructions = "Focus on browser extension security"
