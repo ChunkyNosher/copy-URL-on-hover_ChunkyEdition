@@ -141,9 +141,9 @@ let CONFIG = { ...DEFAULT_CONFIG };
     }
 
     console.log('[Copy-URL-on-Hover] STEP: Initializing feature modules...');
-    // Initialize Quick Tabs feature (v1.5.9.0 - CRITICAL FIX)
+    // Initialize Quick Tabs feature (v1.5.9.0 - CRITICAL FIX, v1.5.8.12 - Panel instead of sidebar)
     try {
-      quickTabsManager = initQuickTabs(eventBus, Events);
+      quickTabsManager = await initQuickTabs(eventBus, Events);
       console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized');
     } catch (qtErr) {
       console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:', qtErr);
