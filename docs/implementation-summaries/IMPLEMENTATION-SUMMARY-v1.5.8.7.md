@@ -46,6 +46,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
    - Prevents formatting-related review comments
 
 **Workflow Features:**
+
 - All workflows integrated with GitHub Copilot for enhanced code reviews
 - Workflow results appear as PR status checks
 - Inline annotations for linting errors
@@ -55,6 +56,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 ### 2. Code Quality Tools Configuration
 
 **ESLint Configuration (`.eslintrc.cjs`):**
+
 - Browser extension-specific rules
 - WebExtensions API globals (browser, chrome)
 - Security rules (no-eval, no-new-func, no-script-url)
@@ -62,6 +64,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 - Special handling for build config files
 
 **Prettier Configuration (`.prettierrc.cjs`):**
+
 - 100 character line width
 - 2-space indentation
 - Single quotes for strings
@@ -70,12 +73,14 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 - Special rules for JSON and Markdown
 
 **Jest Configuration (`jest.config.cjs`):**
+
 - jsdom test environment for browser APIs
 - Browser API mocks in tests/setup.js
 - Coverage collection from src/ directory
 - Coverage reporters: text, lcov, html
 
 **Test Setup (`tests/setup.js`):**
+
 - Mock implementations for all browser APIs:
   - browser.storage (local, sync, session)
   - browser.runtime (messaging)
@@ -88,6 +93,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 ### 3. DeepSource Integration
 
 **Enhanced Configuration (`.deepsource.toml`):**
+
 - JavaScript analyzer with browser + Node.js environment
 - WebExtensions plugin for extension-specific checks
 - Standard.js style guide
@@ -97,6 +103,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 - Secrets scanner for hardcoded credentials
 
 **Features:**
+
 - Automatic static analysis on every commit
 - Comprehensive bug, quality, and security checks
 - Autofix™ AI for automatic issue resolution
@@ -107,6 +114,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 ### 4. Enhanced Debugging Infrastructure
 
 **src/content.js Improvements:**
+
 - Early detection marker: `window.CUO_debug_marker`
 - Global error handler for unhandled exceptions
 - Unhandled promise rejection handler
@@ -116,6 +124,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 - Detailed error context in all catch blocks
 
 **src/core/config.js Improvements:**
+
 - Enhanced ConfigManager.load() with defensive error handling
 - Validates browser.storage.local availability
 - Multiple fallback levels for configuration loading
@@ -124,12 +133,14 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 - Logs configuration summary after successful load
 
 **Barrel Files for Cleaner Imports:**
+
 - `src/core/index.js` - Re-exports config, state, events modules
 - `src/utils/index.js` - Re-exports debug, dom, browser-api modules
 - Enables cleaner import statements
 - Improves tree-shaking and bundling efficiency
 
 **Initialization Markers:**
+
 - `window.CUO_debug_marker` - Set immediately on script load
 - `window.CUO_initialized` - Set when initialization completes
 - Easy validation in browser console
@@ -137,6 +148,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 ### 5. README Documentation
 
 **New Debugging Section:**
+
 - Quick debug checklist for non-functional extensions
 - Specific instructions for v1.5.8.6+ modular architecture
 - Bundle integrity validation commands
@@ -147,6 +159,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 - Minimal test script for basic validation
 
 **What's New Section:**
+
 - Comprehensive v1.5.8.7 feature list
 - Code quality infrastructure highlights
 - Debugging capabilities overview
@@ -155,6 +168,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 ### 6. Agent File Updates
 
 **All 6 agent files updated with:**
+
 - v1.5.8.7 architecture details
 - Modular source structure (src/ with dist/ output)
 - Build system information (Rollup with validation)
@@ -165,6 +179,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 - Bundle integrity checks
 
 **Updated Agent Files:**
+
 1. bug-fixer.md - Debugging tools and workflows section
 2. feature-builder.md - Code quality and testing checklist
 3. refactor-specialist.md - Refactoring workflow with validation
@@ -175,6 +190,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 ### 7. Build System Enhancements
 
 **package.json Scripts:**
+
 ```json
 {
   "lint": "eslint .",
@@ -188,12 +204,14 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 ```
 
 **New Dev Dependencies:**
+
 - eslint@^8.57.0
 - prettier@^3.2.5
 - jest@^29.7.0
 - jest-environment-jsdom@^29.7.0
 
 **Build Validation:**
+
 - Automated checks for ES6 imports/exports in bundle
 - Key class presence verification (ConfigManager, StateManager, EventBus)
 - Bundle size validation (~60-80KB expected)
@@ -201,6 +219,7 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 ### 8. Configuration File Extensions
 
 **Fixed for ES Module Compatibility:**
+
 - Renamed `.eslintrc.js` → `.eslintrc.cjs`
 - Renamed `.prettierrc.js` → `.prettierrc.cjs`
 - Renamed `jest.config.js` → `jest.config.cjs`
@@ -224,6 +243,7 @@ All workflows are designed to integrate with GitHub Copilot Code Review:
 **Three-Layer Validation:**
 
 1. **Build-time Checks (code-quality.yml):**
+
    ```bash
    grep "^import " dist/content.js  # Must be empty
    grep "^export " dist/content.js  # Must be empty
@@ -231,9 +251,10 @@ All workflows are designed to integrate with GitHub Copilot Code Review:
    ```
 
 2. **Runtime Checks (src/content.js):**
+
    ```javascript
    window.CUO_debug_marker = 'JS executed to top of file!';
-   window.CUO_initialized = true;  // Set after successful init
+   window.CUO_initialized = true; // Set after successful init
    ```
 
 3. **Manual Validation (README.md):**
@@ -249,7 +270,7 @@ All workflows are designed to integrate with GitHub Copilot Code Review:
 // Always validate browser API availability
 if (!browser || !browser.storage || !browser.storage.local) {
   console.error('[ConfigManager] browser.storage.local is not available!');
-  return DEFAULT_CONFIG;  // Safe fallback
+  return DEFAULT_CONFIG; // Safe fallback
 }
 
 // Always wrap async operations
@@ -261,13 +282,14 @@ try {
     message: err.message,
     stack: err.stack
   });
-  return DEFAULT_CONFIG;  // Always return valid config
+  return DEFAULT_CONFIG; // Always return valid config
 }
 ```
 
 ### Logging Strategy
 
 **Consistent Prefixes:**
+
 - `[Copy-URL-on-Hover]` - Main extension logs
 - `[ConfigManager]` - Configuration-related logs
 - `[StateManager]` - State management logs
@@ -275,6 +297,7 @@ try {
 - `STEP:` - Initialization step markers
 
 **Success Indicators:**
+
 - `✓` - Successful operations
 - `✓✓✓` - Major milestone completion
 - `✗` - Failed operations
@@ -291,11 +314,13 @@ No migration needed. Existing extensions will update automatically.
 **For Developers:**
 
 1. Install new dependencies:
+
    ```bash
    npm install
    ```
 
 2. Run new linters:
+
    ```bash
    npm run lint
    npm run format:check
@@ -310,17 +335,20 @@ No migration needed. Existing extensions will update automatically.
 ## Testing
 
 **Build Validation:**
+
 - ✅ Build completes successfully
 - ✅ No ES6 imports/exports in dist/content.js
 - ✅ Bundle contains ConfigManager, StateManager, EventBus
 - ✅ Bundle size: 70KB (within 60-80KB target)
 
 **ESLint:**
+
 - ⚠️ Warnings exist in legacy files (content-legacy.js, popup.js)
 - ✅ No blocking errors in src/ directory
 - ✅ Config files properly handled (.cjs extensions)
 
 **Manual Testing:**
+
 - ✅ Extension loads successfully
 - ✅ Console shows all initialization logs
 - ✅ `window.CUO_debug_marker` is set
@@ -330,11 +358,13 @@ No migration needed. Existing extensions will update automatically.
 ## Performance Impact
 
 **Positive:**
+
 - No runtime performance impact (dev tools only)
 - CI/CD runs in parallel (fast feedback)
 - npm caching reduces workflow time
 
 **Neutral:**
+
 - Build time unchanged (~250ms)
 - Bundle size unchanged (70KB)
 
@@ -373,8 +403,9 @@ No migration needed. Existing extensions will update automatically.
 ## Future Improvements
 
 **Potential Enhancements:**
+
 1. Add actual Jest tests for core modules
-2. Increase test coverage to 80%+ 
+2. Increase test coverage to 80%+
 3. Add E2E tests with Playwright
 4. Implement automatic dependency updates (Dependabot)
 5. Add performance benchmarking
@@ -383,6 +414,7 @@ No migration needed. Existing extensions will update automatically.
 ## Acknowledgments
 
 This release implements recommendations from:
+
 - `docs/manual/github-workflows-with-deepsource.md`
 - `docs/manual/v1586-in-depth-debug.md`
 
