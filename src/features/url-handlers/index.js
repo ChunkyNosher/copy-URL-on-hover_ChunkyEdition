@@ -49,7 +49,7 @@ export class URLHandlerRegistry {
     if (element.tagName === 'A' && element.href) {
       return element.href;
     }
-    
+
     // Check parents for href (up to 20 levels)
     let parent = element.parentElement;
     for (let i = 0; i < 20; i++) {
@@ -59,13 +59,13 @@ export class URLHandlerRegistry {
       }
       parent = parent.parentElement;
     }
-    
+
     // Try site-specific handler
     if (this.handlers[domainType]) {
       const url = this.handlers[domainType](element);
       if (url) return url;
     }
-    
+
     // Final fallback - find ANY link
     return findGenericUrl(element);
   }

@@ -21,19 +21,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   emptyState = document.getElementById('emptyState');
   totalTabsEl = document.getElementById('totalTabs');
   lastSyncEl = document.getElementById('lastSync');
-  
+
   // Load container information from Firefox API
   await loadContainerInfo();
-  
+
   // Load Quick Tabs state from storage
   await loadQuickTabsState();
-  
+
   // Render initial UI
   renderUI();
-  
+
   // Setup event listeners
   setupEventListeners();
-  
+
   // Auto-refresh every 2 seconds
   setInterval(async () => {
     await loadQuickTabsState();
@@ -59,10 +59,10 @@ async function loadContainerInfo() {
       };
       return;
     }
-    
+
     // Get all Firefox containers
     const containers = await browser.contextualIdentities.query({});
-    
+
     // Map containers
     containersData = {};
     containers.forEach(container => {
@@ -74,7 +74,7 @@ async function loadContainerInfo() {
         cookieStoreId: container.cookieStoreId
       };
     });
-    
+
     // Always add default container
     containersData['firefox-default'] = {
       name: 'Default',
@@ -83,7 +83,7 @@ async function loadContainerInfo() {
       colorCode: '#808080',
       cookieStoreId: 'firefox-default'
     };
-    
+
     console.log('Loaded container info:', containersData);
   } catch (err) {
     console.error('Error loading container info:', err);
@@ -95,21 +95,21 @@ async function loadContainerInfo() {
  */
 function getContainerIcon(icon) {
   const iconMap = {
-    'fingerprint': '🔒',
-    'briefcase': '💼',
-    'dollar': '💰',
-    'cart': '🛒',
-    'circle': '⭕',
-    'gift': '🎁',
-    'vacation': '🏖️',
-    'food': '🍴',
-    'fruit': '🍎',
-    'pet': '🐾',
-    'tree': '🌳',
-    'chill': '❄️',
-    'fence': '🚧'
+    fingerprint: '🔒',
+    briefcase: '💼',
+    dollar: '💰',
+    cart: '🛒',
+    circle: '⭕',
+    gift: '🎁',
+    vacation: '🏖️',
+    food: '🍴',
+    fruit: '🍎',
+    pet: '🐾',
+    tree: '🌳',
+    chill: '❄️',
+    fence: '🚧'
   };
-  
+
   return iconMap[icon] || '📁';
 }
 
@@ -119,13 +119,13 @@ function getContainerIcon(icon) {
 async function loadQuickTabsState() {
   try {
     const result = await browser.storage.sync.get(STATE_KEY);
-    
+
     if (result && result[STATE_KEY]) {
       quickTabsState = result[STATE_KEY];
     } else {
       quickTabsState = {};
     }
-    
+
     console.log('Loaded Quick Tabs state:', quickTabsState);
   } catch (err) {
     console.error('Error loading Quick Tabs state:', err);
@@ -139,7 +139,7 @@ function renderUI() {
   // Calculate total tabs
   let totalTabs = 0;
   let latestTimestamp = 0;
-  
+
   Object.keys(quickTabsState).forEach(cookieStoreId => {
     const containerState = quickTabsState[cookieStoreId];
     if (containerState && containerState.tabs) {
@@ -149,17 +149,17 @@ function renderUI() {
       }
     }
   });
-  
+
   // Update stats
   totalTabsEl.textContent = `${totalTabs} Quick Tab${totalTabs !== 1 ? 's' : ''}`;
-  
+
   if (latestTimestamp > 0) {
     const date = new Date(latestTimestamp);
     lastSyncEl.textContent = `Last sync: ${date.toLocaleTimeString()}`;
   } else {
     lastSyncEl.textContent = 'Last sync: Never';
   }
-  
+
   // Show/hide empty state
   if (totalTabs === 0) {
     containersList.style.display = 'none';
@@ -169,10 +169,10 @@ function renderUI() {
     containersList.style.display = 'block';
     emptyState.style.display = 'none';
   }
-  
+
   // Clear containers list
   containersList.innerHTML = '';
-  
+
   // Render each container section
   // Sort containers: Default first, then alphabetically
   const sortedContainers = Object.keys(containersData).sort((a, b) => {
@@ -180,16 +180,16 @@ function renderUI() {
     if (b === 'firefox-default') return 1;
     return containersData[a].name.localeCompare(containersData[b].name);
   });
-  
+
   sortedContainers.forEach(cookieStoreId => {
     const containerInfo = containersData[cookieStoreId];
     const containerState = quickTabsState[cookieStoreId];
-    
+
     if (!containerState || !containerState.tabs || containerState.tabs.length === 0) {
       // Skip containers with no Quick Tabs
       return;
     }
-    
+
     renderContainerSection(cookieStoreId, containerInfo, containerState);
   });
 }
@@ -201,48 +201,48 @@ function renderContainerSection(cookieStoreId, containerInfo, containerState) {
   const section = document.createElement('div');
   section.className = 'container-section';
   section.dataset.containerId = cookieStoreId;
-  
+
   // Container header
   const header = document.createElement('h2');
   header.className = 'container-header';
-  
+
   const icon = document.createElement('span');
   icon.className = 'container-icon';
   icon.textContent = containerInfo.icon;
-  
+
   const name = document.createElement('span');
   name.className = 'container-name';
   name.textContent = containerInfo.name;
-  
+
   const count = document.createElement('span');
   count.className = 'container-count';
   const tabCount = containerState.tabs.length;
   count.textContent = `(${tabCount} tab${tabCount !== 1 ? 's' : ''})`;
-  
+
   header.appendChild(icon);
   header.appendChild(name);
   header.appendChild(count);
-  
+
   section.appendChild(header);
-  
+
   // Quick Tabs list
   const tabsList = document.createElement('div');
   tabsList.className = 'quick-tabs-list';
-  
+
   // Separate active and minimized tabs
   const activeTabs = containerState.tabs.filter(t => !t.minimized);
   const minimizedTabs = containerState.tabs.filter(t => t.minimized);
-  
+
   // Render active tabs first
   activeTabs.forEach(tab => {
     tabsList.appendChild(renderQuickTabItem(tab, cookieStoreId, false));
   });
-  
+
   // Then minimized tabs
   minimizedTabs.forEach(tab => {
     tabsList.appendChild(renderQuickTabItem(tab, cookieStoreId, true));
   });
-  
+
   section.appendChild(tabsList);
   containersList.appendChild(section);
 }
@@ -255,11 +255,11 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   item.className = `quick-tab-item ${isMinimized ? 'minimized' : 'active'}`;
   item.dataset.tabId = tab.id;
   item.dataset.containerId = cookieStoreId;
-  
+
   // Status indicator
   const indicator = document.createElement('span');
   indicator.className = `status-indicator ${isMinimized ? 'yellow' : 'green'}`;
-  
+
   // Favicon
   const favicon = document.createElement('img');
   favicon.className = 'favicon';
@@ -272,50 +272,50 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   } catch (e) {
     favicon.style.display = 'none';
   }
-  
+
   // Tab info
   const tabInfo = document.createElement('div');
   tabInfo.className = 'tab-info';
-  
+
   const title = document.createElement('div');
   title.className = 'tab-title';
   title.textContent = tab.title || 'Quick Tab';
   title.title = tab.title || tab.url;
-  
+
   const meta = document.createElement('div');
   meta.className = 'tab-meta';
-  
+
   // Build metadata string
   let metaParts = [];
-  
+
   if (isMinimized) {
     metaParts.push('Minimized');
   }
-  
+
   if (tab.activeTabId) {
     metaParts.push(`Tab ${tab.activeTabId}`);
   }
-  
+
   if (tab.width && tab.height) {
     metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
   }
-  
+
   if (tab.slotNumber) {
     metaParts.push(`Slot ${tab.slotNumber}`);
   }
-  
+
   meta.textContent = metaParts.join(' • ');
-  
+
   tabInfo.appendChild(title);
   tabInfo.appendChild(meta);
-  
+
   // Tab actions
   const actions = document.createElement('div');
   actions.className = 'tab-actions';
-  
+
   if (!isMinimized) {
     // Active Quick Tab actions
-    
+
     // Go to Tab button (NEW FEATURE)
     if (tab.activeTabId) {
       const goToTabBtn = document.createElement('button');
@@ -326,7 +326,7 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
       goToTabBtn.dataset.tabId = tab.activeTabId;
       actions.appendChild(goToTabBtn);
     }
-    
+
     // Minimize button
     const minimizeBtn = document.createElement('button');
     minimizeBtn.className = 'btn-icon';
@@ -335,10 +335,9 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
     minimizeBtn.dataset.action = 'minimize';
     minimizeBtn.dataset.quickTabId = tab.id;
     actions.appendChild(minimizeBtn);
-    
   } else {
     // Minimized Quick Tab actions
-    
+
     // Restore button
     const restoreBtn = document.createElement('button');
     restoreBtn.className = 'btn-icon';
@@ -348,7 +347,7 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
     restoreBtn.dataset.quickTabId = tab.id;
     actions.appendChild(restoreBtn);
   }
-  
+
   // Close button (always available)
   const closeBtn = document.createElement('button');
   closeBtn.className = 'btn-icon';
@@ -357,13 +356,13 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   closeBtn.dataset.action = 'close';
   closeBtn.dataset.quickTabId = tab.id;
   actions.appendChild(closeBtn);
-  
+
   // Assemble item
   item.appendChild(indicator);
   item.appendChild(favicon);
   item.appendChild(tabInfo);
   item.appendChild(actions);
-  
+
   return item;
 }
 
@@ -375,21 +374,21 @@ function setupEventListeners() {
   document.getElementById('closeMinimized').addEventListener('click', async () => {
     await closeMinimizedTabs();
   });
-  
+
   // Close All button
   document.getElementById('closeAll').addEventListener('click', async () => {
     await closeAllTabs();
   });
-  
+
   // Delegated event listener for Quick Tab actions
-  containersList.addEventListener('click', async (e) => {
+  containersList.addEventListener('click', async e => {
     const button = e.target.closest('button[data-action]');
     if (!button) return;
-    
+
     const action = button.dataset.action;
     const quickTabId = button.dataset.quickTabId;
     const tabId = button.dataset.tabId;
-    
+
     switch (action) {
       case 'goToTab':
         await goToTab(parseInt(tabId));
@@ -405,7 +404,7 @@ function setupEventListeners() {
         break;
     }
   });
-  
+
   // Listen for storage changes to auto-update
   browser.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === 'sync' && changes[STATE_KEY]) {
@@ -424,37 +423,39 @@ async function closeMinimizedTabs() {
     // Get current state
     const result = await browser.storage.sync.get(STATE_KEY);
     if (!result || !result[STATE_KEY]) return;
-    
+
     const state = result[STATE_KEY];
     let hasChanges = false;
-    
+
     // Filter out minimized tabs from each container
     Object.keys(state).forEach(cookieStoreId => {
       if (state[cookieStoreId] && state[cookieStoreId].tabs) {
         const originalLength = state[cookieStoreId].tabs.length;
         state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !t.minimized);
-        
+
         if (state[cookieStoreId].tabs.length !== originalLength) {
           hasChanges = true;
           state[cookieStoreId].timestamp = Date.now();
         }
       }
     });
-    
+
     if (hasChanges) {
       // Save updated state
       await browser.storage.sync.set({ [STATE_KEY]: state });
-      
+
       // Notify all content scripts to update their local state
       const tabs = await browser.tabs.query({});
       tabs.forEach(tab => {
-        browser.tabs.sendMessage(tab.id, {
-          action: 'CLOSE_MINIMIZED_QUICK_TABS'
-        }).catch(() => {
-          // Ignore errors for tabs where content script isn't loaded
-        });
+        browser.tabs
+          .sendMessage(tab.id, {
+            action: 'CLOSE_MINIMIZED_QUICK_TABS'
+          })
+          .catch(() => {
+            // Ignore errors for tabs where content script isn't loaded
+          });
       });
-      
+
       console.log('Closed all minimized Quick Tabs');
     }
   } catch (err) {
@@ -469,19 +470,21 @@ async function closeAllTabs() {
   try {
     // Clear all Quick Tabs from storage
     await browser.storage.sync.remove(STATE_KEY);
-    
+
     // Notify all content scripts to close Quick Tabs
     const tabs = await browser.tabs.query({});
     tabs.forEach(tab => {
-      browser.tabs.sendMessage(tab.id, {
-        action: 'CLEAR_ALL_QUICK_TABS'
-      }).catch(() => {
-        // Ignore errors
-      });
+      browser.tabs
+        .sendMessage(tab.id, {
+          action: 'CLEAR_ALL_QUICK_TABS'
+        })
+        .catch(() => {
+          // Ignore errors
+        });
     });
-    
+
     console.log('Closed all Quick Tabs');
-    
+
     // Update UI immediately
     quickTabsState = {};
     renderUI();
@@ -511,12 +514,12 @@ async function minimizeQuickTab(quickTabId) {
     // Send message to content script in active tab
     const activeTabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (activeTabs.length === 0) return;
-    
+
     await browser.tabs.sendMessage(activeTabs[0].id, {
       action: 'MINIMIZE_QUICK_TAB',
       quickTabId: quickTabId
     });
-    
+
     console.log(`Minimized Quick Tab ${quickTabId}`);
   } catch (err) {
     console.error(`Error minimizing Quick Tab ${quickTabId}:`, err);
@@ -531,12 +534,12 @@ async function restoreQuickTab(quickTabId) {
     // Send message to content script in active tab
     const activeTabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (activeTabs.length === 0) return;
-    
+
     await browser.tabs.sendMessage(activeTabs[0].id, {
       action: 'RESTORE_QUICK_TAB',
       quickTabId: quickTabId
     });
-    
+
     console.log(`Restored Quick Tab ${quickTabId}`);
   } catch (err) {
     console.error(`Error restoring Quick Tab ${quickTabId}:`, err);
@@ -551,14 +554,16 @@ async function closeQuickTab(quickTabId) {
     // Send message to all tabs to close this Quick Tab
     const tabs = await browser.tabs.query({});
     tabs.forEach(tab => {
-      browser.tabs.sendMessage(tab.id, {
-        action: 'CLOSE_QUICK_TAB',
-        quickTabId: quickTabId
-      }).catch(() => {
-        // Ignore errors
-      });
+      browser.tabs
+        .sendMessage(tab.id, {
+          action: 'CLOSE_QUICK_TAB',
+          quickTabId: quickTabId
+        })
+        .catch(() => {
+          // Ignore errors
+        });
     });
-    
+
     console.log(`Closed Quick Tab ${quickTabId}`);
   } catch (err) {
     console.error(`Error closing Quick Tab ${quickTabId}:`, err);
