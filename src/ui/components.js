@@ -1,7 +1,7 @@
 /**
  * UI Components
  * Reusable UI component helpers and utilities
- * 
+ *
  * v1.5.9.0 - Following modular-architecture-blueprint.md
  */
 
@@ -9,12 +9,7 @@
  * Create a styled button component
  */
 export function createStyledButton(options) {
-  const {
-    text = '',
-    onClick = () => {},
-    style = {},
-    className = ''
-  } = options;
+  const { text = '', onClick = () => {}, style = {}, className = '' } = options;
 
   const button = document.createElement('button');
   button.textContent = text;
@@ -42,12 +37,7 @@ export function createStyledButton(options) {
  * Create a modal overlay
  */
 export function createModal(options) {
-  const {
-    title = '',
-    content = '',
-    onClose = () => {},
-    width = '400px'
-  } = options;
+  const { title = '', content = '', onClose = () => {}, width = '400px' } = options;
 
   const overlay = document.createElement('div');
   overlay.style.cssText = `
@@ -105,13 +95,7 @@ export function createModal(options) {
  * Create a draggable panel
  */
 export function createDraggablePanel(options) {
-  const {
-    title = '',
-    width = '300px',
-    height = 'auto',
-    left = '100px',
-    top = '100px'
-  } = options;
+  const { title = '', width = '300px', height = 'auto', left = '100px', top = '100px' } = options;
 
   const panel = document.createElement('div');
   panel.style.cssText = `

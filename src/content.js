@@ -5,7 +5,7 @@
  * This file serves as the main entry point and coordinates between modules.
  * URL handlers have been extracted to features/url-handlers/ for better maintainability.
  *
- * v1.5.9.0 Changes: 
+ * v1.5.9.0 Changes:
  * - Restored Quick Tabs UI logic (fixes v1.5.8.9 bug)
  * - Implemented modular Quick Tabs feature
  * - Implemented modular Notifications feature
@@ -53,10 +53,7 @@ import { EventBus, Events } from './core/events.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: events.js');
 import { debug, enableDebug } from './utils/debug.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: debug.js');
-import {
-  copyToClipboard,
-  sendMessageToBackground
-} from './utils/browser-api.js';
+import { copyToClipboard, sendMessageToBackground } from './utils/browser-api.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: browser-api.js');
 
 // Import URL handlers
@@ -499,7 +496,7 @@ async function handleOpenInNewTab(url) {
  */
 function showNotification(message, type = 'info') {
   debug('Notification:', message, type);
-  
+
   // Delegate to notification manager
   if (notificationManager) {
     notificationManager.showNotification(message, type);

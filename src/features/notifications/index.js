@@ -1,7 +1,7 @@
 /**
  * Notifications Feature Module
  * Handles tooltip and toast notifications with animations
- * 
+ *
  * v1.5.9.0 - Extracted from content.js following modular-architecture-blueprint.md
  */
 

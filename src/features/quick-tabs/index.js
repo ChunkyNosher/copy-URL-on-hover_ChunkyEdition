@@ -1,7 +1,7 @@
 /**
  * Quick Tabs Feature Module
  * Main entrypoint for Quick Tabs functionality
- * 
+ *
  * v1.5.9.0 - Restored missing Quick Tab UI logic
  * Fixes issue identified in v1589-quick-tabs-root-cause.md
  * Follows architecture from modular-architecture-blueprint.md
@@ -33,7 +33,7 @@ class QuickTabsManager {
     console.log('[QuickTabsManager] Initializing...');
 
     // Listen for Quick Tab creation events from EventBus
-    this.eventBus.on(Events.QUICK_TAB_REQUESTED, (options) => {
+    this.eventBus.on(Events.QUICK_TAB_REQUESTED, options => {
       console.log('[QuickTabsManager] QUICK_TAB_REQUESTED event received:', options);
       this.createQuickTab(options);
     });
@@ -89,9 +89,9 @@ class QuickTabsManager {
       cookieStoreId: options.cookieStoreId || 'firefox-default',
       minimized: options.minimized || false,
       zIndex: this.currentZIndex,
-      onDestroy: (tabId) => this.handleDestroy(tabId),
-      onMinimize: (tabId) => this.handleMinimize(tabId),
-      onFocus: (tabId) => this.handleFocus(tabId)
+      onDestroy: tabId => this.handleDestroy(tabId),
+      onMinimize: tabId => this.handleMinimize(tabId),
+      onFocus: tabId => this.handleFocus(tabId)
     });
 
     // Store the tab

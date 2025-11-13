@@ -1,7 +1,7 @@
 /**
  * Minimized Quick Tabs Manager
  * Manages the minimized state of Quick Tabs and provides restoration interface
- * 
+ *
  * v1.5.9.0 - New module following modular-architecture-blueprint.md
  */
 

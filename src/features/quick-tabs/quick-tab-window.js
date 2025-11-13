@@ -1,7 +1,7 @@
 /**
  * Quick Tab Window Component
  * Handles creation, rendering, and lifecycle of individual Quick Tab overlay windows
- * 
+ *
  * v1.5.9.0 - Restored missing UI logic identified in v1589-quick-tabs-root-cause.md
  */
 
@@ -23,7 +23,7 @@ export class QuickTabWindow {
     this.cookieStoreId = options.cookieStoreId || 'firefox-default';
     this.minimized = options.minimized || false;
     this.zIndex = options.zIndex || CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
-    
+
     this.container = null;
     this.iframe = null;
     this.isDragging = false;
@@ -32,7 +32,7 @@ export class QuickTabWindow {
     this.dragStartY = 0;
     this.resizeStartWidth = 0;
     this.resizeStartHeight = 0;
-    
+
     this.onDestroy = options.onDestroy || (() => {});
     this.onMinimize = options.onMinimize || (() => {});
     this.onFocus = options.onFocus || (() => {});
@@ -82,7 +82,8 @@ export class QuickTabWindow {
         width: '100%',
         height: 'calc(100% - 40px)'
       },
-      sandbox: 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
+      sandbox:
+        'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
     });
 
     this.container.appendChild(this.iframe);
@@ -119,18 +120,22 @@ export class QuickTabWindow {
     });
 
     // Title text
-    const titleText = createElement('div', {
-      className: 'quick-tab-title',
-      style: {
-        color: '#fff',
-        fontSize: '14px',
-        fontWeight: 'bold',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        flex: '1'
-      }
-    }, this.title);
+    const titleText = createElement(
+      'div',
+      {
+        className: 'quick-tab-title',
+        style: {
+          color: '#fff',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          flex: '1'
+        }
+      },
+      this.title
+    );
 
     // Control buttons container
     const controls = createElement('div', {
@@ -158,23 +163,27 @@ export class QuickTabWindow {
    * Create a control button
    */
   createButton(text, onClick) {
-    const button = createElement('button', {
-      style: {
-        width: '24px',
-        height: '24px',
-        backgroundColor: 'transparent',
-        border: '1px solid #666',
-        borderRadius: '4px',
-        color: '#fff',
-        fontSize: '16px',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '0',
-        transition: 'background-color 0.2s'
-      }
-    }, text);
+    const button = createElement(
+      'button',
+      {
+        style: {
+          width: '24px',
+          height: '24px',
+          backgroundColor: 'transparent',
+          border: '1px solid #666',
+          borderRadius: '4px',
+          color: '#fff',
+          fontSize: '16px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '0',
+          transition: 'background-color 0.2s'
+        }
+      },
+      text
+    );
 
     button.addEventListener('mouseenter', () => {
       button.style.backgroundColor = '#444';
@@ -184,7 +193,7 @@ export class QuickTabWindow {
       button.style.backgroundColor = 'transparent';
     });
 
-    button.addEventListener('click', (e) => {
+    button.addEventListener('click', e => {
       e.stopPropagation();
       onClick();
     });
@@ -196,36 +205,36 @@ export class QuickTabWindow {
    * Setup drag handlers using Pointer Events API
    */
   setupDragHandlers(titlebar) {
-    titlebar.addEventListener('pointerdown', (e) => {
+    titlebar.addEventListener('pointerdown', e => {
       if (e.target.tagName === 'BUTTON') return;
-      
+
       this.isDragging = true;
       this.dragStartX = e.clientX - this.left;
       this.dragStartY = e.clientY - this.top;
-      
+
       titlebar.setPointerCapture(e.pointerId);
-      
+
       this.onFocus(this.id);
     });
 
-    titlebar.addEventListener('pointermove', (e) => {
+    titlebar.addEventListener('pointermove', e => {
       if (!this.isDragging) return;
-      
+
       this.left = e.clientX - this.dragStartX;
       this.top = e.clientY - this.dragStartY;
-      
+
       this.container.style.left = `${this.left}px`;
       this.container.style.top = `${this.top}px`;
     });
 
-    titlebar.addEventListener('pointerup', (e) => {
+    titlebar.addEventListener('pointerup', e => {
       if (this.isDragging) {
         this.isDragging = false;
         titlebar.releasePointerCapture(e.pointerId);
       }
     });
 
-    titlebar.addEventListener('pointercancel', (e) => {
+    titlebar.addEventListener('pointercancel', e => {
       this.isDragging = false;
     });
   }
@@ -247,38 +256,38 @@ export class QuickTabWindow {
       }
     });
 
-    resizeHandle.addEventListener('pointerdown', (e) => {
+    resizeHandle.addEventListener('pointerdown', e => {
       e.stopPropagation();
       this.isResizing = true;
       this.resizeStartWidth = this.width;
       this.resizeStartHeight = this.height;
       this.dragStartX = e.clientX;
       this.dragStartY = e.clientY;
-      
+
       resizeHandle.setPointerCapture(e.pointerId);
     });
 
-    resizeHandle.addEventListener('pointermove', (e) => {
+    resizeHandle.addEventListener('pointermove', e => {
       if (!this.isResizing) return;
-      
+
       const deltaX = e.clientX - this.dragStartX;
       const deltaY = e.clientY - this.dragStartY;
-      
+
       this.width = Math.max(400, this.resizeStartWidth + deltaX);
       this.height = Math.max(300, this.resizeStartHeight + deltaY);
-      
+
       this.container.style.width = `${this.width}px`;
       this.container.style.height = `${this.height}px`;
     });
 
-    resizeHandle.addEventListener('pointerup', (e) => {
+    resizeHandle.addEventListener('pointerup', e => {
       if (this.isResizing) {
         this.isResizing = false;
         resizeHandle.releasePointerCapture(e.pointerId);
       }
     });
 
-    resizeHandle.addEventListener('pointercancel', (e) => {
+    resizeHandle.addEventListener('pointercancel', e => {
       this.isResizing = false;
     });
 
