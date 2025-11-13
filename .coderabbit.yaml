@@ -1,25 +1,17 @@
-# .coderabbit.yaml
 language: en-US
 tone_instructions: 'Focus on logic correctness, security issues, and browser extension best practices. Be concise but thorough.'
 
 reviews:
-  # Review profile (assertive = detailed feedback)
   profile: assertive
 
   auto_review:
     enabled: true
     drafts: false
-
-    # Enable review for all branches including bot-created and DeepSource/Copilot agent branches
     base_branches:
-      # DeepSource autofix branches
-      - deepsource-transform-*
-      # Copilot Agent branches
-      - copilot/**
       - main
       - develop
-
-    # CRITICAL: Empty list means review ALL PRs including bots
+      - deepsource-transform-*
+      - copilot-*
     ignore_usernames: []
 
   high_level_summary: true
