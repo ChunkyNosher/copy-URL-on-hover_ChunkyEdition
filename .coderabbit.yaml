@@ -14,13 +14,13 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-    
+
     # Enable review for all branches including bot-created ones
     base_branches:
       - main
       - develop
-      - 'deepsource-transform-*'  # DeepSource autofix branches
-      - 'copilot/**'  # Copilot Agent branches
+      - 'deepsource-transform-*' # DeepSource autofix branches
+      - 'copilot/**' # Copilot Agent branches
 
     # CRITICAL: Empty list means review ALL PRs including bots
     # This fixes the "Bot user detected, review skipped" issue

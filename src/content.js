@@ -443,7 +443,7 @@ async function handleCopyText(element) {
 async function handleCreateQuickTab(url) {
   debug('Creating Quick Tab for:', url);
   eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
-  
+
   // ACTUAL IMPLEMENTATION - send to background script
   try {
     await sendMessageToBackground({
@@ -458,7 +458,7 @@ async function handleCreateQuickTab(url) {
       cookieStoreId: 'firefox-default',
       minimized: false
     });
-    
+
     showNotification('✓ Quick Tab created!', 'success');
     debug('Quick Tab created successfully');
   } catch (err) {
@@ -520,7 +520,7 @@ function showTooltip(message) {
 
   const mouseX = stateManager.get('lastMouseX') || 0;
   const mouseY = stateManager.get('lastMouseY') || 0;
-  
+
   // Determine animation class
   let animClass = 'cuo-anim-fade';
   if (CONFIG.tooltipAnimation === 'bounce') {
@@ -573,15 +573,15 @@ function showToast(message, type) {
   };
 
   const pos = positions[CONFIG.notifPosition] || positions['bottom-right'];
-  
+
   // Determine animation class
-  let animClass = 'cuo-anim-fade';  // Default
+  let animClass = 'cuo-anim-fade'; // Default
   if (CONFIG.notifAnimation === 'slide') {
     animClass = 'cuo-anim-slide';
   } else if (CONFIG.notifAnimation === 'bounce') {
     animClass = 'cuo-anim-bounce';
   }
-  
+
   // Ensure border width is a number
   const borderWidth = parseInt(CONFIG.notifBorderWidth) || 1;
 
