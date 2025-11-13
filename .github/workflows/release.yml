@@ -25,8 +25,43 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Build Extension
-        run: npm run build
+      - name: Run Tests
+        run: npm test
+
+      - name: Build Extension (Production)
+        run: npm run build:prod
+
+      - name: Validate Build Output
+        run: |
+          echo "Validating build output..."
+          if [ ! -f dist/content.js ]; then
+            echo "ERROR: dist/content.js not found!"
+            exit 1
+          fi
+          if [ ! -f dist/manifest.json ]; then
+            echo "ERROR: dist/manifest.json not found!"
+            exit 1
+          fi
+          if [ ! -f dist/background.js ]; then
+            echo "ERROR: dist/background.js not found!"
+            exit 1
+          fi
+          echo "✓ All required files present in dist/"
+          
+          # Check that content.js is properly bundled (not empty, reasonable size)
+          CONTENT_SIZE=$(wc -c < dist/content.js)
+          if [ "$CONTENT_SIZE" -lt 10000 ]; then
+            echo "ERROR: content.js seems too small ($CONTENT_SIZE bytes), build may have failed!"
+            exit 1
+          fi
+          echo "✓ content.js size: $CONTENT_SIZE bytes"
+          
+          # Verify no source files leaked into dist
+          if [ -d dist/src ]; then
+            echo "ERROR: src/ directory found in dist/! Source files should not be packaged."
+            exit 1
+          fi
+          echo "✓ No source files in dist/"
 
       - name: Get version from manifest
         id: get_version
@@ -38,7 +73,20 @@ jobs:
       - name: Package .xpi Archive
         working-directory: ./dist
         run: |
+          echo "Packaging extension from dist/ directory..."
           zip -r -1 -FS ../copy-url-hover-${{ github.ref_name }}.xpi * -x '*.DS_Store' -x '*.map'
+          echo "✓ XPI package created"
+
+      - name: Verify .xpi Package
+        run: |
+          echo "Verifying .xpi package contents..."
+          unzip -l copy-url-hover-${{ github.ref_name }}.xpi
+          XPI_SIZE=$(wc -c < copy-url-hover-${{ github.ref_name }}.xpi)
+          echo "✓ XPI package size: $XPI_SIZE bytes"
+          if [ "$XPI_SIZE" -lt 50000 ]; then
+            echo "ERROR: XPI package seems too small ($XPI_SIZE bytes)!"
+            exit 1
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -62,9 +110,13 @@ jobs:
 
             ### Build Information
 
+            - **Architecture:** Hybrid Modular/EventBus (v1.5.8.10+)
             - Built from modular source using Rollup bundler
-            - Optimized content.js (63KB bundled from 180KB source)
-            - Includes all 104 URL handlers across 11 categories
+            - Bundled content.js from modular src/ structure
+            - CSS modularized into ui/css/ directory
+            - Core utilities: config, state, events, dom, browser-api
+            - Feature modules: quick-tabs, notifications, url-handlers
+            - All tests passing ✓
           draft: false
           prerelease: false
         env:
