@@ -43,7 +43,7 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Ensure comprehensive testing on both Firefox and Zen Browser
 - **Validate that current APIs (clipboard, storage, webRequest) still function correctly**
 
-## Extension Architecture Context (v1.5.8.8+)
+## Extension Architecture Context (v1.5.8.9+)
 
 **Current Technology Stack - CRITICAL FOR ROUTING:**
 
@@ -58,7 +58,7 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 **File Structure:**
 
 - **Modular Source** (v1.5.8.2+):
-  - src/content.js (~570 lines): Main entry point with enhanced logging and eager loading (v1.5.8.8)
+  - src/content.js (~570 lines): Main entry point with enhanced logging and eager loading (v1.5.8.9)
   - src/core/: config.js, state.js, events.js, index.js (barrel file)
   - src/features/url-handlers/: 11 categorized modules (104 handlers)
   - src/utils/: debug.js, dom.js, browser-api.js, index.js (barrel file)
@@ -72,7 +72,7 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
   - tests/example.test.js: Example tests for Codecov integration (NEW v1.5.8.8)
   - .github/workflows/: code-quality.yml, codeql-analysis.yml, test-coverage.yml, webext-lint.yml, auto-format.yml
   - .eslintrc.cjs, .prettierrc.cjs, jest.config.cjs
-  - .deepsource.toml: Fixed configuration (v1.5.8.8)
+  - .deepsource.toml: Fixed configuration (v1.5.8.9)
   - .coderabbit.yaml: CodeRabbit AI review configuration (NEW v1.5.8.8)
   - .github/copilot-instructions.md: Project-specific AI guidance (NEW v1.5.8.8)
 

@@ -1,10 +1,10 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.8.7** - A feature-rich Firefox/Zen Browser extension with modular architecture for quick URL copying and advanced Quick Tab management with Firefox Container support and Floating Panel Manager.
+**Version 1.5.8.9** - A feature-rich Firefox/Zen Browser extension with modular architecture for quick URL copying and advanced Quick Tab management with Firefox Container support and Floating Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration and a floating Quick Tabs Manager panel that works in Zen Browser.
 
-## 📁 Repository Structure (v1.5.8.7 - Modular Architecture with Enhanced Debugging)
+## 📁 Repository Structure (v1.5.8.9 - Bug Fixes and Enhanced CI/CD)
 
 **Source Files (New Modular Structure)**:
 
@@ -80,6 +80,29 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 - **Runtime Messaging** - Cross-origin sync via background script
 - **ID-based Tracking** - Prevents duplicate instance conflicts
 - **Commands API** - Keyboard shortcuts for panel toggle (Ctrl+Alt+Z)
+
+### What's New in v1.5.8.9?
+
+✅ **Critical Bug Fixes**
+
+- **Fixed "Open in New Tab" feature** - Corrected action name mismatch between content script and background script
+- **Implemented Quick Tab creation** - Added actual Quick Tab creation logic (was previously just a stub)
+- **Fixed notification animations** - Added CSS keyframe animations for slide, fade, and bounce effects
+- **Fixed notification border width** - Ensured border width is parsed as a number to prevent rendering issues
+- **Enhanced notification display** - Animations now properly apply to both tooltip and toast notifications
+
+✅ **Improved CI/CD and Tool Integration**
+
+- **CodeRabbit bot PR review** - Updated configuration to enable code reviews for bot-created PRs
+- **Enhanced Codecov integration** - Improved test coverage workflow with better error handling
+- **Base branch configuration** - Added support for DeepSource and Copilot branch patterns
+- **Cleaner PR reviews** - Disabled review skip status messages for better PR readability
+
+✅ **Developer Experience Improvements**
+
+- Comprehensive bug fix documentation (v1588-complete-fix-plan.md, fix-pr78-issues.md)
+- Updated GitHub Copilot agent instructions with v1.5.8.9 information
+- All features now fully functional (Copy URL, Copy Text, Open in New Tab, Quick Tab creation)
 
 ### What's New in v1.5.8.7?
 
