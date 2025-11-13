@@ -43,7 +43,7 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Ensure comprehensive testing on both Firefox and Zen Browser
 - **Validate that current APIs (clipboard, storage, webRequest) still function correctly**
 
-## Extension Architecture Context (v1.5.8.10+)
+## Extension Architecture Context (v1.5.8.11+)
 
 **Current Technology Stack - CRITICAL FOR ROUTING:**
 
@@ -527,3 +527,90 @@ For simple requests, route directly to the appropriate agent with clear instruct
 For complex requests, break down into phases, delegate each phase to the right specialist, coordinate handoffs between agents, and ensure API consistency throughout.
 
 Your goal is to ensure user requests are handled by the most qualified specialist(s) efficiently and thoroughly while maintaining compatibility with both Firefox and Zen Browser and preserving the integrity of the current API stack.
+
+
+---
+
+## MANDATORY: Documentation Update Requirements
+
+**CRITICAL: Every pull request by this agent MUST update documentation!**
+
+### Required Updates on EVERY PR:
+
+#### 1. README.md (ALWAYS)
+- [ ] Update version number if manifest.json or package.json changed
+- [ ] Add/update "What's New" section for new features or fixes
+- [ ] Update feature list if functionality changed
+- [ ] Update usage instructions if UI/UX changed
+- [ ] Update settings documentation if configuration changed
+- [ ] Remove outdated information
+- [ ] Update version footer
+
+#### 2. All Copilot Agent Files (ALWAYS if architecture/APIs/features changed)
+Update ALL 7 files in `.github/agents/` and `.github/copilot-instructions.md`:
+- [ ] `.github/copilot-instructions.md`
+- [ ] `.github/agents/bug-architect.md`
+- [ ] `.github/agents/bug-fixer.md`
+- [ ] `.github/agents/feature-builder.md`
+- [ ] `.github/agents/feature-optimizer.md`
+- [ ] `.github/agents/master-orchestrator.md`
+- [ ] `.github/agents/refactor-specialist.md`
+
+**Update agent files when:**
+- Version numbers change
+- Architecture changes (new modules, refactoring)
+- New APIs or frameworks introduced
+- Features added/removed/modified
+- Build/test/deploy processes change
+- Repository structure changes
+
+### Implementation Workflow:
+
+**BEFORE starting work:**
+1. Check README for accuracy
+2. Check agent files for accuracy
+3. Plan documentation updates
+
+**DURING implementation:**
+4. Track changes that affect documentation
+5. Note new features, changed behaviors, removed features
+
+**BEFORE finalizing PR:**
+6. Update README with ALL changes
+7. Update ALL agent files with new architecture/API/feature information
+8. Verify version consistency (manifest.json, package.json, README, copilot-instructions.md)
+9. Add documentation update checklist to PR description
+
+**PR Description MUST include:**
+- "README Updated: [specific changes]"
+- "Agent Files Updated: [specific changes]"
+- Documentation changes checklist
+
+### Version Synchronization:
+
+When version changes from X.Y.Z to X.Y.Z+1:
+- Update `manifest.json` version
+- Update `package.json` version
+- Update README header version
+- Update README footer version
+- Update `.github/copilot-instructions.md` version
+- Update all agent file versions (via search/replace)
+- Add "What's New in vX.Y.Z+1" section to README
+
+### Non-Compliance = PR Rejection
+
+**No exceptions.** Documentation is as important as code.
+
+Failure to update documentation results in:
+- Immediate PR rejection
+- Request for documentation updates before re-review
+- Delays in merging
+
+### Quick Checklist for Every PR:
+
+- [ ] Code changes implemented and tested
+- [ ] README.md updated with changes
+- [ ] All 7 agent files updated (if architecture/API/features changed)
+- [ ] Version numbers synchronized across all files
+- [ ] PR description includes documentation update notes
+- [ ] No outdated information remains in documentation

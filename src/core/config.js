@@ -33,7 +33,6 @@ export const DEFAULT_CONFIG = {
   quickTabPosition: 'follow-cursor',
   quickTabCustomX: 100,
   quickTabCustomY: 100,
-  quickTabPersistAcrossTabs: true,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
   quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
@@ -106,7 +105,6 @@ export class ConfigManager {
       console.log('[ConfigManager] Configuration loaded successfully');
       console.log('[ConfigManager] Config summary:', {
         debugMode: this.config.debugMode,
-        quickTabPersistAcrossTabs: this.config.quickTabPersistAcrossTabs,
         totalKeys: Object.keys(this.config).length
       });
     } catch (err) {

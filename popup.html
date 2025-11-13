@@ -1,641 +1,754 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Copy URL on Hover Settings</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #1e1e1e;
-            color: #e0e0e0;
-            display: flex;
-            flex-direction: column;
-            height: 600px;
-            width: 400px;
-            overflow: hidden;
-        }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+          sans-serif;
+        background: #1e1e1e;
+        color: #e0e0e0;
+        display: flex;
+        flex-direction: column;
+        height: 600px;
+        width: 400px;
+        overflow: hidden;
+      }
 
-        /* Menu size variations */
-        body.menu-small {
-            height: 480px;
-            width: 320px;
-        }
+      /* Menu size variations */
+      body.menu-small {
+        height: 480px;
+        width: 320px;
+      }
 
-        body.menu-large {
-            height: 720px;
-            width: 480px;
-        }
+      body.menu-large {
+        height: 720px;
+        width: 480px;
+      }
 
-        .popup-container {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            overflow: hidden;
-        }
+      .popup-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+      }
 
-        .header {
-            background: #2a2a2a;
-            padding: 16px;
-            border-bottom: 2px solid #4CAF50;
-            flex-shrink: 0;
-        }
+      .header {
+        background: #2a2a2a;
+        padding: 16px;
+        border-bottom: 2px solid #4caf50;
+        flex-shrink: 0;
+      }
 
-        .header h1 {
-            font-size: 16px;
-            font-weight: 600;
-        }
+      .header h1 {
+        font-size: 16px;
+        font-weight: 600;
+      }
 
-        .tabs {
-            display: flex;
-            gap: 0;
-            background: #252525;
-            border-bottom: 1px solid #3a3a3a;
-            flex-shrink: 0;
-        }
+      .tabs {
+        display: flex;
+        gap: 0;
+        background: #252525;
+        border-bottom: 1px solid #3a3a3a;
+        flex-shrink: 0;
+      }
 
-        .tab-button {
-            flex: 1;
-            padding: 12px 16px;
-            background: transparent;
-            border: none;
-            color: #888;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            border-bottom: 2px solid transparent;
-            transition: all 0.3s ease;
-        }
+      .tab-button {
+        flex: 1;
+        padding: 12px 16px;
+        background: transparent;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        border-bottom: 2px solid transparent;
+        transition: all 0.3s ease;
+      }
 
-        .tab-button:hover {
-            color: #e0e0e0;
-            background: #2a2a2a;
-        }
+      .tab-button:hover {
+        color: #e0e0e0;
+        background: #2a2a2a;
+      }
 
-        .tab-button.active {
-            color: #4CAF50;
-            border-bottom-color: #4CAF50;
-        }
+      .tab-button.active {
+        color: #4caf50;
+        border-bottom-color: #4caf50;
+      }
 
-        /* CRITICAL: Scrollable content area */
-        .content {
-            flex: 1;
-            overflow-y: auto;
-            overflow-x: hidden;
-            flex-shrink: 1;
-            min-height: 0;
-        }
+      /* CRITICAL: Scrollable content area */
+      .content {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        flex-shrink: 1;
+        min-height: 0;
+      }
 
-        .tab-content {
-            display: none;
-            padding: 16px;
-        }
+      .tab-content {
+        display: none;
+        padding: 16px;
+      }
 
-        .tab-content.active {
-            display: block;
-        }
+      .tab-content.active {
+        display: block;
+      }
 
-        .setting-group {
-            margin-bottom: 24px;
-        }
+      .setting-group {
+        margin-bottom: 24px;
+      }
 
-        .setting-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 13px;
-            font-weight: 600;
-            color: #e0e0e0;
-        }
+      .setting-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #e0e0e0;
+      }
 
-        .setting-group input[type="text"],
-        .setting-group input[type="color"] {
-            width: 100%;
-            padding: 8px 10px;
-            background: #3a3a3a;
-            border: 1px solid #4a4a4a;
-            color: #e0e0e0;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-bottom: 8px;
-        }
+      .setting-group input[type='text'],
+      .setting-group input[type='color'] {
+        width: 100%;
+        padding: 8px 10px;
+        background: #3a3a3a;
+        border: 1px solid #4a4a4a;
+        color: #e0e0e0;
+        border-radius: 4px;
+        font-size: 12px;
+        margin-bottom: 8px;
+      }
 
-        .color-input-wrapper {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
+      .color-input-wrapper {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
 
-        .color-input-wrapper input[type="text"] {
-            flex: 1;
-        }
+      .color-input-wrapper input[type='text'] {
+        flex: 1;
+      }
 
-        .color-input-wrapper input[type="color"] {
-            width: 50px;
-            height: 34px;
-            border: 1px solid #4a4a4a;
-            border-radius: 4px;
-            cursor: pointer;
-            flex-shrink: 0;
-            background: transparent;
-            padding: 2px;
-        }
+      .color-input-wrapper input[type='color'] {
+        width: 50px;
+        height: 34px;
+        border: 1px solid #4a4a4a;
+        border-radius: 4px;
+        cursor: pointer;
+        flex-shrink: 0;
+        background: transparent;
+        padding: 2px;
+      }
 
-        .color-input-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
-            padding: 0;
-        }
+      .color-input-wrapper input[type='color']::-webkit-color-swatch-wrapper {
+        padding: 0;
+      }
 
-        .color-input-wrapper input[type="color"]::-webkit-color-swatch {
-            border: none;
-            border-radius: 3px;
-        }
+      .color-input-wrapper input[type='color']::-webkit-color-swatch {
+        border: none;
+        border-radius: 3px;
+      }
 
-        .color-preview {
-            width: 40px;
-            height: 34px;
-            border: 1px solid #4a4a4a;
-            border-radius: 4px;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
+      .color-preview {
+        width: 40px;
+        height: 34px;
+        border: 1px solid #4a4a4a;
+        border-radius: 4px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
 
-        .setting-group input[type="text"]:focus,
-        .setting-group input[type="color"]:focus {
-            outline: none;
-            border-color: #4CAF50;
-            box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
-        }
+      .setting-group input[type='text']:focus,
+      .setting-group input[type='color']:focus {
+        outline: none;
+        border-color: #4caf50;
+        box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+      }
 
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
+      .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
 
-        .checkbox-group input[type="checkbox"] {
-            cursor: pointer;
-        }
+      .checkbox-group input[type='checkbox'] {
+        cursor: pointer;
+      }
 
-        .checkbox-group label {
-            margin: 0;
-            cursor: pointer;
-            font-size: 12px;
-        }
+      .checkbox-group label {
+        margin: 0;
+        cursor: pointer;
+        font-size: 12px;
+      }
 
-        .checkbox-inline-group {
-            display: flex;
-            gap: 16px;
-            margin-bottom: 0;
-        }
+      .checkbox-inline-group {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 0;
+      }
 
-        .checkbox-separate {
-            margin-top: 8px;
-        }
+      .checkbox-separate {
+        margin-top: 8px;
+      }
 
-        .info-box {
-            background: #2a4a2a;
-            border-left: 3px solid #4CAF50;
-            padding: 12px;
-            margin-bottom: 16px;
-            border-radius: 4px;
-            font-size: 12px;
-            line-height: 1.4;
-        }
+      .info-box {
+        background: #2a4a2a;
+        border-left: 3px solid #4caf50;
+        padding: 12px;
+        margin-bottom: 16px;
+        border-radius: 4px;
+        font-size: 12px;
+        line-height: 1.4;
+      }
 
-        .info-box strong {
-            color: #4CAF50;
-        }
+      .info-box strong {
+        color: #4caf50;
+      }
 
-        /* CRITICAL: Footer stays at bottom */
-        .footer {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            padding: 10px 16px;
-            background: #252525;
-            border-top: 1px solid #3a3a3a;
-            flex-shrink: 0;
-        }
+      /* CRITICAL: Footer stays at bottom */
+      .footer {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 16px;
+        background: #252525;
+        border-top: 1px solid #3a3a3a;
+        flex-shrink: 0;
+      }
 
-        .footer-buttons {
-            display: flex;
-            gap: 8px;
-        }
+      .footer-buttons {
+        display: flex;
+        gap: 8px;
+      }
 
-        .footer button {
-            flex: 1;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
+      .footer button {
+        flex: 1;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
 
-        .status-msg {
-            text-align: center;
-            font-size: 12px;
-            padding: 6px;
-            border-radius: 4px;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
+      .status-msg {
+        text-align: center;
+        font-size: 12px;
+        padding: 6px;
+        border-radius: 4px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
 
-        .status-msg.success {
-            background: #2a4a2a;
-            color: #4CAF50;
-            opacity: 1;
-        }
+      .status-msg.success {
+        background: #2a4a2a;
+        color: #4caf50;
+        opacity: 1;
+      }
 
-        .status-msg.error {
-            background: #4a2a2a;
-            color: #f44336;
-            opacity: 1;
-        }
+      .status-msg.error {
+        background: #4a2a2a;
+        color: #f44336;
+        opacity: 1;
+      }
 
-        .footer-version {
-            text-align: center;
-            font-size: 11px;
-            color: #888;
-            padding-top: 8px;
-            border-top: 1px solid #3a3a3a;
-        }
+      .footer-version {
+        text-align: center;
+        font-size: 11px;
+        color: #888;
+        padding-top: 8px;
+        border-top: 1px solid #3a3a3a;
+      }
 
-        .save-btn {
-            background: #4CAF50;
-            color: #fff;
-        }
+      .save-btn {
+        background: #4caf50;
+        color: #fff;
+      }
 
-        .save-btn:hover {
-            background: #45a049;
-        }
+      .save-btn:hover {
+        background: #45a049;
+      }
 
-        .reset-btn {
-            background: #666;
-            color: #e0e0e0;
-        }
+      .reset-btn {
+        background: #666;
+        color: #e0e0e0;
+      }
 
-        .reset-btn:hover {
-            background: #777;
-        }
+      .reset-btn:hover {
+        background: #777;
+      }
 
-        /* Scrollbar styling */
-        .content::-webkit-scrollbar {
-            width: 8px;
-        }
+      /* Scrollbar styling */
+      .content::-webkit-scrollbar {
+        width: 8px;
+      }
 
-        .content::-webkit-scrollbar-track {
-            background: #2a2a2a;
-        }
+      .content::-webkit-scrollbar-track {
+        background: #2a2a2a;
+      }
 
-        .content::-webkit-scrollbar-thumb {
-            background: #4a4a4a;
-            border-radius: 4px;
-        }
+      .content::-webkit-scrollbar-thumb {
+        background: #4a4a4a;
+        border-radius: 4px;
+      }
 
-        .content::-webkit-scrollbar-thumb:hover {
-            background: #5a5a5a;
-        }
+      .content::-webkit-scrollbar-thumb:hover {
+        background: #5a5a5a;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="popup-container">
-        <!-- Header -->
-        <div class="header">
-            <h1>⚙️ Copy URL on Hover</h1>
+      <!-- Header -->
+      <div class="header">
+        <h1>⚙️ Copy URL on Hover</h1>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab-button active" data-tab="copy-url">Copy URL</button>
+        <button class="tab-button" data-tab="quick-tabs">Quick Tabs</button>
+        <button class="tab-button" data-tab="appearance">Appearance</button>
+        <button class="tab-button" data-tab="advanced">Advanced</button>
+      </div>
+
+      <!-- Scrollable Content Area -->
+      <div class="content">
+        <!-- Tab 1: Copy URL -->
+        <div id="copy-url" class="tab-content active">
+          <div class="info-box">
+            <strong>Keyboard Shortcuts:</strong><br />
+            • Check "Ctrl" + set key "C" = Ctrl+C<br />
+            • Check "Ctrl" and "Shift" + set key "Y" = Ctrl+Shift+Y<br />
+            • Leave all unchecked = just press the key
+          </div>
+
+          <div class="setting-group">
+            <label>Copy URL Key:</label>
+            <input type="text" id="copyUrlKey" maxlength="1" placeholder="Y" />
+            <div class="checkbox-inline-group">
+              <div class="checkbox-group">
+                <input type="checkbox" id="copyUrlCtrl" />
+                <label for="copyUrlCtrl">Ctrl</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="copyUrlAlt" />
+                <label for="copyUrlAlt">Alt</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="copyUrlShift" />
+                <label for="copyUrlShift">Shift</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label>Copy Text Key:</label>
+            <input type="text" id="copyTextKey" maxlength="1" placeholder="X" />
+            <div class="checkbox-inline-group">
+              <div class="checkbox-group">
+                <input type="checkbox" id="copyTextCtrl" />
+                <label for="copyTextCtrl">Ctrl</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="copyTextAlt" />
+                <label for="copyTextAlt">Alt</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="copyTextShift" />
+                <label for="copyTextShift">Shift</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label>Open in New Tab Key:</label>
+            <input type="text" id="openNewTabKey" maxlength="1" placeholder="O" />
+            <div class="checkbox-inline-group">
+              <div class="checkbox-group">
+                <input type="checkbox" id="openNewTabCtrl" />
+                <label for="openNewTabCtrl">Ctrl</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="openNewTabAlt" />
+                <label for="openNewTabAlt">Alt</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="openNewTabShift" />
+                <label for="openNewTabShift">Shift</label>
+              </div>
+            </div>
+            <div class="checkbox-group checkbox-separate">
+              <input type="checkbox" id="openNewTabSwitchFocus" />
+              <label for="openNewTabSwitchFocus">Switch focus to new tab</label>
+            </div>
+          </div>
         </div>
 
-        <!-- Tabs -->
-        <div class="tabs">
-            <button class="tab-button active" data-tab="copy-url">Copy URL</button>
-            <button class="tab-button" data-tab="quick-tabs">Quick Tabs</button>
-            <button class="tab-button" data-tab="appearance">Appearance</button>
-            <button class="tab-button" data-tab="advanced">Advanced</button>
+        <!-- Tab 2: Quick Tabs -->
+        <div id="quick-tabs" class="tab-content">
+          <div class="setting-group">
+            <label>Quick Tab Key:</label>
+            <input type="text" id="quickTabKey" maxlength="1" placeholder="Q" />
+            <div class="checkbox-inline-group">
+              <div class="checkbox-group">
+                <input type="checkbox" id="quickTabCtrl" />
+                <label for="quickTabCtrl">Ctrl</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="quickTabAlt" />
+                <label for="quickTabAlt">Alt</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="quickTabShift" />
+                <label for="quickTabShift">Shift</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label>Close all Quick Tabs key:</label>
+            <input type="text" id="quickTabCloseKey" placeholder="Escape" />
+          </div>
+
+          <div class="setting-group">
+            <label>Max Quick Tab windows:</label>
+            <input type="text" id="quickTabMaxWindows" placeholder="3" value="3" />
+          </div>
+
+          <div class="setting-group">
+            <label>Default width (px):</label>
+            <input type="text" id="quickTabDefaultWidth" placeholder="800" value="800" />
+          </div>
+
+          <div class="setting-group">
+            <label>Default height (px):</label>
+            <input type="text" id="quickTabDefaultHeight" placeholder="600" value="600" />
+          </div>
+
+          <div class="setting-group">
+            <label>Window position:</label>
+            <select
+              id="quickTabPosition"
+              style="
+                width: 100%;
+                padding: 8px 10px;
+                background: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 12px;
+              "
+            >
+              <option value="follow-cursor">Follow Cursor</option>
+              <option value="center">Center</option>
+              <option value="top-left">Top Left</option>
+              <option value="top-right">Top Right</option>
+              <option value="bottom-left">Bottom Left</option>
+              <option value="bottom-right">Bottom Right</option>
+              <option value="custom">Custom Position</option>
+            </select>
+          </div>
+
+          <div id="customPositionFields" class="setting-group" style="display: none">
+            <label>Custom X position (px):</label>
+            <input type="text" id="quickTabCustomX" placeholder="100" value="100" />
+
+            <label style="margin-top: 12px">Custom Y position (px):</label>
+            <input type="text" id="quickTabCustomY" placeholder="100" value="100" />
+          </div>
+
+          <div class="setting-group">
+            <div class="checkbox-group">
+              <input type="checkbox" id="quickTabCloseOnOpen" />
+              <label for="quickTabCloseOnOpen">Close Quick Tab when opening in new tab</label>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <div class="checkbox-group">
+              <input type="checkbox" id="quickTabEnableResize" checked />
+              <label for="quickTabEnableResize">Enable Quick Tab resizing</label>
+            </div>
+          </div>
+
+          <div class="info-box">
+            <strong>Quick Tabs:</strong> Press Q (or your configured key) while hovering over a link
+            to open it in a floating window. Use the navigation controls to browse, minimize to save
+            tabs, and press Escape to close all.
+          </div>
         </div>
 
-        <!-- Scrollable Content Area -->
-        <div class="content">
-            <!-- Tab 1: Copy URL -->
-            <div id="copy-url" class="tab-content active">
-                <div class="info-box">
-                    <strong>Keyboard Shortcuts:</strong><br>
-                    • Check "Ctrl" + set key "C" = Ctrl+C<br>
-                    • Check "Ctrl" and "Shift" + set key "Y" = Ctrl+Shift+Y<br>
-                    • Leave all unchecked = just press the key
-                </div>
-
-                <div class="setting-group">
-                    <label>Copy URL Key:</label>
-                    <input type="text" id="copyUrlKey" maxlength="1" placeholder="Y">
-                    <div class="checkbox-inline-group">
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="copyUrlCtrl">
-                            <label for="copyUrlCtrl">Ctrl</label>
-                        </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="copyUrlAlt">
-                            <label for="copyUrlAlt">Alt</label>
-                        </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="copyUrlShift">
-                            <label for="copyUrlShift">Shift</label>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="setting-group">
-                    <label>Copy Text Key:</label>
-                    <input type="text" id="copyTextKey" maxlength="1" placeholder="X">
-                    <div class="checkbox-inline-group">
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="copyTextCtrl">
-                            <label for="copyTextCtrl">Ctrl</label>
-                        </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="copyTextAlt">
-                            <label for="copyTextAlt">Alt</label>
-                        </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="copyTextShift">
-                            <label for="copyTextShift">Shift</label>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="setting-group">
-                    <label>Open in New Tab Key:</label>
-                    <input type="text" id="openNewTabKey" maxlength="1" placeholder="O">
-                    <div class="checkbox-inline-group">
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="openNewTabCtrl">
-                            <label for="openNewTabCtrl">Ctrl</label>
-                        </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="openNewTabAlt">
-                            <label for="openNewTabAlt">Alt</label>
-                        </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="openNewTabShift">
-                            <label for="openNewTabShift">Shift</label>
-                        </div>
-                    </div>
-                    <div class="checkbox-group checkbox-separate">
-                        <input type="checkbox" id="openNewTabSwitchFocus">
-                        <label for="openNewTabSwitchFocus">Switch focus to new tab</label>
-                    </div>
-                </div>
+        <!-- Tab 3: Appearance -->
+        <div id="appearance" class="tab-content">
+          <div class="setting-group">
+            <div class="checkbox-group">
+              <input type="checkbox" id="darkMode" checked />
+              <label for="darkMode">Dark Mode</label>
             </div>
+          </div>
 
-            <!-- Tab 2: Quick Tabs -->
-            <div id="quick-tabs" class="tab-content">
-                <div class="setting-group">
-                    <label>Quick Tab Key:</label>
-                    <input type="text" id="quickTabKey" maxlength="1" placeholder="Q">
-                    <div class="checkbox-inline-group">
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="quickTabCtrl">
-                            <label for="quickTabCtrl">Ctrl</label>
-                        </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="quickTabAlt">
-                            <label for="quickTabAlt">Alt</label>
-                        </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="quickTabShift">
-                            <label for="quickTabShift">Shift</label>
-                        </div>
-                    </div>
-                </div>
+          <div class="setting-group">
+            <label>Notification Display Mode:</label>
+            <select
+              id="notifDisplayMode"
+              style="
+                width: 100%;
+                padding: 8px 10px;
+                background: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 12px;
+              "
+            >
+              <option value="tooltip">Tooltip</option>
+              <option value="notification">Notification</option>
+            </select>
+          </div>
 
-                <div class="setting-group">
-                    <label>Close all Quick Tabs key:</label>
-                    <input type="text" id="quickTabCloseKey" placeholder="Escape">
-                </div>
-
-                <div class="setting-group">
-                    <label>Max Quick Tab windows:</label>
-                    <input type="text" id="quickTabMaxWindows" placeholder="3" value="3">
-                </div>
-
-                <div class="setting-group">
-                    <label>Default width (px):</label>
-                    <input type="text" id="quickTabDefaultWidth" placeholder="800" value="800">
-                </div>
-
-                <div class="setting-group">
-                    <label>Default height (px):</label>
-                    <input type="text" id="quickTabDefaultHeight" placeholder="600" value="600">
-                </div>
-
-                <div class="setting-group">
-                    <label>Window position:</label>
-                    <select id="quickTabPosition" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
-                        <option value="follow-cursor">Follow Cursor</option>
-                        <option value="center">Center</option>
-                        <option value="top-left">Top Left</option>
-                        <option value="top-right">Top Right</option>
-                        <option value="bottom-left">Bottom Left</option>
-                        <option value="bottom-right">Bottom Right</option>
-                        <option value="custom">Custom Position</option>
-                    </select>
-                </div>
-
-                <div id="customPositionFields" class="setting-group" style="display: none;">
-                    <label>Custom X position (px):</label>
-                    <input type="text" id="quickTabCustomX" placeholder="100" value="100">
-                    
-                    <label style="margin-top: 12px;">Custom Y position (px):</label>
-                    <input type="text" id="quickTabCustomY" placeholder="100" value="100">
-                </div>
-
-                <div class="setting-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="quickTabPersistAcrossTabs" checked>
-                        <label for="quickTabPersistAcrossTabs">Persist Quick Tabs across browser tabs</label>
-                    </div>
-                </div>
-
-                <div class="setting-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="quickTabCloseOnOpen">
-                        <label for="quickTabCloseOnOpen">Close Quick Tab when opening in new tab</label>
-                    </div>
-                </div>
-
-                <div class="setting-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="quickTabEnableResize" checked>
-                        <label for="quickTabEnableResize">Enable Quick Tab resizing</label>
-                    </div>
-                </div>
-
-                <div class="info-box">
-                    <strong>Quick Tabs:</strong> Press Q (or your configured key) while hovering over a link to open it in a floating window. Use the navigation controls to browse, minimize to save tabs, and press Escape to close all.
-                </div>
+          <div class="setting-group">
+            <label>Tooltip Color (Hex):</label>
+            <div class="color-input-wrapper">
+              <input
+                type="text"
+                id="tooltipColor"
+                placeholder="#4CAF50"
+                value="#4CAF50"
+                pattern="^#[0-9A-Fa-f]{6}$"
+              />
+              <input type="color" id="tooltipColorPicker" value="#4CAF50" title="Pick a color" />
             </div>
+          </div>
 
-            <!-- Tab 3: Appearance -->
-            <div id="appearance" class="tab-content">
-                <div class="setting-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="darkMode" checked>
-                        <label for="darkMode">Dark Mode</label>
-                    </div>
-                </div>
+          <div class="setting-group">
+            <label>Tooltip Duration (ms):</label>
+            <input type="text" id="tooltipDuration" placeholder="1500" value="1500" />
+          </div>
 
-                <div class="setting-group">
-                    <label>Notification Display Mode:</label>
-                    <select id="notifDisplayMode" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
-                        <option value="tooltip">Tooltip</option>
-                        <option value="notification">Notification</option>
-                    </select>
-                </div>
+          <div class="setting-group">
+            <label>Tooltip Animation:</label>
+            <select
+              id="tooltipAnimation"
+              style="
+                width: 100%;
+                padding: 8px 10px;
+                background: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 12px;
+              "
+            >
+              <option value="fade">Fade</option>
+              <option value="slide">Slide</option>
+            </select>
+          </div>
 
-                <div class="setting-group">
-                    <label>Tooltip Color (Hex):</label>
-                    <div class="color-input-wrapper">
-                        <input type="text" id="tooltipColor" placeholder="#4CAF50" value="#4CAF50" pattern="^#[0-9A-Fa-f]{6}$">
-                        <input type="color" id="tooltipColorPicker" value="#4CAF50" title="Pick a color">
-                    </div>
-                </div>
-
-                <div class="setting-group">
-                    <label>Tooltip Duration (ms):</label>
-                    <input type="text" id="tooltipDuration" placeholder="1500" value="1500">
-                </div>
-
-                <div class="setting-group">
-                    <label>Tooltip Animation:</label>
-                    <select id="tooltipAnimation" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
-                        <option value="fade">Fade</option>
-                        <option value="slide">Slide</option>
-                    </select>
-                </div>
-
-                <div class="setting-group">
-                    <label>Notification Color (Hex):</label>
-                    <div class="color-input-wrapper">
-                        <input type="text" id="notifColor" placeholder="#4CAF50" value="#4CAF50" pattern="^#[0-9A-Fa-f]{6}$">
-                        <input type="color" id="notifColorPicker" value="#4CAF50" title="Pick a color">
-                    </div>
-                </div>
-
-                <div class="setting-group">
-                    <label>Notification Duration (ms):</label>
-                    <input type="text" id="notifDuration" placeholder="2000" value="2000">
-                </div>
-
-                <div class="setting-group">
-                    <label>Notification Position:</label>
-                    <select id="notifPosition" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
-                        <option value="top-left">Top Left</option>
-                        <option value="top-right">Top Right</option>
-                        <option value="bottom-left">Bottom Left</option>
-                        <option value="bottom-right">Bottom Right</option>
-                    </select>
-                </div>
-
-                <div class="setting-group">
-                    <label>Notification Size:</label>
-                    <select id="notifSize" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
-                        <option value="small">Small</option>
-                        <option value="medium">Medium</option>
-                        <option value="large">Large</option>
-                    </select>
-                </div>
-
-                <div class="setting-group">
-                    <label>Notification Border Color (Hex):</label>
-                    <div class="color-input-wrapper">
-                        <input type="text" id="notifBorderColor" placeholder="#000000" value="#000000" pattern="^#[0-9A-Fa-f]{6}$">
-                        <input type="color" id="notifBorderColorPicker" value="#000000" title="Pick a color">
-                    </div>
-                </div>
-
-                <div class="setting-group">
-                    <label>Notification Border Width (px):</label>
-                    <input type="text" id="notifBorderWidth" placeholder="1" value="1">
-                </div>
-
-                <div class="setting-group">
-                    <label>Notification Animation:</label>
-                    <select id="notifAnimation" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
-                        <option value="fade">Fade</option>
-                        <option value="slide">Slide</option>
-                    </select>
-                </div>
-
-                <div class="info-box">
-                    <strong>Tip:</strong> Reload tabs after saving to apply changes
-                </div>
+          <div class="setting-group">
+            <label>Notification Color (Hex):</label>
+            <div class="color-input-wrapper">
+              <input
+                type="text"
+                id="notifColor"
+                placeholder="#4CAF50"
+                value="#4CAF50"
+                pattern="^#[0-9A-Fa-f]{6}$"
+              />
+              <input type="color" id="notifColorPicker" value="#4CAF50" title="Pick a color" />
             </div>
+          </div>
 
-            <!-- Tab 4: Advanced -->
-            <div id="advanced" class="tab-content">
-                <div class="setting-group">
-                    <label>Extension Menu Size:</label>
-                    <select id="menuSize" style="width: 100%; padding: 8px 10px; background: #3a3a3a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px; font-size: 12px;">
-                        <option value="small">Small (20% smaller)</option>
-                        <option value="medium">Medium (Default)</option>
-                        <option value="large">Large (20% larger)</option>
-                    </select>
-                </div>
+          <div class="setting-group">
+            <label>Notification Duration (ms):</label>
+            <input type="text" id="notifDuration" placeholder="2000" value="2000" />
+          </div>
 
-                <div class="setting-group">
-                    <label>Quick Tab Position Update Rate (Hz):</label>
-                    <input type="text" id="quickTabUpdateRate" placeholder="360" value="360">
-                    <small style="display: block; margin-top: 4px; color: #888; font-size: 11px;">
-                        Higher values (e.g., 360) provide smoother dragging on high refresh rate monitors. Lower values use less CPU.
-                    </small>
-                </div>
+          <div class="setting-group">
+            <label>Notification Position:</label>
+            <select
+              id="notifPosition"
+              style="
+                width: 100%;
+                padding: 8px 10px;
+                background: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 12px;
+              "
+            >
+              <option value="top-left">Top Left</option>
+              <option value="top-right">Top Right</option>
+              <option value="bottom-left">Bottom Left</option>
+              <option value="bottom-right">Bottom Right</option>
+            </select>
+          </div>
 
-                <div class="setting-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="showNotification" checked>
-                        <label for="showNotification">Show Copy Notifications</label>
-                    </div>
-                </div>
+          <div class="setting-group">
+            <label>Notification Size:</label>
+            <select
+              id="notifSize"
+              style="
+                width: 100%;
+                padding: 8px 10px;
+                background: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 12px;
+              "
+            >
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
+            </select>
+          </div>
 
-                <div class="setting-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="debugMode">
-                        <label for="debugMode">Enable debug mode (console logs)</label>
-                    </div>
-                </div>
-
-                <div class="setting-group">
-                    <button id="clearStorageBtn" style="width: 100%; padding: 10px; background: #d32f2f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">
-                        🗑️ Clear Quick Tab Storage
-                    </button>
-                    <small style="display: block; margin-top: 4px; color: #888; font-size: 11px;">
-                        This will clear all saved Quick Tab positions and state from browser storage. Use this if Quick Tabs are behaving unexpectedly.
-                    </small>
-                </div>
-
-                <div class="info-box">
-                    <strong>Debug Mode:</strong> When enabled, detailed logs will appear in the browser console (F12). Useful for troubleshooting.
-                </div>
+          <div class="setting-group">
+            <label>Notification Border Color (Hex):</label>
+            <div class="color-input-wrapper">
+              <input
+                type="text"
+                id="notifBorderColor"
+                placeholder="#000000"
+                value="#000000"
+                pattern="^#[0-9A-Fa-f]{6}$"
+              />
+              <input
+                type="color"
+                id="notifBorderColorPicker"
+                value="#000000"
+                title="Pick a color"
+              />
             </div>
+          </div>
+
+          <div class="setting-group">
+            <label>Notification Border Width (px):</label>
+            <input type="text" id="notifBorderWidth" placeholder="1" value="1" />
+          </div>
+
+          <div class="setting-group">
+            <label>Notification Animation:</label>
+            <select
+              id="notifAnimation"
+              style="
+                width: 100%;
+                padding: 8px 10px;
+                background: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 12px;
+              "
+            >
+              <option value="fade">Fade</option>
+              <option value="slide">Slide</option>
+            </select>
+          </div>
+
+          <div class="info-box">
+            <strong>Tip:</strong> Reload tabs after saving to apply changes
+          </div>
         </div>
 
-        <!-- Footer -->
-        <div class="footer">
-            <div class="footer-buttons">
-                <button id="saveBtn" class="save-btn">✓ Save Settings</button>
-                <button id="resetBtn" class="reset-btn">↻ Reset to Defaults</button>
+        <!-- Tab 4: Advanced -->
+        <div id="advanced" class="tab-content">
+          <div class="setting-group">
+            <label>Extension Menu Size:</label>
+            <select
+              id="menuSize"
+              style="
+                width: 100%;
+                padding: 8px 10px;
+                background: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 12px;
+              "
+            >
+              <option value="small">Small (20% smaller)</option>
+              <option value="medium">Medium (Default)</option>
+              <option value="large">Large (20% larger)</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <label>Quick Tab Position Update Rate (Hz):</label>
+            <input type="text" id="quickTabUpdateRate" placeholder="360" value="360" />
+            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
+              Higher values (e.g., 360) provide smoother dragging on high refresh rate monitors.
+              Lower values use less CPU.
+            </small>
+          </div>
+
+          <div class="setting-group">
+            <div class="checkbox-group">
+              <input type="checkbox" id="showNotification" checked />
+              <label for="showNotification">Show Copy Notifications</label>
             </div>
-            <div id="statusMsg" class="status-msg"></div>
-            <div id="footerVersion" class="footer-version"></div>
+          </div>
+
+          <div class="setting-group">
+            <div class="checkbox-group">
+              <input type="checkbox" id="debugMode" />
+              <label for="debugMode">Enable debug mode (console logs)</label>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <button
+              id="clearStorageBtn"
+              style="
+                width: 100%;
+                padding: 10px;
+                background: #d32f2f;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+              "
+            >
+              🗑️ Clear Quick Tab Storage
+            </button>
+            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
+              This will clear all saved Quick Tab positions and state from browser storage. Use this
+              if Quick Tabs are behaving unexpectedly.
+            </small>
+          </div>
+
+          <div class="info-box">
+            <strong>Debug Mode:</strong> When enabled, detailed logs will appear in the browser
+            console (F12). Useful for troubleshooting.
+          </div>
         </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <div class="footer-buttons">
+          <button id="saveBtn" class="save-btn">✓ Save Settings</button>
+          <button id="resetBtn" class="reset-btn">↻ Reset to Defaults</button>
+        </div>
+        <div id="statusMsg" class="status-msg"></div>
+        <div id="footerVersion" class="footer-version"></div>
+      </div>
     </div>
 
     <script src="popup.js"></script>
-</body>
+  </body>
 </html>
