@@ -38,42 +38,58 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.9+):**
+**Current Repository Architecture (v1.5.9.0+):**
 
-- **Modular Source** (v1.5.8.2+):
-  - **`src/content.js`**: Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.9)
-  - **`src/core/`**: config.js, state.js, events.js, index.js (barrel file)
-  - **`src/features/url-handlers/`**: 11 categorized modules (104 handlers total)
-  - **`src/utils/`**: debug.js, dom.js, browser-api.js, index.js (barrel file)
-  - **`dist/content.js`**: Built bundle (~60-80KB, MUST NOT contain ES6 imports/exports)
+- **Modular Source** (v1.5.9.0 - FULLY MODULARIZED):
+  - **`src/content.js`**: Main entry point - pure orchestrator (~500 lines)
+  - **`src/core/`**: config.js, state.js, events.js
+  - **`src/features/`**: All feature modules (EXPANDED in v1.5.9.0)
+    - **`quick-tabs/`**: index.js (QuickTabsManager), quick-tab-window.js (QuickTabWindow class), minimized-manager.js
+    - **`notifications/`**: index.js (NotificationManager with tooltip/toast)
+    - **`url-handlers/`**: 11 categorized modules (104 handlers total)
+  - **`src/ui/`**: components.js (reusable UI helpers), css/ directory
+  - **`src/utils/`**: debug.js, dom.js, browser-api.js
+  - **`dist/content.js`**: Built bundle (~70-90KB, MUST NOT contain ES6 imports/exports)
 - **Build System**: Rollup bundler with validation checks
 - **Legacy Files**: background.js, popup.html/popup.js, state-manager.js, options_page.html/options_page.js
 - **Sidebar**: sidebar/quick-tabs-manager.html/js/css (LEGACY v1.5.8) - Replaced by floating panel
 - **manifest.json**: **Manifest v2** (required for webRequestBlocking)
-- **Testing**: Jest with browser API mocks (tests/setup.js, tests/example.test.js - NEW v1.5.8.8)
-- **CI/CD Workflows** (v1.5.8.7+, enhanced v1.5.8.8):
+- **Testing**: Jest with browser API mocks (tests/setup.js, tests/example.test.js)
+- **CI/CD Workflows**:
   - `.github/workflows/code-quality.yml`: ESLint, Prettier, Build, web-ext validation
   - `.github/workflows/codeql-analysis.yml`: Security analysis
   - `.github/workflows/test-coverage.yml`: Jest + Codecov
   - `.github/workflows/webext-lint.yml`: Firefox validation
   - `.github/workflows/auto-format.yml`: Auto-formatting
-- **Code Quality Tools** (enhanced v1.5.8.8):
-  - `.deepsource.toml`: DeepSource configuration (fixed invalid options)
-  - `.coderabbit.yaml`: CodeRabbit AI review configuration (NEW)
-  - `.github/copilot-instructions.md`: Project-specific AI guidance (NEW)
+- **Code Quality Tools**:
+  - `.deepsource.toml`: DeepSource configuration
+  - `.coderabbit.yaml`: CodeRabbit AI review configuration
+  - `.github/copilot-instructions.md`: Project-specific AI guidance
   - `.eslintrc.cjs`: ESLint rules with jest environment support
   - `.prettierrc.cjs`: Code formatting rules
   - `jest.config.cjs`: Test configuration
 
 **Critical APIs Currently Used - PRIORITIZE THESE:**
 
-1. **Content Script Panel Injection** - NEW in v1.5.8.1
+1. **Quick Tabs Feature Module** - NEW in v1.5.9.0
+   - QuickTabsManager listens to EventBus QUICK_TAB_REQUESTED events
+   - QuickTabWindow handles UI rendering, drag, resize, minimize
+   - Common issues: EventBus not firing, window creation failing, z-index problems
+   - Debug: Check EventBus listeners, window.CopyURLExtension.quickTabsManager
+
+2. **Notifications Feature Module** - NEW in v1.5.9.0
+   - NotificationManager handles tooltip (Copy URL) and toast (Quick Tabs)
+   - CSS animations injected by module
+   - Common issues: Notification not showing, animations not working
+   - Debug: Check window.CopyURLExtension.notificationManager
+
+3. **Content Script Panel Injection** - v1.5.8.1
    - Persistent floating panel injected into page DOM
    - Common issues: Timing of injection, panel persistence across navigation, z-index conflicts
    - Works in Zen Browser (where Firefox Sidebar API is disabled)
    - Debug: Check panel creation, visibility state, position/size persistence
 
-2. **Pointer Events API** (setPointerCapture, pointercancel) - v1.5.7
+4. **Pointer Events API** (setPointerCapture, pointercancel) - v1.5.7
    - Primary drag/resize mechanism for Quick Tabs AND floating panel
    - Common issues: Pointer capture not released, pointercancel not firing, drag conflicts
    - Replaces: Mouse events + requestAnimationFrame
