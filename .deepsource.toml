@@ -1,32 +1,40 @@
 version = 1
 
+# Test patterns - files that should be marked as tests
+test_patterns = [
+  "tests/**",
+  "**/*.test.js",
+  "**/*.spec.js"
+]
+
+# Exclude patterns - files/directories to ignore
+exclude_patterns = [
+  "node_modules/**",
+  "dist/**",
+  "coverage/**",
+  "*.min.js"
+]
+
 # JavaScript/TypeScript Analyzer
 [[analyzers]]
 name = "javascript"
 enabled = true
 
   [analyzers.meta]
-  # Specify environments for accurate analysis
+  # Environments where code runs
   environment = ["nodejs", "browser"]
   
-  # Browser extension-specific settings
-  plugins = ["webextensions"]
+  # Module system used
+  module_system = "es-modules"
   
-  # Style configuration
+  # Style guide to enforce
   style_guide = "standard"
-  
-  # Dialect for modern JavaScript
-  dialect = "typescript"  # Handles both JS and TS
 
 # Test Coverage Analyzer
-# Reads coverage/lcov.info from Jest automatically
+# NOTE: No meta options - coverage threshold is set via web UI
 [[analyzers]]
 name = "test-coverage"
 enabled = true
-
-  [analyzers.meta]
-  # Require 80% coverage on new code
-  coverage_threshold = 80
 
 # Prettier Transformer (auto-formats code)
 [[transformers]]

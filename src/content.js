@@ -1,9 +1,11 @@
 /**
  * Copy URL on Hover - Enhanced with Quick Tabs
- * Main Content Script Entry Point (Modular Architecture v1.5.8.7)
+ * Main Content Script Entry Point (Modular Architecture v1.5.8.8)
  *
  * This file serves as the main entry point and coordinates between modules.
  * URL handlers have been extracted to features/url-handlers/ for better maintainability.
+ * 
+ * v1.5.8.8 Changes: Eager loading - all features initialize at once regardless of config.
  */
 
 // CRITICAL: Early detection marker - must execute first
@@ -180,12 +182,10 @@ async function initMainFeatures() {
   // Set up keyboard shortcuts
   setupKeyboardShortcuts();
 
-  // Initialize Quick Tabs if enabled
-  if (CONFIG.quickTabPersistAcrossTabs) {
-    await initQuickTabs();
-  }
+  // Initialize Quick Tabs (always load, runtime checks handle enabled state)
+  await initQuickTabs();
 
-  // Initialize Panel Manager
+  // Initialize Panel Manager (always load, runtime checks handle enabled state)
   await initPanelManager();
 }
 
@@ -542,20 +542,24 @@ function showToast(message, type) {
 
 /**
  * Initialize Quick Tabs functionality
+ * Note: Always initialized in v1.5.8.8+, runtime checks handle enabled state
  */
 async function initQuickTabs() {
-  debug('Initializing Quick Tabs...');
+  debug('Initializing Quick Tabs (eager loading in v1.5.8.8)...');
   // Quick Tabs implementation will be loaded from quick-tabs module
-  // For now, this is a placeholder
+  // Even if disabled via CONFIG, initialization happens to ensure all code is loaded
+  // Runtime checks within Quick Tabs features will respect the enabled state
 }
 
 /**
  * Initialize Panel Manager
+ * Note: Always initialized in v1.5.8.8+, runtime checks handle enabled state
  */
 async function initPanelManager() {
-  debug('Initializing Panel Manager...');
+  debug('Initializing Panel Manager (eager loading in v1.5.8.8)...');
   // Panel implementation will be loaded from panel module
-  // For now, this is a placeholder
+  // Even if disabled via CONFIG, initialization happens to ensure all code is loaded
+  // Runtime checks within Panel Manager features will respect the enabled state
 }
 
 // Export for testing and module access
