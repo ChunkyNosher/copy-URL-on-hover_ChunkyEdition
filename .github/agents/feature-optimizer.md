@@ -33,10 +33,10 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.8+):**
+**Current Repository Architecture (v1.5.8.9+):**
 
 - **Modular Source** (v1.5.8.2+):
-  - **src/content.js** (~570 lines): Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.8)
+  - **src/content.js** (~570 lines): Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.9)
   - **src/core/**: config.js, state.js, events.js, index.js (barrel file)
   - **src/features/url-handlers/**: 11 categorized modules (104 handlers total)
   - **src/utils/**: debug.js, dom.js, browser-api.js, index.js (barrel file)

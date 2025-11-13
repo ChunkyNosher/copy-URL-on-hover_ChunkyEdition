@@ -166,6 +166,35 @@ async function initMainFeatures() {
   // For now, we'll load it from the legacy content file
   debug('Loading main features...');
 
+  // Add CSS animations for notifications
+  const styleElement = document.createElement('style');
+  styleElement.textContent = `
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes slideInLeft {
+      from { transform: translateX(-100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    
+    .cuo-anim-slide { animation: slideInRight 0.3s ease-out; }
+    .cuo-anim-fade { animation: fadeIn 0.3s ease-out; }
+    .cuo-anim-bounce { animation: bounce 0.5s ease-out; }
+  `;
+  document.head.appendChild(styleElement);
+
   // Track mouse position for Quick Tab placement
   document.addEventListener(
     'mousemove',
@@ -414,7 +443,35 @@ async function handleCopyText(element) {
 async function handleCreateQuickTab(url) {
   debug('Creating Quick Tab for:', url);
   eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
-  // Quick Tab creation logic will be implemented in quick-tabs module
+
+  // ACTUAL IMPLEMENTATION - send to background script
+  try {
+    await sendMessageToBackground({
+      action: 'CREATE_QUICK_TAB',
+      url: url,
+      id: generateQuickTabId(),
+      left: stateManager.get('lastMouseX') || 100,
+      top: stateManager.get('lastMouseY') || 100,
+      width: CONFIG.quickTabDefaultWidth || 800,
+      height: CONFIG.quickTabDefaultHeight || 600,
+      title: 'Quick Tab',
+      cookieStoreId: 'firefox-default',
+      minimized: false
+    });
+
+    showNotification('✓ Quick Tab created!', 'success');
+    debug('Quick Tab created successfully');
+  } catch (err) {
+    console.error('[Quick Tab] Failed:', err);
+    showNotification('✗ Failed to create Quick Tab', 'error');
+  }
+}
+
+/**
+ * Helper function to generate unique Quick Tab ID
+ */
+function generateQuickTabId() {
+  return `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 /**
@@ -423,7 +480,7 @@ async function handleCreateQuickTab(url) {
 async function handleOpenInNewTab(url) {
   try {
     await sendMessageToBackground({
-      action: 'openInNewTab',
+      action: 'openTab',
       url: url,
       switchFocus: CONFIG.openNewTabSwitchFocus
     });
@@ -464,10 +521,17 @@ function showTooltip(message) {
   const mouseX = stateManager.get('lastMouseX') || 0;
   const mouseY = stateManager.get('lastMouseY') || 0;
 
+  // Determine animation class
+  let animClass = 'cuo-anim-fade';
+  if (CONFIG.tooltipAnimation === 'bounce') {
+    animClass = 'cuo-anim-bounce';
+  }
+
   const tooltip = createElement(
     'div',
     {
       id: 'copy-url-tooltip',
+      className: animClass,
       style: {
         position: 'fixed',
         left: `${mouseX + CONSTANTS.TOOLTIP_OFFSET_X}px`,
@@ -479,8 +543,7 @@ function showTooltip(message) {
         fontSize: '14px',
         zIndex: '999999999',
         pointerEvents: 'none',
-        opacity: '1',
-        transition: 'opacity 0.2s'
+        opacity: '1'
       }
     },
     message
@@ -490,6 +553,7 @@ function showTooltip(message) {
 
   setTimeout(() => {
     tooltip.style.opacity = '0';
+    tooltip.style.transition = 'opacity 0.2s';
     setTimeout(() => tooltip.remove(), CONSTANTS.TOOLTIP_FADE_OUT_MS);
   }, CONFIG.tooltipDuration);
 }
@@ -510,10 +574,22 @@ function showToast(message, type) {
 
   const pos = positions[CONFIG.notifPosition] || positions['bottom-right'];
 
+  // Determine animation class
+  let animClass = 'cuo-anim-fade'; // Default
+  if (CONFIG.notifAnimation === 'slide') {
+    animClass = 'cuo-anim-slide';
+  } else if (CONFIG.notifAnimation === 'bounce') {
+    animClass = 'cuo-anim-bounce';
+  }
+
+  // Ensure border width is a number
+  const borderWidth = parseInt(CONFIG.notifBorderWidth) || 1;
+
   const toast = createElement(
     'div',
     {
       id: 'copy-url-toast',
+      className: animClass,
       style: {
         position: 'fixed',
         ...pos,
@@ -523,10 +599,8 @@ function showToast(message, type) {
         borderRadius: '4px',
         fontSize: '14px',
         zIndex: '999999999',
-        border: `${CONFIG.notifBorderWidth}px solid ${CONFIG.notifBorderColor}`,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-        opacity: '1',
-        transition: 'opacity 0.3s'
+        border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
       }
     },
     message
@@ -536,6 +610,7 @@ function showToast(message, type) {
 
   setTimeout(() => {
     toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
     setTimeout(() => toast.remove(), 300);
   }, CONFIG.notifDuration);
 }

@@ -15,6 +15,13 @@ reviews:
     enabled: true
     drafts: false
 
+    # Enable review for all branches including bot-created ones
+    base_branches:
+      - main
+      - develop
+      - 'deepsource-transform-*' # DeepSource autofix branches
+      - 'copilot/**' # Copilot Agent branches
+
     # CRITICAL: Empty list means review ALL PRs including bots
     # This fixes the "Bot user detected, review skipped" issue
     ignore_usernames: []
@@ -23,8 +30,9 @@ reviews:
   high_level_summary: true
   high_level_summary_in_walkthrough: true
 
-  # Post review status (show when reviews happen/skip)
-  review_status: true
+  # Hide the "Review skipped" message for cleaner PRs
+  # Set to true if you want to see when reviews are skipped
+  review_status: false
 
   # Path-specific instructions
   path_instructions:

@@ -38,10 +38,10 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.8+):**
+**Current Repository Architecture (v1.5.8.9+):**
 
 - **Modular Source** (v1.5.8.2+):
-  - **`src/content.js`**: Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.8)
+  - **`src/content.js`**: Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.9)
   - **`src/core/`**: config.js, state.js, events.js, index.js (barrel file)
   - **`src/features/url-handlers/`**: 11 categorized modules (104 handlers total)
   - **`src/utils/`**: debug.js, dom.js, browser-api.js, index.js (barrel file)
@@ -242,7 +242,7 @@ When assigned a bug issue:
    - Note any edge cases or limitations
    - Mention browser-specific considerations
 
-## Debugging Tools and Workflows (v1.5.8.8+)
+## Debugging Tools and Workflows (v1.5.8.9+)
 
 **Enhanced Debugging Capabilities:**
 

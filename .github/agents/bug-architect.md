@@ -32,10 +32,10 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.8+):**
+**Current Repository Architecture (v1.5.8.9+):**
 
 - **Modular Source** (v1.5.8.2+):
-  - **src/content.js** (~570 lines): Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.8)
+  - **src/content.js** (~600 lines): Main entry point with enhanced logging, error handling, eager loading, and CSS animations (v1.5.8.9)
   - **src/core/**: config.js, state.js, events.js, index.js (barrel file)
   - **src/features/url-handlers/**: 11 categorized modules (104 handlers total)
   - **src/utils/**: debug.js, dom.js, browser-api.js, index.js (barrel file)
@@ -43,12 +43,13 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 - **Build System**: Rollup with validation checks
 - **background.js**: Tab lifecycle, webRequest modifications, storage sync, panel toggle
 - **state-manager.js**: Quick Tab state management
-- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.8):
+- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.9):
   - Jest with browser API mocks (tests/setup.js, tests/example.test.js)
   - GitHub Actions workflows for code quality, security, testing
   - ESLint (with jest environment), Prettier, CodeQL, web-ext validation
   - DeepSource static analysis (fixed config v1.5.8.8)
-  - CodeRabbit AI review (NEW v1.5.8.8)
+  - CodeRabbit AI review with bot PR support (enhanced v1.5.8.9)
+  - Improved Codecov integration (v1.5.8.9)
   - Copilot instructions (NEW v1.5.8.8)
 - **manifest.json**: Manifest v2 (webRequestBlocking required)
 

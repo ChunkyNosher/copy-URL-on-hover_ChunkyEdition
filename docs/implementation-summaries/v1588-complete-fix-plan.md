@@ -9,10 +9,12 @@
 ## 🔍 Executive Summary
 
 **Working Features:**
+
 - ✅ Copy URL (keyboard shortcut works)
 - ✅ Copy Text (keyboard shortcut works)
 
 **Broken/Malfunctioning Features:**
+
 1. ❌ Open URL in New Tab - Notification shows but no tab opens
 2. ❌ Quick Tab Creation - Console logs but no Quick Tab appears
 3. ❌ Notification Display - Always shows tooltip, ignores corner slide-in setting
@@ -20,6 +22,7 @@
 5. ❌ Notification Animation - No animation plays
 
 **Legacy Code Contamination:**
+
 - ⚠️ No direct legacy code references found in background.js or popup.js
 - ⚠️ However, Quick Tab logic in background.js is extremely complex and may have leftover issues
 
@@ -33,7 +36,7 @@ The `handleOpenInNewTab()` function in `src/content.js` sends a message to backg
 
 ```javascript
 await sendMessageToBackground({
-  action: 'openInNewTab',  // ← Sends this action
+  action: 'openInNewTab', // ← Sends this action
   url: url,
   switchFocus: CONFIG.openNewTabSwitchFocus
 });
@@ -42,7 +45,8 @@ await sendMessageToBackground({
 But in `background.js`, the message handler expects `action: 'openTab'` (not `'openInNewTab'`):
 
 ```javascript
-if (message.action === 'openTab') {  // ← Looks for 'openTab'
+if (message.action === 'openTab') {
+  // ← Looks for 'openTab'
   chrome.tabs.create({
     url: message.url,
     active: message.switchFocus
@@ -60,7 +64,7 @@ Change line in `handleOpenInNewTab()`:
 
 ```javascript
 await sendMessageToBackground({
-  action: 'openTab',  // ← Changed from 'openInNewTab'
+  action: 'openTab', // ← Changed from 'openInNewTab'
   url: url,
   switchFocus: CONFIG.openNewTabSwitchFocus
 });
@@ -71,7 +75,8 @@ await sendMessageToBackground({
 Change the message handler:
 
 ```javascript
-if (message.action === 'openInNewTab') {  // ← Match content.js
+if (message.action === 'openInNewTab') {
+  // ← Match content.js
   chrome.tabs.create({
     url: message.url,
     active: message.switchFocus
@@ -89,8 +94,8 @@ The `handleCreateQuickTab()` function only logs and emits an event:
 
 ```javascript
 async function handleCreateQuickTab(url) {
-  debug('Creating Quick Tab for:', url);  // ← This runs (you see the log)
-  eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });  // ← Emits event
+  debug('Creating Quick Tab for:', url); // ← This runs (you see the log)
+  eventBus.emit(Events.QUICK_TAB_REQUESTED, { url }); // ← Emits event
   // Quick Tab creation logic will be implemented in quick-tabs module  ← NO ACTUAL CODE!
 }
 ```
@@ -107,22 +112,22 @@ The function is a stub/placeholder. The event is emitted but nothing listens to 
 async function handleCreateQuickTab(url) {
   debug('Creating Quick Tab for:', url);
   eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
-  
+
   // ACTUAL IMPLEMENTATION - send to background script
   try {
     await sendMessageToBackground({
       action: 'CREATE_QUICK_TAB',
       url: url,
-      id: generateQuickTabId(),  // You'll need an ID generator
+      id: generateQuickTabId(), // You'll need an ID generator
       left: stateManager.get('lastMouseX') || 100,
       top: stateManager.get('lastMouseY') || 100,
       width: CONFIG.quickTabDefaultWidth || 800,
       height: CONFIG.quickTabDefaultHeight || 600,
       title: 'Quick Tab',
-      cookieStoreId: 'firefox-default',  // Or detect actual container
+      cookieStoreId: 'firefox-default', // Or detect actual container
       minimized: false
     });
-    
+
     showNotification('✓ Quick Tab created!', 'success');
     debug('Quick Tab created successfully');
   } catch (err) {
@@ -158,6 +163,7 @@ if (CONFIG.notifDisplayMode === 'tooltip') {
 But the config is probably loaded from `browser.storage.local` NOT `browser.storage.sync`:
 
 In `popup.js`:
+
 ```javascript
 browser.storage.local.set(settings, function() {  // ← Saves to LOCAL
 ```
@@ -200,6 +206,7 @@ border: `${CONFIG.notifBorderWidth}px solid ${CONFIG.notifBorderColor}`,
 ```
 
 But if `CONFIG.notifBorderWidth` is:
+
 - A string instead of number (e.g., `"5"` not `5`)
 - Undefined (using some other default)
 - Not properly loaded from storage
@@ -227,7 +234,7 @@ const toast = createElement(
       borderRadius: '4px',
       fontSize: '14px',
       zIndex: '999999999',
-      border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`,  // ← Use parsed value
+      border: `${borderWidth}px solid ${CONFIG.notifBorderColor}`, // ← Use parsed value
       boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
       opacity: '1',
       transition: 'opacity 0.3s'
@@ -246,13 +253,13 @@ const toast = createElement(
 The tooltip has transition but no animation class:
 
 ```javascript
-transition: 'opacity 0.2s'  // ← Only transitions opacity
+transition: 'opacity 0.2s'; // ← Only transitions opacity
 ```
 
 And the toast has:
 
 ```javascript
-transition: 'opacity 0.3s'  // ← Only transitions opacity, no slide animation!
+transition: 'opacity 0.3s'; // ← Only transitions opacity, no slide animation!
 ```
 
 The `CONFIG.notifAnimation` and `CONFIG.tooltipAnimation` values are NEVER USED!
@@ -309,9 +316,9 @@ function showToast(message, type) {
   };
 
   const pos = positions[CONFIG.notifPosition] || positions['bottom-right'];
-  
+
   // Determine animation class
-  let animClass = 'cuo-anim-fade';  // Default
+  let animClass = 'cuo-anim-fade'; // Default
   if (CONFIG.notifAnimation === 'slide') {
     animClass = 'cuo-anim-slide';
   } else if (CONFIG.notifAnimation === 'bounce') {
@@ -322,7 +329,7 @@ function showToast(message, type) {
     'div',
     {
       id: 'copy-url-toast',
-      className: animClass,  // ← Add animation class
+      className: animClass, // ← Add animation class
       style: {
         position: 'fixed',
         ...pos,
@@ -358,7 +365,7 @@ function showTooltip(message) {
 
   const mouseX = stateManager.get('lastMouseX') || 0;
   const mouseY = stateManager.get('lastMouseY') || 0;
-  
+
   // Determine animation class
   let animClass = 'cuo-anim-fade';
   if (CONFIG.tooltipAnimation === 'bounce') {
@@ -369,7 +376,7 @@ function showTooltip(message) {
     'div',
     {
       id: 'copy-url-tooltip',
-      className: animClass,  // ← Add animation class
+      className: animClass, // ← Add animation class
       style: {
         position: 'fixed',
         left: `${mouseX + CONSTANTS.TOOLTIP_OFFSET_X}px`,
@@ -409,7 +416,7 @@ The `load()` method MUST read from `browser.storage.local`, not `browser.storage
 async load() {
   try {
     const data = await browser.storage.local.get(null);  // Get all local storage
-    
+
     // Settings are stored as individual keys, not nested in 'config'
     // So we need to build the config object from individual keys
     const config = {
@@ -423,7 +430,7 @@ async load() {
       notifAnimation: data.notifAnimation || DEFAULT_CONFIG.notifAnimation,
       // ... add ALL config keys here
     };
-    
+
     return config;
   } catch (err) {
     console.error('[ConfigManager] Load failed:', err);
@@ -442,6 +449,7 @@ async load() {
 **Popup.js:** ✅ No `content-legacy.js` references found
 
 However, the Quick Tab logic in `background.js` is EXTREMELY complex with:
+
 - StateCoordinator class (unused?)
 - Container-aware state management
 - Dual storage (sync + session)
@@ -483,16 +491,19 @@ After applying fixes:
 ## 9. Implementation Priority
 
 ### High Priority (Breaks core features):
+
 1. Fix "Open in New Tab" action mismatch
 2. Implement Quick Tab creation logic
 3. Fix ConfigManager storage location
 
 ### Medium Priority (UX issues):
+
 4. Fix notification display mode
 5. Fix notification border width
 6. Add notification animations
 
 ### Low Priority (Cleanup):
+
 7. Create legacy file backups
 8. Simplify background.js
 
@@ -500,13 +511,13 @@ After applying fixes:
 
 ## 10. File Change Summary
 
-| File | Changes Required |
-|------|------------------|
-| `src/content.js` | Fix action name, implement Quick Tab creation, add animations |
-| `src/core/config.js` | Verify reads from storage.local, build config from individual keys |
-| `background.js` | Verify action handler names match content.js |
-| OPTIONAL: Create `background-legacy.js` | Backup before cleanup |
-| OPTIONAL: Create `popup-legacy.js` | Backup before cleanup |
+| File                                    | Changes Required                                                   |
+| --------------------------------------- | ------------------------------------------------------------------ |
+| `src/content.js`                        | Fix action name, implement Quick Tab creation, add animations      |
+| `src/core/config.js`                    | Verify reads from storage.local, build config from individual keys |
+| `background.js`                         | Verify action handler names match content.js                       |
+| OPTIONAL: Create `background-legacy.js` | Backup before cleanup                                              |
+| OPTIONAL: Create `popup-legacy.js`      | Backup before cleanup                                              |
 
 ---
 
