@@ -38,21 +38,30 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.10 - Hybrid Modular/EventBus):**
+**Current Repository Architecture (v1.5.8.11 - Hybrid Modular/EventBus):**
 
-- **Hybrid Modular Source** (v1.5.8.10+):
+**Quick Tabs Full Restoration (v1.5.8.11):**
+- Complete UI with favicon, dynamic titles, Open in New Tab button, Pin button
+- 8-direction resize handles (all edges and corners)
+- Position/size persistence across tabs (fixes #35 & #51)
+- Pointer Events API with pointercancel handling
+- Pin/unpin state synchronization via background script
+- Removed "Persist Quick Tabs" setting (always enabled)
+
+
+- **Hybrid Modular Source** (v1.5.8.11+):
   - **src/content.js**: Main entry point - orchestrates all features via EventBus
   - **src/core/**: config.js, state.js, events.js, dom.js, browser-api.js, index.js (barrel file)
-    - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.8.10
+    - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.8.11
   - **src/features/**: Feature modules (EventBus-driven)
     - **quick-tabs/**: index.js, window.js (renamed from quick-tab-window.js), minimized-manager.js
     - **notifications/**: index.js, toast.js (NEW), tooltip.js (NEW) - fully modularized
     - **url-handlers/**: 11 categorized modules (104 handlers total)
-  - **src/ui/**: components.js, css/ (NEW v1.5.8.10)
+  - **src/ui/**: components.js, css/ (NEW v1.5.8.11)
     - **css/**: base.css, notifications.css, quick-tabs.css - modular CSS system
   - **src/utils/**: debug.js, index.js (dom.js and browser-api.js moved to core/)
   - **dist/content.js**: Built bundle (~96KB, MUST NOT contain ES6 imports/exports)
-- **Build System**: Rollup bundler with comprehensive validation checks (v1.5.8.10+)
+- **Build System**: Rollup bundler with comprehensive validation checks (v1.5.8.11+)
   - Validates build output (file existence, sizes, no source leaks)
   - XPI package verification before release
   - See docs/manual/build-and-packaging-guide.md
@@ -63,8 +72,8 @@ You are a bug diagnosis and fixing specialist for the copy-URL-on-hover_ChunkyEd
 - **state-manager.js**: Container-aware Quick Tab state management
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.8.10
-- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.10):
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.8.11
+- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.11):
   - Jest with browser API mocks (tests/setup.js)
   - Example tests (tests/example.test.js)
   - GitHub Actions workflows: code-quality, codeql-analysis, test-coverage, webext-lint, auto-format, release (enhanced)
@@ -262,7 +271,7 @@ When assigned a bug issue:
    - Note any edge cases or limitations
    - Mention browser-specific considerations
 
-## Debugging Tools and Workflows (v1.5.8.10+)
+## Debugging Tools and Workflows (v1.5.8.11+)
 
 **Enhanced Debugging Capabilities:**
 
@@ -340,3 +349,90 @@ When fixing bugs, provide:
 - **Specific notes on which of the 7 core APIs were affected**
 
 Focus on making the extension more stable and reliable on both Firefox and Zen Browser, prioritizing the current APIs and architecture used in v1.5.5+.
+
+
+---
+
+## MANDATORY: Documentation Update Requirements
+
+**CRITICAL: Every pull request by this agent MUST update documentation!**
+
+### Required Updates on EVERY PR:
+
+#### 1. README.md (ALWAYS)
+- [ ] Update version number if manifest.json or package.json changed
+- [ ] Add/update "What's New" section for new features or fixes
+- [ ] Update feature list if functionality changed
+- [ ] Update usage instructions if UI/UX changed
+- [ ] Update settings documentation if configuration changed
+- [ ] Remove outdated information
+- [ ] Update version footer
+
+#### 2. All Copilot Agent Files (ALWAYS if architecture/APIs/features changed)
+Update ALL 7 files in `.github/agents/` and `.github/copilot-instructions.md`:
+- [ ] `.github/copilot-instructions.md`
+- [ ] `.github/agents/bug-architect.md`
+- [ ] `.github/agents/bug-fixer.md`
+- [ ] `.github/agents/feature-builder.md`
+- [ ] `.github/agents/feature-optimizer.md`
+- [ ] `.github/agents/master-orchestrator.md`
+- [ ] `.github/agents/refactor-specialist.md`
+
+**Update agent files when:**
+- Version numbers change
+- Architecture changes (new modules, refactoring)
+- New APIs or frameworks introduced
+- Features added/removed/modified
+- Build/test/deploy processes change
+- Repository structure changes
+
+### Implementation Workflow:
+
+**BEFORE starting work:**
+1. Check README for accuracy
+2. Check agent files for accuracy
+3. Plan documentation updates
+
+**DURING implementation:**
+4. Track changes that affect documentation
+5. Note new features, changed behaviors, removed features
+
+**BEFORE finalizing PR:**
+6. Update README with ALL changes
+7. Update ALL agent files with new architecture/API/feature information
+8. Verify version consistency (manifest.json, package.json, README, copilot-instructions.md)
+9. Add documentation update checklist to PR description
+
+**PR Description MUST include:**
+- "README Updated: [specific changes]"
+- "Agent Files Updated: [specific changes]"
+- Documentation changes checklist
+
+### Version Synchronization:
+
+When version changes from X.Y.Z to X.Y.Z+1:
+- Update `manifest.json` version
+- Update `package.json` version
+- Update README header version
+- Update README footer version
+- Update `.github/copilot-instructions.md` version
+- Update all agent file versions (via search/replace)
+- Add "What's New in vX.Y.Z+1" section to README
+
+### Non-Compliance = PR Rejection
+
+**No exceptions.** Documentation is as important as code.
+
+Failure to update documentation results in:
+- Immediate PR rejection
+- Request for documentation updates before re-review
+- Delays in merging
+
+### Quick Checklist for Every PR:
+
+- [ ] Code changes implemented and tested
+- [ ] README.md updated with changes
+- [ ] All 7 agent files updated (if architecture/API/features changed)
+- [ ] Version numbers synchronized across all files
+- [ ] PR description includes documentation update notes
+- [ ] No outdated information remains in documentation

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.5.8.10  
+**Version:** 1.5.8.11  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Hybrid Modular/EventBus Architecture (Architecture #10)  
 **Purpose:** URL management with Firefox Container isolation support
@@ -358,3 +358,105 @@ When in doubt:
 5. **Ask for human review** on security-critical changes
 
 **Remember:** This extension handles user data and has access to browsing history. Security and privacy are paramount.
+
+---
+
+## MANDATORY: Documentation Update Requirements
+
+**Every GitHub Copilot Agent MUST follow these requirements for ALL pull requests:**
+
+### 1. README Update (REQUIRED)
+
+**ALWAYS update the README.md file** when making changes to:
+- Version numbers (manifest.json, package.json)
+- Feature functionality or architecture
+- API changes or new APIs used
+- User-facing behavior
+- Settings or configuration options
+- Known limitations or bugs
+
+**README Update Checklist:**
+- [ ] Update version number in header
+- [ ] Update "What's New in v{version}" section
+- [ ] Update feature list if functionality changed
+- [ ] Update usage instructions if UI/UX changed
+- [ ] Update settings documentation if config changed
+- [ ] Update version footer at bottom
+- [ ] Remove outdated information
+
+### 2. Copilot Agent Files Update (REQUIRED)
+
+**ALWAYS update ALL agent files** in `.github/agents/` and `.github/copilot-instructions.md` when making changes to:
+- Version numbers
+- Architecture (new patterns, refactoring, module structure)
+- Framework or technology changes
+- New APIs or features
+- Build/test/deploy processes
+- Repository structure
+- Development workflows
+
+**Agent Files to Update:**
+1. `.github/copilot-instructions.md` - Main instructions
+2. `.github/agents/bug-architect.md` - Bug analysis specialist
+3. `.github/agents/bug-fixer.md` - Bug fixing specialist
+4. `.github/agents/feature-builder.md` - Feature implementation specialist
+5. `.github/agents/feature-optimizer.md` - Feature optimization specialist
+6. `.github/agents/master-orchestrator.md` - Coordination specialist
+7. `.github/agents/refactor-specialist.md` - Code refactoring specialist
+
+**Agent Files Update Checklist:**
+- [ ] Update version numbers in all agent files
+- [ ] Update architecture knowledge (if structure changed)
+- [ ] Update API/framework information (if changed)
+- [ ] Add new features to knowledge base
+- [ ] Update build/test/deploy instructions (if changed)
+- [ ] Ensure consistency across all agent files
+
+### 3. Implementation Rules
+
+**When implementing changes:**
+
+1. **Before starting work:**
+   - Check current README for accuracy
+   - Check current agent files for accuracy
+   - Plan what documentation needs updating
+
+2. **During implementation:**
+   - Keep a mental note of changes that affect documentation
+   - Note new features, changed behaviors, removed features
+
+3. **Before finalizing PR:**
+   - Update README with all changes
+   - Update ALL agent files with new information
+   - Verify consistency across all documentation
+   - Double-check version numbers match everywhere
+
+4. **PR Description:**
+   - Include "README Updated" checklist item
+   - Include "Agent Files Updated" checklist item
+   - List specific documentation changes made
+
+### 4. Non-Compliance Consequences
+
+**Failure to update documentation will result in:**
+- PR rejection
+- Request for immediate documentation updates
+- Potential delays in merging
+
+**No exceptions.** Documentation is as important as code changes.
+
+### 5. Quick Reference
+
+**Files that must be kept in sync:**
+- `manifest.json` (version)
+- `package.json` (version)
+- `README.md` (version, features, architecture)
+- `.github/copilot-instructions.md` (version, architecture)
+- All files in `.github/agents/` (version, architecture, features)
+
+**When version changes from X.Y.Z to X.Y.Z+1:**
+- Update 5 version references (manifest, package, README header, README footer, copilot-instructions)
+- Add "What's New" section to README
+- Update all 7 agent files with version and changes
+
+This ensures that all agents have up-to-date knowledge and can work effectively on the current version of the codebase.
