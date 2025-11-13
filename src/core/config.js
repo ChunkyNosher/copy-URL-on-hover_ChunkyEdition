@@ -80,10 +80,9 @@ export class ConfigManager {
    */
   async load() {
     try {
-      const result = await browser.storage.local.get('userConfig');
-      if (result.userConfig) {
-        this.config = { ...DEFAULT_CONFIG, ...result.userConfig };
-      }
+      // Load all settings from storage (popup.js saves them as individual keys)
+      const result = await browser.storage.local.get(DEFAULT_CONFIG);
+      this.config = { ...DEFAULT_CONFIG, ...result };
     } catch (err) {
       console.error('[Config] Failed to load configuration:', err);
     }
@@ -95,7 +94,8 @@ export class ConfigManager {
    */
   async save() {
     try {
-      await browser.storage.local.set({ userConfig: this.config });
+      // Save settings as individual keys to match popup.js behavior
+      await browser.storage.local.set(this.config);
     } catch (err) {
       console.error('[Config] Failed to save configuration:', err);
     }
