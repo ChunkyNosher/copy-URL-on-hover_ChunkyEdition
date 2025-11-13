@@ -21,22 +21,24 @@ The v1.5.8.4 release had three critical issues identified in `docs/manual/v1584-
 ### Phase 1: Critical Bug Fixes
 
 #### 1. Input Field Filtering
+
 **Problem:** Keyboard shortcuts were triggered even when typing in input fields, textareas, or contenteditable elements.
 
 **Solution:** Added `isInputField()` helper function to check if the event target is an interactive text element:
 
 ```javascript
 function isInputField(element) {
-  return element && (
-    element.tagName === 'INPUT' || 
-    element.tagName === 'TEXTAREA' || 
-    element.isContentEditable || 
-    element.closest('[contenteditable="true"]')
+  return (
+    element &&
+    (element.tagName === "INPUT" ||
+      element.tagName === "TEXTAREA" ||
+      element.isContentEditable ||
+      element.closest('[contenteditable="true"]'))
   );
 }
 
 function setupKeyboardShortcuts() {
-  document.addEventListener('keydown', async function(event) {
+  document.addEventListener("keydown", async function (event) {
     // Ignore if typing in an interactive field
     if (isInputField(event.target)) {
       return;
@@ -49,6 +51,7 @@ function setupKeyboardShortcuts() {
 **Impact:** Users can now type in any text field without triggering extension shortcuts.
 
 #### 2. Defensive Error Handling
+
 **Problem:** Extension initialization failures were silent - no console errors or user feedback.
 
 **Solution:** Added try/catch wrapper around initialization with detailed error logging and user alert:
@@ -56,12 +59,12 @@ function setupKeyboardShortcuts() {
 ```javascript
 (async function initExtension() {
   try {
-    console.log('[Copy-URL-on-Hover] Starting extension initialization...');
+    console.log("[Copy-URL-on-Hover] Starting extension initialization...");
     // ... initialization code ...
-    console.log('[Copy-URL-on-Hover] Main features initialized successfully');
+    console.log("[Copy-URL-on-Hover] Main features initialized successfully");
   } catch (err) {
-    console.error('[Copy-URL-on-Hover] Critical Init Error:', err);
-    alert('Copy-URL-on-Hover failed to initialize. Check console for details.');
+    console.error("[Copy-URL-on-Hover] Critical Init Error:", err);
+    alert("Copy-URL-on-Hover failed to initialize. Check console for details.");
   }
 })();
 ```
@@ -69,24 +72,28 @@ function setupKeyboardShortcuts() {
 **Impact:** Any initialization failures now provide clear error messages for debugging.
 
 #### 3. Initialization Logging
+
 **Problem:** No visibility into which components were initializing or where initialization might be failing.
 
 **Solution:** Added console.log statements at every critical initialization step:
 
 ```javascript
 // Verify content script is loading
-console.log('[Copy-URL-on-Hover] Content script loaded at:', new Date().toISOString());
+console.log(
+  "[Copy-URL-on-Hover] Content script loaded at:",
+  new Date().toISOString(),
+);
 
 // Initialize core systems
-console.log('[Copy-URL-on-Hover] Initializing core systems...');
+console.log("[Copy-URL-on-Hover] Initializing core systems...");
 const configManager = new ConfigManager();
-console.log('[Copy-URL-on-Hover] ConfigManager initialized');
+console.log("[Copy-URL-on-Hover] ConfigManager initialized");
 const stateManager = new StateManager();
-console.log('[Copy-URL-on-Hover] StateManager initialized');
+console.log("[Copy-URL-on-Hover] StateManager initialized");
 const eventBus = new EventBus();
-console.log('[Copy-URL-on-Hover] EventBus initialized');
+console.log("[Copy-URL-on-Hover] EventBus initialized");
 const urlRegistry = new URLHandlerRegistry();
-console.log('[Copy-URL-on-Hover] URLHandlerRegistry initialized');
+console.log("[Copy-URL-on-Hover] URLHandlerRegistry initialized");
 ```
 
 **Impact:** Developers can now trace initialization step-by-step and identify exactly where failures occur.
@@ -94,9 +101,11 @@ console.log('[Copy-URL-on-Hover] URLHandlerRegistry initialized');
 ### Phase 2: Documentation Organization
 
 #### Problem
+
 All documentation files (changelogs, implementation summaries, security summaries, etc.) were in the root directory, making the repository cluttered and hard to navigate.
 
 #### Solution
+
 Moved all root-level .md files (except README.md) to appropriate docs/ subdirectories:
 
 ```
@@ -145,6 +154,7 @@ docs/ structure (after):
 ```
 
 #### Impact
+
 - ✅ Clean root directory with only README.md
 - ✅ Organized documentation by category
 - ✅ Easier to find relevant documentation
@@ -153,9 +163,11 @@ docs/ structure (after):
 ### Phase 3: Agent File Updates
 
 #### Problem
-Agent files (.github/agents/*.md) had no instructions about where to save documentation files, leading to root directory clutter.
+
+Agent files (.github/agents/\*.md) had no instructions about where to save documentation files, leading to root directory clutter.
 
 #### Solution
+
 Added "Documentation Organization" section to all 6 agent files with clear guidelines:
 
 ```markdown
@@ -177,6 +189,7 @@ When creating markdown documentation files, always save them to the appropriate 
 ```
 
 #### Updated Agents
+
 - ✅ bug-architect.md
 - ✅ bug-fixer.md
 - ✅ feature-builder.md
@@ -185,23 +198,28 @@ When creating markdown documentation files, always save them to the appropriate 
 - ✅ refactor-specialist.md
 
 #### Impact
+
 All future AI agent interactions will automatically save documentation to the correct location.
 
 ## Files Changed
 
 ### Source Code
+
 - **src/content.js** - Added input field filtering, initialization logging, and error handling
 
 ### Documentation Organization
+
 - Moved 12 files from root to docs/ subdirectories
 - Created docs/misc/ folder
 
 ### Agent Configuration
+
 - Updated 6 agent files with documentation guidelines
 
 ## Testing Performed
 
 ### Build Verification
+
 ```bash
 npm run build
 # ✅ Build successful
@@ -210,6 +228,7 @@ npm run build
 ```
 
 ### Code Verification
+
 ```bash
 grep "isInputField" dist/content.js
 # ✅ Function present and called in keydown handler
@@ -222,6 +241,7 @@ grep "Critical Init Error" dist/content.js
 ```
 
 ### Documentation Verification
+
 ```bash
 ls -la *.md
 # ✅ Only README.md in root
@@ -233,6 +253,7 @@ ls -la docs/*/
 ## Success Criteria
 
 ### Critical Bug Fixes (Phase 1)
+
 - ✅ Typing in input fields does NOT trigger shortcuts
 - ✅ Copy URL, Copy Text, Quick Tab, Open in New Tab shortcuts ALL work outside text fields
 - ✅ Debug logs appear in browser console on extension load
@@ -240,6 +261,7 @@ ls -la docs/*/
 - ✅ Core service initialization is traceable step-by-step
 
 ### Documentation Organization (Phase 2)
+
 - ✅ Root directory clean with only README.md
 - ✅ All changelogs in docs/changelogs/
 - ✅ All implementation summaries in docs/implementation-summaries/
@@ -248,6 +270,7 @@ ls -la docs/*/
 - ✅ Guides and manuals in docs/manual/
 
 ### Agent Updates (Phase 3)
+
 - ✅ All 6 agent files updated with documentation guidelines
 - ✅ Clear instructions for each document type
 - ✅ Explicit prohibition of root directory markdown files

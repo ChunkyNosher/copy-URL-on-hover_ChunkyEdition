@@ -7,6 +7,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ## 📁 Repository Structure (v1.5.8.4 - Modular Architecture)
 
 **Source Files (New Modular Structure)**:
+
 - **`src/`** - Modular source code
   - **`src/core/`** - Core modules (config.js, state.js, events.js)
   - **`src/features/`** - Feature modules
@@ -26,6 +27,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ## ✨ Key Features
 
 ### Core Features
+
 ✓ **Quick URL Copying** - Press keyboard shortcuts while hovering over links  
 ✓ **Quick Tabs** - Floating, draggable, resizable iframe windows with full navigation  
 ✓ **Firefox Container Support (v1.5.7)** - Quick Tabs isolated by Firefox Container  
@@ -39,6 +41,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ✓ **Dark Mode** - Full dark theme support
 
 ### Quick Tabs Manager Floating Panel (v1.5.8.1)
+
 ✓ **NEW**: Persistent Floating Panel - Works in Zen Browser where sidebar is disabled  
 ✓ **NEW**: Draggable & Resizable - Move and resize from any edge or corner  
 ✓ **NEW**: Position Memory - Panel remembers position and size across sessions  
@@ -51,6 +54,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ✓ Persistent State - Survives page navigation and browser restarts
 
 ### Quick Tabs Features
+
 ✓ **Firefox Container Integration** - Quick Tabs respect container boundaries  
 ✓ **Smart Z-Index Management** - Most recently interacted tab always on top  
 ✓ Navigation controls (back, forward, reload, open in new tab)  
@@ -65,6 +69,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ✓ Slot number labels in debug mode (persistent across tabs)
 
 ### Modern API Framework (v1.5.8.1)
+
 - **Floating Panel Injection** - Content script injects persistent panel into page DOM
 - **Pointer Events API** - Reliable drag/resize with setPointerCapture
 - **Firefox Container API** - Container-aware state management with `contextualIdentities`
@@ -79,6 +84,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ### What's New in v1.5.8.2?
 
 ✅ **Modular Architecture Refactoring**
+
 - Complete refactoring of content.js from monolithic 180KB file to modular structure
 - URL handlers extracted into 11 categorized modules (social-media, video, developer, blogging, ecommerce, image-design, news-discussion, entertainment, gaming, learning, other)
 - Core functionality separated into reusable modules (config, state, events, utilities)
@@ -92,6 +98,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ### What's New in v1.5.8.1?
 
 ✅ **Floating Quick Tabs Manager Panel**
+
 - Replaced Firefox sidebar with persistent floating panel
 - Works in Zen Browser where sidebar API is disabled
 - Draggable panel with Pointer Events API (no slipping!)
@@ -105,6 +112,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 - Auto-refresh every 2 seconds to stay in sync with Quick Tabs
 
 ✅ **Zen Browser Compatibility**
+
 - Extension now works fully in Zen Browser
 - No dependency on Firefox Sidebar API
 - Panel injected via content script for universal compatibility
@@ -131,6 +139,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 ## 📖 Usage
 
 ### Basic Copy Functions
+
 1. Hover over any link
 2. Press:
    - **Y** - Copy URL
@@ -139,6 +148,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 3. Notification confirms the action
 
 ### Quick Tabs
+
 1. Hover over a link
 2. Press **Q** to open Quick Tab
 3. Use controls:
@@ -154,6 +164,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 7. **Press Esc** to close all Quick Tabs (slot numbers reset)
 
 ### Quick Tabs Manager Floating Panel (NEW v1.5.8.1)
+
 1. **Press `Ctrl+Alt+Z`** (or `Cmd+Option+Z` on Mac) to open/close panel
 2. Panel shows:
    - All Quick Tabs organized by Firefox Container
@@ -175,7 +186,9 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 9. **Press Esc** to close all Quick Tabs (slot numbers reset)
 
 ### Debug Mode
+
 Enable in settings to see:
+
 - **Slot numbers** on Quick Tab toolbars (e.g., "Slot 1", "Slot 2")
 - Slot numbers reset when all Quick Tabs are closed (Esc or Clear Storage)
 - Slot numbers stay consistent across tab switches
@@ -186,10 +199,12 @@ Enable in settings to see:
 Access settings by clicking the extension icon. Organized into 4 tabs:
 
 ### Copy URL Tab
+
 - Keyboard shortcuts for copy URL, copy text, open in new tab
 - Modifier keys (Ctrl, Alt, Shift)
 
 ### Quick Tabs Tab
+
 - Quick Tab keyboard shortcut (default: Q)
 - Close all shortcut (default: Escape)
 - Max windows (1-10)
@@ -198,6 +213,7 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 - Close on open toggle
 
 ### Appearance Tab
+
 - Notification style (tooltip or notification)
 - Colors, borders, animations
 - Position and size
@@ -205,6 +221,7 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 - Debug mode toggle
 
 ### Advanced Tab
+
 - Clear Quick Tab Storage (also resets slot numbers!)
 - Reset settings to defaults
 
@@ -270,6 +287,7 @@ See `/docs/manual/TESTING_GUIDE_ISSUE_51.md` for comprehensive testing procedure
 ## 🌐 Supported Websites (100+)
 
 Optimized handlers for:
+
 - Social Media (Twitter/X, Reddit, LinkedIn, Instagram, Facebook, etc.)
 - Video Platforms (YouTube, Vimeo, Twitch, etc.)
 - Developer Platforms (GitHub, GitLab, Stack Overflow, etc.)

@@ -33,7 +33,7 @@ export function isDebugEnabled() {
  */
 export function debug(...args) {
   if (DEBUG_MODE) {
-    console.log('[DEBUG]', ...args);
+    console.log("[DEBUG]", ...args);
   }
 }
 
@@ -42,7 +42,7 @@ export function debug(...args) {
  * @param {...any} args - Arguments to log
  */
 export function debugError(...args) {
-  console.error('[ERROR]', ...args);
+  console.error("[ERROR]", ...args);
 }
 
 /**
@@ -51,7 +51,7 @@ export function debugError(...args) {
  */
 export function debugWarn(...args) {
   if (DEBUG_MODE) {
-    console.warn('[WARN]', ...args);
+    console.warn("[WARN]", ...args);
   }
 }
 
@@ -71,7 +71,7 @@ export function generateId() {
  */
 export function throttle(func, delay) {
   let lastCall = 0;
-  return function(...args) {
+  return function (...args) {
     const now = Date.now();
     if (now - lastCall >= delay) {
       lastCall = now;
@@ -88,7 +88,7 @@ export function throttle(func, delay) {
  */
 export function debounce(func, delay) {
   let timeoutId;
-  return function(...args) {
+  return function (...args) {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(() => func.apply(this, args), delay);
   };

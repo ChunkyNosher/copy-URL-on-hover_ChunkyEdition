@@ -19,13 +19,13 @@ export class EventBus {
     if (!this.events.has(eventName)) {
       this.events.set(eventName, []);
     }
-    
+
     this.events.get(eventName).push(callback);
-    
+
     if (this.debugMode) {
       console.log(`[EventBus] Subscribed to "${eventName}"`);
     }
-    
+
     // Return unsubscribe function
     return () => this.off(eventName, callback);
   }
@@ -37,18 +37,18 @@ export class EventBus {
    */
   off(eventName, callback) {
     if (!this.events.has(eventName)) return;
-    
+
     const callbacks = this.events.get(eventName);
     const index = callbacks.indexOf(callback);
-    
+
     if (index !== -1) {
       callbacks.splice(index, 1);
-      
+
       if (this.debugMode) {
         console.log(`[EventBus] Unsubscribed from "${eventName}"`);
       }
     }
-    
+
     // Clean up empty event arrays
     if (callbacks.length === 0) {
       this.events.delete(eventName);
@@ -62,13 +62,13 @@ export class EventBus {
    */
   emit(eventName, data) {
     if (!this.events.has(eventName)) return;
-    
+
     if (this.debugMode) {
       console.log(`[EventBus] Emitting "${eventName}"`, data);
     }
-    
+
     const callbacks = this.events.get(eventName);
-    callbacks.forEach(callback => {
+    callbacks.forEach((callback) => {
       try {
         callback(data);
       } catch (err) {
@@ -88,7 +88,7 @@ export class EventBus {
       callback(data);
       this.off(eventName, onceCallback);
     };
-    
+
     return this.on(eventName, onceCallback);
   }
 
@@ -136,51 +136,51 @@ export class EventBus {
  */
 export const Events = {
   // Quick Tab events
-  QUICK_TAB_CREATED: 'quickTab:created',
-  QUICK_TAB_CLOSED: 'quickTab:closed',
-  QUICK_TAB_MINIMIZED: 'quickTab:minimized',
-  QUICK_TAB_RESTORED: 'quickTab:restored',
-  QUICK_TAB_PINNED: 'quickTab:pinned',
-  QUICK_TAB_UNPINNED: 'quickTab:unpinned',
-  QUICK_TAB_MOVED: 'quickTab:moved',
-  QUICK_TAB_RESIZED: 'quickTab:resized',
-  QUICK_TAB_ALL_CLOSED: 'quickTab:allClosed',
-  QUICK_TAB_REQUESTED: 'quickTab:requested',
-  QUICK_TAB_FOCUS_CHANGED: 'quickTab:focusChanged',
-  
+  QUICK_TAB_CREATED: "quickTab:created",
+  QUICK_TAB_CLOSED: "quickTab:closed",
+  QUICK_TAB_MINIMIZED: "quickTab:minimized",
+  QUICK_TAB_RESTORED: "quickTab:restored",
+  QUICK_TAB_PINNED: "quickTab:pinned",
+  QUICK_TAB_UNPINNED: "quickTab:unpinned",
+  QUICK_TAB_MOVED: "quickTab:moved",
+  QUICK_TAB_RESIZED: "quickTab:resized",
+  QUICK_TAB_ALL_CLOSED: "quickTab:allClosed",
+  QUICK_TAB_REQUESTED: "quickTab:requested",
+  QUICK_TAB_FOCUS_CHANGED: "quickTab:focusChanged",
+
   // Panel events
-  PANEL_TOGGLED: 'panel:toggled',
-  PANEL_OPENED: 'panel:opened',
-  PANEL_CLOSED: 'panel:closed',
-  PANEL_MOVED: 'panel:moved',
-  PANEL_RESIZED: 'panel:resized',
-  
+  PANEL_TOGGLED: "panel:toggled",
+  PANEL_OPENED: "panel:opened",
+  PANEL_CLOSED: "panel:closed",
+  PANEL_MOVED: "panel:moved",
+  PANEL_RESIZED: "panel:resized",
+
   // URL events
-  URL_COPIED: 'url:copied',
-  TEXT_COPIED: 'text:copied',
-  LINK_OPENED: 'link:opened',
-  
+  URL_COPIED: "url:copied",
+  TEXT_COPIED: "text:copied",
+  LINK_OPENED: "link:opened",
+
   // Hover events
-  HOVER_START: 'hover:start',
-  HOVER_END: 'hover:end',
-  
+  HOVER_START: "hover:start",
+  HOVER_END: "hover:end",
+
   // Storage events
-  STORAGE_UPDATED: 'storage:updated',
-  STORAGE_SYNCED: 'storage:synced',
-  
+  STORAGE_UPDATED: "storage:updated",
+  STORAGE_SYNCED: "storage:synced",
+
   // Broadcast events
-  BROADCAST_RECEIVED: 'broadcast:received',
-  
+  BROADCAST_RECEIVED: "broadcast:received",
+
   // Error events
-  ERROR: 'error',
-  
+  ERROR: "error",
+
   // Drag events
-  DRAG_START: 'drag:start',
-  DRAG_MOVE: 'drag:move',
-  DRAG_END: 'drag:end',
-  
+  DRAG_START: "drag:start",
+  DRAG_MOVE: "drag:move",
+  DRAG_END: "drag:end",
+
   // Resize events
-  RESIZE_START: 'resize:start',
-  RESIZE_MOVE: 'resize:move',
-  RESIZE_END: 'resize:end'
+  RESIZE_START: "resize:start",
+  RESIZE_MOVE: "resize:move",
+  RESIZE_END: "resize:end",
 };

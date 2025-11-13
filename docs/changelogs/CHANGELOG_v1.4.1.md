@@ -65,6 +65,7 @@ This release addresses critical bugs and adds highly requested features for Quic
 ### 🔧 Technical Details
 
 **Files Changed:**
+
 - `content.js`: +120 lines (persistence, nested tabs, bug fixes)
 - `popup.html`: Updated settings UI (+2 new settings)
 - `popup.js`: Added new setting handlers
@@ -73,6 +74,7 @@ This release addresses critical bugs and adds highly requested features for Quic
 - `README.md`: Major documentation updates
 
 **New Features:**
+
 - Cross-tab persistence toggle
 - Nested Quick Tab support for same-origin iframes
 - Close-on-open toggle
@@ -82,6 +84,7 @@ This release addresses critical bugs and adds highly requested features for Quic
 - Storage-based state management
 
 **Bug Fixes:**
+
 - Fixed drag state getting stuck
 - Fixed resize state getting stuck
 - Fixed mouse tracking when moving too fast
@@ -99,6 +102,7 @@ All three are fundamental browser security limitations that cannot be worked aro
 ### 🚀 Migration Notes
 
 No breaking changes. All new features are opt-in via settings.
+
 - Existing users: Cross-tab persistence defaults to OFF
 - Existing users: Close-on-open defaults to OFF
 - All existing settings preserved

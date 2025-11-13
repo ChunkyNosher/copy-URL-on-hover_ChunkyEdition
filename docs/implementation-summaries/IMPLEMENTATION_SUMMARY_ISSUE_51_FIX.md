@@ -15,18 +15,22 @@ Successfully implemented **real-time Quick Tab synchronization** across all brow
 ## Root Causes Fixed
 
 ### Bug #1: Firefox storage.sync Synchronization Delay ✓ FIXED
+
 **Problem:** Firefox storage.sync syncs every 10 minutes, not in real-time  
 **Solution:** Background script acts as real-time hub, broadcasting updates immediately to all tabs
 
-### Bug #2: Storage Listener Blocks Updates ✓ FIXED  
+### Bug #2: Storage Listener Blocks Updates ✓ FIXED
+
 **Problem:** `isSavingToStorage` flag incorrectly blocked position updates in same tab  
 **Solution:** Background script coordination bypasses need for storage listener race condition prevention
 
 ### Bug #3: Restore Logic Skips Existing Tabs ✓ FIXED
+
 **Problem:** `restoreQuickTabsFromStorage()` had duplicate detection that prevented updates  
 **Solution:** Modified function to UPDATE existing Quick Tabs instead of skipping them
 
 ### Bug #4: No Real-Time Cross-Origin Sync ✓ FIXED
+
 **Problem:** BroadcastChannel only works same-origin, no mechanism for cross-origin real-time sync  
 **Solution:** Background script broadcasts to ALL tabs regardless of origin
 
@@ -39,18 +43,21 @@ Successfully implemented **real-time Quick Tab synchronization** across all brow
 **File:** `background.js`
 
 **Added Global State Tracker:**
+
 ```javascript
 let globalQuickTabState = {
   tabs: [],
-  lastUpdate: 0
+  lastUpdate: 0,
 };
 ```
 
 **Added Message Handlers:**
+
 - `UPDATE_QUICK_TAB_POSITION`: Receives position/size updates from content scripts
 - `UPDATE_QUICK_TAB_SIZE`: Receives size-only updates (for future use)
 
 **Broadcast Mechanism:**
+
 ```javascript
 // On receiving position update:
 1. Update globalQuickTabState.tabs array
@@ -59,6 +66,7 @@ let globalQuickTabState = {
 ```
 
 **Enhanced Tab Activation:**
+
 - Sends current `globalQuickTabState` when tab is activated
 - Ensures new tabs get latest positions immediately
 
@@ -67,6 +75,7 @@ let globalQuickTabState = {
 **File:** `content.js`
 
 **Modified `restoreQuickTabsFromStorage()`:**
+
 - Changed from Set-based duplicate detection to Map-based lookup
 - Now **updates** existing Quick Tabs instead of skipping:
   - Updates position if changed by > 1px
@@ -74,19 +83,23 @@ let globalQuickTabState = {
   - Logs updates for debugging
 
 **Drag Handler (`makeDraggable`):**
+
 - Added throttled saves every 500ms during drag operations
 - Changed `handleMouseUp` to send to background instead of direct storage save
 - Keeps BroadcastChannel for same-origin redundancy
 
 **Resize Handler (`makeResizable`):**
+
 - Updated `handleMouseUp` to send combined position/size to background
 - Keeps BroadcastChannel for same-origin redundancy
 
 **Message Handlers Added:**
+
 - `UPDATE_QUICK_TAB_FROM_BACKGROUND`: Updates Quick Tab position/size from background
 - `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND`: Syncs full state on tab activation
 
 **Visibility Change Force-Save:**
+
 - Enhanced existing `visibilitychange` listener
 - Force-saves all Quick Tab positions when tab is hidden
 - Prevents data loss on rapid tab switches
@@ -136,7 +149,7 @@ Tab 2 (YouTube): Receives UPDATE_QUICK_TAB_FROM_BACKGROUND
 ```
 background.js: After receiving position update
         ↓
-    browser.storage.sync.set({ 
+    browser.storage.sync.set({
         quick_tabs_state_v2: {
             tabs: globalQuickTabState.tabs,
             timestamp: Date.now()
@@ -153,12 +166,14 @@ background.js: After receiving position update
 ## Performance Metrics
 
 ### Before Fix:
+
 - **Same-Origin Tabs:** ~100ms (BroadcastChannel working)
 - **Cross-Origin Tabs:** Up to 10 minutes (storage.sync delay)
 - **Rapid Tab Switch:** Data loss if drag incomplete
 - **Existing Tab Update:** Never (skipped due to duplicate detection)
 
 ### After Fix:
+
 - **Same-Origin Tabs:** < 50ms (BroadcastChannel + background coordination)
 - **Cross-Origin Tabs:** < 50ms (background coordination)
 - **Rapid Tab Switch:** No data loss (throttled saves + visibility change save)
@@ -169,6 +184,7 @@ background.js: After receiving position update
 ## Testing Checklist
 
 ### ✅ Same-Origin Test (Wikipedia → Wikipedia)
+
 - [ ] Open Quick Tab in Wikipedia Tab 1
 - [ ] Move to position (500, 500)
 - [ ] Resize to 600x400
@@ -177,6 +193,7 @@ background.js: After receiving position update
 - [ ] **Verification:** Works via both BroadcastChannel AND background coordination
 
 ### ✅ Cross-Origin Test (Wikipedia → YouTube)
+
 - [ ] Open Quick Tab in Wikipedia Tab 1
 - [ ] Move to position (500, 500)
 - [ ] Resize to 600x400
@@ -185,6 +202,7 @@ background.js: After receiving position update
 - [ ] **Verification:** Works via background coordination (not storage.sync!)
 
 ### ✅ Rapid Tab Switch Test
+
 - [ ] Open Quick Tab in Tab 1
 - [ ] Start dragging Quick Tab (don't release mouse)
 - [ ] While dragging, switch to Tab 2 (Ctrl+Tab)
@@ -192,6 +210,7 @@ background.js: After receiving position update
 - [ ] **Verification:** No data loss due to incomplete drag
 
 ### ✅ Update Existing Tab Test
+
 - [ ] Open Quick Tab in Tab 1 at position (100, 100)
 - [ ] Switch to Tab 2, Quick Tab appears at (100, 100)
 - [ ] In Tab 2, move Quick Tab to (500, 500)
@@ -200,6 +219,7 @@ background.js: After receiving position update
 - [ ] **Verification:** restoreQuickTabsFromStorage() updates existing tabs
 
 ### ✅ Persistence Test
+
 - [ ] Open Quick Tab, move to (500, 500), resize to 600x400
 - [ ] Close browser completely
 - [ ] Reopen browser and navigate to same page
@@ -207,6 +227,7 @@ background.js: After receiving position update
 - [ ] **Verification:** storage.sync persistence working
 
 ### ✅ Multiple Quick Tabs Test
+
 - [ ] Open 3 Quick Tabs in Tab 1 at different positions
 - [ ] Switch to Tab 2
 - [ ] **Expected:** All 3 Quick Tabs appear at correct positions immediately
@@ -219,6 +240,7 @@ background.js: After receiving position update
 ## Code Changes Summary
 
 ### Files Modified: 3
+
 1. **background.js** (+111 lines)
    - Added global state tracker
    - Added message handlers for position/size updates
@@ -243,6 +265,7 @@ background.js: After receiving position update
 **CodeQL Analysis:** ✅ No alerts found
 
 **Security Considerations:**
+
 - Background script coordination does not introduce new security vulnerabilities
 - All message passing uses `browser.runtime.sendMessage` (internal extension messaging)
 - No external network requests added
@@ -271,7 +294,6 @@ The extension removes X-Frame-Options headers to allow Quick Tabs to load any we
 1. **Background Script Dependency:** Real-time sync requires background script to be running
    - Firefox Manifest v3 uses non-persistent background scripts
    - Background script wakes up on messages, so this works fine
-   
 2. **Tab Unloading:** If browser unloads content script, Quick Tabs won't appear
    - This is existing behavior, not introduced by this fix
    - Background script will attempt to inject content script on tab activation
@@ -316,7 +338,7 @@ This implementation **definitively solves Issue #51** with verifiable real-time 
 ✅ **No data loss** on rapid tab switches  
 ✅ **Updates existing tabs** instead of skipping  
 ✅ **Zero security vulnerabilities** (CodeQL passed)  
-✅ **Fully backward compatible**  
+✅ **Fully backward compatible**
 
 The background script coordination layer provides the missing piece for real-time Quick Tab synchronization across different origins, while maintaining storage.sync for persistence and BroadcastChannel for same-origin redundancy.
 

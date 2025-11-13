@@ -14,7 +14,7 @@ export class StateManager {
       lastMouseX: 0,
       lastMouseY: 0,
       isSavingToStorage: false,
-      isPanelOpen: false
+      isPanelOpen: false,
     };
     this.listeners = new Map();
   }
@@ -54,9 +54,9 @@ export class StateManager {
   setState(updates) {
     const oldState = { ...this.state };
     this.state = { ...this.state, ...updates };
-    
+
     // Notify listeners for each changed key
-    Object.keys(updates).forEach(key => {
+    Object.keys(updates).forEach((key) => {
       if (oldState[key] !== updates[key]) {
         this.notifyListeners(key, updates[key], oldState[key]);
       }
@@ -70,14 +70,14 @@ export class StateManager {
    * @returns {function} Unsubscribe function
    */
   subscribe(keyOrCallback, callback) {
-    if (typeof keyOrCallback === 'function') {
+    if (typeof keyOrCallback === "function") {
       // Subscribe to all state changes
-      const id = Symbol('listener');
-      this.listeners.set(id, { key: '*', callback: keyOrCallback });
+      const id = Symbol("listener");
+      this.listeners.set(id, { key: "*", callback: keyOrCallback });
       return () => this.listeners.delete(id);
     } else {
       // Subscribe to specific key changes
-      const id = Symbol('listener');
+      const id = Symbol("listener");
       this.listeners.set(id, { key: keyOrCallback, callback });
       return () => this.listeners.delete(id);
     }
@@ -91,11 +91,11 @@ export class StateManager {
    */
   notifyListeners(key, newValue, oldValue) {
     this.listeners.forEach(({ key: listenerKey, callback }) => {
-      if (listenerKey === '*' || listenerKey === key) {
+      if (listenerKey === "*" || listenerKey === key) {
         try {
           callback(key, newValue, oldValue, this.state);
         } catch (err) {
-          console.error('[State] Listener error:', err);
+          console.error("[State] Listener error:", err);
         }
       }
     });
@@ -114,8 +114,8 @@ export class StateManager {
       lastMouseX: 0,
       lastMouseY: 0,
       isSavingToStorage: false,
-      isPanelOpen: false
+      isPanelOpen: false,
     };
-    this.notifyListeners('*', this.state, {});
+    this.notifyListeners("*", this.state, {});
   }
 }
