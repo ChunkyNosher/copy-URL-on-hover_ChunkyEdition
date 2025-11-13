@@ -17,12 +17,10 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 
 **Moved from `src/utils/` to `src/core/`:**
 
-
 - ✅ `dom.js` - DOM manipulation utilities
 - ✅ `browser-api.js` - Browser API wrappers
 
 **Rationale:** These are core utilities used throughout the extension and belong with other core modules (config, state, events).
-
 
 **Impact:**
 
@@ -53,7 +51,6 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
    - Resize handle styles
    - Dark mode variants
    - Slot badge styles for debug mode
-
 
 **CSS Injection Strategy:**
 
@@ -117,7 +114,6 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
    - Lists package contents
    - Validates package size (>50KB minimum)
 
-
 4. **Enhanced release notes:**
    - Includes architecture information
    - Documents modular structure
@@ -136,7 +132,6 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 
 **Updated README.md:**
 
-
 - Changed version from 1.5.9.0 to 1.5.8.10
 - Added "Hybrid Modular/EventBus Architecture" description
 - Documented new directory structure
@@ -145,14 +140,12 @@ Version 1.5.8.10 implements the **Hybrid Modular/EventBus Architecture** (Archit
 
 **Updated all Copilot agent files:**
 
-
 - `feature-optimizer.md` ✅
 - `bug-architect.md` ✅
 - `bug-fixer.md` ✅
 - `feature-builder.md` ✅
 - `master-orchestrator.md` ✅
 - `refactor-specialist.md` ✅
-
 
 **All agents now reference:**
 
@@ -252,13 +245,11 @@ src/
 
 **What Gets Bundled:**
 
-
 - All JavaScript modules starting from `src/content.js`
 - CSS inlined as JavaScript strings
 - Total bundle size: ~96KB (production, no source maps)
 
 **What Doesn't Get Bundled:**
-
 
 - `background.js` (standalone script)
 - `popup.js`, `options_page.js` (standalone scripts)
@@ -314,12 +305,10 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 
 ### 1. Better Separation of Concerns
 
-
 - **Core utilities** in `core/` (config, state, events, dom, browser-api)
 - **Features** in `features/` (quick-tabs, notifications, url-handlers)
 - **UI** in `ui/` (components, CSS)
 - **Debug** in `utils/` (debug utilities only)
-
 
 ### 2. Improved Maintainability
 
@@ -328,7 +317,6 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 - Easier to locate and modify specific functionality
 
 ### 3. Enhanced Testability
-
 
 - Each module can be tested independently
 - Mocking is simpler with clear module boundaries
@@ -347,20 +335,17 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 - Source files can't leak into production packages
 - Size checks ensure bundle isn't corrupted
 
-
 ## Migration Notes
 
 ### For Developers
 
 **If you're adding new features:**
 
-
 1. Create module in appropriate `src/features/` subdirectory
 2. Import core utilities from `src/core/`
 3. Add CSS to `src/ui/css/` and inline in your module
 4. Register with EventBus in feature's `index.js`
 5. Test build with `npm run build:prod`
-
 
 **If you're modifying existing features:**
 
@@ -372,7 +357,6 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 ### For CI/CD
 
 **Release workflow now includes:**
-
 
 - Pre-build testing
 - Build output validation
@@ -402,7 +386,6 @@ zip -r -1 -FS ../copy-url-hover-{version}.xpi * -x '*.DS_Store' -x '*.map'
 - `docs/manual/build-and-packaging-guide.md` (new)
 
 ### Modified (14 files)
-
 
 - `manifest.json` (version 1.5.8.10)
 - `package.json` (version 1.5.8.10)
