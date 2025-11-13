@@ -1,6 +1,6 @@
 {
   "name": "copy-url-on-hover-chunkyedition",
-  "version": "1.5.8.9",
+  "version": "1.5.9.0",
   "description": "Copy URL on Hover extension with modular architecture",
   "type": "module",
   "private": true,
