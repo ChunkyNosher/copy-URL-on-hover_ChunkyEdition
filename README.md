@@ -11,6 +11,7 @@ This is a complete, customizable Firefox extension that allows you to copy URLs 
 This release replaces the Firefox Sidebar API with a persistent, draggable, resizable floating panel that works perfectly in Zen Browser (where the native sidebar is disabled). This fixes Issues #35, #43, and #51.
 
 **Key Improvements:**
+
 - ✅ **Persistent Floating Panel** - New `PanelManager` class with full drag/resize capabilities
 - ✅ **Zen Browser Compatibility** - No dependency on Firefox Sidebar API (which is disabled in Zen)
 - ✅ **Ctrl+Alt+Z Toggle** - Keyboard shortcut now toggles the floating panel instead of sidebar
@@ -21,6 +22,7 @@ This release replaces the Firefox Sidebar API with a persistent, draggable, resi
 - ✅ **Enhanced Actions** - Close Minimized, Close All, Go to Tab, Minimize/Restore per-tab
 
 **Technical Details:**
+
 - Panel injected into page DOM (not sidebar)
 - Z-index: 999999999 (always above Quick Tabs)
 - State persisted to `browser.storage.local`
@@ -28,6 +30,7 @@ This release replaces the Firefox Sidebar API with a persistent, draggable, resi
 - ~900 lines of new code in `src/features/quick-tabs/panel.js`
 
 **Fixes:**
+
 - Issue #35: Quick Tabs now persist correctly across tab switches
 - Issue #43: Minimized Quick Tabs properly visible in panel manager
 - Issue #51: Quick Tabs UI fully restored and functional
