@@ -1,15 +1,18 @@
 /**
  * Copy URL on Hover - Enhanced with Quick Tabs
- * Main Content Script Entry Point (Modular Architecture v1.5.9.0)
+ * Main Content Script Entry Point (Hybrid Architecture v1.5.8.10)
  *
  * This file serves as the main entry point and coordinates between modules.
  * URL handlers have been extracted to features/url-handlers/ for better maintainability.
  *
- * v1.5.9.0 Changes:
- * - Restored Quick Tabs UI logic (fixes v1.5.8.9 bug)
- * - Implemented modular Quick Tabs feature
- * - Implemented modular Notifications feature
- * - Follows modular-architecture-blueprint.md
+ * v1.5.8.10 Changes:
+ * - Implemented Hybrid Modular/EventBus Architecture (Architecture #10)
+ * - Moved dom.js and browser-api.js from utils/ to core/
+ * - Created modular CSS files in ui/css/ (base.css, notifications.css, quick-tabs.css)
+ * - Extracted notification logic into separate toast.js and tooltip.js modules
+ * - Renamed quick-tab-window.js to window.js following architecture guidelines
+ * - Enhanced EventBus integration for all features
+ * - Follows hybrid-architecture-implementation.md
  */
 
 // CRITICAL: Early detection marker - must execute first
@@ -53,8 +56,8 @@ import { EventBus, Events } from './core/events.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: events.js');
 import { debug, enableDebug } from './utils/debug.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: debug.js');
-import { copyToClipboard, sendMessageToBackground } from './utils/browser-api.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: browser-api.js');
+import { copyToClipboard, sendMessageToBackground } from './core/browser-api.js';
+console.log('[Copy-URL-on-Hover] ✓ Imported: browser-api.js from core');
 
 // Import URL handlers
 import { URLHandlerRegistry } from './features/url-handlers/index.js';

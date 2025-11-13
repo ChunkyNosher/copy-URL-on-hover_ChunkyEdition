@@ -1,0 +1,111 @@
+/**
+ * Base CSS for Copy URL on Hover Extension
+ * Common styles shared across all UI components
+ * v1.5.8.10 - Hybrid Architecture
+ */
+
+/* CSS Reset for Extension Elements */
+.cuo-reset * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Common Overlay Styles */
+.cuo-overlay {
+  position: fixed;
+  z-index: 999999990;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+}
+
+/* Draggable Elements */
+.cuo-draggable {
+  cursor: move;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Resizable Elements */
+.cuo-resizable {
+  resize: both;
+  overflow: auto;
+}
+
+/* Button Styles */
+.cuo-button {
+  background: #0078d4;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.cuo-button:hover {
+  background: #005a9e;
+}
+
+.cuo-button:active {
+  background: #004578;
+}
+
+.cuo-button-secondary {
+  background: #6c757d;
+}
+
+.cuo-button-secondary:hover {
+  background: #5a6268;
+}
+
+.cuo-button-danger {
+  background: #dc3545;
+}
+
+.cuo-button-danger:hover {
+  background: #c82333;
+}
+
+/* Input Styles */
+.cuo-input {
+  padding: 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+}
+
+.cuo-input:focus {
+  outline: none;
+  border-color: #0078d4;
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+}
+
+/* Container Styles */
+.cuo-container {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .cuo-container {
+    background: #2d2d2d;
+    color: #e0e0e0;
+  }
+
+  .cuo-input {
+    background: #3d3d3d;
+    border-color: #555;
+    color: #e0e0e0;
+  }
+
+  .cuo-input:focus {
+    border-color: #0078d4;
+  }
+}
