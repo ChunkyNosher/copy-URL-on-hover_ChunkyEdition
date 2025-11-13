@@ -3,9 +3,10 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
+**Version:** 1.5.8.10  
 **Language:** JavaScript (ES6+)  
-**Architecture:** Modular with state management  
-**Purpose:** URL management with container isolation support
+**Architecture:** Hybrid Modular/EventBus Architecture (Architecture #10)  
+**Purpose:** URL management with Firefox Container isolation support
 
 ---
 

@@ -32,30 +32,40 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.9.0+):**
+**Current Repository Architecture (v1.5.8.10 - Hybrid Modular/EventBus):**
 
-- **Modular Source** (v1.5.9.0 - FULLY MODULARIZED):
-  - **src/content.js** (~500 lines): Main entry point - pure orchestrator that imports and coordinates all features
-  - **src/core/**: config.js, state.js, events.js
-  - **src/features/**: All feature modules (EXPANDED in v1.5.9.0)
-    - **quick-tabs/**: index.js (QuickTabsManager), quick-tab-window.js (QuickTabWindow class), minimized-manager.js
-    - **notifications/**: index.js (NotificationManager with tooltip/toast)
+- **Hybrid Modular Source** (v1.5.8.10+):
+  - **src/content.js**: Main entry point - orchestrates all features via EventBus
+  - **src/core/**: config.js, state.js, events.js, dom.js, browser-api.js, index.js (barrel file)
+    - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.8.10
+  - **src/features/**: Feature modules (EventBus-driven)
+    - **quick-tabs/**: index.js, window.js (renamed from quick-tab-window.js), minimized-manager.js
+    - **notifications/**: index.js, toast.js (NEW), tooltip.js (NEW) - fully modularized
     - **url-handlers/**: 11 categorized modules (104 handlers total)
-  - **src/ui/**: components.js (reusable UI helpers), css/ directory
-  - **src/utils/**: debug.js, dom.js, browser-api.js
-  - **dist/content.js**: Built bundle (~70-90KB, MUST NOT contain ES6 imports/exports)
-- **Build System**: Rollup with validation checks
-- **background.js**: Tab lifecycle, webRequest modifications, storage sync, panel toggle
-- **state-manager.js**: Quick Tab state management (legacy)
-- **Testing & CI/CD** (v1.5.8.7+, maintained in v1.5.9.0):
-  - Jest with browser API mocks (tests/setup.js, tests/example.test.js)
-  - GitHub Actions workflows for code quality, security, testing
-  - ESLint (with jest environment), Prettier, CodeQL, web-ext validation
-  - DeepSource static analysis
-  - CodeRabbit AI review with bot PR support
-  - Codecov integration
-  - Copilot instructions
-- **manifest.json**: Manifest v2 (webRequestBlocking required)
+  - **src/ui/**: components.js, css/ (NEW v1.5.8.10)
+    - **css/**: base.css, notifications.css, quick-tabs.css - modular CSS system
+  - **src/utils/**: debug.js, index.js (dom.js and browser-api.js moved to core/)
+  - **dist/content.js**: Built bundle (~96KB, MUST NOT contain ES6 imports/exports)
+- **Build System**: Rollup bundler with comprehensive validation checks (v1.5.8.10+)
+  - Validates build output (file existence, sizes, no source leaks)
+  - XPI package verification before release
+  - See docs/manual/build-and-packaging-guide.md
+- **Architecture Documentation**: 
+  - docs/manual/hybrid-architecture-implementation.md - Architecture #10 design
+  - docs/manual/build-and-packaging-guide.md - Build and packaging process
+- **background.js** (~970 lines): Container-aware tab lifecycle, content injection, webRequest header modification, storage sync
+- **state-manager.js**: Container-aware Quick Tab state management
+- **popup.html/popup.js**: Settings UI with 4 tabs
+- **options_page.html/options_page.js**: Options page
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.8.10
+- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.10):
+  - Jest with browser API mocks (tests/setup.js)
+  - Example tests (tests/example.test.js)
+  - GitHub Actions workflows: code-quality, codeql-analysis, test-coverage, webext-lint, auto-format, release (enhanced)
+  - ESLint (.eslintrc.cjs), Prettier (.prettierrc.cjs), Jest (jest.config.cjs)
+  - DeepSource static analysis (.deepsource.toml)
+  - CodeRabbit AI review (.coderabbit.yaml)
+  - Copilot instructions (.github/copilot-instructions.md)
 
 **Critical APIs - Debug These First:**
 

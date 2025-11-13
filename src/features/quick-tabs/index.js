@@ -2,12 +2,12 @@
  * Quick Tabs Feature Module
  * Main entrypoint for Quick Tabs functionality
  *
- * v1.5.9.0 - Restored missing Quick Tab UI logic
+ * v1.5.8.10 - Hybrid Architecture: Renamed quick-tab-window.js to window.js
  * Fixes issue identified in v1589-quick-tabs-root-cause.md
- * Follows architecture from modular-architecture-blueprint.md
+ * Follows architecture from hybrid-architecture-implementation.md
  */
 
-import { createQuickTabWindow } from './quick-tab-window.js';
+import { createQuickTabWindow } from './window.js';
 import { MinimizedManager } from './minimized-manager.js';
 import { CONSTANTS } from '../../core/config.js';
 

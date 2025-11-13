@@ -33,28 +33,40 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.9+):**
+**Current Repository Architecture (v1.5.8.10 - Hybrid Modular/EventBus):**
 
-- **Modular Source** (v1.5.8.2+):
-  - **src/content.js** (~570 lines): Main entry point with enhanced logging, error handling, and eager loading (v1.5.8.9)
-  - **src/core/**: config.js, state.js, events.js, index.js (barrel file)
-  - **src/features/url-handlers/**: 11 categorized modules (104 handlers total)
-  - **src/utils/**: debug.js, dom.js, browser-api.js, index.js (barrel file)
-  - **dist/content.js**: Built bundle (~60-80KB, MUST NOT contain ES6 imports/exports)
-- **Build System**: Rollup bundler with validation checks
+- **Hybrid Modular Source** (v1.5.8.10+):
+  - **src/content.js**: Main entry point - orchestrates all features via EventBus
+  - **src/core/**: config.js, state.js, events.js, dom.js, browser-api.js, index.js (barrel file)
+    - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.8.10
+  - **src/features/**: Feature modules (EventBus-driven)
+    - **quick-tabs/**: index.js, window.js (renamed from quick-tab-window.js), minimized-manager.js
+    - **notifications/**: index.js, toast.js (NEW), tooltip.js (NEW) - fully modularized
+    - **url-handlers/**: 11 categorized modules (104 handlers total)
+  - **src/ui/**: components.js, css/ (NEW v1.5.8.10)
+    - **css/**: base.css, notifications.css, quick-tabs.css - modular CSS system
+  - **src/utils/**: debug.js, index.js (dom.js and browser-api.js moved to core/)
+  - **dist/content.js**: Built bundle (~96KB, MUST NOT contain ES6 imports/exports)
+- **Build System**: Rollup bundler with comprehensive validation checks (v1.5.8.10+)
+  - Validates build output (file existence, sizes, no source leaks)
+  - XPI package verification before release
+  - See docs/manual/build-and-packaging-guide.md
+- **Architecture Documentation**: 
+  - docs/manual/hybrid-architecture-implementation.md - Architecture #10 design
+  - docs/manual/build-and-packaging-guide.md - Build and packaging process
 - **background.js** (~970 lines): Container-aware tab lifecycle, content injection, webRequest header modification, storage sync
 - **state-manager.js**: Container-aware Quick Tab state management
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking)
-- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.8):
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.8.10
+- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.10):
   - Jest with browser API mocks (tests/setup.js)
-  - Example tests (tests/example.test.js) - NEW v1.5.8.8
-  - GitHub Actions workflows: code-quality, codeql-analysis, test-coverage, webext-lint, auto-format
+  - Example tests (tests/example.test.js)
+  - GitHub Actions workflows: code-quality, codeql-analysis, test-coverage, webext-lint, auto-format, release (enhanced)
   - ESLint (.eslintrc.cjs), Prettier (.prettierrc.cjs), Jest (jest.config.cjs)
-  - DeepSource static analysis (.deepsource.toml) - Fixed v1.5.8.8
-  - CodeRabbit AI review (.coderabbit.yaml) - NEW v1.5.8.8
-  - Copilot instructions (.github/copilot-instructions.md) - NEW v1.5.8.8
+  - DeepSource static analysis (.deepsource.toml)
+  - CodeRabbit AI review (.coderabbit.yaml)
+  - Copilot instructions (.github/copilot-instructions.md)
 
 **Core APIs - Leverage These:**
 
