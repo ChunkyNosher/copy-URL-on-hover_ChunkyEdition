@@ -89,9 +89,20 @@ class QuickTabsManager {
       cookieStoreId: options.cookieStoreId || 'firefox-default',
       minimized: options.minimized || false,
       zIndex: this.currentZIndex,
+      pinnedToUrl: options.pinnedToUrl || null,
       onDestroy: tabId => this.handleDestroy(tabId),
       onMinimize: tabId => this.handleMinimize(tabId),
-      onFocus: tabId => this.handleFocus(tabId)
+      onFocus: tabId => this.handleFocus(tabId),
+      onPositionChange: (tabId, left, top) =>
+        this.handlePositionChange(tabId, left, top),
+      onPositionChangeEnd: (tabId, left, top) =>
+        this.handlePositionChangeEnd(tabId, left, top),
+      onSizeChange: (tabId, width, height) =>
+        this.handleSizeChange(tabId, width, height),
+      onSizeChangeEnd: (tabId, width, height) =>
+        this.handleSizeChangeEnd(tabId, width, height),
+      onPin: (tabId, pinnedToUrl) => this.handlePin(tabId, pinnedToUrl),
+      onUnpin: tabId => this.handleUnpin(tabId)
     });
 
     // Store the tab
@@ -202,6 +213,173 @@ class QuickTabsManager {
     this.tabs.clear();
     this.minimizedManager.clear();
     this.currentZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+  }
+
+  /**
+   * Handle Quick Tab position change (throttled during drag)
+   */
+  handlePositionChange(id, left, top) {
+    const now = Date.now();
+
+    // Throttle to 100ms intervals during drag
+    if (!this.positionChangeThrottle) {
+      this.positionChangeThrottle = {};
+    }
+
+    if (
+      this.positionChangeThrottle[id] &&
+      now - this.positionChangeThrottle[id] < 100
+    ) {
+      return;
+    }
+
+    this.positionChangeThrottle[id] = now;
+
+    // Send to background for cross-tab sync (non-blocking)
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'UPDATE_QUICK_TAB_POSITION',
+          id: id,
+          left: Math.round(left),
+          top: Math.round(top),
+          timestamp: now
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Position sync error:', err);
+        });
+    }
+  }
+
+  /**
+   * Handle Quick Tab position change end (final save)
+   */
+  handlePositionChangeEnd(id, left, top) {
+    // Clear throttle
+    if (this.positionChangeThrottle) {
+      delete this.positionChangeThrottle[id];
+    }
+
+    // Send final position to background
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'UPDATE_QUICK_TAB_POSITION_FINAL',
+          id: id,
+          left: Math.round(left),
+          top: Math.round(top),
+          timestamp: Date.now()
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Final position save error:', err);
+        });
+    }
+  }
+
+  /**
+   * Handle Quick Tab size change (throttled during resize)
+   */
+  handleSizeChange(id, width, height) {
+    const now = Date.now();
+
+    if (!this.sizeChangeThrottle) {
+      this.sizeChangeThrottle = {};
+    }
+
+    if (
+      this.sizeChangeThrottle[id] &&
+      now - this.sizeChangeThrottle[id] < 100
+    ) {
+      return;
+    }
+
+    this.sizeChangeThrottle[id] = now;
+
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'UPDATE_QUICK_TAB_SIZE',
+          id: id,
+          width: Math.round(width),
+          height: Math.round(height),
+          timestamp: now
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Size sync error:', err);
+        });
+    }
+  }
+
+  /**
+   * Handle Quick Tab size change end (final save)
+   */
+  handleSizeChangeEnd(id, width, height) {
+    if (this.sizeChangeThrottle) {
+      delete this.sizeChangeThrottle[id];
+    }
+
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'UPDATE_QUICK_TAB_SIZE_FINAL',
+          id: id,
+          width: Math.round(width),
+          height: Math.round(height),
+          timestamp: Date.now()
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Final size save error:', err);
+        });
+    }
+  }
+
+  /**
+   * Handle Quick Tab pin
+   */
+  handlePin(id, pinnedToUrl) {
+    console.log('[QuickTabsManager] Handling pin for:', id, 'to:', pinnedToUrl);
+
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'PIN_QUICK_TAB',
+          id: id,
+          pinnedToUrl: pinnedToUrl,
+          timestamp: Date.now()
+        })
+        .then(() => {
+          // Close this Quick Tab in all other tabs
+          // Background script will handle broadcasting
+          console.log('[QuickTabsManager] Pin message sent to background');
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Pin sync error:', err);
+        });
+    }
+  }
+
+  /**
+   * Handle Quick Tab unpin
+   */
+  handleUnpin(id) {
+    console.log('[QuickTabsManager] Handling unpin for:', id);
+
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'UNPIN_QUICK_TAB',
+          id: id,
+          timestamp: Date.now()
+        })
+        .then(() => {
+          // Restore this Quick Tab in all tabs
+          // Background script will handle broadcasting
+          console.log('[QuickTabsManager] Unpin message sent to background');
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Unpin sync error:', err);
+        });
+    }
   }
 
   /**

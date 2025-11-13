@@ -23,6 +23,7 @@ export class QuickTabWindow {
     this.cookieStoreId = options.cookieStoreId || 'firefox-default';
     this.minimized = options.minimized || false;
     this.zIndex = options.zIndex || CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+    this.pinnedToUrl = options.pinnedToUrl || null;
 
     this.container = null;
     this.iframe = null;
@@ -32,10 +33,17 @@ export class QuickTabWindow {
     this.dragStartY = 0;
     this.resizeStartWidth = 0;
     this.resizeStartHeight = 0;
+    this.pinButton = null;
 
     this.onDestroy = options.onDestroy || (() => {});
     this.onMinimize = options.onMinimize || (() => {});
     this.onFocus = options.onFocus || (() => {});
+    this.onPositionChange = options.onPositionChange || (() => {});
+    this.onPositionChangeEnd = options.onPositionChangeEnd || (() => {});
+    this.onSizeChange = options.onSizeChange || (() => {});
+    this.onSizeChangeEnd = options.onSizeChangeEnd || (() => {});
+    this.onPin = options.onPin || (() => {});
+    this.onUnpin = options.onUnpin || (() => {});
   }
 
   /**
@@ -88,6 +96,9 @@ export class QuickTabWindow {
 
     this.container.appendChild(this.iframe);
 
+    // Setup iframe load listener to update title
+    this.setupIframeLoadHandler();
+
     // Add to document
     document.body.appendChild(this.container);
 
@@ -98,6 +109,36 @@ export class QuickTabWindow {
 
     console.log('[QuickTabWindow] Rendered:', this.id);
     return this.container;
+  }
+
+  /**
+   * Create favicon element
+   */
+  createFavicon() {
+    const favicon = createElement('img', {
+      className: 'quick-tab-favicon',
+      style: {
+        width: '16px',
+        height: '16px',
+        marginLeft: '5px',
+        marginRight: '5px',
+        flexShrink: '0'
+      }
+    });
+
+    // Extract domain for favicon
+    try {
+      const urlObj = new URL(this.url);
+      const GOOGLE_FAVICON_URL = 'https://www.google.com/s2/favicons?domain=';
+      favicon.src = `${GOOGLE_FAVICON_URL}${urlObj.hostname}&sz=32`;
+      favicon.onerror = () => {
+        favicon.style.display = 'none';
+      };
+    } catch (e) {
+      favicon.style.display = 'none';
+    }
+
+    return favicon;
   }
 
   /**
@@ -119,6 +160,20 @@ export class QuickTabWindow {
       }
     });
 
+    // Create left section with favicon and title
+    const leftSection = createElement('div', {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        flex: '1',
+        overflow: 'hidden'
+      }
+    });
+
+    // Favicon
+    const favicon = this.createFavicon();
+    leftSection.appendChild(favicon);
+
     // Title text
     const titleText = createElement(
       'div',
@@ -136,6 +191,7 @@ export class QuickTabWindow {
       },
       this.title
     );
+    leftSection.appendChild(titleText);
 
     // Control buttons container
     const controls = createElement('div', {
@@ -145,15 +201,38 @@ export class QuickTabWindow {
       }
     });
 
+    // Open in New Tab button
+    const openBtn = this.createButton('🔗', () => {
+      const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
+      browser.runtime.sendMessage({
+        action: 'openTab',
+        url: currentSrc,
+        switchFocus: true
+      });
+    });
+    openBtn.title = 'Open in New Tab';
+    controls.appendChild(openBtn);
+
+    // Pin button
+    const pinBtn = this.createButton(this.pinnedToUrl ? '📌' : '📍', () => {
+      this.togglePin(pinBtn);
+    });
+    pinBtn.title = this.pinnedToUrl ? `Pinned to: ${this.pinnedToUrl}` : 'Pin to current page';
+    pinBtn.style.background = this.pinnedToUrl ? '#444' : 'transparent';
+    controls.appendChild(pinBtn);
+    this.pinButton = pinBtn;
+
     // Minimize button
-    const minimizeBtn = this.createButton('_', () => this.minimize());
+    const minimizeBtn = this.createButton('−', () => this.minimize());
+    minimizeBtn.title = 'Minimize';
     controls.appendChild(minimizeBtn);
 
     // Close button
     const closeBtn = this.createButton('×', () => this.destroy());
+    closeBtn.title = 'Close';
     controls.appendChild(closeBtn);
 
-    titlebar.appendChild(titleText);
+    titlebar.appendChild(leftSection);
     titlebar.appendChild(controls);
 
     return titlebar;
@@ -225,73 +304,232 @@ export class QuickTabWindow {
 
       this.container.style.left = `${this.left}px`;
       this.container.style.top = `${this.top}px`;
+
+      // Notify parent of position change (throttled)
+      if (this.onPositionChange) {
+        this.onPositionChange(this.id, this.left, this.top);
+      }
     });
 
     titlebar.addEventListener('pointerup', e => {
       if (this.isDragging) {
         this.isDragging = false;
         titlebar.releasePointerCapture(e.pointerId);
+
+        // Final save on drag end
+        if (this.onPositionChangeEnd) {
+          this.onPositionChangeEnd(this.id, this.left, this.top);
+        }
       }
     });
 
+    // CRITICAL FOR ISSUE #51: Handle tab switch during drag
     titlebar.addEventListener('pointercancel', e => {
-      this.isDragging = false;
+      if (this.isDragging) {
+        this.isDragging = false;
+
+        // Emergency save position before tab loses focus
+        if (this.onPositionChangeEnd) {
+          this.onPositionChangeEnd(this.id, this.left, this.top);
+        }
+      }
     });
   }
 
   /**
-   * Setup resize handlers
+   * Setup resize handlers on all 8 edges/corners
+   * Uses Pointer Events API for reliable capture
    */
   setupResizeHandlers() {
-    const resizeHandle = createElement('div', {
-      className: 'quick-tab-resize-handle',
-      style: {
-        position: 'absolute',
-        bottom: '0',
-        right: '0',
-        width: '16px',
-        height: '16px',
+    const minWidth = 400;
+    const minHeight = 300;
+    const handleSize = 10;
+
+    // Define all 8 resize handles
+    const handles = {
+      se: {
         cursor: 'se-resize',
-        backgroundColor: 'transparent'
+        bottom: 0,
+        right: 0,
+        width: handleSize,
+        height: handleSize
+      },
+      sw: {
+        cursor: 'sw-resize',
+        bottom: 0,
+        left: 0,
+        width: handleSize,
+        height: handleSize
+      },
+      ne: {
+        cursor: 'ne-resize',
+        top: 0,
+        right: 0,
+        width: handleSize,
+        height: handleSize
+      },
+      nw: {
+        cursor: 'nw-resize',
+        top: 0,
+        left: 0,
+        width: handleSize,
+        height: handleSize
+      },
+      e: {
+        cursor: 'e-resize',
+        top: handleSize,
+        right: 0,
+        bottom: handleSize,
+        width: handleSize
+      },
+      w: {
+        cursor: 'w-resize',
+        top: handleSize,
+        left: 0,
+        bottom: handleSize,
+        width: handleSize
+      },
+      s: {
+        cursor: 's-resize',
+        bottom: 0,
+        left: handleSize,
+        right: handleSize,
+        height: handleSize
+      },
+      n: {
+        cursor: 'n-resize',
+        top: 0,
+        left: handleSize,
+        right: handleSize,
+        height: handleSize
       }
+    };
+
+    Object.entries(handles).forEach(([direction, config]) => {
+      const handle = createElement('div', {
+        className: `quick-tab-resize-handle-${direction}`,
+        style: {
+          position: 'absolute',
+          ...(config.top !== undefined ? { top: `${config.top}px` } : {}),
+          ...(config.bottom !== undefined ? { bottom: `${config.bottom}px` } : {}),
+          ...(config.left !== undefined ? { left: `${config.left}px` } : {}),
+          ...(config.right !== undefined ? { right: `${config.right}px` } : {}),
+          ...(config.width ? { width: `${config.width}px` } : {}),
+          ...(config.height ? { height: `${config.height}px` } : {}),
+          cursor: config.cursor,
+          zIndex: '10',
+          backgroundColor: 'transparent' // Invisible but interactive
+        }
+      });
+
+      let isResizing = false;
+      let startX, startY, startWidth, startHeight, startLeft, startTop;
+
+      handle.addEventListener('pointerdown', e => {
+        if (e.button !== 0) return;
+
+        e.stopPropagation();
+        e.preventDefault();
+
+        isResizing = true;
+        handle.setPointerCapture(e.pointerId);
+
+        startX = e.clientX;
+        startY = e.clientY;
+        startWidth = this.width;
+        startHeight = this.height;
+        startLeft = this.left;
+        startTop = this.top;
+      });
+
+      handle.addEventListener('pointermove', e => {
+        if (!isResizing) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        let newWidth = startWidth;
+        let newHeight = startHeight;
+        let newLeft = startLeft;
+        let newTop = startTop;
+
+        // Calculate new dimensions based on resize direction
+        if (direction.includes('e')) {
+          newWidth = Math.max(minWidth, startWidth + dx);
+        }
+        if (direction.includes('w')) {
+          const maxDx = startWidth - minWidth;
+          const constrainedDx = Math.min(dx, maxDx);
+          newWidth = startWidth - constrainedDx;
+          newLeft = startLeft + constrainedDx;
+        }
+        if (direction.includes('s')) {
+          newHeight = Math.max(minHeight, startHeight + dy);
+        }
+        if (direction.includes('n')) {
+          const maxDy = startHeight - minHeight;
+          const constrainedDy = Math.min(dy, maxDy);
+          newHeight = startHeight - constrainedDy;
+          newTop = startTop + constrainedDy;
+        }
+
+        // Apply immediately (no RAF delay)
+        this.width = newWidth;
+        this.height = newHeight;
+        this.left = newLeft;
+        this.top = newTop;
+
+        this.container.style.width = `${newWidth}px`;
+        this.container.style.height = `${newHeight}px`;
+        this.container.style.left = `${newLeft}px`;
+        this.container.style.top = `${newTop}px`;
+
+        // Notify parent (throttled)
+        if (this.onSizeChange) {
+          this.onSizeChange(this.id, newWidth, newHeight);
+        }
+        if (newLeft !== startLeft || newTop !== startTop) {
+          if (this.onPositionChange) {
+            this.onPositionChange(this.id, newLeft, newTop);
+          }
+        }
+
+        e.preventDefault();
+      });
+
+      handle.addEventListener('pointerup', e => {
+        if (!isResizing) return;
+
+        isResizing = false;
+        handle.releasePointerCapture(e.pointerId);
+
+        // Final save
+        if (this.onSizeChangeEnd) {
+          this.onSizeChangeEnd(this.id, this.width, this.height);
+        }
+        if (this.left !== startLeft || this.top !== startTop) {
+          if (this.onPositionChangeEnd) {
+            this.onPositionChangeEnd(this.id, this.left, this.top);
+          }
+        }
+      });
+
+      handle.addEventListener('pointercancel', e => {
+        if (isResizing) {
+          isResizing = false;
+
+          // Emergency save
+          if (this.onSizeChangeEnd) {
+            this.onSizeChangeEnd(this.id, this.width, this.height);
+          }
+          if (this.onPositionChangeEnd) {
+            this.onPositionChangeEnd(this.id, this.left, this.top);
+          }
+        }
+      });
+
+      this.container.appendChild(handle);
     });
-
-    resizeHandle.addEventListener('pointerdown', e => {
-      e.stopPropagation();
-      this.isResizing = true;
-      this.resizeStartWidth = this.width;
-      this.resizeStartHeight = this.height;
-      this.dragStartX = e.clientX;
-      this.dragStartY = e.clientY;
-
-      resizeHandle.setPointerCapture(e.pointerId);
-    });
-
-    resizeHandle.addEventListener('pointermove', e => {
-      if (!this.isResizing) return;
-
-      const deltaX = e.clientX - this.dragStartX;
-      const deltaY = e.clientY - this.dragStartY;
-
-      this.width = Math.max(400, this.resizeStartWidth + deltaX);
-      this.height = Math.max(300, this.resizeStartHeight + deltaY);
-
-      this.container.style.width = `${this.width}px`;
-      this.container.style.height = `${this.height}px`;
-    });
-
-    resizeHandle.addEventListener('pointerup', e => {
-      if (this.isResizing) {
-        this.isResizing = false;
-        resizeHandle.releasePointerCapture(e.pointerId);
-      }
-    });
-
-    resizeHandle.addEventListener('pointercancel', e => {
-      this.isResizing = false;
-    });
-
-    this.container.appendChild(resizeHandle);
   }
 
   /**
@@ -334,6 +572,83 @@ export class QuickTabWindow {
   }
 
   /**
+   * Setup iframe load handler to update title
+   */
+  setupIframeLoadHandler() {
+    this.iframe.addEventListener('load', () => {
+      try {
+        // Try to get title from iframe (same-origin only)
+        const iframeTitle = this.iframe.contentDocument?.title;
+        if (iframeTitle) {
+          this.title = iframeTitle;
+          const titleEl = this.container.querySelector('.quick-tab-title');
+          if (titleEl) {
+            titleEl.textContent = iframeTitle;
+            titleEl.title = iframeTitle;
+          }
+        } else {
+          // Fallback to hostname
+          try {
+            const urlObj = new URL(this.iframe.src);
+            this.title = urlObj.hostname;
+            const titleEl = this.container.querySelector('.quick-tab-title');
+            if (titleEl) {
+              titleEl.textContent = urlObj.hostname;
+              titleEl.title = this.iframe.src;
+            }
+          } catch (e) {
+            this.title = 'Quick Tab';
+          }
+        }
+      } catch (e) {
+        // Cross-origin - use URL hostname
+        try {
+          const urlObj = new URL(this.iframe.src);
+          this.title = urlObj.hostname;
+          const titleEl = this.container.querySelector('.quick-tab-title');
+          if (titleEl) {
+            titleEl.textContent = urlObj.hostname;
+            titleEl.title = this.iframe.src;
+          }
+        } catch (err) {
+          this.title = 'Quick Tab';
+        }
+      }
+    });
+  }
+
+  /**
+   * Toggle pin state for Quick Tab
+   * @param {HTMLElement} pinBtn - The pin button element
+   */
+  togglePin(pinBtn) {
+    if (this.pinnedToUrl) {
+      // Unpin
+      this.pinnedToUrl = null;
+      pinBtn.textContent = '📍';
+      pinBtn.title = 'Pin to current page';
+      pinBtn.style.background = 'transparent';
+
+      // Notify parent (index.js) to broadcast unpin
+      if (this.onUnpin) {
+        this.onUnpin(this.id);
+      }
+    } else {
+      // Pin to current page URL
+      const currentPageUrl = window.location.href;
+      this.pinnedToUrl = currentPageUrl;
+      pinBtn.textContent = '📌';
+      pinBtn.title = `Pinned to: ${currentPageUrl}`;
+      pinBtn.style.background = '#444';
+
+      // Notify parent (index.js) to broadcast pin and close in other tabs
+      if (this.onPin) {
+        this.onPin(this.id, currentPageUrl);
+      }
+    }
+  }
+
+  /**
    * Destroy the Quick Tab window
    */
   destroy() {
@@ -360,7 +675,8 @@ export class QuickTabWindow {
       title: this.title,
       cookieStoreId: this.cookieStoreId,
       minimized: this.minimized,
-      zIndex: this.zIndex
+      zIndex: this.zIndex,
+      pinnedToUrl: this.pinnedToUrl
     };
   }
 }
