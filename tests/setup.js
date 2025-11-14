@@ -60,10 +60,10 @@ global.console = {
 Object.defineProperty(global.navigator, 'clipboard', {
   value: {
     writeText: jest.fn().mockResolvedValue(undefined),
-    readText: jest.fn().mockResolvedValue(''),
+    readText: jest.fn().mockResolvedValue('')
   },
   writable: true,
-  configurable: true,
+  configurable: true
 });
 // ===========================
 
