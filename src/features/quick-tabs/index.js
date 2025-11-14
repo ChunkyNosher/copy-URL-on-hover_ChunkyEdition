@@ -28,7 +28,7 @@ class QuickTabsManager {
     this.Events = null;
     this.broadcastChannel = null; // v1.5.8.13 - Real-time cross-tab sync
     this.initialized = false;
-    
+
     // v1.5.8.14 - Transaction ID system to prevent race conditions
     this.currentSaveId = null;
     this.saveQueue = Promise.resolve();
@@ -144,26 +144,26 @@ class QuickTabsManager {
 
       if (areaName === 'sync' && changes.quick_tabs_state_v2) {
         const newValue = changes.quick_tabs_state_v2.newValue;
-        
+
         // v1.5.8.14 FIX: Check if this is our own save using transaction ID
         if (newValue && newValue.saveId === this.currentSaveId) {
           console.log('[QuickTabsManager] Ignoring own save operation:', newValue.saveId);
           return; // Don't process our own changes - this prevents the immediate close bug
         }
-        
+
         console.log('[QuickTabsManager] Processing external storage change');
         this.syncFromStorage(newValue);
       }
 
       if (areaName === 'session' && changes.quick_tabs_session) {
         const newValue = changes.quick_tabs_session.newValue;
-        
+
         // v1.5.8.14 FIX: Check transaction ID for session storage too
         if (newValue && newValue.saveId === this.currentSaveId) {
           console.log('[QuickTabsManager] Ignoring own session save:', newValue.saveId);
           return;
         }
-        
+
         console.log('[QuickTabsManager] Processing external session state change');
         this.syncFromStorage(newValue);
       }
@@ -826,7 +826,7 @@ class QuickTabsManager {
   generateSaveId() {
     const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     this.currentSaveId = saveId;
-    
+
     // Keep saveId for longer to account for slow storage propagation (500ms instead of 100ms)
     setTimeout(() => {
       if (this.currentSaveId === saveId) {
@@ -834,7 +834,7 @@ class QuickTabsManager {
         console.log('[QuickTabsManager] Released saveId:', saveId);
       }
     }, 500);
-    
+
     return saveId;
   }
 }

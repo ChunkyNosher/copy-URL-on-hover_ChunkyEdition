@@ -724,7 +724,10 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 
   // Handle position and size updates from content scripts (container-aware)
   // v1.5.8.14 - Enhanced with transaction ID (saveId) to prevent race conditions
-  if (message.action === 'UPDATE_QUICK_TAB_POSITION' || message.action === 'UPDATE_QUICK_TAB_POSITION_FINAL') {
+  if (
+    message.action === 'UPDATE_QUICK_TAB_POSITION' ||
+    message.action === 'UPDATE_QUICK_TAB_POSITION_FINAL'
+  ) {
     console.log(
       '[Background] Received position update:',
       message.url,
@@ -877,7 +880,10 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.action === 'UPDATE_QUICK_TAB_SIZE' || message.action === 'UPDATE_QUICK_TAB_SIZE_FINAL') {
+  if (
+    message.action === 'UPDATE_QUICK_TAB_SIZE' ||
+    message.action === 'UPDATE_QUICK_TAB_SIZE_FINAL'
+  ) {
     console.log('[Background] Received size update:', message.url, message.width, message.height);
 
     // Wait for initialization if needed
