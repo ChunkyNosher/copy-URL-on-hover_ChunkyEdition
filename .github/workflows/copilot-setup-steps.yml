@@ -342,7 +342,7 @@ jobs:
           echo "=========================================="
 
           # Create a comprehensive integration test
-          cat > /tmp/test-library-integration.test.js << 'EOF'
+          cat > ./tests/temp-integration-test.test.js << 'EOF'
           // Test all installed testing libraries work together
 
           describe('Library Integration Tests', () => {
@@ -386,8 +386,9 @@ jobs:
           EOF
 
           # Run the integration test
-          npx jest /tmp/test-library-integration.test.js --verbose --no-coverage
-
+          npx jest tests/temp-integration-test.test.js --verbose --no-coverage
+          rm ./tests/temp-integration-test.test.js  # Clean up
+          
           if [ $? -eq 0 ]; then
             echo "=========================================="
             echo "✓ All libraries integrate correctly!"
