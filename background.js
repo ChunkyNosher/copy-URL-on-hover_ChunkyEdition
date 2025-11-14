@@ -723,7 +723,11 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   }
 
   // Handle position and size updates from content scripts (container-aware)
-  if (message.action === 'UPDATE_QUICK_TAB_POSITION') {
+  // v1.5.8.14 - Enhanced with transaction ID (saveId) to prevent race conditions
+  if (
+    message.action === 'UPDATE_QUICK_TAB_POSITION' ||
+    message.action === 'UPDATE_QUICK_TAB_POSITION_FINAL'
+  ) {
     console.log(
       '[Background] Received position update:',
       message.url,
@@ -789,10 +793,17 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       });
     });
 
+    // v1.5.8.14 - Include saveId in storage for transaction tracking
+    const stateToSave = {
+      ...globalQuickTabState.containers,
+      saveId: message.saveId || null, // Include save ID if provided
+      timestamp: Date.now()
+    };
+
     // Also save to storage.sync for persistence (async, non-blocking)
     browser.storage.sync
       .set({
-        quick_tabs_state_v2: globalQuickTabState.containers
+        quick_tabs_state_v2: stateToSave
       })
       .catch(err => {
         console.error('[Background] Error saving to storage.sync:', err);
@@ -802,7 +813,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     if (typeof browser.storage.session !== 'undefined') {
       browser.storage.session
         .set({
-          quick_tabs_session: globalQuickTabState.containers
+          quick_tabs_session: stateToSave
         })
         .catch(err => {
           console.error('[Background] Error saving to session storage:', err);
@@ -869,7 +880,10 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.action === 'UPDATE_QUICK_TAB_SIZE') {
+  if (
+    message.action === 'UPDATE_QUICK_TAB_SIZE' ||
+    message.action === 'UPDATE_QUICK_TAB_SIZE_FINAL'
+  ) {
     console.log('[Background] Received size update:', message.url, message.width, message.height);
 
     // Wait for initialization if needed
@@ -877,15 +891,25 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       await initializeGlobalState();
     }
 
-    // Update global state
-    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state by ID
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
     if (tabIndex !== -1) {
-      globalQuickTabState.tabs[tabIndex].width = message.width;
-      globalQuickTabState.tabs[tabIndex].height = message.height;
-      if (message.left !== undefined) globalQuickTabState.tabs[tabIndex].left = message.left;
-      if (message.top !== undefined) globalQuickTabState.tabs[tabIndex].top = message.top;
+      containerState.tabs[tabIndex].width = message.width;
+      containerState.tabs[tabIndex].height = message.height;
+      if (message.left !== undefined) containerState.tabs[tabIndex].left = message.left;
+      if (message.top !== undefined) containerState.tabs[tabIndex].top = message.top;
     } else {
-      globalQuickTabState.tabs.push({
+      containerState.tabs.push({
+        id: message.id,
         url: message.url,
         width: message.width,
         height: message.height,
@@ -893,46 +917,49 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         top: message.top
       });
     }
-    globalQuickTabState.lastUpdate = Date.now();
+    containerState.lastUpdate = Date.now();
 
-    // Broadcast to ALL tabs immediately
-    browser.tabs.query({}).then(tabs => {
+    // Broadcast to tabs in the SAME container immediately
+    browser.tabs.query({ cookieStoreId: cookieStoreId }).then(tabs => {
       tabs.forEach(tab => {
         browser.tabs
           .sendMessage(tab.id, {
             action: 'UPDATE_QUICK_TAB_FROM_BACKGROUND',
+            id: message.id,
             url: message.url,
+            width: message.width,
+            height: message.height,
             left: message.left,
             top: message.top,
-            width: message.width,
-            height: message.height
+            cookieStoreId: cookieStoreId
           })
           .catch(() => {
-            // Content script might not be loaded in this tab
+            // Content script might not be loaded
           });
       });
     });
 
-    // Save to storage.sync for persistence (async, non-blocking)
+    // v1.5.8.14 - Include saveId in storage for transaction tracking
+    const stateToSave = {
+      ...globalQuickTabState.containers,
+      saveId: message.saveId || null,
+      timestamp: Date.now()
+    };
+
+    // Save to storage.sync
     browser.storage.sync
       .set({
-        quick_tabs_state_v2: {
-          tabs: globalQuickTabState.tabs,
-          timestamp: Date.now()
-        }
+        quick_tabs_state_v2: stateToSave
       })
       .catch(err => {
-        console.error('[Background] Error saving to storage.sync:', err);
+        console.error('[Background] Error saving size to storage.sync:', err);
       });
 
-    // Also save to session storage if available
+    // Save to session storage if available
     if (typeof browser.storage.session !== 'undefined') {
       browser.storage.session
         .set({
-          quick_tabs_session: {
-            tabs: globalQuickTabState.tabs,
-            timestamp: Date.now()
-          }
+          quick_tabs_session: stateToSave
         })
         .catch(err => {
           console.error('[Background] Error saving to session storage:', err);
@@ -1036,25 +1063,37 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'sync' && changes.quick_tabs_state_v2) {
     console.log('[Background] Quick Tab state changed, broadcasting to all tabs');
 
-    // UPDATE: Sync globalQuickTabState with storage changes
+    // UPDATE: Sync globalQuickTabState with storage changes (v1.5.8.14 - container-aware)
     const newValue = changes.quick_tabs_state_v2.newValue;
 
-    // Handle storage being cleared (newValue is undefined)
-    if (!newValue || !newValue.tabs) {
-      // Storage was cleared - reset global state
-      globalQuickTabState.tabs = [];
-      globalQuickTabState.lastUpdate = Date.now();
-      console.log('[Background] Storage cleared, reset global state');
+    // v1.5.8.14 FIX: Only clear state if explicitly requested by user action
+    // This prevents race conditions where storage clears during normal operations
+    if (!newValue) {
+      // Storage was explicitly cleared - only reset if intentional
+      console.log('[Background] Storage cleared, checking if intentional...');
+      // Don't automatically reset - let content scripts handle their own state
+      // This prevents the "Quick Tab immediately closes" bug
     } else {
-      // Storage was updated - sync global state
-      // Only update if storage has MORE tabs than our global state
-      // This prevents overwriting global state with stale data
-      if (newValue.tabs.length >= globalQuickTabState.tabs.length) {
-        globalQuickTabState.tabs = newValue.tabs;
-        globalQuickTabState.lastUpdate = newValue.timestamp;
+      // Storage was updated - sync global state (container-aware)
+      if (typeof newValue === 'object' && newValue.containers) {
+        // Container-aware format
+        globalQuickTabState.containers = newValue;
         console.log(
-          '[Background] Updated global state from storage:',
-          globalQuickTabState.tabs.length,
+          '[Background] Updated global state from storage (container-aware):',
+          Object.keys(newValue).length,
+          'containers'
+        );
+      } else if (newValue.tabs && Array.isArray(newValue.tabs)) {
+        // Legacy format - migrate
+        globalQuickTabState.containers = {
+          'firefox-default': {
+            tabs: newValue.tabs,
+            lastUpdate: newValue.timestamp || Date.now()
+          }
+        };
+        console.log(
+          '[Background] Updated global state from storage (legacy format):',
+          newValue.tabs.length,
           'tabs'
         );
       }

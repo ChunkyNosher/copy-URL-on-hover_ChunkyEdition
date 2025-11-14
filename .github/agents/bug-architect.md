@@ -32,9 +32,9 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.13 - Hybrid Modular/EventBus with Eager Loading):**
+**Current Repository Architecture (v1.5.8.14 - Hybrid Modular/EventBus with Eager Loading):**
 
-**Quick Tabs Eager Loading (v1.5.8.13):**
+**Quick Tabs Eager Loading (v1.5.8.14):**
 - BroadcastChannel-based real-time cross-tab sync (<10ms latency)
 - Eager loading: All listeners and state hydration run immediately on load
 - Storage event listeners attached at initialization
@@ -44,41 +44,41 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 - All operations broadcast to other tabs (create, move, resize, minimize, restore, pin, close)
 - Container-aware sync maintained
 
-**Quick Tabs Full Restoration (v1.5.8.13):**
+**Quick Tabs Full Restoration (v1.5.8.14):**
 - Complete UI with favicon, dynamic titles, Open in New Tab button, Pin button
 - 8-direction resize handles (all edges and corners)
-- Position/size persistence across tabs (enhanced in v1.5.8.13)
+- Position/size persistence across tabs (enhanced in v1.5.8.14)
 - Pointer Events API with pointercancel handling
 - Pin/unpin state synchronization via background script
 - Removed "Persist Quick Tabs" setting (always enabled)
 
 
-- **Hybrid Modular Source** (v1.5.8.13+):
+- **Hybrid Modular Source** (v1.5.8.14+):
   - **src/content.js**: Main entry point - orchestrates all features via EventBus
   - **src/core/**: config.js, state.js, events.js, dom.js, browser-api.js, index.js (barrel file)
-    - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.8.13
+    - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.8.14
   - **src/features/**: Feature modules (EventBus-driven)
-    - **quick-tabs/**: index.js (v1.5.8.13 - BroadcastChannel & eager loading), window.js (v1.5.8.13 - setPosition/setSize), minimized-manager.js, **panel.js (NEW v1.5.8.13 - Persistent floating panel manager)**
+    - **quick-tabs/**: index.js (v1.5.8.14 - BroadcastChannel & eager loading), window.js (v1.5.8.14 - setPosition/setSize), minimized-manager.js, **panel.js (NEW v1.5.8.14 - Persistent floating panel manager)**
     - **notifications/**: index.js, toast.js (NEW), tooltip.js (NEW) - fully modularized
     - **url-handlers/**: 11 categorized modules (104 handlers total)
-  - **src/ui/**: components.js, css/ (NEW v1.5.8.13)
+  - **src/ui/**: components.js, css/ (NEW v1.5.8.14)
     - **css/**: base.css, notifications.css, quick-tabs.css - modular CSS system
   - **src/utils/**: debug.js, index.js (dom.js and browser-api.js moved to core/)
   - **dist/content.js**: Built bundle (~116KB, MUST NOT contain ES6 imports/exports)
-- **Build System**: Rollup bundler with comprehensive validation checks (v1.5.8.13+)
+- **Build System**: Rollup bundler with comprehensive validation checks (v1.5.8.14+)
   - Validates build output (file existence, sizes, no source leaks)
   - XPI package verification before release
   - See docs/manual/build-and-packaging-guide.md
 - **Architecture Documentation**: 
   - docs/manual/hybrid-architecture-implementation.md - Architecture #10 design
   - docs/manual/build-and-packaging-guide.md - Build and packaging process
-  - docs/manual/QuickTabs-v1.5.8.13-Patch.md - Eager loading implementation guide (NEW v1.5.8.13)
-- **background.js** (~1010 lines): Container-aware tab lifecycle, content injection, webRequest header modification, storage sync, **eager loading initialization (v1.5.8.13)**
+  - docs/manual/QuickTabs-v1.5.8.14-Patch.md - Eager loading implementation guide (NEW v1.5.8.14)
+- **background.js** (~1010 lines): Container-aware tab lifecycle, content injection, webRequest header modification, storage sync, **eager loading initialization (v1.5.8.14)**
 - **state-manager.js**: Container-aware Quick Tab state management
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.8.13
-- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.13):
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.8.14
+- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.14):
   - Jest with browser API mocks (tests/setup.js)
   - Example tests (tests/example.test.js)
   - GitHub Actions workflows: code-quality, codeql-analysis, test-coverage, webext-lint, auto-format, release (enhanced)

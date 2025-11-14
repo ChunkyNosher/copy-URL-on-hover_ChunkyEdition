@@ -1125,6 +1125,7 @@ export class PanelManager {
 
   /**
    * Close minimized Quick Tabs
+   * v1.5.8.14 - Enhanced to properly handle container-aware format and include saveId
    */
   async closeMinimizedQuickTabs() {
     try {
@@ -1134,20 +1135,37 @@ export class PanelManager {
       const state = result.quick_tabs_state_v2;
       let hasChanges = false;
 
-      Object.keys(state).forEach(cookieStoreId => {
-        if (state[cookieStoreId] && state[cookieStoreId].tabs) {
-          const originalLength = state[cookieStoreId].tabs.length;
-          state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !t.minimized);
+      // v1.5.8.14: Properly iterate through container-aware format
+      Object.keys(state).forEach(key => {
+        // Skip metadata keys
+        if (key === 'saveId' || key === 'timestamp') return;
 
-          if (state[cookieStoreId].tabs.length !== originalLength) {
+        const containerState = state[key];
+        if (containerState && containerState.tabs && Array.isArray(containerState.tabs)) {
+          const originalLength = containerState.tabs.length;
+
+          // Filter out minimized tabs
+          containerState.tabs = containerState.tabs.filter(t => !t.minimized);
+
+          if (containerState.tabs.length !== originalLength) {
             hasChanges = true;
-            state[cookieStoreId].timestamp = Date.now();
+            containerState.lastUpdate = Date.now();
           }
         }
       });
 
       if (hasChanges) {
+        // v1.5.8.14: Include saveId to prevent race conditions
+        state.saveId = this.generateSaveId();
+        state.timestamp = Date.now();
+
         await browser.storage.sync.set({ quick_tabs_state_v2: state });
+
+        // Also update session storage
+        if (typeof browser.storage.session !== 'undefined') {
+          await browser.storage.session.set({ quick_tabs_session: state });
+        }
+
         debug('[PanelManager] Closed all minimized Quick Tabs');
         this.updatePanelContent();
       }
@@ -1158,26 +1176,43 @@ export class PanelManager {
 
   /**
    * Close all Quick Tabs
+   * v1.5.8.14 - Fixed to set empty state instead of removing storage
    */
   async closeAllQuickTabs() {
     try {
-      await browser.storage.sync.remove('quick_tabs_state_v2');
+      // v1.5.8.14 FIX: Don't remove storage - set to empty container-aware state
+      const emptyState = {
+        'firefox-default': { tabs: [], lastUpdate: Date.now() },
+        saveId: this.generateSaveId(), // Include save ID
+        timestamp: Date.now()
+      };
 
-      // Notify all tabs
-      const tabs = await browser.tabs.query({});
-      tabs.forEach(tab => {
-        browser.tabs
-          .sendMessage(tab.id, {
-            action: 'CLEAR_ALL_QUICK_TABS'
-          })
-          .catch(() => {});
-      });
+      await browser.storage.sync.set({ quick_tabs_state_v2: emptyState });
+
+      // Also clear session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        await browser.storage.session.set({ quick_tabs_session: emptyState });
+      }
+
+      // Notify all tabs via background script
+      browser.runtime
+        .sendMessage({
+          action: 'CLEAR_ALL_QUICK_TABS'
+        })
+        .catch(() => {});
 
       debug('[PanelManager] Closed all Quick Tabs');
       this.updatePanelContent();
     } catch (err) {
       console.error('[PanelManager] Error closing all tabs:', err);
     }
+  }
+
+  /**
+   * v1.5.8.14 - Generate unique save ID for transaction tracking
+   */
+  generateSaveId() {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
   /**

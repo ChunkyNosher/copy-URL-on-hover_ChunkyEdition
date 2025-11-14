@@ -28,6 +28,10 @@ class QuickTabsManager {
     this.Events = null;
     this.broadcastChannel = null; // v1.5.8.13 - Real-time cross-tab sync
     this.initialized = false;
+
+    // v1.5.8.14 - Transaction ID system to prevent race conditions
+    this.currentSaveId = null;
+    this.saveQueue = Promise.resolve();
   }
 
   /**
@@ -64,6 +68,9 @@ class QuickTabsManager {
 
     // EAGER LOADING v1.5.8.13: Set up message listeners immediately
     this.setupMessageListeners();
+
+    // v1.5.8.14: Set up emergency save handlers
+    this.setupEmergencySaveHandlers();
 
     // EAGER LOADING v1.5.8.13: Hydrate state from storage immediately on load
     await this.hydrateStateFromStorage();
@@ -127,6 +134,7 @@ class QuickTabsManager {
 
   /**
    * v1.5.8.13 - Set up storage event listeners for state changes
+   * v1.5.8.14 - Enhanced with transaction ID checking to prevent race conditions
    */
   setupStorageListeners() {
     if (typeof browser === 'undefined' || !browser.storage) {
@@ -138,13 +146,29 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] Storage changed:', areaName, Object.keys(changes));
 
       if (areaName === 'sync' && changes.quick_tabs_state_v2) {
-        console.log('[QuickTabsManager] Quick Tab state changed in storage, syncing...');
-        this.syncFromStorage(changes.quick_tabs_state_v2.newValue);
+        const newValue = changes.quick_tabs_state_v2.newValue;
+
+        // v1.5.8.14 FIX: Check if this is our own save using transaction ID
+        if (newValue && newValue.saveId === this.currentSaveId) {
+          console.log('[QuickTabsManager] Ignoring own save operation:', newValue.saveId);
+          return; // Don't process our own changes - this prevents the immediate close bug
+        }
+
+        console.log('[QuickTabsManager] Processing external storage change');
+        this.syncFromStorage(newValue);
       }
 
       if (areaName === 'session' && changes.quick_tabs_session) {
-        console.log('[QuickTabsManager] Quick Tab session state changed, syncing...');
-        this.syncFromStorage(changes.quick_tabs_session.newValue);
+        const newValue = changes.quick_tabs_session.newValue;
+
+        // v1.5.8.14 FIX: Check transaction ID for session storage too
+        if (newValue && newValue.saveId === this.currentSaveId) {
+          console.log('[QuickTabsManager] Ignoring own session save:', newValue.saveId);
+          return;
+        }
+
+        console.log('[QuickTabsManager] Processing external session state change');
+        this.syncFromStorage(newValue);
       }
     });
 
@@ -189,6 +213,63 @@ class QuickTabsManager {
     });
 
     console.log('[QuickTabsManager] Message listeners attached');
+  }
+
+  /**
+   * v1.5.8.14 - Set up emergency save handlers for tab switching and unload
+   */
+  setupEmergencySaveHandlers() {
+    // Emergency save when tab becomes hidden (user switches tabs)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.tabs.size > 0) {
+        console.log('[QuickTabsManager] Tab hidden - triggering emergency save');
+        this.saveCurrentStateToBackground();
+      }
+    });
+
+    // Emergency save before page unload
+    window.addEventListener('beforeunload', () => {
+      if (this.tabs.size > 0) {
+        console.log('[QuickTabsManager] Page unloading - triggering emergency save');
+        this.saveCurrentStateToBackground();
+      }
+    });
+
+    console.log('[QuickTabsManager] Emergency save handlers attached');
+  }
+
+  /**
+   * v1.5.8.14 - Save current Quick Tabs state to background script
+   */
+  saveCurrentStateToBackground() {
+    if (this.tabs.size === 0) return;
+
+    const saveId = this.generateSaveId();
+    const tabsArray = Array.from(this.tabs.values()).map(tabWindow => ({
+      id: tabWindow.id || tabWindow.element?.id,
+      url: tabWindow.url || tabWindow.iframe?.src,
+      left: parseInt(tabWindow.element?.style.left) || 100,
+      top: parseInt(tabWindow.element?.style.top) || 100,
+      width: parseInt(tabWindow.element?.style.width) || 800,
+      height: parseInt(tabWindow.element?.style.height) || 600,
+      title: tabWindow.title || 'Quick Tab',
+      cookieStoreId: tabWindow.cookieStoreId || 'firefox-default',
+      minimized: tabWindow.minimized || false,
+      pinnedToUrl: tabWindow.pinnedToUrl || null
+    }));
+
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'EMERGENCY_SAVE_QUICK_TABS',
+          tabs: tabsArray,
+          saveId: saveId,
+          timestamp: Date.now()
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Emergency save error:', err);
+        });
+    }
   }
 
   /**
@@ -625,6 +706,7 @@ class QuickTabsManager {
   /**
    * Handle Quick Tab position change end (final save)
    * v1.5.8.13 - Enhanced with BroadcastChannel sync
+   * v1.5.8.14 - Added transaction ID for race condition prevention
    */
   handlePositionChangeEnd(id, left, top) {
     // Clear throttle
@@ -639,6 +721,9 @@ class QuickTabsManager {
       top: Math.round(top)
     });
 
+    // v1.5.8.14 - Generate save ID for transaction tracking
+    const saveId = this.generateSaveId();
+
     // Send final position to background
     if (typeof browser !== 'undefined' && browser.runtime) {
       browser.runtime
@@ -647,6 +732,7 @@ class QuickTabsManager {
           id: id,
           left: Math.round(left),
           top: Math.round(top),
+          saveId: saveId, // v1.5.8.14 - Include save ID
           timestamp: Date.now()
         })
         .catch(err => {
@@ -697,6 +783,7 @@ class QuickTabsManager {
   /**
    * Handle Quick Tab size change end (final save)
    * v1.5.8.13 - Enhanced with BroadcastChannel sync
+   * v1.5.8.14 - Added transaction ID for race condition prevention
    */
   handleSizeChangeEnd(id, width, height) {
     if (this.sizeChangeThrottle) {
@@ -710,6 +797,9 @@ class QuickTabsManager {
       height: Math.round(height)
     });
 
+    // v1.5.8.14 - Generate save ID for transaction tracking
+    const saveId = this.generateSaveId();
+
     if (typeof browser !== 'undefined' && browser.runtime) {
       browser.runtime
         .sendMessage({
@@ -717,6 +807,7 @@ class QuickTabsManager {
           id: id,
           width: Math.round(width),
           height: Math.round(height),
+          saveId: saveId, // v1.5.8.14 - Include save ID
           timestamp: Date.now()
         })
         .catch(err => {
@@ -787,6 +878,24 @@ class QuickTabsManager {
    */
   generateId() {
     return `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * v1.5.8.14 - Generate unique save ID for transaction tracking
+   */
+  generateSaveId() {
+    const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.currentSaveId = saveId;
+
+    // Keep saveId for longer to account for slow storage propagation (500ms instead of 100ms)
+    setTimeout(() => {
+      if (this.currentSaveId === saveId) {
+        this.currentSaveId = null;
+        console.log('[QuickTabsManager] Released saveId:', saveId);
+      }
+    }, 500);
+
+    return saveId;
   }
 }
 
