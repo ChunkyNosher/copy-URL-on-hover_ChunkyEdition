@@ -83,12 +83,12 @@ class QuickTabsManager {
 
     try {
       this.broadcastChannel = new BroadcastChannel('quick-tabs-sync');
-      
-      this.broadcastChannel.onmessage = (event) => {
+
+      this.broadcastChannel.onmessage = event => {
         console.log('[QuickTabsManager] BroadcastChannel message received:', event.data);
-        
+
         const { type, data } = event.data;
-        
+
         switch (type) {
           case 'CREATE':
             this.createQuickTab(data);
@@ -118,7 +118,7 @@ class QuickTabsManager {
             console.warn('[QuickTabsManager] Unknown broadcast type:', type);
         }
       };
-      
+
       console.log('[QuickTabsManager] BroadcastChannel initialized for real-time sync');
     } catch (err) {
       console.error('[QuickTabsManager] Failed to set up BroadcastChannel:', err);
@@ -136,18 +136,18 @@ class QuickTabsManager {
 
     browser.storage.onChanged.addListener((changes, areaName) => {
       console.log('[QuickTabsManager] Storage changed:', areaName, Object.keys(changes));
-      
+
       if (areaName === 'sync' && changes.quick_tabs_state_v2) {
         console.log('[QuickTabsManager] Quick Tab state changed in storage, syncing...');
         this.syncFromStorage(changes.quick_tabs_state_v2.newValue);
       }
-      
+
       if (areaName === 'session' && changes.quick_tabs_session) {
         console.log('[QuickTabsManager] Quick Tab session state changed, syncing...');
         this.syncFromStorage(changes.quick_tabs_session.newValue);
       }
     });
-    
+
     console.log('[QuickTabsManager] Storage listeners attached');
   }
 
@@ -187,7 +187,7 @@ class QuickTabsManager {
           break;
       }
     });
-    
+
     console.log('[QuickTabsManager] Message listeners attached');
   }
 
@@ -196,7 +196,7 @@ class QuickTabsManager {
    */
   async hydrateStateFromStorage() {
     console.log('[QuickTabsManager] Hydrating state from storage...');
-    
+
     try {
       // Get current tab's cookieStoreId
       let cookieStoreId = 'firefox-default';
@@ -261,7 +261,9 @@ class QuickTabsManager {
         const containerState = state.containers[containerFilter];
         if (containerState && containerState.tabs) {
           tabsToSync = containerState.tabs;
-          console.log(`[QuickTabsManager] Syncing ${tabsToSync.length} tabs from container ${containerFilter}`);
+          console.log(
+            `[QuickTabsManager] Syncing ${tabsToSync.length} tabs from container ${containerFilter}`
+          );
         }
       } else {
         // Sync all containers
@@ -511,10 +513,10 @@ class QuickTabsManager {
    */
   restoreQuickTab(id) {
     console.log('[QuickTabsManager] Restoring Quick Tab:', id);
-    
+
     // v1.5.8.13 - Broadcast restore to other tabs
     this.broadcast('RESTORE', { id });
-    
+
     return this.minimizedManager.restore(id);
   }
 
