@@ -790,7 +790,7 @@ describe('DOM Utilities', () => {
     element.style.top = '200px';
     element.style.width = '300px';
     element.style.height = '400px';
-    
+
     // Mock getBoundingClientRect since JSDOM doesn't calculate layout
     element.getBoundingClientRect = jest.fn(() => ({
       x: 100,
@@ -802,19 +802,18 @@ describe('DOM Utilities', () => {
       bottom: 600,
       right: 400
     }));
-    
+
     document.body.appendChild(element);
-  
+
     const position = domUtils.getElementPosition(element);
-  
+
     expect(position.x).toBeGreaterThanOrEqual(0);
     expect(position.y).toBeGreaterThanOrEqual(0);
     expect(position.width).toBeGreaterThan(0);
     expect(position.height).toBeGreaterThan(0);
-  
+
     document.body.removeChild(element);
   });
-
 
   /**
    * TEST: Set element position
