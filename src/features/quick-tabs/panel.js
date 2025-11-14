@@ -1143,7 +1143,7 @@ export class PanelManager {
         const containerState = state[key];
         if (containerState && containerState.tabs && Array.isArray(containerState.tabs)) {
           const originalLength = containerState.tabs.length;
-          
+
           // Filter out minimized tabs
           containerState.tabs = containerState.tabs.filter(t => !t.minimized);
 
