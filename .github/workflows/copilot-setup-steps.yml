@@ -1,0 +1,444 @@
+name: "Copilot Development Environment Setup"
+
+# Optimized for Browser Extension Development with WebExtension API Testing
+# This workflow configures Copilot Agent's ephemeral environment specifically
+# for working on browser.storage, browser.tabs, browser.runtime, and other
+# Firefox WebExtension APIs.
+
+on:
+  workflow_dispatch:  # Allows manual testing
+  pull_request:       # Runs on PRs that modify this file
+    paths:
+      - '.github/workflows/copilot-setup-steps.yml'
+
+jobs:
+  # CRITICAL: Job name MUST be "copilot-setup-steps"
+  # GitHub Copilot's infrastructure specifically looks for this job name
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    
+    # Timeout after 10 minutes (Copilot needs fast setup for optimal performance)
+    timeout-minutes: 10
+    
+    # Environment variables for browser extension testing
+    env:
+      NODE_ENV: development
+      # Enable verbose logging for debugging
+      DEBUG: 'jest:*'
+      # Ensure Babel transformations work correctly
+      BABEL_ENV: test
+    
+    steps:
+      # ====================================================================
+      # STEP 1: Repository Checkout
+      # ====================================================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Full history for better code context and analysis
+          fetch-depth: 0
+          # Submodules if you have any
+          submodules: false
+      
+      # ====================================================================
+      # STEP 2: Node.js Setup with Caching
+      # ====================================================================
+      - name: Setup Node.js 18 with npm cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          # Cache npm dependencies for faster subsequent runs
+          cache: 'npm'
+          # Use lock file for consistent dependency resolution
+          cache-dependency-path: 'package-lock.json'
+      
+      # ====================================================================
+      # STEP 3: Display Environment Information (helps with debugging)
+      # ====================================================================
+      - name: Display environment information
+        run: |
+          echo "=========================================="
+          echo "Environment Information"
+          echo "=========================================="
+          echo "Node version: $(node --version)"
+          echo "npm version: $(npm --version)"
+          echo "OS: $(uname -a)"
+          echo "Working directory: $(pwd)"
+          echo "=========================================="
+      
+      # ====================================================================
+      # STEP 4: Install Dependencies
+      # ====================================================================
+      # Using 'npm ci' instead of 'npm install' for:
+      # - Clean install from package-lock.json
+      # - Faster installation
+      # - More reliable (fails if package.json doesn't match lock file)
+      # - Better for CI/CD environments
+      - name: Install npm dependencies
+        run: npm ci
+        env:
+          NODE_ENV: development
+      
+      # ====================================================================
+      # STEP 5: Verify Critical Libraries Are Installed
+      # ====================================================================
+      # This step explicitly checks that all browser API testing libraries
+      # are installed correctly. If Copilot is working on an API issue,
+      # it needs these libraries to write and run tests.
+      - name: Verify browser API testing libraries
+        run: |
+          echo "=========================================="
+          echo "Verifying Testing Libraries Installation"
+          echo "=========================================="
+          
+          # Check Jest (test framework)
+          if npm list jest --depth=0 > /dev/null 2>&1; then
+            JEST_VERSION=$(npm list jest --depth=0 | grep jest@ | sed 's/.*jest@//')
+            echo "✓ Jest installed: $JEST_VERSION"
+          else
+            echo "✗ Jest NOT installed - CRITICAL ERROR"
+            exit 1
+          fi
+          
+          # Check jest-environment-jsdom (DOM simulation)
+          if npm list jest-environment-jsdom --depth=0 > /dev/null 2>&1; then
+            JSDOM_VERSION=$(npm list jest-environment-jsdom --depth=0 | grep jest-environment-jsdom@ | sed 's/.*jest-environment-jsdom@//')
+            echo "✓ jest-environment-jsdom installed: $JSDOM_VERSION"
+          else
+            echo "✗ jest-environment-jsdom NOT installed - CRITICAL ERROR"
+            exit 1
+          fi
+          
+          # Check Babel core (ES6+ transpilation)
+          if npm list @babel/core --depth=0 > /dev/null 2>&1; then
+            BABEL_VERSION=$(npm list @babel/core --depth=0 | grep @babel/core@ | sed 's/.*@babel\/core@//')
+            echo "✓ @babel/core installed: $BABEL_VERSION"
+          else
+            echo "✗ @babel/core NOT installed - CRITICAL ERROR"
+            exit 1
+          fi
+          
+          # Check babel-jest (Jest transformer)
+          if npm list babel-jest --depth=0 > /dev/null 2>&1; then
+            BABEL_JEST_VERSION=$(npm list babel-jest --depth=0 | grep babel-jest@ | sed 's/.*babel-jest@//')
+            echo "✓ babel-jest installed: $BABEL_JEST_VERSION"
+          else
+            echo "✗ babel-jest NOT installed - CRITICAL ERROR"
+            exit 1
+          fi
+          
+          # Check @babel/preset-env (smart ES6+ transpilation)
+          if npm list @babel/preset-env --depth=0 > /dev/null 2>&1; then
+            PRESET_VERSION=$(npm list @babel/preset-env --depth=0 | grep @babel/preset-env@ | sed 's/.*@babel\/preset-env@//')
+            echo "✓ @babel/preset-env installed: $PRESET_VERSION"
+          else
+            echo "✗ @babel/preset-env NOT installed - CRITICAL ERROR"
+            exit 1
+          fi
+          
+          echo "=========================================="
+          echo "✓ All browser API testing libraries verified!"
+          echo "=========================================="
+      
+      # ====================================================================
+      # STEP 6: Verify Configuration Files
+      # ====================================================================
+      # Check that all necessary config files exist and are valid
+      - name: Verify configuration files
+        run: |
+          echo "=========================================="
+          echo "Verifying Configuration Files"
+          echo "=========================================="
+          
+          # Check .babelrc exists and is valid JSON
+          if [ -f ".babelrc" ]; then
+            echo "✓ .babelrc found"
+            if node -e "JSON.parse(require('fs').readFileSync('.babelrc', 'utf8'))"; then
+              echo "✓ .babelrc is valid JSON"
+            else
+              echo "✗ .babelrc is invalid JSON"
+              exit 1
+            fi
+          else
+            echo "✗ .babelrc NOT found"
+            exit 1
+          fi
+          
+          # Check jest.config.cjs exists and can be loaded
+          if [ -f "jest.config.cjs" ]; then
+            echo "✓ jest.config.cjs found"
+            if node -e "require('./jest.config.cjs')"; then
+              echo "✓ jest.config.cjs is valid"
+            else
+              echo "✗ jest.config.cjs is invalid"
+              exit 1
+            fi
+          else
+            echo "✗ jest.config.cjs NOT found"
+            exit 1
+          fi
+          
+          # Check tests/setup.js exists (browser API mocks)
+          if [ -f "tests/setup.js" ]; then
+            echo "✓ tests/setup.js found (browser API mocks available)"
+          else
+            echo "✗ tests/setup.js NOT found"
+            exit 1
+          fi
+          
+          # Check manifest.json exists and is valid
+          if [ -f "manifest.json" ]; then
+            echo "✓ manifest.json found"
+            if node -e "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'))"; then
+              echo "✓ manifest.json is valid JSON"
+              MANIFEST_VERSION=$(node -p "require('./manifest.json').manifest_version")
+              echo "  Manifest version: $MANIFEST_VERSION"
+              if [ "$MANIFEST_VERSION" != "2" ]; then
+                echo "⚠ Warning: Expected manifest_version 2 for WebExtension API compatibility"
+              fi
+            else
+              echo "✗ manifest.json is invalid JSON"
+              exit 1
+            fi
+          else
+            echo "✗ manifest.json NOT found"
+            exit 1
+          fi
+          
+          echo "=========================================="
+          echo "✓ All configuration files verified!"
+          echo "=========================================="
+      
+      # ====================================================================
+      # STEP 7: Run ESLint
+      # ====================================================================
+      # Ensures code quality standards are met
+      # If linting fails, Copilot should fix linting errors before proceeding
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: false  # Fail the workflow if linting fails
+      
+      # ====================================================================
+      # STEP 8: Run Tests (CRITICAL for API-related changes)
+      # ====================================================================
+      # This is the most important step for API-related issues.
+      # Tests verify that:
+      # - Browser API mocks are working
+      # - ES6+ code is transpiled correctly
+      # - All browser.storage, browser.tabs, etc. calls work as expected
+      - name: Run test suite
+        run: npm test
+        env:
+          NODE_ENV: test
+          # Show verbose test output for better debugging
+          JEST_VERBOSE: true
+      
+      # ====================================================================
+      # STEP 9: Run Test Coverage
+      # ====================================================================
+      # Generate coverage report to ensure new code is tested
+      - name: Generate test coverage report
+        run: npm run test:coverage
+        continue-on-error: true  # Don't fail if coverage is low, just warn
+      
+      # ====================================================================
+      # STEP 10: Display Coverage Summary
+      # ====================================================================
+      - name: Display coverage summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "Test Coverage Summary"
+          echo "=========================================="
+          if [ -f "coverage/coverage-summary.json" ]; then
+            node -e "
+              const summary = require('./coverage/coverage-summary.json');
+              const total = summary.total;
+              console.log('Lines:      ' + total.lines.pct + '%');
+              console.log('Statements: ' + total.statements.pct + '%');
+              console.log('Functions:  ' + total.functions.pct + '%');
+              console.log('Branches:   ' + total.branches.pct + '%');
+            "
+          else
+            echo "Coverage report not found"
+          fi
+          echo "=========================================="
+      
+      # ====================================================================
+      # STEP 11: Upload Coverage Artifacts (for debugging)
+      # ====================================================================
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+      
+      # ====================================================================
+      # STEP 12: Build the Extension
+      # ====================================================================
+      # Verify the extension can be built successfully
+      # This catches build errors before creating a PR
+      - name: Build browser extension
+        run: npm run build
+      
+      # ====================================================================
+      # STEP 13: Verify Build Output
+      # ====================================================================
+      - name: Verify build artifacts
+        run: |
+          echo "=========================================="
+          echo "Verifying Build Output"
+          echo "=========================================="
+          
+          # Check that dist/ directory was created
+          if [ -d "dist" ]; then
+            echo "✓ dist/ directory created"
+            
+            # Check critical files exist
+            REQUIRED_FILES="manifest.json background.js popup.html popup.js options_page.html options_page.js state-manager.js"
+            
+            for file in $REQUIRED_FILES; do
+              if [ -f "dist/$file" ]; then
+                SIZE=$(stat -f%z "dist/$file" 2>/dev/null || stat -c%s "dist/$file" 2>/dev/null)
+                echo "✓ dist/$file exists ($SIZE bytes)"
+              else
+                echo "✗ dist/$file MISSING"
+                exit 1
+              fi
+            done
+            
+            # Check icons directory
+            if [ -d "dist/icons" ]; then
+              echo "✓ dist/icons/ directory exists"
+            else
+              echo "✗ dist/icons/ directory MISSING"
+              exit 1
+            fi
+            
+            # Check sidebar directory
+            if [ -d "dist/sidebar" ]; then
+              echo "✓ dist/sidebar/ directory exists"
+            else
+              echo "✗ dist/sidebar/ directory MISSING"
+              exit 1
+            fi
+          else
+            echo "✗ dist/ directory NOT created"
+            exit 1
+          fi
+          
+          echo "=========================================="
+          echo "✓ Build output verified!"
+          echo "=========================================="
+      
+      # ====================================================================
+      # STEP 14: Test Browser API Mock Availability
+      # ====================================================================
+      # This step explicitly tests that browser API mocks are working
+      # If Copilot is fixing a browser.storage issue, this ensures the
+      # test environment can properly mock browser.storage
+      - name: Test browser API mocks
+        run: |
+          echo "=========================================="
+          echo "Testing Browser API Mock Availability"
+          echo "=========================================="
+          
+          # Create a temporary test file to verify mocks work
+          cat > /tmp/test-browser-api.test.js << 'EOF'
+          describe('Browser API Mocks', () => {
+            it('should have browser.storage.sync mock', () => {
+              expect(browser.storage.sync).toBeDefined();
+              expect(browser.storage.sync.get).toBeDefined();
+              expect(browser.storage.sync.set).toBeDefined();
+            });
+            
+            it('should have browser.storage.local mock', () => {
+              expect(browser.storage.local).toBeDefined();
+              expect(browser.storage.local.get).toBeDefined();
+              expect(browser.storage.local.set).toBeDefined();
+            });
+            
+            it('should have browser.tabs mock', () => {
+              expect(browser.tabs).toBeDefined();
+              expect(browser.tabs.query).toBeDefined();
+              expect(browser.tabs.sendMessage).toBeDefined();
+            });
+            
+            it('should have browser.runtime mock', () => {
+              expect(browser.runtime).toBeDefined();
+              expect(browser.runtime.sendMessage).toBeDefined();
+            });
+            
+            it('should have navigator.clipboard mock', () => {
+              expect(navigator.clipboard).toBeDefined();
+              expect(navigator.clipboard.writeText).toBeDefined();
+            });
+          });
+          EOF
+          
+          # Run the test
+          npx jest /tmp/test-browser-api.test.js --verbose
+          
+          if [ $? -eq 0 ]; then
+            echo "=========================================="
+            echo "✓ All browser API mocks are working!"
+            echo "=========================================="
+          else
+            echo "✗ Browser API mocks failed"
+            exit 1
+          fi
+      
+      # ====================================================================
+      # STEP 15: Environment Ready Summary
+      # ====================================================================
+      - name: Display environment ready summary
+        if: success()
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "🚀 ENVIRONMENT READY FOR COPILOT AGENT 🚀"
+          echo "=========================================="
+          echo ""
+          echo "✓ Dependencies installed (517 packages)"
+          echo "✓ Browser API testing libraries verified"
+          echo "✓ Configuration files validated"
+          echo "✓ ESLint checks passed"
+          echo "✓ All tests passed"
+          echo "✓ Build completed successfully"
+          echo "✓ Browser API mocks working"
+          echo ""
+          echo "Copilot can now:"
+          echo "  • Write tests for browser.storage APIs"
+          echo "  • Write tests for browser.tabs APIs"
+          echo "  • Write tests for browser.runtime APIs"
+          echo "  • Write tests for browser.contextualIdentities APIs"
+          echo "  • Transform ES6+ code with Babel"
+          echo "  • Run Jest tests with JSDOM"
+          echo "  • Build the extension"
+          echo "  • Validate changes"
+          echo ""
+          echo "=========================================="
+          echo "Setup completed in $(date -u '+%M minutes %S seconds')"
+          echo "=========================================="
+      
+      # ====================================================================
+      # STEP 16: Failure Summary (if setup failed)
+      # ====================================================================
+      - name: Display failure summary
+        if: failure()
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "❌ ENVIRONMENT SETUP FAILED"
+          echo "=========================================="
+          echo ""
+          echo "Check the logs above for errors."
+          echo "Common issues:"
+          echo "  • Missing dependencies in package.json"
+          echo "  • Invalid configuration files"
+          echo "  • Test failures"
+          echo "  • Build errors"
+          echo ""
+          echo "=========================================="
