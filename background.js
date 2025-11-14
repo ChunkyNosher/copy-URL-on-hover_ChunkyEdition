@@ -2,6 +2,7 @@
 // and manages Quick Tab state persistence across tabs
 // Also handles sidebar panel communication
 // Also handles webRequest to remove X-Frame-Options for Quick Tabs
+// v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 
 // Store Quick Tab states per tab
 const quickTabStates = new Map();
@@ -10,6 +11,7 @@ const quickTabStates = new Map();
 // Global state hub for real-time Quick Tab synchronization across all tabs
 // Container-aware since v1.5.7: State keyed by cookieStoreId for Firefox Container isolation
 // This provides instant cross-origin sync (< 50ms latency)
+// v1.5.8.13 - Enhanced with eager loading for Issue #35 and #51
 let globalQuickTabState = {
   // Keyed by cookieStoreId (e.g., "firefox-default", "firefox-container-1")
   containers: {
@@ -20,7 +22,8 @@ let globalQuickTabState = {
 // Flag to track initialization status
 let isInitialized = false;
 
-// Initialize global state from storage on extension startup (container-aware)
+// v1.5.8.13 - EAGER LOADING: Initialize global state from storage on extension startup (container-aware)
+// This runs immediately when background script loads, ensuring state is always available
 async function initializeGlobalState() {
   if (isInitialized) return;
   
@@ -45,7 +48,7 @@ async function initializeGlobalState() {
         }
         isInitialized = true;
         const totalTabs = Object.values(globalQuickTabState.containers).reduce((sum, c) => sum + (c.tabs?.length || 0), 0);
-        console.log('[Background] Initialized from session storage:', totalTabs, 'tabs across', Object.keys(globalQuickTabState.containers).length, 'containers');
+        console.log('[Background] ✓ EAGER LOAD: Initialized from session storage:', totalTabs, 'tabs across', Object.keys(globalQuickTabState.containers).length, 'containers');
         return;
       }
     }
@@ -72,10 +75,10 @@ async function initializeGlobalState() {
       }
       isInitialized = true;
       const totalTabs = Object.values(globalQuickTabState.containers).reduce((sum, c) => sum + (c.tabs?.length || 0), 0);
-      console.log('[Background] Initialized from sync storage:', totalTabs, 'tabs across', Object.keys(globalQuickTabState.containers).length, 'containers');
+      console.log('[Background] ✓ EAGER LOAD: Initialized from sync storage:', totalTabs, 'tabs across', Object.keys(globalQuickTabState.containers).length, 'containers');
     } else {
       isInitialized = true;
-      console.log('[Background] No saved state found, starting with empty state');
+      console.log('[Background] ✓ EAGER LOAD: No saved state found, starting with empty state');
     }
   } catch (err) {
     console.error('[Background] Error initializing global state:', err);
@@ -83,7 +86,7 @@ async function initializeGlobalState() {
   }
 }
 
-// Call initialization immediately
+// v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
 initializeGlobalState();
 
 // ==================== STATE COORDINATOR ====================
