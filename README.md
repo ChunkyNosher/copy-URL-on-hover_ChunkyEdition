@@ -1,8 +1,53 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.8.13** - A feature-rich Firefox/Zen Browser extension with **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab management with Firefox Container support and Persistent Floating Panel Manager.
+**Version 1.5.8.14** - A feature-rich Firefox/Zen Browser extension with **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab management with Firefox Container support and Persistent Floating Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration and a persistent Quick Tabs Manager panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.8.14
+
+**🐛 Critical Bug Fixes: Transaction ID System and Emergency Save**
+
+This release fixes the critical "Quick Tab immediately closes after opening" bug and other Quick Tabs Manager issues identified in the quick-tab-bug-fix-v1-5-8-13.md guide.
+
+**Critical Fixes:**
+
+- ✅ **Bug #1 FIXED** - Quick Tab no longer closes immediately after creation
+  - Implemented transaction ID (saveId) system to prevent race conditions
+  - Content script now ignores its own storage saves (prevents self-destruction)
+  - Increased timeout from 100ms to 500ms for container-aware operations
+  - Fixed background.js to not accidentally clear storage on format mismatches
+- ✅ **Bug #3 FIXED** - "Close All" button now works correctly
+  - Sets empty container-aware state instead of removing storage
+  - Prevents accidental storage clearing that triggers race conditions
+- ✅ **Bug #4 FIXED** - Minimize/Close buttons in Manager now work
+  - Fixed closeMinimizedQuickTabs to properly handle container-aware format
+  - Added saveId to all minimize operations
+- ✅ **Emergency Save Handlers** - New safety net for state preservation
+  - Saves Quick Tabs state when tab becomes hidden (visibilitychange event)
+  - Saves state before page unload (beforeunload event)
+  - Prevents loss of Quick Tabs when switching tabs or refreshing page
+
+**Root Cause Analysis:**
+
+The "Quick Tab immediately closes" bug was caused by a race condition:
+1. Content script saves Quick Tab state to storage
+2. Storage event fires in the SAME tab that made the change
+3. Content script processes its own save as if from another tab
+4. Content script thinks Quick Tab was deleted externally
+5. Content script destroys the newly created Quick Tab
+
+**Solution:** Transaction ID system where each save gets a unique saveId that the content script tracks and ignores when processing storage events.
+
+**Technical Details:**
+
+- `generateSaveId()` creates unique transaction IDs for each storage operation
+- `currentSaveId` tracked and released after 500ms (increased from 100ms)
+- Storage listeners check saveId before processing changes
+- Background script includes saveId when saving state
+- Container-aware format properly handled in all operations
+
+See [quick-tab-bug-fix-v1-5-8-13.md](docs/manual/quick-tab-bug-fix-v1-5-8-13.md) for detailed diagnosis and implementation.
 
 ## 🎉 What's New in v1.5.8.13
 
@@ -788,6 +833,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.8.13  
+**Current Version**: 1.5.8.14  
 **Last Updated**: 2025-11-14  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
