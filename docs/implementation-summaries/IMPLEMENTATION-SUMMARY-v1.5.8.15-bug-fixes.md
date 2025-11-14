@@ -15,12 +15,12 @@ Fixed all critical Quick Tabs bugs reported in v1.5.8.14 by standardizing storag
 
 ## Bugs Fixed
 
-| Bug | Status | Complexity |
-|-----|--------|------------|
-| Quick Tab closes immediately after creation | ✅ FIXED | High |
-| Panel not visible across tabs | ✅ FIXED | Medium |
-| "Close All" doesn't work | ✅ FIXED | Low |
-| Panel buttons don't respond | ⚠️ LIKELY FIXED | Low |
+| Bug                                         | Status          | Complexity |
+| ------------------------------------------- | --------------- | ---------- |
+| Quick Tab closes immediately after creation | ✅ FIXED        | High       |
+| Panel not visible across tabs               | ✅ FIXED        | Medium     |
+| "Close All" doesn't work                    | ✅ FIXED        | Low        |
+| Panel buttons don't respond                 | ⚠️ LIKELY FIXED | Low        |
 
 ---
 
@@ -30,12 +30,12 @@ Fixed all critical Quick Tabs bugs reported in v1.5.8.14 by standardizing storag
 
 ```javascript
 // background.js SAVED (unwrapped):
-quick_tabs_state_v2: { 
-  'firefox-default': { tabs: [...] } 
+quick_tabs_state_v2: {
+  'firefox-default': { tabs: [...] }
 }
 
 // content.js EXPECTED (wrapped):
-quick_tabs_state_v2: { 
+quick_tabs_state_v2: {
   containers: { 'firefox-default': { tabs: [...] } },
   saveId: 'xxx',
   timestamp: 123
@@ -51,6 +51,7 @@ quick_tabs_state_v2: {
 ### 1. Standardized Storage Format
 
 **New Standard (ALL locations):**
+
 ```javascript
 const stateToSave = {
   containers: {
@@ -65,6 +66,7 @@ const stateToSave = {
 ```
 
 **Backward Compatibility:**
+
 - Reads support 3 formats (v1.5.8.15, v1.5.8.14, legacy)
 - Automatic migration on first load
 - No data loss
@@ -72,11 +74,13 @@ const stateToSave = {
 ### 2. Cross-Tab Panel Sync
 
 **Implementation:**
+
 - BroadcastChannel API for instant messaging
 - `openSilent()` / `closeSilent()` prevent loops
 - <10ms latency (vs 100-200ms with storage)
 
 **Benefits:**
+
 - Real-time panel visibility across tabs
 - No polling overhead
 - Clean separation of concerns
@@ -84,6 +88,7 @@ const stateToSave = {
 ### 3. Transaction ID System
 
 **Prevents race conditions:**
+
 ```javascript
 // Generate unique ID before save
 const saveId = this.generateSaveId();
@@ -106,6 +111,7 @@ if (newValue.saveId === this.currentSaveId) {
 ### background.js (8 locations)
 
 **Storage Saves (7 fixes):**
+
 1. CREATE_QUICK_TAB handler (line 611-629)
 2. CLOSE_QUICK_TAB handler (line 708-726)
 3. UPDATE_QUICK_TAB_POSITION handler (line 817-842)
@@ -115,6 +121,7 @@ if (newValue.saveId === this.currentSaveId) {
 7. Storage initialization fallback
 
 **Storage Reads (2 fixes):**
+
 1. Sync storage initialization (line 68-90)
 2. Session storage initialization (line 40-51)
 3. storage.onChanged listener (line 1107-1128)
@@ -122,12 +129,14 @@ if (newValue.saveId === this.currentSaveId) {
 ### panel.js (8 additions/fixes)
 
 **New Features:**
+
 1. BroadcastChannel property
 2. setupBroadcastChannel() method
 3. openSilent() method
 4. closeSilent() method
 
 **Fixes:**
+
 1. closeMinimizedQuickTabs() - Read/write wrapper
 2. closeAllQuickTabs() - Write wrapper
 3. updatePanelContent() - Read wrapper
@@ -146,6 +155,7 @@ if (newValue.saveId === this.currentSaveId) {
 ### Critical Tests
 
 **Test 1: Quick Tab Creation (Bug #1)**
+
 ```
 Action: Create Quick Tab
 Expected: Stays open, no immediate close
@@ -153,6 +163,7 @@ Console: "Ignoring own save operation"
 ```
 
 **Test 2: Panel Cross-Tab (Bug #2)**
+
 ```
 Action: Open panel in Tab A, switch to Tab B
 Expected: Panel visible in both tabs
@@ -160,12 +171,14 @@ Console: "Opening panel (broadcast from another tab)"
 ```
 
 **Test 3: Close All (Bug #3)**
+
 ```
 Action: Close All 5 tabs, create 1 new
 Expected: Panel shows 1 tab (not 6)
 ```
 
 **Test 4: Panel Buttons (Bug #4)**
+
 ```
 Action: Click minimize/restore/close
 Expected: Console logs, tabs respond correctly
@@ -177,14 +190,15 @@ Expected: Console logs, tabs respond correctly
 
 **Metrics:**
 
-| Metric | Before | After | Change |
-|--------|--------|-------|--------|
-| Quick Tab creation success rate | 0% | 100% | +100% |
-| Panel sync latency | 100-200ms | <10ms | -95% |
-| Storage race conditions | Common | None | -100% |
-| User frustration | High 🔴 | None ✅ | -100% |
+| Metric                          | Before    | After   | Change |
+| ------------------------------- | --------- | ------- | ------ |
+| Quick Tab creation success rate | 0%        | 100%    | +100%  |
+| Panel sync latency              | 100-200ms | <10ms   | -95%   |
+| Storage race conditions         | Common    | None    | -100%  |
+| User frustration                | High 🔴   | None ✅ | -100%  |
 
 **Resource Usage:**
+
 - BroadcastChannel overhead: <1ms per message
 - Storage writes: Same as before (~5 per action)
 - Memory: +1KB for BroadcastChannel instance
@@ -196,12 +210,14 @@ Expected: Console logs, tabs respond correctly
 ### For Users
 
 **Automatic Migration:**
+
 1. Install v1.5.8.15
 2. Extension auto-migrates storage on first load
 3. All existing Quick Tabs preserved
 4. No user action required
 
 **Manual Testing:**
+
 1. Create Quick Tab → Verify stays open
 2. Test panel sync across tabs
 3. Test Close All functionality
@@ -209,6 +225,7 @@ Expected: Console logs, tabs respond correctly
 ### For Developers
 
 **Review Points:**
+
 1. Verify all storage writes use wrapper format
 2. Confirm backward compatibility works
 3. Test BroadcastChannel fallback (if not supported)
@@ -221,6 +238,7 @@ Expected: Console logs, tabs respond correctly
 ### Created Files
 
 **docs/manual/quick-tabs-v1.5.8.15-bug-fixes.md:**
+
 - Complete root cause analysis
 - Step-by-step fix explanations
 - Testing checklist
@@ -229,6 +247,7 @@ Expected: Console logs, tabs respond correctly
 - Migration notes
 
 **docs/implementation-summaries/IMPLEMENTATION-SUMMARY-v1.5.8.15-bug-fixes.md:**
+
 - This file
 - High-level overview
 - Quick reference for future developers
@@ -256,6 +275,7 @@ Expected: Console logs, tabs respond correctly
 ### Preventive Measures
 
 **For Future:**
+
 1. Add storage format validation
 2. Test all three format variations
 3. Document storage standard clearly
@@ -263,17 +283,20 @@ Expected: Console logs, tabs respond correctly
 5. Version storage format explicitly
 
 **Standard Operating Procedure:**
+
 ```javascript
 // ALWAYS use this format when saving
 const stateToSave = {
-  containers: { /* data */ },
+  containers: {
+    /* data */
+  },
   saveId: generateSaveId(),
   timestamp: Date.now()
 };
 
 // ALWAYS support three formats when reading
-const containers = state.containers || 
-                   (state.tabs ? { 'firefox-default': { tabs: state.tabs } } : state);
+const containers =
+  state.containers || (state.tabs ? { 'firefox-default': { tabs: state.tabs } } : state);
 ```
 
 ---
@@ -283,6 +306,7 @@ const containers = state.containers ||
 ### Potential Improvements
 
 1. **Storage Format Versioning**
+
    ```javascript
    {
      version: '2.0',
@@ -322,18 +346,21 @@ const containers = state.containers ||
 ### Acceptance Criteria
 
 **Must Have:**
+
 - ✅ Quick Tabs don't self-destruct
 - ✅ Panel visible across tabs
 - ✅ Close All works correctly
 - ✅ No storage race conditions
 
 **Should Have:**
+
 - ✅ Backward compatibility with v1.5.8.14
 - ✅ Transaction ID prevents races
 - ✅ BroadcastChannel sync <10ms
 - ✅ Comprehensive documentation
 
 **Could Have:**
+
 - ⏳ Storage format versioning (future)
 - ⏳ Panel position sync (future)
 - ⏳ Auto-repair corrupted storage (future)
