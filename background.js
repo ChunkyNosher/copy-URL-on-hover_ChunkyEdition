@@ -38,8 +38,13 @@ async function initializeGlobalState() {
           typeof result.quick_tabs_session === 'object' &&
           !Array.isArray(result.quick_tabs_session.tabs)
         ) {
-          // New container-aware format
-          globalQuickTabState.containers = result.quick_tabs_session;
+          // v1.5.8.15 FIX: Check for wrapper format first
+          if (result.quick_tabs_session.containers) {
+            globalQuickTabState.containers = result.quick_tabs_session.containers;
+          } else {
+            // v1.5.8.14 format (unwrapped)
+            globalQuickTabState.containers = result.quick_tabs_session;
+          }
         } else if (result.quick_tabs_session.tabs) {
           // Old format: migrate to container-aware
           globalQuickTabState.containers = {
@@ -68,12 +73,19 @@ async function initializeGlobalState() {
     // Fall back to sync storage
     result = await browser.storage.sync.get('quick_tabs_state_v2');
     if (result && result.quick_tabs_state_v2) {
-      // Check if it's container-aware format
+      // v1.5.8.15 FIX: Check if it's container-aware format with wrapper
       if (
         typeof result.quick_tabs_state_v2 === 'object' &&
-        !Array.isArray(result.quick_tabs_state_v2.tabs)
+        result.quick_tabs_state_v2.containers
       ) {
-        // New container-aware format
+        // New v1.5.8.15 format with wrapper
+        globalQuickTabState.containers = result.quick_tabs_state_v2.containers;
+      } else if (
+        typeof result.quick_tabs_state_v2 === 'object' &&
+        !Array.isArray(result.quick_tabs_state_v2.tabs) &&
+        !result.quick_tabs_state_v2.containers
+      ) {
+        // v1.5.8.14 format (unwrapped containers)
         globalQuickTabState.containers = result.quick_tabs_state_v2;
       } else if (result.quick_tabs_state_v2.tabs) {
         // Old format: migrate to container-aware
@@ -83,10 +95,15 @@ async function initializeGlobalState() {
             lastUpdate: result.quick_tabs_state_v2.timestamp || Date.now()
           }
         };
-        // Save migrated format back to storage
+        // v1.5.8.15 FIX: Save migrated format with proper wrapper
+        const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         browser.storage.sync
           .set({
-            quick_tabs_state_v2: globalQuickTabState.containers
+            quick_tabs_state_v2: {
+              containers: globalQuickTabState.containers,
+              saveId: saveId,
+              timestamp: Date.now()
+            }
           })
           .catch(err => console.error('[Background] Error saving migrated state:', err));
       }
@@ -608,10 +625,18 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 
     containerState.lastUpdate = Date.now();
 
+    // v1.5.8.15 FIX: Save with proper format including saveId for transaction tracking
+    const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const stateToSave = {
+      containers: globalQuickTabState.containers,
+      saveId: saveId,
+      timestamp: Date.now()
+    };
+
     // Save to storage for persistence
     browser.storage.sync
       .set({
-        quick_tabs_state_v2: globalQuickTabState.containers
+        quick_tabs_state_v2: stateToSave
       })
       .catch(err => {
         console.error('[Background] Error saving created tab to storage:', err);
@@ -621,7 +646,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     if (typeof browser.storage.session !== 'undefined') {
       browser.storage.session
         .set({
-          quick_tabs_session: globalQuickTabState.containers
+          quick_tabs_session: stateToSave
         })
         .catch(err => {
           console.error('[Background] Error saving to session storage:', err);
@@ -697,10 +722,18 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         });
       });
 
+      // v1.5.8.15 FIX: Save with proper format including saveId
+      const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
       // Save updated state to storage
       browser.storage.sync
         .set({
-          quick_tabs_state_v2: globalQuickTabState.containers
+          quick_tabs_state_v2: stateToSave
         })
         .catch(err => {
           console.error('[Background] Error saving after close:', err);
@@ -710,7 +743,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       if (typeof browser.storage.session !== 'undefined') {
         browser.storage.session
           .set({
-            quick_tabs_session: globalQuickTabState.containers
+            quick_tabs_session: stateToSave
           })
           .catch(err => {
             console.error('[Background] Error saving to session storage:', err);
@@ -793,10 +826,10 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       });
     });
 
-    // v1.5.8.14 - Include saveId in storage for transaction tracking
+    // v1.5.8.15 FIX: Save with proper container wrapper
     const stateToSave = {
-      ...globalQuickTabState.containers,
-      saveId: message.saveId || null, // Include save ID if provided
+      containers: globalQuickTabState.containers,
+      saveId: message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       timestamp: Date.now()
     };
 
@@ -855,10 +888,18 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       containerState.tabs[tabIndex].pinnedToUrl = message.pinnedToUrl;
       containerState.lastUpdate = Date.now();
 
+      // v1.5.8.15 FIX: Save with proper format
+      const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
       // Save to storage
       browser.storage.sync
         .set({
-          quick_tabs_state_v2: globalQuickTabState.containers
+          quick_tabs_state_v2: stateToSave
         })
         .catch(err => {
           console.error('[Background] Error saving pin state to storage:', err);
@@ -868,7 +909,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       if (typeof browser.storage.session !== 'undefined') {
         browser.storage.session
           .set({
-            quick_tabs_session: globalQuickTabState.containers
+            quick_tabs_session: stateToSave
           })
           .catch(err => {
             console.error('[Background] Error saving to session storage:', err);
@@ -1074,13 +1115,13 @@ browser.storage.onChanged.addListener((changes, areaName) => {
       // Don't automatically reset - let content scripts handle their own state
       // This prevents the "Quick Tab immediately closes" bug
     } else {
-      // Storage was updated - sync global state (container-aware)
+      // v1.5.8.15 FIX: Storage was updated - sync global state (container-aware)
       if (typeof newValue === 'object' && newValue.containers) {
-        // Container-aware format
-        globalQuickTabState.containers = newValue;
+        // v1.5.8.15 - Proper container-aware format with wrapper
+        globalQuickTabState.containers = newValue.containers; // Extract containers from wrapper
         console.log(
           '[Background] Updated global state from storage (container-aware):',
-          Object.keys(newValue).length,
+          Object.keys(newValue.containers).length,
           'containers'
         );
       } else if (newValue.tabs && Array.isArray(newValue.tabs)) {
