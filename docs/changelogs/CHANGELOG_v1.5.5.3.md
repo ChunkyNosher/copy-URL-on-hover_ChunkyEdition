@@ -1,16 +1,25 @@
 # Changelog - v1.5.5.3
 
 ## Overview
-Version 1.5.5.3 removes the experimental YouTube timestamp synchronization feature introduced in v1.5.5.2 while preserving all critical bug fixes. This release stabilizes the extension by removing problematic features that were causing compatibility issues.
+
+Version 1.5.5.3 removes the experimental YouTube timestamp synchronization
+feature introduced in v1.5.5.2 while preserving all critical bug fixes. This
+release stabilizes the extension by removing problematic features that were
+causing compatibility issues.
 
 ## Changes from v1.5.5.2
 
 ### Removed Features
 
 #### YouTube Timestamp Synchronization (Removed)
-**Reason**: The experimental YouTube timestamp sync feature introduced bugs and compatibility issues across different YouTube page types and cross-origin iframes. Due to browser security restrictions and limited applicability, this feature has been removed to stabilize the extension.
+
+**Reason**: The experimental YouTube timestamp sync feature introduced bugs and
+compatibility issues across different YouTube page types and cross-origin
+iframes. Due to browser security restrictions and limited applicability, this
+feature has been removed to stabilize the extension.
 
 **Removed Code**:
+
 - `isYouTubeUrl()` function
 - `getYouTubeTimestamp()` function
 - `updateYouTubeUrlWithTimestamp()` function
@@ -25,11 +34,14 @@ Version 1.5.5.3 removes the experimental YouTube timestamp synchronization featu
 ### Critical Bug Fixes Preserved
 
 #### 1. Quick Tabs Immediately Closing After Keyboard Shortcut (KEPT)
+
 **Status**: ✅ This fix is preserved from v1.5.5.2
 
-The critical bug fix that prevents Quick Tabs from immediately closing after being opened with the keyboard shortcut remains in place.
+The critical bug fix that prevents Quick Tabs from immediately closing after
+being opened with the keyboard shortcut remains in place.
 
 **Implementation**:
+
 - `isSavingToStorage` flag to track when the current tab is saving to storage
 - Storage change listener ignores events initiated by the same tab
 - Flag is set before saving and cleared after a 100ms delay
@@ -37,13 +49,19 @@ The critical bug fix that prevents Quick Tabs from immediately closing after bei
 **Code Location**: `content.js` - Lines 144, 431-447, 532
 
 #### 2. Pinned Tabs Not Working (KEPT)
+
 **Status**: ✅ This fix is preserved from v1.5.5.2
 
-The fix for pinned tabs functionality remains in place. Pin button now properly toggles between pinned (only visible in current page) and unpinned (visible in all tabs).
+The fix for pinned tabs functionality remains in place. Pin button now properly
+toggles between pinned (only visible in current page) and unpinned (visible in
+all tabs).
 
 **Implementation**:
-- `broadcastQuickTabUnpin()` function to notify other tabs when a Quick Tab is unpinned
-- `unpinQuickTab` handler in broadcast message handler to create Quick Tabs when they're unpinned
+
+- `broadcastQuickTabUnpin()` function to notify other tabs when a Quick Tab is
+  unpinned
+- `unpinQuickTab` handler in broadcast message handler to create Quick Tabs when
+  they're unpinned
 - Pin button properly broadcasts unpin events to all tabs
 
 **Code Location**: `content.js` - Lines 263, 370-380, 2784
@@ -51,6 +69,7 @@ The fix for pinned tabs functionality remains in place. Pin button now properly 
 ## Files Modified
 
 ### content.js
+
 - Removed all YouTube timestamp sync functions and code
 - Removed `quickTabYouTubeTimestampSync` from DEFAULT_CONFIG
 - Updated bug fix comments to reflect v1.5.5.3 changes
@@ -58,31 +77,38 @@ The fix for pinned tabs functionality remains in place. Pin button now properly 
 - Preserved `broadcastQuickTabUnpin()` functionality
 
 ### popup.html
+
 - Removed YouTube timestamp sync checkbox
 - Removed experimental features section from info box
 - Simplified Quick Tabs info box
 
 ### popup.js
+
 - Removed `quickTabYouTubeTimestampSync` from DEFAULT_CONFIG
 - Removed YouTube timestamp sync checkbox loading code
 - Removed YouTube timestamp sync checkbox saving code
 
 ### manifest.json
+
 - Updated version to 1.5.5.3
 
 ## What This Release Preserves
 
 ### ✅ Critical Bug Fixes from v1.5.5.2
-1. Quick Tabs no longer immediately close after being opened (isSavingToStorage flag)
+
+1. Quick Tabs no longer immediately close after being opened (isSavingToStorage
+   flag)
 2. Pinned tabs work correctly (broadcastQuickTabUnpin functionality)
 
 ### ✅ All Features from v1.5.5.1
+
 1. URL detection fixes
 2. YouTube Quick Tab playback control (pause/resume on tab switch)
 3. Quick Tab position/size persistence across tabs
 4. Pin button functionality
 
 ### ✅ All Features from Earlier Versions
+
 1. Quick Tabs with minimize/restore functionality
 2. Cross-domain Quick Tab synchronization
 3. Quick Tab navigation controls
@@ -93,6 +119,7 @@ The fix for pinned tabs functionality remains in place. Pin button now properly 
 ## What This Release Removes
 
 ### ❌ Removed from v1.5.5.2
+
 1. YouTube timestamp synchronization (experimental feature)
 2. All YouTube timestamp sync helper functions
 3. Periodic timestamp saving
@@ -101,7 +128,8 @@ The fix for pinned tabs functionality remains in place. Pin button now properly 
 ## Testing Recommendations
 
 ### Verify Bug Fixes Still Work
-1. **Quick Tab Creation**: 
+
+1. **Quick Tab Creation**:
    - Open Quick Tab on YouTube and Wikipedia pages
    - Verify Quick Tab stays open and doesn't immediately close
    - Test with keyboard shortcut (Q)
@@ -130,6 +158,7 @@ The fix for pinned tabs functionality remains in place. Pin button now properly 
    - Verify all Quick Tabs restore correctly
 
 ### Verify YouTube Timestamp Sync is Gone
+
 1. Open settings popup
 2. Verify there is no YouTube timestamp sync checkbox
 3. Verify there is no experimental features section in info box
@@ -147,7 +176,9 @@ The fix for pinned tabs functionality remains in place. Pin button now properly 
 
 ## Summary
 
-Version 1.5.5.3 is essentially v1.5.5.1 with the critical bug fixes from v1.5.5.2, but without the YouTube timestamp synchronization feature. This provides a stable foundation with all essential functionality working correctly:
+Version 1.5.5.3 is essentially v1.5.5.1 with the critical bug fixes from
+v1.5.5.2, but without the YouTube timestamp synchronization feature. This
+provides a stable foundation with all essential functionality working correctly:
 
 - ✅ Quick Tabs don't immediately close after creation (v1.5.5.2 fix preserved)
 - ✅ Pinned tabs work correctly (v1.5.5.2 fix preserved)

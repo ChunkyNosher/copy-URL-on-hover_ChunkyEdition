@@ -2,17 +2,23 @@
 
 **Release Date:** November 13, 2025  
 **Type:** Major Feature Enhancement + Bug Fixes  
-**Focus:** Persistent Floating Panel for Quick Tabs Manager (Zen Browser Compatibility)
+**Focus:** Persistent Floating Panel for Quick Tabs Manager (Zen Browser
+Compatibility)
 
 ---
 
 ## 🎉 Major New Feature: Persistent Floating Panel
 
-This release replaces the Firefox Sidebar API with a **persistent, draggable, resizable floating panel** that works perfectly in **Zen Browser** (where the native sidebar is disabled). This implementation addresses fundamental architectural limitations and fixes multiple long-standing issues.
+This release replaces the Firefox Sidebar API with a **persistent, draggable,
+resizable floating panel** that works perfectly in **Zen Browser** (where the
+native sidebar is disabled). This implementation addresses fundamental
+architectural limitations and fixes multiple long-standing issues.
 
 ### Why This Change?
 
-**Problem:** Zen Browser disables `sidebar.verticalTabs` to maintain a clean UI, making the Firefox Sidebar API unavailable. The extension's Quick Tabs Manager relied on this API, breaking functionality in Zen Browser.
+**Problem:** Zen Browser disables `sidebar.verticalTabs` to maintain a clean UI,
+making the Firefox Sidebar API unavailable. The extension's Quick Tabs Manager
+relied on this API, breaking functionality in Zen Browser.
 
 **Solution:** Implement a content script-injected floating panel that:
 
@@ -31,7 +37,8 @@ This release replaces the Firefox Sidebar API with a **persistent, draggable, re
 
 #### Core Capabilities:
 
-- ✅ **Persistent Across Navigation** - Panel re-injects on page load, doesn't close
+- ✅ **Persistent Across Navigation** - Panel re-injects on page load, doesn't
+  close
 - ✅ **Draggable** - Move panel anywhere using Pointer Events API
 - ✅ **8-Direction Resize** - Resize from all edges and corners
 - ✅ **Position Memory** - Remembers position/size via `browser.storage.local`
@@ -159,8 +166,8 @@ src/features/quick-tabs/
 }
 ```
 
-**Handler:** `PanelManager.setupMessageListener()` in panel.js
-**Sender:** `background.js` via `browser.commands.onCommand` listener
+**Handler:** `PanelManager.setupMessageListener()` in panel.js **Sender:**
+`background.js` via `browser.commands.onCommand` listener
 
 ### Storage Schema
 
@@ -354,9 +361,12 @@ src/features/quick-tabs/
 
 ## 📚 Related Documentation
 
-- **Implementation Guide:** [docs/manual/persistent-panel-implementation.md](../manual/persistent-panel-implementation.md)
-- **Architecture:** [docs/manual/hybrid-architecture-implementation.md](../manual/hybrid-architecture-implementation.md)
-- **Build Guide:** [docs/manual/build-and-packaging-guide.md](../manual/build-and-packaging-guide.md)
+- **Implementation Guide:**
+  [docs/manual/persistent-panel-implementation.md](../manual/persistent-panel-implementation.md)
+- **Architecture:**
+  [docs/manual/hybrid-architecture-implementation.md](../manual/hybrid-architecture-implementation.md)
+- **Build Guide:**
+  [docs/manual/build-and-packaging-guide.md](../manual/build-and-packaging-guide.md)
 
 ---
 
@@ -391,5 +401,7 @@ src/features/quick-tabs/
 ---
 
 **Full Changelog:** See commit history for detailed changes.  
-**Issue Tracker:** [GitHub Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)  
-**Repository:** [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
+**Issue Tracker:**
+[GitHub Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)  
+**Repository:**
+[ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

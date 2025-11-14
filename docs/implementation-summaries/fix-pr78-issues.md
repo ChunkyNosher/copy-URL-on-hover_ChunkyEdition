@@ -2,21 +2,28 @@
 
 ## Problem Analysis
 
-After analyzing PR #78 and your repository, I found **two specific issues** that need fixing:
+After analyzing PR #78 and your repository, I found **two specific issues** that
+need fixing:
 
 ### Issue 1: CodeRabbit Still Skipping Bot PRs ❌
 
-**Problem:** Even though you have `.coderabbit.yaml` with `ignore_usernames: []`, CodeRabbit is still showing "Bot user detected. Review skipped."
+**Problem:** Even though you have `.coderabbit.yaml` with
+`ignore_usernames: []`, CodeRabbit is still showing "Bot user detected. Review
+skipped."
 
-**Root cause:** The bot is `deepsource-autofix[bot]`, which CodeRabbit has **hardcoded** to skip by default, regardless of your configuration.
+**Root cause:** The bot is `deepsource-autofix[bot]`, which CodeRabbit has
+**hardcoded** to skip by default, regardless of your configuration.
 
-**Why:** CodeRabbit has a built-in bot detection list that overrides the `ignore_usernames` setting for certain bots, including DeepSource's autofix bot.
+**Why:** CodeRabbit has a built-in bot detection list that overrides the
+`ignore_usernames` setting for certain bots, including DeepSource's autofix bot.
 
 ### Issue 2: Codecov Warning About "codecov app" ⚠️
 
-**Problem:** Codecov is showing a warning: "Please install the codecov app to ensure uploads and comments are reliably processed by Codecov."
+**Problem:** Codecov is showing a warning: "Please install the codecov app to
+ensure uploads and comments are reliably processed by Codecov."
 
-**Root cause:** You're using the GitHub Action to upload coverage, but haven't installed the Codecov GitHub App, which provides better integration.
+**Root cause:** You're using the GitHub Action to upload coverage, but haven't
+installed the Codecov GitHub App, which provides better integration.
 
 ---
 
@@ -63,7 +70,8 @@ reviews:
 
 **Method C: Change DeepSource Behavior (Recommended)**
 
-Instead of having DeepSource create PRs for formatting, configure it to commit directly to the branch:
+Instead of having DeepSource create PRs for formatting, configure it to commit
+directly to the branch:
 
 **In DeepSource dashboard:**
 
@@ -146,7 +154,8 @@ jobs:
    - Name: `CODECOV_TOKEN`
    - Value: [paste token]
 
-**For public repos:** Codecov will work without the token, but having it is more reliable.
+**For public repos:** Codecov will work without the token, but having it is more
+reliable.
 
 ---
 
@@ -159,7 +168,9 @@ jobs:
 ```yaml
 # .coderabbit.yaml
 language: en-US
-tone_instructions: 'Focus on logic correctness, security issues, and browser extension best practices. Be concise but thorough.'
+tone_instructions:
+  'Focus on logic correctness, security issues, and browser extension best
+  practices. Be concise but thorough.'
 
 reviews:
   profile: assertive
@@ -324,7 +335,8 @@ jobs:
 
 ### File 3: Create Initial Test Files
 
-**Problem:** You likely don't have any actual tests, which is why Codecov shows no coverage.
+**Problem:** You likely don't have any actual tests, which is why Codecov shows
+no coverage.
 
 **Create `tests/example.test.js`:**
 
@@ -351,7 +363,11 @@ describe('Extension Configuration', () => {
 
 describe('Container Identifiers', () => {
   test('should recognize firefox container patterns', () => {
-    const validIds = ['firefox-default', 'firefox-container-1', 'firefox-container-personal'];
+    const validIds = [
+      'firefox-default',
+      'firefox-container-1',
+      'firefox-container-personal'
+    ];
 
     const invalidIds = ['', 'chrome-default', null];
 
@@ -488,7 +504,8 @@ This will generate `coverage/lcov.info` that Codecov and DeepSource can read.
 1. ✅ **CodeRabbit skipping bot PRs**
    - **Quick fix:** Comment `@coderabbitai review` on PR #78
    - **Long-term fix:** Update `.coderabbit.yaml` with `base_branches` pattern
-   - **Best fix:** Configure DeepSource to commit directly instead of creating PRs
+   - **Best fix:** Configure DeepSource to commit directly instead of creating
+     PRs
 
 2. ✅ **Codecov showing warning**
    - **Fix:** Install Codecov GitHub App

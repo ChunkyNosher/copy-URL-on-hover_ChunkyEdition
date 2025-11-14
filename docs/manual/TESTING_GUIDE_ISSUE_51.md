@@ -1,6 +1,7 @@
 # Testing Guide - Issue #51 Fix: Quick Tabs Position/Size Persistence
 
-This guide provides step-by-step instructions for testing the Quick Tabs position/size persistence fixes implemented in version 1.5.5.7.
+This guide provides step-by-step instructions for testing the Quick Tabs
+position/size persistence fixes implemented in version 1.5.5.7.
 
 ---
 
@@ -8,7 +9,8 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 
 1. **Browser:** Firefox or Zen Browser
 2. **Extension Version:** 1.5.5.7 or higher
-3. **Settings:** Ensure "Persist Quick Tabs across tabs" is enabled in extension settings
+3. **Settings:** Ensure "Persist Quick Tabs across tabs" is enabled in extension
+   settings
 
 ---
 
@@ -36,6 +38,7 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 **Goal:** Verify real-time sync works for tabs on the same website
 
 **Steps:**
+
 1. Open Tab 1: Navigate to `https://en.wikipedia.org/wiki/Firefox`
 2. Hover over any link and press **Q** to open Quick Tab
 3. Drag Quick Tab to position approximately (500, 500) on screen
@@ -45,12 +48,15 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 7. Immediately check if Quick Tab appears at the same position
 
 **Expected Result:**
+
 - ✅ Quick Tab appears in Tab 2 within **< 100ms** (almost instant)
 - ✅ Position matches Tab 1 exactly (within 1-2 pixels)
 - ✅ Size matches Tab 1 exactly (within 1-2 pixels)
-- ✅ Debug console shows: "Updated Quick Tab ... from background: pos(...), size(...)"
+- ✅ Debug console shows: "Updated Quick Tab ... from background: pos(...),
+  size(...)"
 
 **What This Tests:**
+
 - BroadcastChannel same-origin sync (redundant path)
 - Background script coordination (primary path)
 - Position and size preservation
@@ -59,9 +65,11 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 
 ### Test 2: Cross-Origin Tab Sync (Wikipedia → YouTube)
 
-**Goal:** Verify real-time sync works across different websites (THE CRITICAL TEST)
+**Goal:** Verify real-time sync works across different websites (THE CRITICAL
+TEST)
 
 **Steps:**
+
 1. Open Tab 1: Navigate to `https://en.wikipedia.org/wiki/Firefox`
 2. Hover over any link and press **Q** to open Quick Tab
 3. Drag Quick Tab to position approximately (500, 500)
@@ -71,12 +79,15 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 7. **Immediately** check if Quick Tab appears
 
 **Expected Result:**
+
 - ✅ Quick Tab appears in Tab 2 within **< 100ms** (almost instant)
 - ✅ Position matches Tab 1 exactly
 - ✅ Size matches Tab 1 exactly
-- ✅ Debug console shows: "Updated Quick Tab ... from background: pos(...), size(...)"
+- ✅ Debug console shows: "Updated Quick Tab ... from background: pos(...),
+  size(...)"
 
 **What This Tests:**
+
 - **PRIMARY FIX:** Background script cross-origin coordination
 - This was broken before (10-minute delay), now should be instant
 
@@ -87,6 +98,7 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 **Goal:** Verify no data loss when switching tabs while dragging
 
 **Steps:**
+
 1. Open Tab 1: Navigate to any website
 2. Open a Quick Tab
 3. **Start dragging** the Quick Tab (hold mouse button down)
@@ -95,12 +107,14 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 6. Switch back to original tab
 
 **Expected Result:**
+
 - ✅ Quick Tab position saved during drag (throttled every 500ms)
 - ✅ Other tabs show partial drag position (not original position)
 - ✅ No "snap back" to original position
 - ✅ Debug console shows periodic saves: "Sending position update to background"
 
 **What This Tests:**
+
 - Throttled saves during drag (500ms intervals)
 - Visibility change force-save on tab switch
 
@@ -111,6 +125,7 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 **Goal:** Verify existing Quick Tabs get updated instead of being skipped
 
 **Steps:**
+
 1. Open Tab 1: Navigate to `https://en.wikipedia.org/wiki/Firefox`
 2. Open a Quick Tab for a specific link
 3. Position it at (100, 100) approximately
@@ -121,11 +136,15 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 8. Check Quick Tab position in Tab 1
 
 **Expected Result:**
-- ✅ Quick Tab in Tab 1 **moves to (500, 500)** (not stuck at original position!)
-- ✅ Debug console shows: "Updated existing Quick Tab ... position to (500, 500)"
+
+- ✅ Quick Tab in Tab 1 **moves to (500, 500)** (not stuck at original
+  position!)
+- ✅ Debug console shows: "Updated existing Quick Tab ... position to (500,
+  500)"
 - ✅ No "Skipping duplicate Quick Tab" message
 
 **What This Tests:**
+
 - **CRITICAL FIX:** `restoreQuickTabsFromStorage()` now updates existing tabs
 - Previously, existing tabs were skipped (bug #3)
 
@@ -136,6 +155,7 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 **Goal:** Verify Quick Tabs restore correctly after browser restart
 
 **Steps:**
+
 1. Open a Quick Tab and position it at (500, 500)
 2. Resize to 600x400 pixels
 3. **Close browser completely** (Quit Firefox/Zen Browser)
@@ -144,11 +164,13 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 6. Wait 2-3 seconds
 
 **Expected Result:**
+
 - ✅ Quick Tab restores at position (500, 500)
 - ✅ Quick Tab restores with size 600x400
 - ✅ Debug console shows: "Restoring X Quick Tabs from browser.storage"
 
 **What This Tests:**
+
 - Storage.sync persistence working
 - Background script saves to storage correctly
 
@@ -159,6 +181,7 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 **Goal:** Verify multiple Quick Tabs all sync correctly
 
 **Steps:**
+
 1. Open Tab 1: Navigate to any website
 2. Open 3 Quick Tabs at different positions:
    - Quick Tab A at (100, 100)
@@ -171,12 +194,14 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 7. Check all Quick Tab positions
 
 **Expected Result:**
+
 - ✅ All 3 Quick Tabs appear in Tab 2 at original positions
 - ✅ After moving Quick Tab B in Tab 2, it updates to (400, 400) in Tab 1
 - ✅ Quick Tabs A and C remain at their original positions
 - ✅ Only Quick Tab B is updated
 
 **What This Tests:**
+
 - Multiple Quick Tabs sync independently
 - Selective updates work correctly
 - No cross-contamination between Quick Tabs
@@ -188,6 +213,7 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 **Goal:** Verify pinned Quick Tabs only appear on pinned pages
 
 **Steps:**
+
 1. Open Tab 1: Navigate to `https://en.wikipedia.org/wiki/Firefox`
 2. Open a Quick Tab
 3. Right-click Quick Tab → "Pin to this page"
@@ -198,11 +224,13 @@ This guide provides step-by-step instructions for testing the Quick Tabs positio
 8. Check if pinned Quick Tab appears
 
 **Expected Result:**
+
 - ✅ Pinned Quick Tab does NOT appear in Tab 2 (same domain, different page)
 - ✅ Pinned Quick Tab does NOT appear in Tab 3 (different domain)
 - ✅ When you return to Tab 1 (pinned page), Quick Tab is at (500, 500)
 
 **What This Tests:**
+
 - Pin filtering still works correctly
 - Pinned Quick Tabs are page-specific
 - Position updates respect pin status
@@ -216,16 +244,20 @@ Use Browser Console timestamps to measure sync latency:
 ### Measuring Cross-Origin Sync Latency
 
 **Steps:**
+
 1. Enable Debug Mode
 2. Open Browser Console (Ctrl+Shift+J)
 3. Open Quick Tab in Tab 1
 4. Move Quick Tab
-5. Note timestamp in console: `[Background] Received position update: ... [timestamp1]`
+5. Note timestamp in console:
+   `[Background] Received position update: ... [timestamp1]`
 6. **Immediately** switch to Tab 2 (cross-origin)
-7. Note timestamp in console: `Updated Quick Tab ... from background: ... [timestamp2]`
+7. Note timestamp in console:
+   `Updated Quick Tab ... from background: ... [timestamp2]`
 8. Calculate latency: `timestamp2 - timestamp1`
 
 **Expected Performance:**
+
 - ✅ Latency < 100ms (typically 20-50ms)
 - ✅ No 10-minute delays
 - ✅ Instant visual update
@@ -237,32 +269,31 @@ Use Browser Console timestamps to measure sync latency:
 ### Issue: Quick Tab doesn't appear in new tab
 
 **Possible Causes:**
+
 1. "Persist Quick Tabs across tabs" setting is disabled
    - **Fix:** Enable in extension settings
-   
 2. Content script not loaded
    - **Fix:** Reload the tab (F5)
-   
 3. Browser restricted page (about:, chrome://)
    - **Expected:** Extensions can't run on restricted pages
 
 ### Issue: Position slightly off (1-2 pixels)
 
-**Cause:** Rounding differences in coordinate systems
-**Expected:** This is normal, < 2px difference is acceptable
+**Cause:** Rounding differences in coordinate systems **Expected:** This is
+normal, < 2px difference is acceptable
 
 ### Issue: Debug console shows no messages
 
-**Cause:** Debug mode not enabled
-**Fix:** Enable Debug Mode in extension settings
+**Cause:** Debug mode not enabled **Fix:** Enable Debug Mode in extension
+settings
 
 ### Issue: Quick Tab appears but at wrong position
 
 **Possible Causes:**
+
 1. Background script not running
    - **Check:** Look for `[Background]` messages in console
    - **Fix:** Reload extension or browser
-   
 2. Message passing failed
    - **Check:** Look for error messages in console
    - **Fix:** Report bug with console output
@@ -274,6 +305,7 @@ Use Browser Console timestamps to measure sync latency:
 Ensure existing features still work:
 
 ### ✅ Basic Features Still Work
+
 - [ ] Quick Tab opens on hover + Q key
 - [ ] Quick Tab closes on Escape key
 - [ ] Quick Tab drags smoothly
@@ -284,11 +316,13 @@ Ensure existing features still work:
 - [ ] Quick Tab pin/unpin works
 
 ### ✅ Settings Still Work
+
 - [ ] All settings in popup apply correctly
 - [ ] Settings persist across browser restart
 - [ ] Options page opens and works
 
 ### ✅ No New Bugs Introduced
+
 - [ ] No console errors during normal operation
 - [ ] No memory leaks (check Task Manager after 10+ Quick Tabs)
 - [ ] No performance degradation
@@ -364,27 +398,28 @@ For automated regression testing, consider:
 3. **Jest** for unit testing individual functions
 
 **Example Test Case (Pseudocode):**
+
 ```javascript
 test('Cross-origin Quick Tab sync', async () => {
   // Open Tab 1
   await browser.openTab('https://en.wikipedia.org/wiki/Firefox');
-  
+
   // Open Quick Tab
   await browser.pressKey('Q');
-  
+
   // Move Quick Tab
   await browser.dragElement('.quick-tab-window', { x: 500, y: 500 });
-  
+
   // Open Tab 2 (different origin)
   await browser.openTab('https://www.youtube.com');
-  
+
   // Check Quick Tab position
   const position = await browser.getElementPosition('.quick-tab-window');
-  
+
   // Verify position within 2px
   expect(Math.abs(position.x - 500)).toBeLessThan(2);
   expect(Math.abs(position.y - 500)).toBeLessThan(2);
-  
+
   // Verify latency < 100ms
   const latency = Date.now() - dragEndTime;
   expect(latency).toBeLessThan(100);

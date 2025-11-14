@@ -6,7 +6,9 @@
 
 ## Overview
 
-This release implements comprehensive code quality infrastructure with GitHub Actions workflows, DeepSource integration, and enhanced debugging capabilities to support the extension's modular architecture introduced in v1.5.8.2.
+This release implements comprehensive code quality infrastructure with GitHub
+Actions workflows, DeepSource integration, and enhanced debugging capabilities
+to support the extension's modular architecture introduced in v1.5.8.2.
 
 ## Major Changes
 
@@ -224,7 +226,8 @@ This release implements comprehensive code quality infrastructure with GitHub Ac
 - Renamed `.prettierrc.js` → `.prettierrc.cjs`
 - Renamed `jest.config.js` → `jest.config.cjs`
 
-**Reason:** package.json has `"type": "module"`, so CommonJS config files must use .cjs extension.
+**Reason:** package.json has `"type": "module"`, so CommonJS config files must
+use .cjs extension.
 
 ## Technical Implementation Details
 

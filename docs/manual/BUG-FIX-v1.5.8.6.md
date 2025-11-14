@@ -3,6 +3,7 @@
 ## Issue Summary
 
 **Reported Symptoms:**
+
 1. Keyboard shortcuts not working (copy URL, Quick Tabs, open new tab)
 2. Debug mode not showing any console messages
 3. Only "Copy Text" shortcut worked
@@ -12,24 +13,28 @@
 
 ### The Problem
 
-The modular architecture introduced in v1.5.8.2+ had a critical configuration storage mismatch:
+The modular architecture introduced in v1.5.8.2+ had a critical configuration
+storage mismatch:
 
 **popup.js behavior (unchanged):**
+
 ```javascript
 // Saves settings as individual keys
 browser.storage.local.set({
   copyUrlKey: 'y',
   copyUrlCtrl: false,
-  debugMode: true,
+  debugMode: true
   // ... etc
 });
 ```
 
 **ConfigManager.load() in modular content.js (broken):**
+
 ```javascript
 // Tried to read from a 'userConfig' key that doesn't exist
 const result = await browser.storage.local.get('userConfig');
-if (result.userConfig) {  // Always undefined!
+if (result.userConfig) {
+  // Always undefined!
   this.config = { ...DEFAULT_CONFIG, ...result.userConfig };
 }
 ```
@@ -59,19 +64,22 @@ if (result.userConfig) {  // Always undefined!
 ### Legacy vs Modular Comparison
 
 **content-legacy.js (correct):**
+
 ```javascript
-browser.storage.local.get(DEFAULT_CONFIG, function(items) {
-  CONFIG = items;  // Gets all individual keys
+browser.storage.local.get(DEFAULT_CONFIG, function (items) {
+  CONFIG = items; // Gets all individual keys
 });
 ```
 
 **src/core/config.js (before fix - broken):**
+
 ```javascript
 const result = await browser.storage.local.get('userConfig');
 // userConfig doesn't exist, returns {}
 ```
 
 **src/core/config.js (after fix - correct):**
+
 ```javascript
 const result = await browser.storage.local.get(DEFAULT_CONFIG);
 // Returns all individual keys that exist in storage
@@ -85,6 +93,7 @@ this.config = { ...DEFAULT_CONFIG, ...result };
 **File: `src/core/config.js`**
 
 1. **ConfigManager.load() method:**
+
 ```javascript
 async load() {
   try {
@@ -99,6 +108,7 @@ async load() {
 ```
 
 2. **ConfigManager.save() method:**
+
 ```javascript
 async save() {
   try {
@@ -111,15 +121,18 @@ async save() {
 ```
 
 **File: `package.json`**
+
 - Updated version to 1.5.8.6
 - Fixed `copy-assets` script to properly copy manifest.json
 
 **File: `manifest.json`**
+
 - Updated version to 1.5.8.6
 
 ## Testing Verification
 
 ### Automated Tests
+
 ```bash
 # Syntax validation
 node -c dist/content.js  ✓
@@ -133,6 +146,7 @@ No vulnerabilities found  ✓
 ```
 
 ### Configuration Loading Test
+
 ```javascript
 // Simulated test proving the fix
 const mockStorage = {
@@ -147,6 +161,7 @@ const mockStorage = {
 ### Manual Testing Required
 
 Users should verify:
+
 1. **Keyboard Shortcuts**
    - Open settings, configure custom keys
    - Test copy URL, copy text, Quick Tabs, open new tab
@@ -165,23 +180,27 @@ Users should verify:
 ## Browser Compatibility
 
 ### Firefox
+
 - ✓ browser.storage.local.get() with object parameter
 - ✓ Async/await syntax
 - ✓ WebExtension Manifest v2
 
 ### Zen Browser
+
 - ✓ Built on Firefox, same APIs
 - ✓ All fixes apply identically
 
 ## Build & Release Process
 
 ### Building Locally
+
 ```bash
 npm install
 npm run build
 ```
 
 ### Creating Release
+
 ```bash
 # Tag version
 git tag v1.5.8.6
@@ -197,6 +216,7 @@ git push origin v1.5.8.6
 ```
 
 ### Installing Manually
+
 1. Download .xpi from GitHub releases
 2. Open Firefox/Zen Browser
 3. Navigate to `about:addons`
@@ -206,16 +226,19 @@ git push origin v1.5.8.6
 ## Lessons Learned
 
 ### Code Review Importance
+
 - Modular refactoring changed storage API usage
 - Testing should verify data layer compatibility
 - Breaking changes need migration strategies
 
 ### Testing Strategy
+
 - Add tests for configuration loading
 - Verify settings UI matches backend storage
 - Test with both default and custom settings
 
 ### Documentation
+
 - Document storage schema in code comments
 - Maintain architecture decision records
 - Track breaking changes in migration guide
@@ -242,18 +265,21 @@ git push origin v1.5.8.6
 - **Issue:** User report on v1.5.8.5
 - **PR:** copilot/fix-shortcut-and-debug-issues
 - **Commit:** d5254c4
-- **Files Changed:** 
+- **Files Changed:**
   - src/core/config.js
   - manifest.json
   - package.json
 
 ## Conclusion
 
-This bug was caused by a storage API mismatch introduced during the modular refactoring. The fix restores compatibility between the settings UI (popup.js) and the content script (ConfigManager).
+This bug was caused by a storage API mismatch introduced during the modular
+refactoring. The fix restores compatibility between the settings UI (popup.js)
+and the content script (ConfigManager).
 
-**Impact:** Critical - all keyboard shortcuts and debug functionality were broken
-**Severity:** High - extension appeared to work but core features failed
-**Resolution:** Simple 2-line fix in ConfigManager methods
-**Testing:** Verified with syntax checks, security scan, and logic tests
+**Impact:** Critical - all keyboard shortcuts and debug functionality were
+broken **Severity:** High - extension appeared to work but core features failed
+**Resolution:** Simple 2-line fix in ConfigManager methods **Testing:** Verified
+with syntax checks, security scan, and logic tests
 
-Version 1.5.8.6 is ready for release and should fully restore extension functionality.
+Version 1.5.8.6 is ready for release and should fully restore extension
+functionality.

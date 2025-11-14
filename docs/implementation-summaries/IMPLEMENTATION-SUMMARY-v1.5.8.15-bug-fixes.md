@@ -9,7 +9,8 @@
 
 ## Overview
 
-Fixed all critical Quick Tabs bugs reported in v1.5.8.14 by standardizing storage format and adding cross-tab panel synchronization.
+Fixed all critical Quick Tabs bugs reported in v1.5.8.14 by standardizing
+storage format and adding cross-tab panel synchronization.
 
 ---
 
@@ -42,7 +43,8 @@ quick_tabs_state_v2: {
 }
 ```
 
-**Impact:** Content script couldn't parse storage → Destroyed newly created Quick Tabs
+**Impact:** Content script couldn't parse storage → Destroyed newly created
+Quick Tabs
 
 ---
 
@@ -296,7 +298,8 @@ const stateToSave = {
 
 // ALWAYS support three formats when reading
 const containers =
-  state.containers || (state.tabs ? { 'firefox-default': { tabs: state.tabs } } : state);
+  state.containers ||
+  (state.tabs ? { 'firefox-default': { tabs: state.tabs } } : state);
 ```
 
 ---

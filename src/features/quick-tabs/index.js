@@ -32,6 +32,10 @@ class QuickTabsManager {
     // v1.5.8.14 - Transaction ID system to prevent race conditions
     this.currentSaveId = null;
     this.saveQueue = Promise.resolve();
+
+    // v1.5.8.16 - FIX Issue #1: Debounce rapid broadcast messages to prevent loops
+    this.broadcastDebounce = new Map(); // id -> timestamp of last broadcast processed
+    this.BROADCAST_DEBOUNCE_MS = 50; // Ignore duplicate broadcasts within 50ms
   }
 
   /**
@@ -95,6 +99,32 @@ class QuickTabsManager {
         console.log('[QuickTabsManager] BroadcastChannel message received:', event.data);
 
         const { type, data } = event.data;
+
+        // v1.5.8.16 - FIX Issue #1: Debounce rapid messages to prevent loops
+        const debounceKey = `${type}-${data.id}`;
+        const now = Date.now();
+        const lastProcessed = this.broadcastDebounce.get(debounceKey);
+
+        if (lastProcessed && now - lastProcessed < this.BROADCAST_DEBOUNCE_MS) {
+          console.log(
+            '[QuickTabsManager] Ignoring duplicate broadcast (debounced):',
+            type,
+            data.id
+          );
+          return;
+        }
+
+        this.broadcastDebounce.set(debounceKey, now);
+
+        // Clean up old debounce entries (prevent memory leak)
+        if (this.broadcastDebounce.size > 100) {
+          const oldestAllowed = now - this.BROADCAST_DEBOUNCE_MS * 2;
+          for (const [key, timestamp] of this.broadcastDebounce.entries()) {
+            if (timestamp < oldestAllowed) {
+              this.broadcastDebounce.delete(key);
+            }
+          }
+        }
 
         switch (type) {
           case 'CREATE':
@@ -205,6 +235,16 @@ class QuickTabsManager {
           break;
         case 'UPDATE_QUICK_TAB_SIZE':
           this.updateQuickTabSize(message.id, message.width, message.height);
+          break;
+        case 'CLOSE_QUICK_TAB_FROM_BACKGROUND':
+          // v1.5.8.16 - FIX Issue #2: Handle close from background script
+          console.log('[QuickTabsManager] Closing Quick Tab from background:', message.id);
+          this.closeById(message.id);
+          break;
+        case 'CLEAR_ALL_QUICK_TABS':
+          // v1.5.8.16 - Handle clear all from popup
+          console.log('[QuickTabsManager] Clearing all Quick Tabs');
+          this.closeAll();
           break;
         default:
           // Unknown action, ignore
@@ -530,14 +570,35 @@ class QuickTabsManager {
   /**
    * Handle Quick Tab destruction
    * v1.5.8.13 - Now broadcasts close to other tabs
+   * v1.5.8.16 - FIX Issue #2 & #3: Also send to background for proper cross-tab close
    */
   handleDestroy(id) {
     console.log('[QuickTabsManager] Handling destroy for:', id);
+
+    // Get tab info before deleting
+    const tabWindow = this.tabs.get(id);
+    const url = tabWindow ? tabWindow.url : null;
+    const cookieStoreId = tabWindow ? tabWindow.cookieStoreId : 'firefox-default';
+
     this.tabs.delete(id);
     this.minimizedManager.remove(id);
 
     // v1.5.8.13 - Broadcast close to other tabs
     this.broadcast('CLOSE', { id });
+
+    // v1.5.8.16 - FIX Issue #2: Send to background to update storage and notify all tabs
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'CLOSE_QUICK_TAB',
+          id: id,
+          url: url,
+          cookieStoreId: cookieStoreId
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Error closing Quick Tab in background:', err);
+        });
+    }
 
     // Emit destruction event
     if (this.eventBus && this.Events) {

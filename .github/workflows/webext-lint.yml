@@ -2,26 +2,26 @@ name: Web Extension Validation
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   validate:
     name: Validate Firefox Extension
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
+
       # Install Mozilla's web-ext tool globally
       - name: Install web-ext
         run: npm install --global web-ext
-      
+
       # Lint the extension
       - name: Lint extension source
         run: |
@@ -35,13 +35,13 @@ jobs:
         # - Manifest structure and permissions
         # - Deprecated API usage
         # - Firefox compatibility issues
-      
+
       # Build and validate
       - name: Build extension
         run: |
           npm ci
           npm run build:prod
-      
+
       - name: Validate built extension
         run: |
           web-ext lint --source-dir=dist/ --warnings-as-errors

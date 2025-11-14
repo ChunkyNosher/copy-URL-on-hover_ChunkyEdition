@@ -9,7 +9,9 @@
 
 ## Overview
 
-Version 1.5.8.13 introduces eager loading and BroadcastChannel-based real-time synchronization for Quick Tabs. This security summary documents the security analysis performed and confirms no new vulnerabilities were introduced.
+Version 1.5.8.13 introduces eager loading and BroadcastChannel-based real-time
+synchronization for Quick Tabs. This security summary documents the security
+analysis performed and confirms no new vulnerabilities were introduced.
 
 ---
 
@@ -48,7 +50,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
 });
 ```
 
-**Security Benefit**: Prevents malicious content scripts from other extensions from sending fake messages.
+**Security Benefit**: Prevents malicious content scripts from other extensions
+from sending fake messages.
 
 ### 2. BroadcastChannel Same-Origin Policy
 
@@ -82,7 +85,8 @@ async hydrateStateFromStorage() {
 }
 ```
 
-**Security Benefit**: Graceful degradation if storage quota exceeded or corrupted.
+**Security Benefit**: Graceful degradation if storage quota exceeded or
+corrupted.
 
 ### 4. Container Isolation
 
@@ -98,7 +102,8 @@ syncFromStorage(state, containerFilter = null) {
 }
 ```
 
-**Security Benefit**: Prevents cross-container state leakage for users relying on container isolation.
+**Security Benefit**: Prevents cross-container state leakage for users relying
+on container isolation.
 
 ---
 
@@ -206,7 +211,8 @@ No new security risks identified in this release.
 
 **Still Required**: Yes  
 **Reason**: X-Frame-Options header bypass for Quick Tabs iframe loading  
-**Security Note**: This is a known limitation of Manifest V2. Will be addressed in future MV3 migration.
+**Security Note**: This is a known limitation of Manifest V2. Will be addressed
+in future MV3 migration.
 
 **Current Implementation**:
 
@@ -357,9 +363,13 @@ No data collection = no privacy policy needed.
 
 ## Conclusion
 
-Version 1.5.8.13 passes all security checks with **0 CodeQL alerts** and **0 known vulnerabilities**. The implementation follows security best practices and maintains the extension's strong security posture.
+Version 1.5.8.13 passes all security checks with **0 CodeQL alerts** and **0
+known vulnerabilities**. The implementation follows security best practices and
+maintains the extension's strong security posture.
 
-All new code includes proper input validation, error handling, and sender verification. No dangerous APIs are used, and all browser APIs are used securely.
+All new code includes proper input validation, error handling, and sender
+verification. No dangerous APIs are used, and all browser APIs are used
+securely.
 
 **Security Status**: ✅ **APPROVED FOR RELEASE**
 

@@ -1,9 +1,9 @@
 {
   "manifest_version": 2,
   "name": "Copy URL on Hover Custom",
-  "version": "1.5.8.15",
+  "version": "1.5.8.16",
   "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with navigation, minimize, and persistent panel manager.",
-  
+
   "permissions": [
     "storage",
     "tabs",
@@ -13,7 +13,7 @@
     "contextualIdentities",
     "cookies"
   ],
-  
+
   "commands": {
     "toggle-quick-tabs-manager": {
       "suggested_key": {
@@ -22,23 +22,23 @@
       "description": "Toggle Quick Tabs Manager panel"
     }
   },
-  
+
   "browser_action": {
     "default_title": "Copy URL on Hover Settings",
     "default_popup": "popup.html",
     "default_icon": "icons/icon.png"
   },
-  
+
   "options_ui": {
     "page": "options_page.html",
     "browser_style": true
   },
-  
+
   "background": {
     "scripts": ["background.js"],
     "persistent": true
   },
-  
+
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
@@ -47,15 +47,13 @@
       "all_frames": false
     }
   ],
-  
-  "web_accessible_resources": [
-    "state-manager.js"
-  ],
-  
+
+  "web_accessible_resources": ["state-manager.js"],
+
   "icons": {
     "96": "icons/icon.png"
   },
-  
+
   "browser_specific_settings": {
     "gecko": {
       "id": "copy-url-hover@chunkynosher.github.io",
@@ -63,7 +61,3 @@
     }
   }
 }
-
-
-
-

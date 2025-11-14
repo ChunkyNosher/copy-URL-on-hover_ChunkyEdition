@@ -1,7 +1,10 @@
 # Complete Repository Setup for GitHub Copilot Agentic Workflow
 
 ## Purpose
-This document provides GitHub Copilot Agent with exact instructions to complete the repository setup for full agentic workflow integration. All files are provided in correct, validated formats.
+
+This document provides GitHub Copilot Agent with exact instructions to complete
+the repository setup for full agentic workflow integration. All files are
+provided in correct, validated formats.
 
 ---
 
@@ -10,7 +13,9 @@ This document provides GitHub Copilot Agent with exact instructions to complete 
 ### 1. Fix `.deepsource.toml` (REPLACE existing file)
 
 **Problem:** Current config has invalid options that cause errors:
-- `plugins = ["webextensions"]` is invalid (webextensions is not a supported plugin)
+
+- `plugins = ["webextensions"]` is invalid (webextensions is not a supported
+  plugin)
 - `test-coverage` analyzer doesn't accept `coverage_threshold` in meta
 
 **Corrected `.deepsource.toml`:**
@@ -41,10 +46,10 @@ enabled = true
   [analyzers.meta]
   # Environments where code runs
   environment = ["nodejs", "browser"]
-  
+
   # Module system used
   module_system = "es-modules"
-  
+
   # Style guide to enforce
   style_guide = "standard"
 
@@ -66,6 +71,7 @@ enabled = true
 ```
 
 **Key Changes:**
+
 - ✅ Removed `plugins = ["webextensions"]` (not valid)
 - ✅ Removed `dialect = "typescript"` (not needed for pure JS)
 - ✅ Removed `[analyzers.meta]` from test-coverage (not supported)
@@ -78,7 +84,8 @@ enabled = true
 
 **Location:** Repository root
 
-**Purpose:** Configure CodeRabbit to review bot-created PRs (fixes the "Review skipped" issue)
+**Purpose:** Configure CodeRabbit to review bot-created PRs (fixes the "Review
+skipped" issue)
 
 ```yaml
 # .coderabbit.yaml
@@ -87,55 +94,57 @@ enabled = true
 
 # Language and tone
 language: en-US
-tone_instructions: "Focus on logic correctness, security issues, and browser extension best practices. Be concise but thorough."
+tone_instructions:
+  'Focus on logic correctness, security issues, and browser extension best
+  practices. Be concise but thorough.'
 
 reviews:
   # Review profile (assertive = detailed feedback)
   profile: assertive
-  
+
   # Auto-review configuration
   auto_review:
     enabled: true
     drafts: false
-    
+
     # CRITICAL: Empty list means review ALL PRs including bots
     # This fixes the "Bot user detected, review skipped" issue
     ignore_usernames: []
-  
+
   # Show high-level summary of changes
   high_level_summary: true
   high_level_summary_in_walkthrough: true
-  
+
   # Post review status (show when reviews happen/skip)
   review_status: true
-  
+
   # Path-specific instructions
   path_instructions:
-    - path: "background.js"
+    - path: 'background.js'
       instructions: |
         This is a browser extension background script. Pay attention to:
         - Message passing security (validate sender origins)
         - Async error handling in storage operations
         - Container isolation logic (cookieStoreId checks)
         - Storage quota management (100KB limit for sync)
-    
-    - path: "state-manager.js"
+
+    - path: 'state-manager.js'
       instructions: |
         State management module. Check for:
         - Race conditions in async operations
         - Proper container isolation
         - Memory leaks (WeakMap usage)
         - Error propagation
-    
-    - path: "**/*.test.js"
+
+    - path: '**/*.test.js'
       instructions: |
         Test files. Verify:
         - Edge cases are covered
         - Error scenarios are tested
         - Mocks are properly set up
         - Coverage is comprehensive
-    
-    - path: "manifest.json"
+
+    - path: 'manifest.json'
       instructions: |
         Extension manifest. Ensure:
         - Manifest V3 compliance
@@ -148,7 +157,7 @@ reviews:
     # ESLint integration
     eslint:
       enabled: true
-    
+
     # Secret detection
     gitleaks:
       enabled: true
@@ -164,12 +173,13 @@ knowledge_base:
   code_guidelines:
     enabled: true
     filePatterns:
-      - "**/.github/copilot-instructions.md"
-      - "**/README.md"
-      - "**/docs/**/*.md"
+      - '**/.github/copilot-instructions.md'
+      - '**/README.md'
+      - '**/docs/**/*.md'
 ```
 
 **What this fixes:**
+
 - ✅ `ignore_usernames: []` allows bot PRs to be reviewed
 - ✅ Path-specific instructions for browser extension code
 - ✅ Integrates with ESLint and security scanners
@@ -181,7 +191,8 @@ knowledge_base:
 
 **Location:** `.github/copilot-instructions.md`
 
-**Purpose:** Provide project-specific guidance to GitHub Copilot Code Review and Copilot Coding Agent
+**Purpose:** Provide project-specific guidance to GitHub Copilot Code Review and
+Copilot Coding Agent
 
 ```markdown
 # GitHub Copilot Instructions for copy-URL-on-hover_ChunkyEdition
@@ -200,6 +211,7 @@ knowledge_base:
 When reviewing code, prioritize findings in this order:
 
 ### CRITICAL (Must fix before merge):
+
 1. **CodeQL** HIGH/CRITICAL security findings
 2. **DeepSource** critical severity issues
 3. **ESLint** errors (not warnings)
@@ -207,6 +219,7 @@ When reviewing code, prioritize findings in this order:
 5. Missing message sender validation in browser.runtime.onMessage handlers
 
 ### HIGH PRIORITY (Should fix):
+
 1. **DeepSource** high severity issues
 2. **ESLint** warnings in new code
 3. Test coverage drops below current level
@@ -215,6 +228,7 @@ When reviewing code, prioritize findings in this order:
 6. Missing error handling in async functions
 
 ### MEDIUM PRIORITY (Nice to fix):
+
 1. **DeepSource** medium severity issues
 2. Code complexity warnings (CC > 15)
 3. Missing JSDoc comments for public functions
@@ -229,17 +243,20 @@ When reviewing code, prioritize findings in this order:
 When DeepSource flags an issue:
 
 1. **Read the full explanation** - DeepSource provides context
-2. **Check for Autofix availability** - If DeepSource offers an autofix, review it first
-3. **Combine with broader context** - Consider how the fix affects other parts of the codebase
+2. **Check for Autofix availability** - If DeepSource offers an autofix, review
+   it first
+3. **Combine with broader context** - Consider how the fix affects other parts
+   of the codebase
 4. **Explain disagreements** - If you disagree with a finding, document why
 
 **Example response:**
 ```
-DeepSource correctly identified this issue. However, based on how this 
-function is used in background.js (lines 234-256), I recommend a different 
-approach that also addresses the race condition on line 245:
-[Show enhanced fix]
-```
+
+DeepSource correctly identified this issue. However, based on how this function
+is used in background.js (lines 234-256), I recommend a different approach that
+also addresses the race condition on line 245: [Show enhanced fix]
+
+````
 
 ### Working with CodeRabbit Findings
 
@@ -277,19 +294,20 @@ browser.runtime.onMessage.addListener((message, sender) => {
     console.error('Message from unknown sender:', sender);
     return Promise.reject(new Error('Unauthorized'));
   }
-  
+
   // Validate sender tab if applicable
   if (sender.tab && !sender.tab.id) {
     return Promise.reject(new Error('Invalid tab'));
   }
-  
+
   if (message.action === 'getData') {
     return processData(message.data);
   }
 });
-```
+````
 
 **Always check:**
+
 - ✅ Sender ID matches extension ID
 - ✅ Sender tab is valid (if applicable)
 - ✅ Message format is validated before processing
@@ -312,7 +330,7 @@ async function saveState(state) {
     if (stateSize > 100 * 1024) {
       throw new Error(`State too large: ${stateSize} bytes (max 100KB)`);
     }
-    
+
     await browser.storage.sync.set({ state });
   } catch (error) {
     // Handle quota exceeded
@@ -330,6 +348,7 @@ async function saveState(state) {
 ```
 
 **Always:**
+
 - ✅ Wrap all storage calls in try-catch
 - ✅ Check quota limits (100KB for sync, ~10MB for local)
 - ✅ Provide user feedback for storage failures
@@ -344,7 +363,7 @@ async function saveState(state) {
 async function getTabState(tabId) {
   const tab = await browser.tabs.get(tabId);
   const cookieStoreId = tab.cookieStoreId || 'firefox-default';
-  
+
   // Use cookieStoreId as key to isolate state per container
   const containerState = await getStateForContainer(cookieStoreId);
   return containerState;
@@ -359,6 +378,7 @@ function validateContainerAccess(sourceContainer, targetContainer) {
 ```
 
 **Always:**
+
 - ✅ Use `cookieStoreId` to isolate state between containers
 - ✅ Validate container ID before sharing data
 - ✅ Test with multiple containers active
@@ -431,7 +451,7 @@ try {
 }
 
 // ❌ Don't use console.log in production
-console.log('Debug info');  // Use proper logging
+console.log('Debug info'); // Use proper logging
 ```
 
 ---
@@ -499,7 +519,7 @@ function setupListener() {
 function setupListener() {
   const listener = handleUpdate;
   browser.tabs.onUpdated.addListener(listener);
-  
+
   // Return cleanup function
   return () => {
     browser.tabs.onUpdated.removeListener(listener);
@@ -536,14 +556,17 @@ browser.storage.sync.set({ data }).catch(error => {
 ## Final Notes
 
 When in doubt:
+
 1. **Prioritize security** over convenience
 2. **Add error handling** rather than assuming success
 3. **Write tests** before marking as done
 4. **Document decisions** in code comments
 5. **Ask for human review** on security-critical changes
 
-**Remember:** This extension handles user data and has access to browsing history. Security and privacy are paramount.
-```
+**Remember:** This extension handles user data and has access to browsing
+history. Security and privacy are paramount.
+
+````
 
 **What this provides:**
 - ✅ Project-specific rules for Copilot
@@ -571,7 +594,7 @@ describe('Extension Configuration', () => {
     // Basic test to ensure test infrastructure works
     expect(true).toBe(true);
   });
-  
+
   test('constants are defined correctly', () => {
     const MAX_STORAGE_SIZE = 100 * 1024; // 100KB
     expect(MAX_STORAGE_SIZE).toBe(102400);
@@ -582,12 +605,12 @@ describe('Helper Functions', () => {
   test('should validate cookieStoreId format', () => {
     const validId = 'firefox-container-1';
     const invalidId = '';
-    
+
     expect(validId).toMatch(/^firefox-/);
     expect(invalidId).not.toMatch(/^firefox-/);
   });
 });
-```
+````
 
 ---
 
@@ -680,6 +703,7 @@ git push
 ## What This Completes
 
 ### ✅ DeepSource Integration
+
 - Valid configuration file
 - JavaScript analyzer enabled
 - Test coverage tracking enabled
@@ -687,18 +711,21 @@ git push
 - Secrets scanner enabled
 
 ### ✅ CodeRabbit Integration
+
 - Reviews all PRs including bots
 - Path-specific instructions for extension code
 - ESLint and security integration
 - Reads project documentation
 
 ### ✅ GitHub Copilot Integration
+
 - Project-specific instructions provided
 - Tool priority defined
 - Security patterns documented
 - Common pitfalls highlighted
 
 ### ✅ Test Infrastructure
+
 - Jest configured
 - Initial test file created
 - Codecov ready to integrate
@@ -738,6 +765,7 @@ git push
 ### DeepSource Still Shows Error
 
 **Check:**
+
 - File encoding is UTF-8
 - No trailing whitespace
 - Indentation is consistent (2 spaces)
@@ -746,6 +774,7 @@ git push
 ### CodeRabbit Still Skips Bot PRs
 
 **Check:**
+
 - `.coderabbit.yaml` is in repository root (not `.github/`)
 - File name is exact: `.coderabbit.yaml` (not `.yml`)
 - `ignore_usernames: []` is empty list, not omitted
@@ -753,6 +782,7 @@ git push
 ### Copilot Doesn't Use Custom Instructions
 
 **Check:**
+
 - File is at `.github/copilot-instructions.md`
 - File is committed to main branch
 - Wait 5-10 minutes for Copilot to index changes

@@ -1,4 +1,4 @@
-name: "CodeQL Security Analysis"
+name: 'CodeQL Security Analysis'
 
 # WHEN THIS RUNS:
 # - On every push to main branch
@@ -6,11 +6,11 @@ name: "CodeQL Security Analysis"
 # - Weekly on Monday at 6am (to catch new vulnerability patterns)
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
-    - cron: '0 6 * * 1'  # Every Monday at 6am UTC
+    - cron: '0 6 * * 1' # Every Monday at 6am UTC
 
 # WHAT IT DOES:
 # Scans JavaScript code for security vulnerabilities, logic bugs, and unsafe patterns
@@ -21,23 +21,23 @@ jobs:
   analyze:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
-    
+
     # REQUIRED: Security permissions to write results
     permissions:
       security-events: write
       contents: read
       pull-requests: read
-    
+
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'javascript' ]
-    
+        language: ['javascript']
+
     steps:
       # Step 1: Get the code
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       # Step 2: Initialize CodeQL
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
@@ -45,19 +45,18 @@ jobs:
           languages: ${{ matrix.language }}
           # Use extended security queries for browser extensions
           queries: security-extended,security-and-quality
-      
+
       # Step 3: Build code (autobuild for JavaScript)
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
-      
+
       # Step 4: Run CodeQL analysis
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:${{matrix.language}}"
+          category: '/language:${{matrix.language}}'
         # This uploads results to GitHub Security tab
         # Copilot Code Review automatically reads these results
-
 # RESULT:
 # - Security alerts appear in GitHub Security tab
 # - Copilot sees vulnerabilities and explains them in PR reviews
