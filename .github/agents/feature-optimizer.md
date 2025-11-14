@@ -33,9 +33,9 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.8.12 - Hybrid Modular/EventBus):**
+**Current Repository Architecture (v1.5.8.13 - Hybrid Modular/EventBus):**
 
-**Quick Tabs Full Restoration (v1.5.8.12):**
+**Quick Tabs Full Restoration (v1.5.8.13):**
 - Complete UI with favicon, dynamic titles, Open in New Tab button, Pin button
 - 8-direction resize handles (all edges and corners)
 - Position/size persistence across tabs (fixes #35 & #51)
@@ -44,19 +44,19 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 - Removed "Persist Quick Tabs" setting (always enabled)
 
 
-- **Hybrid Modular Source** (v1.5.8.12+):
+- **Hybrid Modular Source** (v1.5.8.13+):
   - **src/content.js**: Main entry point - orchestrates all features via EventBus
   - **src/core/**: config.js, state.js, events.js, dom.js, browser-api.js, index.js (barrel file)
-    - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.8.12
+    - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.8.13
   - **src/features/**: Feature modules (EventBus-driven)
-    - **quick-tabs/**: index.js, window.js (renamed from quick-tab-window.js), minimized-manager.js, **panel.js (NEW v1.5.8.12 - Persistent floating panel manager)**
+    - **quick-tabs/**: index.js, window.js (renamed from quick-tab-window.js), minimized-manager.js, **panel.js (NEW v1.5.8.13 - Persistent floating panel manager)**
     - **notifications/**: index.js, toast.js (NEW), tooltip.js (NEW) - fully modularized
     - **url-handlers/**: 11 categorized modules (104 handlers total)
-  - **src/ui/**: components.js, css/ (NEW v1.5.8.12)
+  - **src/ui/**: components.js, css/ (NEW v1.5.8.13)
     - **css/**: base.css, notifications.css, quick-tabs.css - modular CSS system
   - **src/utils/**: debug.js, index.js (dom.js and browser-api.js moved to core/)
   - **dist/content.js**: Built bundle (~116KB, MUST NOT contain ES6 imports/exports)
-- **Build System**: Rollup bundler with comprehensive validation checks (v1.5.8.12+)
+- **Build System**: Rollup bundler with comprehensive validation checks (v1.5.8.13+)
   - Validates build output (file existence, sizes, no source leaks)
   - XPI package verification before release
   - See docs/manual/build-and-packaging-guide.md
@@ -67,8 +67,8 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 - **state-manager.js**: Container-aware Quick Tab state management
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.8.12
-- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.12):
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.8.13
+- **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.8.13):
   - Jest with browser API mocks (tests/setup.js)
   - Example tests (tests/example.test.js)
   - GitHub Actions workflows: code-quality, codeql-analysis, test-coverage, webext-lint, auto-format, release (enhanced)

@@ -43,7 +43,7 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Ensure comprehensive testing on both Firefox and Zen Browser
 - **Validate that current APIs (clipboard, storage, webRequest) still function correctly**
 
-## Extension Architecture Context (v1.5.8.12+)
+## Extension Architecture Context (v1.5.8.13+)
 
 **Current Technology Stack - CRITICAL FOR ROUTING:**
 

@@ -1,8 +1,42 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.8.12** - A feature-rich Firefox/Zen Browser extension with **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab management with Firefox Container support and Persistent Floating Panel Manager.
+**Version 1.5.8.13** - A feature-rich Firefox/Zen Browser extension with **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab management with Firefox Container support and Persistent Floating Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration and a persistent Quick Tabs Manager panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.8.13
+
+**🚀 Critical Fix: Eager Loading and Real-Time Cross-Tab Sync**
+
+This release fixes **Issue #35** (cross-tab persistence) and **Issue #51** (position/size sync) by implementing eager loading and BroadcastChannel-based real-time synchronization as specified in the QuickTabs-v1.5.8.13-Patch.md guide.
+
+**Key Improvements:**
+
+- ✅ **Eager Loading** - All Quick Tabs listeners and state hydration run immediately on content script load
+- ✅ **BroadcastChannel Sync** - Real-time cross-tab synchronization with <10ms latency (replaces polling)
+- ✅ **Storage Event Listeners** - Quick Tabs listen for storage changes from background script
+- ✅ **Immediate State Hydration** - Quick Tabs state restored from storage on page load (no user interaction needed)
+- ✅ **Broadcast Operations** - All Quick Tab operations (create, move, resize, minimize, restore, pin, close) broadcast to other tabs
+- ✅ **Container-Aware Sync** - Firefox Container isolation maintained in sync operations
+- ✅ **Position/Size Sync** - Quick Tab position and size changes sync instantly across all tabs (Issue #51)
+- ✅ **Cross-Tab Persistence** - Quick Tabs persist and sync across all browser tabs (Issue #35)
+
+**Technical Details:**
+
+- BroadcastChannel API for same-origin messaging
+- Storage listeners attached at QuickTabsManager initialization
+- State hydration from browser.storage.session (fast) or browser.storage.sync (fallback)
+- All handlers broadcast via `broadcast(type, data)` method
+- New methods: `setPosition()`, `setSize()` for receiving sync updates
+- Background script initialization remains eager (already implemented)
+
+**Fixes:**
+
+- Issue #35: Quick Tabs now persist and sync across all tabs in real-time
+- Issue #51: Position and size changes sync instantly between tabs
+- Quick Tabs Manager now shows accurate state across all browser contexts
+
+See [QuickTabs-v1.5.8.13-Patch.md](docs/manual/QuickTabs-v1.5.8.13-Patch.md) for implementation details.
 
 ## 🎉 What's New in v1.5.8.12
 
@@ -37,7 +71,7 @@ This release replaces the Firefox Sidebar API with a persistent, draggable, resi
 
 See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementation.md) for complete architecture details.
 
-## 📁 Repository Structure (v1.5.8.12 - Hybrid Architecture)
+## 📁 Repository Structure (v1.5.8.13 - Hybrid Architecture)
 
 **Source Files (Hybrid Modular/EventBus Structure)**:
 
@@ -754,6 +788,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.8.12  
-**Last Updated**: 2025-11-13  
+**Current Version**: 1.5.8.13  
+**Last Updated**: 2025-11-14  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
