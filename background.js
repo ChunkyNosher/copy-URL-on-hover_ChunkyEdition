@@ -74,10 +74,7 @@ async function initializeGlobalState() {
     result = await browser.storage.sync.get('quick_tabs_state_v2');
     if (result && result.quick_tabs_state_v2) {
       // v1.5.8.15 FIX: Check if it's container-aware format with wrapper
-      if (
-        typeof result.quick_tabs_state_v2 === 'object' &&
-        result.quick_tabs_state_v2.containers
-      ) {
+      if (typeof result.quick_tabs_state_v2 === 'object' && result.quick_tabs_state_v2.containers) {
         // New v1.5.8.15 format with wrapper
         globalQuickTabState.containers = result.quick_tabs_state_v2.containers;
       } else if (
