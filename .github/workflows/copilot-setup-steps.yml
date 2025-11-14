@@ -17,8 +17,7 @@ jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
     
-    # Timeout after 10 minutes (Copilot needs fast setup for optimal performance)
-    timeout-minutes: 10
+    timeout-minutes: 30
     
     # Environment variables for browser extension testing
     env:
