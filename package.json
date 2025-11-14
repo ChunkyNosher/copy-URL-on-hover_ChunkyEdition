@@ -35,7 +35,11 @@
     "prettier": "^3.2.5",
     "rollup": "^3.29.0",
     "sinon-chrome": "^3.0.1",
-    "web-ext": "^9.1.0"
+    "web-ext": "^9.1.0",
+    "@babel/preset-env": "^7.28.5",
+    "@babel/core": "^7.28.5",
+    "babel-jest": "^29.7.0",
+    "rollup": "^3.29.0"
   },
   "engines": {
     "node": ">=14.0.0"
