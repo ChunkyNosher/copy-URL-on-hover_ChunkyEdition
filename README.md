@@ -32,7 +32,6 @@ This release fixes the critical "Quick Tab immediately closes after opening" bug
 
 The "Quick Tab immediately closes" bug was caused by a race condition:
 
-
 1. Content script saves Quick Tab state to storage
 2. Storage event fires in the SAME tab that made the change
 3. Content script processes its own save as if from another tab
