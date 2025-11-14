@@ -12,7 +12,7 @@
 Version 1.5.8.15 fixes all major Quick Tabs bugs reported in v1.5.8.14:
 
 1. ✅ **Quick Tab immediately closes after creation** - FIXED
-2. ✅ **Panel not visible across tabs** - FIXED  
+2. ✅ **Panel not visible across tabs** - FIXED
 3. ✅ **"Close All" button doesn't work** - FIXED
 4. ⚠️ **Panel buttons don't respond** - Should be fixed (testing required)
 
@@ -40,10 +40,12 @@ User creates Quick Tab → Notification appears → Quick Tab flashes on screen 
 **The Problem:** Storage format mismatch
 
 **v1.5.8.14 (BROKEN):**
+
 - background.js saved: `quick_tabs_state_v2: { 'firefox-default': { tabs: [...] } }`
 - Content script expected: `quick_tabs_state_v2: { containers: { 'firefox-default': { tabs: [...] } }, saveId, timestamp }`
 
 **What happened:**
+
 1. Content script creates Quick Tab locally
 2. Sends `CREATE_QUICK_TAB` message to background
 3. Background adds tab to `globalQuickTabState.containers` object
@@ -79,6 +81,7 @@ await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
 **Files Modified:**
 
 **background.js (7 locations):**
+
 1. Line 611-629: CREATE_QUICK_TAB handler
 2. Line 708-726: CLOSE_QUICK_TAB handler
 3. Line 817-842: UPDATE_QUICK_TAB_POSITION handler
@@ -89,6 +92,7 @@ await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
 8. Line 1107-1128: storage.onChanged listener (extract containers)
 
 **panel.js (3 locations):**
+
 1. closeMinimizedQuickTabs() - read/write with wrapper
 2. closeAllQuickTabs() - write with wrapper
 3. updatePanelContent() - read with wrapper
@@ -96,6 +100,7 @@ await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
 **Backward Compatibility:**
 
 All read operations support three formats:
+
 - **v1.5.8.15+:** `{ containers: {...}, saveId, timestamp }`
 - **v1.5.8.14:** `{ 'firefox-default': { tabs: [...] } }` (unwrapped)
 - **Legacy:** `{ tabs: [...] }` (flat array)
@@ -125,10 +130,10 @@ this.broadcastChannel = null; // v1.5.8.15 - For cross-tab panel sync
 // Initialize BroadcastChannel
 setupBroadcastChannel() {
   this.broadcastChannel = new BroadcastChannel('quick-tabs-panel-sync');
-  
+
   this.broadcastChannel.onmessage = event => {
     const { type } = event.data;
-    
+
     switch (type) {
       case 'PANEL_OPENED':
         if (!this.isOpen) this.openSilent();
@@ -143,7 +148,7 @@ setupBroadcastChannel() {
 // Broadcast when opening
 open() {
   // ... existing code ...
-  
+
   // v1.5.8.15: Broadcast to other tabs
   if (this.broadcastChannel) {
     this.broadcastChannel.postMessage({
@@ -170,6 +175,7 @@ open() {
 6. Panel now visible in both tabs
 
 **BroadcastChannel benefits:**
+
 - Instant sync (<10ms latency)
 - Only fires in OTHER tabs (not sender)
 - No polling needed
@@ -214,6 +220,7 @@ const emptyState = {
 ```
 
 **Also fixed:**
+
 - `closeMinimizedQuickTabs()` - Read from `state.containers`, save with wrapper
 - `updatePanelContent()` - Extract containers from wrapper: `quickTabsState = state.containers || state`
 
@@ -235,10 +242,10 @@ const containersList = panel.querySelector('#panel-containersList');
 containersList.addEventListener('click', async e => {
   const button = e.target.closest('button[data-action]');
   if (!button) return;
-  
+
   const action = button.dataset.action;
   const quickTabId = button.dataset.quickTabId;
-  
+
   switch (action) {
     case 'minimize':
       await this.minimizeQuickTab(quickTabId);
@@ -260,8 +267,8 @@ const closeBtn = document.createElement('button');
 closeBtn.className = 'panel-btn-icon';
 closeBtn.textContent = '✕';
 closeBtn.title = 'Close';
-closeBtn.dataset.action = 'close';       // ✓ Correct
-closeBtn.dataset.quickTabId = tab.id;   // ✓ Correct
+closeBtn.dataset.action = 'close'; // ✓ Correct
+closeBtn.dataset.quickTabId = tab.id; // ✓ Correct
 ```
 
 **Hypothesis:** Bug was likely caused by Bug #1 (storage format mismatch). Since Quick Tabs were being destroyed immediately after creation, the panel had no valid Quick Tab IDs to work with. When buttons were clicked, `quickTabsManager.closeById(quickTabId)` couldn't find the tab because it was already destroyed.
@@ -275,17 +282,20 @@ closeBtn.dataset.quickTabId = tab.id;   // ✓ Correct
 ### Test 1: Quick Tab Creation (Bug #1)
 
 **Steps:**
+
 1. Open any webpage
 2. Hover over a link
 3. Press Q (or Quick Tab shortcut)
 
 **Expected:**
+
 - ✅ Quick Tab opens
 - ✅ Quick Tab STAYS open
 - ✅ Console shows: `[QuickTabsManager] Quick Tab created successfully`
 - ✅ Console shows: `[QuickTabsManager] Ignoring own save operation`
 
 **Not Expected:**
+
 - ❌ `Removing Quick Tab (not in storage)`
 - ❌ Quick Tab closes immediately
 - ❌ `NS_BINDING_ABORTED`
@@ -295,20 +305,22 @@ closeBtn.dataset.quickTabId = tab.id;   // ✓ Correct
 ### Test 2: Panel Cross-Tab Sync (Bug #2)
 
 **Steps:**
+
 1. Open Tab A (any website)
 2. Press Ctrl+Alt+Z → Panel opens
 3. Open Tab B (different website)
 4. Switch to Tab B
 
 **Expected:**
+
 - ✅ Panel visible in Tab A
 - ✅ Panel visible in Tab B (same position/size)
 - ✅ Console shows: `[PanelManager] Opening panel (broadcast from another tab)`
 
-**Steps (continued):**
-5. In Tab B, press Ctrl+Alt+Z to close panel
+**Steps (continued):** 5. In Tab B, press Ctrl+Alt+Z to close panel
 
 **Expected:**
+
 - ✅ Panel closes in Tab B
 - ✅ Panel closes in Tab A
 - ✅ Console shows: `[PanelManager] Closing panel (broadcast from another tab)`
@@ -318,6 +330,7 @@ closeBtn.dataset.quickTabId = tab.id;   // ✓ Correct
 ### Test 3: Close All Functionality (Bug #3)
 
 **Steps:**
+
 1. Create 5 Quick Tabs
 2. Minimize all 5
 3. Open panel (Ctrl+Alt+Z)
@@ -327,6 +340,7 @@ closeBtn.dataset.quickTabId = tab.id;   // ✓ Correct
 7. Open panel again
 
 **Expected:**
+
 - ✅ Panel shows 1 Quick Tab (the new one)
 - ❌ Panel does NOT show 6 Quick Tabs (5 old + 1 new)
 
@@ -335,6 +349,7 @@ closeBtn.dataset.quickTabId = tab.id;   // ✓ Correct
 ### Test 4: Panel Buttons (Bug #4)
 
 **Steps:**
+
 1. Create 3 Quick Tabs
 2. Minimize 2 of them
 3. Open panel
@@ -343,6 +358,7 @@ closeBtn.dataset.quickTabId = tab.id;   // ✓ Correct
 6. Click close button on any tab
 
 **Expected:**
+
 - ✅ Console logs: `[DEBUG] Minimize clicked for: qt-xxx`
 - ✅ Active tab minimizes and disappears from viewport
 - ✅ Console logs: `[DEBUG] Restore clicked for: qt-xxx`
@@ -363,27 +379,27 @@ To prevent race conditions where a tab processes its own storage changes:
 generateSaveId() {
   const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   this.currentSaveId = saveId;
-  
+
   // Keep for 500ms (accounts for slow storage propagation)
   setTimeout(() => {
     if (this.currentSaveId === saveId) {
       this.currentSaveId = null;
     }
   }, 500);
-  
+
   return saveId;
 }
 
 // Check on storage change
 browser.storage.onChanged.addListener((changes, areaName) => {
   const newValue = changes.quick_tabs_state_v2.newValue;
-  
+
   // CRITICAL: Ignore own saves
   if (newValue && newValue.saveId === this.currentSaveId) {
     console.log('[QuickTabsManager] Ignoring own save operation');
     return; // Don't process our own changes
   }
-  
+
   // Process external changes only
   this.syncFromStorage(newValue);
 });
@@ -448,17 +464,20 @@ if (state.containers) {
 ## Performance Impact
 
 **Before (v1.5.8.14):**
+
 - Quick Tabs destroyed immediately after creation
 - Constant storage thrashing
 - User frustration 🔴
 
 **After (v1.5.8.15):**
+
 - Quick Tabs persist correctly ✅
 - Panel syncs instantly (<10ms) across tabs ✅
 - "Close All" works as expected ✅
 - Zero storage race conditions ✅
 
 **Metrics:**
+
 - Storage writes: ~5 per Quick Tab action (same as before)
 - BroadcastChannel overhead: <1ms per message
 - Panel sync latency: <10ms (vs 100-200ms with storage polling)
@@ -468,16 +487,19 @@ if (state.containers) {
 ## References
 
 **Related Issues:**
+
 - Issue #35: Quick Tabs don't persist across tabs
 - Issue #47: All intended behaviors for Quick Tabs
 - Issue #51: Quick Tabs' Size and Position Unable to Update
 
 **Related Documentation:**
+
 - `docs/manual/quick-tab-bug-fix-v1-5-8-13.md` - Previous bug analysis
 - `docs/manual/v1589-quick-tabs-root-cause.md` - v1.5.8.9 issue
 - `docs/manual/BroadcastChannel-localStorage-guide.md` - API comparison
 
 **API Documentation:**
+
 - [MDN: BroadcastChannel](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel)
 - [MDN: browser.storage.sync](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/sync)
 
