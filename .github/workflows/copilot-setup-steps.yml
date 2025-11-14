@@ -13,7 +13,7 @@ on:
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 59
     
     env:
       NODE_ENV: development
@@ -29,10 +29,10 @@ jobs:
         with:
           fetch-depth: 0
       
-      - name: Setup Node.js 18 with npm cache
+      - name: Setup Node.js 22 with npm cache
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: 'package-lock.json'
       
