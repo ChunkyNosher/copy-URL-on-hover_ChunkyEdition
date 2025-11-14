@@ -1,99 +1,236 @@
 # ==============================================================================
-# QODO MERGE (PR-AGENT) CONFIGURATION
+# QODO MERGE (PR-AGENT) CONFIGURATION - UPDATED NOV 2025
 # ==============================================================================
-# This file configures Qodo Merge to work optimally with GitHub Copilot Agents
-# 
-# Key feature: Reviews DRAFT PRs (which Copilot creates) with incremental feedback
+# Based on latest documentation and default configuration.toml
+# Reference: https://github.com/qodo-ai/pr-agent/blob/main/pr_agent/settings/configuration.toml
 # ==============================================================================
 
-[github_app]
+[config]
 # -----------------------------------------------------------------------------
-# CRITICAL SETTING: Enable draft PR reviews
+# MODEL CONFIGURATION (CRITICAL UPDATE!)
 # -----------------------------------------------------------------------------
-# WHY: GitHub Copilot creates DRAFT PRs by default
-# Without this, Qodo waits until "Ready for Review" (after Copilot finishes)
-# With this, Qodo reviews while Copilot is still working
-feedback_on_draft_pr = true
+# DEFAULT MODEL (as of October 2025): o4-mini
+# Docs: https://qodo-merge-docs.qodo.ai/core-abilities/models/
+model = "o4-mini"
+# OPTIONS:
+#   "o4-mini" - Default, OpenAI's latest reasoning model (recommended)
+#   "gpt-5" - Available but not default
+#   "claude-4-sonnet" - Anthropic's latest
+#   "gemini-2.5-pro" - Google's latest
+#   "deepseek/r1" - DeepSeek reasoning model
+# BEST: "o4-mini" (default, optimized for code analysis)
+
+fallback_models = ["gpt-4.1"]
+# OPTIONS: Any model from above list
+# BEST: "gpt-4.1" (default fallback)
+# NOTE: gpt-4 is deprecated, use gpt-4.1
+
+# Token limits
+max_model_tokens = 64000  # Updated default (was 8000 in old versions)
+# OPTIONS: 1000-200000 depending on model
+# BEST: 32000 (default, good balance)
+# WHY: o4-mini supports up to 128K but 32K is efficient for most PRs
+
+# Response language
+response_language = "en-US"
+# OPTIONS: Any ISO 639 + ISO 3166 locale (e.g., "es-ES", "ja-JP")
+# BEST: "en-US" (your docs are in English)
+
+# Temperature and seed for consistency
+temperature = 0.2
+# OPTIONS: 0.0-2.0
+# BEST: 0.2 (default, good balance of creativity vs consistency)
+# WHY: Lower = more deterministic, higher = more creative
+
+seed = -1
+# OPTIONS: -1 (random) or positive integer (fixed)
+# BEST: -1 (allows some variation in responses)
+# WHY: Fixed seed can make responses too rigid
+
+# Reasoning effort (for o4-mini and reasoning models)
+reasoning_effort = "medium"
+# OPTIONS: "low" | "medium" | "high"
+# BEST: "medium" (default)
+# WHY: "high" is expensive, "low" may miss issues
+
+# Output configuration
+verbosity_level = 1
+# OPTIONS: 0 (silent) | 1 (normal) | 2 (verbose)
+# BEST: 1 (see what's happening without spam)
+
+output_relevant_configurations = false
 # OPTIONS: true | false
-# BEST: true (for Copilot workflow)
+# BEST: false (set to true for debugging config issues)
+
+# AI timeout
+ai_timeout = 120
+# OPTIONS: 30-600 seconds
+# BEST: 120 (default, 2 minutes)
+# WHY: Balance between giving model time and not hanging
+
+# ==============================================================================
+# GITHUB APP CONFIGURATION (WHEN QODO RUNS)
+# ==============================================================================
+[github_app]
 
 # -----------------------------------------------------------------------------
 # PR Actions that trigger Qodo Merge
 # -----------------------------------------------------------------------------
-# These are GitHub PR events that cause Qodo to run
-handle_pr_actions = [
-    'opened',          # When PR is first created (including draft)
-    'reopened',        # When a closed PR is reopened
-    'ready_for_review', # When draft becomes ready for human review
-    'synchronize'      # When new commits are pushed (CRITICAL for continuous review)
-]
-# OPTIONS: Any subset of above
-# BEST: All 4 (maximum coverage)
-# WHY 'synchronize': This triggers on EVERY commit Copilot pushes
+handle_pr_actions = ['opened', 'reopened', 'ready_for_review']
+# OPTIONS: 'opened' | 'reopened' | 'ready_for_review' | 'synchronize'
+# BEST: ['opened', 'reopened', 'ready_for_review']
+# WHY: Don't include 'synchronize' here (use handle_push_trigger instead)
+# NOTE: 'synchronize' = when commits are pushed to PR
 
-# -----------------------------------------------------------------------------
-# Commands to run automatically on PR events above
-# -----------------------------------------------------------------------------
+# Commands to run when PR is opened/reopened/ready
 pr_commands = [
-    "/describe",    # Auto-generate PR description
-    "/review --pr_reviewer.incremental_review=true",  # Review code incrementally
+    "/describe --pr_description.final_update_message=false",
+    "/review",
 ]
 # OPTIONS:
-#   "/describe" - Generates AI description of changes
-#   "/review" - Reviews code
-#   "/improve" - Suggests improvements
-#   "/ask <question>" - Asks AI a question
-# BEST: describe + review (your current setup)
+#   "/describe" - Generate PR description
+#   "/review" - Review code
+#   "/improve" - Code suggestions
+#   "/ask <question>" - Ask AI a question
+# BEST: describe + review (your original was better with improve removed)
+# WHY: /improve can be overwhelming on first review
 
 # -----------------------------------------------------------------------------
-# CRITICAL: Enable push triggers for continuous feedback
+# CRITICAL: Draft PR support (for Copilot workflow)
 # -----------------------------------------------------------------------------
-# WHY: This makes Qodo review on EVERY COMMIT, not just PR open/close
-# IMPACT: Copilot gets feedback after each commit it pushes
+feedback_on_draft_pr = true
+# OPTIONS: true | false
+# BEST: true (MUST be true for Copilot Agent workflow!)
+# WHY: Copilot creates draft PRs, without this Qodo waits until ready
+
+# -----------------------------------------------------------------------------
+# CRITICAL: Push trigger for continuous feedback (ENHANCED)
+# -----------------------------------------------------------------------------
 handle_push_trigger = true
 # OPTIONS: true | false
-# BEST: true (for Copilot continuous feedback)
+# BEST: true (enables incremental reviews on each commit)
+# WHY: This is how incremental review actually works!
 
-# -----------------------------------------------------------------------------
+# IMPORTANT NEW SETTINGS (not in original config):
+push_trigger_ignore_bot_commits = true
+# OPTIONS: true | false
+# BEST: true
+# WHY: Don't review commits from bots (DeepSource, Prettier, etc.)
+
+push_trigger_ignore_merge_commits = true
+# OPTIONS: true | false
+# BEST: true
+# WHY: Merge commits don't contain real code changes
+
+push_trigger_wait_for_initial_review = true
+# OPTIONS: true | false
+# BEST: true
+# WHY: Wait for first full review before incremental reviews
+
+push_trigger_pending_tasks_backlog = true
+# OPTIONS: true | false
+# BEST: true
+# WHY: Queue reviews if Copilot pushes many commits quickly
+
+push_trigger_pending_tasks_ttl = 300
+# OPTIONS: 60-3600 seconds
+# BEST: 300 (5 minutes)
+# WHY: Don't let pending reviews pile up forever
+
 # Commands to run on each commit push
-# -----------------------------------------------------------------------------
 push_commands = [
-    "/review --pr_reviewer.incremental_review=true",
+    "/review",
 ]
 # OPTIONS: Same as pr_commands
-# BEST: Just review (don't regenerate description on every commit)
-# WHY: Incremental review is fast, only reviews NEW changes
+# BEST: Just "/review" (don't regenerate description on every commit)
+# WHY: Incremental review is automatic with handle_push_trigger=true
+# NOTE: No need for --pr_reviewer.incremental_review flag here!
 
 # ==============================================================================
-# PR REVIEWER CONFIGURATION
+# PR REVIEWER CONFIGURATION (HOW QODO REVIEWS)
 # ==============================================================================
 [pr_reviewer]
 
 # -----------------------------------------------------------------------------
-# Incremental review mode (CRITICAL for performance)
+# Review requirements
 # -----------------------------------------------------------------------------
-# WHY: Without this, Qodo re-reviews ENTIRE PR on every commit (slow!)
-# With this, Qodo only reviews NEW changes since last review (fast!)
-incremental_review = true
+require_score_review = false
 # OPTIONS: true | false
-# BEST: true (must use with push_commands)
+# BEST: false (score isn't critical for browser extensions)
+
+require_tests_review = true
+# OPTIONS: true | false
+# BEST: true (important to check test coverage)
+# WHY: You're building test suite gradually
+
+require_estimate_effort_to_review = true
+# OPTIONS: true | false
+# BEST: true (helps prioritize review time)
+
+require_can_be_split_review = false
+# OPTIONS: true | false
+# BEST: false (not critical for incremental reviews)
+
+require_security_review = true
+# OPTIONS: true | false
+# BEST: true (CRITICAL for browser extensions!)
+# WHY: Security issues in extensions are high-impact
+
+require_ticket_analysis_review = true
+# OPTIONS: true | false
+# BEST: true (verifies PR matches issue requirements)
 
 # -----------------------------------------------------------------------------
-# Browser extension-specific review instructions
+# Review behavior
 # -----------------------------------------------------------------------------
-# These instructions are included in every review prompt to the AI
+persistent_comment = true
+# OPTIONS: true | false
+# BEST: true (updates same comment instead of creating new ones)
+# WHY: Cleaner PR interface
+
+final_update_message = true
+# OPTIONS: true | false
+# BEST: true (adds "Review complete" message)
+
+enable_help_text = false
+# OPTIONS: true | false
+# BEST: false (you already know how to use Qodo)
+
+# -----------------------------------------------------------------------------
+# Review labels
+# -----------------------------------------------------------------------------
+enable_review_labels_security = true
+# OPTIONS: true | false
+# BEST: true (labels PRs with security issues)
+
+enable_review_labels_effort = true
+# OPTIONS: true | false
+# BEST: true (labels PRs by review effort: small/medium/large)
+
+# -----------------------------------------------------------------------------
+# Review limits
+# -----------------------------------------------------------------------------
+num_max_findings = 5
+# OPTIONS: 1-10
+# BEST: 3 (default, focused feedback)
+# WHY: More findings = overwhelming, fewer = may miss issues
+
+# -----------------------------------------------------------------------------
+# Browser extension-specific instructions
+# -----------------------------------------------------------------------------
 extra_instructions = """
 You are reviewing a Firefox browser extension. Focus on:
 
 1. SECURITY (Critical):
    - Content Security Policy (CSP) violations
    - Permission over-requesting in manifest.json
-   - Message passing without sender validation
+   - Message passing without sender validation (browser.runtime.onMessage)
    - XSS vulnerabilities in content scripts
    - eval() usage (forbidden in extensions)
+   - Hardcoded secrets or API keys
 
 2. BROWSER COMPATIBILITY:
-   - Manifest V2 compliance (required for webRequestBlocking)
+   - Manifest V2 compliance (REQUIRED for webRequestBlocking)
    - Firefox-specific APIs (browser.* not chrome.*)
    - Container/cookieStore isolation logic
    - Proper use of contextualIdentities API
@@ -101,7 +238,7 @@ You are reviewing a Firefox browser extension. Focus on:
 3. PERFORMANCE:
    - Memory leaks in event listeners (addEventListener without removeEventListener)
    - Storage quota management (browser.storage.sync has 100KB limit)
-   - Race conditions in async operations
+   - Race conditions in async operations (Promise.all, async/await)
    - Excessive DOM manipulation in content scripts
 
 4. STATE MANAGEMENT:
@@ -111,145 +248,127 @@ You are reviewing a Firefox browser extension. Focus on:
    - WeakMap usage for memory leak prevention
 
 5. CODE QUALITY:
-   - Consistent error handling patterns
-   - Proper async/await usage
+   - Consistent error handling patterns (try/catch in async functions)
+   - Proper async/await usage (no dangling Promises)
    - No console.log in production (use debug flag)
    - JSDoc comments for public APIs
+   - Proper error propagation (don't swallow errors silently)
+
+6. BROWSER EXTENSION BEST PRACTICES:
+   - Background scripts should be event-driven (not long-running)
+   - Content scripts should minimize global scope pollution
+   - Use message passing for cross-context communication
+   - Proper cleanup on extension unload
 """
 # OPTIONS: Any natural language instructions
 # BEST: Domain-specific focus (browser extensions in your case)
 
-# -----------------------------------------------------------------------------
-# Review requirements
-# -----------------------------------------------------------------------------
-# Control what aspects Qodo MUST review
-require_test_review = false      # Don't require tests (Copilot adds them incrementally)
-require_security_review = true   # ALWAYS review security (critical for browser extensions)
-require_score_review = false     # Don't require code score calculation (faster reviews)
-require_tests_review = false     # Don't require test file review (same as require_test_review)
-# OPTIONS: true | false for each
-# BEST FOR YOU:
-#   - security: true (browser extensions have security implications)
-#   - tests: false (you're building test suite gradually)
-
-# -----------------------------------------------------------------------------
-# Code suggestions configuration
-# -----------------------------------------------------------------------------
-# How many code suggestions to provide per review
-num_code_suggestions = 5
-# OPTIONS: 0-10
-# BEST: 5 (good balance of detail vs overwhelming)
-# IMPACT: Higher = more suggestions but longer review time
-
-# Show inline code comments (not just summary)
-inline_code_comments = true
-# OPTIONS: true | false
-# BEST: true (developers see suggestions in context)
-
 # ==============================================================================
-# PR DESCRIPTION CONFIGURATION
+# PR DESCRIPTION CONFIGURATION (HOW QODO DESCRIBES)
 # ==============================================================================
 [pr_description]
 
 # Auto-generate PR descriptions
-publish_description = true
+publish_labels = false
 # OPTIONS: true | false
-# BEST: true (helpful for Copilot PRs which may have minimal descriptions)
+# BEST: false (you don't use GitHub labels for PR classification)
 
-# Keep original user description if it exists
 add_original_user_description = true
 # OPTIONS: true | false
 # BEST: true (preserves Copilot's description, adds to it)
 
-# Show file types in description (Frontend, Backend, Tests, etc.)
+generate_ai_title = false
+# OPTIONS: true | false
+# BEST: false (Copilot generates good titles already)
+
+use_bullet_points = true
+# OPTIONS: true | false
+# BEST: true (more readable)
+
+final_update_message = true
+# OPTIONS: true | false
+# BEST: true (adds "Description complete" message)
+
+enable_help_text = false
+# OPTIONS: true | false
+# BEST: false (you know how to use Qodo)
+
+enable_pr_diagram = false
+# OPTIONS: true | false
+# BEST: false (diagrams can be cluttering)
+# WHY: Use only if you want visual PR flow diagrams
+
+# Changes walkthrough section
 enable_semantic_files_types = true
 # OPTIONS: true | false
-# BEST: true (useful overview)
+# BEST: true (shows file types: Frontend, Backend, Tests, etc.)
 
-# Make file list collapsible in description
-collapsible_file_list = true
+collapsible_file_list = 'adaptive'
+# OPTIONS: true | false | 'adaptive'
+# BEST: 'adaptive' (collapses if > 6 files)
+# WHY: Automatic based on PR size
+
+collapsible_file_list_threshold = 6
+# OPTIONS: 1-100
+# BEST: 6 (default)
+
+include_generated_by_header = true
 # OPTIONS: true | false
-# BEST: true (cleaner UI, less scrolling)
+# BEST: true (transparency about AI generation)
 
 # ==============================================================================
-# CODE SUGGESTIONS CONFIGURATION
+# CODE SUGGESTIONS CONFIGURATION (IF USING /improve)
 # ==============================================================================
 [pr_code_suggestions]
 
-# Number of suggestions per code chunk
-num_code_suggestions_per_chunk = 3
+# Focus only on problems (not style improvements)
+focus_only_on_problems = true
+# OPTIONS: true | false
+# BEST: true
+# WHY: Style is handled by ESLint/Prettier, focus on real issues
+
+# Number of suggestions per chunk
+num_code_suggestions_per_chunk = 5
 # OPTIONS: 1-10
-# BEST: 3 (focused suggestions per section)
+# BEST: 3 (focused suggestions)
 
-# Suggestion categories to focus on
-categories = [
-    "security",      # Security vulnerabilities
-    "performance",   # Performance issues
-    "bug_risk",      # Potential bugs
-    "best_practice"  # Code style and patterns
-]
-# OPTIONS: Include/exclude categories as needed
-# BEST: All 4 (comprehensive coverage)
-# IMPACT: Fewer categories = faster reviews but less coverage
+# Suggestions scoring
+suggestions_score_threshold = 0
+# OPTIONS: 0-10
+# BEST: 0 (show all suggestions)
+# WHY: Let developer decide what's important
 
-# ==============================================================================
-# CUSTOM COMPLIANCE RULES
-# ==============================================================================
-[pr_compliance]
-
-# -----------------------------------------------------------------------------
-# Rule 1: Enforce Manifest V2 (CRITICAL for your extension)
-# -----------------------------------------------------------------------------
-[[pr_compliance.custom_rules]]
-name = "Manifest V2 Required"
-description = "Extension must use Manifest V2 for webRequestBlocking support"
-severity = "high"
-pattern = "manifest_version.*3"  # Regex to detect Manifest V3
-action = "fail"                  # Fail the PR if found
-# SEVERITY OPTIONS: low | medium | high
-# ACTION OPTIONS: warn | fail
-# BEST: fail (Manifest V3 breaks webRequestBlocking)
-
-# -----------------------------------------------------------------------------
-# Rule 2: Warn about hardcoded URLs
-# -----------------------------------------------------------------------------
-[[pr_compliance.custom_rules]]
-name = "No Hardcoded URLs"
-description = "Avoid hardcoded http:// or https:// URLs (use constants)"
-severity = "medium"
-pattern = "https?://[a-z0-9-.]+"
-action = "warn"
-# BEST: warn (not critical but should fix)
-
-# -----------------------------------------------------------------------------
-# Rule 3: Check storage.sync usage
-# -----------------------------------------------------------------------------
-[[pr_compliance.custom_rules]]
-name = "Storage Sync Quota Check"
-description = "Ensure browser.storage.sync quota management (100KB limit)"
-severity = "medium"
-pattern = "browser\\.storage\\.sync\\.(set|get)"
-action = "warn"
-# BEST: warn (reminder to handle quota)
+# Commitable suggestions (one-click fix)
+commitable_code_suggestions = false
+# OPTIONS: true | false
+# BEST: false (safer to review before applying)
+# WHY: Auto-applying could break things
 
 # ==============================================================================
-# GLOBAL CONFIGURATION
+# REMOVED SECTIONS (NOT IN LATEST DOCS)
 # ==============================================================================
-[config]
 
-# AI model to use for reviews
-model = "gpt-4"
-# OPTIONS: "gpt-4" | "gpt-3.5-turbo" | "claude-2"
-# BEST: gpt-4 (most accurate, slower)
-# TRADEOFF: gpt-3.5-turbo is faster but less accurate
+# THE FOLLOWING SECTIONS WERE IN ORIGINAL CONFIG BUT DON'T EXIST:
 
-# Maximum tokens for AI responses
-max_model_tokens = 8000
-# OPTIONS: 1000-8000
-# BEST: 8000 (allows detailed reviews)
-# IMPACT: Lower = faster but less detail
+# [pr_compliance] - NO SUCH SECTION IN CONFIGURATION.TOML
+# [[pr_compliance.custom_rules]] - NO SUCH FEATURE DOCUMENTED
+# These may be:
+# - Qodo Merge Pro features (not in open-source)
+# - Deprecated features
+# - Incorrectly assumed from old docs
 
-# Logging verbosity
-verbosity_level = 1
-# OPTIONS: 0 (silent) | 1 (normal) | 2 (verbose)
-# BEST: 1 (see what Qodo is doing without spam)
+# ==============================================================================
+# CONFIGURATION PRECEDENCE
+# ==============================================================================
+# 1. Wiki config (.pr_agent.toml in repo wiki) - HIGHEST
+# 2. Local config (.pr_agent.toml in repo root) - MEDIUM
+# 3. Global config (pr-agent-settings repo) - LOWEST
+# 4. Built-in defaults (configuration.toml) - FALLBACK
+
+# Your local .pr_agent.toml will override defaults but be overridden by wiki
+
+# ==============================================================================
+# TESTING YOUR CONFIGURATION
+# ==============================================================================
+# To test: Comment "/config" on any PR to see active configuration
+# To debug: Set output_relevant_configurations = true temporarily
