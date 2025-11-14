@@ -3,7 +3,7 @@
  * COMPREHENSIVE TEST SUITE FOR COPY-URL-ON-HOVER EXTENSION
  * ==============================================================================
  * This test suite aims for high coverage of all source code and APIs
- * 
+ *
  * STRUCTURE:
  * 1. Manifest.json Validation
  * 2. Extension Configuration Tests
@@ -416,12 +416,7 @@ describe('StateManager', () => {
     manager.subscribe('isPanelOpen', listener);
     manager.set('isPanelOpen', true);
 
-    expect(listener).toHaveBeenCalledWith(
-      'isPanelOpen',
-      true,
-      false,
-      manager.state
-    );
+    expect(listener).toHaveBeenCalledWith('isPanelOpen', true, false, manager.state);
   });
 
   /**
@@ -638,9 +633,7 @@ describe('Browser API Wrappers', () => {
 
     const container = await browserApi.getContainer(1);
 
-    expect(browser.contextualIdentities.get).toHaveBeenCalledWith(
-      'firefox-container-1'
-    );
+    expect(browser.contextualIdentities.get).toHaveBeenCalledWith('firefox-container-1');
     expect(container).toEqual(mockContainer);
   });
 
@@ -910,13 +903,7 @@ describe('Container Isolation', () => {
    * WHY: Must reject non-Firefox container IDs
    */
   test('should reject invalid container IDs', () => {
-    const invalidIds = [
-      '',
-      'chrome-default',
-      'container-1',
-      null,
-      undefined
-    ];
+    const invalidIds = ['', 'chrome-default', 'container-1', null, undefined];
 
     invalidIds.forEach(id => {
       if (id) {
@@ -1097,13 +1084,9 @@ describe('Error Handling', () => {
   test('should handle storage quota exceeded', async () => {
     const browserApi = require('../src/core/browser-api.js');
 
-    browser.storage.local.set.mockRejectedValue(
-      new Error('QuotaExceededError')
-    );
+    browser.storage.local.set.mockRejectedValue(new Error('QuotaExceededError'));
 
-    await expect(
-      browserApi.setStorage({ largeData: 'x'.repeat(200000) })
-    ).rejects.toThrow();
+    await expect(browserApi.setStorage({ largeData: 'x'.repeat(200000) })).rejects.toThrow();
   });
 
   /**
@@ -1113,13 +1096,9 @@ describe('Error Handling', () => {
   test('should handle invalid messages', async () => {
     const browserApi = require('../src/core/browser-api.js');
 
-    browser.runtime.sendMessage.mockRejectedValue(
-      new Error('Could not establish connection')
-    );
+    browser.runtime.sendMessage.mockRejectedValue(new Error('Could not establish connection'));
 
-    await expect(
-      browserApi.sendMessageToBackground({ invalid: true })
-    ).rejects.toThrow();
+    await expect(browserApi.sendMessageToBackground({ invalid: true })).rejects.toThrow();
   });
 
   /**
@@ -1139,7 +1118,7 @@ describe('Error Handling', () => {
 // ==============================================================================
 /**
  * TO REACH 70%+ COVERAGE:
- * 
+ *
  * 1. Test background.js message handlers
  * 2. Test state-manager.js persistence logic
  * 3. Test popup.js UI interactions
@@ -1150,7 +1129,7 @@ describe('Error Handling', () => {
  * 8. Add edge case tests for each function
  * 9. Test async error scenarios
  * 10. Test browser API polyfills
- * 
+ *
  * COVERAGE GOALS:
  * - Core modules: 80%+ (config, state, browser-api, dom)
  * - Features: 60%+ (quick-tabs, tooltips, notifications)
