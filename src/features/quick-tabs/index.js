@@ -69,6 +69,9 @@ class QuickTabsManager {
     // EAGER LOADING v1.5.8.13: Set up message listeners immediately
     this.setupMessageListeners();
 
+    // v1.5.8.14: Set up emergency save handlers
+    this.setupEmergencySaveHandlers();
+
     // EAGER LOADING v1.5.8.13: Hydrate state from storage immediately on load
     await this.hydrateStateFromStorage();
 
@@ -210,6 +213,63 @@ class QuickTabsManager {
     });
 
     console.log('[QuickTabsManager] Message listeners attached');
+  }
+
+  /**
+   * v1.5.8.14 - Set up emergency save handlers for tab switching and unload
+   */
+  setupEmergencySaveHandlers() {
+    // Emergency save when tab becomes hidden (user switches tabs)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.tabs.size > 0) {
+        console.log('[QuickTabsManager] Tab hidden - triggering emergency save');
+        this.saveCurrentStateToBackground();
+      }
+    });
+
+    // Emergency save before page unload
+    window.addEventListener('beforeunload', () => {
+      if (this.tabs.size > 0) {
+        console.log('[QuickTabsManager] Page unloading - triggering emergency save');
+        this.saveCurrentStateToBackground();
+      }
+    });
+
+    console.log('[QuickTabsManager] Emergency save handlers attached');
+  }
+
+  /**
+   * v1.5.8.14 - Save current Quick Tabs state to background script
+   */
+  saveCurrentStateToBackground() {
+    if (this.tabs.size === 0) return;
+
+    const saveId = this.generateSaveId();
+    const tabsArray = Array.from(this.tabs.values()).map(tabWindow => ({
+      id: tabWindow.id || tabWindow.element?.id,
+      url: tabWindow.url || tabWindow.iframe?.src,
+      left: parseInt(tabWindow.element?.style.left) || 100,
+      top: parseInt(tabWindow.element?.style.top) || 100,
+      width: parseInt(tabWindow.element?.style.width) || 800,
+      height: parseInt(tabWindow.element?.style.height) || 600,
+      title: tabWindow.title || 'Quick Tab',
+      cookieStoreId: tabWindow.cookieStoreId || 'firefox-default',
+      minimized: tabWindow.minimized || false,
+      pinnedToUrl: tabWindow.pinnedToUrl || null
+    }));
+
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'EMERGENCY_SAVE_QUICK_TABS',
+          tabs: tabsArray,
+          saveId: saveId,
+          timestamp: Date.now()
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Emergency save error:', err);
+        });
+    }
   }
 
   /**
