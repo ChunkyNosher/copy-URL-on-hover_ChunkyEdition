@@ -664,43 +664,14 @@ class QuickTabsManager {
 
   /**
    * Handle Quick Tab position change (throttled during drag)
-   * v1.5.8.13 - Now broadcasts position updates via BroadcastChannel
+   * v1.5.8.15 - REMOVED broadcast/sync during drag to prevent performance issues
+   * Position only syncs on drag end for optimal performance
    */
   handlePositionChange(id, left, top) {
-    const now = Date.now();
-
-    // Throttle to 100ms intervals during drag
-    if (!this.positionChangeThrottle) {
-      this.positionChangeThrottle = {};
-    }
-
-    if (this.positionChangeThrottle[id] && now - this.positionChangeThrottle[id] < 100) {
-      return;
-    }
-
-    this.positionChangeThrottle[id] = now;
-
-    // v1.5.8.13 - Broadcast position update to other tabs
-    this.broadcast('UPDATE_POSITION', {
-      id,
-      left: Math.round(left),
-      top: Math.round(top)
-    });
-
-    // Send to background for cross-tab sync (non-blocking)
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      browser.runtime
-        .sendMessage({
-          action: 'UPDATE_QUICK_TAB_POSITION',
-          id: id,
-          left: Math.round(left),
-          top: Math.round(top),
-          timestamp: now
-        })
-        .catch(err => {
-          console.error('[QuickTabsManager] Position sync error:', err);
-        });
-    }
+    // v1.5.8.15 - No longer broadcasts or syncs during drag
+    // This prevents excessive BroadcastChannel messages and storage writes
+    // Position syncs only on drag end via handlePositionChangeEnd
+    // Local UI update happens automatically via pointer events
   }
 
   /**
@@ -743,41 +714,14 @@ class QuickTabsManager {
 
   /**
    * Handle Quick Tab size change (throttled during resize)
-   * v1.5.8.13 - Now broadcasts size updates via BroadcastChannel
+   * v1.5.8.15 - REMOVED broadcast/sync during resize to prevent performance issues
+   * Size only syncs on resize end for optimal performance
    */
   handleSizeChange(id, width, height) {
-    const now = Date.now();
-
-    if (!this.sizeChangeThrottle) {
-      this.sizeChangeThrottle = {};
-    }
-
-    if (this.sizeChangeThrottle[id] && now - this.sizeChangeThrottle[id] < 100) {
-      return;
-    }
-
-    this.sizeChangeThrottle[id] = now;
-
-    // v1.5.8.13 - Broadcast size update to other tabs
-    this.broadcast('UPDATE_SIZE', {
-      id,
-      width: Math.round(width),
-      height: Math.round(height)
-    });
-
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      browser.runtime
-        .sendMessage({
-          action: 'UPDATE_QUICK_TAB_SIZE',
-          id: id,
-          width: Math.round(width),
-          height: Math.round(height),
-          timestamp: now
-        })
-        .catch(err => {
-          console.error('[QuickTabsManager] Size sync error:', err);
-        });
-    }
+    // v1.5.8.15 - No longer broadcasts or syncs during resize
+    // This prevents excessive BroadcastChannel messages and storage writes
+    // Size syncs only on resize end via handleSizeChangeEnd
+    // Local UI update happens automatically via pointer events
   }
 
   /**
