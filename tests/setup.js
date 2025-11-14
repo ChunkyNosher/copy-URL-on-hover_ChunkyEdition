@@ -55,6 +55,18 @@ global.console = {
   error: jest.fn()
 };
 
+// ===== ADD THIS SECTION =====
+// Mock navigator.clipboard (not provided by JSDOM)
+Object.defineProperty(global.navigator, 'clipboard', {
+  value: {
+    writeText: jest.fn().mockResolvedValue(undefined),
+    readText: jest.fn().mockResolvedValue(''),
+  },
+  writable: true,
+  configurable: true,
+});
+// ===========================
+
 // Add custom matchers if needed
 expect.extend({
   toBeValidURL(received) {
