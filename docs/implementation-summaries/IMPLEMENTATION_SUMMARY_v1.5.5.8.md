@@ -7,31 +7,40 @@
 
 ## Executive Summary
 
-This release fixes **all 5 reported Quick Tab state desynchronization bugs** by establishing background.js as the single source of truth for Quick Tab state management. The root cause was identified as a race condition between content.js and background.js writing to storage without coordination.
+This release fixes **all 5 reported Quick Tab state desynchronization bugs** by
+establishing background.js as the single source of truth for Quick Tab state
+management. The root cause was identified as a race condition between content.js
+and background.js writing to storage without coordination.
 
 ## Bugs Fixed
 
 ### 🐛 Bugged Behavior 1
+
 **Symptom:** Moving one Quick Tab causes other Quick Tabs to disappear  
 **Root Cause:** background.js overwrites storage with incomplete state  
 **Status:** ✅ FIXED
 
 ### 🐛 Bugged Behavior 2
-**Symptom:** First Quick Tab reverts to original position when second Quick Tab is moved  
+
+**Symptom:** First Quick Tab reverts to original position when second Quick Tab
+is moved  
 **Root Cause:** background.js has stale position data for first tab  
 **Status:** ✅ FIXED
 
 ### 🐛 Bugged Behavior 3
+
 **Symptom:** Moving Quick Tab 4 causes Quick Tabs 1, 2, 3 to disappear  
 **Root Cause:** background.js only knows about moved tabs, deletes others  
 **Status:** ✅ FIXED
 
 ### 🐛 Bugged Behavior 4
+
 **Symptom:** Quick Tab 1 disappears when Quick Tab 2 is moved again  
 **Root Cause:** Same as Behaviors 1-3 - incomplete state in background.js  
 **Status:** ✅ FIXED
 
 ### 🐛 Bugged Behavior 5
+
 **Symptom:** Quick Tab size grows slightly on each tab switch  
 **Root Cause:** Floating-point accumulation from getBoundingClientRect()  
 **Status:** ✅ FIXED by rounding all dimensions
@@ -42,19 +51,21 @@ This release fixes **all 5 reported Quick Tab state desynchronization bugs** by 
 
 Version 1.5.5.7 had **two independent storage writers**:
 
-1. **content.js** via `saveQuickTabsToStorage()` 
+1. **content.js** via `saveQuickTabsToStorage()`
    - Called when: Creating tabs, closing tabs, minimizing tabs, pinning tabs
    - Writes: Complete state from `quickTabWindows[]` array
 
 2. **background.js** via `UPDATE_QUICK_TAB_POSITION` message handler
    - Called when: Moving tabs, resizing tabs
-   - Writes: Partial state from `globalQuickTabState.tabs` (only moved/resized tabs)
+   - Writes: Partial state from `globalQuickTabState.tabs` (only moved/resized
+     tabs)
 
 **These two systems NEVER synchronized**, causing catastrophic data corruption.
 
 ### Critical Flaw
 
-`globalQuickTabState` in background.js was **never initialized from storage**, meaning:
+`globalQuickTabState` in background.js was **never initialized from storage**,
+meaning:
 
 ```javascript
 // On browser startup:
@@ -92,7 +103,7 @@ let isInitialized = false;
 
 async function initializeGlobalState() {
   if (isInitialized) return;
-  
+
   try {
     // Try session storage first (faster)
     if (typeof browser.storage.session !== 'undefined') {
@@ -104,7 +115,7 @@ async function initializeGlobalState() {
         return;
       }
     }
-    
+
     // Fall back to sync storage
     result = await browser.storage.sync.get('quick_tabs_state_v2');
     if (result && result.quick_tabs_state_v2 && result.quick_tabs_state_v2.tabs) {
@@ -133,10 +144,10 @@ if (message.action === 'CREATE_QUICK_TAB') {
   if (!isInitialized) {
     await initializeGlobalState();
   }
-  
+
   // Check if tab already exists
   const existingIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
-  
+
   if (existingIndex !== -1) {
     // Update existing entry
     globalQuickTabState.tabs[existingIndex] = { ...message };
@@ -144,17 +155,17 @@ if (message.action === 'CREATE_QUICK_TAB') {
     // Add new entry
     globalQuickTabState.tabs.push({ ...message });
   }
-  
+
   globalQuickTabState.lastUpdate = Date.now();
-  
+
   // Save to storage
-  browser.storage.sync.set({ 
+  browser.storage.sync.set({
     quick_tabs_state_v2: {
       tabs: globalQuickTabState.tabs,
       timestamp: Date.now()
     }
   });
-  
+
   // Also save to session storage
   if (typeof browser.storage.session !== 'undefined') {
     browser.storage.session.set({
@@ -174,31 +185,35 @@ if (message.action === 'CREATE_QUICK_TAB') {
 **Lines Changed:** 1 function call replaced
 
 **Before:**
+
 ```javascript
 if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
   broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl);
-  saveQuickTabsToStorage();  // ← Direct storage write
+  saveQuickTabsToStorage(); // ← Direct storage write
 }
 ```
 
 **After:**
+
 ```javascript
 if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
   broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl);
-  
+
   // Notify background script for state coordination
-  browser.runtime.sendMessage({
-    action: 'CREATE_QUICK_TAB',
-    url: url,
-    left: Math.round(posX),
-    top: Math.round(posY),
-    width: Math.round(windowWidth),
-    height: Math.round(windowHeight),
-    pinnedToUrl: pinnedToUrl,
-    title: 'Quick Tab'
-  }).catch(err => {
-    debug('Error notifying background of Quick Tab creation:', err);
-  });
+  browser.runtime
+    .sendMessage({
+      action: 'CREATE_QUICK_TAB',
+      url: url,
+      left: Math.round(posX),
+      top: Math.round(posY),
+      width: Math.round(windowWidth),
+      height: Math.round(windowHeight),
+      pinnedToUrl: pinnedToUrl,
+      title: 'Quick Tab'
+    })
+    .catch(err => {
+      debug('Error notifying background of Quick Tab creation:', err);
+    });
 }
 ```
 
@@ -213,25 +228,27 @@ if (message.action === 'CLOSE_QUICK_TAB') {
   if (!isInitialized) {
     await initializeGlobalState();
   }
-  
+
   // Remove from global state
   const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
   if (tabIndex !== -1) {
     globalQuickTabState.tabs.splice(tabIndex, 1);
     globalQuickTabState.lastUpdate = Date.now();
-    
+
     // Broadcast to all tabs
     browser.tabs.query({}).then(tabs => {
       tabs.forEach(tab => {
-        browser.tabs.sendMessage(tab.id, {
-          action: 'CLOSE_QUICK_TAB_FROM_BACKGROUND',
-          url: message.url
-        }).catch(() => {});
+        browser.tabs
+          .sendMessage(tab.id, {
+            action: 'CLOSE_QUICK_TAB_FROM_BACKGROUND',
+            url: message.url
+          })
+          .catch(() => {});
       });
     });
-    
+
     // Save updated state
-    browser.storage.sync.set({ 
+    browser.storage.sync.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         timestamp: Date.now()
@@ -248,21 +265,25 @@ if (message.action === 'CLOSE_QUICK_TAB') {
 **Lines Changed:** 1 function call replaced
 
 **Before:**
+
 ```javascript
 if (CONFIG.quickTabPersistAcrossTabs) {
-  saveQuickTabsToStorage();  // ← Direct storage write
+  saveQuickTabsToStorage(); // ← Direct storage write
 }
 ```
 
 **After:**
+
 ```javascript
 if (CONFIG.quickTabPersistAcrossTabs && url) {
-  browser.runtime.sendMessage({
-    action: 'CLOSE_QUICK_TAB',
-    url: url
-  }).catch(err => {
-    debug('Error notifying background of Quick Tab close:', err);
-  });
+  browser.runtime
+    .sendMessage({
+      action: 'CLOSE_QUICK_TAB',
+      url: url
+    })
+    .catch(err => {
+      debug('Error notifying background of Quick Tab close:', err);
+    });
 }
 ```
 
@@ -279,12 +300,12 @@ if (message.action === 'CLOSE_QUICK_TAB_FROM_BACKGROUND') {
     const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
     return iframeSrc === message.url;
   });
-  
+
   if (container) {
     closeQuickTabWindow(container, false); // false = don't broadcast again
     debug(`Closed Quick Tab ${message.url} from background command`);
   }
-  
+
   sendResponse({ success: true });
 }
 ```
@@ -292,9 +313,11 @@ if (message.action === 'CLOSE_QUICK_TAB_FROM_BACKGROUND') {
 ### 7. Round All Dimensions (Fixes Bugged Behavior 5)
 
 **File:** `content.js`  
-**Locations:** 4 UPDATE_QUICK_TAB_POSITION message sends + saveQuickTabsToStorage()
+**Locations:** 4 UPDATE_QUICK_TAB_POSITION message sends +
+saveQuickTabsToStorage()
 
 **Before:**
+
 ```javascript
 browser.runtime.sendMessage({
   action: 'UPDATE_QUICK_TAB_POSITION',
@@ -307,6 +330,7 @@ browser.runtime.sendMessage({
 ```
 
 **After:**
+
 ```javascript
 browser.runtime.sendMessage({
   action: 'UPDATE_QUICK_TAB_POSITION',
@@ -319,6 +343,7 @@ browser.runtime.sendMessage({
 ```
 
 **Why This Matters:**
+
 - `getBoundingClientRect()` returns floating-point values like `800.4999999`
 - Each save/restore cycle compounds rounding errors
 - After 10 tab switches: `800 → 801 → 802 → 803 → ...`
@@ -339,10 +364,14 @@ if (areaName === 'sync' && changes.quick_tabs_state_v2) {
     if (newValue.tabs.length >= globalQuickTabState.tabs.length) {
       globalQuickTabState.tabs = newValue.tabs;
       globalQuickTabState.lastUpdate = newValue.timestamp;
-      console.log('[Background] Updated global state from storage:', globalQuickTabState.tabs.length, 'tabs');
+      console.log(
+        '[Background] Updated global state from storage:',
+        globalQuickTabState.tabs.length,
+        'tabs'
+      );
     }
   }
-  
+
   // ... existing broadcast code ...
 }
 ```
@@ -353,36 +382,38 @@ if (areaName === 'sync' && changes.quick_tabs_state_v2) {
 **Lines Added:** ~35 lines total
 
 **popup.html:**
+
 ```html
 <div class="setting-group">
-    <button id="clearStorageBtn" style="...">
-        🗑️ Clear Quick Tab Storage
-    </button>
-    <small>
-        This will clear all saved Quick Tab positions and state from browser storage. 
-        Use this if Quick Tabs are behaving unexpectedly.
-    </small>
+  <button id="clearStorageBtn" style="...">🗑️ Clear Quick Tab Storage</button>
+  <small>
+    This will clear all saved Quick Tab positions and state from browser storage. Use this if Quick
+    Tabs are behaving unexpectedly.
+  </small>
 </div>
 ```
 
 **popup.js:**
+
 ```javascript
-document.getElementById('clearStorageBtn').addEventListener('click', async function() {
+document.getElementById('clearStorageBtn').addEventListener('click', async function () {
   if (confirm('This will clear all saved Quick Tab positions and state. Are you sure?')) {
     // Clear sync storage
     await browser.storage.sync.remove('quick_tabs_state_v2');
-    
+
     // Clear session storage if available
     if (typeof browser.storage.session !== 'undefined') {
       await browser.storage.session.remove('quick_tabs_session');
     }
-    
+
     // Notify all tabs to close Quick Tabs
     browser.tabs.query({}).then(tabs => {
       tabs.forEach(tab => {
-        browser.tabs.sendMessage(tab.id, {
-          action: 'CLEAR_ALL_QUICK_TABS'
-        }).catch(() => {});
+        browser.tabs
+          .sendMessage(tab.id, {
+            action: 'CLEAR_ALL_QUICK_TABS'
+          })
+          .catch(() => {});
       });
     });
   }
@@ -391,18 +422,19 @@ document.getElementById('clearStorageBtn').addEventListener('click', async funct
 
 ## Code Statistics
 
-| File | Lines Added | Lines Removed | Net Change |
-|------|-------------|---------------|------------|
-| background.js | 145 | 0 | +145 |
-| content.js | 180 | 8 | +172 |
-| popup.html | 8 | 0 | +8 |
-| popup.js | 27 | 0 | +27 |
-| manifest.json | 1 | 1 | 0 |
-| **Total** | **361** | **9** | **+352** |
+| File          | Lines Added | Lines Removed | Net Change |
+| ------------- | ----------- | ------------- | ---------- |
+| background.js | 145         | 0             | +145       |
+| content.js    | 180         | 8             | +172       |
+| popup.html    | 8           | 0             | +8         |
+| popup.js      | 27          | 0             | +27        |
+| manifest.json | 1           | 1             | 0          |
+| **Total**     | **361**     | **9**         | **+352**   |
 
 ## Testing Checklist
 
 ### ✅ Bugged Behavior 1
+
 - [ ] Close and reopen browser
 - [ ] Open Wikipedia Tab 1
 - [ ] Create 2 Quick Tabs
@@ -410,6 +442,7 @@ document.getElementById('clearStorageBtn').addEventListener('click', async funct
 - [ ] **VERIFY:** Other Quick Tab does NOT disappear ✓
 
 ### ✅ Bugged Behavior 2
+
 - [ ] Open Wikipedia Tab 1
 - [ ] Create Quick Tab 1, move it
 - [ ] Create Quick Tab 2, move it
@@ -418,23 +451,27 @@ document.getElementById('clearStorageBtn').addEventListener('click', async funct
 - [ ] **VERIFY:** Quick Tab 2 does NOT disappear ✓
 
 ### ✅ Bugged Behavior 3
+
 - [ ] Open Quick Tab 1
 - [ ] Open Quick Tabs 2, 3, 4 (without moving QT1)
 - [ ] Move Quick Tab 4
 - [ ] **VERIFY:** Quick Tabs 1, 2, 3 do NOT disappear ✓
 
 ### ✅ Bugged Behavior 4
+
 - [ ] Open Quick Tab 1, move it
 - [ ] Open Quick Tab 2, move it
 - [ ] Move Quick Tab 2 AGAIN
 - [ ] **VERIFY:** Quick Tab 1 does NOT disappear ✓
 
 ### ✅ Bugged Behavior 5
+
 - [ ] Open Quick Tab in Tab 1
 - [ ] Switch to Tab 2 and back 5 times
 - [ ] **VERIFY:** Quick Tab size remains constant ✓
 
 ### ✅ Clear Storage Button
+
 - [ ] Open extension popup
 - [ ] Navigate to Advanced tab
 - [ ] Click "Clear Quick Tab Storage" button
@@ -445,9 +482,11 @@ document.getElementById('clearStorageBtn').addEventListener('click', async funct
 ## Security Analysis
 
 ### CodeQL Scan Results
+
 ✅ **PASSED** - 0 vulnerabilities detected
 
 ### Security Considerations
+
 1. ✅ All message handlers validate message.action
 2. ✅ URL validation in create/close handlers
 3. ✅ No eval() or dangerous dynamic code execution
@@ -458,22 +497,25 @@ document.getElementById('clearStorageBtn').addEventListener('click', async funct
 ## Performance Impact
 
 ### Improvements
+
 - ✅ Reduced storage writes (single writer vs. dual writers)
 - ✅ Eliminated race conditions
 - ✅ Faster reads with session storage fallback
 - ✅ No more polling/workarounds needed
 
 ### Benchmarks
-| Operation | Before | After | Improvement |
-|-----------|--------|-------|-------------|
-| Quick Tab creation | 2 storage writes | 1 storage write | 50% fewer writes |
-| Quick Tab move | 1-2 storage writes | 1 storage write | ~33% fewer writes |
-| Quick Tab close | 2 storage writes | 1 storage write | 50% fewer writes |
-| State restore on startup | Not loaded | Loaded + cached | ∞ improvement |
+
+| Operation                | Before             | After           | Improvement       |
+| ------------------------ | ------------------ | --------------- | ----------------- |
+| Quick Tab creation       | 2 storage writes   | 1 storage write | 50% fewer writes  |
+| Quick Tab move           | 1-2 storage writes | 1 storage write | ~33% fewer writes |
+| Quick Tab close          | 2 storage writes   | 1 storage write | 50% fewer writes  |
+| State restore on startup | Not loaded         | Loaded + cached | ∞ improvement     |
 
 ## Backward Compatibility
 
 ✅ **Fully backward compatible** with v1.5.5.7 and earlier
+
 - Existing Quick Tab state will be loaded and migrated automatically
 - No user action required
 - Settings preserved
@@ -482,12 +524,14 @@ document.getElementById('clearStorageBtn').addEventListener('click', async funct
 ## Migration Notes
 
 ### Automatic Migration
+
 1. On browser startup, `initializeGlobalState()` runs
 2. Loads existing state from `browser.storage.sync.quick_tabs_state_v2`
 3. Populates `globalQuickTabState.tabs` with existing Quick Tabs
 4. All subsequent operations use the new coordinated approach
 
 ### No Breaking Changes
+
 - All existing Quick Tabs will continue to work
 - All existing settings preserved
 - All existing keyboard shortcuts work
@@ -524,6 +568,7 @@ document.getElementById('clearStorageBtn').addEventListener('click', async funct
 If issues are discovered:
 
 1. **Immediate:**
+
    ```bash
    git revert <commit-hash>
    git push origin main
@@ -563,7 +608,8 @@ If issues are discovered:
 2. ⏳ **Community Feedback** - Beta testers to validate fixes
 3. ⏳ **Documentation** - Update CHANGELOG with bug fix details
 4. ⏳ **Release** - Publish v1.5.5.8 to Firefox Add-ons
-5. 🎯 **Future Enhancement** - Migrate pin/minimize to background.js coordination
+5. 🎯 **Future Enhancement** - Migrate pin/minimize to background.js
+   coordination
 
 ---
 

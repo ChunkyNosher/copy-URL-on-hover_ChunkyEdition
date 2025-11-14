@@ -2,7 +2,8 @@
 
 ## Quick Tabs Comprehensive Improvements
 
-This release addresses all 10 requested improvements for Quick Tabs functionality.
+This release addresses all 10 requested improvements for Quick Tabs
+functionality.
 
 ### ✅ Issues Resolved
 
@@ -88,6 +89,7 @@ This release addresses all 10 requested improvements for Quick Tabs functionalit
 ### 🔧 Technical Details
 
 **Files Changed:**
+
 - `content.js`: +387 lines (Quick Tab features, minimize system)
 - `popup.html`: Complete restructure with tabs
 - `popup.js`: +24 lines (tab switching, validation)
@@ -95,6 +97,7 @@ This release addresses all 10 requested improvements for Quick Tabs functionalit
 - `README.md`: Major documentation update
 
 **New Features Count:**
+
 - 3 new navigation buttons
 - 1 minimize button
 - 1 floating manager window
@@ -111,6 +114,7 @@ This release addresses all 10 requested improvements for Quick Tabs functionalit
 ### ⚠️ Known Limitations
 
 All browser security limitations are documented with workarounds:
+
 1. Iframe keyboard focus capture
 2. Cross-origin script injection blocking
 3. Cross-tab DOM isolation
@@ -118,8 +122,8 @@ All browser security limitations are documented with workarounds:
 
 ### 🚀 Migration Notes
 
-No breaking changes. All existing settings and features preserved.
-New settings have sensible defaults.
+No breaking changes. All existing settings and features preserved. New settings
+have sensible defaults.
 
 ### 📦 Installation
 

@@ -154,7 +154,8 @@ generateSaveId() {
 
 ### Root Cause Analysis
 
-Initial assumption was innerHTML destroying event listeners, but investigation revealed:
+Initial assumption was innerHTML destroying event listeners, but investigation
+revealed:
 
 - Buttons ARE created with createElement (not innerHTML)
 - Event delegation IS properly set up

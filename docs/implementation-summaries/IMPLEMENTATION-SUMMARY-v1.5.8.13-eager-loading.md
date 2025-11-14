@@ -9,7 +9,10 @@
 
 ## Overview
 
-This release implements **eager loading** and **BroadcastChannel-based real-time synchronization** for Quick Tabs, ensuring that Quick Tab state syncs instantly across all browser tabs with <10ms latency. This fixes long-standing issues with cross-tab persistence and position/size synchronization.
+This release implements **eager loading** and **BroadcastChannel-based real-time
+synchronization** for Quick Tabs, ensuring that Quick Tab state syncs instantly
+across all browser tabs with <10ms latency. This fixes long-standing issues with
+cross-tab persistence and position/size synchronization.
 
 ---
 
@@ -17,15 +20,20 @@ This release implements **eager loading** and **BroadcastChannel-based real-time
 
 ### Issue #35: Quick Tabs don't persist across tabs
 
-Quick Tabs created in one tab were not appearing in other tabs, causing confusion and state inconsistency.
+Quick Tabs created in one tab were not appearing in other tabs, causing
+confusion and state inconsistency.
 
 ### Issue #51: Position and size not syncing between tabs
 
-When a user moved or resized a Quick Tab in one tab, the changes were not reflected in other tabs, leading to position/size mismatches.
+When a user moved or resized a Quick Tab in one tab, the changes were not
+reflected in other tabs, leading to position/size mismatches.
 
 ### Root Cause
 
-The previous implementation used lazy loading patterns where listeners were only attached after user interaction, and state hydration only occurred when the user opened the Quick Tabs Manager. This violated the eager loading principle required for real-time sync features.
+The previous implementation used lazy loading patterns where listeners were only
+attached after user interaction, and state hydration only occurred when the user
+opened the Quick Tabs Manager. This violated the eager loading principle
+required for real-time sync features.
 
 ---
 
@@ -33,7 +41,8 @@ The previous implementation used lazy loading patterns where listeners were only
 
 ### 1. BroadcastChannel for Real-Time Sync
 
-**What**: BroadcastChannel API provides same-origin messaging between tabs/windows with minimal latency.
+**What**: BroadcastChannel API provides same-origin messaging between
+tabs/windows with minimal latency.
 
 **Why**:
 
@@ -63,7 +72,8 @@ broadcast(type, data) {
 
 ### 2. Eager Loading Pattern
 
-**What**: All listeners and state hydration logic run immediately when the content script loads, not on user interaction.
+**What**: All listeners and state hydration logic run immediately when the
+content script loads, not on user interaction.
 
 **Why**:
 
@@ -80,7 +90,8 @@ broadcast(type, data) {
 
 ### 3. Immediate State Hydration
 
-**What**: Load Quick Tabs state from storage as soon as content script initializes.
+**What**: Load Quick Tabs state from storage as soon as content script
+initializes.
 
 **Why**:
 
@@ -159,8 +170,9 @@ async hydrateStateFromStorage() {
 - `setPosition(left, top)` - Set position from sync (no event triggering)
 - `setSize(width, height)` - Set size from sync (no event triggering)
 
-**Why These Are Needed**:
-Without these methods, syncing position/size from other tabs would trigger the drag/resize callbacks, causing infinite loops and duplicate broadcasts.
+**Why These Are Needed**: Without these methods, syncing position/size from
+other tabs would trigger the drag/resize callbacks, causing infinite loops and
+duplicate broadcasts.
 
 **Lines Changed**: ~25 additions
 
@@ -222,9 +234,11 @@ Without these methods, syncing position/size from other tabs would trigger the d
 5. **Tab B, C, D receive** → call `updateQuickTabPosition(id, left, top)`
 6. Each tab calls `tab.setPosition(left, top)` on matching Quick Tab
 7. Quick Tab moves in Tab B, C, D to same position
-8. When drag ends, `handlePositionChangeEnd()` sends final position to background
+8. When drag ends, `handlePositionChangeEnd()` sends final position to
+   background
 
-**Result**: Quick Tab position syncs in real-time across all tabs (<10ms latency)
+**Result**: Quick Tab position syncs in real-time across all tabs (<10ms
+latency)
 
 ### Example 3: State Hydration on Page Load
 
@@ -280,8 +294,10 @@ Without these methods, syncing position/size from other tabs would trigger the d
 
 ### Fallbacks:
 
-- If `BroadcastChannel` not available: Falls back to storage-only sync (logs warning)
-- If `browser.storage.session` not available: Falls back to `browser.storage.sync`
+- If `BroadcastChannel` not available: Falls back to storage-only sync (logs
+  warning)
+- If `browser.storage.session` not available: Falls back to
+  `browser.storage.sync`
 - Container-aware: Works with or without Firefox Containers installed
 
 ---
@@ -330,7 +346,8 @@ Without these methods, syncing position/size from other tabs would trigger the d
 
 ### None
 
-This is a **backward-compatible enhancement**. All existing functionality preserved.
+This is a **backward-compatible enhancement**. All existing functionality
+preserved.
 
 ### Migration Path:
 
@@ -344,7 +361,8 @@ This is a **backward-compatible enhancement**. All existing functionality preser
 
 ### Potential Enhancements:
 
-1. **Conflict Resolution**: Implement vector clocks for handling simultaneous edits
+1. **Conflict Resolution**: Implement vector clocks for handling simultaneous
+   edits
 2. **Offline Support**: Queue operations when BroadcastChannel unavailable
 3. **Performance Monitoring**: Add telemetry for sync latency
 4. **Background Sync**: Use Service Workers for Manifest V3 migration
@@ -352,24 +370,35 @@ This is a **backward-compatible enhancement**. All existing functionality preser
 ### Known Limitations:
 
 - BroadcastChannel only works for same-origin tabs (expected behavior)
-- Storage quota can be exceeded if too many Quick Tabs created (handled with error messages)
+- Storage quota can be exceeded if too many Quick Tabs created (handled with
+  error messages)
 
 ---
 
 ## Related Documentation
 
-- [QuickTabs-v1.5.8.13-Patch.md](../manual/QuickTabs-v1.5.8.13-Patch.md) - Implementation guide
-- [persistent-panel-implementation.md](../manual/persistent-panel-implementation.md) - Panel architecture
-- [hybrid-architecture-implementation.md](../manual/hybrid-architecture-implementation.md) - Overall architecture
-- [BroadcastChannel-localStorage-guide.md](../manual/BroadcastChannel-localStorage-guide.md) - BroadcastChannel vs localStorage
+- [QuickTabs-v1.5.8.13-Patch.md](../manual/QuickTabs-v1.5.8.13-Patch.md) -
+  Implementation guide
+- [persistent-panel-implementation.md](../manual/persistent-panel-implementation.md) -
+  Panel architecture
+- [hybrid-architecture-implementation.md](../manual/hybrid-architecture-implementation.md) -
+  Overall architecture
+- [BroadcastChannel-localStorage-guide.md](../manual/BroadcastChannel-localStorage-guide.md) -
+  BroadcastChannel vs localStorage
 
 ---
 
 ## Conclusion
 
-Version 1.5.8.13 successfully implements eager loading and BroadcastChannel-based real-time synchronization, fixing Issues #35 and #51. Quick Tabs now sync instantly across all browser tabs with minimal latency, providing a seamless user experience.
+Version 1.5.8.13 successfully implements eager loading and
+BroadcastChannel-based real-time synchronization, fixing Issues #35 and #51.
+Quick Tabs now sync instantly across all browser tabs with minimal latency,
+providing a seamless user experience.
 
-The implementation follows the eager loading pattern specified in QuickTabs-v1.5.8.13-Patch.md, ensuring all listeners and state hydration run immediately on content script load. This architectural improvement sets the foundation for future real-time collaborative features.
+The implementation follows the eager loading pattern specified in
+QuickTabs-v1.5.8.13-Patch.md, ensuring all listeners and state hydration run
+immediately on content script load. This architectural improvement sets the
+foundation for future real-time collaborative features.
 
 **Status**: ✅ Implementation Complete  
 **Build**: ✅ Passing  

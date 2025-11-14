@@ -16,7 +16,8 @@ Version 1.5.8.15 fixes all major Quick Tabs bugs reported in v1.5.8.14:
 3. ✅ **"Close All" button doesn't work** - FIXED
 4. ⚠️ **Panel buttons don't respond** - Should be fixed (testing required)
 
-**Root Cause:** Storage format mismatch between background.js and content script introduced in v1.5.8.14.
+**Root Cause:** Storage format mismatch between background.js and content script
+introduced in v1.5.8.14.
 
 ---
 
@@ -33,7 +34,8 @@ Version 1.5.8.15 fixes all major Quick Tabs bugs reported in v1.5.8.14:
 [Quick Tabs] ❌ Failed to load iframe: NS_BINDING_ABORTED
 ```
 
-User creates Quick Tab → Notification appears → Quick Tab flashes on screen → Quick Tab immediately closes itself.
+User creates Quick Tab → Notification appears → Quick Tab flashes on screen →
+Quick Tab immediately closes itself.
 
 ### Root Cause Analysis
 
@@ -41,15 +43,18 @@ User creates Quick Tab → Notification appears → Quick Tab flashes on screen 
 
 **v1.5.8.14 (BROKEN):**
 
-- background.js saved: `quick_tabs_state_v2: { 'firefox-default': { tabs: [...] } }`
-- Content script expected: `quick_tabs_state_v2: { containers: { 'firefox-default': { tabs: [...] } }, saveId, timestamp }`
+- background.js saved:
+  `quick_tabs_state_v2: { 'firefox-default': { tabs: [...] } }`
+- Content script expected:
+  `quick_tabs_state_v2: { containers: { 'firefox-default': { tabs: [...] } }, saveId, timestamp }`
 
 **What happened:**
 
 1. Content script creates Quick Tab locally
 2. Sends `CREATE_QUICK_TAB` message to background
 3. Background adds tab to `globalQuickTabState.containers` object
-4. Background saves to storage: `quick_tabs_state_v2: globalQuickTabState.containers` (unwrapped)
+4. Background saves to storage:
+   `quick_tabs_state_v2: globalQuickTabState.containers` (unwrapped)
 5. This triggers `storage.onChanged` in content script
 6. Content script's `syncFromStorage()` receives unwrapped format
 7. Line 359-363 in index.js: Neither `state.containers` nor `state.tabs` exists
@@ -111,13 +116,16 @@ All read operations support three formats:
 
 ### Symptoms
 
-User opens Quick Tab Manager (Ctrl+Alt+Z) in Tab A → Panel appears in Tab A → User switches to Tab B → Panel NOT visible in Tab B.
+User opens Quick Tab Manager (Ctrl+Alt+Z) in Tab A → Panel appears in Tab A →
+User switches to Tab B → Panel NOT visible in Tab B.
 
-**Expected behavior:** Panel should appear in all tabs when toggled in any tab (per Issues #35, #47, #51).
+**Expected behavior:** Panel should appear in all tabs when toggled in any tab
+(per Issues #35, #47, #51).
 
 ### Root Cause
 
-Panel visibility state was stored in `browser.storage.local` but never synchronized across tabs. Each tab maintained its own local panel state.
+Panel visibility state was stored in `browser.storage.local` but never
+synchronized across tabs. Each tab maintained its own local panel state.
 
 ### The Fix (v1.5.8.15)
 
@@ -187,7 +195,8 @@ open() {
 
 ### Symptoms
 
-User opens panel with 31 Quick Tabs → Clicks "Close All" → Opens new Quick Tab → Panel shows 32 tabs total (all old tabs reappeared).
+User opens panel with 31 Quick Tabs → Clicks "Close All" → Opens new Quick Tab →
+Panel shows 32 tabs total (all old tabs reappeared).
 
 ### Root Cause
 
@@ -202,7 +211,8 @@ const emptyState = {
 };
 ```
 
-When content script synced from storage, it saw unwrapped format → couldn't parse it → kept local Quick Tabs.
+When content script synced from storage, it saw unwrapped format → couldn't
+parse it → kept local Quick Tabs.
 
 ### The Fix (v1.5.8.15)
 
@@ -222,7 +232,8 @@ const emptyState = {
 **Also fixed:**
 
 - `closeMinimizedQuickTabs()` - Read from `state.containers`, save with wrapper
-- `updatePanelContent()` - Extract containers from wrapper: `quickTabsState = state.containers || state`
+- `updatePanelContent()` - Extract containers from wrapper:
+  `quickTabsState = state.containers || state`
 
 ---
 
@@ -230,7 +241,8 @@ const emptyState = {
 
 ### Analysis
 
-**Console evidence:** Zero console output when buttons clicked = event listeners never fired.
+**Console evidence:** Zero console output when buttons clicked = event listeners
+never fired.
 
 **Code review findings:**
 
@@ -271,7 +283,11 @@ closeBtn.dataset.action = 'close'; // ✓ Correct
 closeBtn.dataset.quickTabId = tab.id; // ✓ Correct
 ```
 
-**Hypothesis:** Bug was likely caused by Bug #1 (storage format mismatch). Since Quick Tabs were being destroyed immediately after creation, the panel had no valid Quick Tab IDs to work with. When buttons were clicked, `quickTabsManager.closeById(quickTabId)` couldn't find the tab because it was already destroyed.
+**Hypothesis:** Bug was likely caused by Bug #1 (storage format mismatch). Since
+Quick Tabs were being destroyed immediately after creation, the panel had no
+valid Quick Tab IDs to work with. When buttons were clicked,
+`quickTabsManager.closeById(quickTabId)` couldn't find the tab because it was
+already destroyed.
 
 **Testing required:** Verify buttons work now that Bug #1 is fixed.
 

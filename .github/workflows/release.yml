@@ -3,8 +3,8 @@ name: Build and Release Extension
 on:
   push:
     tags:
-      - 'v*.*.*'      # Matches v1.2.3
-      - 'v*.*.*.*'    # Matches v1.2.3.4
+      - 'v*.*.*' # Matches v1.2.3
+      - 'v*.*.*.*' # Matches v1.2.3.4
   workflow_dispatch:
 
 jobs:
@@ -47,7 +47,7 @@ jobs:
             exit 1
           fi
           echo "✓ All required files present in dist/"
-          
+
           # Check that content.js is properly bundled (not empty, reasonable size)
           CONTENT_SIZE=$(wc -c < dist/content.js)
           if [ "$CONTENT_SIZE" -lt 10000 ]; then
@@ -55,7 +55,7 @@ jobs:
             exit 1
           fi
           echo "✓ content.js size: $CONTENT_SIZE bytes"
-          
+
           # Verify no source files leaked into dist
           if [ -d dist/src ]; then
             echo "ERROR: src/ directory found in dist/! Source files should not be packaged."

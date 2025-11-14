@@ -8,7 +8,9 @@
 
 ## Overview
 
-Version 1.5.8.9 addresses critical bugs identified in v1.5.8.8 that prevented core features from functioning properly. This release also enhances CI/CD integration for better code quality and review automation.
+Version 1.5.8.9 addresses critical bugs identified in v1.5.8.8 that prevented
+core features from functioning properly. This release also enhances CI/CD
+integration for better code quality and review automation.
 
 ---
 
@@ -295,8 +297,10 @@ Based on v1588-complete-fix-plan.md testing checklist:
 
 - [x] Copy URL works (keyboard shortcut Y)
 - [x] Copy Text works (keyboard shortcut X)
-- [x] **Open in New Tab** - Action name fixed, should open tab when shortcut pressed
-- [x] **Quick Tab** - Implementation added, should create Quick Tab when shortcut pressed
+- [x] **Open in New Tab** - Action name fixed, should open tab when shortcut
+      pressed
+- [x] **Quick Tab** - Implementation added, should create Quick Tab when
+      shortcut pressed
 - [x] **Notification Display** - Animation CSS added, should show with effects
 - [x] **Notification Border** - Border width parsing fixed
 - [x] **Notification Animation** - CSS keyframes added, animations should play
@@ -311,9 +315,12 @@ Based on v1588-complete-fix-plan.md testing checklist:
 
 ## Known Limitations
 
-1. **Legacy code linting errors** - Pre-existing linting issues in background.js, popup.js remain unfixed
-2. **Quick Tab container detection** - Currently hardcoded to 'firefox-default', needs dynamic container detection
-3. **Animation direction** - Slide animations only go right-to-left, could add position-aware directions
+1. **Legacy code linting errors** - Pre-existing linting issues in
+   background.js, popup.js remain unfixed
+2. **Quick Tab container detection** - Currently hardcoded to 'firefox-default',
+   needs dynamic container detection
+3. **Animation direction** - Slide animations only go right-to-left, could add
+   position-aware directions
 
 ---
 
@@ -332,11 +339,14 @@ Based on v1588-complete-fix-plan.md testing checklist:
 
 Potential enhancements for v1.5.8.10+:
 
-1. **Dynamic container detection** - Detect actual Firefox Container for Quick Tabs
-2. **Position-aware animations** - Slide from correct direction based on notification position
+1. **Dynamic container detection** - Detect actual Firefox Container for Quick
+   Tabs
+2. **Position-aware animations** - Slide from correct direction based on
+   notification position
 3. **Animation customization** - Allow users to customize animation speed/easing
 4. **Fix legacy linting errors** - Clean up background.js and popup.js warnings
-5. **Enhanced error messages** - More descriptive user-facing error notifications
+5. **Enhanced error messages** - More descriptive user-facing error
+   notifications
 
 ---
 

@@ -1,18 +1,22 @@
 # Manifest V3 Solution: Keeping Blocking WebRequest in Firefox/Zen Browser
 
-**Goal**: Stay on Manifest V3 while solving X-Frame-Options issue
-**Browser**: Firefox/Zen Browser
-**Date**: November 10, 2025
+**Goal**: Stay on Manifest V3 while solving X-Frame-Options issue **Browser**:
+Firefox/Zen Browser **Date**: November 10, 2025
 
 ---
 
 ## GOOD NEWS: Firefox Supports Blocking WebRequest in Manifest V3!
 
-Unlike Chrome, **Firefox explicitly maintains blocking webRequest support in Manifest V3**[175][181][187][192][200].
+Unlike Chrome, **Firefox explicitly maintains blocking webRequest support in
+Manifest V3**[175][181][187][192][200].
 
 ### Official Mozilla Statement
 
-> "Mozilla will maintain support for blocking WebRequest in MV3. To maximize compatibility with other browsers, we will also ship support for declarativeNetRequest. We will continue to work with content blockers and other key consumers of this API to identify current and future alternatives where appropriate."[181][192]
+> "Mozilla will maintain support for blocking WebRequest in MV3. To maximize
+> compatibility with other browsers, we will also ship support for
+> declarativeNetRequest. We will continue to work with content blockers and
+> other key consumers of this API to identify current and future alternatives
+> where appropriate."[181][192]
 
 This means you **CAN** use blocking webRequest in MV3 on Firefox/Zen Browser!
 
@@ -23,21 +27,27 @@ This means you **CAN** use blocking webRequest in MV3 on Firefox/Zen Browser!
 ### Issue #1: Invalid Permission
 
 Your manifest.json includes:
+
 ```json
 "permissions": ["webRequest", "webRequestBlocking"]
 ```
 
-**Problem**: `webRequestBlocking` is a **Manifest V2-only permission**[190][200][203].
+**Problem**: `webRequestBlocking` is a **Manifest V2-only
+permission**[190][200][203].
 
 In Manifest V3:
+
 - ❌ Chrome: Doesn't support blocking webRequest at all[174][188][190]
-- ✅ Firefox: Supports blocking webRequest BUT uses different permission syntax[200]
+- ✅ Firefox: Supports blocking webRequest BUT uses different permission
+  syntax[200]
 
 ### Issue #2: Missing Event Page Configuration
 
-Manifest V3 requires **event pages** (not service workers) for Firefox blocking webRequest[192].
+Manifest V3 requires **event pages** (not service workers) for Firefox blocking
+webRequest[192].
 
 Your current manifest has:
+
 ```json
 "background": {
   "scripts": ["background.js"]
@@ -58,37 +68,31 @@ This is incomplete for MV3. Need to specify `type`.
   "name": "Copy URL on Hover Custom",
   "version": "1.5.5.6",
   "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with navigation, minimize, and more.",
-  
-  "permissions": [
-    "storage",
-    "activeTab",
-    "webRequest"
-  ],
-  
-  "host_permissions": [
-    "<all_urls>"
-  ],
-  
+
+  "permissions": ["storage", "activeTab", "webRequest"],
+
+  "host_permissions": ["<all_urls>"],
+
   "background": {
     "scripts": ["background.js"],
     "type": "module"
   },
-  
+
   "action": {
     "default_title": "Copy URL on Hover Settings",
     "default_popup": "popup.html"
   },
-  
+
   "sidebar_action": {
     "default_panel": "sidebar.html",
     "default_title": "Quick Tabs",
     "default_icon": "icons/icon.png"
   },
-  
+
   "icons": {
     "96": "icons/icon.png"
   },
-  
+
   "browser_specific_settings": {
     "gecko": {
       "id": "copy-url-hover@chunkynosher.github.io",
@@ -105,7 +109,8 @@ This is incomplete for MV3. Need to specify `type`.
 3. **REMOVED** `sidePanel` permission (Chrome MV3 specific, not Firefox)
 4. **REMOVED** `side_panel` key (use `sidebar_action` for Firefox)
 5. **KEPT** `webRequest` permission (required)[200]
-6. **KEPT** `host_permissions: ["<all_urls>"]` (required for modifying headers)[204]
+6. **KEPT** `host_permissions: ["<all_urls>"]` (required for modifying
+   headers)[204]
 7. **ADDED** `"type": "module"` to background (optional but recommended)
 
 ---
@@ -126,41 +131,41 @@ const modifiedUrls = new Set();
 
 // Install blocking webRequest listener (Firefox MV3 supports this!)
 browser.webRequest.onHeadersReceived.addListener(
-  (details) => {
+  details => {
     console.log(`[Quick Tabs] Processing: ${details.type} - ${details.url}`);
-    
+
     // Filter out blocking headers
     const modifiedHeaders = details.responseHeaders.filter(header => {
       const headerName = header.name.toLowerCase();
-      
+
       // Remove X-Frame-Options header
       if (headerName === 'x-frame-options') {
         console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${details.url}`);
         modifiedUrls.add(details.url);
         return false; // Remove this header
       }
-      
+
       // Modify Content-Security-Policy
       if (headerName === 'content-security-policy') {
         const originalValue = header.value;
-        
+
         // Remove frame-ancestors directive
         header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
-        
+
         // If CSP is now empty, remove it entirely
         if (header.value.trim() === '' || header.value.trim() === ';') {
           console.log(`[Quick Tabs] ✓ Removed empty CSP from ${details.url}`);
           modifiedUrls.add(details.url);
           return false;
         }
-        
+
         // Log if we modified it
         if (header.value !== originalValue) {
           console.log(`[Quick Tabs] ✓ Modified CSP for ${details.url}`);
           modifiedUrls.add(details.url);
         }
       }
-      
+
       // Remove restrictive Cross-Origin-Resource-Policy
       if (headerName === 'cross-origin-resource-policy') {
         const value = header.value.toLowerCase();
@@ -170,24 +175,24 @@ browser.webRequest.onHeadersReceived.addListener(
           return false;
         }
       }
-      
+
       return true; // Keep header
     });
-    
+
     return { responseHeaders: modifiedHeaders };
   },
   {
     urls: ['<all_urls>'],
-    types: ['sub_frame']  // Only iframes
+    types: ['sub_frame'] // Only iframes
   },
-  ['blocking', 'responseHeaders']  // Firefox MV3 allows 'blocking'
+  ['blocking', 'responseHeaders'] // Firefox MV3 allows 'blocking'
 );
 
 console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
 
 // Log successful loads
 browser.webRequest.onCompleted.addListener(
-  (details) => {
+  details => {
     if (modifiedUrls.has(details.url)) {
       console.log(`[Quick Tabs] ✅ Successfully loaded iframe: ${details.url}`);
     }
@@ -200,7 +205,7 @@ browser.webRequest.onCompleted.addListener(
 
 // Log failed loads
 browser.webRequest.onErrorOccurred.addListener(
-  (details) => {
+  details => {
     console.error(`[Quick Tabs] ❌ Failed to load iframe: ${details.url}`);
     console.error(`[Quick Tabs] Error: ${details.error}`);
   },
@@ -221,31 +226,45 @@ browser.webRequest.onErrorOccurred.addListener(
 
 ### Firefox's Unique Approach
 
-Firefox diverges from Chrome's MV3 implementation in two critical ways[175][181][187][192]:
+Firefox diverges from Chrome's MV3 implementation in two critical
+ways[175][181][187][192]:
 
-1. **Event Pages Support**: Firefox continues to support DOM-based background scripts (event pages) instead of requiring service workers[192]
+1. **Event Pages Support**: Firefox continues to support DOM-based background
+   scripts (event pages) instead of requiring service workers[192]
 
-2. **Blocking WebRequest**: Firefox maintains the blocking webRequest API for privacy and content blocking use cases[175][181][187]
+2. **Blocking WebRequest**: Firefox maintains the blocking webRequest API for
+   privacy and content blocking use cases[175][181][187]
 
 **Official Statement**[192]:
-> "We continue to support DOM-based background scripts in the form of Event pages, and the blocking webRequest feature, as explained in our previous blog post."
+
+> "We continue to support DOM-based background scripts in the form of Event
+> pages, and the blocking webRequest feature, as explained in our previous blog
+> post."
 
 ### Why Chrome Doesn't Support This
 
-Chrome removed blocking webRequest in MV3 and forces use of `declarativeNetRequest`[174][188][190][194].
+Chrome removed blocking webRequest in MV3 and forces use of
+`declarativeNetRequest`[174][188][190][194].
 
-**Problem**: declarativeNetRequest **CANNOT** modify response headers[182][201], only:
+**Problem**: declarativeNetRequest **CANNOT** modify response headers[182][201],
+only:
+
 - Block requests
-- Redirect requests  
+- Redirect requests
 - Modify **request** headers (not response headers)
 
-**This means**: In Chrome MV3, there is **NO WAY** to remove X-Frame-Options headers[199].
+**This means**: In Chrome MV3, there is **NO WAY** to remove X-Frame-Options
+headers[199].
 
 ### Firefox to the Rescue
 
-Firefox recognized this limitation and explicitly chose to keep blocking webRequest[175][181][187]:
+Firefox recognized this limitation and explicitly chose to keep blocking
+webRequest[175][181][187]:
 
-> "Chrome's solution in MV3 was to define a more narrowly scoped API (declarativeNetRequest) as a replacement. However, this will limit the capabilities of certain types of privacy extensions without adequate replacement."[181]
+> "Chrome's solution in MV3 was to define a more narrowly scoped API
+> (declarativeNetRequest) as a replacement. However, this will limit the
+> capabilities of certain types of privacy extensions without adequate
+> replacement."[181]
 
 ---
 
@@ -256,6 +275,7 @@ Firefox recognized this limitation and explicitly chose to keep blocking webRequ
 In Manifest V3, `declarativeNetRequest` can[182][198][201][204]:
 
 1. **Modify Request Headers** (before sending to server):
+
    ```javascript
    {
      action: {
@@ -278,9 +298,11 @@ In Manifest V3, `declarativeNetRequest` can[182][198][201][204]:
 
 ### The Problem
 
-To fix X-Frame-Options, you need to **REMOVE** the header, not SET or APPEND[199].
+To fix X-Frame-Options, you need to **REMOVE** the header, not SET or
+APPEND[199].
 
 **Attempted Solution (Doesn't Work)**:
+
 ```javascript
 // This DOES NOT remove X-Frame-Options!
 {
@@ -297,6 +319,7 @@ To fix X-Frame-Options, you need to **REMOVE** the header, not SET or APPEND[199
 ```
 
 **Available Operations in declarativeNetRequest**[182][204]:
+
 - `"set"` - Replace header value
 - `"append"` - Add to header value
 - `"remove"` - **Only for REQUEST headers, not RESPONSE headers**[201]
@@ -304,6 +327,7 @@ To fix X-Frame-Options, you need to **REMOVE** the header, not SET or APPEND[199
 ### Workaround Attempts (All Fail)
 
 #### Attempt 1: Set Empty Value
+
 ```javascript
 {
   header: "x-frame-options",
@@ -311,9 +335,11 @@ To fix X-Frame-Options, you need to **REMOVE** the header, not SET or APPEND[199
   value: ""  // ❌ Browser still sees header, treats empty as invalid
 }
 ```
+
 **Result**: Browser sees header is present and blocks iframe.
 
 #### Attempt 2: Set Invalid Value
+
 ```javascript
 {
   header: "x-frame-options",
@@ -321,9 +347,11 @@ To fix X-Frame-Options, you need to **REMOVE** the header, not SET or APPEND[199
   value: "ALLOWALL"  // ❌ Invalid value, browser defaults to DENY
 }
 ```
+
 **Result**: Browser treats invalid values as DENY[122][125].
 
 #### Attempt 3: Override with GOFORIT
+
 Some sources suggest setting `X-Frame-Options: GOFORIT` disables blocking[49].
 
 ```javascript
@@ -333,7 +361,9 @@ Some sources suggest setting `X-Frame-Options: GOFORIT` disables blocking[49].
   value: "GOFORIT"  // ⚠️ Only works if server sends multiple X-Frame-Options
 }
 ```
-**Result**: Only works if server already sends conflicting headers, which is rare[49].
+
+**Result**: Only works if server already sends conflicting headers, which is
+rare[49].
 
 ### Conclusion
 
@@ -361,18 +391,22 @@ Focus on Firefox/Zen Browser support using blocking webRequest[181][192]:
 ```
 
 **Pros**:
+
 - ✅ Full functionality in Firefox
 - ✅ Uses MV3 for future-proofing
 - ✅ Simpler implementation
 
 **Cons**:
+
 - ❌ Won't work in Chrome (but that's okay if you target Firefox/Zen)
 
 ### Option 2: Dual Manifest Approach
 
 Publish **two versions**:
+
 - **Firefox version**: MV3 with blocking webRequest
-- **Chrome version**: MV2 (before Chrome removes it) or accept limited functionality
+- **Chrome version**: MV2 (before Chrome removes it) or accept limited
+  functionality
 
 ### Option 3: Feature Detection
 
@@ -380,9 +414,8 @@ Detect browser capabilities at runtime:
 
 ```javascript
 // In background.js
-const hasBlockingWebRequest = typeof browser !== 'undefined' && 
-                               browser.webRequest &&
-                               browser.webRequest.onHeadersReceived;
+const hasBlockingWebRequest =
+  typeof browser !== 'undefined' && browser.webRequest && browser.webRequest.onHeadersReceived;
 
 if (hasBlockingWebRequest) {
   // Firefox - use blocking webRequest
@@ -458,9 +491,11 @@ if (hasBlockingWebRequest) {
 5. Go to **Headers** tab
 6. Look in **Response Headers** section
 
-**Note**: Firefox Developer Tools show ORIGINAL headers from server, not modified ones. This is expected[163].
+**Note**: Firefox Developer Tools show ORIGINAL headers from server, not
+modified ones. This is expected[163].
 
-To verify modification worked, check that the **iframe loads successfully** (no error message).
+To verify modification worked, check that the **iframe loads successfully** (no
+error message).
 
 ---
 
@@ -471,6 +506,7 @@ To verify modification worked, check that the **iframe loads successfully** (no 
 **Cause**: Trying to use Chrome-specific APIs in Firefox.
 
 **Solution**: Remove Chrome-specific permissions:
+
 ```json
 // Remove these from manifest.json:
 "sidePanel",
@@ -489,11 +525,13 @@ To verify modification worked, check that the **iframe loads successfully** (no 
 **Symptoms**: No console logs from webRequest listener.
 
 **Possible Causes**:
+
 1. Missing `host_permissions: ["<all_urls>"]`[204]
 2. Missing `webRequest` permission
 3. Incorrect filter configuration
 
 **Solution**:
+
 ```json
 {
   "permissions": ["webRequest"],
@@ -506,6 +544,7 @@ To verify modification worked, check that the **iframe loads successfully** (no 
 **Cause**: Zen Browser may have additional restrictions.
 
 **Solution**: Check `about:config` for:
+
 ```
 extensions.webextensions.restrictedDomains
 ```
@@ -519,9 +558,10 @@ If set, clear it or remove blocked domains.
 ### Filtering at Registration vs Runtime
 
 **Current** (your code):
+
 ```javascript
 browser.webRequest.onHeadersReceived.addListener(
-  (details) => {
+  details => {
     if (details.type !== 'sub_frame') {
       return { responseHeaders: details.responseHeaders };
     }
@@ -533,21 +573,23 @@ browser.webRequest.onHeadersReceived.addListener(
 ```
 
 **Optimized**:
+
 ```javascript
 browser.webRequest.onHeadersReceived.addListener(
-  (details) => {
+  details => {
     // No type check needed - already filtered
     // ... process
   },
   {
     urls: ['<all_urls>'],
-    types: ['sub_frame']  // Filter at registration
+    types: ['sub_frame'] // Filter at registration
   },
   ['blocking', 'responseHeaders']
 );
 ```
 
-**Benefit**: Browser filters requests before calling listener, reducing function invocations.
+**Benefit**: Browser filters requests before calling listener, reducing function
+invocations.
 
 ---
 
@@ -556,6 +598,7 @@ browser.webRequest.onHeadersReceived.addListener(
 ### ✅ YES, You Can Stay on Manifest V3!
 
 **For Firefox/Zen Browser**:
+
 1. Remove `webRequestBlocking` permission (MV2 only)[190][200]
 2. Keep `webRequest` permission[200]
 3. Add `host_permissions: ["<all_urls>"]`[204]
@@ -571,6 +614,7 @@ browser.webRequest.onHeadersReceived.addListener(
 ### 🎯 Recommended Approach
 
 **Use Firefox MV3 with blocking webRequest**:
+
 - Future-proof (MV3)
 - Fully functional (blocking webRequest)
 - Firefox-specific but that's fine for Zen Browser
@@ -585,32 +629,27 @@ browser.webRequest.onHeadersReceived.addListener(
   "manifest_version": 3,
   "name": "Copy URL on Hover Custom",
   "version": "1.5.5.6",
-  
-  "permissions": [
-    "storage",
-    "webRequest"
-  ],
-  
-  "host_permissions": [
-    "<all_urls>"
-  ],
-  
+
+  "permissions": ["storage", "webRequest"],
+
+  "host_permissions": ["<all_urls>"],
+
   "background": {
     "scripts": ["background.js"]
   },
-  
+
   "action": {
     "default_popup": "popup.html"
   },
-  
+
   "sidebar_action": {
     "default_panel": "sidebar.html"
   },
-  
+
   "icons": {
     "96": "icons/icon.png"
   },
-  
+
   "browser_specific_settings": {
     "gecko": {
       "id": "copy-url-hover@chunkynosher.github.io"

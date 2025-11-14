@@ -2,24 +2,28 @@
 
 ## Summary
 
-✓ **Bug Fixed:** Configuration loading mismatch causing keyboard shortcuts to fail  
+✓ **Bug Fixed:** Configuration loading mismatch causing keyboard shortcuts to
+fail  
 ✓ **Version:** 1.5.8.6  
 ✓ **Security:** 0 vulnerabilities  
 ✓ **Status:** READY FOR RELEASE
 
 ## What Was Fixed
 
-**Problem:** 
+**Problem:**
+
 - Keyboard shortcuts (copy URL, Quick Tabs, open new tab) didn't work
 - Debug mode never showed console messages
 - Only "Copy Text" key worked
 
 **Root Cause:**
+
 - Modular content.js looked for 'userConfig' key in storage
 - popup.js saves settings as individual keys (copyUrlKey, debugMode, etc.)
 - Result: Extension always used default settings, ignoring user preferences
 
 **Solution:**
+
 - Changed ConfigManager to read individual storage keys
 - Now properly loads user settings from popup.js
 - Keyboard shortcuts and debug mode work correctly
@@ -36,19 +40,21 @@
 ✓ CodeQL security scan (0 vulnerabilities)  
 ✓ XPI packaging (no .map files included)  
 ✓ Configuration loading logic verified  
-✓ Build process tested  
+✓ Build process tested
 
 ## How to Release
 
 ### Option 1: Automatic Release (Recommended)
 
 1. **Merge this PR to main:**
+
    ```bash
    # On GitHub, merge the PR titled:
    # "Fix config loading mismatch causing keyboard shortcuts to fail (v1.5.8.6)"
    ```
 
 2. **Create and push git tag:**
+
    ```bash
    git checkout main
    git pull origin main
@@ -129,12 +135,14 @@ After installation, verify the fix:
 ## Expected Behavior After Fix
 
 ### Before (v1.5.8.5 - Broken)
+
 - ✗ Keyboard shortcuts use default keys only
 - ✗ Debug mode never enables
 - ✗ Custom settings ignored
 - ✓ Copy text works (because it uses default 'X')
 
 ### After (v1.5.8.6 - Fixed)
+
 - ✓ Keyboard shortcuts use configured keys
 - ✓ Debug mode enables when set
 - ✓ All custom settings work
@@ -149,7 +157,8 @@ After installation, verify the fix:
 
 If issues arise with v1.5.8.6:
 
-1. Users can downgrade to v1.5.8.4 (last known working modular version before the storage changes)
+1. Users can downgrade to v1.5.8.4 (last known working modular version before
+   the storage changes)
 2. Or use content-legacy.js (non-modular version) temporarily
 3. Report issues on GitHub
 
@@ -165,12 +174,17 @@ If users report issues after release:
 ## Notes
 
 - **Manifest v2:** Still using Manifest v2 (required for webRequestBlocking)
-- **Auto-updates:** Extension will auto-update if user has previous version installed
+- **Auto-updates:** Extension will auto-update if user has previous version
+  installed
 - **Compatibility:** Works on Firefox 115+ and Zen Browser
-- **No data migration needed:** Fix is backward compatible with existing settings
+- **No data migration needed:** Fix is backward compatible with existing
+  settings
 
 ## Conclusion
 
-Version 1.5.8.6 is ready for release. The critical configuration loading bug has been fixed, and all keyboard shortcuts and debug mode functionality has been restored.
+Version 1.5.8.6 is ready for release. The critical configuration loading bug has
+been fixed, and all keyboard shortcuts and debug mode functionality has been
+restored.
 
-**Recommended Action:** Merge PR and create release tag to deploy automatically via GitHub Actions.
+**Recommended Action:** Merge PR and create release tag to deploy automatically
+via GitHub Actions.

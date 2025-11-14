@@ -1,12 +1,12 @@
-name: "Copilot Development Environment Setup - UPDATED"
+name: 'Copilot Development Environment Setup - UPDATED'
 
 # Optimized for Browser Extension Development with WebExtension API Testing
 # UPDATED to verify ALL 17 installed JavaScript libraries
 # Last Updated: November 14, 2025
 
 on:
-  workflow_dispatch:  # Allows manual testing
-  pull_request:       # Runs on PRs that modify this file
+  workflow_dispatch: # Allows manual testing
+  pull_request: # Runs on PRs that modify this file
     paths:
       - '.github/workflows/copilot-setup-steps.yml'
 
@@ -14,12 +14,12 @@ jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
     timeout-minutes: 59
-    
+
     env:
       NODE_ENV: development
       DEBUG: 'jest:*'
       BABEL_ENV: test
-    
+
     steps:
       # ====================================================================
       # STEP 1-4: Basic Setup (unchanged)
@@ -28,14 +28,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Setup Node.js 22 with npm cache
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: 'package-lock.json'
-      
+
       - name: Display environment information
         run: |
           echo "=========================================="
@@ -45,12 +45,12 @@ jobs:
           echo "npm version: $(npm --version)"
           echo "OS: $(uname -a)"
           echo "=========================================="
-      
+
       - name: Install npm dependencies
         run: npm ci
         env:
           NODE_ENV: development
-      
+
       # ====================================================================
       # STEP 5: Verify ALL Testing Libraries (UPDATED)
       # ====================================================================
@@ -59,159 +59,159 @@ jobs:
           echo "=========================================="
           echo "Verifying ALL Testing Libraries (17 total)"
           echo "=========================================="
-          
+
           FAILED=0
-          
+
           # Core Testing Libraries
           echo ""
           echo "Core Testing Libraries:"
           echo "-------------------------------------------"
-          
+
           if npm list jest --depth=0 > /dev/null 2>&1; then
             echo "✓ jest $(npm list jest --depth=0 | grep jest@ | sed 's/.*jest@//' | cut -d' ' -f1)"
           else
             echo "✗ jest NOT installed - CRITICAL ERROR"
             FAILED=1
           fi
-          
+
           if npm list jest-environment-jsdom --depth=0 > /dev/null 2>&1; then
             echo "✓ jest-environment-jsdom $(npm list jest-environment-jsdom --depth=0 | grep jest-environment-jsdom@ | sed 's/.*jest-environment-jsdom@//' | cut -d' ' -f1)"
           else
             echo "✗ jest-environment-jsdom NOT installed - CRITICAL ERROR"
             FAILED=1
           fi
-          
+
           if npm list jsdom --depth=0 > /dev/null 2>&1; then
             echo "✓ jsdom $(npm list jsdom --depth=0 | grep jsdom@ | sed 's/.*jsdom@//' | cut -d' ' -f1)"
           else
             echo "✗ jsdom NOT installed - CRITICAL ERROR"
             FAILED=1
           fi
-          
+
           if npm list babel-jest --depth=0 > /dev/null 2>&1; then
             echo "✓ babel-jest $(npm list babel-jest --depth=0 | grep babel-jest@ | sed 's/.*babel-jest@//' | cut -d' ' -f1)"
           else
             echo "✗ babel-jest NOT installed - CRITICAL ERROR"
             FAILED=1
           fi
-          
+
           # Babel/Transpilation Libraries
           echo ""
           echo "Transpilation Libraries:"
           echo "-------------------------------------------"
-          
+
           if npm list @babel/core --depth=0 > /dev/null 2>&1; then
             echo "✓ @babel/core $(npm list @babel/core --depth=0 | grep @babel/core@ | sed 's/.*@babel\/core@//' | cut -d' ' -f1)"
           else
             echo "✗ @babel/core NOT installed - CRITICAL ERROR"
             FAILED=1
           fi
-          
+
           if npm list @babel/preset-env --depth=0 > /dev/null 2>&1; then
             echo "✓ @babel/preset-env $(npm list @babel/preset-env --depth=0 | grep @babel/preset-env@ | sed 's/.*@babel\/preset-env@//' | cut -d' ' -f1)"
           else
             echo "✗ @babel/preset-env NOT installed - CRITICAL ERROR"
             FAILED=1
           fi
-          
+
           # Testing Helper Libraries (NEW)
           echo ""
           echo "Testing Helper Libraries:"
           echo "-------------------------------------------"
-          
+
           if npm list sinon-chrome --depth=0 > /dev/null 2>&1; then
             echo "✓ sinon-chrome $(npm list sinon-chrome --depth=0 | grep sinon-chrome@ | sed 's/.*sinon-chrome@//' | cut -d' ' -f1)"
           else
             echo "✗ sinon-chrome NOT installed - CRITICAL FOR COMPLEX API MOCKING"
             FAILED=1
           fi
-          
+
           if npm list @joebobmiles/pointer-events-polyfill --depth=0 > /dev/null 2>&1; then
             echo "✓ @joebobmiles/pointer-events-polyfill $(npm list @joebobmiles/pointer-events-polyfill --depth=0 | grep pointer-events-polyfill@ | sed 's/.*pointer-events-polyfill@//' | cut -d' ' -f1)"
           else
             echo "✗ @joebobmiles/pointer-events-polyfill NOT installed - CRITICAL FOR DRAG/RESIZE TESTING"
             FAILED=1
           fi
-          
+
           if npm list @testing-library/jest-dom --depth=0 > /dev/null 2>&1; then
             echo "✓ @testing-library/jest-dom $(npm list @testing-library/jest-dom --depth=0 | grep jest-dom@ | sed 's/.*jest-dom@//' | cut -d' ' -f1)"
           else
             echo "⚠ @testing-library/jest-dom NOT installed - Nice to have for better assertions"
           fi
-          
+
           if npm list @testing-library/user-event --depth=0 > /dev/null 2>&1; then
             echo "✓ @testing-library/user-event $(npm list @testing-library/user-event --depth=0 | grep user-event@ | sed 's/.*user-event@//' | cut -d' ' -f1)"
           else
             echo "⚠ @testing-library/user-event NOT installed - Nice to have for user interactions"
           fi
-          
+
           # Runtime Polyfills (NEW)
           echo ""
           echo "Runtime Polyfills:"
           echo "-------------------------------------------"
-          
+
           if npm list broadcast-channel --depth=0 > /dev/null 2>&1; then
             echo "✓ broadcast-channel $(npm list broadcast-channel --depth=0 | grep broadcast-channel@ | sed 's/.*broadcast-channel@//' | cut -d' ' -f1)"
           else
             echo "⚠ broadcast-channel NOT installed - Only needed if using BroadcastChannel API"
           fi
-          
+
           # Build Tools
           echo ""
           echo "Build Tools:"
           echo "-------------------------------------------"
-          
+
           if npm list rollup --depth=0 > /dev/null 2>&1; then
             echo "✓ rollup $(npm list rollup --depth=0 | grep rollup@ | sed 's/.*rollup@//' | cut -d' ' -f1)"
           else
             echo "✗ rollup NOT installed - CRITICAL FOR BUILD"
             FAILED=1
           fi
-          
+
           if npm list @rollup/plugin-commonjs --depth=0 > /dev/null 2>&1; then
             echo "✓ @rollup/plugin-commonjs $(npm list @rollup/plugin-commonjs --depth=0 | grep plugin-commonjs@ | sed 's/.*plugin-commonjs@//' | cut -d' ' -f1)"
           else
             echo "✗ @rollup/plugin-commonjs NOT installed - CRITICAL FOR BUILD"
             FAILED=1
           fi
-          
+
           if npm list @rollup/plugin-node-resolve --depth=0 > /dev/null 2>&1; then
             echo "✓ @rollup/plugin-node-resolve $(npm list @rollup/plugin-node-resolve --depth=0 | grep plugin-node-resolve@ | sed 's/.*plugin-node-resolve@//' | cut -d' ' -f1)"
           else
             echo "✗ @rollup/plugin-node-resolve NOT installed - CRITICAL FOR BUILD"
             FAILED=1
           fi
-          
+
           # Code Quality Tools
           echo ""
           echo "Code Quality Tools:"
           echo "-------------------------------------------"
-          
+
           if npm list eslint --depth=0 > /dev/null 2>&1; then
             echo "✓ eslint $(npm list eslint --depth=0 | grep eslint@ | sed 's/.*eslint@//' | cut -d' ' -f1)"
           else
             echo "✗ eslint NOT installed - CRITICAL FOR CODE QUALITY"
             FAILED=1
           fi
-          
+
           if npm list prettier --depth=0 > /dev/null 2>&1; then
             echo "✓ prettier $(npm list prettier --depth=0 | grep prettier@ | sed 's/.*prettier@//' | cut -d' ' -f1)"
           else
             echo "✗ prettier NOT installed - CRITICAL FOR CODE FORMATTING"
             FAILED=1
           fi
-          
+
           # Development Tools (NEW)
           echo ""
           echo "Development Tools:"
           echo "-------------------------------------------"
-          
+
           if npm list web-ext --depth=0 > /dev/null 2>&1; then
             echo "✓ web-ext $(npm list web-ext --depth=0 | grep web-ext@ | sed 's/.*web-ext@//' | cut -d' ' -f1)"
           else
             echo "⚠ web-ext NOT installed - Useful for manifest validation"
           fi
-          
+
           echo ""
           echo "=========================================="
           if [ $FAILED -eq 0 ]; then
@@ -222,7 +222,7 @@ jobs:
             echo "=========================================="
             exit 1
           fi
-      
+
       # ====================================================================
       # STEP 6: Verify Configuration Files + Test Integration (UPDATED)
       # ====================================================================
@@ -231,7 +231,7 @@ jobs:
           echo "=========================================="
           echo "Verifying Configuration Files"
           echo "=========================================="
-          
+
           # Check .babelrc
           if [ -f ".babelrc" ]; then
             echo "✓ .babelrc found"
@@ -245,7 +245,7 @@ jobs:
             echo "✗ .babelrc NOT found"
             exit 1
           fi
-          
+
           # Check jest.config.cjs
           if [ -f "jest.config.cjs" ]; then
             echo "✓ jest.config.cjs found"
@@ -276,7 +276,7 @@ jobs:
             echo "✗ jest.config.cjs NOT found"
             exit 1
           fi
-          
+
           # Check tests/setup.js
           if [ -f "tests/setup.js" ]; then
             echo "✓ tests/setup.js found (browser API mocks available)"
@@ -299,7 +299,7 @@ jobs:
             echo "✗ tests/setup.js NOT found"
             exit 1
           fi
-          
+
           # Check package.json for syntax errors (IMPORTANT!)
           if [ -f "package.json" ]; then
             echo "✓ package.json found"
@@ -314,7 +314,7 @@ jobs:
             echo "✗ package.json NOT found"
             exit 1
           fi
-          
+
           # Check manifest.json
           if [ -f "manifest.json" ]; then
             echo "✓ manifest.json found"
@@ -327,11 +327,11 @@ jobs:
               exit 1
             fi
           fi
-          
+
           echo "=========================================="
           echo "✓ All configuration files verified!"
           echo "=========================================="
-      
+
       # ====================================================================
       # STEP 7: Test Library Integration (NEW)
       # ====================================================================
@@ -340,11 +340,11 @@ jobs:
           echo "=========================================="
           echo "Testing Library Integration"
           echo "=========================================="
-          
+
           # Create a comprehensive integration test
           cat > ./tests/temp-integration-test.test.js << 'EOF'
           // Test all installed testing libraries work together
-          
+
           describe('Library Integration Tests', () => {
             // Test 1: Jest basic functionality
             it('should have Jest working', () => {
@@ -384,7 +384,7 @@ jobs:
             });
           });
           EOF
-          
+
           # Run the integration test
           npx jest tests/temp-integration-test.test.js --verbose --no-coverage
           rm ./tests/temp-integration-test.test.js  # Clean up
@@ -397,14 +397,14 @@ jobs:
             echo "✗ Library integration test failed"
             exit 1
           fi
-      
+
       # ====================================================================
       # STEP 8: Run ESLint
       # ====================================================================
       - name: Run ESLint
         run: npm run lint
         continue-on-error: false
-      
+
       # ====================================================================
       # STEP 9: Run Tests
       # ====================================================================
@@ -413,14 +413,14 @@ jobs:
         env:
           NODE_ENV: test
           JEST_VERBOSE: true
-      
+
       # ====================================================================
       # STEP 10: Generate Coverage
       # ====================================================================
       - name: Generate test coverage report
         run: npm run test:coverage
         continue-on-error: true
-      
+
       # ====================================================================
       # STEP 11: Display Coverage
       # ====================================================================
@@ -443,7 +443,7 @@ jobs:
             echo "Coverage report not found"
           fi
           echo "=========================================="
-      
+
       # ====================================================================
       # STEP 12: Upload Coverage
       # ====================================================================
@@ -454,13 +454,13 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
-      
+
       # ====================================================================
       # STEP 13: Build Extension
       # ====================================================================
       - name: Build browser extension
         run: npm run build
-      
+
       # ====================================================================
       # STEP 14: Verify Build Output
       # ====================================================================
@@ -469,7 +469,7 @@ jobs:
           echo "=========================================="
           echo "Verifying Build Output"
           echo "=========================================="
-          
+
           if [ -d "dist" ]; then
             echo "✓ dist/ directory created"
             
@@ -496,11 +496,11 @@ jobs:
             echo "✗ dist/ directory NOT created"
             exit 1
           fi
-          
+
           echo "=========================================="
           echo "✓ Build output verified!"
           echo "=========================================="
-      
+
       # ====================================================================
       # STEP 15: Validate Manifest with web-ext (NEW)
       # ====================================================================
@@ -509,7 +509,7 @@ jobs:
           echo "=========================================="
           echo "Validating Manifest with web-ext"
           echo "=========================================="
-          
+
           # Run web-ext lint on manifest only
           if npx web-ext lint --source-dir=. --warnings-as-errors=false 2>&1 | tee /tmp/web-ext-output.txt; then
             echo "✓ web-ext validation passed"
@@ -517,10 +517,10 @@ jobs:
             echo "⚠ web-ext found issues (non-critical, continuing)"
             cat /tmp/web-ext-output.txt
           fi
-          
+
           echo "=========================================="
         continue-on-error: true
-      
+
       # ====================================================================
       # STEP 16: Test Browser API Mock Availability
       # ====================================================================
@@ -529,7 +529,7 @@ jobs:
           echo "=========================================="
           echo "Testing Browser API Mock Availability"
           echo "=========================================="
-          
+
           cat > /tmp/test-browser-api.test.js << 'EOF'
           describe('Browser API Mocks', () => {
             it('should have browser.storage.sync mock', () => {
@@ -560,13 +560,13 @@ jobs:
             });
           });
           EOF
-          
+
           npx jest /tmp/test-browser-api.test.js --verbose
-          
+
           echo "=========================================="
           echo "✓ All browser API mocks are working!"
           echo "=========================================="
-      
+
       # ====================================================================
       # STEP 17: Environment Ready Summary (UPDATED)
       # ====================================================================
@@ -617,7 +617,7 @@ jobs:
           echo "  • Manifest validation (web-ext)"
           echo ""
           echo "=========================================="
-      
+
       # ====================================================================
       # STEP 18: Failure Summary
       # ====================================================================

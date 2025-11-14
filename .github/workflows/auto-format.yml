@@ -2,7 +2,7 @@ name: Auto-Format Code
 
 on:
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 # Important: This needs write permissions
 permissions:
@@ -12,37 +12,36 @@ jobs:
   format:
     name: Auto-Format with Prettier
     runs-on: ubuntu-latest
-    
+
     steps:
       # Check out with the PR branch
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}  # The PR branch
+          ref: ${{ github.head_ref }} # The PR branch
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       # Run Prettier to format all files
       - name: Run Prettier
         run: npm run format
-      
+
       # Commit and push changes if any
       - name: Commit formatting changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "style: auto-format code with Prettier [skip ci]"
-          commit_user_name: "github-actions[bot]"
-          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: 'style: auto-format code with Prettier [skip ci]'
+          commit_user_name: 'github-actions[bot]'
+          commit_user_email: 'github-actions[bot]@users.noreply.github.com'
         # The [skip ci] prevents infinite loop of formatting runs
-
 # NOTE: DeepSource also has Autofix™ AI that can fix style + logic issues
 # This Prettier workflow is faster for formatting-only changes
 # DeepSource Autofix handles more complex issues like refactoring

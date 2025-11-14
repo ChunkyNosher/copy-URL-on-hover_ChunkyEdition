@@ -30,7 +30,7 @@ coverage:
   # WHY: Better to underreport coverage than overreport
 
   range: 70..90
-  
+
   # -----------------------------------------------------------------------------
   # COVERAGE STATUS CHECKS (PASS/FAIL GATES)
   # -----------------------------------------------------------------------------
@@ -43,14 +43,14 @@ coverage:
       default:
         # Target coverage percentage
         target: 70%
-        # OPTIONS: 
+        # OPTIONS:
         #   Percentage: 50%, 70%, 100%, etc.
         #   "auto" - maintain current coverage
         # EXAMPLES:
         #   target: 70%   → Must be at least 70% covered
         #   target: auto  → Must not decrease from current
         # BEST FOR YOU: 70% (realistic for browser extensions)
-        # WHY: 
+        # WHY:
         #   - 100% is unrealistic (some code is hard to test)
         #   - 50% is too low (not enough testing)
         #   - 70% is industry standard for good quality
@@ -104,16 +104,16 @@ coverage:
 # FILES TO IGNORE FROM COVERAGE
 # -----------------------------------------------------------------------------
 ignore:
-  - "dist/**"              # Built/bundled code (generated)
-  - "node_modules/**"      # Dependencies (not your code)
-  - "coverage/**"          # Coverage reports themselves
-  - "**/*.test.js"         # Test files (don't measure test coverage)
-  - "**/*.spec.js"         # Test files (alternative naming)
-  - ".github/**"           # GitHub Actions workflows
-  - "tests/**"             # Test directory
-  - "docs/**"              # Documentation
-  - "*.config.js"          # Config files (ESLint, Prettier, etc.)
-  - "*.config.cjs"         # Config files (CommonJS)
+  - 'dist/**' # Built/bundled code (generated)
+  - 'node_modules/**' # Dependencies (not your code)
+  - 'coverage/**' # Coverage reports themselves
+  - '**/*.test.js' # Test files (don't measure test coverage)
+  - '**/*.spec.js' # Test files (alternative naming)
+  - '.github/**' # GitHub Actions workflows
+  - 'tests/**' # Test directory
+  - 'docs/**' # Documentation
+  - '*.config.js' # Config files (ESLint, Prettier, etc.)
+  - '*.config.cjs' # Config files (CommonJS)
 
 # WHY IGNORE THESE:
 #   - dist/: Generated code (don't test transpiled output)
@@ -129,7 +129,7 @@ ignore:
 # -----------------------------------------------------------------------------
 comment:
   # What sections to include in PR comment
-  layout: "diff,flags,files"
+  layout: 'diff,flags,files'
   # OPTIONS:
   #   reach: Coverage percentage
   #   diff: Coverage change since last commit
@@ -162,7 +162,7 @@ flags:
   # Track feature code separately
   features:
     paths:
-      - "src/features/**/*.js"
+      - 'src/features/**/*.js'
     # WHY: See feature coverage separately
     # EXAMPLE OUTPUT:
     #   Features: 60% coverage
@@ -172,9 +172,9 @@ flags:
   # Track core extension code separately
   core:
     paths:
-      - "*.js"                   # Root JS files
-      - "src/**/*.js"            # All src except features
-      - "!src/features/**"       # Exclude features (! means NOT)
+      - '*.js' # Root JS files
+      - 'src/**/*.js' # All src except features
+      - '!src/features/**' # Exclude features (! means NOT)
     # WHY: Core code should have higher coverage than features
 
 # HOW FLAGS WORK:
@@ -199,7 +199,6 @@ github_checks:
   # WHY: See which specific lines aren't covered directly in PR
   # EXAMPLE:
   #   GitHub shows yellow highlight on uncovered lines in PR diff
-
 # ==============================================================================
 # WHAT HAPPENS WHEN CODECOV RUNS
 # ==============================================================================

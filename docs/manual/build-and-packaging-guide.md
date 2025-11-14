@@ -2,7 +2,8 @@
 
 ## Overview
 
-This document explains how the extension is built and packaged with the new hybrid modular/EventBus architecture implemented in v1.5.8.10.
+This document explains how the extension is built and packaged with the new
+hybrid modular/EventBus architecture implemented in v1.5.8.10.
 
 ## Architecture Changes
 
@@ -54,7 +55,8 @@ dist/
 └── sidebar/            # Copied from root
 ```
 
-**IMPORTANT:** The `src/` directory is NOT included in `dist/`. All modular source files are bundled into a single `content.js` file.
+**IMPORTANT:** The `src/` directory is NOT included in `dist/`. All modular
+source files are bundled into a single `content.js` file.
 
 ## Build Process
 
@@ -111,13 +113,16 @@ Watches for changes in `src/` and rebuilds automatically.
 
 ### What Gets Bundled
 
-Rollup follows all `import` statements starting from `src/content.js` and bundles:
+Rollup follows all `import` statements starting from `src/content.js` and
+bundles:
 
 - ✅ `core/config.js`, `core/state.js`, `core/events.js`
 - ✅ `core/dom.js`, `core/browser-api.js` (moved from utils/)
 - ✅ `utils/debug.js`
-- ✅ `features/quick-tabs/index.js`, `features/quick-tabs/window.js`, `features/quick-tabs/minimized-manager.js`
-- ✅ `features/notifications/index.js`, `features/notifications/toast.js`, `features/notifications/tooltip.js`
+- ✅ `features/quick-tabs/index.js`, `features/quick-tabs/window.js`,
+  `features/quick-tabs/minimized-manager.js`
+- ✅ `features/notifications/index.js`, `features/notifications/toast.js`,
+  `features/notifications/tooltip.js`
 - ✅ `features/url-handlers/` - All 11 category files
 - ✅ `ui/components.js`
 

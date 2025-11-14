@@ -32,6 +32,10 @@ class QuickTabsManager {
     // v1.5.8.14 - Transaction ID system to prevent race conditions
     this.currentSaveId = null;
     this.saveQueue = Promise.resolve();
+
+    // v1.5.8.16 - FIX Issue #1: Debounce rapid broadcast messages to prevent loops
+    this.broadcastDebounce = new Map(); // id -> timestamp of last broadcast processed
+    this.BROADCAST_DEBOUNCE_MS = 50; // Ignore duplicate broadcasts within 50ms
   }
 
   /**
@@ -95,6 +99,32 @@ class QuickTabsManager {
         console.log('[QuickTabsManager] BroadcastChannel message received:', event.data);
 
         const { type, data } = event.data;
+
+        // v1.5.8.16 - FIX Issue #1: Debounce rapid messages to prevent loops
+        const debounceKey = `${type}-${data.id}`;
+        const now = Date.now();
+        const lastProcessed = this.broadcastDebounce.get(debounceKey);
+
+        if (lastProcessed && now - lastProcessed < this.BROADCAST_DEBOUNCE_MS) {
+          console.log(
+            '[QuickTabsManager] Ignoring duplicate broadcast (debounced):',
+            type,
+            data.id
+          );
+          return;
+        }
+
+        this.broadcastDebounce.set(debounceKey, now);
+
+        // Clean up old debounce entries (prevent memory leak)
+        if (this.broadcastDebounce.size > 100) {
+          const oldestAllowed = now - this.BROADCAST_DEBOUNCE_MS * 2;
+          for (const [key, timestamp] of this.broadcastDebounce.entries()) {
+            if (timestamp < oldestAllowed) {
+              this.broadcastDebounce.delete(key);
+            }
+          }
+        }
 
         switch (type) {
           case 'CREATE':
@@ -205,6 +235,16 @@ class QuickTabsManager {
           break;
         case 'UPDATE_QUICK_TAB_SIZE':
           this.updateQuickTabSize(message.id, message.width, message.height);
+          break;
+        case 'CLOSE_QUICK_TAB_FROM_BACKGROUND':
+          // v1.5.8.16 - FIX Issue #2: Handle close from background script
+          console.log('[QuickTabsManager] Closing Quick Tab from background:', message.id);
+          this.closeById(message.id);
+          break;
+        case 'CLEAR_ALL_QUICK_TABS':
+          // v1.5.8.16 - Handle clear all from popup
+          console.log('[QuickTabsManager] Clearing all Quick Tabs');
+          this.closeAll();
           break;
         default:
           // Unknown action, ignore
@@ -530,14 +570,35 @@ class QuickTabsManager {
   /**
    * Handle Quick Tab destruction
    * v1.5.8.13 - Now broadcasts close to other tabs
+   * v1.5.8.16 - FIX Issue #2 & #3: Also send to background for proper cross-tab close
    */
   handleDestroy(id) {
     console.log('[QuickTabsManager] Handling destroy for:', id);
+
+    // Get tab info before deleting
+    const tabWindow = this.tabs.get(id);
+    const url = tabWindow ? tabWindow.url : null;
+    const cookieStoreId = tabWindow ? tabWindow.cookieStoreId : 'firefox-default';
+
     this.tabs.delete(id);
     this.minimizedManager.remove(id);
 
     // v1.5.8.13 - Broadcast close to other tabs
     this.broadcast('CLOSE', { id });
+
+    // v1.5.8.16 - FIX Issue #2: Send to background to update storage and notify all tabs
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime
+        .sendMessage({
+          action: 'CLOSE_QUICK_TAB',
+          id: id,
+          url: url,
+          cookieStoreId: cookieStoreId
+        })
+        .catch(err => {
+          console.error('[QuickTabsManager] Error closing Quick Tab in background:', err);
+        });
+    }
 
     // Emit destruction event
     if (this.eventBus && this.Events) {
@@ -664,43 +725,14 @@ class QuickTabsManager {
 
   /**
    * Handle Quick Tab position change (throttled during drag)
-   * v1.5.8.13 - Now broadcasts position updates via BroadcastChannel
+   * v1.5.8.15 - REMOVED broadcast/sync during drag to prevent performance issues
+   * Position only syncs on drag end for optimal performance
    */
   handlePositionChange(id, left, top) {
-    const now = Date.now();
-
-    // Throttle to 100ms intervals during drag
-    if (!this.positionChangeThrottle) {
-      this.positionChangeThrottle = {};
-    }
-
-    if (this.positionChangeThrottle[id] && now - this.positionChangeThrottle[id] < 100) {
-      return;
-    }
-
-    this.positionChangeThrottle[id] = now;
-
-    // v1.5.8.13 - Broadcast position update to other tabs
-    this.broadcast('UPDATE_POSITION', {
-      id,
-      left: Math.round(left),
-      top: Math.round(top)
-    });
-
-    // Send to background for cross-tab sync (non-blocking)
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      browser.runtime
-        .sendMessage({
-          action: 'UPDATE_QUICK_TAB_POSITION',
-          id: id,
-          left: Math.round(left),
-          top: Math.round(top),
-          timestamp: now
-        })
-        .catch(err => {
-          console.error('[QuickTabsManager] Position sync error:', err);
-        });
-    }
+    // v1.5.8.15 - No longer broadcasts or syncs during drag
+    // This prevents excessive BroadcastChannel messages and storage writes
+    // Position syncs only on drag end via handlePositionChangeEnd
+    // Local UI update happens automatically via pointer events
   }
 
   /**
@@ -743,41 +775,14 @@ class QuickTabsManager {
 
   /**
    * Handle Quick Tab size change (throttled during resize)
-   * v1.5.8.13 - Now broadcasts size updates via BroadcastChannel
+   * v1.5.8.15 - REMOVED broadcast/sync during resize to prevent performance issues
+   * Size only syncs on resize end for optimal performance
    */
   handleSizeChange(id, width, height) {
-    const now = Date.now();
-
-    if (!this.sizeChangeThrottle) {
-      this.sizeChangeThrottle = {};
-    }
-
-    if (this.sizeChangeThrottle[id] && now - this.sizeChangeThrottle[id] < 100) {
-      return;
-    }
-
-    this.sizeChangeThrottle[id] = now;
-
-    // v1.5.8.13 - Broadcast size update to other tabs
-    this.broadcast('UPDATE_SIZE', {
-      id,
-      width: Math.round(width),
-      height: Math.round(height)
-    });
-
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      browser.runtime
-        .sendMessage({
-          action: 'UPDATE_QUICK_TAB_SIZE',
-          id: id,
-          width: Math.round(width),
-          height: Math.round(height),
-          timestamp: now
-        })
-        .catch(err => {
-          console.error('[QuickTabsManager] Size sync error:', err);
-        });
-    }
+    // v1.5.8.15 - No longer broadcasts or syncs during resize
+    // This prevents excessive BroadcastChannel messages and storage writes
+    // Size syncs only on resize end via handleSizeChangeEnd
+    // Local UI update happens automatically via pointer events
   }
 
   /**

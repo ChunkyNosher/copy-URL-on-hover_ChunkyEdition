@@ -17,14 +17,16 @@
 
 1. ❌ Open URL in New Tab - Notification shows but no tab opens
 2. ❌ Quick Tab Creation - Console logs but no Quick Tab appears
-3. ❌ Notification Display - Always shows tooltip, ignores corner slide-in setting
+3. ❌ Notification Display - Always shows tooltip, ignores corner slide-in
+   setting
 4. ❌ Notification Border - Always 1px, ignores border width setting
 5. ❌ Notification Animation - No animation plays
 
 **Legacy Code Contamination:**
 
 - ⚠️ No direct legacy code references found in background.js or popup.js
-- ⚠️ However, Quick Tab logic in background.js is extremely complex and may have leftover issues
+- ⚠️ However, Quick Tab logic in background.js is extremely complex and may have
+  leftover issues
 
 ---
 
@@ -32,7 +34,8 @@
 
 ### Issue Diagnosis
 
-The `handleOpenInNewTab()` function in `src/content.js` sends a message to background script:
+The `handleOpenInNewTab()` function in `src/content.js` sends a message to
+background script:
 
 ```javascript
 await sendMessageToBackground({
@@ -42,7 +45,8 @@ await sendMessageToBackground({
 });
 ```
 
-But in `background.js`, the message handler expects `action: 'openTab'` (not `'openInNewTab'`):
+But in `background.js`, the message handler expects `action: 'openTab'` (not
+`'openInNewTab'`):
 
 ```javascript
 if (message.action === 'openTab') {
@@ -102,7 +106,8 @@ async function handleCreateQuickTab(url) {
 
 **There's NO actual Quick Tab creation code!**
 
-The function is a stub/placeholder. The event is emitted but nothing listens to it.
+The function is a stub/placeholder. The event is emitted but nothing listens to
+it.
 
 ### Fix
 
@@ -142,7 +147,8 @@ function generateQuickTabId() {
 }
 ```
 
-**Background script already has the handler for `CREATE_QUICK_TAB` action, so this should work!**
+**Background script already has the handler for `CREATE_QUICK_TAB` action, so
+this should work!**
 
 ---
 
@@ -160,7 +166,8 @@ if (CONFIG.notifDisplayMode === 'tooltip') {
 }
 ```
 
-But the config is probably loaded from `browser.storage.local` NOT `browser.storage.sync`:
+But the config is probably loaded from `browser.storage.local` NOT
+`browser.storage.sync`:
 
 In `popup.js`:
 
@@ -168,7 +175,8 @@ In `popup.js`:
 browser.storage.local.set(settings, function() {  // ← Saves to LOCAL
 ```
 
-In `src/core/config.js` (need to verify), it probably loads from the WRONG storage area!
+In `src/core/config.js` (need to verify), it probably loads from the WRONG
+storage area!
 
 ### Fix
 
@@ -189,9 +197,11 @@ async load() {
 
 **Option B: Make popup.js save to both storage.local AND as individual keys**
 
-The modular refactor may expect settings as individual keys, not nested in a `config` object.
+The modular refactor may expect settings as individual keys, not nested in a
+`config` object.
 
-Check how `ConfigManager.load()` actually loads settings and make popup.js match that format.
+Check how `ConfigManager.load()` actually loads settings and make popup.js match
+that format.
 
 ---
 
@@ -410,7 +420,8 @@ function showTooltip(message) {
 
 **Check `src/core/config.js`:**
 
-The `load()` method MUST read from `browser.storage.local`, not `browser.storage.sync`!
+The `load()` method MUST read from `browser.storage.local`, not
+`browser.storage.sync`!
 
 ```javascript
 async load() {
@@ -467,7 +478,8 @@ Copy current `popup.js` to `popup-legacy.js` before making changes.
 
 **Simplify background.js:**
 
-1. Remove StateCoordinator class (appears unused - no calls to `stateCoordinator.processBatchUpdate` except in one handler)
+1. Remove StateCoordinator class (appears unused - no calls to
+   `stateCoordinator.processBatchUpdate` except in one handler)
 2. Remove duplicate global state variables
 3. Consolidate message handlers
 4. Remove container-awareness if not needed

@@ -1,14 +1,71 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.8.14** - A feature-rich Firefox/Zen Browser extension with **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab management with Firefox Container support and Persistent Floating Panel Manager.
+**Version 1.5.8.16** - A feature-rich Firefox/Zen Browser extension with
+**Hybrid Modular/EventBus Architecture** for quick URL copying and advanced
+Quick Tab management with Firefox Container support and Persistent Floating
+Panel Manager.
 
-This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows. Now with full Firefox Container integration and a persistent Quick Tabs Manager panel optimized for Zen Browser.
+This is a complete, customizable Firefox extension that allows you to copy URLs
+or link text by pressing keyboard shortcuts while hovering over links, plus
+powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+Now with full Firefox Container integration and a persistent Quick Tabs Manager
+panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.8.16
+
+**🐛 Critical Bug Fixes: Cross-Tab Close, Sync Optimization, and RAM Usage**
+
+This release fixes critical Quick Tabs bugs including RAM spikes, flickering,
+and cross-tab synchronization issues.
+
+**Critical Fixes:**
+
+- ✅ **Issue #5 FIXED** - Optimized position/size syncing to prevent performance
+  issues
+  - Removed real-time broadcasts during drag/resize operations
+  - Position and size now only sync on drag/resize end
+  - Reduces BroadcastChannel messages from ~10-50 per operation to just 1
+  - Eliminates excessive storage writes and potential quota issues
+  - Significantly improves performance and reduces RAM usage
+- ✅ **Issue #2 FIXED** - Quick Tab now closes across ALL browser tabs
+  - Added missing `CLOSE_QUICK_TAB_FROM_BACKGROUND` message handler
+  - Enhanced `handleDestroy` to send close message to background script
+  - Background script properly broadcasts close to all tabs
+  - Fixes cross-tab synchronization for close operations
+- ✅ **Issue #1 FIXED** - Eliminated RAM spikes and flickering during Quick Tab
+  operations
+  - Added debouncing to BroadcastChannel message handler (50ms)
+  - Prevents rapid event loops that cause memory spikes
+  - Eliminates flicker during move/resize operations
+  - Stops close/reopen loops that caused RAM to spike to 19GB
+- ✅ **Issue #3 PARTIAL FIX** - Improved Quick Tab closure behavior
+  - Enhanced close operation to properly update background state
+  - Better transaction ID handling to prevent race conditions
+  - Storage properly cleared on Quick Tab close
+
+**Additional Improvements:**
+
+- Added `CLEAR_ALL_QUICK_TABS` message handler for popup button
+- Improved error handling in close operations
+- Enhanced logging for debugging cross-tab sync issues
+
+**Technical Details:**
+
+- Broadcast debouncing: 50ms window to prevent duplicate message processing
+- Automatic cleanup of debounce map to prevent memory leaks
+- Position/size changes now only trigger one sync event per operation
+- Transaction ID system prevents self-triggering storage events
+
+See [v1.5.8.15-bug-analysis.md](docs/manual/v1.5.8.15-bug-analysis.md) for
+detailed bug analysis and fix strategy.
 
 ## 🎉 What's New in v1.5.8.14
 
 **🐛 Critical Bug Fixes: Transaction ID System and Emergency Save**
 
-This release fixes the critical "Quick Tab immediately closes after opening" bug and other Quick Tabs Manager issues identified in the quick-tab-bug-fix-v1-5-8-13.md guide.
+This release fixes the critical "Quick Tab immediately closes after opening" bug
+and other Quick Tabs Manager issues identified in the
+quick-tab-bug-fix-v1-5-8-13.md guide.
 
 **Critical Fixes:**
 
@@ -38,7 +95,8 @@ The "Quick Tab immediately closes" bug was caused by a race condition:
 4. Content script thinks Quick Tab was deleted externally
 5. Content script destroys the newly created Quick Tab
 
-**Solution:** Transaction ID system where each save gets a unique saveId that the content script tracks and ignores when processing storage events.
+**Solution:** Transaction ID system where each save gets a unique saveId that
+the content script tracks and ignores when processing storage events.
 
 **Technical Details:**
 
@@ -48,30 +106,43 @@ The "Quick Tab immediately closes" bug was caused by a race condition:
 - Background script includes saveId when saving state
 - Container-aware format properly handled in all operations
 
-See [quick-tab-bug-fix-v1-5-8-13.md](docs/manual/quick-tab-bug-fix-v1-5-8-13.md) for detailed diagnosis and implementation.
+See [quick-tab-bug-fix-v1-5-8-13.md](docs/manual/quick-tab-bug-fix-v1-5-8-13.md)
+for detailed diagnosis and implementation.
 
 ## 🎉 What's New in v1.5.8.13
 
 **🚀 Critical Fix: Eager Loading and Real-Time Cross-Tab Sync**
 
-This release fixes **Issue #35** (cross-tab persistence) and **Issue #51** (position/size sync) by implementing eager loading and BroadcastChannel-based real-time synchronization as specified in the QuickTabs-v1.5.8.13-Patch.md guide.
+This release fixes **Issue #35** (cross-tab persistence) and **Issue #51**
+(position/size sync) by implementing eager loading and BroadcastChannel-based
+real-time synchronization as specified in the QuickTabs-v1.5.8.13-Patch.md
+guide.
 
 **Key Improvements:**
 
-- ✅ **Eager Loading** - All Quick Tabs listeners and state hydration run immediately on content script load
-- ✅ **BroadcastChannel Sync** - Real-time cross-tab synchronization with <10ms latency (replaces polling)
-- ✅ **Storage Event Listeners** - Quick Tabs listen for storage changes from background script
-- ✅ **Immediate State Hydration** - Quick Tabs state restored from storage on page load (no user interaction needed)
-- ✅ **Broadcast Operations** - All Quick Tab operations (create, move, resize, minimize, restore, pin, close) broadcast to other tabs
-- ✅ **Container-Aware Sync** - Firefox Container isolation maintained in sync operations
-- ✅ **Position/Size Sync** - Quick Tab position and size changes sync instantly across all tabs (Issue #51)
-- ✅ **Cross-Tab Persistence** - Quick Tabs persist and sync across all browser tabs (Issue #35)
+- ✅ **Eager Loading** - All Quick Tabs listeners and state hydration run
+  immediately on content script load
+- ✅ **BroadcastChannel Sync** - Real-time cross-tab synchronization with <10ms
+  latency (replaces polling)
+- ✅ **Storage Event Listeners** - Quick Tabs listen for storage changes from
+  background script
+- ✅ **Immediate State Hydration** - Quick Tabs state restored from storage on
+  page load (no user interaction needed)
+- ✅ **Broadcast Operations** - All Quick Tab operations (create, move, resize,
+  minimize, restore, pin, close) broadcast to other tabs
+- ✅ **Container-Aware Sync** - Firefox Container isolation maintained in sync
+  operations
+- ✅ **Position/Size Sync** - Quick Tab position and size changes sync instantly
+  across all tabs (Issue #51)
+- ✅ **Cross-Tab Persistence** - Quick Tabs persist and sync across all browser
+  tabs (Issue #35)
 
 **Technical Details:**
 
 - BroadcastChannel API for same-origin messaging
 - Storage listeners attached at QuickTabsManager initialization
-- State hydration from browser.storage.session (fast) or browser.storage.sync (fallback)
+- State hydration from browser.storage.session (fast) or browser.storage.sync
+  (fallback)
 - All handlers broadcast via `broadcast(type, data)` method
 - New methods: `setPosition()`, `setSize()` for receiving sync updates
 - Background script initialization remains eager (already implemented)
@@ -82,24 +153,34 @@ This release fixes **Issue #35** (cross-tab persistence) and **Issue #51** (posi
 - Issue #51: Position and size changes sync instantly between tabs
 - Quick Tabs Manager now shows accurate state across all browser contexts
 
-See [QuickTabs-v1.5.8.13-Patch.md](docs/manual/QuickTabs-v1.5.8.13-Patch.md) for implementation details.
+See [QuickTabs-v1.5.8.13-Patch.md](docs/manual/QuickTabs-v1.5.8.13-Patch.md) for
+implementation details.
 
 ## 🎉 What's New in v1.5.8.12
 
 **🚀 Major Enhancement: Persistent Floating Panel for Quick Tabs Manager**
 
-This release replaces the Firefox Sidebar API with a persistent, draggable, resizable floating panel that works perfectly in Zen Browser (where the native sidebar is disabled). This fixes Issues #35, #43, and #51.
+This release replaces the Firefox Sidebar API with a persistent, draggable,
+resizable floating panel that works perfectly in Zen Browser (where the native
+sidebar is disabled). This fixes Issues #35, #43, and #51.
 
 **Key Improvements:**
 
-- ✅ **Persistent Floating Panel** - New `PanelManager` class with full drag/resize capabilities
-- ✅ **Zen Browser Compatibility** - No dependency on Firefox Sidebar API (which is disabled in Zen)
-- ✅ **Ctrl+Alt+Z Toggle** - Keyboard shortcut now toggles the floating panel instead of sidebar
-- ✅ **Position Memory** - Panel remembers position and size across browser sessions
-- ✅ **Pointer Events API** - Smooth drag/resize from all 8 edges/corners with pointer capture
+- ✅ **Persistent Floating Panel** - New `PanelManager` class with full
+  drag/resize capabilities
+- ✅ **Zen Browser Compatibility** - No dependency on Firefox Sidebar API (which
+  is disabled in Zen)
+- ✅ **Ctrl+Alt+Z Toggle** - Keyboard shortcut now toggles the floating panel
+  instead of sidebar
+- ✅ **Position Memory** - Panel remembers position and size across browser
+  sessions
+- ✅ **Pointer Events API** - Smooth drag/resize from all 8 edges/corners with
+  pointer capture
 - ✅ **Auto-Updates** - Panel content refreshes every 2 seconds when open
-- ✅ **Container-Aware Display** - Quick Tabs grouped by Firefox Container with visual indicators
-- ✅ **Enhanced Actions** - Close Minimized, Close All, Go to Tab, Minimize/Restore per-tab
+- ✅ **Container-Aware Display** - Quick Tabs grouped by Firefox Container with
+  visual indicators
+- ✅ **Enhanced Actions** - Close Minimized, Close All, Go to Tab,
+  Minimize/Restore per-tab
 
 **Technical Details:**
 
@@ -115,7 +196,9 @@ This release replaces the Firefox Sidebar API with a persistent, draggable, resi
 - Issue #43: Minimized Quick Tabs properly visible in panel manager
 - Issue #51: Quick Tabs UI fully restored and functional
 
-See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementation.md) for complete architecture details.
+See
+[persistent-panel-implementation.md](docs/manual/persistent-panel-implementation.md)
+for complete architecture details.
 
 ## 📁 Repository Structure (v1.5.8.13 - Hybrid Architecture)
 
@@ -132,14 +215,18 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
   - **`src/features/`** - Feature modules (EventBus-driven)
     - **`src/features/quick-tabs/`** - Quick Tabs feature
       - `index.js` - QuickTabsManager with EventBus listeners
-      - `window.js` - QuickTabWindow class (**renamed from quick-tab-window.js**)
+      - `window.js` - QuickTabWindow class (**renamed from
+        quick-tab-window.js**)
       - `minimized-manager.js` - Minimized tabs manager
-      - `panel.js` - **PanelManager for persistent floating panel (NEW v1.5.8.12)**
-    - **`src/features/notifications/`** - Notifications feature (**fully modularized**)
+      - `panel.js` - **PanelManager for persistent floating panel (NEW
+        v1.5.8.12)**
+    - **`src/features/notifications/`** - Notifications feature (**fully
+      modularized**)
       - `index.js` - NotificationManager coordinator
       - `toast.js` - Toast notifications (**NEW**)
       - `tooltip.js` - Tooltip notifications (**NEW**)
-    - **`src/features/url-handlers/`** - 11 categorized URL handler modules (104 handlers total)
+    - **`src/features/url-handlers/`** - 11 categorized URL handler modules (104
+      handlers total)
   - **`src/ui/`** - UI components and styles
     - `components.js` - Reusable UI widget helpers
     - **`css/`** - Modular CSS files (**NEW**)
@@ -149,12 +236,16 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
   - **`src/utils/`** - Utility modules
     - `debug.js` - Debug utilities and logging
     - `index.js` - Barrel export
-  - **`src/content.js`** - Main entry point (orchestrates all features via EventBus)
+  - **`src/content.js`** - Main entry point (orchestrates all features via
+    EventBus)
 - **`dist/`** - Built/bundled files (generated by `npm run build`)
   - `content.js` - **BUNDLED** from all src/ modules (~116KB)
   - All other files copied from root
-- **Root Files**: `manifest.json`, `background.js`, `popup.html`, `popup.js`, `state-manager.js`
-- **Sidebar**: `sidebar/quick-tabs-manager.html`, `sidebar/quick-tabs-manager.js`, `sidebar/quick-tabs-manager.css` (**Legacy - Panel used instead**)
+- **Root Files**: `manifest.json`, `background.js`, `popup.html`, `popup.js`,
+  `state-manager.js`
+- **Sidebar**: `sidebar/quick-tabs-manager.html`,
+  `sidebar/quick-tabs-manager.js`, `sidebar/quick-tabs-manager.css` (**Legacy -
+  Panel used instead**)
 - **Build System**: `package.json`, `rollup.config.js`
 - **Documentation**: `/docs/` folder organized by type:
   - `/docs/changelogs/` - Version changelogs
@@ -163,18 +254,24 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
   - `/docs/manual/` - Guides and architecture documentation
     - `hybrid-architecture-implementation.md` - **Architecture #10 design**
     - `build-and-packaging-guide.md` - **Build and packaging process**
-    - `persistent-panel-implementation.md` - **Floating panel architecture (v1.5.8.12)**
+    - `persistent-panel-implementation.md` - **Floating panel architecture
+      (v1.5.8.12)**
 
 ## ✨ Key Features
 
 ### Core Features
 
 ✓ **Quick URL Copying** - Press keyboard shortcuts while hovering over links  
-✓ **Quick Tabs** - Floating, draggable, resizable iframe windows with full navigation  
-✓ **Firefox Container Support (v1.5.7)** - Quick Tabs isolated by Firefox Container  
-✓ **Floating Quick Tabs Manager (NEW v1.5.8.1)** - Persistent, draggable panel for managing all Quick Tabs  
-✓ **Cross-Tab Sync** - Quick Tabs persist across all browser tabs (BroadcastChannel + browser.storage)  
-✓ **Z-Index Management (v1.5.7)** - Multiple Quick Tabs layer correctly based on interaction  
+✓ **Quick Tabs** - Floating, draggable, resizable iframe windows with full
+navigation  
+✓ **Firefox Container Support (v1.5.7)** - Quick Tabs isolated by Firefox
+Container  
+✓ **Floating Quick Tabs Manager (NEW v1.5.8.1)** - Persistent, draggable panel
+for managing all Quick Tabs  
+✓ **Cross-Tab Sync** - Quick Tabs persist across all browser tabs
+(BroadcastChannel + browser.storage)  
+✓ **Z-Index Management (v1.5.7)** - Multiple Quick Tabs layer correctly based on
+interaction  
 ✓ **Pin to Page** - Pin Quick Tabs to specific pages  
 ✓ **Auto-Updates** - Automatic extension updates via GitHub releases  
 ✓ **100+ Site Handlers** - Optimized for popular websites  
@@ -183,14 +280,19 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
 
 ### Quick Tabs Manager Persistent Floating Panel (v1.5.8.12)
 
-✓ **Persistent Floating Panel** - Works in Zen Browser where native sidebar is disabled  
-✓ **Draggable & Resizable** - Move and resize from any edge or corner using Pointer Events API  
-✓ **Position Memory** - Panel remembers position and size across sessions (browser.storage.local)  
-✓ **No Sidebar Dependency** - Injected into page DOM, not reliant on Firefox Sidebar API  
+✓ **Persistent Floating Panel** - Works in Zen Browser where native sidebar is
+disabled  
+✓ **Draggable & Resizable** - Move and resize from any edge or corner using
+Pointer Events API  
+✓ **Position Memory** - Panel remembers position and size across sessions
+(browser.storage.local)  
+✓ **No Sidebar Dependency** - Injected into page DOM, not reliant on Firefox
+Sidebar API  
 ✓ **Container Categorization** - Quick Tabs grouped by Firefox Container  
 ✓ **Action Buttons** - "Close Minimized" and "Close All" buttons  
 ✓ **Go to Tab** - Jump to the browser tab containing a Quick Tab  
-✓ **Keyboard Shortcut** - Press `Ctrl+Alt+Z` (or `Cmd+Option+Z` on Mac) to toggle panel  
+✓ **Keyboard Shortcut** - Press `Ctrl+Alt+Z` (or `Cmd+Option+Z` on Mac) to
+toggle panel  
 ✓ **Real-time Updates** - Panel auto-refreshes every 2 seconds when open  
 ✓ **Visual Indicators** - Green (active) and Yellow (minimized) status dots  
 ✓ **Persistent State** - Survives page navigation and browser restarts  
@@ -198,7 +300,8 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
 
 ### Quick Tabs Features
 
-✓ **Complete UI Restoration (v1.5.8.11)** - Full Quick Tab interface with all controls  
+✓ **Complete UI Restoration (v1.5.8.11)** - Full Quick Tab interface with all
+controls  
 ✓ **Favicon Display** - Website icons shown in Quick Tab titlebar  
 ✓ **Dynamic Title Updates** - Shows actual webpage titles or hostnames  
 ✓ **Open in New Tab** - 🔗 button to open Quick Tab content in browser tab  
@@ -216,13 +319,17 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
 
 ### Modern API Framework (v1.5.8.10)
 
-- **Hybrid Modular/EventBus Architecture** - Clean separation between core, features, and UI
-- **EventBus-Driven Features** - All inter-feature communication via EventBus (on, off, emit, once)
+- **Hybrid Modular/EventBus Architecture** - Clean separation between core,
+  features, and UI
+- **EventBus-Driven Features** - All inter-feature communication via EventBus
+  (on, off, emit, once)
 - **Modular CSS** - Separate CSS files for base, notifications, and Quick Tabs
 - **Core Utilities** - dom.js and browser-api.js centralized in core/
-- **Floating Panel Injection** - Content script injects persistent panel into page DOM
+- **Floating Panel Injection** - Content script injects persistent panel into
+  page DOM
 - **Pointer Events API** - Reliable drag/resize with setPointerCapture
-- **Firefox Container API** - Container-aware state management with `contextualIdentities`
+- **Firefox Container API** - Container-aware state management with
+  `contextualIdentities`
 - **browser.storage.sync** - Container-keyed persistent storage
 - **browser.storage.local** - Panel position and size persistence
 - **browser.storage.session** - Fast ephemeral state (Firefox 115+)
@@ -235,17 +342,22 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
 
 ✅ **Quick Tabs Full UI Restoration**
 
-- **Complete Titlebar** - Favicon, dynamic title, and all control buttons restored
+- **Complete Titlebar** - Favicon, dynamic title, and all control buttons
+  restored
 - **Favicon Rendering** - Shows website icons using Google Favicon API
-- **Dynamic Title Updates** - Automatically updates with webpage title or hostname
-- **Open in New Tab Button** - 🔗 button to open Quick Tab content in browser tab
+- **Dynamic Title Updates** - Automatically updates with webpage title or
+  hostname
+- **Open in New Tab Button** - 🔗 button to open Quick Tab content in browser
+  tab
 - **Pin Button** - 📍/📌 toggle to pin Quick Tabs to specific pages
 - **Visual Feedback** - Pin button changes color and icon when pinned
 
 ✅ **8-Direction Resize (Fix #3)**
 
-- **All Edges and Corners** - Resize from any of 8 handles (N, S, E, W, NE, NW, SE, SW)
-- **Pointer Events API** - setPointerCapture ensures smooth resizing without escape
+- **All Edges and Corners** - Resize from any of 8 handles (N, S, E, W, NE, NW,
+  SE, SW)
+- **Pointer Events API** - setPointerCapture ensures smooth resizing without
+  escape
 - **Min/Max Constraints** - 400x300 minimum size enforced
 - **Emergency Saves** - pointercancel handling preserves state on interruptions
 
@@ -267,22 +379,32 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
 
 ✅ **Hybrid Modular/EventBus Architecture (Architecture #10)**
 
-- **Implemented Architecture #10** - Following hybrid-architecture-implementation.md design
-- **Core Utilities Reorganization** - Moved dom.js and browser-api.js from utils/ to core/
-- **Modular CSS System** - Created ui/css/ directory with base.css, notifications.css, quick-tabs.css
-- **Notification Modularization** - Split into separate toast.js and tooltip.js modules
-- **Quick Tabs Renaming** - Renamed quick-tab-window.js to window.js for consistency
+- **Implemented Architecture #10** - Following
+  hybrid-architecture-implementation.md design
+- **Core Utilities Reorganization** - Moved dom.js and browser-api.js from
+  utils/ to core/
+- **Modular CSS System** - Created ui/css/ directory with base.css,
+  notifications.css, quick-tabs.css
+- **Notification Modularization** - Split into separate toast.js and tooltip.js
+  modules
+- **Quick Tabs Renaming** - Renamed quick-tab-window.js to window.js for
+  consistency
 - **EventBus Integration** - All features now properly register with EventBus
-- **Enhanced Build Process** - Added comprehensive validation to release workflow
-- **Packaging Safety** - Automated checks prevent source files leaking into .xpi packages
+- **Enhanced Build Process** - Added comprehensive validation to release
+  workflow
+- **Packaging Safety** - Automated checks prevent source files leaking into .xpi
+  packages
 
 ✅ **Build and Packaging Improvements**
 
-- **Production Build Validation** - Checks file existence, sizes, and source leaks
-- **XPI Package Verification** - Validates package contents and size before release
+- **Production Build Validation** - Checks file existence, sizes, and source
+  leaks
+- **XPI Package Verification** - Validates package contents and size before
+  release
 - **Comprehensive Documentation** - Created build-and-packaging-guide.md
 - **Test-Before-Build** - Release workflow runs tests before packaging
-- **Architecture Documentation** - Updated release notes with architecture details
+- **Architecture Documentation** - Updated release notes with architecture
+  details
 
 ✅ **Code Quality and Maintainability**
 
@@ -295,24 +417,35 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
 
 ✅ **Critical Bug Fixes**
 
-- **Fixed "Open in New Tab" feature** - Corrected action name mismatch between content script and background script
-- **Implemented Quick Tab creation** - Added actual Quick Tab creation logic (was previously just a stub)
-- **Fixed notification animations** - Added CSS keyframe animations for slide, fade, and bounce effects
-- **Fixed notification border width** - Ensured border width is parsed as a number to prevent rendering issues
-- **Enhanced notification display** - Animations now properly apply to both tooltip and toast notifications
+- **Fixed "Open in New Tab" feature** - Corrected action name mismatch between
+  content script and background script
+- **Implemented Quick Tab creation** - Added actual Quick Tab creation logic
+  (was previously just a stub)
+- **Fixed notification animations** - Added CSS keyframe animations for slide,
+  fade, and bounce effects
+- **Fixed notification border width** - Ensured border width is parsed as a
+  number to prevent rendering issues
+- **Enhanced notification display** - Animations now properly apply to both
+  tooltip and toast notifications
 
 ✅ **Improved CI/CD and Tool Integration**
 
-- **CodeRabbit bot PR review** - Updated configuration to enable code reviews for bot-created PRs
-- **Enhanced Codecov integration** - Improved test coverage workflow with better error handling
-- **Base branch configuration** - Added support for DeepSource and Copilot branch patterns
-- **Cleaner PR reviews** - Disabled review skip status messages for better PR readability
+- **CodeRabbit bot PR review** - Updated configuration to enable code reviews
+  for bot-created PRs
+- **Enhanced Codecov integration** - Improved test coverage workflow with better
+  error handling
+- **Base branch configuration** - Added support for DeepSource and Copilot
+  branch patterns
+- **Cleaner PR reviews** - Disabled review skip status messages for better PR
+  readability
 
 ✅ **Developer Experience Improvements**
 
-- Comprehensive bug fix documentation (v1588-complete-fix-plan.md, fix-pr78-issues.md)
+- Comprehensive bug fix documentation (v1588-complete-fix-plan.md,
+  fix-pr78-issues.md)
 - Updated GitHub Copilot agent instructions with v1.5.8.9 information
-- All features now fully functional (Copy URL, Copy Text, Open in New Tab, Quick Tab creation)
+- All features now fully functional (Copy URL, Copy Text, Open in New Tab, Quick
+  Tab creation)
 
 ### What's New in v1.5.8.7?
 
@@ -348,9 +481,13 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
 
 ✅ **Modular Architecture Refactoring**
 
-- Complete refactoring of content.js from monolithic 180KB file to modular structure
-- URL handlers extracted into 11 categorized modules (social-media, video, developer, blogging, ecommerce, image-design, news-discussion, entertainment, gaming, learning, other)
-- Core functionality separated into reusable modules (config, state, events, utilities)
+- Complete refactoring of content.js from monolithic 180KB file to modular
+  structure
+- URL handlers extracted into 11 categorized modules (social-media, video,
+  developer, blogging, ecommerce, image-design, news-discussion, entertainment,
+  gaming, learning, other)
+- Core functionality separated into reusable modules (config, state, events,
+  utilities)
 - Build system using Rollup for optimized bundling
 - Reduced bundled content.js to 63KB (65% size reduction!)
 - Improved maintainability and code organization
@@ -384,7 +521,8 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
 
 ### Easy Installation (Recommended)
 
-1. Go to the [Releases page](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+1. Go to the
+   [Releases page](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
 2. Download the latest `copy-url-hover-extension.xpi`
 3. Open Firefox/Zen Browser → `about:addons`
 4. Click gear icon (⚙️) → "Install Add-on From File..."
@@ -421,7 +559,8 @@ See [persistent-panel-implementation.md](docs/manual/persistent-panel-implementa
    - **✕** Close
 4. **Drag** title bar to move (uses Pointer Events - no slipping!)
 5. **Resize** from any edge or corner (8 handles total)
-6. **Pin** to keep Quick Tab only on specific pages (pinned tabs won't show on other pages)
+6. **Pin** to keep Quick Tab only on specific pages (pinned tabs won't show on
+   other pages)
 7. **Press Esc** to close all Quick Tabs (slot numbers reset)
 
 ### Quick Tabs Manager Floating Panel (NEW v1.5.8.1)
@@ -488,34 +627,50 @@ Access settings by clicking the extension icon. Organized into 4 tabs:
 
 ## 🔒 Security Notice
 
-**Manifest v2 Required**: This extension uses Manifest v2 to access the full `webRequest` API with `webRequestBlocking` permission. This allows the extension to modify X-Frame-Options and CSP headers for Quick Tabs to display any website in iframes.
+**Manifest v2 Required**: This extension uses Manifest v2 to access the full
+`webRequest` API with `webRequestBlocking` permission. This allows the extension
+to modify X-Frame-Options and CSP headers for Quick Tabs to display any website
+in iframes.
 
-**X-Frame-Options Bypass**: The extension removes X-Frame-Options and CSP frame-ancestors headers to allow Quick Tabs to display any website in iframes. This is necessary for universal compatibility but removes clickjacking protection for iframed content.
+**X-Frame-Options Bypass**: The extension removes X-Frame-Options and CSP
+frame-ancestors headers to allow Quick Tabs to display any website in iframes.
+This is necessary for universal compatibility but removes clickjacking
+protection for iframed content.
 
-**Firefox Container Isolation (v1.5.7+)**: Quick Tabs now respect Firefox Container boundaries, providing an additional layer of isolation for sensitive browsing contexts (e.g., Banking, Work containers).
+**Firefox Container Isolation (v1.5.7+)**: Quick Tabs now respect Firefox
+Container boundaries, providing an additional layer of isolation for sensitive
+browsing contexts (e.g., Banking, Work containers).
 
-**Use at your own discretion.** Only open Quick Tabs from trusted websites or disable the extension when browsing untrusted sites.
+**Use at your own discretion.** Only open Quick Tabs from trusted websites or
+disable the extension when browsing untrusted sites.
 
 ## 🐛 Known Limitations
 
-1. **Quick Tab Focus**: Clicking inside a Quick Tab iframe captures keyboard focus. Click the main page to restore shortcuts.
+1. **Quick Tab Focus**: Clicking inside a Quick Tab iframe captures keyboard
+   focus. Click the main page to restore shortcuts.
 
-2. **Nested Quick Tabs**: Only works for same-origin iframes. Use "Open in New Tab" button for cross-origin links.
+2. **Nested Quick Tabs**: Only works for same-origin iframes. Use "Open in New
+   Tab" button for cross-origin links.
 
-3. **Zen Browser Themes**: Cannot detect Zen workspace themes (requires native API access). Use built-in dark mode instead.
+3. **Zen Browser Themes**: Cannot detect Zen workspace themes (requires native
+   API access). Use built-in dark mode instead.
 
-4. **Manifest v2**: Extension must remain on Manifest v2 for full webRequest API functionality. Manifest v3 does not support `webRequestBlocking` which is required for header modification.
+4. **Manifest v2**: Extension must remain on Manifest v2 for full webRequest API
+   functionality. Manifest v3 does not support `webRequestBlocking` which is
+   required for header modification.
 
 ## 📚 Documentation
 
 - **Changelogs**: See `/docs/changelogs/` for version history
 - **Architecture**: See `/docs/manual/quick-tab-sync-architecture.md`
-- **Pointer Events Guide**: See `/docs/manual/Pointer-Events-Integration-Guide.md`
+- **Pointer Events Guide**: See
+  `/docs/manual/Pointer-Events-Integration-Guide.md`
 - **Testing Guide**: See `/docs/manual/TESTING_GUIDE_ISSUE_51.md`
 
 ## 🔧 Debugging the Extension
 
-If the extension is not working or appears to be in a non-functional state, follow these steps to diagnose and fix the issue.
+If the extension is not working or appears to be in a non-functional state,
+follow these steps to diagnose and fix the issue.
 
 ### Quick Debug Checklist
 
@@ -542,11 +697,13 @@ If the extension is not working or appears to be in a non-functional state, foll
 
 ### Debugging v1.5.8.6+ (Modular Architecture)
 
-The modular architecture (v1.5.8.6+) introduced a new build system. If the extension is not working:
+The modular architecture (v1.5.8.6+) introduced a new build system. If the
+extension is not working:
 
 #### 1. Verify Bundle Integrity
 
-**Check for ES6 imports/exports in the built file** (these break browser loading):
+**Check for ES6 imports/exports in the built file** (these break browser
+loading):
 
 ```bash
 # In the extension directory
@@ -554,7 +711,8 @@ grep "^import " dist/content.js
 grep "^export " dist/content.js
 ```
 
-- **If you see output**: The bundle is broken! ES6 modules cannot be used directly in content scripts.
+- **If you see output**: The bundle is broken! ES6 modules cannot be used
+  directly in content scripts.
 - **If no output**: Bundle is correctly flattened ✓
 
 #### 2. Validate Build Output
@@ -664,7 +822,8 @@ Open the console and look for:
    - Should have content_scripts pointing to `"content.js"`
 
 3. **Reinstall the extension**:
-   - Download latest .xpi from [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+   - Download latest .xpi from
+     [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
    - Uninstall old version from `about:addons`
    - Install new .xpi file
 
@@ -792,15 +951,18 @@ If none of these steps work:
 
 ### Testing
 
-See `/docs/manual/TESTING_GUIDE_ISSUE_51.md` for comprehensive testing procedures.
+See `/docs/manual/TESTING_GUIDE_ISSUE_51.md` for comprehensive testing
+procedures.
 
 ### API Framework
 
 **v1.5.8.1** uses modern browser APIs for optimal performance:
 
-- **Content Script Injection** - Persistent floating panel injected into page DOM
+- **Content Script Injection** - Persistent floating panel injected into page
+  DOM
 - **Pointer Events API** (setPointerCapture) - Drag/resize without slipping
-- **Firefox Container API** (contextualIdentities) - Container-aware state management
+- **Firefox Container API** (contextualIdentities) - Container-aware state
+  management
 - **BroadcastChannel API** - Real-time same-origin synchronization
 - **browser.runtime messaging** - Cross-origin coordination
 - **browser.storage.sync** - Persistent state across devices
@@ -834,6 +996,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.8.14  
+**Current Version**: 1.5.8.16  
 **Last Updated**: 2025-11-14  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

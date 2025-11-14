@@ -6,7 +6,8 @@
 
 ## Overview
 
-This guide provides step-by-step testing procedures for the new Sidebar Quick Tabs Manager feature implemented in v1.5.8.
+This guide provides step-by-step testing procedures for the new Sidebar Quick
+Tabs Manager feature implemented in v1.5.8.
 
 ## Prerequisites
 
@@ -21,6 +22,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify sidebar opens and displays Quick Tabs correctly
 
 **Steps:**
+
 1. Load the extension in Firefox
 2. Create a Quick Tab by hovering over a link and pressing `Q`
 3. Press `Ctrl+Shift+M` (or `Cmd+Shift+M` on Mac) to open sidebar
@@ -32,6 +34,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
    - Action buttons: 🔗 (Go to Tab), ➖ (Minimize), ✕ (Close)
 
 **Expected Results:**
+
 - ✓ Sidebar opens/closes with keyboard shortcut
 - ✓ Quick Tab displayed with correct information
 - ✓ Green indicator visible
@@ -44,6 +47,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify minimizing and restoring Quick Tabs preserves position
 
 **Steps:**
+
 1. Create a Quick Tab at position (300px, 200px) with size 800x600
 2. Open sidebar with `Ctrl+Shift+M`
 3. Click the ➖ (Minimize) button in the sidebar
@@ -59,6 +63,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
    - Indicator changes back to green (🟢)
 
 **Expected Results:**
+
 - ✓ Position preserved: Quick Tab returns to (300px, 200px)
 - ✓ Size preserved: Quick Tab returns to 800x600
 - ✓ Not at bottom-right corner (old behavior)
@@ -70,9 +75,10 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify Quick Tabs are categorized by Firefox Container
 
 **Steps:**
+
 1. Open a tab in "Personal" container
 2. Create a Quick Tab in Personal container
-3. Open a tab in "Work" container  
+3. Open a tab in "Work" container
 4. Create a Quick Tab in Work container
 5. Open sidebar
 6. Verify:
@@ -84,6 +90,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 8. Verify sidebar shows "Default" section if Quick Tabs exist there
 
 **Expected Results:**
+
 - ✓ Quick Tabs grouped by container
 - ✓ Container icons displayed (📁, 🔒, 💼, etc.)
 - ✓ Tab counts correct for each container
@@ -96,6 +103,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify "Go to Tab" button switches to correct browser tab
 
 **Steps:**
+
 1. Open Tab 1 and create a Quick Tab
 2. Switch to Tab 2 (different page)
 3. Open sidebar
@@ -106,6 +114,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
    - Quick Tab is still visible and active
 
 **Expected Results:**
+
 - ✓ Browser switches to correct tab
 - ✓ Quick Tab remains active
 - ✓ No errors in console
@@ -117,6 +126,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify "Close Minimized" closes only minimized Quick Tabs
 
 **Steps:**
+
 1. Create 3 Quick Tabs (all active)
 2. Minimize 2 of them via sidebar
 3. Verify sidebar shows:
@@ -129,6 +139,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
    - Sidebar updates immediately
 
 **Expected Results:**
+
 - ✓ Only minimized tabs closed
 - ✓ Active tab remains
 - ✓ Sidebar updates in real-time
@@ -140,6 +151,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify "Close All" closes all Quick Tabs
 
 **Steps:**
+
 1. Create 3 Quick Tabs (1 active, 2 minimized)
 2. Open sidebar
 3. Click "Close All" button
@@ -150,6 +162,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
    - Hint text: "Press Q while hovering over a link to create one"
 
 **Expected Results:**
+
 - ✓ All Quick Tabs closed
 - ✓ Empty state displayed
 - ✓ No errors in console
@@ -161,6 +174,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify sidebar state persists across browser tabs
 
 **Steps:**
+
 1. In Tab 1, create 2 Quick Tabs
 2. Open sidebar in Tab 1
 3. Verify 2 Quick Tabs visible
@@ -176,6 +190,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
    - No flicker or recreation
 
 **Expected Results:**
+
 - ✓ Sidebar state consistent across tabs
 - ✓ ONE instance shared across all tabs
 - ✓ No cross-tab sync issues
@@ -187,6 +202,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify sidebar auto-refreshes as Quick Tabs change
 
 **Steps:**
+
 1. Open sidebar
 2. Create a new Quick Tab from the main page (press Q on a link)
 3. Observe sidebar (no manual refresh)
@@ -195,6 +211,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 6. Verify Quick Tab disappears from sidebar within 2 seconds
 
 **Expected Results:**
+
 - ✓ Sidebar auto-refreshes every 2 seconds
 - ✓ New Quick Tabs appear automatically
 - ✓ Closed Quick Tabs disappear automatically
@@ -207,6 +224,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify Ctrl+Shift+M toggles sidebar
 
 **Steps:**
+
 1. With sidebar closed, press `Ctrl+Shift+M`
 2. Verify sidebar opens
 3. Press `Ctrl+Shift+M` again
@@ -214,6 +232,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 5. Test on Mac with `Cmd+Shift+M`
 
 **Expected Results:**
+
 - ✓ Keyboard shortcut toggles sidebar
 - ✓ Works on both Windows/Linux and Mac
 - ✓ Respects platform modifiers
@@ -225,6 +244,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 **Objective:** Verify position restoration handles edge cases
 
 **Steps:**
+
 1. Create Quick Tab at position (1500px, 800px) - far right and bottom
 2. Resize browser window to 1024x768 (smaller than Quick Tab position)
 3. Minimize Quick Tab
@@ -232,6 +252,7 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 5. Verify Quick Tab appears within viewport (not off-screen)
 
 **Expected Results:**
+
 - ✓ Quick Tab visible after restore
 - ✓ Position adjusted if needed to fit viewport
 - ✓ No Quick Tab stuck off-screen
@@ -240,9 +261,12 @@ This guide provides step-by-step testing procedures for the new Sidebar Quick Ta
 
 ## Known Issues / Limitations
 
-1. **Sidebar not available on restricted pages** - Firefox/Zen Browser security prevents sidebar on `about:` pages
-2. **Container API requires permissions** - Extension needs `contextualIdentities` permission
-3. **Fallback behavior** - If Containers not available, all Quick Tabs go to "Default" container
+1. **Sidebar not available on restricted pages** - Firefox/Zen Browser security
+   prevents sidebar on `about:` pages
+2. **Container API requires permissions** - Extension needs
+   `contextualIdentities` permission
+3. **Fallback behavior** - If Containers not available, all Quick Tabs go to
+   "Default" container
 
 ## Regression Tests
 
@@ -260,6 +284,7 @@ Verify these existing features still work:
 ## Browser Console Checks
 
 Monitor console for:
+
 - ✓ No error messages during sidebar operations
 - ✓ Debug logs show correct container IDs
 - ✓ Storage operations complete successfully
@@ -277,12 +302,15 @@ Monitor console for:
 
 ## Sign-Off
 
-**Tested By:** _________________  
-**Date:** _________________  
-**Firefox Version:** _________________  
-**All Tests Passed:** ☐ Yes ☐ No  
+**Tested By:** **\*\*\*\***\_**\*\*\*\***  
+**Date:** **\*\*\*\***\_**\*\*\*\***  
+**Firefox Version:** **\*\*\*\***\_**\*\*\*\***  
+**All Tests Passed:** ☐ Yes ☐ No
 
 **Notes:**
-_________________________________________________________________
-_________________________________________________________________
-_________________________________________________________________
+
+---
+
+---
+
+---
