@@ -567,11 +567,10 @@ describe('Browser API Wrappers', () => {
    */
   test('should copy text to clipboard', async () => {
     const text = 'https://example.com';
-
-    navigator.clipboard.writeText.mockResolvedValue(undefined);
-
+  
+    // navigator.clipboard is already mocked in setup.js
     const success = await browserApi.copyToClipboard(text);
-
+  
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(text);
     expect(success).toBe(true);
   });
@@ -582,13 +581,15 @@ describe('Browser API Wrappers', () => {
    */
   test('should fallback to execCommand if clipboard API fails', async () => {
     const text = 'https://example.com';
-
-    navigator.clipboard.writeText.mockRejectedValue(new Error('Not allowed'));
+  
+    // Mock writeText to reject for this specific test
+    navigator.clipboard.writeText.mockRejectedValueOnce(new Error('Not allowed'));
     document.execCommand = jest.fn(() => true);
-
+  
     const success = await browserApi.copyToClipboard(text);
-
+  
     expect(success).toBe(true);
+    expect(document.execCommand).toHaveBeenCalled();
   });
 
   /**
