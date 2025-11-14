@@ -1012,7 +1012,7 @@ export class PanelManager {
     Object.keys(quickTabsState).forEach(cookieStoreId => {
       // Skip metadata keys
       if (cookieStoreId === 'saveId' || cookieStoreId === 'timestamp') return;
-      
+
       const containerState = quickTabsState[cookieStoreId];
       if (containerState && containerState.tabs) {
         totalTabs += containerState.tabs.length;
