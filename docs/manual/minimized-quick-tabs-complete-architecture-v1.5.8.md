@@ -506,8 +506,7 @@ function createMinimizedManagerHost() {
   const closeAllBtn = document.createElement('button');
   closeAllBtn.className = 'header-btn close-all-btn';
   closeAllBtn.textContent = 'Close All';
-  closeAllBtn.title =
-    'Close all minimized Quick Tabs (does not affect active Quick Tabs)';
+  closeAllBtn.title = 'Close all minimized Quick Tabs (does not affect active Quick Tabs)';
   closeAllBtn.onclick = e => {
     e.stopPropagation();
     closeAllMinimizedQuickTabs();
@@ -558,17 +557,11 @@ function createMinimizedManagerHost() {
   browser.storage.sync
     .get('minimized_manager_state')
     .then(result => {
-      if (
-        result &&
-        result.minimized_manager_state &&
-        result.minimized_manager_state.position
-      ) {
+      if (result && result.minimized_manager_state && result.minimized_manager_state.position) {
         const pos = result.minimized_manager_state.position;
         manager.style.setProperty('--manager-right', `${pos.right}px`);
         manager.style.setProperty('--manager-bottom', `${pos.bottom}px`);
-        debug(
-          `Restored minimized manager position: right=${pos.right}, bottom=${pos.bottom}`
-        );
+        debug(`Restored minimized manager position: right=${pos.right}, bottom=${pos.bottom}`);
       }
     })
     .catch(() => {
@@ -610,9 +603,7 @@ function minimizeQuickTab(container, url, title) {
   if (CONFIG.debugMode && quickTabId) {
     slotNumber = quickTabSlots.get(quickTabId);
     // CRITICAL: Do NOT release slot - we want to preserve it for restore
-    debug(
-      `[MINIMIZE] Preserving Slot ${slotNumber} for Quick Tab ${quickTabId}`
-    );
+    debug(`[MINIMIZE] Preserving Slot ${slotNumber} for Quick Tab ${quickTabId}`);
   }
 
   // Build COMPLETE minimized state object
@@ -694,9 +685,7 @@ function restoreQuickTab(index, fromBroadcast = false) {
 
   // Check max windows limit
   if (quickTabWindows.length >= CONFIG.quickTabMaxWindows) {
-    showNotification(
-      `✗ Maximum ${CONFIG.quickTabMaxWindows} Quick Tabs allowed`
-    );
+    showNotification(`✗ Maximum ${CONFIG.quickTabMaxWindows} Quick Tabs allowed`);
     debug('Cannot restore - max Quick Tabs limit reached');
     // Put it back in minimized list
     minimizedQuickTabs.push(tab);
@@ -706,12 +695,7 @@ function restoreQuickTab(index, fromBroadcast = false) {
 
   // CRITICAL: Restore slot number BEFORE creating Quick Tab
   // This ensures the same slot is assigned when Quick Tab is created
-  if (
-    CONFIG.debugMode &&
-    tab.id &&
-    tab.slotNumber !== null &&
-    tab.slotNumber !== undefined
-  ) {
+  if (CONFIG.debugMode && tab.id && tab.slotNumber !== null && tab.slotNumber !== undefined) {
     // Re-assign the EXACT same slot number (don't use assignQuickTabSlot)
     quickTabSlots.set(tab.id, tab.slotNumber);
 
@@ -789,9 +773,7 @@ function closeAllMinimizedQuickTabs() {
     minimizedQuickTabs.forEach(tab => {
       if (tab.id && tab.slotNumber !== null && tab.slotNumber !== undefined) {
         releaseQuickTabSlot(tab.id);
-        debug(
-          `[CLOSE ALL] Released Slot ${tab.slotNumber} for minimized Quick Tab ${tab.id}`
-        );
+        debug(`[CLOSE ALL] Released Slot ${tab.slotNumber} for minimized Quick Tab ${tab.id}`);
       }
     });
   }
@@ -799,9 +781,7 @@ function closeAllMinimizedQuickTabs() {
   // Clear array
   minimizedQuickTabs = [];
 
-  showNotification(
-    `✓ Closed ${count} minimized Quick Tab${count > 1 ? 's' : ''}`
-  );
+  showNotification(`✓ Closed ${count} minimized Quick Tab${count > 1 ? 's' : ''}`);
   debug(`Closed all minimized Quick Tabs (${count} total)`);
 
   // Update UI
@@ -934,8 +914,7 @@ function updateMinimizedTabsManager(fromBroadcast = false) {
   }
 
   // Get list container from Shadow DOM
-  const listContainer =
-    minimizedManagerShadowRoot.querySelector('.list-container');
+  const listContainer = minimizedManagerShadowRoot.querySelector('.list-container');
   if (!listContainer) {
     debug('Error: Could not find list container in Shadow DOM');
     return;
@@ -988,11 +967,7 @@ function updateMinimizedTabsManager(fromBroadcast = false) {
     if (tab.pinnedToUrl) {
       metaText += ', 📌 Pinned';
     }
-    if (
-      CONFIG.debugMode &&
-      tab.slotNumber !== null &&
-      tab.slotNumber !== undefined
-    ) {
+    if (CONFIG.debugMode && tab.slotNumber !== null && tab.slotNumber !== undefined) {
       metaText += `, Slot ${tab.slotNumber}`;
     }
     metadataSpan.textContent = metaText;
@@ -1069,13 +1044,7 @@ create it)
     }
   },
 
-  "permissions": [
-    "storage",
-    "tabs",
-    "webRequest",
-    "webRequestBlocking",
-    "<all_urls>"
-  ]
+  "permissions": ["storage", "tabs", "webRequest", "webRequestBlocking", "<all_urls>"]
 }
 ```
 
@@ -1145,26 +1114,24 @@ if (message.action === 'TOGGLE_MINIMIZED_MANAGER') {
 
 <script>
   // Add this to popup.js or inline script
-  document
-    .getElementById('toggleMinimizedManagerBtn')
-    .addEventListener('click', () => {
-      // Send message to active tab
-      browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
-        if (tabs.length > 0) {
-          browser.tabs
-            .sendMessage(tabs[0].id, {
-              action: 'TOGGLE_MINIMIZED_MANAGER'
-            })
-            .then(() => {
-              // Close popup after action
-              window.close();
-            })
-            .catch(err => {
-              console.error('Error toggling minimized manager:', err);
-            });
-        }
-      });
+  document.getElementById('toggleMinimizedManagerBtn').addEventListener('click', () => {
+    // Send message to active tab
+    browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+      if (tabs.length > 0) {
+        browser.tabs
+          .sendMessage(tabs[0].id, {
+            action: 'TOGGLE_MINIMIZED_MANAGER'
+          })
+          .then(() => {
+            // Close popup after action
+            window.close();
+          })
+          .catch(err => {
+            console.error('Error toggling minimized manager:', err);
+          });
+      }
     });
+  });
 </script>
 ```
 

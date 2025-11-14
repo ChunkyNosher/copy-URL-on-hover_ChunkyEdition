@@ -22,11 +22,13 @@ Agents.
 - **Install the released .xpi as you normally do.**
 - **Open a web page, press F12 or Ctrl+Shift+J, and go to the Console tab.**
 - **Type:**
+
   ```js
   window.CopyURLExtension;
   ```
 
   - If you get `undefined`, the content script is NOT running or failed fatally.
+
 - **Look for logs starting with `[Copy-URL-on-Hover]`.**
   - If only the initial log appears but none after, init is failing early
     (likely on config). If nothing at all, script failed immediately (bad
@@ -179,13 +181,7 @@ Agents.
 - At top-level in content.js add:
   ```js
   window.onerror = function (msg, url, line, col, err) {
-    console.error(
-      'Global ERROR:',
-      msg,
-      line,
-      col,
-      err && err.stack ? err.stack : err
-    );
+    console.error('Global ERROR:', msg, line, col, err && err.stack ? err.stack : err);
     // Optionally: show user notification here
   };
   ```

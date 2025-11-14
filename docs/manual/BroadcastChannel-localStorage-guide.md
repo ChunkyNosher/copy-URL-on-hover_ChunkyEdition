@@ -64,9 +64,7 @@ function initializeBroadcastChannel() {
     quickTabChannel.onmessage = handleBroadcastMessage;
   } catch (err) {
     console.error('Failed to create BroadcastChannel:', err);
-    debugSettings(
-      'BroadcastChannel not available - using localStorage fallback only'
-    );
+    debugSettings('BroadcastChannel not available - using localStorage fallback only');
   }
 }
 
@@ -74,18 +72,10 @@ function handleBroadcastMessage(event) {
   const message = event.data;
 
   if (message.action === 'createQuickTab') {
-    debugSettings(
-      `Received Quick Tab broadcast from another tab: ${message.url}`
-    );
+    debugSettings(`Received Quick Tab broadcast from another tab: ${message.url}`);
 
     // Create the Quick Tab window with the same properties
-    createQuickTabWindow(
-      message.url,
-      message.width,
-      message.height,
-      message.left,
-      message.top
-    );
+    createQuickTabWindow(message.url, message.width, message.height, message.left, message.top);
   } else if (message.action === 'closeAllQuickTabs') {
     debugSettings('Received close all Quick Tabs broadcast');
     closeAllQuickTabWindows();
@@ -149,9 +139,7 @@ function saveQuickTabsToStorage() {
   try {
     const state = quickTabWindows.map(container => {
       const iframe = container.querySelector('iframe');
-      const titleText = container.querySelector(
-        '.copy-url-quicktab-titlebar span'
-      );
+      const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
       const rect = container.getBoundingClientRect();
 
       return {
@@ -390,9 +378,7 @@ function minimizeQuickTab(container, url, title) {
   container.remove();
 
   showNotification('Quick Tab minimized');
-  debugSettings(
-    `Quick Tab minimized. Total minimized: ${minimizedQuickTabs.length}`
-  );
+  debugSettings(`Quick Tab minimized. Total minimized: ${minimizedQuickTabs.length}`);
 
   // Update or create minimized tabs manager
   updateMinimizedTabsManager();
@@ -417,9 +403,7 @@ Find the initialization section at the BOTTOM of `content.js` (around line
 // Initialize
 loadSettings();
 
-debugSettings(
-  'Extension loaded - supports 100+ websites with site-specific optimized handlers'
-);
+debugSettings('Extension loaded - supports 100+ websites with site-specific optimized handlers');
 ```
 
 **REPLACE WITH:**
@@ -439,9 +423,7 @@ if (quickTabWindows.length === 0 && minimizedQuickTabs.length === 0) {
   }, 100); // Small delay to ensure page is ready
 }
 
-debugSettings(
-  'Extension loaded - supports 100+ websites with site-specific optimized handlers'
-);
+debugSettings('Extension loaded - supports 100+ websites with site-specific optimized handlers');
 ```
 
 ---
@@ -467,9 +449,7 @@ chrome.tabs.onActivated.addListener(async activeInfo => {
     })
     .catch(err => {
       // Content script might not be ready yet, that's OK
-      console.log(
-        '[Background] Could not message tab (content script not ready)'
-      );
+      console.log('[Background] Could not message tab (content script not ready)');
     });
 });
 ```

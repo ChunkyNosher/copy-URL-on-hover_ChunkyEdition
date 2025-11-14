@@ -113,10 +113,7 @@ const timestamp = Date.now();
 const stateObject = { tabs, timestamp, tabInstanceId };
 
 // Listener checks:
-if (
-  newValue.timestamp === lastSaveTimestamp &&
-  newValue.tabInstanceId === tabInstanceId
-) {
+if (newValue.timestamp === lastSaveTimestamp && newValue.tabInstanceId === tabInstanceId) {
   return; // Ignore own save
 }
 ```
@@ -389,9 +386,7 @@ class SaveQueue {
 
       if (existingIndex !== -1) {
         // Replace existing operation with newer data
-        debug(
-          `[SAVE QUEUE] Deduplicating ${operation.type} for ${operation.quickTabId}`
-        );
+        debug(`[SAVE QUEUE] Deduplicating ${operation.type} for ${operation.quickTabId}`);
         const oldOp = this.queue[existingIndex];
         oldOp.reject(new Error('Superseded by newer save'));
         this.queue[existingIndex] = operation;
@@ -435,9 +430,7 @@ class SaveQueue {
     // Take all pending operations
     const operations = this.queue.splice(0);
 
-    debug(
-      `[SAVE QUEUE] Flushing ${operations.length} operations to background`
-    );
+    debug(`[SAVE QUEUE] Flushing ${operations.length} operations to background`);
 
     try {
       // Send batch to background
@@ -550,11 +543,7 @@ function saveQuickTabsToStorage() {
  * @param {string} quickTabId - Unique Quick Tab ID
  * @returns {Promise<void>} Resolves when background confirms save
  */
-async function saveQuickTabState(
-  operationType,
-  quickTabId,
-  additionalData = {}
-) {
+async function saveQuickTabState(operationType, quickTabId, additionalData = {}) {
   if (!CONFIG.quickTabPersistAcrossTabs) {
     return Promise.resolve();
   }
@@ -567,9 +556,7 @@ async function saveQuickTabState(
     quickTabData = { id: quickTabId };
   } else {
     // Find Quick Tab container
-    const container = quickTabWindows.find(
-      w => w.dataset.quickTabId === quickTabId
-    );
+    const container = quickTabWindows.find(w => w.dataset.quickTabId === quickTabId);
     if (!container && operationType !== 'minimize') {
       debug(`[SAVE] Quick Tab ${quickTabId} not found, skipping save`);
       return Promise.resolve();
@@ -584,12 +571,9 @@ async function saveQuickTabState(
     } else {
       // Build state from container
       const iframe = container.querySelector('iframe');
-      const titleText = container.querySelector(
-        '.copy-url-quicktab-titlebar span'
-      );
+      const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
       const rect = container.getBoundingClientRect();
-      const url =
-        iframe?.src || iframe?.getAttribute('data-deferred-src') || '';
+      const url = iframe?.src || iframe?.getAttribute('data-deferred-src') || '';
 
       quickTabData = {
         id: quickTabId,
@@ -600,9 +584,7 @@ async function saveQuickTabState(
         width: Math.round(rect.width),
         height: Math.round(rect.height),
         pinnedToUrl: container._pinnedToUrl || null,
-        slotNumber: CONFIG.debugMode
-          ? quickTabSlots.get(quickTabId) || null
-          : null,
+        slotNumber: CONFIG.debugMode ? quickTabSlots.get(quickTabId) || null : null,
         minimized: false,
         ...additionalData
       };
@@ -659,15 +641,7 @@ function saveQuickTabsToStorage() {
 ```javascript
 // Broadcast to other tabs using BroadcastChannel for real-time sync
 if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
-  broadcastQuickTabCreation(
-    url,
-    windowWidth,
-    windowHeight,
-    posX,
-    posY,
-    pinnedToUrl,
-    quickTabId
-  );
+  broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl, quickTabId);
 
   // Notify background script for state coordination
   browser.runtime
@@ -781,11 +755,7 @@ class StateCoordinator {
       // Try session storage first
       if (typeof browser.storage.session !== 'undefined') {
         const result = await browser.storage.session.get('quick_tabs_session');
-        if (
-          result &&
-          result.quick_tabs_session &&
-          result.quick_tabs_session.tabs
-        ) {
+        if (result && result.quick_tabs_session && result.quick_tabs_session.tabs) {
           this.globalState = result.quick_tabs_session;
           this.initialized = true;
           console.log(
@@ -799,11 +769,7 @@ class StateCoordinator {
 
       // Fall back to sync storage
       const result = await browser.storage.sync.get('quick_tabs_state_v2');
-      if (
-        result &&
-        result.quick_tabs_state_v2 &&
-        result.quick_tabs_state_v2.tabs
-      ) {
+      if (result && result.quick_tabs_state_v2 && result.quick_tabs_state_v2.tabs) {
         this.globalState = result.quick_tabs_state_v2;
         this.initialized = true;
         console.log(
@@ -827,19 +793,14 @@ class StateCoordinator {
   async processBatchUpdate(tabId, operations, tabInstanceId) {
     await this.initialize();
 
-    console.log(
-      `[STATE COORDINATOR] Processing ${operations.length} operations from tab ${tabId}`
-    );
+    console.log(`[STATE COORDINATOR] Processing ${operations.length} operations from tab ${tabId}`);
 
     // Rebuild vector clock from operations
     const tabVectorClock = new Map();
     operations.forEach(op => {
       if (op.vectorClock) {
         op.vectorClock.forEach(([key, value]) => {
-          tabVectorClock.set(
-            key,
-            Math.max(tabVectorClock.get(key) || 0, value)
-          );
+          tabVectorClock.set(key, Math.max(tabVectorClock.get(key) || 0, value));
         });
       }
     });
@@ -869,9 +830,7 @@ class StateCoordinator {
     switch (type) {
       case 'create':
         // Check if already exists
-        const existingIndex = this.globalState.tabs.findIndex(
-          t => t.id === quickTabId
-        );
+        const existingIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (existingIndex === -1) {
           this.globalState.tabs.push(data);
           console.log(`[STATE COORDINATOR] Created Quick Tab ${quickTabId}`);
@@ -881,16 +840,12 @@ class StateCoordinator {
             ...this.globalState.tabs[existingIndex],
             ...data
           };
-          console.log(
-            `[STATE COORDINATOR] Updated existing Quick Tab ${quickTabId}`
-          );
+          console.log(`[STATE COORDINATOR] Updated existing Quick Tab ${quickTabId}`);
         }
         break;
 
       case 'update':
-        const updateIndex = this.globalState.tabs.findIndex(
-          t => t.id === quickTabId
-        );
+        const updateIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (updateIndex !== -1) {
           this.globalState.tabs[updateIndex] = {
             ...this.globalState.tabs[updateIndex],
@@ -901,9 +856,7 @@ class StateCoordinator {
         break;
 
       case 'delete':
-        const deleteIndex = this.globalState.tabs.findIndex(
-          t => t.id === quickTabId
-        );
+        const deleteIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (deleteIndex !== -1) {
           this.globalState.tabs.splice(deleteIndex, 1);
           console.log(`[STATE COORDINATOR] Deleted Quick Tab ${quickTabId}`);
@@ -911,9 +864,7 @@ class StateCoordinator {
         break;
 
       case 'minimize':
-        const minIndex = this.globalState.tabs.findIndex(
-          t => t.id === quickTabId
-        );
+        const minIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (minIndex !== -1) {
           this.globalState.tabs[minIndex].minimized = true;
           console.log(`[STATE COORDINATOR] Minimized Quick Tab ${quickTabId}`);
@@ -924,9 +875,7 @@ class StateCoordinator {
         break;
 
       case 'restore':
-        const restoreIndex = this.globalState.tabs.findIndex(
-          t => t.id === quickTabId
-        );
+        const restoreIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (restoreIndex !== -1) {
           this.globalState.tabs[restoreIndex].minimized = false;
           console.log(`[STATE COORDINATOR] Restored Quick Tab ${quickTabId}`);
@@ -978,9 +927,7 @@ class StateCoordinator {
           });
       }
 
-      console.log(
-        `[STATE COORDINATOR] Broadcasted state to ${tabs.length} tabs`
-      );
+      console.log(`[STATE COORDINATOR] Broadcasted state to ${tabs.length} tabs`);
     } catch (err) {
       console.error('[STATE COORDINATOR] Error broadcasting state:', err);
     }
@@ -1064,9 +1011,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
   if (message.action === 'SYNC_STATE_FROM_COORDINATOR') {
     const canonicalState = message.state;
 
-    debug(
-      `[SYNC] Received canonical state from coordinator: ${canonicalState.tabs.length} tabs`
-    );
+    debug(`[SYNC] Received canonical state from coordinator: ${canonicalState.tabs.length} tabs`);
 
     syncLocalStateWithCanonical(canonicalState);
   }
@@ -1141,22 +1086,15 @@ function syncLocalStateWithCanonical(canonicalState) {
     if (canonicalTab.minimized) return; // Handle minimized separately
 
     // Check if tab should be visible on this page (pin filtering)
-    if (
-      canonicalTab.pinnedToUrl &&
-      canonicalTab.pinnedToUrl !== currentPageUrl
-    ) {
+    if (canonicalTab.pinnedToUrl && canonicalTab.pinnedToUrl !== currentPageUrl) {
       return;
     }
 
     // Check if we already have this Quick Tab
-    const exists = quickTabWindows.some(
-      w => w.dataset.quickTabId === canonicalTab.id
-    );
+    const exists = quickTabWindows.some(w => w.dataset.quickTabId === canonicalTab.id);
 
     if (!exists && quickTabWindows.length < CONFIG.quickTabMaxWindows) {
-      debug(
-        `[SYNC] Creating Quick Tab ${canonicalTab.id} from canonical state`
-      );
+      debug(`[SYNC] Creating Quick Tab ${canonicalTab.id} from canonical state`);
       createQuickTabWindow(
         canonicalTab.url,
         canonicalTab.width,

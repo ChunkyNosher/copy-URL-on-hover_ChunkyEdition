@@ -168,8 +168,7 @@ reliable.
 ```yaml
 # .coderabbit.yaml
 language: en-US
-tone_instructions:
-  'Focus on logic correctness, security issues, and browser extension best
+tone_instructions: 'Focus on logic correctness, security issues, and browser extension best
   practices. Be concise but thorough.'
 
 reviews:
@@ -363,11 +362,7 @@ describe('Extension Configuration', () => {
 
 describe('Container Identifiers', () => {
   test('should recognize firefox container patterns', () => {
-    const validIds = [
-      'firefox-default',
-      'firefox-container-1',
-      'firefox-container-personal'
-    ];
+    const validIds = ['firefox-default', 'firefox-container-1', 'firefox-container-personal'];
 
     const invalidIds = ['', 'chrome-default', null];
 

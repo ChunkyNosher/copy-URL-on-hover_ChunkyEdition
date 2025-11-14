@@ -94,8 +94,7 @@ skipped" issue)
 
 # Language and tone
 language: en-US
-tone_instructions:
-  'Focus on logic correctness, security issues, and browser extension best
+tone_instructions: 'Focus on logic correctness, security issues, and browser extension best
   practices. Be concise but thorough.'
 
 reviews:

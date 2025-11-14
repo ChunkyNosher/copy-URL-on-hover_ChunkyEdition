@@ -148,10 +148,7 @@ Update the init to continue even if config loading fails:
       CONFIG = await configManager.load();
       console.log('[Copy-URL-on-Hover] Configuration loaded:', CONFIG);
     } catch (configError) {
-      console.error(
-        '[Copy-URL-on-Hover] Config load failed, using defaults:',
-        configError
-      );
+      console.error('[Copy-URL-on-Hover] Config load failed, using defaults:', configError);
       CONFIG = { ...DEFAULT_CONFIG }; // Fallback to defaults
     }
 

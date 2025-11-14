@@ -32,9 +32,7 @@ const stateManager = new QuickTabStateManager();
 // When moving Quick Tab
 async function handleQuickTabMove(url, left, top) {
   const currentState = await stateManager.load();
-  const updatedTabs = currentState.tabs.map(tab =>
-    tab.url === url ? { ...tab, left, top } : tab
-  );
+  const updatedTabs = currentState.tabs.map(tab => (tab.url === url ? { ...tab, left, top } : tab));
   await stateManager.save(updatedTabs);
 }
 ```
@@ -164,10 +162,7 @@ export class QuickTabStateManager {
       browser.storage.session.get(this.sessionKey),
       browser.storage.sync.get(this.stateKey)
     ]);
-    return (
-      sessionResult[this.sessionKey] ||
-      syncResult[this.stateKey] || { tabs: [] }
-    );
+    return sessionResult[this.sessionKey] || syncResult[this.stateKey] || { tabs: [] };
   }
 }
 ```

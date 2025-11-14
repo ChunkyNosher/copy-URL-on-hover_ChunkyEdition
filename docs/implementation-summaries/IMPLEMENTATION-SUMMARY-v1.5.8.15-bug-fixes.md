@@ -298,8 +298,7 @@ const stateToSave = {
 
 // ALWAYS support three formats when reading
 const containers =
-  state.containers ||
-  (state.tabs ? { 'firefox-default': { tabs: state.tabs } } : state);
+  state.containers || (state.tabs ? { 'firefox-default': { tabs: state.tabs } } : state);
 ```
 
 ---

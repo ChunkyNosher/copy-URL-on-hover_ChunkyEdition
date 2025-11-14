@@ -156,10 +156,8 @@ if (tabIndex !== -1) {
   // QT2 found - update it
   globalQuickTabState.tabs[tabIndex].left = message.left;
   globalQuickTabState.tabs[tabIndex].top = message.top;
-  if (message.width !== undefined)
-    globalQuickTabState.tabs[tabIndex].width = message.width;
-  if (message.height !== undefined)
-    globalQuickTabState.tabs[tabIndex].height = message.height;
+  if (message.width !== undefined) globalQuickTabState.tabs[tabIndex].width = message.width;
+  if (message.height !== undefined) globalQuickTabState.tabs[tabIndex].height = message.height;
 } else {
   // QT2 NOT found - create new entry
   globalQuickTabState.tabs.push({
@@ -252,11 +250,7 @@ async function initializeGlobalState() {
     let result;
     if (typeof browser.storage.session !== 'undefined') {
       result = await browser.storage.session.get('quick_tabs_session');
-      if (
-        result &&
-        result.quick_tabs_session &&
-        result.quick_tabs_session.tabs
-      ) {
+      if (result && result.quick_tabs_session && result.quick_tabs_session.tabs) {
         globalQuickTabState.tabs = result.quick_tabs_session.tabs;
         globalQuickTabState.lastUpdate = result.quick_tabs_session.timestamp;
         console.log(
@@ -270,11 +264,7 @@ async function initializeGlobalState() {
 
     // Fall back to sync storage
     result = await browser.storage.sync.get('quick_tabs_state_v2');
-    if (
-      result &&
-      result.quick_tabs_state_v2 &&
-      result.quick_tabs_state_v2.tabs
-    ) {
+    if (result && result.quick_tabs_state_v2 && result.quick_tabs_state_v2.tabs) {
       globalQuickTabState.tabs = result.quick_tabs_state_v2.tabs;
       globalQuickTabState.lastUpdate = result.quick_tabs_state_v2.timestamp;
       console.log(
@@ -283,9 +273,7 @@ async function initializeGlobalState() {
         'tabs'
       );
     } else {
-      console.log(
-        '[Background] No saved state found, starting with empty state'
-      );
+      console.log('[Background] No saved state found, starting with empty state');
     }
   } catch (err) {
     console.error('[Background] Error initializing global state:', err);
@@ -309,14 +297,7 @@ broadcasts):
 // Broadcast to other tabs using BroadcastChannel for real-time sync
 // Only broadcast if this wasn't created from a broadcast (prevent infinite loop)
 if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
-  broadcastQuickTabCreation(
-    url,
-    windowWidth,
-    windowHeight,
-    posX,
-    posY,
-    pinnedToUrl
-  );
+  broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl);
 
   // REPLACE THIS:
   // saveQuickTabsToStorage();
@@ -353,9 +334,7 @@ if (message.action === 'CREATE_QUICK_TAB') {
   console.log('[Background] Received create Quick Tab:', message.url);
 
   // Check if tab already exists in global state
-  const existingIndex = globalQuickTabState.tabs.findIndex(
-    t => t.url === message.url
-  );
+  const existingIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
 
   if (existingIndex !== -1) {
     // Update existing entry
@@ -415,18 +394,14 @@ function closeQuickTabWindow(container, broadcast = true) {
 
   // Get URL before removing the container
   const iframe = container.querySelector('iframe');
-  const url = iframe
-    ? iframe.src || iframe.getAttribute('data-deferred-src')
-    : null;
+  const url = iframe ? iframe.src || iframe.getAttribute('data-deferred-src') : null;
 
   // Clean up drag/resize listeners
   if (container._dragCleanup) container._dragCleanup();
   if (container._resizeCleanup) container._resizeCleanup();
   container.remove();
 
-  debug(
-    `Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`
-  );
+  debug(`Quick Tab window closed. Remaining windows: ${quickTabWindows.length}`);
 
   // REPLACE: saveQuickTabsToStorage();
   // WITH: Notify background script
@@ -459,9 +434,7 @@ if (message.action === 'CLOSE_QUICK_TAB') {
   console.log('[Background] Received close Quick Tab:', message.url);
 
   // Remove from global state
-  const tabIndex = globalQuickTabState.tabs.findIndex(
-    t => t.url === message.url
-  );
+  const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
   if (tabIndex !== -1) {
     globalQuickTabState.tabs.splice(tabIndex, 1);
     globalQuickTabState.lastUpdate = Date.now();
@@ -532,9 +505,7 @@ if (message.action === 'CLOSE_QUICK_TAB_FROM_BACKGROUND') {
 const state = quickTabWindows
   .map(container => {
     const iframe = container.querySelector('iframe');
-    const titleText = container.querySelector(
-      '.copy-url-quicktab-titlebar span'
-    );
+    const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
     const rect = container.getBoundingClientRect();
 
     const url = iframe?.src || iframe?.getAttribute('data-deferred-src') || '';

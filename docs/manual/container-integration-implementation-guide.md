@@ -552,9 +552,7 @@ async function initializeGlobalState() {
       console.log('[Background] Initialized from sync storage');
     } else {
       isInitialized = true;
-      console.log(
-        '[Background] No saved state found, starting with empty state'
-      );
+      console.log('[Background] No saved state found, starting with empty state');
     }
   } catch (err) {
     console.error('[Background] Error initializing global state:', err);
@@ -775,9 +773,7 @@ browser.runtime.sendMessage({
 browser.tabs
   .getCurrent()
   .then(tab => {
-    const cookieStoreId = tab
-      ? tab.cookieStoreId || 'firefox-default'
-      : 'firefox-default';
+    const cookieStoreId = tab ? tab.cookieStoreId || 'firefox-default' : 'firefox-default';
 
     browser.runtime.sendMessage({
       action: 'CREATE_QUICK_TAB',
@@ -813,9 +809,7 @@ browser.tabs
 ```javascript
 // AFTER (container-aware)
 browser.tabs.getCurrent().then(tab => {
-  const cookieStoreId = tab
-    ? tab.cookieStoreId || 'firefox-default'
-    : 'firefox-default';
+  const cookieStoreId = tab ? tab.cookieStoreId || 'firefox-default' : 'firefox-default';
 
   browser.runtime.sendMessage({
     action: 'CLOSE_QUICK_TAB',
@@ -847,10 +841,7 @@ if (window.quickTabsBroadcast) {
       : 'firefox-default';
 
     // Ignore messages from different containers
-    if (
-      event.data.cookieStoreId &&
-      event.data.cookieStoreId !== currentCookieStoreId
-    ) {
+    if (event.data.cookieStoreId && event.data.cookieStoreId !== currentCookieStoreId) {
       console.log(
         '[BroadcastChannel] Ignoring message from different container:',
         event.data.cookieStoreId
@@ -1137,11 +1128,7 @@ When users upgrade from v1.5.5.10 to the container-aware version:
 async function migrateOldState() {
   const oldState = await browser.storage.sync.get('quick_tabs_state_v2');
 
-  if (
-    oldState &&
-    oldState.quick_tabs_state_v2 &&
-    oldState.quick_tabs_state_v2.tabs
-  ) {
+  if (oldState && oldState.quick_tabs_state_v2 && oldState.quick_tabs_state_v2.tabs) {
     // Old format: { tabs: [...], timestamp: ... }
     // Migrate to: { "firefox-default": { tabs: [...], timestamp: ... } }
 
@@ -1153,9 +1140,7 @@ async function migrateOldState() {
       quick_tabs_state_v2: migrated
     });
 
-    console.log(
-      '[Background] Migrated old Quick Tab state to container-aware format'
-    );
+    console.log('[Background] Migrated old Quick Tab state to container-aware format');
   }
 }
 ```

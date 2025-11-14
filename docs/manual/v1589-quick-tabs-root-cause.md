@@ -59,8 +59,7 @@ critical architectural regression from all monolithic (pre-v1.5.8.6) versions.
   ```js
   eventBus.on(Events.QUICK_TAB_REQUESTED, opts => createQuickTabWindow(opts));
   browser.runtime.onMessage.addListener(msg => {
-    if (msg.action === 'CREATE_QUICK_TAB_FROM_BACKGROUND')
-      createQuickTabWindow(msg);
+    if (msg.action === 'CREATE_QUICK_TAB_FROM_BACKGROUND') createQuickTabWindow(msg);
   });
   ```
 
@@ -69,6 +68,7 @@ critical architectural regression from all monolithic (pre-v1.5.8.6) versions.
 - **Copy URL:** Use tooltip notification (showTooltip), NOT toast
 - **Quick Tab:** Use toast notification (showToast), NOT tooltip
 - Update `handleCopyURL` and `handleCreateQuickTab` in content.js:
+
   ```js
   showTooltip('✓ URL copied!'); // for copy URL
   showToast('✓ Quick Tab created!', 'success'); // for Quick Tabs

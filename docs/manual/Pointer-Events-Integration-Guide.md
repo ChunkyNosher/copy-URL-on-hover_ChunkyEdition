@@ -243,19 +243,11 @@ function makeDraggable(element, handle) {
         height: Math.round(rect.height)
       })
       .catch(err => {
-        debug(
-          '[POINTER] Error sending throttled position update to background:',
-          err
-        );
+        debug('[POINTER] Error sending throttled position update to background:', err);
       });
 
     // INTEGRATION POINT 2: BroadcastChannel for same-origin real-time sync (redundant but fast)
-    broadcastQuickTabMove(
-      quickTabId,
-      url,
-      Math.round(newLeft),
-      Math.round(newTop)
-    );
+    broadcastQuickTabMove(quickTabId, url, Math.round(newLeft), Math.round(newTop));
   };
 
   // Final save on drag end (integrates with all three layers)
@@ -285,12 +277,7 @@ function makeDraggable(element, handle) {
       });
 
     // INTEGRATION POINT 2: BroadcastChannel for same-origin tabs
-    broadcastQuickTabMove(
-      quickTabId,
-      url,
-      Math.round(finalLeft),
-      Math.round(finalTop)
-    );
+    broadcastQuickTabMove(quickTabId, url, Math.round(finalLeft), Math.round(finalTop));
 
     // NOTE: Background script now handles storage.sync saves
     // This prevents race conditions with isSavingToStorage flag
@@ -453,9 +440,7 @@ function makeDraggable(element, handle) {
     // Useful for cleanup verification
 
     if (CONFIG.debugMode) {
-      debug(
-        `[LOST CAPTURE] Pointer capture released - Pointer ID: ${e.pointerId}`
-      );
+      debug(`[LOST CAPTURE] Pointer capture released - Pointer ID: ${e.pointerId}`);
     }
 
     // Ensure cleanup
@@ -582,12 +567,7 @@ function makeResizable(element) {
     };
 
     // Throttled save during resize
-    const throttledSaveDuringResize = (
-      newWidth,
-      newHeight,
-      newLeft,
-      newTop
-    ) => {
+    const throttledSaveDuringResize = (newWidth, newHeight, newLeft, newTop) => {
       const now = performance.now();
       if (now - lastThrottledSaveTime < THROTTLE_SAVE_MS) return;
 
@@ -616,26 +596,11 @@ function makeResizable(element) {
         });
 
       // BroadcastChannel for same-origin sync
-      broadcastQuickTabResize(
-        quickTabId,
-        url,
-        Math.round(newWidth),
-        Math.round(newHeight)
-      );
-      broadcastQuickTabMove(
-        quickTabId,
-        url,
-        Math.round(newLeft),
-        Math.round(newTop)
-      );
+      broadcastQuickTabResize(quickTabId, url, Math.round(newWidth), Math.round(newHeight));
+      broadcastQuickTabMove(quickTabId, url, Math.round(newLeft), Math.round(newTop));
     };
 
-    const finalSaveOnResizeEnd = (
-      finalWidth,
-      finalHeight,
-      finalLeft,
-      finalTop
-    ) => {
+    const finalSaveOnResizeEnd = (finalWidth, finalHeight, finalLeft, finalTop) => {
       const iframe = element.querySelector('iframe');
       if (!iframe || !CONFIG.quickTabPersistAcrossTabs) return;
 
@@ -658,18 +623,8 @@ function makeResizable(element) {
           debug('[POINTER] Error sending final resize to background:', err);
         });
 
-      broadcastQuickTabResize(
-        quickTabId,
-        url,
-        Math.round(finalWidth),
-        Math.round(finalHeight)
-      );
-      broadcastQuickTabMove(
-        quickTabId,
-        url,
-        Math.round(finalLeft),
-        Math.round(finalTop)
-      );
+      broadcastQuickTabResize(quickTabId, url, Math.round(finalWidth), Math.round(finalHeight));
+      broadcastQuickTabMove(quickTabId, url, Math.round(finalLeft), Math.round(finalTop));
     };
 
     // =========================
@@ -924,10 +879,7 @@ document.addEventListener('visibilitychange', () => {
               source: 'visibilitychange' // Mark source for debugging
             })
             .catch(err => {
-              debug(
-                '[VISIBILITY] Error sending emergency save to background:',
-                err
-              );
+              debug('[VISIBILITY] Error sending emergency save to background:', err);
             });
         }
       });
@@ -1006,9 +958,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // CRITICAL: Save to storage.sync for persistence
     // Convert Map to array for storage
     const stateArray = Array.from(globalQuickTabState.values()).map(state => ({
-      id: Array.from(globalQuickTabState.entries()).find(
-        ([k, v]) => v === state
-      )?.[0],
+      id: Array.from(globalQuickTabState.entries()).find(([k, v]) => v === state)?.[0],
       url: state.url,
       left: state.left,
       top: state.top,
@@ -1023,11 +973,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       timestamp: Date.now()
     };
 
-    browser.storage.sync
-      .set({ quick_tabs_state_v2: stateObject })
-      .catch(err => {
-        console.error('[Background] Error saving to storage.sync:', err);
-      });
+    browser.storage.sync.set({ quick_tabs_state_v2: stateObject }).catch(err => {
+      console.error('[Background] Error saving to storage.sync:', err);
+    });
 
     sendResponse({ success: true });
     return true;
@@ -1051,18 +999,16 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log(`[Background] Quick Tab created: ${id} at (${left}, ${top})`);
 
     // Save immediately
-    const stateArray = Array.from(globalQuickTabState.entries()).map(
-      ([id, state]) => ({
-        id: id,
-        url: state.url,
-        left: state.left,
-        top: state.top,
-        width: state.width,
-        height: state.height,
-        pinnedToUrl: state.pinnedToUrl,
-        minimized: false
-      })
-    );
+    const stateArray = Array.from(globalQuickTabState.entries()).map(([id, state]) => ({
+      id: id,
+      url: state.url,
+      left: state.left,
+      top: state.top,
+      width: state.width,
+      height: state.height,
+      pinnedToUrl: state.pinnedToUrl,
+      minimized: false
+    }));
 
     browser.storage.sync.set({
       quick_tabs_state_v2: {
@@ -1085,18 +1031,16 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log(`[Background] Quick Tab closed: ${id}`);
 
     // Save updated state
-    const stateArray = Array.from(globalQuickTabState.entries()).map(
-      ([id, state]) => ({
-        id: id,
-        url: state.url,
-        left: state.left,
-        top: state.top,
-        width: state.width,
-        height: state.height,
-        pinnedToUrl: state.pinnedToUrl,
-        minimized: false
-      })
-    );
+    const stateArray = Array.from(globalQuickTabState.entries()).map(([id, state]) => ({
+      id: id,
+      url: state.url,
+      left: state.left,
+      top: state.top,
+      width: state.width,
+      height: state.height,
+      pinnedToUrl: state.pinnedToUrl,
+      minimized: false
+    }));
 
     browser.storage.sync.set({
       quick_tabs_state_v2: {
@@ -1118,23 +1062,19 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       state.pinnedToUrl = pinnedToUrl;
       state.lastUpdate = Date.now();
 
-      console.log(
-        `[Background] Quick Tab ${id} pin updated: ${pinnedToUrl || 'unpinned'}`
-      );
+      console.log(`[Background] Quick Tab ${id} pin updated: ${pinnedToUrl || 'unpinned'}`);
 
       // Save immediately
-      const stateArray = Array.from(globalQuickTabState.entries()).map(
-        ([id, state]) => ({
-          id: id,
-          url: state.url,
-          left: state.left,
-          top: state.top,
-          width: state.width,
-          height: state.height,
-          pinnedToUrl: state.pinnedToUrl,
-          minimized: false
-        })
-      );
+      const stateArray = Array.from(globalQuickTabState.entries()).map(([id, state]) => ({
+        id: id,
+        url: state.url,
+        left: state.left,
+        top: state.top,
+        width: state.width,
+        height: state.height,
+        pinnedToUrl: state.pinnedToUrl,
+        minimized: false
+      }));
 
       browser.storage.sync.set({
         quick_tabs_state_v2: {
@@ -1738,10 +1678,7 @@ window.verifyQuickTabSync = async () => {
 
   // Check storage.sync
   const syncState = await browser.storage.sync.get('quick_tabs_state_v2');
-  console.log(
-    'storage.sync tabs:',
-    syncState.quick_tabs_state_v2?.tabs?.length || 0
-  );
+  console.log('storage.sync tabs:', syncState.quick_tabs_state_v2?.tabs?.length || 0);
 
   // Check local Quick Tabs
   console.log('Local Quick Tabs:', quickTabWindows.length);

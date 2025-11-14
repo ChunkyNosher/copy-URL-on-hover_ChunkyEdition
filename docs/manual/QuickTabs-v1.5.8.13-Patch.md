@@ -162,7 +162,5 @@ always registered, and state is hydrated on load.
 [35]: https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues/35
 [51]: https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues/51
 [47]: https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues/47
-[208]:
-  https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Background_scripts
-[learn.microsoft.com]:
-  https://learn.microsoft.com/en-us/microsoft-edge/extensions-chromium/developer-guide/minimize-extension-impact
+[208]: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Background_scripts
+[learn.microsoft.com]: https://learn.microsoft.com/en-us/microsoft-edge/extensions-chromium/developer-guide/minimize-extension-impact

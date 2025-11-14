@@ -129,9 +129,7 @@ function restoreQuickTabsFromStorage() {
     );
 
     // Restore non-minimized tabs
-    const normalTabs = tabs.filter(
-      t => !t.minimized && t.url && t.url.trim() !== ''
-    );
+    const normalTabs = tabs.filter(t => !t.minimized && t.url && t.url.trim() !== '');
     normalTabs.forEach(tab => {
       // Skip if we already have a Quick Tab with this URL (prevents duplicates)
       if (existingUrls.has(tab.url)) {
@@ -204,9 +202,7 @@ let globalQuickTabState = {
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'UPDATE_QUICK_TAB_POSITION') {
     // Update global state
-    const tabIndex = globalQuickTabState.tabs.findIndex(
-      t => t.url === message.url
-    );
+    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
     if (tabIndex !== -1) {
       globalQuickTabState.tabs[tabIndex].left = message.left;
       globalQuickTabState.tabs[tabIndex].top = message.top;
@@ -250,9 +246,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'UPDATE_QUICK_TAB_SIZE') {
     // Similar logic for size updates
-    const tabIndex = globalQuickTabState.tabs.findIndex(
-      t => t.url === message.url
-    );
+    const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
     if (tabIndex !== -1) {
       globalQuickTabState.tabs[tabIndex].width = message.width;
       globalQuickTabState.tabs[tabIndex].height = message.height;
@@ -392,8 +386,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const container = quickTabWindows.find(win => {
           const iframe = win.querySelector('iframe');
           if (!iframe) return false;
-          const iframeSrc =
-            iframe.src || iframe.getAttribute('data-deferred-src');
+          const iframeSrc = iframe.src || iframe.getAttribute('data-deferred-src');
           return iframeSrc === tab.url;
         });
 
@@ -452,9 +445,7 @@ function restoreQuickTabsFromStorage() {
     });
 
     // Process all tabs from storage
-    const normalTabs = tabs.filter(
-      t => !t.minimized && t.url && t.url.trim() !== ''
-    );
+    const normalTabs = tabs.filter(t => !t.minimized && t.url && t.url.trim() !== '');
     normalTabs.forEach(tab => {
       // Filter based on pin status
       if (tab.pinnedToUrl && tab.pinnedToUrl !== currentPageUrl) {
@@ -469,29 +460,19 @@ function restoreQuickTabsFromStorage() {
         // Update position
         const currentLeft = parseFloat(container.style.left);
         const currentTop = parseFloat(container.style.top);
-        if (
-          Math.abs(currentLeft - tab.left) > 1 ||
-          Math.abs(currentTop - tab.top) > 1
-        ) {
+        if (Math.abs(currentLeft - tab.left) > 1 || Math.abs(currentTop - tab.top) > 1) {
           container.style.left = tab.left + 'px';
           container.style.top = tab.top + 'px';
-          debug(
-            `Updated existing Quick Tab ${tab.url} position to (${tab.left}, ${tab.top})`
-          );
+          debug(`Updated existing Quick Tab ${tab.url} position to (${tab.left}, ${tab.top})`);
         }
 
         // Update size
         const currentWidth = parseFloat(container.style.width);
         const currentHeight = parseFloat(container.style.height);
-        if (
-          Math.abs(currentWidth - tab.width) > 1 ||
-          Math.abs(currentHeight - tab.height) > 1
-        ) {
+        if (Math.abs(currentWidth - tab.width) > 1 || Math.abs(currentHeight - tab.height) > 1) {
           container.style.width = tab.width + 'px';
           container.style.height = tab.height + 'px';
-          debug(
-            `Updated existing Quick Tab ${tab.url} size to ${tab.width}x${tab.height}`
-          );
+          debug(`Updated existing Quick Tab ${tab.url} size to ${tab.width}x${tab.height}`);
         }
 
         return; // Don't create a new one

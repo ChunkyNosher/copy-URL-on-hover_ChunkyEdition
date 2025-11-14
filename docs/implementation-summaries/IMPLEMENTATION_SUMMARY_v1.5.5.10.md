@@ -20,9 +20,7 @@ The solution implements comprehensive ID-based tracking throughout the codebase.
 
 ```javascript
 // BEFORE (BROKEN) - Line ~708 in content.js
-const tabInStorage = newValue.tabs.find(
-  t => t.url === iframeSrc && !t.minimized
-);
+const tabInStorage = newValue.tabs.find(t => t.url === iframeSrc && !t.minimized);
 // Problem: URL-based lookup returns FIRST match, not the specific Quick Tab
 ```
 
@@ -43,9 +41,7 @@ T=145ms:  QT1 position updated to stale value → JUMP!
 ```javascript
 // AFTER (FIXED) - content.js line ~703
 const quickTabId = container.dataset.quickTabId;
-const tabInStorage = newValue.tabs.find(
-  t => t.id === quickTabId && !t.minimized
-);
+const tabInStorage = newValue.tabs.find(t => t.id === quickTabId && !t.minimized);
 // Fix: ID-based lookup matches the specific Quick Tab instance
 ```
 

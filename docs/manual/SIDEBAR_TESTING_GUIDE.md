@@ -302,9 +302,9 @@ Monitor console for:
 
 ## Sign-Off
 
-**Tested By:** ********\_********  
-**Date:** ********\_********  
-**Firefox Version:** ********\_********  
+**Tested By:** **\*\*\*\***\_**\*\*\*\***  
+**Date:** **\*\*\*\***\_**\*\*\*\***  
+**Firefox Version:** **\*\*\*\***\_**\*\*\*\***  
 **All Tests Passed:** ☐ Yes ☐ No
 
 **Notes:**

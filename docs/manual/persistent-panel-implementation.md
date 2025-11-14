@@ -242,10 +242,7 @@ browser.commands.onCommand.addListener(async command => {
           action: 'TOGGLE_QUICK_TABS_PANEL'
         })
         .catch(err => {
-          console.error(
-            '[QuickTabsManager] Error sending toggle message:',
-            err
-          );
+          console.error('[QuickTabsManager] Error sending toggle message:', err);
           // Content script may not be loaded yet - inject it
           browser.tabs
             .executeScript(activeTab.id, {
@@ -259,10 +256,7 @@ browser.commands.onCommand.addListener(async command => {
             });
         });
 
-      console.log(
-        '[QuickTabsManager] Toggle command sent to tab',
-        activeTab.id
-      );
+      console.log('[QuickTabsManager] Toggle command sent to tab', activeTab.id);
     } catch (err) {
       console.error('[QuickTabsManager] Error handling toggle command:', err);
     }
@@ -769,11 +763,9 @@ function savePanelState() {
     isOpen: isPanelOpen
   };
 
-  browser.storage.local
-    .set({ quick_tabs_panel_state: panelState })
-    .catch(err => {
-      debug('[Panel] Error saving panel state:', err);
-    });
+  browser.storage.local.set({ quick_tabs_panel_state: panelState }).catch(err => {
+    debug('[Panel] Error saving panel state:', err);
+  });
 }
 // ==================== END QUICK TABS MANAGER PANEL INJECTION ====================
 ```
@@ -1130,9 +1122,7 @@ async function closeMinimizedTabsFromPanel() {
     Object.keys(state).forEach(cookieStoreId => {
       if (state[cookieStoreId] && state[cookieStoreId].tabs) {
         const originalLength = state[cookieStoreId].tabs.length;
-        state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(
-          t => !t.minimized
-        );
+        state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !t.minimized);
 
         if (state[cookieStoreId].tabs.length !== originalLength) {
           hasChanges = true;
@@ -1177,9 +1167,7 @@ async function closeAllTabsFromPanel() {
  * Minimize Quick Tab from panel
  */
 async function minimizeQuickTabFromPanel(quickTabId) {
-  const container = quickTabWindows.find(
-    w => w.dataset.quickTabId === quickTabId
-  );
+  const container = quickTabWindows.find(w => w.dataset.quickTabId === quickTabId);
   if (container) {
     const iframe = container.querySelector('iframe');
     const url = iframe?.src || iframe?.getAttribute('data-deferred-src');
@@ -1201,9 +1189,7 @@ async function restoreQuickTabFromPanel(quickTabId) {
  * Close Quick Tab from panel
  */
 async function closeQuickTabFromPanel(quickTabId) {
-  const container = quickTabWindows.find(
-    w => w.dataset.quickTabId === quickTabId
-  );
+  const container = quickTabWindows.find(w => w.dataset.quickTabId === quickTabId);
   if (container) {
     closeQuickTabWindow(container);
   }
@@ -1313,20 +1299,11 @@ async function updatePanelContent() {
     const containerInfo = containersData[cookieStoreId];
     const containerState = quickTabsState[cookieStoreId];
 
-    if (
-      !containerState ||
-      !containerState.tabs ||
-      containerState.tabs.length === 0
-    ) {
+    if (!containerState || !containerState.tabs || containerState.tabs.length === 0) {
       return; // Skip empty containers
     }
 
-    renderPanelContainerSection(
-      containersList,
-      cookieStoreId,
-      containerInfo,
-      containerState
-    );
+    renderPanelContainerSection(containersList, cookieStoreId, containerInfo, containerState);
   });
 }
 
@@ -1355,12 +1332,7 @@ function getContainerIconForPanel(icon) {
 /**
  * Render container section in panel
  */
-function renderPanelContainerSection(
-  containersList,
-  cookieStoreId,
-  containerInfo,
-  containerState
-) {
+function renderPanelContainerSection(containersList, cookieStoreId, containerInfo, containerState) {
   const section = document.createElement('div');
   section.className = 'panel-container-section';
 
@@ -1426,8 +1398,7 @@ function renderPanelQuickTabItem(tab, isMinimized) {
   let metaParts = [];
   if (isMinimized) metaParts.push('Minimized');
   if (tab.activeTabId) metaParts.push(`Tab ${tab.activeTabId}`);
-  if (tab.width && tab.height)
-    metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
+  if (tab.width && tab.height) metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
   meta.textContent = metaParts.join(' • ');
 
   info.appendChild(title);
