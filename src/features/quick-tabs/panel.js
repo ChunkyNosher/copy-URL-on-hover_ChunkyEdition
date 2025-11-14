@@ -392,6 +392,7 @@ export class PanelManager {
       isOpen: false
     };
     this.updateInterval = null;
+    this.broadcastChannel = null; // v1.5.8.15 - For cross-tab panel sync
   }
 
   /**
@@ -399,6 +400,9 @@ export class PanelManager {
    */
   async init() {
     debug('[PanelManager] Initializing...');
+
+    // v1.5.8.15: Set up BroadcastChannel for cross-tab panel sync
+    this.setupBroadcastChannel();
 
     // Inject CSS
     this.injectStyles();
@@ -413,6 +417,45 @@ export class PanelManager {
     this.setupMessageListener();
 
     debug('[PanelManager] Initialized');
+  }
+
+  /**
+   * v1.5.8.15 - Set up BroadcastChannel for cross-tab panel visibility sync
+   */
+  setupBroadcastChannel() {
+    if (typeof BroadcastChannel === 'undefined') {
+      debug('[PanelManager] BroadcastChannel not available, panel sync disabled');
+      return;
+    }
+
+    try {
+      this.broadcastChannel = new BroadcastChannel('quick-tabs-panel-sync');
+
+      this.broadcastChannel.onmessage = event => {
+        const { type, data } = event.data;
+
+        switch (type) {
+          case 'PANEL_OPENED':
+            // Another tab opened the panel - open it here too (without broadcasting)
+            if (!this.isOpen) {
+              debug('[PanelManager] Opening panel (broadcast from another tab)');
+              this.openSilent(); // Open without broadcasting to prevent loop
+            }
+            break;
+          case 'PANEL_CLOSED':
+            // Another tab closed the panel - close it here too (without broadcasting)
+            if (this.isOpen) {
+              debug('[PanelManager] Closing panel (broadcast from another tab)');
+              this.closeSilent(); // Close without broadcasting to prevent loop
+            }
+            break;
+        }
+      };
+
+      debug('[PanelManager] BroadcastChannel initialized for panel sync');
+    } catch (err) {
+      console.error('[PanelManager] Failed to set up BroadcastChannel:', err);
+    }
   }
 
   /**
@@ -560,6 +603,14 @@ export class PanelManager {
     // Save state
     this.savePanelState();
 
+    // v1.5.8.15: Broadcast panel opened to other tabs
+    if (this.broadcastChannel) {
+      this.broadcastChannel.postMessage({
+        type: 'PANEL_OPENED',
+        timestamp: Date.now()
+      });
+    }
+
     debug('[PanelManager] Panel opened');
   }
 
@@ -581,7 +632,68 @@ export class PanelManager {
       // Save state
       this.savePanelState();
 
+      // v1.5.8.15: Broadcast panel closed to other tabs
+      if (this.broadcastChannel) {
+        this.broadcastChannel.postMessage({
+          type: 'PANEL_CLOSED',
+          timestamp: Date.now()
+        });
+      }
+
       debug('[PanelManager] Panel closed');
+    }
+  }
+
+  /**
+   * v1.5.8.15 - Open panel silently (without broadcasting) to prevent infinite loop
+   */
+  openSilent() {
+    if (!this.panel) {
+      this.createPanel();
+    }
+
+    this.panel.style.display = 'flex';
+    this.isOpen = true;
+    this.panelState.isOpen = true;
+
+    // Bring to front
+    this.panel.style.zIndex = '999999999';
+
+    // Update content immediately
+    this.updatePanelContent();
+
+    // Start auto-refresh
+    if (!this.updateInterval) {
+      this.updateInterval = setInterval(() => {
+        this.updatePanelContent();
+      }, 2000);
+    }
+
+    // Save state locally only
+    this.savePanelState();
+
+    debug('[PanelManager] Panel opened silently (from broadcast)');
+  }
+
+  /**
+   * v1.5.8.15 - Close panel silently (without broadcasting) to prevent infinite loop
+   */
+  closeSilent() {
+    if (this.panel) {
+      this.panel.style.display = 'none';
+      this.isOpen = false;
+      this.panelState.isOpen = false;
+
+      // Stop auto-refresh
+      if (this.updateInterval) {
+        clearInterval(this.updateInterval);
+        this.updateInterval = null;
+      }
+
+      // Save state locally only
+      this.savePanelState();
+
+      debug('[PanelManager] Panel closed silently (from broadcast)');
     }
   }
 
@@ -884,7 +996,9 @@ export class PanelManager {
     try {
       const result = await browser.storage.sync.get('quick_tabs_state_v2');
       if (result && result.quick_tabs_state_v2) {
-        quickTabsState = result.quick_tabs_state_v2;
+        // v1.5.8.15 FIX: Handle wrapped format
+        const state = result.quick_tabs_state_v2;
+        quickTabsState = state.containers || state; // Extract containers or use state directly
       }
     } catch (err) {
       console.error('[PanelManager] Error loading Quick Tabs state:', err);
@@ -896,11 +1010,14 @@ export class PanelManager {
     let latestTimestamp = 0;
 
     Object.keys(quickTabsState).forEach(cookieStoreId => {
+      // Skip metadata keys
+      if (cookieStoreId === 'saveId' || cookieStoreId === 'timestamp') return;
+      
       const containerState = quickTabsState[cookieStoreId];
       if (containerState && containerState.tabs) {
         totalTabs += containerState.tabs.length;
-        if (containerState.timestamp > latestTimestamp) {
-          latestTimestamp = containerState.timestamp;
+        if (containerState.lastUpdate > latestTimestamp) {
+          latestTimestamp = containerState.lastUpdate;
         }
       }
     });
@@ -1125,7 +1242,7 @@ export class PanelManager {
 
   /**
    * Close minimized Quick Tabs
-   * v1.5.8.14 - Enhanced to properly handle container-aware format and include saveId
+   * v1.5.8.15 - Fixed to handle wrapped container format
    */
   async closeMinimizedQuickTabs() {
     try {
@@ -1135,12 +1252,15 @@ export class PanelManager {
       const state = result.quick_tabs_state_v2;
       let hasChanges = false;
 
-      // v1.5.8.14: Properly iterate through container-aware format
-      Object.keys(state).forEach(key => {
+      // v1.5.8.15 FIX: Handle wrapped format (state.containers)
+      const containers = state.containers || state; // Support both wrapped and unwrapped
+
+      // Iterate through containers
+      Object.keys(containers).forEach(key => {
         // Skip metadata keys
         if (key === 'saveId' || key === 'timestamp') return;
 
-        const containerState = state[key];
+        const containerState = containers[key];
         if (containerState && containerState.tabs && Array.isArray(containerState.tabs)) {
           const originalLength = containerState.tabs.length;
 
@@ -1155,15 +1275,18 @@ export class PanelManager {
       });
 
       if (hasChanges) {
-        // v1.5.8.14: Include saveId to prevent race conditions
-        state.saveId = this.generateSaveId();
-        state.timestamp = Date.now();
+        // v1.5.8.15 FIX: Save with proper wrapper format
+        const stateToSave = {
+          containers: containers,
+          saveId: this.generateSaveId(),
+          timestamp: Date.now()
+        };
 
-        await browser.storage.sync.set({ quick_tabs_state_v2: state });
+        await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
 
         // Also update session storage
         if (typeof browser.storage.session !== 'undefined') {
-          await browser.storage.session.set({ quick_tabs_session: state });
+          await browser.storage.session.set({ quick_tabs_session: stateToSave });
         }
 
         debug('[PanelManager] Closed all minimized Quick Tabs');
@@ -1176,14 +1299,16 @@ export class PanelManager {
 
   /**
    * Close all Quick Tabs
-   * v1.5.8.14 - Fixed to set empty state instead of removing storage
+   * v1.5.8.15 - Fixed to use proper wrapped format
    */
   async closeAllQuickTabs() {
     try {
-      // v1.5.8.14 FIX: Don't remove storage - set to empty container-aware state
+      // v1.5.8.15 FIX: Use wrapped container format
       const emptyState = {
-        'firefox-default': { tabs: [], lastUpdate: Date.now() },
-        saveId: this.generateSaveId(), // Include save ID
+        containers: {
+          'firefox-default': { tabs: [], lastUpdate: Date.now() }
+        },
+        saveId: this.generateSaveId(),
         timestamp: Date.now()
       };
 
