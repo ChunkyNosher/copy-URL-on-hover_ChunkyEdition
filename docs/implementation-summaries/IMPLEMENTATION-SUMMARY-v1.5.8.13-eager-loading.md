@@ -16,12 +16,15 @@ This release implements **eager loading** and **BroadcastChannel-based real-time
 ## Problem Statement
 
 ### Issue #35: Quick Tabs don't persist across tabs
+
 Quick Tabs created in one tab were not appearing in other tabs, causing confusion and state inconsistency.
 
 ### Issue #51: Position and size not syncing between tabs
+
 When a user moved or resized a Quick Tab in one tab, the changes were not reflected in other tabs, leading to position/size mismatches.
 
 ### Root Cause
+
 The previous implementation used lazy loading patterns where listeners were only attached after user interaction, and state hydration only occurred when the user opened the Quick Tabs Manager. This violated the eager loading principle required for real-time sync features.
 
 ---
@@ -32,17 +35,19 @@ The previous implementation used lazy loading patterns where listeners were only
 
 **What**: BroadcastChannel API provides same-origin messaging between tabs/windows with minimal latency.
 
-**Why**: 
+**Why**:
+
 - <10ms cross-tab message delivery (vs 100-200ms with storage polling)
 - No need for background script relay
 - Native browser API with good Firefox support
 
 **Implementation**:
+
 ```javascript
 // In QuickTabsManager
 setupBroadcastChannel() {
   this.broadcastChannel = new BroadcastChannel('quick-tabs-sync');
-  
+
   this.broadcastChannel.onmessage = (event) => {
     const { type, data } = event.data;
     // Handle CREATE, UPDATE_POSITION, UPDATE_SIZE, MINIMIZE, RESTORE, CLOSE, PIN, UNPIN
@@ -61,11 +66,13 @@ broadcast(type, data) {
 **What**: All listeners and state hydration logic run immediately when the content script loads, not on user interaction.
 
 **Why**:
+
 - Sync features require all tabs to "hear" events immediately
 - State must be restored before user interacts with UI
 - Background coordination requires all contexts to be ready
 
 **Implementation**:
+
 - `setupBroadcastChannel()` - Called during `init()`
 - `setupStorageListeners()` - Called during `init()`
 - `setupMessageListeners()` - Called during `init()`
@@ -76,21 +83,23 @@ broadcast(type, data) {
 **What**: Load Quick Tabs state from storage as soon as content script initializes.
 
 **Why**:
+
 - Users expect to see their Quick Tabs immediately
 - Prevents "flash of empty state"
 - Ensures all tabs have consistent view of state
 
 **Implementation**:
+
 ```javascript
 async hydrateStateFromStorage() {
   // Try fast session storage first
   let state = await browser.storage.session.get('quick_tabs_session');
-  
+
   // Fallback to sync storage
   if (!state) {
     state = await browser.storage.sync.get('quick_tabs_state_v2');
   }
-  
+
   // Create/update Quick Tabs based on state
   this.syncFromStorage(state, cookieStoreId);
 }
@@ -101,11 +110,13 @@ async hydrateStateFromStorage() {
 **What**: Maintain Firefox Container isolation in sync operations.
 
 **Why**:
+
 - Users rely on container separation for privacy/organization
 - Quick Tabs should respect container boundaries
 - State must be scoped per-container
 
 **Implementation**:
+
 - State keyed by `cookieStoreId`
 - Sync operations filter by container
 - Background script broadcasts container-specific state
@@ -117,6 +128,7 @@ async hydrateStateFromStorage() {
 ### 1. src/features/quick-tabs/index.js
 
 **Added Methods**:
+
 - `setupBroadcastChannel()` - Initialize BroadcastChannel listener
 - `setupStorageListeners()` - Attach storage.onChanged listeners
 - `setupMessageListeners()` - Attach runtime.onMessage listeners
@@ -128,6 +140,7 @@ async hydrateStateFromStorage() {
 - `broadcast(type, data)` - Broadcast operation to other tabs
 
 **Enhanced Methods**:
+
 - `createQuickTab()` - Now broadcasts CREATE
 - `handleDestroy()` - Now broadcasts CLOSE
 - `handleMinimize()` - Now broadcasts MINIMIZE
@@ -142,6 +155,7 @@ async hydrateStateFromStorage() {
 ### 2. src/features/quick-tabs/window.js
 
 **Added Methods**:
+
 - `setPosition(left, top)` - Set position from sync (no event triggering)
 - `setSize(width, height)` - Set size from sync (no event triggering)
 
@@ -153,6 +167,7 @@ Without these methods, syncing position/size from other tabs would trigger the d
 ### 3. background.js
 
 **Enhanced**:
+
 - Added v1.5.8.13 eager loading comments
 - Enhanced console logging to show "✓ EAGER LOAD" status
 - No functional changes (already had eager initialization)
@@ -162,12 +177,14 @@ Without these methods, syncing position/size from other tabs would trigger the d
 ### 4. Version Bump
 
 **Files Updated**:
+
 - `manifest.json`: 1.5.8.12 → 1.5.8.13
 - `package.json`: 1.5.8.12 → 1.5.8.13
 
 ### 5. Documentation
 
 **Files Updated**:
+
 - `README.md` - Added "What's New in v1.5.8.13" section
 - `.github/copilot-instructions.md` - Version and architecture updates
 - All 7 agent files in `.github/agents/` - Version references updated
@@ -231,18 +248,21 @@ Without these methods, syncing position/size from other tabs would trigger the d
 ## Performance Metrics
 
 ### Before (v1.5.8.12 - Storage Polling):
+
 - **Cross-tab sync latency**: 100-200ms (storage event + polling)
 - **State hydration**: Only on manager open (lazy loading)
 - **Position/size sync**: Not working (Issue #51)
 - **Cross-tab persistence**: Inconsistent (Issue #35)
 
 ### After (v1.5.8.13 - BroadcastChannel + Eager Loading):
+
 - **Cross-tab sync latency**: <10ms (BroadcastChannel)
 - **State hydration**: Immediate on page load (eager loading)
 - **Position/size sync**: ✅ Working in real-time
 - **Cross-tab persistence**: ✅ Working consistently
 
 ### Improvements:
+
 - **10-20x faster** cross-tab sync
 - **100% reduction** in state hydration delay
 - **Zero flicker** on tab switch
@@ -253,11 +273,13 @@ Without these methods, syncing position/size from other tabs would trigger the d
 ## Browser Compatibility
 
 ### Supported:
+
 - ✅ Firefox 115+ (BroadcastChannel, storage.session)
 - ✅ Firefox 60+ (BroadcastChannel, storage.sync fallback)
 - ✅ Zen Browser (all versions)
 
 ### Fallbacks:
+
 - If `BroadcastChannel` not available: Falls back to storage-only sync (logs warning)
 - If `browser.storage.session` not available: Falls back to `browser.storage.sync`
 - Container-aware: Works with or without Firefox Containers installed
@@ -267,6 +289,7 @@ Without these methods, syncing position/size from other tabs would trigger the d
 ## Testing Checklist
 
 ### Manual Testing:
+
 - [x] Create Quick Tab in Tab A → appears in Tab B instantly
 - [x] Move Quick Tab in Tab A → moves in Tab B instantly
 - [x] Resize Quick Tab in Tab A → resizes in Tab B instantly
@@ -279,6 +302,7 @@ Without these methods, syncing position/size from other tabs would trigger the d
 - [x] Quick Tabs Manager shows accurate state
 
 ### Build Testing:
+
 - [x] Extension builds without errors
 - [x] No ESLint errors in new code
 - [x] CodeQL security scan passes (0 alerts)
@@ -288,10 +312,12 @@ Without these methods, syncing position/size from other tabs would trigger the d
 ## Security Analysis
 
 ### CodeQL Results:
+
 - **0 alerts** found in JavaScript code
 - No security vulnerabilities introduced
 
 ### Security Considerations:
+
 - ✅ Message sender validation in `runtime.onMessage` handlers
 - ✅ BroadcastChannel same-origin policy enforced by browser
 - ✅ Storage quota checks maintained
@@ -307,6 +333,7 @@ Without these methods, syncing position/size from other tabs would trigger the d
 This is a **backward-compatible enhancement**. All existing functionality preserved.
 
 ### Migration Path:
+
 - No user action required
 - State automatically migrated from legacy format to container-aware format
 - Old storage keys preserved for compatibility
@@ -316,12 +343,14 @@ This is a **backward-compatible enhancement**. All existing functionality preser
 ## Future Improvements
 
 ### Potential Enhancements:
+
 1. **Conflict Resolution**: Implement vector clocks for handling simultaneous edits
 2. **Offline Support**: Queue operations when BroadcastChannel unavailable
 3. **Performance Monitoring**: Add telemetry for sync latency
 4. **Background Sync**: Use Service Workers for Manifest V3 migration
 
 ### Known Limitations:
+
 - BroadcastChannel only works for same-origin tabs (expected behavior)
 - Storage quota can be exceeded if too many Quick Tabs created (handled with error messages)
 

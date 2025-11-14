@@ -22,6 +22,7 @@ Version 1.5.8.13 introduces eager loading and BroadcastChannel-based real-time s
 **Status**: ✅ **CLEAN**
 
 ### Details:
+
 - No HIGH or CRITICAL severity alerts
 - No security vulnerabilities detected
 - All code passes CodeQL security checks
@@ -59,7 +60,8 @@ BroadcastChannel enforces same-origin policy automatically:
 this.broadcastChannel = new BroadcastChannel('quick-tabs-sync');
 ```
 
-**Security Benefit**: 
+**Security Benefit**:
+
 - Messages only delivered to same-origin tabs (browser enforced)
 - No cross-origin message leakage
 - No need for manual origin validation
@@ -105,6 +107,7 @@ syncFromStorage(state, containerFilter = null) {
 ### 1. ✅ No Use of Dangerous APIs
 
 **Checked For**:
+
 - `eval()` - ❌ Not used
 - `new Function()` - ❌ Not used
 - `innerHTML` with user input - ❌ Not used
@@ -115,10 +118,11 @@ syncFromStorage(state, containerFilter = null) {
 ### 2. ✅ Input Validation
 
 **BroadcastChannel Messages**:
+
 ```javascript
-broadcastChannel.onmessage = (event) => {
+broadcastChannel.onmessage = event => {
   const { type, data } = event.data;
-  
+
   // Validate message type before processing
   switch (type) {
     case 'CREATE':
@@ -151,6 +155,7 @@ async hydrateStateFromStorage() {
 ### 4. ✅ Content Security Policy Compliance
 
 **No Changes To**:
+
 - CSP headers
 - Script injection patterns
 - External resource loading
@@ -204,18 +209,20 @@ No new security risks identified in this release.
 **Security Note**: This is a known limitation of Manifest V2. Will be addressed in future MV3 migration.
 
 **Current Implementation**:
+
 ```javascript
 browser.webRequest.onHeadersReceived.addListener(
-  (details) => {
+  details => {
     // Remove X-Frame-Options to allow iframe loading
     return { responseHeaders: filteredHeaders };
   },
-  { urls: ["<all_urls>"] },
-  ["blocking", "responseHeaders"]
+  { urls: ['<all_urls>'] },
+  ['blocking', 'responseHeaders']
 );
 ```
 
-**Mitigation**: 
+**Mitigation**:
+
 - Only removes headers for Quick Tab iframe requests
 - Validates request origin before removing headers
 - Does not bypass security for regular page loads
@@ -227,12 +234,14 @@ browser.webRequest.onHeadersReceived.addListener(
 ### Audit Results
 
 **Runtime Dependencies**: None  
-**Build Dependencies**: 
+**Build Dependencies**:
+
 - `rollup`: ^3.29.0 (build tool)
 - `@rollup/plugin-commonjs`: ^25.0.0 (build plugin)
 - `@rollup/plugin-node-resolve`: ^15.0.0 (build plugin)
 
-**Security Status**: 
+**Security Status**:
+
 - `npm audit` shows 0 vulnerabilities
 - All dependencies are build-time only (not shipped to users)
 
@@ -243,6 +252,7 @@ browser.webRequest.onHeadersReceived.addListener(
 ### BroadcastChannel
 
 **Security Properties**:
+
 - ✅ Same-origin policy enforced by browser
 - ✅ Cannot be intercepted by other origins
 - ✅ No authentication needed (origin is proof)
@@ -251,6 +261,7 @@ browser.webRequest.onHeadersReceived.addListener(
 ### browser.storage.session
 
 **Security Properties**:
+
 - ✅ Cleared on browser restart
 - ✅ Not accessible to web pages
 - ✅ Extension-only access
@@ -259,6 +270,7 @@ browser.webRequest.onHeadersReceived.addListener(
 ### browser.storage.sync
 
 **Security Properties**:
+
 - ✅ Synced securely via Firefox Account
 - ✅ Encrypted in transit
 - ✅ Extension-only access
@@ -271,11 +283,13 @@ browser.webRequest.onHeadersReceived.addListener(
 ### Data Collection: None
 
 **What We Store**:
+
 - Quick Tab state (URLs, positions, sizes) - Local only
 - User settings - Local only
 - Container IDs - Local only
 
 **What We DON'T Collect**:
+
 - ❌ Browsing history
 - ❌ Personal information
 - ❌ Telemetry data
@@ -310,12 +324,14 @@ No data collection = no privacy policy needed.
 ### Manifest V3 Migration
 
 **When Migrating to MV3**:
+
 1. Replace `webRequestBlocking` with `declarativeNetRequest`
 2. Migrate to non-persistent background script
 3. Update BroadcastChannel handling for Service Worker context
 4. Review all storage operations for quota limits
 
 ### Potential Enhancements:
+
 1. Add Content Security Policy (CSP) for Quick Tab iframes
 2. Implement sub-resource integrity (SRI) for any future CDN resources
 3. Add optional encryption for synced Quick Tab state
@@ -333,6 +349,7 @@ No data collection = no privacy policy needed.
 5. **After Release**: Publish security advisory
 
 ### Contact:
+
 - GitHub Issues: For public security questions
 - Private Advisory: For vulnerability disclosure
 
