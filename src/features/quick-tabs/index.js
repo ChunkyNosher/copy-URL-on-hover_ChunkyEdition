@@ -303,9 +303,9 @@ class QuickTabsManager {
         if (tab) {
           tab.setPosition(tabData.left, tabData.top);
           tab.setSize(tabData.width, tabData.height);
-          if (tabData.minimized && !tab.isMinimized) {
+          if (tabData.minimized && !tab.minimized) {
             tab.minimize();
-          } else if (!tabData.minimized && tab.isMinimized) {
+          } else if (!tabData.minimized && tab.minimized) {
             this.restoreById(tabData.id);
           }
         }

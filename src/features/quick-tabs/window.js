@@ -649,6 +649,34 @@ export class QuickTabWindow {
   }
 
   /**
+   * Set position of Quick Tab window (v1.5.8.13 - for sync from other tabs)
+   * @param {number} left - X position
+   * @param {number} top - Y position
+   */
+  setPosition(left, top) {
+    this.left = left;
+    this.top = top;
+    if (this.container) {
+      this.container.style.left = `${left}px`;
+      this.container.style.top = `${top}px`;
+    }
+  }
+
+  /**
+   * Set size of Quick Tab window (v1.5.8.13 - for sync from other tabs)
+   * @param {number} width - Width in pixels
+   * @param {number} height - Height in pixels
+   */
+  setSize(width, height) {
+    this.width = width;
+    this.height = height;
+    if (this.container) {
+      this.container.style.width = `${width}px`;
+      this.container.style.height = `${height}px`;
+    }
+  }
+
+  /**
    * Destroy the Quick Tab window
    */
   destroy() {
