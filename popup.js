@@ -37,14 +37,36 @@ async function getContentScriptLogs() {
 
     const activeTab = tabs[0];
 
+    console.log(`[Popup] Requesting logs from tab ${activeTab.id}`);
+
     // Request logs from content script
     const response = await browser.tabs.sendMessage(activeTab.id, {
       action: 'GET_CONTENT_LOGS'
     });
 
-    return response && response.logs ? response.logs : [];
+    if (response && response.logs) {
+      console.log(`[Popup] Received ${response.logs.length} logs from content script`);
+
+      // ✅ NEW: Log buffer stats for debugging
+      if (response.stats) {
+        console.log('[Popup] Content script buffer stats:', response.stats);
+      }
+
+      return response.logs;
+    } else {
+      console.warn('[Popup] Content script returned no logs');
+      return [];
+    }
   } catch (error) {
     console.warn('[Popup] Could not retrieve content script logs:', error);
+
+    // ✅ IMPROVED: More specific error messages
+    if (error.message && error.message.includes('Could not establish connection')) {
+      console.error('[Popup] Content script not loaded in active tab');
+    } else if (error.message && error.message.includes('No active tab')) {
+      console.error('[Popup] No active tab found - try clicking on a webpage first');
+    }
+
     return [];
   }
 }
@@ -103,12 +125,34 @@ async function exportAllLogs(version) {
   try {
     console.log('[Popup] Starting log export...');
 
+    // ✅ IMPROVED: Add debug info about active tab
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tabs.length > 0) {
+      console.log('[Popup] Active tab:', tabs[0].url);
+      console.log('[Popup] Active tab ID:', tabs[0].id);
+    }
+
     // Collect logs from all sources
     const backgroundLogs = await getBackgroundLogs();
     const contentLogs = await getContentScriptLogs();
 
     console.log(`[Popup] Collected ${backgroundLogs.length} background logs`);
     console.log(`[Popup] Collected ${contentLogs.length} content logs`);
+
+    // ✅ IMPROVED: Show breakdown by log type
+    const backgroundTypes = {};
+    const contentTypes = {};
+
+    backgroundLogs.forEach(log => {
+      backgroundTypes[log.type] = (backgroundTypes[log.type] || 0) + 1;
+    });
+
+    contentLogs.forEach(log => {
+      contentTypes[log.type] = (contentTypes[log.type] || 0) + 1;
+    });
+
+    console.log('[Popup] Background log types:', backgroundTypes);
+    console.log('[Popup] Content log types:', contentTypes);
 
     // Merge all logs
     const allLogs = [...backgroundLogs, ...contentLogs];
@@ -118,10 +162,28 @@ async function exportAllLogs(version) {
 
     console.log(`[Popup] Total logs to export: ${allLogs.length}`);
 
-    // Handle empty logs case
+    // ✅ IMPROVED: Better error message with actionable advice
     if (allLogs.length === 0) {
       console.warn('[Popup] No logs to export');
-      throw new Error('No logs found. Try enabling debug mode and using the extension first.');
+
+      // Check if content script is loaded
+      if (tabs.length > 0 && tabs[0].url.startsWith('about:')) {
+        throw new Error(
+          'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
+        );
+      } else if (tabs.length === 0) {
+        throw new Error('No active tab found. Try clicking on a webpage tab first.');
+      } else if (contentLogs.length === 0 && backgroundLogs.length === 0) {
+        throw new Error(
+          'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
+        );
+      } else if (contentLogs.length === 0) {
+        throw new Error(
+          `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
+        );
+      } else {
+        throw new Error('No logs found. Try enabling debug mode and using the extension first.');
+      }
     }
 
     // Format logs
@@ -132,24 +194,20 @@ async function exportAllLogs(version) {
 
     console.log(`[Popup] Exporting to: ${filename}`);
 
-    // ✅ FIX: Use Data URL instead of Blob URL to avoid race condition
-    // Data URLs are immune to revocation issues and work reliably in Firefox
-    // Reference: Mozilla Bug #1271345 and MDN downloads.download() documentation
+    // Use Data URL method (from previous fix)
     const base64Data = btoa(unescape(encodeURIComponent(logText)));
     const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
 
     console.log(`[Popup] Created data URL (length: ${dataUrl.length} chars)`);
 
-    // Download via browser.downloads API (popup has access to this)
+    // Download
     await browser.downloads.download({
       url: dataUrl,
       filename: filename,
-      saveAs: true // Prompt user for save location
+      saveAs: true
     });
 
     console.log('[Popup] Export successful via data URL method');
-
-    // No cleanup needed - data URLs are strings, not object references
   } catch (error) {
     console.error('[Popup] Export failed:', error);
     throw error;

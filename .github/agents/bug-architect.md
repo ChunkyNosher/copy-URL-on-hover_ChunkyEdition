@@ -64,7 +64,7 @@ Eager Loading):**
 - Pin/unpin state synchronization via background script
 - Removed "Persist Quick Tabs" setting (always enabled)
 
-- **Hybrid Modular Source** (v1.5.9+):
+- **Hybrid Modular Source** (v1.5.9.3+):
   - **src/content.js**: Main entry point - orchestrates all features via
     EventBus
   - **src/core/**: config.js, state.js, events.js, dom.js, browser-api.js,
@@ -79,8 +79,11 @@ Eager Loading):**
     - **url-handlers/**: 11 categorized modules (104 handlers total)
   - **src/ui/**: components.js, css/ (NEW v1.5.9)
     - **css/**: base.css, notifications.css, quick-tabs.css - modular CSS system
-  - **src/utils/**: debug.js, index.js (dom.js and browser-api.js moved to
+  - **src/utils/**: debug.js, **console-interceptor.js (NEW v1.5.9.3)**, index.js (dom.js and browser-api.js moved to
     core/)
+    - **console-interceptor.js (NEW v1.5.9.3)**: Captures ALL console.log/error/warn/info/debug calls for log export
+    - MUST be imported FIRST in content.js to override console before any other code runs
+    - Fixes log export "No logs found" issue by capturing all console calls
   - **dist/content.js**: Built bundle (~116KB, MUST NOT contain ES6
     imports/exports)
 - **Build System**: Rollup bundler with comprehensive validation checks
