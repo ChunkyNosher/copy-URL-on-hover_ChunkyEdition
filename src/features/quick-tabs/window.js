@@ -224,7 +224,7 @@ export class QuickTabWindow {
 
     // Zoom controls
     let currentZoom = 100;
-    
+
     const zoomOutBtn = this.createButton('−', () => {
       if (currentZoom > 50) {
         currentZoom -= 10;
@@ -234,15 +234,19 @@ export class QuickTabWindow {
     zoomOutBtn.title = 'Zoom Out';
     navContainer.appendChild(zoomOutBtn);
 
-    const zoomDisplay = createElement('span', {
-      style: {
-        fontSize: '11px',
-        color: '#fff',
-        minWidth: '38px',
-        textAlign: 'center',
-        fontWeight: '500'
-      }
-    }, '100%');
+    const zoomDisplay = createElement(
+      'span',
+      {
+        style: {
+          fontSize: '11px',
+          color: '#fff',
+          minWidth: '38px',
+          textAlign: 'center',
+          fontWeight: '500'
+        }
+      },
+      '100%'
+    );
     navContainer.appendChild(zoomDisplay);
 
     const zoomInBtn = this.createButton('+', () => {
@@ -588,7 +592,7 @@ export class QuickTabWindow {
 
         isResizing = false;
         handle.releasePointerCapture(e.pointerId);
-        
+
         // CRITICAL FIX: Prevent click propagation after resize
         // This fixes the bug where resizing causes the Quick Tab to close
         e.preventDefault();
@@ -638,10 +642,12 @@ export class QuickTabWindow {
   minimize() {
     this.minimized = true;
     this.container.style.display = 'none';
-    
+
     // Enhanced logging for console log export (Issue #1)
-    console.log(`[Quick Tab] Minimized - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`);
-    
+    console.log(
+      `[Quick Tab] Minimized - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+    );
+
     this.onMinimize(this.id);
   }
 
@@ -651,10 +657,12 @@ export class QuickTabWindow {
   restore() {
     this.minimized = false;
     this.container.style.display = 'flex';
-    
+
     // Enhanced logging for console log export (Issue #1)
-    console.log(`[Quick Tab] Restored - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`);
-    
+    console.log(
+      `[Quick Tab] Restored - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+    );
+
     this.onFocus(this.id);
   }
 
