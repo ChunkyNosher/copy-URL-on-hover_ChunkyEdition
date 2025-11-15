@@ -305,6 +305,31 @@
       .content::-webkit-scrollbar-thumb:hover {
         background: #5a5a5a;
       }
+
+      /* Export Logs button styles */
+      #exportLogsBtn:hover {
+        background: #1976D2;
+      }
+
+      #exportLogsBtn:active {
+        background: #1565C0;
+      }
+
+      #exportLogsBtn:disabled {
+        background: #666;
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+
+      /* Success state for export button */
+      #exportLogsBtn.success {
+        background: #4CAF50 !important;
+      }
+
+      /* Error state for export button */
+      #exportLogsBtn.error {
+        background: #f44336 !important;
+      }
     </style>
   </head>
   <body>
@@ -728,6 +753,31 @@
             <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
               This will clear all saved Quick Tab positions and state from browser storage. Use this
               if Quick Tabs are behaving unexpectedly.
+            </small>
+          </div>
+
+          <!-- Export Console Logs button -->
+          <div class="setting-group">
+            <button
+              id="exportLogsBtn"
+              style="
+                width: 100%;
+                padding: 10px;
+                background: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+                transition: all 0.2s ease;
+              "
+            >
+              📥 Export Console Logs
+            </button>
+            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
+              Download all extension console logs as a .txt file for debugging or support.
+              File includes version number and timestamp.
             </small>
           </div>
 

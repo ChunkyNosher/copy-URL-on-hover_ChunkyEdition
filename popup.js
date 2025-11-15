@@ -1,7 +1,162 @@
 // Browser API compatibility shim for Firefox/Chrome cross-compatibility
 if (typeof browser === 'undefined') {
-  var browser = chrome;
+  // eslint-disable-next-line no-global-assign
+  browser = chrome;
 }
+
+// ==================== LOG EXPORT FUNCTIONS ====================
+
+/**
+ * Request logs from background script
+ * @returns {Promise<Array>} Array of log entries
+ */
+async function getBackgroundLogs() {
+  try {
+    const response = await browser.runtime.sendMessage({
+      action: 'GET_BACKGROUND_LOGS'
+    });
+    return response && response.logs ? response.logs : [];
+  } catch (error) {
+    console.warn('[Popup] Could not retrieve background logs:', error);
+    return [];
+  }
+}
+
+/**
+ * Request logs from active content script
+ * @returns {Promise<Array>} Array of log entries
+ */
+async function getContentScriptLogs() {
+  try {
+    // Get active tab
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tabs.length === 0) {
+      console.warn('[Popup] No active tab found');
+      return [];
+    }
+
+    const activeTab = tabs[0];
+
+    // Request logs from content script
+    const response = await browser.tabs.sendMessage(activeTab.id, {
+      action: 'GET_CONTENT_LOGS'
+    });
+
+    return response && response.logs ? response.logs : [];
+  } catch (error) {
+    console.warn('[Popup] Could not retrieve content script logs:', error);
+    return [];
+  }
+}
+
+/**
+ * Format logs as plain text
+ * @param {Array} logs - Array of log entries
+ * @param {string} version - Extension version
+ * @returns {string} Formatted log text
+ */
+function formatLogsAsText(logs, version) {
+  const now = new Date();
+  const header = [
+    '='.repeat(80),
+    'Copy URL on Hover - Extension Console Logs',
+    '='.repeat(80),
+    '',
+    `Version: ${version}`,
+    `Export Date: ${now.toISOString()}`,
+    `Export Date (Local): ${now.toLocaleString()}`,
+    `Total Logs: ${logs.length}`,
+    '',
+    '='.repeat(80),
+    ''
+  ].join('\n');
+
+  const logLines = logs.map(entry => {
+    const date = new Date(entry.timestamp);
+    const timestamp = date.toISOString();
+    return `[${timestamp}] [${entry.type.padEnd(5)}] ${entry.message}`;
+  });
+
+  const footer = ['', '='.repeat(80), 'End of Logs', '='.repeat(80)].join('\n');
+
+  return header + logLines.join('\n') + footer;
+}
+
+/**
+ * Generate filename for log export
+ * @param {string} version - Extension version
+ * @returns {string} Filename with version and timestamp
+ */
+function generateLogFilename(version) {
+  const now = new Date();
+  // ISO 8601 format with hyphens instead of colons for filename compatibility
+  const timestamp = now.toISOString().replace(/:/g, '-').split('.')[0];
+  return `copy-url-extension-logs_v${version}_${timestamp}.txt`;
+}
+
+/**
+ * Export all logs as downloadable .txt file
+ * @param {string} version - Extension version
+ * @returns {Promise<void>}
+ */
+async function exportAllLogs(version) {
+  try {
+    console.log('[Popup] Starting log export...');
+
+    // Collect logs from all sources
+    const backgroundLogs = await getBackgroundLogs();
+    const contentLogs = await getContentScriptLogs();
+
+    console.log(`[Popup] Collected ${backgroundLogs.length} background logs`);
+    console.log(`[Popup] Collected ${contentLogs.length} content logs`);
+
+    // Merge all logs
+    const allLogs = [...backgroundLogs, ...contentLogs];
+
+    // Sort by timestamp
+    allLogs.sort((a, b) => a.timestamp - b.timestamp);
+
+    console.log(`[Popup] Total logs to export: ${allLogs.length}`);
+
+    // Handle empty logs case
+    if (allLogs.length === 0) {
+      console.warn('[Popup] No logs to export');
+      throw new Error('No logs found. Try enabling debug mode and using the extension first.');
+    }
+
+    // Format logs
+    const logText = formatLogsAsText(allLogs, version);
+
+    // Generate filename
+    const filename = generateLogFilename(version);
+
+    console.log(`[Popup] Exporting to: ${filename}`);
+
+    // Create blob
+    const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    // Download via browser.downloads API (popup has access to this)
+    await browser.downloads.download({
+      url: blobUrl,
+      filename: filename,
+      saveAs: true // Prompt user for save location
+    });
+
+    console.log('[Popup] Export successful via browser.downloads API');
+
+    // Clean up blob URL after short delay
+    setTimeout(() => {
+      URL.revokeObjectURL(blobUrl);
+      console.log('[Popup] Cleaned up blob URL');
+    }, 1000);
+  } catch (error) {
+    console.error('[Popup] Export failed:', error);
+    throw error;
+  }
+}
+
+// ==================== END LOG EXPORT FUNCTIONS ====================
 
 const DEFAULT_SETTINGS = {
   copyUrlKey: 'y',
@@ -394,6 +549,57 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
   });
+
+  // ==================== EXPORT LOGS BUTTON ====================
+  // Export logs button event listener
+  const exportLogsBtn = document.getElementById('exportLogsBtn');
+  if (exportLogsBtn) {
+    exportLogsBtn.addEventListener('click', async () => {
+      const originalText = exportLogsBtn.textContent;
+      const originalBg = exportLogsBtn.style.backgroundColor;
+
+      try {
+        // Disable button during export
+        exportLogsBtn.disabled = true;
+        exportLogsBtn.textContent = '⏳ Exporting...';
+
+        // Get version from manifest
+        const manifest = browser.runtime.getManifest();
+        const version = manifest.version;
+
+        // Export all logs
+        await exportAllLogs(version);
+
+        // Show success feedback
+        exportLogsBtn.textContent = '✓ Logs Exported!';
+        exportLogsBtn.classList.add('success');
+
+        // Reset after 2 seconds
+        setTimeout(() => {
+          exportLogsBtn.textContent = originalText;
+          exportLogsBtn.style.backgroundColor = originalBg;
+          exportLogsBtn.classList.remove('success');
+          exportLogsBtn.disabled = false;
+        }, 2000);
+      } catch (error) {
+        // Show error feedback
+        exportLogsBtn.textContent = '✗ Export Failed';
+        exportLogsBtn.classList.add('error');
+
+        // Show error message in status
+        showStatus(`Export failed: ${error.message}`, false);
+
+        // Reset after 3 seconds
+        setTimeout(() => {
+          exportLogsBtn.textContent = originalText;
+          exportLogsBtn.style.backgroundColor = originalBg;
+          exportLogsBtn.classList.remove('error');
+          exportLogsBtn.disabled = false;
+        }, 3000);
+      }
+    });
+  }
+  // ==================== END EXPORT LOGS BUTTON ====================
 });
 
 // Load settings on popup open
