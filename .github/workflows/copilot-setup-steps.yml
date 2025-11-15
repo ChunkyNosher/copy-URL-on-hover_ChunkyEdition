@@ -530,7 +530,7 @@ jobs:
           echo "Testing Browser API Mock Availability"
           echo "=========================================="
 
-          cat > /tmp/test-browser-api.test.js << 'EOF'
+          cat > ./tests/temp-browser-api.test.js << 'EOF'
           describe('Browser API Mocks', () => {
             it('should have browser.storage.sync mock', () => {
               expect(browser.storage.sync).toBeDefined();
@@ -561,7 +561,8 @@ jobs:
           });
           EOF
 
-          npx jest /tmp/test-browser-api.test.js --verbose
+          npx jest tests/temp-browser-api.test.js --verbose
+          rm ./tests/temp-browser-api.test.js
 
           echo "=========================================="
           echo "✓ All browser API mocks are working!"
