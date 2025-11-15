@@ -242,7 +242,7 @@ class StateCoordinator {
    */
   async processOperation(op) {
     const { type, quickTabId, data } = op;
-  
+
     switch (type) {
       case 'create': {
         // ✅ FIXED: Wrapped in block scope
@@ -259,7 +259,7 @@ class StateCoordinator {
         }
         break;
       }
-  
+
       case 'update': {
         // ✅ FIXED: Wrapped in block scope
         const updateIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
@@ -269,7 +269,7 @@ class StateCoordinator {
         }
         break;
       }
-  
+
       case 'delete': {
         // ✅ FIXED: Wrapped in block scope
         const deleteIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
@@ -279,7 +279,7 @@ class StateCoordinator {
         }
         break;
       }
-  
+
       case 'minimize': {
         // ✅ FIXED: Wrapped in block scope
         const minIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
@@ -291,7 +291,7 @@ class StateCoordinator {
         }
         break;
       }
-  
+
       case 'restore': {
         // ✅ FIXED: Wrapped in block scope
         const restoreIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
@@ -302,7 +302,7 @@ class StateCoordinator {
         break;
       }
     }
-  
+
     this.globalState.timestamp = Date.now();
   }
 
