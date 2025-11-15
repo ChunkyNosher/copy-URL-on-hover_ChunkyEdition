@@ -2,7 +2,7 @@
 
 **Version**: v1.5.8.16+  
 **Date**: November 14, 2025  
-**Author**: Technical Analysis for copy-URL-on-hover Extension  
+**Author**: Technical Analysis for copy-URL-on-hover Extension
 
 ---
 
@@ -12,18 +12,19 @@ This document provides a detailed implementation plan to modify the copy-URL-on-
 
 ### Key Requirements Summary
 
-| Requirement | Behavior Description | Complexity |
-|-------------|---------------------|-----------|
-| **R1** | Quick Tabs opened in normal Tab 1 appear in Tab 2/3 but NOT in Split View Tab 1 | Medium |
-| **R2** | Quick Tabs opened in Split View Tab 1-1 only appear in that specific split pane | High |
-| **R3** | Quick Tab Manager follows focus in Split View (only visible in focused pane) | High |
-| **R4** | Quick Tab Manager position persists across tab/split view transitions | Medium |
+| Requirement | Behavior Description                                                            | Complexity |
+| ----------- | ------------------------------------------------------------------------------- | ---------- |
+| **R1**      | Quick Tabs opened in normal Tab 1 appear in Tab 2/3 but NOT in Split View Tab 1 | Medium     |
+| **R2**      | Quick Tabs opened in Split View Tab 1-1 only appear in that specific split pane | High       |
+| **R3**      | Quick Tab Manager follows focus in Split View (only visible in focused pane)    | High       |
+| **R4**      | Quick Tab Manager position persists across tab/split view transitions           | Medium     |
 
 ### Implementation Feasibility
 
 **Overall Assessment**: ✅ **FEASIBLE**
 
 All requirements can be implemented using existing Firefox WebExtension APIs combined with Zen Browser-specific DOM detection. The implementation requires:
+
 - New state tracking for split view detection
 - Enhanced broadcast filtering logic
 - Focus-aware Quick Tab Manager visibility toggle
@@ -195,11 +196,11 @@ Browser Window
 Tab 1 (Normal, example.com)
   ├─ User presses 'Q'
   ├─ Creates Quick Tab
-  └─ Broadcasts: { 
-      browserTabId: 1, 
+  └─ Broadcasts: {
+      browserTabId: 1,
       splitPaneId: null,  // ◀── NULL = normal tab
       isSplitView: false,
-      url: "https://github.com" 
+      url: "https://github.com"
     }
 
 Tab 2 (Normal, example.com)
@@ -221,6 +222,7 @@ Split View Tab 1 (example.com in all panes)
 ```
 
 **Implementation Requirements**:
+
 1. Add `isSplitView` boolean flag to broadcast messages
 2. Add `splitPaneId` to broadcast messages (null for normal tabs)
 3. Modify `handleBroadcastMessage()` to filter out normal tab → split view broadcasts
@@ -242,11 +244,11 @@ Split View Tab 1 (example.com in all panes)
 Split View Tab 1-1 (youtube.com)
   ├─ User presses 'Q'
   ├─ Creates Quick Tab
-  └─ Broadcasts: { 
+  └─ Broadcasts: {
       browserTabId: 2,     // Split View Tab 1's tab ID
       splitPaneId: "pane_1", // ◀── Unique pane identifier
       isSplitView: true,
-      url: "https://github.com" 
+      url: "https://github.com"
     }
 
 Split View Tab 1-2 (reddit.com)
@@ -275,6 +277,7 @@ Split View Tab 2-1 (Different split view tab)
 ```
 
 **Implementation Requirements**:
+
 1. Generate unique `splitPaneId` for each split pane
 2. Add `splitPaneId` matching logic to `handleBroadcastMessage()`
 3. Block split view → normal tab sync
@@ -315,17 +318,18 @@ User closes Quick Tab Manager in pane_3
 ```
 
 **Implementation Requirements**:
+
 1. Detect focus changes between split panes (mousedown, click, Tab navigation)
 2. Store Quick Tab Manager visibility state per split pane
 3. Toggle visibility on focus change (hide in old pane, show in new pane)
 4. Preserve panel position during focus transitions
 
 **Key Challenges**:
+
 - **Focus Detection**: How to detect which split pane has focus?
   - Solution: Listen to `mousedown`, `click`, `focus` events on `document`
   - Use `document.hasFocus()` to verify focus state
   - Track `lastFocusedPaneId` globally
-  
 - **Cross-Pane Communication**: How to hide panel in old pane when focus moves?
   - Solution: Use BroadcastChannel to send "hide panel" messages
   - Each pane listens for "FOCUS_CHANGED" broadcasts
@@ -370,17 +374,19 @@ Alternative Scenario: Different viewport size
 ```
 
 **Implementation Requirements**:
+
 1. Store Quick Tab Manager position as **relative percentages** (not absolute pixels)
 2. Calculate relative position whenever panel is moved/resized
 3. Convert relative position to absolute pixels when showing panel
 4. Handle viewport size changes (window resize, split view layout changes)
 
 **Position Storage Format**:
+
 ```javascript
 panelState = {
-  relativeLeft: 0.792,   // 79.2% from left edge
-  relativeTop: 0.093,    // 9.3% from top edge
-  relativeWidth: 0.182,  // 18.2% of viewport width
+  relativeLeft: 0.792, // 79.2% from left edge
+  relativeTop: 0.093, // 9.3% from top edge
+  relativeWidth: 0.182, // 18.2% of viewport width
   relativeHeight: 0.463, // 46.3% of viewport height
   isOpen: true,
   lastUpdated: 1731618000000
@@ -411,7 +417,7 @@ class SplitViewDetector {
     this.lastCheck = 0;
     this.checkInterval = 500; // Check every 500ms
   }
-  
+
   /**
    * Check if current context is in Zen Browser split view
    * @returns {boolean} True if in split view
@@ -420,19 +426,19 @@ class SplitViewDetector {
     // Zen Browser split panes have this DOM structure:
     // .browserSidebarContainer[is-zen-split="true"]
     const browserContainer = this._findBrowserContainer();
-    
+
     if (!browserContainer) {
       this.isSplitView = false;
       return false;
     }
-    
+
     // Check for split view attribute
     const isSplit = browserContainer.getAttribute('is-zen-split') === 'true';
     this.isSplitView = isSplit;
-    
+
     return isSplit;
   }
-  
+
   /**
    * Get unique identifier for current split pane
    * @returns {string|null} Pane ID or null if not in split view
@@ -442,23 +448,23 @@ class SplitViewDetector {
       this.splitPaneId = null;
       return null;
     }
-    
+
     const browserContainer = this._findBrowserContainer();
     if (!browserContainer) return null;
-    
+
     // Generate pane ID based on DOM position
     // Find all split panes in current tab
     const allPanes = document.querySelectorAll('.browserSidebarContainer[is-zen-split="true"]');
     const paneIndex = Array.from(allPanes).indexOf(browserContainer);
-    
+
     if (paneIndex === -1) return null;
-    
+
     // Generate unique ID: tab_{browserTabId}_pane_{index}
     this.splitPaneId = `tab_${this.browserTabId}_pane_${paneIndex}`;
-    
+
     return this.splitPaneId;
   }
-  
+
   /**
    * Find the browser container element
    * @private
@@ -466,13 +472,13 @@ class SplitViewDetector {
    */
   _findBrowserContainer() {
     // Try multiple strategies to find the container
-    
+
     // Strategy 1: Check if document is inside a browser container
     let container = document.querySelector('.browserSidebarContainer[is-zen-split="true"]');
     if (container && this._isInsideContainer(container)) {
       return container;
     }
-    
+
     // Strategy 2: Traverse up from document.documentElement
     let current = document.documentElement;
     while (current) {
@@ -481,10 +487,10 @@ class SplitViewDetector {
       }
       current = current.parentElement;
     }
-    
+
     return null;
   }
-  
+
   /**
    * Check if current document is inside given container
    * @private
@@ -492,14 +498,14 @@ class SplitViewDetector {
   _isInsideContainer(container) {
     const browser = container.querySelector('browser');
     if (!browser) return false;
-    
+
     try {
       return browser.contentDocument === document;
     } catch (e) {
       return false;
     }
   }
-  
+
   /**
    * Get browser tab ID
    * @returns {Promise<number|null>}
@@ -508,7 +514,7 @@ class SplitViewDetector {
     if (this.browserTabId !== null) {
       return this.browserTabId;
     }
-    
+
     try {
       const tabs = await browser.tabs.query({ active: true, currentWindow: true });
       if (tabs.length > 0) {
@@ -518,10 +524,10 @@ class SplitViewDetector {
     } catch (err) {
       console.error('[SplitViewDetector] Error getting browser tab ID:', err);
     }
-    
+
     return null;
   }
-  
+
   /**
    * Get complete context information
    * @returns {Promise<Object>} Context object
@@ -530,7 +536,7 @@ class SplitViewDetector {
     const browserTabId = await this.getBrowserTabId();
     const isSplitView = this.isInSplitView();
     const splitPaneId = this.getSplitPaneId();
-    
+
     return {
       browserTabId: browserTabId,
       isSplitView: isSplitView,
@@ -545,13 +551,16 @@ const splitViewDetector = new SplitViewDetector();
 ```
 
 **Integration**: Add to `content-legacy.js`:
+
 ```javascript
 // At top of file, after CONFIG initialization
 const splitViewDetector = new SplitViewDetector();
 
 // Initialize on page load
 splitViewDetector.getBrowserTabId().then(tabId => {
-  debug(`[SPLIT VIEW] Content script running in tab ${tabId}, split view: ${splitViewDetector.isInSplitView()}`);
+  debug(
+    `[SPLIT VIEW] Content script running in tab ${tabId}, split view: ${splitViewDetector.isInSplitView()}`
+  );
 });
 ```
 
@@ -561,9 +570,17 @@ splitViewDetector.getBrowserTabId().then(tabId => {
 
 ```javascript
 // BEFORE (v1.5.8.16):
-async function broadcastQuickTabCreation(url, width, height, left, top, pinnedToUrl = null, quickTabId = null) {
+async function broadcastQuickTabCreation(
+  url,
+  width,
+  height,
+  left,
+  top,
+  pinnedToUrl = null,
+  quickTabId = null
+) {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
-  
+
   quickTabChannel.postMessage({
     action: 'createQuickTab',
     id: quickTabId,
@@ -580,12 +597,20 @@ async function broadcastQuickTabCreation(url, width, height, left, top, pinnedTo
 }
 
 // AFTER (v1.5.9+):
-async function broadcastQuickTabCreation(url, width, height, left, top, pinnedToUrl = null, quickTabId = null) {
+async function broadcastQuickTabCreation(
+  url,
+  width,
+  height,
+  left,
+  top,
+  pinnedToUrl = null,
+  quickTabId = null
+) {
   if (!quickTabChannel || !CONFIG.quickTabPersistAcrossTabs) return;
-  
+
   // Get context information
   const context = await splitViewDetector.getContext();
-  
+
   quickTabChannel.postMessage({
     action: 'createQuickTab',
     id: quickTabId,
@@ -598,7 +623,7 @@ async function broadcastQuickTabCreation(url, width, height, left, top, pinnedTo
     senderId: tabInstanceId,
     cookieStoreId: await getCurrentCookieStoreId(),
     timestamp: Date.now(),
-    
+
     // NEW: Add context information
     sourceContext: {
       browserTabId: context.browserTabId,
@@ -606,8 +631,10 @@ async function broadcastQuickTabCreation(url, width, height, left, top, pinnedTo
       splitPaneId: context.splitPaneId
     }
   });
-  
-  debug(`[BROADCAST] Sent Quick Tab creation with context: tab=${context.browserTabId}, split=${context.isSplitView}, pane=${context.splitPaneId}`);
+
+  debug(
+    `[BROADCAST] Sent Quick Tab creation with context: tab=${context.browserTabId}, split=${context.isSplitView}, pane=${context.splitPaneId}`
+  );
 }
 ```
 
@@ -619,38 +646,42 @@ async function broadcastQuickTabCreation(url, width, height, left, top, pinnedTo
 // BEFORE (v1.5.8.16):
 async function handleBroadcastMessage(event) {
   const message = event.data;
-  
+
   // Ignore broadcasts from ourselves
   if (message.senderId === tabInstanceId) {
     debug(`Ignoring broadcast from self (Instance ID: ${tabInstanceId})`);
     return;
   }
-  
+
   // ... rest of broadcast handling ...
 }
 
 // AFTER (v1.5.9+):
 async function handleBroadcastMessage(event) {
   const message = event.data;
-  
+
   // Ignore broadcasts from ourselves
   if (message.senderId === tabInstanceId) {
     debug(`Ignoring broadcast from self (Instance ID: ${tabInstanceId})`);
     return;
   }
-  
+
   // NEW: Get receiver context
   const receiverContext = await splitViewDetector.getContext();
   const sourceContext = message.sourceContext || {};
-  
+
   // NEW: Apply context filtering rules
   if (!shouldAcceptBroadcast(sourceContext, receiverContext)) {
-    debug(`[FILTER] Blocked broadcast: source={tab:${sourceContext.browserTabId}, split:${sourceContext.isSplitView}, pane:${sourceContext.splitPaneId}}, receiver={tab:${receiverContext.browserTabId}, split:${receiverContext.isSplitView}, pane:${receiverContext.splitPaneId}}`);
+    debug(
+      `[FILTER] Blocked broadcast: source={tab:${sourceContext.browserTabId}, split:${sourceContext.isSplitView}, pane:${sourceContext.splitPaneId}}, receiver={tab:${receiverContext.browserTabId}, split:${receiverContext.isSplitView}, pane:${receiverContext.splitPaneId}}`
+    );
     return;
   }
-  
-  debug(`[FILTER] Accepted broadcast: source={tab:${sourceContext.browserTabId}, split:${sourceContext.isSplitView}}, receiver={tab:${receiverContext.browserTabId}, split:${receiverContext.isSplitView}}`);
-  
+
+  debug(
+    `[FILTER] Accepted broadcast: source={tab:${sourceContext.browserTabId}, split:${sourceContext.isSplitView}}, receiver={tab:${receiverContext.browserTabId}, split:${receiverContext.isSplitView}}`
+  );
+
   // ... rest of broadcast handling (unchanged) ...
 }
 
@@ -671,31 +702,33 @@ function shouldAcceptBroadcast(source, receiver) {
     // Same browser tab = filter (already have the Quick Tab)
     return false;
   }
-  
+
   // Rule 2: Normal tab → Split view = REJECT (R1)
   // Quick Tabs from normal tabs don't appear in split views
   if (!source.isSplitView && receiver.isSplitView) {
     return false;
   }
-  
+
   // Rule 3: Split view → Normal tab = REJECT (R2)
   // Quick Tabs from split views don't appear in normal tabs
   if (source.isSplitView && !receiver.isSplitView) {
     return false;
   }
-  
+
   // Rule 4: Split view → Split view (same split pane) = ACCEPT
   // Allow broadcasts within the exact same split pane
   if (source.isSplitView && receiver.isSplitView) {
     // Must match: same browser tab AND same split pane ID
-    if (source.browserTabId === receiver.browserTabId && 
-        source.splitPaneId === receiver.splitPaneId) {
+    if (
+      source.browserTabId === receiver.browserTabId &&
+      source.splitPaneId === receiver.splitPaneId
+    ) {
       return true;
     }
     // Different pane or different split view tab = reject
     return false;
   }
-  
+
   // Fallback: reject unknown cases
   return false;
 }
@@ -703,15 +736,15 @@ function shouldAcceptBroadcast(source, receiver) {
 
 **Filtering Logic Truth Table**:
 
-| Source Context | Receiver Context | Accept? | Rule | Reason |
-|----------------|------------------|---------|------|--------|
-| Normal Tab 1 | Normal Tab 2 | ✅ Yes | R1 | Cross-tab sync |
-| Normal Tab 1 | Normal Tab 1 | ❌ No | - | Same tab (already exists) |
-| Normal Tab 1 | Split View Tab 1-1 | ❌ No | R1 | Block normal → split |
-| Split View Tab 1-1 | Normal Tab 1 | ❌ No | R2 | Block split → normal |
-| Split View Tab 1-1 | Split View Tab 1-1 | ✅ Yes | R2 | Same pane (already exists, but allow for edge cases) |
-| Split View Tab 1-1 | Split View Tab 1-2 | ❌ No | R2 | Different pane in same split tab |
-| Split View Tab 1-1 | Split View Tab 2-1 | ❌ No | R2 | Different split view tab |
+| Source Context     | Receiver Context   | Accept? | Rule | Reason                                               |
+| ------------------ | ------------------ | ------- | ---- | ---------------------------------------------------- |
+| Normal Tab 1       | Normal Tab 2       | ✅ Yes  | R1   | Cross-tab sync                                       |
+| Normal Tab 1       | Normal Tab 1       | ❌ No   | -    | Same tab (already exists)                            |
+| Normal Tab 1       | Split View Tab 1-1 | ❌ No   | R1   | Block normal → split                                 |
+| Split View Tab 1-1 | Normal Tab 1       | ❌ No   | R2   | Block split → normal                                 |
+| Split View Tab 1-1 | Split View Tab 1-1 | ✅ Yes  | R2   | Same pane (already exists, but allow for edge cases) |
+| Split View Tab 1-1 | Split View Tab 1-2 | ❌ No   | R2   | Different pane in same split tab                     |
+| Split View Tab 1-1 | Split View Tab 2-1 | ❌ No   | R2   | Different split view tab                             |
 
 ---
 
@@ -732,83 +765,83 @@ class FocusTracker {
     this.focusListeners = [];
     this.initialized = false;
   }
-  
+
   /**
    * Initialize focus tracking
    */
   async initialize() {
     if (this.initialized) return;
-    
+
     const context = await splitViewDetector.getContext();
     this.currentFocusedPaneId = context.splitPaneId || `tab_${context.browserTabId}`;
-    
+
     // Listen for focus events
-    document.addEventListener('mousedown', (e) => this.handleFocusEvent(e), true);
-    document.addEventListener('focusin', (e) => this.handleFocusEvent(e), true);
-    
+    document.addEventListener('mousedown', e => this.handleFocusEvent(e), true);
+    document.addEventListener('focusin', e => this.handleFocusEvent(e), true);
+
     // Listen for BroadcastChannel focus changes
     if (quickTabChannel) {
-      quickTabChannel.addEventListener('message', (event) => {
+      quickTabChannel.addEventListener('message', event => {
         if (event.data.action === 'FOCUS_CHANGED') {
           this.handleRemoteFocusChange(event.data);
         }
       });
     }
-    
+
     this.initialized = true;
     debug(`[FOCUS TRACKER] Initialized with focus on pane: ${this.currentFocusedPaneId}`);
   }
-  
+
   /**
    * Handle focus events (mousedown, focusin)
    */
   async handleFocusEvent(event) {
     const context = await splitViewDetector.getContext();
     const newFocusedPaneId = context.splitPaneId || `tab_${context.browserTabId}`;
-    
+
     // Check if focus changed
     if (newFocusedPaneId !== this.currentFocusedPaneId) {
       const oldFocusedPaneId = this.currentFocusedPaneId;
       this.currentFocusedPaneId = newFocusedPaneId;
       this.lastFocusTime = Date.now();
-      
+
       debug(`[FOCUS TRACKER] Focus changed: ${oldFocusedPaneId} → ${newFocusedPaneId}`);
-      
+
       // Broadcast focus change
       this.broadcastFocusChange(oldFocusedPaneId, newFocusedPaneId);
-      
+
       // Notify listeners
       this.notifyFocusChange(oldFocusedPaneId, newFocusedPaneId);
     }
   }
-  
+
   /**
    * Handle remote focus change (from BroadcastChannel)
    */
   handleRemoteFocusChange(data) {
     const { oldFocusedPaneId, newFocusedPaneId, senderId } = data;
-    
+
     // Ignore messages from ourselves
     if (senderId === tabInstanceId) return;
-    
+
     // Check if this affects us (we lost focus)
     const context = splitViewDetector.getContext();
     const ourPaneId = context.splitPaneId || `tab_${context.browserTabId}`;
-    
+
     if (oldFocusedPaneId === ourPaneId) {
       debug(`[FOCUS TRACKER] We lost focus to ${newFocusedPaneId}`);
       this.notifyFocusChange(ourPaneId, newFocusedPaneId);
     }
   }
-  
+
   /**
    * Broadcast focus change to other panes
    */
   async broadcastFocusChange(oldPaneId, newPaneId) {
     if (!quickTabChannel) return;
-    
+
     const context = await splitViewDetector.getContext();
-    
+
     quickTabChannel.postMessage({
       action: 'FOCUS_CHANGED',
       oldFocusedPaneId: oldPaneId,
@@ -819,7 +852,7 @@ class FocusTracker {
       timestamp: Date.now()
     });
   }
-  
+
   /**
    * Register focus change listener
    * @param {Function} callback - Called with (oldPaneId, newPaneId)
@@ -827,7 +860,7 @@ class FocusTracker {
   onFocusChange(callback) {
     this.focusListeners.push(callback);
   }
-  
+
   /**
    * Notify all focus change listeners
    */
@@ -840,7 +873,7 @@ class FocusTracker {
       }
     });
   }
-  
+
   /**
    * Get currently focused pane ID
    * @returns {string|null}
@@ -848,7 +881,7 @@ class FocusTracker {
   getCurrentFocusedPaneId() {
     return this.currentFocusedPaneId;
   }
-  
+
   /**
    * Check if current pane has focus
    * @returns {boolean}
@@ -874,7 +907,7 @@ function toggleQuickTabsPanel() {
   if (!quickTabsPanel) {
     createQuickTabsPanel();
   }
-  
+
   if (isPanelOpen) {
     // Hide panel
     quickTabsPanel.style.display = 'none';
@@ -885,14 +918,14 @@ function toggleQuickTabsPanel() {
     quickTabsPanel.style.display = 'flex';
     isPanelOpen = true;
     panelState.isOpen = true;
-    
+
     // Bring to front
     quickTabsPanel.style.zIndex = '999999999';
-    
+
     // Update content immediately
     updatePanelContent();
   }
-  
+
   // Save state
   savePanelState();
 }
@@ -902,17 +935,17 @@ async function toggleQuickTabsPanel() {
   if (!quickTabsPanel) {
     createQuickTabsPanel();
   }
-  
+
   const context = await splitViewDetector.getContext();
   const currentPaneId = context.splitPaneId || `tab_${context.browserTabId}`;
-  
+
   // Determine if we should show or hide
   const shouldShow = !isPanelOpen;
-  
+
   if (shouldShow) {
     // Show panel in current pane
     showQuickTabsPanelInPane(currentPaneId);
-    
+
     // If in split view, broadcast "panel opened" to hide in other panes
     if (context.isSplitView) {
       broadcastPanelVisibilityChange(currentPaneId, true);
@@ -920,7 +953,7 @@ async function toggleQuickTabsPanel() {
   } else {
     // Hide panel
     hideQuickTabsPanelInPane(currentPaneId);
-    
+
     // If in split view, broadcast "panel closed"
     if (context.isSplitView) {
       broadcastPanelVisibilityChange(currentPaneId, false);
@@ -938,13 +971,13 @@ function showQuickTabsPanelInPane(paneId) {
   isPanelOpen = true;
   panelState.isOpen = true;
   panelState.visibleInPaneId = paneId;
-  
+
   // Update content
   updatePanelContent();
-  
+
   // Save state
   savePanelState();
-  
+
   debug(`[PANEL] Shown in pane ${paneId}`);
 }
 
@@ -957,10 +990,10 @@ function hideQuickTabsPanelInPane(paneId) {
   isPanelOpen = false;
   panelState.isOpen = false;
   panelState.visibleInPaneId = null;
-  
+
   // Save state
   savePanelState();
-  
+
   debug(`[PANEL] Hidden in pane ${paneId}`);
 }
 
@@ -971,9 +1004,9 @@ function hideQuickTabsPanelInPane(paneId) {
  */
 async function broadcastPanelVisibilityChange(paneId, isVisible) {
   if (!quickTabChannel) return;
-  
+
   const context = await splitViewDetector.getContext();
-  
+
   quickTabChannel.postMessage({
     action: 'PANEL_VISIBILITY_CHANGED',
     paneId: paneId,
@@ -982,7 +1015,7 @@ async function broadcastPanelVisibilityChange(paneId, isVisible) {
     senderId: tabInstanceId,
     timestamp: Date.now()
   });
-  
+
   debug(`[PANEL] Broadcast visibility change: pane=${paneId}, visible=${isVisible}`);
 }
 
@@ -993,13 +1026,13 @@ async function broadcastPanelVisibilityChange(paneId, isVisible) {
 async function handlePanelVisibilityChangeBroadcast(message) {
   // Ignore messages from ourselves
   if (message.senderId === tabInstanceId) return;
-  
+
   const context = await splitViewDetector.getContext();
   const ourPaneId = context.splitPaneId || `tab_${context.browserTabId}`;
-  
+
   // Check if we're in the same split view tab
   if (message.browserTabId !== context.browserTabId) return;
-  
+
   // If panel is visible in another pane, hide it in this pane
   if (message.isVisible && message.paneId !== ourPaneId) {
     if (isPanelOpen) {
@@ -1012,15 +1045,15 @@ async function handlePanelVisibilityChangeBroadcast(message) {
 // Add to handleBroadcastMessage():
 async function handleBroadcastMessage(event) {
   const message = event.data;
-  
+
   // ... existing code ...
-  
+
   // Handle panel visibility changes
   if (message.action === 'PANEL_VISIBILITY_CHANGED') {
     handlePanelVisibilityChangeBroadcast(message);
     return;
   }
-  
+
   // ... rest of existing code ...
 }
 ```
@@ -1035,14 +1068,14 @@ async function handleBroadcastMessage(event) {
 focusTracker.onFocusChange(async (oldPaneId, newPaneId) => {
   // Only handle if panel is open
   if (!isPanelOpen) return;
-  
+
   const context = await splitViewDetector.getContext();
-  
+
   // Only handle in split view
   if (!context.isSplitView) return;
-  
+
   const ourPaneId = context.splitPaneId || `tab_${context.browserTabId}`;
-  
+
   // Check if focus moved to us
   if (newPaneId === ourPaneId) {
     // We gained focus - show panel
@@ -1122,9 +1155,9 @@ function getViewportSize() {
 // BEFORE (v1.5.8.16):
 function savePanelState() {
   if (!quickTabsPanel) return;
-  
+
   const rect = quickTabsPanel.getBoundingClientRect();
-  
+
   panelState = {
     left: Math.round(rect.left),
     top: Math.round(rect.top),
@@ -1132,7 +1165,7 @@ function savePanelState() {
     height: Math.round(rect.height),
     isOpen: isPanelOpen
   };
-  
+
   browser.storage.local.set({ quick_tabs_panel_state: panelState }).catch(err => {
     debug('[Panel] Error saving panel state:', err);
   });
@@ -1141,10 +1174,10 @@ function savePanelState() {
 // AFTER (v1.5.9+):
 function savePanelState() {
   if (!quickTabsPanel) return;
-  
+
   const rect = quickTabsPanel.getBoundingClientRect();
   const viewport = getViewportSize();
-  
+
   // Calculate both absolute and relative positions
   const absolutePos = {
     left: Math.round(rect.left),
@@ -1152,34 +1185,36 @@ function savePanelState() {
     width: Math.round(rect.width),
     height: Math.round(rect.height)
   };
-  
+
   const relativePos = calculateRelativePosition(absolutePos, viewport);
-  
+
   panelState = {
     // Store absolute position (for same viewport size)
     left: absolutePos.left,
     top: absolutePos.top,
     width: absolutePos.width,
     height: absolutePos.height,
-    
+
     // Store relative position (for different viewport sizes)
     relativeLeft: relativePos.relativeLeft,
     relativeTop: relativePos.relativeTop,
     relativeWidth: relativePos.relativeWidth,
     relativeHeight: relativePos.relativeHeight,
-    
+
     // Metadata
     isOpen: isPanelOpen,
     visibleInPaneId: panelState.visibleInPaneId || null,
     lastUpdated: Date.now(),
     viewport: viewport
   };
-  
+
   browser.storage.local.set({ quick_tabs_panel_state: panelState }).catch(err => {
     debug('[Panel] Error saving panel state:', err);
   });
-  
-  debug(`[PANEL] Saved state: abs=(${absolutePos.left}, ${absolutePos.top}), rel=(${(relativePos.relativeLeft * 100).toFixed(1)}%, ${(relativePos.relativeTop * 100).toFixed(1)}%)`);
+
+  debug(
+    `[PANEL] Saved state: abs=(${absolutePos.left}, ${absolutePos.top}), rel=(${(relativePos.relativeLeft * 100).toFixed(1)}%, ${(relativePos.relativeTop * 100).toFixed(1)}%)`
+  );
 }
 ```
 
@@ -1191,18 +1226,18 @@ function savePanelState() {
 // BEFORE (v1.5.8.16):
 function createQuickTabsPanel() {
   // ... existing panel creation code ...
-  
+
   // Load saved panel state from storage
   browser.storage.local.get('quick_tabs_panel_state').then(result => {
     if (result && result.quick_tabs_panel_state) {
       panelState = { ...panelState, ...result.quick_tabs_panel_state };
-      
+
       // Apply saved position and size
       panel.style.left = panelState.left + 'px';
       panel.style.top = panelState.top + 'px';
       panel.style.width = panelState.width + 'px';
       panel.style.height = panelState.height + 'px';
-      
+
       // Show panel if it was open before
       if (panelState.isOpen) {
         panel.style.display = 'flex';
@@ -1210,28 +1245,28 @@ function createQuickTabsPanel() {
       }
     }
   });
-  
+
   // ... rest of creation code ...
 }
 
 // AFTER (v1.5.9+):
 function createQuickTabsPanel() {
   // ... existing panel creation code ...
-  
+
   // Load saved panel state from storage
   browser.storage.local.get('quick_tabs_panel_state').then(async result => {
     if (result && result.quick_tabs_panel_state) {
       const savedState = result.quick_tabs_panel_state;
       const currentViewport = getViewportSize();
-      
+
       // Check if viewport size changed
-      const viewportChanged = 
+      const viewportChanged =
         !savedState.viewport ||
         savedState.viewport.width !== currentViewport.width ||
         savedState.viewport.height !== currentViewport.height;
-      
+
       let appliedPos;
-      
+
       if (viewportChanged && savedState.relativeLeft !== undefined) {
         // Viewport size changed - use relative position
         const relativePos = {
@@ -1240,10 +1275,12 @@ function createQuickTabsPanel() {
           relativeWidth: savedState.relativeWidth,
           relativeHeight: savedState.relativeHeight
         };
-        
+
         appliedPos = calculateAbsolutePosition(relativePos, currentViewport);
-        
-        debug(`[PANEL] Viewport changed (${savedState.viewport?.width}x${savedState.viewport?.height} → ${currentViewport.width}x${currentViewport.height}), using relative position`);
+
+        debug(
+          `[PANEL] Viewport changed (${savedState.viewport?.width}x${savedState.viewport?.height} → ${currentViewport.width}x${currentViewport.height}), using relative position`
+        );
       } else {
         // Viewport same or no relative position saved - use absolute position
         appliedPos = {
@@ -1252,19 +1289,19 @@ function createQuickTabsPanel() {
           width: savedState.width,
           height: savedState.height
         };
-        
+
         debug(`[PANEL] Viewport unchanged, using absolute position`);
       }
-      
+
       // Apply calculated position
       panel.style.left = appliedPos.left + 'px';
       panel.style.top = appliedPos.top + 'px';
       panel.style.width = appliedPos.width + 'px';
       panel.style.height = appliedPos.height + 'px';
-      
+
       // Ensure panel stays within viewport
       ensurePanelWithinViewport(panel);
-      
+
       // Update panel state
       panelState = {
         ...savedState,
@@ -1274,23 +1311,25 @@ function createQuickTabsPanel() {
         height: appliedPos.height,
         viewport: currentViewport
       };
-      
+
       // Handle visibility based on context
       const context = await splitViewDetector.getContext();
       const currentPaneId = context.splitPaneId || `tab_${context.browserTabId}`;
-      
+
       // Show panel if:
       // 1. It was open before, AND
       // 2. We're in the pane where it was visible (or not in split view)
-      if (savedState.isOpen && 
-          (!context.isSplitView || savedState.visibleInPaneId === currentPaneId)) {
+      if (
+        savedState.isOpen &&
+        (!context.isSplitView || savedState.visibleInPaneId === currentPaneId)
+      ) {
         panel.style.display = 'flex';
         isPanelOpen = true;
         panelState.isOpen = true;
       }
     }
   });
-  
+
   // ... rest of creation code ...
 }
 
@@ -1301,12 +1340,12 @@ function createQuickTabsPanel() {
 function ensurePanelWithinViewport(panel) {
   const rect = panel.getBoundingClientRect();
   const viewport = getViewportSize();
-  
+
   let left = parseFloat(panel.style.left);
   let top = parseFloat(panel.style.top);
   let width = parseFloat(panel.style.width);
   let height = parseFloat(panel.style.height);
-  
+
   // Ensure panel doesn't go off-screen
   if (left + width > viewport.width) {
     left = Math.max(0, viewport.width - width);
@@ -1316,7 +1355,7 @@ function ensurePanelWithinViewport(panel) {
   }
   if (left < 0) left = 0;
   if (top < 0) top = 0;
-  
+
   // Apply corrected position
   panel.style.left = left + 'px';
   panel.style.top = top + 'px';
@@ -1330,29 +1369,32 @@ function ensurePanelWithinViewport(panel) {
 ```javascript
 // In content-legacy.js, listen for browser tab activation
 
-browser.tabs.onActivated.addListener(async (activeInfo) => {
+browser.tabs.onActivated.addListener(async activeInfo => {
   // Load panel state when tab becomes active
   const result = await browser.storage.local.get('quick_tabs_panel_state');
-  
+
   if (result && result.quick_tabs_panel_state && quickTabsPanel) {
     const savedState = result.quick_tabs_panel_state;
     const currentViewport = getViewportSize();
-    
+
     // Calculate position (use relative if viewport changed)
-    const viewportChanged = 
+    const viewportChanged =
       !savedState.viewport ||
       savedState.viewport.width !== currentViewport.width ||
       savedState.viewport.height !== currentViewport.height;
-    
+
     let appliedPos;
-    
+
     if (viewportChanged && savedState.relativeLeft !== undefined) {
-      appliedPos = calculateAbsolutePosition({
-        relativeLeft: savedState.relativeLeft,
-        relativeTop: savedState.relativeTop,
-        relativeWidth: savedState.relativeWidth,
-        relativeHeight: savedState.relativeHeight
-      }, currentViewport);
+      appliedPos = calculateAbsolutePosition(
+        {
+          relativeLeft: savedState.relativeLeft,
+          relativeTop: savedState.relativeTop,
+          relativeWidth: savedState.relativeWidth,
+          relativeHeight: savedState.relativeHeight
+        },
+        currentViewport
+      );
     } else {
       appliedPos = {
         left: savedState.left,
@@ -1361,15 +1403,15 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
         height: savedState.height
       };
     }
-    
+
     // Apply position
     quickTabsPanel.style.left = appliedPos.left + 'px';
     quickTabsPanel.style.top = appliedPos.top + 'px';
     quickTabsPanel.style.width = appliedPos.width + 'px';
     quickTabsPanel.style.height = appliedPos.height + 'px';
-    
+
     ensurePanelWithinViewport(quickTabsPanel);
-    
+
     debug(`[PANEL] Synced position on tab activation: (${appliedPos.left}, ${appliedPos.top})`);
   }
 });
@@ -1409,31 +1451,31 @@ let panelState = {
 
 #### Modified Functions
 
-| Function Name | Changes | Lines Changed |
-|---------------|---------|---------------|
-| `createQuickTabWindow()` | Add context-aware filtering check | +15 |
-| `broadcastQuickTabCreation()` | Add `sourceContext` to message | +10 |
-| `broadcastQuickTabMove()` | Add `sourceContext` to message | +10 |
-| `broadcastQuickTabResize()` | Add `sourceContext` to message | +10 |
-| `broadcastQuickTabClose()` | Add `sourceContext` to message | +10 |
-| `handleBroadcastMessage()` | Add context filtering logic | +30 |
-| `toggleQuickTabsPanel()` | Add focus-aware visibility | +40 |
-| `savePanelState()` | Add relative position calculation | +25 |
-| `createQuickTabsPanel()` | Add relative position restoration | +50 |
+| Function Name                 | Changes                           | Lines Changed |
+| ----------------------------- | --------------------------------- | ------------- |
+| `createQuickTabWindow()`      | Add context-aware filtering check | +15           |
+| `broadcastQuickTabCreation()` | Add `sourceContext` to message    | +10           |
+| `broadcastQuickTabMove()`     | Add `sourceContext` to message    | +10           |
+| `broadcastQuickTabResize()`   | Add `sourceContext` to message    | +10           |
+| `broadcastQuickTabClose()`    | Add `sourceContext` to message    | +10           |
+| `handleBroadcastMessage()`    | Add context filtering logic       | +30           |
+| `toggleQuickTabsPanel()`      | Add focus-aware visibility        | +40           |
+| `savePanelState()`            | Add relative position calculation | +25           |
+| `createQuickTabsPanel()`      | Add relative position restoration | +50           |
 
 #### New Functions
 
-| Function Name | Purpose | Lines |
-|---------------|---------|-------|
-| `shouldAcceptBroadcast(source, receiver)` | Filter broadcasts by context | 50 |
-| `showQuickTabsPanelInPane(paneId)` | Show panel in specific pane | 20 |
-| `hideQuickTabsPanelInPane(paneId)` | Hide panel in specific pane | 15 |
-| `broadcastPanelVisibilityChange(paneId, isVisible)` | Broadcast panel visibility | 20 |
-| `handlePanelVisibilityChangeBroadcast(message)` | Handle visibility broadcasts | 25 |
-| `calculateRelativePosition(absolutePos, viewport)` | Convert to relative position | 10 |
-| `calculateAbsolutePosition(relativePos, viewport)` | Convert to absolute position | 10 |
-| `getViewportSize()` | Get viewport dimensions | 5 |
-| `ensurePanelWithinViewport(panel)` | Keep panel in viewport | 20 |
+| Function Name                                       | Purpose                      | Lines |
+| --------------------------------------------------- | ---------------------------- | ----- |
+| `shouldAcceptBroadcast(source, receiver)`           | Filter broadcasts by context | 50    |
+| `showQuickTabsPanelInPane(paneId)`                  | Show panel in specific pane  | 20    |
+| `hideQuickTabsPanelInPane(paneId)`                  | Hide panel in specific pane  | 15    |
+| `broadcastPanelVisibilityChange(paneId, isVisible)` | Broadcast panel visibility   | 20    |
+| `handlePanelVisibilityChangeBroadcast(message)`     | Handle visibility broadcasts | 25    |
+| `calculateRelativePosition(absolutePos, viewport)`  | Convert to relative position | 10    |
+| `calculateAbsolutePosition(relativePos, viewport)`  | Convert to absolute position | 10    |
+| `getViewportSize()`                                 | Get viewport dimensions      | 5     |
+| `ensurePanelWithinViewport(panel)`                  | Keep panel in viewport       | 20    |
 
 ### New File: `split-view-detector.js`
 
@@ -1442,9 +1484,11 @@ let panelState = {
 **Purpose**: Detect Zen Browser split view DOM structure and identify split panes.
 
 **Key Classes**:
+
 - `SplitViewDetector`: Main class for split view detection
 
 **Key Methods**:
+
 - `isInSplitView()`: Check if in split view
 - `getSplitPaneId()`: Get unique pane ID
 - `getBrowserTabId()`: Get browser tab ID
@@ -1457,9 +1501,11 @@ let panelState = {
 **Purpose**: Track which split pane has user focus.
 
 **Key Classes**:
+
 - `FocusTracker`: Main class for focus tracking
 
 **Key Methods**:
+
 - `initialize()`: Set up focus listeners
 - `handleFocusEvent(event)`: Handle focus events
 - `broadcastFocusChange(oldPaneId, newPaneId)`: Broadcast focus changes
@@ -1472,52 +1518,52 @@ let panelState = {
 
 ### Test Suite 1: Split View Detection
 
-| Test ID | Scenario | Expected Result | Validation |
-|---------|----------|-----------------|------------|
-| SVD-1 | Open normal tab | `isSplitView = false`, `splitPaneId = null` | Check console logs |
-| SVD-2 | Open split view (2 panes) | `isSplitView = true`, unique `splitPaneId` per pane | Check console logs |
-| SVD-3 | Open split view (4 panes) | All 4 panes have unique `splitPaneId` | Check console logs |
-| SVD-4 | Switch from normal to split | Context updates correctly | Check console logs |
-| SVD-5 | Switch from split to normal | Context updates correctly | Check console logs |
+| Test ID | Scenario                    | Expected Result                                     | Validation         |
+| ------- | --------------------------- | --------------------------------------------------- | ------------------ |
+| SVD-1   | Open normal tab             | `isSplitView = false`, `splitPaneId = null`         | Check console logs |
+| SVD-2   | Open split view (2 panes)   | `isSplitView = true`, unique `splitPaneId` per pane | Check console logs |
+| SVD-3   | Open split view (4 panes)   | All 4 panes have unique `splitPaneId`               | Check console logs |
+| SVD-4   | Switch from normal to split | Context updates correctly                           | Check console logs |
+| SVD-5   | Switch from split to normal | Context updates correctly                           | Check console logs |
 
 ### Test Suite 2: Quick Tab Filtering (R1)
 
-| Test ID | Scenario | Expected Result | Validation |
-|---------|----------|-----------------|------------|
-| QTF-1 | Open Quick Tab in Tab 1 | Quick Tab appears in Tab 2/3 | Visual verification |
-| QTF-2 | Open Quick Tab in Tab 1, switch to Split View Tab 1 | Quick Tab NOT in split panes | Visual verification |
-| QTF-3 | Open Quick Tab in Split View Tab 1-1 | Quick Tab NOT in Tab 1 | Visual verification |
-| QTF-4 | Open Quick Tab in Split View Tab 1-1 | Quick Tab NOT in Split View Tab 1-2/3/4 | Visual verification |
-| QTF-5 | Open Quick Tab in Split View Tab 1-1, switch to Split View Tab 2 | Quick Tab NOT in Split View Tab 2 | Visual verification |
+| Test ID | Scenario                                                         | Expected Result                         | Validation          |
+| ------- | ---------------------------------------------------------------- | --------------------------------------- | ------------------- |
+| QTF-1   | Open Quick Tab in Tab 1                                          | Quick Tab appears in Tab 2/3            | Visual verification |
+| QTF-2   | Open Quick Tab in Tab 1, switch to Split View Tab 1              | Quick Tab NOT in split panes            | Visual verification |
+| QTF-3   | Open Quick Tab in Split View Tab 1-1                             | Quick Tab NOT in Tab 1                  | Visual verification |
+| QTF-4   | Open Quick Tab in Split View Tab 1-1                             | Quick Tab NOT in Split View Tab 1-2/3/4 | Visual verification |
+| QTF-5   | Open Quick Tab in Split View Tab 1-1, switch to Split View Tab 2 | Quick Tab NOT in Split View Tab 2       | Visual verification |
 
 ### Test Suite 3: Quick Tab Manager Focus (R3)
 
-| Test ID | Scenario | Expected Result | Validation |
-|---------|----------|-----------------|------------|
-| QTM-1 | Open Quick Tab Manager in Split View Tab 1-1 | Panel visible in 1-1 only | Visual verification |
-| QTM-2 | Click on Split View Tab 1-2 | Panel hides in 1-1, shows in 1-2 | Visual verification |
-| QTM-3 | Click on Split View Tab 1-3 | Panel hides in 1-2, shows in 1-3 | Visual verification |
-| QTM-4 | Close panel in Split View Tab 1-3 | Panel closes, no longer visible anywhere | Visual verification |
-| QTM-5 | Open panel, switch between all 4 panes | Panel follows focus correctly | Visual verification |
+| Test ID | Scenario                                     | Expected Result                          | Validation          |
+| ------- | -------------------------------------------- | ---------------------------------------- | ------------------- |
+| QTM-1   | Open Quick Tab Manager in Split View Tab 1-1 | Panel visible in 1-1 only                | Visual verification |
+| QTM-2   | Click on Split View Tab 1-2                  | Panel hides in 1-1, shows in 1-2         | Visual verification |
+| QTM-3   | Click on Split View Tab 1-3                  | Panel hides in 1-2, shows in 1-3         | Visual verification |
+| QTM-4   | Close panel in Split View Tab 1-3            | Panel closes, no longer visible anywhere | Visual verification |
+| QTM-5   | Open panel, switch between all 4 panes       | Panel follows focus correctly            | Visual verification |
 
 ### Test Suite 4: Position Persistence (R4)
 
-| Test ID | Scenario | Expected Result | Validation |
-|---------|----------|-----------------|------------|
-| POS-1 | Move panel to top-right in Split View Tab 1-1, switch to Tab 1 | Panel in top-right of Tab 1 | Measure position % |
-| POS-2 | Move panel to bottom-left in Tab 1, switch to Split View Tab 1-2 | Panel in bottom-left of Split View Tab 1-2 | Measure position % |
-| POS-3 | Resize window, panel maintains relative position | Panel stays in same corner | Visual verification |
-| POS-4 | Move panel, close browser, reopen | Panel position restored | Measure position |
-| POS-5 | Move panel in 1920x1080 viewport, switch to 1366x768 | Panel maintains relative position | Measure position % |
+| Test ID | Scenario                                                         | Expected Result                            | Validation          |
+| ------- | ---------------------------------------------------------------- | ------------------------------------------ | ------------------- |
+| POS-1   | Move panel to top-right in Split View Tab 1-1, switch to Tab 1   | Panel in top-right of Tab 1                | Measure position %  |
+| POS-2   | Move panel to bottom-left in Tab 1, switch to Split View Tab 1-2 | Panel in bottom-left of Split View Tab 1-2 | Measure position %  |
+| POS-3   | Resize window, panel maintains relative position                 | Panel stays in same corner                 | Visual verification |
+| POS-4   | Move panel, close browser, reopen                                | Panel position restored                    | Measure position    |
+| POS-5   | Move panel in 1920x1080 viewport, switch to 1366x768             | Panel maintains relative position          | Measure position %  |
 
 ### Integration Testing
 
-| Test ID | Scenario | Expected Result |
-|---------|----------|-----------------|
-| INT-1 | Open Quick Tab in Tab 1, open panel in Tab 1, switch to Split View Tab 1 | Quick Tab not in split, panel position maintained |
-| INT-2 | Open Quick Tab in Split View Tab 1-1, move panel around, click to Split View Tab 1-2 | Quick Tab stays in 1-1, panel moves to 1-2 |
-| INT-3 | Open 3 Quick Tabs in Split View Tab 1-1/1-2/1-3, open panel | Panel shows only Quick Tab for current pane |
-| INT-4 | Minimize Quick Tab in Split View Tab 1-1, switch to Tab 1, restore | Quick Tab restores in Split View Tab 1-1 only |
+| Test ID | Scenario                                                                             | Expected Result                                   |
+| ------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| INT-1   | Open Quick Tab in Tab 1, open panel in Tab 1, switch to Split View Tab 1             | Quick Tab not in split, panel position maintained |
+| INT-2   | Open Quick Tab in Split View Tab 1-1, move panel around, click to Split View Tab 1-2 | Quick Tab stays in 1-1, panel moves to 1-2        |
+| INT-3   | Open 3 Quick Tabs in Split View Tab 1-1/1-2/1-3, open panel                          | Panel shows only Quick Tab for current pane       |
+| INT-4   | Minimize Quick Tab in Split View Tab 1-1, switch to Tab 1, restore                   | Quick Tab restores in Split View Tab 1-1 only     |
 
 ---
 
@@ -1529,6 +1575,7 @@ let panelState = {
    - **Change**: Added `sourceContext` field to all broadcast messages
    - **Impact**: Old versions (v1.5.8.16 and earlier) will ignore the new field, but will still function
    - **Mitigation**: Make `sourceContext` optional in `handleBroadcastMessage()`:
+
    ```javascript
    const sourceContext = message.sourceContext || {
      browserTabId: null,
@@ -1541,6 +1588,7 @@ let panelState = {
    - **Change**: Added relative position fields to panel state
    - **Impact**: Old panel states won't have relative fields
    - **Mitigation**: Check for existence before using:
+
    ```javascript
    if (savedState.relativeLeft !== undefined) {
      // Use relative position
@@ -1552,36 +1600,40 @@ let panelState = {
 3. **Storage Migration**:
    - **Required**: Migrate old panel state format to new format
    - **Implementation**:
+
    ```javascript
    async function migratePanelState() {
      const result = await browser.storage.local.get('quick_tabs_panel_state');
-     
+
      if (result && result.quick_tabs_panel_state) {
        const state = result.quick_tabs_panel_state;
-       
+
        // Check if migration needed
        if (state.relativeLeft === undefined) {
          const viewport = getViewportSize();
-         const relativePos = calculateRelativePosition({
-           left: state.left,
-           top: state.top,
-           width: state.width,
-           height: state.height
-         }, viewport);
-         
+         const relativePos = calculateRelativePosition(
+           {
+             left: state.left,
+             top: state.top,
+             width: state.width,
+             height: state.height
+           },
+           viewport
+         );
+
          state.relativeLeft = relativePos.relativeLeft;
          state.relativeTop = relativePos.relativeTop;
          state.relativeWidth = relativePos.relativeWidth;
          state.relativeHeight = relativePos.relativeHeight;
          state.viewport = viewport;
          state.lastUpdated = Date.now();
-         
+
          await browser.storage.local.set({ quick_tabs_panel_state: state });
          debug('[MIGRATION] Panel state migrated to v1.5.9 format');
        }
      }
    }
-   
+
    // Call on extension load
    migratePanelState();
    ```
@@ -1650,6 +1702,7 @@ let panelState = {
    - **Feature**: User-configurable isolation rules
    - **Use Case**: "Always sync Quick Tabs between normal tabs, but isolate in split view"
    - **Implementation**: Add config options:
+
    ```javascript
    CONFIG.quickTabIsolation = 'auto'; // 'auto', 'always', 'never'
    ```
@@ -1693,23 +1746,27 @@ This implementation plan provides a comprehensive roadmap for adding advanced Sp
 4. **R4**: Quick Tab Manager position persists across tab transitions
 
 **Key Technical Achievements**:
+
 - Context-aware broadcast filtering based on tab type and split pane ID
 - Focus-tracking system for split pane interaction detection
 - Relative position system for viewport-independent panel placement
 - Backward-compatible broadcast message format
 
 **Estimated Development Effort**:
+
 - New code: ~550 lines
 - Modified code: ~150 lines
 - Testing: 25 test cases
 - Total estimated time: 20-30 hours
 
 **Risks**:
+
 - Zen Browser DOM structure changes (mitigated by fallback detection)
 - Performance impact from additional broadcasts (mitigated by throttling)
 - Edge cases in focus detection (mitigated by comprehensive testing)
 
 **Next Steps**:
+
 1. Implement Phase 1 (Split View Detection)
 2. Test with Zen Browser's Split View feature
 3. Implement Phase 2 (Focus Tracking)
