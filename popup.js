@@ -46,12 +46,12 @@ async function getContentScriptLogs() {
 
     if (response && response.logs) {
       console.log(`[Popup] Received ${response.logs.length} logs from content script`);
-      
+
       // ✅ NEW: Log buffer stats for debugging
       if (response.stats) {
         console.log('[Popup] Content script buffer stats:', response.stats);
       }
-      
+
       return response.logs;
     } else {
       console.warn('[Popup] Content script returned no logs');
@@ -59,14 +59,14 @@ async function getContentScriptLogs() {
     }
   } catch (error) {
     console.warn('[Popup] Could not retrieve content script logs:', error);
-    
+
     // ✅ IMPROVED: More specific error messages
     if (error.message && error.message.includes('Could not establish connection')) {
       console.error('[Popup] Content script not loaded in active tab');
     } else if (error.message && error.message.includes('No active tab')) {
       console.error('[Popup] No active tab found - try clicking on a webpage first');
     }
-    
+
     return [];
   }
 }
@@ -142,15 +142,15 @@ async function exportAllLogs(version) {
     // ✅ IMPROVED: Show breakdown by log type
     const backgroundTypes = {};
     const contentTypes = {};
-    
+
     backgroundLogs.forEach(log => {
       backgroundTypes[log.type] = (backgroundTypes[log.type] || 0) + 1;
     });
-    
+
     contentLogs.forEach(log => {
       contentTypes[log.type] = (contentTypes[log.type] || 0) + 1;
     });
-    
+
     console.log('[Popup] Background log types:', backgroundTypes);
     console.log('[Popup] Content log types:', contentTypes);
 
@@ -165,16 +165,22 @@ async function exportAllLogs(version) {
     // ✅ IMPROVED: Better error message with actionable advice
     if (allLogs.length === 0) {
       console.warn('[Popup] No logs to export');
-      
+
       // Check if content script is loaded
       if (tabs.length > 0 && tabs[0].url.startsWith('about:')) {
-        throw new Error('Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.');
+        throw new Error(
+          'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
+        );
       } else if (tabs.length === 0) {
         throw new Error('No active tab found. Try clicking on a webpage tab first.');
       } else if (contentLogs.length === 0 && backgroundLogs.length === 0) {
-        throw new Error('No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.');
+        throw new Error(
+          'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
+        );
       } else if (contentLogs.length === 0) {
-        throw new Error(`Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`);
+        throw new Error(
+          `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
+        );
       } else {
         throw new Error('No logs found. Try enabling debug mode and using the extension first.');
       }

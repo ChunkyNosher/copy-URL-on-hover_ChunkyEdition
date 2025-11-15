@@ -522,28 +522,30 @@ if (typeof browser !== 'undefined' && browser.runtime) {
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'GET_CONTENT_LOGS') {
       console.log('[Content] Received GET_CONTENT_LOGS request');
-      
+
       try {
         // ✅ NEW: Get logs from console interceptor (captures ALL console calls)
         const consoleLogs = getConsoleLogs();
-        
+
         // ✅ NEW: Also get logs from debug.js (if any code uses debug() functions)
         const debugLogs = getLogBuffer();
-        
+
         // ✅ NEW: Merge both sources
         const allLogs = [...consoleLogs, ...debugLogs];
-        
+
         // Sort by timestamp
         allLogs.sort((a, b) => a.timestamp - b.timestamp);
-        
+
         console.log(`[Content] Sending ${allLogs.length} logs to popup`);
-        console.log(`[Content] Console logs: ${consoleLogs.length}, Debug logs: ${debugLogs.length}`);
-        
+        console.log(
+          `[Content] Console logs: ${consoleLogs.length}, Debug logs: ${debugLogs.length}`
+        );
+
         // ✅ NEW: Get buffer stats for debugging
         const stats = getBufferStats();
         console.log(`[Content] Buffer stats:`, stats);
-        
-        sendResponse({ 
+
+        sendResponse({
           logs: allLogs,
           stats: stats
         });
@@ -551,7 +553,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
         console.error('[Content] Error getting log buffer:', error);
         sendResponse({ logs: [], error: error.message });
       }
-      
+
       return true; // Keep message channel open for async response
     }
   });

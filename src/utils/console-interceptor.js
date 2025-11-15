@@ -62,9 +62,17 @@ function addToLogBuffer(type, args) {
 function getExecutionContext() {
   if (typeof document !== 'undefined' && document.currentScript) {
     return 'content-script';
-  } else if (typeof browser !== 'undefined' && browser.runtime && browser.runtime.getBackgroundPage) {
+  } else if (
+    typeof browser !== 'undefined' &&
+    browser.runtime &&
+    browser.runtime.getBackgroundPage
+  ) {
     return 'background';
-  } else if (typeof window !== 'undefined' && window.location && window.location.protocol === 'moz-extension:') {
+  } else if (
+    typeof window !== 'undefined' &&
+    window.location &&
+    window.location.protocol === 'moz-extension:'
+  ) {
     return 'popup';
   }
   return 'unknown';
