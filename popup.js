@@ -1,7 +1,12 @@
 // Browser API compatibility shim for Firefox/Chrome cross-compatibility
-let browser;
-if (typeof browser === 'undefined') {
-  browser = chrome;
+// Use global browser API if available (Firefox), otherwise fall back to chrome (Chrome)
+/* eslint-disable-next-line no-undef */
+const browserAPI =
+  typeof browser !== 'undefined' ? browser : typeof chrome !== 'undefined' ? chrome : null;
+
+// Verify browser API is available
+if (!browserAPI) {
+  console.error('[Popup] Browser API not available. Extension may not work properly.');
 }
 
 // ==================== LOG EXPORT FUNCTIONS ====================
@@ -12,7 +17,7 @@ if (typeof browser === 'undefined') {
  */
 async function getBackgroundLogs() {
   try {
-    const response = await browser.runtime.sendMessage({
+    const response = await browserAPI.runtime.sendMessage({
       action: 'GET_BACKGROUND_LOGS'
     });
     return response && response.logs ? response.logs : [];
@@ -29,7 +34,7 @@ async function getBackgroundLogs() {
 async function getContentScriptLogs() {
   try {
     // Get active tab
-    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
     if (tabs.length === 0) {
       console.warn('[Popup] No active tab found');
       return [];
@@ -40,7 +45,7 @@ async function getContentScriptLogs() {
     console.log(`[Popup] Requesting logs from tab ${activeTab.id}`);
 
     // Request logs from content script
-    const response = await browser.tabs.sendMessage(activeTab.id, {
+    const response = await browserAPI.tabs.sendMessage(activeTab.id, {
       action: 'GET_CONTENT_LOGS'
     });
 
@@ -126,7 +131,7 @@ async function exportAllLogs(version) {
     console.log('[Popup] Starting log export...');
 
     // ✅ IMPROVED: Add debug info about active tab
-    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
     if (tabs.length > 0) {
       console.log('[Popup] Active tab:', tabs[0].url);
       console.log('[Popup] Active tab ID:', tabs[0].id);
@@ -201,7 +206,7 @@ async function exportAllLogs(version) {
     console.log(`[Popup] Created data URL (length: ${dataUrl.length} chars)`);
 
     // Download
-    await browser.downloads.download({
+    await browserAPI.downloads.download({
       url: dataUrl,
       filename: filename,
       saveAs: true
@@ -312,7 +317,7 @@ function syncColorInputs(textInput, colorPicker) {
 
 // Load settings
 function loadSettings() {
-  browser.storage.local.get(DEFAULT_SETTINGS, function (items) {
+  browserAPI.storage.local.get(DEFAULT_SETTINGS, function (items) {
     document.getElementById('copyUrlKey').value = items.copyUrlKey;
     document.getElementById('copyUrlCtrl').checked = items.copyUrlCtrl;
     document.getElementById('copyUrlAlt').checked = items.copyUrlAlt;
@@ -484,7 +489,7 @@ document.getElementById('saveBtn').addEventListener('click', function () {
     menuSize: document.getElementById('menuSize').value || 'medium'
   };
 
-  browser.storage.local.set(settings, function () {
+  browserAPI.storage.local.set(settings, function () {
     showStatus('✓ Settings saved! Reload tabs to apply changes.');
     applyTheme(settings.darkMode);
     applyMenuSize(settings.menuSize);
@@ -494,7 +499,7 @@ document.getElementById('saveBtn').addEventListener('click', function () {
 // Reset to defaults
 document.getElementById('resetBtn').addEventListener('click', function () {
   if (confirm('Reset all settings to defaults?')) {
-    browser.storage.local.set(DEFAULT_SETTINGS, function () {
+    browserAPI.storage.local.set(DEFAULT_SETTINGS, function () {
       loadSettings();
       showStatus('✓ Settings reset to defaults!');
     });
@@ -510,26 +515,25 @@ document.getElementById('clearStorageBtn').addEventListener('click', async funct
   ) {
     try {
       // Only clear Quick Tab state, preserve all settings
-      await browser.storage.sync.remove('quick_tabs_state_v2');
+      await browserAPI.storage.sync.remove('quick_tabs_state_v2');
 
       // Clear session storage if available
-      if (typeof browser.storage.session !== 'undefined') {
-        await browser.storage.session.remove('quick_tabs_session');
+      if (typeof browserAPI.storage.session !== 'undefined') {
+        await browserAPI.storage.session.remove('quick_tabs_session');
       }
 
       showStatus('✓ Quick Tab storage cleared! Settings preserved.');
 
       // Notify all tabs to close their Quick Tabs
-      browser.tabs.query({}).then(tabs => {
-        tabs.forEach(tab => {
-          browser.tabs
-            .sendMessage(tab.id, {
-              action: 'CLEAR_ALL_QUICK_TABS'
-            })
-            .catch(() => {
-              // Content script might not be loaded in this tab
-            });
-        });
+      const tabs = await browserAPI.tabs.query({});
+      tabs.forEach(tab => {
+        browserAPI.tabs
+          .sendMessage(tab.id, {
+            action: 'CLEAR_ALL_QUICK_TABS'
+          })
+          .catch(() => {
+            // Content script might not be loaded in this tab
+          });
       });
     } catch (err) {
       showStatus('✗ Error clearing storage: ' + err.message);
@@ -575,7 +579,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   // Set footer version dynamically
-  const manifest = browser.runtime.getManifest();
+  const manifest = browserAPI.runtime.getManifest();
   const footerElement = document.getElementById('footerVersion');
   if (footerElement) {
     footerElement.textContent = `${manifest.name} v${manifest.version}`;
@@ -622,7 +626,7 @@ document.addEventListener('DOMContentLoaded', function () {
         exportLogsBtn.textContent = '⏳ Exporting...';
 
         // Get version from manifest
-        const manifest = browser.runtime.getManifest();
+        const manifest = browserAPI.runtime.getManifest();
         const version = manifest.version;
 
         // Export all logs
