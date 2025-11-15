@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.5.8.16  
+**Version:** 1.5.9  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Hybrid Modular/EventBus Architecture (Architecture #10)  
 **Purpose:** URL management with Firefox Container isolation support and
@@ -490,15 +490,14 @@ requests:**
 
 **IMPORTANT: When users report bugs or request features:**
 
-### Automatic Issue Creation
+### Automatic Issue Creation (ENABLED)
 
 When a user provides a list of bugs or features to implement:
 
 1. **Document all issues** in a markdown file in `docs/manual/` or
    `docs/implementation-summaries/`
-2. **DO NOT automatically create GitHub issues** - The user prefers to create
-   issues manually
-3. **DO NOT mark issues as completed** in your documentation or checklist
+2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs and features
+3. **DO NOT mark issues as completed automatically** - The user will manually close issues when work is done
 4. **Provide a clear list** of all bugs/features with:
    - Issue title
    - Detailed description
@@ -506,6 +505,23 @@ When a user provides a list of bugs or features to implement:
    - Suggested labels
    - Root cause analysis (for bugs)
    - Implementation strategy
+
+### How to Create GitHub Issues
+
+When creating GitHub issues from user input or .md files:
+
+1. **Extract all bugs/features** from the user's prompt or from .md files in the repository
+2. **For each bug/feature**, create a GitHub issue with:
+   - **Title**: Clear, actionable title (e.g., "Fix Quick Tab flash in top-left corner")
+   - **Description**: Complete description including:
+     - Problem statement or feature request
+     - Root cause analysis (for bugs)
+     - Implementation strategy
+     - Testing requirements
+   - **Labels**: Appropriate labels (bug, enhancement, documentation, etc.)
+   - **Assignees**: Leave unassigned unless specified
+3. **Track created issues** in your implementation documentation
+4. **DO NOT automatically close issues** - Let the user manually close them
 
 ### Issue Documentation Format
 
@@ -515,7 +531,8 @@ For each bug/feature, document:
 ### Issue Title: [Clear, descriptive title]
 
 **Priority:** [Critical/High/Medium/Low]  
-**Labels:** [bug/feature], [component], [other-labels]
+**Labels:** [bug/feature], [component], [other-labels]  
+**GitHub Issue:** #XXX (link to created issue)
 
 **Description:** [Detailed description of the issue or feature]
 
@@ -532,7 +549,7 @@ When creating a checklist in PR descriptions:
 - Use `- [ ]` for pending items (NOT `- [x]`)
 - Let the user manually check off completed items
 - Don't auto-check items even after you've completed the work
-- Include "Create GitHub issues" as a checklist item for user to handle
+- Include links to GitHub issues you created
 
 ### Example
 
@@ -540,15 +557,16 @@ When creating a checklist in PR descriptions:
 
 ```markdown
 - [x] Fixed RAM usage bug (completed)
-- [x] Created GitHub issue #123
+- [x] Closed GitHub issue #123
 ```
 
 ✅ **CORRECT:**
 
 ```markdown
-- [ ] Fix RAM usage bug
-- [ ] Create GitHub issues for all bugs (user will handle)
+- [ ] Fix RAM usage bug (GitHub issue #123 created)
+- [ ] Fix Quick Tab flash (GitHub issue #124 created)
+- [ ] Add console log export (GitHub issue #125 created)
 ```
 
-This ensures that all agents have up-to-date knowledge and can work effectively
-on the current version of the codebase.
+This ensures that all bugs and features are tracked in GitHub issues while allowing
+the user to manually mark them as complete when satisfied with the implementation.

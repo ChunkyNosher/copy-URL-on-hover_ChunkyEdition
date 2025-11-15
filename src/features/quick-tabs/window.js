@@ -73,7 +73,9 @@ export class QuickTabWindow {
         display: this.minimized ? 'none' : 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        transition: 'box-shadow 0.2s'
+        transition: 'box-shadow 0.2s, opacity 0.15s ease-in',
+        visibility: 'hidden',
+        opacity: '0'
       }
     });
 
@@ -101,6 +103,13 @@ export class QuickTabWindow {
 
     // Add to document
     document.body.appendChild(this.container);
+
+    // Fix Quick Tab flash bug (Issue #3 from quick-tab-bugs-fixes.md)
+    // Make visible after positioning is complete using requestAnimationFrame
+    requestAnimationFrame(() => {
+      this.container.style.visibility = 'visible';
+      this.container.style.opacity = '1';
+    });
 
     // Setup interactions
     this.setupDragHandlers(titlebar);
@@ -160,15 +169,96 @@ export class QuickTabWindow {
       }
     });
 
-    // Create left section with favicon and title
+    // Create left section with navigation, favicon and title
     const leftSection = createElement('div', {
       style: {
         display: 'flex',
         alignItems: 'center',
         flex: '1',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        gap: '8px'
       }
     });
+
+    // Navigation buttons container
+    const navContainer = createElement('div', {
+      style: {
+        display: 'flex',
+        gap: '4px',
+        alignItems: 'center'
+      }
+    });
+
+    // Back button
+    const backBtn = this.createButton('←', () => {
+      if (this.iframe.contentWindow) {
+        try {
+          this.iframe.contentWindow.history.back();
+        } catch (err) {
+          console.warn('[QuickTab] Cannot navigate back - cross-origin restriction');
+        }
+      }
+    });
+    backBtn.title = 'Back';
+    navContainer.appendChild(backBtn);
+
+    // Forward button
+    const forwardBtn = this.createButton('→', () => {
+      if (this.iframe.contentWindow) {
+        try {
+          this.iframe.contentWindow.history.forward();
+        } catch (err) {
+          console.warn('[QuickTab] Cannot navigate forward - cross-origin restriction');
+        }
+      }
+    });
+    forwardBtn.title = 'Forward';
+    navContainer.appendChild(forwardBtn);
+
+    // Reload button
+    const reloadBtn = this.createButton('↻', () => {
+      this.iframe.src = this.iframe.src;
+    });
+    reloadBtn.title = 'Reload';
+    navContainer.appendChild(reloadBtn);
+
+    // Zoom controls
+    let currentZoom = 100;
+
+    const zoomOutBtn = this.createButton('−', () => {
+      if (currentZoom > 50) {
+        currentZoom -= 10;
+        this.applyZoom(currentZoom, zoomDisplay);
+      }
+    });
+    zoomOutBtn.title = 'Zoom Out';
+    navContainer.appendChild(zoomOutBtn);
+
+    const zoomDisplay = createElement(
+      'span',
+      {
+        style: {
+          fontSize: '11px',
+          color: '#fff',
+          minWidth: '38px',
+          textAlign: 'center',
+          fontWeight: '500'
+        }
+      },
+      '100%'
+    );
+    navContainer.appendChild(zoomDisplay);
+
+    const zoomInBtn = this.createButton('+', () => {
+      if (currentZoom < 200) {
+        currentZoom += 10;
+        this.applyZoom(currentZoom, zoomDisplay);
+      }
+    });
+    zoomInBtn.title = 'Zoom In';
+    navContainer.appendChild(zoomInBtn);
+
+    leftSection.appendChild(navContainer);
 
     // Favicon
     const favicon = this.createFavicon();
@@ -503,6 +593,11 @@ export class QuickTabWindow {
         isResizing = false;
         handle.releasePointerCapture(e.pointerId);
 
+        // CRITICAL FIX: Prevent click propagation after resize
+        // This fixes the bug where resizing causes the Quick Tab to close
+        e.preventDefault();
+        e.stopPropagation();
+
         // Final save
         if (this.onSizeChangeEnd) {
           this.onSizeChangeEnd(this.id, this.width, this.height);
@@ -547,8 +642,13 @@ export class QuickTabWindow {
   minimize() {
     this.minimized = true;
     this.container.style.display = 'none';
+
+    // Enhanced logging for console log export (Issue #1)
+    console.log(
+      `[Quick Tab] Minimized - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+    );
+
     this.onMinimize(this.id);
-    console.log('[QuickTabWindow] Minimized:', this.id);
   }
 
   /**
@@ -557,8 +657,35 @@ export class QuickTabWindow {
   restore() {
     this.minimized = false;
     this.container.style.display = 'flex';
+
+    // Enhanced logging for console log export (Issue #1)
+    console.log(
+      `[Quick Tab] Restored - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+    );
+
     this.onFocus(this.id);
-    console.log('[QuickTabWindow] Restored:', this.id);
+  }
+
+  /**
+   * Apply zoom to iframe content
+   */
+  applyZoom(zoomLevel, displayElement) {
+    const zoomFactor = zoomLevel / 100;
+    if (this.iframe.contentWindow) {
+      try {
+        this.iframe.contentWindow.document.body.style.zoom = zoomFactor;
+      } catch (err) {
+        // Cross-origin restriction - use CSS transform fallback
+        this.iframe.style.transform = `scale(${zoomFactor})`;
+        this.iframe.style.transformOrigin = 'top left';
+        this.iframe.style.width = `${100 / zoomFactor}%`;
+        this.iframe.style.height = `${100 / zoomFactor}%`;
+      }
+    }
+    if (displayElement) {
+      displayElement.textContent = `${zoomLevel}%`;
+    }
+    console.log(`[Quick Tab] Zoom applied: ${zoomLevel}% on ${this.url}`);
   }
 
   /**

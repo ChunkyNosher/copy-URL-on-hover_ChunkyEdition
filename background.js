@@ -4,6 +4,54 @@
 // Also handles webRequest to remove X-Frame-Options for Quick Tabs
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 
+// ==================== LOG CAPTURE FOR EXPORT ====================
+// Log buffer for background script
+const BACKGROUND_LOG_BUFFER = [];
+const MAX_BACKGROUND_BUFFER_SIZE = 2000;
+
+function addBackgroundLog(type, ...args) {
+  if (BACKGROUND_LOG_BUFFER.length >= MAX_BACKGROUND_BUFFER_SIZE) {
+    BACKGROUND_LOG_BUFFER.shift();
+  }
+
+  BACKGROUND_LOG_BUFFER.push({
+    type: type,
+    timestamp: Date.now(),
+    message: args
+      .map(arg => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)))
+      .join(' '),
+    args: args
+  });
+}
+
+// Override console methods to capture logs
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+const originalConsoleInfo = console.info;
+
+console.log = function (...args) {
+  addBackgroundLog('DEBUG', ...args);
+  originalConsoleLog.apply(console, args);
+};
+
+console.error = function (...args) {
+  addBackgroundLog('ERROR', ...args);
+  originalConsoleError.apply(console, args);
+};
+
+console.warn = function (...args) {
+  addBackgroundLog('WARN', ...args);
+  originalConsoleWarn.apply(console, args);
+};
+
+console.info = function (...args) {
+  addBackgroundLog('INFO', ...args);
+  originalConsoleInfo.apply(console, args);
+};
+
+// ==================== STATE MANAGEMENT ====================
+
 // Store Quick Tab states per tab
 const quickTabStates = new Map();
 
@@ -548,6 +596,14 @@ chrome.tabs.onRemoved.addListener(tabId => {
 // Handle messages from content script and sidebar
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
+
+  // ==================== LOG EXPORT HANDLER ====================
+  // Handle log export requests from popup
+  if (message.action === 'GET_BACKGROUND_LOGS') {
+    sendResponse({ logs: [...BACKGROUND_LOG_BUFFER] });
+    return true;
+  }
+  // ==================== END LOG EXPORT HANDLER ====================
 
   // ==================== PROMISE-BASED SAVE QUEUE HANDLER ====================
   // NEW: Handle batch updates from save queue
