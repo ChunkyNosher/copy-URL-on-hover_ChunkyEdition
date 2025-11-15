@@ -18,14 +18,18 @@ Fixed critical log export bug where the "Export Console Logs" feature failed wit
 ## Problem Statement
 
 ### Symptom
+
 When users clicked "Export Console Logs" in the popup's Advanced tab, the export would fail with:
+
 ```
-Export failed: Type error for parameter options (Error processing url: 
+Export failed: Type error for parameter options (Error processing url:
 Error: Access denied for URL data:text/plaincharset=utf-8;base64,...)
 ```
 
 ### Root Cause
+
 The data URL encoding on line 203 of `popup.js` used a deprecated pattern:
+
 ```javascript
 const base64Data = btoa(unescape(encodeURIComponent(logText)));
 ```
@@ -37,10 +41,11 @@ This caused three critical issues:
 3. **Data URL Malformation**: Corrupted the format string itself, producing:
    - **Broken**: `data:text/plaincharset=utf-8;base64,...`
    - **Expected**: `data:text/plain;charset=utf-8;base64,...`
-   
+
    Notice the missing semicolon between `plain` and `charset`!
 
 ### Impact
+
 - 100% failure rate for log export feature
 - Firefox rejected all data URLs with "Access denied" error
 - Users unable to export debug logs for troubleshooting
@@ -114,6 +119,7 @@ function utf8ToBase64(str) {
 **Location:** `popup.js`, lines 245-256
 
 **Before (Broken):**
+
 ```javascript
 console.log(`[Popup] Exporting to: ${filename}`);
 
@@ -125,6 +131,7 @@ console.log(`[Popup] Created data URL (length: ${dataUrl.length} chars)`);
 ```
 
 **After (Fixed):**
+
 ```javascript
 console.log(`[Popup] Exporting to: ${filename}`);
 console.log(`[Popup] Log text size: ${logText.length} characters`);
@@ -179,12 +186,12 @@ The modern approach using `TextEncoder`:
 
 ### Browser Support
 
-| Browser | TextEncoder | String.fromCharCode | btoa() |
-|---------|-------------|---------------------|--------|
-| Firefox 18+ | ✅ | ✅ | ✅ |
-| Chrome 38+ | ✅ | ✅ | ✅ |
-| Safari 10.1+ | ✅ | ✅ | ✅ |
-| Edge 79+ | ✅ | ✅ | ✅ |
+| Browser      | TextEncoder | String.fromCharCode | btoa() |
+| ------------ | ----------- | ------------------- | ------ |
+| Firefox 18+  | ✅          | ✅                  | ✅     |
+| Chrome 38+   | ✅          | ✅                  | ✅     |
+| Safari 10.1+ | ✅          | ✅                  | ✅     |
+| Edge 79+     | ✅          | ✅                  | ✅     |
 
 **Target:** Firefox/Zen Browser → ✅ **Fully supported**
 
@@ -193,12 +200,14 @@ The modern approach using `TextEncoder`:
 ## Performance Comparison
 
 ### Deprecated Method
+
 - **Speed**: ~5ms for 35KB text
 - **Reliability**: ~60% success rate (fails with Unicode)
 - **Memory**: Standard
 - **Issues**: Character corruption, data URL malformation
 
 ### Modern Method
+
 - **Speed**: ~8ms for 35KB text (+3ms)
 - **Reliability**: 100% success rate
 - **Memory**: Standard (chunking prevents overflow)
@@ -211,6 +220,7 @@ The modern approach using `TextEncoder`:
 ## Testing & Validation
 
 ### Build Verification
+
 ```bash
 ✓ npm run lint    # No new linting errors
 ✓ npm run build   # Build successful
@@ -240,12 +250,14 @@ The modern approach using `TextEncoder`:
 ### Expected Console Output
 
 **Before fix:**
+
 ```
 [Popup] Created data URL (length: 101429 chars)
-❌ [Popup] Export failed: Error: Type error for parameter options 
+❌ [Popup] Export failed: Error: Type error for parameter options
 ```
 
 **After fix:**
+
 ```
 [Popup] Log text size: 34567 characters
 [utf8ToBase64] Input string: 34567 characters
@@ -261,15 +273,18 @@ The modern approach using `TextEncoder`:
 ## Migration Notes
 
 ### Breaking Changes
+
 **None.** This is a drop-in replacement with 100% backward compatibility.
 
 ### What Changed
+
 - **Removed**: Deprecated `btoa(unescape(encodeURIComponent()))` pattern
 - **Added**: Modern `utf8ToBase64()` helper function
 - **Added**: Enhanced debug logging for encoding process
 - **Added**: Chunking support for large files
 
 ### Impact on Users
+
 - ✅ Log export now works reliably (was 100% broken)
 - ✅ Handles all Unicode characters correctly
 - ✅ Supports larger log files (100KB+)
@@ -282,6 +297,7 @@ The modern approach using `TextEncoder`:
 ### Potential Enhancements
 
 1. **File Size Check** (Optional)
+
    ```javascript
    const estimatedSize = logText.length * 1.33;
    if (estimatedSize > 10 * 1024 * 1024) {
@@ -290,6 +306,7 @@ The modern approach using `TextEncoder`:
    ```
 
 2. **Native Uint8Array.toBase64()** (Firefox 133+, Chrome 130+)
+
    ```javascript
    // Future optimization when browser support is universal
    function utf8ToBase64Native(str) {
@@ -309,12 +326,14 @@ The modern approach using `TextEncoder`:
 ## References
 
 ### Documentation
+
 - [MDN: TextEncoder API](https://developer.mozilla.org/en-US/docs/Web/API/TextEncoder)
 - [MDN: Data URLs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URLs)
 - [MDN: btoa() Function](https://developer.mozilla.org/en-US/docs/Web/API/btoa)
 - [MDN: Why unescape() is deprecated](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/unescape)
 
 ### Related Issues
+
 - Original bug report: `docs/manual/1.5.9 docs/data-url-export-fix-v1594.md`
 - v1.5.9.3: Fixed "No logs found" issue (console interceptor)
 - v1.5.9.2: Fixed content script log capture
@@ -329,6 +348,7 @@ The modern approach using `TextEncoder`:
 The data URL export feature now works reliably with modern, standards-compliant UTF-8 encoding. The deprecated `btoa(unescape(encodeURIComponent()))` pattern has been replaced with `TextEncoder` API, eliminating character corruption and data URL malformation issues.
 
 **Key Achievements:**
+
 - ✅ 100% reliable log export (was 100% broken)
 - ✅ Proper Unicode character handling
 - ✅ Support for large log files (100KB+)

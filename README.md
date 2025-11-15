@@ -15,8 +15,8 @@ panel optimized for Zen Browser.
 
 **🐛 Critical Bug Fix: Data URL Export Encoding**
 
-This release fixes the critical log export bug where the "Export Console Logs" 
-button would fail with "Access denied for URL" error due to corrupted data URL 
+This release fixes the critical log export bug where the "Export Console Logs"
+button would fail with "Access denied for URL" error due to corrupted data URL
 encoding.
 
 **Critical Fix:**
@@ -30,7 +30,7 @@ encoding.
 
 **Root Cause Analysis:**
 
-The log export failed because the deprecated `btoa(unescape(encodeURIComponent()))` 
+The log export failed because the deprecated `btoa(unescape(encodeURIComponent()))`
 encoding pattern corrupted Unicode characters:
 
 1. The `unescape()` function is deprecated since ES5 (2009)
