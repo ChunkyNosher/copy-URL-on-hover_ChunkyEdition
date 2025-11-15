@@ -1,4 +1,5 @@
 # Export Console Logs Button Implementation Guide
+
 **copy-URL-on-hover Extension v1.5.9**
 
 **Issue:** Export Logs button missing from Advanced tab in popup settings  
@@ -22,6 +23,7 @@
 ### ✅ What's Already Implemented (v1.5.9)
 
 **File: `src/utils/debug.js`**
+
 - ✅ `LOG_BUFFER` array to store logs (max 5000 entries)
 - ✅ `addToBuffer()` function to capture all log types
 - ✅ `exportLogs()` function with dual download methods
@@ -30,20 +32,24 @@
 - ✅ All debug, error, warn, info functions enhanced with buffering
 
 **File: `background.js`**
+
 - ✅ `BACKGROUND_LOG_BUFFER` array (max 2000 entries)
 - ✅ Console method overrides to capture background logs
 - ✅ `GET_BACKGROUND_LOGS` message handler (line ~115-118)
 
 **File: `manifest.json`**
+
 - ✅ `downloads` permission added
 
 ### ❌ What's Missing
 
 **File: `popup.html`**
+
 - ❌ Export Logs button in Advanced tab
 - ❌ Button styling/layout
 
 **File: `popup.js`**
+
 - ❌ Import statement for `exportLogs()` function
 - ❌ Event listener for export button
 - ❌ Error handling for export failures
@@ -80,6 +86,7 @@ According to MDN documentation[171][187]:
 The `exportLogs()` function is defined in `src/utils/debug.js`, which gets compiled into `content.js`. However:
 
 **❌ WRONG:** `popup.js` trying to import from content script:
+
 ```javascript
 // This will NOT work - different contexts!
 import { exportLogs } from './src/utils/debug.js';
@@ -94,6 +101,7 @@ import { exportLogs } from './src/utils/debug.js';
 ### Solution Architecture
 
 We'll implement the export functionality **directly in `popup.js`** since:
+
 - Popup has access to `browser.downloads` API[143]
 - Popup can request logs from both content scripts and background via messaging[170]
 - No module import issues
@@ -133,8 +141,8 @@ We'll implement the export functionality **directly in `popup.js`** since:
     <label>Quick Tab Position Update Rate (Hz):</label>
     <input type="text" id="quickTabUpdateRate" placeholder="360" value="360" />
     <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
-      Higher values (e.g., 360) provide smoother dragging on high refresh rate monitors.
-      Lower values use less CPU.
+      Higher values (e.g., 360) provide smoother dragging on high refresh rate monitors. Lower
+      values use less CPU.
     </small>
   </div>
 
@@ -171,8 +179,8 @@ We'll implement the export functionality **directly in `popup.js`** since:
       🗑️ Clear Quick Tab Storage
     </button>
     <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
-      This will clear all saved Quick Tab positions and state from browser storage. Use this
-      if Quick Tabs are behaving unexpectedly.
+      This will clear all saved Quick Tab positions and state from browser storage. Use this if
+      Quick Tabs are behaving unexpectedly.
     </small>
   </div>
 
@@ -196,14 +204,14 @@ We'll implement the export functionality **directly in `popup.js`** since:
       📥 Export Console Logs
     </button>
     <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
-      Download all extension console logs as a .txt file for debugging or support.
-      File includes version number and timestamp.
+      Download all extension console logs as a .txt file for debugging or support. File includes
+      version number and timestamp.
     </small>
   </div>
 
   <div class="info-box">
-    <strong>Debug Mode:</strong> When enabled, detailed logs will appear in the browser
-    console (F12). Useful for troubleshooting.
+    <strong>Debug Mode:</strong> When enabled, detailed logs will appear in the browser console
+    (F12). Useful for troubleshooting.
   </div>
 </div>
 ```
@@ -213,11 +221,11 @@ We'll implement the export functionality **directly in `popup.js`** since:
 ```css
 /* Export Logs button hover state */
 #exportLogsBtn:hover {
-  background: #1976D2;
+  background: #1976d2;
 }
 
 #exportLogsBtn:active {
-  background: #1565C0;
+  background: #1565c0;
 }
 
 #exportLogsBtn:disabled {
@@ -228,7 +236,7 @@ We'll implement the export functionality **directly in `popup.js`** since:
 
 /* Success state for export button */
 #exportLogsBtn.success {
-  background: #4CAF50 !important;
+  background: #4caf50 !important;
 }
 
 /* Error state for export button */
@@ -406,56 +414,56 @@ async function exportAllLogs(version) {
 Find the `document.addEventListener('DOMContentLoaded', function () {` section and add this code BEFORE the closing `});`:
 
 ```javascript
-  // ==================== EXPORT LOGS BUTTON ====================
-  // Export logs button event listener
-  const exportLogsBtn = document.getElementById('exportLogsBtn');
-  if (exportLogsBtn) {
-    exportLogsBtn.addEventListener('click', async () => {
-      const originalText = exportLogsBtn.textContent;
-      const originalBg = exportLogsBtn.style.backgroundColor;
+// ==================== EXPORT LOGS BUTTON ====================
+// Export logs button event listener
+const exportLogsBtn = document.getElementById('exportLogsBtn');
+if (exportLogsBtn) {
+  exportLogsBtn.addEventListener('click', async () => {
+    const originalText = exportLogsBtn.textContent;
+    const originalBg = exportLogsBtn.style.backgroundColor;
 
-      try {
-        // Disable button during export
-        exportLogsBtn.disabled = true;
-        exportLogsBtn.textContent = '⏳ Exporting...';
+    try {
+      // Disable button during export
+      exportLogsBtn.disabled = true;
+      exportLogsBtn.textContent = '⏳ Exporting...';
 
-        // Get version from manifest
-        const manifest = browser.runtime.getManifest();
-        const version = manifest.version;
+      // Get version from manifest
+      const manifest = browser.runtime.getManifest();
+      const version = manifest.version;
 
-        // Export all logs
-        await exportAllLogs(version);
+      // Export all logs
+      await exportAllLogs(version);
 
-        // Show success feedback
-        exportLogsBtn.textContent = '✓ Logs Exported!';
-        exportLogsBtn.classList.add('success');
+      // Show success feedback
+      exportLogsBtn.textContent = '✓ Logs Exported!';
+      exportLogsBtn.classList.add('success');
 
-        // Reset after 2 seconds
-        setTimeout(() => {
-          exportLogsBtn.textContent = originalText;
-          exportLogsBtn.style.backgroundColor = originalBg;
-          exportLogsBtn.classList.remove('success');
-          exportLogsBtn.disabled = false;
-        }, 2000);
-      } catch (error) {
-        // Show error feedback
-        exportLogsBtn.textContent = '✗ Export Failed';
-        exportLogsBtn.classList.add('error');
+      // Reset after 2 seconds
+      setTimeout(() => {
+        exportLogsBtn.textContent = originalText;
+        exportLogsBtn.style.backgroundColor = originalBg;
+        exportLogsBtn.classList.remove('success');
+        exportLogsBtn.disabled = false;
+      }, 2000);
+    } catch (error) {
+      // Show error feedback
+      exportLogsBtn.textContent = '✗ Export Failed';
+      exportLogsBtn.classList.add('error');
 
-        // Show error message in status
-        showStatus(`Export failed: ${error.message}`, false);
+      // Show error message in status
+      showStatus(`Export failed: ${error.message}`, false);
 
-        // Reset after 3 seconds
-        setTimeout(() => {
-          exportLogsBtn.textContent = originalText;
-          exportLogsBtn.style.backgroundColor = originalBg;
-          exportLogsBtn.classList.remove('error');
-          exportLogsBtn.disabled = false;
-        }, 3000);
-      }
-    });
-  }
-  // ==================== END EXPORT LOGS BUTTON ====================
+      // Reset after 3 seconds
+      setTimeout(() => {
+        exportLogsBtn.textContent = originalText;
+        exportLogsBtn.style.backgroundColor = originalBg;
+        exportLogsBtn.classList.remove('error');
+        exportLogsBtn.disabled = false;
+      }, 3000);
+    }
+  });
+}
+// ==================== END EXPORT LOGS BUTTON ====================
 ```
 
 ---
@@ -488,7 +496,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       }
       return true; // Keep message channel open for async response
     }
-    
+
     // ... existing message handlers
   });
 }
@@ -504,12 +512,14 @@ if (typeof browser !== 'undefined' && browser.runtime) {
 ### Issue 1: `exportLogs()` in debug.js Won't Work from Popup ❌
 
 **Problem:** The current `exportLogs()` function in `src/utils/debug.js` uses:
+
 ```javascript
 const link = document.createElement('a');
 document.body.appendChild(link);
 ```
 
-**Why it fails:** 
+**Why it fails:**
+
 - When called from popup context, `document.body` refers to popup's body
 - The Blob URL download via `<a>` tag method works in popup
 - BUT the function tries to get logs from content script context, which doesn't work cross-context
@@ -523,6 +533,7 @@ document.body.appendChild(link);
 **File:** `background.js` (lines ~115-118)
 
 **Current implementation:**
+
 ```javascript
 // Handle log export requests from popup
 if (message.action === 'GET_BACKGROUND_LOGS') {
@@ -550,11 +561,13 @@ if (message.action === 'GET_BACKGROUND_LOGS') {
 **File:** `src/content.js`
 
 The file already imports from `./utils/debug.js`:
+
 ```javascript
 import { debug, enableDebug } from './utils/debug.js';
 ```
 
 **Update to:**
+
 ```javascript
 import { debug, enableDebug, getLogBuffer } from './utils/debug.js';
 ```
@@ -568,11 +581,13 @@ This adds `getLogBuffer` to the imports for use in the message handler.
 ### Test 1: Verify Export Button Appears
 
 **Steps:**
+
 1. Load extension in Firefox
 2. Click extension icon to open popup
 3. Navigate to "Advanced" tab
 
 **Expected:**
+
 - ✅ Blue "📥 Export Console Logs" button visible
 - ✅ Button positioned below "Clear Quick Tab Storage" button
 - ✅ Helper text explaining the feature is visible
@@ -584,11 +599,13 @@ This adds `getLogBuffer` to the imports for use in the message handler.
 ### Test 2: Verify Button Functionality
 
 **Steps:**
+
 1. Use extension normally (hover links, create Quick Tabs, etc.)
 2. Open popup → Advanced tab
 3. Click "📥 Export Console Logs" button
 
 **Expected:**
+
 - ✅ Button changes to "⏳ Exporting..."
 - ✅ Button becomes disabled during export
 - ✅ Firefox download dialog appears
@@ -601,10 +618,12 @@ This adds `getLogBuffer` to the imports for use in the message handler.
 ### Test 3: Verify Log File Contents
 
 **Steps:**
+
 1. Export logs
 2. Open downloaded `.txt` file
 
 **Expected file structure:**
+
 ```
 ================================================================================
 Copy URL on Hover - Extension Console Logs
@@ -632,6 +651,7 @@ End of Logs
 ```
 
 **Verify:**
+
 - ✅ Header includes correct version (1.5.9)
 - ✅ Export timestamp is accurate
 - ✅ Total log count matches actual logs
@@ -646,11 +666,13 @@ End of Logs
 **Scenario 1: No logs available**
 
 **Steps:**
+
 1. Fresh Firefox profile with extension installed
 2. Open popup immediately
 3. Click Export Logs button
 
 **Expected:**
+
 - ✅ Button shows "✗ Export Failed"
 - ✅ Error message in status: "Export failed: No logs found..."
 - ✅ Button resets after 3 seconds
@@ -659,10 +681,12 @@ End of Logs
 **Scenario 2: Content script not loaded**
 
 **Steps:**
+
 1. Open popup on restricted page (e.g., about:config)
 2. Click Export Logs button
 
 **Expected:**
+
 - ✅ Export still succeeds with background logs only
 - ✅ Console shows warning about content script logs unavailable
 - ✅ File contains background logs
@@ -670,10 +694,12 @@ End of Logs
 **Scenario 3: Downloads permission revoked**
 
 **Steps:**
+
 1. Remove `downloads` permission from manifest temporarily
 2. Try to export logs
 
 **Expected:**
+
 - ✅ Export fails gracefully
 - ✅ Error shown to user
 - ✅ Console shows clear error message
@@ -683,6 +709,7 @@ End of Logs
 ### Test 5: Cross-Context Log Collection
 
 **Steps:**
+
 1. Enable debug mode in Advanced settings
 2. Perform various actions:
    - Hover over links
@@ -694,6 +721,7 @@ End of Logs
 4. Export logs
 
 **Expected:**
+
 - ✅ Logs from content script actions (hover, Quick Tab creation)
 - ✅ Logs from background script (storage sync, broadcast messages)
 - ✅ All logs merged and sorted chronologically
@@ -704,17 +732,19 @@ End of Logs
 ### Test 6: Filename Format Validation
 
 **Expected format:**
+
 ```
 copy-url-extension-logs_v1.5.9_2025-11-15T00-25-30.txt
 ```
 
 **Validation checklist:**
+
 - ✅ Prefix: `copy-url-extension-logs_`
 - ✅ Version: `v1.5.9` (matches manifest.json)
 - ✅ Underscore separator: `_`
 - ✅ Timestamp: ISO 8601 format with hyphens replacing colons
 - ✅ Extension: `.txt`
-- ✅ No invalid filename characters (/, :, *, ?, ", <, >, |)
+- ✅ No invalid filename characters (/, :, \*, ?, ", <, >, |)
 
 ---
 
@@ -725,6 +755,7 @@ copy-url-extension-logs_v1.5.9_2025-11-15T00-25-30.txt
 **Open Browser Console (Ctrl+Shift+J) to debug:**
 
 **When clicking Export button:**
+
 ```
 [Popup] Starting log export...
 [Popup] Collected 45 background logs
@@ -736,6 +767,7 @@ copy-url-extension-logs_v1.5.9_2025-11-15T00-25-30.txt
 ```
 
 **If errors occur:**
+
 ```
 [Popup] Could not retrieve content script logs: Error: Could not establish connection
 [Popup] Export failed: Error: No logs found...
@@ -788,19 +820,19 @@ If `browser.downloads.download()` fails for any reason, you can add a fallback u
 
 ### Files Modified
 
-| File | Changes | Lines Added |
-|------|---------|-------------|
-| `popup.html` | Add Export Logs button + CSS | ~45 lines |
-| `popup.js` | Add export functions + event listener | ~150 lines |
-| `src/content.js` | Add GET_CONTENT_LOGS handler | ~20 lines |
+| File             | Changes                               | Lines Added |
+| ---------------- | ------------------------------------- | ----------- |
+| `popup.html`     | Add Export Logs button + CSS          | ~45 lines   |
+| `popup.js`       | Add export functions + event listener | ~150 lines  |
+| `src/content.js` | Add GET_CONTENT_LOGS handler          | ~20 lines   |
 
 ### Existing Files (No Changes Needed)
 
-| File | Status | Reason |
-|------|--------|--------|
+| File                 | Status      | Reason                                          |
+| -------------------- | ----------- | ----------------------------------------------- |
 | `src/utils/debug.js` | ✅ Complete | All log buffering functions already implemented |
-| `background.js` | ✅ Complete | GET_BACKGROUND_LOGS handler already exists |
-| `manifest.json` | ✅ Complete | Downloads permission already added |
+| `background.js`      | ✅ Complete | GET_BACKGROUND_LOGS handler already exists      |
+| `manifest.json`      | ✅ Complete | Downloads permission already added              |
 
 ---
 
@@ -820,12 +852,14 @@ If `browser.downloads.download()` fails for any reason, you can add a fallback u
 ### Context-Aware Design
 
 **Popup Context (popup.js):**
+
 - ✅ Has access to `browser.downloads` API[143][185]
 - ✅ Can send messages to background script[170]
 - ✅ Can send messages to content scripts[184]
 - ✅ Can access `browser.runtime.getManifest()`[173]
 
 **Message Passing Flow:**
+
 ```
 User clicks button in popup.js
     ↓
@@ -845,6 +879,7 @@ User saves file
 ```
 
 This architecture respects Firefox's security model where:
+
 - Content scripts cannot access `downloads` API[144]
 - Popup scripts CAN access `downloads` API[143]
 - Cross-context communication happens via `browser.runtime.sendMessage()`[170][184]
@@ -858,6 +893,7 @@ This architecture respects Firefox's security model where:
 **1. Add Log Filtering UI**
 
 Add checkboxes in popup to filter log types before export:
+
 ```html
 <div class="setting-group">
   <label>Log Types to Export:</label>
@@ -885,6 +921,7 @@ Add checkboxes in popup to filter log types before export:
 **2. Add Log Count Display**
 
 Show log count before exporting:
+
 ```javascript
 const logCount = backgroundLogs.length + contentLogs.length;
 exportLogsBtn.textContent = `📥 Export Logs (${logCount})`;
@@ -899,17 +936,20 @@ Automatically export logs when critical errors occur (implement in debug.js).
 ## References
 
 **Firefox Extension APIs:**
+
 - [MDN: browser.downloads.download()][140][143]
 - [MDN: downloads API][143][185]
 - [MDN: Content Scripts][146]
 - [MDN: runtime.sendMessage()][170][184]
 
 **Context Separation:**
+
 - [Stack Overflow: Firefox popup accessing content][171]
 - [Stack Overflow: downloads API not in content scripts][144]
 - [DEV: Chrome extension context separation][187]
 
 **Implementation Examples:**
+
 - [Calling content script from popup][170]
 - [Popup to background messaging][184]
 
