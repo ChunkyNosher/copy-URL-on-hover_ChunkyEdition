@@ -132,24 +132,24 @@ async function exportAllLogs(version) {
 
     console.log(`[Popup] Exporting to: ${filename}`);
 
-    // Create blob
-    const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
-    const blobUrl = URL.createObjectURL(blob);
+    // ✅ FIX: Use Data URL instead of Blob URL to avoid race condition
+    // Data URLs are immune to revocation issues and work reliably in Firefox
+    // Reference: Mozilla Bug #1271345 and MDN downloads.download() documentation
+    const base64Data = btoa(unescape(encodeURIComponent(logText)));
+    const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
+
+    console.log(`[Popup] Created data URL (length: ${dataUrl.length} chars)`);
 
     // Download via browser.downloads API (popup has access to this)
     await browser.downloads.download({
-      url: blobUrl,
+      url: dataUrl,
       filename: filename,
       saveAs: true // Prompt user for save location
     });
 
-    console.log('[Popup] Export successful via browser.downloads API');
+    console.log('[Popup] Export successful via data URL method');
 
-    // Clean up blob URL after short delay
-    setTimeout(() => {
-      URL.revokeObjectURL(blobUrl);
-      console.log('[Popup] Cleaned up blob URL');
-    }, 1000);
+    // No cleanup needed - data URLs are strings, not object references
   } catch (error) {
     console.error('[Popup] Export failed:', error);
     throw error;

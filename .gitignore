@@ -5,6 +5,9 @@ node_modules/
 *.xpi
 *.zip
 
+# Test artifacts
+coverage/
+
 # Development
 .DS_Store
 .vscode/
