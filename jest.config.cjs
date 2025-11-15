@@ -8,6 +8,10 @@ module.exports = {
   // Test match patterns
   testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
 
+  moduleNameMapper: {
+    '^webextension-polyfill$': '<rootDir>/tests/__mocks__/webextension-polyfill.js'
+  },
+  
   transformIgnorePatterns: [
     'node_modules/(?!(webextension-polyfill|eventemitter3|webext-storage-cache|webext-options-sync|lodash-es)/)'
   ],
