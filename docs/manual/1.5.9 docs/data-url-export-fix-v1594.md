@@ -7,10 +7,6 @@
 
 ---
 
-## Screenshot Analysis
-
-### Error Screenshot
-![Export Failed Error](attached_image:1)
 
 **Error message shown:**
 ```
@@ -27,9 +23,6 @@ plaincharset=utf-8for downloads.download
 4. ❌ Firefox rejects the URL as invalid
 
 ---
-
-### Browser Console Screenshot
-![Browser Console Logs](attached_image:2)
 
 **Console output analysis:**
 ```
