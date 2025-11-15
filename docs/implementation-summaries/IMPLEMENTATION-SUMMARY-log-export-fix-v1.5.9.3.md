@@ -10,6 +10,7 @@
 ## Problem Statement
 
 The "Export Console Logs" button in the extension popup was reporting "No logs found" even when:
+
 - Debug mode was enabled
 - Logs were visible in the browser console
 - Extension was being actively used
@@ -33,6 +34,7 @@ The log export system was not capturing `console.log()` calls from content scrip
 ### Evidence
 
 From user screenshots and testing:
+
 - Browser console showed 100+ messages like `[QuickTabsManager]`, `[Copy-URL-on-Hover]`, etc.
 - All messages used direct `console.log()` calls
 - `getLogBuffer()` from debug.js returned empty array
@@ -43,7 +45,7 @@ From user screenshots and testing:
 ```javascript
 // debug.js only captures these specific function calls:
 export function debug(...args) {
-  addToBuffer('DEBUG', ...args);  // ✅ Captured
+  addToBuffer('DEBUG', ...args); // ✅ Captured
   console.log('[DEBUG]', ...args); // Direct console call (not captured)
 }
 
@@ -60,6 +62,7 @@ console.log('[Copy-URL-on-Hover] Script loaded!'); // ❌ NOT captured
 **Created:** `src/utils/console-interceptor.js`
 
 **Key Features:**
+
 - Overrides all console methods: `log`, `error`, `warn`, `info`, `debug`
 - Captures all console calls to a buffer (max 5000 entries, FIFO)
 - Stores original console methods to avoid infinite loops
@@ -71,9 +74,10 @@ console.log('[Copy-URL-on-Hover] Script loaded!'); // ❌ NOT captured
   - `restoreConsole()` - Restores original console (for testing)
 
 **Implementation Details:**
+
 ```javascript
 // Override example (simplified)
-console.log = function(...args) {
+console.log = function (...args) {
   addToLogBuffer('LOG', args); // Capture to buffer
   originalConsole.log.apply(console, args); // Call original
 };
@@ -84,6 +88,7 @@ console.log = function(...args) {
 **Modified:** `src/content.js`
 
 **Critical Change - Import Order:**
+
 ```javascript
 // ✅ MUST be imported FIRST to capture all logs
 import { getConsoleLogs, getBufferStats } from './utils/console-interceptor.js';
@@ -93,6 +98,7 @@ console.log('[Copy-URL-on-Hover] Script loaded!'); // ✅ Now captured!
 ```
 
 **Updated GET_CONTENT_LOGS Handler:**
+
 ```javascript
 // OLD: Only debug.js logs (empty)
 const logs = getLogBuffer();
@@ -113,19 +119,23 @@ sendResponse({ logs: allLogs, stats: stats });
 **Modified:** `popup.js`
 
 **Enhanced Error Messages:**
+
 ```javascript
 if (allLogs.length === 0) {
   // Check specific scenarios
   if (tabs[0].url.startsWith('about:')) {
     throw new Error('Cannot capture logs from browser internal pages...');
   } else if (contentLogs.length === 0) {
-    throw new Error(`Only found ${backgroundLogs.length} background logs. Content script may not be loaded...`);
+    throw new Error(
+      `Only found ${backgroundLogs.length} background logs. Content script may not be loaded...`
+    );
   }
   // More specific error messages...
 }
 ```
 
 **Added Debug Logging:**
+
 - Active tab URL and ID
 - Log count breakdown by source (background vs content)
 - Log type distribution (LOG, ERROR, WARN, INFO, DEBUG)
@@ -134,6 +144,7 @@ if (allLogs.length === 0) {
 ### Phase 4: Version Updates
 
 **Updated Files:**
+
 - `manifest.json`: 1.5.9 → 1.5.9.3
 - `package.json`: 1.5.9 → 1.5.9.3
 - `README.md`: Version header, footer, and "What's New" section
@@ -187,7 +198,7 @@ console.log('Message 2'); // Captured
 ✅ **Build:** Succeeds without errors  
 ✅ **Tests:** All 68 tests pass  
 ✅ **ESLint:** 0 errors (warnings only)  
-✅ **CodeQL:** 0 security alerts  
+✅ **CodeQL:** 0 security alerts
 
 ### Verification Checklist
 
@@ -196,17 +207,19 @@ console.log('Message 2'); // Captured
 ✅ `getConsoleLogs()` function available in bundled code  
 ✅ GET_CONTENT_LOGS handler merges both log sources  
 ✅ Version numbers synchronized across all files  
-✅ Documentation updated  
+✅ Documentation updated
 
 ### Expected Behavior
 
 **Before Fix:**
+
 1. User clicks "Export Console Logs"
 2. Popup collects 0 content logs
 3. Error: "No logs found"
 4. User cannot debug issues
 
 **After Fix:**
+
 1. User clicks "Export Console Logs"
 2. Popup collects 100+ content logs + background logs
 3. Download prompt appears
@@ -217,9 +230,11 @@ console.log('Message 2'); // Captured
 ## Files Changed
 
 ### New Files
+
 - `src/utils/console-interceptor.js` (167 lines) - Console interception module
 
 ### Modified Files
+
 - `src/content.js` - Import console interceptor first, update log handler
 - `popup.js` - Improved error messages, add debug logging
 - `manifest.json` - Version 1.5.9.3
@@ -229,6 +244,7 @@ console.log('Message 2'); // Captured
 - `.github/agents/bug-architect.md` - Version, console interceptor docs
 
 ### Build Output
+
 - `dist/content.js` - Rebuilt with console interceptor (~179KB)
 - `dist/manifest.json` - Version 1.5.9.3
 - `dist/popup.js` - Updated error messages
@@ -238,48 +254,55 @@ console.log('Message 2'); // Captured
 ## Performance Impact
 
 ### Memory
+
 - **Console Interceptor Buffer:** ~1-2MB for 5000 logs
 - **Negligible Impact:** <1% of typical extension memory usage
 
 ### CPU
+
 - **Console Override:** <0.1ms per log
 - **Export Operation:** ~50ms for 1000 logs
 - **No Noticeable Lag:** Browser performance unaffected
 
 ### Browser Compatibility
+
 ✅ Firefox 49+  
 ✅ Firefox ESR  
 ✅ Zen Browser (Firefox fork)  
-✅ Chrome/Chromium (with Manifest V2)  
+✅ Chrome/Chromium (with Manifest V2)
 
 ### Known Limitations
+
 ❌ Cannot capture logs from `about:*` pages (browser security)  
 ❌ Cannot capture logs from `view-source:` pages  
 ❌ Cannot capture logs from PDF viewer  
 ✅ Works on ALL regular webpages  
-✅ Works in incognito/private browsing  
+✅ Works in incognito/private browsing
 
 ---
 
 ## Benefits
 
 ### For Users
+
 ✅ Log export now works reliably  
 ✅ Better error messages guide users to regular webpages  
 ✅ Complete log capture for debugging  
-✅ No manual work required  
+✅ No manual work required
 
 ### For Developers
+
 ✅ Comprehensive logs for troubleshooting  
 ✅ Automatic capture - no code changes needed  
 ✅ Future-proof - new logs automatically captured  
-✅ Easy to maintain - single interceptor module  
+✅ Easy to maintain - single interceptor module
 
 ### For Support
+
 ✅ Users can export logs when reporting issues  
 ✅ Complete picture of extension activity  
 ✅ Timestamps for correlating events  
-✅ Both content and background logs in one file  
+✅ Both content and background logs in one file
 
 ---
 
@@ -288,18 +311,20 @@ console.log('Message 2'); // Captured
 ### Phase 4: Log Persistence (Not Implemented)
 
 **Potential Feature:**
+
 - Save logs to `browser.storage.session` for survival across page reloads
 - Restore logs when content script is reinjected
 - Periodic save every 5 seconds
 - Save on beforeunload event
 
 **Benefits:**
+
 - Logs not lost on page reload
 - Debugging after crashes
 - Historical log data
 
 **Complexity:** Medium (2-3 hours)  
-**Priority:** Low (not required for core functionality)  
+**Priority:** Low (not required for core functionality)
 
 See `log-export-no-logs-fix.md` lines 580-725 for full implementation guide.
 
@@ -323,6 +348,6 @@ The solution is production-ready, thoroughly tested, and follows industry-standa
 **Implementation Time:** ~2 hours  
 **Complexity:** Medium  
 **Robustness:** Maximum  
-**Risk:** Minimal (console override is safe and reversible)  
+**Risk:** Minimal (console override is safe and reversible)
 
 **Status:** ✅ READY FOR DEPLOYMENT
