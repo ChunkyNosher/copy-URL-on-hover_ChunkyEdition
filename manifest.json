@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Copy URL on Hover Custom",
-  "version": "1.5.8.16",
+  "version": "1.5.9",
   "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with navigation, minimize, and persistent panel manager.",
 
   "permissions": [
@@ -11,7 +11,8 @@
     "webRequestBlocking",
     "<all_urls>",
     "contextualIdentities",
-    "cookies"
+    "cookies",
+    "downloads"
   ],
 
   "commands": {

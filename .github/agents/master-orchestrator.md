@@ -53,7 +53,7 @@ workflows for complex tasks. All work must be optimized for **Firefox** and
 - **Validate that current APIs (clipboard, storage, webRequest) still function
   correctly**
 
-## Extension Architecture Context (v1.5.8.16+)
+## Extension Architecture Context (v1.5.9+)
 
 **Current Technology Stack - CRITICAL FOR ROUTING:**
 
@@ -665,9 +665,8 @@ Failure to update documentation results in:
 
 1. **Document all bugs/features** in a markdown file in `docs/manual/` or
    `docs/implementation-summaries/`
-2. **DO NOT create GitHub issues automatically** - User prefers to create issues
-   manually
-3. **DO NOT mark issues as completed** in checklists or documentation
+2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs and features
+3. **DO NOT mark issues as completed automatically** - The user will manually close issues when work is done
 4. **Provide a comprehensive list** of all bugs/features for user to review
 
 ### Required Documentation Format
