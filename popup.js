@@ -122,6 +122,51 @@ function generateLogFilename(version) {
 }
 
 /**
+ * Convert UTF-8 string to Base64 using modern TextEncoder API
+ * Handles large strings by chunking to avoid stack overflow
+ *
+ * This replaces the deprecated btoa(unescape(encodeURIComponent())) pattern
+ * which fails with Unicode characters and corrupts data URLs.
+ *
+ * @param {string} str - UTF-8 string to encode
+ * @returns {string} Base64-encoded string
+ * @throws {Error} If encoding fails
+ */
+function utf8ToBase64(str) {
+  try {
+    // Step 1: Encode string to UTF-8 bytes using TextEncoder
+    const encoder = new TextEncoder();
+    const utf8Bytes = encoder.encode(str);
+
+    console.log(`[utf8ToBase64] Input string: ${str.length} characters`);
+    console.log(`[utf8ToBase64] UTF-8 bytes: ${utf8Bytes.length} bytes`);
+
+    // Step 2: Convert Uint8Array to binary string using chunking
+    // This prevents "Maximum call stack size exceeded" error on large files
+    const CHUNK_SIZE = 0x8000; // 32KB chunks (optimal for performance)
+    let binaryString = '';
+
+    for (let i = 0; i < utf8Bytes.length; i += CHUNK_SIZE) {
+      const chunk = utf8Bytes.subarray(i, Math.min(i + CHUNK_SIZE, utf8Bytes.length));
+      binaryString += String.fromCharCode.apply(null, chunk);
+    }
+
+    // Step 3: Encode to Base64
+    const base64 = btoa(binaryString);
+
+    console.log(`[utf8ToBase64] Base64 output: ${base64.length} characters`);
+    console.log(
+      `[utf8ToBase64] Encoding efficiency: ${((base64.length / str.length) * 100).toFixed(1)}%`
+    );
+
+    return base64;
+  } catch (error) {
+    console.error('[utf8ToBase64] Encoding failed:', error);
+    throw new Error(`UTF-8 to Base64 encoding failed: ${error.message}`);
+  }
+}
+
+/**
  * Export all logs as downloadable .txt file
  * @param {string} version - Extension version
  * @returns {Promise<void>}
@@ -198,12 +243,17 @@ async function exportAllLogs(version) {
     const filename = generateLogFilename(version);
 
     console.log(`[Popup] Exporting to: ${filename}`);
+    console.log(`[Popup] Log text size: ${logText.length} characters`);
 
-    // Use Data URL method (from previous fix)
-    const base64Data = btoa(unescape(encodeURIComponent(logText)));
+    // ✅ MODERN SOLUTION: Use TextEncoder for proper UTF-8 encoding
+    // Replaces deprecated btoa(unescape(encodeURIComponent())) which corrupts Unicode
+    const base64Data = utf8ToBase64(logText);
+
+    // Create data URL with proper format
     const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
 
-    console.log(`[Popup] Created data URL (length: ${dataUrl.length} chars)`);
+    console.log(`[Popup] Data URL format: ${dataUrl.substring(0, 50)}...`);
+    console.log(`[Popup] Total data URL length: ${dataUrl.length} characters`);
 
     // Download
     await browserAPI.downloads.download({
@@ -212,7 +262,7 @@ async function exportAllLogs(version) {
       saveAs: true
     });
 
-    console.log('[Popup] Export successful via data URL method');
+    console.log('✓ [Popup] Export successful via data URL method');
   } catch (error) {
     console.error('[Popup] Export failed:', error);
     throw error;
