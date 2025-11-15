@@ -4,7 +4,7 @@
 **Version Fixed:** v1.5.9.4 (upcoming)  
 **Severity:** High  
 **Impact:** Core functionality broken (Export logs, Clear storage)  
-**Browsers Affected:** Firefox, Zen Browser  
+**Browsers Affected:** Firefox, Zen Browser
 
 ---
 
@@ -13,6 +13,7 @@
 Two critical features in the Advanced settings tab were completely broken:
 
 1. **"Export Console Logs" button** - Clicking it resulted in error:
+
    ```
    Export failed: can't access property "length", tabs is undefined
    ```
@@ -23,6 +24,7 @@ Two critical features in the Advanced settings tab were completely broken:
    ```
 
 Both errors prevented users from:
+
 - Exporting extension logs for debugging/support
 - Clearing Quick Tab storage when experiencing issues
 
@@ -70,6 +72,7 @@ This code attempted to create a browser API compatibility shim, but it had a fun
 ### Specific Failure Points
 
 **Export Console Logs (line 129):**
+
 ```javascript
 // This returns undefined instead of a Promise
 const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -79,6 +82,7 @@ if (tabs.length === 0) { ... }  // ❌ Error: can't access property "length", ta
 ```
 
 **Clear Quick Tabs Storage (line 523):**
+
 ```javascript
 // This returns undefined instead of a Promise
 browser.tabs.query({}).then(tabs => { ... })
@@ -98,7 +102,8 @@ Replaced the buggy initialization with proper browser API access:
 // Browser API compatibility shim for Firefox/Chrome cross-compatibility
 // Use global browser API if available (Firefox), otherwise fall back to chrome (Chrome)
 /* eslint-disable-next-line no-undef */
-const browserAPI = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
+const browserAPI =
+  typeof browser !== 'undefined' ? browser : typeof chrome !== 'undefined' ? chrome : null;
 
 // Verify browser API is available
 if (!browserAPI) {
@@ -126,15 +131,15 @@ if (!browserAPI) {
 
 Replaced all `browser.` references with `browserAPI.` throughout `popup.js`:
 
-| Original | Fixed |
-|----------|-------|
+| Original                      | Fixed                            |
+| ----------------------------- | -------------------------------- |
 | `browser.runtime.sendMessage` | `browserAPI.runtime.sendMessage` |
-| `browser.tabs.query` | `browserAPI.tabs.query` |
-| `browser.tabs.sendMessage` | `browserAPI.tabs.sendMessage` |
-| `browser.downloads.download` | `browserAPI.downloads.download` |
-| `browser.storage.local` | `browserAPI.storage.local` |
-| `browser.storage.sync` | `browserAPI.storage.sync` |
-| `browser.storage.session` | `browserAPI.storage.session` |
+| `browser.tabs.query`          | `browserAPI.tabs.query`          |
+| `browser.tabs.sendMessage`    | `browserAPI.tabs.sendMessage`    |
+| `browser.downloads.download`  | `browserAPI.downloads.download`  |
+| `browser.storage.local`       | `browserAPI.storage.local`       |
+| `browser.storage.sync`        | `browserAPI.storage.sync`        |
+| `browser.storage.session`     | `browserAPI.storage.session`     |
 | `browser.runtime.getManifest` | `browserAPI.runtime.getManifest` |
 
 ### Fixed Async/Await in Clear Storage
@@ -159,11 +164,13 @@ tabs.forEach(tab => {
 ## Testing Performed
 
 ✅ **Build & Lint:**
+
 - Extension builds successfully
 - ESLint passes with no new errors
 - All existing warnings preserved
 
 ✅ **Unit Tests:**
+
 - All 68 tests pass
 - No regressions introduced
 
@@ -265,6 +272,7 @@ For future reviewers/testers:
 ## Additional Notes
 
 This bug demonstrates the importance of:
+
 1. Thorough testing of cross-browser compatibility code
 2. Understanding JavaScript variable scoping and hoisting
 3. Using defensive programming practices
