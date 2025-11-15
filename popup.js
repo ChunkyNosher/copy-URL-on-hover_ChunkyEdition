@@ -225,9 +225,7 @@ async function exportAllLogs(version) {
       type: 'text/plain;charset=utf-8'
     });
 
-    console.log(
-      `[Popup] Blob created: ${blob.size} bytes (${(blob.size / 1024).toFixed(2)} KB)`
-    );
+    console.log(`[Popup] Blob created: ${blob.size} bytes (${(blob.size / 1024).toFixed(2)} KB)`);
 
     // Step 2: Create an Object URL (Blob URL) from the Blob
     // This creates an in-memory reference that Firefox trusts
