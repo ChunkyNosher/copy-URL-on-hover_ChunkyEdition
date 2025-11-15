@@ -1,9 +1,14 @@
 /**
  * Copy URL on Hover - Enhanced with Quick Tabs
- * Main Content Script Entry Point (Hybrid Architecture v1.5.8.10)
+ * Main Content Script Entry Point (Hybrid Architecture v1.5.9.3)
  *
  * This file serves as the main entry point and coordinates between modules.
  * URL handlers have been extracted to features/url-handlers/ for better maintainability.
+ *
+ * v1.5.9.3 Changes:
+ * - Added console interceptor for comprehensive log capture
+ * - Fixed log export "No logs found" issue by capturing all console.log() calls
+ * - Console interceptor must be imported FIRST to capture all subsequent logs
  *
  * v1.5.8.10 Changes:
  * - Implemented Hybrid Modular/EventBus Architecture (Architecture #10)
@@ -14,6 +19,9 @@
  * - Enhanced EventBus integration for all features
  * - Follows hybrid-architecture-implementation.md
  */
+
+// ✅ CRITICAL: Import console interceptor FIRST to capture all logs
+import { getConsoleLogs, getBufferStats } from './utils/console-interceptor.js';
 
 // CRITICAL: Early detection marker - must execute first
 console.log('[Copy-URL-on-Hover] Script loaded! @', new Date().toISOString());
@@ -514,14 +522,36 @@ if (typeof browser !== 'undefined' && browser.runtime) {
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'GET_CONTENT_LOGS') {
       console.log('[Content] Received GET_CONTENT_LOGS request');
+      
       try {
-        const logs = getLogBuffer();
-        console.log(`[Content] Sending ${logs.length} logs to popup`);
-        sendResponse({ logs: logs });
+        // ✅ NEW: Get logs from console interceptor (captures ALL console calls)
+        const consoleLogs = getConsoleLogs();
+        
+        // ✅ NEW: Also get logs from debug.js (if any code uses debug() functions)
+        const debugLogs = getLogBuffer();
+        
+        // ✅ NEW: Merge both sources
+        const allLogs = [...consoleLogs, ...debugLogs];
+        
+        // Sort by timestamp
+        allLogs.sort((a, b) => a.timestamp - b.timestamp);
+        
+        console.log(`[Content] Sending ${allLogs.length} logs to popup`);
+        console.log(`[Content] Console logs: ${consoleLogs.length}, Debug logs: ${debugLogs.length}`);
+        
+        // ✅ NEW: Get buffer stats for debugging
+        const stats = getBufferStats();
+        console.log(`[Content] Buffer stats:`, stats);
+        
+        sendResponse({ 
+          logs: allLogs,
+          stats: stats
+        });
       } catch (error) {
         console.error('[Content] Error getting log buffer:', error);
         sendResponse({ logs: [], error: error.message });
       }
+      
       return true; // Keep message channel open for async response
     }
   });

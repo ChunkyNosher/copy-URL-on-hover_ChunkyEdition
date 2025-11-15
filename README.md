@@ -1,6 +1,6 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.8.16** - A feature-rich Firefox/Zen Browser extension with
+**Version 1.5.9.3** - A feature-rich Firefox/Zen Browser extension with
 **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced
 Quick Tab management with Firefox Container support and Persistent Floating
 Panel Manager.
@@ -10,6 +10,53 @@ or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 Now with full Firefox Container integration and a persistent Quick Tabs Manager
 panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.9.3
+
+**🐛 Critical Bug Fix: Log Export "No Logs Found" Issue**
+
+This release fixes the critical log export bug where the "Export Console Logs" button
+would report "No logs found" even when debug mode was enabled and logs were visible
+in the browser console.
+
+**Critical Fix:**
+
+- ✅ **Log Export Issue FIXED** - Console log export now captures all logs
+  - Created new `console-interceptor.js` module that overrides all console methods
+  - Console interceptor captures ALL `console.log()`, `console.error()`, `console.warn()`, `console.info()`, and `console.debug()` calls
+  - Imported console interceptor FIRST in content.js to ensure all logs are captured
+  - Updated GET_CONTENT_LOGS handler to merge logs from both console interceptor and debug.js
+  - Added buffer statistics logging for debugging
+  - Improved error messages with actionable advice for users
+
+**Root Cause Analysis:**
+
+The log export system was not capturing `console.log()` calls from content scripts because:
+
+1. Background.js had console overrides (working correctly)
+2. Content.js used `console.log()` directly for all logging
+3. debug.js only captured calls to `debug()`, `debugError()`, etc. - NOT regular `console.log()`
+4. Content script had no console override, so regular console calls were not captured
+5. Result: Export found 0 content logs and threw "No logs found" error
+
+**Solution:**
+
+- Created comprehensive console interceptor module that overrides all console methods
+- Captures all console calls to a buffer (max 5000 entries)
+- Merges logs from both console interceptor and debug.js
+- Provides buffer statistics for debugging
+- Better error messages guide users to navigate to regular webpages
+
+**Technical Implementation:**
+
+- Console override must be imported FIRST to capture all subsequent logs
+- Uses original console methods to avoid infinite loops
+- Detects execution context (content-script, background, popup)
+- Automatic buffer size management with FIFO queue
+- Returns log copies to prevent mutation
+
+See [log-export-no-logs-fix.md](docs/manual/1.5.9%20docs/log-export-no-logs-fix.md) for
+detailed analysis and implementation guide.
 
 ## 🎉 What's New in v1.5.8.16
 
@@ -996,6 +1043,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.8.16  
-**Last Updated**: 2025-11-14  
+**Current Version**: 1.5.9.3  
+**Last Updated**: 2025-11-15  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
