@@ -88,19 +88,6 @@ const COLOR_INPUTS = [
   { textId: 'notifBorderColor', pickerId: 'notifBorderColorPicker', settingKey: 'notifBorderColor' }
 ];
 
-// Update color preview box (deprecated - now using native color input)
-function updateColorPreview(inputId, previewId) {
-  const input = document.getElementById(inputId);
-  const preview = document.getElementById(previewId);
-  if (input && preview) {
-    const settingKey = COLOR_DEFAULTS[inputId];
-    const defaultColor = settingKey ? DEFAULT_SETTINGS[settingKey] : DEFAULT_SETTINGS.tooltipColor;
-    const color = validateHexColor(input.value, defaultColor);
-    input.value = color;
-    preview.style.backgroundColor = color;
-  }
-}
-
 // Sync text input with color picker
 function syncColorInputs(textInput, colorPicker) {
   if (!textInput || !colorPicker) return;
