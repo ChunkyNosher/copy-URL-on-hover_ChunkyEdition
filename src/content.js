@@ -54,7 +54,7 @@ import { StateManager } from './core/state.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: state.js');
 import { EventBus, Events } from './core/events.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: events.js');
-import { debug, enableDebug } from './utils/debug.js';
+import { debug, enableDebug, getLogBuffer } from './utils/debug.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: debug.js');
 import { copyToClipboard, sendMessageToBackground } from './core/browser-api.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: browser-api.js from core');
@@ -507,6 +507,26 @@ function showNotification(message, type = 'info') {
     console.warn('[Content] Notification manager not initialized, skipping notification');
   }
 }
+
+// ==================== LOG EXPORT MESSAGE HANDLER ====================
+// Listen for log export requests from popup
+if (typeof browser !== 'undefined' && browser.runtime) {
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'GET_CONTENT_LOGS') {
+      console.log('[Content] Received GET_CONTENT_LOGS request');
+      try {
+        const logs = getLogBuffer();
+        console.log(`[Content] Sending ${logs.length} logs to popup`);
+        sendResponse({ logs: logs });
+      } catch (error) {
+        console.error('[Content] Error getting log buffer:', error);
+        sendResponse({ logs: [], error: error.message });
+      }
+      return true; // Keep message channel open for async response
+    }
+  });
+}
+// ==================== END LOG EXPORT MESSAGE HANDLER ====================
 
 // Export for testing and module access
 if (typeof window !== 'undefined') {
