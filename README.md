@@ -37,6 +37,7 @@ intentionally blocks data: URLs in the downloads.download() API.
 **Root Cause:**
 
 Firefox blocks data: URLs in `downloads.download()` for security reasons:
+
 - Data URLs inherit the extension's origin (security risk)
 - Blob URLs have null principal (safe by design)
 - Firefox intentionally rejects data: URLs to prevent security vulnerabilities
@@ -52,13 +53,13 @@ correctness. This is not a bug - it's intentional security by design.
 
 ```javascript
 // OLD (v1.5.9.4 - BLOCKED by Firefox)
-const base64 = utf8ToBase64(logText);  // ~100ms encoding
+const base64 = utf8ToBase64(logText); // ~100ms encoding
 const dataUrl = `data:text/plain;charset=utf-8;base64,${base64}`;
 await downloads.download({ url: dataUrl }); // ❌ Access denied
 
 // NEW (v1.5.9.5 - WORKS in Firefox)
 const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
-const blobUrl = URL.createObjectURL(blob);  // ~5ms
+const blobUrl = URL.createObjectURL(blob); // ~5ms
 await downloads.download({ url: blobUrl }); // ✅ Success
 setTimeout(() => URL.revokeObjectURL(blobUrl), 1000); // Free memory
 ```
