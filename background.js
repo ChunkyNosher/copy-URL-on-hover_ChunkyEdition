@@ -242,16 +242,15 @@ class StateCoordinator {
    */
   async processOperation(op) {
     const { type, quickTabId, data } = op;
-
+  
     switch (type) {
-      case 'create':
-        // Check if already exists
+      case 'create': {
+        // ✅ FIXED: Wrapped in block scope
         const existingIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (existingIndex === -1) {
           this.globalState.tabs.push(data);
           console.log(`[STATE COORDINATOR] Created Quick Tab ${quickTabId}`);
         } else {
-          // Update existing
           this.globalState.tabs[existingIndex] = {
             ...this.globalState.tabs[existingIndex],
             ...data
@@ -259,43 +258,51 @@ class StateCoordinator {
           console.log(`[STATE COORDINATOR] Updated existing Quick Tab ${quickTabId}`);
         }
         break;
-
-      case 'update':
+      }
+  
+      case 'update': {
+        // ✅ FIXED: Wrapped in block scope
         const updateIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (updateIndex !== -1) {
           this.globalState.tabs[updateIndex] = { ...this.globalState.tabs[updateIndex], ...data };
           console.log(`[STATE COORDINATOR] Updated Quick Tab ${quickTabId}`);
         }
         break;
-
-      case 'delete':
+      }
+  
+      case 'delete': {
+        // ✅ FIXED: Wrapped in block scope
         const deleteIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (deleteIndex !== -1) {
           this.globalState.tabs.splice(deleteIndex, 1);
           console.log(`[STATE COORDINATOR] Deleted Quick Tab ${quickTabId}`);
         }
         break;
-
-      case 'minimize':
+      }
+  
+      case 'minimize': {
+        // ✅ FIXED: Wrapped in block scope
         const minIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (minIndex !== -1) {
           this.globalState.tabs[minIndex].minimized = true;
           console.log(`[STATE COORDINATOR] Minimized Quick Tab ${quickTabId}`);
         } else if (data) {
-          // Add minimized tab if not in state
           this.globalState.tabs.push({ ...data, minimized: true });
         }
         break;
-
-      case 'restore':
+      }
+  
+      case 'restore': {
+        // ✅ FIXED: Wrapped in block scope
         const restoreIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
         if (restoreIndex !== -1) {
           this.globalState.tabs[restoreIndex].minimized = false;
           console.log(`[STATE COORDINATOR] Restored Quick Tab ${quickTabId}`);
         }
         break;
+      }
     }
-
+  
     this.globalState.timestamp = Date.now();
   }
 
