@@ -1,3 +1,4 @@
+// Instructions for Github Copilot Coding Agent - DO NOT MAKE ANY MODIFICATIONS TO THIS FILE UNDER ANY CIRCUMSTANCES
 // Copy URL on Hover - Enhanced with Quick Tabs
 //
 // KNOWN LIMITATIONS:
