@@ -1,4 +1,5 @@
 # Blob URL Download Failure - Root Cause & Fix
+
 **copy-URL-on-hover Extension v1.5.9.1**
 
 **Issue:** Export Console Logs button triggers download, but download fails with "Failed" status  
@@ -35,10 +36,11 @@ console.log('[Popup] Export successful via browser.downloads API');
 setTimeout(() => {
   URL.revokeObjectURL(blobUrl);
   console.log('[Popup] Cleaned up blob URL');
-}, 1000);  // 1 second is NOT ENOUGH for Firefox's async I/O
+}, 1000); // 1 second is NOT ENOUGH for Firefox's async I/O
 ```
 
 **What happens:**
+
 1. User clicks "Export Console Logs"
 2. `browser.downloads.download()` is called with blob URL
 3. Firefox **starts** async I/O to determine download path (can take 1-3 seconds with `saveAs: true`)
@@ -104,7 +106,7 @@ async function exportAllLogs(version) {
     // ✅ CRITICAL FIX: Set up listener BEFORE starting download
     // This ensures we don't miss the state change event
     const downloadCompletePromise = new Promise((resolve, reject) => {
-      const listener = (delta) => {
+      const listener = delta => {
         console.log('[Popup] Download state changed:', delta);
 
         // Only handle state changes for downloads
@@ -114,19 +116,19 @@ async function exportAllLogs(version) {
           if (state === 'complete') {
             console.log('[Popup] ✓ Download completed successfully');
             browser.downloads.onChanged.removeListener(listener);
-            
+
             // ✅ NOW it's safe to revoke the blob URL
             URL.revokeObjectURL(blobUrl);
             console.log('[Popup] Cleaned up blob URL after successful download');
-            
+
             resolve();
           } else if (state === 'interrupted') {
             console.error('[Popup] ✗ Download interrupted');
             browser.downloads.onChanged.removeListener(listener);
-            
+
             // Clean up blob URL
             URL.revokeObjectURL(blobUrl);
-            
+
             reject(new Error('Download was interrupted'));
           }
         }
@@ -268,9 +270,10 @@ According to Mozilla's bug tracker[208][221]:
 **Bug #1271345: "chrome.downloads.download will not download blob created in background script"**
 
 **Original problem (Fixed in Firefox 49):**
+
 ```
-Type error for parameter options (Error processing url: Error: Access denied 
-for URL blob:moz-extension://52ad408b-a345-4339-b1b7-f90eec9aed20/...) 
+Type error for parameter options (Error processing url: Error: Access denied
+for URL blob:moz-extension://52ad408b-a345-4339-b1b7-f90eec9aed20/...)
 for downloads.download.
 ```
 
@@ -328,11 +331,13 @@ T=3200ms  | ❌ BUT blob URL was revoked at T=1000ms!
 ### Firefox vs Chrome Behavior
 
 **Chrome:**
+
 - Downloads blob immediately upon `download()` call
 - Async I/O happens in parallel with download
 - 1000ms timeout usually works (but not always)
 
 **Firefox:**
+
 - Performs **ALL async I/O before reading blob**[208][221]
 - With `saveAs: true`, includes user interaction time[271]
 - Blob URL **must persist until state is 'complete'**[225][271][276]
@@ -400,7 +405,7 @@ async function exportAllLogs(version) {
       let downloadId = null;
       let timeoutHandle = null;
 
-      const listener = (delta) => {
+      const listener = delta => {
         // Only process events for our download
         if (downloadId !== null && delta.id !== downloadId) {
           return;
@@ -414,24 +419,24 @@ async function exportAllLogs(version) {
 
           if (state === 'complete') {
             console.log('[Popup] ✓ Download completed successfully');
-            
+
             // Clean up
             browser.downloads.onChanged.removeListener(listener);
             if (timeoutHandle) clearTimeout(timeoutHandle);
-            
+
             // ✅ Safe to revoke NOW - download is complete
             URL.revokeObjectURL(blobUrl);
             console.log('[Popup] Cleaned up blob URL after successful download');
-            
+
             resolve();
           } else if (state === 'interrupted') {
             console.error('[Popup] ✗ Download interrupted:', delta);
-            
+
             // Clean up
             browser.downloads.onChanged.removeListener(listener);
             if (timeoutHandle) clearTimeout(timeoutHandle);
             URL.revokeObjectURL(blobUrl);
-            
+
             reject(new Error('Download was interrupted'));
           }
         }
@@ -439,12 +444,12 @@ async function exportAllLogs(version) {
         // Check for error field
         if (delta.error && delta.error.current) {
           console.error('[Popup] Download error:', delta.error.current);
-          
+
           // Clean up
           browser.downloads.onChanged.removeListener(listener);
           if (timeoutHandle) clearTimeout(timeoutHandle);
           URL.revokeObjectURL(blobUrl);
-          
+
           reject(new Error(`Download error: ${delta.error.current}`));
         }
       };
@@ -583,6 +588,7 @@ async function exportAllLogs(version) {
 ### The Evidence
 
 **Your screenshot shows:**
+
 ```
 copy-url-extension-logs_v1.5.9_2025-11-15T06-02-30.txt
 Failed — 302a2db4-0e42-4e96-9baf-374be6e50b46 — 1:02 AM
@@ -590,12 +596,12 @@ Failed — 302a2db4-0e42-4e96-9baf-374be6e50b46 — 1:02 AM
 
 **Error breakdown:**
 
-| Component | Value | Meaning |
-|-----------|-------|---------|
-| Filename | `copy-url-extension-logs_v1.5.9_2025-11-15T06-02-30.txt` | ✅ Filename generated correctly |
-| Status | `Failed` | ❌ Download interrupted by Firefox |
-| Error ID | `302a2db4-0e42-4e96-9baf-374be6e50b46` | Unique blob URL identifier |
-| Time | `1:02 AM` | Download attempted at 1:02 AM |
+| Component | Value                                                    | Meaning                            |
+| --------- | -------------------------------------------------------- | ---------------------------------- |
+| Filename  | `copy-url-extension-logs_v1.5.9_2025-11-15T06-02-30.txt` | ✅ Filename generated correctly    |
+| Status    | `Failed`                                                 | ❌ Download interrupted by Firefox |
+| Error ID  | `302a2db4-0e42-4e96-9baf-374be6e50b46`                   | Unique blob URL identifier         |
+| Time      | `1:02 AM`                                                | Download attempted at 1:02 AM      |
 
 **What happened in the console (inferred):**
 
@@ -612,7 +618,7 @@ Failed — 302a2db4-0e42-4e96-9baf-374be6e50b46 — 1:02 AM
 [Popup] Cleaned up blob URL
 
 // Meanwhile in Firefox Download Manager (T+1200ms):
-Security Error: Content at moz-extension://[uuid]/_generated_background_page.html 
+Security Error: Content at moz-extension://[uuid]/_generated_background_page.html
 may not load data from blob:moz-extension://[uuid]/302a2db4-0e42-4e96-9baf-374be6e50b46
 
 Error: Access denied for URL blob:moz-extension://[uuid]/302a2db4-0e42-4e96-9baf-374be6e50b46
@@ -663,18 +669,21 @@ Download #[id] → state: 'interrupted'
 According to Firefox extension documentation[240][243]:
 
 **Unsigned extensions:**
+
 - ✅ Can be loaded in Firefox Developer/ESR with `xpinstall.signatures.required = false`[240]
 - ✅ Have full API access including `downloads` API[240]
 - ✅ No restrictions on blob URL handling[243]
 - ✅ Zen Browser (Firefox fork) honors same permissions[240]
 
 **Your configuration (Zen Browser with unsigned extensions enabled):**
+
 - ✅ Fully functional - not related to download failure
 - ✅ Extension loads correctly
 - ✅ Button appears and triggers download
 - ❌ Blob URL timing is the ONLY issue
 
 **Evidence:** The download **starts successfully** (you see the download entry), which means:
+
 - ✅ `downloads` permission is granted
 - ✅ Extension signature is not blocking API access
 - ✅ Blob URL creation works
@@ -697,12 +706,12 @@ According to Firefox extension documentation[240][243]:
 **Expected error messages:**
 
 ```
-Security Error: Content at moz-extension://[uuid]/popup.html 
+Security Error: Content at moz-extension://[uuid]/popup.html
 may not load data from blob:moz-extension://[uuid]/302a2db4-0e42-4e96-9baf-374be6e50b46
 
-Uncaught (in promise) Error: Type error for parameter options 
-(Error processing url: Error: Access denied for URL 
-blob:moz-extension://[uuid]/302a2db4-0e42-4e96-9baf-374be6e50b46) 
+Uncaught (in promise) Error: Type error for parameter options
+(Error processing url: Error: Access denied for URL
+blob:moz-extension://[uuid]/302a2db4-0e42-4e96-9baf-374be6e50b46)
 for downloads.download.
 ```
 
@@ -721,7 +730,7 @@ Download interrupted: FILE_FAILED
 
 ```javascript
 // Temporary debug listener - add to DOMContentLoaded section
-browser.downloads.onChanged.addListener((delta) => {
+browser.downloads.onChanged.addListener(delta => {
   console.log('[Popup Debug] Download changed:', {
     id: delta.id,
     state: delta.state,
@@ -759,15 +768,15 @@ browser.downloads.onChanged.addListener((delta) => {
 
 ## Comparison of Solutions
 
-| Aspect | Solution 1: Event Listener | Solution 2: Data URL |
-|--------|---------------------------|---------------------|
-| **Reliability** | ✅ 100% reliable | ✅ 100% reliable |
-| **Code complexity** | ⚠️ Medium (50 lines) | ✅ Simple (30 lines) |
-| **File size limit** | ✅ Unlimited | ⚠️ ~10MB practical limit |
-| **Memory usage** | ✅ Efficient | ⚠️ +33% for base64 encoding |
-| **Race conditions** | ✅ None (event-driven) | ✅ None (inline data) |
-| **Browser compatibility** | ✅ Firefox 49+[208] | ✅ All versions[223] |
-| **Recommended for** | Large files, production | Small files, quick fix |
+| Aspect                    | Solution 1: Event Listener | Solution 2: Data URL        |
+| ------------------------- | -------------------------- | --------------------------- |
+| **Reliability**           | ✅ 100% reliable           | ✅ 100% reliable            |
+| **Code complexity**       | ⚠️ Medium (50 lines)       | ✅ Simple (30 lines)        |
+| **File size limit**       | ✅ Unlimited               | ⚠️ ~10MB practical limit    |
+| **Memory usage**          | ✅ Efficient               | ⚠️ +33% for base64 encoding |
+| **Race conditions**       | ✅ None (event-driven)     | ✅ None (inline data)       |
+| **Browser compatibility** | ✅ Firefox 49+[208]        | ✅ All versions[223]        |
+| **Recommended for**       | Large files, production    | Small files, quick fix      |
 
 ---
 
@@ -784,6 +793,7 @@ browser.downloads.onChanged.addListener((delta) => {
 5. ✅ **Future-proof** - no reliance on download state events
 
 **Only use Solution 1 if:**
+
 - Log files exceed 5MB regularly
 - You plan to add export features for large files (screenshots, recordings, etc.)
 
@@ -842,6 +852,7 @@ browser.downloads.onChanged.addListener((delta) => {
 ### Test 1: Verify Download Completes
 
 **Steps:**
+
 1. Enable debug mode in extension settings
 2. Use extension (create Quick Tabs, hover links, etc.)
 3. Open popup → Advanced tab
@@ -850,6 +861,7 @@ browser.downloads.onChanged.addListener((delta) => {
 6. Wait for download
 
 **Expected:**
+
 - ✅ Download progress bar appears
 - ✅ Download completes with "Finished" status
 - ✅ File appears in Downloads folder
@@ -861,10 +873,12 @@ browser.downloads.onChanged.addListener((delta) => {
 ### Test 2: Verify File Contents
 
 **Steps:**
+
 1. Open downloaded `.txt` file
 2. Check file structure
 
 **Expected:**
+
 ```
 ================================================================================
 Copy URL on Hover - Extension Console Logs
@@ -887,6 +901,7 @@ End of Logs
 ```
 
 **Verify:**
+
 - ✅ File is valid UTF-8 text
 - ✅ File size > 0 bytes
 - ✅ Logs are chronological
@@ -897,12 +912,14 @@ End of Logs
 ### Test 3: Large Log File (if using Data URL method)
 
 **Steps:**
+
 1. Enable debug mode
 2. Use extension heavily for 10+ minutes
 3. Generate 1000+ log entries
 4. Try to export
 
 **Expected:**
+
 - ✅ Download succeeds (data URLs handle several MB)
 - ✅ File opens correctly
 - ⚠️ If file >10MB, consider switching to Solution 1
@@ -914,6 +931,7 @@ End of Logs
 **Open Browser Console (Ctrl+Shift+J) during export:**
 
 **Expected for Solution 2 (Data URL):**
+
 ```
 [Popup] Starting log export (Data URL method)...
 [Popup] Collected 45 background logs
@@ -925,6 +943,7 @@ End of Logs
 ```
 
 **Expected for Solution 1 (Event Listener):**
+
 ```
 [Popup] Starting log export...
 [Popup] Collected 45 background logs
@@ -951,6 +970,7 @@ End of Logs
 **Severity:** HIGH - feature completely non-functional
 
 **Problematic code:**
+
 ```javascript
 await browser.downloads.download({ url: blobUrl, ... });
 
@@ -993,12 +1013,12 @@ setTimeout(() => {
 
 According to MDN and Mozilla bug reports[204][208][221]:
 
-| Context | Can create Blob URLs? | Can download Blob URLs? | Notes |
-|---------|----------------------|------------------------|-------|
-| **Popup scripts** | ✅ Yes | ✅ Yes | Full access to downloads API[143] |
-| **Background scripts** | ✅ Yes | ✅ Yes | Full access to downloads API[208] |
-| **Content scripts** | ✅ Yes | ❌ No | downloads API not available[144][202][204] |
-| **Web pages** | ✅ Yes | ❌ No | Cannot pass to extension[204] |
+| Context                | Can create Blob URLs? | Can download Blob URLs? | Notes                                      |
+| ---------------------- | --------------------- | ----------------------- | ------------------------------------------ |
+| **Popup scripts**      | ✅ Yes                | ✅ Yes                  | Full access to downloads API[143]          |
+| **Background scripts** | ✅ Yes                | ✅ Yes                  | Full access to downloads API[208]          |
+| **Content scripts**    | ✅ Yes                | ❌ No                   | downloads API not available[144][202][204] |
+| **Web pages**          | ✅ Yes                | ❌ No                   | Cannot pass to extension[204]              |
 
 **Cross-context blob URLs:**
 
@@ -1015,6 +1035,7 @@ According to MDN and Mozilla bug reports[204][208][221]:
 ### ❌ Increase setTimeout Duration
 
 **Don't do this:**
+
 ```javascript
 setTimeout(() => {
   URL.revokeObjectURL(blobUrl);
@@ -1022,6 +1043,7 @@ setTimeout(() => {
 ```
 
 **Why not:**
+
 - ⚠️ Still a race condition - user might take 15 seconds to choose location
 - ⚠️ Wastes memory if download completes in 2 seconds
 - ⚠️ No error detection if download fails
@@ -1032,12 +1054,14 @@ setTimeout(() => {
 ### ❌ Never Revoke Blob URL
 
 **Don't do this:**
+
 ```javascript
 await browser.downloads.download({ url: blobUrl, ... });
 // Just don't revoke at all
 ```
 
 **Why not:**
+
 - ⚠️ Memory leak - blob stays in memory until popup closes
 - ⚠️ Multiple exports = multiple unreleased blobs
 - ⚠️ Bad practice[225][271]
@@ -1048,6 +1072,7 @@ await browser.downloads.download({ url: blobUrl, ... });
 ### ❌ Fallback to <a> Tag Download
 
 **Don't do this:**
+
 ```javascript
 const link = document.createElement('a');
 link.href = blobUrl;
@@ -1058,6 +1083,7 @@ document.body.removeChild(link);
 ```
 
 **Why not:**
+
 - ⚠️ Same revocation timing issues[199][256]
 - ⚠️ Firefox requires `setTimeout()`[199]
 - ⚠️ Less control than `downloads` API
@@ -1071,50 +1097,60 @@ document.body.removeChild(link);
 ### Mozilla Bug Tracker
 
 **Bug #1271345: "chrome.downloads.download will not download blob created in background script"**[208][221]
+
 - **Status:** RESOLVED FIXED (Firefox 49)
 - **Key finding:** Blob URLs require proper lifecycle management
 - **Solution:** Use `downloads.onChanged` listener
 
 **Bug #1287346: "Blob URL download race condition"**[221]
+
 - Related to e10s (multi-process architecture)
 - Confirms timing sensitivity
 
 **Bug #1505300: "Cannot download blob: URLs"**[200]
+
 - iOS-specific, but documents blob URL context restrictions
 - Quote: "The blob: URL only exists within the context of the web view"
 
 ### MDN Documentation
 
 **downloads.download() API**[225]
+
 - **Direct quote:** "If you use URL.createObjectURL() to download data created in JavaScript and you want to revoke the object URL (with revokeObjectURL) later (as it is strongly recommended), you need to do that after the download has been completed. To do so, listen to the downloads.onChanged event."
 
 **downloads.onChanged API**[276]
+
 - Event fires when download state changes
 - States: `in_progress`, `complete`, `interrupted`
 - Used for proper blob URL cleanup
 
 **Work with Files guide**[225]
+
 - Recommends Data URLs for small files
 - Recommends Blob URLs + `onChanged` for large files
 
 ### Stack Overflow
 
 **"Blob createObjectURL download not working in Firefox"**[199]
+
 - 74k views, 62 upvotes
 - Accepted answer: "You're probably removing the resource too soon, try delaying it"
 - **BUT** comments note this doesn't work reliably for all cases
 
 **"How can I revoke an object URL only after it's downloaded?"**[278]
+
 - Confirms race condition exists
 - Recommends event-based approach or longer timeout
 
 ### GitHub Issues
 
 **firefox-ios#8635: "Download of blob url is not working"**[205]
+
 - Documents blob URL download issues across platforms
 - Error: "Cannot access blob URL from a different agent cluster"
 
 **zd-dl-router#25: "Firefox Image download fails"**[202]
+
 - References Bug #1271345
 - Quote: "Mozilla API does not support blob downloads that are created via the downloads.download API" (outdated - was fixed)
 
@@ -1129,6 +1165,7 @@ document.body.removeChild(link);
 Replace the blob URL section in `popup.js` exportAllLogs() function with the Data URL approach from Solution 2.
 
 **Changes required:**
+
 - Replace ~30 lines of code
 - No new dependencies
 - No new event listeners
