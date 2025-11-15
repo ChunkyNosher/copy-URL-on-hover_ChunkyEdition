@@ -1,6 +1,6 @@
 // Browser API compatibility shim for Firefox/Chrome cross-compatibility
+let browser;
 if (typeof browser === 'undefined') {
-  // eslint-disable-next-line no-global-assign
   browser = chrome;
 }
 
