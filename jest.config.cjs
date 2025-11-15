@@ -15,7 +15,7 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(webextension-polyfill|eventemitter3|webext-storage-cache|webext-options-sync|lodash-es)/)'
   ],
-  
+
   // Coverage settings
   collectCoverage: false,
   collectCoverageFrom: [
