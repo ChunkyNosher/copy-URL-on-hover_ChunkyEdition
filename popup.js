@@ -1,7 +1,8 @@
 // Browser API compatibility shim for Firefox/Chrome cross-compatibility
 // Use global browser API if available (Firefox), otherwise fall back to chrome (Chrome)
 /* eslint-disable-next-line no-undef */
-const browserAPI = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
+const browserAPI =
+  typeof browser !== 'undefined' ? browser : typeof chrome !== 'undefined' ? chrome : null;
 
 // Verify browser API is available
 if (!browserAPI) {
