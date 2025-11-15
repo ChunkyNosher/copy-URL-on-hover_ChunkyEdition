@@ -18,6 +18,7 @@ This implementation fixes the critical Firefox security policy issue where log e
 ### Root Cause
 
 **Firefox Security Policy:**
+
 - Firefox blocks data: URLs in `downloads.download()` API by design
 - Data URLs inherit the extension's origin (security risk)
 - Blob URLs have null principal (safe by design)
@@ -28,6 +29,7 @@ This implementation fixes the critical Firefox security policy issue where log e
 v1.5.9.4 used a sophisticated TextEncoder + Base64 encoding approach with data: URLs. While the encoding was perfect, Firefox's security policy blocked the download regardless of format correctness.
 
 **v1.5.9.4 Implementation (FAILED):**
+
 ```javascript
 // Step 1: Encode UTF-8 to bytes
 const encoder = new TextEncoder();
@@ -41,15 +43,16 @@ const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
 
 // Step 4: Download
 await browser.downloads.download({
-  url: dataUrl,  // ❌ Firefox rejects this
+  url: dataUrl, // ❌ Firefox rejects this
   filename: filename,
   saveAs: true
 });
 ```
 
 **Error:**
+
 ```
-Export failed: Type error for parameter options 
+Export failed: Type error for parameter options
 (Error processing url: Error: Access denied for URL data:text/...)
 ```
 
@@ -60,6 +63,7 @@ Export failed: Type error for parameter options
 ### Technical Implementation
 
 **v1.5.9.5 Implementation (WORKS):**
+
 ```javascript
 // Step 1: Create Blob from plain text (no encoding needed!)
 const blob = new Blob([logText], {
@@ -72,7 +76,7 @@ const blobUrl = URL.createObjectURL(blob);
 try {
   // Step 3: Download (Firefox allows this!)
   const downloadId = await browser.downloads.download({
-    url: blobUrl,  // ✅ Firefox accepts this
+    url: blobUrl, // ✅ Firefox accepts this
     filename: filename,
     saveAs: true,
     conflictAction: 'uniquify'
@@ -91,14 +95,14 @@ try {
 
 ### Key Differences
 
-| Aspect | Data URL (v1.5.9.4) | Blob URL (v1.5.9.5) |
-|--------|---------------------|---------------------|
-| **Firefox Support** | ❌ Blocked | ✅ Allowed |
-| **Encoding** | Base64 required | Plain text |
-| **Performance** | ~105ms for 75KB | ~5ms for 75KB |
-| **Size** | 133% of original | 100% of original |
-| **Complexity** | ~40 lines | ~20 lines |
-| **Memory** | Auto-managed | Manual revocation |
+| Aspect              | Data URL (v1.5.9.4) | Blob URL (v1.5.9.5) |
+| ------------------- | ------------------- | ------------------- |
+| **Firefox Support** | ❌ Blocked          | ✅ Allowed          |
+| **Encoding**        | Base64 required     | Plain text          |
+| **Performance**     | ~105ms for 75KB     | ~5ms for 75KB       |
+| **Size**            | 133% of original    | 100% of original    |
+| **Complexity**      | ~40 lines           | ~20 lines           |
+| **Memory**          | Auto-managed        | Manual revocation   |
 
 ---
 
@@ -107,12 +111,14 @@ try {
 ### 1. popup.js
 
 **Lines 124-128 (REMOVED):**
+
 ```javascript
 // Deleted utf8ToBase64() function (~40 lines)
 // No longer needed - Blob URLs work with plain text
 ```
 
 **Lines 130-135 (UPDATED):**
+
 ```javascript
 /**
  * Export all logs as downloadable .txt file
@@ -124,6 +130,7 @@ try {
 ```
 
 **Lines 213-263 (REPLACED):**
+
 - Removed data URL implementation
 - Added Blob URL implementation
 - Added proper memory management
@@ -133,7 +140,7 @@ try {
 
 ```json
 {
-  "version": "1.5.9.5"  // Updated from 1.5.9.4
+  "version": "1.5.9.5" // Updated from 1.5.9.4
 }
 ```
 
@@ -141,7 +148,7 @@ try {
 
 ```json
 {
-  "version": "1.5.9.5"  // Updated from 1.5.9.4
+  "version": "1.5.9.5" // Updated from 1.5.9.4
 }
 ```
 
@@ -164,30 +171,32 @@ try {
 
 ### Encoding Time (75KB log file)
 
-| Operation | v1.5.9.4 | v1.5.9.5 | Improvement |
-|-----------|----------|----------|-------------|
-| UTF-8 encode | 20ms | 0ms | N/A |
-| Base64 encode | 50ms | 0ms | N/A |
-| Blob create | 0ms | 3ms | N/A |
-| URL create | 5ms | 2ms | N/A |
-| **Total** | **105ms** | **5ms** | **21x faster** |
+| Operation     | v1.5.9.4  | v1.5.9.5 | Improvement    |
+| ------------- | --------- | -------- | -------------- |
+| UTF-8 encode  | 20ms      | 0ms      | N/A            |
+| Base64 encode | 50ms      | 0ms      | N/A            |
+| Blob create   | 0ms       | 3ms      | N/A            |
+| URL create    | 5ms       | 2ms      | N/A            |
+| **Total**     | **105ms** | **5ms**  | **21x faster** |
 
 ### File Size (75KB log file)
 
-| Metric | v1.5.9.4 | v1.5.9.5 | Improvement |
-|--------|----------|----------|-------------|
-| Original | 74,309 bytes | 74,309 bytes | Same |
-| Encoded | 99,228 bytes | 74,309 bytes | 33% smaller |
-| Overhead | +33% | 0% | No expansion |
+| Metric   | v1.5.9.4     | v1.5.9.5     | Improvement  |
+| -------- | ------------ | ------------ | ------------ |
+| Original | 74,309 bytes | 74,309 bytes | Same         |
+| Encoded  | 99,228 bytes | 74,309 bytes | 33% smaller  |
+| Overhead | +33%         | 0%           | No expansion |
 
 ### Memory Management
 
 **v1.5.9.4:**
+
 - Data URL in memory until GC
 - No explicit cleanup
 - Memory freed automatically
 
 **v1.5.9.5:**
+
 - Blob URL revoked after 1 second
 - Explicit memory management
 - Prevents memory leaks on repeated exports
@@ -231,53 +240,59 @@ $ codeql analyze
 
 ### Blob URL Support
 
-| Browser | Version | Support |
-|---------|---------|---------|
-| Firefox | 4+ | ✅ Full |
-| Chrome | 8+ | ✅ Full |
-| Safari | 6+ | ✅ Full |
-| Edge | 12+ | ✅ Full |
-| Zen Browser | All | ✅ Full |
+| Browser     | Version | Support |
+| ----------- | ------- | ------- |
+| Firefox     | 4+      | ✅ Full |
+| Chrome      | 8+      | ✅ Full |
+| Safari      | 6+      | ✅ Full |
+| Edge        | 12+     | ✅ Full |
+| Zen Browser | All     | ✅ Full |
 
 ### Downloads API
 
-| Browser | Version | Support |
-|---------|---------|---------|
-| Firefox | 48+ | ✅ Full |
-| Chrome | All | ✅ Full |
-| Zen Browser | All | ✅ Full |
+| Browser     | Version | Support |
+| ----------- | ------- | ------- |
+| Firefox     | 48+     | ✅ Full |
+| Chrome      | All     | ✅ Full |
+| Zen Browser | All     | ✅ Full |
 
 ---
 
 ## Benefits
 
 ### ✅ Functionality
+
 - Works in Firefox/Zen Browser
 - No "Access denied" errors
 - Reliable log export
 
 ### ⚡ Performance
+
 - 21x faster (105ms → 5ms)
 - No Base64 encoding overhead
 - Near-instant Blob creation
 
 ### 📦 Efficiency
+
 - 33% smaller files
 - No Base64 expansion
 - Direct text export
 
 ### 🧹 Code Quality
+
 - Simpler implementation
 - Fewer lines of code
 - Less complexity
 - Easier to maintain
 
 ### 💾 Memory
+
 - Proper URL revocation
 - Prevents memory leaks
 - Clean resource management
 
 ### 🔒 Security
+
 - Uses Firefox-approved approach
 - Follows MDN best practices
 - Industry standard solution
@@ -329,12 +344,14 @@ $ codeql analyze
 If you're experiencing similar issues with Firefox blocking data: URLs:
 
 **Step 1: Identify the Problem**
+
 ```javascript
 // If you see this error:
 Error: Access denied for URL data:text/plain;...
 ```
 
 **Step 2: Switch to Blob URLs**
+
 ```javascript
 // OLD (doesn't work in Firefox)
 const dataUrl = `data:text/plain,${encodeURIComponent(text)}`;
@@ -348,6 +365,7 @@ setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 ```
 
 **Step 3: Clean Up**
+
 - Remove Base64 encoding functions
 - Remove UTF-8 encoding helpers
 - Add URL revocation
@@ -405,6 +423,7 @@ Removing unnecessary encoding not only simplified the code but also made it 21x 
 ### Backwards Compatibility
 
 This change is fully backwards compatible:
+
 - No API changes
 - Same user experience
 - No breaking changes
@@ -417,6 +436,7 @@ This change is fully backwards compatible:
 The switch from data: URLs to Blob URLs in v1.5.9.5 successfully resolves the Firefox security policy issue while also improving performance, reducing code complexity, and providing better memory management.
 
 **Key Takeaways:**
+
 1. ✅ Firefox blocking data: URLs is intentional security
 2. ✅ Blob URLs are the official workaround
 3. ✅ Simpler solution (Blob) is faster than complex solution (Base64)
