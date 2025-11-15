@@ -215,9 +215,14 @@ export class QuickTabWindow {
     forwardBtn.title = 'Forward';
     navContainer.appendChild(forwardBtn);
 
-    // Reload button
+    // Reload button - Fixed self-assignment ESLint error
     const reloadBtn = this.createButton('↻', () => {
-      this.iframe.src = this.iframe.src;
+      // Proper iframe reload technique (fixes no-self-assign ESLint error)
+      const currentSrc = this.iframe.src;
+      this.iframe.src = 'about:blank';
+      setTimeout(() => {
+        this.iframe.src = currentSrc;
+      }, 10);
     });
     reloadBtn.title = 'Reload';
     navContainer.appendChild(reloadBtn);
