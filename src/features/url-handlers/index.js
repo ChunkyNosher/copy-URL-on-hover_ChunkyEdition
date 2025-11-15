@@ -84,6 +84,7 @@ export class URLHandlerRegistry {
    * @returns {boolean} True if supported
    */
   isSupported(domainType) {
-    return this.handlers.hasOwnProperty(domainType);
+    // Use 'in' operator instead of hasOwnProperty (ESLint compliant)
+    return domainType in this.handlers;
   }
 }
