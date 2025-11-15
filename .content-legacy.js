@@ -3181,9 +3181,12 @@ function createQuickTabWindow(
   const reloadBtn = createNavButton('↻', 'Reload');
   reloadBtn.onclick = e => {
     e.stopPropagation();
-    iframe.src = iframe.src;
+    const currentSrc = iframe.src;
+    iframe.src = 'about:blank';
+    setTimeout(() => {
+      iframe.src = currentSrc;
+    }, 10);
   };
-
   navContainer.appendChild(backBtn);
   navContainer.appendChild(forwardBtn);
   navContainer.appendChild(reloadBtn);
