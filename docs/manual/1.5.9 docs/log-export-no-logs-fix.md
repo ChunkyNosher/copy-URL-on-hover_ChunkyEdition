@@ -1,4 +1,5 @@
 # Log Export "No Logs Found" Issue - Root Cause & Complete Fix
+
 **copy-URL-on-hover Extension v1.5.9.2**
 
 **Issue:** Export Logs button says "No logs found" even though debug mode is enabled and logs appear in Browser Console  
@@ -14,17 +15,19 @@
 **The log export system is NOT capturing `console.log()` calls from content scripts.** Here's why:
 
 1. **Background.js overrides console methods** at the top of the file (lines 15-49) ✅ **This works**
-2. **Content.js uses `console.log()` directly** for all its initialization logging (lines 14-85+)  
-3. **debug.js only captures calls to `debug()`/`debugError()`/etc.** - NOT regular `console.log()`  
+2. **Content.js uses `console.log()` directly** for all its initialization logging (lines 14-85+)
+3. **debug.js only captures calls to `debug()`/`debugError()`/etc.** - NOT regular `console.log()`
 4. **Content script's console override is missing** - there's no hook to capture regular console calls
 
 ### Evidence from Your Screenshots
 
 **Screenshot 1 (Settings):**
+
 - Debug mode: ✅ **ENABLED** (checkbox checked)
 - Show Copy Notifications: ✅ **ENABLED**
 
 **Screenshot 2 (Browser Console):**
+
 ```
 [QuickTabsManager] BroadcastChannel message received...
 [QuickTabsManager] Ignoring duplicate broadcast (detached): close qt-...
@@ -40,10 +43,12 @@
 ### The Disconnect
 
 **What you see in Browser Console:**
+
 - ✅ 100+ messages from `[Copy-URL-on-Hover]`, `[QuickTabsManager]`, `[Background]`, etc.
 - ✅ All logged via **direct `console.log()` calls**
 
 **What gets captured in LOG_BUFFER:**
+
 - ❌ **ZERO messages** from content scripts
 - ✅ Background logs work (console override in background.js)
 - ❌ Content logs DON'T work (no console override in content.js)
@@ -59,6 +64,7 @@
 #### Background Script (background.js) - ✅ WORKS
 
 **Lines 15-49:**
+
 ```javascript
 // Override console methods to capture logs
 const originalConsoleLog = console.log;
@@ -67,12 +73,12 @@ const originalConsoleWarn = console.warn;
 const originalConsoleInfo = console.info;
 
 console.log = function (...args) {
-  addBackgroundLog('DEBUG', ...args);  // ✅ Captured!
+  addBackgroundLog('DEBUG', ...args); // ✅ Captured!
   originalConsoleLog.apply(console, args);
 };
 
 console.error = function (...args) {
-  addBackgroundLog('ERROR', ...args);  // ✅ Captured!
+  addBackgroundLog('ERROR', ...args); // ✅ Captured!
   originalConsoleError.apply(console, args);
 };
 
@@ -80,6 +86,7 @@ console.error = function (...args) {
 ```
 
 **This works because:**
+
 1. Console override happens **at the top of the file**
 2. All subsequent `console.log()` calls go through the override
 3. Background logs are added to `BACKGROUND_LOG_BUFFER`
@@ -89,6 +96,7 @@ console.error = function (...args) {
 #### Content Script (src/content.js) - ❌ DOESN'T WORK
 
 **Current code structure:**
+
 ```javascript
 // Lines 14-24 - Direct console.log() calls
 console.log('[Copy-URL-on-Hover] Script loaded! @', new Date().toISOString());
@@ -108,7 +116,7 @@ console.log('[Copy-URL-on-Hover] STEP: Loading user configuration...');
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'GET_CONTENT_LOGS') {
     console.log('[Content] Received GET_CONTENT_LOGS request');
-    const logs = getLogBuffer();  // ❌ Returns EMPTY array!
+    const logs = getLogBuffer(); // ❌ Returns EMPTY array!
     console.log(`[Content] Sending ${logs.length} logs to popup`);
     sendResponse({ logs: logs });
   }
@@ -193,7 +201,7 @@ Implement a **comprehensive console interception system** that works across all 
 /**
  * Console Interceptor for Log Export
  * Captures all console.log/error/warn/info calls and stores them in a buffer
- * 
+ *
  * CRITICAL: This must be imported FIRST in any script that needs log capture
  * to ensure console methods are overridden before any other code runs.
  */
@@ -226,16 +234,18 @@ function addToLogBuffer(type, args) {
   }
 
   // Format arguments into string
-  const message = Array.from(args).map(arg => {
-    if (typeof arg === 'object' && arg !== null) {
-      try {
-        return JSON.stringify(arg, null, 2);
-      } catch (err) {
-        return String(arg);
+  const message = Array.from(args)
+    .map(arg => {
+      if (typeof arg === 'object' && arg !== null) {
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch (err) {
+          return String(arg);
+        }
       }
-    }
-    return String(arg);
-  }).join(' ');
+      return String(arg);
+    })
+    .join(' ');
 
   // Add to buffer
   CONSOLE_LOG_BUFFER.push({
@@ -252,9 +262,17 @@ function addToLogBuffer(type, args) {
 function getExecutionContext() {
   if (typeof document !== 'undefined' && document.currentScript) {
     return 'content-script';
-  } else if (typeof browser !== 'undefined' && browser.runtime && browser.runtime.getBackgroundPage) {
+  } else if (
+    typeof browser !== 'undefined' &&
+    browser.runtime &&
+    browser.runtime.getBackgroundPage
+  ) {
     return 'background';
-  } else if (typeof window !== 'undefined' && window.location && window.location.protocol === 'moz-extension:') {
+  } else if (
+    typeof window !== 'undefined' &&
+    window.location &&
+    window.location.protocol === 'moz-extension:'
+  ) {
     return 'popup';
   }
   return 'unknown';
@@ -263,7 +281,7 @@ function getExecutionContext() {
 /**
  * Override console.log to capture logs
  */
-console.log = function(...args) {
+console.log = function (...args) {
   addToLogBuffer('LOG', args);
   originalConsole.log.apply(console, args);
 };
@@ -271,7 +289,7 @@ console.log = function(...args) {
 /**
  * Override console.error to capture errors
  */
-console.error = function(...args) {
+console.error = function (...args) {
   addToLogBuffer('ERROR', args);
   originalConsole.error.apply(console, args);
 };
@@ -279,7 +297,7 @@ console.error = function(...args) {
 /**
  * Override console.warn to capture warnings
  */
-console.warn = function(...args) {
+console.warn = function (...args) {
   addToLogBuffer('WARN', args);
   originalConsole.warn.apply(console, args);
 };
@@ -287,7 +305,7 @@ console.warn = function(...args) {
 /**
  * Override console.info to capture info
  */
-console.info = function(...args) {
+console.info = function (...args) {
   addToLogBuffer('INFO', args);
   originalConsole.info.apply(console, args);
 };
@@ -295,7 +313,7 @@ console.info = function(...args) {
 /**
  * Override console.debug to capture debug messages
  */
-console.debug = function(...args) {
+console.debug = function (...args) {
   addToLogBuffer('DEBUG', args);
   originalConsole.debug.apply(console, args);
 };
@@ -326,7 +344,7 @@ export function getBufferStats() {
   return {
     totalLogs: CONSOLE_LOG_BUFFER.length,
     maxSize: MAX_BUFFER_SIZE,
-    utilizationPercent: (CONSOLE_LOG_BUFFER.length / MAX_BUFFER_SIZE * 100).toFixed(2),
+    utilizationPercent: ((CONSOLE_LOG_BUFFER.length / MAX_BUFFER_SIZE) * 100).toFixed(2),
     oldestTimestamp: CONSOLE_LOG_BUFFER[0]?.timestamp || null,
     newestTimestamp: CONSOLE_LOG_BUFFER[CONSOLE_LOG_BUFFER.length - 1]?.timestamp || null
   };
@@ -381,28 +399,30 @@ if (typeof browser !== 'undefined' && browser.runtime) {
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'GET_CONTENT_LOGS') {
       console.log('[Content] Received GET_CONTENT_LOGS request');
-      
+
       try {
         // ✅ NEW: Get logs from console interceptor (captures ALL console calls)
         const consoleLogs = getConsoleLogs();
-        
+
         // ✅ NEW: Also get logs from debug.js (if any code uses debug() functions)
         const debugLogs = getLogBuffer();
-        
+
         // ✅ NEW: Merge both sources
         const allLogs = [...consoleLogs, ...debugLogs];
-        
+
         // Sort by timestamp
         allLogs.sort((a, b) => a.timestamp - b.timestamp);
-        
+
         console.log(`[Content] Sending ${allLogs.length} logs to popup`);
-        console.log(`[Content] Console logs: ${consoleLogs.length}, Debug logs: ${debugLogs.length}`);
-        
+        console.log(
+          `[Content] Console logs: ${consoleLogs.length}, Debug logs: ${debugLogs.length}`
+        );
+
         // ✅ NEW: Get buffer stats for debugging
         const stats = getBufferStats();
         console.log(`[Content] Buffer stats:`, stats);
-        
-        sendResponse({ 
+
+        sendResponse({
           logs: allLogs,
           stats: stats
         });
@@ -410,7 +430,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
         console.error('[Content] Error getting log buffer:', error);
         sendResponse({ logs: [], error: error.message });
       }
-      
+
       return true; // Keep message channel open for async response
     }
   });
@@ -451,12 +471,12 @@ async function getContentScriptLogs() {
 
     if (response && response.logs) {
       console.log(`[Popup] Received ${response.logs.length} logs from content script`);
-      
+
       // ✅ NEW: Log buffer stats for debugging
       if (response.stats) {
         console.log('[Popup] Content script buffer stats:', response.stats);
       }
-      
+
       return response.logs;
     } else {
       console.warn('[Popup] Content script returned no logs');
@@ -464,14 +484,14 @@ async function getContentScriptLogs() {
     }
   } catch (error) {
     console.warn('[Popup] Could not retrieve content script logs:', error);
-    
+
     // ✅ IMPROVED: More specific error messages
     if (error.message && error.message.includes('Could not establish connection')) {
       console.error('[Popup] Content script not loaded in active tab');
     } else if (error.message && error.message.includes('No active tab')) {
       console.error('[Popup] No active tab found - try clicking on a webpage first');
     }
-    
+
     return [];
   }
 }
@@ -506,15 +526,15 @@ async function exportAllLogs(version) {
     // ✅ IMPROVED: Show breakdown by log type
     const backgroundTypes = {};
     const contentTypes = {};
-    
+
     backgroundLogs.forEach(log => {
       backgroundTypes[log.type] = (backgroundTypes[log.type] || 0) + 1;
     });
-    
+
     contentLogs.forEach(log => {
       contentTypes[log.type] = (contentTypes[log.type] || 0) + 1;
     });
-    
+
     console.log('[Popup] Background log types:', backgroundTypes);
     console.log('[Popup] Content log types:', contentTypes);
 
@@ -529,16 +549,22 @@ async function exportAllLogs(version) {
     // ✅ IMPROVED: Better error message with actionable advice
     if (allLogs.length === 0) {
       console.warn('[Popup] No logs to export');
-      
+
       // Check if content script is loaded
       if (tabs.length > 0 && tabs[0].url.startsWith('about:')) {
-        throw new Error('Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.');
+        throw new Error(
+          'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
+        );
       } else if (tabs.length === 0) {
         throw new Error('No active tab found. Try clicking on a webpage tab first.');
       } else if (contentLogs.length === 0 && backgroundLogs.length === 0) {
-        throw new Error('No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.');
+        throw new Error(
+          'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
+        );
       } else if (contentLogs.length === 0) {
-        throw new Error(`Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`);
+        throw new Error(
+          `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
+        );
       } else {
         throw new Error('No logs found. Try enabling debug mode and using the extension first.');
       }
@@ -585,7 +611,7 @@ async function exportAllLogs(version) {
 /**
  * Log Persistence Module
  * Saves logs to browser.storage.session for survival across page reloads
- * 
+ *
  * This ensures logs are not lost when:
  * - User reloads the page
  * - Content script is reinjected
@@ -604,20 +630,20 @@ let saveIntervalId = null;
  */
 export async function initLogPersistence(getLogsFunction) {
   console.log('[Log Persistence] Initializing...');
-  
+
   // Restore previous logs from storage
   await restoreLogsFromStorage();
-  
+
   // Start periodic save
   saveIntervalId = setInterval(async () => {
     await saveLogsToStorage(getLogsFunction());
   }, SAVE_INTERVAL);
-  
+
   // Save logs when page unloads
   window.addEventListener('beforeunload', async () => {
     await saveLogsToStorage(getLogsFunction());
   });
-  
+
   console.log('[Log Persistence] ✓ Initialized');
 }
 
@@ -626,11 +652,11 @@ export async function initLogPersistence(getLogsFunction) {
  */
 async function saveLogsToStorage(logs) {
   if (!logs || logs.length === 0) return;
-  
+
   try {
     // Limit logs to prevent storage quota errors
     const logsToSave = logs.slice(-MAX_STORAGE_LOGS);
-    
+
     if (typeof browser !== 'undefined' && browser.storage && browser.storage.session) {
       await browser.storage.session.set({
         [STORAGE_KEY]: {
@@ -639,7 +665,7 @@ async function saveLogsToStorage(logs) {
           count: logsToSave.length
         }
       });
-      
+
       console.log(`[Log Persistence] Saved ${logsToSave.length} logs to storage`);
     }
   } catch (error) {
@@ -655,19 +681,21 @@ async function restoreLogsFromStorage() {
   try {
     if (typeof browser !== 'undefined' && browser.storage && browser.storage.session) {
       const result = await browser.storage.session.get(STORAGE_KEY);
-      
+
       if (result && result[STORAGE_KEY] && result[STORAGE_KEY].logs) {
         const restored = result[STORAGE_KEY];
         console.log(`[Log Persistence] Restored ${restored.count} logs from storage`);
-        console.log(`[Log Persistence] Logs were saved at: ${new Date(restored.timestamp).toLocaleString()}`);
-        
+        console.log(
+          `[Log Persistence] Logs were saved at: ${new Date(restored.timestamp).toLocaleString()}`
+        );
+
         return restored.logs;
       }
     }
   } catch (error) {
     console.error('[Log Persistence] Error restoring logs:', error);
   }
-  
+
   return [];
 }
 
@@ -703,7 +731,7 @@ export async function getPersistenceStats() {
   try {
     if (typeof browser !== 'undefined' && browser.storage && browser.storage.session) {
       const result = await browser.storage.session.get(STORAGE_KEY);
-      
+
       if (result && result[STORAGE_KEY]) {
         return {
           enabled: true,
@@ -715,7 +743,7 @@ export async function getPersistenceStats() {
   } catch (error) {
     console.error('[Log Persistence] Error getting stats:', error);
   }
-  
+
   return {
     enabled: false,
     logCount: 0,
@@ -735,11 +763,11 @@ import { initLogPersistence, getPersistenceStats } from './utils/log-persistence
 (async function initExtension() {
   try {
     // ... existing initialization code ...
-    
+
     // ✅ NEW: Initialize log persistence
     await initLogPersistence(getConsoleLogs);
     console.log('[Copy-URL-on-Hover] ✓ Log persistence enabled');
-    
+
     // ... rest of initialization ...
   } catch (err) {
     // ... error handling ...
@@ -806,6 +834,7 @@ import { initLogPersistence, getPersistenceStats } from './utils/log-persistence
 ### Test 1: Basic Log Capture
 
 **Steps:**
+
 1. Enable debug mode in extension settings
 2. Reload extension in `about:debugging`
 3. Navigate to any regular webpage (e.g., google.com)
@@ -813,6 +842,7 @@ import { initLogPersistence, getPersistenceStats } from './utils/log-persistence
 5. Look for `[Console Interceptor] ✓ Console methods overridden successfully`
 
 **Expected:**
+
 - ✅ Console interceptor message appears
 - ✅ All extension logs show in console
 - ✅ Logs have `[Copy-URL-on-Hover]`, `[QuickTabsManager]`, etc. prefixes
@@ -822,6 +852,7 @@ import { initLogPersistence, getPersistenceStats } from './utils/log-persistence
 ### Test 2: Log Export Works
 
 **Steps:**
+
 1. Use the extension (hover links, create Quick Tabs, etc.)
 2. Open extension popup
 3. Go to Advanced tab
@@ -829,6 +860,7 @@ import { initLogPersistence, getPersistenceStats } from './utils/log-persistence
 5. Choose save location
 
 **Expected:**
+
 - ✅ Download starts successfully
 - ✅ File downloads with name like `copy-url-extension-logs_v1.5.9_2025-11-15T06-02-30.txt`
 - ✅ File contains 100+ log entries
@@ -840,9 +872,11 @@ import { initLogPersistence, getPersistenceStats } from './utils/log-persistence
 ### Test 3: Log File Contents
 
 **Steps:**
+
 1. Open downloaded .txt file in text editor
 
 **Expected format:**
+
 ```
 ================================================================================
 Copy URL on Hover - Extension Console Logs
@@ -871,6 +905,7 @@ End of Logs
 ```
 
 **Verify:**
+
 - ✅ All timestamps in chronological order
 - ✅ Mix of LOG, ERROR, WARN, INFO types
 - ✅ Both `[Copy-URL-on-Hover]` and `[QuickTabsManager]` logs
@@ -882,10 +917,12 @@ End of Logs
 ### Test 4: Empty Tab Handling
 
 **Steps:**
+
 1. Open new tab with `about:blank`
 2. Try to export logs
 
 **Expected:**
+
 - ✅ Error message: "Cannot capture logs from browser internal pages..."
 - ✅ Suggests navigating to regular webpage
 - ❌ Should NOT say "No logs found" without explanation
@@ -895,6 +932,7 @@ End of Logs
 ### Test 5: Persistence (if implemented)
 
 **Steps:**
+
 1. Navigate to google.com
 2. Use extension heavily (create 10+ Quick Tabs, hover 20+ links)
 3. Open Browser Console
@@ -905,6 +943,7 @@ End of Logs
 8. Export logs
 
 **Expected:**
+
 - ✅ Persistence message shows count
 - ✅ Export includes logs from before reload
 - ✅ No log loss on page reload
@@ -916,6 +955,7 @@ End of Logs
 ### Issue 1: "Still says no logs found!"
 
 **Diagnosis:**
+
 ```javascript
 // Add this to content.js GET_CONTENT_LOGS handler
 console.log('[Content] DEBUG:', {
@@ -926,10 +966,11 @@ console.log('[Content] DEBUG:', {
 ```
 
 **Possible causes:**
+
 1. ❌ Console interceptor not imported first
    - **Fix:** Move import to line 1 of content.js
 2. ❌ Content script not loaded on page
-   - **Fix:** Try navigating to regular webpage (not about:* pages)
+   - **Fix:** Try navigating to regular webpage (not about:\* pages)
 3. ❌ Extension not reloaded after changes
    - **Fix:** Go to about:debugging, click "Reload" on extension
 
@@ -938,15 +979,17 @@ console.log('[Content] DEBUG:', {
 ### Issue 2: "TypeError: getConsoleLogs is not a function"
 
 **Diagnosis:**
+
 - Import statement missing or incorrect
 
 **Fix:**
+
 ```javascript
 // Correct import (must be FIRST import)
 import { getConsoleLogs, clearConsoleLogs, getBufferStats } from './utils/console-interceptor.js';
 
 // NOT this:
-import { getLogBuffer } from './utils/debug.js';  // Wrong!
+import { getLogBuffer } from './utils/debug.js'; // Wrong!
 ```
 
 ---
@@ -954,9 +997,11 @@ import { getLogBuffer } from './utils/debug.js';  // Wrong!
 ### Issue 3: "Some logs missing from export"
 
 **Diagnosis:**
+
 - Buffer size limit reached (5000 logs max)
 
 **Check buffer stats:**
+
 ```javascript
 // In popup.js
 const stats = getBufferStats();
@@ -964,6 +1009,7 @@ console.log('Buffer utilization:', stats.utilizationPercent + '%');
 ```
 
 **Solutions:**
+
 1. **If >95% full:** Increase MAX_BUFFER_SIZE in console-interceptor.js
 2. **If persistent logs needed:** Implement Phase 4 (persistence layer)
 3. **If too verbose:** Reduce debug logging frequency
@@ -973,10 +1019,12 @@ console.log('Buffer utilization:', stats.utilizationPercent + '%');
 ### Issue 4: "Logs duplicated in export"
 
 **Diagnosis:**
+
 - Content script loaded multiple times
 - Both console interceptor AND debug.js capturing same logs
 
 **Fix:**
+
 ```javascript
 // In content.js GET_CONTENT_LOGS handler, use Set to deduplicate
 const allLogs = [...consoleLogs, ...debugLogs];
@@ -999,14 +1047,14 @@ allLogs.sort((a, b) => a.timestamp - b.timestamp);
 
 ```javascript
 // ❌ WRONG - console.log() executes BEFORE override
-console.log('Message 1');  // Not captured
+console.log('Message 1'); // Not captured
 import { getConsoleLogs } from './console-interceptor.js';
-console.log('Message 2');  // Captured
+console.log('Message 2'); // Captured
 
 // ✅ RIGHT - override happens BEFORE any logs
 import { getConsoleLogs } from './console-interceptor.js';
-console.log('Message 1');  // Captured
-console.log('Message 2');  // Captured
+console.log('Message 1'); // Captured
+console.log('Message 2'); // Captured
 ```
 
 **ES6 modules execute imports FIRST**[150][329], but the module body runs in order. The console override must be the **first side effect** in the module.
@@ -1016,12 +1064,14 @@ console.log('Message 2');  // Captured
 ### Browser Compatibility
 
 **Tested on:**
+
 - ✅ Firefox 49+ (all versions)
 - ✅ Firefox ESR
 - ✅ Zen Browser (Firefox fork)
 - ✅ Chrome/Chromium (with manifest V2)
 
 **Known limitations:**
+
 - ❌ Cannot capture logs from `about:*` pages (browser security)
 - ❌ Cannot capture logs from `view-source:` pages
 - ❌ Cannot capture logs from PDF viewer
@@ -1033,11 +1083,13 @@ console.log('Message 2');  // Captured
 ### Performance Impact
 
 **Memory usage:**
+
 - **Without persistence:** ~1-2MB for 5000 logs
 - **With persistence:** +0.5MB in session storage
 - **Negligible impact** on extension performance
 
 **CPU usage:**
+
 - Console override: **<0.1ms per log**
 - Export operation: **~50ms for 1000 logs**
 - **No noticeable lag** in browser
@@ -1049,6 +1101,7 @@ console.log('Message 2');  // Captured
 ### Alternative 1: Replace All console.log() with debug()
 
 **Approach:**
+
 ```javascript
 // Find and replace in content.js:
 console.log('[Copy-URL-on-Hover]', 'message');
@@ -1057,6 +1110,7 @@ debug('[Copy-URL-on-Hover]', 'message');
 ```
 
 **❌ Why NOT recommended:**
+
 1. ⚠️ **200+ replacements** needed across codebase
 2. ⚠️ **Breaks Browser Console output** when debug mode OFF
 3. ⚠️ **Fragile** - easy to miss new console.log() calls
@@ -1068,10 +1122,12 @@ debug('[Copy-URL-on-Hover]', 'message');
 ### Alternative 2: Use Existing debug.js Only
 
 **Approach:**
+
 - Keep using debug() functions
 - Don't override console
 
 **❌ Why NOT recommended:**
+
 1. ⚠️ **Already failed** - this is what you have now!
 2. ⚠️ **Doesn't capture initialization logs** (before debug enabled)
 3. ⚠️ **Misses third-party code** that uses console.log()
@@ -1082,10 +1138,12 @@ debug('[Copy-URL-on-Hover]', 'message');
 ### Alternative 3: Copy-Paste Console Messages
 
 **Approach:**
+
 - User manually copies logs from Browser Console
 - Pastes into text file
 
 **❌ Why NOT recommended:**
+
 1. ⚠️ **Poor user experience** - manual work
 2. ⚠️ **Loses timestamps** - hard to correlate events
 3. ⚠️ **Misses background logs** - only sees content logs
@@ -1098,6 +1156,7 @@ debug('[Copy-URL-on-Hover]', 'message');
 ### ✅ Implement Console Interceptor (This Document's Approach)
 
 **Advantages:**
+
 - ✅ **Captures ALL logs** - no code changes needed
 - ✅ **Automatic** - no manual work
 - ✅ **Comprehensive** - content + background + debug.js
@@ -1107,6 +1166,7 @@ debug('[Copy-URL-on-Hover]', 'message');
 - ✅ **Easy to maintain** - single interceptor module
 
 **Disadvantages:**
+
 - ⚠️ Requires understanding of module import order
 - ⚠️ One-time setup of interceptor module
 
@@ -1124,12 +1184,14 @@ The "No logs found" error occurs because:
 4. ❌ **Root cause:** Content script lacks console override
 
 **The fix:**
+
 - Add console-interceptor.js (captures all console.log() calls)
 - Import it FIRST in content.js (before any other code runs)
 - Update message handlers to use captured logs
 - (Optional) Add persistence layer to survive page reloads
 
 **Result:**
+
 - ✅ All 100+ console logs captured
 - ✅ Export works reliably
 - ✅ No code changes needed for existing logs
