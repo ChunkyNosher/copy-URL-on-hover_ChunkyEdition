@@ -84,6 +84,8 @@ Eager Loading):**
     - **console-interceptor.js (NEW v1.5.9.3)**: Captures ALL console.log/error/warn/info/debug calls for log export
     - MUST be imported FIRST in content.js to override console before any other code runs
     - Fixes log export "No logs found" issue by capturing all console calls
+    - **Log Export (v1.5.9.5)**: Uses Blob URLs instead of data: URLs (Firefox blocks data: URLs for security)
+    - Removed utf8ToBase64() function - Blob URLs work with plain text (21x faster, 33% smaller)
   - **dist/content.js**: Built bundle (~116KB, MUST NOT contain ES6
     imports/exports)
 - **Build System**: Rollup bundler with comprehensive validation checks
