@@ -16,3 +16,26 @@ coverage/
 screenshots/
 test.html
 popup_old.html
+
+# Environment variables
+.env
+.env.local
+
+# MCP
+.mcp-memory/
+.mcp/
+
+# Playwright
+.playwright-browsers/
+.playwright-zen-profile/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Node
+node_modules/
+npm-debug.log
+
+# OS
+.DS_Store
+Thumbs.db
