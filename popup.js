@@ -210,14 +210,19 @@ async function exportAllLogs(version) {
       `[Popup] Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`
     );
 
-    // ==================== BLOB URL SOLUTION (v1.5.9.5) ====================
+    // ==================== BLOB URL SOLUTION (v1.5.9.6) ====================
     // Firefox BLOCKS data: URLs in downloads.download() for security reasons
     // but Blob URLs work perfectly in all browsers
     //
+    // CRITICAL FIX in v1.5.9.6: Wait for download to complete before revoking
+    // Blob URL. Fixed timeout caused race condition where URL was revoked
+    // before Firefox finished reading the file.
+    //
     // References:
-    // - Stack Overflow: https://stackoverflow.com/questions/40333531/
-    // - MDN: https://developer.mozilla.org/en-US/docs/Web/API/URL/createObjectURL
-    // - Diagnostic report: docs/manual/1.5.9 docs/firefox-blob-url-fix-v1595.md
+    // - MDN downloads.download(): https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/download
+    // - MDN downloads.onChanged: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/onChanged
+    // - Firefox Bug 1289958: https://bugzilla.mozilla.org/show_bug.cgi?id=1289958
+    // - Diagnostic report: docs/manual/1.5.9 docs/blob-url-race-fix-v1596.md
 
     // Step 1: Create a Blob from the log text
     // No Base64 encoding needed - Blobs work with plain text!
@@ -243,20 +248,68 @@ async function exportAllLogs(version) {
         conflictAction: 'uniquify' // Auto-rename if file exists
       });
 
-      console.log(`✓ [Popup] Export successful! Download ID: ${downloadId}`);
+      console.log(`✓ [Popup] Download initiated! Download ID: ${downloadId}`);
       console.log('✓ [Popup] Method: Blob URL (Firefox-compatible)');
 
-      // Step 4: Clean up - revoke the Blob URL after download starts
-      // Firefox needs time to process the download before we revoke the URL
-      // 1000ms (1 second) is sufficient for the browser to start the download
+      // Step 4: ✅ CRITICAL FIX - Listen for download completion before revoking
+      // This prevents the race condition where the Blob URL is revoked while
+      // Firefox is still reading the file (especially with saveAs: true where
+      // user interaction adds delay)
+
+      let revokeListenerActive = true;
+
+      const revokeListener = delta => {
+        // Only process events for our download
+        if (delta.id !== downloadId) {
+          return;
+        }
+
+        // Check if download state changed
+        if (delta.state) {
+          const currentState = delta.state.current;
+
+          console.log(`[Popup] Download ${downloadId} state: ${currentState}`);
+
+          // Download completed successfully or failed - safe to revoke
+          if (currentState === 'complete' || currentState === 'interrupted') {
+            if (revokeListenerActive) {
+              revokeListenerActive = false;
+
+              URL.revokeObjectURL(blobUrl);
+              browserAPI.downloads.onChanged.removeListener(revokeListener);
+
+              if (currentState === 'complete') {
+                console.log(`✓ [Popup] Blob URL revoked after successful download`);
+              } else {
+                console.log(`⚠ [Popup] Blob URL revoked after download interruption`);
+              }
+            }
+          }
+        }
+      };
+
+      // Register the listener
+      browserAPI.downloads.onChanged.addListener(revokeListener);
+
+      // Step 5: Fallback timeout to prevent memory leak if download hangs
+      // This ensures the Blob URL is eventually revoked even if:
+      // - Download never completes (browser bug)
+      // - User cancels before state change fires
+      // - onChanged listener fails for any reason
       setTimeout(() => {
-        URL.revokeObjectURL(blobUrl);
-        console.log('[Popup] Blob URL revoked (memory freed)');
-      }, 1000);
+        if (revokeListenerActive) {
+          revokeListenerActive = false;
+
+          URL.revokeObjectURL(blobUrl);
+          browserAPI.downloads.onChanged.removeListener(revokeListener);
+
+          console.log('[Popup] Blob URL revoked (fallback timeout - 60s)');
+        }
+      }, 60000); // 60 seconds - generous timeout for slow systems
     } catch (downloadError) {
-      // If download fails, revoke immediately to prevent memory leak
+      // If download initiation fails, revoke immediately to prevent memory leak
       URL.revokeObjectURL(blobUrl);
-      console.error('[Popup] Download failed, Blob URL revoked immediately');
+      console.error('[Popup] Download initiation failed, Blob URL revoked immediately');
       throw downloadError;
     }
 
