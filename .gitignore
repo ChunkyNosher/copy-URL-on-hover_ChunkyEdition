@@ -4,6 +4,7 @@ dist/
 node_modules/
 *.xpi
 *.zip
+content-legacy.js
 
 # Test artifacts
 coverage/
