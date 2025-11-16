@@ -1,4 +1,5 @@
 # Blob URL Premature Revocation - Complete Diagnostic Report
+
 **copy-URL-on-hover Extension v1.5.9.5**
 
 **Issue:** Download starts successfully but fails with "invalid parameters" error because Blob URL is revoked before Firefox finishes reading the file  
@@ -10,6 +11,7 @@
 ## Screenshot Analysis
 
 ### Error Screenshot (Download Manager)
+
 ![Download Failed](attached_image:1)
 
 ```
@@ -17,6 +19,7 @@ Failed — 3f020ab4-0e42-4e98-9baf-374bbee9064b — 12:46 AM
 ```
 
 **What this tells us:**
+
 - ✅ Download was **initiated successfully** (got download ID)
 - ❌ Download **failed** with "Failed" status
 - ⚠️ The UUID `3f020ab4...` matches the extension ID, confirming it's a Blob URL
@@ -24,26 +27,29 @@ Failed — 3f020ab4-0e42-4e98-9baf-374bbee9064b — 12:46 AM
 ---
 
 ### Browser Console Screenshot
+
 ![Console Logs](attached_image:2)
 
 **Critical error message:**
+
 ```javascript
 Cannot download file: invalid parameters (call data: {
-  path:null, 
-  headers:false, 
-  body:null, 
-  conflictAction:"uniquify", 
-  cookieStoreId:null, 
-  filename:"copy-url-extension-logs_v1.5.9.5_2025-11-16T05-48-29.txt", 
-  headers:null, 
-  incognito:false, 
-  method:null, 
-  saveAs:true, 
+  path:null,
+  headers:false,
+  body:null,
+  conflictAction:"uniquify",
+  cookieStoreId:null,
+  filename:"copy-url-extension-logs_v1.5.9.5_2025-11-16T05-48-29.txt",
+  headers:null,
+  incognito:false,
+  method:null,
+  saveAs:true,
   url:"blob:moz-extension://3f020ab4-0e42-4e98-9baf-374bbee9064b/3a1af5ca-59d3-4b0e-919a-bd2373c73733"
 })
 ```
 
 **Full console log sequence:**
+
 ```
 [Popup] Starting log export...
 [Popup] Active tab: https://www.perplexity.ai/search/...
@@ -53,12 +59,12 @@ Cannot download file: invalid parameters (call data: {
 [Content] Received GET_CONTENT_LOGS request
 [Content] Sending 84 logs to popup
 [Content] Console logs: 73, Debug logs: 11
-[Content] Buffer stats: { 
-  totalLogs: 75, 
-  maxSize: 5000, 
-  utilizationPercent: "1.50", 
-  oldestTimestamp: 1763272045800, 
-  newestTimestamp: 1763272109467 
+[Content] Buffer stats: {
+  totalLogs: 75,
+  maxSize: 5000,
+  utilizationPercent: "1.50",
+  oldestTimestamp: 1763272045800,
+  newestTimestamp: 1763272109467
 }
 
 [Popup] Received 84 logs from content script
@@ -85,7 +91,7 @@ Cannot download file: invalid parameters (call data: {
 **Everything works perfectly until the download:**
 
 1. ✅ **Log collection:** 84 logs captured (73 console + 11 debug)
-2. ✅ **Blob creation:** 7,873 bytes blob created successfully  
+2. ✅ **Blob creation:** 7,873 bytes blob created successfully
 3. ✅ **Blob URL creation:** `blob:moz-extension://...` generated
 4. ✅ **Download initiated:** `downloads.download()` returned successfully
 5. ❌ **Download failed:** "invalid parameters" error
@@ -152,6 +158,7 @@ According to MDN[140][276] and Firefox Bugzilla[256]:
 Instead of a fixed timeout, **listen for the download to complete** before revoking:
 
 **Current broken code (v1.5.9.5):**
+
 ```javascript
 const downloadId = await browserAPI.downloads.download({
   url: blobUrl,
@@ -166,6 +173,7 @@ setTimeout(() => {
 ```
 
 **Fixed code (v1.5.9.6):**
+
 ```javascript
 const downloadId = await browserAPI.downloads.download({
   url: blobUrl,
@@ -174,14 +182,14 @@ const downloadId = await browserAPI.downloads.download({
 });
 
 // ✅ Listen for download completion before revoking
-const revokeListener = (delta) => {
+const revokeListener = delta => {
   // Check if this is our download and it completed
   if (delta.id === downloadId && delta.state) {
     if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
       // Download finished (success or failure) - safe to revoke
       URL.revokeObjectURL(blobUrl);
       browserAPI.downloads.onChanged.removeListener(revokeListener);
-      
+
       console.log(`[Popup] Blob URL revoked after download ${delta.state.current}`);
     }
   }
@@ -261,19 +269,19 @@ async function exportAllLogs(version) {
       if (tabs.length > 0 && tabs[0].url.startsWith('about:')) {
         throw new Error(
           'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). ' +
-          'Try navigating to a regular webpage first.'
+            'Try navigating to a regular webpage first.'
         );
       } else if (tabs.length === 0) {
         throw new Error('No active tab found. Try clicking on a webpage tab first.');
       } else if (contentLogs.length === 0 && backgroundLogs.length === 0) {
         throw new Error(
           'No logs found. Make sure debug mode is enabled and try using the extension ' +
-          '(hover over links, create Quick Tabs, etc.) before exporting logs.'
+            '(hover over links, create Quick Tabs, etc.) before exporting logs.'
         );
       } else if (contentLogs.length === 0) {
         throw new Error(
           `Only found ${backgroundLogs.length} background logs. ` +
-          'Content script may not be loaded. Try reloading the webpage.'
+            'Content script may not be loaded. Try reloading the webpage.'
         );
       } else {
         throw new Error('No logs found. Try enabling debug mode and using the extension first.');
@@ -287,7 +295,9 @@ async function exportAllLogs(version) {
     const filename = generateLogFilename(version);
 
     console.log(`[Popup] Exporting to: ${filename}`);
-    console.log(`[Popup] Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`);
+    console.log(
+      `[Popup] Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`
+    );
 
     // ==================== BLOB URL SOLUTION (v1.5.9.6) ====================
     // Firefox BLOCKS data: URLs in downloads.download() for security reasons
@@ -333,10 +343,10 @@ async function exportAllLogs(version) {
       // This prevents the race condition where the Blob URL is revoked while
       // Firefox is still reading the file (especially with saveAs: true where
       // user interaction adds delay)
-      
+
       let revokeListenerActive = true;
-      
-      const revokeListener = (delta) => {
+
+      const revokeListener = delta => {
         // Only process events for our download
         if (delta.id !== downloadId) {
           return;
@@ -345,17 +355,17 @@ async function exportAllLogs(version) {
         // Check if download state changed
         if (delta.state) {
           const currentState = delta.state.current;
-          
+
           console.log(`[Popup] Download ${downloadId} state: ${currentState}`);
 
           // Download completed successfully or failed - safe to revoke
           if (currentState === 'complete' || currentState === 'interrupted') {
             if (revokeListenerActive) {
               revokeListenerActive = false;
-              
+
               URL.revokeObjectURL(blobUrl);
               browserAPI.downloads.onChanged.removeListener(revokeListener);
-              
+
               if (currentState === 'complete') {
                 console.log(`✓ [Popup] Blob URL revoked after successful download`);
               } else {
@@ -377,14 +387,13 @@ async function exportAllLogs(version) {
       setTimeout(() => {
         if (revokeListenerActive) {
           revokeListenerActive = false;
-          
+
           URL.revokeObjectURL(blobUrl);
           browserAPI.downloads.onChanged.removeListener(revokeListener);
-          
+
           console.log('[Popup] Blob URL revoked (fallback timeout - 60s)');
         }
       }, 60000); // 60 seconds - generous timeout for slow systems
-
     } catch (downloadError) {
       // If download initiation fails, revoke immediately to prevent memory leak
       URL.revokeObjectURL(blobUrl);
@@ -393,7 +402,6 @@ async function exportAllLogs(version) {
     }
 
     // ==================== END BLOB URL SOLUTION ====================
-
   } catch (error) {
     console.error('[Popup] Export failed:', error);
     throw error;
@@ -418,6 +426,7 @@ setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 ```
 
 **Timeline:**
+
 ```
 T=0ms:    downloads.download() called
 T=5ms:    Promise resolves, setTimeout() starts
@@ -442,6 +451,7 @@ browserAPI.downloads.onChanged.addListener(revokeListener);
 ```
 
 **Timeline:**
+
 ```
 T=0ms:    downloads.download() called
 T=5ms:    Promise resolves, onChanged listener registered
@@ -463,7 +473,7 @@ T=1310ms: Listener revokes URL ✅
 **From MDN documentation:**[276][406]
 
 ```javascript
-browser.downloads.onChanged.addListener((downloadDelta) => {
+browser.downloads.onChanged.addListener(downloadDelta => {
   // downloadDelta contains:
   // - id: download ID
   // - state: { previous: 'in_progress', current: 'complete' }
@@ -472,8 +482,9 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 ```
 
 **Possible states:**[276]
+
 - `in_progress` - Download is actively downloading
-- `interrupted` - Download failed or was cancelled  
+- `interrupted` - Download failed or was cancelled
 - `complete` - Download finished successfully
 
 **Why this works:**[140][276]
@@ -500,11 +511,12 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 **Edge cases that need fallback:**
 
 1. **Browser bug** - onChanged never fires (extremely rare)
-2. **User cancels** - might not trigger state change immediately  
+2. **User cancels** - might not trigger state change immediately
 3. **System crash** - browser closes before download finishes
 4. **Extension reload** - listener might be lost
 
 **Fallback ensures:**
+
 - ✅ Blob URL is ALWAYS revoked eventually
 - ✅ Memory leak is prevented
 - ✅ 60 seconds is generous (normal downloads take <5s)
@@ -520,11 +532,13 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 ### Memory Usage
 
 **Old approach (v1.5.9.5):**
+
 - Blob created: 7,873 bytes
 - Blob URL lives: 1,000ms (fixed)
 - **Problem:** URL might be revoked while still needed!
 
 **New approach (v1.5.9.6):**
+
 - Blob created: 7,873 bytes
 - Blob URL lives: Until download completes (typically 2-5 seconds)
 - **Benefit:** URL always available when needed
@@ -532,13 +546,13 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 
 **Memory comparison:**
 
-| Scenario | Old (v1.5.9.5) | New (v1.5.9.6) |
-|----------|----------------|----------------|
-| Small file (8KB) | ❌ Fails | ✅ Works (~3s) |
-| Large file (1MB) | ❌ Fails | ✅ Works (~5s) |
-| Slow disk | ❌ Fails | ✅ Works (~10s) |
-| User delay | ❌ Fails | ✅ Works (waits) |
-| Memory leak | ⚠️ 1s timeout | ✅ 60s fallback |
+| Scenario         | Old (v1.5.9.5) | New (v1.5.9.6)   |
+| ---------------- | -------------- | ---------------- |
+| Small file (8KB) | ❌ Fails       | ✅ Works (~3s)   |
+| Large file (1MB) | ❌ Fails       | ✅ Works (~5s)   |
+| Slow disk        | ❌ Fails       | ✅ Works (~10s)  |
+| User delay       | ❌ Fails       | ✅ Works (waits) |
+| Memory leak      | ⚠️ 1s timeout  | ✅ 60s fallback  |
 
 ---
 
@@ -574,6 +588,7 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 ### Test 1: Basic Export
 
 **Steps:**
+
 1. Apply v1.5.9.6 fix
 2. Reload extension in `about:debugging`
 3. Navigate to any webpage
@@ -583,6 +598,7 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 7. Click "Save"
 
 **Expected console output:**
+
 ```
 [Popup] Starting log export...
 [Popup] Collected 84 content logs
@@ -598,6 +614,7 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 ```
 
 **Expected outcome:**
+
 - ✅ Download starts
 - ✅ "Save As" dialog appears
 - ✅ User can take their time choosing location
@@ -610,17 +627,20 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 ### Test 2: User Cancels Download
 
 **Steps:**
+
 1. Click "Export Console Logs"
 2. When "Save As" dialog appears
 3. Click "Cancel"
 
 **Expected console output:**
+
 ```
 [Popup] Download 123 state: interrupted
 ⚠ [Popup] Blob URL revoked after download interruption
 ```
 
 **Expected outcome:**
+
 - ✅ Download cancelled gracefully
 - ✅ Blob URL revoked (no memory leak)
 - ✅ No errors or crashes
@@ -630,11 +650,13 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 ### Test 3: Slow Save Location
 
 **Steps:**
+
 1. Click "Export Console Logs"
 2. Take 30+ seconds choosing save location
 3. Finally click "Save"
 
 **Expected:**
+
 - ✅ Download still works (listener waits patiently)
 - ✅ Blob URL not revoked until download completes
 - ✅ File downloads successfully
@@ -644,11 +666,13 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 ### Test 4: Multiple Concurrent Exports
 
 **Steps:**
+
 1. Click "Export Console Logs"
 2. Immediately click again (before saving first)
 3. Choose locations and save both
 
 **Expected:**
+
 - ✅ Both downloads work independently
 - ✅ Each has its own Blob URL
 - ✅ Each listener handles its own download
@@ -656,6 +680,7 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 - ✅ No interference between downloads
 
 **Console output:**
+
 ```
 [Popup] Download initiated! Download ID: 123
 [Popup] Download initiated! Download ID: 124
@@ -674,11 +699,13 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 ### Test 5: Fallback Timeout
 
 **Steps:**
+
 1. Click "Export Console Logs"
 2. Leave "Save As" dialog open for 65+ seconds
 3. Don't click "Save" or "Cancel"
 
 **Expected console output:**
+
 ```
 [Popup] Download initiated! Download ID: 123
 
@@ -687,6 +714,7 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 ```
 
 **Expected outcome:**
+
 - ✅ Blob URL revoked after 60 seconds
 - ✅ No memory leak
 - ✅ Listener removed
@@ -701,11 +729,13 @@ browser.downloads.onChanged.addListener((downloadDelta) => {
 **Scenario:** User reloads extension while download is in progress
 
 **Impact:**
+
 - ⚠️ Listener is lost (extension context destroyed)
 - ⚠️ Blob URL might not be revoked
 - ✅ **Fallback timeout handles this** - URL revoked after 60s
 
 **Protection in code:**
+
 ```javascript
 setTimeout(() => {
   if (revokeListenerActive) {
@@ -722,6 +752,7 @@ setTimeout(() => {
 **Scenario:** Firefox crashes during download
 
 **Impact:**
+
 - ⚠️ Blob URL lost (browser memory cleared)
 - ✅ **No memory leak** - memory freed on crash
 - ✅ No cleanup needed
@@ -733,6 +764,7 @@ setTimeout(() => {
 **Scenario:** Network issue causes download to hang
 
 **Impact:**
+
 - ⚠️ `state: 'in_progress'` never changes
 - ✅ **Fallback timeout handles this** - URL revoked after 60s
 - ⚠️ Download fails, but no memory leak
@@ -744,6 +776,7 @@ setTimeout(() => {
 **Scenario:** Download paused, resumed, then completed
 
 **Expected events:**
+
 ```
 state: 'in_progress'
 state: 'interrupted' (paused)
@@ -752,14 +785,16 @@ state: 'complete'
 ```
 
 **Protection in code:**
+
 ```javascript
 let revokeListenerActive = true;
 
-const revokeListener = (delta) => {
+const revokeListener = delta => {
   if (delta.state) {
     // Only revoke on terminal states
     if (currentState === 'complete' || currentState === 'interrupted') {
-      if (revokeListenerActive) {  // ✅ Prevents double revocation
+      if (revokeListenerActive) {
+        // ✅ Prevents double revocation
         revokeListenerActive = false;
         URL.revokeObjectURL(blobUrl);
         // ...
@@ -826,6 +861,7 @@ browserAPI.downloads.onChanged.addListener(revokeListener);
 **Change:** Replace the download section (lines ~220-250) with the new code from the "Complete Implementation Fix" section above.
 
 **Key changes:**
+
 1. Add `revokeListenerActive` flag to prevent double revocation
 2. Create `revokeListener` function that waits for download completion
 3. Register listener with `browserAPI.downloads.onChanged.addListener()`
@@ -840,7 +876,7 @@ browserAPI.downloads.onChanged.addListener(revokeListener);
 
 ```json
 {
-  "version": "1.5.9.6",
+  "version": "1.5.9.6"
   // ... rest unchanged
 }
 ```
@@ -864,6 +900,7 @@ browserAPI.downloads.onChanged.addListener(revokeListener);
 ### Step 4: Commit & Push (3 minutes)
 
 **Git commands:**
+
 ```bash
 git add popup.js manifest.json
 git commit -m "v1.5.9.6: Fix Blob URL race condition with onChanged listener
@@ -921,17 +958,20 @@ This is **exactly** what we're implementing in v1.5.9.6.
 **1. Official MDN documentation** recommends this exact approach[140][276]
 
 **2. Stack Overflow confirmed solution:**[407][409]
-   - Multiple answers recommend using onChanged listener
-   - Fixed timeout confirmed to cause race conditions
+
+- Multiple answers recommend using onChanged listener
+- Fixed timeout confirmed to cause race conditions
 
 **3. Firefox Bugzilla discussion:**[256]
-   - Firefox devs confirmed async download causes issues
-   - Recommended solution: wait for download completion
+
+- Firefox devs confirmed async download causes issues
+- Recommended solution: wait for download completion
 
 **4. Your console logs prove the diagnosis:**
-   - "invalid parameters" error occurs AFTER Blob URL creation
-   - Timing suggests revocation happened during download
-   - All other parts work perfectly
+
+- "invalid parameters" error occurs AFTER Blob URL creation
+- Timing suggests revocation happened during download
+- All other parts work perfectly
 
 ---
 
@@ -940,6 +980,7 @@ This is **exactly** what we're implementing in v1.5.9.6.
 ### Before Fix (v1.5.9.5)
 
 **Console:**
+
 ```
 [Popup] Blob URL created: blob:moz-extension://...
 ✓ [Popup] Download initiated! Download ID: 123
@@ -947,6 +988,7 @@ This is **exactly** what we're implementing in v1.5.9.6.
 ```
 
 **Download Manager:**
+
 ```
 Failed — 3f020ab4-0e42-4e98-9baf-374bbee9064b — 12:46 AM
 ```
@@ -958,6 +1000,7 @@ Failed — 3f020ab4-0e42-4e98-9baf-374bbee9064b — 12:46 AM
 ### After Fix (v1.5.9.6)
 
 **Console:**
+
 ```
 [Popup] Blob URL created: blob:moz-extension://...
 ✓ [Popup] Download initiated! Download ID: 123
@@ -969,6 +1012,7 @@ Failed — 3f020ab4-0e42-4e98-9baf-374bbee9064b — 12:46 AM
 ```
 
 **Download Manager:**
+
 ```
 copy-url-extension-logs_v1.5.9.6_2025-11-16T01-15-30.txt — 12:46 AM ✓
 ```
@@ -1033,6 +1077,7 @@ copy-url-extension-logs_v1.5.9.6_2025-11-16T01-15-30.txt — 12:46 AM ✓
 ### Summary of Investigation
 
 **v1.5.9.5 implementation:**
+
 - ✅ Log collection works perfectly (84 logs captured)
 - ✅ Blob creation works perfectly (7,873 bytes)
 - ✅ Blob URL creation works perfectly (`blob:moz-extension://...`)
@@ -1062,6 +1107,7 @@ browserAPI.downloads.onChanged.addListener(revokeListener);
 ```
 
 **Benefits:**
+
 - ✅ No race condition
 - ✅ Works with `saveAs: true` dialog delays
 - ✅ Handles all download states (complete, interrupted)
