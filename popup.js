@@ -258,7 +258,7 @@ async function exportAllLogs(version) {
 
       let revokeListenerActive = true;
 
-      const revokeListener = (delta) => {
+      const revokeListener = delta => {
         // Only process events for our download
         if (delta.id !== downloadId) {
           return;
