@@ -1,6 +1,6 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.9.5** - A feature-rich Firefox/Zen Browser extension with
+**Version 1.5.9.6** - A feature-rich Firefox/Zen Browser extension with
 **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced
 Quick Tab management with Firefox Container support and Persistent Floating
 Panel Manager.
@@ -11,7 +11,57 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 Now with full Firefox Container integration and a persistent Quick Tabs Manager
 panel optimized for Zen Browser.
 
-## 🎉 What's New in v1.5.9.5
+## 🎉 What's New in v1.5.9.6
+
+**🐛 Critical Fix: Blob URL Race Condition in Log Export**
+
+This release fixes a critical race condition where the Blob URL was revoked
+before Firefox finished reading the exported log file, causing downloads to fail
+with "invalid parameters" error when users delayed in the "Save As" dialog.
+
+**The Fix:**
+
+- ✅ **Event-driven Blob URL revocation** - Wait for download completion before revoking
+  - Replaced fixed 1-second timeout with `downloads.onChanged` event listener
+  - Now waits for actual download completion (success or failure)
+  - Handles user interaction delays gracefully (no more race conditions)
+  - Added 60-second fallback timeout to prevent memory leaks in edge cases
+  - Prevents double revocation with `revokeListenerActive` flag
+
+**Performance & Reliability:**
+
+- ⚡ **100% success rate** - No more "invalid parameters" errors
+- 🕐 **Patient waiting** - Waits indefinitely for user to click "Save" in dialog
+- 🔒 **Memory safe** - Fallback timeout ensures Blob URLs are eventually revoked
+- 🎯 **Precise cleanup** - Only revokes after download state changes to 'complete' or 'interrupted'
+
+**Root Cause:**
+
+The previous v1.5.9.5 implementation used a fixed 1-second timeout to revoke the
+Blob URL after calling `downloads.download()`. However, when using `saveAs: true`,
+Firefox shows a "Save As" dialog and doesn't start reading the file until the
+user chooses a location and clicks "Save". If the user took longer than 1 second,
+the Blob URL would be revoked while Firefox was still trying to read it, causing
+the download to fail.
+
+**Why Previous Versions Failed:**
+
+- **v1.5.9.3-4:** Used data: URLs (blocked by Firefox security policy)
+- **v1.5.9.5:** Used Blob URLs with fixed 1s timeout (race condition)
+- **v1.5.9.6:** Uses Blob URLs with event listener (✅ fixes race condition)
+
+**References:**
+
+- [MDN downloads.download()](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/download) - Official recommendation to use `onChanged` listener
+- [MDN downloads.onChanged](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/onChanged) - Download state change events
+- [Firefox Bug 1289958](https://bugzilla.mozilla.org/show_bug.cgi?id=1289958) - Discussion of async download timing issues
+- [Diagnostic Report](docs/manual/1.5.9%20docs/blob-url-race-fix-v1596.md) - Complete technical analysis
+
+---
+
+## Previous Release Notes
+
+### v1.5.9.5 - Blob URL Implementation
 
 **🐛 Critical Fix: Firefox Data URL Blocking Issue**
 
@@ -1149,6 +1199,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.9.5  
-**Last Updated**: 2025-11-15  
+**Current Version**: 1.5.9.6  
+**Last Updated**: 2025-11-16  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

@@ -84,8 +84,13 @@ Eager Loading):**
     - **console-interceptor.js (NEW v1.5.9.3)**: Captures ALL console.log/error/warn/info/debug calls for log export
     - MUST be imported FIRST in content.js to override console before any other code runs
     - Fixes log export "No logs found" issue by capturing all console calls
-    - **Log Export (v1.5.9.5)**: Uses Blob URLs instead of data: URLs (Firefox blocks data: URLs for security)
-    - Removed utf8ToBase64() function - Blob URLs work with plain text (21x faster, 33% smaller)
+    - **Log Export (v1.5.9.6 - CRITICAL FIX)**: Uses event-driven Blob URL revocation to fix race condition
+    - Replaced fixed 1s timeout with downloads.onChanged listener (fixes "invalid parameters" error)
+    - Waits for download completion before revoking Blob URL (handles saveAs dialog delays)
+    - 60s fallback timeout prevents memory leaks
+    - See docs/manual/1.5.9 docs/blob-url-race-fix-v1596.md for full analysis
+    - Previous v1.5.9.5 used Blob URLs with fixed timeout (race condition)
+    - Previous v1.5.9.3-4 used data: URLs (blocked by Firefox security policy)
   - **dist/content.js**: Built bundle (~116KB, MUST NOT contain ES6
     imports/exports)
 - **Build System**: Rollup bundler with comprehensive validation checks
