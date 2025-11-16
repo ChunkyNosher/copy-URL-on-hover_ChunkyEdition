@@ -45,6 +45,7 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "@playwright/mcp": "^0.0.47",
     "eventemitter3": "^5.0.1",
     "lodash-es": "^4.17.21",
     "uuid": "^13.0.0",
