@@ -73,6 +73,7 @@ createQuickTab(options) {
 **THE ISSUE IS: The originating tab is NEVER calling `createQuickTab()` in the first place.**
 
 Looking at the logs, there's a gap between:
+
 1. `Creating Quick Tab for: [URL]` (debug log from elsewhere, likely the background script or a different code path)
 2. `Notification: ✓ Quick Tab created!` (notification system)
 3. Storage change + ignore (pending saveId system)
@@ -80,6 +81,7 @@ Looking at the logs, there's a gap between:
 **But there's NO corresponding `[QuickTabsManager] Creating Quick Tab with options:` log in Tab 1.**
 
 This means that in Tab 1:
+
 - Something triggers the Quick Tab creation flow (likely user pressing Q key)
 - The background script updates storage
 - The notification is shown
@@ -89,7 +91,7 @@ This means that in Tab 1:
 
 Looking further in the code flow, there are two possible entry points for Quick Tab creation:
 
-1. **Direct user action** (pressing Q key) → should call `createQuickTab()` 
+1. **Direct user action** (pressing Q key) → should call `createQuickTab()`
 2. **BroadcastChannel message** → calls `createQuickTab()`
 3. **Storage sync** → calls `syncFromStorage()` → calls `createQuickTab()`
 
@@ -102,6 +104,7 @@ The logs show that Tab 1 receives a `SYNC_QUICK_TAB_STATE` message at `21:18:34.
 The logs show a pattern that suggests the Quick Tab creation is being handled primarily by the background script, not the content script in Tab 1.
 
 Looking at the message flow:
+
 1. User presses Q key in Tab 1
 2. Some handler (likely in content.js or a feature module) sends a message to the background script
 3. **Background script updates storage directly WITHOUT calling Tab 1's createQuickTab()**
@@ -112,6 +115,7 @@ Looking at the message flow:
 ### Evidence from Logs
 
 **Tab 1 Log Pattern**:
+
 ```
 [21:18:34.117Z] [DEBUG] Creating Quick Tab for: [URL]           ← Generic debug, not from QuickTabsManager
 [21:18:34.122Z] [DEBUG] Notification: ✓ Quick Tab created!      ← Notification shown
@@ -123,6 +127,7 @@ Looking at the message flow:
 ```
 
 **Tab 2 Log Pattern** (for comparison):
+
 ```
 [21:18:57.749Z] [QuickTabsManager] BroadcastChannel message received: CREATE ← Receives broadcast
 [21:18:57.749Z] [QuickTabsManager] Creating Quick Tab with options:          ← createQuickTab() called
@@ -136,11 +141,13 @@ Looking at the message flow:
 ### Location 1: Initial Quick Tab Creation Path (content.js or features/)
 
 **ISSUE**: The code path that handles the initial user action (pressing Q key) is **NOT** calling `quickTabsManager.createQuickTab()` directly. Instead, it appears to be:
+
 1. Sending a message to the background script
 2. Letting the background script handle storage updates
 3. Relying on BroadcastChannel or storage sync to create the tab
 
 **PROBLEM**: The originating tab gets caught in a deadlock:
+
 - Pending saveId prevents storage sync from creating the tab
 - BroadcastChannel receives its own broadcast but (in v1.5.9.9 and earlier) had a check that prevented duplicate creation
 - In v1.5.9.10, the BroadcastChannel check was removed, but the originating tab STILL doesn't receive its own broadcast immediately enough
@@ -148,6 +155,7 @@ Looking at the message flow:
 ### Location 2: setupBroadcastChannel() in index.js
 
 **CODE** (lines 125-128 in v1.5.9.10):
+
 ```javascript
 case 'CREATE':
   // v1.5.9.10 FIX: Always call createQuickTab - it now handles rendering check internally
@@ -159,6 +167,7 @@ case 'CREATE':
 **ISSUE**: This fix assumes that the originating tab will receive its own broadcast message and process it. However, the logs show that **the originating tab does NOT log receiving a CREATE broadcast** for its own Quick Tabs until AFTER switching to Tab 2.
 
 This suggests that:
+
 1. BroadcastChannel may have a delay in delivering messages to the sender
 2. OR the message is being sent before the BroadcastChannel is fully ready
 3. OR there's a race condition where the pending saveId is created BEFORE the broadcast is sent
@@ -166,6 +175,7 @@ This suggests that:
 ### Location 3: Pending SaveId System
 
 **CODE** (lines 174-177 in index.js):
+
 ```javascript
 shouldIgnoreStorageChange(saveId) {
   if (saveId && this.pendingSaveIds.has(saveId)) {
@@ -190,6 +200,7 @@ shouldIgnoreStorageChange(saveId) {
 ### Location 4: syncFromStorage() Logic
 
 **CODE** (lines 466-493 in index.js):
+
 ```javascript
 tabsToSync.forEach(tabData => {
   if (!this.tabs.has(tabData.id)) {
@@ -214,6 +225,7 @@ tabsToSync.forEach(tabData => {
 **CRITICAL QUESTION**: Why doesn't this code path create the Quick Tab in Tab 1?
 
 Looking at the logs, Tab 1 receives `SYNC_QUICK_TAB_STATE` at `21:18:34.142Z`, but there's **NO log showing `syncFromStorage()` being called**. The expected log would be:
+
 ```
 [QuickTabsManager] Syncing from storage state...
 [QuickTabsManager] Syncing X tabs from...
@@ -224,6 +236,7 @@ Looking at the logs, Tab 1 receives `SYNC_QUICK_TAB_STATE` at `21:18:34.142Z`, b
 ### Location 5: Message Listener for SYNC_QUICK_TAB_STATE
 
 **CODE** (lines 318-323 in index.js):
+
 ```javascript
 case 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND':
   this.syncFromStorage(message.state);
@@ -235,11 +248,13 @@ case 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND':
 **THIS IS A MESSAGE ACTION MISMATCH!**
 
 The logs show:
+
 ```
 [21:18:34.142Z] [QuickTabsManager] Message received: SYNC_QUICK_TAB_STATE
 ```
 
 But the code is listening for:
+
 ```javascript
 case 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND':
 ```
@@ -278,6 +293,7 @@ Here's the complete failure cascade:
 **Problem Location**: `src/features/quick-tabs/index.js` line 320
 
 **Current Code**:
+
 ```javascript
 case 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND':
   this.syncFromStorage(message.state);
@@ -287,6 +303,7 @@ case 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND':
 **Needs to Change To**: The case statement needs to match what the background script is actually sending. Based on the logs, it's sending `SYNC_QUICK_TAB_STATE` (without the `_FROM_BACKGROUND` suffix).
 
 **Resolution Approach**: Either:
+
 - Change the case statement to listen for `SYNC_QUICK_TAB_STATE`
 - OR change the background script to send `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND`
 - OR add BOTH case statements to handle both message types
@@ -296,12 +313,14 @@ case 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND':
 **Problem Location**: Wherever the initial Quick Tab creation is triggered (likely `content.js` or a keyboard handler)
 
 **Current Behavior**: The initial creation flow is:
+
 1. User presses Q
 2. Handler sends message to background
 3. Background updates storage
 4. Tab 1 relies on sync to create the tab
 
 **Needs to Change To**: The initial creation flow should be:
+
 1. User presses Q
 2. Handler calls `quickTabsManager.createQuickTab()` DIRECTLY in Tab 1
 3. `createQuickTab()` creates the tab locally AND broadcasts it
@@ -363,12 +382,14 @@ After implementing fixes, verify:
 ### Why Tab 2 Works But Tab 1 Doesn't
 
 Tab 2 works because:
+
 1. It receives the CREATE broadcast from Tab 1
 2. It has NO pending saveIds (it didn't create the tab)
 3. BroadcastChannel handler calls `createQuickTab()` which renders immediately
 4. Success!
 
 Tab 1 fails because:
+
 1. Initial creation doesn't call `createQuickTab()` directly
 2. Storage sync is blocked by pending saveId
 3. Message sync has wrong action name so doesn't trigger
@@ -377,6 +398,7 @@ Tab 1 fails because:
 ### Why v1.5.9.10 Fix Didn't Work
 
 The v1.5.9.10 fix added rendering checks to `createQuickTab()`:
+
 ```javascript
 if (!existingTab.isRendered || !existingTab.isRendered()) {
   console.log('[QuickTabsManager] Tab exists but not rendered, rendering now:', id);
@@ -387,6 +409,7 @@ if (!existingTab.isRendered || !existingTab.isRendered()) {
 This fix is technically correct and useful, but it doesn't solve the root problem because **`createQuickTab()` is never being called in the first place** in the originating tab.
 
 The fix would work IF:
+
 - The tab was created but not rendered (edge case)
 - THEN received a broadcast or sync
 - THEN `createQuickTab()` was called
