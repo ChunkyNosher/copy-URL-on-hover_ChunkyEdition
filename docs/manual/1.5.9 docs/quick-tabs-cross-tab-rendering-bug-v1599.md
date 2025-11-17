@@ -9,6 +9,7 @@ This document analyzes a critical bug in the Quick Tabs feature where Quick Tabs
 ### Scenario 1: Tab 1 → Tab 2 (Both Newly Loaded)
 
 **Steps**:
+
 1. Load Tab 1 (fresh page load)
 2. Create Quick Tabs in Tab 1 (5 Quick Tabs created)
 3. Quick Tabs **do not appear** visually in Tab 1
@@ -22,6 +23,7 @@ This document analyzes a critical bug in the Quick Tabs feature where Quick Tabs
 ### Scenario 2: Tab 1 → Tab 3 (Tab 3 Already Loaded)
 
 **Steps**:
+
 1. Load Tab 1 (fresh page load)
 2. Create Quick Tabs in Tab 1 (3 Quick Tabs created)
 3. Quick Tabs **do not appear** in Tab 1
@@ -41,17 +43,19 @@ This document analyzes a critical bug in the Quick Tabs feature where Quick Tabs
 **Timeline of Events (Tab 1 - Original Tab)**:
 
 1. **16:31:25.390Z** - Quick Tab 1 creation initiated:
+
    ```
    [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
    [NotificationManager] Showing notification: ✓ Quick Tab created! success
    ```
 
 2. **16:31:25.423Z** - Storage updated (background script):
+
    ```
    [QuickTabsManager] Storage changed: sync ["quick_tabs_state_v2"]
    [QuickTabsManager] Ignoring storage change for pending save: 1763397085390-y8t1gt5cf
    ```
-   
+
    **Issue**: Tab 1 ignores its own storage change because the saveId is in `pendingSaveIds`.
 
 3. **16:31:26.329Z** - Quick Tab 2 creation initiated (similar pattern)
@@ -60,6 +64,7 @@ This document analyzes a critical bug in the Quick Tabs feature where Quick Tabs
 6. **16:31:27.809Z** - Quick Tab 5 creation initiated (similar pattern)
 
 **Critical Period: 16:31:38.086Z** - After switching to Tab 2:
+
 ```
 [QuickTabsManager] Syncing from storage state...
 [QuickTabsManager] Syncing 0 tabs from all containers
@@ -71,6 +76,7 @@ This document analyzes a critical bug in the Quick Tabs feature where Quick Tabs
 **Timeline of Events (Tab 2 - Switched To)**:
 
 **16:32:42.714Z onwards** - Tab 2 receives BroadcastChannel messages:
+
 ```
 [QuickTabsManager] BroadcastChannel message received: {
   "type": "CREATE",
@@ -91,12 +97,14 @@ This document analyzes a critical bug in the Quick Tabs feature where Quick Tabs
 **Timeline of Events (Tab 1 - Original Tab)**:
 
 1. **16:46:47.148Z** - Quick Tab 1 creation initiated:
+
    ```
    [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
    [NotificationManager] Showing notification: ✓ Quick Tab created! success
    ```
 
 2. **16:46:47.166Z** - Storage change ignored:
+
    ```
    [QuickTabsManager] Storage changed: sync ["quick_tabs_state_v2"]
    [QuickTabsManager] Ignoring storage change for pending save: 1763398007148-6398en7i9
@@ -106,11 +114,13 @@ This document analyzes a critical bug in the Quick Tabs feature where Quick Tabs
 4. **16:46:49.740Z** - Quick Tab 3 creation initiated (similar pattern)
 
 **16:46:56.957Z** - Tab switch to Tab 2:
+
 ```
 [QuickTabsManager] Message received: tabActivated
 ```
 
 **16:47:01.824Z** - After switching to Tab 2, Tab 1 receives storage sync:
+
 ```
 [QuickTabsManager] Syncing from storage state...
 [QuickTabsManager] Syncing 3 tabs from all containers
@@ -129,17 +139,19 @@ This document analyzes a critical bug in the Quick Tabs feature where Quick Tabs
 The issue stems from the following sequence in `index.js` (v1.5.9.9):
 
 1. **Tab 1 creates Quick Tab** (line 672+):
+
    ```javascript
    createQuickTab(options) {
      // ... create tab locally
      this.tabs.set(id, tabWindow);
-     
+
      // Broadcast to other tabs (INCLUDING SELF via BroadcastChannel echo)
      this.broadcast('CREATE', { ... });
    }
    ```
 
 2. **Tab 1 broadcasts the creation** (line 636):
+
    ```javascript
    broadcast(type, data) {
      if (this.broadcastChannel) {
@@ -149,10 +161,11 @@ The issue stems from the following sequence in `index.js` (v1.5.9.9):
    ```
 
 3. **Tab 1 receives its own broadcast** (line 93+):
+
    ```javascript
    this.broadcastChannel.onmessage = event => {
      const { type, data } = event.data;
-     
+
      switch (type) {
        case 'CREATE':
          // v1.5.9.8 FIX: Only create if not already exists
@@ -161,10 +174,10 @@ The issue stems from the following sequence in `index.js` (v1.5.9.9):
          }
          break;
      }
-   }
+   };
    ```
 
-**The Problem**: 
+**The Problem**:
 
 In v1.5.9.8/v1.5.9.9, a fix was added (line 125) to check `if (!this.tabs.has(data.id))` before creating from broadcast. This **prevents duplicate creation**, but it doesn't solve the rendering issue because:
 
@@ -178,6 +191,7 @@ In v1.5.9.8/v1.5.9.9, a fix was added (line 125) to check `if (!this.tabs.has(da
 When switching from Tab 1 to Tab 2:
 
 1. Tab 1 triggers emergency save (line 368-384):
+
    ```javascript
    document.addEventListener('visibilitychange', () => {
      if (document.hidden && this.tabs.size > 0) {
@@ -209,13 +223,14 @@ The **fundamental problem** is that in `createQuickTab()` (line 672+), the funct
 2. **Rendering the visual Quick Tab** (calling `createQuickTabWindow()`)
 3. **Broadcasting to other tabs**
 
-However, the **rendering** (`createQuickTabWindow()` in `window.js`) only happens when `createQuickTab()` is called **without** an existing entry in `this.tabs`. 
+However, the **rendering** (`createQuickTabWindow()` in `window.js`) only happens when `createQuickTab()` is called **without** an existing entry in `this.tabs`.
 
 When the originating tab receives its own broadcast message, it **skips creation** because `this.tabs.has(data.id)` is true, but this also means it **skips rendering**.
 
 ### Analysis of v1.5.9.8 Fix Attempt
 
 In v1.5.9.8, line 125 was added:
+
 ```javascript
 case 'CREATE':
   // v1.5.9.8 FIX: Only create if not already exists (prevent duplicates from own broadcasts)
@@ -248,7 +263,7 @@ The **eager hydration** system (`hydrateStateFromStorage()` line 405+) is design
 ```javascript
 setupBroadcastChannel() {
   // ... existing setup ...
-  
+
   this.broadcastChannel.onmessage = event => {
     console.log('[QuickTabsManager] BroadcastChannel message received:', event.data);
 
@@ -341,7 +356,7 @@ createQuickTab(options) {
   // Check if already exists
   if (this.tabs.has(id)) {
     const existingTab = this.tabs.get(id);
-    
+
     // NEW: If exists but not rendered, render it
     if (!existingTab.isRendered || !existingTab.isRendered()) {
       console.log('[QuickTabsManager] Tab exists but not rendered, rendering now:', id);
@@ -349,7 +364,7 @@ createQuickTab(options) {
     } else {
       console.warn('[QuickTabsManager] Quick Tab already exists and is rendered:', id);
     }
-    
+
     existingTab.updateZIndex(++this.currentZIndex);
     return existingTab;
   }
@@ -371,8 +386,8 @@ class QuickTabsManager {
 
   broadcast(type, data) {
     if (this.broadcastChannel) {
-      this.broadcastChannel.postMessage({ 
-        type, 
+      this.broadcastChannel.postMessage({
+        type,
         data,
         senderId: this.instanceId // NEW: Identify sender
       });
@@ -382,7 +397,7 @@ class QuickTabsManager {
 
   setupBroadcastChannel() {
     // ... existing setup ...
-    
+
     this.broadcastChannel.onmessage = event => {
       console.log('[QuickTabsManager] BroadcastChannel message received:', event.data);
 
@@ -409,7 +424,7 @@ This approach prevents the tab from processing its own broadcasts entirely, elim
 ```javascript
 setupBroadcastChannel() {
   // ... existing setup ...
-  
+
   this.broadcastChannel.onmessage = event => {
     // ... debouncing code ...
 
@@ -435,13 +450,13 @@ createQuickTab(options) {
   // Check if already exists
   if (this.tabs.has(id)) {
     const existingTab = this.tabs.get(id);
-    
+
     // CRITICAL: Even if it exists, ensure it's rendered
     if (!existingTab.container || !existingTab.container.parentNode) {
       console.log('[QuickTabsManager] Tab exists but not rendered, rendering now:', id);
       existingTab.render();
     }
-    
+
     existingTab.updateZIndex(++this.currentZIndex);
     return existingTab;
   }
@@ -457,11 +472,13 @@ This ensures that even when a tab "already exists" in memory, we verify it's act
 ### Option 1: Separate Rendering from Creation
 
 **Pros**:
+
 - Most explicit and clear separation of concerns
 - Easy to debug (rendering state is tracked)
 - Minimal changes to existing broadcast flow
 
 **Cons**:
+
 - Requires changes to both `index.js` and `window.js`
 - Adds complexity with `isRendered()` method
 - More code changes overall
@@ -471,11 +488,13 @@ This ensures that even when a tab "already exists" in memory, we verify it's act
 ### Option 2: Ignore Own Broadcasts
 
 **Pros**:
+
 - Clean conceptual fix (tabs don't respond to their own messages)
 - Prevents echo issues entirely
 - Minimal performance overhead
 
 **Cons**:
+
 - Doesn't solve the underlying rendering separation issue
 - If broadcast fails to reach other tabs, originating tab never renders
 - Adds `instanceId` complexity
@@ -485,11 +504,13 @@ This ensures that even when a tab "already exists" in memory, we verify it's act
 ### Option 3: Immediate Rendering in All Cases
 
 **Pros**:
+
 - Simplest implementation (single function change)
 - Guarantees rendering happens
 - Fixes the immediate bug quickly
 
 **Cons**:
+
 - Doesn't address the root cause (separation of concerns)
 - May mask other issues
 - Slightly less efficient (extra checks on every broadcast)
@@ -537,10 +558,12 @@ Consider implementing **Option 2** as part of a broader architectural review:
 ### Test Case 1: Fresh Tab Load and Create
 
 **Setup**:
+
 1. Close all browser tabs
 2. Open a fresh tab (Tab 1)
 
 **Steps**:
+
 1. Create 3 Quick Tabs in Tab 1
 2. Verify Quick Tabs appear **immediately** in Tab 1
 3. Open Quick Tab Manager
@@ -551,10 +574,12 @@ Consider implementing **Option 2** as part of a broader architectural review:
 ### Test Case 2: Fresh Tab Load, Create, Switch to New Tab
 
 **Setup**:
+
 1. Close all browser tabs
 2. Open a fresh tab (Tab 1)
 
 **Steps**:
+
 1. Create 3 Quick Tabs in Tab 1
 2. Open a new tab (Tab 2)
 3. Verify Quick Tabs appear in Tab 2
@@ -566,11 +591,13 @@ Consider implementing **Option 2** as part of a broader architectural review:
 ### Test Case 3: Fresh Tab Load, Create, Switch to Existing Tab
 
 **Setup**:
+
 1. Open Tab 1
 2. Open Tab 2
 3. Switch back to Tab 1
 
 **Steps**:
+
 1. Create 3 Quick Tabs in Tab 1
 2. Switch to Tab 2
 3. Verify Quick Tabs appear in Tab 2
@@ -582,10 +609,12 @@ Consider implementing **Option 2** as part of a broader architectural review:
 ### Test Case 4: Multiple Rapid Creations
 
 **Setup**:
+
 1. Close all browser tabs
 2. Open a fresh tab
 
 **Steps**:
+
 1. Rapidly create 10 Quick Tabs (press Q key quickly on 10 different links)
 2. Verify all 10 Quick Tabs appear **immediately**
 3. Open Quick Tab Manager
@@ -596,11 +625,13 @@ Consider implementing **Option 2** as part of a broader architectural review:
 ### Test Case 5: Create Across Multiple Containers
 
 **Setup**:
+
 1. Open Tab 1 in default container
 2. Open Tab 2 in "Personal" container
 3. Open Tab 3 in "Work" container
 
 **Steps**:
+
 1. Create 2 Quick Tabs in Tab 1
 2. Switch to Tab 2
 3. Create 2 Quick Tabs in Tab 2
@@ -668,11 +699,13 @@ The core issue is a **timing problem** where the originating tab:
 5. Eventually renders after storage sync (with delay)
 
 The **recommended immediate fix** (Option 3) is to:
+
 - Always check if a tab is rendered before skipping creation
 - Render the tab if it exists in memory but not on the page
 - This ensures immediate visual feedback in the originating tab
 
 The **recommended long-term fix** (Option 1) is to:
+
 - Separate rendering state from creation state
 - Track whether tabs are rendered explicitly
 - Handle rendering independently of broadcast processing
