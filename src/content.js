@@ -33,7 +33,7 @@ try {
 }
 
 // Global error handler to catch all unhandled errors
-window.addEventListener('error', (event) => {
+window.addEventListener('error', event => {
   console.error('[Copy-URL-on-Hover] GLOBAL ERROR:', {
     message: event.message,
     filename: event.filename,
@@ -45,7 +45,7 @@ window.addEventListener('error', (event) => {
 });
 
 // Unhandled promise rejection handler
-window.addEventListener('unhandledrejection', (event) => {
+window.addEventListener('unhandledrejection', event => {
   console.error('[Copy-URL-on-Hover] UNHANDLED PROMISE REJECTION:', {
     reason: event.reason,
     promise: event.promise
@@ -208,7 +208,7 @@ async function initMainFeatures() {
   // Track mouse position for Quick Tab placement
   document.addEventListener(
     'mousemove',
-    (event) => {
+    event => {
       stateManager.set('lastMouseX', event.clientX);
       stateManager.set('lastMouseY', event.clientY);
     },
@@ -273,7 +273,7 @@ function getDomainType() {
  * Set up hover detection
  */
 function setupHoverDetection() {
-  document.addEventListener('mouseover', (event) => {
+  document.addEventListener('mouseover', event => {
     const domainType = getDomainType();
     const element = event.target;
 
@@ -291,7 +291,7 @@ function setupHoverDetection() {
     }
   });
 
-  document.addEventListener('mouseout', (event) => {
+  document.addEventListener('mouseout', event => {
     stateManager.setState({
       currentHoveredLink: null,
       currentHoveredElement: null
@@ -318,7 +318,7 @@ function isInputField(element) {
  * Set up keyboard shortcuts
  */
 function setupKeyboardShortcuts() {
-  document.addEventListener('keydown', async (event) => {
+  document.addEventListener('keydown', async event => {
     // Ignore if typing in an interactive field
     if (isInputField(event.target)) {
       return;
