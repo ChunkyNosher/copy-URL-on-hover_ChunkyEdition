@@ -421,6 +421,7 @@ export class PanelManager {
 
   /**
    * v1.5.8.15 - Set up BroadcastChannel for cross-tab panel visibility sync
+   * v1.5.9.8 - FIX: Added position/size sync
    */
   setupBroadcastChannel() {
     if (typeof BroadcastChannel === 'undefined') {
@@ -431,8 +432,23 @@ export class PanelManager {
     try {
       this.broadcastChannel = new BroadcastChannel('quick-tabs-panel-sync');
 
+      // v1.5.9.8 - Add debounce tracking
+      this.broadcastDebounce = new Map();
+      this.BROADCAST_DEBOUNCE_MS = 50;
+
       this.broadcastChannel.onmessage = event => {
         const { type, data } = event.data;
+
+        // v1.5.9.8 - Debounce rapid messages
+        const now = Date.now();
+        const lastProcessed = this.broadcastDebounce.get(type);
+
+        if (lastProcessed && now - lastProcessed < this.BROADCAST_DEBOUNCE_MS) {
+          debug(`[PanelManager] Ignoring duplicate broadcast: ${type}`);
+          return;
+        }
+
+        this.broadcastDebounce.set(type, now);
 
         switch (type) {
           case 'PANEL_OPENED':
@@ -447,6 +463,28 @@ export class PanelManager {
             if (this.isOpen) {
               debug('[PanelManager] Closing panel (broadcast from another tab)');
               this.closeSilent(); // Close without broadcasting to prevent loop
+            }
+            break;
+          // v1.5.9.8 - FIX: Handle position updates
+          case 'PANEL_POSITION_UPDATED':
+            if (this.panel && data.left !== undefined && data.top !== undefined) {
+              this.panel.style.left = `${data.left}px`;
+              this.panel.style.top = `${data.top}px`;
+              this.panelState.left = data.left;
+              this.panelState.top = data.top;
+              this.savePanelStateLocal();
+              debug(`[PanelManager] Updated position from broadcast: (${data.left}, ${data.top})`);
+            }
+            break;
+          // v1.5.9.8 - FIX: Handle size updates
+          case 'PANEL_SIZE_UPDATED':
+            if (this.panel && data.width !== undefined && data.height !== undefined) {
+              this.panel.style.width = `${data.width}px`;
+              this.panel.style.height = `${data.height}px`;
+              this.panelState.width = data.width;
+              this.panelState.height = data.height;
+              this.savePanelStateLocal();
+              debug(`[PanelManager] Updated size from broadcast: ${data.width}x${data.height}`);
             }
             break;
         }
@@ -558,6 +596,26 @@ export class PanelManager {
     } catch (err) {
       console.error('[PanelManager] Error saving panel state:', err);
     }
+  }
+
+  /**
+   * v1.5.9.8 - FIX: Save panel state without triggering storage event handlers
+   * Used when receiving broadcast messages to prevent infinite loops
+   */
+  savePanelStateLocal() {
+    if (!this.panel) return;
+
+    const rect = this.panel.getBoundingClientRect();
+
+    this.panelState = {
+      left: Math.round(rect.left),
+      top: Math.round(rect.top),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      isOpen: this.isOpen
+    };
+
+    debug('[PanelManager] Updated local panel state (no storage write)');
   }
 
   /**
@@ -836,6 +894,16 @@ export class PanelManager {
 
       // Save final position
       this.savePanelState();
+
+      // v1.5.9.8 - FIX: Broadcast position to other tabs
+      if (this.broadcastChannel) {
+        const rect = panel.getBoundingClientRect();
+        this.broadcastChannel.postMessage({
+          type: 'PANEL_POSITION_UPDATED',
+          data: { left: rect.left, top: rect.top }
+        });
+        debug(`[PanelManager] Broadcast position: (${rect.left}, ${rect.top})`);
+      }
     };
 
     const handlePointerCancel = e => {
@@ -961,6 +1029,22 @@ export class PanelManager {
 
         // Save final size/position
         this.savePanelState();
+
+        // v1.5.9.8 - FIX: Broadcast size/position to other tabs
+        if (this.broadcastChannel) {
+          const rect = panel.getBoundingClientRect();
+          this.broadcastChannel.postMessage({
+            type: 'PANEL_SIZE_UPDATED',
+            data: { width: rect.width, height: rect.height }
+          });
+          this.broadcastChannel.postMessage({
+            type: 'PANEL_POSITION_UPDATED',
+            data: { left: rect.left, top: rect.top }
+          });
+          debug(
+            `[PanelManager] Broadcast size: ${rect.width}x${rect.height}, position: (${rect.left}, ${rect.top})`
+          );
+        }
       };
 
       const handlePointerCancel = e => {
@@ -1146,14 +1230,18 @@ export class PanelManager {
 
   /**
    * Render Quick Tab item
+   * v1.5.9.8 - FIX: Defensive boolean conversion for isMinimized
    */
   renderQuickTabItem(tab, isMinimized) {
+    // v1.5.9.8 - FIX: Convert to boolean explicitly to prevent string 'false' issues
+    const minimized = Boolean(isMinimized);
+
     const item = document.createElement('div');
-    item.className = `panel-quick-tab-item ${isMinimized ? 'minimized' : 'active'}`;
+    item.className = `panel-quick-tab-item ${minimized ? 'minimized' : 'active'}`;
 
     // Indicator
     const indicator = document.createElement('span');
-    indicator.className = `panel-status-indicator ${isMinimized ? 'yellow' : 'green'}`;
+    indicator.className = `panel-status-indicator ${minimized ? 'yellow' : 'green'}`;
 
     // Favicon
     const favicon = document.createElement('img');
@@ -1178,7 +1266,7 @@ export class PanelManager {
     meta.className = 'panel-tab-meta';
 
     let metaParts = [];
-    if (isMinimized) metaParts.push('Minimized');
+    if (minimized) metaParts.push('Minimized');
     if (tab.activeTabId) metaParts.push(`Tab ${tab.activeTabId}`);
     if (tab.width && tab.height)
       metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
@@ -1191,7 +1279,7 @@ export class PanelManager {
     const actions = document.createElement('div');
     actions.className = 'panel-tab-actions';
 
-    if (!isMinimized) {
+    if (!minimized) {
       // Go to Tab button
       if (tab.activeTabId) {
         const goToBtn = document.createElement('button');

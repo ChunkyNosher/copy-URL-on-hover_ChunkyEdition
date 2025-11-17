@@ -664,10 +664,17 @@ export class QuickTabWindow {
 
   /**
    * Restore minimized Quick Tab window
+   * v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's in the same place
    */
   restore() {
     this.minimized = false;
     this.container.style.display = 'flex';
+
+    // v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's restored to the same place
+    this.container.style.left = `${this.left}px`;
+    this.container.style.top = `${this.top}px`;
+    this.container.style.width = `${this.width}px`;
+    this.container.style.height = `${this.height}px`;
 
     // Enhanced logging for console log export (Issue #1)
     console.log(

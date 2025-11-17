@@ -1077,6 +1077,72 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true;
   }
 
+  // v1.5.9.8 - FIX: Handle Quick Tab minimize/restore state updates (container-aware)
+  if (message.action === 'UPDATE_QUICK_TAB_MINIMIZE') {
+    console.log(
+      '[Background] Received minimize state update:',
+      message.id,
+      'minimized:',
+      message.minimized,
+      'saveId:',
+      message.saveId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs[tabIndex].minimized = message.minimized;
+      containerState.lastUpdate = Date.now();
+
+      // Save with transaction ID
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
+      // Save to storage
+      browser.storage.sync
+        .set({
+          quick_tabs_state_v2: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving minimize state to storage:', err);
+        });
+
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session
+          .set({
+            quick_tabs_session: stateToSave
+          })
+          .catch(err => {
+            console.error('[Background] Error saving minimize to session storage:', err);
+          });
+      }
+
+      console.log(`[Background] Updated minimize state for ${message.id}: ${message.minimized}`);
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (
     message.action === 'UPDATE_QUICK_TAB_SIZE' ||
     message.action === 'UPDATE_QUICK_TAB_SIZE_FINAL'

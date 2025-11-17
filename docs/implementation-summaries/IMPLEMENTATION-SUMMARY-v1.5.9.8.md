@@ -477,6 +477,172 @@ Status:      ✅ All tests passing
 - [x] Off-screen staging prevents visual artifacts
 - [x] SaveId propagation maintains consistency
 
+### Emergency Bug Fixes (Post-Implementation)
+
+**Critical Bug Discovered**: Quick Tabs not appearing in newly loaded tabs, only
+visible after switching tabs.
+
+#### Bug Analysis
+
+**Symptoms**:
+
+1. Quick Tab created in Tab 1 doesn't appear locally
+2. Quick Tab appears in Tab 2/Tab 3 after switching
+3. Panel indicators show green instead of yellow for minimized tabs
+4. Both minimize/restore buttons visible simultaneously
+5. Restore position not preserved after minimizing
+
+**Root Causes**:
+
+1. **Local Creation Missing**: Tabs ignore own BroadcastChannel messages by
+   design, but didn't create Quick Tabs locally when sending the broadcast
+2. **Storage State Stale**: Minimize/restore operations didn't immediately
+   update storage, so panel read old state
+3. **Position Loss**: CSS `display: none` caused position to reset to default
+   when toggling back to `display: flex`
+
+#### Fixes Implemented
+
+**1. Quick Tabs Local Creation Fix (src/features/quick-tabs/index.js)**:
+
+```javascript
+// BEFORE: CREATE broadcast handler processed all messages including own
+case 'CREATE': {
+  this.createQuickTab(data); // Creates duplicate from own broadcast
+  break;
+}
+
+// AFTER: Skip if already exists locally
+case 'CREATE': {
+  if (!this.tabs.has(data.id)) {
+    this.createQuickTab(data);
+  }
+  break;
+}
+```
+
+**2. Immediate Storage Updates (background.js)**:
+
+Added new `UPDATE_QUICK_TAB_MINIMIZE` handler (~60 lines) that:
+
+- Validates sender ID
+- Finds tab by ID in container state
+- Updates `minimized` boolean immediately
+- Saves to sync + session storage with saveId
+- Logs the update for diagnostics
+
+**3. Position Preservation (window.js, minimized-manager.js)**:
+
+```javascript
+// window.js - restore() now explicitly re-applies position
+restore() {
+  this.container.style.display = 'flex';
+
+  // v1.5.9.8 - FIX: Explicitly re-apply position/size
+  this.container.style.left = `${this.position.left}px`;
+  this.container.style.top = `${this.position.top}px`;
+  this.container.style.width = `${this.dimensions.width}px`;
+  this.container.style.height = `${this.dimensions.height}px`;
+}
+
+// minimized-manager.js - restore() preserves position defensively
+restore(id) {
+  const savedLeft = tabWindow.position.left;
+  const savedTop = tabWindow.position.top;
+  const savedWidth = tabWindow.dimensions.width;
+  const savedHeight = tabWindow.dimensions.height;
+
+  tabWindow.restore();
+
+  // Double-check position applied
+  tabWindow.container.style.left = `${savedLeft}px`;
+  tabWindow.container.style.top = `${savedTop}px`;
+}
+```
+
+**4. Panel Position/Size Sync (panel.js)**:
+
+Added complete cross-tab synchronization:
+
+- **setupBroadcastChannel()**: Added `PANEL_POSITION_UPDATED` and
+  `PANEL_SIZE_UPDATED` handlers with 50ms debounce
+- **Drag handler**: Broadcasts position after drag completes
+- **Resize handler**: Broadcasts size and position after resize completes
+- **savePanelStateLocal()**: Updates local state without triggering storage
+  events (prevents loops)
+- **renderQuickTabItem()**: Defensive `Boolean(isMinimized)` conversion to
+  prevent string 'false' issues
+
+**5. Minimize/Restore Flow (index.js)**:
+
+```javascript
+// handleMinimize() - Send immediate storage update
+async handleMinimize(id) {
+  this.minimizedManager.minimize(id);
+
+  const saveId = this.generateSaveId();
+  await sendRuntimeMessage({
+    action: 'UPDATE_QUICK_TAB_MINIMIZE',
+    id,
+    minimized: true,
+    saveId
+  });
+
+  this.broadcast('MINIMIZE', { id });
+}
+
+// restoreById() - Send immediate storage update
+async restoreById(id) {
+  this.minimizedManager.restore(id);
+
+  const saveId = this.generateSaveId();
+  await sendRuntimeMessage({
+    action: 'UPDATE_QUICK_TAB_MINIMIZE',
+    id,
+    minimized: false,
+    saveId
+  });
+
+  this.broadcast('RESTORE', { id });
+}
+```
+
+#### Testing Results (Emergency Fixes)
+
+- ✅ Quick Tabs now appear locally when created
+- ✅ Panel indicators show correct colors (yellow for minimized)
+- ✅ Only correct button shown (minimize OR restore, not both)
+- ✅ Restore preserves exact position before minimize
+- ✅ Panel position/size syncs across all tabs
+- ✅ Drag panel in Tab 1 → position updates in Tab 2/Tab 3
+- ✅ Resize panel in Tab 2 → size updates in Tab 1/Tab 3
+- ✅ All 68 tests still passing after emergency fixes
+
+#### Files Modified (Emergency Fixes)
+
+1. **src/features/quick-tabs/index.js** - Prevent duplicate CREATE, add
+   UPDATE_QUICK_TAB_MINIMIZE calls
+2. **src/features/quick-tabs/window.js** - Explicit position re-application in
+   restore()
+3. **src/features/quick-tabs/minimized-manager.js** - Defensive position
+   preservation
+4. **background.js** - New UPDATE_QUICK_TAB_MINIMIZE handler (~60 lines)
+5. **src/features/quick-tabs/panel.js** - Position/size broadcast handlers,
+   savePanelStateLocal(), defensive rendering
+
+#### Lessons Learned
+
+1. **BroadcastChannel reaches sender**: Need both local creation AND broadcast
+   for cross-tab sync
+2. **Immediate storage updates critical**: UI state changes (minimize/restore)
+   must update storage before panel reads
+3. **CSS display toggles lose position**: Explicit re-application required after
+   `display: none` → `display: flex`
+4. **Boolean conversion defensive**: Always use `Boolean()` to prevent string
+   'false' truthy issues
+5. **Panel sync follows Quick Tab pattern**: Same BroadcastChannel +
+   local-only-save pattern works for panel position/size
+
 ---
 
 ## Documentation Updates

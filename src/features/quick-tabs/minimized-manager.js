@@ -31,13 +31,33 @@ export class MinimizedManager {
 
   /**
    * Restore a minimized Quick Tab
+   * v1.5.9.8 - FIX: Ensure position state is preserved before calling restore
    */
   restore(id) {
     const tabWindow = this.minimizedTabs.get(id);
     if (tabWindow) {
+      // v1.5.9.8 - FIX: Ensure position state is preserved before calling restore
+      const savedLeft = tabWindow.left;
+      const savedTop = tabWindow.top;
+      const savedWidth = tabWindow.width;
+      const savedHeight = tabWindow.height;
+
       tabWindow.restore();
+
+      // Double-check position was applied (defensive)
+      if (tabWindow.container) {
+        tabWindow.container.style.left = `${savedLeft}px`;
+        tabWindow.container.style.top = `${savedTop}px`;
+        tabWindow.container.style.width = `${savedWidth}px`;
+        tabWindow.container.style.height = `${savedHeight}px`;
+      }
+
       this.minimizedTabs.delete(id);
-      console.log('[MinimizedManager] Restored tab:', id);
+      console.log('[MinimizedManager] Restored tab with position:', {
+        id,
+        left: savedLeft,
+        top: savedTop
+      });
       return true;
     }
     return false;

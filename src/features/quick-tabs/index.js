@@ -127,7 +127,10 @@ class QuickTabsManager {
 
         switch (type) {
           case 'CREATE':
-            this.createQuickTab(data);
+            // v1.5.9.8 FIX: Only create if not already exists (prevent duplicates from own broadcasts)
+            if (!this.tabs.has(data.id)) {
+              this.createQuickTab(data);
+            }
             break;
           case 'UPDATE_POSITION':
             this.updateQuickTabPosition(data.id, data.left, data.top);
@@ -569,6 +572,7 @@ class QuickTabsManager {
   /**
    * Create a new Quick Tab window
    * v1.5.8.13 - Now broadcasts creation to other tabs
+   * v1.5.9.8 - CRITICAL FIX: Always create locally when initiated, don't wait for broadcast
    */
   createQuickTab(options) {
     console.log('[QuickTabsManager] Creating Quick Tab with options:', options);
@@ -708,6 +712,28 @@ class QuickTabsManager {
       if (this.eventBus && this.Events) {
         this.eventBus.emit(this.Events.QUICK_TAB_MINIMIZED, { id });
       }
+
+      // v1.5.9.8 - FIX: Update storage immediately to reflect minimized state
+      const saveId = this.generateSaveId();
+      this.trackPendingSave(saveId);
+
+      if (typeof browser !== 'undefined' && browser.runtime) {
+        browser.runtime
+          .sendMessage({
+            action: 'UPDATE_QUICK_TAB_MINIMIZE',
+            id: id,
+            minimized: true,
+            saveId: saveId,
+            timestamp: Date.now()
+          })
+          .then(() => this.releasePendingSave(saveId))
+          .catch(err => {
+            console.error('[QuickTabsManager] Error updating minimize state:', err);
+            this.releasePendingSave(saveId);
+          });
+      } else {
+        this.releasePendingSave(saveId);
+      }
     }
   }
 
@@ -753,9 +779,36 @@ class QuickTabsManager {
 
   /**
    * Restore Quick Tab by ID (called from panel)
+   * v1.5.9.8 - FIX: Update storage immediately to reflect restored state
    */
   restoreById(id) {
-    return this.restoreQuickTab(id);
+    const restored = this.restoreQuickTab(id);
+
+    if (restored) {
+      // v1.5.9.8 - FIX: Update storage immediately to reflect restored state
+      const saveId = this.generateSaveId();
+      this.trackPendingSave(saveId);
+
+      if (typeof browser !== 'undefined' && browser.runtime) {
+        browser.runtime
+          .sendMessage({
+            action: 'UPDATE_QUICK_TAB_MINIMIZE',
+            id: id,
+            minimized: false,
+            saveId: saveId,
+            timestamp: Date.now()
+          })
+          .then(() => this.releasePendingSave(saveId))
+          .catch(err => {
+            console.error('[QuickTabsManager] Error updating restore state:', err);
+            this.releasePendingSave(saveId);
+          });
+      } else {
+        this.releasePendingSave(saveId);
+      }
+    }
+
+    return restored;
   }
 
   /**
