@@ -171,6 +171,7 @@ The issue stems from the following sequence in `index.js` (v1.5.9.10):
    ```
 
 3. **Tab 1 receives its own broadcast** (line 93+):
+
    ```javascript
    this.broadcastChannel.onmessage = event => {
      const { type, data } = event.data;
@@ -425,20 +426,13 @@ class QuickTabsManager {
     // ... existing setup ...
 
     this.broadcastChannel.onmessage = event => {
-      console.log(
-        '[QuickTabsManager] BroadcastChannel message received:',
-        event.data
-      );
+      console.log('[QuickTabsManager] BroadcastChannel message received:', event.data);
 
       const { type, data, senderId } = event.data;
 
       // NEW: Ignore messages from self
       if (senderId === this.instanceId) {
-        console.log(
-          '[QuickTabsManager] Ignoring own broadcast:',
-          type,
-          data.id
-        );
+        console.log('[QuickTabsManager] Ignoring own broadcast:', type, data.id);
         return;
       }
 
