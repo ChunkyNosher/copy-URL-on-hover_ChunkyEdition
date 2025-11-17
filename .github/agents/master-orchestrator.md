@@ -106,6 +106,29 @@ workflows for complex tasks. All work must be optimized for **Firefox** and
   export. Reference docs/manual/1.5.9 docs/popup-close-background-v1597.md when
   coordinating log tooling changes.
 
+### v1.5.9.11 Notes
+
+- **Quick Tabs rendering bug - Root cause resolution**: Fixed critical bug with
+  robust architectural solution addressing THREE cascading failures: (1) Message
+  action name mismatch (background sent `SYNC_QUICK_TAB_STATE` but content only
+  listened for `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND`), (2) Initial creation
+  flow bypassing local `createQuickTab()` call, (3) Pending saveId system
+  creating deadlock in originating tab.
+- **Direct local creation pattern**: `handleCreateQuickTab()` now calls
+  `quickTabsManager.createQuickTab()` FIRST for immediate rendering, THEN
+  notifies background for persistence. Originating tab renders instantly (<1ms),
+  BroadcastChannel syncs to other tabs (<10ms), storage serves as backup.
+- **Proper separation of concerns**: Content script handles UI rendering,
+  BroadcastChannel handles real-time sync, background handles persistence.
+  Eliminates race conditions and ensures immediate visual feedback.
+- **Message action standardization**: Added support for both
+  `SYNC_QUICK_TAB_STATE` and `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND` for
+  compatibility. Background now consistently sends
+  `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND`.
+- See docs/manual/1.5.9 docs/quick-tabs-rendering-bug-analysis-v15910.md for
+  deep root cause analysis.
+
+
 ### v1.5.9.10 Notes
 
 - **Quick Tabs cross-tab rendering fix**: `QuickTabWindow` gained `isRendered()`

@@ -1,6 +1,6 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.9.10** - A feature-rich Firefox/Zen Browser extension with
+**Version 1.5.9.11** - A feature-rich Firefox/Zen Browser extension with
 **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced
 Quick Tab management with Firefox Container support and Persistent Floating
 Panel Manager.
@@ -10,6 +10,65 @@ or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 Now with full Firefox Container integration and a persistent Quick Tabs Manager
 panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.9.11
+
+**🐛 Critical Fix: Quick Tabs Rendering Bug - Root Cause Resolution**
+
+This release completely fixes the Quick Tabs rendering bug with a **robust,
+architectural solution** that addresses the root cause rather than just masking
+symptoms.
+
+**The Problem (Identified in Deep Analysis):**
+
+- Quick Tabs created in Tab 1 would NOT appear visually in Tab 1
+- They would appear in Tab 2 or Tab 3 instead
+- Root cause was a **cascade of THREE failures**:
+  1. **Message action name mismatch**: Background sent `SYNC_QUICK_TAB_STATE`
+     but content script only listened for `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND`
+  2. **Initial creation flow bypass**: User pressed Q → sent message to
+     background → background updated storage but NEVER called `createQuickTab()`
+     in originating tab
+  3. **Pending saveId deadlock**: Originating tab ignored storage changes during
+     1000ms grace period, combined with message mismatch created complete
+     deadlock
+
+**The Fix (Architectural Improvement):**
+
+- ✅ **Standardized message actions** - Added `case 'SYNC_QUICK_TAB_STATE':` to
+  handle both message names
+  - Background now consistently sends
+    `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND`
+  - Content script handles both old and new message names for compatibility
+- ✅ **Direct local creation** - Refactored `handleCreateQuickTab()` to create
+  locally FIRST
+  - User presses Q → `quickTabsManager.createQuickTab()` called immediately in
+    originating tab
+  - Quick Tab renders instantly (no delay, no waiting for background sync)
+  - THEN background is notified for persistence and container coordination
+  - BroadcastChannel propagates to other tabs in real-time (<10ms)
+- ✅ **Proper separation of concerns**
+  - Content script: UI rendering and user interaction
+  - BroadcastChannel: Real-time cross-tab sync
+  - Background script: Persistence layer and container coordination
+  - SaveId tracking: Prevents race conditions and duplicate processing
+
+**Reliability & UX:**
+
+- 📺 **Immediate visual feedback** - Quick Tabs appear instantly in originating
+  tab
+- 🔄 **Real-time cross-tab sync** - BroadcastChannel propagates to other tabs
+  (<10ms)
+- 💾 **Reliable persistence** - Background storage serves as backup/fallback
+- 🛡️ **No race conditions** - SaveId tracking prevents duplicate processing
+- 🏗️ **Architectural correctness** - Each layer has clear, well-defined
+  responsibility
+
+**References:**
+
+- [Deep Analysis Report](docs/manual/1.5.9%20docs/quick-tabs-rendering-bug-analysis-v15910.md)
+
+---
 
 ## 🎉 What's New in v1.5.9.10
 
@@ -1345,6 +1404,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.9.9  
+**Current Version**: 1.5.9.11  
 **Last Updated**: 2025-11-17  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

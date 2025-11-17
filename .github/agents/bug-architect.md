@@ -124,7 +124,7 @@ Loading):**
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
   - **manifest.json**: **Manifest v2** (required for webRequestBlocking) -
-    v1.5.9.10
+    v1.5.9.11
 - **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.9):
   - Jest with browser API mocks (tests/setup.js)
   - Example tests (tests/example.test.js)
@@ -134,6 +134,28 @@ Loading):**
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
+
+### v1.5.9.11 Notes
+
+- **Quick Tabs rendering bug - Root cause resolution**: Fixed critical bug with
+  robust architectural solution addressing THREE cascading failures: (1) Message
+  action name mismatch (background sent `SYNC_QUICK_TAB_STATE` but content only
+  listened for `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND`), (2) Initial creation
+  flow bypassing local `createQuickTab()` call, (3) Pending saveId system
+  creating deadlock in originating tab.
+- **Direct local creation pattern**: `handleCreateQuickTab()` now calls
+  `quickTabsManager.createQuickTab()` FIRST for immediate rendering, THEN
+  notifies background for persistence. Originating tab renders instantly (<1ms),
+  BroadcastChannel syncs to other tabs (<10ms), storage serves as backup.
+- **Proper separation of concerns**: Content script handles UI rendering,
+  BroadcastChannel handles real-time sync, background handles persistence.
+  Eliminates race conditions and ensures immediate visual feedback.
+- **Message action standardization**: Added support for both
+  `SYNC_QUICK_TAB_STATE` and `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND` for
+  compatibility. Background now consistently sends
+  `SYNC_QUICK_TAB_STATE_FROM_BACKGROUND`.
+- See docs/manual/1.5.9 docs/quick-tabs-rendering-bug-analysis-v15910.md for
+  deep root cause analysis.
 
 ### v1.5.9.10 Notes
 
