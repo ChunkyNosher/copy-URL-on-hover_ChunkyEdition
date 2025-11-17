@@ -4,6 +4,33 @@
 // Also handles webRequest to remove X-Frame-Options for Quick Tabs
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 
+const runtimeAPI =
+  (typeof browser !== 'undefined' && browser.runtime) ||
+  (typeof chrome !== 'undefined' && chrome.runtime) ||
+  null;
+
+const downloadsAPI =
+  (typeof browser !== 'undefined' && browser.downloads) ||
+  (typeof chrome !== 'undefined' && chrome.downloads) ||
+  null;
+
+const EXTENSION_ID = runtimeAPI?.id || null;
+
+function isAuthorizedExtensionSender(sender) {
+  if (!sender || !sender.id) {
+    return false;
+  }
+
+  if (!EXTENSION_ID) {
+    console.warn(
+      '[Background] Extension ID not resolved - defaulting to optimistic sender validation'
+    );
+    return true;
+  }
+
+  return sender.id === EXTENSION_ID;
+}
+
 // ==================== LOG CAPTURE FOR EXPORT ====================
 // Log buffer for background script
 const BACKGROUND_LOG_BUFFER = [];
@@ -290,7 +317,7 @@ class StateCoordinator {
    */
   async processOperation(op) {
     const { type, quickTabId, data } = op;
-  
+
     switch (type) {
       case 'create': {
         // ✅ FIXED: Wrapped in block scope
@@ -307,7 +334,7 @@ class StateCoordinator {
         }
         break;
       }
-  
+
       case 'update': {
         // ✅ FIXED: Wrapped in block scope
         const updateIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
@@ -317,7 +344,7 @@ class StateCoordinator {
         }
         break;
       }
-  
+
       case 'delete': {
         // ✅ FIXED: Wrapped in block scope
         const deleteIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
@@ -327,7 +354,7 @@ class StateCoordinator {
         }
         break;
       }
-  
+
       case 'minimize': {
         // ✅ FIXED: Wrapped in block scope
         const minIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
@@ -339,7 +366,7 @@ class StateCoordinator {
         }
         break;
       }
-  
+
       case 'restore': {
         // ✅ FIXED: Wrapped in block scope
         const restoreIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
@@ -350,7 +377,7 @@ class StateCoordinator {
         break;
       }
     }
-  
+
     this.globalState.timestamp = Date.now();
   }
 
@@ -602,6 +629,34 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === 'GET_BACKGROUND_LOGS') {
     sendResponse({ logs: [...BACKGROUND_LOG_BUFFER] });
     return true;
+  }
+
+  if (message.action === 'EXPORT_LOGS') {
+    if (!isAuthorizedExtensionSender(sender)) {
+      console.error('[Background] Unauthorized EXPORT_LOGS sender', sender);
+      sendResponse({ success: false, error: 'Unauthorized sender' });
+      return true;
+    }
+
+    if (typeof message.logText !== 'string' || typeof message.filename !== 'string') {
+      console.error('[Background] Invalid EXPORT_LOGS payload', {
+        hasText: typeof message.logText === 'string',
+        hasFilename: typeof message.filename === 'string'
+      });
+      sendResponse({ success: false, error: 'Invalid log export payload' });
+      return true;
+    }
+
+    handleLogExport(message.logText, message.filename)
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch(error => {
+        console.error('[Background] Log export failed:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+
+    return true; // Async response
   }
   // ==================== END LOG EXPORT HANDLER ====================
 
@@ -1122,6 +1177,94 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return true;
   }
 });
+
+// ==================== LOG EXPORT BACKGROUND HANDLER (v1.5.9.7) ====================
+async function handleLogExport(logText, filename) {
+  if (!downloadsAPI || typeof downloadsAPI.download !== 'function') {
+    throw new Error('Downloads API unavailable');
+  }
+
+  if (!filename || typeof filename !== 'string') {
+    throw new Error('Missing export filename');
+  }
+
+  if (typeof logText !== 'string' || logText.length === 0) {
+    throw new Error('Log payload is empty');
+  }
+
+  const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  console.log(
+    `[Background] Prepared log export ${filename} (${blob.size} bytes / ${(blob.size / 1024).toFixed(2)} KB)`
+  );
+
+  let revokeListenerActive = true;
+  let fallbackTimeoutId = null;
+  let revokeListener = null;
+  let activeDownloadId = null;
+
+  const cleanup = reason => {
+    if (!revokeListenerActive) {
+      return;
+    }
+
+    revokeListenerActive = false;
+
+    try {
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.warn('[Background] Failed to revoke Blob URL during cleanup:', error);
+    }
+
+    if (revokeListener && downloadsAPI?.onChanged?.removeListener) {
+      downloadsAPI.onChanged.removeListener(revokeListener);
+    }
+
+    if (fallbackTimeoutId) {
+      clearTimeout(fallbackTimeoutId);
+    }
+
+    const suffix = activeDownloadId !== null ? ` for download ${activeDownloadId}` : '';
+    console.log(`[Background] Blob URL revoked (${reason})${suffix}`);
+  };
+
+  try {
+    activeDownloadId = await downloadsAPI.download({
+      url: blobUrl,
+      filename: filename,
+      saveAs: true,
+      conflictAction: 'uniquify'
+    });
+
+    console.log(`✓ [Background] Download ${activeDownloadId} initiated for ${filename}`);
+
+    revokeListener = delta => {
+      if (delta.id !== activeDownloadId || !delta.state) {
+        return;
+      }
+
+      const currentState = delta.state.current;
+      console.log(`[Background] Download ${activeDownloadId} state: ${currentState}`);
+
+      if (currentState === 'complete') {
+        cleanup('complete');
+      } else if (currentState === 'interrupted') {
+        cleanup('interrupted');
+      }
+    };
+
+    downloadsAPI.onChanged.addListener(revokeListener);
+
+    fallbackTimeoutId = setTimeout(() => {
+      cleanup('timeout');
+    }, 60000);
+  } catch (error) {
+    cleanup('failed');
+    throw error;
+  }
+}
+// ==================== END LOG EXPORT BACKGROUND HANDLER ====================
 
 // ==================== KEYBOARD COMMAND LISTENER ====================
 // Handle keyboard shortcuts defined in manifest.json

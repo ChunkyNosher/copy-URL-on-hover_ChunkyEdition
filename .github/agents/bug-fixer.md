@@ -131,6 +131,12 @@ security, and Firefox-specific behaviors optimized for both **Firefox** and
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
+- **Log Export Pipeline (v1.5.9.7)**: Popup now only formats logs and sends an
+  `EXPORT_LOGS` runtime message. `background.js` validates `sender.id`, creates
+  the Blob, starts `downloads.download({ saveAs: true })`, and listens for
+  `downloads.onChanged` to revoke Blob URLs after `complete`/`interrupted`
+  states (plus a 60s fallback) so Save As dialogs closing the popup no longer
+  kill the export (see docs/manual/1.5.9 docs/popup-close-background-v1597.md).
 
 **Critical APIs Currently Used - PRIORITIZE THESE:**
 

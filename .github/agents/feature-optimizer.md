@@ -124,6 +124,12 @@ existing features to modern APIs that unlock new possibilities.
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
+- **Log Export Pipeline (v1.5.9.7)**: Popup features only aggregate logs and
+  send an `EXPORT_LOGS` message. `background.js` validates `sender.id`, builds
+  Blobs, calls `downloads.download({ saveAs: true })`, then waits for
+  `downloads.onChanged` before revoking the Blob URL (60s fallback) so Save As
+  dialogs closing the popup cannot kill listeners. See docs/manual/1.5.9
+  docs/popup-close-background-v1597.md when touching export flows.
 
 **Core APIs - Leverage These:**
 

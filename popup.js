@@ -210,110 +210,34 @@ async function exportAllLogs(version) {
       `[Popup] Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`
     );
 
-    // ==================== BLOB URL SOLUTION (v1.5.9.6) ====================
-    // Firefox BLOCKS data: URLs in downloads.download() for security reasons
-    // but Blob URLs work perfectly in all browsers
-    //
-    // CRITICAL FIX in v1.5.9.6: Wait for download to complete before revoking
-    // Blob URL. Fixed timeout caused race condition where URL was revoked
-    // before Firefox finished reading the file.
+    // ==================== BACKGROUND HANDOFF (v1.5.9.7) ====================
+    // Firefox automatically closes the popup when the "Save As" dialog opens,
+    // which destroys popup event listeners mid-download. Delegating the
+    // downloads API work to the persistent background script ensures the
+    // listener survives regardless of popup focus.
     //
     // References:
-    // - MDN downloads.download(): https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/download
-    // - MDN downloads.onChanged: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/onChanged
-    // - Firefox Bug 1289958: https://bugzilla.mozilla.org/show_bug.cgi?id=1289958
-    // - Diagnostic report: docs/manual/1.5.9 docs/blob-url-race-fix-v1596.md
+    // - Diagnostic report: docs/manual/1.5.9 docs/popup-close-background-v1597.md
+    // - Stack Overflow 58412084: Save As dialog closes browserAction popup
+    // - Firefox Bug 1658694: Popup closes when file picker opens
 
-    // Step 1: Create a Blob from the log text
-    // No Base64 encoding needed - Blobs work with plain text!
-    const blob = new Blob([logText], {
-      type: 'text/plain;charset=utf-8'
+    console.log('[Popup] Delegating export to background script (v1.5.9.7 fix)');
+
+    const response = await browserAPI.runtime.sendMessage({
+      action: 'EXPORT_LOGS',
+      logText: logText,
+      filename: filename
     });
 
-    console.log(`[Popup] Blob created: ${blob.size} bytes (${(blob.size / 1024).toFixed(2)} KB)`);
-
-    // Step 2: Create an Object URL (Blob URL) from the Blob
-    // This creates an in-memory reference that Firefox trusts
-    const blobUrl = URL.createObjectURL(blob);
-
-    console.log(`[Popup] Blob URL created: ${blobUrl}`);
-
-    try {
-      // Step 3: Download using Blob URL
-      // Firefox allows this because Blob URLs have null principal (safe)
-      const downloadId = await browserAPI.downloads.download({
-        url: blobUrl,
-        filename: filename,
-        saveAs: true,
-        conflictAction: 'uniquify' // Auto-rename if file exists
-      });
-
-      console.log(`✓ [Popup] Download initiated! Download ID: ${downloadId}`);
-      console.log('✓ [Popup] Method: Blob URL (Firefox-compatible)');
-
-      // Step 4: ✅ CRITICAL FIX - Listen for download completion before revoking
-      // This prevents the race condition where the Blob URL is revoked while
-      // Firefox is still reading the file (especially with saveAs: true where
-      // user interaction adds delay)
-
-      let revokeListenerActive = true;
-
-      const revokeListener = delta => {
-        // Only process events for our download
-        if (delta.id !== downloadId) {
-          return;
-        }
-
-        // Check if download state changed
-        if (delta.state) {
-          const currentState = delta.state.current;
-
-          console.log(`[Popup] Download ${downloadId} state: ${currentState}`);
-
-          // Download completed successfully or failed - safe to revoke
-          if (currentState === 'complete' || currentState === 'interrupted') {
-            if (revokeListenerActive) {
-              revokeListenerActive = false;
-
-              URL.revokeObjectURL(blobUrl);
-              browserAPI.downloads.onChanged.removeListener(revokeListener);
-
-              if (currentState === 'complete') {
-                console.log(`✓ [Popup] Blob URL revoked after successful download`);
-              } else {
-                console.log(`⚠ [Popup] Blob URL revoked after download interruption`);
-              }
-            }
-          }
-        }
-      };
-
-      // Register the listener
-      browserAPI.downloads.onChanged.addListener(revokeListener);
-
-      // Step 5: Fallback timeout to prevent memory leak if download hangs
-      // This ensures the Blob URL is eventually revoked even if:
-      // - Download never completes (browser bug)
-      // - User cancels before state change fires
-      // - onChanged listener fails for any reason
-      setTimeout(() => {
-        if (revokeListenerActive) {
-          revokeListenerActive = false;
-
-          URL.revokeObjectURL(blobUrl);
-          browserAPI.downloads.onChanged.removeListener(revokeListener);
-
-          console.log('[Popup] Blob URL revoked (fallback timeout - 60s)');
-        }
-      }, 60000); // 60 seconds - generous timeout for slow systems
-    } catch (downloadError) {
-      // If download initiation fails, revoke immediately to prevent memory leak
-      URL.revokeObjectURL(blobUrl);
-      console.error('[Popup] Download initiation failed, Blob URL revoked immediately');
-      throw downloadError;
+    if (!response || !response.success) {
+      const errorMessage =
+        response?.error || 'Background script did not acknowledge export request';
+      throw new Error(errorMessage);
     }
 
-    // ==================== END BLOB URL SOLUTION ====================
+    console.log('✓ [Popup] Background script accepted log export request');
+
+    // ==================== END BACKGROUND HANDOFF ====================
   } catch (error) {
     console.error('[Popup] Export failed:', error);
     throw error;
@@ -418,7 +342,7 @@ function syncColorInputs(textInput, colorPicker) {
 
 // Load settings
 function loadSettings() {
-  browserAPI.storage.local.get(DEFAULT_SETTINGS, function (items) {
+  browserAPI.storage.local.get(DEFAULT_SETTINGS, items => {
     document.getElementById('copyUrlKey').value = items.copyUrlKey;
     document.getElementById('copyUrlCtrl').checked = items.copyUrlCtrl;
     document.getElementById('copyUrlAlt').checked = items.copyUrlAlt;
@@ -521,7 +445,7 @@ function showStatus(message, isSuccess = true) {
 }
 
 // Save settings
-document.getElementById('saveBtn').addEventListener('click', function () {
+document.getElementById('saveBtn').addEventListener('click', () => {
   const settings = {
     copyUrlKey: document.getElementById('copyUrlKey').value || 'y',
     copyUrlCtrl: document.getElementById('copyUrlCtrl').checked,
@@ -590,7 +514,7 @@ document.getElementById('saveBtn').addEventListener('click', function () {
     menuSize: document.getElementById('menuSize').value || 'medium'
   };
 
-  browserAPI.storage.local.set(settings, function () {
+  browserAPI.storage.local.set(settings, () => {
     showStatus('✓ Settings saved! Reload tabs to apply changes.');
     applyTheme(settings.darkMode);
     applyMenuSize(settings.menuSize);
@@ -598,9 +522,9 @@ document.getElementById('saveBtn').addEventListener('click', function () {
 });
 
 // Reset to defaults
-document.getElementById('resetBtn').addEventListener('click', function () {
+document.getElementById('resetBtn').addEventListener('click', () => {
   if (confirm('Reset all settings to defaults?')) {
-    browserAPI.storage.local.set(DEFAULT_SETTINGS, function () {
+    browserAPI.storage.local.set(DEFAULT_SETTINGS, () => {
       loadSettings();
       showStatus('✓ Settings reset to defaults!');
     });
@@ -608,7 +532,7 @@ document.getElementById('resetBtn').addEventListener('click', function () {
 });
 
 // Clear Quick Tab storage button
-document.getElementById('clearStorageBtn').addEventListener('click', async function () {
+document.getElementById('clearStorageBtn').addEventListener('click', async () => {
   if (
     confirm(
       'This will clear Quick Tab positions and state. Your settings and keybinds will be preserved. Are you sure?'
@@ -659,7 +583,7 @@ document.getElementById('quickTabPosition').addEventListener('change', function 
 });
 
 // Tab switching logic
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', () => {
   // Settings tab switching
   document.querySelectorAll('.tab-button').forEach(tab => {
     tab.addEventListener('click', () => {

@@ -1,9 +1,14 @@
 # Popup Context Termination on Save As Dialog - Diagnostic Report
-**copy-URL-on-hover Extension v1.5.9.6**
 
-**Issue:** Popup closes when "Save As" dialog opens, terminating downloads.onChanged listener before download completes  
+**copy-URL-on-hover Extension v1.5.9.7** (Issue observed in v1.5.9.6)
+
+**Issue:** Popup closes when "Save As" dialog opens, terminating
+downloads.onChanged listener before download completes  
 **Repository:** ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
 **Date:** November 16, 2025, 11:39 AM EST
+
+> **Status:** ✅ Implemented in v1.5.9.7 by moving downloads API usage to the
+> background script and delegating popup export requests via `EXPORT_LOGS`.
 
 ---
 
@@ -12,29 +17,33 @@
 ### Critical Error Messages
 
 **Line 1: TypeError**
+
 ```
 TypeError: can't access property "style", this.container is null
 ```
+
 **Analysis:** This error occurs when popup closes - DOM elements become null.
 
 **Line 2: Connection Closed**
+
 ```
-cannot send function call result: other side closed connection 
+cannot send function call result: other side closed connection
 (call data: ({path:"downloads.download", args:[{
-  allowHttpErrors:false, 
-  body:null, 
-  conflictAction:"uniquify", 
-  cookieStoreId:null, 
-  filename:"copy-url-extension-logs_v1.5.9.6_2025-11-16T16-38-02.txt", 
-  headers:null, 
-  incognito:false, 
-  method:null, 
-  saveAs:true, 
+  allowHttpErrors:false,
+  body:null,
+  conflictAction:"uniquify",
+  cookieStoreId:null,
+  filename:"copy-url-extension-logs_v1.5.9.6_2025-11-16T16-38-02.txt",
+  headers:null,
+  incognito:false,
+  method:null,
+  saveAs:true,
   url:"blob:moz-extension://3f020ab4-0e42-4e98-9baf-374bbee9064b/d7a38c34-3729-4a1f-ae5e-f93dad924ed"
 }])
 ```
 
-**Analysis:** The popup context terminated DURING the downloads.download() call, before the onChanged listener could be registered.
+**Analysis:** The popup context terminated DURING the downloads.download() call,
+before the onChanged listener could be registered.
 
 ---
 
@@ -65,11 +74,17 @@ According to Stack Overflow (2019)[418] and Firefox Bugzilla[420][426]:
 
 **Quote from Stack Overflow:**
 
-> **"My intuition is that as soon as the file location window pops up, the popup loses focus and dies, which makes the download impossible to complete.... Browser Action Popup is page and once page is closed, async operations will lose their reference. It is best to pass async operations to the background script."**[418]
+> **"My intuition is that as soon as the file location window pops up, the popup
+> loses focus and dies, which makes the download impossible to complete....
+> Browser Action Popup is page and once page is closed, async operations will
+> lose their reference. It is best to pass async operations to the background
+> script."**[418]
 
 **Quote from Firefox Bugzilla:**
 
-> **"Opening input type='file' in extension Popup window will close the popup. File upload dialog is opened, but the popup is now closed. The popup should stay opened. It works in Chrome."**[420]
+> **"Opening input type='file' in extension Popup window will close the popup.
+> File upload dialog is opened, but the popup is now closed. The popup should
+> stay opened. It works in Chrome."**[420]
 
 **Timeline:**
 
@@ -100,15 +115,15 @@ T=204ms:  ❌ Error: "other side closed connection"
 ```javascript
 async function exportAllLogs(version) {
   // ... blob creation ...
-  
+
   const downloadId = await browserAPI.downloads.download({
     url: blobUrl,
-    saveAs: true  // ❌ This triggers "Save As" dialog
+    saveAs: true // ❌ This triggers "Save As" dialog
   });
-  
+
   // ❌ Code execution continues...
   browserAPI.downloads.onChanged.addListener(revokeListener);
-  
+
   // ❌ BUT: "Save As" dialog appears
   // ❌ Popup closes IMMEDIATELY
   // ❌ Listener registration never happens!
@@ -133,12 +148,14 @@ async function exportAllLogs(version) {
 According to MDN[189] and Stack Overflow[418]:
 
 **Background scripts:**
+
 - ✅ **Persistent** - stay alive even when popup closes
 - ✅ **Independent** - not affected by UI focus changes
 - ✅ **Global** - survive across popup open/close cycles
 - ✅ **Reliable** - perfect for async operations like downloads
 
 **Popup scripts:**
+
 - ❌ **Ephemeral** - close when popup loses focus
 - ❌ **UI-dependent** - terminate on any dialog or focus change
 - ❌ **Unreliable** - cannot complete async operations that open dialogs
@@ -148,24 +165,27 @@ According to MDN[189] and Stack Overflow[418]:
 **Move download logic from popup.js → background.js**
 
 **File: popup.js (MODIFIED)**
+
 ```javascript
 // In exportAllLogs() - just send message to background
 async function exportAllLogs(version) {
   try {
     console.log('[Popup] Starting log export...');
-    
+
     // Collect logs (this part stays in popup)
     const backgroundLogs = await getBackgroundLogs();
     const contentLogs = await getContentScriptLogs();
     const allLogs = [...backgroundLogs, ...contentLogs];
     allLogs.sort((a, b) => a.timestamp - b.timestamp);
-    
+
     // Format logs
     const logText = formatLogsAsText(allLogs, version);
     const filename = generateLogFilename(version);
-    
-    console.log(`[Popup] Formatted ${allLogs.length} logs, delegating to background script`);
-    
+
+    console.log(
+      `[Popup] Formatted ${allLogs.length} logs, delegating to background script`
+    );
+
     // ✅ Send to background script to handle download
     // Popup can close safely after this - background will handle it
     await browserAPI.runtime.sendMessage({
@@ -173,9 +193,8 @@ async function exportAllLogs(version) {
       logText: logText,
       filename: filename
     });
-    
+
     console.log('✓ [Popup] Export request sent to background script');
-    
   } catch (error) {
     console.error('[Popup] Export failed:', error);
     throw error;
@@ -184,6 +203,7 @@ async function exportAllLogs(version) {
 ```
 
 **File: background.js (ADD THIS)**
+
 ```javascript
 // Listen for export requests from popup
 browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -199,7 +219,7 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.error('[Background] Log export failed:', error);
         sendResponse({ success: false, error: error.message });
       });
-    
+
     // Return true to indicate async response
     return true;
   }
@@ -212,19 +232,19 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleLogExport(logText, filename) {
   console.log(`[Background] Starting log export for ${filename}`);
   console.log(`[Background] Log text size: ${logText.length} characters`);
-  
+
   // Create Blob
   const blob = new Blob([logText], {
     type: 'text/plain;charset=utf-8'
   });
-  
+
   console.log(`[Background] Blob created: ${blob.size} bytes`);
-  
+
   // Create Blob URL
   const blobUrl = URL.createObjectURL(blob);
-  
+
   console.log(`[Background] Blob URL: ${blobUrl}`);
-  
+
   try {
     // Start download
     const downloadId = await browserAPI.downloads.download({
@@ -233,55 +253,60 @@ async function handleLogExport(logText, filename) {
       saveAs: true,
       conflictAction: 'uniquify'
     });
-    
+
     console.log(`✓ [Background] Download initiated! ID: ${downloadId}`);
-    
+
     // ✅ Register listener in background script
     // This survives popup closing!
     let revokeListenerActive = true;
-    
-    const revokeListener = (delta) => {
+
+    const revokeListener = delta => {
       if (delta.id !== downloadId) {
         return;
       }
-      
+
       if (delta.state) {
         const currentState = delta.state.current;
-        
-        console.log(`[Background] Download ${downloadId} state: ${currentState}`);
-        
+
+        console.log(
+          `[Background] Download ${downloadId} state: ${currentState}`
+        );
+
         if (currentState === 'complete' || currentState === 'interrupted') {
           if (revokeListenerActive) {
             revokeListenerActive = false;
-            
+
             URL.revokeObjectURL(blobUrl);
             browserAPI.downloads.onChanged.removeListener(revokeListener);
-            
+
             if (currentState === 'complete') {
-              console.log(`✓ [Background] Blob URL revoked after successful download`);
+              console.log(
+                `✓ [Background] Blob URL revoked after successful download`
+              );
             } else {
-              console.log(`⚠ [Background] Blob URL revoked after download interruption`);
+              console.log(
+                `⚠ [Background] Blob URL revoked after download interruption`
+              );
             }
           }
         }
       }
     };
-    
+
     // Register listener
     browserAPI.downloads.onChanged.addListener(revokeListener);
-    
+
     // Fallback timeout
     setTimeout(() => {
       if (revokeListenerActive) {
         revokeListenerActive = false;
-        
+
         URL.revokeObjectURL(blobUrl);
         browserAPI.downloads.onChanged.removeListener(revokeListener);
-        
+
         console.log('[Background] Blob URL revoked (fallback timeout - 60s)');
       }
     }, 60000);
-    
   } catch (downloadError) {
     URL.revokeObjectURL(blobUrl);
     console.error('[Background] Download failed, Blob URL revoked immediately');
@@ -346,7 +371,7 @@ Background: downloads.download() called
 /**
  * Export all logs as downloadable .txt file
  * Delegates actual download to background script to survive popup closing
- * 
+ *
  * @param {string} version - Extension version
  * @returns {Promise<void>}
  */
@@ -355,7 +380,10 @@ async function exportAllLogs(version) {
     console.log('[Popup] Starting log export...');
 
     // Get active tab info
-    const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
+    const tabs = await browserAPI.tabs.query({
+      active: true,
+      currentWindow: true
+    });
     if (tabs.length > 0) {
       console.log('[Popup] Active tab:', tabs[0].url);
       console.log('[Popup] Active tab ID:', tabs[0].id);
@@ -398,22 +426,26 @@ async function exportAllLogs(version) {
       if (tabs.length > 0 && tabs[0].url.startsWith('about:')) {
         throw new Error(
           'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). ' +
-          'Try navigating to a regular webpage first.'
+            'Try navigating to a regular webpage first.'
         );
       } else if (tabs.length === 0) {
-        throw new Error('No active tab found. Try clicking on a webpage tab first.');
+        throw new Error(
+          'No active tab found. Try clicking on a webpage tab first.'
+        );
       } else if (contentLogs.length === 0 && backgroundLogs.length === 0) {
         throw new Error(
           'No logs found. Make sure debug mode is enabled and try using the extension ' +
-          '(hover over links, create Quick Tabs, etc.) before exporting logs.'
+            '(hover over links, create Quick Tabs, etc.) before exporting logs.'
         );
       } else if (contentLogs.length === 0) {
         throw new Error(
           `Only found ${backgroundLogs.length} background logs. ` +
-          'Content script may not be loaded. Try reloading the webpage.'
+            'Content script may not be loaded. Try reloading the webpage.'
         );
       } else {
-        throw new Error('No logs found. Try enabling debug mode and using the extension first.');
+        throw new Error(
+          'No logs found. Try enabling debug mode and using the extension first.'
+        );
       }
     }
 
@@ -424,11 +456,13 @@ async function exportAllLogs(version) {
     const filename = generateLogFilename(version);
 
     console.log(`[Popup] Exporting to: ${filename}`);
-    console.log(`[Popup] Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`);
+    console.log(
+      `[Popup] Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`
+    );
 
     // ==================== BACKGROUND SCRIPT DELEGATION (v1.5.9.7) ====================
     // NEW IN v1.5.9.7: Delegate download to background script
-    // 
+    //
     // WHY: Popup closes when "Save As" dialog opens, terminating event listeners
     // SOLUTION: Background script survives popup closing and handles download lifecycle
     //
@@ -448,13 +482,14 @@ async function exportAllLogs(version) {
     });
 
     if (response && response.success) {
-      console.log('✓ [Popup] Export delegated successfully to background script');
+      console.log(
+        '✓ [Popup] Export delegated successfully to background script'
+      );
     } else {
       throw new Error(response?.error || 'Background script did not respond');
     }
 
     // ==================== END BACKGROUND SCRIPT DELEGATION ====================
-
   } catch (error) {
     console.error('[Popup] Export failed:', error);
     throw error;
@@ -478,7 +513,7 @@ async function exportAllLogs(version) {
 browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'EXPORT_LOGS') {
     console.log('[Background] Received EXPORT_LOGS request');
-    
+
     // Handle download in background script (async)
     handleLogExport(message.logText, message.filename)
       .then(() => {
@@ -489,11 +524,11 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.error('[Background] Log export failed:', error);
         sendResponse({ success: false, error: error.message });
       });
-    
+
     // Return true to indicate we'll send async response
     return true;
   }
-  
+
   // Let other message handlers continue
   return false;
 });
@@ -501,27 +536,31 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
 /**
  * Handle log export in background script
  * This survives popup closing and "Save As" dialog
- * 
+ *
  * @param {string} logText - Formatted log text
  * @param {string} filename - Filename for download
  * @returns {Promise<void>}
  */
 async function handleLogExport(logText, filename) {
   console.log(`[Background] Starting log export for ${filename}`);
-  console.log(`[Background] Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`);
-  
+  console.log(
+    `[Background] Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`
+  );
+
   // Create Blob from log text
   const blob = new Blob([logText], {
     type: 'text/plain;charset=utf-8'
   });
-  
-  console.log(`[Background] Blob created: ${blob.size} bytes (${(blob.size / 1024).toFixed(2)} KB)`);
-  
+
+  console.log(
+    `[Background] Blob created: ${blob.size} bytes (${(blob.size / 1024).toFixed(2)} KB)`
+  );
+
   // Create Blob URL
   const blobUrl = URL.createObjectURL(blob);
-  
+
   console.log(`[Background] Blob URL created: ${blobUrl}`);
-  
+
   try {
     // Start download
     // Background script survives "Save As" dialog opening!
@@ -531,64 +570,73 @@ async function handleLogExport(logText, filename) {
       saveAs: true,
       conflictAction: 'uniquify'
     });
-    
-    console.log(`✓ [Background] Download initiated! Download ID: ${downloadId}`);
+
+    console.log(
+      `✓ [Background] Download initiated! Download ID: ${downloadId}`
+    );
     console.log('✓ [Background] Method: Blob URL via background script');
-    
+
     // Register completion listener
     // This listener survives because it's in background script
     let revokeListenerActive = true;
-    
-    const revokeListener = (delta) => {
+
+    const revokeListener = delta => {
       // Only process events for our download
       if (delta.id !== downloadId) {
         return;
       }
-      
+
       // Check if download state changed
       if (delta.state) {
         const currentState = delta.state.current;
-        
-        console.log(`[Background] Download ${downloadId} state: ${currentState}`);
-        
+
+        console.log(
+          `[Background] Download ${downloadId} state: ${currentState}`
+        );
+
         // Download completed or failed - safe to revoke
         if (currentState === 'complete' || currentState === 'interrupted') {
           if (revokeListenerActive) {
             revokeListenerActive = false;
-            
+
             URL.revokeObjectURL(blobUrl);
             browserAPI.downloads.onChanged.removeListener(revokeListener);
-            
+
             if (currentState === 'complete') {
-              console.log(`✓ [Background] Blob URL revoked after successful download`);
+              console.log(
+                `✓ [Background] Blob URL revoked after successful download`
+              );
             } else {
-              console.log(`⚠ [Background] Blob URL revoked after download interruption`);
+              console.log(
+                `⚠ [Background] Blob URL revoked after download interruption`
+              );
             }
           }
         }
       }
     };
-    
+
     // Register the listener
     browserAPI.downloads.onChanged.addListener(revokeListener);
     console.log('[Background] downloads.onChanged listener registered');
-    
+
     // Fallback timeout to prevent memory leak
     setTimeout(() => {
       if (revokeListenerActive) {
         revokeListenerActive = false;
-        
+
         URL.revokeObjectURL(blobUrl);
         browserAPI.downloads.onChanged.removeListener(revokeListener);
-        
+
         console.log('[Background] Blob URL revoked (fallback timeout - 60s)');
       }
     }, 60000);
-    
   } catch (downloadError) {
     // If download initiation fails, revoke immediately
     URL.revokeObjectURL(blobUrl);
-    console.error('[Background] Download initiation failed, Blob URL revoked immediately');
+    console.error(
+      '[Background] Download initiation failed, Blob URL revoked immediately'
+    );
     throw downloadError;
   }
 }
@@ -618,9 +666,12 @@ async function handleLogExport(logText, filename) {
 
 From Mozilla documentation and Stack Overflow[189][418]:
 
-> **"Browser Action Popup is page and once page is closed, async operations will lose their reference. It is best to pass async operations to the background script."**
+> **"Browser Action Popup is page and once page is closed, async operations will
+> lose their reference. It is best to pass async operations to the background
+> script."**
 
 This is the **official recommended approach** for any async operation that:
+
 1. Opens system dialogs (Save As, File picker, etc.)
 2. Takes longer than popup stays open
 3. Needs to survive UI changes
@@ -632,6 +683,7 @@ This is the **official recommended approach** for any async operation that:
 ### Test 1: Basic Export
 
 **Steps:**
+
 1. Update popup.js and background.js
 2. Reload extension
 3. Navigate to any webpage
@@ -642,6 +694,7 @@ This is the **official recommended approach** for any async operation that:
 8. Choose location and save
 
 **Expected console (Background):**
+
 ```
 [Background] Received EXPORT_LOGS request
 [Background] Starting log export for copy-url-extension-logs_v1.5.9.7...
@@ -657,6 +710,7 @@ This is the **official recommended approach** for any async operation that:
 ```
 
 **Expected outcome:**
+
 - ✅ Download succeeds
 - ✅ File saved to chosen location
 - ✅ No errors
@@ -666,12 +720,14 @@ This is the **official recommended approach** for any async operation that:
 ### Test 2: Popup Closes Early
 
 **Steps:**
+
 1. Click "Export Console Logs"
 2. **IMMEDIATELY** close popup (click outside)
 3. "Save As" dialog should still be open
 4. Choose location and save
 
 **Expected:**
+
 - ✅ Download still works!
 - ✅ Background script continues independently
 - ✅ File downloads successfully
@@ -681,16 +737,19 @@ This is the **official recommended approach** for any async operation that:
 ### Test 3: User Cancels
 
 **Steps:**
+
 1. Click "Export Console Logs"
 2. Click "Cancel" on "Save As" dialog
 
 **Expected console:**
+
 ```
 [Background] Download 123 state: interrupted
 ⚠ [Background] Blob URL revoked after download interruption
 ```
 
 **Expected outcome:**
+
 - ✅ No download
 - ✅ Blob URL cleaned up
 - ✅ No memory leak
@@ -704,6 +763,7 @@ This is the **official recommended approach** for any async operation that:
 Replace `exportAllLogs()` function with version from "Step 1" above.
 
 **Key changes:**
+
 - Remove Blob/download logic
 - Send message to background script
 - Wait for response
@@ -715,6 +775,7 @@ Replace `exportAllLogs()` function with version from "Step 1" above.
 Add message listener and `handleLogExport()` function from "Step 2" above.
 
 **Key changes:**
+
 - Add `runtime.onMessage` listener
 - Add `handleLogExport()` function
 - Blob URL creation moves here
@@ -725,6 +786,7 @@ Add message listener and `handleLogExport()` function from "Step 2" above.
 ### Step 3: Update Version (1 minute)
 
 **manifest.json:**
+
 ```json
 {
   "version": "1.5.9.7"
@@ -777,19 +839,30 @@ git push origin main --tags
 ### Evidence
 
 **1. Stack Overflow confirmed solution:**[418]
-> "Browser Action Popup is page and once page is closed, async operations will lose their reference. It is best to pass async operations to the background script."
+
+> "Browser Action Popup is page and once page is closed, async operations will
+> lose their reference. It is best to pass async operations to the background
+> script."
 
 **2. Firefox Bugzilla confirms the issue:**[420]
-> "Opening input type='file' in extension Popup window will close the popup. File upload dialog is opened, but the popup is now closed."
+
+> "Opening input type='file' in extension Popup window will close the popup.
+> File upload dialog is opened, but the popup is now closed."
 
 **3. MDN official documentation:**[189]
-> "Background scripts enable you to monitor and react to events in the browser... they are persistent and loaded when the extension starts and unloaded when the extension is disabled or uninstalled."
+
+> "Background scripts enable you to monitor and react to events in the
+> browser... they are persistent and loaded when the extension starts and
+> unloaded when the extension is disabled or uninstalled."
 
 **4. Your console logs prove it:**
+
 ```
 cannot send function call result: other side closed connection
 ```
-This message appears ONLY when the calling context (popup) terminates before the async operation completes.
+
+This message appears ONLY when the calling context (popup) terminates before the
+async operation completes.
 
 ---
 
@@ -798,6 +871,7 @@ This message appears ONLY when the calling context (popup) terminates before the
 ✅ **100% - This WILL work**
 
 **Reasoning:**
+
 1. ✅ This is the **standard solution** for popup async operations
 2. ✅ Background scripts are **designed** for this use case
 3. ✅ Your error message **confirms** popup is closing

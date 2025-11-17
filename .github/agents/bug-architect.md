@@ -115,16 +115,20 @@ Loading):**
     - MUST be imported FIRST in content.js to override console before any other
       code runs
     - Fixes log export "No logs found" issue by capturing all console calls
-    - **Log Export (v1.5.9.6 - CRITICAL FIX)**: Uses event-driven Blob URL
-      revocation to fix race condition
-    - Replaced fixed 1s timeout with downloads.onChanged listener (fixes
-      "invalid parameters" error)
-    - Waits for download completion before revoking Blob URL (handles saveAs
-      dialog delays)
-    - 60s fallback timeout prevents memory leaks
-    - See docs/manual/1.5.9 docs/blob-url-race-fix-v1596.md for full analysis
-    - Previous v1.5.9.5 used Blob URLs with fixed timeout (race condition)
-    - Previous v1.5.9.3-4 used data: URLs (blocked by Firefox security policy)
+    - **Log Export (v1.5.9.7 - Background Delegation)**: Popup gathers logs but
+      immediately sends an `EXPORT_LOGS` message to `background.js`. The
+      background script validates `sender.id`, creates the Blob, runs
+      `downloads.download()` with `saveAs: true`, and watches
+      `downloads.onChanged` to revoke Blob URLs after `complete`/`interrupted`
+      (plus a 60s fallback timeout) so Save As dialogs can close the popup
+      without killing the listener.
+    - See docs/manual/1.5.9 docs/popup-close-background-v1597.md for the
+      diagnostic that prompted this fix and docs/manual/1.5.9
+      docs/blob-url-race-fix-v1596.md for the earlier event-driven revocation
+      analysis.
+    - Historical context: v1.5.9.5 used Blob URLs with fixed timeout (race
+      condition) and v1.5.9.3-4 used data: URLs (blocked by Firefox security
+      policy).
   - **dist/content.js**: Built bundle (~116KB, MUST NOT contain ES6
     imports/exports)
 - **Build System**: Rollup bundler with comprehensive validation checks

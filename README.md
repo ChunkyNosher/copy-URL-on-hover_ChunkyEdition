@@ -1,15 +1,56 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.9.6** - A feature-rich Firefox/Zen Browser extension with
-**Hybrid Modular/EventBus Architecture** for quick URL copying and advanced
-Quick Tab management with Firefox Container support and Persistent Floating
-Panel Manager.
+**Version 1.5.9.7** - A feature-rich Firefox/Zen Browser extension with **Hybrid
+Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab
+management with Firefox Container support and Persistent Floating Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 Now with full Firefox Container integration and a persistent Quick Tabs Manager
 panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.9.7
+
+**🐛 Critical Fix: Popup Lifecycle Breaks Log Export Downloads**
+
+Firefox automatically destroys the popup when the "Save As" dialog appears,
+which terminated the `downloads.onChanged` listener before the Blob URL could be
+cleaned up. Users saw
+`TypeError: can't access property "style", this.container is null` and
+`cannot send function call result: other side closed connection` whenever they
+took longer than a split second to choose a destination folder.
+
+**The Fix:**
+
+- ✅ **Background-managed downloads** – The popup now delegates log export
+  requests to `background.js`, which is persistent and unaffected by dialog
+  focus changes. Even if the popup closes instantly, the background script keeps
+  the download alive.
+- ✅ **Lifecycle-safe Blob cleanup** – Background listeners watch
+  `downloads.onChanged` for the specific download ID and revoke Blob URLs only
+  after `complete`/`interrupted` states (plus a 60s fallback timeout).
+- ✅ **Secure runtime messaging** – Added sender validation and payload guards
+  before allowing EXPORT_LOGS actions, aligning with our security checklist.
+- ✅ **Improved diagnostics** – Background logging now records blob sizes,
+  download IDs, and cleanup reasons for easier support escalation.
+
+**Reliability & UX:**
+
+- 📂 **User-friendly** – Save As dialogs can stay open indefinitely without
+  crashing the export.
+- 🧠 **State-safe** – Popup UI can close once logs are queued; no lingering DOM
+  references.
+- 🛡️ **Defense-in-depth** – Unauthorized or malformed EXPORT_LOGS messages are
+  rejected server-side.
+
+**References:**
+
+- [Diagnostic Report](docs/manual/1.5.9%20docs/popup-close-background-v1597.md)
+- [Firefox Bug 1658694](https://bugzilla.mozilla.org/show_bug.cgi?id=1658694)
+- [Stack Overflow 58412084](https://stackoverflow.com/q/58412084)
+
+---
 
 ## 🎉 What's New in v1.5.9.6
 
@@ -21,7 +62,8 @@ with "invalid parameters" error when users delayed in the "Save As" dialog.
 
 **The Fix:**
 
-- ✅ **Event-driven Blob URL revocation** - Wait for download completion before revoking
+- ✅ **Event-driven Blob URL revocation** - Wait for download completion before
+  revoking
   - Replaced fixed 1-second timeout with `downloads.onChanged` event listener
   - Now waits for actual download completion (success or failure)
   - Handles user interaction delays gracefully (no more race conditions)
@@ -33,29 +75,36 @@ with "invalid parameters" error when users delayed in the "Save As" dialog.
 - ⚡ **100% success rate** - No more "invalid parameters" errors
 - 🕐 **Patient waiting** - Waits indefinitely for user to click "Save" in dialog
 - 🔒 **Memory safe** - Fallback timeout ensures Blob URLs are eventually revoked
-- 🎯 **Precise cleanup** - Only revokes after download state changes to 'complete' or 'interrupted'
+- 🎯 **Precise cleanup** - Only revokes after download state changes to
+  'complete' or 'interrupted'
 
 **Root Cause:**
 
 The previous v1.5.9.5 implementation used a fixed 1-second timeout to revoke the
-Blob URL after calling `downloads.download()`. However, when using `saveAs: true`,
-Firefox shows a "Save As" dialog and doesn't start reading the file until the
-user chooses a location and clicks "Save". If the user took longer than 1 second,
-the Blob URL would be revoked while Firefox was still trying to read it, causing
-the download to fail.
+Blob URL after calling `downloads.download()`. However, when using
+`saveAs: true`, Firefox shows a "Save As" dialog and doesn't start reading the
+file until the user chooses a location and clicks "Save". If the user took
+longer than 1 second, the Blob URL would be revoked while Firefox was still
+trying to read it, causing the download to fail.
 
 **Why Previous Versions Failed:**
 
 - **v1.5.9.3-4:** Used data: URLs (blocked by Firefox security policy)
 - **v1.5.9.5:** Used Blob URLs with fixed 1s timeout (race condition)
 - **v1.5.9.6:** Uses Blob URLs with event listener (✅ fixes race condition)
+- **v1.5.9.7:** Delegates downloads to background script so Save As dialogs
+  can't terminate the listener (✅ finalizes export pipeline)
 
 **References:**
 
-- [MDN downloads.download()](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/download) - Official recommendation to use `onChanged` listener
-- [MDN downloads.onChanged](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/onChanged) - Download state change events
-- [Firefox Bug 1289958](https://bugzilla.mozilla.org/show_bug.cgi?id=1289958) - Discussion of async download timing issues
-- [Diagnostic Report](docs/manual/1.5.9%20docs/blob-url-race-fix-v1596.md) - Complete technical analysis
+- [MDN downloads.download()](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/download) -
+  Official recommendation to use `onChanged` listener
+- [MDN downloads.onChanged](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/onChanged) -
+  Download state change events
+- [Firefox Bug 1289958](https://bugzilla.mozilla.org/show_bug.cgi?id=1289958) -
+  Discussion of async download timing issues
+- [Diagnostic Report](docs/manual/1.5.9%20docs/blob-url-race-fix-v1596.md) -
+  Complete technical analysis
 
 ---
 
@@ -71,7 +120,8 @@ intentionally blocks data: URLs in the downloads.download() API.
 
 **The Fix:**
 
-- ✅ **Switched from data: URLs to Blob URLs** - Firefox allows Blob URLs in downloads API
+- ✅ **Switched from data: URLs to Blob URLs** - Firefox allows Blob URLs in
+  downloads API
   - Removed Base64 encoding (no longer needed - Blob URLs work with plain text)
   - Removed `utf8ToBase64()` function (simplified code by ~40 lines)
   - Added proper memory management with `URL.revokeObjectURL()`
@@ -114,7 +164,8 @@ await downloads.download({ url: blobUrl }); // ✅ Success
 setTimeout(() => URL.revokeObjectURL(blobUrl), 1000); // Free memory
 ```
 
-See [firefox-blob-url-fix-v1595.md](docs/manual/1.5.9%20docs/firefox-blob-url-fix-v1595.md)
+See
+[firefox-blob-url-fix-v1595.md](docs/manual/1.5.9%20docs/firefox-blob-url-fix-v1595.md)
 for complete diagnostic report with stack traces, performance analysis, and
 implementation guide.
 
@@ -130,22 +181,27 @@ encoding.
 
 **Critical Fix:**
 
-- ✅ **Data URL Encoding FIXED** - Log export now works reliably with all Unicode characters
-  - Replaced deprecated `btoa(unescape(encodeURIComponent()))` pattern with modern `TextEncoder` API
-  - Added `utf8ToBase64()` helper function with chunking support to prevent stack overflow
+- ✅ **Data URL Encoding FIXED** - Log export now works reliably with all
+  Unicode characters
+  - Replaced deprecated `btoa(unescape(encodeURIComponent()))` pattern with
+    modern `TextEncoder` API
+  - Added `utf8ToBase64()` helper function with chunking support to prevent
+    stack overflow
   - Fixed data URL corruption that caused missing semicolon in MIME type
   - Added comprehensive debug logging for encoding process
   - Export now handles large log files (100KB+) without errors
 
 **Root Cause Analysis:**
 
-The log export failed because the deprecated `btoa(unescape(encodeURIComponent()))`
-encoding pattern corrupted Unicode characters:
+The log export failed because the deprecated
+`btoa(unescape(encodeURIComponent()))` encoding pattern corrupted Unicode
+characters:
 
 1. The `unescape()` function is deprecated since ES5 (2009)
 2. This pattern fails with Unicode characters outside basic ASCII range
 3. The corruption affected the data URL format string itself
-4. Result: `data:text/plaincharset=utf-8` instead of `data:text/plain;charset=utf-8`
+4. Result: `data:text/plaincharset=utf-8` instead of
+   `data:text/plain;charset=utf-8`
 5. Firefox rejected the malformed URL with "Access denied" error
 
 **Solution:**
@@ -164,40 +220,49 @@ encoding pattern corrupted Unicode characters:
 - No character corruption - proper UTF-8 preservation
 - Performance: ~8ms for 35KB logs (vs. ~5ms with broken method)
 
-See [data-url-export-fix-v1594.md](docs/manual/1.5.9%20docs/data-url-export-fix-v1594.md) for
-detailed analysis and implementation guide.
+See
+[data-url-export-fix-v1594.md](docs/manual/1.5.9%20docs/data-url-export-fix-v1594.md)
+for detailed analysis and implementation guide.
 
 ## 🎉 What's New in v1.5.9.3
 
 **🐛 Critical Bug Fix: Log Export "No Logs Found" Issue**
 
-This release fixes the critical log export bug where the "Export Console Logs" button
-would report "No logs found" even when debug mode was enabled and logs were visible
-in the browser console.
+This release fixes the critical log export bug where the "Export Console Logs"
+button would report "No logs found" even when debug mode was enabled and logs
+were visible in the browser console.
 
 **Critical Fix:**
 
 - ✅ **Log Export Issue FIXED** - Console log export now captures all logs
-  - Created new `console-interceptor.js` module that overrides all console methods
-  - Console interceptor captures ALL `console.log()`, `console.error()`, `console.warn()`, `console.info()`, and `console.debug()` calls
-  - Imported console interceptor FIRST in content.js to ensure all logs are captured
-  - Updated GET_CONTENT_LOGS handler to merge logs from both console interceptor and debug.js
+  - Created new `console-interceptor.js` module that overrides all console
+    methods
+  - Console interceptor captures ALL `console.log()`, `console.error()`,
+    `console.warn()`, `console.info()`, and `console.debug()` calls
+  - Imported console interceptor FIRST in content.js to ensure all logs are
+    captured
+  - Updated GET_CONTENT_LOGS handler to merge logs from both console interceptor
+    and debug.js
   - Added buffer statistics logging for debugging
   - Improved error messages with actionable advice for users
 
 **Root Cause Analysis:**
 
-The log export system was not capturing `console.log()` calls from content scripts because:
+The log export system was not capturing `console.log()` calls from content
+scripts because:
 
 1. Background.js had console overrides (working correctly)
 2. Content.js used `console.log()` directly for all logging
-3. debug.js only captured calls to `debug()`, `debugError()`, etc. - NOT regular `console.log()`
-4. Content script had no console override, so regular console calls were not captured
+3. debug.js only captured calls to `debug()`, `debugError()`, etc. - NOT regular
+   `console.log()`
+4. Content script had no console override, so regular console calls were not
+   captured
 5. Result: Export found 0 content logs and threw "No logs found" error
 
 **Solution:**
 
-- Created comprehensive console interceptor module that overrides all console methods
+- Created comprehensive console interceptor module that overrides all console
+  methods
 - Captures all console calls to a buffer (max 5000 entries)
 - Merges logs from both console interceptor and debug.js
 - Provides buffer statistics for debugging
@@ -211,8 +276,9 @@ The log export system was not capturing `console.log()` calls from content scrip
 - Automatic buffer size management with FIFO queue
 - Returns log copies to prevent mutation
 
-See [log-export-no-logs-fix.md](docs/manual/1.5.9%20docs/log-export-no-logs-fix.md) for
-detailed analysis and implementation guide.
+See
+[log-export-no-logs-fix.md](docs/manual/1.5.9%20docs/log-export-no-logs-fix.md)
+for detailed analysis and implementation guide.
 
 ## 🎉 What's New in v1.5.8.16
 
@@ -1199,6 +1265,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.9.6  
+**Current Version**: 1.5.9.7  
 **Last Updated**: 2025-11-16  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

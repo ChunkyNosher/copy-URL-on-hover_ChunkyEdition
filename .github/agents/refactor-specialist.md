@@ -126,6 +126,12 @@ maintainability while guaranteeing functional equivalence across **Firefox** and
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
+- **Log Export Pipeline (v1.5.9.7)**: Popup.js now stops at log aggregation and
+  sends an `EXPORT_LOGS` runtime message. `background.js` validates `sender.id`,
+  builds the Blob, runs `downloads.download({ saveAs: true })`, and listens for
+  `downloads.onChanged` before revoking Blob URLs (60s fallback), preventing
+  Save As dialogs from killing popup listeners. Keep this split when refactoring
+  log tooling (see docs/manual/1.5.9 docs/popup-close-background-v1597.md).
 
 **Critical APIs to Preserve - PRIORITIZE THESE:**
 

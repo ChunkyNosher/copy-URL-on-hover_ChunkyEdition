@@ -84,10 +84,10 @@ workflows for complex tasks. All work must be optimized for **Firefox** and
 
 ## Extension Architecture Context (v1.5.9+)
 
-**Current Technology Stack - CRITICAL FOR ROUTING:**
+- **Current Technology Stack - CRITICAL FOR ROUTING:**
 
-- **Version:** v1.5.8.8 with eager feature loading and enhanced code quality
-  infrastructure
+- **Version:** v1.5.9.7 with eager feature loading, background-managed log
+  exports, and enhanced code quality infrastructure
 - **Manifest Version:** v2 (required for webRequestBlocking)
 - **Primary APIs:** Content script panel injection, Pointer Events,
   navigator.clipboard, browser.storage.sync/session/local, browser.runtime,
@@ -123,6 +123,12 @@ workflows for complex tasks. All work must be optimized for **Firefox** and
   - .deepsource.toml: Fixed configuration (v1.5.8.9)
   - .coderabbit.yaml: CodeRabbit AI review configuration (NEW v1.5.8.8)
   - .github/copilot-instructions.md: Project-specific AI guidance (NEW v1.5.8.8)
+- **Log Export Pipeline (v1.5.9.7):** Popup scripts only aggregate logs and fire
+  `EXPORT_LOGS` messages. `background.js` validates `sender.id`, creates Blobs,
+  starts `downloads.download({ saveAs: true })`, and waits for
+  `downloads.onChanged` before revoking Blob URLs (60s fallback) to prevent the
+  Save As dialog from killing listeners. Reference docs/manual/1.5.9
+  docs/popup-close-background-v1597.md when coordinating log tooling changes.
 
 ## Agent Capabilities Reference
 
