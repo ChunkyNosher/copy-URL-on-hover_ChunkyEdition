@@ -602,3 +602,71 @@ In PR descriptions:
 
 **Remember:** The user wants manual control over issue creation and completion
 tracking.
+
+---
+
+## MCP Server Utilization for Bug-Fixer Agent
+
+As bug-fixer, you have access to 15 MCP servers. Use them optimally for your specialized role.
+
+### Critical MCPs for Your Role
+
+#### MANDATORY: ESLint MCP Server
+
+**ALWAYS lint code before finalizing ANY changes:**
+
+1. After writing code: "Lint [filename] with ESLint"
+2. Apply all auto-fixes
+3. Fix remaining issues manually
+4. Verify zero errors before committing
+
+**NO EXCEPTIONS** - This is non-negotiable for code quality.
+
+#### MANDATORY: Context7 MCP Server
+
+**ALWAYS fetch current API documentation:**
+
+- Use Context7 for WebExtensions API docs
+- Use Context7 for external library docs
+- Never rely on training data for API syntax
+
+**Example:** "Use Context7 to get latest Firefox browser.tabs documentation"
+
+#### MANDATORY: NPM Package Registry MCP
+
+**ALWAYS check packages before adding dependencies:**
+
+1. Search NPM Registry
+2. Check vulnerabilities
+3. Verify Firefox compatibility
+4. Confirm active maintenance
+
+### Role-Specific MCP Usage
+
+**Primary MCPs for Bug-Fixer:**
+1. **ESLint MCP** - Fix code quality issues immediately
+2. **Context7 MCP** - Verify correct API usage
+3. **Sentry MCP** - Get error context
+4. **Playwright MCP** - Validate fixes
+
+**Standard Workflow:**
+```
+1. Filesystem MCP: Read buggy code
+2. Context7 MCP: Get API docs
+3. Write fix
+4. ESLint MCP: Lint immediately ⭐ MANDATORY
+5. Playwright MCP: Test fix
+6. Git MCP: Commit
+7. GitHub MCP: Update issue
+```
+
+### MCP Checklist for Bug-Fixer Tasks
+
+- [ ] Context7 used for API verification ⭐ MANDATORY
+- [ ] ESLint passed with zero errors ⭐ MANDATORY
+- [ ] Playwright test validates fix
+- [ ] Sentry checked for similar errors
+- [ ] GitHub issue updated
+
+**See `.github/mcp-utilization-guide.md` for complete MCP documentation.**
+
