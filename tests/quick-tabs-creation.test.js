@@ -3,14 +3,14 @@
  * QUICK TABS CREATION FLOW TEST SUITE - v1.5.9.11
  * ==============================================================================
  * Tests for the Quick Tabs rendering bug fix
- * 
+ *
  * This test suite validates:
  * 1. Direct local creation pattern (originating tab renders immediately)
  * 2. BroadcastChannel propagation to other tabs
  * 3. Message action name handling (both SYNC_QUICK_TAB_STATE variants)
  * 4. SaveId tracking prevents race conditions
  * 5. Proper separation of concerns (content/broadcast/background)
- * 
+ *
  * References:
  * - docs/manual/1.5.9 docs/quick-tabs-rendering-bug-analysis-v15910.md
  * - src/content.js (handleCreateQuickTab)
@@ -76,7 +76,7 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
       generateSaveId: jest.fn(() => `${Date.now()}-saveid`),
       trackPendingSave: jest.fn(),
       releasePendingSave: jest.fn(),
-      createQuickTab: jest.fn((options) => {
+      createQuickTab: jest.fn(options => {
         const mockTab = {
           id: options.id,
           url: options.url,
@@ -94,18 +94,16 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
   describe('Fix #1: Message Action Name Handling', () => {
     test('should handle SYNC_QUICK_TAB_STATE message', () => {
       const messageListener = mockBrowser.runtime.onMessage.addListener.mock.calls[0]?.[0];
-      
+
       if (messageListener) {
         const message = {
           action: 'SYNC_QUICK_TAB_STATE',
           state: {
-            tabs: [
-              { id: 'qt-test', url: 'https://example.com', left: 100, top: 100 }
-            ]
+            tabs: [{ id: 'qt-test', url: 'https://example.com', left: 100, top: 100 }]
           }
         };
         const sender = { id: mockBrowser.runtime.id };
-        
+
         // Should not throw error
         expect(() => messageListener(message, sender)).not.toThrow();
       }
@@ -113,18 +111,16 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
 
     test('should handle SYNC_QUICK_TAB_STATE_FROM_BACKGROUND message', () => {
       const messageListener = mockBrowser.runtime.onMessage.addListener.mock.calls[0]?.[0];
-      
+
       if (messageListener) {
         const message = {
           action: 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND',
           state: {
-            tabs: [
-              { id: 'qt-test', url: 'https://example.com', left: 100, top: 100 }
-            ]
+            tabs: [{ id: 'qt-test', url: 'https://example.com', left: 100, top: 100 }]
           }
         };
         const sender = { id: mockBrowser.runtime.id };
-        
+
         // Should not throw error
         expect(() => messageListener(message, sender)).not.toThrow();
       }
@@ -132,14 +128,14 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
 
     test('should validate sender ID before processing sync messages', () => {
       const messageListener = mockBrowser.runtime.onMessage.addListener.mock.calls[0]?.[0];
-      
+
       if (messageListener) {
         const message = {
           action: 'SYNC_QUICK_TAB_STATE',
           state: { tabs: [] }
         };
         const invalidSender = { id: 'different-extension-id' };
-        
+
         // Should reject message from unknown sender
         const result = messageListener(message, invalidSender);
         expect(result).toBeFalsy(); // Should not process
@@ -199,7 +195,7 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
 
     test('should render Quick Tab immediately in originating tab', () => {
       const quickTabId = 'qt-immediate';
-      
+
       const tab = mockQuickTabsManager.createQuickTab({
         id: quickTabId,
         url: 'https://example.com',
@@ -211,7 +207,7 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
 
       // Tab should exist in memory
       expect(mockQuickTabsManager.tabs.has(quickTabId)).toBe(true);
-      
+
       // Tab should be created and considered rendered
       expect(tab.isRendered()).toBe(true);
     });
@@ -219,7 +215,7 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
     test('should fallback to background-only creation if manager unavailable', async () => {
       // Simulate manager not available
       const unavailableManager = null;
-      
+
       if (!unavailableManager) {
         // Should still send message to background
         await mockBrowser.runtime.sendMessage({
@@ -250,7 +246,7 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
       // BroadcastChannel should be used to propagate
       // (In actual implementation, this happens in QuickTabsManager)
       expect(mockBroadcastChannel.postMessage).toHaveBeenCalledTimes(0); // Called by manager, not test
-      
+
       // Simulate broadcast
       mockBroadcastChannel.postMessage({
         type: 'CREATE',
@@ -304,17 +300,17 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
   describe('Fix #4: SaveId Tracking and Race Condition Prevention', () => {
     test('should track pending saveId during creation', () => {
       const saveId = '123456-test';
-      
+
       mockQuickTabsManager.trackPendingSave(saveId);
-      
+
       expect(mockQuickTabsManager.trackPendingSave).toHaveBeenCalledWith(saveId);
     });
 
-    test('should release saveId after grace period', (done) => {
+    test('should release saveId after grace period', done => {
       const saveId = '123456-test';
-      
+
       mockQuickTabsManager.trackPendingSave(saveId);
-      
+
       // Simulate grace period timeout (1000ms in production)
       setTimeout(() => {
         mockQuickTabsManager.releasePendingSave(saveId);
@@ -326,7 +322,7 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
     test('should ignore storage changes during pending saveId', () => {
       const saveId = '123456-test';
       const pendingSaveIds = new Set([saveId]);
-      
+
       const storageChange = {
         quick_tabs_state_v2: {
           newValue: {
@@ -344,7 +340,7 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
     test('should process storage changes after saveId released', () => {
       const saveId = '123456-test';
       const pendingSaveIds = new Set();
-      
+
       const storageChange = {
         quick_tabs_state_v2: {
           newValue: {
@@ -401,7 +397,7 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
   describe('Edge Cases and Error Handling', () => {
     test('should handle duplicate Quick Tab creation gracefully', () => {
       const quickTabId = 'qt-duplicate';
-      
+
       // Create first time
       const tab1 = mockQuickTabsManager.createQuickTab({
         id: quickTabId,
@@ -522,7 +518,7 @@ describe('Integration: Full Quick Tab Creation Flow', () => {
       generateSaveId: () => '123456-integration',
       trackPendingSave: jest.fn(),
       releasePendingSave: jest.fn(),
-      createQuickTab: jest.fn((options) => {
+      createQuickTab: jest.fn(options => {
         const tab = {
           id: options.id,
           url: options.url,
