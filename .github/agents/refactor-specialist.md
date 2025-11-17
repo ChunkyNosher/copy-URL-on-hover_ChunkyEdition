@@ -683,8 +683,6 @@ Failure to update documentation results in:
 
 **CRITICAL: When users report multiple bugs or request features:**
 
-### DO NOT Auto-Create GitHub Issues
-
 1. **Document all bugs/features** in a markdown file in `docs/manual/` or
    `docs/implementation-summaries/`
 2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs
