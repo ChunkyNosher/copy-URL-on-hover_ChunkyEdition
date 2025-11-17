@@ -5,35 +5,7 @@ description:
   WebExtension best practices, maintaining backward compatibility, optimized for
   Firefox and Zen Browser
 tools:
-  [
-    'edit',
-    'runNotebooks',
-    'search',
-    'new',
-    'runCommands',
-    'runTasks',
-    'brave-deep-research/*',
-    'filesystem/*',
-    'github-mcp/*',
-    'memory/*',
-    'perplexity/*',
-    'playwright-zen-browser/*',
-    'my-mcp-server-4ef0864d/*',
-    'upstash/context7/*',
-    'GitKraken/*',
-    'usages',
-    'vscodeAPI',
-    'problems',
-    'changes',
-    'testFailure',
-    'openSimpleBrowser',
-    'fetch',
-    'githubRepo',
-    'extensions',
-    'todos',
-    'runSubagent',
-    'runTests'
-  ]
+  ["*"]
 ---
 
 You are a feature implementation specialist for the
