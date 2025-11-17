@@ -674,3 +674,76 @@ In PR descriptions:
 
 **Remember:** The user wants manual control over issue creation and completion
 tracking.
+
+---
+
+## MCP Server Utilization for Feature-Builder Agent
+
+As feature-builder, you have access to 15 MCP servers. Use them optimally for your specialized role.
+
+### Critical MCPs for Your Role
+
+#### MANDATORY: ESLint MCP Server
+
+**ALWAYS lint code before finalizing ANY changes:**
+
+1. After writing code: "Lint [filename] with ESLint"
+2. Apply all auto-fixes
+3. Fix remaining issues manually
+4. Verify zero errors before committing
+
+**NO EXCEPTIONS** - This is non-negotiable for code quality.
+
+#### MANDATORY: Context7 MCP Server
+
+**ALWAYS fetch current API documentation:**
+
+- Use Context7 for WebExtensions API docs
+- Use Context7 for external library docs
+- Never rely on training data for API syntax
+
+**Example:** "Use Context7 to get latest Firefox WebExtensions Manifest V3 docs"
+
+#### MANDATORY: NPM Package Registry MCP
+
+**ALWAYS check packages before adding dependencies:**
+
+1. Search NPM Registry
+2. Check vulnerabilities
+3. Verify Firefox compatibility
+4. Confirm active maintenance
+
+### Role-Specific MCP Usage
+
+**Primary MCPs for Feature-Builder:**
+1. **NPM Registry MCP** - Find packages for new features
+2. **Context7 MCP** - Get implementation guidance
+3. **ESLint MCP** - Ensure code quality
+4. **Playwright MCP** - Test new features
+
+**Standard Workflow:**
+```
+1. NPM Registry MCP: Search packages ⭐ MANDATORY
+2. NPM Registry MCP: Check vulnerabilities ⭐ MANDATORY
+3. Context7 MCP: Get API docs ⭐ MANDATORY
+4. Perplexity/Brave MCP: Research practices
+5. Filesystem MCP: Write feature code
+6. ESLint MCP: Lint code ⭐ MANDATORY
+7. Playwright MCP: Create tests
+8. Screenshot MCP: Document UI
+9. Git MCP: Commit
+10. GitHub MCP: Create PR
+```
+
+### MCP Checklist for Feature-Builder Tasks
+
+- [ ] NPM Registry searched for packages ⭐ MANDATORY
+- [ ] Vulnerabilities checked ⭐ MANDATORY
+- [ ] Context7 docs fetched ⭐ MANDATORY
+- [ ] ESLint passed with zero errors ⭐ MANDATORY
+- [ ] Playwright tests created
+- [ ] Screenshots captured for UI features
+- [ ] GitHub PR created with documentation
+
+**See `.github/mcp-utilization-guide.md` for complete MCP documentation.**
+
