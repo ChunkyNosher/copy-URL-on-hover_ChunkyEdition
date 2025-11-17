@@ -28,24 +28,25 @@ The extension uses a **dual-channel synchronization system**[9]:
 #### Key Implementation Details
 
 **BroadcastChannel Setup** (`index.js` lines 85-143)[9]:
+
 ```javascript
 setupBroadcastChannel() {
   this.broadcastChannel = new BroadcastChannel('quick-tabs-sync');
-  
+
   this.broadcastChannel.onmessage = event => {
     const { type, data } = event.data;
-    
+
     // Debounce rapid messages to prevent loops (v1.5.8.16)
     const debounceKey = `${type}-${data.id}`;
     const now = Date.now();
     const lastProcessed = this.broadcastDebounce.get(debounceKey);
-    
+
     if (lastProcessed && now - lastProcessed < this.BROADCAST_DEBOUNCE_MS) {
       return; // Ignore duplicate
     }
-    
+
     this.broadcastDebounce.set(debounceKey, now);
-    
+
     switch (type) {
       case 'UPDATE_POSITION':
         this.updateQuickTabPosition(data.id, data.left, data.top);
@@ -60,17 +61,18 @@ setupBroadcastChannel() {
 ```
 
 **Storage Listener Setup** (`index.js` lines 148-205)[9]:
+
 ```javascript
 setupStorageListeners() {
   browser.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === 'sync' && changes.quick_tabs_state_v2) {
       const newValue = changes.quick_tabs_state_v2.newValue;
-      
+
       // Prevent race conditions with pending saves
       if (this.shouldIgnoreStorageChange(newValue?.saveId)) {
         return;
       }
-      
+
       this.scheduleStorageSync(newValue);
     }
   });
@@ -92,13 +94,14 @@ When the Quick Tab Manager panel is moved or resized in Tab 1, the position and 
 **Finding**: The `PanelManager` class (`panel.js`) implements its own BroadcastChannel (`quick-tabs-panel-sync`) but **only for visibility sync** (open/close), not for position/size sync[12].
 
 **Evidence from `panel.js` (lines 136-169)**:
+
 ```javascript
 setupBroadcastChannel() {
   this.broadcastChannel = new BroadcastChannel('quick-tabs-panel-sync');
-  
+
   this.broadcastChannel.onmessage = event => {
     const { type, data } = event.data;
-    
+
     switch (type) {
       case 'PANEL_OPENED':
         if (!this.isOpen) {
@@ -123,6 +126,7 @@ setupBroadcastChannel() {
 **Finding**: Panel position/size is saved to `browser.storage.local` (not `browser.storage.sync`), which is **tab-specific** and doesn't sync across tabs in real-time[12].
 
 **Evidence from `panel.js` (lines 223-242)**:
+
 ```javascript
 async loadPanelState() {
   const result = await browser.storage.local.get('quick_tabs_panel_state');
@@ -139,7 +143,7 @@ async savePanelState() {
     height: Math.round(rect.height),
     isOpen: this.isOpen
   };
-  
+
   await browser.storage.local.set({ quick_tabs_panel_state: this.panelState });
 }
 ```
@@ -151,27 +155,29 @@ async savePanelState() {
 **Finding**: The panel drag and resize handlers call `savePanelState()` on completion, but never broadcast the change to other tabs[12].
 
 **Evidence from `panel.js` drag handler (lines 354-391)**:
+
 ```javascript
 const handlePointerUp = e => {
   if (!isDragging || e.pointerId !== currentPointerId) return;
-  
+
   isDragging = false;
   handle.releasePointerCapture(e.pointerId);
   handle.style.cursor = 'grab';
-  
+
   // Save final position
   this.savePanelState(); // ONLY SAVES LOCALLY
 };
 ```
 
 **Evidence from `panel.js` resize handler (lines 453-466)**:
+
 ```javascript
 const handlePointerUp = e => {
   if (!isResizing || e.pointerId !== currentPointerId) return;
-  
+
   isResizing = false;
   handle.releasePointerCapture(e.pointerId);
-  
+
   // Save final size/position
   this.savePanelState(); // ONLY SAVES LOCALLY
 };
@@ -187,12 +193,13 @@ For contrast, Quick Tab windows (`window.js`) **do** sync position/size across t
 2. **On drag/resize end**: Final position/size is broadcast via `onPositionChangeEnd` and `onSizeChangeEnd` callbacks
 
 **Evidence from `window.js` (lines 191-206)**:
+
 ```javascript
 titlebar.addEventListener('pointerup', e => {
   if (this.isDragging) {
     this.isDragging = false;
     titlebar.releasePointerCapture(e.pointerId);
-    
+
     // Final save on drag end
     if (this.onPositionChangeEnd) {
       this.onPositionChangeEnd(this.id, this.left, this.top); // BROADCASTS VIA INDEX.JS
@@ -202,6 +209,7 @@ titlebar.addEventListener('pointerup', e => {
 ```
 
 The `onPositionChangeEnd` callback is wired to `handlePositionChangeEnd` in `index.js`, which:
+
 1. Broadcasts via BroadcastChannel
 2. Sends to background script for storage persistence
 3. Updates storage with transaction ID to prevent race conditions
@@ -391,7 +399,7 @@ To prevent broadcast loops (similar to Quick Tabs' debounce in `index.js`), add 
 ```javascript
 constructor(quickTabsManager) {
   // ... existing code ...
-  
+
   // Debounce configuration
   this.broadcastDebounce = new Map(); // type-timestamp pairs
   this.BROADCAST_DEBOUNCE_MS = 50; // Ignore duplicate broadcasts within 50ms
@@ -399,21 +407,21 @@ constructor(quickTabsManager) {
 
 setupBroadcastChannel() {
   // ... channel setup ...
-  
+
   this.broadcastChannel.onmessage = event => {
     const { type, data } = event.data;
-    
+
     // Debounce rapid messages
     const now = Date.now();
     const lastProcessed = this.broadcastDebounce.get(type);
-    
+
     if (lastProcessed && now - lastProcessed < this.BROADCAST_DEBOUNCE_MS) {
       debug(`[PanelManager] Ignoring duplicate broadcast: ${type}`);
       return;
     }
-    
+
     this.broadcastDebounce.set(type, now);
-    
+
     // Clean up old entries (prevent memory leak)
     if (this.broadcastDebounce.size > 20) {
       const oldestAllowed = now - this.BROADCAST_DEBOUNCE_MS * 2;
@@ -423,7 +431,7 @@ setupBroadcastChannel() {
         }
       }
     }
-    
+
     switch (type) {
       // ... handle events ...
     }
@@ -466,37 +474,39 @@ Additionally, when a Quick Tab is restored, it should reappear **in the exact sa
 **Finding**: The indicator color is determined by CSS classes applied to the Quick Tab item (`panel-quick-tab-item`) based on the `isMinimized` parameter passed to `renderQuickTabItem`[12].
 
 **Evidence from `panel.js` (lines 669-680)**:
+
 ```javascript
 renderQuickTabItem(tab, isMinimized) {
   const item = document.createElement('div');
   item.className = `panel-quick-tab-item ${isMinimized ? 'minimized' : 'active'}`;
-  
+
   // Indicator
   const indicator = document.createElement('span');
   indicator.className = `panel-status-indicator ${isMinimized ? 'yellow' : 'green'}`;
-  
+
   // ... rest of rendering
 }
 ```
 
 **CSS from `panel.js` (lines 148-163)**:
+
 ```css
 .panel-quick-tab-item.active {
-  border-left: 3px solid #4CAF50;
+  border-left: 3px solid #4caf50;
   padding-left: 9px;
 }
 
 .panel-quick-tab-item.minimized {
-  border-left: 3px solid #FFC107;
+  border-left: 3px solid #ffc107;
   padding-left: 9px;
 }
 
 .panel-status-indicator.green {
-  background: #4CAF50;
+  background: #4caf50;
 }
 
 .panel-status-indicator.yellow {
-  background: #FFC107;
+  background: #ffc107;
 }
 ```
 
@@ -519,6 +529,7 @@ renderQuickTabItem(tab, isMinimized) {
 **Problem**: The minimization state is tracked in `minimizedManager` (in-memory only) but not immediately persisted to storage. When the panel refreshes its content via `updatePanelContent()`, it reads from storage, which still shows `minimized: false`[12].
 
 **Evidence from `updatePanelContent` (lines 506-545)**:
+
 ```javascript
 async updatePanelContent() {
   // Load Quick Tabs state from storage
@@ -528,7 +539,7 @@ async updatePanelContent() {
     const state = result.quick_tabs_state_v2;
     quickTabsState = state.containers || state;
   }
-  
+
   // ... later ...
   containerState.tabs.forEach(tab => {
     // tab.minimized comes from storage, which may be stale
@@ -542,6 +553,7 @@ async updatePanelContent() {
 **Finding**: The button rendering logic creates both minimize and restore buttons, then attempts to show/hide them, but the logic is flawed[12].
 
 **Evidence from `panel.js` (lines 714-757)**:
+
 ```javascript
 const actions = document.createElement('div');
 actions.className = 'panel-tab-actions';
@@ -553,7 +565,7 @@ if (!isMinimized) {
     // ... button setup ...
     actions.appendChild(goToBtn);
   }
-  
+
   // Minimize button
   const minBtn = document.createElement('button');
   minBtn.className = 'panel-btn-icon';
@@ -597,11 +609,11 @@ The complaint about "both buttons visible" suggests there may be a rendering bug
 minimize() {
   this.minimized = true;
   this.container.style.display = 'none';
-  
+
   console.log(
     `[Quick Tab] Minimized - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
   );
-  
+
   this.onMinimize(this.id);
 }
 ```
@@ -609,15 +621,16 @@ minimize() {
 The position values (`this.left`, `this.top`) are logged but not saved. When restored, the position should be read from `this.left` and `this.top`, which should already be set.
 
 **Evidence from `restore()` method**:
+
 ```javascript
 restore() {
   this.minimized = false;
   this.container.style.display = 'flex';
-  
+
   console.log(
     `[Quick Tab] Restored - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
   );
-  
+
   this.onFocus(this.id);
 }
 ```
@@ -647,7 +660,7 @@ handleMinimize(id) {
 
     // NEW: Update storage immediately to reflect minimized state
     const saveId = this.generateSaveId();
-    
+
     if (typeof browser !== 'undefined' && browser.runtime) {
       browser.runtime
         .sendMessage({
@@ -676,35 +689,35 @@ case 'UPDATE_QUICK_TAB_MINIMIZE':
   try {
     const quickTabsState = await browser.storage.sync.get('quick_tabs_state_v2');
     let state = quickTabsState.quick_tabs_state_v2 || { containers: {} };
-    
+
     // Extract containers
     const containers = state.containers || state;
-    
+
     // Find the tab and update minimized state
     for (const containerId in containers) {
       if (containerId === 'saveId' || containerId === 'timestamp') continue;
-      
+
       const containerState = containers[containerId];
       if (containerState && containerState.tabs) {
         const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
         if (tabIndex !== -1) {
           containerState.tabs[tabIndex].minimized = message.minimized;
           containerState.lastUpdate = Date.now();
-          
+
           // Save back to storage
           const stateToSave = {
             containers: containers,
             saveId: message.saveId,
             timestamp: Date.now()
           };
-          
+
           await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
-          
+
           // Also update session storage
           if (typeof browser.storage.session !== 'undefined') {
             await browser.storage.session.set({ quick_tabs_session: stateToSave });
           }
-          
+
           console.log(`[Background] Updated minimize state for ${message.id}: ${message.minimized}`);
           break;
         }
@@ -721,11 +734,11 @@ case 'UPDATE_QUICK_TAB_MINIMIZE':
 ```javascript
 restoreById(id) {
   const restored = this.restoreQuickTab(id);
-  
+
   if (restored) {
     // NEW: Update storage immediately to reflect restored state
     const saveId = this.generateSaveId();
-    
+
     if (typeof browser !== 'undefined' && browser.runtime) {
       browser.runtime
         .sendMessage({
@@ -743,7 +756,7 @@ restoreById(id) {
       this.releasePendingSave(saveId);
     }
   }
-  
+
   return restored;
 }
 ```
@@ -756,18 +769,18 @@ restoreById(id) {
 restore() {
   this.minimized = false;
   this.container.style.display = 'flex';
-  
+
   // Explicitly re-apply position to ensure it's in the same place
   this.container.style.left = `${this.left}px`;
   this.container.style.top = `${this.top}px`;
   this.container.style.width = `${this.width}px`;
   this.container.style.height = `${this.height}px`;
-  
+
   // Enhanced logging for console log export (Issue #1)
   console.log(
     `[Quick Tab] Restored - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
   );
-  
+
   this.onFocus(this.id);
 }
 ```
@@ -783,9 +796,9 @@ restore(id) {
     const savedTop = tabWindow.top;
     const savedWidth = tabWindow.width;
     const savedHeight = tabWindow.height;
-    
+
     tabWindow.restore();
-    
+
     // Double-check position was applied (defensive)
     if (tabWindow.container) {
       tabWindow.container.style.left = `${savedLeft}px`;
@@ -793,7 +806,7 @@ restore(id) {
       tabWindow.container.style.width = `${savedWidth}px`;
       tabWindow.container.style.height = `${savedHeight}px`;
     }
-    
+
     this.minimizedTabs.delete(id);
     console.log('[MinimizedManager] Restored tab with position:', { id, left: savedLeft, top: savedTop });
     return true;
@@ -814,7 +827,7 @@ async updatePanelContent() {
 
   // Clear and rebuild containers list
   containersList.innerHTML = ''; // Clear everything
-  
+
   sortedContainers.forEach(cookieStoreId => {
     const containerInfo = containersData[cookieStoreId];
     const containerState = quickTabsState[cookieStoreId];
@@ -826,9 +839,9 @@ async updatePanelContent() {
     // Create fresh container section (no reuse)
     const section = document.createElement('div');
     section.className = 'panel-container-section';
-    
+
     // ... build section ...
-    
+
     containersList.appendChild(section);
   });
 }
@@ -848,7 +861,7 @@ renderQuickTabItem(tab, isMinimized) {
   // Indicator
   const indicator = document.createElement('span');
   indicator.className = `panel-status-indicator ${isMinimized ? 'yellow' : 'green'}`;
-  
+
   // ... favicon and info ...
 
   // Actions
@@ -860,7 +873,7 @@ renderQuickTabItem(tab, isMinimized) {
 
   if (!isActuallyMinimized) {
     // Active Quick Tab: Show "Go to Tab", "Minimize", and "Close"
-    
+
     if (tab.activeTabId) {
       const goToBtn = document.createElement('button');
       goToBtn.className = 'panel-btn-icon';
@@ -879,11 +892,11 @@ renderQuickTabItem(tab, isMinimized) {
     minBtn.dataset.action = 'minimize';
     minBtn.dataset.quickTabId = tab.id;
     actions.appendChild(minBtn);
-    
+
     console.log(`[PanelManager] Rendered active tab ${tab.id} with minimize button only`);
   } else {
     // Minimized Quick Tab: Show "Restore" and "Close" ONLY
-    
+
     const restoreBtn = document.createElement('button');
     restoreBtn.className = 'panel-btn-icon';
     restoreBtn.textContent = '↑';
@@ -891,7 +904,7 @@ renderQuickTabItem(tab, isMinimized) {
     restoreBtn.dataset.action = 'restore';
     restoreBtn.dataset.quickTabId = tab.id;
     actions.appendChild(restoreBtn);
-    
+
     console.log(`[PanelManager] Rendered minimized tab ${tab.id} with restore button only`);
   }
 
@@ -932,44 +945,53 @@ renderQuickTabItem(tab, isMinimized) {
 ### Test Case 1: Panel Position Sync
 
 **Setup**:
+
 1. Open Tab 1 and Tab 2 with the same URL
 2. Open Quick Tab Manager in Tab 1
 
 **Steps**:
+
 1. Drag Quick Tab Manager to a new position in Tab 1
 2. Release the drag
 3. Switch to Tab 2
 4. Open Quick Tab Manager
 
 **Expected Result**:
+
 - Quick Tab Manager in Tab 2 opens at the same position as Tab 1
 
 ### Test Case 2: Panel Size Sync
 
 **Setup**:
+
 1. Open Tab 1 and Tab 2 with the same URL
 2. Open Quick Tab Manager in Tab 1
 
 **Steps**:
+
 1. Resize Quick Tab Manager in Tab 1 (drag bottom-right corner)
 2. Release the resize
 3. Switch to Tab 2
 4. Open Quick Tab Manager
 
 **Expected Result**:
+
 - Quick Tab Manager in Tab 2 has the same size as Tab 1
 
 ### Test Case 3: Minimize Indicator Color
 
 **Setup**:
+
 1. Create Quick Tab 1
 2. Open Quick Tab Manager
 
 **Steps**:
+
 1. Click "Minimize" button for Quick Tab 1 in the panel
 2. Observe the indicator color
 
 **Expected Result**:
+
 - Indicator shows **yellow** color
 - Border shows **yellow** (`#FFC107`)
 - Only "Restore" and "Close" buttons are visible
@@ -977,10 +999,12 @@ renderQuickTabItem(tab, isMinimized) {
 ### Test Case 4: Active Indicator Color
 
 **Setup**:
+
 1. Create Quick Tab 1 (not minimized)
 2. Open Quick Tab Manager
 
 **Expected Result**:
+
 - Indicator shows **green** color
 - Border shows **green** (`#4CAF50`)
 - Only "Minimize" and "Close" buttons are visible (plus "Go to Tab" if applicable)
@@ -988,14 +1012,17 @@ renderQuickTabItem(tab, isMinimized) {
 ### Test Case 5: Restore Position
 
 **Setup**:
+
 1. Create Quick Tab 1 at position (200, 300) with size 800x600
 
 **Steps**:
+
 1. Minimize Quick Tab 1
 2. Open Quick Tab Manager
 3. Click "Restore" button
 
 **Expected Result**:
+
 - Quick Tab 1 reappears at position (200, 300) with size 800x600
 - Indicator shows **green** color in the panel
 - Only "Minimize" and "Close" buttons visible in panel
@@ -1003,15 +1030,18 @@ renderQuickTabItem(tab, isMinimized) {
 ### Test Case 6: Cross-Tab Minimize Sync
 
 **Setup**:
+
 1. Create Quick Tab 1 in Tab 1
 2. Open Tab 2 (same URL)
 3. Open Quick Tab Manager in Tab 2
 
 **Steps**:
+
 1. Minimize Quick Tab 1 in Tab 1 via the panel
 2. Observe Quick Tab Manager in Tab 2
 
 **Expected Result**:
+
 - Quick Tab Manager in Tab 2 updates to show Quick Tab 1 as minimized
 - Indicator shows **yellow** color
 - Only "Restore" and "Close" buttons visible
@@ -1057,6 +1087,7 @@ renderQuickTabItem(tab, isMinimized) {
 ### 1. `src/features/quick-tabs/panel.js`
 
 **Changes**:
+
 - Add `PANEL_POSITION_UPDATED` and `PANEL_SIZE_UPDATED` handlers to `setupBroadcastChannel()`
 - Add `savePanelStateLocal()` method for local-only saves
 - Add debounce configuration and logic to constructor and message handler
@@ -1070,6 +1101,7 @@ renderQuickTabItem(tab, isMinimized) {
 ### 2. `src/features/quick-tabs/index.js`
 
 **Changes**:
+
 - Modify `handleMinimize()` to send `UPDATE_QUICK_TAB_MINIMIZE` message to background
 - Modify `restoreById()` to send `UPDATE_QUICK_TAB_MINIMIZE` message to background
 - No changes to broadcast logic (already correct)
@@ -1079,6 +1111,7 @@ renderQuickTabItem(tab, isMinimized) {
 ### 3. `src/features/quick-tabs/window.js`
 
 **Changes**:
+
 - Modify `restore()` method to explicitly re-apply position and size
 - No changes to `minimize()` method (already logs position)
 
@@ -1087,6 +1120,7 @@ renderQuickTabItem(tab, isMinimized) {
 ### 4. `src/features/quick-tabs/minimized-manager.js`
 
 **Changes**:
+
 - Modify `restore()` method to ensure position preservation
 - Add defensive position re-application logic
 - Add console logging
@@ -1096,6 +1130,7 @@ renderQuickTabItem(tab, isMinimized) {
 ### 5. `background.js`
 
 **Changes**:
+
 - Add new message handler for `UPDATE_QUICK_TAB_MINIMIZE` action
 - Handler updates storage with new minimized state
 - Handler updates both sync and session storage
