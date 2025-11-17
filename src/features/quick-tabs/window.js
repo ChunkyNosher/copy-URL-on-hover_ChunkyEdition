@@ -55,14 +55,19 @@ export class QuickTabWindow {
       return this.container;
     }
 
+    const targetLeft = Number.isFinite(this.left) ? this.left : 100;
+    const targetTop = Number.isFinite(this.top) ? this.top : 100;
+    this.left = targetLeft;
+    this.top = targetTop;
+
     // Create main container
     this.container = createElement('div', {
       id: `quick-tab-${this.id}`,
       className: 'quick-tab-window',
       style: {
         position: 'fixed',
-        left: `${this.left}px`,
-        top: `${this.top}px`,
+        left: '-9999px',
+        top: '-9999px',
         width: `${this.width}px`,
         height: `${this.height}px`,
         zIndex: this.zIndex.toString(),
@@ -104,9 +109,10 @@ export class QuickTabWindow {
     // Add to document
     document.body.appendChild(this.container);
 
-    // Fix Quick Tab flash bug (Issue #3 from quick-tab-bugs-fixes.md)
-    // Make visible after positioning is complete using requestAnimationFrame
+    // Fix Quick Tab flash by moving into place after a frame
     requestAnimationFrame(() => {
+      this.container.style.left = `${targetLeft}px`;
+      this.container.style.top = `${targetTop}px`;
       this.container.style.visibility = 'visible';
       this.container.style.opacity = '1';
     });

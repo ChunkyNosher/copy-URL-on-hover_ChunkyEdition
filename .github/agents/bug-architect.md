@@ -115,13 +115,17 @@ Loading):**
     - MUST be imported FIRST in content.js to override console before any other
       code runs
     - Fixes log export "No logs found" issue by capturing all console calls
-    - **Log Export (v1.5.9.7 - Background Delegation)**: Popup gathers logs but
+    - **Log Export (v1.5.9.7+ - Background Delegation)**: Popup gathers logs but
       immediately sends an `EXPORT_LOGS` message to `background.js`. The
       background script validates `sender.id`, creates the Blob, runs
       `downloads.download()` with `saveAs: true`, and watches
       `downloads.onChanged` to revoke Blob URLs after `complete`/`interrupted`
       (plus a 60s fallback timeout) so Save As dialogs can close the popup
       without killing the listener.
+    - **Clear Log History (v1.5.9.8)**: Advanced tab exposes a dedicated button
+      that sends `CLEAR_CONSOLE_LOGS` to `background.js`; background wipes its
+      persistent buffer and broadcasts `CLEAR_CONTENT_LOGS` so every tab clears
+      console interceptor and `debug.js` buffers before the next export.
     - See docs/manual/1.5.9 docs/popup-close-background-v1597.md for the
       diagnostic that prompted this fix and docs/manual/1.5.9
       docs/blob-url-race-fix-v1596.md for the earlier event-driven revocation
@@ -157,6 +161,20 @@ Loading):**
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
+
+### v1.5.9.8 Notes
+
+- Quick Tabs creation is now single-sourced via storage snapshots: content
+  scripts request `CREATE_QUICK_TAB`, but QuickTabsManager waits for the synced
+  storage snapshot before rendering, preventing duplicate stacks during resize
+  storms.
+- Storage writes now propagate caller-provided `saveId` tokens. A pending-save
+  tracker and debounced storage sync ensure resize floods cannot cascade-delete
+  tabs while a save is inflight.
+- Quick Tabs spawn off-screen, hydrate, then animate toward the tooltip-clamped
+  cursor position, eliminating the top-left flash seen in v1.5.9.7.
+- Popup Advanced tab adds "Clear Log History" beneath "Export Console Logs" to
+  purge both background buffers and every content script's captured logs.
 
 **Critical APIs - Debug These First:**
 

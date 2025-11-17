@@ -3,13 +3,30 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.5.9.7  
+**Version:** 1.5.9.8  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Hybrid Modular/EventBus Architecture (Architecture #10)  
 **Purpose:** URL management with Firefox Container isolation support and
 persistent floating panel manager
 
 ---
+
+### v1.5.9.8 Highlights
+
+- **Quick Tab race condition fixes:** Content-side `CREATE_QUICK_TAB` requests
+  now include a tracked `saveId`, background persists the same token, and
+  QuickTabsManager ignores storage changes while any save is pending. Debounced
+  storage sync means resize storms can’t cascade-delete the entire stack (see
+  `docs/manual/1.5.9 docs/v1-5-9-7-forensic-debug.md`).
+- **Single-source creation + off-screen staging:** Quick Tabs don’t render
+  immediately on shortcut. The manager waits for the storage snapshot, then
+  spawns each window off-screen before animating into the tooltip-clamped
+  position derived from the hovered element/mouse location, eliminating the
+  top-left flash.
+- **Advanced tab log maintenance:** A new **Clear Log History** button (under
+  Export Console Logs) sends `CLEAR_CONSOLE_LOGS` to `background.js`, which
+  wipes its buffer and broadcasts `CLEAR_CONTENT_LOGS` so every tab purges both
+  the console interceptor and `debug.js` buffers.
 
 ## Code Quality Tool Priority
 
@@ -191,7 +208,7 @@ function validateContainerAccess(sourceContainer, targetContainer) {
 - ✅ Test with multiple containers active
 - ✅ Handle default container (no cookieStoreId)
 
-### Log Export Pipeline (v1.5.9.7)
+### Log Export Pipeline (v1.5.9.7+)
 
 - Popup collects logs but immediately sends an `EXPORT_LOGS` message to
   `background.js`.
@@ -202,6 +219,10 @@ function validateContainerAccess(sourceContainer, targetContainer) {
   reports `complete`/`interrupted` (plus a 60s fallback timeout).
 - Never reintroduce popup-side download logic—Firefox kills the popup whenever
   the Save As dialog opens, which terminates event listeners.
+- Advanced tab now also exposes **Clear Log History**, which sends
+  `CLEAR_CONSOLE_LOGS` to background so both the persistent buffer and each
+  content script’s console interceptors/`debug.js` buffers are wiped before the
+  next export.
 
 ---
 

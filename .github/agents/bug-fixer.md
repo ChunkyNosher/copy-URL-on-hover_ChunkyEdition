@@ -131,12 +131,29 @@ security, and Firefox-specific behaviors optimized for both **Firefox** and
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
-- **Log Export Pipeline (v1.5.9.7)**: Popup now only formats logs and sends an
+- **Log Export Pipeline (v1.5.9.7+)**: Popup now only formats logs and sends an
   `EXPORT_LOGS` runtime message. `background.js` validates `sender.id`, creates
   the Blob, starts `downloads.download({ saveAs: true })`, and listens for
   `downloads.onChanged` to revoke Blob URLs after `complete`/`interrupted`
   states (plus a 60s fallback) so Save As dialogs closing the popup no longer
   kill the export (see docs/manual/1.5.9 docs/popup-close-background-v1597.md).
+  Advanced tab also exposes "Clear Log History" (v1.5.9.8), which posts
+  `CLEAR_CONSOLE_LOGS` so the background buffer and every content script's
+  console interceptor/`debug.js` queue resets before the next export.
+
+### v1.5.9.8 Notes
+
+- Quick Tabs creation now waits for the debounced browser.storage snapshot
+  before rendering. Content scripts still signal `CREATE_QUICK_TAB`, but the
+  manager ignores storage mutations while a save is pending, eliminating race
+  conditions that previously deleted entire stacks.
+- All storage writes propagate a caller-provided `saveId` token. Pending-save
+  tracking plus debounced sync ensure resize storms do not enqueue overlapping
+  writes.
+- Quick Tabs spawn off-screen, hydrate, then animate toward the tooltip-clamped
+  cursor location, removing the top-left flash seen in earlier builds.
+- Popup Advanced tab includes "Clear Log History" beside "Export Console Logs"
+  to wipe logs across background + content contexts before fresh captures.
 
 **Critical APIs Currently Used - PRIORITIZE THESE:**
 

@@ -128,13 +128,27 @@ capabilities while maintaining code quality, browser compatibility (specifically
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
-- **Log Export Pipeline (v1.5.9.7)**: Popup features now stop at log aggregation
-  and send `EXPORT_LOGS` messages to `background.js`. The background script
-  validates `sender.id`, creates Blobs, triggers
+- **Log Export Pipeline (v1.5.9.7+)**: Popup features now stop at log
+  aggregation and send `EXPORT_LOGS` messages to `background.js`. The background
+  script validates `sender.id`, creates Blobs, triggers
   `downloads.download({ saveAs: true })`, and listens for `downloads.onChanged`
   before revoking Blob URLs (with a 60s fallback) so Save As dialogs no longer
-  kill the export. Reference docs/manual/1.5.9
+  kill the export. Advanced tab also exposes "Clear Log History" (v1.5.9.8),
+  which sends `CLEAR_CONSOLE_LOGS` so background + content buffers reset before
+  the next export. Reference docs/manual/1.5.9
   docs/popup-close-background-v1597.md when modifying log tools.
+
+### v1.5.9.8 Notes
+
+- Quick Tabs creation is staged off-screen until storage sync delivers the
+  authoritative snapshot, preventing duplicate stacks during resize storms.
+- Content->background requests propagate `saveId` tokens; QuickTabsManager
+  tracks pending saves and debounces sync writes to avoid cascade deletions.
+- Tooltip-based position calculation now clamps to the hovered element/mouse
+  coordinates and animates from the off-screen staging area to the final spot,
+  eliminating the top-left flash.
+- Popup Advanced tab introduces "Clear Log History" (alongside export) to wipe
+  all captured logs before a new debugging run.
 
 **Key Systems:**
 

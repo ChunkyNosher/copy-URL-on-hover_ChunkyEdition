@@ -21,7 +21,7 @@
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
-import { getConsoleLogs, getBufferStats } from './utils/console-interceptor.js';
+import { getConsoleLogs, getBufferStats, clearConsoleLogs } from './utils/console-interceptor.js';
 
 // CRITICAL: Early detection marker - must execute first
 console.log('[Copy-URL-on-Hover] Script loaded! @', new Date().toISOString());
@@ -62,7 +62,7 @@ import { StateManager } from './core/state.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: state.js');
 import { EventBus, Events } from './core/events.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: events.js');
-import { debug, enableDebug, getLogBuffer } from './utils/debug.js';
+import { debug, enableDebug, getLogBuffer, clearLogBuffer } from './utils/debug.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: debug.js');
 import { copyToClipboard, sendMessageToBackground } from './core/browser-api.js';
 console.log('[Copy-URL-on-Hover] ✓ Imported: browser-api.js from core');
@@ -371,7 +371,7 @@ function setupKeyboardShortcuts() {
     ) {
       if (!hoveredLink) return;
       event.preventDefault();
-      await handleCreateQuickTab(hoveredLink);
+      await handleCreateQuickTab(hoveredLink, hoveredElement);
     }
 
     // Check for open in new tab shortcut (needs URL)
@@ -447,31 +447,82 @@ async function handleCopyText(element) {
 /**
  * Handle create Quick Tab action
  */
-async function handleCreateQuickTab(url) {
+async function handleCreateQuickTab(url, targetElement = null) {
+  if (!url) {
+    console.warn('[Quick Tab] Missing URL for creation');
+    return;
+  }
+
   debug('Creating Quick Tab for:', url);
   eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
 
-  // ACTUAL IMPLEMENTATION - send to background script
+  const width = CONFIG.quickTabDefaultWidth || 800;
+  const height = CONFIG.quickTabDefaultHeight || 600;
+  const position = calculateQuickTabPosition(targetElement, width, height);
+
+  const canUseManagerSaveId = Boolean(
+    quickTabsManager && typeof quickTabsManager.generateSaveId === 'function'
+  );
+  const quickTabId =
+    quickTabsManager && typeof quickTabsManager.generateId === 'function'
+      ? quickTabsManager.generateId()
+      : generateQuickTabId();
+  const saveId = canUseManagerSaveId ? quickTabsManager.generateSaveId() : generateSaveTrackingId();
+
   try {
     await sendMessageToBackground({
       action: 'CREATE_QUICK_TAB',
-      url: url,
-      id: generateQuickTabId(),
-      left: stateManager.get('lastMouseX') || 100,
-      top: stateManager.get('lastMouseY') || 100,
-      width: CONFIG.quickTabDefaultWidth || 800,
-      height: CONFIG.quickTabDefaultHeight || 600,
-      title: 'Quick Tab',
+      url,
+      id: quickTabId,
+      left: position.left,
+      top: position.top,
+      width,
+      height,
+      title: targetElement?.textContent?.trim() || 'Quick Tab',
       cookieStoreId: 'firefox-default',
-      minimized: false
+      minimized: false,
+      saveId
     });
 
     showNotification('✓ Quick Tab created!', 'success');
     debug('Quick Tab created successfully');
   } catch (err) {
     console.error('[Quick Tab] Failed:', err);
+    if (canUseManagerSaveId && quickTabsManager?.releasePendingSave) {
+      quickTabsManager.releasePendingSave(saveId);
+    }
     showNotification('✗ Failed to create Quick Tab', 'error');
   }
+}
+
+function calculateQuickTabPosition(targetElement, width, height) {
+  const padding = 16;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || width;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || height;
+
+  let left = stateManager.get('lastMouseX') ?? padding;
+  let top = stateManager.get('lastMouseY') ?? padding;
+
+  if (targetElement?.getBoundingClientRect) {
+    try {
+      const rect = targetElement.getBoundingClientRect();
+      left = rect.right + padding;
+      top = rect.top;
+    } catch (error) {
+      console.warn('[Quick Tab] Failed to read target bounds:', error);
+    }
+  }
+
+  const maxLeft = Math.max(padding, viewportWidth - width - padding);
+  const maxTop = Math.max(padding, viewportHeight - height - padding);
+
+  left = Math.min(Math.max(left, padding), maxLeft);
+  top = Math.min(Math.max(top, padding), maxTop);
+
+  return {
+    left: Math.round(left),
+    top: Math.round(top)
+  };
 }
 
 /**
@@ -479,6 +530,10 @@ async function handleCreateQuickTab(url) {
  */
 function generateQuickTabId() {
   return `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function generateSaveTrackingId() {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 /**
@@ -555,6 +610,19 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       }
 
       return true; // Keep message channel open for async response
+    }
+
+    if (message.action === 'CLEAR_CONTENT_LOGS') {
+      try {
+        clearConsoleLogs();
+        clearLogBuffer();
+        sendResponse({ success: true, clearedAt: Date.now() });
+      } catch (error) {
+        console.error('[Content] Error clearing log buffer:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+
+      return true;
     }
   });
 }

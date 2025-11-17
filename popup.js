@@ -687,6 +687,57 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   // ==================== END EXPORT LOGS BUTTON ====================
+
+  // ==================== CLEAR LOGS BUTTON ====================
+  const clearLogsBtn = document.getElementById('clearLogsBtn');
+  if (clearLogsBtn) {
+    clearLogsBtn.addEventListener('click', async () => {
+      const originalText = clearLogsBtn.textContent;
+      const originalBg = clearLogsBtn.style.backgroundColor;
+
+      try {
+        clearLogsBtn.disabled = true;
+        clearLogsBtn.textContent = '⏳ Clearing...';
+
+        const response = await browserAPI.runtime.sendMessage({
+          action: 'CLEAR_CONSOLE_LOGS'
+        });
+
+        const clearedTabs = response?.clearedTabs || 0;
+        const backgroundEntries = response?.clearedBackgroundEntries || 0;
+
+        clearLogsBtn.textContent = '✓ Logs Cleared';
+        clearLogsBtn.classList.add('success');
+
+        const tabSummary = clearedTabs
+          ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})`
+          : '';
+        showStatus(
+          `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
+          true
+        );
+
+        setTimeout(() => {
+          clearLogsBtn.textContent = originalText;
+          clearLogsBtn.style.backgroundColor = originalBg;
+          clearLogsBtn.classList.remove('success');
+          clearLogsBtn.disabled = false;
+        }, 2000);
+      } catch (error) {
+        clearLogsBtn.textContent = '✗ Clear Failed';
+        clearLogsBtn.classList.add('error');
+        showStatus(`Failed to clear logs: ${error.message}`, false);
+
+        setTimeout(() => {
+          clearLogsBtn.textContent = originalText;
+          clearLogsBtn.style.backgroundColor = originalBg;
+          clearLogsBtn.classList.remove('error');
+          clearLogsBtn.disabled = false;
+        }, 3000);
+      }
+    });
+  }
+  // ==================== END CLEAR LOGS BUTTON ====================
 });
 
 // Load settings on popup open

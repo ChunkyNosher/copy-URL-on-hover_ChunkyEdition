@@ -1,6 +1,6 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.9.7** - A feature-rich Firefox/Zen Browser extension with **Hybrid
+**Version 1.5.9.8** - A feature-rich Firefox/Zen Browser extension with **Hybrid
 Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab
 management with Firefox Container support and Persistent Floating Panel Manager.
 
@@ -9,6 +9,34 @@ or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 Now with full Firefox Container integration and a persistent Quick Tabs Manager
 panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.9.8
+
+**🧠 Quick Tab Race Condition Hardening**
+
+- Save-ID locking now tracks every storage write (create/move/resize/close) and
+  the background script reuses the provided `saveId`, eliminating the
+  self-triggered storage sync loops captured in
+  [`docs/manual/1.5.9 docs/v1-5-9-7-forensic-debug.md`](docs/manual/1.5.9%20docs/v1-5-9-7-forensic-debug.md).
+- Storage changes are debounced and ignored while pending saves exist, so rapid
+  resize bursts no longer cascade-delete every Quick Tab when Firefox briefly
+  reports an empty state.
+
+**✨ No More Top-Left Flash**
+
+- Quick Tabs now render only after the latest storage snapshot lands and each
+  window stages off-screen before animating into place, removing the
+  milliseconds-long "flash" at `(100,100)`.
+- Creation requests calculate a clamped spawn point from the hovered element and
+  mouse position, so new tabs appear beside the tooltip instead of the viewport
+  origin.
+
+**🧹 Advanced Tab Log Cleanup**
+
+- Added a **Clear Log History** button directly under "Export Console Logs" in
+  the Advanced tab. It wipes both the background log buffer and the content
+  script's dual interceptors so QA can capture isolated reproductions without
+  reloading the extension.
 
 ## 🎉 What's New in v1.5.9.7
 
@@ -1265,6 +1293,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.9.7  
+**Current Version**: 1.5.9.8  
 **Last Updated**: 2025-11-16  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

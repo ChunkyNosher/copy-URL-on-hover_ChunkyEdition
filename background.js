@@ -51,6 +51,12 @@ function addBackgroundLog(type, ...args) {
   });
 }
 
+function clearBackgroundLogs() {
+  const cleared = BACKGROUND_LOG_BUFFER.length;
+  BACKGROUND_LOG_BUFFER.length = 0;
+  return cleared;
+}
+
 // Override console methods to capture logs
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
@@ -625,6 +631,41 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
 
   // ==================== LOG EXPORT HANDLER ====================
+  if (message.action === 'CLEAR_CONSOLE_LOGS') {
+    if (!isAuthorizedExtensionSender(sender)) {
+      console.error('[Background] Unauthorized CLEAR_CONSOLE_LOGS sender', sender);
+      sendResponse({ success: false, error: 'Unauthorized sender' });
+      return true;
+    }
+
+    const clearedBackgroundEntries = clearBackgroundLogs();
+    let clearedTabs = 0;
+
+    if (browser?.tabs?.query) {
+      try {
+        const tabs = await browser.tabs.query({});
+        const results = await Promise.allSettled(
+          tabs.map(tab =>
+            browser.tabs
+              .sendMessage(tab.id, {
+                action: 'CLEAR_CONTENT_LOGS'
+              })
+              .catch(() => ({ success: false }))
+          )
+        );
+
+        clearedTabs = results.filter(
+          result => result.status === 'fulfilled' && result.value?.success
+        ).length;
+      } catch (error) {
+        console.warn('[Background] Failed to broadcast CLEAR_CONTENT_LOGS to tabs:', error);
+      }
+    }
+
+    sendResponse({ success: true, clearedTabs, clearedBackgroundEntries });
+    return true;
+  }
+
   // Handle log export requests from popup
   if (message.action === 'GET_BACKGROUND_LOGS') {
     sendResponse({ logs: [...BACKGROUND_LOG_BUFFER] });
@@ -741,7 +782,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     containerState.lastUpdate = Date.now();
 
     // v1.5.8.15 FIX: Save with proper format including saveId for transaction tracking
-    const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const stateToSave = {
       containers: globalQuickTabState.containers,
       saveId: saveId,
@@ -838,7 +879,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       });
 
       // v1.5.8.15 FIX: Save with proper format including saveId
-      const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const stateToSave = {
         containers: globalQuickTabState.containers,
         saveId: saveId,
@@ -1004,7 +1045,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       containerState.lastUpdate = Date.now();
 
       // v1.5.8.15 FIX: Save with proper format
-      const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const stateToSave = {
         containers: globalQuickTabState.containers,
         saveId: saveId,
@@ -1097,8 +1138,8 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 
     // v1.5.8.14 - Include saveId in storage for transaction tracking
     const stateToSave = {
-      ...globalQuickTabState.containers,
-      saveId: message.saveId || null,
+      containers: globalQuickTabState.containers,
+      saveId: message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       timestamp: Date.now()
     };
 

@@ -124,12 +124,31 @@ existing features to modern APIs that unlock new possibilities.
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
-- **Log Export Pipeline (v1.5.9.7)**: Popup features only aggregate logs and
+- **Log Export Pipeline (v1.5.9.7+)**: Popup features only aggregate logs and
   send an `EXPORT_LOGS` message. `background.js` validates `sender.id`, builds
   Blobs, calls `downloads.download({ saveAs: true })`, then waits for
   `downloads.onChanged` before revoking the Blob URL (60s fallback) so Save As
-  dialogs closing the popup cannot kill listeners. See docs/manual/1.5.9
-  docs/popup-close-background-v1597.md when touching export flows.
+  dialogs closing the popup cannot kill listeners. Advanced tab adds "Clear Log
+  History" (v1.5.9.8) which posts `CLEAR_CONSOLE_LOGS`, causing background and
+  all content scripts to flush their console/debug buffers before the next
+  export. See docs/manual/1.5.9 docs/popup-close-background-v1597.md when
+  touching export flows.
+
+### v1.5.9.8 Notes
+
+- Quick Tabs creation is fully storage-driven. Content scripts request creation,
+  but QuickTabsManager waits for the debounced storage snapshot, then renders
+  each tab off-screen before animating to the tooltip-aligned cursor position to
+  prevent flashes.
+- Debounced storage sync and a pending-save tracker protect against resize
+  storms wiping state. Every background mutation now preserves the
+  caller-supplied `saveId` to keep storage/onChanged listeners in sync.
+- `shouldIgnoreStorageChange` ensures QuickTabsManager ignores storage events
+  while saves are pending, preventing cascade deletions detected in forensic
+  v1.5.9.7 logs.
+- Popup Advanced tab offers "Clear Log History" to wipe both background and
+  content log buffers, giving developers a clean slate before recording new
+  diagnostics.
 
 **Core APIs - Leverage These:**
 

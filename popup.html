@@ -781,6 +781,31 @@
             </small>
           </div>
 
+          <!-- Clear Console Logs button -->
+          <div class="setting-group">
+            <button
+              id="clearLogsBtn"
+              style="
+                width: 100%;
+                padding: 10px;
+                background: #555;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+                transition: all 0.2s ease;
+              "
+            >
+              🧹 Clear Log History
+            </button>
+            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
+              Removes all captured console logs across background and content scripts so the next
+              export only contains fresh diagnostic data.
+            </small>
+          </div>
+
           <div class="info-box">
             <strong>Debug Mode:</strong> When enabled, detailed logs will appear in the browser
             console (F12). Useful for troubleshooting.

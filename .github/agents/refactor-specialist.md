@@ -126,12 +126,27 @@ maintainability while guaranteeing functional equivalence across **Firefox** and
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
-- **Log Export Pipeline (v1.5.9.7)**: Popup.js now stops at log aggregation and
+- **Log Export Pipeline (v1.5.9.7+)**: Popup.js now stops at log aggregation and
   sends an `EXPORT_LOGS` runtime message. `background.js` validates `sender.id`,
   builds the Blob, runs `downloads.download({ saveAs: true })`, and listens for
   `downloads.onChanged` before revoking Blob URLs (60s fallback), preventing
-  Save As dialogs from killing popup listeners. Keep this split when refactoring
-  log tooling (see docs/manual/1.5.9 docs/popup-close-background-v1597.md).
+  Save As dialogs from killing popup listeners. Advanced tab adds "Clear Log
+  History" (v1.5.9.8) which dispatches `CLEAR_CONSOLE_LOGS` so background and
+  every content script flushes console/debug buffers before the next export.
+  Keep this split when refactoring log tooling (see docs/manual/1.5.9
+  docs/popup-close-background-v1597.md).
+
+### v1.5.9.8 Notes
+
+- Quick Tabs rendering is single-sourced from storage: `CREATE_QUICK_TAB`
+  requests enqueue saves, but QuickTabsManager waits for debounced storage sync
+  before painting. Pending-save tracking ensures storage.onChanged ignores
+  transient writes and prevents cascade deletions.
+- `saveId` tokens now propagate through content, background, and state manager
+  so every mutation can be correlated; windows spawn off-screen then animate to
+  cursor-clamped positions to avoid flashes.
+- Popup Advanced tab's "Clear Log History" wipes both persistent and content log
+  buffers, giving refactors a clean baseline for instrumentation.
 
 **Critical APIs to Preserve - PRIORITIZE THESE:**
 
