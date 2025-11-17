@@ -4,7 +4,36 @@ description:
   Implements new features for the copy-URL-on-hover extension following
   WebExtension best practices, maintaining backward compatibility, optimized for
   Firefox and Zen Browser
-tools: ['*']
+tools:
+  [
+    'edit',
+    'runNotebooks',
+    'search',
+    'new',
+    'runCommands',
+    'runTasks',
+    'brave-deep-research/*',
+    'filesystem/*',
+    'github-mcp/*',
+    'memory/*',
+    'perplexity/*',
+    'playwright-zen-browser/*',
+    'my-mcp-server-4ef0864d/*',
+    'upstash/context7/*',
+    'GitKraken/*',
+    'usages',
+    'vscodeAPI',
+    'problems',
+    'changes',
+    'testFailure',
+    'openSimpleBrowser',
+    'fetch',
+    'githubRepo',
+    'extensions',
+    'todos',
+    'runSubagent',
+    'runTests'
+  ]
 ---
 
 You are a feature implementation specialist for the
@@ -65,8 +94,8 @@ capabilities while maintaining code quality, browser compatibility (specifically
     - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.9
   - **src/features/**: Feature modules (EventBus-driven)
     - **quick-tabs/**: index.js, window.js (renamed from quick-tab-window.js),
-      minimized-manager.js, **panel.js (NEW v1.5.9 - Persistent floating
-      panel manager)**
+      minimized-manager.js, **panel.js (NEW v1.5.9 - Persistent floating panel
+      manager)**
     - **notifications/**: index.js, toast.js (NEW), tooltip.js (NEW) - fully
       modularized
     - **url-handlers/**: 11 categorized modules (104 handlers total)
@@ -89,8 +118,7 @@ capabilities while maintaining code quality, browser compatibility (specifically
 - **state-manager.js**: Container-aware Quick Tab state management
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) -
-  v1.5.9
+- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.9
 - **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.9):
   - Jest with browser API mocks (tests/setup.js)
   - Example tests (tests/example.test.js)
@@ -587,8 +615,10 @@ Failure to update documentation results in:
 
 1. **Document all bugs/features** in a markdown file in `docs/manual/` or
    `docs/implementation-summaries/`
-2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs and features
-3. **DO NOT mark issues as completed automatically** - The user will manually close issues when work is done
+2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs
+   and features
+3. **DO NOT mark issues as completed automatically** - The user will manually
+   close issues when work is done
 4. **Provide a comprehensive list** of all bugs/features for user to review
 
 ### Required Documentation Format

@@ -4,7 +4,36 @@ description:
   Coordinates and delegates tasks to specialized agents (bug-fixer,
   feature-builder, refactor-specialist) based on issue analysis and user intent
   for Firefox and Zen Browser extension development
-tools: ['*']
+tools:
+  [
+    'edit',
+    'runNotebooks',
+    'search',
+    'new',
+    'runCommands',
+    'runTasks',
+    'brave-deep-research/*',
+    'filesystem/*',
+    'github-mcp/*',
+    'memory/*',
+    'perplexity/*',
+    'playwright-zen-browser/*',
+    'my-mcp-server-4ef0864d/*',
+    'upstash/context7/*',
+    'GitKraken/*',
+    'usages',
+    'vscodeAPI',
+    'problems',
+    'changes',
+    'testFailure',
+    'openSimpleBrowser',
+    'fetch',
+    'githubRepo',
+    'extensions',
+    'todos',
+    'runSubagent',
+    'runTests'
+  ]
 ---
 
 You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition
@@ -665,8 +694,10 @@ Failure to update documentation results in:
 
 1. **Document all bugs/features** in a markdown file in `docs/manual/` or
    `docs/implementation-summaries/`
-2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs and features
-3. **DO NOT mark issues as completed automatically** - The user will manually close issues when work is done
+2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs
+   and features
+3. **DO NOT mark issues as completed automatically** - The user will manually
+   close issues when work is done
 4. **Provide a comprehensive list** of all bugs/features for user to review
 
 ### Required Documentation Format
