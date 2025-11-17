@@ -1,0 +1,242 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.5.9.8
+Export Date: 2025-11-17T16:47:21.422Z
+Export Date (Local): 11/17/2025, 11:47:21 AM
+Total Logs: 137
+
+================================================================================
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] Script loaded! @ 2025-11-17T16:46:43.728Z
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] Debug marker set successfully
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] Global error handlers installed
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] Starting module imports...
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] ✓ Imported: config.js
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] ✓ Imported: state.js
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] ✓ Imported: events.js
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] ✓ Imported: debug.js
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] ✓ Imported: browser-api.js from core
+[2025-11-17T16:46:43.728Z] [LOG  ] [Copy-URL-on-Hover] ✓ Imported: url-handlers/index.js
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] ✓ Imported: url-handlers/generic.js
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] ✓ Imported: quick-tabs/index.js
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] ✓ Imported: notifications/index.js
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] All module imports completed successfully
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] Initializing core systems...
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] ConfigManager initialized
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] StateManager initialized
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] EventBus initialized
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] URLHandlerRegistry initialized
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting extension initialization...
+[2025-11-17T16:46:43.729Z] [LOG  ] [Copy-URL-on-Hover] STEP: Loading user configuration...
+[2025-11-17T16:46:43.729Z] [LOG  ] [ConfigManager] Starting configuration load...
+[2025-11-17T16:46:43.729Z] [LOG  ] [ConfigManager] Calling browser.storage.local.get...
+[2025-11-17T16:46:43.893Z] [LOG  ] [ConfigManager] Storage get completed, processing result...
+[2025-11-17T16:46:43.893Z] [LOG  ] [ConfigManager] Configuration loaded successfully
+[2025-11-17T16:46:43.893Z] [LOG  ] [ConfigManager] Config summary: {
+  "debugMode": true,
+  "totalKeys": 42
+}
+[2025-11-17T16:46:43.893Z] [LOG  ] [Copy-URL-on-Hover] ✓ Configuration loaded successfully
+[2025-11-17T16:46:43.893Z] [LOG  ] [Copy-URL-on-Hover] Config values: {
+  "debugMode": true,
+  "hasDefaultConfig": true
+}
+[2025-11-17T16:46:43.893Z] [LOG  ] [Copy-URL-on-Hover] STEP: Enabling debug mode if configured...
+[2025-11-17T16:46:43.893Z] [LOG  ] [DEBUG] Debug mode enabled
+[2025-11-17T16:46:43.893Z] [LOG  ] [Copy-URL-on-Hover] ✓ Debug mode activated
+[2025-11-17T16:46:43.893Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing state...
+[2025-11-17T16:46:43.893Z] [LOG  ] [Copy-URL-on-Hover] ✓ State initialized
+[2025-11-17T16:46:43.893Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing feature modules...
+[2025-11-17T16:46:43.893Z] [LOG  ] [QuickTabs] Initializing Quick Tabs feature module...
+[2025-11-17T16:46:43.893Z] [LOG  ] [QuickTabsManager] Initializing with eager loading...
+[2025-11-17T16:46:43.893Z] [LOG  ] [QuickTabsManager] BroadcastChannel initialized for real-time sync
+[2025-11-17T16:46:43.893Z] [LOG  ] [QuickTabsManager] Storage listeners attached
+[2025-11-17T16:46:43.893Z] [LOG  ] [DEBUG] [PanelManager] Initializing...
+[2025-11-17T16:46:43.893Z] [DEBUG] Debug mode enabled
+[2025-11-17T16:46:43.893Z] [DEBUG] [PanelManager] Initializing...
+[2025-11-17T16:46:43.894Z] [LOG  ] [DEBUG] [PanelManager] BroadcastChannel initialized for panel sync
+[2025-11-17T16:46:43.894Z] [LOG  ] [DEBUG] [PanelManager] Styles injected
+[2025-11-17T16:46:43.894Z] [LOG  ] [DEBUG] [PanelManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 254,
+  "height": 304,
+  "isOpen": true
+}
+[2025-11-17T16:46:43.894Z] [LOG  ] [DEBUG] [PanelManager] Event listeners setup
+[2025-11-17T16:46:43.894Z] [DEBUG] [PanelManager] BroadcastChannel initialized for panel sync
+[2025-11-17T16:46:43.894Z] [DEBUG] [PanelManager] Styles injected
+[2025-11-17T16:46:43.894Z] [DEBUG] [PanelManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 254,
+  "height": 304,
+  "isOpen": true
+}
+[2025-11-17T16:46:43.894Z] [DEBUG] [PanelManager] Event listeners setup
+[2025-11-17T16:46:43.895Z] [LOG  ] [DEBUG] [PanelManager] Panel created
+[2025-11-17T16:46:43.895Z] [LOG  ] [DEBUG] [PanelManager] Message listener setup
+[2025-11-17T16:46:43.895Z] [LOG  ] [DEBUG] [PanelManager] Initialized
+[2025-11-17T16:46:43.895Z] [LOG  ] [QuickTabsManager] Panel manager initialized
+[2025-11-17T16:46:43.895Z] [LOG  ] [QuickTabsManager] Message listeners attached
+[2025-11-17T16:46:43.895Z] [LOG  ] [QuickTabsManager] Emergency save handlers attached
+[2025-11-17T16:46:43.895Z] [LOG  ] [QuickTabsManager] Hydrating state from storage...
+[2025-11-17T16:46:43.895Z] [DEBUG] [PanelManager] Panel created
+[2025-11-17T16:46:43.895Z] [DEBUG] [PanelManager] Message listener setup
+[2025-11-17T16:46:43.895Z] [DEBUG] [PanelManager] Initialized
+[2025-11-17T16:46:43.970Z] [LOG  ] [QuickTabsManager] Loaded state from sync storage
+[2025-11-17T16:46:43.970Z] [LOG  ] [QuickTabsManager] Syncing from storage state...
+[2025-11-17T16:46:43.970Z] [LOG  ] [QuickTabsManager] Syncing 0 tabs from container firefox-default
+[2025-11-17T16:46:43.970Z] [LOG  ] [QuickTabsManager] Storage sync complete
+[2025-11-17T16:46:43.970Z] [LOG  ] [QuickTabsManager] State hydration complete
+[2025-11-17T16:46:43.970Z] [LOG  ] [QuickTabsManager] Initialized successfully with eager loading
+[2025-11-17T16:46:43.970Z] [LOG  ] [QuickTabs] Quick Tabs feature module initialized
+[2025-11-17T16:46:43.970Z] [LOG  ] [Copy-URL-on-Hover] ✓ Quick Tabs feature initialized
+[2025-11-17T16:46:43.970Z] [LOG  ] [Notifications] Initializing Notifications feature module...
+[2025-11-17T16:46:43.970Z] [LOG  ] [NotificationManager] Initializing...
+[2025-11-17T16:46:43.970Z] [LOG  ] [NotificationManager] Styles injected from CSS module
+[2025-11-17T16:46:43.970Z] [LOG  ] [NotificationManager] Initialized successfully
+[2025-11-17T16:46:43.970Z] [LOG  ] [Notifications] Notifications feature module initialized
+[2025-11-17T16:46:43.970Z] [LOG  ] [Copy-URL-on-Hover] ✓ Notifications feature initialized
+[2025-11-17T16:46:43.970Z] [LOG  ] [DEBUG] Extension initialized successfully
+[2025-11-17T16:46:43.970Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting main features...
+[2025-11-17T16:46:43.970Z] [LOG  ] [DEBUG] Loading main features...
+[2025-11-17T16:46:43.970Z] [DEBUG] Extension initialized successfully
+[2025-11-17T16:46:43.970Z] [DEBUG] Loading main features...
+[2025-11-17T16:46:43.971Z] [LOG  ] [Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓
+[2025-11-17T16:46:43.971Z] [LOG  ] [Copy-URL-on-Hover] Extension is ready for use!
+[2025-11-17T16:46:47.148Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-17T16:46:47.148Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-17T16:46:47.152Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-17T16:46:47.152Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-17T16:46:47.152Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-17T16:46:47.152Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-17T16:46:47.152Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-17T16:46:47.152Z] [DEBUG] Quick Tab created successfully
+[2025-11-17T16:46:47.166Z] [LOG  ] [QuickTabsManager] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-17T16:46:47.166Z] [LOG  ] [QuickTabsManager] Ignoring storage change for pending save: 1763398007148-6398en7i9
+[2025-11-17T16:46:47.179Z] [LOG  ] [QuickTabsManager] Message received: SYNC_QUICK_TAB_STATE
+[2025-11-17T16:46:48.153Z] [LOG  ] [QuickTabsManager] Released saveId: 1763398007148-6398en7i9
+[2025-11-17T16:46:48.583Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Noizi_Ito
+[2025-11-17T16:46:48.583Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Noizi_Ito
+[2025-11-17T16:46:48.587Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-17T16:46:48.587Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-17T16:46:48.587Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-17T16:46:48.587Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-17T16:46:48.587Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-17T16:46:48.587Z] [DEBUG] Quick Tab created successfully
+[2025-11-17T16:46:48.591Z] [LOG  ] [QuickTabsManager] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-17T16:46:48.591Z] [LOG  ] [QuickTabsManager] Ignoring storage change for pending save: 1763398008583-mo7uk5cvh
+[2025-11-17T16:46:48.610Z] [LOG  ] [QuickTabsManager] Message received: SYNC_QUICK_TAB_STATE
+[2025-11-17T16:46:49.589Z] [LOG  ] [QuickTabsManager] Released saveId: 1763398008583-mo7uk5cvh
+[2025-11-17T16:46:49.740Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-17T16:46:49.740Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-17T16:46:49.756Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-17T16:46:49.756Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-17T16:46:49.756Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-17T16:46:49.756Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-17T16:46:49.756Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-17T16:46:49.756Z] [DEBUG] Quick Tab created successfully
+[2025-11-17T16:46:49.779Z] [LOG  ] [QuickTabsManager] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-17T16:46:49.779Z] [LOG  ] [QuickTabsManager] Ignoring storage change for pending save: 1763398009740-884d4rmdo
+[2025-11-17T16:46:49.808Z] [LOG  ] [QuickTabsManager] Message received: SYNC_QUICK_TAB_STATE
+[2025-11-17T16:46:50.783Z] [LOG  ] [QuickTabsManager] Released saveId: 1763398009740-884d4rmdo
+[2025-11-17T16:46:56.957Z] [LOG  ] [QuickTabsManager] Message received: tabActivated
+[2025-11-17T16:47:00.736Z] [LOG  ] [QuickTabsManager] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-17T16:47:00.736Z] [LOG  ] [QuickTabsManager] Scheduling external storage change sync
+[2025-11-17T16:47:00.753Z] [LOG  ] [QuickTabsManager] Message received: SYNC_QUICK_TAB_STATE
+[2025-11-17T16:47:01.824Z] [LOG  ] [QuickTabsManager] Syncing from storage state...
+[2025-11-17T16:47:01.824Z] [LOG  ] [QuickTabsManager] Syncing 3 tabs from all containers
+[2025-11-17T16:47:01.824Z] [LOG  ] [QuickTabsManager] Creating Quick Tab with options: {
+  "id": "qt-1763398007148-c93lv7avy",
+  "url": "https://en.wikipedia.org/wiki/Cocoa_Fujiwara",
+  "left": 1087,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Cocoa Fujiwara",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-17T16:47:01.827Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763398007148-c93lv7avy
+[2025-11-17T16:47:01.827Z] [LOG  ] [QuickTabsManager] Broadcasted CREATE: {
+  "id": "qt-1763398007148-c93lv7avy",
+  "url": "https://en.wikipedia.org/wiki/Cocoa_Fujiwara",
+  "left": 1087,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Cocoa Fujiwara",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-17T16:47:01.827Z] [LOG  ] [QuickTabsManager] Quick Tab created successfully: qt-1763398007148-c93lv7avy
+[2025-11-17T16:47:01.827Z] [LOG  ] [QuickTabsManager] Creating Quick Tab with options: {
+  "id": "qt-1763398008583-diteamoov",
+  "url": "https://en.wikipedia.org/wiki/Noizi_Ito",
+  "left": 940,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Noizi Ito",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-17T16:47:01.828Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763398008583-diteamoov
+[2025-11-17T16:47:01.828Z] [LOG  ] [QuickTabsManager] Broadcasted CREATE: {
+  "id": "qt-1763398008583-diteamoov",
+  "url": "https://en.wikipedia.org/wiki/Noizi_Ito",
+  "left": 940,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Noizi Ito",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-17T16:47:01.828Z] [LOG  ] [QuickTabsManager] Quick Tab created successfully: qt-1763398008583-diteamoov
+[2025-11-17T16:47:01.828Z] [LOG  ] [QuickTabsManager] Creating Quick Tab with options: {
+  "id": "qt-1763398009740-pop13q3ne",
+  "url": "https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem",
+  "left": 189,
+  "top": 542,
+  "width": 960,
+  "height": 540,
+  "title": "Shukusei!! Loli Kami Requiem",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-17T16:47:01.829Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763398009740-pop13q3ne
+[2025-11-17T16:47:01.829Z] [LOG  ] [QuickTabsManager] Broadcasted CREATE: {
+  "id": "qt-1763398009740-pop13q3ne",
+  "url": "https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem",
+  "left": 189,
+  "top": 542,
+  "width": 960,
+  "height": 540,
+  "title": "Shukusei!! Loli Kami Requiem",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-17T16:47:01.829Z] [LOG  ] [QuickTabsManager] Quick Tab created successfully: qt-1763398009740-pop13q3ne
+[2025-11-17T16:47:01.829Z] [LOG  ] [QuickTabsManager] Storage sync complete
+[2025-11-17T16:47:02.788Z] [LOG  ] [QuickTabsManager] Message received: tabActivated
+[2025-11-17T16:47:21.421Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
