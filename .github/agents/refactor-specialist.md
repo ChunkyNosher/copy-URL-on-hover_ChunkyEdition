@@ -136,6 +136,17 @@ maintainability while guaranteeing functional equivalence across **Firefox** and
   Keep this split when refactoring log tooling (see docs/manual/1.5.9
   docs/popup-close-background-v1597.md).
 
+### v1.5.9.10 Notes
+
+- **Rendering state separation**: `QuickTabWindow.isRendered()` now tracks
+  whether a tab is visually rendered, not just in memory. This architectural
+  improvement prevents memory/visual desynchronization.
+- `createQuickTab()` refactored to always verify rendering before skipping,
+  fixing the cross-tab rendering bug where tabs existed but weren't displayed.
+- BroadcastChannel CREATE handler simplified: always calls `createQuickTab()`,
+  which handles rendering internally.
+- See docs/manual/1.5.9 docs/quick-tabs-cross-tab-rendering-bug-v1599.md.
+
 ### v1.5.9.8 Notes
 
 - Quick Tabs rendering is single-sourced from storage: `CREATE_QUICK_TAB`

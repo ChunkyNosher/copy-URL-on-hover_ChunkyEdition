@@ -86,9 +86,8 @@ workflows for complex tasks. All work must be optimized for **Firefox** and
 
 - **Current Technology Stack - CRITICAL FOR ROUTING:**
 
-- **Version:** v1.5.9.8 with eager feature loading, background-managed log
-  exports, debounced Quick Tabs storage sync, and enhanced code quality
-  infrastructure
+- **Version:** v1.5.9.10 with eager feature loading, background-managed log
+  exports, and cross-tab Quick Tab rendering fix
 - **Manifest Version:** v2 (required for webRequestBlocking)
 - **Primary APIs:** Content script panel injection, Pointer Events,
   navigator.clipboard, browser.storage.sync/session/local, browser.runtime,
@@ -133,6 +132,16 @@ workflows for complex tasks. All work must be optimized for **Firefox** and
   buffer and every content script's console/debug queues wipe before the next
   export. Reference docs/manual/1.5.9 docs/popup-close-background-v1597.md when
   coordinating log tooling changes.
+
+### v1.5.9.10 Notes
+
+- **Quick Tabs cross-tab rendering fix**: `QuickTabWindow` gained `isRendered()`
+  to separate memory existence from visual rendering. `createQuickTab()` always
+  checks rendering state before skipping, preventing tabs from existing in
+  memory without being displayed.
+- BroadcastChannel CREATE handler now always calls `createQuickTab()`; rendering
+  logic moved inside that method.
+- See docs/manual/1.5.9 docs/quick-tabs-cross-tab-rendering-bug-v1599.md.
 
 ### v1.5.9.8 Notes
 

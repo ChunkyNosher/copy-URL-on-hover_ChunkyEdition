@@ -141,6 +141,20 @@ security, and Firefox-specific behaviors optimized for both **Firefox** and
   `CLEAR_CONSOLE_LOGS` so the background buffer and every content script's
   console interceptor/`debug.js` queue resets before the next export.
 
+### v1.5.9.10 Notes
+
+- **Quick Tabs cross-tab rendering fix**: Fixed critical bug where Quick Tabs
+  created in Tab 1 didn't appear visually in Tab 1, but appeared in other tabs.
+  Root cause was BroadcastChannel echo—tabs received their own broadcasts but
+  skipped rendering because the tab "already existed" in memory.
+- `QuickTabWindow.isRendered()` now tracks rendering state independently of
+  memory state, preventing visual desynchronization.
+- `createQuickTab()` always checks `isRendered()` before skipping, ensuring tabs
+  render even when they exist in memory.
+- BroadcastChannel CREATE handler always calls `createQuickTab()`, relying on
+  internal rendering logic instead of premature existence checks.
+- See docs/manual/1.5.9 docs/quick-tabs-cross-tab-rendering-bug-v1599.md.
+
 ### v1.5.9.8 Notes
 
 - Quick Tabs creation now waits for the debounced browser.storage snapshot

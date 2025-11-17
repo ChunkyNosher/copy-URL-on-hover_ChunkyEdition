@@ -127,10 +127,9 @@ class QuickTabsManager {
 
         switch (type) {
           case 'CREATE':
-            // v1.5.9.8 FIX: Only create if not already exists (prevent duplicates from own broadcasts)
-            if (!this.tabs.has(data.id)) {
-              this.createQuickTab(data);
-            }
+            // v1.5.9.10 FIX: Always call createQuickTab - it now handles rendering check internally
+            // This ensures tabs are rendered even when they exist in memory but not on the page
+            this.createQuickTab(data);
             break;
           case 'UPDATE_POSITION':
             this.updateQuickTabPosition(data.id, data.left, data.top);
@@ -582,8 +581,17 @@ class QuickTabsManager {
 
     // Check if already exists
     if (this.tabs.has(id)) {
-      console.warn('[QuickTabsManager] Quick Tab already exists:', id);
       const existingTab = this.tabs.get(id);
+
+      // v1.5.9.10 - CRITICAL FIX: Even if tab exists, ensure it's rendered
+      // This fixes the bug where tabs exist in memory but not visually on the page
+      if (!existingTab.isRendered || !existingTab.isRendered()) {
+        console.log('[QuickTabsManager] Tab exists but not rendered, rendering now:', id);
+        existingTab.render();
+      } else {
+        console.warn('[QuickTabsManager] Quick Tab already exists and is rendered:', id);
+      }
+
       existingTab.updateZIndex(++this.currentZIndex);
       return existingTab;
     }

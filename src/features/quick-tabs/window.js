@@ -27,6 +27,7 @@ export class QuickTabWindow {
 
     this.container = null;
     this.iframe = null;
+    this.rendered = false; // v1.5.9.10 - Track rendering state to prevent rendering bugs
     this.isDragging = false;
     this.isResizing = false;
     this.dragStartX = 0;
@@ -108,6 +109,9 @@ export class QuickTabWindow {
 
     // Add to document
     document.body.appendChild(this.container);
+
+    // v1.5.9.10 - Mark as rendered
+    this.rendered = true;
 
     // Fix Quick Tab flash by moving into place after a frame
     requestAnimationFrame(() => {
@@ -822,6 +826,14 @@ export class QuickTabWindow {
   }
 
   /**
+   * v1.5.9.10 - Check if Quick Tab is rendered on the page
+   * @returns {boolean} True if rendered and attached to DOM
+   */
+  isRendered() {
+    return this.rendered && this.container && this.container.parentNode;
+  }
+
+  /**
    * Destroy the Quick Tab window
    */
   destroy() {
@@ -829,6 +841,7 @@ export class QuickTabWindow {
       this.container.remove();
       this.container = null;
       this.iframe = null;
+      this.rendered = false; // v1.5.9.10 - Reset rendering state
     }
     this.onDestroy(this.id);
     console.log('[QuickTabWindow] Destroyed:', this.id);

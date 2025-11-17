@@ -134,6 +134,16 @@ existing features to modern APIs that unlock new possibilities.
   export. See docs/manual/1.5.9 docs/popup-close-background-v1597.md when
   touching export flows.
 
+### v1.5.9.10 Notes
+
+- **Quick Tabs rendering fix**: `QuickTabWindow` now has `isRendered()` to track
+  visual rendering state independently of memory state. `createQuickTab()`
+  always checks this before skipping, fixing the bug where tabs existed in
+  memory but not on screen.
+- BroadcastChannel CREATE handler no longer pre-filters by existence; it always
+  calls `createQuickTab()` which handles rendering internally.
+- See docs/manual/1.5.9 docs/quick-tabs-cross-tab-rendering-bug-v1599.md.
+
 ### v1.5.9.8 Notes
 
 - Quick Tabs creation is fully storage-driven. Content scripts request creation,

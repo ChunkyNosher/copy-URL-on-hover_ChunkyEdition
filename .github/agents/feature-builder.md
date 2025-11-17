@@ -138,6 +138,16 @@ capabilities while maintaining code quality, browser compatibility (specifically
   the next export. Reference docs/manual/1.5.9
   docs/popup-close-background-v1597.md when modifying log tools.
 
+### v1.5.9.10 Notes
+
+- **Quick Tabs cross-tab rendering fix**: Resolved critical bug where Quick Tabs
+  existed in memory but didn't render visually in the originating tab. Tabs now
+  track rendering state via `isRendered()` and `createQuickTab()` ensures
+  rendering even for existing tabs.
+- BroadcastChannel CREATE messages now always invoke `createQuickTab()`, which
+  internally handles rendering checks instead of skipping prematurely.
+- See docs/manual/1.5.9 docs/quick-tabs-cross-tab-rendering-bug-v1599.md.
+
 ### v1.5.9.8 Notes
 
 - Quick Tabs creation is staged off-screen until storage sync delivers the

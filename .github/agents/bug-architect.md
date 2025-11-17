@@ -13,6 +13,8 @@ tools:
     'new',
     'runCommands',
     'runTasks',
+    'GitKraken/*',
+    'context7/*',
     'brave-deep-research/*',
     'filesystem/*',
     'github-mcp/*',
@@ -21,7 +23,6 @@ tools:
     'playwright-zen-browser/*',
     'my-mcp-server-4ef0864d/*',
     'upstash/context7/*',
-    'GitKraken/*',
     'usages',
     'vscodeAPI',
     'problems',
@@ -151,7 +152,8 @@ Loading):**
 - **state-manager.js**: Container-aware Quick Tab state management
 - **popup.html/popup.js**: Settings UI with 4 tabs
 - **options_page.html/options_page.js**: Options page
-- **manifest.json**: **Manifest v2** (required for webRequestBlocking) - v1.5.9
+  - **manifest.json**: **Manifest v2** (required for webRequestBlocking) -
+    v1.5.9.10
 - **Testing & CI/CD** (v1.5.8.7+, enhanced v1.5.9):
   - Jest with browser API mocks (tests/setup.js)
   - Example tests (tests/example.test.js)
@@ -161,6 +163,21 @@ Loading):**
   - DeepSource static analysis (.deepsource.toml)
   - CodeRabbit AI review (.coderabbit.yaml)
   - Copilot instructions (.github/copilot-instructions.md)
+
+### v1.5.9.10 Notes
+
+- **Quick Tabs cross-tab rendering fix**: Fixed critical bug where Quick Tabs
+  created in Tab 1 didn't appear visually in Tab 1, but appeared in other tabs.
+  Root cause was BroadcastChannel message timing—tabs received their own
+  broadcasts but skipped rendering because the tab "already existed" in memory.
+- **isRendered() tracking**: QuickTabWindow now tracks rendering state with
+  `isRendered()` method, preventing memory/visual desynchronization.
+- **createQuickTab() enhancement**: Always checks rendering state before
+  skipping creation, ensuring tabs are rendered even when they exist in memory.
+- **BroadcastChannel handler update**: CREATE messages now always call
+  `createQuickTab()`, which handles duplicate/rendering logic internally.
+- See docs/manual/1.5.9 docs/quick-tabs-cross-tab-rendering-bug-v1599.md for
+  complete analysis.
 
 ### v1.5.9.8 Notes
 

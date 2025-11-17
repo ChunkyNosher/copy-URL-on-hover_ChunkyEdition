@@ -3,13 +3,27 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.5.9.8  
+**Version:** 1.5.9.10  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Hybrid Modular/EventBus Architecture (Architecture #10)  
 **Purpose:** URL management with Firefox Container isolation support and
 persistent floating panel manager
 
 ---
+
+### v1.5.9.10 Highlights
+
+- **Quick Tab cross-tab rendering fix:** Fixed critical bug where Quick Tabs
+  created in Tab 1 didn't appear visually in Tab 1, but appeared in other tabs
+  instead. Root cause was BroadcastChannel message timing—tabs received their
+  own broadcasts but skipped rendering because the tab "already existed" in
+  memory. Now `QuickTabWindow` tracks rendering state with `isRendered()`, and
+  `createQuickTab()` always ensures tabs are rendered even when they exist in
+  memory (see
+  `docs/manual/1.5.9 docs/quick-tabs-cross-tab-rendering-bug-v1599.md`).
+- **Architectural improvement:** Separated creation logic from rendering logic
+  by tracking rendering state independently, preventing memory/visual
+  desynchronization.
 
 ### v1.5.9.8 Highlights
 

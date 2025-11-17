@@ -1,14 +1,66 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.9.8** - A feature-rich Firefox/Zen Browser extension with **Hybrid
-Modular/EventBus Architecture** for quick URL copying and advanced Quick Tab
-management with Firefox Container support and Persistent Floating Panel Manager.
+**Version 1.5.9.10** - A feature-rich Firefox/Zen Browser extension with
+**Hybrid Modular/EventBus Architecture** for quick URL copying and advanced
+Quick Tab management with Firefox Container support and Persistent Floating
+Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 Now with full Firefox Container integration and a persistent Quick Tabs Manager
 panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.9.10
+
+**🐛 Critical Fix: Quick Tabs Cross-Tab Rendering Bug**
+
+This release fixes a critical bug where Quick Tabs created in one tab would not
+appear visually in the originating tab, but instead appear in other tabs. The
+issue was caused by BroadcastChannel message timing combined with the eager
+hydration system.
+
+**The Problem:**
+
+- When Tab 1 created Quick Tabs, they existed in memory but weren't rendered on
+  the page
+- Quick Tabs appeared in Tab 2 (newly loaded) or Tab 3 (already loaded) instead
+- Switching tabs or moving existing Quick Tabs would trigger delayed rendering
+  in the originating tab
+- Root cause: Tab received its own broadcast message but skipped rendering
+  because the tab "already existed" in memory
+
+**The Fix:**
+
+- ✅ **Rendering state tracking** - Added `isRendered()` method to
+  QuickTabWindow class
+  - Tracks whether a Quick Tab is actually rendered on the page, not just in
+    memory
+  - Prevents memory/visual state desynchronization
+- ✅ **Always check rendering** - `createQuickTab()` now verifies rendering
+  state before skipping
+  - Even if tab exists in memory, ensures it's visually rendered
+  - Fixes the core separation-of-concerns issue identified in analysis
+- ✅ **BroadcastChannel handler update** - Always calls `createQuickTab()` for
+  CREATE messages
+  - Removed premature existence check that prevented rendering
+  - `createQuickTab()` now handles all duplicate/rendering logic internally
+
+**Reliability & UX:**
+
+- 📺 **Immediate visual feedback** - Quick Tabs appear instantly in the
+  originating tab
+- 🔄 **Cross-tab sync works correctly** - Other tabs still receive and render
+  Quick Tabs
+- 🧠 **Architectural improvement** - Separates creation logic from rendering
+  logic
+- 🛡️ **No duplicates** - Rendering check prevents double-creation issues
+
+**References:**
+
+- [Diagnostic Report](docs/manual/1.5.9%20docs/quick-tabs-cross-tab-rendering-bug-v1599.md)
+
+---
 
 ## 🎉 What's New in v1.5.9.8
 
@@ -1293,6 +1345,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.9.8  
-**Last Updated**: 2025-11-16  
+**Current Version**: 1.5.9.9  
+**Last Updated**: 2025-11-17  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
