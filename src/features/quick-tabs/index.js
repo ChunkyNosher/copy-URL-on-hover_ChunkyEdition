@@ -300,6 +300,7 @@ class QuickTabsManager {
           );
           break;
         case 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND':
+        case 'SYNC_QUICK_TAB_STATE': // v1.5.9.11 FIX: Handle both message action names
           this.syncFromStorage(message.state);
           break;
         case 'UPDATE_QUICK_TAB_POSITION':

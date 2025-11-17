@@ -33,7 +33,7 @@ try {
 }
 
 // Global error handler to catch all unhandled errors
-window.addEventListener('error', function (event) {
+window.addEventListener('error', event => {
   console.error('[Copy-URL-on-Hover] GLOBAL ERROR:', {
     message: event.message,
     filename: event.filename,
@@ -45,7 +45,7 @@ window.addEventListener('error', function (event) {
 });
 
 // Unhandled promise rejection handler
-window.addEventListener('unhandledrejection', function (event) {
+window.addEventListener('unhandledrejection', event => {
   console.error('[Copy-URL-on-Hover] UNHANDLED PROMISE REJECTION:', {
     reason: event.reason,
     promise: event.promise
@@ -208,7 +208,7 @@ async function initMainFeatures() {
   // Track mouse position for Quick Tab placement
   document.addEventListener(
     'mousemove',
-    function (event) {
+    event => {
       stateManager.set('lastMouseX', event.clientX);
       stateManager.set('lastMouseY', event.clientY);
     },
@@ -273,7 +273,7 @@ function getDomainType() {
  * Set up hover detection
  */
 function setupHoverDetection() {
-  document.addEventListener('mouseover', function (event) {
+  document.addEventListener('mouseover', event => {
     const domainType = getDomainType();
     const element = event.target;
 
@@ -291,7 +291,7 @@ function setupHoverDetection() {
     }
   });
 
-  document.addEventListener('mouseout', function (event) {
+  document.addEventListener('mouseout', event => {
     stateManager.setState({
       currentHoveredLink: null,
       currentHoveredElement: null
@@ -318,7 +318,7 @@ function isInputField(element) {
  * Set up keyboard shortcuts
  */
 function setupKeyboardShortcuts() {
-  document.addEventListener('keydown', async function (event) {
+  document.addEventListener('keydown', async event => {
     // Ignore if typing in an interactive field
     if (isInputField(event.target)) {
       return;
@@ -470,22 +470,65 @@ async function handleCreateQuickTab(url, targetElement = null) {
   const saveId = canUseManagerSaveId ? quickTabsManager.generateSaveId() : generateSaveTrackingId();
 
   try {
-    await sendMessageToBackground({
-      action: 'CREATE_QUICK_TAB',
-      url,
-      id: quickTabId,
-      left: position.left,
-      top: position.top,
-      width,
-      height,
-      title: targetElement?.textContent?.trim() || 'Quick Tab',
-      cookieStoreId: 'firefox-default',
-      minimized: false,
-      saveId
-    });
+    // v1.5.9.11 FIX: Create Quick Tab LOCALLY FIRST (originating tab renders immediately)
+    // This ensures the tab appears in the originating tab without waiting for background sync
+    if (quickTabsManager && typeof quickTabsManager.createQuickTab === 'function') {
+      // Track pending save to prevent duplicate processing from storage events
+      if (canUseManagerSaveId && quickTabsManager.trackPendingSave) {
+        quickTabsManager.trackPendingSave(saveId);
+      }
 
-    showNotification('✓ Quick Tab created!', 'success');
-    debug('Quick Tab created successfully');
+      // Create locally - this will also broadcast to other tabs via BroadcastChannel
+      quickTabsManager.createQuickTab({
+        id: quickTabId,
+        url,
+        left: position.left,
+        top: position.top,
+        width,
+        height,
+        title: targetElement?.textContent?.trim() || 'Quick Tab',
+        cookieStoreId: 'firefox-default',
+        minimized: false,
+        pinnedToUrl: null
+      });
+
+      // THEN notify background for persistence (storage sync as backup)
+      await sendMessageToBackground({
+        action: 'CREATE_QUICK_TAB',
+        url,
+        id: quickTabId,
+        left: position.left,
+        top: position.top,
+        width,
+        height,
+        title: targetElement?.textContent?.trim() || 'Quick Tab',
+        cookieStoreId: 'firefox-default',
+        minimized: false,
+        saveId
+      });
+
+      showNotification('✓ Quick Tab created!', 'success');
+      debug('Quick Tab created successfully');
+    } else {
+      // Fallback for when manager isn't available (shouldn't happen in normal operation)
+      console.warn('[Quick Tab] Manager not available, using legacy creation path');
+      await sendMessageToBackground({
+        action: 'CREATE_QUICK_TAB',
+        url,
+        id: quickTabId,
+        left: position.left,
+        top: position.top,
+        width,
+        height,
+        title: targetElement?.textContent?.trim() || 'Quick Tab',
+        cookieStoreId: 'firefox-default',
+        minimized: false,
+        saveId
+      });
+
+      showNotification('✓ Quick Tab created!', 'success');
+      debug('Quick Tab created successfully');
+    }
   } catch (err) {
     console.error('[Quick Tab] Failed:', err);
     if (canUseManagerSaveId && quickTabsManager?.releasePendingSave) {
@@ -598,7 +641,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
 
         // ✅ NEW: Get buffer stats for debugging
         const stats = getBufferStats();
-        console.log(`[Content] Buffer stats:`, stats);
+        console.log('[Content] Buffer stats:', stats);
 
         sendResponse({
           logs: allLogs,

@@ -93,7 +93,7 @@ const quickTabStates = new Map();
 // Container-aware since v1.5.7: State keyed by cookieStoreId for Firefox Container isolation
 // This provides instant cross-origin sync (< 50ms latency)
 // v1.5.8.13 - Enhanced with eager loading for Issue #35 and #51
-let globalQuickTabState = {
+const globalQuickTabState = {
   // Keyed by cookieStoreId (e.g., "firefox-default", "firefox-container-1")
   containers: {
     'firefox-default': { tabs: [], lastUpdate: 0 }
@@ -1454,7 +1454,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
       tabs.forEach(tab => {
         browser.tabs
           .sendMessage(tab.id, {
-            action: 'SYNC_QUICK_TAB_STATE',
+            action: 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', // v1.5.9.11 FIX: Use consistent action name
             state: changes.quick_tabs_state_v2.newValue
           })
           .catch(err => {
