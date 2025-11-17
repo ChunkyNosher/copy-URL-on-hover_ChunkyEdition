@@ -30,9 +30,9 @@ persistent floating panel manager
 - **Quick Tab race condition fixes:** Content-side `CREATE_QUICK_TAB` requests
   now include a tracked `saveId`, background persists the same token, and
   QuickTabsManager ignores storage changes while any save is pending. Debounced
-  storage sync means resize storms can’t cascade-delete the entire stack (see
+  storage sync means resize storms can't cascade-delete the entire stack (see
   `docs/manual/1.5.9 docs/v1-5-9-7-forensic-debug.md`).
-- **Single-source creation + off-screen staging:** Quick Tabs don’t render
+- **Single-source creation + off-screen staging:** Quick Tabs don't render
   immediately on shortcut. The manager waits for the storage snapshot, then
   spawns each window off-screen before animating into the tooltip-clamped
   position derived from the hovered element/mouse location, eliminating the
@@ -235,7 +235,7 @@ function validateContainerAccess(sourceContainer, targetContainer) {
   the Save As dialog opens, which terminates event listeners.
 - Advanced tab now also exposes **Clear Log History**, which sends
   `CLEAR_CONSOLE_LOGS` to background so both the persistent buffer and each
-  content script’s console interceptors/`debug.js` buffers are wiped before the
+  content script's console interceptors/`debug.js` buffers are wiped before the
   next export.
 
 ---
@@ -622,3 +622,182 @@ When creating a checklist in PR descriptions:
 This ensures that all bugs and features are tracked in GitHub issues while
 allowing the user to manually mark them as complete when satisfied with the
 implementation.
+
+---
+
+## MCP Server Utilization (MANDATORY)
+
+This repository has **15 MCP servers** configured. GitHub Copilot Coding Agent MUST utilize them optimally for all tasks.
+
+### Critical Priority MCPs (ALWAYS Use)
+
+#### ESLint MCP Server ⭐ MANDATORY
+
+**Rule:** EVERY code change MUST be linted with ESLint before committing.
+
+**Workflow:**
+1. Write/modify JavaScript
+2. IMMEDIATELY: "Lint [filename] with ESLint"
+3. Apply auto-fixes
+4. Fix remaining issues
+5. Verify zero errors
+6. Proceed with commit
+
+**NO EXCEPTIONS** - This is the primary quality gate.
+
+#### Context7 MCP Server ⭐ MANDATORY
+
+**Rule:** ALWAYS fetch current API documentation instead of relying on training data.
+
+**Use Cases:**
+- Implementing WebExtensions APIs
+- Using external libraries
+- Verifying API syntax
+- Checking Firefox compatibility
+
+**Example:** "Use Context7 to get latest Firefox clipboard API documentation"
+
+#### NPM Package Registry MCP Server ⭐ MANDATORY
+
+**Rule:** ALWAYS check packages before adding dependencies.
+
+**Workflow:**
+1. Search NPM Registry for package
+2. Get package details
+3. Check for vulnerabilities
+4. Verify Firefox compatibility
+5. Confirm active maintenance
+6. Proceed with installation
+
+**Example:** "Search npm for clipboard libraries compatible with WebExtensions and check for vulnerabilities"
+
+### High Priority MCPs (Use Frequently)
+
+#### GitHub MCP Server (Write-Enabled)
+
+**Capabilities:** Create issues/PRs, add comments, update labels, trigger workflows
+
+**Use For:**
+- Creating GitHub issues automatically from bug reports
+- Updating issue status and labels
+- Creating pull requests
+- Adding review comments
+
+**Auto-Issue Creation:** When user provides bug list, automatically create GitHub issues using GitHub MCP.
+
+#### Filesystem MCP Server
+
+**Configured Paths:**
+- `/workspace/src`, `/workspace/tests`, `/workspace/docs`
+- `/workspace/background.js`, `/workspace/popup.js`, `/workspace/manifest.json`
+
+**Use For:** Reading source code, writing new files, updating existing files
+
+#### Git MCP Server
+
+**Use For:** Creating commits, checking status, viewing history, showing diffs
+
+#### Playwright (Firefox) MCP Server
+
+**Configuration:** Firefox browser, clipboard permissions, isolated mode, traces saved
+
+**Use For:** Testing extension functionality, verifying UI changes, creating automated tests
+
+**ALWAYS test UI changes** with Playwright before finalizing.
+
+### Medium Priority MCPs
+
+- **Sentry MCP**: Error monitoring, stack traces, AI fix suggestions
+- **Memory MCP**: Context persistence across sessions
+- **Code Review MCP**: Automated PR reviews
+- **Screenshot MCP**: Visual verification
+
+### Lower Priority MCPs
+
+- **Perplexity MCP**: Real-time web search
+- **Brave Deep Research MCP**: Deep research
+- **REST API Tester MCP**: API endpoint testing
+- **GitHub Actions MCP**: CI/CD management
+
+---
+
+## Standard MCP Workflows
+
+### Bug Fix Standard Workflow
+
+```
+1. Sentry MCP: Query error traces
+2. Filesystem MCP: Read affected code
+3. Context7 MCP: Get API docs ⭐
+4. Filesystem MCP: Write fix
+5. ESLint MCP: Lint code ⭐ MANDATORY
+6. Playwright MCP: Test fix
+7. Git MCP: Create commit
+8. GitHub MCP: Update issue
+```
+
+### New Feature Standard Workflow
+
+```
+1. NPM Registry MCP: Search packages ⭐ MANDATORY
+2. Context7 MCP: Get API docs ⭐ MANDATORY
+3. Perplexity/Brave MCP: Research practices
+4. Filesystem MCP: Write code
+5. ESLint MCP: Lint code ⭐ MANDATORY
+6. Playwright MCP: Create tests
+7. Screenshot MCP: Document UI
+8. Git MCP: Commit
+9. GitHub MCP: Create PR
+```
+
+### Code Review Standard Workflow
+
+```
+1. Code Review MCP: Analyze changes
+2. ESLint MCP: Check linting ⭐ MANDATORY
+3. Git MCP: View history
+4. Playwright MCP: Run tests
+5. GitHub MCP: Add comments
+```
+
+### Dependency Update Standard Workflow
+
+```
+1. NPM Registry MCP: Check updates ⭐ MANDATORY
+2. NPM Registry MCP: Check vulnerabilities ⭐ MANDATORY
+3. Context7 MCP: Get migration guides
+4. Filesystem MCP: Update package.json
+5. ESLint MCP: Verify passes ⭐ MANDATORY
+6. Playwright MCP: Run tests
+7. Git MCP: Commit
+8. GitHub MCP: Create PR
+```
+
+---
+
+## MCP Usage Enforcement
+
+### Before Every Commit Checklist
+
+- [ ] ESLint MCP used on all modified JavaScript files
+- [ ] Zero ESLint errors remaining
+- [ ] Context7 used for any API implementations
+- [ ] NPM Registry checked for any new dependencies
+- [ ] Playwright tests run for UI changes
+- [ ] Git commit created with descriptive message
+
+### Before Every PR Checklist
+
+- [ ] All commits linted with ESLint
+- [ ] Code Review MCP analysis completed
+- [ ] Playwright test suite passes
+- [ ] GitHub MCP used to create PR
+- [ ] Documentation updated (README, agent files)
+
+---
+
+## Quick Reference
+
+**Full MCP Reference:** See `.github/mcp-utilization-guide.md` for complete details on all 15 MCP servers.
+
+**Key Principle:** Utilize MCPs proactively and systematically to ensure highest quality code and comprehensive testing.
