@@ -233,9 +233,11 @@ export class StateManager {
     let cleaned = 0;
 
     for (const quickTab of this.quickTabs.values()) {
-      const before = quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
+      const before =
+        quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
       quickTab.cleanupDeadTabs(activeTabIds);
-      const after = quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
+      const after =
+        quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
 
       if (before !== after) {
         this.quickTabs.set(quickTab.id, quickTab);

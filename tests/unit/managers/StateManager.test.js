@@ -521,7 +521,7 @@ describe('StateManager', () => {
       quickTab.solo(100);
       quickTab.solo(200);
       quickTab.solo(300);
-      
+
       manager.add(quickTab);
 
       manager.cleanupDeadTabs([100, 200]); // 300 is dead
@@ -542,7 +542,7 @@ describe('StateManager', () => {
       quickTab.mute(100);
       quickTab.mute(200);
       quickTab.mute(300);
-      
+
       manager.add(quickTab);
 
       manager.cleanupDeadTabs([100]); // 200 and 300 are dead
@@ -564,7 +564,7 @@ describe('StateManager', () => {
 
       quickTab.solo(100);
       quickTab.solo(200);
-      
+
       manager.add(quickTab);
       manager.cleanupDeadTabs([100]);
 
