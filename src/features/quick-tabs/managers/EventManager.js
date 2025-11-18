@@ -1,11 +1,11 @@
 /**
  * EventManager - Manages window-level DOM event listeners
- * 
+ *
  * Responsibilities:
  * - Setup emergency save handlers (beforeunload, visibilitychange, pagehide)
  * - Coordinate window event listeners
  * - Clean up event listeners on teardown
- * 
+ *
  * @module EventManager
  */
 
@@ -17,7 +17,7 @@ export class EventManager {
   constructor(eventBus, quickTabsMap) {
     this.eventBus = eventBus;
     this.quickTabsMap = quickTabsMap;
-    
+
     // Store bound handlers for cleanup
     this.boundHandlers = {
       visibilityChange: null,
