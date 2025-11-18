@@ -23,7 +23,7 @@ export class QuickTabWindow {
     this.cookieStoreId = options.cookieStoreId || 'firefox-default';
     this.minimized = options.minimized || false;
     this.zIndex = options.zIndex || CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
-    
+
     // v1.5.9.13 - Replace pinnedToUrl with solo/mute arrays
     this.soloedOnTabs = options.soloedOnTabs || [];
     this.mutedOnTabs = options.mutedOnTabs || [];
@@ -323,9 +323,8 @@ export class QuickTabWindow {
     controls.appendChild(openBtn);
 
     // v1.5.9.13 - Solo button (replaces pin button)
-    const soloBtn = this.createButton(
-      this.isCurrentTabSoloed() ? '🎯' : '⭕',
-      () => this.toggleSolo(soloBtn)
+    const soloBtn = this.createButton(this.isCurrentTabSoloed() ? '🎯' : '⭕', () =>
+      this.toggleSolo(soloBtn)
     );
     soloBtn.title = this.isCurrentTabSoloed()
       ? 'Un-solo (show on all tabs)'
@@ -335,9 +334,8 @@ export class QuickTabWindow {
     this.soloButton = soloBtn;
 
     // v1.5.9.13 - Mute button
-    const muteBtn = this.createButton(
-      this.isCurrentTabMuted() ? '🔇' : '🔊',
-      () => this.toggleMute(muteBtn)
+    const muteBtn = this.createButton(this.isCurrentTabMuted() ? '🔇' : '🔊', () =>
+      this.toggleMute(muteBtn)
     );
     muteBtn.title = this.isCurrentTabMuted()
       ? 'Unmute (show on this tab)'

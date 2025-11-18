@@ -1223,7 +1223,9 @@ class QuickTabsManager {
       if (tab.soloButton) {
         const isSoloed = newSoloedTabs.length > 0;
         tab.soloButton.textContent = isSoloed ? '🎯' : '⭕';
-        tab.soloButton.title = isSoloed ? 'Un-solo (show on all tabs)' : 'Solo (show only on this tab)';
+        tab.soloButton.title = isSoloed
+          ? 'Un-solo (show on all tabs)'
+          : 'Solo (show only on this tab)';
         tab.soloButton.style.background = isSoloed ? '#444' : 'transparent';
       }
     }
