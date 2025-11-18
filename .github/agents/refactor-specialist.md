@@ -91,11 +91,80 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 - Validate cross-browser compatibility
 - **Validate all core APIs still work correctly after refactoring**
 
+## v1.6.0 Refactoring Master Checklist
+
+**CRITICAL:** Before starting ANY refactoring work, you MUST read and update the master checklist:
+
+**Checklist Location:** `docs/misc/v1.6.0-REFACTORING-MASTER-CHECKLIST.md`
+
+### How to Use the Checklist
+
+1. **At Session Start:**
+   - Read the master checklist to understand current progress
+   - Identify where you left off last session (check "Last Updated" date)
+   - Select work items from current phase or next unblocked items
+   - Note current "Overall Progress" percentage for reference
+
+2. **During Work:**
+   - Keep the checklist in mind as you work
+   - If you complete a checklist item, mark it mentally
+   - If you discover work items are wrong/missing, note for update
+
+3. **At Session End (MANDATORY):**
+   - Update checklist: mark completed items with [x]
+   - Update "Last Updated" date at top
+   - Recalculate "Overall Progress" percentage
+   - Update "Progress Summary" table with new phase percentages
+   - Update "Next Priority" statement
+   - Commit checklist changes with descriptive message
+
+### Checklist Update Example
+
+**Before:**
+```markdown
+### Phase 2.3: ESLint Cleanup ⏳ IN PROGRESS (70%)
+- [x] Fix content.js import ordering
+- [ ] Fix remaining 90 ESLint errors
+- [ ] Resolve 88 ESLint warnings
+```
+
+**After (if you fixed ESLint errors):**
+```markdown
+### Phase 2.3: ESLint Cleanup ⏳ IN PROGRESS (85%)
+- [x] Fix content.js import ordering
+- [x] Fix remaining 90 ESLint errors - Resolved by categorizing errors and applying systematic fixes
+- [ ] Resolve 88 ESLint warnings
+```
+
+**And update Progress Summary:**
+```markdown
+| Phase 2.3: ESLint Cleanup | ⏳ In Progress | 85% |
+```
+
+**And update Overall Progress:**
+```markdown
+**Overall Progress: ~43%** (was ~40%)
+```
+
+### Why This Matters
+
+The master checklist:
+- ✅ Reduces token usage on documentation (all progress in ONE file)
+- ✅ Prevents work duplication across sessions
+- ✅ Shows user exactly what's done and what remains
+- ✅ Helps you pick up where you left off
+- ✅ Provides clear structure for GitHub Copilot Agent
+
+**No Exceptions:** You MUST update the checklist when completing work items.
+
+---
+
 ## Refactoring Workflow
 
 When assigned a refactoring task:
 
 1. **Analysis Phase:**
+   - **Read the master checklist** to understand current state
    - Read and understand current implementation completely
    - Identify all dependencies and side effects
    - Document existing behavior with test cases
@@ -104,6 +173,7 @@ When assigned a refactoring task:
    - Check Zen Browser compatibility implications
 
 2. **Planning:**
+   - **Check checklist for next priority items**
    - Define success criteria (performance metrics, code quality)
    - Create refactoring plan with incremental steps
    - Identify potential breaking points
@@ -128,6 +198,7 @@ When assigned a refactoring task:
    - **Confirm technical debt was actually reduced**
 
 5. **Documentation:**
+   - **Update master checklist with completed items** (MANDATORY)
    - Explain what was refactored and why
    - Document performance improvements
    - Update README if API changed
@@ -396,10 +467,12 @@ Focus on making the codebase more maintainable, performant, and modern while pre
 
 ### MCP Checklist for Refactor-Specialist Tasks
 
+- [ ] Read master checklist at session start (MANDATORY)
 - [ ] Code Review MCP analysis completed
 - [ ] Context7 used for modern patterns ⭐ MANDATORY
 - [ ] ESLint passed with zero errors ⭐ MANDATORY
 - [ ] Playwright tests verify no regressions
 - [ ] Git commit explains refactoring rationale
+- [ ] Update master checklist with completed items (MANDATORY)
 - [ ] PR documents how technical debt was reduced
 - [ ] Performance metrics show improvement or no regression
