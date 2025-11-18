@@ -15,6 +15,7 @@
  * Base format strategy
  * @abstract
  */
+/* eslint-disable require-await */
 class FormatStrategy {
   /**
    * Check if data matches this format
