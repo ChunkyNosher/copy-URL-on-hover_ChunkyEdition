@@ -937,7 +937,7 @@ export class PanelManager {
       }
     };
 
-    const handlePointerCancel = e => {
+    const handlePointerCancel = _e => {
       if (!isDragging) return;
 
       isDragging = false;
@@ -1078,7 +1078,7 @@ export class PanelManager {
         }
       };
 
-      const handlePointerCancel = e => {
+      const handlePointerCancel = _e => {
         if (!isResizing) return;
 
         isResizing = false;

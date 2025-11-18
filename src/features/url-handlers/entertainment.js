@@ -4,7 +4,7 @@
  */
 
 import { findGenericUrl } from './generic.js';
-import { debug } from '../../utils/debug.js';
+import { debug as _debug } from '../../utils/debug.js';
 
 function findWikipediaUrl(element) {
   // Only return URL if hovering over an actual link element
@@ -32,7 +32,7 @@ function findRottenTomatoesUrl(element) {
   return null;
 }
 
-function findNetflixUrl(element) {
+function findNetflixUrl(_element) {
   // Netflix uses current page URL
   return window.location.href;
 }
@@ -117,9 +117,9 @@ function findSoundcloudUrl(element) {
   return null;
 }
 
-function findBandcampUrl(element) {
-  const item = element.closest('.item-details, [data-item-id]');
-  if (!item) return findGenericUrl(element);
+function findBandcampUrl(_element) {
+  const item = _element.closest('.item-details, [data-item-id]');
+  if (!item) return findGenericUrl(_element);
 
   const link = item.querySelector('a[href*="/track/"], a[href*="/album/"]');
   if (link?.href) return link.href;

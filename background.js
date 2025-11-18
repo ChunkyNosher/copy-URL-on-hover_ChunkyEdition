@@ -616,7 +616,7 @@ chrome.tabs.onActivated.addListener(async activeInfo => {
       action: 'tabActivated',
       tabId: activeInfo.tabId
     })
-    .catch(err => {
+    .catch(_err => {
       // Content script might not be ready yet, that's OK
       console.log('[Background] Could not message tab (content script not ready)');
     });
@@ -649,7 +649,7 @@ chrome.tabs.onActivated.addListener(async activeInfo => {
   }
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, _tab) => {
   if (changeInfo.status === 'complete') {
     chrome.scripting
       .executeScript({
@@ -665,12 +665,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
               action: 'restoreQuickTabs',
               quickTabs: state.quickTabs
             })
-            .catch(err => {
+            .catch(_err => {
               // Ignore errors if content script isn't ready
             });
         }
       })
-      .catch(err => {
+      .catch(_err => {
         // Silently fail for restricted pages
       });
   }
@@ -1724,7 +1724,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
             action: 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', // v1.5.9.11 FIX: Use consistent action name
             state: changes.quick_tabs_state_v2.newValue
           })
-          .catch(err => {
+          .catch(_err => {
             // Content script might not be loaded in this tab
           });
       });
@@ -1741,7 +1741,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
             action: 'SETTINGS_UPDATED',
             settings: changes.quick_tab_settings.newValue
           })
-          .catch(err => {
+          .catch(_err => {
             // Content script might not be loaded in this tab
           });
       });

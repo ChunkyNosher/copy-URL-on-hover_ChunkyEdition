@@ -4,7 +4,7 @@
  */
 
 import { findGenericUrl } from './generic.js';
-import { debug } from '../../utils/debug.js';
+import { debug as _debug } from '../../utils/debug.js';
 
 function findMediumUrl(element) {
   const article = element.closest('[data-post-id], article');
@@ -76,7 +76,7 @@ function findGhostUrl(element) {
   return null;
 }
 
-function findNotionUrl(element) {
+function findNotionUrl(_element) {
   // Notion typically uses current page URL
   return window.location.href;
 }

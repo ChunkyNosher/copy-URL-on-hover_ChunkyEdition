@@ -41,7 +41,7 @@ export function wait(ms) {
  * @param {number} delay - Delay in ms
  */
 export function mockAsyncFunction(returnValue, delay = 0) {
-  return jest.fn(async (...args) => {
+  return jest.fn(async (..._args) => {
     if (delay > 0) {
       await wait(delay);
     }
@@ -55,7 +55,7 @@ export function mockAsyncFunction(returnValue, delay = 0) {
  * @param {number} delay - Delay in ms
  */
 export function mockAsyncRejection(error, delay = 0) {
-  return jest.fn(async (...args) => {
+  return jest.fn(async (..._args) => {
     if (delay > 0) {
       await wait(delay);
     }

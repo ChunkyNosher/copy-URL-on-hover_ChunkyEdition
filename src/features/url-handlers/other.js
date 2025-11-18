@@ -4,7 +4,7 @@
  */
 
 import { findGenericUrl } from './generic.js';
-import { debug } from '../../utils/debug.js';
+import { debug as _debug } from '../../utils/debug.js';
 
 function findArchiveOrgUrl(element) {
   const item = element.closest('.item-ia, [data-id]');

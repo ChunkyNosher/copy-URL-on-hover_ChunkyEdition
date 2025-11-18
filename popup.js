@@ -332,7 +332,7 @@ const COLOR_INPUTS = [
 ];
 
 // Sync text input with color picker
-function syncColorInputs(textInput, colorPicker) {
+function _syncColorInputs(textInput, colorPicker) {
   if (!textInput || !colorPicker) return;
 
   const color = validateHexColor(textInput.value);
