@@ -1310,14 +1310,33 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   }
 
   // v1.5.9.13 - Handle tab ID requests from content scripts
+  // Enhanced with fallback for cases where sender.tab is not populated
   if (message.action === 'GET_CURRENT_TAB_ID') {
-    // sender.tab is automatically provided by Firefox for content script messages
+    // FIRST: Try sender.tab (standard approach for content scripts)
     if (sender.tab && sender.tab.id) {
+      console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${sender.tab.id} from sender.tab`);
       sendResponse({ tabId: sender.tab.id });
-    } else {
-      sendResponse({ tabId: null });
+      return true;
     }
-    return true;
+
+    // FALLBACK: Query active tab in current window
+    // This handles cases where sender.tab is not populated during initialization
+    browser.tabs.query({ active: true, currentWindow: true })
+      .then(tabs => {
+        if (tabs && tabs.length > 0 && tabs[0].id) {
+          console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`);
+          sendResponse({ tabId: tabs[0].id });
+        } else {
+          console.warn('[Background] GET_CURRENT_TAB_ID: Could not determine tab ID');
+          sendResponse({ tabId: null });
+        }
+      })
+      .catch(err => {
+        console.error('[Background] GET_CURRENT_TAB_ID: Error querying tabs:', err);
+        sendResponse({ tabId: null });
+      });
+
+    return true; // Keep channel open for async response
   }
 
   // v1.5.9.8 - FIX: Handle Quick Tab minimize/restore state updates (container-aware)
