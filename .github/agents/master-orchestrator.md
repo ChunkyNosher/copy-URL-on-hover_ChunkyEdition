@@ -41,6 +41,7 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Ensure consistency across agent outputs
 - **Validate that agents are fixing root causes, not masking symptoms**
 - Validate cross-browser compatibility throughout
+- **Check v1.6.0 refactoring checklist** to avoid conflicts with ongoing refactoring work
 
 **Quality Assurance:**
 - Verify agent outputs meet requirements
@@ -48,6 +49,31 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Validate cross-agent consistency
 - Ensure comprehensive testing on both Firefox and Zen Browser
 - **REJECT quick workarounds and demand architectural solutions**
+
+## v1.6.0 Refactoring Awareness
+
+**IMPORTANT:** The extension is undergoing a major v1.6.0 refactoring from Hybrid Modular/EventBus to Domain-Driven Design. When delegating work:
+
+**Checklist Location:** `docs/misc/v1.6.0-REFACTORING-MASTER-CHECKLIST.md`
+
+**Before Delegating Work:**
+1. Read the master checklist to understand current refactoring state (~40% complete)
+2. Check if task affects areas being refactored (QuickTabsManager, background.js, content.js)
+3. Coordinate with @refactor-specialist to avoid conflicts
+
+**Delegation Strategy:**
+- **If area NOT being refactored:** Delegate normally to appropriate agent
+- **If area BEING refactored:** Delegate to @refactor-specialist OR coordinate with them first
+- **If area ALREADY refactored:** Use new architecture (domain entities, facades, coordinators)
+
+**Current Refactoring Status (Phase 2.3 - ~40%):**
+- ✅ Domain Layer (QuickTab, Container entities)
+- ✅ Storage Layer (adapters, migrator)
+- ✅ QuickTabsManager decomposition (managers, handlers, coordinators)
+- ⏳ ESLint cleanup (in progress)
+- 📝 Window components, Background script, Content script (not started)
+
+**When in Doubt:** Ask @refactor-specialist to check checklist and advise on coordination.
 
 ## Extension Architecture Context
 
@@ -140,13 +166,17 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 - Code organization improvements
 - Performance optimization
 - Legacy code modernization
+- **v1.6.0 refactoring work (OWNER of the master checklist)**
 
 **Specializations:**
 - Code architecture
 - Memory leak prevention
 - API modernization
+- Domain-Driven Design patterns
 
 **Philosophy:** Refactors to improve maintainability AND eliminate bug classes.
+
+**Current Focus:** Leading v1.6.0 refactoring (see `docs/misc/v1.6.0-REFACTORING-MASTER-CHECKLIST.md`). Maintains and updates the checklist after completing work items.
 
 ## Request Routing Logic
 
