@@ -23,7 +23,10 @@ export class QuickTabWindow {
     this.cookieStoreId = options.cookieStoreId || 'firefox-default';
     this.minimized = options.minimized || false;
     this.zIndex = options.zIndex || CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
-    this.pinnedToUrl = options.pinnedToUrl || null;
+    
+    // v1.5.9.13 - Replace pinnedToUrl with solo/mute arrays
+    this.soloedOnTabs = options.soloedOnTabs || [];
+    this.mutedOnTabs = options.mutedOnTabs || [];
 
     this.container = null;
     this.iframe = null;
@@ -34,7 +37,8 @@ export class QuickTabWindow {
     this.dragStartY = 0;
     this.resizeStartWidth = 0;
     this.resizeStartHeight = 0;
-    this.pinButton = null;
+    this.soloButton = null; // v1.5.9.13 - Reference to solo button
+    this.muteButton = null; // v1.5.9.13 - Reference to mute button
 
     this.onDestroy = options.onDestroy || (() => {});
     this.onMinimize = options.onMinimize || (() => {});
@@ -43,8 +47,8 @@ export class QuickTabWindow {
     this.onPositionChangeEnd = options.onPositionChangeEnd || (() => {});
     this.onSizeChange = options.onSizeChange || (() => {});
     this.onSizeChangeEnd = options.onSizeChangeEnd || (() => {});
-    this.onPin = options.onPin || (() => {});
-    this.onUnpin = options.onUnpin || (() => {});
+    this.onSolo = options.onSolo || (() => {}); // v1.5.9.13 - Solo callback
+    this.onMute = options.onMute || (() => {}); // v1.5.9.13 - Mute callback
   }
 
   /**
@@ -318,14 +322,29 @@ export class QuickTabWindow {
     openBtn.title = 'Open in New Tab';
     controls.appendChild(openBtn);
 
-    // Pin button
-    const pinBtn = this.createButton(this.pinnedToUrl ? '📌' : '📍', () => {
-      this.togglePin(pinBtn);
-    });
-    pinBtn.title = this.pinnedToUrl ? `Pinned to: ${this.pinnedToUrl}` : 'Pin to current page';
-    pinBtn.style.background = this.pinnedToUrl ? '#444' : 'transparent';
-    controls.appendChild(pinBtn);
-    this.pinButton = pinBtn;
+    // v1.5.9.13 - Solo button (replaces pin button)
+    const soloBtn = this.createButton(
+      this.isCurrentTabSoloed() ? '🎯' : '⭕',
+      () => this.toggleSolo(soloBtn)
+    );
+    soloBtn.title = this.isCurrentTabSoloed()
+      ? 'Un-solo (show on all tabs)'
+      : 'Solo (show only on this tab)';
+    soloBtn.style.background = this.isCurrentTabSoloed() ? '#444' : 'transparent';
+    controls.appendChild(soloBtn);
+    this.soloButton = soloBtn;
+
+    // v1.5.9.13 - Mute button
+    const muteBtn = this.createButton(
+      this.isCurrentTabMuted() ? '🔇' : '🔊',
+      () => this.toggleMute(muteBtn)
+    );
+    muteBtn.title = this.isCurrentTabMuted()
+      ? 'Unmute (show on this tab)'
+      : 'Mute (hide on this tab)';
+    muteBtn.style.background = this.isCurrentTabMuted() ? '#c44' : 'transparent';
+    controls.appendChild(muteBtn);
+    this.muteButton = muteBtn;
 
     // Minimize button
     const minimizeBtn = this.createButton('−', () => this.minimize());
@@ -767,33 +786,119 @@ export class QuickTabWindow {
   }
 
   /**
-   * Toggle pin state for Quick Tab
-   * @param {HTMLElement} pinBtn - The pin button element
+   * v1.5.9.13 - Check if current tab is in solo list
    */
-  togglePin(pinBtn) {
-    if (this.pinnedToUrl) {
-      // Unpin
-      this.pinnedToUrl = null;
-      pinBtn.textContent = '📍';
-      pinBtn.title = 'Pin to current page';
-      pinBtn.style.background = 'transparent';
+  isCurrentTabSoloed() {
+    return (
+      this.soloedOnTabs &&
+      this.soloedOnTabs.length > 0 &&
+      window.quickTabsManager &&
+      window.quickTabsManager.currentTabId &&
+      this.soloedOnTabs.includes(window.quickTabsManager.currentTabId)
+    );
+  }
 
-      // Notify parent (index.js) to broadcast unpin
-      if (this.onUnpin) {
-        this.onUnpin(this.id);
+  /**
+   * v1.5.9.13 - Check if current tab is in mute list
+   */
+  isCurrentTabMuted() {
+    return (
+      this.mutedOnTabs &&
+      this.mutedOnTabs.length > 0 &&
+      window.quickTabsManager &&
+      window.quickTabsManager.currentTabId &&
+      this.mutedOnTabs.includes(window.quickTabsManager.currentTabId)
+    );
+  }
+
+  /**
+   * v1.5.9.13 - Toggle solo state for current tab
+   */
+  toggleSolo(soloBtn) {
+    if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
+      console.warn('[QuickTabWindow] Cannot toggle solo - no current tab ID');
+      return;
+    }
+
+    const currentTabId = window.quickTabsManager.currentTabId;
+
+    if (this.isCurrentTabSoloed()) {
+      // Un-solo: Remove current tab from solo list
+      this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== currentTabId);
+      soloBtn.textContent = '⭕';
+      soloBtn.title = 'Solo (show only on this tab)';
+      soloBtn.style.background = 'transparent';
+
+      // If no tabs left in solo list, Quick Tab becomes visible everywhere
+      if (this.soloedOnTabs.length === 0) {
+        console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
       }
     } else {
-      // Pin to current page URL
-      const currentPageUrl = window.location.href;
-      this.pinnedToUrl = currentPageUrl;
-      pinBtn.textContent = '📌';
-      pinBtn.title = `Pinned to: ${currentPageUrl}`;
-      pinBtn.style.background = '#444';
+      // Solo: Set current tab as the only tab (replace entire list for simplicity)
+      this.soloedOnTabs = [currentTabId];
+      this.mutedOnTabs = []; // Clear mute state (mutually exclusive)
+      soloBtn.textContent = '🎯';
+      soloBtn.title = 'Un-solo (show on all tabs)';
+      soloBtn.style.background = '#444';
 
-      // Notify parent (index.js) to broadcast pin and close in other tabs
-      if (this.onPin) {
-        this.onPin(this.id, currentPageUrl);
+      // Update mute button if it exists
+      if (this.muteButton) {
+        this.muteButton.textContent = '🔊';
+        this.muteButton.title = 'Mute (hide on this tab)';
+        this.muteButton.style.background = 'transparent';
       }
+
+      console.log('[QuickTabWindow] Soloed - only visible on this tab');
+    }
+
+    // Notify parent manager
+    if (this.onSolo) {
+      this.onSolo(this.id, this.soloedOnTabs);
+    }
+  }
+
+  /**
+   * v1.5.9.13 - Toggle mute state for current tab
+   */
+  toggleMute(muteBtn) {
+    if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
+      console.warn('[QuickTabWindow] Cannot toggle mute - no current tab ID');
+      return;
+    }
+
+    const currentTabId = window.quickTabsManager.currentTabId;
+
+    if (this.isCurrentTabMuted()) {
+      // Unmute: Remove current tab from mute list
+      this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== currentTabId);
+      muteBtn.textContent = '🔊';
+      muteBtn.title = 'Mute (hide on this tab)';
+      muteBtn.style.background = 'transparent';
+
+      console.log('[QuickTabWindow] Unmuted on this tab');
+    } else {
+      // Mute: Add current tab to mute list
+      if (!this.mutedOnTabs.includes(currentTabId)) {
+        this.mutedOnTabs.push(currentTabId);
+      }
+      this.soloedOnTabs = []; // Clear solo state (mutually exclusive)
+      muteBtn.textContent = '🔇';
+      muteBtn.title = 'Unmute (show on this tab)';
+      muteBtn.style.background = '#c44';
+
+      // Update solo button if it exists
+      if (this.soloButton) {
+        this.soloButton.textContent = '⭕';
+        this.soloButton.title = 'Solo (show only on this tab)';
+        this.soloButton.style.background = 'transparent';
+      }
+
+      console.log('[QuickTabWindow] Muted on this tab');
+    }
+
+    // Notify parent manager
+    if (this.onMute) {
+      this.onMute(this.id, this.mutedOnTabs);
     }
   }
 
@@ -849,6 +954,7 @@ export class QuickTabWindow {
 
   /**
    * Get current state for persistence
+   * v1.5.9.13 - Updated to include soloedOnTabs and mutedOnTabs
    */
   getState() {
     return {
@@ -862,7 +968,8 @@ export class QuickTabWindow {
       cookieStoreId: this.cookieStoreId,
       minimized: this.minimized,
       zIndex: this.zIndex,
-      pinnedToUrl: this.pinnedToUrl
+      soloedOnTabs: this.soloedOnTabs, // v1.5.9.13
+      mutedOnTabs: this.mutedOnTabs // v1.5.9.13
     };
   }
 }

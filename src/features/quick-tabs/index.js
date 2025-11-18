@@ -32,6 +32,9 @@ class QuickTabsManager {
     // v1.5.9.12 - Container integration: Store container context
     this.cookieStoreId = null; // Detected during init(), e.g., 'firefox-default', 'firefox-container-1'
 
+    // v1.5.9.13 - Tab ID detection for solo/mute functionality
+    this.currentTabId = null; // Current Firefox tab ID (detected during init)
+
     // v1.5.8.14 - Transaction ID system to prevent race conditions
     this.pendingSaveIds = new Set();
     this.saveIdTimers = new Map();
@@ -50,6 +53,7 @@ class QuickTabsManager {
    * Initialize the Quick Tabs manager
    * v1.5.8.13 - Now includes eager state hydration and BroadcastChannel setup
    * v1.5.9.12 - Container integration: Detects and stores container context
+   * v1.5.9.13 - Solo/Mute integration: Detects current tab ID
    */
   async init(eventBus, Events) {
     if (this.initialized) {
@@ -64,6 +68,9 @@ class QuickTabsManager {
 
     // v1.5.9.12 - Container integration: Detect container context FIRST
     await this.detectContainerContext();
+
+    // v1.5.9.13 - Solo/Mute integration: Detect current tab ID
+    await this.detectCurrentTabId();
 
     // EAGER LOADING v1.5.8.13: Set up BroadcastChannel for real-time cross-tab sync
     // v1.5.9.12 - Now uses container-specific channel
@@ -114,6 +121,36 @@ class QuickTabsManager {
       }
     } catch (err) {
       console.warn('[QuickTabsManager] Failed to detect container context:', err);
+    }
+  }
+
+  /**
+   * v1.5.9.13 - Detect and store the current Firefox tab ID
+   * Required for solo/mute functionality to determine visibility
+   */
+  async detectCurrentTabId() {
+    if (typeof browser === 'undefined' || !browser.runtime) {
+      console.warn('[QuickTabsManager] Browser API not available');
+      this.currentTabId = null;
+      return;
+    }
+
+    try {
+      // Send message to background to get current tab ID
+      const response = await browser.runtime.sendMessage({
+        action: 'GET_CURRENT_TAB_ID'
+      });
+
+      if (response && response.tabId) {
+        this.currentTabId = response.tabId;
+        console.log(`[QuickTabsManager] Current tab ID: ${this.currentTabId}`);
+      } else {
+        console.warn('[QuickTabsManager] Failed to get tab ID from background');
+        this.currentTabId = null;
+      }
+    } catch (err) {
+      console.error('[QuickTabsManager] Error detecting tab ID:', err);
+      this.currentTabId = null;
     }
   }
 
@@ -186,11 +223,13 @@ class QuickTabsManager {
           case 'CLOSE':
             this.closeById(data.id);
             break;
-          case 'PIN':
-            this.updateQuickTabPin(data.id, data.pinnedToUrl);
+          case 'SOLO':
+            // v1.5.9.13 - Handle solo state change from broadcast
+            this.handleSoloFromBroadcast(data.id, data.soloedOnTabs);
             break;
-          case 'UNPIN':
-            this.updateQuickTabPin(data.id, null);
+          case 'MUTE':
+            // v1.5.9.13 - Handle mute state change from broadcast
+            this.handleMuteFromBroadcast(data.id, data.mutedOnTabs);
             break;
           default:
             console.warn('[QuickTabsManager] Unknown broadcast type:', type);
@@ -525,8 +564,35 @@ class QuickTabsManager {
   }
 
   /**
+   * v1.5.9.13 - Check if Quick Tab should be visible on current tab
+   * @param {Object} tabData - Quick Tab state data
+   * @returns {boolean} - True if Quick Tab should be visible
+   */
+  shouldQuickTabBeVisible(tabData) {
+    // Must have valid current tab ID
+    if (!this.currentTabId) {
+      console.warn('[QuickTabsManager] No current tab ID, cannot filter visibility');
+      return true; // Show everything if we can't filter
+    }
+
+    // Solo logic: Only show on soloed tabs
+    if (tabData.soloedOnTabs && tabData.soloedOnTabs.length > 0) {
+      return tabData.soloedOnTabs.includes(this.currentTabId);
+    }
+
+    // Mute logic: Hide on muted tabs
+    if (tabData.mutedOnTabs && tabData.mutedOnTabs.length > 0) {
+      return !tabData.mutedOnTabs.includes(this.currentTabId);
+    }
+
+    // Default: visible everywhere
+    return true;
+  }
+
+  /**
    * v1.5.8.13 - Sync Quick Tabs from storage state (container-aware)
    * v1.5.9.12 - Container integration: Enforce container filtering, never sync all containers
+   * v1.5.9.13 - Solo/Mute integration: Filter by visibility rules
    */
   syncFromStorage(state, containerFilter = null) {
     if (!state) {
@@ -564,8 +630,15 @@ class QuickTabsManager {
       }
     }
 
-    // Create/update Quick Tabs based on state
-    tabsToSync.forEach(tabData => {
+    // v1.5.9.13 - Filter tabs by visibility rules BEFORE creating
+    const visibleTabs = tabsToSync.filter(tabData => this.shouldQuickTabBeVisible(tabData));
+
+    console.log(
+      `[QuickTabsManager] ${visibleTabs.length}/${tabsToSync.length} tabs visible on current tab`
+    );
+
+    // Create/update only visible Quick Tabs
+    visibleTabs.forEach(tabData => {
       if (!this.tabs.has(tabData.id)) {
         // Create new Quick Tab
         this.createQuickTab({
@@ -578,7 +651,8 @@ class QuickTabsManager {
           title: tabData.title,
           cookieStoreId: tabData.cookieStoreId || effectiveFilter,
           minimized: tabData.minimized || false,
-          pinnedToUrl: tabData.pinnedToUrl || null
+          soloedOnTabs: tabData.soloedOnTabs || [], // v1.5.9.13
+          mutedOnTabs: tabData.mutedOnTabs || [] // v1.5.9.13
         });
       } else {
         // Update existing Quick Tab
@@ -595,11 +669,11 @@ class QuickTabsManager {
       }
     });
 
-    // Remove Quick Tabs that are no longer in storage
-    const stateIds = new Set(tabsToSync.map(t => t.id));
+    // v1.5.9.13 - Remove Quick Tabs that are no longer visible
+    const visibleIds = new Set(visibleTabs.map(t => t.id));
     for (const [id, tab] of this.tabs.entries()) {
-      if (!stateIds.has(id)) {
-        console.log(`[QuickTabsManager] Removing Quick Tab ${id} (not in storage)`);
+      if (!visibleIds.has(id)) {
+        console.log(`[QuickTabsManager] Removing Quick Tab ${id} (no longer visible on this tab)`);
         tab.destroy();
       }
     }
@@ -630,17 +704,77 @@ class QuickTabsManager {
   }
 
   /**
-   * v1.5.8.13 - Update Quick Tab pin status (from sync)
+   * v1.5.9.13 - Handle solo state change from broadcast
    */
-  updateQuickTabPin(id, pinnedToUrl) {
-    const tab = this.tabs.get(id);
+  handleSoloFromBroadcast(quickTabId, soloedOnTabs) {
+    const tab = this.tabs.get(quickTabId);
+
     if (tab) {
-      if (pinnedToUrl) {
-        tab.pinnedToUrl = pinnedToUrl;
-        console.log(`[QuickTabsManager] Pinned ${id} to ${pinnedToUrl}`);
+      // Update solo state
+      tab.soloedOnTabs = soloedOnTabs;
+      tab.mutedOnTabs = []; // Clear mute state (mutually exclusive)
+
+      // Check if should be visible on current tab
+      const tabState = tab.getState();
+      if (!this.shouldQuickTabBeVisible(tabState)) {
+        // Hide on this tab (not in solo list)
+        console.log(`[QuickTabsManager] Hiding Quick Tab ${quickTabId} (soloed on other tabs)`);
+        tab.destroy();
       } else {
-        tab.pinnedToUrl = null;
-        console.log(`[QuickTabsManager] Unpinned ${id}`);
+        // Update button if visible
+        if (tab.soloButton) {
+          const isSoloed = soloedOnTabs.length > 0;
+          tab.soloButton.textContent = isSoloed ? '🎯' : '⭕';
+          tab.soloButton.title = isSoloed
+            ? 'Un-solo (show on all tabs)'
+            : 'Solo (show only on this tab)';
+          tab.soloButton.style.background = isSoloed ? '#444' : 'transparent';
+        }
+      }
+    } else {
+      // Quick Tab doesn't exist locally
+      // If current tab is in solo list, it will be created by storage sync
+      if (soloedOnTabs.includes(this.currentTabId)) {
+        console.log(
+          `[QuickTabsManager] Quick Tab ${quickTabId} should appear (soloed on this tab) - will be created by storage sync`
+        );
+      }
+    }
+  }
+
+  /**
+   * v1.5.9.13 - Handle mute state change from broadcast
+   */
+  handleMuteFromBroadcast(quickTabId, mutedOnTabs) {
+    const tab = this.tabs.get(quickTabId);
+
+    if (tab) {
+      // Update mute state
+      tab.mutedOnTabs = mutedOnTabs;
+      tab.soloedOnTabs = []; // Clear solo state (mutually exclusive)
+
+      // Check if should be visible on current tab
+      const tabState = tab.getState();
+      if (!this.shouldQuickTabBeVisible(tabState)) {
+        // Hide on this tab (in mute list)
+        console.log(`[QuickTabsManager] Hiding Quick Tab ${quickTabId} (muted on this tab)`);
+        tab.destroy();
+      } else {
+        // Update button if visible
+        if (tab.muteButton) {
+          const isMuted = mutedOnTabs.includes(this.currentTabId);
+          tab.muteButton.textContent = isMuted ? '🔇' : '🔊';
+          tab.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
+          tab.muteButton.style.background = isMuted ? '#c44' : 'transparent';
+        }
+      }
+    } else {
+      // Quick Tab doesn't exist locally
+      // If current tab is NOT in mute list, it will be created by storage sync
+      if (!mutedOnTabs.includes(this.currentTabId)) {
+        console.log(
+          `[QuickTabsManager] Quick Tab ${quickTabId} should appear (not muted on this tab) - will be created by storage sync`
+        );
       }
     }
   }
@@ -701,7 +835,8 @@ class QuickTabsManager {
       cookieStoreId: cookieStoreId, // v1.5.9.12 - Use auto-assigned container
       minimized: options.minimized || false,
       zIndex: this.currentZIndex,
-      pinnedToUrl: options.pinnedToUrl || null,
+      soloedOnTabs: options.soloedOnTabs || [], // v1.5.9.13
+      mutedOnTabs: options.mutedOnTabs || [], // v1.5.9.13
       onDestroy: tabId => this.handleDestroy(tabId),
       onMinimize: tabId => this.handleMinimize(tabId),
       onFocus: tabId => this.handleFocus(tabId),
@@ -709,8 +844,8 @@ class QuickTabsManager {
       onPositionChangeEnd: (tabId, left, top) => this.handlePositionChangeEnd(tabId, left, top),
       onSizeChange: (tabId, width, height) => this.handleSizeChange(tabId, width, height),
       onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height),
-      onPin: (tabId, pinnedToUrl) => this.handlePin(tabId, pinnedToUrl),
-      onUnpin: tabId => this.handleUnpin(tabId)
+      onSolo: (tabId, soloedOnTabs) => this.handleSoloToggle(tabId, soloedOnTabs), // v1.5.9.13
+      onMute: (tabId, mutedOnTabs) => this.handleMuteToggle(tabId, mutedOnTabs) // v1.5.9.13
     });
 
     // Store the tab
@@ -1074,39 +1209,47 @@ class QuickTabsManager {
   }
 
   /**
-   * Handle Quick Tab pin
-   * v1.5.8.13 - Now broadcasts pin to other tabs
-   * v1.5.9.12 - Container integration: Include container context
+   * v1.5.9.13 - Handle solo toggle from Quick Tab window or panel
    */
-  handlePin(id, pinnedToUrl) {
-    console.log('[QuickTabsManager] Handling pin for:', id, 'to:', pinnedToUrl);
+  handleSoloToggle(quickTabId, newSoloedTabs) {
+    console.log(`[QuickTabsManager] Toggling solo for ${quickTabId}:`, newSoloedTabs);
 
-    // v1.5.8.13 - Broadcast pin to other tabs
-    this.broadcast('PIN', { id, pinnedToUrl });
+    const tab = this.tabs.get(quickTabId);
+    if (tab) {
+      tab.soloedOnTabs = newSoloedTabs;
+      tab.mutedOnTabs = []; // Clear mute state (mutually exclusive)
 
+      // Update button states if tab has them
+      if (tab.soloButton) {
+        const isSoloed = newSoloedTabs.length > 0;
+        tab.soloButton.textContent = isSoloed ? '🎯' : '⭕';
+        tab.soloButton.title = isSoloed ? 'Un-solo (show on all tabs)' : 'Solo (show only on this tab)';
+        tab.soloButton.style.background = isSoloed ? '#444' : 'transparent';
+      }
+    }
+
+    // Broadcast to other tabs
+    this.broadcast('SOLO', {
+      id: quickTabId,
+      soloedOnTabs: newSoloedTabs
+    });
+
+    // Save to background
     const saveId = this.generateSaveId();
-
-    // v1.5.9.12 - Get cookieStoreId from tab
-    const tabWindow = this.tabs.get(id);
-    const cookieStoreId = tabWindow?.cookieStoreId || this.cookieStoreId || 'firefox-default';
+    const cookieStoreId = tab?.cookieStoreId || this.cookieStoreId || 'firefox-default';
 
     if (typeof browser !== 'undefined' && browser.runtime) {
       browser.runtime
         .sendMessage({
-          action: 'UPDATE_QUICK_TAB_PIN',
-          id: id,
-          pinnedToUrl: pinnedToUrl,
-          cookieStoreId: cookieStoreId, // v1.5.9.12 - Include container context
-          timestamp: Date.now(),
-          saveId: saveId
-        })
-        .then(() => {
-          // Close this Quick Tab in all other tabs
-          // Background script will handle broadcasting
-          console.log('[QuickTabsManager] Pin message sent to background');
+          action: 'UPDATE_QUICK_TAB_SOLO',
+          id: quickTabId,
+          soloedOnTabs: newSoloedTabs,
+          cookieStoreId: cookieStoreId,
+          saveId: saveId,
+          timestamp: Date.now()
         })
         .catch(err => {
-          console.error('[QuickTabsManager] Pin sync error:', err);
+          console.error('[QuickTabsManager] Solo update error:', err);
           this.releasePendingSave(saveId);
         });
     } else {
@@ -1115,39 +1258,47 @@ class QuickTabsManager {
   }
 
   /**
-   * Handle Quick Tab unpin
-   * v1.5.8.13 - Now broadcasts unpin to other tabs
-   * v1.5.9.12 - Container integration: Include container context
+   * v1.5.9.13 - Handle mute toggle from Quick Tab window or panel
    */
-  handleUnpin(id) {
-    console.log('[QuickTabsManager] Handling unpin for:', id);
+  handleMuteToggle(quickTabId, newMutedTabs) {
+    console.log(`[QuickTabsManager] Toggling mute for ${quickTabId}:`, newMutedTabs);
 
-    // v1.5.8.13 - Broadcast unpin to other tabs
-    this.broadcast('UNPIN', { id });
+    const tab = this.tabs.get(quickTabId);
+    if (tab) {
+      tab.mutedOnTabs = newMutedTabs;
+      tab.soloedOnTabs = []; // Clear solo state (mutually exclusive)
 
+      // Update button states if tab has them
+      if (tab.muteButton) {
+        const isMuted = newMutedTabs.includes(this.currentTabId);
+        tab.muteButton.textContent = isMuted ? '🔇' : '🔊';
+        tab.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
+        tab.muteButton.style.background = isMuted ? '#c44' : 'transparent';
+      }
+    }
+
+    // Broadcast to other tabs
+    this.broadcast('MUTE', {
+      id: quickTabId,
+      mutedOnTabs: newMutedTabs
+    });
+
+    // Save to background
     const saveId = this.generateSaveId();
-
-    // v1.5.9.12 - Get cookieStoreId from tab
-    const tabWindow = this.tabs.get(id);
-    const cookieStoreId = tabWindow?.cookieStoreId || this.cookieStoreId || 'firefox-default';
+    const cookieStoreId = tab?.cookieStoreId || this.cookieStoreId || 'firefox-default';
 
     if (typeof browser !== 'undefined' && browser.runtime) {
       browser.runtime
         .sendMessage({
-          action: 'UPDATE_QUICK_TAB_PIN',
-          id: id,
-          pinnedToUrl: null,
-          cookieStoreId: cookieStoreId, // v1.5.9.12 - Include container context
-          timestamp: Date.now(),
-          saveId: saveId
-        })
-        .then(() => {
-          // Restore this Quick Tab in all tabs
-          // Background script will handle broadcasting
-          console.log('[QuickTabsManager] Unpin message sent to background');
+          action: 'UPDATE_QUICK_TAB_MUTE',
+          id: quickTabId,
+          mutedOnTabs: newMutedTabs,
+          cookieStoreId: cookieStoreId,
+          saveId: saveId,
+          timestamp: Date.now()
         })
         .catch(err => {
-          console.error('[QuickTabsManager] Unpin sync error:', err);
+          console.error('[QuickTabsManager] Mute update error:', err);
           this.releasePendingSave(saveId);
         });
     } else {
