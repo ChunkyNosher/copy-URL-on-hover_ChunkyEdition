@@ -21,6 +21,7 @@ Successfully completed the **domain layer** of the v1.6.0 refactoring project, i
 **File:** `src/domain/QuickTab.js` (410 lines)
 
 **Business Logic Implemented:**
+
 - Constructor validation (id, url, position, size required)
 - Visibility rules (shouldBeVisible method):
   - Minimized = always hidden
@@ -35,6 +36,7 @@ Successfully completed the **domain layer** of the v1.6.0 refactoring project, i
 - Serialization: serialize(), fromStorage(), create()
 
 **Tests:** `tests/unit/domain/QuickTab.test.js` (49 tests)
+
 - Construction: 6 tests
 - Visibility Logic: 6 tests
 - Solo Operations: 6 tests
@@ -50,6 +52,7 @@ Successfully completed the **domain layer** of the v1.6.0 refactoring project, i
 **Coverage:** 100% (statements, branches, functions, lines)
 
 **Key Architectural Decisions:**
+
 - Zero browser API dependencies (pure JavaScript)
 - Immutability by design (clones position/size objects)
 - Validation at construction (fail-fast)
@@ -63,12 +66,13 @@ Successfully completed the **domain layer** of the v1.6.0 refactoring project, i
 **File:** `src/domain/Container.js` (207 lines)
 
 **Business Logic Implemented:**
+
 - Constructor validation (id required)
 - Default name generation based on container type
 - Container type checking:
   - isDefault() - Returns true for 'firefox-default'
-  - isPrivate() - Returns true for 'firefox-private-*'
-  - isCustom() - Returns true for 'firefox-container-*'
+  - isPrivate() - Returns true for 'firefox-private-\*'
+  - isCustom() - Returns true for 'firefox-container-\*'
 - Container number extraction (getContainerNumber)
 - Static validation methods:
   - isValidId(id) - Validates Firefox container ID format
@@ -81,6 +85,7 @@ Successfully completed the **domain layer** of the v1.6.0 refactoring project, i
 - Serialization: serialize(), fromStorage()
 
 **Tests:** `tests/unit/domain/Container.test.js` (34 tests)
+
 - Construction: 4 tests
 - Default Names: 4 tests
 - Container Type Checks: 6 tests
@@ -93,6 +98,7 @@ Successfully completed the **domain layer** of the v1.6.0 refactoring project, i
 **Coverage:** 100% (statements, branches, functions, lines)
 
 **Key Architectural Decisions:**
+
 - Zero browser API dependencies
 - Robust ID validation and sanitization
 - Supports all Firefox container types (default, private, custom)
@@ -104,17 +110,17 @@ Successfully completed the **domain layer** of the v1.6.0 refactoring project, i
 
 ### Domain Layer Quality (Both Entities)
 
-| Metric | Target | Achieved | Status |
-|--------|--------|----------|--------|
-| Test Coverage (Statements) | 100% | 100% | ✅ |
-| Test Coverage (Branches) | 100% | 100% | ✅ |
-| Test Coverage (Functions) | 100% | 100% | ✅ |
-| Test Coverage (Lines) | 100% | 100% | ✅ |
-| Mean Cyclomatic Complexity | <3 | 2.1 | ✅ |
-| Max Cyclomatic Complexity | <9 | 5 | ✅ |
-| Max Function Size | <70 lines | 35 lines | ✅ |
-| Nesting Depth | ≤2 levels | 2 levels | ✅ |
-| Browser API Dependencies | 0 | 0 | ✅ |
+| Metric                     | Target    | Achieved | Status |
+| -------------------------- | --------- | -------- | ------ |
+| Test Coverage (Statements) | 100%      | 100%     | ✅     |
+| Test Coverage (Branches)   | 100%      | 100%     | ✅     |
+| Test Coverage (Functions)  | 100%      | 100%     | ✅     |
+| Test Coverage (Lines)      | 100%      | 100%     | ✅     |
+| Mean Cyclomatic Complexity | <3        | 2.1      | ✅     |
+| Max Cyclomatic Complexity  | <9        | 5        | ✅     |
+| Max Function Size          | <70 lines | 35 lines | ✅     |
+| Nesting Depth              | ≤2 levels | 2 levels | ✅     |
+| Browser API Dependencies   | 0         | 0        | ✅     |
 
 **Result:** Zero technical debt in domain layer ✅
 
@@ -188,11 +194,13 @@ Full CI:        ~2.5s (lint + test + build)
    - Container-aware
 
 **Tests to Create:**
+
 - `tests/unit/storage/StorageAdapter.test.js` (~20 tests)
 - `tests/unit/storage/SyncStorageAdapter.test.js` (~25 tests)
 - `tests/unit/storage/SessionStorageAdapter.test.js` (~20 tests)
 
 **Success Criteria:**
+
 - All adapters implement base interface
 - Container isolation enforced at storage level
 - Async/await throughout (no .then())
@@ -215,9 +223,11 @@ Full CI:        ~2.5s (lint + test + build)
    - EmptyFormat (fallback)
 
 **Tests to Create:**
+
 - `tests/unit/storage/FormatMigrator.test.js` (~30 tests)
 
 **Success Criteria:**
+
 - All 3 legacy formats handled correctly
 - Zero data loss during migration
 - 90% coverage on migrator
@@ -524,24 +534,29 @@ git commit -m "feat(storage): Add FormatMigrator for legacy formats"
 ## Key Files to Reference
 
 **Domain Entities:**
+
 - `src/domain/QuickTab.js` - Example of pure domain logic
 - `src/domain/Container.js` - Example of container support
 - `tests/unit/domain/QuickTab.test.js` - Example of comprehensive unit tests
 
 **Current QuickTabsManager (for context):**
+
 - `src/features/quick-tabs/index.js` (lines 903-1000) - createQuickTab logic
 - Shows how storage is currently used
 
 **Background Script (for context):**
+
 - `background.js` (lines 17-180) - Current storage patterns
 - Shows format migration logic currently in use
 
 **Test Utilities (ready to use):**
+
 - `tests/helpers/test-builders.js` - quickTabBuilder, containerBuilder
 - `tests/__mocks__/browser-storage.js` - Browser storage mocks
 - `tests/helpers/async-helpers.js` - flushPromises, waitFor
 
 **Documentation:**
+
 - `docs/manual/1.5.9 docs/copy-url-on-hover-refactoring-plan-v2-evidence-based.md` - Refactoring plan
 - `docs/misc/v1.6.0-REFACTORING-PHASE1-STATUS.md` - Detailed status report
 
@@ -591,6 +606,7 @@ npm run build:prod                   # Production build
 **The storage layer is straightforward.** Browser API wrappers with error handling and container isolation. Mocks are ready, patterns are established.
 
 **Follow the TDD workflow:**
+
 1. Write test first (it should fail)
 2. Implement minimal code to pass
 3. Refactor if needed
