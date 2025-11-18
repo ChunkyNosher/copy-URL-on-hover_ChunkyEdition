@@ -70,7 +70,7 @@ export class QuickTabWindow {
       'onSolo', // v1.5.9.13
       'onMute' // v1.5.9.13
     ];
-    
+
     callbacks.forEach(name => {
       this[name] = options[name] || noop;
     });
