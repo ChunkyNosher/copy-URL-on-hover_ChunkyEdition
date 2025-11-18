@@ -167,22 +167,97 @@ export function generateLogFilename(version = '1.5.9') {
  * @param {string} version - Extension version from manifest
  * @returns {Promise<void>}
  */
+/**
+ * Try to get logs from background script
+ * @param {Array} logs - Logs array to append to
+ * @private
+ */
+async function _fetchBackgroundLogs(logs) {
+  try {
+    const response = await browser.runtime.sendMessage({
+      action: 'GET_BACKGROUND_LOGS'
+    });
+    if (response && response.logs) {
+      logs.push(...response.logs);
+    }
+  } catch (error) {
+    console.warn('[WARN] Could not retrieve background logs:', error);
+  }
+}
+
+/**
+ * Try to download using browser.downloads API
+ * @param {string} logText - Formatted log text
+ * @param {string} filename - Filename for download
+ * @returns {boolean} True if successful
+ * @private
+ */
+async function _tryBrowserDownloadsAPI(logText, filename) {
+  if (!browser || !browser.downloads || !browser.downloads.download) {
+    return false;
+  }
+
+  try {
+    // Create blob
+    const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    // Download via browser API
+    await browser.downloads.download({
+      url: url,
+      filename: filename,
+      saveAs: true
+    });
+
+    // Clean up
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+
+    console.log('[INFO] Logs exported successfully via browser.downloads API');
+    return true;
+  } catch (error) {
+    console.warn('[WARN] browser.downloads failed, falling back to Blob URL:', error);
+    return false;
+  }
+}
+
+/**
+ * Download using blob URL fallback method
+ * @param {string} logText - Formatted log text
+ * @param {string} filename - Filename for download
+ * @private
+ */
+function _downloadViaBlob(logText, filename) {
+  const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  // Create temporary download link
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  link.style.display = 'none';
+
+  // Append to body (required for Firefox)
+  document.body.appendChild(link);
+
+  // Trigger download
+  link.click();
+
+  // Cleanup
+  setTimeout(() => {
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  }, 100);
+
+  console.log('[INFO] Logs exported successfully via Blob URL fallback');
+}
+
 export async function exportLogs(version = '1.5.9') {
   try {
     // Get logs from current page
     const logs = getLogBuffer();
 
     // Try to get logs from background script
-    try {
-      const response = await browser.runtime.sendMessage({
-        action: 'GET_BACKGROUND_LOGS'
-      });
-      if (response && response.logs) {
-        logs.push(...response.logs);
-      }
-    } catch (error) {
-      console.warn('[WARN] Could not retrieve background logs:', error);
-    }
+    await _fetchBackgroundLogs(logs);
 
     // Sort logs by timestamp
     logs.sort((a, b) => a.timestamp - b.timestamp);
@@ -194,50 +269,13 @@ export async function exportLogs(version = '1.5.9') {
     const filename = generateLogFilename(version);
 
     // Try Method 1: browser.downloads.download() API (if permission granted)
-    if (typeof browser !== 'undefined' && browser.downloads && browser.downloads.download) {
-      try {
-        // Create blob
-        const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-
-        // Download via browser API
-        await browser.downloads.download({
-          url: url,
-          filename: filename,
-          saveAs: true
-        });
-
-        // Clean up
-        setTimeout(() => URL.revokeObjectURL(url), 100);
-
-        console.log('[INFO] Logs exported successfully via browser.downloads API');
-        return;
-      } catch (error) {
-        console.warn('[WARN] browser.downloads failed, falling back to Blob URL:', error);
-      }
+    const browserApiSuccess = await _tryBrowserDownloadsAPI(logText, filename);
+    if (browserApiSuccess) {
+      return;
     }
 
     // Method 2: Blob URL + <a> download attribute (fallback)
-    const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
-    const blobUrl = URL.createObjectURL(blob);
-
-    // Create temporary download link
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = filename;
-    link.style.display = 'none';
-
-    // Append to body (required for Firefox)
-    document.body.appendChild(link);
-
-    // Trigger download
-    link.click();
-
-    // Cleanup
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    }, 100);
+    _downloadViaBlob(logText, filename);
 
     console.log('[INFO] Logs exported successfully via Blob URL');
   } catch (error) {

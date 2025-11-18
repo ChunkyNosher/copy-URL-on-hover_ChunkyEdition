@@ -87,24 +87,32 @@ export class SyncStorageAdapter extends StorageAdapter {
       );
       return saveId;
     } catch (error) {
-      // Handle quota exceeded - fallback to local storage
-      if (error.message && error.message.includes('QUOTA_BYTES')) {
-        console.error(
-          '[SyncStorageAdapter] Sync storage quota exceeded, falling back to local storage'
-        );
+      return this._handleSaveError(error, stateToSave, saveId);
+    }
+  }
 
-        try {
-          await browser.storage.local.set(stateToSave);
-          console.log(`[SyncStorageAdapter] Fallback: Saved to local storage (saveId: ${saveId})`);
-          return saveId;
-        } catch (localError) {
-          console.error('[SyncStorageAdapter] Local storage fallback failed:', localError);
-          throw new Error(`Failed to save: ${localError.message}`);
-        }
-      }
-
+  /**
+   * Handle save error with fallback to local storage
+   * @private
+   */
+  async _handleSaveError(error, stateToSave, saveId) {
+    // Handle quota exceeded - fallback to local storage
+    if (!error.message || !error.message.includes('QUOTA_BYTES')) {
       console.error('[SyncStorageAdapter] Save failed:', error);
       throw error;
+    }
+
+    console.error(
+      '[SyncStorageAdapter] Sync storage quota exceeded, falling back to local storage'
+    );
+
+    try {
+      await browser.storage.local.set(stateToSave);
+      console.log(`[SyncStorageAdapter] Fallback: Saved to local storage (saveId: ${saveId})`);
+      return saveId;
+    } catch (localError) {
+      console.error('[SyncStorageAdapter] Local storage fallback failed:', localError);
+      throw new Error(`Failed to save: ${localError.message}`);
     }
   }
 
