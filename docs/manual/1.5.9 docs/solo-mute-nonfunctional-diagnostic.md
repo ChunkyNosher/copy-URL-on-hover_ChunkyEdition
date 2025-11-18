@@ -16,12 +16,14 @@ The solo and mute buttons in Quick Tabs (v1.5.9.13) are completely non-functiona
 ### Expected Behavior
 
 **Solo:**
+
 - Button icon changes from ⭕ to 🎯
 - Button background changes to gray (#444)
 - Quick Tab disappears from Tab 2, Tab 3, and all other tabs
 - Quick Tab remains visible only on Tab 1
 
 **Mute:**
+
 - Button icon changes from 🔊 to 🔇
 - Button background changes to red (#c44)
 - Quick Tab disappears from Tab 1 only
@@ -51,6 +53,7 @@ This warning occurs during `detectCurrentTabId()` initialization and indicates t
 **Result:** `quickTabsManager.currentTabId` remains `null` throughout the entire session.
 
 **Consequence:** All solo/mute operations fail silently because:
+
 - `isCurrentTabSoloed()` returns `false` (checks `window.quickTabsManager.currentTabId`)
 - `isCurrentTabMuted()` returns `false` (checks `window.quickTabsManager.currentTabId`)
 - `toggleSolo()` exits early with console warning
@@ -112,6 +115,7 @@ export { quickTabsManager };
 **Missing:** No assignment to `window.quickTabsManager`.
 
 **Result:** `window.quickTabsManager` is always `undefined`, causing:
+
 - `isCurrentTabSoloed()` returns `false`
 - `isCurrentTabMuted()` returns `false`
 - `toggleSolo()` exits with "Cannot toggle solo - no current tab ID"
@@ -136,7 +140,7 @@ if (message.action === 'GET_CURRENT_TAB_ID') {
   if (sender.tab && sender.tab.id) {
     sendResponse({ tabId: sender.tab.id });
   } else {
-    sendResponse({ tabId: null });  // ← RETURNS NULL
+    sendResponse({ tabId: null }); // ← RETURNS NULL
   }
   return true;
 }
@@ -151,6 +155,7 @@ The comment states "`sender.tab` is automatically provided by Firefox for conten
 **Evidence from Firefox WebExtensions API:**
 
 From MDN documentation on `runtime.onMessage`:
+
 > "sender.tab: This property will only be present when the connection was opened from a tab (including content scripts)"
 
 However, during eager initialization, the timing of when `sender.tab` becomes available can vary. If the message is sent too early or from an incorrect context, `sender.tab` will be `undefined`.
@@ -162,6 +167,7 @@ However, during eager initialization, the timing of when `sender.tab` becomes av
 3. But `sender.tab` is `undefined` or `sender.tab.id` is `undefined`
 
 **Possible Causes:**
+
 - Content script initialized in a context without a tab (e.g., sidebar, popup)
 - Race condition where `sender.tab` is not yet populated
 - Message sent from wrong execution context
@@ -180,7 +186,7 @@ However, during eager initialization, the timing of when `sender.tab` becomes av
 // v1.5.9.13 - Solo button (replaces pin button)
 const soloBtn = this.createButton(
   this.isCurrentTabSoloed() ? '🎯' : '⭕',
-  () => this.toggleSolo(soloBtn)  // ← PASSING soloBtn TO HANDLER
+  () => this.toggleSolo(soloBtn) // ← PASSING soloBtn TO HANDLER
 );
 soloBtn.title = this.isCurrentTabSoloed()
   ? 'Un-solo (show on all tabs)'
@@ -192,11 +198,9 @@ this.soloButton = soloBtn;
 // v1.5.9.13 - Mute button
 const muteBtn = this.createButton(
   this.isCurrentTabMuted() ? '🔇' : '🔊',
-  () => this.toggleMute(muteBtn)  // ← PASSING muteBtn TO HANDLER
+  () => this.toggleMute(muteBtn) // ← PASSING muteBtn TO HANDLER
 );
-muteBtn.title = this.isCurrentTabMuted()
-  ? 'Unmute (show on this tab)'
-  : 'Mute (hide on this tab)';
+muteBtn.title = this.isCurrentTabMuted() ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
 muteBtn.style.background = this.isCurrentTabMuted() ? '#c44' : 'transparent';
 controls.appendChild(muteBtn);
 this.muteButton = muteBtn;
@@ -210,7 +214,7 @@ createButton(text, onClick) {
 
   button.addEventListener('mouseenter', () => { /* hover */ });
   button.addEventListener('mouseleave', () => { /* unhover */ });
-  
+
   button.addEventListener('click', e => {
     e.stopPropagation();
     onClick();  // ← CALLS onClick WITHOUT ARGUMENTS
@@ -237,12 +241,14 @@ toggleSolo(soloBtn) {  // ← EXPECTS soloBtn PARAMETER
 **Critical Realization:** The `onClick` arrow function `() => this.toggleSolo(soloBtn)` **DOES** pass `soloBtn` as an argument. This is correct.
 
 **However, the real issue is:**
+
 - `isCurrentTabSoloed()` checks `window.quickTabsManager.currentTabId`
 - `window.quickTabsManager` is **undefined** (Root Cause #1)
 - Therefore, `isCurrentTabSoloed()` returns `false`
 - Button is initialized with wrong icon (⭕ instead of potentially 🎯)
 
 **But the button click should still trigger `toggleSolo()`**, which should log the warning:
+
 ```javascript
 console.warn('[QuickTabWindow] Cannot toggle solo - no current tab ID');
 ```
@@ -323,7 +329,7 @@ this.broadcast('CREATE', {
   title: options.title || 'Quick Tab',
   cookieStoreId: cookieStoreId,
   minimized: options.minimized || false,
-  pinnedToUrl: options.pinnedToUrl || null  // ← OLD PROPERTY
+  pinnedToUrl: options.pinnedToUrl || null // ← OLD PROPERTY
 });
 ```
 
@@ -400,17 +406,22 @@ async init(eventBus, Events) {
 if (message.action === 'GET_CURRENT_TAB_ID') {
   // FIRST: Try sender.tab (standard approach)
   if (sender.tab && sender.tab.id) {
-    console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${sender.tab.id} from sender.tab`);
+    console.log(
+      `[Background] GET_CURRENT_TAB_ID: Returning tab ID ${sender.tab.id} from sender.tab`
+    );
     sendResponse({ tabId: sender.tab.id });
     return true;
   }
 
   // FALLBACK: Query active tab in current window
   // This handles cases where sender.tab is not populated
-  browser.tabs.query({ active: true, currentWindow: true })
+  browser.tabs
+    .query({ active: true, currentWindow: true })
     .then(tabs => {
       if (tabs && tabs.length > 0 && tabs[0].id) {
-        console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`);
+        console.log(
+          `[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`
+        );
         sendResponse({ tabId: tabs[0].id });
       } else {
         console.warn('[Background] GET_CURRENT_TAB_ID: Could not determine tab ID');
@@ -526,7 +537,7 @@ createQuickTab(options) {
 ```javascript
 toggleSolo(soloBtn) {
   console.log('[QuickTabWindow] toggleSolo called for:', this.id);
-  
+
   if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
     console.warn('[QuickTabWindow] Cannot toggle solo - no current tab ID');
     console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
@@ -539,7 +550,7 @@ toggleSolo(soloBtn) {
 
 toggleMute(muteBtn) {
   console.log('[QuickTabWindow] toggleMute called for:', this.id);
-  
+
   if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
     console.warn('[QuickTabWindow] Cannot toggle mute - no current tab ID');
     console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
@@ -552,6 +563,7 @@ toggleMute(muteBtn) {
 ```
 
 **Rationale:** These logs will help confirm whether:
+
 - Button click handlers are firing
 - `window.quickTabsManager` is defined
 - `currentTabId` is populated
@@ -656,6 +668,7 @@ async function migrateQuickTabState() {
 ```
 
 However, two critical issues remain:
+
 1. Emergency save still uses `pinnedToUrl` (Fix #3 addresses this)
 2. Broadcast CREATE still uses `pinnedToUrl` (Fix #4 addresses this)
 
@@ -666,6 +679,7 @@ These inconsistencies will cause **state corruption** where old and new formats 
 The user mentioned they're "not sure" if the panel shows solo/mute indicators because the buttons don't work. However, the panel code (`src/features/quick-tabs/panel.js`) was not provided in the repository files fetched.
 
 **Recommendation:** After fixing the button functionality, verify that the panel displays:
+
 - 🎯 indicator for soloed Quick Tabs
 - 🔇 indicator for muted Quick Tabs
 - Correct badge text (e.g., `[Solo: Tabs 1,2]`)
