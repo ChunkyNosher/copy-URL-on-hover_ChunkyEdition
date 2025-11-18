@@ -359,9 +359,7 @@ describe('QuickTab Domain Entity', () => {
     });
 
     test('updateSize should throw error for non-numeric values', () => {
-      expect(() => quickTab.updateSize('800', 600)).toThrow(
-        'Size must be numeric {width, height}'
-      );
+      expect(() => quickTab.updateSize('800', 600)).toThrow('Size must be numeric {width, height}');
     });
 
     test('updateSize should throw error for non-positive values', () => {

@@ -289,13 +289,9 @@ export class QuickTab {
   cleanupDeadTabs(activeTabIds) {
     const activeSet = new Set(activeTabIds);
 
-    this.visibility.soloedOnTabs = this.visibility.soloedOnTabs.filter(id =>
-      activeSet.has(id)
-    );
+    this.visibility.soloedOnTabs = this.visibility.soloedOnTabs.filter(id => activeSet.has(id));
 
-    this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(id =>
-      activeSet.has(id)
-    );
+    this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(id => activeSet.has(id));
   }
 
   /**
