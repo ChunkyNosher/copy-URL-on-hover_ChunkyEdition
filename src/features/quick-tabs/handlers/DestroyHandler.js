@@ -89,7 +89,9 @@ export class DestroyHandler {
   _getTabInfoAndCleanup(id) {
     const tabWindow = this.quickTabsMap.get(id);
     const url = tabWindow && tabWindow.url ? tabWindow.url : null;
-    const cookieStoreId = tabWindow ? tabWindow.cookieStoreId || 'firefox-default' : 'firefox-default';
+    const cookieStoreId = tabWindow
+      ? tabWindow.cookieStoreId || 'firefox-default'
+      : 'firefox-default';
 
     // Delete from map and minimized manager
     this.quickTabsMap.delete(id);
