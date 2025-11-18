@@ -133,7 +133,7 @@ describe('Container Domain Entity', () => {
       // Edge case: ID starts with firefox-container- but doesn't have a number
       // This shouldn't happen in practice, but we test for robustness
       const container = new Container({ id: 'firefox-container-invalid' });
-      
+
       // isCustom() will return true (starts with firefox-container-)
       // but the regex match will fail
       expect(container.isCustom()).toBe(true);
