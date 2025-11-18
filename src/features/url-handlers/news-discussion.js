@@ -3,8 +3,8 @@
  * URL detection for news discussion platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findHackerNewsUrl(element) {
   const row = element.closest('.athing');

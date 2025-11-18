@@ -3,8 +3,8 @@
  * URL detection for ecommerce platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findAmazonUrl(element) {
   const product = element.closest(

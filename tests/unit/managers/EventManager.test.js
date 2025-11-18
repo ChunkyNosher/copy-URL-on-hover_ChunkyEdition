@@ -2,8 +2,9 @@
  * EventManager Unit Tests
  */
 
-import { EventManager } from '../../../src/features/quick-tabs/managers/EventManager.js';
 import { EventEmitter } from 'eventemitter3';
+
+import { EventManager } from '../../../src/features/quick-tabs/managers/EventManager.js';
 
 describe('EventManager', () => {
   let eventManager;

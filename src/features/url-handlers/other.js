@@ -3,8 +3,8 @@
  * URL detection for other platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findArchiveOrgUrl(element) {
   const item = element.closest('.item-ia, [data-id]');

@@ -14,10 +14,11 @@
  * - QuickTab from @domain layer
  */
 
-import { SyncStorageAdapter } from '@storage/SyncStorageAdapter.js';
-import { SessionStorageAdapter } from '@storage/SessionStorageAdapter.js';
-import { QuickTab } from '@domain/QuickTab.js';
 import { Container } from '@domain/Container.js';
+import { QuickTab } from '@domain/QuickTab.js';
+
+import { SessionStorageAdapter } from '@storage/SessionStorageAdapter.js';
+import { SyncStorageAdapter } from '@storage/SyncStorageAdapter.js';
 
 export class StorageManager {
   constructor(eventBus, cookieStoreId = 'firefox-default') {

@@ -3,8 +3,8 @@
  * URL detection for learning platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findCourseraUrl(element) {
   const course = element.closest('[data-e2e="CourseCard"], .CourseCard');

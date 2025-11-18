@@ -3,9 +3,10 @@
  * Phase 2.1: Tests for extracted state management logic
  */
 
-import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
-import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { EventEmitter } from 'eventemitter3';
+
+import { QuickTab } from '../../../src/domain/QuickTab.js';
+import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 
 describe('StateManager', () => {
   let manager;
@@ -109,7 +110,7 @@ describe('StateManager', () => {
 
   describe('update()', () => {
     test('should update existing Quick Tab', () => {
-      let quickTab = QuickTab.create({
+      const quickTab = QuickTab.create({
         id: 'qt-123',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
@@ -134,7 +135,7 @@ describe('StateManager', () => {
       const listener = jest.fn();
       eventBus.on('state:updated', listener);
 
-      let quickTab = QuickTab.create({
+      const quickTab = QuickTab.create({
         id: 'qt-123',
         url: 'https://example.com',
         position: { left: 100, top: 100 },

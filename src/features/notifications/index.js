@@ -6,8 +6,8 @@
  * and CSS extracted to ui/css/notifications.css
  */
 
-import { showTooltip } from './tooltip.js';
 import { showToast } from './toast.js';
+import { showTooltip } from './tooltip.js';
 
 // CSS content will be injected from string
 const notificationsCss = `

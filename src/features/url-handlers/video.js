@@ -3,8 +3,8 @@
  * URL detection for video platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findYouTubeUrl(element) {
   const videoCard = element.closest(

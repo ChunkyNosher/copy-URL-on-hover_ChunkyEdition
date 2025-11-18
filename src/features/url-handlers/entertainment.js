@@ -3,8 +3,8 @@
  * URL detection for entertainment platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findWikipediaUrl(element) {
   // Only return URL if hovering over an actual link element

@@ -5,8 +5,8 @@
  * v1.5.9.0 - Restored missing UI logic identified in v1589-quick-tabs-root-cause.md
  */
 
-import { createElement } from '../../utils/dom.js';
 import { CONSTANTS } from '../../core/config.js';
+import { createElement } from '../../utils/dom.js';
 
 /**
  * QuickTabWindow class - Manages a single Quick Tab overlay instance
