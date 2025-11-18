@@ -7,12 +7,14 @@
 ## Overview
 
 This implementation addresses **all critical issues** identified in:
+
 1. `solo-mute-nonfunctional-diagnostic.md` (3 root causes + 2 secondary issues)
 2. `container-isolation-issue-diagnosis.md` (4 root causes)
 
 ## Issues from `solo-mute-nonfunctional-diagnostic.md`
 
 ### Root Cause #1: Missing Global Window Reference ✅ FIXED
+
 **Problem:** QuickTabWindow cannot access `window.quickTabsManager`  
 **Fix:** Added global exposure in `src/features/quick-tabs/index.js` after initialization
 
@@ -28,6 +30,7 @@ if (typeof window !== 'undefined') {
 **Impact:** Solo/mute buttons can now access currentTabId via window.quickTabsManager.currentTabId
 
 ### Root Cause #2: Background Script Handler Returns Null Tab ID ✅ FIXED
+
 **Problem:** GET_CURRENT_TAB_ID returns null when sender.tab is undefined  
 **Fix:** Added fallback to tabs.query() in `background.js`
 
@@ -40,48 +43,53 @@ if (sender.tab && sender.tab.id) {
 }
 
 // FALLBACK: Query active tab in current window
-browser.tabs.query({ active: true, currentWindow: true })
-  .then(tabs => {
-    if (tabs && tabs.length > 0 && tabs[0].id) {
-      console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`);
-      sendResponse({ tabId: tabs[0].id });
-    } else {
-      console.warn('[Background] GET_CURRENT_TAB_ID: Could not determine tab ID');
-      sendResponse({ tabId: null });
-    }
-  });
+browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+  if (tabs && tabs.length > 0 && tabs[0].id) {
+    console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`);
+    sendResponse({ tabId: tabs[0].id });
+  } else {
+    console.warn('[Background] GET_CURRENT_TAB_ID: Could not determine tab ID');
+    sendResponse({ tabId: null });
+  }
+});
 ```
 
 **Location:** Line ~1313 in background.js  
 **Impact:** Tab ID detection now succeeds even during initialization race conditions
 
 ### Root Cause #3: Schema Inconsistencies ✅ FIXED
+
 **Problems:**
+
 - Emergency save uses `pinnedToUrl` instead of solo/mute arrays
 - Broadcast CREATE uses `pinnedToUrl` instead of solo/mute arrays
 
 **Fixes:**
+
 1. **Emergency save schema** (line ~509 in index.js):
+
 ```javascript
 const tabsArray = Array.from(this.tabs.values()).map(tabWindow => ({
   // ... other properties ...
   soloedOnTabs: tabWindow.soloedOnTabs || [], // v1.5.9.13 - Solo/mute arrays
-  mutedOnTabs: tabWindow.mutedOnTabs || []    // v1.5.9.13 - Solo/mute arrays
+  mutedOnTabs: tabWindow.mutedOnTabs || [] // v1.5.9.13 - Solo/mute arrays
 }));
 ```
 
 2. **Broadcast CREATE schema** (line ~965 in index.js):
+
 ```javascript
 this.broadcast('CREATE', {
   // ... other properties ...
   soloedOnTabs: options.soloedOnTabs || [], // v1.5.9.13 - Solo/mute arrays
-  mutedOnTabs: options.mutedOnTabs || []    // v1.5.9.13 - Solo/mute arrays
+  mutedOnTabs: options.mutedOnTabs || [] // v1.5.9.13 - Solo/mute arrays
 });
 ```
 
 **Impact:** Solo/mute state now persists correctly and syncs across tabs
 
 ### Secondary Fix: Defensive Logging ✅ ADDED
+
 **Added to toggleSolo() and toggleMute() in window.js:**
 
 ```javascript
@@ -89,7 +97,7 @@ toggleSolo(soloBtn) {
   console.log('[QuickTabWindow] toggleSolo called for:', this.id);
   console.log('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
   console.log('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
-  
+
   if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
     console.warn('[QuickTabWindow] Cannot toggle solo - no current tab ID');
     console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
@@ -105,6 +113,7 @@ toggleSolo(soloBtn) {
 ## Issues from `container-isolation-issue-diagnosis.md`
 
 ### Issue #1: Container Detection Race Conditions ✅ FIXED
+
 **Problem:** Async tabs.query() can return stale container data due to timing issues  
 **Fix:** Added `getCurrentContainer()` method for on-demand fresh detection
 
@@ -121,13 +130,13 @@ async getCurrentContainer() {
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     const container = tabs[0]?.cookieStoreId || 'firefox-default';
-    
+
     // Update cached value if changed
     if (this.cookieStoreId !== container) {
       console.log(`[QuickTabsManager] Container context refreshed: ${this.cookieStoreId} -> ${container}`);
       this.cookieStoreId = container;
     }
-    
+
     return container;
   } catch (err) {
     console.error('[QuickTabsManager] Failed to get current container:', err);
@@ -140,6 +149,7 @@ async getCurrentContainer() {
 **Impact:** Container detection always returns fresh data, preventing stale container issues
 
 ### Issue #2: BroadcastChannel Created Once with Wrong Container ✅ FIXED
+
 **Problem:** BroadcastChannel joined once during init, never updated if container changes  
 **Fix:** Implemented lazy channel creation with `getBroadcastChannel()`
 
@@ -151,28 +161,29 @@ async getCurrentContainer() {
 async getBroadcastChannel() {
   const currentContainer = await this.getCurrentContainer();
   const expectedChannelName = `quick-tabs-sync-${currentContainer}`;
-  
+
   // Check if current channel is correct
   if (this.broadcastChannel && this.currentChannelName === expectedChannelName) {
     return this.broadcastChannel;
   }
-  
+
   // Close old channel if it exists
   if (this.broadcastChannel) {
     console.log(`[QuickTabsManager] Closing old BroadcastChannel: ${this.currentChannelName}`);
     this.broadcastChannel.close();
   }
-  
+
   // Create new channel for current container
   console.log(`[QuickTabsManager] Creating BroadcastChannel: ${expectedChannelName}`);
   this.currentChannelName = expectedChannelName;
   this.setupBroadcastChannel(); // Re-setup with new container
-  
+
   return this.broadcastChannel;
 }
 ```
 
 **Updated broadcast() method:**
+
 ```javascript
 async broadcast(type, data) {
   try {
@@ -191,6 +202,7 @@ async broadcast(type, data) {
 **Impact:** Content scripts automatically switch to correct container's BroadcastChannel
 
 ### Issue #3: No Container Validation Before Rendering ✅ FIXED
+
 **Problem:** syncFromStorage() doesn't validate container matches current tab  
 **Fix:** Enhanced syncFromStorage() with multiple validation layers
 
@@ -203,10 +215,10 @@ async syncFromStorage(state, containerFilter = null) {
 
   // v1.5.9.14 - Re-detect current container for validation
   const currentContainer = await this.getCurrentContainer();
-  
+
   // v1.5.9.12 - ENFORCE container filtering: Use current container if no filter provided
   const effectiveFilter = containerFilter || currentContainer;
-  
+
   // v1.5.9.14 - CRITICAL: Validate that filter matches current container
   if (effectiveFilter !== currentContainer) {
     console.warn(
@@ -223,7 +235,7 @@ async syncFromStorage(state, containerFilter = null) {
       console.log(`[QuickTabsManager] Skipping tab ${tabData.id} - wrong container (${tabData.cookieStoreId} != ${currentContainer})`);
       return;
     }
-    
+
     // Create Quick Tab only if container matches
     this.createQuickTab({ ... });
   });
@@ -234,13 +246,16 @@ async syncFromStorage(state, containerFilter = null) {
 **Impact:** Triple-layer validation prevents Quick Tabs from leaking across containers
 
 ### Issue #4: Enhanced Container Logging ✅ ADDED
+
 **Added comprehensive container logging throughout:**
+
 - Container detection logs current tab ID
 - Container change warnings when context switches
 - Container context refresh logs
 - Container validation warnings when mismatches detected
 
 **Example logs:**
+
 ```
 [QuickTabsManager] Container context detected: firefox-container-1 (tab: 123)
 [QuickTabsManager] Container changed: firefox-default -> firefox-container-2
@@ -253,28 +268,35 @@ async syncFromStorage(state, containerFilter = null) {
 ## Test Results
 
 ### ESLint: ✅ PASS
+
 ```
 ✖ 35 problems (0 errors, 35 warnings)
 ```
+
 All warnings pre-existing, no new issues introduced.
 
 ### Build: ✅ PASS
+
 ```
 created dist/content.js in 434ms
 ```
+
 No build errors, extension builds successfully.
 
 ### Test Suite: ✅ PASS
+
 ```
 Test Suites: 2 passed, 2 total
 Tests:       90 passed, 90 total
 Time:        0.853 s
 ```
+
 All existing tests pass, including Quick Tabs creation flow tests.
 
 ## Architecture Improvements
 
 ### Before (v1.5.9.13)
+
 - ❌ Container detected once during init (stale data risk)
 - ❌ BroadcastChannel created once with initial container
 - ❌ No validation before rendering from storage
@@ -282,6 +304,7 @@ All existing tests pass, including Quick Tabs creation flow tests.
 - ❌ pinnedToUrl used instead of solo/mute arrays (state loss)
 
 ### After (v1.5.9.14)
+
 - ✅ Container detected on-demand for critical operations
 - ✅ BroadcastChannel re-created if container changes
 - ✅ Full validation chain: filter → current container → per-tab container
@@ -291,8 +314,10 @@ All existing tests pass, including Quick Tabs creation flow tests.
 ## Behavior Changes
 
 ### Solo/Mute Buttons
+
 **Before:** Non-functional (buttons don't respond to clicks, no state changes)  
 **After:** Fully functional with:
+
 - Click handlers fire correctly
 - Button icons update (⭕ ↔ 🎯, 🔊 ↔ 🔇)
 - Quick Tabs hide/show based on solo/mute state
@@ -300,8 +325,10 @@ All existing tests pass, including Quick Tabs creation flow tests.
 - Cross-tab sync via BroadcastChannel
 
 ### Container Isolation
+
 **Before:** Quick Tabs leak across Firefox Container boundaries  
 **After:** Strict container isolation with:
+
 - Container-specific BroadcastChannel ensures messages stay within container
 - Storage sync validates container before rendering
 - Per-tab validation prevents accidental cross-container creation
@@ -310,12 +337,14 @@ All existing tests pass, including Quick Tabs creation flow tests.
 ## Defensive Programming
 
 ### Multiple Validation Layers
+
 1. **Storage sync:** Validates filter matches current container (refuses to sync if mismatch)
 2. **Per-tab creation:** Validates each tab's container matches current before rendering
 3. **BroadcastChannel:** Validates container before joining channel (re-creates if changed)
 4. **Logging:** Comprehensive warnings for all container mismatches
 
 ### Error Handling
+
 - All async operations wrapped in try-catch blocks
 - Broadcast errors logged but don't crash the extension
 - Container detection failures fall back to 'firefox-default'
@@ -333,6 +362,7 @@ All existing tests pass, including Quick Tabs creation flow tests.
 ## Manual Testing Checklist
 
 ### Solo Functionality
+
 - [ ] Click solo button (⭕) on Tab 1 → icon changes to 🎯, background changes to gray
 - [ ] Quick Tab disappears from Tab 2 and Tab 3
 - [ ] Quick Tab remains visible on Tab 1
@@ -343,6 +373,7 @@ All existing tests pass, including Quick Tabs creation flow tests.
 - [ ] Background logs show: `[Background] Received solo update: qt-xxx soloedOnTabs: [1234]`
 
 ### Mute Functionality
+
 - [ ] Click mute button (🔊) on Tab 1 → icon changes to 🔇, background changes to red
 - [ ] Quick Tab disappears from Tab 1 only
 - [ ] Quick Tab remains visible on Tab 2 and Tab 3
@@ -352,6 +383,7 @@ All existing tests pass, including Quick Tabs creation flow tests.
 - [ ] Console logs show: `[QuickTabsManager] Toggling mute for qt-xxx: [1234]`
 
 ### Container Isolation
+
 - [ ] Open Tab A in Firefox Container "Personal"
 - [ ] Create Quick Tab in Tab A
 - [ ] Open Tab B in Firefox Container "Work"
@@ -362,6 +394,7 @@ All existing tests pass, including Quick Tabs creation flow tests.
 - [ ] No cross-container leak warnings in console
 
 ### Container Switch Testing
+
 - [ ] Create Quick Tabs in multiple containers
 - [ ] Switch between containers rapidly
 - [ ] Verify no cross-container leaks
@@ -402,6 +435,7 @@ All existing tests pass, including Quick Tabs creation flow tests.
 This implementation provides **robust, defense-in-depth fixes** for both solo/mute functionality and container isolation. The fixes are minimal, surgical, and preserve all existing functionality while adding comprehensive validation and logging.
 
 **Key Achievements:**
+
 - ✅ Solo/mute buttons now fully functional
 - ✅ Container isolation enforced at multiple layers
 - ✅ All tests pass
