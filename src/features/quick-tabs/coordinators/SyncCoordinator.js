@@ -33,7 +33,7 @@ export class SyncCoordinator {
     console.log('[SyncCoordinator] Setting up listeners');
 
     // Listen to storage changes
-    this.eventBus.on('storage:changed', (newValue) => {
+    this.eventBus.on('storage:changed', newValue => {
       this.handleStorageChange(newValue);
     });
 
