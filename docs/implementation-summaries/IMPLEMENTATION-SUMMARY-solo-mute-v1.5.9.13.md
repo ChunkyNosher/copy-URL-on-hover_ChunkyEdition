@@ -18,12 +18,14 @@ Successfully implemented Solo and Mute functionality to replace the "Pin to Page
 **Purpose:** Show Quick Tab ONLY on specific browser tabs
 
 **Behavior:**
+
 - User clicks Solo button on Tab 1
 - Quick Tab becomes visible only on Tab 1
 - Quick Tab automatically hidden on Tab 2, Tab 3, and all other tabs
 - Click Solo again to un-solo (visible everywhere)
 
 **State Representation:**
+
 ```javascript
 {
   soloedOnTabs: [1234, 5678], // Array of Firefox tab IDs
@@ -32,6 +34,7 @@ Successfully implemented Solo and Mute functionality to replace the "Pin to Page
 ```
 
 **Visual Indicator:**
+
 - Active: 🎯 (target emoji) with gray background (#444)
 - Inactive: ⭕ (hollow circle) with transparent background
 
@@ -40,6 +43,7 @@ Successfully implemented Solo and Mute functionality to replace the "Pin to Page
 **Purpose:** Hide Quick Tab ONLY on specific browser tabs
 
 **Behavior:**
+
 - Quick Tab visible everywhere by default
 - User clicks Mute on Tab 1
 - Quick Tab hidden only on Tab 1
@@ -48,6 +52,7 @@ Successfully implemented Solo and Mute functionality to replace the "Pin to Page
 - Click Unmute to restore visibility
 
 **State Representation:**
+
 ```javascript
 {
   soloedOnTabs: [],                // Empty when muted
@@ -56,6 +61,7 @@ Successfully implemented Solo and Mute functionality to replace the "Pin to Page
 ```
 
 **Visual Indicator:**
+
 - Muted: 🔇 (muted speaker) with red background (#c44)
 - Unmuted: 🔊 (loud speaker) with transparent background
 
@@ -66,13 +72,15 @@ Successfully implemented Solo and Mute functionality to replace the "Pin to Page
 ### State Management
 
 **Old Schema (v1.5.9.12):**
+
 ```javascript
 {
-  pinnedToUrl: 'https://example.com' | null
+  pinnedToUrl: 'https://example.com' | null;
 }
 ```
 
 **New Schema (v1.5.9.13):**
+
 ```javascript
 {
   soloedOnTabs: number[],  // Array of Firefox tab IDs
@@ -88,12 +96,12 @@ function shouldQuickTabBeVisible(tabData, currentTabId) {
   if (tabData.soloedOnTabs && tabData.soloedOnTabs.length > 0) {
     return tabData.soloedOnTabs.includes(currentTabId);
   }
-  
+
   // Mute logic: Hide on muted tabs
   if (tabData.mutedOnTabs && tabData.mutedOnTabs.length > 0) {
     return !tabData.mutedOnTabs.includes(currentTabId);
   }
-  
+
   // Default: visible everywhere
   return true;
 }
@@ -203,6 +211,7 @@ Old `pinnedToUrl` property automatically converted on extension startup:
 ### Functional Testing
 
 **Solo Functionality:**
+
 - [ ] Solo button appears in Quick Tab titlebar
 - [ ] Clicking solo on Tab 1 hides Quick Tab from Tab 2 and Tab 3
 - [ ] Quick Tab still visible on Tab 1 after soloing
@@ -211,6 +220,7 @@ Old `pinnedToUrl` property automatically converted on extension startup:
 - [ ] Background color changes (gray when soloed, transparent when not)
 
 **Mute Functionality:**
+
 - [ ] Mute button appears in Quick Tab titlebar
 - [ ] Clicking mute on Tab 1 hides Quick Tab only on Tab 1
 - [ ] Quick Tab still visible on Tab 2 and Tab 3 after muting Tab 1
@@ -220,23 +230,27 @@ Old `pinnedToUrl` property automatically converted on extension startup:
 - [ ] Background color changes (red when muted, transparent when not)
 
 **Cross-Tab Sync:**
+
 - [ ] Soloing on Tab 1 immediately updates visibility on Tab 2 and Tab 3
 - [ ] Muting on Tab 2 immediately hides Quick Tab only on Tab 2
 - [ ] BroadcastChannel messages propagate correctly
 - [ ] No lag or flicker during state changes
 
 **Storage Persistence:**
+
 - [ ] Solo state persists after browser restart
 - [ ] Mute state persists after browser restart
 - [ ] Quick Tabs restore with correct visibility on each tab
 
 **Edge Cases:**
+
 - [ ] Closing Tab 2 removes it from solo/mute arrays
 - [ ] Solo/mute state clears correctly when mutually exclusive
 - [ ] Creating new Quick Tab defaults to "visible everywhere"
 - [ ] Migration from old pin format works without errors
 
 **Container Isolation:**
+
 - [ ] Solo/mute state doesn't leak across Firefox Containers
 - [ ] Container-specific BroadcastChannel prevents cross-container sync
 - [ ] Storage operations filtered by cookieStoreId
@@ -260,6 +274,7 @@ Old `pinnedToUrl` property automatically converted on extension startup:
 **Reason:** Core functionality complete via titlebar buttons. Panel integration adds alternative interface but is not critical for feature operation.
 
 **Future Enhancement:** Panel can display:
+
 - Solo indicator (🎯) with badge showing soloed tab IDs
 - Mute indicator (🔇) with badge showing muted tab IDs
 - Action buttons: Solo on This Tab, Mute on This Tab, Un-solo, Unmute
@@ -272,21 +287,25 @@ Old `pinnedToUrl` property automatically converted on extension startup:
 ## Performance Metrics
 
 **State Hydration:**
+
 - Visibility filtering adds negligible overhead (<1ms)
 - Filter applied during existing storage sync operation
 - No additional API calls required
 
 **Cross-Tab Sync:**
+
 - BroadcastChannel latency: <10ms
 - Storage write latency: ~50ms (debounced)
 - Total propagation time: <100ms
 
 **Memory Usage:**
+
 - Tab ID arrays: ~8 bytes per tab ID
 - Typical Quick Tab: 10-20 tab IDs max
 - Memory overhead: <200 bytes per Quick Tab
 
 **Cleanup:**
+
 - Tab closure triggers cleanup immediately
 - Cleanup operation: O(n) where n = number of Quick Tabs
 - Typical cleanup time: <5ms for 50 Quick Tabs
