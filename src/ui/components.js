@@ -95,7 +95,7 @@ export function createModal(options) {
  * Create a draggable panel
  */
 export function createDraggablePanel(options) {
-  const { title = '', width = '300px', height = 'auto', left = '100px', top = '100px' } = options;
+  const { title: _title = '', width = '300px', height = 'auto', left = '100px', top = '100px' } = options;
 
   const panel = document.createElement('div');
   panel.style.cssText = `

@@ -217,7 +217,7 @@ function reportInitializationError(err) {
 /**
  * Initialize main features
  */
-async function initMainFeatures() {
+function initMainFeatures() {
   debug('Loading main features...');
 
   // Note: Notification styles now injected by notifications module (v1.5.9.0)

@@ -118,7 +118,7 @@ function findSnapchatUrl(element) {
   return null;
 }
 
-function findWhatsappUrl(element) {
+function findWhatsappUrl(_element) {
   // WhatsApp Web doesn't use traditional links - it's a single-page app
   // The current chat/conversation URL is the most relevant URL to copy
   return window.location.href;
