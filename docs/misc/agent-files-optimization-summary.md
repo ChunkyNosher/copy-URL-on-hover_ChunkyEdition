@@ -24,6 +24,7 @@ Added a comprehensive new section to copilot-instructions.md and tailored versio
 **Core Principle:** Fix root causes, not symptoms
 
 **ALWAYS prioritize:**
+
 - ✅ Fix the actual underlying behavior causing the issue
 - ✅ Address root causes at the architectural level
 - ✅ Eliminate technical debt rather than accumulating it
@@ -32,6 +33,7 @@ Added a comprehensive new section to copilot-instructions.md and tailored versio
 - ✅ Use the RIGHT pattern/API even if it takes more code
 
 **NEVER accept:**
+
 - ❌ Mask symptoms without fixing the root problem
 - ❌ Add workarounds instead of fixing the core issue
 - ❌ Use quick hacks just to "make it work"
@@ -40,6 +42,7 @@ Added a comprehensive new section to copilot-instructions.md and tailored versio
 - ❌ Postpone proper fixes with temporary band-aids
 
 **Real examples included:**
+
 - Bad: `setTimeout(() => render(), 100)` to mask timing issues
 - Good: Direct local creation pattern fixing actual race conditions
 
@@ -65,14 +68,14 @@ Each agent file includes role-specific guidance:
 
 ### File Size Reductions
 
-| Agent File | Original | New | Reduction | Percentage |
-|-----------|----------|-----|-----------|------------|
-| bug-architect | 30,463 | 11,284 | -19,179 | 63% ⬇️ |
-| bug-fixer | 30,998 | 12,603 | -18,395 | 59% ⬇️ |
-| feature-builder | 29,194 | 13,408 | -15,786 | 54% ⬇️ |
-| feature-optimizer | 30,941 | 12,030 | -18,911 | 61% ⬇️ |
-| master-orchestrator | 30,567 | 13,664 | -16,903 | 55% ⬇️ |
-| refactor-specialist | 30,846 | 14,226 | -16,620 | 54% ⬇️ |
+| Agent File          | Original | New    | Reduction | Percentage |
+| ------------------- | -------- | ------ | --------- | ---------- |
+| bug-architect       | 30,463   | 11,284 | -19,179   | 63% ⬇️     |
+| bug-fixer           | 30,998   | 12,603 | -18,395   | 59% ⬇️     |
+| feature-builder     | 29,194   | 13,408 | -15,786   | 54% ⬇️     |
+| feature-optimizer   | 30,941   | 12,030 | -18,911   | 61% ⬇️     |
+| master-orchestrator | 30,567   | 13,664 | -16,903   | 55% ⬇️     |
+| refactor-specialist | 30,846   | 14,226 | -16,620   | 54% ⬇️     |
 
 **Total reduction:** 105,794 characters removed
 **Average reduction:** 58% per file
@@ -100,6 +103,7 @@ All agent files now have significant room for expansion:
 ### When to Update copilot-instructions.md
 
 Update copilot-instructions.md when:
+
 - ✅ Change affects 3+ agents
 - ✅ New architecture pattern introduced
 - ✅ Common API usage changes
@@ -110,6 +114,7 @@ Update copilot-instructions.md when:
 ### When to Update Individual Agent Files
 
 Update specific agent files when:
+
 - ✅ Change affects only 1-2 agents
 - ✅ Agent-specific methodology improves
 - ✅ Agent-specific examples need refinement
