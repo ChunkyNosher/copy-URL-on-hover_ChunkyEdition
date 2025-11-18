@@ -7,6 +7,7 @@
 
 import { CONSTANTS } from '../../core/config.js';
 import { createElement } from '../../utils/dom.js';
+import { ResizeController } from './window/ResizeController.js';
 
 /**
  * QuickTabWindow class - Manages a single Quick Tab overlay instance
@@ -127,7 +128,14 @@ export class QuickTabWindow {
 
     // Setup interactions
     this.setupDragHandlers(titlebar);
-    this.setupResizeHandlers();
+    
+    // v1.6.0 Phase 2.4 - Use ResizeController facade pattern
+    this.resizeController = new ResizeController(this, {
+      minWidth: 400,
+      minHeight: 300
+    });
+    this.resizeController.attachHandles();
+    
     this.setupFocusHandlers();
 
     console.log('[QuickTabWindow] Rendered:', this.id);
@@ -462,202 +470,9 @@ export class QuickTabWindow {
    * Setup resize handlers on all 8 edges/corners
    * Uses Pointer Events API for reliable capture
    */
-  setupResizeHandlers() {
-    const minWidth = 400;
-    const minHeight = 300;
-    const handleSize = 10;
-
-    // Define all 8 resize handles
-    const handles = {
-      se: {
-        cursor: 'se-resize',
-        bottom: 0,
-        right: 0,
-        width: handleSize,
-        height: handleSize
-      },
-      sw: {
-        cursor: 'sw-resize',
-        bottom: 0,
-        left: 0,
-        width: handleSize,
-        height: handleSize
-      },
-      ne: {
-        cursor: 'ne-resize',
-        top: 0,
-        right: 0,
-        width: handleSize,
-        height: handleSize
-      },
-      nw: {
-        cursor: 'nw-resize',
-        top: 0,
-        left: 0,
-        width: handleSize,
-        height: handleSize
-      },
-      e: {
-        cursor: 'e-resize',
-        top: handleSize,
-        right: 0,
-        bottom: handleSize,
-        width: handleSize
-      },
-      w: {
-        cursor: 'w-resize',
-        top: handleSize,
-        left: 0,
-        bottom: handleSize,
-        width: handleSize
-      },
-      s: {
-        cursor: 's-resize',
-        bottom: 0,
-        left: handleSize,
-        right: handleSize,
-        height: handleSize
-      },
-      n: {
-        cursor: 'n-resize',
-        top: 0,
-        left: handleSize,
-        right: handleSize,
-        height: handleSize
-      }
-    };
-
-    Object.entries(handles).forEach(([direction, config]) => {
-      const handle = createElement('div', {
-        className: `quick-tab-resize-handle-${direction}`,
-        style: {
-          position: 'absolute',
-          ...(config.top !== undefined ? { top: `${config.top}px` } : {}),
-          ...(config.bottom !== undefined ? { bottom: `${config.bottom}px` } : {}),
-          ...(config.left !== undefined ? { left: `${config.left}px` } : {}),
-          ...(config.right !== undefined ? { right: `${config.right}px` } : {}),
-          ...(config.width ? { width: `${config.width}px` } : {}),
-          ...(config.height ? { height: `${config.height}px` } : {}),
-          cursor: config.cursor,
-          zIndex: '10',
-          backgroundColor: 'transparent' // Invisible but interactive
-        }
-      });
-
-      let isResizing = false;
-      let startX, startY, startWidth, startHeight, startLeft, startTop;
-
-      handle.addEventListener('pointerdown', e => {
-        if (e.button !== 0) return;
-
-        e.stopPropagation();
-        e.preventDefault();
-
-        isResizing = true;
-        handle.setPointerCapture(e.pointerId);
-
-        startX = e.clientX;
-        startY = e.clientY;
-        startWidth = this.width;
-        startHeight = this.height;
-        startLeft = this.left;
-        startTop = this.top;
-      });
-
-      handle.addEventListener('pointermove', e => {
-        if (!isResizing) return;
-
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-
-        let newWidth = startWidth;
-        let newHeight = startHeight;
-        let newLeft = startLeft;
-        let newTop = startTop;
-
-        // Calculate new dimensions based on resize direction
-        if (direction.includes('e')) {
-          newWidth = Math.max(minWidth, startWidth + dx);
-        }
-        if (direction.includes('w')) {
-          const maxDx = startWidth - minWidth;
-          const constrainedDx = Math.min(dx, maxDx);
-          newWidth = startWidth - constrainedDx;
-          newLeft = startLeft + constrainedDx;
-        }
-        if (direction.includes('s')) {
-          newHeight = Math.max(minHeight, startHeight + dy);
-        }
-        if (direction.includes('n')) {
-          const maxDy = startHeight - minHeight;
-          const constrainedDy = Math.min(dy, maxDy);
-          newHeight = startHeight - constrainedDy;
-          newTop = startTop + constrainedDy;
-        }
-
-        // Apply immediately (no RAF delay)
-        this.width = newWidth;
-        this.height = newHeight;
-        this.left = newLeft;
-        this.top = newTop;
-
-        this.container.style.width = `${newWidth}px`;
-        this.container.style.height = `${newHeight}px`;
-        this.container.style.left = `${newLeft}px`;
-        this.container.style.top = `${newTop}px`;
-
-        // Notify parent (throttled)
-        if (this.onSizeChange) {
-          this.onSizeChange(this.id, newWidth, newHeight);
-        }
-        if (newLeft !== startLeft || newTop !== startTop) {
-          if (this.onPositionChange) {
-            this.onPositionChange(this.id, newLeft, newTop);
-          }
-        }
-
-        e.preventDefault();
-      });
-
-      handle.addEventListener('pointerup', e => {
-        if (!isResizing) return;
-
-        isResizing = false;
-        handle.releasePointerCapture(e.pointerId);
-
-        // CRITICAL FIX: Prevent click propagation after resize
-        // This fixes the bug where resizing causes the Quick Tab to close
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Final save
-        if (this.onSizeChangeEnd) {
-          this.onSizeChangeEnd(this.id, this.width, this.height);
-        }
-        if (this.left !== startLeft || this.top !== startTop) {
-          if (this.onPositionChangeEnd) {
-            this.onPositionChangeEnd(this.id, this.left, this.top);
-          }
-        }
-      });
-
-      handle.addEventListener('pointercancel', e => {
-        if (isResizing) {
-          isResizing = false;
-
-          // Emergency save
-          if (this.onSizeChangeEnd) {
-            this.onSizeChangeEnd(this.id, this.width, this.height);
-          }
-          if (this.onPositionChangeEnd) {
-            this.onPositionChangeEnd(this.id, this.left, this.top);
-          }
-        }
-      });
-
-      this.container.appendChild(handle);
-    });
-  }
+  // v1.6.0 Phase 2.4 - setupResizeHandlers removed
+  // Replaced with ResizeController facade pattern (see render() method)
+  // This eliminates 195 lines of complex conditional logic
 
   /**
    * Setup focus handlers
@@ -952,6 +767,12 @@ export class QuickTabWindow {
    * Destroy the Quick Tab window
    */
   destroy() {
+    // v1.6.0 Phase 2.4 - Cleanup resize controller
+    if (this.resizeController) {
+      this.resizeController.detachAll();
+      this.resizeController = null;
+    }
+    
     if (this.container) {
       this.container.remove();
       this.container = null;
