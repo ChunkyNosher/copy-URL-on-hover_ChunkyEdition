@@ -1,15 +1,88 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.9.12** - A feature-rich Firefox/Zen Browser extension with
+**Version 1.5.9.13** - A feature-rich Firefox/Zen Browser extension with
 **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced
-Quick Tab management with **complete Firefox Container isolation** and Persistent Floating
+Quick Tab management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and Persistent Floating
 Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
-Now with **full Firefox Container Tabs integration** for complete isolation and a persistent Quick Tabs Manager
+Now with **Solo and Mute visibility controls**, **full Firefox Container Tabs integration** for complete isolation, and a persistent Quick Tabs Manager
 panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.9.13
+
+**🎯 Solo and Mute Quick Tabs - Tab-Specific Visibility Control**
+
+This release replaces the "Pin to Page" functionality with powerful **Solo and Mute** features that provide precise tab-specific visibility control for Quick Tabs.
+
+**The Features:**
+
+- ✅ **Solo Mode (🎯)** - Show Quick Tab ONLY on specific browser tabs
+  - Click Solo button on Tab 1 → Quick Tab visible only on Tab 1
+  - Quick Tab automatically hidden on Tab 2, Tab 3, and all other tabs
+  - Click Solo again to un-solo (visible everywhere again)
+  - Perfect for tab-specific workflows and focused browsing
+- ✅ **Mute Mode (🔇)** - Hide Quick Tab ONLY on specific browser tabs
+  - Quick Tab visible everywhere by default
+  - Click Mute on Tab 1 → Quick Tab hidden only on Tab 1
+  - Click Mute on Tab 2 → Quick Tab also hidden on Tab 2
+  - Remains visible on all non-muted tabs
+  - Perfect for decluttering specific tabs while keeping elsewhere
+- ✅ **Mutual Exclusivity** - Solo and Mute cannot be active simultaneously
+  - Setting Solo automatically clears Mute state
+  - Setting Mute automatically clears Solo state
+  - Prevents logical conflicts and simplifies state management
+- ✅ **Real-time Cross-Tab Sync** - Visibility changes propagate instantly
+  - Solo on Tab 1 → Quick Tab disappears immediately on Tab 2
+  - Mute on Tab 2 → Quick Tab disappears immediately on Tab 2 only
+  - BroadcastChannel ensures <10ms latency
+  - Storage persistence for browser restarts
+- ✅ **Automatic Cleanup** - Dead tab IDs removed when tabs close
+  - Close Tab 2 → Tab 2 automatically removed from solo/mute arrays
+  - Prevents orphaned tab IDs from accumulating
+  - Maintains clean state automatically
+- ✅ **Container Isolation** - Solo/Mute state respects Firefox Container boundaries
+  - Quick Tabs soloed in Container 1 remain isolated from Container 2
+  - Container-specific BroadcastChannel prevents cross-container leaks
+  - Defense-in-depth filtering ensures isolation
+
+**How It Works:**
+
+1. **Tab ID Detection** - Content scripts request current tab ID from background script (`sender.tab.id`)
+2. **Visibility Filtering** - QuickTabsManager filters Quick Tabs during state hydration based on solo/mute arrays
+3. **State Storage** - `soloedOnTabs` and `mutedOnTabs` arrays stored in browser.storage.sync
+4. **Cross-Tab Sync** - BroadcastChannel broadcasts SOLO/MUTE messages for real-time updates
+5. **Automatic Migration** - Old `pinnedToUrl` format automatically converted to new solo/mute arrays
+
+**UI Controls:**
+
+- **Solo Button (🎯/⭕)** - In Quick Tab titlebar, between "Open in New Tab" and Mute buttons
+  - Active state: 🎯 (target emoji) with gray background
+  - Inactive state: ⭕ (hollow circle) with transparent background
+- **Mute Button (🔇/🔊)** - In Quick Tab titlebar, between Solo and Minimize buttons
+  - Muted state: 🔇 (muted speaker) with red background (#c44)
+  - Unmuted state: 🔊 (loud speaker) with transparent background
+
+**Use Cases:**
+
+- **Focused Research** - Solo Quick Tab on research tab, hide distractions elsewhere
+- **Privacy** - Mute sensitive Quick Tabs on specific tabs to prevent accidental exposure
+- **Multi-tasking** - Different Quick Tabs visible on different browser tabs for context-specific workflows
+- **Tab Decluttering** - Mute Quick Tabs you don't need on busy tabs while keeping them visible elsewhere
+
+**Migration:**
+
+- Existing Quick Tabs with `pinnedToUrl` automatically migrated to `soloedOnTabs: []` and `mutedOnTabs: []`
+- Old pinned Quick Tabs become "visible everywhere" (default state)
+- No data loss - migration happens automatically on extension startup
+
+**References:**
+
+- [Solo/Mute Implementation Guide](docs/manual/1.5.9%20docs/solo-mute-quicktabs-implementation-guide.md)
+
+---
 
 ## 🎉 What's New in v1.5.9.12
 
@@ -1457,6 +1530,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.9.12  
-**Last Updated**: 2025-01-17  
+**Current Version**: 1.5.9.13  
+**Last Updated**: 2025-01-18  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
