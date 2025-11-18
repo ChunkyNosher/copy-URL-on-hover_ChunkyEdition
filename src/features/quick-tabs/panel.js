@@ -402,7 +402,7 @@ export class PanelManager {
    */
   async init() {
     debug('[PanelManager] Initializing...');
-    
+
     // v1.5.9.12 - Container integration: Detect container context
     await this.detectContainerContext();
 
@@ -423,19 +423,19 @@ export class PanelManager {
 
     debug('[PanelManager] Initialized');
   }
-  
+
   /**
    * v1.5.9.12 - Detect and store the current tab's container context
    */
   async detectContainerContext() {
     // Default to firefox-default if detection fails
     this.currentContainerId = 'firefox-default';
-    
+
     if (typeof browser === 'undefined' || !browser.tabs) {
       debug('[PanelManager] Browser tabs API not available, using default container');
       return;
     }
-    
+
     try {
       // Content scripts must use tabs.query() to get current tab
       const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -1154,9 +1154,12 @@ export class PanelManager {
       icon: '📁',
       color: 'grey'
     };
-    
+
     try {
-      if (this.currentContainerId !== 'firefox-default' && typeof browser.contextualIdentities !== 'undefined') {
+      if (
+        this.currentContainerId !== 'firefox-default' &&
+        typeof browser.contextualIdentities !== 'undefined'
+      ) {
         const containers = await browser.contextualIdentities.query({});
         const currentContainer = containers.find(c => c.cookieStoreId === this.currentContainerId);
         if (currentContainer) {
@@ -1173,8 +1176,13 @@ export class PanelManager {
 
     // Clear and rebuild containers list - only show current container
     containersList.innerHTML = '';
-    
-    this.renderContainerSection(containersList, this.currentContainerId, containerInfo, currentContainerState);
+
+    this.renderContainerSection(
+      containersList,
+      this.currentContainerId,
+      containerInfo,
+      currentContainerState
+    );
   }
 
   /**

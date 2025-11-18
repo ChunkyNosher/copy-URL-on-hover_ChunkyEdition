@@ -28,7 +28,7 @@ class QuickTabsManager {
     this.Events = null;
     this.broadcastChannel = null; // v1.5.8.13 - Real-time cross-tab sync
     this.initialized = false;
-    
+
     // v1.5.9.12 - Container integration: Store container context
     this.cookieStoreId = null; // Detected during init(), e.g., 'firefox-default', 'firefox-container-1'
 
@@ -89,7 +89,7 @@ class QuickTabsManager {
     this.initialized = true;
     console.log('[QuickTabsManager] Initialized successfully with eager loading');
   }
-  
+
   /**
    * v1.5.9.12 - Detect and store the current tab's container context
    * Uses tabs.query() instead of tabs.getCurrent() since content scripts can't use getCurrent()
@@ -97,12 +97,12 @@ class QuickTabsManager {
   async detectContainerContext() {
     // Default to firefox-default if detection fails
     this.cookieStoreId = 'firefox-default';
-    
+
     if (typeof browser === 'undefined' || !browser.tabs) {
       console.warn('[QuickTabsManager] Browser tabs API not available, using default container');
       return;
     }
-    
+
     try {
       // Content scripts must use tabs.query() to get current tab
       const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -131,7 +131,7 @@ class QuickTabsManager {
       // v1.5.9.12 - Container-specific channel for isolation
       const channelName = `quick-tabs-sync-${this.cookieStoreId}`;
       this.broadcastChannel = new BroadcastChannel(channelName);
-      
+
       console.log(`[QuickTabsManager] BroadcastChannel created: ${channelName}`);
 
       this.broadcastChannel.onmessage = event => {
@@ -197,7 +197,9 @@ class QuickTabsManager {
         }
       };
 
-      console.log(`[QuickTabsManager] BroadcastChannel initialized for container: ${this.cookieStoreId}`);
+      console.log(
+        `[QuickTabsManager] BroadcastChannel initialized for container: ${this.cookieStoreId}`
+      );
     } catch (err) {
       console.error('[QuickTabsManager] Failed to set up BroadcastChannel:', err);
     }
@@ -273,7 +275,9 @@ class QuickTabsManager {
         if (newValue && newValue.containers && this.cookieStoreId) {
           const containerState = newValue.containers[this.cookieStoreId];
           if (containerState) {
-            console.log(`[QuickTabsManager] Scheduling session sync for container ${this.cookieStoreId}`);
+            console.log(
+              `[QuickTabsManager] Scheduling session sync for container ${this.cookieStoreId}`
+            );
             // Create container-filtered state snapshot
             const filteredState = {
               containers: {
@@ -284,7 +288,9 @@ class QuickTabsManager {
           }
         } else {
           // Legacy format or no container info - process as-is
-          console.log('[QuickTabsManager] Scheduling external session state change sync (legacy format)');
+          console.log(
+            '[QuickTabsManager] Scheduling external session state change sync (legacy format)'
+          );
           this.scheduleStorageSync(newValue);
         }
       }
@@ -530,7 +536,7 @@ class QuickTabsManager {
 
     // v1.5.9.12 - ENFORCE container filtering: Use current container if no filter provided
     const effectiveFilter = containerFilter || this.cookieStoreId;
-    
+
     console.log(`[QuickTabsManager] Syncing from storage state (container: ${effectiveFilter})...`);
 
     // Handle container-aware format
@@ -659,7 +665,7 @@ class QuickTabsManager {
 
     // Generate ID if not provided
     const id = options.id || this.generateId();
-    
+
     // v1.5.9.12 - Container integration: Auto-assign current container if not provided
     const cookieStoreId = options.cookieStoreId || this.cookieStoreId || 'firefox-default';
 
@@ -809,7 +815,7 @@ class QuickTabsManager {
       // v1.5.9.8 - FIX: Update storage immediately to reflect minimized state
       const saveId = this.generateSaveId();
       this.trackPendingSave(saveId);
-      
+
       // v1.5.9.12 - Get cookieStoreId from tab
       const cookieStoreId = tabWindow.cookieStoreId || this.cookieStoreId || 'firefox-default';
 
@@ -984,7 +990,7 @@ class QuickTabsManager {
 
     // v1.5.8.14 - Generate save ID for transaction tracking
     const saveId = this.generateSaveId();
-    
+
     // v1.5.9.12 - Get cookieStoreId from tab
     const tabWindow = this.tabs.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || this.cookieStoreId || 'firefox-default';
@@ -1042,7 +1048,7 @@ class QuickTabsManager {
 
     // v1.5.8.14 - Generate save ID for transaction tracking
     const saveId = this.generateSaveId();
-    
+
     // v1.5.9.12 - Get cookieStoreId from tab
     const tabWindow = this.tabs.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || this.cookieStoreId || 'firefox-default';
@@ -1079,7 +1085,7 @@ class QuickTabsManager {
     this.broadcast('PIN', { id, pinnedToUrl });
 
     const saveId = this.generateSaveId();
-    
+
     // v1.5.9.12 - Get cookieStoreId from tab
     const tabWindow = this.tabs.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || this.cookieStoreId || 'firefox-default';
@@ -1120,7 +1126,7 @@ class QuickTabsManager {
     this.broadcast('UNPIN', { id });
 
     const saveId = this.generateSaveId();
-    
+
     // v1.5.9.12 - Get cookieStoreId from tab
     const tabWindow = this.tabs.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || this.cookieStoreId || 'firefox-default';
