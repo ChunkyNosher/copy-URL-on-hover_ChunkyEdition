@@ -30,7 +30,7 @@ export class UICoordinator {
   /**
    * Initialize coordinator - setup listeners and render initial state
    */
-  async init() {
+  init() {
     console.log('[UICoordinator] Initializing...');
 
     // Setup state listeners
