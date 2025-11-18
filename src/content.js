@@ -21,6 +21,8 @@
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
+// This MUST be imported before any other modules to capture their logs
+// eslint-disable-next-line import/order
 import { getConsoleLogs, getBufferStats, clearConsoleLogs } from './utils/console-interceptor.js';
 
 // CRITICAL: Early detection marker - must execute first
@@ -56,30 +58,15 @@ console.log('[Copy-URL-on-Hover] Global error handlers installed');
 
 // Import core modules
 console.log('[Copy-URL-on-Hover] Starting module imports...');
-import { ConfigManager, DEFAULT_CONFIG, CONSTANTS } from './core/config.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: config.js');
-import { StateManager } from './core/state.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: state.js');
-import { EventBus, Events } from './core/events.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: events.js');
-import { debug, enableDebug, getLogBuffer, clearLogBuffer } from './utils/debug.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: debug.js');
 import { copyToClipboard, sendMessageToBackground } from './core/browser-api.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: browser-api.js from core');
-
-// Import URL handlers
-import { URLHandlerRegistry } from './features/url-handlers/index.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: url-handlers/index.js');
-import { getLinkText } from './features/url-handlers/generic.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: url-handlers/generic.js');
-
-// Import Quick Tabs feature (v1.5.9.0 - CRITICAL FIX)
-import { initQuickTabs } from './features/quick-tabs/index.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: quick-tabs/index.js');
-
-// Import Notifications feature (v1.5.9.0)
+import { ConfigManager, CONSTANTS, DEFAULT_CONFIG } from './core/config.js';
+import { EventBus, Events } from './core/events.js';
+import { StateManager } from './core/state.js';
 import { initNotifications } from './features/notifications/index.js';
-console.log('[Copy-URL-on-Hover] ✓ Imported: notifications/index.js');
+import { initQuickTabs } from './features/quick-tabs/index.js';
+import { getLinkText } from './features/url-handlers/generic.js';
+import { URLHandlerRegistry } from './features/url-handlers/index.js';
+import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
