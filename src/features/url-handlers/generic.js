@@ -3,7 +3,21 @@
  * Fallback URL detection for any website
  */
 
-import { debug } from '../../utils/debug.js';
+/**
+ * Check if element is a container that should be searched for links
+ * @param {Element} element - DOM element
+ * @returns {boolean} True if element is a link container
+ */
+function isLinkContainer(element) {
+  return (
+    element.tagName === 'ARTICLE' ||
+    element.getAttribute('role') === 'article' ||
+    element.getAttribute('role') === 'link' ||
+    element.classList.contains('post') ||
+    element.hasAttribute('data-testid') ||
+    element.hasAttribute('data-id')
+  );
+}
 
 /**
  * Find generic URL from any element
@@ -18,16 +32,8 @@ export function findGenericUrl(element) {
   const link = element.closest('a[href]');
   if (link?.href) return link.href;
 
-  // Only search within element if it's a clear container (article, div with specific roles, etc.)
-  // Don't search for unrelated links
-  if (
-    element.tagName === 'ARTICLE' ||
-    element.getAttribute('role') === 'article' ||
-    element.getAttribute('role') === 'link' ||
-    element.classList.contains('post') ||
-    element.hasAttribute('data-testid') ||
-    element.hasAttribute('data-id')
-  ) {
+  // Only search within element if it's a clear container
+  if (isLinkContainer(element)) {
     const innerLink = element.querySelector('a[href]');
     if (innerLink?.href) return innerLink.href;
   }

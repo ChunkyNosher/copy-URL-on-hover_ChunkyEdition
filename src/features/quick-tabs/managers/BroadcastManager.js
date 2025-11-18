@@ -105,16 +105,26 @@ export class BroadcastManager {
     this.broadcastDebounce.set(debounceKey, now);
 
     // Clean up old entries to prevent memory leak
-    if (this.broadcastDebounce.size > 100) {
-      const oldestAllowed = now - this.BROADCAST_DEBOUNCE_MS * 2;
-      for (const [key, timestamp] of this.broadcastDebounce.entries()) {
-        if (timestamp < oldestAllowed) {
-          this.broadcastDebounce.delete(key);
-        }
-      }
-    }
+    this._cleanupOldDebounceEntries(now);
 
     return false;
+  }
+
+  /**
+   * Clean up old debounce entries to prevent memory leak
+   * @private
+   */
+  _cleanupOldDebounceEntries(now) {
+    if (this.broadcastDebounce.size <= 100) {
+      return;
+    }
+
+    const oldestAllowed = now - this.BROADCAST_DEBOUNCE_MS * 2;
+    for (const [key, timestamp] of this.broadcastDebounce.entries()) {
+      if (timestamp < oldestAllowed) {
+        this.broadcastDebounce.delete(key);
+      }
+    }
   }
 
   /**
@@ -122,7 +132,7 @@ export class BroadcastManager {
    * @param {string} type - Message type (CREATE, UPDATE_POSITION, etc.)
    * @param {Object} data - Message payload
    */
-  async broadcast(type, data) {
+  broadcast(type, data) {
     if (!this.broadcastChannel) {
       console.warn('[BroadcastManager] No broadcast channel available');
       return;

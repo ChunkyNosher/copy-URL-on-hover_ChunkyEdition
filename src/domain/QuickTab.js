@@ -6,6 +6,47 @@
  * Extracted from QuickTabsManager to separate domain logic from infrastructure.
  */
 
+/**
+ * Validate string parameter
+ * @private
+ */
+function _validateString(value, name) {
+  if (!value || typeof value !== 'string') {
+    throw new Error(`QuickTab requires a valid string ${name}`);
+  }
+}
+
+/**
+ * Validate position object
+ * @private
+ */
+function _validatePosition(position) {
+  if (!position || typeof position.left !== 'number' || typeof position.top !== 'number') {
+    throw new Error('QuickTab requires valid position {left, top}');
+  }
+}
+
+/**
+ * Validate size object
+ * @private
+ */
+function _validateSize(size) {
+  if (!size || typeof size.width !== 'number' || typeof size.height !== 'number') {
+    throw new Error('QuickTab requires valid size {width, height}');
+  }
+}
+
+/**
+ * Validate QuickTab constructor parameters
+ * @private
+ */
+function _validateParams({ id, url, position, size }) {
+  _validateString(id, 'id');
+  _validateString(url, 'url');
+  _validatePosition(position);
+  _validateSize(size);
+}
+
 export class QuickTab {
   /**
    * Create a new QuickTab instance
@@ -32,18 +73,7 @@ export class QuickTab {
     zIndex = 1000
   }) {
     // Validation
-    if (!id || typeof id !== 'string') {
-      throw new Error('QuickTab requires a valid string id');
-    }
-    if (!url || typeof url !== 'string') {
-      throw new Error('QuickTab requires a valid string url');
-    }
-    if (!position || typeof position.left !== 'number' || typeof position.top !== 'number') {
-      throw new Error('QuickTab requires valid position {left, top}');
-    }
-    if (!size || typeof size.width !== 'number' || typeof size.height !== 'number') {
-      throw new Error('QuickTab requires valid size {width, height}');
-    }
+    _validateParams({ id, url, position, size });
 
     // Immutable core properties
     this.id = id;
