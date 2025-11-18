@@ -47,10 +47,7 @@ module.exports = {
     // NEW: Complexity rules (align with CodeScene targets)
     complexity: ['error', 9], // cc ≤ 9
     'max-depth': ['error', 2], // nesting ≤ 2 levels
-    'max-lines-per-function': [
-      'warn',
-      { max: 70, skipBlankLines: true, skipComments: true }
-    ],
+    'max-lines-per-function': ['warn', { max: 70, skipBlankLines: true, skipComments: true }],
     'max-nested-callbacks': ['error', 3],
 
     // NEW: Async/await rules
@@ -122,12 +119,7 @@ module.exports = {
   overrides: [
     {
       // Relax rules for build config files
-      files: [
-        'rollup.config.js',
-        'jest.config.cjs',
-        '.eslintrc.cjs',
-        '.prettierrc.cjs'
-      ],
+      files: ['rollup.config.js', 'jest.config.cjs', '.eslintrc.cjs', '.prettierrc.cjs'],
       env: {
         node: true
       },

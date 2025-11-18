@@ -19,19 +19,13 @@ const rules = [
         const content = fs.readFileSync(file, 'utf-8');
 
         // Check for imports from features or storage
-        if (
-          content.includes('@features/') ||
-          content.includes('../features/')
-        ) {
+        if (content.includes('@features/') || content.includes('../features/')) {
           return {
             pass: false,
             message: `${file} imports from features layer`
           };
         }
-        if (
-          content.includes('@storage/') ||
-          content.includes('../storage/')
-        ) {
+        if (content.includes('@storage/') || content.includes('../storage/')) {
           return {
             pass: false,
             message: `${file} imports from storage layer`
@@ -54,10 +48,7 @@ const rules = [
       for (const file of storageFiles) {
         const content = fs.readFileSync(file, 'utf-8');
 
-        if (
-          content.includes('@features/') ||
-          content.includes('../features/')
-        ) {
+        if (content.includes('@features/') || content.includes('../features/')) {
           return {
             pass: false,
             message: `${file} imports from features layer`
@@ -72,13 +63,13 @@ const rules = [
     name: 'Facades exist in correct location (when refactored)',
     check: () => {
       const quickTabsDir = path.join(srcDir, 'features/quick-tabs');
-      
+
       // If the old index.js still exists, this is OK - we're in migration
       const oldIndexPath = path.join(quickTabsDir, 'index.js');
       if (fs.existsSync(oldIndexPath)) {
         return { pass: true, message: 'Old structure still in place (migration pending)' };
       }
-      
+
       // If we're past migration, QuickTabsManager.js must exist
       const facadePath = path.join(quickTabsDir, 'QuickTabsManager.js');
       if (!fs.existsSync(facadePath)) {
@@ -96,11 +87,7 @@ const rules = [
         return { pass: true, message: 'Managers not yet created' };
       }
 
-      const requiredManagers = [
-        'StorageManager.js',
-        'BroadcastManager.js',
-        'StateManager.js'
-      ];
+      const requiredManagers = ['StorageManager.js', 'BroadcastManager.js', 'StateManager.js'];
       for (const manager of requiredManagers) {
         if (!fs.existsSync(path.join(managersDir, manager))) {
           return {
@@ -158,9 +145,7 @@ for (const rule of rules) {
 console.log(`\n📊 Results: ${passed} passed, ${failed} failed\n`);
 
 if (failed > 0) {
-  console.error(
-    '⚠️  Architecture validation failed. Please fix the issues above.'
-  );
+  console.error('⚠️  Architecture validation failed. Please fix the issues above.');
   process.exit(1);
 }
 

@@ -44,7 +44,7 @@ class MockStorage {
     }
 
     // Notify listeners
-    this.listeners.forEach((listener) => {
+    this.listeners.forEach(listener => {
       listener(changes, 'sync');
     });
 
@@ -69,7 +69,7 @@ class MockStorage {
 
     // Notify listeners
     if (Object.keys(changes).length > 0) {
-      this.listeners.forEach((listener) => {
+      this.listeners.forEach(listener => {
         listener(changes, 'sync');
       });
     }
@@ -91,7 +91,7 @@ class MockStorage {
 
     // Notify listeners
     if (Object.keys(changes).length > 0) {
-      this.listeners.forEach((listener) => {
+      this.listeners.forEach(listener => {
         listener(changes, 'sync');
       });
     }

@@ -32,9 +32,7 @@ for (const [file, maxSize] of Object.entries(MAX_BUNDLE_SIZES)) {
 }
 
 if (failed) {
-  console.error(
-    '\n⚠️  Bundle size check failed. Consider code splitting or tree-shaking.'
-  );
+  console.error('\n⚠️  Bundle size check failed. Consider code splitting or tree-shaking.');
   process.exit(1);
 }
 

@@ -35,7 +35,7 @@ class MockBroadcastChannel {
             source: this
           };
 
-          channel.listeners.forEach((listener) => {
+          channel.listeners.forEach(listener => {
             listener(event);
           });
 

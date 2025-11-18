@@ -7,7 +7,7 @@
  * Useful for testing async operations
  */
 export async function flushPromises() {
-  return new Promise((resolve) => setImmediate(resolve));
+  return new Promise(resolve => setImmediate(resolve));
 }
 
 /**
@@ -23,7 +23,7 @@ export async function waitFor(condition, timeout = 5000, interval = 50) {
     if (Date.now() - startTime > timeout) {
       throw new Error('Timeout waiting for condition');
     }
-    await new Promise((resolve) => setTimeout(resolve, interval));
+    await new Promise(resolve => setTimeout(resolve, interval));
   }
 }
 
@@ -32,7 +32,7 @@ export async function waitFor(condition, timeout = 5000, interval = 50) {
  * @param {number} ms - Milliseconds to wait
  */
 export function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
