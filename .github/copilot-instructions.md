@@ -3,13 +3,29 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.5.9.12  
+**Version:** 1.5.9.13  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Hybrid Modular/EventBus Architecture (Architecture #10)  
-**Purpose:** URL management with **complete Firefox Container isolation** and
+**Purpose:** URL management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and
 persistent floating panel manager
 
 ---
+
+### v1.5.9.13 Highlights
+
+- **Solo and Mute Quick Tabs - Tab-Specific Visibility Control:** Replaced "Pin to Page" with powerful Solo/Mute features for precise tab-specific Quick Tab visibility.
+- **Solo Mode (🎯):** Show Quick Tab ONLY on specific browser tabs - click Solo on Tab 1, Quick Tab hidden on all other tabs.
+- **Mute Mode (🔇):** Hide Quick Tab ONLY on specific browser tabs - click Mute on Tab 1, Quick Tab visible everywhere else.
+- **Mutual Exclusivity:** Solo and Mute cannot be active simultaneously - setting one clears the other automatically.
+- **Real-time Cross-Tab Sync:** Visibility changes propagate instantly via BroadcastChannel (<10ms latency).
+- **Automatic Cleanup:** Dead tab IDs removed when tabs close to prevent orphaned references.
+- **Container Isolation:** Solo/Mute state respects Firefox Container boundaries - container-specific BroadcastChannel prevents leaks.
+- **State Storage:** `soloedOnTabs` and `mutedOnTabs` arrays stored per-container in browser.storage.sync.
+- **Tab ID Detection:** Content scripts request current tab ID from background (`sender.tab.id`).
+- **Visibility Filtering:** QuickTabsManager filters Quick Tabs during state hydration based on solo/mute arrays.
+- **Automatic Migration:** Old `pinnedToUrl` format automatically converted to new solo/mute arrays.
+- **UI Controls:** Solo button (🎯/⭕) and Mute button (🔇/🔊) in Quick Tab titlebar.
+- See `docs/manual/1.5.9 docs/solo-mute-quicktabs-implementation-guide.md` for full implementation details.
 
 ### v1.5.9.12 Highlights
 

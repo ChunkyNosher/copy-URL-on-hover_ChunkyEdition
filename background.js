@@ -210,6 +210,61 @@ async function initializeGlobalState() {
 // v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
 initializeGlobalState();
 
+/**
+ * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
+ */
+async function migrateQuickTabState() {
+  if (!isInitialized) {
+    console.warn('[Background Migration] State not initialized, skipping migration');
+    return;
+  }
+
+  let migrated = false;
+
+  for (const containerId in globalQuickTabState.containers) {
+    const containerTabs = globalQuickTabState.containers[containerId].tabs || [];
+
+    for (const quickTab of containerTabs) {
+      // Check for old pinnedToUrl property
+      if ('pinnedToUrl' in quickTab) {
+        console.log(
+          `[Background Migration] Converting Quick Tab ${quickTab.id} from pin to solo/mute format`
+        );
+
+        // Initialize new properties
+        quickTab.soloedOnTabs = quickTab.soloedOnTabs || [];
+        quickTab.mutedOnTabs = quickTab.mutedOnTabs || [];
+
+        // Remove old property
+        delete quickTab.pinnedToUrl;
+
+        migrated = true;
+      }
+    }
+  }
+
+  if (migrated) {
+    console.log('[Background Migration] Saving migrated Quick Tab state');
+    const stateToSave = {
+      containers: globalQuickTabState.containers,
+      saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now()
+    };
+
+    try {
+      await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
+      console.log('[Background Migration] Migration complete');
+    } catch (err) {
+      console.error('[Background Migration] Error saving migrated state:', err);
+    }
+  } else {
+    console.log('[Background Migration] No migration needed');
+  }
+}
+
+// Run migration after initialization
+migrateQuickTabState();
+
 // ==================== STATE COORDINATOR ====================
 // Manages canonical Quick Tab state across all tabs with conflict resolution
 
@@ -622,8 +677,55 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 // Clean up state when tab is closed
-chrome.tabs.onRemoved.addListener(tabId => {
+// v1.5.9.13 - Also clean up solo/mute arrays when tabs close
+chrome.tabs.onRemoved.addListener(async tabId => {
   quickTabStates.delete(tabId);
+
+  console.log(`[Background] Tab ${tabId} closed - cleaning up Quick Tab references`);
+
+  // Wait for initialization if needed
+  if (!isInitialized) {
+    return; // Skip cleanup if not initialized yet
+  }
+
+  let stateChanged = false;
+
+  // Iterate through all containers and tabs
+  for (const containerId in globalQuickTabState.containers) {
+    const containerTabs = globalQuickTabState.containers[containerId].tabs || [];
+
+    for (const quickTab of containerTabs) {
+      // Remove from soloedOnTabs
+      if (quickTab.soloedOnTabs && quickTab.soloedOnTabs.includes(tabId)) {
+        quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
+        stateChanged = true;
+        console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} solo list`);
+      }
+
+      // Remove from mutedOnTabs
+      if (quickTab.mutedOnTabs && quickTab.mutedOnTabs.includes(tabId)) {
+        quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
+        stateChanged = true;
+        console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} mute list`);
+      }
+    }
+  }
+
+  // Save and broadcast if state changed
+  if (stateChanged) {
+    const stateToSave = {
+      containers: globalQuickTabState.containers,
+      saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now()
+    };
+
+    try {
+      await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
+      console.log('[Background] Cleaned up Quick Tab state after tab closure');
+    } catch (err) {
+      console.error('[Background] Error saving cleaned up state:', err);
+    }
+  }
 });
 
 // Handle messages from content script and sidebar
@@ -1074,6 +1176,147 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     }
 
     sendResponse({ success: true });
+    return true;
+  }
+
+  // v1.5.9.13 - Handle Quick Tab solo state updates (container-aware)
+  if (message.action === 'UPDATE_QUICK_TAB_SOLO') {
+    console.log(
+      '[Background] Received solo update:',
+      message.id,
+      'soloedOnTabs:',
+      message.soloedOnTabs,
+      'Container:',
+      message.cookieStoreId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs[tabIndex].soloedOnTabs = message.soloedOnTabs;
+      containerState.tabs[tabIndex].mutedOnTabs = []; // Clear mute state
+      containerState.lastUpdate = Date.now();
+
+      // Save with transaction ID
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
+      // Save to storage
+      browser.storage.sync
+        .set({
+          quick_tabs_state_v2: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving solo state to storage:', err);
+        });
+
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session
+          .set({
+            quick_tabs_session: stateToSave
+          })
+          .catch(err => {
+            console.error('[Background] Error saving to session storage:', err);
+          });
+      }
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // v1.5.9.13 - Handle Quick Tab mute state updates (container-aware)
+  if (message.action === 'UPDATE_QUICK_TAB_MUTE') {
+    console.log(
+      '[Background] Received mute update:',
+      message.id,
+      'mutedOnTabs:',
+      message.mutedOnTabs,
+      'Container:',
+      message.cookieStoreId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs[tabIndex].mutedOnTabs = message.mutedOnTabs;
+      containerState.tabs[tabIndex].soloedOnTabs = []; // Clear solo state
+      containerState.lastUpdate = Date.now();
+
+      // Save with transaction ID
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
+      // Save to storage
+      browser.storage.sync
+        .set({
+          quick_tabs_state_v2: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving mute state to storage:', err);
+        });
+
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session
+          .set({
+            quick_tabs_session: stateToSave
+          })
+          .catch(err => {
+            console.error('[Background] Error saving to session storage:', err);
+          });
+      }
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // v1.5.9.13 - Handle tab ID requests from content scripts
+  if (message.action === 'GET_CURRENT_TAB_ID') {
+    // sender.tab is automatically provided by Firefox for content script messages
+    if (sender.tab && sender.tab.id) {
+      sendResponse({ tabId: sender.tab.id });
+    } else {
+      sendResponse({ tabId: null });
+    }
     return true;
   }
 
