@@ -1,7 +1,7 @@
 ---
 name: quicktabs-cross-tab-specialist
 description: Specialist for debugging Quick Tab synchronization issues across multiple tabs/webpages - handles BroadcastChannel, browser.storage sync, and cross-tab state consistency
-tools: ['*']
+tools: ["*"]
 ---
 
 # Quick Tabs Cross-Tab Synchronization Specialist
