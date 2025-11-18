@@ -5,30 +5,81 @@
  * v1.5.9.0 - Restored missing UI logic identified in v1589-quick-tabs-root-cause.md
  */
 
+import { ResizeController } from './window/ResizeController.js';
 import { CONSTANTS } from '../../core/config.js';
 import { createElement } from '../../utils/dom.js';
-import { ResizeController } from './window/ResizeController.js';
 
 /**
  * QuickTabWindow class - Manages a single Quick Tab overlay instance
  */
 export class QuickTabWindow {
   constructor(options) {
+    // v1.6.0 Phase 2.4 - Extract initialization methods to reduce complexity
+    this._initializeBasicProperties(options);
+    this._initializePositionAndSize(options);
+    this._initializeVisibility(options);
+    this._initializeCallbacks(options);
+    this._initializeState();
+  }
+
+  /**
+   * Initialize basic properties (id, url, title, etc.)
+   */
+  _initializeBasicProperties(options) {
     this.id = options.id;
     this.url = options.url;
+    this.title = options.title || 'Quick Tab';
+    this.cookieStoreId = options.cookieStoreId || 'firefox-default';
+  }
+
+  /**
+   * Initialize position and size properties
+   */
+  _initializePositionAndSize(options) {
     this.left = options.left || 100;
     this.top = options.top || 100;
     this.width = options.width || 800;
     this.height = options.height || 600;
-    this.title = options.title || 'Quick Tab';
-    this.cookieStoreId = options.cookieStoreId || 'firefox-default';
-    this.minimized = options.minimized || false;
     this.zIndex = options.zIndex || CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+  }
 
+  /**
+   * Initialize visibility-related properties (minimized, solo, mute)
+   */
+  _initializeVisibility(options) {
+    this.minimized = options.minimized || false;
     // v1.5.9.13 - Replace pinnedToUrl with solo/mute arrays
     this.soloedOnTabs = options.soloedOnTabs || [];
     this.mutedOnTabs = options.mutedOnTabs || [];
+  }
 
+  /**
+   * Initialize lifecycle and event callbacks
+   * v1.6.0 Phase 2.4 - Table-driven to reduce complexity
+   */
+  _initializeCallbacks(options) {
+    const noop = () => {};
+    const callbacks = [
+      'onDestroy',
+      'onMinimize',
+      'onFocus',
+      'onPositionChange',
+      'onPositionChangeEnd',
+      'onSizeChange',
+      'onSizeChangeEnd',
+      'onSolo', // v1.5.9.13
+      'onMute' // v1.5.9.13
+    ];
+    
+    callbacks.forEach(name => {
+      this[name] = options[name] || noop;
+    });
+  }
+
+  /**
+   * Initialize internal state properties
+   */
+  _initializeState() {
     this.container = null;
     this.iframe = null;
     this.rendered = false; // v1.5.9.10 - Track rendering state to prevent rendering bugs
@@ -40,16 +91,6 @@ export class QuickTabWindow {
     this.resizeStartHeight = 0;
     this.soloButton = null; // v1.5.9.13 - Reference to solo button
     this.muteButton = null; // v1.5.9.13 - Reference to mute button
-
-    this.onDestroy = options.onDestroy || (() => {});
-    this.onMinimize = options.onMinimize || (() => {});
-    this.onFocus = options.onFocus || (() => {});
-    this.onPositionChange = options.onPositionChange || (() => {});
-    this.onPositionChangeEnd = options.onPositionChangeEnd || (() => {});
-    this.onSizeChange = options.onSizeChange || (() => {});
-    this.onSizeChangeEnd = options.onSizeChangeEnd || (() => {});
-    this.onSolo = options.onSolo || (() => {}); // v1.5.9.13 - Solo callback
-    this.onMute = options.onMute || (() => {}); // v1.5.9.13 - Mute callback
   }
 
   /**
@@ -454,7 +495,7 @@ export class QuickTabWindow {
     });
 
     // CRITICAL FOR ISSUE #51: Handle tab switch during drag
-    titlebar.addEventListener('pointercancel', e => {
+    titlebar.addEventListener('pointercancel', _e => {
       if (this.isDragging) {
         this.isDragging = false;
 
@@ -554,48 +595,70 @@ export class QuickTabWindow {
 
   /**
    * Setup iframe load handler to update title
+   * v1.6.0 Phase 2.4 - Extracted helper to reduce nesting
    */
   setupIframeLoadHandler() {
     this.iframe.addEventListener('load', () => {
-      try {
-        // Try to get title from iframe (same-origin only)
-        const iframeTitle = this.iframe.contentDocument?.title;
-        if (iframeTitle) {
-          this.title = iframeTitle;
-          const titleEl = this.container.querySelector('.quick-tab-title');
-          if (titleEl) {
-            titleEl.textContent = iframeTitle;
-            titleEl.title = iframeTitle;
-          }
-        } else {
-          // Fallback to hostname
-          try {
-            const urlObj = new URL(this.iframe.src);
-            this.title = urlObj.hostname;
-            const titleEl = this.container.querySelector('.quick-tab-title');
-            if (titleEl) {
-              titleEl.textContent = urlObj.hostname;
-              titleEl.title = this.iframe.src;
-            }
-          } catch (e) {
-            this.title = 'Quick Tab';
-          }
-        }
-      } catch (e) {
-        // Cross-origin - use URL hostname
-        try {
-          const urlObj = new URL(this.iframe.src);
-          this.title = urlObj.hostname;
-          const titleEl = this.container.querySelector('.quick-tab-title');
-          if (titleEl) {
-            titleEl.textContent = urlObj.hostname;
-            titleEl.title = this.iframe.src;
-          }
-        } catch (err) {
-          this.title = 'Quick Tab';
-        }
-      }
+      this._updateTitleFromIframe();
     });
+  }
+
+  /**
+   * Update title from iframe content or URL
+   * v1.6.0 Phase 2.4 - Extracted to reduce nesting depth
+   */
+  _updateTitleFromIframe() {
+    // Try same-origin title first
+    const iframeTitle = this._tryGetIframeTitle();
+    if (iframeTitle) {
+      this._setTitle(iframeTitle, iframeTitle);
+      return;
+    }
+
+    // Fallback to hostname
+    const hostname = this._tryGetHostname();
+    if (hostname) {
+      this._setTitle(hostname, this.iframe.src);
+      return;
+    }
+
+    // Final fallback
+    this.title = 'Quick Tab';
+  }
+
+  /**
+   * Try to get title from iframe (same-origin only)
+   */
+  _tryGetIframeTitle() {
+    try {
+      return this.iframe.contentDocument?.title;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  /**
+   * Try to get hostname from iframe URL
+   */
+  _tryGetHostname() {
+    try {
+      const urlObj = new URL(this.iframe.src);
+      return urlObj.hostname;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  /**
+   * Set title in both property and UI
+   */
+  _setTitle(title, tooltip) {
+    this.title = title;
+    const titleEl = this.container.querySelector('.quick-tab-title');
+    if (titleEl) {
+      titleEl.textContent = title;
+      titleEl.title = tooltip;
+    }
   }
 
   /**
