@@ -50,7 +50,7 @@ describe('UICoordinator', () => {
 
     // Clear mocks but preserve implementation
     jest.clearAllMocks();
-    
+
     // Re-mock the global function after clearing
     global.createQuickTabWindow = jest.fn(() => createMockQuickTabWindow());
   });
@@ -270,7 +270,7 @@ describe('UICoordinator', () => {
 
       // Render first
       uiCoordinator.render(quickTab);
-      
+
       // Get the mock window that was created
       const tabWindow = createQuickTabWindow.mock.results[0].value;
 
@@ -330,7 +330,7 @@ describe('UICoordinator', () => {
       });
 
       uiCoordinator.render(quickTab);
-      
+
       // Get the mock window that was created
       const tabWindow = createQuickTabWindow.mock.results[0].value;
 
@@ -366,7 +366,7 @@ describe('UICoordinator', () => {
       });
 
       uiCoordinator.render(quickTab);
-      
+
       // Get the mock window and remove destroy method
       const tabWindow = uiCoordinator.renderedTabs.get('qt-123');
       delete tabWindow.destroy;
@@ -387,8 +387,16 @@ describe('UICoordinator', () => {
     });
 
     test('should render all visible tabs from state', async () => {
-      const tab1 = QuickTab.create({ id: 'qt-1', url: 'https://example.com', container: 'firefox-default' });
-      const tab2 = QuickTab.create({ id: 'qt-2', url: 'https://test.com', container: 'firefox-default' });
+      const tab1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        container: 'firefox-default'
+      });
+      const tab2 = QuickTab.create({
+        id: 'qt-2',
+        url: 'https://test.com',
+        container: 'firefox-default'
+      });
 
       mockStateManager.getVisible.mockReturnValue([tab1, tab2]);
       const spy = jest.spyOn(uiCoordinator, 'render');
@@ -424,7 +432,11 @@ describe('UICoordinator', () => {
       uiCoordinator.setupStateListeners();
       const spy = jest.spyOn(uiCoordinator, 'render');
 
-      const quickTab = QuickTab.create({ id: 'qt-1', url: 'https://example.com', container: 'firefox-default' });
+      const quickTab = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        container: 'firefox-default'
+      });
       mockEventBus.emit('state:added', { quickTab });
 
       expect(spy).toHaveBeenCalledWith(quickTab);
@@ -434,7 +446,11 @@ describe('UICoordinator', () => {
       uiCoordinator.setupStateListeners();
       const spy = jest.spyOn(uiCoordinator, 'update');
 
-      const quickTab = QuickTab.create({ id: 'qt-1', url: 'https://example.com', container: 'firefox-default' });
+      const quickTab = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        container: 'firefox-default'
+      });
       mockEventBus.emit('state:updated', { quickTab });
 
       expect(spy).toHaveBeenCalledWith(quickTab);
