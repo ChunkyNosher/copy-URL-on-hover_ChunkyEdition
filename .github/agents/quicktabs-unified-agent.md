@@ -1,7 +1,7 @@
 ---
 name: quicktabs-unified-specialist
 description: Unified specialist for debugging Quick Tab issues that involve BOTH local state within a tab AND cross-tab synchronization - handles complex scenarios where local rendering and remote sync interact
-tools: ['read', 'edit', 'search', 'github']
+tools: ["*"]
 ---
 
 # Quick Tabs Unified Specialist (Local + Cross-Tab)
