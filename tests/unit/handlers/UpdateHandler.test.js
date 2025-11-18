@@ -168,7 +168,9 @@ describe('UpdateHandler', () => {
     });
 
     test('should handle non-existent tab gracefully', async () => {
-      await expect(updateHandler.handlePositionChangeEnd('qt-999', 250, 175)).resolves.not.toThrow();
+      await expect(
+        updateHandler.handlePositionChangeEnd('qt-999', 250, 175)
+      ).resolves.not.toThrow();
     });
 
     test('should release saveId on background error', async () => {
