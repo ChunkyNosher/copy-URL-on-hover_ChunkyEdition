@@ -63,7 +63,9 @@ export class StorageManager {
       // Emit event
       this.eventBus?.emit('storage:saved', { cookieStoreId: this.cookieStoreId, saveId });
 
-      console.log(`[StorageManager] Saved ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`);
+      console.log(
+        `[StorageManager] Saved ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`
+      );
       return saveId;
     } catch (error) {
       console.error('[StorageManager] Save error:', error);
@@ -94,7 +96,9 @@ export class StorageManager {
       // Deserialize to QuickTab domain entities
       const quickTabs = containerData.tabs.map(tabData => QuickTab.fromStorage(tabData));
 
-      console.log(`[StorageManager] Loaded ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`);
+      console.log(
+        `[StorageManager] Loaded ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`
+      );
       return quickTabs;
     } catch (error) {
       console.error('[StorageManager] Load error:', error);
