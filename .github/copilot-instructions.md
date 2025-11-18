@@ -11,6 +11,106 @@ persistent floating panel manager
 
 ---
 
+## 🎯 CRITICAL: Robust Solutions Philosophy
+
+**This applies to ALL Copilot agents for ALL code changes, bug fixes, and feature implementations.**
+
+### Core Principle: Fix Root Causes, Not Symptoms
+
+**ALWAYS prioritize solutions that:**
+- ✅ **Fix the actual underlying behavior** causing the issue
+- ✅ **Address root causes** at the architectural level
+- ✅ **Eliminate technical debt** rather than accumulating it
+- ✅ **Prevent entire classes of bugs** from recurring
+- ✅ **Accept increased complexity** if it means a proper, lasting fix
+- ✅ **Use the RIGHT pattern/API** even if it takes more code
+
+**NEVER accept solutions that:**
+- ❌ **Mask symptoms** without fixing the root problem
+- ❌ **Add workarounds** instead of fixing the core issue
+- ❌ **Use quick hacks** just to "make it work"
+- ❌ **Sacrifice correctness** for perceived simplicity
+- ❌ **Add technical debt** for short-term convenience
+- ❌ **Postpone proper fixes** with temporary band-aids
+
+### Why This Matters
+
+**Bad Example (Band-Aid):**
+```javascript
+// ❌ WRONG: Mask the timing issue with setTimeout
+setTimeout(() => {
+  renderQuickTab(data);
+}, 100); // Hope 100ms is enough...
+```
+
+**Good Example (Root Cause Fix):**
+```javascript
+// ✅ CORRECT: Fix the actual timing issue architecturally
+// Direct local creation - content script renders immediately,
+// THEN notifies background for persistence. Eliminates race condition.
+function handleCreateQuickTab(data) {
+  // Create locally first for instant feedback
+  const quickTab = quickTabsManager.createQuickTab(data);
+  
+  // Then persist in background (async, non-blocking)
+  browser.runtime.sendMessage({
+    action: 'PERSIST_QUICK_TAB',
+    data: quickTab.serialize()
+  });
+  
+  // BroadcastChannel handles cross-tab sync (<10ms)
+  broadcastChannel.postMessage({
+    type: 'QUICK_TAB_CREATED',
+    data: quickTab.serialize()
+  });
+}
+```
+
+### Implementation Guidelines
+
+1. **Diagnose thoroughly** - Understand WHY the bug occurs, not just WHAT fails
+2. **Design architecturally** - Plan solutions that prevent similar bugs
+3. **Implement robustly** - Write code that handles edge cases properly
+4. **Test comprehensively** - Validate the root cause is actually fixed
+5. **Document clearly** - Explain why this approach fixes the underlying issue
+
+### Code Review Red Flags
+
+If you find yourself thinking:
+- "This setTimeout should fix it" → ❌ Probably masking a timing issue
+- "I'll just catch and ignore this error" → ❌ Hiding a real problem
+- "This workaround is easier than fixing it properly" → ❌ Creating technical debt
+- "I'll add a flag to skip the broken code path" → ❌ Avoiding the real issue
+
+Instead, ask:
+- "What's the ROOT CAUSE of this timing issue?" → ✅ Fix the race condition
+- "WHY is this error occurring?" → ✅ Fix the source of the error
+- "What's the CORRECT pattern for this?" → ✅ Implement it properly
+- "How can I ELIMINATE this code path entirely?" → ✅ Refactor to remove fragility
+
+### When Complexity is Justified
+
+**Prefer complex-but-correct over simple-but-broken:**
+
+- Complex error handling that covers all edge cases ✅ BETTER THAN simple try-catch that swallows errors ❌
+- Architectural refactor that eliminates race conditions ✅ BETTER THAN adding delays with setTimeout ❌
+- Proper state management with immutability ✅ BETTER THAN mutating global state haphazardly ❌
+- Container-specific BroadcastChannel isolation ✅ BETTER THAN manual filtering everywhere ❌
+
+### Success Criteria
+
+A solution is acceptable when:
+1. ✅ The root cause is identified and addressed
+2. ✅ The fix prevents the bug class from recurring
+3. ✅ The code is more maintainable after the fix
+4. ✅ Technical debt is reduced, not increased
+5. ✅ Edge cases are properly handled
+6. ✅ The solution will scale with future features
+
+**Remember: A complex solution that ACTUALLY WORKS is infinitely better than a simple solution that MASKS THE PROBLEM.**
+
+---
+
 ### v1.5.9.13 Highlights
 
 - **Solo and Mute Quick Tabs - Tab-Specific Visibility Control:** Replaced "Pin to Page" with powerful Solo/Mute features for precise tab-specific Quick Tab visibility.
@@ -844,3 +944,236 @@ This repository has **15 MCP servers** configured. GitHub Copilot Coding Agent M
 **Full MCP Reference:** See `.github/mcp-utilization-guide.md` for complete details on all 15 MCP servers.
 
 **Key Principle:** Utilize MCPs proactively and systematically to ensure highest quality code and comprehensive testing.
+
+
+---
+
+## MANDATORY: Documentation Update Requirements
+
+**This section applies to ALL Copilot agents unless otherwise specified in the agent-specific file.**
+
+**CRITICAL: Every pull request by any agent MUST update documentation when applicable!**
+
+### Required Updates Based on Change Type:
+
+#### 1. README.md (Update when user-facing changes occur)
+
+Update README.md when changes affect:
+- Version numbers (manifest.json or package.json)
+- Features or functionality
+- User interface or user experience
+- Settings or configuration options
+- Known limitations or bugs
+
+**README Update Checklist:**
+- [ ] Update version number in header if version changed
+- [ ] Add/update "What's New in v{version}" section for new features or fixes
+- [ ] Update feature list if functionality changed
+- [ ] Update usage instructions if UI/UX changed
+- [ ] Update settings documentation if configuration changed
+- [ ] Remove outdated information
+- [ ] Update version footer at bottom
+
+#### 2. Copilot Agent Files (Update when architecture/technical changes occur)
+
+**When to update `.github/copilot-instructions.md` (this file):**
+- Version numbers change
+- Architecture changes affecting ALL agents (new patterns, shared frameworks)
+- New APIs or features used ACROSS multiple agents
+- Build/test/deploy processes change affecting all agents
+- Repository structure changes
+- Common workflows or standards change
+
+**When to update individual agent files in `.github/agents/`:**
+- Agent-specific methodologies change
+- Agent-specific examples need updating
+- Agent-specific tools or workflows change
+- New specialized knowledge for that agent only
+
+**Agent files to consider updating:**
+- `.github/copilot-instructions.md` (common knowledge)
+- `.github/agents/bug-architect.md` (if architecture/methodology changes)
+- `.github/agents/bug-fixer.md` (if fix strategies change)
+- `.github/agents/feature-builder.md` (if implementation patterns change)
+- `.github/agents/feature-optimizer.md` (if optimization strategies change)
+- `.github/agents/master-orchestrator.md` (if delegation patterns change)
+- `.github/agents/refactor-specialist.md` (if refactoring principles change)
+
+### Implementation Workflow:
+
+**BEFORE starting work:**
+1. Check README for accuracy
+2. Check relevant agent files for accuracy
+3. Plan which documentation needs updating
+
+**DURING implementation:**
+4. Track changes that affect documentation
+5. Note new features, changed behaviors, removed features
+6. Distinguish between common changes (copilot-instructions.md) and agent-specific changes
+
+**BEFORE finalizing PR:**
+7. Update README if user-facing changes were made
+8. Update copilot-instructions.md if common architectural/API/framework changes were made
+9. Update specific agent files if agent-specific methodologies/examples changed
+10. Verify version consistency across files (manifest.json, package.json, README, copilot-instructions.md)
+11. Add documentation update checklist to PR description
+
+**PR Description MUST include:**
+- "README Updated: [specific changes]" (if applicable)
+- "copilot-instructions.md Updated: [specific changes]" (if applicable)
+- "Agent Files Updated: [which files and why]" (if applicable)
+- Documentation changes checklist
+
+### Version Synchronization:
+
+When version changes from X.Y.Z to X.Y.Z+1:
+- Update `manifest.json` version
+- Update `package.json` version
+- Update README header version
+- Update README footer version
+- Update `.github/copilot-instructions.md` version (in Project Overview section)
+- Consider updating agent file versions if significant changes occurred
+- Add "What's New in vX.Y.Z+1" section to README
+
+### Guideline for Choosing Where to Update:
+
+**Update copilot-instructions.md when:**
+- ✅ Change affects 3+ agents
+- ✅ New architecture pattern introduced
+- ✅ Common API usage changes
+- ✅ Shared workflow changes
+- ✅ Repository structure changes
+- ✅ Version number updates
+
+**Update specific agent file when:**
+- ✅ Change affects only 1-2 agents
+- ✅ Agent-specific methodology improves
+- ✅ Agent-specific examples need refinement
+- ✅ Specialized knowledge for that agent added
+
+**Update both when:**
+- ✅ Common pattern changes AND agent needs specific guidance
+- ✅ Version changes AND agent methodologies updated
+
+### Non-Compliance = PR Rejection
+
+**No exceptions.** Documentation is as important as code.
+
+Failure to update documentation results in:
+- Immediate PR rejection
+- Request for documentation updates before re-review  
+- Delays in merging
+
+### Quick Checklist for Every PR:
+
+- [ ] Code changes implemented and tested
+- [ ] README.md updated if user-facing changes made
+- [ ] copilot-instructions.md updated if common architectural changes made
+- [ ] Specific agent files updated if agent methodologies changed
+- [ ] Version numbers synchronized across all relevant files
+- [ ] PR description includes clear documentation update notes
+- [ ] No outdated information remains in documentation
+
+---
+
+## Bug Reporting and Issue Creation Workflow
+
+**This section applies to ALL Copilot agents.**
+
+**IMPORTANT: When users report bugs or request features:**
+
+### Automatic Issue Creation (ENABLED)
+
+When a user provides a list of bugs or features to implement:
+
+1. **Document all issues** in a markdown file in `docs/manual/` or `docs/implementation-summaries/`
+2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs and features
+3. **DO NOT mark issues as completed automatically** - The user will manually close issues when work is done
+4. **Provide a clear list** of all bugs/features with:
+   - Issue title
+   - Detailed description
+   - Priority level
+   - Suggested labels
+   - Root cause analysis (for bugs)
+   - Implementation strategy
+
+### How to Create GitHub Issues
+
+When creating GitHub issues from user input or .md files in the repository:
+
+1. **Extract all bugs/features** from the user's prompt or from .md files
+2. **For each bug/feature**, create a GitHub issue with:
+   - **Title**: Clear, actionable title (e.g., "Fix Quick Tab flash in top-left corner")
+   - **Description**: Complete description including:
+     - Problem statement or feature request
+     - Root cause analysis (for bugs)
+     - Implementation strategy
+     - Testing requirements
+   - **Labels**: Appropriate labels (bug, enhancement, documentation, etc.)
+   - **Assignees**: Leave unassigned unless specified
+3. **Track created issues** in your implementation documentation
+4. **DO NOT automatically close issues** - Let the user manually close them
+
+### Issue Documentation Format
+
+For each bug/feature, document:
+
+```markdown
+### Issue Title: [Clear, descriptive title]
+
+**Priority:** [Critical/High/Medium/Low]  
+**Labels:** [bug/feature], [component], [other-labels]  
+**GitHub Issue:** #XXX (link to created issue)
+
+**Description:** [Detailed description of the issue or feature]
+
+**Root Cause Analysis:** (for bugs) [Why the bug occurs, what code is affected]
+
+**Implementation Strategy:** (for features) or **Fix Strategy:** (for bugs)
+[How to implement/fix, what changes are needed]
+```
+
+### Checklist Items
+
+When creating a checklist in PR descriptions:
+- Use `- [ ]` for pending items (NOT `- [x]`)
+- Let the user manually check off completed items
+- Don't auto-check items even after you've completed the work
+- Include links to GitHub issues you created
+
+### Example
+
+❌ **WRONG:**
+```markdown
+- [x] Fixed RAM usage bug (completed)
+- [x] Closed GitHub issue #123
+```
+
+✅ **CORRECT:**
+```markdown
+- [ ] Fix RAM usage bug (GitHub issue #123 created)
+- [ ] Fix Quick Tab flash (GitHub issue #124 created)
+- [ ] Add console log export (GitHub issue #125 created)
+```
+
+This ensures that all bugs and features are tracked in GitHub issues while allowing the user to manually mark them as complete when satisfied with the implementation.
+
+---
+
+## Documentation Organization
+
+**This section applies to ALL Copilot agents.**
+
+When creating markdown documentation files, always save them to the appropriate `docs/` subdirectory:
+
+- **Bug analysis documents** → `docs/manual/`
+- **Testing guides** → `docs/manual/`
+- **Implementation guides** → `docs/manual/`
+- **Architecture documents** → `docs/manual/`
+- **Implementation summaries** → `docs/implementation-summaries/` (use format: `IMPLEMENTATION-SUMMARY-{description}.md`)
+- **Security summaries** → `docs/security-summaries/` (use format: `SECURITY-SUMMARY-v{version}.md`)
+- **Changelogs** → `docs/changelogs/` (use format: `CHANGELOG-v{version}.md`)
+- **Release summaries** → `docs/misc/` (use format: `RELEASE-SUMMARY-v{version}.md`)
+- **Miscellaneous documentation** → `docs/misc/`
+
+**DO NOT** save markdown files to the root directory (except README.md).
