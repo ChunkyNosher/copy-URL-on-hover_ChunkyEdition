@@ -3,8 +3,9 @@
  * Phase 2.1: Tests for extracted broadcast messaging logic
  */
 
-import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
 import { EventEmitter } from 'eventemitter3';
+
+import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
 
 describe('BroadcastManager', () => {
   let manager;

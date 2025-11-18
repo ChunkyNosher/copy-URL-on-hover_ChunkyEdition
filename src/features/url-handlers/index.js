@@ -3,18 +3,18 @@
  * Main entry point for URL detection across all supported sites
  */
 
-import { social_mediaHandlers } from './social-media.js';
-import { videoHandlers } from './video.js';
-import { developerHandlers } from './developer.js';
 import { bloggingHandlers } from './blogging.js';
+import { developerHandlers } from './developer.js';
 import { ecommerceHandlers } from './ecommerce.js';
-import { image_designHandlers } from './image-design.js';
-import { news_discussionHandlers } from './news-discussion.js';
 import { entertainmentHandlers } from './entertainment.js';
 import { gamingHandlers } from './gaming.js';
-import { learningHandlers } from './learning.js';
-import { otherHandlers } from './other.js';
 import { findGenericUrl } from './generic.js';
+import { image_designHandlers } from './image-design.js';
+import { learningHandlers } from './learning.js';
+import { news_discussionHandlers } from './news-discussion.js';
+import { otherHandlers } from './other.js';
+import { social_mediaHandlers } from './social-media.js';
+import { videoHandlers } from './video.js';
 
 /**
  * URL Handler Registry

@@ -3,11 +3,12 @@
  * Phase 2.1: Tests for extracted storage management logic
  */
 
-import { StorageManager } from '../../../src/features/quick-tabs/managers/StorageManager.js';
-import { SyncStorageAdapter } from '../../../src/storage/SyncStorageAdapter.js';
-import { SessionStorageAdapter } from '../../../src/storage/SessionStorageAdapter.js';
-import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { EventEmitter } from 'eventemitter3';
+
+import { QuickTab } from '../../../src/domain/QuickTab.js';
+import { StorageManager } from '../../../src/features/quick-tabs/managers/StorageManager.js';
+import { SessionStorageAdapter } from '../../../src/storage/SessionStorageAdapter.js';
+import { SyncStorageAdapter } from '../../../src/storage/SyncStorageAdapter.js';
 
 // Mock the storage adapters
 jest.mock('../../../src/storage/SyncStorageAdapter.js');

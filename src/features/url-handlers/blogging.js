@@ -3,8 +3,8 @@
  * URL detection for blogging platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findMediumUrl(element) {
   const article = element.closest('[data-post-id], article');

@@ -286,7 +286,7 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   meta.className = 'tab-meta';
 
   // Build metadata string
-  let metaParts = [];
+  const metaParts = [];
 
   if (isMinimized) {
     metaParts.push('Minimized');

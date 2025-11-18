@@ -4,8 +4,8 @@
  * v1.5.8.10 - Extracted from notifications/index.js
  */
 
-import { createElement } from '../../core/dom.js';
 import { CONSTANTS } from '../../core/config.js';
+import { createElement } from '../../core/dom.js';
 
 /**
  * Show tooltip notification at cursor position

@@ -3,8 +3,8 @@
  * URL detection for developer platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findGitHubUrl(element) {
   const item = element.closest('[data-testid="issue-row"], .Box-row, .issue, [role="article"]');

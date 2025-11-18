@@ -3,8 +3,8 @@
  * URL detection for social media platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findTwitterUrl(element) {
   debug('=== TWITTER URL FINDER ===');
@@ -38,7 +38,7 @@ function findLinkedInUrl(element) {
   if (!post) return findGenericUrl(element);
 
   const links = post.querySelectorAll('a[href]');
-  for (let link of links) {
+  for (const link of links) {
     const url = link.href;
     if (url.includes('/feed/') || url.includes('/posts/')) return url;
   }

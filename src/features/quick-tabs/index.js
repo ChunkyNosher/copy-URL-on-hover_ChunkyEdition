@@ -9,9 +9,9 @@
  * Follows architecture from hybrid-architecture-implementation.md
  */
 
-import { createQuickTabWindow } from './window.js';
 import { MinimizedManager } from './minimized-manager.js';
 import { PanelManager } from './panel.js';
+import { createQuickTabWindow } from './window.js';
 import { CONSTANTS } from '../../core/config.js';
 
 /**

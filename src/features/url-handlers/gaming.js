@@ -3,8 +3,8 @@
  * URL detection for gaming platforms
  */
 
-import { debug } from '../../utils/debug.js';
 import { findGenericUrl } from './generic.js';
+import { debug } from '../../utils/debug.js';
 
 function findSteamUrl(element) {
   const item = element.closest('[data-ds-appid], .search_result_row');
