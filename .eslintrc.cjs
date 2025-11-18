@@ -130,7 +130,7 @@ module.exports = {
     },
     {
       // Jest test files - relax complexity rules
-      files: ['tests/**/*.js', '**/*.test.js', '**/*.spec.js'],
+      files: ['tests/**/*.js', '**/*.test.js', '**/*.spec.js', 'test-helpers/**/*.js'],
       env: {
         jest: true,
         node: true
@@ -139,7 +139,8 @@ module.exports = {
         // Relax complexity rules for tests
         'max-lines-per-function': 'off',
         complexity: 'off',
-        'max-nested-callbacks': 'off' // Tests have nested describes/it blocks
+        'max-nested-callbacks': 'off', // Tests have nested describes/it blocks
+        'require-await': 'off' // Test mocks often need async for API compatibility without using await
       }
     }
   ],

@@ -6,6 +6,7 @@
  *
  * @abstract
  */
+/* eslint-disable require-await */
 export class StorageAdapter {
   /**
    * Save Quick Tabs for a specific container

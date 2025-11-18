@@ -1456,6 +1456,7 @@ export class PanelManager {
   /**
    * Minimize Quick Tab
    */
+  // eslint-disable-next-line require-await
   async minimizeQuickTab(quickTabId) {
     // Call Quick Tabs Manager to minimize
     if (this.quickTabsManager && this.quickTabsManager.minimizeById) {
@@ -1469,6 +1470,7 @@ export class PanelManager {
   /**
    * Restore Quick Tab
    */
+  // eslint-disable-next-line require-await
   async restoreQuickTab(quickTabId) {
     // Call Quick Tabs Manager to restore
     if (this.quickTabsManager && this.quickTabsManager.restoreById) {
@@ -1482,6 +1484,7 @@ export class PanelManager {
   /**
    * Close Quick Tab
    */
+  // eslint-disable-next-line require-await
   async closeQuickTab(quickTabId) {
     // Call Quick Tabs Manager to close
     if (this.quickTabsManager && this.quickTabsManager.closeById) {

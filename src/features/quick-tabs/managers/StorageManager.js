@@ -201,6 +201,7 @@ export class StorageManager {
       clearTimeout(this.storageSyncTimer);
     }
 
+    // eslint-disable-next-line require-await
     this.storageSyncTimer = setTimeout(async () => {
       const snapshot = this.latestStorageSnapshot;
       this.latestStorageSnapshot = null;
