@@ -128,14 +128,14 @@ export class QuickTabWindow {
 
     // Setup interactions
     this.setupDragHandlers(titlebar);
-    
+
     // v1.6.0 Phase 2.4 - Use ResizeController facade pattern
     this.resizeController = new ResizeController(this, {
       minWidth: 400,
       minHeight: 300
     });
     this.resizeController.attachHandles();
-    
+
     this.setupFocusHandlers();
 
     console.log('[QuickTabWindow] Rendered:', this.id);
@@ -772,7 +772,7 @@ export class QuickTabWindow {
       this.resizeController.detachAll();
       this.resizeController = null;
     }
-    
+
     if (this.container) {
       this.container.remove();
       this.container = null;
