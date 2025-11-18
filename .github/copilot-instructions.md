@@ -3,17 +3,17 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.0 (Architecture Refactoring In Progress - Phase 1)  
+**Version:** 1.6.0 (Architecture Refactoring In Progress - Phase 1 COMPLETE)  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Transitioning from Hybrid Modular/EventBus to Domain-Driven Design with Clean Architecture  
-**Refactoring Status:** Phase 1 (Domain Layer) 66% complete - Storage abstraction in progress  
+**Refactoring Status:** Phase 1 (Domain + Storage) 100% complete - Phase 2.1 (QuickTabsManager) next  
 **Purpose:** URL management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and
 persistent floating panel manager
 
 **🔧 v1.6.0 Refactoring:** Major architectural transformation following evidence-based patterns (Mozilla/Chrome/Industry best practices).  
 **Domain Layer:** ✅ Complete (QuickTab, Container entities with 100% test coverage)  
-**Storage Layer:** ⏳ In Progress (Async-first adapters, format migration)  
-**See:** `docs/misc/v1.6.0-REFACTORING-PHASE1-STATUS.md` for current status
+**Storage Layer:** ✅ Complete (SyncStorageAdapter, SessionStorageAdapter, FormatMigrator with 92% coverage)  
+**See:** `docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md` for Phase 1 summary
 
 ---
 
