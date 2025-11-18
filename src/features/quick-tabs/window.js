@@ -813,8 +813,14 @@ export class QuickTabWindow {
    * v1.5.9.13 - Toggle solo state for current tab
    */
   toggleSolo(soloBtn) {
+    console.log('[QuickTabWindow] toggleSolo called for:', this.id);
+    console.log('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
+    console.log('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
+
     if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
       console.warn('[QuickTabWindow] Cannot toggle solo - no current tab ID');
+      console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
+      console.warn('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
       return;
     }
 
@@ -859,8 +865,14 @@ export class QuickTabWindow {
    * v1.5.9.13 - Toggle mute state for current tab
    */
   toggleMute(muteBtn) {
+    console.log('[QuickTabWindow] toggleMute called for:', this.id);
+    console.log('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
+    console.log('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
+
     if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
       console.warn('[QuickTabWindow] Cannot toggle mute - no current tab ID');
+      console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
+      console.warn('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
       return;
     }
 
