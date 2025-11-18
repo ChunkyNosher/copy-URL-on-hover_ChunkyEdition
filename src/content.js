@@ -88,76 +88,121 @@ let notificationManager = null;
 // Load configuration
 let CONFIG = { ...DEFAULT_CONFIG };
 
-// Initialize extension
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for config loading
+ */
+async function loadConfiguration() {
+  console.log('[Copy-URL-on-Hover] STEP: Loading user configuration...');
+  try {
+    const config = await configManager.load();
+    console.log('[Copy-URL-on-Hover] ✓ Configuration loaded successfully');
+    console.log('[Copy-URL-on-Hover] Config values:', {
+      debugMode: config.debugMode,
+      quickTabPersistAcrossTabs: config.quickTabPersistAcrossTabs,
+      hasDefaultConfig: config !== null && config !== undefined
+    });
+    return config;
+  } catch (configErr) {
+    console.error('[Copy-URL-on-Hover] ERROR: Failed to load configuration:', configErr);
+    console.log('[Copy-URL-on-Hover] Falling back to DEFAULT_CONFIG');
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for debug mode setup
+ */
+function setupDebugMode() {
+  if (!CONFIG.debugMode) return;
+  
+  console.log('[Copy-URL-on-Hover] STEP: Enabling debug mode...');
+  try {
+    enableDebug();
+    eventBus.enableDebug();
+    debug('Debug mode enabled');
+    console.log('[Copy-URL-on-Hover] ✓ Debug mode activated');
+  } catch (debugErr) {
+    console.error('[Copy-URL-on-Hover] ERROR: Failed to enable debug mode:', debugErr);
+  }
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for state initialization
+ */
+function initializeState() {
+  console.log('[Copy-URL-on-Hover] STEP: Initializing state...');
+  stateManager.setState({
+    quickTabZIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
+  });
+  console.log('[Copy-URL-on-Hover] ✓ State initialized');
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for feature initialization
+ */
+async function initializeFeatures() {
+  console.log('[Copy-URL-on-Hover] STEP: Initializing feature modules...');
+  
+  // Quick Tabs feature
+  try {
+    quickTabsManager = await initQuickTabs(eventBus, Events);
+    console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized');
+  } catch (qtErr) {
+    console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:', qtErr);
+  }
+
+  // Notifications feature
+  try {
+    notificationManager = initNotifications(CONFIG, stateManager);
+    console.log('[Copy-URL-on-Hover] ✓ Notifications feature initialized');
+  } catch (notifErr) {
+    console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Notifications:', notifErr);
+  }
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for error reporting
+ */
+function reportInitializationError(err) {
+  console.error('[Copy-URL-on-Hover] ❌ CRITICAL INITIALIZATION ERROR ❌');
+  console.error('[Copy-URL-on-Hover] Error details:', {
+    message: err.message,
+    stack: err.stack,
+    name: err.name
+  });
+
+  try {
+    const errorMsg = `Copy-URL-on-Hover failed to initialize.\n\nError: ${err.message}\n\nPlease check the browser console (F12) for details.`;
+    console.error('[Copy-URL-on-Hover] User will see alert:', errorMsg);
+    // Uncomment for production debugging: alert(errorMsg);
+  } catch (alertErr) {
+    console.error('[Copy-URL-on-Hover] Could not show error alert:', alertErr);
+  }
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 10 to <9
+ */
 (async function initExtension() {
   try {
     console.log('[Copy-URL-on-Hover] STEP: Starting extension initialization...');
 
-    console.log('[Copy-URL-on-Hover] STEP: Loading user configuration...');
-    // Load user configuration with defensive error handling
-    try {
-      CONFIG = await configManager.load();
-      console.log('[Copy-URL-on-Hover] ✓ Configuration loaded successfully');
-      console.log('[Copy-URL-on-Hover] Config values:', {
-        debugMode: CONFIG.debugMode,
-        quickTabPersistAcrossTabs: CONFIG.quickTabPersistAcrossTabs,
-        // Log a few key config values for debugging
-        hasDefaultConfig: CONFIG !== null && CONFIG !== undefined
-      });
-    } catch (configErr) {
-      console.error('[Copy-URL-on-Hover] ERROR: Failed to load configuration:', configErr);
-      console.log('[Copy-URL-on-Hover] Falling back to DEFAULT_CONFIG');
-      CONFIG = { ...DEFAULT_CONFIG };
-    }
+    // Load configuration
+    CONFIG = await loadConfiguration();
 
-    console.log('[Copy-URL-on-Hover] STEP: Enabling debug mode if configured...');
-    // Enable debug mode if configured
-    if (CONFIG.debugMode) {
-      try {
-        enableDebug();
-        eventBus.enableDebug();
-        debug('Debug mode enabled');
-        console.log('[Copy-URL-on-Hover] ✓ Debug mode activated');
-      } catch (debugErr) {
-        console.error('[Copy-URL-on-Hover] ERROR: Failed to enable debug mode:', debugErr);
-      }
-    }
+    // Setup debug mode
+    setupDebugMode();
 
-    console.log('[Copy-URL-on-Hover] STEP: Initializing state...');
-    // Initialize state
-    try {
-      stateManager.setState({
-        quickTabZIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
-      });
-      console.log('[Copy-URL-on-Hover] ✓ State initialized');
-    } catch (stateErr) {
-      console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize state:', stateErr);
-      throw stateErr; // State is critical, re-throw
-    }
+    // Initialize state (critical - will throw on error)
+    initializeState();
 
-    console.log('[Copy-URL-on-Hover] STEP: Initializing feature modules...');
-    // Initialize Quick Tabs feature (v1.5.9.0 - CRITICAL FIX, v1.5.8.12 - Panel instead of sidebar)
-    try {
-      quickTabsManager = await initQuickTabs(eventBus, Events);
-      console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized');
-    } catch (qtErr) {
-      console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:', qtErr);
-      // Don't throw - allow other features to work
-    }
-
-    // Initialize Notifications feature (v1.5.9.0)
-    try {
-      notificationManager = initNotifications(CONFIG, stateManager);
-      console.log('[Copy-URL-on-Hover] ✓ Notifications feature initialized');
-    } catch (notifErr) {
-      console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Notifications:', notifErr);
-      // Don't throw - allow other features to work
-    }
+    // Initialize features
+    await initializeFeatures();
 
     debug('Extension initialized successfully');
 
-    console.log('[Copy-URL-on-Hover] STEP: Starting main features...');
     // Start main functionality
+    console.log('[Copy-URL-on-Hover] STEP: Starting main features...');
     await initMainFeatures();
     console.log('[Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓');
 
@@ -165,22 +210,7 @@ let CONFIG = { ...DEFAULT_CONFIG };
     window.CUO_initialized = true;
     console.log('[Copy-URL-on-Hover] Extension is ready for use!');
   } catch (err) {
-    console.error('[Copy-URL-on-Hover] ❌ CRITICAL INITIALIZATION ERROR ❌');
-    console.error('[Copy-URL-on-Hover] Error details:', {
-      message: err.message,
-      stack: err.stack,
-      name: err.name
-    });
-
-    // Try to show user-friendly error
-    try {
-      const errorMsg = `Copy-URL-on-Hover failed to initialize.\n\nError: ${err.message}\n\nPlease check the browser console (F12) for details.`;
-      console.error('[Copy-URL-on-Hover] User will see alert:', errorMsg);
-      // Uncomment for production debugging:
-      // alert(errorMsg);
-    } catch (alertErr) {
-      console.error('[Copy-URL-on-Hover] Could not show error alert:', alertErr);
-    }
+    reportInitializationError(err);
   }
 })();
 
@@ -278,7 +308,7 @@ function setupHoverDetection() {
     }
   });
 
-  document.addEventListener('mouseout', event => {
+  document.addEventListener('mouseout', _event => {
     stateManager.setState({
       currentHoveredLink: null,
       currentHoveredElement: null
@@ -302,80 +332,82 @@ function isInputField(element) {
 }
 
 /**
+ * v1.6.0 Phase 2.4 - Table-driven shortcut handling
+ */
+const SHORTCUT_HANDLERS = [
+  {
+    name: 'copyUrl',
+    needsLink: true,
+    needsElement: false,
+    handler: handleCopyURL
+  },
+  {
+    name: 'copyText',
+    needsLink: false,
+    needsElement: true,
+    handler: handleCopyText
+  },
+  {
+    name: 'quickTab',
+    needsLink: true,
+    needsElement: true,
+    handler: handleCreateQuickTab
+  },
+  {
+    name: 'openNewTab',
+    needsLink: true,
+    needsElement: false,
+    handler: handleOpenInNewTab
+  }
+];
+
+/**
+ * v1.6.0 Phase 2.4 - Check if shortcut matches and prerequisites are met
+ */
+function matchesShortcut(event, shortcut, hoveredLink, hoveredElement) {
+  const keyConfig = `${shortcut.name}Key`;
+  const ctrlConfig = `${shortcut.name}Ctrl`;
+  const altConfig = `${shortcut.name}Alt`;
+  const shiftConfig = `${shortcut.name}Shift`;
+  
+  if (!checkShortcut(event, CONFIG[keyConfig], CONFIG[ctrlConfig], CONFIG[altConfig], CONFIG[shiftConfig])) {
+    return false;
+  }
+  
+  // Check prerequisites
+  if (shortcut.needsLink && !hoveredLink) return false;
+  if (shortcut.needsElement && !hoveredElement) return false;
+  
+  return true;
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Extracted handler for keyboard shortcuts
+ * Reduced complexity and nesting using table-driven pattern with guard clauses
+ */
+async function handleKeyboardShortcut(event) {
+  // Ignore if typing in an interactive field
+  if (isInputField(event.target)) return;
+
+  const hoveredLink = stateManager.get('currentHoveredLink');
+  const hoveredElement = stateManager.get('currentHoveredElement');
+
+  // Check each shortcut using table-driven approach
+  for (const shortcut of SHORTCUT_HANDLERS) {
+    if (!matchesShortcut(event, shortcut, hoveredLink, hoveredElement)) continue;
+    
+    event.preventDefault();
+    await shortcut.handler(hoveredLink, hoveredElement);
+    return;
+  }
+}
+
+/**
  * Set up keyboard shortcuts
+ * v1.6.0 Phase 2.4 - Extracted handler to reduce complexity
  */
 function setupKeyboardShortcuts() {
-  document.addEventListener('keydown', async event => {
-    // Ignore if typing in an interactive field
-    if (isInputField(event.target)) {
-      return;
-    }
-
-    const hoveredLink = stateManager.get('currentHoveredLink');
-    const hoveredElement = stateManager.get('currentHoveredElement');
-
-    // Don't exit early - some shortcuts don't need a URL!
-
-    // Check for copy URL shortcut (needs URL)
-    if (
-      checkShortcut(
-        event,
-        CONFIG.copyUrlKey,
-        CONFIG.copyUrlCtrl,
-        CONFIG.copyUrlAlt,
-        CONFIG.copyUrlShift
-      )
-    ) {
-      if (!hoveredLink) return; // Only check for this specific shortcut
-      event.preventDefault();
-      await handleCopyURL(hoveredLink);
-    }
-
-    // Check for copy text shortcut (doesn't need URL)
-    else if (
-      checkShortcut(
-        event,
-        CONFIG.copyTextKey,
-        CONFIG.copyTextCtrl,
-        CONFIG.copyTextAlt,
-        CONFIG.copyTextShift
-      )
-    ) {
-      if (!hoveredElement) return; // Only needs element
-      event.preventDefault();
-      await handleCopyText(hoveredElement);
-    }
-
-    // Check for Quick Tab shortcut (needs URL)
-    else if (
-      checkShortcut(
-        event,
-        CONFIG.quickTabKey,
-        CONFIG.quickTabCtrl,
-        CONFIG.quickTabAlt,
-        CONFIG.quickTabShift
-      )
-    ) {
-      if (!hoveredLink) return;
-      event.preventDefault();
-      await handleCreateQuickTab(hoveredLink, hoveredElement);
-    }
-
-    // Check for open in new tab shortcut (needs URL)
-    else if (
-      checkShortcut(
-        event,
-        CONFIG.openNewTabKey,
-        CONFIG.openNewTabCtrl,
-        CONFIG.openNewTabAlt,
-        CONFIG.openNewTabShift
-      )
-    ) {
-      if (!hoveredLink) return;
-      event.preventDefault();
-      await handleOpenInNewTab(hoveredLink);
-    }
-  });
+  document.addEventListener('keydown', handleKeyboardShortcut);
 }
 
 /**
@@ -434,19 +466,28 @@ async function handleCopyText(element) {
 /**
  * Handle create Quick Tab action
  */
-async function handleCreateQuickTab(url, targetElement = null) {
-  if (!url) {
-    console.warn('[Quick Tab] Missing URL for creation');
-    return;
-  }
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab data structure
+ */
+function buildQuickTabData(url, quickTabId, position, width, height, title) {
+  return {
+    id: quickTabId,
+    url,
+    left: position.left,
+    top: position.top,
+    width,
+    height,
+    title,
+    cookieStoreId: 'firefox-default',
+    minimized: false,
+    pinnedToUrl: null
+  };
+}
 
-  debug('Creating Quick Tab for:', url);
-  eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
-
-  const width = CONFIG.quickTabDefaultWidth || 800;
-  const height = CONFIG.quickTabDefaultHeight || 600;
-  const position = calculateQuickTabPosition(targetElement, width, height);
-
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab IDs
+ */
+function generateQuickTabIds() {
   const canUseManagerSaveId = Boolean(
     quickTabsManager && typeof quickTabsManager.generateSaveId === 'function'
   );
@@ -455,73 +496,86 @@ async function handleCreateQuickTab(url, targetElement = null) {
       ? quickTabsManager.generateId()
       : generateQuickTabId();
   const saveId = canUseManagerSaveId ? quickTabsManager.generateSaveId() : generateSaveTrackingId();
+  
+  return { quickTabId, saveId, canUseManagerSaveId };
+}
 
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for local Quick Tab creation
+ */
+function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
+  if (canUseManagerSaveId && quickTabsManager.trackPendingSave) {
+    quickTabsManager.trackPendingSave(saveId);
+  }
+  quickTabsManager.createQuickTab(quickTabData);
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for background persistence
+ */
+async function persistQuickTabToBackground(quickTabData, saveId) {
+  await sendMessageToBackground({
+    action: 'CREATE_QUICK_TAB',
+    ...quickTabData,
+    saveId
+  });
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Create Quick Tab (handle success)
+ */
+async function executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId) {
+  const hasManager = quickTabsManager && typeof quickTabsManager.createQuickTab === 'function';
+  
+  if (hasManager) {
+    createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId);
+  } else {
+    console.warn('[Quick Tab] Manager not available, using legacy creation path');
+  }
+  
+  await persistQuickTabToBackground(quickTabData, saveId);
+  showNotification('✓ Quick Tab created!', 'success');
+  debug('Quick Tab created successfully');
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Handle Quick Tab creation failure
+ */
+function handleQuickTabCreationError(err, saveId, canUseManagerSaveId) {
+  console.error('[Quick Tab] Failed:', err);
+  if (canUseManagerSaveId && quickTabsManager?.releasePendingSave) {
+    quickTabsManager.releasePendingSave(saveId);
+  }
+  showNotification('✗ Failed to create Quick Tab', 'error');
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 18 to <9
+ */
+async function handleCreateQuickTab(url, targetElement = null) {
+  // Early validation
+  if (!url) {
+    console.warn('[Quick Tab] Missing URL for creation');
+    return;
+  }
+
+  // Setup and emit event
+  debug('Creating Quick Tab for:', url);
+  eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
+
+  // Prepare Quick Tab data
+  const width = CONFIG.quickTabDefaultWidth || 800;
+  const height = CONFIG.quickTabDefaultHeight || 600;
+  const position = calculateQuickTabPosition(targetElement, width, height);
+  const title = targetElement?.textContent?.trim() || 'Quick Tab';
+  const { quickTabId, saveId, canUseManagerSaveId } = generateQuickTabIds();
+  const quickTabData = buildQuickTabData(url, quickTabId, position, width, height, title);
+
+  // Execute creation with error handling
   try {
-    // v1.5.9.11 FIX: Create Quick Tab LOCALLY FIRST (originating tab renders immediately)
-    // This ensures the tab appears in the originating tab without waiting for background sync
-    if (quickTabsManager && typeof quickTabsManager.createQuickTab === 'function') {
-      // Track pending save to prevent duplicate processing from storage events
-      if (canUseManagerSaveId && quickTabsManager.trackPendingSave) {
-        quickTabsManager.trackPendingSave(saveId);
-      }
-
-      // Create locally - this will also broadcast to other tabs via BroadcastChannel
-      quickTabsManager.createQuickTab({
-        id: quickTabId,
-        url,
-        left: position.left,
-        top: position.top,
-        width,
-        height,
-        title: targetElement?.textContent?.trim() || 'Quick Tab',
-        cookieStoreId: 'firefox-default',
-        minimized: false,
-        pinnedToUrl: null
-      });
-
-      // THEN notify background for persistence (storage sync as backup)
-      await sendMessageToBackground({
-        action: 'CREATE_QUICK_TAB',
-        url,
-        id: quickTabId,
-        left: position.left,
-        top: position.top,
-        width,
-        height,
-        title: targetElement?.textContent?.trim() || 'Quick Tab',
-        cookieStoreId: 'firefox-default',
-        minimized: false,
-        saveId
-      });
-
-      showNotification('✓ Quick Tab created!', 'success');
-      debug('Quick Tab created successfully');
-    } else {
-      // Fallback for when manager isn't available (shouldn't happen in normal operation)
-      console.warn('[Quick Tab] Manager not available, using legacy creation path');
-      await sendMessageToBackground({
-        action: 'CREATE_QUICK_TAB',
-        url,
-        id: quickTabId,
-        left: position.left,
-        top: position.top,
-        width,
-        height,
-        title: targetElement?.textContent?.trim() || 'Quick Tab',
-        cookieStoreId: 'firefox-default',
-        minimized: false,
-        saveId
-      });
-
-      showNotification('✓ Quick Tab created!', 'success');
-      debug('Quick Tab created successfully');
-    }
+    await executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
   } catch (err) {
-    console.error('[Quick Tab] Failed:', err);
-    if (canUseManagerSaveId && quickTabsManager?.releasePendingSave) {
-      quickTabsManager.releasePendingSave(saveId);
-    }
-    showNotification('✗ Failed to create Quick Tab', 'error');
+    handleQuickTabCreationError(err, saveId, canUseManagerSaveId);
   }
 }
 
