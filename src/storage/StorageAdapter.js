@@ -15,7 +15,7 @@ export class StorageAdapter {
    * @returns {Promise<string>} Save ID for tracking race conditions
    * @throws {Error} If not implemented by subclass
    */
-  async save(containerId, tabs) {
+  async save(_containerId, _tabs) {
     throw new Error('StorageAdapter.save() must be implemented by subclass');
   }
 
@@ -26,7 +26,7 @@ export class StorageAdapter {
    * @returns {Promise<{tabs: QuickTab[], lastUpdate: number}|null>} Container data or null if not found
    * @throws {Error} If not implemented by subclass
    */
-  async load(containerId) {
+  async load(_containerId) {
     throw new Error('StorageAdapter.load() must be implemented by subclass');
   }
 
@@ -48,7 +48,7 @@ export class StorageAdapter {
    * @returns {Promise<void>}
    * @throws {Error} If not implemented by subclass
    */
-  async delete(containerId, quickTabId) {
+  async delete(_containerId, _quickTabId) {
     throw new Error('StorageAdapter.delete() must be implemented by subclass');
   }
 
@@ -59,7 +59,7 @@ export class StorageAdapter {
    * @returns {Promise<void>}
    * @throws {Error} If not implemented by subclass
    */
-  async deleteContainer(containerId) {
+  async deleteContainer(_containerId) {
     throw new Error('StorageAdapter.deleteContainer() must be implemented by subclass');
   }
 

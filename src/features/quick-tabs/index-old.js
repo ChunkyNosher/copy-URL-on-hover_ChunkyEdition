@@ -1206,7 +1206,7 @@ class QuickTabsManager {
    * v1.5.8.15 - REMOVED broadcast/sync during drag to prevent performance issues
    * Position only syncs on drag end for optimal performance
    */
-  handlePositionChange(id, left, top) {
+  handlePositionChange(_id, _left, _top) {
     // v1.5.8.15 - No longer broadcasts or syncs during drag
     // This prevents excessive BroadcastChannel messages and storage writes
     // Position syncs only on drag end via handlePositionChangeEnd
@@ -1264,7 +1264,7 @@ class QuickTabsManager {
    * v1.5.8.15 - REMOVED broadcast/sync during resize to prevent performance issues
    * Size only syncs on resize end for optimal performance
    */
-  handleSizeChange(id, width, height) {
+  handleSizeChange(_id, _width, _height) {
     // v1.5.8.15 - No longer broadcasts or syncs during resize
     // This prevents excessive BroadcastChannel messages and storage writes
     // Size syncs only on resize end via handleSizeChangeEnd

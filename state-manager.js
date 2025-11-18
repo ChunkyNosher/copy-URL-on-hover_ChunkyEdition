@@ -210,7 +210,7 @@ export class QuickTabStateManager {
     const updatedTabs = currentState.tabs.map(tab =>
       tab.url === url ? { ...tab, left, top } : tab
     );
-    return await this.save(updatedTabs, cookieStoreId);
+    return this.save(updatedTabs, cookieStoreId);
   }
 
   /**
@@ -230,7 +230,7 @@ export class QuickTabStateManager {
     const updatedTabs = currentState.tabs.map(tab =>
       tab.url === url ? { ...tab, width, height } : tab
     );
-    return await this.save(updatedTabs, cookieStoreId);
+    return this.save(updatedTabs, cookieStoreId);
   }
 
   /**
@@ -256,7 +256,7 @@ export class QuickTabStateManager {
       currentState.tabs.push(tab);
     }
 
-    return await this.save(currentState.tabs, cookieStoreId);
+    return this.save(currentState.tabs, cookieStoreId);
   }
 
   /**
@@ -272,7 +272,7 @@ export class QuickTabStateManager {
 
     const currentState = await this.load(cookieStoreId);
     const updatedTabs = currentState.tabs.filter(tab => tab.url !== url);
-    return await this.save(updatedTabs, cookieStoreId);
+    return this.save(updatedTabs, cookieStoreId);
   }
 
   /**
@@ -355,7 +355,7 @@ export class QuickTabStateManager {
     const updatedTabs = currentState.tabs.map(tab =>
       tab.url === tabUrl ? { ...tab, pinnedToUrl } : tab
     );
-    return await this.save(updatedTabs, cookieStoreId);
+    return this.save(updatedTabs, cookieStoreId);
   }
 
   /**
@@ -373,7 +373,7 @@ export class QuickTabStateManager {
     const updatedTabs = currentState.tabs.map(tab =>
       tab.url === tabUrl ? { ...tab, pinnedToUrl: null } : tab
     );
-    return await this.save(updatedTabs, cookieStoreId);
+    return this.save(updatedTabs, cookieStoreId);
   }
 }
 

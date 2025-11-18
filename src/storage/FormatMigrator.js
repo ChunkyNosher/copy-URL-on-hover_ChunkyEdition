@@ -21,7 +21,7 @@ class FormatStrategy {
    * @param {Object} data - Raw storage data
    * @returns {boolean}
    */
-  matches(data) {
+  matches(_data) {
     throw new Error('FormatStrategy.matches() must be implemented');
   }
 
@@ -30,7 +30,7 @@ class FormatStrategy {
    * @param {Object} data - Raw storage data
    * @returns {Object.<string, {tabs: Array, lastUpdate: number}>}
    */
-  parse(data) {
+  parse(_data) {
     throw new Error('FormatStrategy.parse() must be implemented');
   }
 
@@ -162,12 +162,12 @@ export class LegacyFormat extends FormatStrategy {
  * Used when data is null, undefined, or unrecognized
  */
 export class EmptyFormat extends FormatStrategy {
-  matches(data) {
+  matches(_data) {
     // Matches anything (fallback)
     return true;
   }
 
-  parse(data) {
+  parse(_data) {
     // Return empty containers
     return {};
   }

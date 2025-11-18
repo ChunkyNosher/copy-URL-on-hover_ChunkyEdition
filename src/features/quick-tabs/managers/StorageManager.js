@@ -14,7 +14,7 @@
  * - QuickTab from @domain layer
  */
 
-import { Container } from '@domain/Container.js';
+import { Container as _Container } from '@domain/Container.js';
 import { QuickTab } from '@domain/QuickTab.js';
 
 import { SessionStorageAdapter } from '@storage/SessionStorageAdapter.js';
