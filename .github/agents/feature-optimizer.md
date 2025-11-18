@@ -11,7 +11,7 @@ tools:
 ---
 
 You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition
-Firefox/Zen Browser extension (v1.5.9.12). You combine feature development expertise with
+Firefox/Zen Browser extension (v1.5.9.13). You combine feature development expertise with
 refactoring skills to build optimized new features from scratch OR migrate
 existing features to modern APIs that unlock new possibilities.
 
@@ -28,7 +28,7 @@ existing features to modern APIs that unlock new possibilities.
 - ❌ NEVER add workarounds instead of fixing the root problem
 - ❌ NEVER sacrifice correctness for perceived simplicity
 
-**Example (from v1.5.9.12 Container Integration):**
+**Example (from v1.5.9.13 Container Integration):**
 - ❌ Bad Approach: Filter messages manually in each handler (repetitive, error-prone)
 - ✅ Good Approach: Container-specific BroadcastChannel + defense-in-depth filtering at multiple layers (architectural isolation)
 
@@ -56,21 +56,21 @@ existing features to modern APIs that unlock new possibilities.
 - Profile performance during implementation, not after
 - Use efficient data structures and algorithms from the start
 - Implement proper state management to avoid race conditions
-- Ensure Firefox Container isolation at all layers (v1.5.9.12+)
+- Ensure Firefox Container isolation at all layers (v1.5.9.13+)
 - Build with both Firefox and Zen Browser in mind
 
 ## Extension-Specific Knowledge
 
-**Current Repository Architecture (v1.5.9.12 - Hybrid Modular/EventBus with Firefox Container Isolation):**
+**Current Repository Architecture (v1.5.9.13 - Hybrid Modular/EventBus with Firefox Container Isolation):**
 
-**Firefox Container Integration (v1.5.9.12):**
+**Firefox Container Integration (v1.5.9.13):**
 
 - **Complete container isolation** - Quick Tabs in one Firefox Container invisible to other containers
 - **Container-specific BroadcastChannel** - Each container uses dedicated channel (e.g., `'quick-tabs-sync-firefox-container-1'`)
 - **Container-filtered storage** - All storage operations filtered by `cookieStoreId`
 - **Defense-in-depth** - Container filtering at detection, communication, storage, and UI layers
 - **Auto-assignment** - Quick Tabs automatically inherit container context from originating tab
-- See `docs/implementation-summaries/IMPLEMENTATION-SUMMARY-container-integration-v1.5.9.12.md` for details
+- See `docs/implementation-summaries/IMPLEMENTATION-SUMMARY-container-integration-v1.5.9.13.md` for details
 
 **Quick Tabs Full Restoration (v1.5.9):**
 
@@ -79,7 +79,7 @@ existing features to modern APIs that unlock new possibilities.
 - Position/size persistence across tabs (fixes #35 & #51)
 - Pointer Events API with pointercancel handling
 - Pin/unpin state synchronization via background script
-- Container-aware state management (v1.5.9.12+)
+- Container-aware state management (v1.5.9.13+)
 
 - **Hybrid Modular Source** (v1.5.9+):
   - **src/content.js**: Main entry point - orchestrates all features via
@@ -88,7 +88,7 @@ existing features to modern APIs that unlock new possibilities.
     index.js (barrel file)
     - dom.js and browser-api.js MOVED from utils/ to core/ in v1.5.9
   - **src/features/**: Feature modules (EventBus-driven)
-    - **quick-tabs/**: index.js (with container detection v1.5.9.12), window.js, minimized-manager.js, **panel.js (container-aware v1.5.9.12)**
+    - **quick-tabs/**: index.js (with container detection v1.5.9.13), window.js, minimized-manager.js, **panel.js (container-aware v1.5.9.13)**
     - **notifications/**: index.js, toast.js (NEW), tooltip.js (NEW) - fully
       modularized
     - **url-handlers/**: 11 categorized modules (104 handlers total)
@@ -130,6 +130,22 @@ existing features to modern APIs that unlock new possibilities.
   all content scripts to flush their console/debug buffers before the next
   export. See docs/manual/1.5.9 docs/popup-close-background-v1597.md when
   touching export flows.
+
+### v1.5.9.13 Notes
+
+- **Solo and Mute Quick Tabs - Tab-Specific Visibility Control**: Replaced "Pin to Page" with Solo/Mute features for precise tab-specific Quick Tab visibility.
+- **Solo Mode (🎯)**: Show Quick Tab ONLY on specific browser tabs. Click Solo on Tab 1, Quick Tab hidden on all other tabs. Setting `soloedOnTabs: [tabId]` array.
+- **Mute Mode (🔇)**: Hide Quick Tab ONLY on specific browser tabs. Click Mute on Tab 1, Quick Tab visible everywhere else. Setting `mutedOnTabs: [tabId]` array.
+- **Mutual Exclusivity**: Solo and Mute cannot be active simultaneously - setting one clears the other automatically to prevent logical conflicts.
+- **Real-time Cross-Tab Sync**: Visibility changes propagate instantly via BroadcastChannel (<10ms latency). SOLO/MUTE broadcast messages handled.
+- **Automatic Cleanup**: Dead tab IDs removed when tabs close via `browser.tabs.onRemoved` listener to prevent orphaned references.
+- **Container Isolation**: Solo/Mute state respects Firefox Container boundaries - container-specific BroadcastChannel prevents cross-container leaks.
+- **State Storage**: `soloedOnTabs` and `mutedOnTabs` arrays stored per-container in browser.storage.sync, replacing old `pinnedToUrl` property.
+- **Tab ID Detection**: Content scripts request current tab ID from background via `GET_CURRENT_TAB_ID` handler using `sender.tab.id`.
+- **Visibility Filtering**: `shouldQuickTabBeVisible()` method filters Quick Tabs during state hydration based on solo/mute arrays.
+- **Automatic Migration**: Old `pinnedToUrl` format automatically converted to new solo/mute arrays on extension startup.
+- **UI Controls**: Solo button (🎯/⭕) between "Open in New Tab" and Mute buttons. Mute button (🔇/🔊) between Solo and Minimize.
+- See `docs/manual/1.5.9 docs/solo-mute-quicktabs-implementation-guide.md` for full implementation details.
 
 ### v1.5.9.11 Notes
 

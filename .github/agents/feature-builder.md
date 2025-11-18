@@ -110,6 +110,22 @@ capabilities while maintaining code quality, browser compatibility (specifically
   the next export. Reference docs/manual/1.5.9
   docs/popup-close-background-v1597.md when modifying log tools.
 
+### v1.5.9.13 Notes
+
+- **Solo and Mute Quick Tabs - Tab-Specific Visibility Control**: Replaced "Pin to Page" with Solo/Mute features for precise tab-specific Quick Tab visibility.
+- **Solo Mode (🎯)**: Show Quick Tab ONLY on specific browser tabs. Click Solo on Tab 1, Quick Tab hidden on all other tabs. Setting `soloedOnTabs: [tabId]` array.
+- **Mute Mode (🔇)**: Hide Quick Tab ONLY on specific browser tabs. Click Mute on Tab 1, Quick Tab visible everywhere else. Setting `mutedOnTabs: [tabId]` array.
+- **Mutual Exclusivity**: Solo and Mute cannot be active simultaneously - setting one clears the other automatically to prevent logical conflicts.
+- **Real-time Cross-Tab Sync**: Visibility changes propagate instantly via BroadcastChannel (<10ms latency). SOLO/MUTE broadcast messages handled.
+- **Automatic Cleanup**: Dead tab IDs removed when tabs close via `browser.tabs.onRemoved` listener to prevent orphaned references.
+- **Container Isolation**: Solo/Mute state respects Firefox Container boundaries - container-specific BroadcastChannel prevents cross-container leaks.
+- **State Storage**: `soloedOnTabs` and `mutedOnTabs` arrays stored per-container in browser.storage.sync, replacing old `pinnedToUrl` property.
+- **Tab ID Detection**: Content scripts request current tab ID from background via `GET_CURRENT_TAB_ID` handler using `sender.tab.id`.
+- **Visibility Filtering**: `shouldQuickTabBeVisible()` method filters Quick Tabs during state hydration based on solo/mute arrays.
+- **Automatic Migration**: Old `pinnedToUrl` format automatically converted to new solo/mute arrays on extension startup.
+- **UI Controls**: Solo button (🎯/⭕) between "Open in New Tab" and Mute buttons. Mute button (🔇/🔊) between Solo and Minimize.
+- See `docs/manual/1.5.9 docs/solo-mute-quicktabs-implementation-guide.md` for full implementation details.
+
 ### v1.5.9.11 Notes
 
 - **Quick Tabs rendering bug - Root cause resolution**: Fixed critical bug with

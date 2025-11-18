@@ -10,7 +10,7 @@ tools:
 ---
 
 You are a bug diagnosis and fixing specialist for the
-copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension (v1.5.9.12). Your expertise
+copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension (v1.5.9.13). Your expertise
 includes WebExtension APIs, content script contexts, DOM manipulation, iframe
 security, Firefox Container isolation, and Firefox-specific behaviors optimized for both **Firefox** and
 **Zen Browser**.
@@ -44,7 +44,7 @@ security, Firefox Container isolation, and Firefox-specific behaviors optimized 
 - Diagnose X-Frame-Options and CSP header blocking problems
 - Trace Quick Tabs state persistence failures across tab switches
 - Investigate keyboard shortcut conflicts and event listener issues
-- Debug Firefox Container isolation issues (v1.5.9.12+)
+- Debug Firefox Container isolation issues (v1.5.9.13+)
 - Ensure compatibility with both Firefox and Zen Browser environments
 
 **Root Cause Analysis:**
@@ -56,8 +56,8 @@ security, Firefox Container isolation, and Firefox-specific behaviors optimized 
   differences)
 - Analyze storage API usage (browser.storage.local vs browser.storage.sync)
 - Examine iframe sandbox restrictions and same-origin policies
-- Verify Firefox Container context detection and filtering (v1.5.9.12+)
-- Validate BroadcastChannel container-specific naming (v1.5.9.12+)
+- Verify Firefox Container context detection and filtering (v1.5.9.13+)
+- Validate BroadcastChannel container-specific naming (v1.5.9.13+)
 - Test Zen Browser-specific theme detection and workspace integration
 
 **Fix Implementation:**
@@ -67,7 +67,7 @@ security, Firefox Container isolation, and Firefox-specific behaviors optimized 
 - Preserve existing functionality while fixing bugs
 - Add defensive programming (null checks, error boundaries, fallbacks)
 - Update or create tests to prevent regression
-- Ensure Firefox Container isolation is maintained (v1.5.9.12+)
+- Ensure Firefox Container isolation is maintained (v1.5.9.13+)
 - Ensure fixes work across both browser variants
 
 ## Extension-Specific Knowledge
@@ -134,6 +134,22 @@ security, Firefox Container isolation, and Firefox-specific behaviors optimized 
   Advanced tab also exposes "Clear Log History" (v1.5.9.8), which posts
   `CLEAR_CONSOLE_LOGS` so the background buffer and every content script's
   console interceptor/`debug.js` queue resets before the next export.
+
+### v1.5.9.13 Notes
+
+- **Solo and Mute Quick Tabs - Tab-Specific Visibility Control**: Replaced "Pin to Page" with Solo/Mute features for precise tab-specific Quick Tab visibility.
+- **Solo Mode (🎯)**: Show Quick Tab ONLY on specific browser tabs. Click Solo on Tab 1, Quick Tab hidden on all other tabs. Setting `soloedOnTabs: [tabId]` array.
+- **Mute Mode (🔇)**: Hide Quick Tab ONLY on specific browser tabs. Click Mute on Tab 1, Quick Tab visible everywhere else. Setting `mutedOnTabs: [tabId]` array.
+- **Mutual Exclusivity**: Solo and Mute cannot be active simultaneously - setting one clears the other automatically to prevent logical conflicts.
+- **Real-time Cross-Tab Sync**: Visibility changes propagate instantly via BroadcastChannel (<10ms latency). SOLO/MUTE broadcast messages handled.
+- **Automatic Cleanup**: Dead tab IDs removed when tabs close via `browser.tabs.onRemoved` listener to prevent orphaned references.
+- **Container Isolation**: Solo/Mute state respects Firefox Container boundaries - container-specific BroadcastChannel prevents cross-container leaks.
+- **State Storage**: `soloedOnTabs` and `mutedOnTabs` arrays stored per-container in browser.storage.sync, replacing old `pinnedToUrl` property.
+- **Tab ID Detection**: Content scripts request current tab ID from background via `GET_CURRENT_TAB_ID` handler using `sender.tab.id`.
+- **Visibility Filtering**: `shouldQuickTabBeVisible()` method filters Quick Tabs during state hydration based on solo/mute arrays.
+- **Automatic Migration**: Old `pinnedToUrl` format automatically converted to new solo/mute arrays on extension startup.
+- **UI Controls**: Solo button (🎯/⭕) between "Open in New Tab" and Mute buttons. Mute button (🔇/🔊) between Solo and Minimize.
+- See `docs/manual/1.5.9 docs/solo-mute-quicktabs-implementation-guide.md` for full implementation details.
 
 ### v1.5.9.11 Notes
 
