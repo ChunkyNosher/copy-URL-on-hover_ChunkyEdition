@@ -1,15 +1,68 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.5.9.11** - A feature-rich Firefox/Zen Browser extension with
+**Version 1.5.9.12** - A feature-rich Firefox/Zen Browser extension with
 **Hybrid Modular/EventBus Architecture** for quick URL copying and advanced
-Quick Tab management with Firefox Container support and Persistent Floating
+Quick Tab management with **complete Firefox Container isolation** and Persistent Floating
 Panel Manager.
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
-Now with full Firefox Container integration and a persistent Quick Tabs Manager
+Now with **full Firefox Container Tabs integration** for complete isolation and a persistent Quick Tabs Manager
 panel optimized for Zen Browser.
+
+## 🎉 What's New in v1.5.9.12
+
+**🔒 Firefox Container Tabs Integration - Complete Isolation**
+
+This release implements **complete Firefox Container Tabs integration** to ensure Quick Tabs created in one container remain invisible and unsynchronized from Quick Tabs in other containers.
+
+**The Feature:**
+
+- ✅ **Container-specific Quick Tabs** - Each Firefox Container maintains its own independent Quick Tabs
+  - Quick Tabs created in "Personal" container only appear in "Personal" container
+  - Quick Tabs created in "Work" container only appear in "Work" container
+  - Complete isolation - no cross-container visibility
+- ✅ **Container-aware BroadcastChannel** - Each container uses its own broadcast channel
+  - Container 1: `'quick-tabs-sync-firefox-container-1'`
+  - Container 2: `'quick-tabs-sync-firefox-container-2'`
+  - Automatic message isolation without manual filtering
+- ✅ **Container-filtered storage sync** - Storage changes only sync within matching container
+  - Storage organized by `cookieStoreId` keys
+  - Defense-in-depth filtering at multiple layers
+  - Prevents accidental cross-container state leakage
+- ✅ **Container-aware Panel Manager** - Quick Tab Manager panel shows only current container's tabs
+  - Panel detects which container it's opened in
+  - Displays only Quick Tabs from that container
+  - Independent management per container
+
+**How It Works:**
+
+1. **Container Detection** - QuickTabsManager detects container context during initialization using `browser.tabs.query()`
+2. **Isolated Communication** - Container-specific BroadcastChannel ensures messages stay within container boundaries
+3. **Filtered Storage** - Storage read/write operations always filter by current container
+4. **Message Validation** - All message handlers validate container context before processing
+5. **Auto-Assignment** - New Quick Tabs automatically inherit container context from tab they're created in
+
+**Benefits:**
+
+- 🔒 **True Container Isolation** - Complete separation of Quick Tabs between containers
+- 🚀 **No Performance Impact** - Container-specific channels reduce unnecessary processing
+- 🔄 **Backward Compatible** - Existing Quick Tabs automatically migrated to default container
+- 🛡️ **Defense in Depth** - Container filtering enforced at multiple architectural layers
+
+**Use Cases:**
+
+- **Personal vs Work** - Keep personal browsing Quick Tabs separate from work-related ones
+- **Multi-Account** - Manage different accounts with isolated Quick Tabs
+- **Privacy** - Ensure sensitive Quick Tabs don't leak across container boundaries
+
+**References:**
+
+- [Container Integration Implementation Summary](docs/implementation-summaries/IMPLEMENTATION-SUMMARY-container-integration-v1.5.9.12.md)
+- [Container Integration Framework](docs/manual/1.5.9%20docs/container-integration-framework.md)
+
+---
 
 ## 🎉 What's New in v1.5.9.11
 
@@ -1404,6 +1457,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.5.9.11  
-**Last Updated**: 2025-11-17  
+**Current Version**: 1.5.9.12  
+**Last Updated**: 2025-01-17  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)

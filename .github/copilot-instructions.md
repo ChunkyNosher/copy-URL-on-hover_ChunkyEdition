@@ -3,13 +3,23 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.5.9.11  
+**Version:** 1.5.9.12  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Hybrid Modular/EventBus Architecture (Architecture #10)  
-**Purpose:** URL management with Firefox Container isolation support and
+**Purpose:** URL management with **complete Firefox Container isolation** and
 persistent floating panel manager
 
 ---
+
+### v1.5.9.12 Highlights
+
+- **Firefox Container Tabs Integration - Complete Isolation:** Implemented full container isolation so Quick Tabs created in one Firefox Container remain invisible and unsynchronized from Quick Tabs in other containers.
+- **Container-specific BroadcastChannel:** Each container uses its own broadcast channel (e.g., `'quick-tabs-sync-firefox-container-1'`) for automatic message isolation without manual filtering.
+- **Container-filtered storage sync:** Storage operations filtered by `cookieStoreId` at multiple layers to prevent cross-container state leakage.
+- **Container-aware Panel Manager:** Quick Tab Manager panel detects container context and displays only current container's Quick Tabs.
+- **Auto-container assignment:** Quick Tabs automatically inherit container context from the tab they're created in.
+- **Defense-in-depth isolation:** Container filtering enforced at detection, communication, storage, and UI layers.
+- See `docs/implementation-summaries/IMPLEMENTATION-SUMMARY-container-integration-v1.5.9.12.md` for full implementation details.
 
 ### v1.5.9.11 Highlights
 

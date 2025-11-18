@@ -393,13 +393,18 @@ export class PanelManager {
     };
     this.updateInterval = null;
     this.broadcastChannel = null; // v1.5.8.15 - For cross-tab panel sync
+    this.currentContainerId = null; // v1.5.9.12 - Container integration: Store current container
   }
 
   /**
    * Initialize the panel
+   * v1.5.9.12 - Container integration: Detect container context
    */
   async init() {
     debug('[PanelManager] Initializing...');
+
+    // v1.5.9.12 - Container integration: Detect container context
+    await this.detectContainerContext();
 
     // v1.5.8.15: Set up BroadcastChannel for cross-tab panel sync
     this.setupBroadcastChannel();
@@ -417,6 +422,32 @@ export class PanelManager {
     this.setupMessageListener();
 
     debug('[PanelManager] Initialized');
+  }
+
+  /**
+   * v1.5.9.12 - Detect and store the current tab's container context
+   */
+  async detectContainerContext() {
+    // Default to firefox-default if detection fails
+    this.currentContainerId = 'firefox-default';
+
+    if (typeof browser === 'undefined' || !browser.tabs) {
+      debug('[PanelManager] Browser tabs API not available, using default container');
+      return;
+    }
+
+    try {
+      // Content scripts must use tabs.query() to get current tab
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tabs && tabs.length > 0 && tabs[0].cookieStoreId) {
+        this.currentContainerId = tabs[0].cookieStoreId;
+        debug(`[PanelManager] Container context detected: ${this.currentContainerId}`);
+      } else {
+        debug('[PanelManager] No cookieStoreId found, using default container');
+      }
+    } catch (err) {
+      debug('[PanelManager] Failed to detect container context:', err);
+    }
   }
 
   /**
@@ -1067,6 +1098,9 @@ export class PanelManager {
   /**
    * Update panel content with current Quick Tabs state
    */
+  /**
+   * v1.5.9.12 - Container integration: Filter panel content by current container
+   */
   async updatePanelContent() {
     if (!this.panel || !this.isOpen) return;
 
@@ -1089,25 +1123,13 @@ export class PanelManager {
       return;
     }
 
-    // Calculate totals
-    let totalTabs = 0;
-    let latestTimestamp = 0;
+    // v1.5.9.12 - Container integration: Filter by current container
+    const currentContainerState = quickTabsState[this.currentContainerId];
+    const currentContainerTabs = currentContainerState?.tabs || [];
+    const latestTimestamp = currentContainerState?.lastUpdate || 0;
 
-    Object.keys(quickTabsState).forEach(cookieStoreId => {
-      // Skip metadata keys
-      if (cookieStoreId === 'saveId' || cookieStoreId === 'timestamp') return;
-
-      const containerState = quickTabsState[cookieStoreId];
-      if (containerState && containerState.tabs) {
-        totalTabs += containerState.tabs.length;
-        if (containerState.lastUpdate > latestTimestamp) {
-          latestTimestamp = containerState.lastUpdate;
-        }
-      }
-    });
-
-    // Update stats
-    totalTabsEl.textContent = `${totalTabs} Quick Tab${totalTabs !== 1 ? 's' : ''}`;
+    // Update stats - only show current container's tabs
+    totalTabsEl.textContent = `${currentContainerTabs.length} Quick Tab${currentContainerTabs.length !== 1 ? 's' : ''}`;
 
     if (latestTimestamp > 0) {
       const date = new Date(latestTimestamp);
@@ -1117,7 +1139,7 @@ export class PanelManager {
     }
 
     // Show/hide empty state
-    if (totalTabs === 0) {
+    if (currentContainerTabs.length === 0) {
       containersList.style.display = 'none';
       emptyState.style.display = 'flex';
       return;
@@ -1126,50 +1148,41 @@ export class PanelManager {
       emptyState.style.display = 'none';
     }
 
-    // Load container info
-    let containersData = {};
-    try {
-      if (typeof browser.contextualIdentities !== 'undefined') {
-        const containers = await browser.contextualIdentities.query({});
-        containers.forEach(container => {
-          containersData[container.cookieStoreId] = {
-            name: container.name,
-            icon: this.getContainerIcon(container.icon),
-            color: container.color
-          };
-        });
-      }
+    // Load container info for current container
+    let containerInfo = {
+      name: 'Default',
+      icon: '📁',
+      color: 'grey'
+    };
 
-      // Always add default container
-      containersData['firefox-default'] = {
-        name: 'Default',
-        icon: '📁',
-        color: 'grey'
-      };
+    try {
+      if (
+        this.currentContainerId !== 'firefox-default' &&
+        typeof browser.contextualIdentities !== 'undefined'
+      ) {
+        const containers = await browser.contextualIdentities.query({});
+        const currentContainer = containers.find(c => c.cookieStoreId === this.currentContainerId);
+        if (currentContainer) {
+          containerInfo = {
+            name: currentContainer.name,
+            icon: this.getContainerIcon(currentContainer.icon),
+            color: currentContainer.color
+          };
+        }
+      }
     } catch (err) {
       console.error('[PanelManager] Error loading container info:', err);
     }
 
-    // Clear and rebuild containers list
+    // Clear and rebuild containers list - only show current container
     containersList.innerHTML = '';
 
-    // Sort containers: Default first, then alphabetically
-    const sortedContainers = Object.keys(containersData).sort((a, b) => {
-      if (a === 'firefox-default') return -1;
-      if (b === 'firefox-default') return 1;
-      return containersData[a].name.localeCompare(containersData[b].name);
-    });
-
-    sortedContainers.forEach(cookieStoreId => {
-      const containerInfo = containersData[cookieStoreId];
-      const containerState = quickTabsState[cookieStoreId];
-
-      if (!containerState || !containerState.tabs || containerState.tabs.length === 0) {
-        return; // Skip empty containers
-      }
-
-      this.renderContainerSection(containersList, cookieStoreId, containerInfo, containerState);
-    });
+    this.renderContainerSection(
+      containersList,
+      this.currentContainerId,
+      containerInfo,
+      currentContainerState
+    );
   }
 
   /**
@@ -1265,7 +1278,7 @@ export class PanelManager {
     const meta = document.createElement('div');
     meta.className = 'panel-tab-meta';
 
-    let metaParts = [];
+    const metaParts = [];
     if (minimized) metaParts.push('Minimized');
     if (tab.activeTabId) metaParts.push(`Tab ${tab.activeTabId}`);
     if (tab.width && tab.height)
