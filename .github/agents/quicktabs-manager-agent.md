@@ -1,7 +1,7 @@
 ---
 name: quicktabs-manager-specialist
 description: Specialist for debugging Quick Tabs Manager panel issues - handles manager UI, sync between Quick Tabs and manager, adding/removing tabs from manager, and implementing new manager features
-tools: ['read', 'edit', 'search', 'github']
+tools: ["*"]
 ---
 
 # Quick Tabs Manager Panel Specialist
