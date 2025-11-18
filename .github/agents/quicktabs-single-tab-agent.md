@@ -1,7 +1,7 @@
 ---
 name: quicktabs-single-tab-specialist
 description: Specialist for debugging Quick Tab behaviors within a single tab/webpage - handles creation, rendering, drag/resize, minimize/maximize, and closing issues that occur in one tab context
-tools: ['read', 'edit', 'search', 'github']
+tools: ["*"]
 ---
 
 # Quick Tabs Single-Tab Behavior Specialist
