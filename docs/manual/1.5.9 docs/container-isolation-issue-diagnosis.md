@@ -15,16 +15,19 @@
 ### Key Evidence from Logs
 
 **All Quick Tabs Show Same Container ID:**
+
 ```
 "cookieStoreId": "firefox-default"
 ```
 
 Every Quick Tab creation event in the logs shows `cookieStoreId: "firefox-default"`. This indicates:
+
 1. The extension is detecting the container context
 2. All Quick Tabs in the test were created in the default container
 3. The user likely did not actually switch between different containers during testing
 
 **Container-Specific BroadcastChannel Created:**
+
 ```
 [QuickTabsManager] BroadcastChannel created: quick-tabs-sync-firefox-default
 ```
@@ -32,6 +35,7 @@ Every Quick Tab creation event in the logs shows `cookieStoreId: "firefox-defaul
 The extension successfully creates a container-specific BroadcastChannel during initialization, which is correct behavior for container isolation.
 
 **Container Filtering in Storage Sync:**
+
 ```
 [QuickTabsManager] Syncing from storage state (container: firefox-default)...
 [QuickTabsManager] Syncing 2 tabs from container firefox-default
@@ -78,6 +82,7 @@ The container detection logic uses `browser.tabs.query({ active: true, currentWi
 **Location:** `src/features/quick-tabs/index.js` - `init()` method
 
 **Current Code Flow:**
+
 ```javascript
 async init(eventBus, Events) {
   await this.detectContainerContext();  // Detects container FIRST
@@ -105,10 +110,11 @@ Once a content script joins the wrong BroadcastChannel, all future Quick Tab ope
 **Location:** `src/features/quick-tabs/index.js` - `syncFromStorage()`
 
 **Current Code:**
+
 ```javascript
 syncFromStorage(state, containerFilter = null) {
   const effectiveFilter = containerFilter || this.cookieStoreId;
-  
+
   // Filters tabs by effectiveFilter
   tabsToSync.forEach(tabData => {
     this.createQuickTab({
@@ -123,6 +129,7 @@ syncFromStorage(state, containerFilter = null) {
 The method assigns `cookieStoreId` to created Quick Tabs, but it doesn't **validate** that the Quick Tab's container matches the current tab's actual container before rendering.
 
 **Example Scenario:**
+
 1. Content script in Tab B (Container 2) incorrectly detects `this.cookieStoreId = "firefox-container-1"` (due to Issue 1)
 2. Storage sync receives Quick Tabs from Container 1
 3. `syncFromStorage()` uses `effectiveFilter = "firefox-container-1"` (the WRONG container)
@@ -141,11 +148,11 @@ The code doesn't re-verify the current tab's container at render time. It trusts
 **Expected Behavior:**
 
 When the background script broadcasts a Quick Tab creation message, it should use:
+
 ```javascript
-browser.tabs.query({ cookieStoreId: targetContainer })
-  .then(tabs => {
-    // Send message only to tabs in targetContainer
-  });
+browser.tabs.query({ cookieStoreId: targetContainer }).then(tabs => {
+  // Send message only to tabs in targetContainer
+});
 ```
 
 **Current Behavior (Based on Code Review):**
@@ -158,6 +165,7 @@ The background script's message broadcasting logic was not fully analyzed from t
 **Evidence:**
 
 The logs show:
+
 ```
 [QuickTabsManager] Message received: SYNC_QUICK_TAB_STATE_FROM_BACKGROUND
 ```
@@ -192,14 +200,14 @@ The container integration implementation in v1.5.9.12 includes the correct archi
 ✅ Container context detection (`detectContainerContext()`)  
 ✅ Container-specific BroadcastChannel (`quick-tabs-sync-${cookieStoreId}`)  
 ✅ Container filtering in storage sync (`syncFromStorage()` with `containerFilter`)  
-✅ Container validation in message listeners  
+✅ Container validation in message listeners
 
 However, there are critical implementation gaps:
 
 ❌ **Container detection has race conditions** - async timing can return stale container ID  
 ❌ **No re-validation of container context** - stale `this.cookieStoreId` is trusted throughout lifecycle  
 ❌ **Background script filtering unclear** - may broadcast to all tabs instead of filtering by container  
-❌ **Broadcast channels joined once** - if wrong channel is joined during init, it's never corrected  
+❌ **Broadcast channels joined once** - if wrong channel is joined during init, it's never corrected
 
 ---
 
@@ -222,11 +230,12 @@ Instead of detecting container once during `init()`, **detect container context 
 This ensures the container context is always fresh and accurate.
 
 **Pattern:**
+
 ```javascript
 async getCurrentContainer() {
-  const tabs = await browser.tabs.query({ 
-    active: true, 
-    currentWindow: true 
+  const tabs = await browser.tabs.query({
+    active: true,
+    currentWindow: true
   });
   return tabs[0]?.cookieStoreId || 'firefox-default';
 }
@@ -235,13 +244,13 @@ async createQuickTab(options) {
   // Re-detect container at time of creation
   const currentContainer = await this.getCurrentContainer();
   const cookieStoreId = options.cookieStoreId || currentContainer;
-  
+
   // Validate: Don't create if container doesn't match
   if (currentContainer !== cookieStoreId) {
     console.warn(`[QuickTabsManager] Ignoring Quick Tab creation - container mismatch`);
     return;
   }
-  
+
   // Proceed with creation...
 }
 ```
@@ -268,26 +277,27 @@ By detecting the container **at the time of the operation**, we avoid stale cont
    - Returns the correct channel
 
 **Pattern:**
+
 ```javascript
 async getBroadcastChannel() {
   const currentContainer = await this.getCurrentContainer();
   const expectedChannelName = `quick-tabs-sync-${currentContainer}`;
-  
+
   // Check if current channel is correct
   if (this.broadcastChannel && this.currentChannelName === expectedChannelName) {
     return this.broadcastChannel;
   }
-  
+
   // Close old channel if it exists
   if (this.broadcastChannel) {
     this.broadcastChannel.close();
   }
-  
+
   // Create new channel for current container
   this.broadcastChannel = new BroadcastChannel(expectedChannelName);
   this.currentChannelName = expectedChannelName;
   this.setupBroadcastHandlers(); // Attach message handlers
-  
+
   return this.broadcastChannel;
 }
 
@@ -315,10 +325,10 @@ Content scripts automatically switch to the correct BroadcastChannel when the ta
 async syncFromStorage(state, containerFilter = null) {
   // Re-detect current container for validation
   const currentContainer = await this.getCurrentContainer();
-  
+
   // Use current container as filter if none provided
   const effectiveFilter = containerFilter || currentContainer;
-  
+
   // CRITICAL: Validate that effective filter matches current container
   if (effectiveFilter !== currentContainer) {
     console.warn(
@@ -326,10 +336,10 @@ async syncFromStorage(state, containerFilter = null) {
     );
     return;
   }
-  
+
   // Extract tabs for current container only
   const tabsToSync = /* filter by effectiveFilter */;
-  
+
   tabsToSync.forEach(tabData => {
     // Double-check each tab's container before creating
     if (tabData.cookieStoreId === currentContainer) {
@@ -359,21 +369,23 @@ Even if stale container IDs exist elsewhere, this validation prevents Quick Tabs
 // In background.js
 async function broadcastQuickTabOperation(operation, data) {
   const targetContainer = data.cookieStoreId;
-  
+
   // Query only tabs in the target container
-  const tabs = await browser.tabs.query({ 
-    cookieStoreId: targetContainer 
+  const tabs = await browser.tabs.query({
+    cookieStoreId: targetContainer
   });
-  
+
   // Send message only to tabs in the same container
   for (const tab of tabs) {
-    browser.tabs.sendMessage(tab.id, {
-      action: operation,
-      ...data,
-      cookieStoreId: targetContainer // Always include for validation
-    }).catch(() => {
-      // Content script not loaded, ignore
-    });
+    browser.tabs
+      .sendMessage(tab.id, {
+        action: operation,
+        ...data,
+        cookieStoreId: targetContainer // Always include for validation
+      })
+      .catch(() => {
+        // Content script not loaded, ignore
+      });
   }
 }
 ```
@@ -395,20 +407,20 @@ By explicitly querying tabs by `cookieStoreId` before broadcasting, the backgrou
 ```javascript
 async getCurrentContainer() {
   try {
-    const tabs = await browser.tabs.query({ 
-      active: true, 
-      currentWindow: true 
+    const tabs = await browser.tabs.query({
+      active: true,
+      currentWindow: true
     });
-    
+
     const container = tabs[0]?.cookieStoreId || 'firefox-default';
-    
+
     console.log(`[QuickTabsManager] Current container detected: ${container} (tab: ${tabs[0]?.id})`);
-    
+
     // Log if container changed
     if (this.cookieStoreId && this.cookieStoreId !== container) {
       console.warn(`[QuickTabsManager] Container changed: ${this.cookieStoreId} -> ${container}`);
     }
-    
+
     this.cookieStoreId = container;
     return container;
   } catch (err) {
@@ -429,16 +441,19 @@ Enhanced logging makes it easier to diagnose container detection issues and veri
 ### Test Case 1: Basic Container Isolation
 
 **Setup:**
+
 1. Create Firefox Container "Personal" and "Work"
 2. Open Tab A in "Personal" container
 3. Open Tab B in "Work" container
 
 **Test Steps:**
+
 1. In Tab A, create a Quick Tab
 2. Switch to Tab B
 3. Verify Quick Tab from "Personal" does NOT appear in Tab B
 
 **Expected Result:**
+
 - Tab B (Work container) shows no Quick Tabs
 - Only Tab A (Personal container) shows the Quick Tab
 
@@ -447,16 +462,19 @@ Enhanced logging makes it easier to diagnose container detection issues and veri
 ### Test Case 2: Cross-Tab Sync Within Same Container
 
 **Setup:**
+
 1. Create Firefox Container "Personal"
 2. Open Tab A in "Personal" container
 3. Open Tab C in "Personal" container
 
 **Test Steps:**
+
 1. In Tab A, create a Quick Tab
 2. Switch to Tab C
 3. Verify Quick Tab appears in Tab C
 
 **Expected Result:**
+
 - Tab C (same Personal container) shows the Quick Tab from Tab A
 - Both tabs share the same Quick Tabs state
 
@@ -465,10 +483,12 @@ Enhanced logging makes it easier to diagnose container detection issues and veri
 ### Test Case 3: Quick Tab Manager Panel Isolation
 
 **Setup:**
+
 1. Create 3 Quick Tabs in "Personal" container
 2. Create 5 Quick Tabs in "Work" container
 
 **Test Steps:**
+
 1. Open Quick Tab Manager in a tab in "Personal" container
 2. Verify panel shows only 3 Quick Tabs
 3. Switch to a tab in "Work" container
@@ -476,6 +496,7 @@ Enhanced logging makes it easier to diagnose container detection issues and veri
 5. Verify panel shows only 5 Quick Tabs (not all 8)
 
 **Expected Result:**
+
 - Each container's panel is independent
 - Managing Quick Tabs in one panel doesn't affect the other
 
@@ -484,14 +505,17 @@ Enhanced logging makes it easier to diagnose container detection issues and veri
 ### Test Case 4: Container Switching During Quick Tab Lifecycle
 
 **Setup:**
+
 1. Open Tab A in "Personal" container
 2. Create a Quick Tab in Tab A
 
 **Test Steps:**
+
 1. While Quick Tab is open, switch Tab A's container to "Work"
 2. Verify the Quick Tab behavior
 
 **Expected Result:**
+
 - Quick Tab either:
   - Closes automatically (if strict isolation is enforced)
   - Remains but stops syncing to "Personal" container tabs
@@ -531,6 +555,7 @@ Enhanced logging makes it easier to diagnose container detection issues and veri
 The container integration in v1.5.9.12 has the right architecture but suffers from implementation issues:
 
 **Core Issues:**
+
 1. Container detection is async and can return stale data
 2. BroadcastChannel is joined once with potentially wrong container ID
 3. No validation before rendering Quick Tabs from storage
