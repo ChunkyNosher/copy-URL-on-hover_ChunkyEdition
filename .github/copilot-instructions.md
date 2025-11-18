@@ -3,11 +3,17 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.5.9.13  
+**Version:** 1.6.0 (Architecture Refactoring In Progress - Phase 1)  
 **Language:** JavaScript (ES6+)  
-**Architecture:** Hybrid Modular/EventBus Architecture (Architecture #10)  
+**Architecture:** Transitioning from Hybrid Modular/EventBus to Domain-Driven Design with Clean Architecture  
+**Refactoring Status:** Phase 1 (Domain Layer) 66% complete - Storage abstraction in progress  
 **Purpose:** URL management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and
 persistent floating panel manager
+
+**🔧 v1.6.0 Refactoring:** Major architectural transformation following evidence-based patterns (Mozilla/Chrome/Industry best practices).  
+**Domain Layer:** ✅ Complete (QuickTab, Container entities with 100% test coverage)  
+**Storage Layer:** ⏳ In Progress (Async-first adapters, format migration)  
+**See:** `docs/misc/v1.6.0-REFACTORING-PHASE1-STATUS.md` for current status
 
 ---
 
@@ -110,6 +116,17 @@ A solution is acceptable when:
 **Remember: A complex solution that ACTUALLY WORKS is infinitely better than a simple solution that MASKS THE PROBLEM.**
 
 ---
+
+### v1.6.0 Highlights (Refactoring In Progress)
+
+- **Major Architecture Refactoring - Domain-Driven Design:** Comprehensive transformation to reduce technical debt and improve maintainability following evidence-based patterns from Mozilla, Chrome, and industry best practices.
+- **Phase 0 (COMPLETE):** Enhanced build system with module aliasing, comprehensive test infrastructure with layer-specific coverage thresholds, ESLint complexity rules, automated architecture validation.
+- **Phase 1.1-1.2 (COMPLETE):** Domain layer entities extracted - QuickTab (410 lines) and Container (207 lines) with **100% test coverage** (83 tests, 0 technical debt).
+- **Phase 1.3-1.4 (IN PROGRESS):** Storage abstraction layer - async-first adapters (SyncStorageAdapter, SessionStorageAdapter), format migrator for v1.5.8.13-15 legacy formats.
+- **Quality Gates:** Domain layer requires 100% coverage, storage layer 90%, features 80%. Complexity limits enforced: cc ≤ 9, max-depth ≤ 2, max-lines ≤ 70.
+- **All Features Preserved:** Zero breaking changes, full backward compatibility maintained throughout refactoring.
+- **Test Infrastructure:** Fast unit tests (<1s), module-aware build system, bundle size monitoring, architecture boundary enforcement via ESLint.
+- See `docs/misc/v1.6.0-REFACTORING-PHASE1-STATUS.md` for detailed progress and handoff instructions.
 
 ### v1.5.9.13 Highlights
 

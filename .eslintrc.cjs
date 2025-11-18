@@ -138,7 +138,8 @@ module.exports = {
       rules: {
         // Relax complexity rules for tests
         'max-lines-per-function': 'off',
-        complexity: 'off'
+        complexity: 'off',
+        'max-nested-callbacks': 'off' // Tests have nested describes/it blocks
       }
     }
   ],
