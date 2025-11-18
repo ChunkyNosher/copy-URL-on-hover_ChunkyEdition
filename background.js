@@ -1314,17 +1314,22 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === 'GET_CURRENT_TAB_ID') {
     // FIRST: Try sender.tab (standard approach for content scripts)
     if (sender.tab && sender.tab.id) {
-      console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${sender.tab.id} from sender.tab`);
+      console.log(
+        `[Background] GET_CURRENT_TAB_ID: Returning tab ID ${sender.tab.id} from sender.tab`
+      );
       sendResponse({ tabId: sender.tab.id });
       return true;
     }
 
     // FALLBACK: Query active tab in current window
     // This handles cases where sender.tab is not populated during initialization
-    browser.tabs.query({ active: true, currentWindow: true })
+    browser.tabs
+      .query({ active: true, currentWindow: true })
       .then(tabs => {
         if (tabs && tabs.length > 0 && tabs[0].id) {
-          console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`);
+          console.log(
+            `[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`
+          );
           sendResponse({ tabId: tabs[0].id });
         } else {
           console.warn('[Background] GET_CURRENT_TAB_ID: Could not determine tab ID');
