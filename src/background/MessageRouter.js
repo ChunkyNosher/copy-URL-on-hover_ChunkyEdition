@@ -23,7 +23,7 @@ export class MessageRouter {
    */
   register(actions, handler) {
     const actionList = Array.isArray(actions) ? actions : [actions];
-    
+
     for (const action of actionList) {
       if (this.handlers.has(action)) {
         console.warn(`[MessageRouter] Overwriting handler for action: ${action}`);
@@ -51,9 +51,7 @@ export class MessageRouter {
     }
 
     if (!this.extensionId) {
-      console.warn(
-        '[MessageRouter] Extension ID not set - defaulting to optimistic validation'
-      );
+      console.warn('[MessageRouter] Extension ID not set - defaulting to optimistic validation');
       return true;
     }
 
@@ -86,23 +84,23 @@ export class MessageRouter {
     try {
       // Call handler and wait for result
       const result = await handler(message, sender);
-      
+
       // Send response
       if (sendResponse) {
         sendResponse(result);
       }
-      
+
       return true; // Keep channel open for async response
     } catch (error) {
       console.error(`[MessageRouter] Handler error for ${message.action}:`, error);
-      
+
       if (sendResponse) {
         sendResponse({
           success: false,
           error: error.message || 'Handler execution failed'
         });
       }
-      
+
       return true;
     }
   }

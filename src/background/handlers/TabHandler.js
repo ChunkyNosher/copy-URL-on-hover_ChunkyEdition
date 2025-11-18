@@ -40,7 +40,7 @@ export class TabHandler {
    */
   async handleSaveState(message, sender) {
     const tabId = sender.tab?.id;
-    
+
     if (!tabId) {
       throw new Error('Tab ID not available');
     }
@@ -54,7 +54,7 @@ export class TabHandler {
    */
   async handleGetState(_message, sender) {
     const tabId = sender.tab?.id;
-    
+
     if (!tabId) {
       throw new Error('Tab ID not available');
     }
@@ -68,7 +68,7 @@ export class TabHandler {
    */
   async handleClearState(_message, sender) {
     const tabId = sender.tab?.id;
-    
+
     if (!tabId) {
       throw new Error('Tab ID not available');
     }
@@ -82,7 +82,7 @@ export class TabHandler {
    */
   async handleLegacyCreate(message, _sender) {
     console.log('[TabHandler] Legacy createQuickTab action - use CREATE_QUICK_TAB instead');
-    
+
     // Just acknowledge - actual creation should use CREATE_QUICK_TAB
     return { success: true, message: 'Use CREATE_QUICK_TAB action' };
   }

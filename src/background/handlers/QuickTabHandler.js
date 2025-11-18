@@ -146,11 +146,11 @@ export class QuickTabHandler {
     }
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
-    
+
     if (this.globalState.containers[cookieStoreId]) {
       const containerState = this.globalState.containers[cookieStoreId];
       const tab = containerState.tabs.find(t => t.id === message.id);
-      
+
       if (tab) {
         tab.left = message.left;
         tab.top = message.top;
@@ -174,11 +174,11 @@ export class QuickTabHandler {
     }
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
-    
+
     if (this.globalState.containers[cookieStoreId]) {
       const containerState = this.globalState.containers[cookieStoreId];
       const tab = containerState.tabs.find(t => t.id === message.id);
-      
+
       if (tab) {
         tab.width = message.width;
         tab.height = message.height;
@@ -202,11 +202,11 @@ export class QuickTabHandler {
     }
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
-    
+
     if (this.globalState.containers[cookieStoreId]) {
       const containerState = this.globalState.containers[cookieStoreId];
       const tab = containerState.tabs.find(t => t.id === message.id);
-      
+
       if (tab) {
         tab.pinnedToUrl = message.pinnedToUrl;
         containerState.lastUpdate = Date.now();
@@ -226,11 +226,11 @@ export class QuickTabHandler {
     }
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
-    
+
     if (this.globalState.containers[cookieStoreId]) {
       const containerState = this.globalState.containers[cookieStoreId];
       const tab = containerState.tabs.find(t => t.id === message.id);
-      
+
       if (tab) {
         tab.soloedOnTabs = message.soloedOnTabs || [];
         containerState.lastUpdate = Date.now();
@@ -250,11 +250,11 @@ export class QuickTabHandler {
     }
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
-    
+
     if (this.globalState.containers[cookieStoreId]) {
       const containerState = this.globalState.containers[cookieStoreId];
       const tab = containerState.tabs.find(t => t.id === message.id);
-      
+
       if (tab) {
         tab.mutedOnTabs = message.mutedOnTabs || [];
         containerState.lastUpdate = Date.now();
@@ -274,11 +274,11 @@ export class QuickTabHandler {
     }
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
-    
+
     if (this.globalState.containers[cookieStoreId]) {
       const containerState = this.globalState.containers[cookieStoreId];
       const tab = containerState.tabs.find(t => t.id === message.id);
-      
+
       if (tab) {
         tab.minimized = message.minimized;
         containerState.lastUpdate = Date.now();
@@ -366,13 +366,9 @@ export class QuickTabHandler {
   async broadcastToContainer(cookieStoreId, messageData) {
     try {
       const tabs = await this.browserAPI.tabs.query({ cookieStoreId });
-      
+
       await Promise.allSettled(
-        tabs.map(tab =>
-          this.browserAPI.tabs
-            .sendMessage(tab.id, messageData)
-            .catch(() => {})
-        )
+        tabs.map(tab => this.browserAPI.tabs.sendMessage(tab.id, messageData).catch(() => {}))
       );
     } catch (err) {
       console.error('[QuickTabHandler] Error broadcasting:', err);
