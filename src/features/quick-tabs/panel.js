@@ -1278,7 +1278,7 @@ export class PanelManager {
     const meta = document.createElement('div');
     meta.className = 'panel-tab-meta';
 
-    let metaParts = [];
+    const metaParts = [];
     if (minimized) metaParts.push('Minimized');
     if (tab.activeTabId) metaParts.push(`Tab ${tab.activeTabId}`);
     if (tab.width && tab.height)
