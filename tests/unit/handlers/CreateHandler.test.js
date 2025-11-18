@@ -165,12 +165,12 @@ describe('CreateHandler', () => {
       });
     });
 
-    test('should emit QUICK_TAB_CREATED event', (done) => {
+    test('should emit QUICK_TAB_CREATED event', done => {
       const options = { id: 'tab-1', url: 'https://example.com' };
       const mockTabWindow = { id: 'tab-1', render: jest.fn(), isRendered: () => true };
       mockCreateQuickTabWindow.mockReturnValue(mockTabWindow);
 
-      eventBus.on('QUICK_TAB_CREATED', (data) => {
+      eventBus.on('QUICK_TAB_CREATED', data => {
         expect(data.id).toBe('tab-1');
         expect(data.url).toBe('https://example.com');
         done();
