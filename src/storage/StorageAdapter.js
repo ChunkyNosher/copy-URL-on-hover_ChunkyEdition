@@ -1,15 +1,15 @@
 /**
  * StorageAdapter - Abstract base class for storage implementations
- * 
+ *
  * Defines the contract that all storage adapters must implement.
  * Ensures consistent async-first API across all storage backends.
- * 
+ *
  * @abstract
  */
 export class StorageAdapter {
   /**
    * Save Quick Tabs for a specific container
-   * 
+   *
    * @param {string} containerId - Firefox container ID (e.g., 'firefox-default', 'firefox-container-1')
    * @param {QuickTab[]} tabs - Array of QuickTab domain entities
    * @returns {Promise<string>} Save ID for tracking race conditions
@@ -21,7 +21,7 @@ export class StorageAdapter {
 
   /**
    * Load Quick Tabs for a specific container
-   * 
+   *
    * @param {string} containerId - Firefox container ID
    * @returns {Promise<{tabs: QuickTab[], lastUpdate: number}|null>} Container data or null if not found
    * @throws {Error} If not implemented by subclass
@@ -32,7 +32,7 @@ export class StorageAdapter {
 
   /**
    * Load all Quick Tabs across all containers
-   * 
+   *
    * @returns {Promise<Object.<string, {tabs: QuickTab[], lastUpdate: number}>>} Map of container ID to container data
    * @throws {Error} If not implemented by subclass
    */
@@ -42,7 +42,7 @@ export class StorageAdapter {
 
   /**
    * Delete a specific Quick Tab from a container
-   * 
+   *
    * @param {string} containerId - Firefox container ID
    * @param {string} quickTabId - Quick Tab ID to delete
    * @returns {Promise<void>}
@@ -54,7 +54,7 @@ export class StorageAdapter {
 
   /**
    * Delete all Quick Tabs for a specific container
-   * 
+   *
    * @param {string} containerId - Firefox container ID
    * @returns {Promise<void>}
    * @throws {Error} If not implemented by subclass
@@ -65,7 +65,7 @@ export class StorageAdapter {
 
   /**
    * Clear all Quick Tabs across all containers
-   * 
+   *
    * @returns {Promise<void>}
    * @throws {Error} If not implemented by subclass
    */

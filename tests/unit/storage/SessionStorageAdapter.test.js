@@ -20,7 +20,7 @@ describe('SessionStorageAdapter', () => {
   beforeEach(() => {
     adapter = new SessionStorageAdapter();
     jest.clearAllMocks();
-    
+
     // Default mock implementations
     browser.storage.session.get.mockResolvedValue({});
     browser.storage.session.set.mockResolvedValue(undefined);
@@ -84,14 +84,10 @@ describe('SessionStorageAdapter', () => {
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-default': expect.objectContaining({
-              tabs: expect.arrayContaining([
-                expect.objectContaining({ id: 'qt-old' })
-              ])
+              tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-old' })])
             }),
             'firefox-container-1': expect.objectContaining({
-              tabs: expect.arrayContaining([
-                expect.objectContaining({ id: 'qt-new' })
-              ])
+              tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-new' })])
             })
           }
         })
@@ -130,9 +126,7 @@ describe('SessionStorageAdapter', () => {
       const result = await adapter.load('firefox-default');
 
       expect(result).toEqual({
-        tabs: [
-          expect.objectContaining({ id: 'qt-1', url: 'https://example.com' })
-        ],
+        tabs: [expect.objectContaining({ id: 'qt-1', url: 'https://example.com' })],
         lastUpdate: expect.any(Number)
       });
     });
@@ -226,9 +220,7 @@ describe('SessionStorageAdapter', () => {
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-default': expect.objectContaining({
-              tabs: expect.arrayContaining([
-                expect.objectContaining({ id: 'qt-2' })
-              ])
+              tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-2' })])
             })
           }
         })

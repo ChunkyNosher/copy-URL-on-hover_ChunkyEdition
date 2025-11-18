@@ -1,9 +1,9 @@
 /**
  * FormatMigrator - Strategy pattern for detecting and migrating legacy storage formats
- * 
+ *
  * Handles migration from v1.5.8.13-15 storage formats to current format.
  * Uses strategy pattern for extensibility - adding new format = add one class.
- * 
+ *
  * Supported Formats:
  * - V1_5_8_15_Format: Container-aware with containers key (current)
  * - V1_5_8_14_Format: Unwrapped container format
@@ -45,7 +45,7 @@ class FormatStrategy {
 
 /**
  * V1.5.8.15+ Format (Current)
- * 
+ *
  * Format:
  * {
  *   containers: {
@@ -75,7 +75,7 @@ export class V1_5_8_15_Format extends FormatStrategy {
 
 /**
  * V1.5.8.14 Format
- * 
+ *
  * Format (unwrapped containers):
  * {
  *   'firefox-default': {
@@ -95,9 +95,7 @@ export class V1_5_8_14_Format extends FormatStrategy {
     }
 
     // Has container-like keys but no wrapping containers object
-    const hasContainerKeys = Object.keys(data).some(key =>
-      key.startsWith('firefox-')
-    );
+    const hasContainerKeys = Object.keys(data).some(key => key.startsWith('firefox-'));
 
     const hasNoWrapping = !data.containers && !data.tabs;
 
@@ -130,7 +128,7 @@ export class V1_5_8_14_Format extends FormatStrategy {
 
 /**
  * Legacy Format (v1.5.8.13 and earlier)
- * 
+ *
  * Format (flat tabs array):
  * {
  *   tabs: [QuickTab, ...],
@@ -139,12 +137,7 @@ export class V1_5_8_14_Format extends FormatStrategy {
  */
 export class LegacyFormat extends FormatStrategy {
   matches(data) {
-    return (
-      data &&
-      typeof data === 'object' &&
-      Array.isArray(data.tabs) &&
-      !data.containers
-    );
+    return data && typeof data === 'object' && Array.isArray(data.tabs) && !data.containers;
   }
 
   parse(data) {
@@ -165,7 +158,7 @@ export class LegacyFormat extends FormatStrategy {
 
 /**
  * Empty Format (fallback)
- * 
+ *
  * Used when data is null, undefined, or unrecognized
  */
 export class EmptyFormat extends FormatStrategy {
@@ -186,7 +179,7 @@ export class EmptyFormat extends FormatStrategy {
 
 /**
  * FormatMigrator - Main class for format detection and migration
- * 
+ *
  * Usage:
  * const migrator = new FormatMigrator();
  * const format = migrator.detect(rawData);
@@ -205,7 +198,7 @@ export class FormatMigrator {
 
   /**
    * Detect storage format from raw data
-   * 
+   *
    * @param {Object} data - Raw storage data
    * @returns {FormatStrategy} Detected format strategy
    */
@@ -223,7 +216,7 @@ export class FormatMigrator {
 
   /**
    * Parse data using detected format
-   * 
+   *
    * @param {Object} data - Raw storage data
    * @returns {Object.<string, {tabs: Array, lastUpdate: number}>} Container-aware format
    */
@@ -239,7 +232,7 @@ export class FormatMigrator {
 
   /**
    * Check if data needs migration
-   * 
+   *
    * @param {Object} data - Raw storage data
    * @returns {boolean} True if data is not in current format
    */
@@ -250,7 +243,7 @@ export class FormatMigrator {
 
   /**
    * Get list of supported format versions
-   * 
+   *
    * @returns {string[]} Array of version identifiers
    */
   getSupportedVersions() {

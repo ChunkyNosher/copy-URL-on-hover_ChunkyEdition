@@ -24,7 +24,7 @@ describe('SyncStorageAdapter', () => {
   beforeEach(() => {
     adapter = new SyncStorageAdapter();
     jest.clearAllMocks();
-    
+
     // Default mock implementations
     browser.storage.sync.get.mockResolvedValue({});
     browser.storage.sync.set.mockResolvedValue(undefined);
@@ -91,14 +91,10 @@ describe('SyncStorageAdapter', () => {
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-default': expect.objectContaining({
-              tabs: expect.arrayContaining([
-                expect.objectContaining({ id: 'qt-old' })
-              ])
+              tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-old' })])
             }),
             'firefox-container-1': expect.objectContaining({
-              tabs: expect.arrayContaining([
-                expect.objectContaining({ id: 'qt-new' })
-              ])
+              tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-new' })])
             })
           }
         })
@@ -106,9 +102,7 @@ describe('SyncStorageAdapter', () => {
     });
 
     test('should fallback to local storage when quota exceeded', async () => {
-      browser.storage.sync.set.mockRejectedValue(
-        new Error('QUOTA_BYTES: Storage quota exceeded')
-      );
+      browser.storage.sync.set.mockRejectedValue(new Error('QUOTA_BYTES: Storage quota exceeded'));
 
       const quickTab = QuickTab.create({
         id: 'qt-123',
@@ -124,12 +118,8 @@ describe('SyncStorageAdapter', () => {
     });
 
     test('should throw error when both sync and local storage fail', async () => {
-      browser.storage.sync.set.mockRejectedValue(
-        new Error('QUOTA_BYTES: Storage quota exceeded')
-      );
-      browser.storage.local.set.mockRejectedValue(
-        new Error('Local storage failed')
-      );
+      browser.storage.sync.set.mockRejectedValue(new Error('QUOTA_BYTES: Storage quota exceeded'));
+      browser.storage.local.set.mockRejectedValue(new Error('Local storage failed'));
 
       const quickTab = QuickTab.create({
         id: 'qt-123',
@@ -138,9 +128,7 @@ describe('SyncStorageAdapter', () => {
         size: { width: 400, height: 300 }
       });
 
-      await expect(adapter.save('firefox-default', [quickTab])).rejects.toThrow(
-        'Failed to save'
-      );
+      await expect(adapter.save('firefox-default', [quickTab])).rejects.toThrow('Failed to save');
     });
 
     test('should save multiple Quick Tabs', async () => {
@@ -197,9 +185,7 @@ describe('SyncStorageAdapter', () => {
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
-              tabs: [
-                { id: 'qt-1', url: 'https://example.com' }
-              ],
+              tabs: [{ id: 'qt-1', url: 'https://example.com' }],
               lastUpdate: Date.now()
             }
           }
@@ -209,9 +195,7 @@ describe('SyncStorageAdapter', () => {
       const result = await adapter.load('firefox-default');
 
       expect(result).toEqual({
-        tabs: [
-          expect.objectContaining({ id: 'qt-1', url: 'https://example.com' })
-        ],
+        tabs: [expect.objectContaining({ id: 'qt-1', url: 'https://example.com' })],
         lastUpdate: expect.any(Number)
       });
     });
@@ -326,9 +310,7 @@ describe('SyncStorageAdapter', () => {
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-default': expect.objectContaining({
-              tabs: expect.arrayContaining([
-                expect.objectContaining({ id: 'qt-2' })
-              ])
+              tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-2' })])
             })
           }
         })
