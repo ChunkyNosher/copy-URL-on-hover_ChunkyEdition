@@ -114,7 +114,7 @@ async function loadConfiguration() {
  */
 function setupDebugMode() {
   if (!CONFIG.debugMode) return;
-  
+
   console.log('[Copy-URL-on-Hover] STEP: Enabling debug mode...');
   try {
     enableDebug();
@@ -142,7 +142,7 @@ function initializeState() {
  */
 async function initializeFeatures() {
   console.log('[Copy-URL-on-Hover] STEP: Initializing feature modules...');
-  
+
   // Quick Tabs feature
   try {
     quickTabsManager = await initQuickTabs(eventBus, Events);
@@ -369,15 +369,23 @@ function matchesShortcut(event, shortcut, hoveredLink, hoveredElement) {
   const ctrlConfig = `${shortcut.name}Ctrl`;
   const altConfig = `${shortcut.name}Alt`;
   const shiftConfig = `${shortcut.name}Shift`;
-  
-  if (!checkShortcut(event, CONFIG[keyConfig], CONFIG[ctrlConfig], CONFIG[altConfig], CONFIG[shiftConfig])) {
+
+  if (
+    !checkShortcut(
+      event,
+      CONFIG[keyConfig],
+      CONFIG[ctrlConfig],
+      CONFIG[altConfig],
+      CONFIG[shiftConfig]
+    )
+  ) {
     return false;
   }
-  
+
   // Check prerequisites
   if (shortcut.needsLink && !hoveredLink) return false;
   if (shortcut.needsElement && !hoveredElement) return false;
-  
+
   return true;
 }
 
@@ -395,7 +403,7 @@ async function handleKeyboardShortcut(event) {
   // Check each shortcut using table-driven approach
   for (const shortcut of SHORTCUT_HANDLERS) {
     if (!matchesShortcut(event, shortcut, hoveredLink, hoveredElement)) continue;
-    
+
     event.preventDefault();
     await shortcut.handler(hoveredLink, hoveredElement);
     return;
@@ -496,7 +504,7 @@ function generateQuickTabIds() {
       ? quickTabsManager.generateId()
       : generateQuickTabId();
   const saveId = canUseManagerSaveId ? quickTabsManager.generateSaveId() : generateSaveTrackingId();
-  
+
   return { quickTabId, saveId, canUseManagerSaveId };
 }
 
@@ -526,13 +534,13 @@ async function persistQuickTabToBackground(quickTabData, saveId) {
  */
 async function executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId) {
   const hasManager = quickTabsManager && typeof quickTabsManager.createQuickTab === 'function';
-  
+
   if (hasManager) {
     createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId);
   } else {
     console.warn('[Quick Tab] Manager not available, using legacy creation path');
   }
-  
+
   await persistQuickTabToBackground(quickTabData, saveId);
   showNotification('✓ Quick Tab created!', 'success');
   debug('Quick Tab created successfully');
