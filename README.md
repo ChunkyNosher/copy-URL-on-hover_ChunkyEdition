@@ -21,6 +21,7 @@ panel optimized for Zen Browser.
 v1.6.0 represents a comprehensive architectural transformation to reduce technical debt, improve maintainability, and establish a solid foundation for future features. This is an ongoing refactoring project following evidence-based patterns from Mozilla, Chrome, and industry best practices.
 
 **Phase 0: Infrastructure Setup (COMPLETE ✅)**
+
 - ✅ Enhanced build system with module aliasing (`@domain`, `@storage`, `@features`)
 - ✅ Comprehensive test infrastructure with layer-specific coverage thresholds
 - ✅ ESLint rules for complexity control (cc ≤ 9, max-depth ≤ 2, max-lines ≤ 70)
@@ -28,6 +29,7 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 - ✅ Bundle size monitoring (content.js <500KB, background.js <300KB)
 
 **Phase 1: Domain Layer (66% COMPLETE ✅)**
+
 - ✅ **QuickTab Domain Entity** - Pure business logic extracted from QuickTabsManager
   - Solo/Mute visibility rules
   - Position/size/z-index management
@@ -42,12 +44,14 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 - ⏳ Format migrator for legacy formats (pending)
 
 **Technical Improvements:**
+
 - **Zero technical debt in domain layer** - All business logic isolated, testable, maintainable
 - **Fast test execution** - Unit tests run in <1s (was ~10s for integration tests)
 - **Strict quality gates** - 100% domain coverage required, complexity limits enforced
 - **Architecture boundaries** - Domain cannot import from features/storage (enforced by ESLint)
 
 **What This Means for Users:**
+
 - ✅ **All features preserved** - No breaking changes, full backward compatibility
 - ✅ **Improved stability** - Rigorous testing catches bugs earlier
 - ✅ **Faster bug fixes** - Modular architecture simplifies debugging
@@ -56,6 +60,7 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 **Status:** Phase 1 (Domain Models & Storage) in progress. See [v1.6.0 Refactoring Status](docs/misc/v1.6.0-REFACTORING-PHASE1-STATUS.md) for detailed progress.
 
 **References:**
+
 - [Refactoring Plan (Evidence-Based)](docs/manual/1.5.9%20docs/copy-url-on-hover-refactoring-plan-v2-evidence-based.md)
 - [Infrastructure Changes](docs/manual/1.5.9%20docs/infrastructure-testing-changes-refactoring.md)
 - [Phase 1 Status Report](docs/misc/v1.6.0-REFACTORING-PHASE1-STATUS.md)
