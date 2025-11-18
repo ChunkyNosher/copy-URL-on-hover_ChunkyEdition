@@ -13,10 +13,12 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 ### What Was Accomplished
 
 **Version Updates:**
+
 - Updated `manifest.json` from v1.5.9.13 → v1.6.0
 - Updated `package.json` from v1.5.9.13 → v1.6.0
 
 **Build System Enhancement:**
+
 - Enhanced `rollup.config.js` with module aliasing system
 - Added `@domain`, `@storage`, `@features`, `@utils`, `@core`, `@ui` path aliases
 - Integrated `@rollup/plugin-alias` for clean imports
@@ -25,6 +27,7 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 - Added multiple entry point support (prepared for future modularization)
 
 **Test Infrastructure:**
+
 - Updated `jest.config.cjs` with comprehensive module mapping
 - Added layer-specific coverage thresholds:
   - Domain layer: 100% (branches, functions, lines, statements)
@@ -46,6 +49,7 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
   - `broadcast-channel.js` - Mock BroadcastChannel
 
 **Code Quality Enforcement:**
+
 - Updated `.eslintrc.cjs` with architectural rules:
   - Complexity rules: `complexity ≤ 9`, `max-depth ≤ 2`, `max-lines-per-function ≤ 70`
   - Async/await rules: `require-await`, `no-return-await`
@@ -54,6 +58,7 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 - Added `eslint-plugin-import` for boundary enforcement
 
 **Validation Scripts:**
+
 - Created `scripts/check-bundle-size.js`:
   - Enforces content.js <500KB, background.js <300KB, popup.js <100KB
   - Provides clear feedback on bundle sizes
@@ -64,6 +69,7 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
   - Migration-aware (tolerates old structure during transition)
 
 **New npm Scripts:**
+
 ```json
 {
   "build:content": "Build content script only",
@@ -88,6 +94,7 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 ```
 
 **Dependencies:**
+
 - **Removed:** `zustand` (unused state management library)
 - **Added DevDependencies:**
   - `@rollup/plugin-alias@^5.1.0` - Module aliasing
@@ -102,24 +109,29 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 ## Validation Results
 
 ### Build System
+
 ✅ **PASS** - Build completes successfully  
 ✅ **PASS** - Bundle sizes within limits:
+
 - content.js: 231.05KB / 500KB (46.2%)
 - background.js: 57.55KB / 300KB (19.2%)
 - popup.js: 26.65KB / 100KB (26.7%)
 
 ### Test Suite
+
 ✅ **PASS** - All 76 existing tests pass  
 ✅ **PASS** - Test infrastructure functional  
 ✅ **PASS** - Module mappers working
 
 ### Architecture Validation
+
 ✅ **PASS** - Architecture validation script working  
 ✅ **PASS** - Migration-tolerant (old structure allowed)  
 ℹ️ **INFO** - Domain layer not yet created  
 ℹ️ **INFO** - Storage layer not yet created
 
 ### Code Quality
+
 ✅ **PASS** - ESLint runs successfully  
 ⚠️ **WARN** - 20 minor warnings (unused vars, prefer-const)  
 ✅ **PASS** - New complexity rules active (will enforce on new code)
@@ -129,9 +141,11 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 ## What's Next: Phases 1-10 Roadmap
 
 ### Phase 1: Extract Domain Models & Storage Abstraction (Estimated: 2 weeks)
+
 **Goal:** Create pure domain logic layer and async storage abstraction
 
 **Tasks:**
+
 1. Create `src/domain/QuickTab.js` - Domain entity with business logic
 2. Create `src/domain/QuickTabState.js` - State transitions
 3. Create `src/domain/Container.js` - Firefox container entity
@@ -142,15 +156,18 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 8. Write unit tests achieving 100% domain coverage
 
 **Success Criteria:**
+
 - [ ] Domain layer: 100% test coverage
 - [ ] Storage layer: 90% test coverage
 - [ ] Zero dependencies from domain → storage/features
 - [ ] All legacy storage formats supported
 
 ### Phase 2.1: Decompose QuickTabsManager God Object (Estimated: 2 weeks)
+
 **Goal:** Break 50KB god object into focused managers and handlers
 
 **Tasks:**
+
 1. Extract `StorageManager` (4 methods, cc=25 → cc=5)
 2. Extract `BroadcastManager` (3 methods, reduce duplication)
 3. Extract `StateManager` (local state management)
@@ -161,15 +178,18 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 8. Write unit tests for all managers/handlers
 
 **Success Criteria:**
+
 - [ ] index.js: 50KB → ~15KB (70% reduction)
 - [ ] Mean cc: 6.74 → ~3.5
 - [ ] setupStorageListeners: cc 25 → cc 5
 - [ ] All integration tests pass
 
 ### Phase 2.2: Consolidate Background.js Dual State Systems (Estimated: 2 weeks)
+
 **Goal:** Single source of truth for state
 
 **Tasks:**
+
 1. Create `background/StateManager/StateStore.js`
 2. Create `background/StateManager/StateCoordinator.js`
 3. Create `background/StateManager/StateMigrator.js`
@@ -177,15 +197,18 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 5. Write unit tests for state management
 
 **Success Criteria:**
+
 - [ ] initializeGlobalState: 88 lines → ~20 lines
 - [ ] background.js: cc 6.05 → ~3.0
 - [ ] Eliminate state sync bugs
 - [ ] Cross-tab sync <50ms
 
 ### Phase 2.3: Decompose window.js Resize Complexity (Estimated: 2 weeks)
+
 **Goal:** Table-driven resize handling
 
 **Tasks:**
+
 1. Create `ResizeController` - Coordinate resize operations
 2. Create `ResizeHandle` - Individual handle (8 instances)
 3. Create `DragController` - Drag-to-move
@@ -194,39 +217,48 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 6. Write unit tests for window components
 
 **Success Criteria:**
+
 - [ ] setupResizeHandlers: 166 lines → ~15 lines
 - [ ] window.js: cc 5.57 → ~3.0
 - [ ] Drag/resize performance unchanged
 
 ### Phase 3: Replace Conditionals with Polymorphism (Estimated: 2 weeks)
+
 **Goal:** Command pattern for keyboard shortcuts
 
 **Tasks:**
+
 1. Create `KeyboardShortcuts/ShortcutRegistry.js`
 2. Create command classes (Create, Minimize, Destroy)
 3. Refactor content.js keyboard handlers
 4. Write unit tests
 
 **Success Criteria:**
+
 - [ ] Keyboard handler: cc 10 → cc 2
 - [ ] Adding shortcuts: 0 conditional logic
 
 ### Phase 4: Eliminate Duplication with Template Methods (Estimated: 1 week)
+
 **Goal:** Template method for handlers
 
 **Tasks:**
+
 1. Create `BaseHandler.js` template method
 2. Refactor handlers to extend base
 3. Write unit tests
 
 **Success Criteria:**
+
 - [ ] 6 similar handlers → 1 base + 6 focused subclasses
 - [ ] 70% reduction in duplication
 
 ### Phase 5: Final Integration & Testing (Estimated: 1 week)
+
 **Goal:** Validation and optimization
 
 **Tasks:**
+
 1. Full integration test suite
 2. E2E tests with Playwright
 3. Performance benchmarks
@@ -234,6 +266,7 @@ Phase 0 of the v1.6.0 refactoring has been completed successfully. The **infrast
 5. CodeScene metrics
 
 **Success Criteria:**
+
 - [ ] All tests pass
 - [ ] All features work
 - [ ] Performance maintained
@@ -288,6 +321,7 @@ None. All existing functionality preserved and tested.
 ## Notes
 
 The infrastructure is now solid and ready for the refactoring. All scaffolding is in place:
+
 - ✅ Module aliasing system
 - ✅ Test infrastructure
 - ✅ Validation scripts
