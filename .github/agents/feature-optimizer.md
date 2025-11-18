@@ -140,22 +140,6 @@ existing features to modern APIs that unlock new possibilities.
   calls `createQuickTab()` which handles rendering internally.
 - See docs/manual/1.5.9 docs/quick-tabs-cross-tab-rendering-bug-v1599.md.
 
-### v1.5.9.8 Notes
-
-- Quick Tabs creation is fully storage-driven. Content scripts request creation,
-  but QuickTabsManager waits for the debounced storage snapshot, then renders
-  each tab off-screen before animating to the tooltip-aligned cursor position to
-  prevent flashes.
-- Debounced storage sync and a pending-save tracker protect against resize
-  storms wiping state. Every background mutation now preserves the
-  caller-supplied `saveId` to keep storage/onChanged listeners in sync.
-- `shouldIgnoreStorageChange` ensures QuickTabsManager ignores storage events
-  while saves are pending, preventing cascade deletions detected in forensic
-  v1.5.9.7 logs.
-- Popup Advanced tab offers "Clear Log History" to wipe both background and
-  content log buffers, giving developers a clean slate before recording new
-  diagnostics.
-
 **Core APIs - Leverage These:**
 
 1. **Content Script Panel Injection** (NEW v1.5.8.1) - Persistent floating panel
