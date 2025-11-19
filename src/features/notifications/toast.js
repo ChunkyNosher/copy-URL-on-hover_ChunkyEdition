@@ -23,18 +23,18 @@ export function showToast(message, type, config) {
     'bottom-right': { bottom: '20px', right: '20px' }
   };
 
-  const pos = positions[config.notifPosition] || positions['bottom-right'];
+  const pos = positions[config?.notifPosition] || positions['bottom-right'];
 
-  // Determine animation class
+  // Determine animation class with null-safe config access
   let animClass = 'cuo-anim-fade'; // Default
-  if (config.notifAnimation === 'slide') {
+  if (config?.notifAnimation === 'slide') {
     animClass = 'cuo-anim-slide';
-  } else if (config.notifAnimation === 'bounce') {
+  } else if (config?.notifAnimation === 'bounce') {
     animClass = 'cuo-anim-bounce';
   }
 
-  // Ensure border width is a number
-  const borderWidth = parseInt(config.notifBorderWidth) || 1;
+  // Ensure border width is a number with null-safe access
+  const borderWidth = parseInt(config?.notifBorderWidth) || 1;
 
   const toast = createElement(
     'div',
@@ -44,14 +44,14 @@ export function showToast(message, type, config) {
       style: {
         position: 'fixed',
         ...pos,
-        backgroundColor: config.notifColor || '#333',
+        backgroundColor: config?.notifColor || '#333',
         color: 'white',
         padding: '12px 20px',
         borderRadius: '4px',
         fontSize: '14px',
         zIndex: '999999998',
         boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
-        border: `${borderWidth}px solid ${config.notifBorderColor || '#444'}`,
+        border: `${borderWidth}px solid ${config?.notifBorderColor || '#444'}`,
         pointerEvents: 'none',
         opacity: '1'
       }
@@ -65,7 +65,7 @@ export function showToast(message, type, config) {
     toast.style.opacity = '0';
     toast.style.transition = 'opacity 0.3s';
     setTimeout(() => toast.remove(), 300);
-  }, config.notifDuration || 2000);
+  }, config?.notifDuration || 2000);
 
   console.log('[Toast] Displayed:', message);
 }
