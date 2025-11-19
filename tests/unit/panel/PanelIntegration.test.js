@@ -99,9 +99,7 @@ describe('PanelManager Integration', () => {
     // Mock browser APIs
     global.browser = {
       tabs: {
-        query: jest.fn().mockResolvedValue([
-          { cookieStoreId: 'firefox-container-1', active: true }
-        ])
+        query: jest.fn().mockResolvedValue([{ cookieStoreId: 'firefox-container-1', active: true }])
       },
       runtime: {
         onMessage: {
@@ -466,7 +464,10 @@ describe('PanelManager Integration', () => {
 
       dragCallbacks.onBroadcast(data);
 
-      expect(panelManager.stateManager.broadcast).toHaveBeenCalledWith('PANEL_POSITION_UPDATED', data);
+      expect(panelManager.stateManager.broadcast).toHaveBeenCalledWith(
+        'PANEL_POSITION_UPDATED',
+        data
+      );
     });
 
     test('resize controller onResizeEnd should save state', () => {
