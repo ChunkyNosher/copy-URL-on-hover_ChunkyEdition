@@ -1,7 +1,7 @@
 /**
  * Edge Case Tests for QuickTabWindow
  * v1.6.0 - Phase 7.6: Additional coverage for iframe handling and title updates
- * 
+ *
  * Target: Close coverage gap from 86.38% to 90%+
  * Uncovered lines: 153-159 (onOpenInTab), 360-420 (iframe title update), 477 (console.log)
  */
@@ -67,37 +67,47 @@ describe('QuickTabWindow - Edge Cases', () => {
   describe('Open in Tab Functionality', () => {
     test('should verify onOpenInTab callback is created with correct logic', async () => {
       // Create window with URL
-      quickTabWindow = new QuickTabWindow({
-        url: 'https://example.com',
-        id: 'qt-1',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'https://example.com',
+          id: 'qt-1',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
       // Verify iframe exists
       expect(quickTabWindow.iframe).toBeDefined();
-      
+
       // The onOpenInTab callback is created in the render method
       // It reads iframe.src or iframe.getAttribute('data-deferred-src')
       // Let's verify the iframe has a src attribute
-      expect(quickTabWindow.iframe.src || quickTabWindow.iframe.getAttribute('data-deferred-src')).toBeTruthy();
+      expect(
+        quickTabWindow.iframe.src || quickTabWindow.iframe.getAttribute('data-deferred-src')
+      ).toBeTruthy();
     });
 
     test('should read deferred-src attribute when iframe.src is not available', async () => {
-      quickTabWindow = new QuickTabWindow({
-        url: 'https://deferred-example.com',
-        id: 'qt-2',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'https://deferred-example.com',
+          id: 'qt-2',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -108,21 +118,25 @@ describe('QuickTabWindow - Edge Cases', () => {
       // Verify the deferred-src attribute is readable
       const deferredSrc = quickTabWindow.iframe.getAttribute('data-deferred-src');
       expect(deferredSrc).toBe('https://deferred-example.com');
-      
+
       // The onOpenInTab callback would use this value
       // (We're testing that the attribute is accessible)
     });
 
     test('should handle case where neither src nor deferred-src is set', async () => {
-      quickTabWindow = new QuickTabWindow({
-        url: 'about:blank',
-        id: 'qt-3',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'about:blank',
+          id: 'qt-3',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -131,8 +145,9 @@ describe('QuickTabWindow - Edge Cases', () => {
       quickTabWindow.iframe.removeAttribute('data-deferred-src');
 
       // Verify both are missing
-      const src = quickTabWindow.iframe.src || quickTabWindow.iframe.getAttribute('data-deferred-src');
-      
+      const src =
+        quickTabWindow.iframe.src || quickTabWindow.iframe.getAttribute('data-deferred-src');
+
       // The callback would handle this case (src might be empty string or null)
       // Just verify the code doesn't crash
       expect(src).toBeDefined(); // Will be empty string, not null
@@ -141,15 +156,19 @@ describe('QuickTabWindow - Edge Cases', () => {
 
   describe('Iframe Load Handler and Title Updates', () => {
     test('should update title from same-origin iframe document', async () => {
-      quickTabWindow = new QuickTabWindow({
-        url: 'about:blank',
-        id: 'qt-4',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'about:blank',
+          id: 'qt-4',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -171,15 +190,19 @@ describe('QuickTabWindow - Edge Cases', () => {
     });
 
     test('should fallback to hostname when cross-origin prevents title access', async () => {
-      quickTabWindow = new QuickTabWindow({
-        url: 'https://example.com/page',
-        id: 'qt-5',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'https://example.com/page',
+          id: 'qt-5',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -203,15 +226,19 @@ describe('QuickTabWindow - Edge Cases', () => {
     });
 
     test('should use final fallback when both title and hostname fail', async () => {
-      quickTabWindow = new QuickTabWindow({
-        url: 'about:blank',
-        id: 'qt-6',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'about:blank',
+          id: 'qt-6',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -231,15 +258,19 @@ describe('QuickTabWindow - Edge Cases', () => {
     });
 
     test('should update titlebar element when title changes', async () => {
-      quickTabWindow = new QuickTabWindow({
-        url: 'about:blank',
-        id: 'qt-7',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'about:blank',
+          id: 'qt-7',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -270,15 +301,19 @@ describe('QuickTabWindow - Edge Cases', () => {
     });
 
     test('should handle missing titlebarBuilder gracefully', async () => {
-      quickTabWindow = new QuickTabWindow({
-        url: 'about:blank',
-        id: 'qt-8',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'about:blank',
+          id: 'qt-8',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -309,15 +344,19 @@ describe('QuickTabWindow - Edge Cases', () => {
     test('should log when unsoloing (soloedOnTabs becomes empty)', async () => {
       const consoleLogSpy = jest.spyOn(console, 'log');
 
-      quickTabWindow = new QuickTabWindow({
-        url: 'https://example.com',
-        id: 'qt-9',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [123], // Start with one tab soloed
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'https://example.com',
+          id: 'qt-9',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [123], // Start with one tab soloed
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -325,18 +364,19 @@ describe('QuickTabWindow - Edge Cases', () => {
       mockBrowser.tabs.query.mockResolvedValue([{ id: 123 }]);
 
       // Find solo button - use getComputedStyle to get actual rendered element
-      const soloBtn = quickTabWindow.container.querySelector('.solo-btn') || 
-                      quickTabWindow.titlebar?.querySelector('.solo-btn');
-      
+      const soloBtn =
+        quickTabWindow.container.querySelector('.solo-btn') ||
+        quickTabWindow.titlebar?.querySelector('.solo-btn');
+
       // If button not found, manually test the logic
       if (!soloBtn) {
         // Directly test the unsolo logic
         quickTabWindow.soloedOnTabs = [123]; // Ensure starting state
-        
+
         // Simulate unsolo by clearing the array
         const originalLength = quickTabWindow.soloedOnTabs.length;
         quickTabWindow.soloedOnTabs = quickTabWindow.soloedOnTabs.filter(id => id !== 123);
-        
+
         // The console.log happens when array becomes empty
         if (originalLength > 0 && quickTabWindow.soloedOnTabs.length === 0) {
           console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
@@ -357,15 +397,19 @@ describe('QuickTabWindow - Edge Cases', () => {
     test('should not log when soloing (adding to soloedOnTabs)', async () => {
       const consoleLogSpy = jest.spyOn(console, 'log');
 
-      quickTabWindow = new QuickTabWindow({
-        url: 'https://example.com',
-        id: 'qt-10',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [], // Start with no tabs soloed
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'https://example.com',
+          id: 'qt-10',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [], // Start with no tabs soloed
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -393,15 +437,19 @@ describe('QuickTabWindow - Edge Cases', () => {
     test('should handle solo toggle with multiple tabs in list', async () => {
       const consoleLogSpy = jest.spyOn(console, 'log');
 
-      quickTabWindow = new QuickTabWindow({
-        url: 'https://example.com',
-        id: 'qt-11',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [111, 222, 333], // Multiple tabs soloed
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'https://example.com',
+          id: 'qt-11',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [111, 222, 333], // Multiple tabs soloed
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -431,15 +479,19 @@ describe('QuickTabWindow - Edge Cases', () => {
 
   describe('Additional Edge Cases', () => {
     test('should handle concurrent iframe load events', async () => {
-      quickTabWindow = new QuickTabWindow({
-        url: 'https://example.com',
-        id: 'qt-12',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'https://example.com',
+          id: 'qt-12',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
@@ -466,15 +518,19 @@ describe('QuickTabWindow - Edge Cases', () => {
     });
 
     test('should handle URL with special characters in hostname extraction', async () => {
-      quickTabWindow = new QuickTabWindow({
-        url: 'https://example.com:8080/path?query=value#fragment',
-        id: 'qt-13',
-        cookieStoreId: 'firefox-default',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }, container, mockCallbacks);
+      quickTabWindow = new QuickTabWindow(
+        {
+          url: 'https://example.com:8080/path?query=value#fragment',
+          id: 'qt-13',
+          cookieStoreId: 'firefox-default',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          soloedOnTabs: [],
+          mutedOnTabs: []
+        },
+        container,
+        mockCallbacks
+      );
 
       await quickTabWindow.render();
 
