@@ -270,10 +270,7 @@ describe('QuickTabWindow', () => {
       const secondContainer = window.container;
 
       expect(firstContainer).toBe(secondContainer);
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[QuickTabWindow] Already rendered:',
-        'test-tab-1'
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('[QuickTabWindow] Already rendered:', 'test-tab-1');
 
       consoleSpy.mockRestore();
     });
@@ -381,16 +378,16 @@ describe('QuickTabWindow', () => {
 
     test('should position container off-screen initially', () => {
       const window = new QuickTabWindow(options);
-      
+
       // Mock RAF to not execute immediately so we can check initial state
       global.requestAnimationFrame = jest.fn();
-      
+
       window.render();
 
       // Before requestAnimationFrame callback
       expect(window.container.style.visibility).toBe('hidden');
       expect(window.container.style.opacity).toBe('0');
-      
+
       // Restore RAF mock
       global.requestAnimationFrame = jest.fn(cb => {
         cb();
@@ -717,7 +714,7 @@ describe('QuickTabWindow', () => {
 
       // Manually remove from DOM using removeChild (JSDOM compatible)
       document.body.removeChild(window.container);
-      
+
       // Still has rendered flag and container ref, but no parentNode
       expect(window.rendered).toBe(true);
       expect(window.container).toBeTruthy();
