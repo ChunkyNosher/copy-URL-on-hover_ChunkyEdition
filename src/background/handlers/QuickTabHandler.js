@@ -44,7 +44,7 @@ export class QuickTabHandler {
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
     const containerState = this.globalState.containers[cookieStoreId];
-    
+
     if (!containerState) {
       return { success: true };
     }

@@ -135,7 +135,7 @@ for (const rule of rules) {
     failed++;
     continue;
   }
-  
+
   console.log(`✅ ${rule.name}`);
   if (result.message) {
     console.log(`   ℹ️  ${result.message}`);
