@@ -241,8 +241,27 @@ function logSuccessfulLoad(source, format) {
 initializeGlobalState();
 
 /**
+ * Helper: Process migration for a single container's tabs
+ *
+ * @param {Array} containerTabs - Array of Quick Tab objects in container
+ * @returns {boolean} True if any tab was migrated
+ */
+function _processContainerMigration(containerTabs) {
+  let migrated = false;
+
+  for (const quickTab of containerTabs) {
+    if (migrateTabFromPinToSoloMute(quickTab)) {
+      migrated = true;
+    }
+  }
+
+  return migrated;
+}
+
+/**
  * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
  * v1.6.0 - PHASE 3.2: Refactored to extract nested loop logic (cc=10 → cc<6)
+ * v1.6.0 - PHASE 4.3: Extracted _processContainerMigration to fix max-depth (line 262)
  */
 async function migrateQuickTabState() {
   // Guard: State not initialized
@@ -256,12 +275,8 @@ async function migrateQuickTabState() {
   // Process each container
   for (const containerId in globalQuickTabState.containers) {
     const containerTabs = globalQuickTabState.containers[containerId].tabs || [];
-
-    // Migrate each tab in container
-    for (const quickTab of containerTabs) {
-      if (migrateTabFromPinToSoloMute(quickTab)) {
-        migrated = true;
-      }
+    if (_processContainerMigration(containerTabs)) {
+      migrated = true;
     }
   }
 
@@ -417,6 +432,20 @@ class StateCoordinator {
   }
 
   /**
+   * Helper: Extract tabs from container data
+   * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (line 445)
+   *
+   * @param {Object} containerData - Container data object
+   * @returns {Array} Array of tabs from container, or empty array
+   */
+  _extractContainerTabs(containerData) {
+    if (!containerData || !containerData.tabs) {
+      return [];
+    }
+    return containerData.tabs;
+  }
+
+  /**
    * Helper: Load state from sync storage data
    *
    * @param {Object} data - Storage data
@@ -427,9 +456,8 @@ class StateCoordinator {
       const allTabs = [];
       for (const containerId in data) {
         const containerData = data[containerId];
-        if (containerData && containerData.tabs) {
-          allTabs.push(...containerData.tabs);
-        }
+        const tabs = this._extractContainerTabs(containerData);
+        allTabs.push(...tabs);
       }
       this.globalState.tabs = allTabs;
       this.globalState.timestamp = Date.now();
@@ -835,56 +863,105 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, _tab) => {
   }
 });
 
-// Clean up state when tab is closed
-// v1.5.9.13 - Also clean up solo/mute arrays when tabs close
-chrome.tabs.onRemoved.addListener(async tabId => {
-  quickTabStates.delete(tabId);
+/**
+ * Helper: Remove tab ID from Quick Tab's solo/mute arrays
+ * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (lines 886, 893)
+ *
+ * @param {Object} quickTab - Quick Tab object to clean up
+ * @param {number} tabId - Tab ID to remove
+ * @returns {boolean} True if any changes were made
+ */
+function _removeTabFromQuickTab(quickTab, tabId) {
+  let changed = false;
 
-  console.log(`[Background] Tab ${tabId} closed - cleaning up Quick Tab references`);
+  // Remove from soloedOnTabs
+  if (quickTab.soloedOnTabs && quickTab.soloedOnTabs.includes(tabId)) {
+    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
+    changed = true;
+    console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} solo list`);
+  }
 
-  // Wait for initialization if needed
+  // Remove from mutedOnTabs
+  if (quickTab.mutedOnTabs && quickTab.mutedOnTabs.includes(tabId)) {
+    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
+    changed = true;
+    console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} mute list`);
+  }
+
+  return changed;
+}
+
+/**
+ * Helper: Process cleanup for all Quick Tabs in a container
+ * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (line 914)
+ *
+ * @param {Array} containerTabs - Array of Quick Tab objects
+ * @param {number} tabId - Tab ID to remove
+ * @returns {boolean} True if any Quick Tab was changed
+ */
+function _processContainerCleanup(containerTabs, tabId) {
+  let changed = false;
+
+  for (const quickTab of containerTabs) {
+    if (_removeTabFromQuickTab(quickTab, tabId)) {
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+/**
+ * Helper: Clean up Quick Tab state after tab closes
+ * v1.6.0 - PHASE 4.3: Extracted to reduce complexity (cc=11 → cc<9)
+ *
+ * @param {number} tabId - Tab ID that was closed
+ * @returns {Promise<boolean>} True if state was changed and saved
+ */
+async function _cleanupQuickTabStateAfterTabClose(tabId) {
+  // Guard: Not initialized
   if (!isInitialized) {
-    return; // Skip cleanup if not initialized yet
+    return false;
   }
 
   let stateChanged = false;
 
-  // Iterate through all containers and tabs
+  // Iterate through all containers
   for (const containerId in globalQuickTabState.containers) {
     const containerTabs = globalQuickTabState.containers[containerId].tabs || [];
-
-    for (const quickTab of containerTabs) {
-      // Remove from soloedOnTabs
-      if (quickTab.soloedOnTabs && quickTab.soloedOnTabs.includes(tabId)) {
-        quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
-        stateChanged = true;
-        console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} solo list`);
-      }
-
-      // Remove from mutedOnTabs
-      if (quickTab.mutedOnTabs && quickTab.mutedOnTabs.includes(tabId)) {
-        quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
-        stateChanged = true;
-        console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} mute list`);
-      }
+    if (_processContainerCleanup(containerTabs, tabId)) {
+      stateChanged = true;
     }
   }
 
-  // Save and broadcast if state changed
-  if (stateChanged) {
-    const stateToSave = {
-      containers: globalQuickTabState.containers,
-      saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: Date.now()
-    };
-
-    try {
-      await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
-      console.log('[Background] Cleaned up Quick Tab state after tab closure');
-    } catch (err) {
-      console.error('[Background] Error saving cleaned up state:', err);
-    }
+  // Save if state changed
+  if (!stateChanged) {
+    return false;
   }
+
+  const stateToSave = {
+    containers: globalQuickTabState.containers,
+    saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    timestamp: Date.now()
+  };
+
+  try {
+    await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
+    console.log('[Background] Cleaned up Quick Tab state after tab closure');
+    return true;
+  } catch (err) {
+    console.error('[Background] Error saving cleaned up state:', err);
+    return false;
+  }
+}
+
+// Clean up state when tab is closed
+// v1.5.9.13 - Also clean up solo/mute arrays when tabs close
+// v1.6.0 - PHASE 4.3: Extracted cleanup logic to fix complexity and max-depth
+chrome.tabs.onRemoved.addListener(async tabId => {
+  quickTabStates.delete(tabId);
+  console.log(`[Background] Tab ${tabId} closed - cleaning up Quick Tab references`);
+  await _cleanupQuickTabStateAfterTabClose(tabId);
 });
 
 // ==================== MESSAGE ROUTING SETUP (v1.6.0 Phase 3.1) ====================
@@ -1002,125 +1079,167 @@ if (chrome.sidePanel) {
   });
 }
 
+/**
+ * Helper: Update global state from storage value
+ * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (lines 1087, 1095)
+ *
+ * @param {Object|null} newValue - New storage value
+ */
+function _updateGlobalStateFromStorage(newValue) {
+  // Guard: No value (storage cleared)
+  if (!newValue) {
+    console.log('[Background] Storage cleared, checking if intentional...');
+    return;
+  }
+
+  // Container-aware format
+  if (typeof newValue === 'object' && newValue.containers) {
+    globalQuickTabState.containers = newValue.containers;
+    console.log(
+      '[Background] Updated global state from storage (container-aware):',
+      Object.keys(newValue.containers).length,
+      'containers'
+    );
+    return;
+  }
+
+  // Legacy format - migrate
+  if (newValue.tabs && Array.isArray(newValue.tabs)) {
+    globalQuickTabState.containers = {
+      'firefox-default': {
+        tabs: newValue.tabs,
+        lastUpdate: newValue.timestamp || Date.now()
+      }
+    };
+    console.log(
+      '[Background] Updated global state from storage (legacy format):',
+      newValue.tabs.length,
+      'tabs'
+    );
+  }
+}
+
+/**
+ * Helper: Broadcast message to all tabs
+ * v1.6.0 - PHASE 4.3: Extracted to reduce complexity
+ *
+ * @param {string} action - Message action type
+ * @param {*} data - Data to send with message
+ */
+async function _broadcastToAllTabs(action, data) {
+  const tabs = await browser.tabs.query({});
+
+  for (const tab of tabs) {
+    try {
+      await browser.tabs.sendMessage(tab.id, { action, ...data });
+    } catch (_err) {
+      // Content script might not be loaded in this tab
+    }
+  }
+}
+
+/**
+ * Helper: Handle Quick Tab state changes
+ * v1.6.0 - PHASE 4.3: Extracted to reduce complexity (cc=11 → cc<9)
+ *
+ * @param {Object} changes - Storage changes object
+ */
+async function _handleQuickTabStateChange(changes) {
+  console.log('[Background] Quick Tab state changed, broadcasting to all tabs');
+
+  const newValue = changes.quick_tabs_state_v2.newValue;
+  _updateGlobalStateFromStorage(newValue);
+
+  await _broadcastToAllTabs('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', {
+    state: newValue
+  });
+}
+
+/**
+ * Helper: Handle settings changes
+ * v1.6.0 - PHASE 4.3: Extracted to reduce complexity
+ *
+ * @param {Object} changes - Storage changes object
+ */
+async function _handleSettingsChange(changes) {
+  console.log('[Background] Settings changed, broadcasting to all tabs');
+
+  await _broadcastToAllTabs('SETTINGS_UPDATED', {
+    settings: changes.quick_tab_settings.newValue
+  });
+}
+
 // ==================== STORAGE SYNC BROADCASTING ====================
 // Listen for sync storage changes and broadcast them to all tabs
 // This enables real-time Quick Tab state synchronization across all tabs
+// v1.6.0 - PHASE 4.3: Refactored to extract handlers (cc=11 → cc<9, max-depth fixed)
 browser.storage.onChanged.addListener((changes, areaName) => {
   console.log('[Background] Storage changed:', areaName, Object.keys(changes));
 
-  // Broadcast Quick Tab state changes
-  if (areaName === 'sync' && changes.quick_tabs_state_v2) {
-    console.log('[Background] Quick Tab state changed, broadcasting to all tabs');
-
-    // UPDATE: Sync globalQuickTabState with storage changes (v1.5.8.14 - container-aware)
-    const newValue = changes.quick_tabs_state_v2.newValue;
-
-    // v1.5.8.14 FIX: Only clear state if explicitly requested by user action
-    // This prevents race conditions where storage clears during normal operations
-    if (!newValue) {
-      // Storage was explicitly cleared - only reset if intentional
-      console.log('[Background] Storage cleared, checking if intentional...');
-      // Don't automatically reset - let content scripts handle their own state
-      // This prevents the "Quick Tab immediately closes" bug
-    } else {
-      // v1.5.8.15 FIX: Storage was updated - sync global state (container-aware)
-      if (typeof newValue === 'object' && newValue.containers) {
-        // v1.5.8.15 - Proper container-aware format with wrapper
-        globalQuickTabState.containers = newValue.containers; // Extract containers from wrapper
-        console.log(
-          '[Background] Updated global state from storage (container-aware):',
-          Object.keys(newValue.containers).length,
-          'containers'
-        );
-      } else if (newValue.tabs && Array.isArray(newValue.tabs)) {
-        // Legacy format - migrate
-        globalQuickTabState.containers = {
-          'firefox-default': {
-            tabs: newValue.tabs,
-            lastUpdate: newValue.timestamp || Date.now()
-          }
-        };
-        console.log(
-          '[Background] Updated global state from storage (legacy format):',
-          newValue.tabs.length,
-          'tabs'
-        );
-      }
-    }
-
-    browser.tabs.query({}).then(tabs => {
-      tabs.forEach(tab => {
-        browser.tabs
-          .sendMessage(tab.id, {
-            action: 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', // v1.5.9.11 FIX: Use consistent action name
-            state: changes.quick_tabs_state_v2.newValue
-          })
-          .catch(_err => {
-            // Content script might not be loaded in this tab
-          });
-      });
-    });
+  // Guard: Only process sync storage
+  if (areaName !== 'sync') {
+    return;
   }
 
-  // Broadcast settings changes
-  if (areaName === 'sync' && changes.quick_tab_settings) {
-    console.log('[Background] Settings changed, broadcasting to all tabs');
-    browser.tabs.query({}).then(tabs => {
-      tabs.forEach(tab => {
-        browser.tabs
-          .sendMessage(tab.id, {
-            action: 'SETTINGS_UPDATED',
-            settings: changes.quick_tab_settings.newValue
-          })
-          .catch(_err => {
-            // Content script might not be loaded in this tab
-          });
-      });
-    });
+  // Handle Quick Tab state changes
+  if (changes.quick_tabs_state_v2) {
+    _handleQuickTabStateChange(changes);
+  }
+
+  // Handle settings changes
+  if (changes.quick_tab_settings) {
+    _handleSettingsChange(changes);
   }
 });
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
+/**
+ * Helper: Toggle Quick Tabs panel in active tab
+ * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (line 1205)
+ *
+ * @returns {Promise<void>}
+ */
+async function _toggleQuickTabsPanel() {
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+
+  // Guard: No active tab
+  if (tabs.length === 0) {
+    console.error('[QuickTabsManager] No active tab found');
+    return;
+  }
+
+  const activeTab = tabs[0];
+
+  try {
+    // Send toggle message to content script
+    await browser.tabs.sendMessage(activeTab.id, {
+      action: 'TOGGLE_QUICK_TABS_PANEL'
+    });
+    console.log('[QuickTabsManager] Toggle command sent to tab', activeTab.id);
+  } catch (err) {
+    console.error('[QuickTabsManager] Error sending toggle message:', err);
+    // Content script may not be loaded yet - inject it
+    try {
+      await browser.tabs.executeScript(activeTab.id, {
+        file: 'content.js'
+      });
+      // Try again after injection
+      await browser.tabs.sendMessage(activeTab.id, {
+        action: 'TOGGLE_QUICK_TABS_PANEL'
+      });
+    } catch (injectErr) {
+      console.error('[QuickTabsManager] Error injecting content script:', injectErr);
+    }
+  }
+}
+
 // ==================== KEYBOARD COMMANDS ====================
 // Listen for keyboard commands to toggle floating panel
+// v1.6.0 - PHASE 4.3: Extracted toggle logic to fix max-depth
 browser.commands.onCommand.addListener(async command => {
   if (command === 'toggle-quick-tabs-manager') {
-    // Get active tab in current window
-    try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-
-      if (tabs.length === 0) {
-        console.error('[QuickTabsManager] No active tab found');
-        return;
-      }
-
-      const activeTab = tabs[0];
-
-      // Send message to content script to toggle panel
-      browser.tabs
-        .sendMessage(activeTab.id, {
-          action: 'TOGGLE_QUICK_TABS_PANEL'
-        })
-        .catch(err => {
-          console.error('[QuickTabsManager] Error sending toggle message:', err);
-          // Content script may not be loaded yet - inject it
-          browser.tabs
-            .executeScript(activeTab.id, {
-              file: 'content.js'
-            })
-            .then(() => {
-              // Try again after injection
-              browser.tabs.sendMessage(activeTab.id, {
-                action: 'TOGGLE_QUICK_TABS_PANEL'
-              });
-            });
-        });
-
-      console.log('[QuickTabsManager] Toggle command sent to tab', activeTab.id);
-    } catch (err) {
-      console.error('[QuickTabsManager] Error handling toggle command:', err);
-    }
+    await _toggleQuickTabsPanel();
   }
 });
 // ==================== END KEYBOARD COMMANDS ====================
