@@ -1,0 +1,35 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "userDataDir": "${GITHUB_WORKSPACE}/chrome-profile",
+    "launchOptions": {
+      "channel": "chrome",
+      "headless": false,
+      "args": [
+        "--load-extension=${GITHUB_WORKSPACE}/dist",
+        "--disable-extensions-except=${GITHUB_WORKSPACE}/dist",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-gpu"
+      ]
+    },
+    "contextOptions": {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "ignoreHTTPSErrors": true,
+      "permissions": ["clipboard-read", "clipboard-write", "notifications"]
+    }
+  },
+  "server": {
+    "port": 8931
+  },
+  "outputDir": "${GITHUB_WORKSPACE}/test-results/chrome",
+  "tracing": {
+    "enabled": true,
+    "screenshots": true,
+    "snapshots": true
+  }
+}
