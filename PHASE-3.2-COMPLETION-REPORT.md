@@ -62,18 +62,18 @@ Continue the v1.6.0 refactoring project from Phase 3.1, focusing on:
 
 ### Code Quality Metrics
 
-| Metric                        | Session Start | Session End | Change       | Target    | Status      |
-| ----------------------------- | ------------- | ----------- | ------------ | --------- | ----------- |
-| **Background.js ESLint**      | 20 errors     | 10 errors   | -50%         | <13       | ✅ Exceeded |
-| **Total ESLint Errors**       | 67 errors     | 57 errors   | -15%         | <60       | ✅ Achieved |
-| **Total ESLint Warnings**     | 18 warnings   | 16 warnings | -11%         | <30       | ✅ Achieved |
-| **Tests Passing**             | 522/522       | 522/522     | ✅ 100%      | 522/522   | ✅ Achieved |
-| **Build Status**              | ✅ Success    | ✅ Success  | ✅ Pass      | Success   | ✅ Achieved |
-| **initializeGlobalState cc**  | 20            | <5          | -75%         | <9        | ✅ Exceeded |
-| **migrateQuickTabState cc**   | 10            | <6          | -40%         | <9        | ✅ Exceeded |
-| **StateCoordinator.init cc**  | 15            | <6          | -60%         | <9        | ✅ Exceeded |
-| **StateCoordinator.proc cc**  | 12            | <6          | -50%         | <9        | ✅ Exceeded |
-| **Max nesting depth**         | 5             | 2           | -60%         | ≤2        | ✅ Achieved |
+| Metric                       | Session Start | Session End | Change  | Target  | Status      |
+| ---------------------------- | ------------- | ----------- | ------- | ------- | ----------- |
+| **Background.js ESLint**     | 20 errors     | 10 errors   | -50%    | <13     | ✅ Exceeded |
+| **Total ESLint Errors**      | 67 errors     | 57 errors   | -15%    | <60     | ✅ Achieved |
+| **Total ESLint Warnings**    | 18 warnings   | 16 warnings | -11%    | <30     | ✅ Achieved |
+| **Tests Passing**            | 522/522       | 522/522     | ✅ 100% | 522/522 | ✅ Achieved |
+| **Build Status**             | ✅ Success    | ✅ Success  | ✅ Pass | Success | ✅ Achieved |
+| **initializeGlobalState cc** | 20            | <5          | -75%    | <9      | ✅ Exceeded |
+| **migrateQuickTabState cc**  | 10            | <6          | -40%    | <9      | ✅ Exceeded |
+| **StateCoordinator.init cc** | 15            | <6          | -60%    | <9      | ✅ Exceeded |
+| **StateCoordinator.proc cc** | 12            | <6          | -50%    | <9      | ✅ Exceeded |
+| **Max nesting depth**        | 5             | 2           | -60%    | ≤2      | ✅ Achieved |
 
 ### Files Created (5 new files, 145 lines)
 
@@ -137,6 +137,7 @@ Continue the v1.6.0 refactoring project from Phase 3.1, focusing on:
 ### initializeGlobalState Function
 
 **Before:**
+
 ```javascript
 async function initializeGlobalState() {
   // 88 lines of nested conditionals
@@ -146,6 +147,7 @@ async function initializeGlobalState() {
 ```
 
 **After:**
+
 ```javascript
 async function initializeGlobalState() {
   // 14 lines with strategy pattern
@@ -153,13 +155,14 @@ async function initializeGlobalState() {
   // 0 ESLint errors
 }
 
-// + 4 helper functions (tryLoadFromSessionStorage, tryLoadFromSyncStorage, 
+// + 4 helper functions (tryLoadFromSessionStorage, tryLoadFromSyncStorage,
 //   saveMigratedLegacyFormat, logSuccessfulLoad)
 // + 1 detector class (StorageFormatDetector)
 // + 3 migrator classes (V1_5_8_15, V1_5_8_14, Legacy)
 ```
 
 **Impact:**
+
 - Main function: 88 → 14 lines (-84%)
 - Complexity: cc=20 → cc<5 (-75%)
 - Nesting: max-depth=5 → max-depth=2 (-60%)
@@ -169,6 +172,7 @@ async function initializeGlobalState() {
 ### migrateQuickTabState Function
 
 **Before:**
+
 ```javascript
 async function migrateQuickTabState() {
   // 47 lines with nested loops
@@ -178,6 +182,7 @@ async function migrateQuickTabState() {
 ```
 
 **After:**
+
 ```javascript
 async function migrateQuickTabState() {
   // 16 lines with helper delegation
@@ -189,6 +194,7 @@ async function migrateQuickTabState() {
 ```
 
 **Impact:**
+
 - Main function: 47 → 16 lines (-66%)
 - Complexity: cc=10 → cc<6 (-40%)
 - Nesting: max-depth=3 → max-depth=2 (-33%)
@@ -198,6 +204,7 @@ async function migrateQuickTabState() {
 ### StateCoordinator.initialize Method
 
 **Before:**
+
 ```javascript
 async initialize() {
   // 54 lines with nested conditionals
@@ -207,6 +214,7 @@ async initialize() {
 ```
 
 **After:**
+
 ```javascript
 async initialize() {
   // 13 lines with helper delegation
@@ -214,11 +222,12 @@ async initialize() {
   // 0 ESLint errors
 }
 
-// + 3 helper methods (tryLoadFromSessionStorage, tryLoadFromSyncStorage, 
+// + 3 helper methods (tryLoadFromSessionStorage, tryLoadFromSyncStorage,
 //   loadStateFromSyncData)
 ```
 
 **Impact:**
+
 - Main method: 54 → 13 lines (-76%)
 - Complexity: cc=15 → cc<6 (-60%)
 - Nesting: max-depth=5 → max-depth=2 (-60%)
@@ -228,6 +237,7 @@ async initialize() {
 ### StateCoordinator.processOperation Method
 
 **Before:**
+
 ```javascript
 async processOperation(op) {
   // 65 lines with switch and inline logic
@@ -237,6 +247,7 @@ async processOperation(op) {
 ```
 
 **After:**
+
 ```javascript
 processOperation(op) {
   // 23 lines with handler delegation
@@ -244,11 +255,12 @@ processOperation(op) {
   // 0 ESLint errors
 }
 
-// + 5 handler methods (handleCreateOperation, handleUpdateOperation, 
+// + 5 handler methods (handleCreateOperation, handleUpdateOperation,
 //   handleDeleteOperation, handleMinimizeOperation, handleRestoreOperation)
 ```
 
 **Impact:**
+
 - Main method: 65 → 23 lines (-65%)
 - Complexity: cc=12 → cc<6 (-50%)
 - ESLint errors: 2 → 0 (-100%)
@@ -288,18 +300,21 @@ processOperation(op) {
 ### Code Quality Impact
 
 **Before Phase 3.2:**
+
 - background.js: 20 ESLint errors
 - Average function cc in refactored sections: 14.25
 - Max nesting depth: 5
 - Lines in monolithic functions: 254
 
 **After Phase 3.2:**
+
 - background.js: 10 ESLint errors (-50%)
 - Average function cc in refactored sections: <5.5 (-61%)
 - Max nesting depth: 2 (-60%)
 - Lines in monolithic functions: 66 (-74%)
 
 **Cumulative Impact (Phase 3.1 + 3.2):**
+
 - background.js: 1795 → 1126 lines (-37%)
 - Message handler: cc=93 → cc<3 per handler (-97%)
 - State functions: cc=20/15/12/10 → cc<6 each (-65% avg)
@@ -396,16 +411,19 @@ processOperation(op) {
 ### Recommended Next Steps
 
 **If you have 4-6 hours:**
+
 - Choose Path A (Phase 2.9-2.10) from Phase 3.3 handoff
 - Extract DragController for high-refresh monitor support
 - Extract ManagerPanelUI and NavigationBar components
 
 **If you have 8+ hours:**
+
 - Choose Path B (Phase 4) from Phase 3.3 handoff
 - Extract SiteHandlerRegistry and site handlers
 - Extract NotificationRenderer and AnimationController
 
 **Read these documents first:**
+
 1. `docs/misc/v1.6.0-REFACTORING-PHASE3.3-NEXT-STEPS.md` (start here!)
 2. `docs/misc/v1.6.0-REFACTORING-MASTER-CHECKLIST.md` (overall progress)
 3. `.github/copilot-instructions.md` (robust solutions philosophy)
