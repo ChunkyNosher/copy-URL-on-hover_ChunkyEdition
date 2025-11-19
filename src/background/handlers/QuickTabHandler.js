@@ -238,7 +238,7 @@ export class QuickTabHandler {
   /**
    * Get current tab ID
    */
-  async handleGetCurrentTabId(_message, sender) {
+  handleGetCurrentTabId(_message, sender) {
     const tabId = sender.tab?.id;
     return { success: true, tabId };
   }
