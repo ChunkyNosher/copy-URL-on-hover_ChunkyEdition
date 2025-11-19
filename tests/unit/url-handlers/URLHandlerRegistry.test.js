@@ -1,7 +1,7 @@
 /**
  * Tests for URLHandlerRegistry
  * v1.6.0 - Phase 7.6: URL handler coverage improvement
- * 
+ *
  * Target: Bring url-handlers from 0% to 50%+
  */
 
@@ -25,7 +25,7 @@ describe('URLHandlerRegistry', () => {
 
     test('should merge handlers from all categories', () => {
       const supportedDomains = registry.getSupportedDomains();
-      
+
       // Verify we have handlers from multiple categories
       expect(supportedDomains.length).toBeGreaterThan(10); // Should have many handlers
     });
@@ -44,7 +44,7 @@ describe('URLHandlerRegistry', () => {
     test('should find href in parent elements (1 level)', () => {
       const link = document.createElement('a');
       link.href = 'https://example.com/nested';
-      
+
       const span = document.createElement('span');
       span.textContent = 'Click me';
       link.appendChild(span);
@@ -57,11 +57,11 @@ describe('URLHandlerRegistry', () => {
     test('should find href in parent elements (multiple levels)', () => {
       const link = document.createElement('a');
       link.href = 'https://example.com/deep';
-      
+
       const div1 = document.createElement('div');
       const div2 = document.createElement('div');
       const span = document.createElement('span');
-      
+
       link.appendChild(div1);
       div1.appendChild(div2);
       div2.appendChild(span);
@@ -74,10 +74,10 @@ describe('URLHandlerRegistry', () => {
     test('should prioritize direct href over parent href', () => {
       const outerLink = document.createElement('a');
       outerLink.href = 'https://example.com/outer';
-      
+
       const innerLink = document.createElement('a');
       innerLink.href = 'https://example.com/inner';
-      
+
       outerLink.appendChild(innerLink);
 
       const result = registry.findURL(innerLink, 'unknown');
@@ -107,7 +107,7 @@ describe('URLHandlerRegistry', () => {
 
       // Create element without direct link (generic will be used)
       const div = document.createElement('div');
-      
+
       const result = registry.findURL(div, 'customsite');
 
       expect(mockHandler).toHaveBeenCalled();
@@ -147,7 +147,7 @@ describe('URLHandlerRegistry', () => {
       // Get a real supported domain
       const domains = registry.getSupportedDomains();
       expect(domains.length).toBeGreaterThan(0);
-      
+
       const firstDomain = domains[0];
       const result = registry.isSupported(firstDomain);
 
@@ -182,7 +182,7 @@ describe('URLHandlerRegistry', () => {
   describe('Handler Integration', () => {
     test('should preserve all handlers after initialization', () => {
       const domains = registry.getSupportedDomains();
-      
+
       // Verify all handlers are functions
       for (const domain of domains) {
         expect(typeof registry.handlers[domain]).toBe('function');
@@ -222,7 +222,7 @@ describe('URLHandlerRegistry', () => {
 
       expect(result).toBe('https://example.com/path?query=value&foo=bar#fragment');
     });
-    
+
     test('should find URL in link container with role=article', () => {
       const container = document.createElement('div');
       container.setAttribute('role', 'article');
@@ -235,12 +235,12 @@ describe('URLHandlerRegistry', () => {
       // Generic handler searches within elements with role=article
       expect(result).toBe('https://example.com/in-role-article');
     });
-    
+
     test('should check up to 20 parent levels', () => {
       // Create a link at top
       const link = document.createElement('a');
       link.href = 'https://example.com/deep-parent';
-      
+
       // Create nested structure (15 levels)
       let current = link;
       for (let i = 0; i < 15; i++) {
@@ -248,14 +248,14 @@ describe('URLHandlerRegistry', () => {
         current.appendChild(div);
         current = div;
       }
-      
+
       // Target element is 15 levels deep (within limit)
       const result = registry.findURL(current, 'unknown');
 
       // Should find parent link
       expect(result).toBe('https://example.com/deep-parent');
     });
-    
+
     test('should handle empty href', () => {
       const link = document.createElement('a');
       link.href = '';
