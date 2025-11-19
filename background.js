@@ -104,7 +104,7 @@ const migrators = {
 /**
  * v1.5.8.13 - EAGER LOADING: Initialize global state from storage on extension startup
  * v1.6.0 - PHASE 3.2: Refactored to use strategy pattern (cc=20 → cc<5)
- * 
+ *
  * Reduces complexity by:
  * - Extracting format detection to StorageFormatDetector
  * - Extracting migration logic to format-specific migrator classes
@@ -132,7 +132,7 @@ async function initializeGlobalState() {
 
 /**
  * Helper: Try loading from session storage
- * 
+ *
  * @returns {Promise<boolean>} True if loaded successfully
  */
 async function tryLoadFromSessionStorage() {
@@ -164,7 +164,7 @@ async function tryLoadFromSessionStorage() {
 
 /**
  * Helper: Try loading from sync storage
- * 
+ *
  * @returns {Promise<void>}
  */
 async function tryLoadFromSyncStorage() {
@@ -196,7 +196,7 @@ async function tryLoadFromSyncStorage() {
 
 /**
  * Helper: Save migrated legacy format to sync storage
- * 
+ *
  * @returns {Promise<void>}
  */
 async function saveMigratedLegacyFormat() {
@@ -218,7 +218,7 @@ async function saveMigratedLegacyFormat() {
 
 /**
  * Helper: Log successful state load
- * 
+ *
  * @param {string} source - Storage source (session/sync)
  * @param {string} format - Format name
  */
@@ -275,7 +275,7 @@ async function migrateQuickTabState() {
 
 /**
  * Helper: Migrate individual tab from pinnedToUrl to solo/mute format
- * 
+ *
  * @param {Object} quickTab - Quick Tab object to migrate
  * @returns {boolean} True if migration occurred
  */
@@ -301,7 +301,7 @@ function migrateTabFromPinToSoloMute(quickTab) {
 
 /**
  * Helper: Save migrated Quick Tab state to storage
- * 
+ *
  * @returns {Promise<void>}
  */
 async function saveMigratedQuickTabState() {
@@ -365,7 +365,7 @@ class StateCoordinator {
 
   /**
    * Helper: Try loading from session storage
-   * 
+   *
    * @returns {Promise<boolean>} True if loaded successfully
    */
   async tryLoadFromSessionStorage() {
@@ -393,7 +393,7 @@ class StateCoordinator {
 
   /**
    * Helper: Try loading from sync storage
-   * 
+   *
    * @returns {Promise<void>}
    */
   async tryLoadFromSyncStorage() {
@@ -418,7 +418,7 @@ class StateCoordinator {
 
   /**
    * Helper: Load state from sync storage data
-   * 
+   *
    * @param {Object} data - Storage data
    */
   loadStateFromSyncData(data) {
@@ -509,7 +509,7 @@ class StateCoordinator {
 
   /**
    * Helper: Handle create operation
-   * 
+   *
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} data - Tab data
    */
@@ -530,7 +530,7 @@ class StateCoordinator {
 
   /**
    * Helper: Handle update operation
-   * 
+   *
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} data - Tab data
    */
@@ -551,7 +551,7 @@ class StateCoordinator {
 
   /**
    * Helper: Handle delete operation
-   * 
+   *
    * @param {string} quickTabId - Quick Tab ID
    */
   handleDeleteOperation(quickTabId) {
@@ -568,7 +568,7 @@ class StateCoordinator {
 
   /**
    * Helper: Handle minimize operation
-   * 
+   *
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} data - Tab data (optional)
    */
@@ -586,7 +586,7 @@ class StateCoordinator {
 
   /**
    * Helper: Handle restore operation
-   * 
+   *
    * @param {string} quickTabId - Quick Tab ID
    */
   handleRestoreOperation(quickTabId) {

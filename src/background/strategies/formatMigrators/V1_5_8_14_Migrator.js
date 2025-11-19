@@ -1,15 +1,15 @@
 /**
  * V1_5_8_14_Migrator - Handles v1.5.8.14 storage format
- * 
+ *
  * Format: { [cookieStoreId]: { tabs: [...], lastUpdate: ... }, ... }
  * This format has unwrapped containers (direct cookieStoreId keys).
- * 
+ *
  * @class V1_5_8_14_Migrator
  */
 export class V1_5_8_14_Migrator {
   /**
    * Migrate v1.5.8.14 format to global state
-   * 
+   *
    * @param {Object} data - Storage data with cookieStoreId keys
    * @param {Object} globalState - Target state object to populate
    * @returns {Object} Updated global state
@@ -24,7 +24,7 @@ export class V1_5_8_14_Migrator {
 
   /**
    * Get format name for logging
-   * 
+   *
    * @returns {string} Format identifier
    */
   getFormatName() {

@@ -1,16 +1,16 @@
 /**
  * LegacyMigrator - Handles legacy storage format
- * 
+ *
  * Format: { tabs: [...], timestamp: ... }
  * This format has a flat tabs array without container isolation.
  * Migrates to default container.
- * 
+ *
  * @class LegacyMigrator
  */
 export class LegacyMigrator {
   /**
    * Migrate legacy format to global state
-   * 
+   *
    * @param {Object} data - Storage data with tabs array
    * @param {Object} globalState - Target state object to populate
    * @returns {Object} Updated global state
@@ -27,7 +27,7 @@ export class LegacyMigrator {
 
   /**
    * Get format name for logging
-   * 
+   *
    * @returns {string} Format identifier
    */
   getFormatName() {
