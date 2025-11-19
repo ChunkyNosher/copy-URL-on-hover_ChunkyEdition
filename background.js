@@ -9,6 +9,11 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
+// v1.6.0 - PHASE 3.2: Import storage format detection and migration strategies
+import { LegacyMigrator } from './src/background/strategies/formatMigrators/LegacyMigrator.js';
+import { V1_5_8_14_Migrator } from './src/background/strategies/formatMigrators/V1_5_8_14_Migrator.js';
+import { V1_5_8_15_Migrator } from './src/background/strategies/formatMigrators/V1_5_8_15_Migrator.js';
+import { StorageFormatDetector } from './src/background/strategies/StorageFormatDetector.js';
 
 const runtimeAPI =
   (typeof browser !== 'undefined' && browser.runtime) ||
@@ -88,108 +93,148 @@ const globalQuickTabState = {
 // Flag to track initialization status
 let isInitialized = false;
 
-// v1.5.8.13 - EAGER LOADING: Initialize global state from storage on extension startup (container-aware)
-// This runs immediately when background script loads, ensuring state is always available
+// v1.6.0 - PHASE 3.2: Initialize format detection and migration strategies
+const formatDetector = new StorageFormatDetector();
+const migrators = {
+  'v1.5.8.15': new V1_5_8_15_Migrator(),
+  'v1.5.8.14': new V1_5_8_14_Migrator(),
+  legacy: new LegacyMigrator()
+};
+
+/**
+ * v1.5.8.13 - EAGER LOADING: Initialize global state from storage on extension startup
+ * v1.6.0 - PHASE 3.2: Refactored to use strategy pattern (cc=20 → cc<5)
+ *
+ * Reduces complexity by:
+ * - Extracting format detection to StorageFormatDetector
+ * - Extracting migration logic to format-specific migrator classes
+ * - Using early returns to flatten nested blocks
+ */
 async function initializeGlobalState() {
-  if (isInitialized) return;
+  // Guard: Already initialized
+  if (isInitialized) {
+    console.log('[Background] State already initialized');
+    return;
+  }
 
   try {
     // Try session storage first (faster)
-    let result;
-    if (typeof browser.storage.session !== 'undefined') {
-      result = await browser.storage.session.get('quick_tabs_session');
-      if (result && result.quick_tabs_session) {
-        // Check if it's container-aware format (object with container keys)
-        if (
-          typeof result.quick_tabs_session === 'object' &&
-          !Array.isArray(result.quick_tabs_session.tabs)
-        ) {
-          // v1.5.8.15 FIX: Check for wrapper format first
-          if (result.quick_tabs_session.containers) {
-            globalQuickTabState.containers = result.quick_tabs_session.containers;
-          } else {
-            // v1.5.8.14 format (unwrapped)
-            globalQuickTabState.containers = result.quick_tabs_session;
-          }
-        } else if (result.quick_tabs_session.tabs) {
-          // Old format: migrate to container-aware
-          globalQuickTabState.containers = {
-            'firefox-default': {
-              tabs: result.quick_tabs_session.tabs,
-              lastUpdate: result.quick_tabs_session.timestamp || Date.now()
-            }
-          };
-        }
-        isInitialized = true;
-        const totalTabs = Object.values(globalQuickTabState.containers).reduce(
-          (sum, c) => sum + (c.tabs?.length || 0),
-          0
-        );
-        console.log(
-          '[Background] ✓ EAGER LOAD: Initialized from session storage:',
-          totalTabs,
-          'tabs across',
-          Object.keys(globalQuickTabState.containers).length,
-          'containers'
-        );
-        return;
-      }
-    }
+    const loaded = await tryLoadFromSessionStorage();
+    if (loaded) return;
 
     // Fall back to sync storage
-    result = await browser.storage.sync.get('quick_tabs_state_v2');
-    if (result && result.quick_tabs_state_v2) {
-      // v1.5.8.15 FIX: Check if it's container-aware format with wrapper
-      if (typeof result.quick_tabs_state_v2 === 'object' && result.quick_tabs_state_v2.containers) {
-        // New v1.5.8.15 format with wrapper
-        globalQuickTabState.containers = result.quick_tabs_state_v2.containers;
-      } else if (
-        typeof result.quick_tabs_state_v2 === 'object' &&
-        !Array.isArray(result.quick_tabs_state_v2.tabs) &&
-        !result.quick_tabs_state_v2.containers
-      ) {
-        // v1.5.8.14 format (unwrapped containers)
-        globalQuickTabState.containers = result.quick_tabs_state_v2;
-      } else if (result.quick_tabs_state_v2.tabs) {
-        // Old format: migrate to container-aware
-        globalQuickTabState.containers = {
-          'firefox-default': {
-            tabs: result.quick_tabs_state_v2.tabs,
-            lastUpdate: result.quick_tabs_state_v2.timestamp || Date.now()
-          }
-        };
-        // v1.5.8.15 FIX: Save migrated format with proper wrapper
-        const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        browser.storage.sync
-          .set({
-            quick_tabs_state_v2: {
-              containers: globalQuickTabState.containers,
-              saveId: saveId,
-              timestamp: Date.now()
-            }
-          })
-          .catch(err => console.error('[Background] Error saving migrated state:', err));
-      }
-      isInitialized = true;
-      const totalTabs = Object.values(globalQuickTabState.containers).reduce(
-        (sum, c) => sum + (c.tabs?.length || 0),
-        0
-      );
-      console.log(
-        '[Background] ✓ EAGER LOAD: Initialized from sync storage:',
-        totalTabs,
-        'tabs across',
-        Object.keys(globalQuickTabState.containers).length,
-        'containers'
-      );
-    } else {
-      isInitialized = true;
-      console.log('[Background] ✓ EAGER LOAD: No saved state found, starting with empty state');
-    }
+    await tryLoadFromSyncStorage();
   } catch (err) {
     console.error('[Background] Error initializing global state:', err);
     isInitialized = true; // Mark as initialized even on error to prevent blocking
   }
+}
+
+/**
+ * Helper: Try loading from session storage
+ *
+ * @returns {Promise<boolean>} True if loaded successfully
+ */
+async function tryLoadFromSessionStorage() {
+  // Guard: Session storage not available
+  if (typeof browser.storage.session === 'undefined') {
+    return false;
+  }
+
+  const result = await browser.storage.session.get('quick_tabs_session');
+
+  // Guard: No data in session storage
+  if (!result || !result.quick_tabs_session) {
+    return false;
+  }
+
+  // Detect format and migrate
+  const format = formatDetector.detect(result.quick_tabs_session);
+  const migrator = migrators[format];
+
+  if (migrator) {
+    migrators[format].migrate(result.quick_tabs_session, globalQuickTabState);
+    logSuccessfulLoad('session storage', migrator.getFormatName());
+    isInitialized = true;
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Helper: Try loading from sync storage
+ *
+ * @returns {Promise<void>}
+ */
+async function tryLoadFromSyncStorage() {
+  const result = await browser.storage.sync.get('quick_tabs_state_v2');
+
+  // Guard: No data in sync storage
+  if (!result || !result.quick_tabs_state_v2) {
+    console.log('[Background] ✓ EAGER LOAD: No saved state found, starting with empty state');
+    isInitialized = true;
+    return;
+  }
+
+  // Detect format and migrate
+  const format = formatDetector.detect(result.quick_tabs_state_v2);
+  const migrator = migrators[format];
+
+  if (migrator) {
+    migrators[format].migrate(result.quick_tabs_state_v2, globalQuickTabState);
+    logSuccessfulLoad('sync storage', migrator.getFormatName());
+
+    // Save migrated legacy format with proper wrapper
+    if (format === 'legacy') {
+      await saveMigratedLegacyFormat();
+    }
+  }
+
+  isInitialized = true;
+}
+
+/**
+ * Helper: Save migrated legacy format to sync storage
+ *
+ * @returns {Promise<void>}
+ */
+async function saveMigratedLegacyFormat() {
+  const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  try {
+    await browser.storage.sync.set({
+      quick_tabs_state_v2: {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      }
+    });
+    console.log('[Background] ✓ Migrated legacy format to v1.5.8.15');
+  } catch (err) {
+    console.error('[Background] Error saving migrated state:', err);
+  }
+}
+
+/**
+ * Helper: Log successful state load
+ *
+ * @param {string} source - Storage source (session/sync)
+ * @param {string} format - Format name
+ */
+function logSuccessfulLoad(source, format) {
+  const totalTabs = Object.values(globalQuickTabState.containers).reduce(
+    (sum, c) => sum + (c.tabs?.length || 0),
+    0
+  );
+
+  console.log(
+    `[Background] ✓ EAGER LOAD: Initialized from ${source} (${format}):`,
+    totalTabs,
+    'tabs across',
+    Object.keys(globalQuickTabState.containers).length,
+    'containers'
+  );
 }
 
 // v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
@@ -197,8 +242,10 @@ initializeGlobalState();
 
 /**
  * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
+ * v1.6.0 - PHASE 3.2: Refactored to extract nested loop logic (cc=10 → cc<6)
  */
 async function migrateQuickTabState() {
+  // Guard: State not initialized
   if (!isInitialized) {
     console.warn('[Background Migration] State not initialized, skipping migration');
     return;
@@ -206,44 +253,71 @@ async function migrateQuickTabState() {
 
   let migrated = false;
 
+  // Process each container
   for (const containerId in globalQuickTabState.containers) {
     const containerTabs = globalQuickTabState.containers[containerId].tabs || [];
 
+    // Migrate each tab in container
     for (const quickTab of containerTabs) {
-      // Check for old pinnedToUrl property
-      if ('pinnedToUrl' in quickTab) {
-        console.log(
-          `[Background Migration] Converting Quick Tab ${quickTab.id} from pin to solo/mute format`
-        );
-
-        // Initialize new properties
-        quickTab.soloedOnTabs = quickTab.soloedOnTabs || [];
-        quickTab.mutedOnTabs = quickTab.mutedOnTabs || [];
-
-        // Remove old property
-        delete quickTab.pinnedToUrl;
-
+      if (migrateTabFromPinToSoloMute(quickTab)) {
         migrated = true;
       }
     }
   }
 
+  // Save if any tabs were migrated
   if (migrated) {
-    console.log('[Background Migration] Saving migrated Quick Tab state');
-    const stateToSave = {
-      containers: globalQuickTabState.containers,
-      saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: Date.now()
-    };
-
-    try {
-      await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
-      console.log('[Background Migration] Migration complete');
-    } catch (err) {
-      console.error('[Background Migration] Error saving migrated state:', err);
-    }
+    await saveMigratedQuickTabState();
   } else {
     console.log('[Background Migration] No migration needed');
+  }
+}
+
+/**
+ * Helper: Migrate individual tab from pinnedToUrl to solo/mute format
+ *
+ * @param {Object} quickTab - Quick Tab object to migrate
+ * @returns {boolean} True if migration occurred
+ */
+function migrateTabFromPinToSoloMute(quickTab) {
+  // Guard: No pinnedToUrl property
+  if (!('pinnedToUrl' in quickTab)) {
+    return false;
+  }
+
+  console.log(
+    `[Background Migration] Converting Quick Tab ${quickTab.id} from pin to solo/mute format`
+  );
+
+  // Initialize new properties
+  quickTab.soloedOnTabs = quickTab.soloedOnTabs || [];
+  quickTab.mutedOnTabs = quickTab.mutedOnTabs || [];
+
+  // Remove old property
+  delete quickTab.pinnedToUrl;
+
+  return true;
+}
+
+/**
+ * Helper: Save migrated Quick Tab state to storage
+ *
+ * @returns {Promise<void>}
+ */
+async function saveMigratedQuickTabState() {
+  console.log('[Background Migration] Saving migrated Quick Tab state');
+
+  const stateToSave = {
+    containers: globalQuickTabState.containers,
+    saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    timestamp: Date.now()
+  };
+
+  try {
+    await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
+    console.log('[Background Migration] ✓ Migration complete');
+  } catch (err) {
+    console.error('[Background Migration] Error saving migrated state:', err);
   }
 }
 
@@ -267,60 +341,104 @@ class StateCoordinator {
 
   /**
    * Initialize from storage
+   * v1.6.0 - PHASE 3.2: Refactored to flatten nested blocks (cc=15 → cc<6)
    */
   async initialize() {
-    if (this.initialized) return;
+    // Guard: Already initialized
+    if (this.initialized) {
+      console.log('[STATE COORDINATOR] Already initialized');
+      return;
+    }
 
     try {
       // Try session storage first
-      if (typeof browser.storage.session !== 'undefined') {
-        const result = await browser.storage.session.get('quick_tabs_session');
-        if (result && result.quick_tabs_session && result.quick_tabs_session.tabs) {
-          this.globalState = result.quick_tabs_session;
-          this.initialized = true;
-          console.log(
-            '[STATE COORDINATOR] Initialized from session storage:',
-            this.globalState.tabs.length,
-            'tabs'
-          );
-          return;
-        }
-      }
+      const loaded = await this.tryLoadFromSessionStorage();
+      if (loaded) return;
 
       // Fall back to sync storage
-      const result = await browser.storage.sync.get('quick_tabs_state_v2');
-      if (result && result.quick_tabs_state_v2) {
-        // Handle container-aware format from existing code
-        if (
-          typeof result.quick_tabs_state_v2 === 'object' &&
-          !Array.isArray(result.quick_tabs_state_v2.tabs)
-        ) {
-          // Container-aware format - merge all containers into single state
-          const allTabs = [];
-          for (const containerId in result.quick_tabs_state_v2) {
-            const containerData = result.quick_tabs_state_v2[containerId];
-            if (containerData && containerData.tabs) {
-              allTabs.push(...containerData.tabs);
-            }
-          }
-          this.globalState.tabs = allTabs;
-          this.globalState.timestamp = Date.now();
-        } else if (result.quick_tabs_state_v2.tabs) {
-          this.globalState = result.quick_tabs_state_v2;
-        }
-        this.initialized = true;
-        console.log(
-          '[STATE COORDINATOR] Initialized from sync storage:',
-          this.globalState.tabs.length,
-          'tabs'
-        );
-      } else {
-        this.initialized = true;
-        console.log('[STATE COORDINATOR] No saved state, starting fresh');
-      }
+      await this.tryLoadFromSyncStorage();
     } catch (err) {
       console.error('[STATE COORDINATOR] Error initializing:', err);
       this.initialized = true;
+    }
+  }
+
+  /**
+   * Helper: Try loading from session storage
+   *
+   * @returns {Promise<boolean>} True if loaded successfully
+   */
+  async tryLoadFromSessionStorage() {
+    // Guard: Session storage not available
+    if (typeof browser.storage.session === 'undefined') {
+      return false;
+    }
+
+    const result = await browser.storage.session.get('quick_tabs_session');
+
+    // Guard: No valid data
+    if (!result || !result.quick_tabs_session || !result.quick_tabs_session.tabs) {
+      return false;
+    }
+
+    this.globalState = result.quick_tabs_session;
+    this.initialized = true;
+    console.log(
+      '[STATE COORDINATOR] Initialized from session storage:',
+      this.globalState.tabs.length,
+      'tabs'
+    );
+    return true;
+  }
+
+  /**
+   * Helper: Try loading from sync storage
+   *
+   * @returns {Promise<void>}
+   */
+  async tryLoadFromSyncStorage() {
+    const result = await browser.storage.sync.get('quick_tabs_state_v2');
+
+    // Guard: No data
+    if (!result || !result.quick_tabs_state_v2) {
+      this.initialized = true;
+      console.log('[STATE COORDINATOR] No saved state, starting fresh');
+      return;
+    }
+
+    // Load data based on format
+    this.loadStateFromSyncData(result.quick_tabs_state_v2);
+    this.initialized = true;
+    console.log(
+      '[STATE COORDINATOR] Initialized from sync storage:',
+      this.globalState.tabs.length,
+      'tabs'
+    );
+  }
+
+  /**
+   * Helper: Load state from sync storage data
+   *
+   * @param {Object} data - Storage data
+   */
+  loadStateFromSyncData(data) {
+    // Container-aware format
+    if (typeof data === 'object' && !Array.isArray(data.tabs)) {
+      const allTabs = [];
+      for (const containerId in data) {
+        const containerData = data[containerId];
+        if (containerData && containerData.tabs) {
+          allTabs.push(...containerData.tabs);
+        }
+      }
+      this.globalState.tabs = allTabs;
+      this.globalState.timestamp = Date.now();
+      return;
+    }
+
+    // Legacy format with tabs array
+    if (data.tabs) {
+      this.globalState = data;
     }
   }
 
@@ -343,9 +461,9 @@ class StateCoordinator {
     });
     this.tabVectorClocks.set(tabInstanceId, tabVectorClock);
 
-    // Process each operation
+    // Process each operation (synchronous)
     for (const op of operations) {
-      await this.processOperation(op);
+      this.processOperation(op);
     }
 
     // Save to storage
@@ -360,71 +478,127 @@ class StateCoordinator {
 
   /**
    * Process a single operation
+   * v1.6.0 - PHASE 3.2: Refactored to extract operation handlers (cc=12 → cc<6)
    */
-  async processOperation(op) {
+  processOperation(op) {
     const { type, quickTabId, data } = op;
 
+    // Route to appropriate handler
     switch (type) {
-      case 'create': {
-        // ✅ FIXED: Wrapped in block scope
-        const existingIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-        if (existingIndex === -1) {
-          this.globalState.tabs.push(data);
-          console.log(`[STATE COORDINATOR] Created Quick Tab ${quickTabId}`);
-        } else {
-          this.globalState.tabs[existingIndex] = {
-            ...this.globalState.tabs[existingIndex],
-            ...data
-          };
-          console.log(`[STATE COORDINATOR] Updated existing Quick Tab ${quickTabId}`);
-        }
+      case 'create':
+        this.handleCreateOperation(quickTabId, data);
         break;
-      }
-
-      case 'update': {
-        // ✅ FIXED: Wrapped in block scope
-        const updateIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-        if (updateIndex !== -1) {
-          this.globalState.tabs[updateIndex] = { ...this.globalState.tabs[updateIndex], ...data };
-          console.log(`[STATE COORDINATOR] Updated Quick Tab ${quickTabId}`);
-        }
+      case 'update':
+        this.handleUpdateOperation(quickTabId, data);
         break;
-      }
-
-      case 'delete': {
-        // ✅ FIXED: Wrapped in block scope
-        const deleteIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-        if (deleteIndex !== -1) {
-          this.globalState.tabs.splice(deleteIndex, 1);
-          console.log(`[STATE COORDINATOR] Deleted Quick Tab ${quickTabId}`);
-        }
+      case 'delete':
+        this.handleDeleteOperation(quickTabId);
         break;
-      }
-
-      case 'minimize': {
-        // ✅ FIXED: Wrapped in block scope
-        const minIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-        if (minIndex !== -1) {
-          this.globalState.tabs[minIndex].minimized = true;
-          console.log(`[STATE COORDINATOR] Minimized Quick Tab ${quickTabId}`);
-        } else if (data) {
-          this.globalState.tabs.push({ ...data, minimized: true });
-        }
+      case 'minimize':
+        this.handleMinimizeOperation(quickTabId, data);
         break;
-      }
-
-      case 'restore': {
-        // ✅ FIXED: Wrapped in block scope
-        const restoreIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-        if (restoreIndex !== -1) {
-          this.globalState.tabs[restoreIndex].minimized = false;
-          console.log(`[STATE COORDINATOR] Restored Quick Tab ${quickTabId}`);
-        }
+      case 'restore':
+        this.handleRestoreOperation(quickTabId);
         break;
-      }
+      default:
+        console.warn(`[STATE COORDINATOR] Unknown operation type: ${type}`);
     }
 
     this.globalState.timestamp = Date.now();
+  }
+
+  /**
+   * Helper: Handle create operation
+   *
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {Object} data - Tab data
+   */
+  handleCreateOperation(quickTabId, data) {
+    const existingIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+
+    if (existingIndex === -1) {
+      this.globalState.tabs.push(data);
+      console.log(`[STATE COORDINATOR] Created Quick Tab ${quickTabId}`);
+    } else {
+      this.globalState.tabs[existingIndex] = {
+        ...this.globalState.tabs[existingIndex],
+        ...data
+      };
+      console.log(`[STATE COORDINATOR] Updated existing Quick Tab ${quickTabId}`);
+    }
+  }
+
+  /**
+   * Helper: Handle update operation
+   *
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {Object} data - Tab data
+   */
+  handleUpdateOperation(quickTabId, data) {
+    const updateIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+
+    if (updateIndex === -1) {
+      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for update`);
+      return;
+    }
+
+    this.globalState.tabs[updateIndex] = {
+      ...this.globalState.tabs[updateIndex],
+      ...data
+    };
+    console.log(`[STATE COORDINATOR] Updated Quick Tab ${quickTabId}`);
+  }
+
+  /**
+   * Helper: Handle delete operation
+   *
+   * @param {string} quickTabId - Quick Tab ID
+   */
+  handleDeleteOperation(quickTabId) {
+    const deleteIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+
+    if (deleteIndex === -1) {
+      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for delete`);
+      return;
+    }
+
+    this.globalState.tabs.splice(deleteIndex, 1);
+    console.log(`[STATE COORDINATOR] Deleted Quick Tab ${quickTabId}`);
+  }
+
+  /**
+   * Helper: Handle minimize operation
+   *
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {Object} data - Tab data (optional)
+   */
+  handleMinimizeOperation(quickTabId, data) {
+    const minIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+
+    if (minIndex !== -1) {
+      this.globalState.tabs[minIndex].minimized = true;
+      console.log(`[STATE COORDINATOR] Minimized Quick Tab ${quickTabId}`);
+    } else if (data) {
+      this.globalState.tabs.push({ ...data, minimized: true });
+      console.log(`[STATE COORDINATOR] Created minimized Quick Tab ${quickTabId}`);
+    }
+  }
+
+  /**
+   * Helper: Handle restore operation
+   *
+   * @param {string} quickTabId - Quick Tab ID
+   */
+  handleRestoreOperation(quickTabId) {
+    const restoreIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+
+    if (restoreIndex === -1) {
+      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for restore`);
+      return;
+    }
+
+    this.globalState.tabs[restoreIndex].minimized = false;
+    console.log(`[STATE COORDINATOR] Restored Quick Tab ${quickTabId}`);
   }
 
   /**
