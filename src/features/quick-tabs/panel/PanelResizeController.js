@@ -262,7 +262,10 @@ export class PanelResizeController {
     if (this.callbacks.onSizeChange) {
       this.callbacks.onSizeChange(newWidth, newHeight);
     }
-    if (this.callbacks.onPositionChange && (newLeft !== startState.left || newTop !== startState.top)) {
+    if (
+      this.callbacks.onPositionChange &&
+      (newLeft !== startState.left || newTop !== startState.top)
+    ) {
       this.callbacks.onPositionChange(newLeft, newTop);
     }
   }

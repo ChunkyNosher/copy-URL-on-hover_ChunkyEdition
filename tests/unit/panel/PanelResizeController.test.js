@@ -72,7 +72,9 @@ describe('PanelResizeController', () => {
       controller = new PanelResizeController(mockPanel, mockCallbacks);
 
       const directions = controller.handles.map(h => h.direction);
-      expect(directions).toEqual(expect.arrayContaining(['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']));
+      expect(directions).toEqual(
+        expect.arrayContaining(['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'])
+      );
     });
 
     test('should work with empty callbacks', () => {
