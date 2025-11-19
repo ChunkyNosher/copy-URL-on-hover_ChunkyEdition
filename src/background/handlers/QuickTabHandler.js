@@ -43,19 +43,22 @@ export class QuickTabHandler {
     }
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
+    const containerState = this.globalState.containers[cookieStoreId];
+    
+    if (!containerState) {
+      return { success: true };
+    }
 
-    if (this.globalState.containers[cookieStoreId]) {
-      const containerState = this.globalState.containers[cookieStoreId];
-      const tab = containerState.tabs.find(t => t.id === message.id);
+    const tab = containerState.tabs.find(t => t.id === message.id);
+    if (!tab) {
+      return { success: true };
+    }
 
-      if (tab) {
-        updateFn(tab, message);
-        containerState.lastUpdate = Date.now();
+    updateFn(tab, message);
+    containerState.lastUpdate = Date.now();
 
-        if (shouldSave) {
-          await this.saveStateToStorage();
-        }
-      }
+    if (shouldSave) {
+      await this.saveStateToStorage();
     }
 
     return { success: true };
