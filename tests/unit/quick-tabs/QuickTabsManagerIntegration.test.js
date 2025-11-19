@@ -7,17 +7,18 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
+
+import { SyncCoordinator } from '../../../src/features/quick-tabs/coordinators/SyncCoordinator.js';
+import { UICoordinator } from '../../../src/features/quick-tabs/coordinators/UICoordinator.js';
+import { CreateHandler } from '../../../src/features/quick-tabs/handlers/CreateHandler.js';
+import { DestroyHandler } from '../../../src/features/quick-tabs/handlers/DestroyHandler.js';
+import { UpdateHandler } from '../../../src/features/quick-tabs/handlers/UpdateHandler.js';
+import { VisibilityHandler } from '../../../src/features/quick-tabs/handlers/VisibilityHandler.js';
 import { initQuickTabs } from '../../../src/features/quick-tabs/index.js';
 import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
 import { EventManager } from '../../../src/features/quick-tabs/managers/EventManager.js';
 import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { StorageManager } from '../../../src/features/quick-tabs/managers/StorageManager.js';
-import { CreateHandler } from '../../../src/features/quick-tabs/handlers/CreateHandler.js';
-import { DestroyHandler } from '../../../src/features/quick-tabs/handlers/DestroyHandler.js';
-import { UpdateHandler } from '../../../src/features/quick-tabs/handlers/UpdateHandler.js';
-import { VisibilityHandler } from '../../../src/features/quick-tabs/handlers/VisibilityHandler.js';
-import { SyncCoordinator } from '../../../src/features/quick-tabs/coordinators/SyncCoordinator.js';
-import { UICoordinator } from '../../../src/features/quick-tabs/coordinators/UICoordinator.js';
 import { MinimizedManager } from '../../../src/features/quick-tabs/minimized-manager.js';
 import { PanelManager } from '../../../src/features/quick-tabs/panel.js';
 

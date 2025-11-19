@@ -1,5 +1,6 @@
 // tests/extension/fixtures.js
-const { test as base, chromium } = require('@playwright/test');
+// eslint-disable-next-line no-unused-vars
+const { test: base, chromium } = require('@playwright/test');
 const path = require('path');
 
 /**
@@ -7,7 +8,8 @@ const path = require('path');
  * Loads Chrome with extension pre-installed
  */
 exports.test = base.extend({
-  context: async ({ }, use) => {
+  // eslint-disable-next-line no-empty-pattern
+  context: async ({}, use) => {
     const pathToExtension = path.join(__dirname, '../../dist');
     
     const context = await chromium.launchPersistentContext('', {

@@ -2,7 +2,7 @@
 const { test, expect } = require('./fixtures');
 
 test.describe('Extension Basic Tests', () => {
-  test('extension loads successfully', async ({ context, extensionId }) => {
+  test('extension loads successfully', async ({ context: _context, extensionId }) => {
     expect(extensionId).toBeTruthy();
     expect(extensionId).toMatch(/^[a-z]{32}$/);
     
@@ -23,7 +23,7 @@ test.describe('Extension Basic Tests', () => {
     await page.close();
   });
 
-  test('content script injects on web pages', async ({ context, page }) => {
+  test('content script injects on web pages', async ({ context: _context, page }) => {
     await page.goto('https://example.com');
     
     // Wait for content script to load
@@ -37,7 +37,7 @@ test.describe('Extension Basic Tests', () => {
     expect(hasExtensionElement).toBe(true);
   });
 
-  test('Quick Tab can be created', async ({ context, page }) => {
+  test('Quick Tab can be created', async ({ context: _context, page }) => {
     await page.goto('https://example.com');
     await page.waitForLoadState('networkidle');
     

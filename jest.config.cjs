@@ -7,6 +7,9 @@ module.exports = {
 
   // Test file patterns
   testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
+  
+  // Exclude playwright tests (they need a different environment)
+  testPathIgnorePatterns: ['/node_modules/', '/tests/extension/'],
 
   // Module aliasing (must match Rollup aliases)
   moduleNameMapper: {
