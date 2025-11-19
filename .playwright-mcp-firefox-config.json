@@ -3,12 +3,17 @@
     "browserName": "firefox",
     "launchOptions": {
       "headless": false,
+      "args": [
+        "-profile",
+        "${GITHUB_WORKSPACE}/firefox-profile"
+      ],
       "firefoxUserPrefs": {
         "xpinstall.signatures.required": false,
         "extensions.autoDisableScopes": 0,
-        "extensions.enabledScopes": 15
-      },
-      "args": []
+        "extensions.enabledScopes": 15,
+        "devtools.chrome.enabled": true,
+        "devtools.debugger.remote-enabled": true
+      }
     },
     "contextOptions": {
       "viewport": {
