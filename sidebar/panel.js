@@ -54,7 +54,7 @@ async function _loadFromSessionStorage() {
   if (typeof browser.storage.session === 'undefined') {
     return null;
   }
-  
+
   const sessionResult = await browser.storage.session.get(SESSION_KEY);
   return sessionResult && sessionResult[SESSION_KEY] ? sessionResult[SESSION_KEY] : null;
 }
@@ -75,7 +75,7 @@ function _showEmptyState() {
   const container = document.getElementById('quickTabsList');
   const tabCountElement = document.getElementById('tabCount');
   const lastSyncElement = document.getElementById('lastSync');
-  
+
   container.innerHTML = '<div class="no-tabs">No Quick Tabs open</div>';
   tabCountElement.textContent = '0';
   lastSyncElement.textContent = 'Never';
@@ -89,7 +89,7 @@ function _renderQuickTabsList(state) {
   const container = document.getElementById('quickTabsList');
   const tabCountElement = document.getElementById('tabCount');
   const lastSyncElement = document.getElementById('lastSync');
-  
+
   // Update tab count
   tabCountElement.textContent = state.tabs.length;
 
@@ -111,7 +111,7 @@ async function displayAllQuickTabs() {
   try {
     // Try session storage first, fall back to sync
     let state = await _loadFromSessionStorage();
-    
+
     if (!state) {
       state = await _loadFromSyncStorage();
     }
