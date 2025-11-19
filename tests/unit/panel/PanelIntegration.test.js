@@ -6,12 +6,12 @@
  * Target: 60%+ coverage on panel.js (408 lines, currently 0%)
  */
 
-import { PanelManager } from '../../../src/features/quick-tabs/panel.js';
-import { PanelUIBuilder } from '../../../src/features/quick-tabs/panel/PanelUIBuilder.js';
+import { PanelContentManager } from '../../../src/features/quick-tabs/panel/PanelContentManager.js';
 import { PanelDragController } from '../../../src/features/quick-tabs/panel/PanelDragController.js';
 import { PanelResizeController } from '../../../src/features/quick-tabs/panel/PanelResizeController.js';
 import { PanelStateManager } from '../../../src/features/quick-tabs/panel/PanelStateManager.js';
-import { PanelContentManager } from '../../../src/features/quick-tabs/panel/PanelContentManager.js';
+import { PanelUIBuilder } from '../../../src/features/quick-tabs/panel/PanelUIBuilder.js';
+import { PanelManager } from '../../../src/features/quick-tabs/panel.js';
 
 // Mock all components
 jest.mock('../../../src/features/quick-tabs/panel/PanelUIBuilder.js');
