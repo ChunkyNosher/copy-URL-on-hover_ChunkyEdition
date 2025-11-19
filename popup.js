@@ -28,19 +28,40 @@ async function getBackgroundLogs() {
 }
 
 /**
+ * Get the active tab
+ * @returns {Promise<Object|null>} Active tab or null
+ */
+async function _getActiveTab() {
+  const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
+  if (tabs.length === 0) {
+    console.warn('[Popup] No active tab found');
+    return null;
+  }
+  return tabs[0];
+}
+
+/**
+ * Log detailed error information for content script failures
+ * @param {Error} error - The error object
+ */
+function _logContentScriptError(error) {
+  if (!error.message) return;
+
+  if (error.message.includes('Could not establish connection')) {
+    console.error('[Popup] Content script not loaded in active tab');
+  } else if (error.message.includes('No active tab')) {
+    console.error('[Popup] No active tab found - try clicking on a webpage first');
+  }
+}
+
+/**
  * Request logs from active content script
  * @returns {Promise<Array>} Array of log entries
  */
 async function getContentScriptLogs() {
   try {
-    // Get active tab
-    const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
-    if (tabs.length === 0) {
-      console.warn('[Popup] No active tab found');
-      return [];
-    }
-
-    const activeTab = tabs[0];
+    const activeTab = await _getActiveTab();
+    if (!activeTab) return [];
 
     console.log(`[Popup] Requesting logs from tab ${activeTab.id}`);
 
@@ -49,29 +70,22 @@ async function getContentScriptLogs() {
       action: 'GET_CONTENT_LOGS'
     });
 
-    if (response && response.logs) {
-      console.log(`[Popup] Received ${response.logs.length} logs from content script`);
-
-      // ✅ NEW: Log buffer stats for debugging
-      if (response.stats) {
-        console.log('[Popup] Content script buffer stats:', response.stats);
-      }
-
-      return response.logs;
-    } else {
+    if (!response || !response.logs) {
       console.warn('[Popup] Content script returned no logs');
       return [];
     }
-  } catch (error) {
-    console.warn('[Popup] Could not retrieve content script logs:', error);
 
-    // ✅ IMPROVED: More specific error messages
-    if (error.message && error.message.includes('Could not establish connection')) {
-      console.error('[Popup] Content script not loaded in active tab');
-    } else if (error.message && error.message.includes('No active tab')) {
-      console.error('[Popup] No active tab found - try clicking on a webpage first');
+    console.log(`[Popup] Received ${response.logs.length} logs from content script`);
+
+    // Log buffer stats for debugging
+    if (response.stats) {
+      console.log('[Popup] Content script buffer stats:', response.stats);
     }
 
+    return response.logs;
+  } catch (error) {
+    console.warn('[Popup] Could not retrieve content script logs:', error);
+    _logContentScriptError(error);
     return [];
   }
 }
@@ -128,6 +142,92 @@ function generateLogFilename(version) {
 // ==============================================================
 
 /**
+ * Log debug information about collected logs
+ * @param {Array} backgroundLogs - Background logs
+ * @param {Array} contentLogs - Content script logs
+ */
+function _logCollectionDebugInfo(backgroundLogs, contentLogs) {
+  console.log(`[Popup] Collected ${backgroundLogs.length} background logs`);
+  console.log(`[Popup] Collected ${contentLogs.length} content logs`);
+
+  // Show breakdown by log type
+  const backgroundTypes = {};
+  const contentTypes = {};
+
+  backgroundLogs.forEach(log => {
+    backgroundTypes[log.type] = (backgroundTypes[log.type] || 0) + 1;
+  });
+
+  contentLogs.forEach(log => {
+    contentTypes[log.type] = (contentTypes[log.type] || 0) + 1;
+  });
+
+  console.log('[Popup] Background log types:', backgroundTypes);
+  console.log('[Popup] Content log types:', contentTypes);
+}
+
+/**
+ * Validate that logs were collected and throw appropriate errors
+ * @param {Array} allLogs - All collected logs
+ * @param {Array} backgroundLogs - Background logs
+ * @param {Array} contentLogs - Content logs
+ * @param {Object|null} activeTab - Active tab or null
+ * @throws {Error} If validation fails
+ */
+function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab) {
+  if (allLogs.length > 0) return;
+
+  console.warn('[Popup] No logs to export');
+
+  // Check if content script is loaded
+  if (activeTab && activeTab.url.startsWith('about:')) {
+    throw new Error(
+      'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
+    );
+  }
+
+  if (!activeTab) {
+    throw new Error('No active tab found. Try clicking on a webpage tab first.');
+  }
+
+  if (contentLogs.length === 0 && backgroundLogs.length === 0) {
+    throw new Error(
+      'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
+    );
+  }
+
+  if (contentLogs.length === 0) {
+    throw new Error(
+      `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
+    );
+  }
+
+  throw new Error('No logs found. Try enabling debug mode and using the extension first.');
+}
+
+/**
+ * Delegate log export to background script
+ * @param {string} logText - Formatted log text
+ * @param {string} filename - Export filename
+ */
+async function _delegateLogExport(logText, filename) {
+  console.log('[Popup] Delegating export to background script (v1.5.9.7 fix)');
+
+  const response = await browserAPI.runtime.sendMessage({
+    action: 'EXPORT_LOGS',
+    logText: logText,
+    filename: filename
+  });
+
+  if (!response || !response.success) {
+    const errorMessage = response?.error || 'Background script did not acknowledge export request';
+    throw new Error(errorMessage);
+  }
+
+  console.log('✓ [Popup] Background script accepted log export request');
+}
+
+/**
  * Export all logs as downloadable .txt file
  * Uses Blob URLs for Firefox compatibility (data: URLs are blocked)
  *
@@ -138,66 +238,28 @@ async function exportAllLogs(version) {
   try {
     console.log('[Popup] Starting log export...');
 
-    // ✅ IMPROVED: Add debug info about active tab
-    const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
-    if (tabs.length > 0) {
-      console.log('[Popup] Active tab:', tabs[0].url);
-      console.log('[Popup] Active tab ID:', tabs[0].id);
+    // Get active tab for debugging
+    const activeTab = await _getActiveTab();
+    if (activeTab) {
+      console.log('[Popup] Active tab:', activeTab.url);
+      console.log('[Popup] Active tab ID:', activeTab.id);
     }
 
     // Collect logs from all sources
     const backgroundLogs = await getBackgroundLogs();
     const contentLogs = await getContentScriptLogs();
 
-    console.log(`[Popup] Collected ${backgroundLogs.length} background logs`);
-    console.log(`[Popup] Collected ${contentLogs.length} content logs`);
+    // Log debug information
+    _logCollectionDebugInfo(backgroundLogs, contentLogs);
 
-    // ✅ IMPROVED: Show breakdown by log type
-    const backgroundTypes = {};
-    const contentTypes = {};
-
-    backgroundLogs.forEach(log => {
-      backgroundTypes[log.type] = (backgroundTypes[log.type] || 0) + 1;
-    });
-
-    contentLogs.forEach(log => {
-      contentTypes[log.type] = (contentTypes[log.type] || 0) + 1;
-    });
-
-    console.log('[Popup] Background log types:', backgroundTypes);
-    console.log('[Popup] Content log types:', contentTypes);
-
-    // Merge all logs
+    // Merge and sort logs
     const allLogs = [...backgroundLogs, ...contentLogs];
-
-    // Sort by timestamp
     allLogs.sort((a, b) => a.timestamp - b.timestamp);
 
     console.log(`[Popup] Total logs to export: ${allLogs.length}`);
 
-    // ✅ IMPROVED: Better error message with actionable advice
-    if (allLogs.length === 0) {
-      console.warn('[Popup] No logs to export');
-
-      // Check if content script is loaded
-      if (tabs.length > 0 && tabs[0].url.startsWith('about:')) {
-        throw new Error(
-          'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
-        );
-      } else if (tabs.length === 0) {
-        throw new Error('No active tab found. Try clicking on a webpage tab first.');
-      } else if (contentLogs.length === 0 && backgroundLogs.length === 0) {
-        throw new Error(
-          'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
-        );
-      } else if (contentLogs.length === 0) {
-        throw new Error(
-          `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
-        );
-      } else {
-        throw new Error('No logs found. Try enabling debug mode and using the extension first.');
-      }
-    }
+    // Validate logs were collected
+    _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab);
 
     // Format logs as plain text
     const logText = formatLogsAsText(allLogs, version);
@@ -221,21 +283,7 @@ async function exportAllLogs(version) {
     // - Stack Overflow 58412084: Save As dialog closes browserAction popup
     // - Firefox Bug 1658694: Popup closes when file picker opens
 
-    console.log('[Popup] Delegating export to background script (v1.5.9.7 fix)');
-
-    const response = await browserAPI.runtime.sendMessage({
-      action: 'EXPORT_LOGS',
-      logText: logText,
-      filename: filename
-    });
-
-    if (!response || !response.success) {
-      const errorMessage =
-        response?.error || 'Background script did not acknowledge export request';
-      throw new Error(errorMessage);
-    }
-
-    console.log('✓ [Popup] Background script accepted log export request');
+    await _delegateLogExport(logText, filename);
 
     // ==================== END BACKGROUND HANDOFF ====================
   } catch (error) {
@@ -444,9 +492,13 @@ function showStatus(message, isSuccess = true) {
   }, 3000);
 }
 
-// Save settings
-document.getElementById('saveBtn').addEventListener('click', () => {
-  const settings = {
+/**
+ * Gather all settings from the form
+ * @returns {Object} Settings object
+ */
+// eslint-disable-next-line complexity
+function gatherSettingsFromForm() {
+  return {
     copyUrlKey: document.getElementById('copyUrlKey').value || 'y',
     copyUrlCtrl: document.getElementById('copyUrlCtrl').checked,
     copyUrlAlt: document.getElementById('copyUrlAlt').checked,
@@ -513,13 +565,22 @@ document.getElementById('saveBtn').addEventListener('click', () => {
     darkMode: document.getElementById('darkMode').checked,
     menuSize: document.getElementById('menuSize').value || 'medium'
   };
+}
 
+/**
+ * Save settings from form to storage
+ */
+function saveSettings() {
+  const settings = gatherSettingsFromForm();
   browserAPI.storage.local.set(settings, () => {
     showStatus('✓ Settings saved! Reload tabs to apply changes.');
     applyTheme(settings.darkMode);
     applyMenuSize(settings.menuSize);
   });
-});
+}
+
+// Save settings
+document.getElementById('saveBtn').addEventListener('click', saveSettings);
 
 // Reset to defaults
 document.getElementById('resetBtn').addEventListener('click', () => {
@@ -543,6 +604,7 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
       await browserAPI.storage.sync.remove('quick_tabs_state_v2');
 
       // Clear session storage if available
+      // eslint-disable-next-line max-depth
       if (typeof browserAPI.storage.session !== 'undefined') {
         await browserAPI.storage.session.remove('quick_tabs_session');
       }
@@ -582,25 +644,35 @@ document.getElementById('quickTabPosition').addEventListener('change', function 
   toggleCustomPosition(this.value);
 });
 
+/**
+ * Handle tab button click to switch active tab
+ * @param {Event} event - Click event
+ */
+function handleTabSwitch(event) {
+  const tab = event.currentTarget;
+
+  // Remove active class from all tabs and contents
+  // eslint-disable-next-line max-nested-callbacks
+  document.querySelectorAll('.tab-button').forEach(t => t.classList.remove('active'));
+  // eslint-disable-next-line max-nested-callbacks
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+  // Add active class to clicked tab
+  tab.classList.add('active');
+
+  // Show corresponding content
+  const tabName = tab.dataset.tab;
+  const content = document.getElementById(tabName);
+  if (content) {
+    content.classList.add('active');
+  }
+}
+
 // Tab switching logic
 document.addEventListener('DOMContentLoaded', () => {
   // Settings tab switching
   document.querySelectorAll('.tab-button').forEach(tab => {
-    tab.addEventListener('click', () => {
-      // Remove active class from all tabs and contents
-      document.querySelectorAll('.tab-button').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-      // Add active class to clicked tab
-      tab.classList.add('active');
-
-      // Show corresponding content
-      const tabName = tab.dataset.tab;
-      const content = document.getElementById(tabName);
-      if (content) {
-        content.classList.add('active');
-      }
-    });
+    tab.addEventListener('click', handleTabSwitch);
   });
 
   // Set footer version dynamically
@@ -610,133 +682,143 @@ document.addEventListener('DOMContentLoaded', () => {
     footerElement.textContent = `${manifest.name} v${manifest.version}`;
   }
 
+  /**
+   * Setup two-way sync between color text input and color picker
+   * @param {HTMLInputElement} textInput - Text input element
+   * @param {HTMLInputElement} pickerInput - Color picker element
+   */
+  function setupColorInputSync(textInput, pickerInput) {
+    // When text input changes, update picker
+    textInput.addEventListener('input', () => {
+      const color = validateHexColor(textInput.value);
+      textInput.value = color;
+      pickerInput.value = color;
+    });
+
+    textInput.addEventListener('blur', () => {
+      const color = validateHexColor(textInput.value);
+      textInput.value = color;
+      pickerInput.value = color;
+    });
+
+    // When picker changes, update text input
+    pickerInput.addEventListener('input', () => {
+      const color = pickerInput.value.toUpperCase();
+      textInput.value = color;
+    });
+  }
+
   // Add color input event listeners to sync text and picker inputs
   COLOR_INPUTS.forEach(({ textId, pickerId }) => {
     const textInput = document.getElementById(textId);
     const pickerInput = document.getElementById(pickerId);
 
     if (textInput && pickerInput) {
-      // When text input changes, update picker
-      textInput.addEventListener('input', () => {
-        const color = validateHexColor(textInput.value);
-        textInput.value = color;
-        pickerInput.value = color;
-      });
-
-      textInput.addEventListener('blur', () => {
-        const color = validateHexColor(textInput.value);
-        textInput.value = color;
-        pickerInput.value = color;
-      });
-
-      // When picker changes, update text input
-      pickerInput.addEventListener('input', () => {
-        const color = pickerInput.value.toUpperCase();
-        textInput.value = color;
-      });
+      setupColorInputSync(textInput, pickerInput);
     }
   });
 
   // ==================== EXPORT LOGS BUTTON ====================
-  // Export logs button event listener
-  const exportLogsBtn = document.getElementById('exportLogsBtn');
-  if (exportLogsBtn) {
-    exportLogsBtn.addEventListener('click', async () => {
-      const originalText = exportLogsBtn.textContent;
-      const originalBg = exportLogsBtn.style.backgroundColor;
+  /**
+   * Handle export logs button click
+   */
+  async function handleExportAllLogs() {
+    const manifest = browserAPI.runtime.getManifest();
+    await exportAllLogs(manifest.version);
+  }
+
+  /**
+   * Handle clear logs button click
+   */
+  async function handleClearLogHistory() {
+    const response = await browserAPI.runtime.sendMessage({
+      action: 'CLEAR_CONSOLE_LOGS'
+    });
+
+    const clearedTabs = response?.clearedTabs || 0;
+    const backgroundEntries = response?.clearedBackgroundEntries || 0;
+
+    const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
+    showStatus(
+      `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
+      true
+    );
+  }
+
+  /**
+   * Setup button with async handler that shows loading/success/error states
+   * @param {string} buttonId - Button element ID
+   * @param {Function} handler - Async handler function
+   * @param {Object} options - Configuration options
+   */
+  function setupButtonHandler(buttonId, handler, options = {}) {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    const {
+      loadingText = '⏳ Loading...',
+      successText = '✓ Success!',
+      errorText = '✗ Failed',
+      successDuration = 2000,
+      errorDuration = 3000
+    } = options;
+
+    button.addEventListener('click', async () => {
+      const originalText = button.textContent;
+      const originalBg = button.style.backgroundColor;
 
       try {
-        // Disable button during export
-        exportLogsBtn.disabled = true;
-        exportLogsBtn.textContent = '⏳ Exporting...';
+        // Show loading state
+        button.disabled = true;
+        button.textContent = loadingText;
 
-        // Get version from manifest
-        const manifest = browserAPI.runtime.getManifest();
-        const version = manifest.version;
+        // Execute handler
+        await handler();
 
-        // Export all logs
-        await exportAllLogs(version);
+        // Show success state
+        button.textContent = successText;
+        button.classList.add('success');
 
-        // Show success feedback
-        exportLogsBtn.textContent = '✓ Logs Exported!';
-        exportLogsBtn.classList.add('success');
-
-        // Reset after 2 seconds
+        // Reset after duration
         setTimeout(() => {
-          exportLogsBtn.textContent = originalText;
-          exportLogsBtn.style.backgroundColor = originalBg;
-          exportLogsBtn.classList.remove('success');
-          exportLogsBtn.disabled = false;
-        }, 2000);
+          button.textContent = originalText;
+          button.style.backgroundColor = originalBg;
+          button.classList.remove('success');
+          button.disabled = false;
+        }, successDuration);
       } catch (error) {
-        // Show error feedback
-        exportLogsBtn.textContent = '✗ Export Failed';
-        exportLogsBtn.classList.add('error');
+        // Show error state
+        button.textContent = errorText;
+        button.classList.add('error');
 
         // Show error message in status
-        showStatus(`Export failed: ${error.message}`, false);
+        showStatus(`${originalText} failed: ${error.message}`, false);
 
-        // Reset after 3 seconds
+        // Reset after duration
         setTimeout(() => {
-          exportLogsBtn.textContent = originalText;
-          exportLogsBtn.style.backgroundColor = originalBg;
-          exportLogsBtn.classList.remove('error');
-          exportLogsBtn.disabled = false;
-        }, 3000);
+          button.textContent = originalText;
+          button.style.backgroundColor = originalBg;
+          button.classList.remove('error');
+          button.disabled = false;
+        }, errorDuration);
       }
     });
   }
+
+  // Export logs button event listener
+  setupButtonHandler('exportLogsBtn', handleExportAllLogs, {
+    loadingText: '⏳ Exporting...',
+    successText: '✓ Logs Exported!',
+    errorText: '✗ Export Failed'
+  });
   // ==================== END EXPORT LOGS BUTTON ====================
 
   // ==================== CLEAR LOGS BUTTON ====================
-  const clearLogsBtn = document.getElementById('clearLogsBtn');
-  if (clearLogsBtn) {
-    clearLogsBtn.addEventListener('click', async () => {
-      const originalText = clearLogsBtn.textContent;
-      const originalBg = clearLogsBtn.style.backgroundColor;
-
-      try {
-        clearLogsBtn.disabled = true;
-        clearLogsBtn.textContent = '⏳ Clearing...';
-
-        const response = await browserAPI.runtime.sendMessage({
-          action: 'CLEAR_CONSOLE_LOGS'
-        });
-
-        const clearedTabs = response?.clearedTabs || 0;
-        const backgroundEntries = response?.clearedBackgroundEntries || 0;
-
-        clearLogsBtn.textContent = '✓ Logs Cleared';
-        clearLogsBtn.classList.add('success');
-
-        const tabSummary = clearedTabs
-          ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})`
-          : '';
-        showStatus(
-          `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
-          true
-        );
-
-        setTimeout(() => {
-          clearLogsBtn.textContent = originalText;
-          clearLogsBtn.style.backgroundColor = originalBg;
-          clearLogsBtn.classList.remove('success');
-          clearLogsBtn.disabled = false;
-        }, 2000);
-      } catch (error) {
-        clearLogsBtn.textContent = '✗ Clear Failed';
-        clearLogsBtn.classList.add('error');
-        showStatus(`Failed to clear logs: ${error.message}`, false);
-
-        setTimeout(() => {
-          clearLogsBtn.textContent = originalText;
-          clearLogsBtn.style.backgroundColor = originalBg;
-          clearLogsBtn.classList.remove('error');
-          clearLogsBtn.disabled = false;
-        }, 3000);
-      }
-    });
-  }
+  setupButtonHandler('clearLogsBtn', handleClearLogHistory, {
+    loadingText: '⏳ Clearing...',
+    successText: '✓ Logs Cleared',
+    errorText: '✗ Clear Failed'
+  });
   // ==================== END CLEAR LOGS BUTTON ====================
 });
 

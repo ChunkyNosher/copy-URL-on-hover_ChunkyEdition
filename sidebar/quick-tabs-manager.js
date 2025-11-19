@@ -250,21 +250,16 @@ function renderContainerSection(cookieStoreId, containerInfo, containerState) {
 /**
  * Render a single Quick Tab item
  */
-function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
-  const item = document.createElement('div');
-  item.className = `quick-tab-item ${isMinimized ? 'minimized' : 'active'}`;
-  item.dataset.tabId = tab.id;
-  item.dataset.containerId = cookieStoreId;
-
-  // Status indicator
-  const indicator = document.createElement('span');
-  indicator.className = `status-indicator ${isMinimized ? 'yellow' : 'green'}`;
-
-  // Favicon
+/**
+ * Create favicon element for Quick Tab
+ * @param {string} url - Tab URL
+ * @returns {HTMLImageElement} Favicon element
+ */
+function _createFavicon(url) {
   const favicon = document.createElement('img');
   favicon.className = 'favicon';
   try {
-    const urlObj = new URL(tab.url);
+    const urlObj = new URL(url);
     favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
     favicon.onerror = () => {
       favicon.style.display = 'none';
@@ -272,8 +267,16 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   } catch (e) {
     favicon.style.display = 'none';
   }
+  return favicon;
+}
 
-  // Tab info
+/**
+ * Create tab info section (title + metadata)
+ * @param {Object} tab - Quick Tab data
+ * @param {boolean} isMinimized - Whether tab is minimized
+ * @returns {HTMLDivElement} Tab info element
+ */
+function _createTabInfo(tab, isMinimized) {
   const tabInfo = document.createElement('div');
   tabInfo.className = 'tab-info';
 
@@ -309,14 +312,21 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   tabInfo.appendChild(title);
   tabInfo.appendChild(meta);
 
-  // Tab actions
+  return tabInfo;
+}
+
+/**
+ * Create action buttons for Quick Tab
+ * @param {Object} tab - Quick Tab data
+ * @param {boolean} isMinimized - Whether tab is minimized
+ * @returns {HTMLDivElement} Actions element
+ */
+function _createTabActions(tab, isMinimized) {
   const actions = document.createElement('div');
   actions.className = 'tab-actions';
 
   if (!isMinimized) {
-    // Active Quick Tab actions
-
-    // Go to Tab button (NEW FEATURE)
+    // Active Quick Tab actions: Go to Tab + Minimize
     if (tab.activeTabId) {
       const goToTabBtn = document.createElement('button');
       goToTabBtn.className = 'btn-icon';
@@ -327,7 +337,6 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
       actions.appendChild(goToTabBtn);
     }
 
-    // Minimize button
     const minimizeBtn = document.createElement('button');
     minimizeBtn.className = 'btn-icon';
     minimizeBtn.textContent = '➖';
@@ -336,9 +345,7 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
     minimizeBtn.dataset.quickTabId = tab.id;
     actions.appendChild(minimizeBtn);
   } else {
-    // Minimized Quick Tab actions
-
-    // Restore button
+    // Minimized Quick Tab actions: Restore
     const restoreBtn = document.createElement('button');
     restoreBtn.className = 'btn-icon';
     restoreBtn.textContent = '↑';
@@ -356,6 +363,24 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   closeBtn.dataset.action = 'close';
   closeBtn.dataset.quickTabId = tab.id;
   actions.appendChild(closeBtn);
+
+  return actions;
+}
+
+function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
+  const item = document.createElement('div');
+  item.className = `quick-tab-item ${isMinimized ? 'minimized' : 'active'}`;
+  item.dataset.tabId = tab.id;
+  item.dataset.containerId = cookieStoreId;
+
+  // Status indicator
+  const indicator = document.createElement('span');
+  indicator.className = `status-indicator ${isMinimized ? 'yellow' : 'green'}`;
+
+  // Create components
+  const favicon = _createFavicon(tab.url);
+  const tabInfo = _createTabInfo(tab, isMinimized);
+  const actions = _createTabActions(tab, isMinimized);
 
   // Assemble item
   item.appendChild(indicator);

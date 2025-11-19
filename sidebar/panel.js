@@ -46,51 +46,82 @@ function checkSessionStorageAvailability() {
 /**
  * Display all Quick Tabs from storage
  */
+/**
+ * Load state from session storage
+ * @returns {Promise<Object|null>} State or null
+ */
+async function _loadFromSessionStorage() {
+  if (typeof browser.storage.session === 'undefined') {
+    return null;
+  }
+
+  const sessionResult = await browser.storage.session.get(SESSION_KEY);
+  return sessionResult && sessionResult[SESSION_KEY] ? sessionResult[SESSION_KEY] : null;
+}
+
+/**
+ * Load state from sync storage
+ * @returns {Promise<Object|null>} State or null
+ */
+async function _loadFromSyncStorage() {
+  const syncResult = await browser.storage.sync.get(STATE_KEY);
+  return syncResult && syncResult[STATE_KEY] ? syncResult[STATE_KEY] : null;
+}
+
+/**
+ * Show empty state message
+ */
+function _showEmptyState() {
+  const container = document.getElementById('quickTabsList');
+  const tabCountElement = document.getElementById('tabCount');
+  const lastSyncElement = document.getElementById('lastSync');
+
+  container.innerHTML = '<div class="no-tabs">No Quick Tabs open</div>';
+  tabCountElement.textContent = '0';
+  lastSyncElement.textContent = 'Never';
+}
+
+/**
+ * Render Quick Tabs list
+ * @param {Object} state - State containing tabs
+ */
+function _renderQuickTabsList(state) {
+  const container = document.getElementById('quickTabsList');
+  const tabCountElement = document.getElementById('tabCount');
+  const lastSyncElement = document.getElementById('lastSync');
+
+  // Update tab count
+  tabCountElement.textContent = state.tabs.length;
+
+  // Update last sync time
+  if (state.timestamp) {
+    const date = new Date(state.timestamp);
+    lastSyncElement.textContent = date.toLocaleTimeString();
+  }
+
+  // Display all tabs
+  container.innerHTML = '';
+  state.tabs.forEach((tab, index) => {
+    const tabElement = createTabElement(tab, index);
+    container.appendChild(tabElement);
+  });
+}
+
 async function displayAllQuickTabs() {
   try {
     // Try session storage first, fall back to sync
-    let state = null;
-
-    if (typeof browser.storage.session !== 'undefined') {
-      const sessionResult = await browser.storage.session.get(SESSION_KEY);
-      if (sessionResult && sessionResult[SESSION_KEY]) {
-        state = sessionResult[SESSION_KEY];
-      }
-    }
+    let state = await _loadFromSessionStorage();
 
     if (!state) {
-      const syncResult = await browser.storage.sync.get(STATE_KEY);
-      if (syncResult && syncResult[STATE_KEY]) {
-        state = syncResult[STATE_KEY];
-      }
+      state = await _loadFromSyncStorage();
     }
 
-    const container = document.getElementById('quickTabsList');
-    const tabCountElement = document.getElementById('tabCount');
-    const lastSyncElement = document.getElementById('lastSync');
-
     if (!state || !state.tabs || state.tabs.length === 0) {
-      container.innerHTML = '<div class="no-tabs">No Quick Tabs open</div>';
-      tabCountElement.textContent = '0';
-      lastSyncElement.textContent = 'Never';
+      _showEmptyState();
       return;
     }
 
-    // Update tab count
-    tabCountElement.textContent = state.tabs.length;
-
-    // Update last sync time
-    if (state.timestamp) {
-      const date = new Date(state.timestamp);
-      lastSyncElement.textContent = date.toLocaleTimeString();
-    }
-
-    // Display all tabs
-    container.innerHTML = '';
-    state.tabs.forEach((tab, index) => {
-      const tabElement = createTabElement(tab, index);
-      container.appendChild(tabElement);
-    });
+    _renderQuickTabsList(state);
   } catch (err) {
     console.error('Error displaying Quick Tabs:', err);
     showStatus('Error loading Quick Tabs', 'error');

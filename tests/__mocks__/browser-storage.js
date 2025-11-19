@@ -14,12 +14,12 @@ class MockStorage {
     }
 
     if (Array.isArray(keys)) {
-      const result = {};
-      for (const key of keys) {
-        if (!(key in this.data)) continue;
-        result[key] = this.data[key];
-      }
-      return result;
+      return keys.reduce((result, key) => {
+        if (key in this.data) {
+          result[key] = this.data[key];
+        }
+        return result;
+      }, {});
     }
 
     if (keys === null || keys === undefined) {
