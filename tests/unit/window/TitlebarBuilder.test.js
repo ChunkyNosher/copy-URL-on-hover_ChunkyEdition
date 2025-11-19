@@ -393,6 +393,53 @@ describe('TitlebarBuilder', () => {
       expect(builder.currentZoom).toBe(200);
       expect(builder.zoomDisplay.textContent).toBe('200%');
     });
+
+    test('should apply zoom to iframe content window when accessible', () => {
+      const mockBody = { style: {} };
+      const mockDocument = { body: mockBody };
+      Object.defineProperty(mockIframe, 'contentWindow', {
+        value: { document: mockDocument },
+        configurable: true
+      });
+
+      const builder = new TitlebarBuilder(config, callbacks);
+      builder.build();
+
+      const zoomInBtn = Array.from(builder.titlebar.querySelectorAll('button')).find(
+        btn => btn.title === 'Zoom In'
+      );
+
+      zoomInBtn.click();
+
+      expect(mockBody.style.zoom).toBe(1.1); // 110%
+    });
+
+    test('should use CSS transform fallback for cross-origin iframes', () => {
+      const mockDocument = {
+        get body() {
+          throw new Error('Cross-origin restriction');
+        }
+      };
+      Object.defineProperty(mockIframe, 'contentWindow', {
+        value: { document: mockDocument },
+        configurable: true
+      });
+
+      const builder = new TitlebarBuilder(config, callbacks);
+      builder.build();
+
+      const zoomInBtn = Array.from(builder.titlebar.querySelectorAll('button')).find(
+        btn => btn.title === 'Zoom In'
+      );
+
+      zoomInBtn.click();
+
+      // Should apply CSS transform fallback
+      expect(mockIframe.style.transform).toBe('scale(1.1)');
+      expect(mockIframe.style.transformOrigin).toBe('top left');
+      expect(mockIframe.style.width).toContain('%');
+      expect(mockIframe.style.height).toContain('%');
+    });
   });
 
   describe('Favicon Handling', () => {
@@ -491,6 +538,34 @@ describe('TitlebarBuilder', () => {
       forwardBtn.click();
 
       expect(mockHistory.forward).toHaveBeenCalledTimes(1);
+    });
+
+    test('should handle cross-origin error on forward navigation', () => {
+      const mockHistory = {
+        forward: jest.fn(() => {
+          throw new Error('Cross-origin restriction');
+        })
+      };
+      // Mock contentWindow with a getter that returns our mock
+      Object.defineProperty(mockIframe, 'contentWindow', {
+        value: { history: mockHistory },
+        configurable: true
+      });
+
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      const builder = new TitlebarBuilder(config, callbacks);
+      const titlebar = builder.build();
+
+      const forwardBtn = Array.from(titlebar.querySelectorAll('button')).find(
+        btn => btn.title === 'Forward'
+      );
+
+      // Should not throw
+      expect(() => forwardBtn.click()).not.toThrow();
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Cannot navigate forward'));
+
+      consoleSpy.mockRestore();
     });
 
     test('should reload iframe when reload button clicked', () => {
