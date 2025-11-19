@@ -46,7 +46,7 @@ async function _getActiveTab() {
  */
 function _logContentScriptError(error) {
   if (!error.message) return;
-  
+
   if (error.message.includes('Could not establish connection')) {
     console.error('[Popup] Content script not loaded in active tab');
   } else if (error.message.includes('No active tab')) {
@@ -185,23 +185,23 @@ function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab)
       'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
     );
   }
-  
+
   if (!activeTab) {
     throw new Error('No active tab found. Try clicking on a webpage tab first.');
   }
-  
+
   if (contentLogs.length === 0 && backgroundLogs.length === 0) {
     throw new Error(
       'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
     );
   }
-  
+
   if (contentLogs.length === 0) {
     throw new Error(
       `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
     );
   }
-  
+
   throw new Error('No logs found. Try enabling debug mode and using the extension first.');
 }
 
@@ -220,8 +220,7 @@ async function _delegateLogExport(logText, filename) {
   });
 
   if (!response || !response.success) {
-    const errorMessage =
-      response?.error || 'Background script did not acknowledge export request';
+    const errorMessage = response?.error || 'Background script did not acknowledge export request';
     throw new Error(errorMessage);
   }
 
@@ -651,7 +650,7 @@ document.getElementById('quickTabPosition').addEventListener('change', function 
  */
 function handleTabSwitch(event) {
   const tab = event.currentTarget;
-  
+
   // Remove active class from all tabs and contents
   // eslint-disable-next-line max-nested-callbacks
   document.querySelectorAll('.tab-button').forEach(t => t.classList.remove('active'));
@@ -739,9 +738,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearedTabs = response?.clearedTabs || 0;
     const backgroundEntries = response?.clearedBackgroundEntries || 0;
 
-    const tabSummary = clearedTabs
-      ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})`
-      : '';
+    const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
     showStatus(
       `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
       true
