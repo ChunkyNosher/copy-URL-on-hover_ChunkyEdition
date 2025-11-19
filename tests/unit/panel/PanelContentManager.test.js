@@ -125,9 +125,7 @@ describe('PanelContentManager', () => {
     it('should fetch and render Quick Tabs', async () => {
       const mockState = {
         'firefox-default': {
-          tabs: [
-            { id: '1', title: 'Tab 1', url: 'https://example.com' }
-          ],
+          tabs: [{ id: '1', title: 'Tab 1', url: 'https://example.com' }],
           lastUpdate: Date.now()
         }
       };
@@ -138,9 +136,7 @@ describe('PanelContentManager', () => {
 
       await contentManager.updateContent();
 
-      expect(mockBrowser.storage.sync.get).toHaveBeenCalledWith(
-        'quick_tabs_state_v2'
-      );
+      expect(mockBrowser.storage.sync.get).toHaveBeenCalledWith('quick_tabs_state_v2');
       expect(mockUIBuilder.renderContainerSection).toHaveBeenCalled();
     });
 
@@ -274,7 +270,8 @@ describe('PanelContentManager', () => {
 
     it('should setup close minimized button listener', async () => {
       contentManager.setupEventListeners();
-      const handleCloseMinimized = jest.spyOn(contentManager, 'handleCloseMinimized')
+      const handleCloseMinimized = jest
+        .spyOn(contentManager, 'handleCloseMinimized')
         .mockResolvedValue();
 
       const closeMinimizedBtn = panelElement.querySelector('#panel-closeMinimized');
@@ -289,8 +286,7 @@ describe('PanelContentManager', () => {
 
     it('should setup close all button listener', async () => {
       contentManager.setupEventListeners();
-      const handleCloseAll = jest.spyOn(contentManager, 'handleCloseAll')
-        .mockResolvedValue();
+      const handleCloseAll = jest.spyOn(contentManager, 'handleCloseAll').mockResolvedValue();
 
       const closeAllBtn = panelElement.querySelector('#panel-closeAll');
       closeAllBtn.click();
@@ -384,8 +380,7 @@ describe('PanelContentManager', () => {
       expect(mockBrowser.storage.sync.set).toHaveBeenCalled();
       const savedState = mockBrowser.storage.sync.set.mock.calls[0][0];
       expect(savedState.quick_tabs_state_v2.containers).toBeDefined();
-      expect(savedState.quick_tabs_state_v2.containers['firefox-default'].tabs)
-        .toEqual([]);
+      expect(savedState.quick_tabs_state_v2.containers['firefox-default'].tabs).toEqual([]);
     });
 
     it('should send message to background', async () => {

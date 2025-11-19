@@ -119,9 +119,7 @@ export class PanelContentManager {
       }
 
       const containers = await browser.contextualIdentities.query({});
-      const container = containers.find(
-        c => c.cookieStoreId === this.currentContainerId
-      );
+      const container = containers.find(c => c.cookieStoreId === this.currentContainerId);
 
       if (!container) return defaultInfo;
 
