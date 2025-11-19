@@ -8,10 +8,10 @@
  * @refactoring Phase 4.5 - Feature Layer Test Coverage
  */
 
-import { QuickTabWindow, createQuickTabWindow } from '../../../src/features/quick-tabs/window.js';
 import { DragController } from '../../../src/features/quick-tabs/window/DragController.js';
 import { ResizeController } from '../../../src/features/quick-tabs/window/ResizeController.js';
 import { TitlebarBuilder } from '../../../src/features/quick-tabs/window/TitlebarBuilder.js';
+import { QuickTabWindow, createQuickTabWindow } from '../../../src/features/quick-tabs/window.js';
 
 // Mock dependencies
 jest.mock('../../../src/features/quick-tabs/window/DragController.js');
