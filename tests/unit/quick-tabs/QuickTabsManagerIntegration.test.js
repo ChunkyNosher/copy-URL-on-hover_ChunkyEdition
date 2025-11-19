@@ -58,9 +58,9 @@ describe('QuickTabsManager Integration', () => {
     // Mock browser APIs
     global.browser = {
       tabs: {
-        query: jest.fn().mockResolvedValue([
-          { cookieStoreId: 'firefox-container-1', id: 123, active: true }
-        ])
+        query: jest
+          .fn()
+          .mockResolvedValue([{ cookieStoreId: 'firefox-container-1', id: 123, active: true }])
       },
       runtime: {
         sendMessage: jest.fn().mockResolvedValue({ tabId: 123 })
@@ -257,7 +257,7 @@ describe('QuickTabsManager Integration', () => {
     test('should be idempotent', async () => {
       const result1 = await initQuickTabs(mockEventBus, mockEvents);
       const managers1Count = StorageManager.mock.calls.length;
-      
+
       const result2 = await initQuickTabs(mockEventBus, mockEvents);
       const managers2Count = StorageManager.mock.calls.length;
 
@@ -363,11 +363,7 @@ describe('QuickTabsManager Integration', () => {
       test('should delegate to UpdateHandler', () => {
         manager.handlePositionChange('qt-123', 150, 200);
 
-        expect(manager.updateHandler.handlePositionChange).toHaveBeenCalledWith(
-          'qt-123',
-          150,
-          200
-        );
+        expect(manager.updateHandler.handlePositionChange).toHaveBeenCalledWith('qt-123', 150, 200);
       });
     });
 
@@ -387,11 +383,7 @@ describe('QuickTabsManager Integration', () => {
       test('should delegate to UpdateHandler', () => {
         manager.handleSizeChange('qt-123', 400, 600);
 
-        expect(manager.updateHandler.handleSizeChange).toHaveBeenCalledWith(
-          'qt-123',
-          400,
-          600
-        );
+        expect(manager.updateHandler.handleSizeChange).toHaveBeenCalledWith('qt-123', 400, 600);
       });
     });
 
@@ -399,11 +391,7 @@ describe('QuickTabsManager Integration', () => {
       test('should delegate to UpdateHandler', () => {
         manager.handleSizeChangeEnd('qt-123', 400, 600);
 
-        expect(manager.updateHandler.handleSizeChangeEnd).toHaveBeenCalledWith(
-          'qt-123',
-          400,
-          600
-        );
+        expect(manager.updateHandler.handleSizeChangeEnd).toHaveBeenCalledWith('qt-123', 400, 600);
       });
     });
 
@@ -473,11 +461,7 @@ describe('QuickTabsManager Integration', () => {
       test('should delegate to handlePositionChange', () => {
         manager.updateQuickTabPosition('qt-123', 150, 200);
 
-        expect(manager.updateHandler.handlePositionChange).toHaveBeenCalledWith(
-          'qt-123',
-          150,
-          200
-        );
+        expect(manager.updateHandler.handlePositionChange).toHaveBeenCalledWith('qt-123', 150, 200);
       });
     });
 
@@ -485,11 +469,7 @@ describe('QuickTabsManager Integration', () => {
       test('should delegate to handleSizeChange', () => {
         manager.updateQuickTabSize('qt-123', 400, 600);
 
-        expect(manager.updateHandler.handleSizeChange).toHaveBeenCalledWith(
-          'qt-123',
-          400,
-          600
-        );
+        expect(manager.updateHandler.handleSizeChange).toHaveBeenCalledWith('qt-123', 400, 600);
       });
     });
   });
@@ -662,7 +642,7 @@ describe('QuickTabsManager Integration', () => {
 
       // Test hydration handles errors gracefully
       const newManager = await initQuickTabs(mockEventBus, mockEvents);
-      
+
       // Should not throw, manager should still be initialized
       expect(newManager.initialized).toBe(true);
     });
