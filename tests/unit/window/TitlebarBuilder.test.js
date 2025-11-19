@@ -9,7 +9,6 @@
  */
 
 import { TitlebarBuilder } from '../../../src/features/quick-tabs/window/TitlebarBuilder.js';
-import browser from 'webextension-polyfill';
 
 // Mock browser API
 jest.mock('webextension-polyfill', () => ({

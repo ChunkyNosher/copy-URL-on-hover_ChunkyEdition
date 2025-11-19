@@ -291,7 +291,7 @@ describe('DragController - Pointer Events API', () => {
     });
 
     test('should not process pointerup if not dragging', () => {
-      const controller = new DragController(element, callbacks);
+      const _controller = new DragController(element, callbacks);
 
       element.dispatchEvent(
         new PointerEvent('pointerup', {
@@ -392,7 +392,7 @@ describe('DragController - Pointer Events API', () => {
     });
 
     test('should call onDragEnd if onDragCancel not provided', () => {
-      const controller = new DragController(element, {
+      const _controller = new DragController(element, {
         onDragStart: callbacks.onDragStart,
         onDrag: callbacks.onDrag,
         onDragEnd: callbacks.onDragEnd
