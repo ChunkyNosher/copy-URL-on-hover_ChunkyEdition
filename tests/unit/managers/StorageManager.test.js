@@ -406,9 +406,9 @@ describe('StorageManager', () => {
     test('should handle missing browser API gracefully', () => {
       delete global.browser;
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-      
+
       manager.setupStorageListeners();
-      
+
       expect(consoleSpy).toHaveBeenCalledWith('[StorageManager] Storage API not available');
       consoleSpy.mockRestore();
     });
@@ -416,9 +416,9 @@ describe('StorageManager', () => {
     test('should handle missing browser.storage gracefully', () => {
       global.browser = {};
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-      
+
       manager.setupStorageListeners();
-      
+
       expect(consoleSpy).toHaveBeenCalledWith('[StorageManager] Storage API not available');
       consoleSpy.mockRestore();
     });
@@ -654,7 +654,7 @@ describe('StorageManager', () => {
 
     test('should ignore storage change during pending save', () => {
       manager.pendingSaveIds.add('save-id-123');
-      
+
       const listener = jest.fn();
       eventBus.on('storage:changed', listener);
 
@@ -672,7 +672,7 @@ describe('StorageManager', () => {
     test('should process storage change after save released', done => {
       manager.SAVE_ID_GRACE_MS = 50;
       manager.STORAGE_SYNC_DELAY_MS = 50;
-      
+
       const listener = jest.fn();
       eventBus.on('storage:changed', listener);
 
@@ -690,7 +690,7 @@ describe('StorageManager', () => {
       // Wait for save ID to be released
       setTimeout(() => {
         expect(manager.pendingSaveIds.has('save-id-999')).toBe(false);
-        
+
         // Now change should be processed
         manager.handleStorageChange({
           containers: {
@@ -826,11 +826,7 @@ describe('StorageManager', () => {
       eventBus.on('storage:deleted', listener);
 
       // Trigger multiple deletes
-      await Promise.all([
-        manager.delete('qt-1'),
-        manager.delete('qt-2'),
-        manager.delete('qt-3')
-      ]);
+      await Promise.all([manager.delete('qt-1'), manager.delete('qt-2'), manager.delete('qt-3')]);
 
       expect(listener).toHaveBeenCalledTimes(3);
     });
