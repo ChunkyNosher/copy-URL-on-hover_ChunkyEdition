@@ -416,10 +416,7 @@ describe('Toast Notifications', () => {
     test('should log toast display', () => {
       showToast('Test message', 'info', mockConfig);
 
-      expect(console.log).toHaveBeenCalledWith(
-        '[Toast] Displayed:',
-        'Test message'
-      );
+      expect(console.log).toHaveBeenCalledWith('[Toast] Displayed:', 'Test message');
     });
 
     test('should log for all message types', () => {

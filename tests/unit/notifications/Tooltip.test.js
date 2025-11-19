@@ -41,7 +41,7 @@ describe('Tooltip Notifications', () => {
 
     // Mock state manager with mouse position
     mockStateManager = {
-      get: jest.fn((key) => {
+      get: jest.fn(key => {
         if (key === 'lastMouseX') return 150;
         if (key === 'lastMouseY') return 250;
         return null;
@@ -419,10 +419,7 @@ describe('Tooltip Notifications', () => {
     test('should log tooltip display', () => {
       showTooltip('Copied!', mockConfig, mockStateManager);
 
-      expect(console.log).toHaveBeenCalledWith(
-        '[Tooltip] Displayed:',
-        'Copied!'
-      );
+      expect(console.log).toHaveBeenCalledWith('[Tooltip] Displayed:', 'Copied!');
     });
 
     test('should log for all messages', () => {
@@ -483,7 +480,7 @@ describe('Tooltip Notifications', () => {
     });
 
     test('should handle negative coordinates', () => {
-      mockStateManager.get.mockImplementation((key) => {
+      mockStateManager.get.mockImplementation(key => {
         if (key === 'lastMouseX') return -50;
         if (key === 'lastMouseY') return -100;
         return null;
@@ -500,7 +497,7 @@ describe('Tooltip Notifications', () => {
     });
 
     test('should handle very large coordinates', () => {
-      mockStateManager.get.mockImplementation((key) => {
+      mockStateManager.get.mockImplementation(key => {
         if (key === 'lastMouseX') return 9999;
         if (key === 'lastMouseY') return 8888;
         return null;
@@ -548,7 +545,7 @@ describe('Tooltip Notifications', () => {
     });
 
     test('should use mouse position from state manager', () => {
-      mockStateManager.get.mockImplementation((key) => {
+      mockStateManager.get.mockImplementation(key => {
         if (key === 'lastMouseX') return 500;
         if (key === 'lastMouseY') return 600;
         return null;

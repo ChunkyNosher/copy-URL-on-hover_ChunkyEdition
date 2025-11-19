@@ -3,7 +3,10 @@
  * Tests notification routing, initialization, and config management
  */
 
-import { initNotifications, notificationManager } from '../../../src/features/notifications/index.js';
+import {
+  initNotifications,
+  notificationManager
+} from '../../../src/features/notifications/index.js';
 import { showToast } from '../../../src/features/notifications/toast.js';
 import { showTooltip } from '../../../src/features/notifications/tooltip.js';
 
@@ -40,7 +43,7 @@ describe('NotificationManager', () => {
 
     // Mock state manager
     mockStateManager = {
-      get: jest.fn((key) => {
+      get: jest.fn(key => {
         if (key === 'lastMouseX') return 100;
         if (key === 'lastMouseY') return 200;
         return null;
@@ -84,12 +87,8 @@ describe('NotificationManager', () => {
     test('should log initialization messages', () => {
       initNotifications(mockConfig, mockStateManager);
 
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining('Initializing')
-      );
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining('initialized')
-      );
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Initializing'));
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('initialized'));
     });
 
     test('should return notificationManager instance', () => {
@@ -180,11 +179,7 @@ describe('NotificationManager', () => {
 
       notificationManager.showNotification('Test message');
 
-      expect(showTooltip).toHaveBeenCalledWith(
-        'Test message',
-        mockConfig,
-        mockStateManager
-      );
+      expect(showTooltip).toHaveBeenCalledWith('Test message', mockConfig, mockStateManager);
       expect(showToast).not.toHaveBeenCalled();
     });
 
@@ -224,9 +219,7 @@ describe('NotificationManager', () => {
 
       notificationManager.showNotification('Test message');
 
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining('disabled')
-      );
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('disabled'));
     });
 
     test('should log notification details when showing', () => {
@@ -248,16 +241,12 @@ describe('NotificationManager', () => {
     test('should call showTooltip with message, config, and stateManager', () => {
       notificationManager.showTooltip('Tooltip message');
 
-      expect(showTooltip).toHaveBeenCalledWith(
-        'Tooltip message',
-        mockConfig,
-        mockStateManager
-      );
+      expect(showTooltip).toHaveBeenCalledWith('Tooltip message', mockConfig, mockStateManager);
     });
 
     test('should work without initialization (graceful degradation)', () => {
       // Create a fresh manager without init
-      const freshManager = new (notificationManager.constructor)();
+      const freshManager = new notificationManager.constructor();
       freshManager.config = mockConfig;
       freshManager.stateManager = mockStateManager;
 
@@ -313,9 +302,7 @@ describe('NotificationManager', () => {
 
       notificationManager.updateConfig(newConfig);
 
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining('Configuration updated')
-      );
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Configuration updated'));
     });
 
     test('should accept partial config updates', () => {
@@ -348,7 +335,9 @@ describe('NotificationManager', () => {
       expect(notificationManager.config).toBe(mockConfig);
 
       // Simulate another import
-      const { notificationManager: imported } = require('../../../src/features/notifications/index.js');
+      const {
+        notificationManager: imported
+      } = require('../../../src/features/notifications/index.js');
 
       expect(imported.config).toBe(mockConfig);
     });
@@ -417,11 +406,7 @@ describe('NotificationManager', () => {
       manager.showNotification('Integration test', 'success');
 
       // Verify the flow
-      expect(showToast).toHaveBeenCalledWith(
-        'Integration test',
-        'success',
-        mockConfig
-      );
+      expect(showToast).toHaveBeenCalledWith('Integration test', 'success', mockConfig);
     });
 
     test('should switch between toast and tooltip based on config', () => {

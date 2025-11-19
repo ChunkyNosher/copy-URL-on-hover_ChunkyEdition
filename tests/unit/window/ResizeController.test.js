@@ -100,11 +100,7 @@ describe('ResizeController', () => {
       // Verify all 8 directions
       const directions = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
       directions.forEach(direction => {
-        expect(ResizeHandle).toHaveBeenCalledWith(
-          direction,
-          mockWindow,
-          resizeController.options
-        );
+        expect(ResizeHandle).toHaveBeenCalledWith(direction, mockWindow, resizeController.options);
       });
     });
 
