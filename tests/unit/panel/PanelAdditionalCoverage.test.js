@@ -118,9 +118,7 @@ describe('PanelManager Additional Coverage', () => {
         sendMessage: jest.fn()
       },
       tabs: {
-        query: jest.fn().mockResolvedValue([
-          { cookieStoreId: 'firefox-default', active: true }
-        ])
+        query: jest.fn().mockResolvedValue([{ cookieStoreId: 'firefox-default', active: true }])
       }
     };
 
@@ -181,7 +179,7 @@ describe('PanelManager Additional Coverage', () => {
         const firstInterval = panelManager.updateInterval;
 
         panelManager.openSilent();
-        
+
         expect(panelManager.updateInterval).toBe(firstInterval);
       });
 
@@ -322,7 +320,7 @@ describe('PanelManager Additional Coverage', () => {
       test('should handle unknown broadcast type', () => {
         // The handler map doesn't include this type, so it should be silently ignored
         expect(() => panelManager._handleBroadcast('UNKNOWN_TYPE', {})).not.toThrow();
-        
+
         // The debug function will be called but we're mocking it globally
         // No need to verify debug calls in this test
       });
@@ -533,14 +531,14 @@ describe('PanelManager Additional Coverage', () => {
 
     test('should handle multiple destroy calls', () => {
       panelManager.destroy();
-      
+
       expect(() => panelManager.destroy()).not.toThrow();
       expect(panelManager.panel).toBeNull();
     });
 
     test('should properly cleanup in correct order', () => {
       const calls = [];
-      
+
       // Store original functions
       const originalDragDestroy = mockDragController.destroy;
       const originalResizeDestroy = mockResizeController.destroy;
@@ -557,7 +555,7 @@ describe('PanelManager Additional Coverage', () => {
 
       // Clear the interval to track its call
       const intervalBefore = panelManager.updateInterval;
-      
+
       panelManager.destroy();
 
       // Verify clearInterval was called (interval should be null now)
@@ -631,7 +629,7 @@ describe('PanelManager Additional Coverage', () => {
     test('should handle init before destroy', async () => {
       await panelManager.init();
       expect(panelManager.panel).not.toBeNull();
-      
+
       panelManager.destroy();
 
       expect(panelManager.panel).toBeNull();
@@ -653,7 +651,7 @@ describe('PanelManager Additional Coverage', () => {
 
       // _handleBroadcast should handle gracefully (has early returns)
       expect(() => panelManager._handleBroadcast('PANEL_OPENED', {})).not.toThrow();
-      
+
       // Note: _updatePosition and _updateSize don't have early returns for null panel
       // This is expected behavior - they would fail if called after destroy
       // The panel should not receive broadcasts after being destroyed
