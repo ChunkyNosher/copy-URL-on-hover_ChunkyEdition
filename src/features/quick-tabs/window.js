@@ -5,8 +5,11 @@
  * v1.5.9.0 - Restored missing UI logic identified in v1589-quick-tabs-root-cause.md
  */
 
+import browser from 'webextension-polyfill';
+
 import { DragController } from './window/DragController.js';
 import { ResizeController } from './window/ResizeController.js';
+import { TitlebarBuilder } from './window/TitlebarBuilder.js';
 import { CONSTANTS } from '../../core/config.js';
 import { createElement } from '../../utils/dom.js';
 
@@ -135,9 +138,40 @@ export class QuickTabWindow {
       }
     });
 
-    // Create titlebar
-    const titlebar = this.createTitlebar();
+    // v1.6.0 Phase 2.9 Task 4 - Use TitlebarBuilder facade pattern
+    // Create titlebar using TitlebarBuilder component
+    this.titlebarBuilder = new TitlebarBuilder(
+      {
+        title: this.title,
+        url: this.url,
+        soloedOnTabs: this.soloedOnTabs,
+        mutedOnTabs: this.mutedOnTabs,
+        currentTabId: this.currentTabId,
+        iframe: null // Will be set after iframe creation
+      },
+      {
+        onClose: () => this.destroy(),
+        onMinimize: () => this.minimize(),
+        onSolo: btn => this.toggleSolo(btn),
+        onMute: btn => this.toggleMute(btn),
+        onOpenInTab: () => {
+          const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
+          browser.runtime.sendMessage({
+            action: 'openTab',
+            url: currentSrc,
+            switchFocus: true
+          });
+        }
+      }
+    );
+
+    // Note: iframe is null during titlebar build, will be updated before first use
+    const titlebar = this.titlebarBuilder.build();
     this.container.appendChild(titlebar);
+
+    // Store button references for updating (solo/mute state changes)
+    this.soloButton = this.titlebarBuilder.soloButton;
+    this.muteButton = this.titlebarBuilder.muteButton;
 
     // Create iframe content area
     this.iframe = createElement('iframe', {
@@ -153,6 +187,9 @@ export class QuickTabWindow {
     });
 
     this.container.appendChild(this.iframe);
+
+    // Update TitlebarBuilder with iframe reference (needed for navigation/zoom)
+    this.titlebarBuilder.config.iframe = this.iframe;
 
     // Setup iframe load listener to update title
     this.setupIframeLoadHandler();
@@ -224,273 +261,21 @@ export class QuickTabWindow {
     return this.container;
   }
 
-  /**
-   * Create favicon element
-   */
-  createFavicon() {
-    const favicon = createElement('img', {
-      className: 'quick-tab-favicon',
-      style: {
-        width: '16px',
-        height: '16px',
-        marginLeft: '5px',
-        marginRight: '5px',
-        flexShrink: '0'
-      }
-    });
+  // v1.6.0 Phase 2.9 Task 4 - createFavicon() moved to TitlebarBuilder
 
-    // Extract domain for favicon
-    try {
-      const urlObj = new URL(this.url);
-      const GOOGLE_FAVICON_URL = 'https://www.google.com/s2/favicons?domain=';
-      favicon.src = `${GOOGLE_FAVICON_URL}${urlObj.hostname}&sz=32`;
-      favicon.onerror = () => {
-        favicon.style.display = 'none';
-      };
-    } catch (e) {
-      favicon.style.display = 'none';
-    }
-
-    return favicon;
-  }
+  // v1.6.0 Phase 2.9 Task 4 - createTitlebar() moved to TitlebarBuilder (157 lines)
+  // v1.6.0 Phase 2.9 Task 4 - createButton() moved to TitlebarBuilder (38 lines)
+  // v1.6.0 Phase 2.9 Task 4 - createFavicon() moved to TitlebarBuilder (26 lines)
+  // See TitlebarBuilder.js for extracted implementation
 
   /**
-   * Create titlebar with controls
+   * v1.6.0 Phase 2.9 Task 4 - applyZoom() REMOVED
+   * Zoom functionality now handled internally by TitlebarBuilder
+   * Old method signature: applyZoom(zoomLevel, displayElement)
+   * If zoom needs to be exposed externally, add public method to TitlebarBuilder
    */
-  createTitlebar() {
-    const titlebar = createElement('div', {
-      className: 'quick-tab-titlebar',
-      style: {
-        height: '40px',
-        backgroundColor: '#2d2d2d',
-        borderBottom: '1px solid #444',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 12px',
-        cursor: 'move',
-        userSelect: 'none'
-      }
-    });
 
-    // Create left section with navigation, favicon and title
-    const leftSection = createElement('div', {
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        flex: '1',
-        overflow: 'hidden',
-        gap: '8px'
-      }
-    });
-
-    // Navigation buttons container
-    const navContainer = createElement('div', {
-      style: {
-        display: 'flex',
-        gap: '4px',
-        alignItems: 'center'
-      }
-    });
-
-    // Back button
-    const backBtn = this.createButton('←', () => {
-      if (this.iframe.contentWindow) {
-        try {
-          this.iframe.contentWindow.history.back();
-        } catch (err) {
-          console.warn('[QuickTab] Cannot navigate back - cross-origin restriction');
-        }
-      }
-    });
-    backBtn.title = 'Back';
-    navContainer.appendChild(backBtn);
-
-    // Forward button
-    const forwardBtn = this.createButton('→', () => {
-      if (this.iframe.contentWindow) {
-        try {
-          this.iframe.contentWindow.history.forward();
-        } catch (err) {
-          console.warn('[QuickTab] Cannot navigate forward - cross-origin restriction');
-        }
-      }
-    });
-    forwardBtn.title = 'Forward';
-    navContainer.appendChild(forwardBtn);
-
-    // Reload button - Fixed self-assignment ESLint error
-    const reloadBtn = this.createButton('↻', () => {
-      // Proper iframe reload technique (fixes no-self-assign ESLint error)
-      const currentSrc = this.iframe.src;
-      this.iframe.src = 'about:blank';
-      setTimeout(() => {
-        this.iframe.src = currentSrc;
-      }, 10);
-    });
-    reloadBtn.title = 'Reload';
-    navContainer.appendChild(reloadBtn);
-
-    // Zoom controls
-    let currentZoom = 100;
-
-    const zoomOutBtn = this.createButton('−', () => {
-      if (currentZoom > 50) {
-        currentZoom -= 10;
-        this.applyZoom(currentZoom, zoomDisplay);
-      }
-    });
-    zoomOutBtn.title = 'Zoom Out';
-    navContainer.appendChild(zoomOutBtn);
-
-    const zoomDisplay = createElement(
-      'span',
-      {
-        style: {
-          fontSize: '11px',
-          color: '#fff',
-          minWidth: '38px',
-          textAlign: 'center',
-          fontWeight: '500'
-        }
-      },
-      '100%'
-    );
-    navContainer.appendChild(zoomDisplay);
-
-    const zoomInBtn = this.createButton('+', () => {
-      if (currentZoom < 200) {
-        currentZoom += 10;
-        this.applyZoom(currentZoom, zoomDisplay);
-      }
-    });
-    zoomInBtn.title = 'Zoom In';
-    navContainer.appendChild(zoomInBtn);
-
-    leftSection.appendChild(navContainer);
-
-    // Favicon
-    const favicon = this.createFavicon();
-    leftSection.appendChild(favicon);
-
-    // Title text
-    const titleText = createElement(
-      'div',
-      {
-        className: 'quick-tab-title',
-        style: {
-          color: '#fff',
-          fontSize: '14px',
-          fontWeight: 'bold',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          flex: '1'
-        }
-      },
-      this.title
-    );
-    leftSection.appendChild(titleText);
-
-    // Control buttons container
-    const controls = createElement('div', {
-      style: {
-        display: 'flex',
-        gap: '8px'
-      }
-    });
-
-    // Open in New Tab button
-    const openBtn = this.createButton('🔗', () => {
-      const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
-      browser.runtime.sendMessage({
-        action: 'openTab',
-        url: currentSrc,
-        switchFocus: true
-      });
-    });
-    openBtn.title = 'Open in New Tab';
-    controls.appendChild(openBtn);
-
-    // v1.5.9.13 - Solo button (replaces pin button)
-    const soloBtn = this.createButton(this.isCurrentTabSoloed() ? '🎯' : '⭕', () =>
-      this.toggleSolo(soloBtn)
-    );
-    soloBtn.title = this.isCurrentTabSoloed()
-      ? 'Un-solo (show on all tabs)'
-      : 'Solo (show only on this tab)';
-    soloBtn.style.background = this.isCurrentTabSoloed() ? '#444' : 'transparent';
-    controls.appendChild(soloBtn);
-    this.soloButton = soloBtn;
-
-    // v1.5.9.13 - Mute button
-    const muteBtn = this.createButton(this.isCurrentTabMuted() ? '🔇' : '🔊', () =>
-      this.toggleMute(muteBtn)
-    );
-    muteBtn.title = this.isCurrentTabMuted()
-      ? 'Unmute (show on this tab)'
-      : 'Mute (hide on this tab)';
-    muteBtn.style.background = this.isCurrentTabMuted() ? '#c44' : 'transparent';
-    controls.appendChild(muteBtn);
-    this.muteButton = muteBtn;
-
-    // Minimize button
-    const minimizeBtn = this.createButton('−', () => this.minimize());
-    minimizeBtn.title = 'Minimize';
-    controls.appendChild(minimizeBtn);
-
-    // Close button
-    const closeBtn = this.createButton('×', () => this.destroy());
-    closeBtn.title = 'Close';
-    controls.appendChild(closeBtn);
-
-    titlebar.appendChild(leftSection);
-    titlebar.appendChild(controls);
-
-    return titlebar;
-  }
-
-  /**
-   * Create a control button
-   */
-  createButton(text, onClick) {
-    const button = createElement(
-      'button',
-      {
-        style: {
-          width: '24px',
-          height: '24px',
-          backgroundColor: 'transparent',
-          border: '1px solid #666',
-          borderRadius: '4px',
-          color: '#fff',
-          fontSize: '16px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '0',
-          transition: 'background-color 0.2s'
-        }
-      },
-      text
-    );
-
-    button.addEventListener('mouseenter', () => {
-      button.style.backgroundColor = '#444';
-    });
-
-    button.addEventListener('mouseleave', () => {
-      button.style.backgroundColor = 'transparent';
-    });
-
-    button.addEventListener('click', e => {
-      e.stopPropagation();
-      onClick();
-    });
-
-    return button;
-  }
+  // The following event handlers still in window.js (toggleSolo, toggleMute, minimize, destroy, etc.)
 
   /**
    * Setup drag handlers using Pointer Events API
@@ -554,27 +339,7 @@ export class QuickTabWindow {
     this.onFocus(this.id);
   }
 
-  /**
-   * Apply zoom to iframe content
-   */
-  applyZoom(zoomLevel, displayElement) {
-    const zoomFactor = zoomLevel / 100;
-    if (this.iframe.contentWindow) {
-      try {
-        this.iframe.contentWindow.document.body.style.zoom = zoomFactor;
-      } catch (err) {
-        // Cross-origin restriction - use CSS transform fallback
-        this.iframe.style.transform = `scale(${zoomFactor})`;
-        this.iframe.style.transformOrigin = 'top left';
-        this.iframe.style.width = `${100 / zoomFactor}%`;
-        this.iframe.style.height = `${100 / zoomFactor}%`;
-      }
-    }
-    if (displayElement) {
-      displayElement.textContent = `${zoomLevel}%`;
-    }
-    console.log(`[Quick Tab] Zoom applied: ${zoomLevel}% on ${this.url}`);
-  }
+  // v1.6.0 Phase 2.9 Task 4 - applyZoom() removed (now in TitlebarBuilder._applyZoom())
 
   /**
    * Update z-index for stacking
@@ -647,10 +412,13 @@ export class QuickTabWindow {
    */
   _setTitle(title, tooltip) {
     this.title = title;
-    const titleEl = this.container.querySelector('.quick-tab-title');
-    if (titleEl) {
-      titleEl.textContent = title;
-      titleEl.title = tooltip;
+    // v1.6.0 Phase 2.9 Task 4 - Use TitlebarBuilder to update title
+    if (this.titlebarBuilder) {
+      this.titlebarBuilder.updateTitle(title);
+      // Update tooltip on title element
+      if (this.titlebarBuilder.titleElement) {
+        this.titlebarBuilder.titleElement.title = tooltip;
+      }
     }
   }
 
