@@ -1,11 +1,15 @@
 /**
- * DragController - Handles drag operations with proper mouse tracking
+ * DragController - Handles drag operations using Pointer Events API
+ *
+ * Uses Pointer Events API (pointerdown/pointermove/pointerup/pointercancel) instead
+ * of Mouse Events to support Issue #51 fix (handling tab switch during drag).
+ * The pointercancel event is critical for saving state when drag is interrupted.
  *
  * Prevents "slipping" on high-refresh monitors by using requestAnimationFrame
- * and tracking actual mouse position. Extracted from QuickTabWindow.js as part
+ * and tracking actual pointer position. Extracted from QuickTabWindow.js as part
  * of v1.6.0 Phase 2.9 refactoring.
  *
- * @see docs/misc/v1.6.0-REFACTORING-PHASE3.3-NEXT-STEPS.md
+ * @see docs/misc/v1.6.0-REFACTORING-PHASE3.4-NEXT-STEPS.md
  */
 
 export class DragController {
@@ -14,25 +18,29 @@ export class DragController {
    * @param {HTMLElement} element - Element to make draggable
    * @param {Object} callbacks - Event callbacks
    * @param {Function} callbacks.onDragStart - Called when drag starts (x, y)
-   * @param {Function} callbacks.onDrag - Called during drag (x, y)
-   * @param {Function} callbacks.onDragEnd - Called when drag ends (x, y)
+   * @param {Function} callbacks.onDrag - Called during drag (newX, newY)
+   * @param {Function} callbacks.onDragEnd - Called when drag ends (finalX, finalY)
+   * @param {Function} callbacks.onDragCancel - Called when drag is cancelled (lastX, lastY)
    */
   constructor(element, callbacks = {}) {
     this.element = element;
     this.onDragStart = callbacks.onDragStart || null;
     this.onDrag = callbacks.onDrag || null;
     this.onDragEnd = callbacks.onDragEnd || null;
+    this.onDragCancel = callbacks.onDragCancel || null;
 
     this.isDragging = false;
-    this.dragStartX = 0;
-    this.dragStartY = 0;
-    this.elementStartX = 0;
-    this.elementStartY = 0;
+    this.currentPointerId = null;
+    this.offsetX = 0;
+    this.offsetY = 0;
+    this.currentX = 0;
+    this.currentY = 0;
     this.rafId = null;
 
-    this.boundHandleMouseDown = this.handleMouseDown.bind(this);
-    this.boundHandleMouseMove = this.handleMouseMove.bind(this);
-    this.boundHandleMouseUp = this.handleMouseUp.bind(this);
+    this.boundHandlePointerDown = this.handlePointerDown.bind(this);
+    this.boundHandlePointerMove = this.handlePointerMove.bind(this);
+    this.boundHandlePointerUp = this.handlePointerUp.bind(this);
+    this.boundHandlePointerCancel = this.handlePointerCancel.bind(this);
 
     this.attach();
   }
@@ -41,58 +49,57 @@ export class DragController {
    * Attach drag listeners
    */
   attach() {
-    this.element.addEventListener('mousedown', this.boundHandleMouseDown);
+    this.element.addEventListener('pointerdown', this.boundHandlePointerDown);
+    this.element.addEventListener('pointermove', this.boundHandlePointerMove);
+    this.element.addEventListener('pointerup', this.boundHandlePointerUp);
+    this.element.addEventListener('pointercancel', this.boundHandlePointerCancel);
   }
 
   /**
-   * Handle mouse down - start drag
-   * @param {MouseEvent} e
+   * Handle pointer down - start drag
+   * @param {PointerEvent} e
    */
-  handleMouseDown(e) {
-    // Only left mouse button
-    if (e.button !== 0) return;
-
+  handlePointerDown(e) {
     // Don't drag if clicking on button or other interactive element
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') {
       return;
     }
 
     this.isDragging = true;
-    this.dragStartX = e.clientX;
-    this.dragStartY = e.clientY;
+    this.currentPointerId = e.pointerId;
 
+    // Calculate offset from current element position
     const rect = this.element.parentElement.getBoundingClientRect();
-    this.elementStartX = rect.left;
-    this.elementStartY = rect.top;
+    this.currentX = rect.left;
+    this.currentY = rect.top;
+    this.offsetX = e.clientX - this.currentX;
+    this.offsetY = e.clientY - this.currentY;
 
-    document.addEventListener('mousemove', this.boundHandleMouseMove);
-    document.addEventListener('mouseup', this.boundHandleMouseUp);
+    // Capture pointer events
+    this.element.setPointerCapture(e.pointerId);
 
     if (this.onDragStart) {
-      this.onDragStart(this.elementStartX, this.elementStartY);
+      this.onDragStart(this.currentX, this.currentY);
     }
-
-    e.preventDefault();
-    e.stopPropagation();
   }
 
   /**
-   * Handle mouse move - update position
+   * Handle pointer move - update position
    * Uses requestAnimationFrame to prevent slipping on high-refresh monitors
-   * @param {MouseEvent} e
+   * @param {PointerEvent} e
    */
-  handleMouseMove(e) {
+  handlePointerMove(e) {
     if (!this.isDragging) return;
 
-    // Use requestAnimationFrame to prevent slipping on high-refresh monitors
+    // Use requestAnimationFrame to prevent excessive updates
     if (this.rafId) return;
 
     this.rafId = requestAnimationFrame(() => {
-      const deltaX = e.clientX - this.dragStartX;
-      const deltaY = e.clientY - this.dragStartY;
+      const newX = e.clientX - this.offsetX;
+      const newY = e.clientY - this.offsetY;
 
-      const newX = this.elementStartX + deltaX;
-      const newY = this.elementStartY + deltaY;
+      this.currentX = newX;
+      this.currentY = newY;
 
       if (this.onDrag) {
         this.onDrag(newX, newY);
@@ -103,10 +110,10 @@ export class DragController {
   }
 
   /**
-   * Handle mouse up - end drag
-   * @param {MouseEvent} e
+   * Handle pointer up - end drag
+   * @param {PointerEvent} e
    */
-  handleMouseUp(e) {
+  handlePointerUp(e) {
     if (!this.isDragging) return;
 
     this.isDragging = false;
@@ -116,33 +123,60 @@ export class DragController {
       this.rafId = null;
     }
 
-    document.removeEventListener('mousemove', this.boundHandleMouseMove);
-    document.removeEventListener('mouseup', this.boundHandleMouseUp);
+    // Release pointer capture
+    if (this.currentPointerId !== null) {
+      this.element.releasePointerCapture(this.currentPointerId);
+      this.currentPointerId = null;
+    }
 
-    // Call onDragEnd with the final position
-    // We calculate it from the current mouse position and the drag start
+    // Calculate final position
+    const finalX = e.clientX - this.offsetX;
+    const finalY = e.clientY - this.offsetY;
+
     if (this.onDragEnd) {
-      const deltaX = e.clientX - this.dragStartX;
-      const deltaY = e.clientY - this.dragStartY;
-      const finalX = this.elementStartX + deltaX;
-      const finalY = this.elementStartY + deltaY;
-
       this.onDragEnd(finalX, finalY);
     }
+  }
+
+  /**
+   * Handle pointer cancel - CRITICAL FOR ISSUE #51
+   * This fires when drag is interrupted (e.g., user switches tabs during drag)
+   * @param {PointerEvent} _e
+   */
+  handlePointerCancel(_e) {
+    if (!this.isDragging) return;
+
+    this.isDragging = false;
+
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+
+    // Call onDragCancel with last known position (or onDragEnd as fallback)
+    const callback = this.onDragCancel || this.onDragEnd;
+    if (callback) {
+      callback(this.currentX, this.currentY);
+    }
+
+    this.currentPointerId = null;
   }
 
   /**
    * Detach drag listeners and cleanup
    */
   destroy() {
-    this.element.removeEventListener('mousedown', this.boundHandleMouseDown);
-    document.removeEventListener('mousemove', this.boundHandleMouseMove);
-    document.removeEventListener('mouseup', this.boundHandleMouseUp);
+    this.element.removeEventListener('pointerdown', this.boundHandlePointerDown);
+    this.element.removeEventListener('pointermove', this.boundHandlePointerMove);
+    this.element.removeEventListener('pointerup', this.boundHandlePointerUp);
+    this.element.removeEventListener('pointercancel', this.boundHandlePointerCancel);
 
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
+      this.rafId = null;
     }
 
     this.isDragging = false;
+    this.currentPointerId = null;
   }
 }

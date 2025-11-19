@@ -5,6 +5,7 @@
  * v1.5.9.0 - Restored missing UI logic identified in v1589-quick-tabs-root-cause.md
  */
 
+import { DragController } from './window/DragController.js';
 import { ResizeController } from './window/ResizeController.js';
 import { CONSTANTS } from '../../core/config.js';
 import { createElement } from '../../utils/dom.js';
@@ -83,14 +84,17 @@ export class QuickTabWindow {
     this.container = null;
     this.iframe = null;
     this.rendered = false; // v1.5.9.10 - Track rendering state to prevent rendering bugs
+    // v1.6.0 Phase 2.9 - isDragging kept for external checks, managed by DragController
     this.isDragging = false;
     this.isResizing = false;
-    this.dragStartX = 0;
-    this.dragStartY = 0;
+    // v1.6.0 Phase 2.9 - dragStartX/Y removed, managed internally by DragController
     this.resizeStartWidth = 0;
     this.resizeStartHeight = 0;
     this.soloButton = null; // v1.5.9.13 - Reference to solo button
     this.muteButton = null; // v1.5.9.13 - Reference to mute button
+    // v1.6.0 Phase 2.9 - Controllers for drag and resize
+    this.dragController = null;
+    this.resizeController = null;
   }
 
   /**
@@ -167,8 +171,45 @@ export class QuickTabWindow {
       this.container.style.opacity = '1';
     });
 
-    // Setup interactions
-    this.setupDragHandlers(titlebar);
+    // v1.6.0 Phase 2.9 Task 3 - Use DragController facade pattern
+    this.dragController = new DragController(titlebar, {
+      onDragStart: (x, y) => {
+        console.log('[QuickTabWindow] Drag started:', this.id, x, y);
+        this.isDragging = true;
+        this.onFocus(this.id);
+      },
+      onDrag: (newX, newY) => {
+        // Update position
+        this.left = newX;
+        this.top = newY;
+        this.container.style.left = `${newX}px`;
+        this.container.style.top = `${newY}px`;
+
+        // Call position change callback (throttled by DragController's RAF)
+        if (this.onPositionChange) {
+          this.onPositionChange(this.id, newX, newY);
+        }
+      },
+      onDragEnd: (finalX, finalY) => {
+        console.log('[QuickTabWindow] Drag ended:', this.id, finalX, finalY);
+        this.isDragging = false;
+
+        // Final save on drag end
+        if (this.onPositionChangeEnd) {
+          this.onPositionChangeEnd(this.id, finalX, finalY);
+        }
+      },
+      onDragCancel: (lastX, lastY) => {
+        // CRITICAL FOR ISSUE #51: Emergency save position when drag is interrupted
+        console.log('[QuickTabWindow] Drag cancelled:', this.id, lastX, lastY);
+        this.isDragging = false;
+
+        // Emergency save position before tab loses focus
+        if (this.onPositionChangeEnd) {
+          this.onPositionChangeEnd(this.id, lastX, lastY);
+        }
+      }
+    });
 
     // v1.6.0 Phase 2.4 - Use ResizeController facade pattern
     this.resizeController = new ResizeController(this, {
@@ -454,66 +495,18 @@ export class QuickTabWindow {
   /**
    * Setup drag handlers using Pointer Events API
    */
-  setupDragHandlers(titlebar) {
-    titlebar.addEventListener('pointerdown', e => {
-      if (e.target.tagName === 'BUTTON') return;
-
-      this.isDragging = true;
-      this.dragStartX = e.clientX - this.left;
-      this.dragStartY = e.clientY - this.top;
-
-      titlebar.setPointerCapture(e.pointerId);
-
-      this.onFocus(this.id);
-    });
-
-    titlebar.addEventListener('pointermove', e => {
-      if (!this.isDragging) return;
-
-      this.left = e.clientX - this.dragStartX;
-      this.top = e.clientY - this.dragStartY;
-
-      this.container.style.left = `${this.left}px`;
-      this.container.style.top = `${this.top}px`;
-
-      // Notify parent of position change (throttled)
-      if (this.onPositionChange) {
-        this.onPositionChange(this.id, this.left, this.top);
-      }
-    });
-
-    titlebar.addEventListener('pointerup', e => {
-      if (this.isDragging) {
-        this.isDragging = false;
-        titlebar.releasePointerCapture(e.pointerId);
-
-        // Final save on drag end
-        if (this.onPositionChangeEnd) {
-          this.onPositionChangeEnd(this.id, this.left, this.top);
-        }
-      }
-    });
-
-    // CRITICAL FOR ISSUE #51: Handle tab switch during drag
-    titlebar.addEventListener('pointercancel', _e => {
-      if (this.isDragging) {
-        this.isDragging = false;
-
-        // Emergency save position before tab loses focus
-        if (this.onPositionChangeEnd) {
-          this.onPositionChangeEnd(this.id, this.left, this.top);
-        }
-      }
-    });
-  }
+  /**
+   * v1.6.0 Phase 2.9 Task 3 - setupDragHandlers removed
+   * Replaced with DragController facade pattern (see render() method)
+   * This eliminates ~50 lines of drag logic and uses Pointer Events API
+   * for Issue #51 fix (pointercancel handles tab switch during drag)
+   */
 
   /**
-   * Setup resize handlers on all 8 edges/corners
-   * Uses Pointer Events API for reliable capture
+   * v1.6.0 Phase 2.4 - setupResizeHandlers removed
+   * Replaced with ResizeController facade pattern (see render() method)
+   * This eliminates 195 lines of complex conditional logic
    */
-  // v1.6.0 Phase 2.4 - setupResizeHandlers removed
-  // Replaced with ResizeController facade pattern (see render() method)
-  // This eliminates 195 lines of complex conditional logic
 
   /**
    * Setup focus handlers
@@ -830,6 +823,12 @@ export class QuickTabWindow {
    * Destroy the Quick Tab window
    */
   destroy() {
+    // v1.6.0 Phase 2.9 - Cleanup drag controller
+    if (this.dragController) {
+      this.dragController.destroy();
+      this.dragController = null;
+    }
+
     // v1.6.0 Phase 2.4 - Cleanup resize controller
     if (this.resizeController) {
       this.resizeController.detachAll();

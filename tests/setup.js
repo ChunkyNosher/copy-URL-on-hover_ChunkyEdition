@@ -55,7 +55,6 @@ global.console = {
   error: jest.fn()
 };
 
-// ===== ADD THIS SECTION =====
 // Mock navigator.clipboard (not provided by JSDOM)
 Object.defineProperty(global.navigator, 'clipboard', {
   value: {
@@ -65,7 +64,26 @@ Object.defineProperty(global.navigator, 'clipboard', {
   writable: true,
   configurable: true
 });
-// ===========================
+
+// v1.6.0 Phase 2.9 - Mock PointerEvent for Drag/Resize tests
+// JSDOM doesn't provide PointerEvent, so we polyfill it
+if (typeof global.PointerEvent === 'undefined') {
+  global.PointerEvent = class PointerEvent extends MouseEvent {
+    constructor(type, params = {}) {
+      super(type, params);
+      this.pointerId = params.pointerId || 0;
+      this.width = params.width || 1;
+      this.height = params.height || 1;
+      this.pressure = params.pressure || 0;
+      this.tangentialPressure = params.tangentialPressure || 0;
+      this.tiltX = params.tiltX || 0;
+      this.tiltY = params.tiltY || 0;
+      this.twist = params.twist || 0;
+      this.pointerType = params.pointerType || 'mouse';
+      this.isPrimary = params.isPrimary !== undefined ? params.isPrimary : true;
+    }
+  };
+}
 
 // Add custom matchers if needed
 expect.extend({
