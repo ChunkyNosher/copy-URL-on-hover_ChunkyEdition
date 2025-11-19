@@ -24,7 +24,7 @@ describe('PanelDragController', () => {
     // Create mock handle element
     handle = document.createElement('div');
     handle.classList.add('panel-header');
-    
+
     // Mock Pointer Events API methods
     handle.setPointerCapture = jest.fn();
     handle.releasePointerCapture = jest.fn();
