@@ -362,9 +362,7 @@ describe('BroadcastManager', () => {
 
       manager.broadcast('TEST', { id: 'test-123' });
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[BroadcastManager] No broadcast channel available'
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('[BroadcastManager] No broadcast channel available');
 
       consoleSpy.mockRestore();
     });
