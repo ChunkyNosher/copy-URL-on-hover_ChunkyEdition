@@ -139,10 +139,15 @@ jobs:
       - name: Install web-ext
         run: npm install -g web-ext
 
-      # Start Chrome with extension pre-loaded
+            # Install Xvfb virtual display server
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      # Start Chrome with extension using Xvfb
       - name: Launch Chrome with extension
         run: |
-          echo "Starting Chrome with extension loaded..."
+          echo "Starting Chrome with extension loaded via Xvfb..."
+          
           # Kill any existing Chrome instances
           pkill -f chrome || true
           
@@ -150,15 +155,35 @@ jobs:
           EXTENSION_PATH=$(pwd)/dist
           echo "Extension path: $EXTENSION_PATH"
           
+          # Start Xvfb on display :99
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 2
+          echo "✓ Xvfb started on display :99"
+          
           # Start Chrome with extension loaded (backgrounded)
           google-chrome \
             --load-extension="$EXTENSION_PATH" \
             --disable-extensions-except="$EXTENSION_PATH" \
             --no-first-run \
             --no-default-browser-check \
+            --no-sandbox \
+            --disable-dev-shm-usage \
             --remote-debugging-port=9222 \
             --user-data-dir=$(mktemp -d) \
+            --display=:99 \
             about:blank &
+          
+          # Wait for Chrome to start
+          sleep 5
+          
+          # Verify Chrome is running
+          if pgrep -f chrome > /dev/null; then
+            echo "✓ Chrome started successfully with extension"
+          else
+            echo "✗ Failed to start Chrome"
+            exit 1
+          fi
           
           # Wait for Chrome to start
           sleep 5
