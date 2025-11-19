@@ -333,6 +333,20 @@ describe('StorageManager', () => {
         cookieStoreId: 'firefox-default'
       });
     });
+
+    test('should handle clear errors', async () => {
+      const error = new Error('Clear failed');
+      mockSyncAdapter.deleteContainer.mockRejectedValue(error);
+
+      const errorListener = jest.fn();
+      eventBus.on('storage:error', errorListener);
+
+      await expect(manager.clear()).rejects.toThrow('Clear failed');
+      expect(errorListener).toHaveBeenCalledWith({
+        operation: 'clear',
+        error
+      });
+    });
   });
 
   describe('scheduleStorageSync()', () => {
@@ -359,6 +373,466 @@ describe('StorageManager', () => {
         });
         done();
       }, 60);
+    });
+  });
+
+  describe('setupStorageListeners()', () => {
+    let mockBrowser;
+    let storageListeners;
+
+    beforeEach(() => {
+      storageListeners = [];
+      mockBrowser = {
+        storage: {
+          onChanged: {
+            addListener: jest.fn(listener => {
+              storageListeners.push(listener);
+            })
+          }
+        }
+      };
+      global.browser = mockBrowser;
+    });
+
+    afterEach(() => {
+      delete global.browser;
+    });
+
+    test('should setup storage listeners when browser API available', () => {
+      manager.setupStorageListeners();
+      expect(mockBrowser.storage.onChanged.addListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('should handle missing browser API gracefully', () => {
+      delete global.browser;
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      
+      manager.setupStorageListeners();
+      
+      expect(consoleSpy).toHaveBeenCalledWith('[StorageManager] Storage API not available');
+      consoleSpy.mockRestore();
+    });
+
+    test('should handle missing browser.storage gracefully', () => {
+      global.browser = {};
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      
+      manager.setupStorageListeners();
+      
+      expect(consoleSpy).toHaveBeenCalledWith('[StorageManager] Storage API not available');
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('handleStorageChange()', () => {
+    test('should ignore null/undefined values', () => {
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      manager.handleStorageChange(null);
+      manager.handleStorageChange(undefined);
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('should ignore changes from pending saves', () => {
+      manager.pendingSaveIds.add('save-id-123');
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      const newValue = {
+        saveId: 'save-id-123',
+        containers: {
+          'firefox-default': { tabs: [] }
+        }
+      };
+
+      manager.handleStorageChange(newValue);
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('should ignore changes while saves are pending (no saveId)', () => {
+      manager.pendingSaveIds.add('save-id-456');
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      const newValue = {
+        containers: {
+          'firefox-default': { tabs: [] }
+        }
+      };
+
+      manager.handleStorageChange(newValue);
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('should process container-specific changes', done => {
+      manager.STORAGE_SYNC_DELAY_MS = 50;
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      const newValue = {
+        containers: {
+          'firefox-default': { tabs: [{ id: 'qt-1' }] },
+          'firefox-container-1': { tabs: [{ id: 'qt-2' }] }
+        }
+      };
+
+      manager.handleStorageChange(newValue);
+
+      setTimeout(() => {
+        expect(listener).toHaveBeenCalledWith({
+          containerFilter: 'firefox-default',
+          state: {
+            containers: {
+              'firefox-default': { tabs: [{ id: 'qt-1' }] }
+            }
+          }
+        });
+        done();
+      }, 60);
+    });
+
+    test('should handle legacy format', done => {
+      manager.STORAGE_SYNC_DELAY_MS = 50;
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      const legacyValue = {
+        tabs: [{ id: 'qt-1' }]
+      };
+
+      manager.handleStorageChange(legacyValue);
+
+      setTimeout(() => {
+        expect(listener).toHaveBeenCalledWith({
+          containerFilter: 'firefox-default',
+          state: legacyValue
+        });
+        done();
+      }, 60);
+    });
+
+    test('should handle missing container gracefully', () => {
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      const newValue = {
+        containers: {
+          'firefox-container-1': { tabs: [] }
+        }
+      };
+
+      manager.handleStorageChange(newValue);
+
+      // Should not schedule sync for missing container
+      expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Storage Event Integration', () => {
+    let mockBrowser;
+    let storageListener;
+
+    beforeEach(() => {
+      storageListener = null;
+      mockBrowser = {
+        storage: {
+          onChanged: {
+            addListener: jest.fn(listener => {
+              storageListener = listener;
+            })
+          }
+        }
+      };
+      global.browser = mockBrowser;
+    });
+
+    afterEach(() => {
+      delete global.browser;
+    });
+
+    test('should handle sync storage changes', done => {
+      manager.setupStorageListeners();
+      manager.STORAGE_SYNC_DELAY_MS = 50;
+
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      const changes = {
+        quick_tabs_state_v2: {
+          newValue: {
+            containers: {
+              'firefox-default': { tabs: [{ id: 'qt-1' }] }
+            }
+          }
+        }
+      };
+
+      storageListener(changes, 'sync');
+
+      setTimeout(() => {
+        expect(listener).toHaveBeenCalled();
+        done();
+      }, 60);
+    });
+
+    test('should handle session storage changes', done => {
+      manager.setupStorageListeners();
+      manager.STORAGE_SYNC_DELAY_MS = 50;
+
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      const changes = {
+        quick_tabs_session: {
+          newValue: {
+            containers: {
+              'firefox-default': { tabs: [{ id: 'qt-1' }] }
+            }
+          }
+        }
+      };
+
+      storageListener(changes, 'session');
+
+      setTimeout(() => {
+        expect(listener).toHaveBeenCalled();
+        done();
+      }, 60);
+    });
+
+    test('should ignore irrelevant storage areas', () => {
+      manager.setupStorageListeners();
+
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      const changes = {
+        someOtherKey: {
+          newValue: { data: 'test' }
+        }
+      };
+
+      storageListener(changes, 'local');
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Race Condition Prevention', () => {
+    test('should prevent race condition during rapid saves', async () => {
+      const quickTab1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      const quickTab2 = QuickTab.create({
+        id: 'qt-2',
+        url: 'https://test.com',
+        position: { left: 200, top: 200 },
+        size: { width: 500, height: 400 }
+      });
+
+      mockSyncAdapter.save.mockResolvedValueOnce('save-id-1');
+      mockSyncAdapter.save.mockResolvedValueOnce('save-id-2');
+
+      // Start two saves rapidly
+      const save1 = manager.save([quickTab1]);
+      const save2 = manager.save([quickTab2]);
+
+      await Promise.all([save1, save2]);
+
+      // Both save IDs should be tracked
+      expect(manager.pendingSaveIds.has('save-id-1')).toBe(true);
+      expect(manager.pendingSaveIds.has('save-id-2')).toBe(true);
+    });
+
+    test('should ignore storage change during pending save', () => {
+      manager.pendingSaveIds.add('save-id-123');
+      
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      // Simulate storage change with pending save ID
+      manager.handleStorageChange({
+        saveId: 'save-id-123',
+        containers: {
+          'firefox-default': { tabs: [] }
+        }
+      });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('should process storage change after save released', done => {
+      manager.SAVE_ID_GRACE_MS = 50;
+      manager.STORAGE_SYNC_DELAY_MS = 50;
+      
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      // Track save ID
+      manager.trackPendingSave('save-id-999');
+
+      // Try to process change (should be ignored)
+      manager.handleStorageChange({
+        saveId: 'save-id-999',
+        containers: {
+          'firefox-default': { tabs: [] }
+        }
+      });
+
+      // Wait for save ID to be released
+      setTimeout(() => {
+        expect(manager.pendingSaveIds.has('save-id-999')).toBe(false);
+        
+        // Now change should be processed
+        manager.handleStorageChange({
+          containers: {
+            'firefox-default': { tabs: [{ id: 'qt-1' }] }
+          }
+        });
+
+        setTimeout(() => {
+          expect(listener).toHaveBeenCalled();
+          done();
+        }, 60);
+      }, 60);
+    });
+  });
+
+  describe('Edge Cases', () => {
+    test('should handle empty Quick Tabs array', async () => {
+      const saveId = await manager.save([]);
+      expect(saveId).toBeNull();
+    });
+
+    test('should handle null Quick Tabs parameter', async () => {
+      const saveId = await manager.save(null);
+      expect(saveId).toBeNull();
+    });
+
+    test('should handle undefined Quick Tabs parameter', async () => {
+      const saveId = await manager.save(undefined);
+      expect(saveId).toBeNull();
+    });
+
+    test('should handle multiple releases of same save ID', () => {
+      manager.trackPendingSave('save-id-multi');
+      expect(manager.pendingSaveIds.has('save-id-multi')).toBe(true);
+
+      manager.releasePendingSave('save-id-multi');
+      expect(manager.pendingSaveIds.has('save-id-multi')).toBe(false);
+
+      // Second release should not throw
+      expect(() => {
+        manager.releasePendingSave('save-id-multi');
+      }).not.toThrow();
+    });
+
+    test('should handle release of non-existent save ID', () => {
+      expect(() => {
+        manager.releasePendingSave('non-existent-id');
+      }).not.toThrow();
+    });
+
+    test('should handle track with null save ID', () => {
+      expect(() => {
+        manager.trackPendingSave(null);
+      }).not.toThrow();
+      expect(manager.pendingSaveIds.size).toBe(0);
+    });
+
+    test('should handle release with null save ID', () => {
+      expect(() => {
+        manager.releasePendingSave(null);
+      }).not.toThrow();
+    });
+
+    test('should replace existing timer when tracking same save ID twice', () => {
+      manager.trackPendingSave('duplicate-id');
+      const firstTimer = manager.saveIdTimers.get('duplicate-id');
+
+      manager.trackPendingSave('duplicate-id');
+      const secondTimer = manager.saveIdTimers.get('duplicate-id');
+
+      expect(firstTimer).not.toBe(secondTimer);
+      expect(manager.pendingSaveIds.has('duplicate-id')).toBe(true);
+    });
+  });
+
+  describe('Error Handling Paths', () => {
+    test('should handle network errors during sync', async () => {
+      const quickTab = QuickTab.create({
+        id: 'qt-network',
+        url: 'https://example.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      const networkError = new Error('Network request failed');
+      networkError.code = 'NETWORK_ERROR';
+      mockSyncAdapter.save.mockRejectedValue(networkError);
+
+      const errorListener = jest.fn();
+      eventBus.on('storage:error', errorListener);
+
+      await expect(manager.save([quickTab])).rejects.toThrow('Network request failed');
+      expect(errorListener).toHaveBeenCalledWith({
+        operation: 'save',
+        error: networkError
+      });
+    });
+
+    test('should handle storage corruption during load', async () => {
+      const corruptionError = new Error('Data corruption detected');
+      mockSessionAdapter.load.mockRejectedValue(corruptionError);
+
+      const errorListener = jest.fn();
+      eventBus.on('storage:error', errorListener);
+
+      const result = await manager.loadAll();
+
+      expect(result).toEqual([]);
+      expect(errorListener).toHaveBeenCalledWith({
+        operation: 'load',
+        error: corruptionError
+      });
+    });
+
+    test('should handle delete when Quick Tab does not exist', async () => {
+      const notFoundError = new Error('Quick Tab not found');
+      mockSyncAdapter.delete.mockRejectedValue(notFoundError);
+
+      const errorListener = jest.fn();
+      eventBus.on('storage:error', errorListener);
+
+      await expect(manager.delete('non-existent-id')).rejects.toThrow('Quick Tab not found');
+      expect(errorListener).toHaveBeenCalledWith({
+        operation: 'delete',
+        error: notFoundError
+      });
+    });
+
+    test('should handle concurrent delete operations', async () => {
+      mockSyncAdapter.delete.mockResolvedValue();
+
+      const listener = jest.fn();
+      eventBus.on('storage:deleted', listener);
+
+      // Trigger multiple deletes
+      await Promise.all([
+        manager.delete('qt-1'),
+        manager.delete('qt-2'),
+        manager.delete('qt-3')
+      ]);
+
+      expect(listener).toHaveBeenCalledTimes(3);
     });
   });
 });
