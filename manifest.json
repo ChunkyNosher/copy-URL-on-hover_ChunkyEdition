@@ -36,7 +36,7 @@
   },
 
   "background": {
-    "scripts": ["background.js"],
+    "scripts": ["dist/background.js"],
     "persistent": true
   },
 

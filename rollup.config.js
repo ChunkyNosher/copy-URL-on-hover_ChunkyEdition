@@ -54,5 +54,17 @@ export default [
     external: ['webextension-polyfill'],
     plugins: commonPlugins,
     treeshake: production
+  },
+  // Background script bundle
+  {
+    input: 'background.js',
+    output: {
+      file: 'dist/background.js',
+      format: 'iife',
+      name: 'BackgroundScript',
+      sourcemap: !production
+    },
+    plugins: commonPlugins,
+    treeshake: production
   }
 ];
