@@ -138,7 +138,7 @@ describe('PanelDragController', () => {
     });
 
     it('should capture pointer on drag start', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       const pointerEvent = new PointerEvent('pointerdown', {
         button: 0,
@@ -173,7 +173,7 @@ describe('PanelDragController', () => {
     });
 
     it('should set cursor to grabbing', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       const pointerEvent = new PointerEvent('pointerdown', {
         button: 0,
@@ -191,7 +191,7 @@ describe('PanelDragController', () => {
 
   describe('Pointer Move - Update Position', () => {
     it('should update panel position during drag', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       // Start drag at (150, 200) with panel at (100, 150)
       const startEvent = new PointerEvent('pointerdown', {
@@ -218,7 +218,7 @@ describe('PanelDragController', () => {
     });
 
     it('should not update position when not dragging', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       const moveEvent = new PointerEvent('pointermove', {
         pointerId: 1,
@@ -234,7 +234,7 @@ describe('PanelDragController', () => {
     });
 
     it('should ignore pointermove from different pointer', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       // Start drag with pointer 1
       const startEvent = new PointerEvent('pointerdown', {
@@ -289,7 +289,7 @@ describe('PanelDragController', () => {
     });
 
     it('should release pointer capture', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       const startEvent = new PointerEvent('pointerdown', {
         button: 0,
@@ -310,7 +310,7 @@ describe('PanelDragController', () => {
     });
 
     it('should reset cursor to grab', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       const startEvent = new PointerEvent('pointerdown', {
         button: 0,
@@ -331,7 +331,7 @@ describe('PanelDragController', () => {
     });
 
     it('should call onDragEnd callback with final position', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       const startEvent = new PointerEvent('pointerdown', {
         button: 0,
@@ -352,7 +352,7 @@ describe('PanelDragController', () => {
     });
 
     it('should call onBroadcast callback with final position', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       const startEvent = new PointerEvent('pointerdown', {
         button: 0,
@@ -420,7 +420,7 @@ describe('PanelDragController', () => {
     });
 
     it('should save position on cancel', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       const startEvent = new PointerEvent('pointerdown', {
         button: 0,
@@ -441,7 +441,7 @@ describe('PanelDragController', () => {
     });
 
     it('should not trigger cancel when not dragging', () => {
-      const controller = new PanelDragController(panel, handle, callbacks);  // eslint-disable-line no-unused-vars
+      const controller = new PanelDragController(panel, handle, callbacks); // eslint-disable-line no-unused-vars
 
       const cancelEvent = new PointerEvent('pointercancel', {
         pointerId: 1,
