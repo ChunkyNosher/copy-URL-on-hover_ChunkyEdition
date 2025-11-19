@@ -68,10 +68,7 @@ describe('DragController', () => {
 
       new DragController(element, callbacks);
 
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'mousedown',
-        expect.any(Function)
-      );
+      expect(addEventListenerSpy).toHaveBeenCalledWith('mousedown', expect.any(Function));
     });
   });
 
@@ -186,19 +183,13 @@ describe('DragController', () => {
 
       element.dispatchEvent(mouseEvent);
 
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'mousemove',
-        expect.any(Function)
-      );
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'mouseup',
-        expect.any(Function)
-      );
+      expect(addEventListenerSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
+      expect(addEventListenerSpy).toHaveBeenCalledWith('mouseup', expect.any(Function));
     });
   });
 
   describe('Mouse Move Handling', () => {
-    test('should call onDrag with new position', (done) => {
+    test('should call onDrag with new position', done => {
       const controller = new DragController(element, callbacks);
 
       // Start drag
@@ -242,7 +233,7 @@ describe('DragController', () => {
       expect(callbacks.onDrag).not.toHaveBeenCalled();
     });
 
-    test('should throttle with requestAnimationFrame', (done) => {
+    test('should throttle with requestAnimationFrame', done => {
       const controller = new DragController(element, callbacks);
 
       // Start drag
@@ -256,15 +247,9 @@ describe('DragController', () => {
       );
 
       // Multiple rapid move events
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 250, clientY: 300 })
-      );
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 260, clientY: 310 })
-      );
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 270, clientY: 320 })
-      );
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 250, clientY: 300 }));
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 260, clientY: 310 }));
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 270, clientY: 320 }));
 
       // Wait for requestAnimationFrame
       requestAnimationFrame(() => {
@@ -307,10 +292,7 @@ describe('DragController', () => {
     });
 
     test('should remove document listeners on drag end', () => {
-      const removeEventListenerSpy = jest.spyOn(
-        document,
-        'removeEventListener'
-      );
+      const removeEventListenerSpy = jest.spyOn(document, 'removeEventListener');
       const controller = new DragController(element, callbacks);
 
       // Start and end drag
@@ -330,22 +312,13 @@ describe('DragController', () => {
         })
       );
 
-      expect(removeEventListenerSpy).toHaveBeenCalledWith(
-        'mousemove',
-        expect.any(Function)
-      );
-      expect(removeEventListenerSpy).toHaveBeenCalledWith(
-        'mouseup',
-        expect.any(Function)
-      );
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('mouseup', expect.any(Function));
     });
 
     test('should cancel pending animation frame on drag end', () => {
       const controller = new DragController(element, callbacks);
-      const cancelAnimationFrameSpy = jest.spyOn(
-        global,
-        'cancelAnimationFrame'
-      );
+      const cancelAnimationFrameSpy = jest.spyOn(global, 'cancelAnimationFrame');
 
       // Start drag
       element.dispatchEvent(
@@ -388,18 +361,12 @@ describe('DragController', () => {
 
       controller.destroy();
 
-      expect(removeEventListenerSpy).toHaveBeenCalledWith(
-        'mousedown',
-        expect.any(Function)
-      );
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('mousedown', expect.any(Function));
     });
 
     test('should cancel pending animation frame', () => {
       const controller = new DragController(element, callbacks);
-      const cancelAnimationFrameSpy = jest.spyOn(
-        global,
-        'cancelAnimationFrame'
-      );
+      const cancelAnimationFrameSpy = jest.spyOn(global, 'cancelAnimationFrame');
 
       // Start drag and move to create pending animation frame
       element.dispatchEvent(
@@ -449,7 +416,7 @@ describe('DragController', () => {
   });
 
   describe('Integration', () => {
-    test('should handle complete drag lifecycle', (done) => {
+    test('should handle complete drag lifecycle', done => {
       const controller = new DragController(element, callbacks);
 
       // Start drag at (150, 200)

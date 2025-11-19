@@ -126,7 +126,7 @@ export class DragController {
       const deltaY = e.clientY - this.dragStartY;
       const finalX = this.elementStartX + deltaX;
       const finalY = this.elementStartY + deltaY;
-      
+
       this.onDragEnd(finalX, finalY);
     }
   }
