@@ -458,10 +458,10 @@ export class PanelUIBuilder {
   static _createHeader(containerInfo, containerState) {
     const header = document.createElement('h3');
     header.className = 'panel-container-header';
-    
+
     const tabCount = containerState.tabs.length;
     const plural = tabCount !== 1 ? 's' : '';
-    
+
     header.innerHTML = `
       <span class="panel-container-icon">${containerInfo.icon}</span>
       <span class="panel-container-name">${containerInfo.name}</span>
@@ -524,7 +524,7 @@ export class PanelUIBuilder {
   static _createFavicon(url) {
     const favicon = document.createElement('img');
     favicon.className = 'panel-favicon';
-    
+
     try {
       const urlObj = new URL(url);
       favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;

@@ -34,7 +34,7 @@ describe('PanelUIBuilder', () => {
 
     it('should inject complete CSS with all panel styles', () => {
       PanelUIBuilder.injectStyles();
-      
+
       const styleEl = document.getElementById('quick-tabs-manager-panel-styles');
       expect(styleEl.textContent).toContain('.panel-header');
       expect(styleEl.textContent).toContain('.panel-actions');
@@ -111,9 +111,7 @@ describe('PanelUIBuilder', () => {
         color: 'blue'
       };
       const containerState = {
-        tabs: [
-          { id: '1', title: 'Tab 1', url: 'https://example.com', minimized: false }
-        ]
+        tabs: [{ id: '1', title: 'Tab 1', url: 'https://example.com', minimized: false }]
       };
 
       const section = PanelUIBuilder.renderContainerSection(
@@ -124,7 +122,7 @@ describe('PanelUIBuilder', () => {
 
       expect(section).not.toBeNull();
       expect(section.className).toBe('panel-container-section');
-      
+
       const header = section.querySelector('.panel-container-header');
       expect(header).not.toBeNull();
       expect(header.textContent).toContain('Personal');
@@ -170,11 +168,11 @@ describe('PanelUIBuilder', () => {
 
       const items = section.querySelectorAll('.panel-quick-tab-item');
       expect(items.length).toBe(4);
-      
+
       // First 2 should be active (not minimized)
       expect(items[0].classList.contains('active')).toBe(true);
       expect(items[1].classList.contains('active')).toBe(true);
-      
+
       // Last 2 should be minimized
       expect(items[2].classList.contains('minimized')).toBe(true);
       expect(items[3].classList.contains('minimized')).toBe(true);
@@ -217,10 +215,10 @@ describe('PanelUIBuilder', () => {
 
     it('should handle string "false" as minimized parameter', () => {
       const tab = { id: 'qt-1', title: 'Test', url: 'https://test.com' };
-      
+
       // This tests v1.5.9.8 fix for defensive boolean conversion
       const item = PanelUIBuilder.renderQuickTabItem(tab, 'false');
-      
+
       // String 'false' is truthy, so Boolean('false') === true
       expect(item.className).toContain('minimized');
     });
@@ -314,8 +312,9 @@ describe('PanelUIBuilder', () => {
       };
       const item = PanelUIBuilder.renderQuickTabItem(tab, false);
 
-      const goToBtn = Array.from(item.querySelectorAll('.panel-btn-icon'))
-        .find(btn => btn.dataset.action === 'goToTab');
+      const goToBtn = Array.from(item.querySelectorAll('.panel-btn-icon')).find(
+        btn => btn.dataset.action === 'goToTab'
+      );
 
       expect(goToBtn).not.toBeNull();
       expect(goToBtn.textContent).toBe('🔗');
@@ -326,8 +325,9 @@ describe('PanelUIBuilder', () => {
       const tab = { id: 'qt-1', title: 'Test', url: 'https://test.com' };
       const item = PanelUIBuilder.renderQuickTabItem(tab, false);
 
-      const goToBtn = Array.from(item.querySelectorAll('.panel-btn-icon'))
-        .find(btn => btn.dataset.action === 'goToTab');
+      const goToBtn = Array.from(item.querySelectorAll('.panel-btn-icon')).find(
+        btn => btn.dataset.action === 'goToTab'
+      );
 
       expect(goToBtn).toBeUndefined();
     });
@@ -336,8 +336,9 @@ describe('PanelUIBuilder', () => {
       const tab = { id: 'qt-1', title: 'Test', url: 'https://test.com' };
       const item = PanelUIBuilder.renderQuickTabItem(tab, false);
 
-      const minBtn = Array.from(item.querySelectorAll('.panel-btn-icon'))
-        .find(btn => btn.dataset.action === 'minimize');
+      const minBtn = Array.from(item.querySelectorAll('.panel-btn-icon')).find(
+        btn => btn.dataset.action === 'minimize'
+      );
 
       expect(minBtn).not.toBeNull();
       expect(minBtn.textContent).toBe('➖');
@@ -348,8 +349,9 @@ describe('PanelUIBuilder', () => {
       const tab = { id: 'qt-2', title: 'Test', url: 'https://test.com' };
       const item = PanelUIBuilder.renderQuickTabItem(tab, true);
 
-      const restoreBtn = Array.from(item.querySelectorAll('.panel-btn-icon'))
-        .find(btn => btn.dataset.action === 'restore');
+      const restoreBtn = Array.from(item.querySelectorAll('.panel-btn-icon')).find(
+        btn => btn.dataset.action === 'restore'
+      );
 
       expect(restoreBtn).not.toBeNull();
       expect(restoreBtn.textContent).toBe('↑');
@@ -363,10 +365,12 @@ describe('PanelUIBuilder', () => {
       const activeItem = PanelUIBuilder.renderQuickTabItem(activeTab, false);
       const minItem = PanelUIBuilder.renderQuickTabItem(minTab, true);
 
-      const activeCloseBtn = Array.from(activeItem.querySelectorAll('.panel-btn-icon'))
-        .find(btn => btn.dataset.action === 'close');
-      const minCloseBtn = Array.from(minItem.querySelectorAll('.panel-btn-icon'))
-        .find(btn => btn.dataset.action === 'close');
+      const activeCloseBtn = Array.from(activeItem.querySelectorAll('.panel-btn-icon')).find(
+        btn => btn.dataset.action === 'close'
+      );
+      const minCloseBtn = Array.from(minItem.querySelectorAll('.panel-btn-icon')).find(
+        btn => btn.dataset.action === 'close'
+      );
 
       expect(activeCloseBtn).not.toBeNull();
       expect(activeCloseBtn.textContent).toBe('✕');
@@ -380,8 +384,9 @@ describe('PanelUIBuilder', () => {
       const tab = { id: 'qt-1', title: 'Test', url: 'https://test.com' };
       const item = PanelUIBuilder.renderQuickTabItem(tab, true);
 
-      const minBtn = Array.from(item.querySelectorAll('.panel-btn-icon'))
-        .find(btn => btn.dataset.action === 'minimize');
+      const minBtn = Array.from(item.querySelectorAll('.panel-btn-icon')).find(
+        btn => btn.dataset.action === 'minimize'
+      );
 
       expect(minBtn).toBeUndefined();
     });
@@ -390,8 +395,9 @@ describe('PanelUIBuilder', () => {
       const tab = { id: 'qt-1', title: 'Test', url: 'https://test.com' };
       const item = PanelUIBuilder.renderQuickTabItem(tab, false);
 
-      const restoreBtn = Array.from(item.querySelectorAll('.panel-btn-icon'))
-        .find(btn => btn.dataset.action === 'restore');
+      const restoreBtn = Array.from(item.querySelectorAll('.panel-btn-icon')).find(
+        btn => btn.dataset.action === 'restore'
+      );
 
       expect(restoreBtn).toBeUndefined();
     });
@@ -415,8 +421,19 @@ describe('PanelUIBuilder', () => {
 
     it('should handle all mapped icon types', () => {
       const icons = [
-        'fingerprint', 'briefcase', 'dollar', 'cart', 'circle', 'gift',
-        'vacation', 'food', 'fruit', 'pet', 'tree', 'chill', 'fence'
+        'fingerprint',
+        'briefcase',
+        'dollar',
+        'cart',
+        'circle',
+        'gift',
+        'vacation',
+        'food',
+        'fruit',
+        'pet',
+        'tree',
+        'chill',
+        'fence'
       ];
 
       icons.forEach(icon => {
@@ -443,7 +460,7 @@ describe('PanelUIBuilder', () => {
     it('should create panel with container section and tab items', () => {
       const state = { left: 20, top: 100, width: 350, height: 500, isOpen: true };
       const panel = PanelUIBuilder.createPanel(state);
-      
+
       const containerInfo = { name: 'Test', icon: '📁', color: 'blue' };
       const containerState = {
         tabs: [
@@ -451,13 +468,13 @@ describe('PanelUIBuilder', () => {
           { id: '2', title: 'Tab 2', url: 'https://b.com', minimized: true }
         ]
       };
-      
+
       const section = PanelUIBuilder.renderContainerSection(
         'firefox-default',
         containerInfo,
         containerState
       );
-      
+
       const containersList = panel.querySelector('#panel-containersList');
       containersList.appendChild(section);
 
