@@ -49,7 +49,7 @@ export class LogHandler {
   /**
    * Get background script logs
    */
-  async handleGetLogs(_message, _sender) {
+  handleGetLogs(_message, _sender) {
     return { logs: [...this.logBuffer] };
   }
 
@@ -79,8 +79,9 @@ export class LogHandler {
    * Export logs to file via downloads API
    * @param {string} logText - Log content
    * @param {string} filename - Target filename
+   * @returns {Promise<void>} Resolves when download completes
    */
-  async exportLogsToFile(logText, filename) {
+  exportLogsToFile(logText, filename) {
     if (!this.downloadsAPI || !this.downloadsAPI.download) {
       throw new Error('Downloads API not available');
     }
@@ -89,9 +90,12 @@ export class LogHandler {
     const url = URL.createObjectURL(blob);
 
     return new Promise((resolve, reject) => {
+      let currentDownloadId = null;
       const timeoutId = setTimeout(() => {
         URL.revokeObjectURL(url);
-        this.pendingDownloads.delete(downloadId);
+        if (currentDownloadId) {
+          this.pendingDownloads.delete(currentDownloadId);
+        }
         reject(new Error('Download timeout after 60 seconds'));
       }, 60000);
 
@@ -102,6 +106,7 @@ export class LogHandler {
           saveAs: true
         },
         downloadId => {
+          currentDownloadId = downloadId;
           if (!downloadId) {
             clearTimeout(timeoutId);
             URL.revokeObjectURL(url);

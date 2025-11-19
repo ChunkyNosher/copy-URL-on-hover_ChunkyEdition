@@ -129,17 +129,18 @@ let failed = 0;
 
 for (const rule of rules) {
   const result = rule.check();
-  if (result.pass) {
-    console.log(`✅ ${rule.name}`);
-    if (result.message) {
-      console.log(`   ℹ️  ${result.message}`);
-    }
-    passed++;
-  } else {
+  if (!result.pass) {
     console.error(`❌ ${rule.name}`);
     console.error(`   ${result.message}`);
     failed++;
+    continue;
   }
+
+  console.log(`✅ ${rule.name}`);
+  if (result.message) {
+    console.log(`   ℹ️  ${result.message}`);
+  }
+  passed++;
 }
 
 console.log(`\n📊 Results: ${passed} passed, ${failed} failed\n`);

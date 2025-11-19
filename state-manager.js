@@ -151,38 +151,12 @@ export class QuickTabStateManager {
 
     try {
       // Try session storage first (faster)
-      if (this.hasSessionStorage) {
-        const sessionResult = await browser.storage.session.get(this.sessionKey);
-        if (sessionResult && sessionResult[this.sessionKey]) {
-          const containerStates = sessionResult[this.sessionKey];
-          if (containerStates[cookieStoreId]) {
-            this.log(
-              `Loaded ${containerStates[cookieStoreId].tabs.length} tabs from session storage`
-            );
-            return containerStates[cookieStoreId];
-          }
-        }
-      }
+      const sessionState = await this._loadFromSession(cookieStoreId);
+      if (sessionState) return sessionState;
 
       // Fall back to sync storage
-      const syncResult = await browser.storage.sync.get(this.stateKey);
-      if (syncResult && syncResult[this.stateKey]) {
-        const containerStates = syncResult[this.stateKey];
-
-        // Populate session storage for faster future reads
-        if (this.hasSessionStorage) {
-          await browser.storage.session
-            .set({
-              [this.sessionKey]: containerStates
-            })
-            .catch(err => console.error('Error populating session storage:', err));
-        }
-
-        if (containerStates[cookieStoreId]) {
-          this.log(`Loaded ${containerStates[cookieStoreId].tabs.length} tabs from sync storage`);
-          return containerStates[cookieStoreId];
-        }
-      }
+      const syncState = await this._loadFromSync(cookieStoreId);
+      if (syncState) return syncState;
 
       // No state found for this container
       this.log(`No saved state found for ${cookieStoreId}, returning empty state`);
@@ -191,6 +165,51 @@ export class QuickTabStateManager {
       console.error('[QuickTabStateManager] Error loading Quick Tab state:', err);
       return { tabs: [], timestamp: Date.now() };
     }
+  }
+
+  /**
+   * Load state from session storage
+   * @private
+   */
+  async _loadFromSession(cookieStoreId) {
+    if (!this.hasSessionStorage) return null;
+
+    const sessionResult = await browser.storage.session.get(this.sessionKey);
+    const containerStates = sessionResult?.[this.sessionKey];
+    const containerState = containerStates?.[cookieStoreId];
+
+    if (containerState) {
+      this.log(`Loaded ${containerState.tabs.length} tabs from session storage`);
+      return containerState;
+    }
+
+    return null;
+  }
+
+  /**
+   * Load state from sync storage
+   * @private
+   */
+  async _loadFromSync(cookieStoreId) {
+    const syncResult = await browser.storage.sync.get(this.stateKey);
+    const containerStates = syncResult?.[this.stateKey];
+
+    if (!containerStates) return null;
+
+    // Populate session storage for faster future reads
+    if (this.hasSessionStorage) {
+      await browser.storage.session
+        .set({ [this.sessionKey]: containerStates })
+        .catch(err => console.error('Error populating session storage:', err));
+    }
+
+    const containerState = containerStates[cookieStoreId];
+    if (containerState) {
+      this.log(`Loaded ${containerState.tabs.length} tabs from sync storage`);
+      return containerState;
+    }
+
+    return null;
   }
 
   /**

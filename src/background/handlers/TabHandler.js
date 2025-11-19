@@ -38,7 +38,7 @@ export class TabHandler {
   /**
    * Save Quick Tab state for browser tab
    */
-  async handleSaveState(message, sender) {
+  handleSaveState(message, sender) {
     const tabId = sender.tab?.id;
 
     if (!tabId) {
@@ -52,7 +52,7 @@ export class TabHandler {
   /**
    * Get Quick Tab state for browser tab
    */
-  async handleGetState(_message, sender) {
+  handleGetState(_message, sender) {
     const tabId = sender.tab?.id;
 
     if (!tabId) {
@@ -66,7 +66,7 @@ export class TabHandler {
   /**
    * Clear Quick Tab state for browser tab
    */
-  async handleClearState(_message, sender) {
+  handleClearState(_message, sender) {
     const tabId = sender.tab?.id;
 
     if (!tabId) {
@@ -80,7 +80,7 @@ export class TabHandler {
   /**
    * Legacy create handler (redirects to modern handler)
    */
-  async handleLegacyCreate(message, _sender) {
+  handleLegacyCreate(_message, _sender) {
     console.log('[TabHandler] Legacy createQuickTab action - use CREATE_QUICK_TAB instead');
 
     // Just acknowledge - actual creation should use CREATE_QUICK_TAB

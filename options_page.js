@@ -98,16 +98,17 @@ async function updateStorageInfo() {
     const syncResult = await browser.storage.sync.get(STATE_KEY);
     const state = syncResult[STATE_KEY];
 
-    if (state && state.tabs) {
-      document.getElementById('currentTabCount').textContent = state.tabs.length;
-
-      if (state.timestamp) {
-        const date = new Date(state.timestamp);
-        document.getElementById('lastUpdated').textContent = date.toLocaleString();
-      }
-    } else {
+    if (!state || !state.tabs) {
       document.getElementById('currentTabCount').textContent = '0';
       document.getElementById('lastUpdated').textContent = 'Never';
+      return;
+    }
+
+    document.getElementById('currentTabCount').textContent = state.tabs.length;
+
+    if (state.timestamp) {
+      const date = new Date(state.timestamp);
+      document.getElementById('lastUpdated').textContent = date.toLocaleString();
     }
   } catch (err) {
     console.error('Error loading storage info:', err);
