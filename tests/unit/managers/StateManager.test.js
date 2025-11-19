@@ -572,4 +572,104 @@ describe('StateManager', () => {
       expect(listener).toHaveBeenCalledWith({ count: 1 });
     });
   });
+
+  describe('Edge Cases and Error Handling', () => {
+    test('update() should warn when updating non-existent Quick Tab', () => {
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      const quickTab = QuickTab.create({
+        id: 'qt-non-existent',
+        url: 'https://example.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      // Try to update without adding first
+      manager.update(quickTab);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[StateManager] Cannot update non-existent Quick Tab: qt-non-existent'
+      );
+      expect(manager.has('qt-non-existent')).toBe(false);
+
+      consoleSpy.mockRestore();
+    });
+
+    test('hydrate() should throw error for non-array input', () => {
+      expect(() => {
+        manager.hydrate('not-an-array');
+      }).toThrow('StateManager.hydrate() requires array of QuickTab instances');
+
+      expect(() => {
+        manager.hydrate(null);
+      }).toThrow('StateManager.hydrate() requires array of QuickTab instances');
+
+      expect(() => {
+        manager.hydrate({ key: 'value' });
+      }).toThrow('StateManager.hydrate() requires array of QuickTab instances');
+    });
+
+    test('hydrate() should skip non-QuickTab instances', () => {
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      const validQuickTab = QuickTab.create({
+        id: 'qt-valid',
+        url: 'https://example.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      const invalidItem = { id: 'invalid', url: 'test' };
+
+      manager.hydrate([validQuickTab, invalidItem, null, undefined]);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[StateManager] Skipping non-QuickTab instance during hydration'
+      );
+      expect(manager.count()).toBe(1);
+      expect(manager.has('qt-valid')).toBe(true);
+      expect(manager.has('invalid')).toBe(false);
+
+      consoleSpy.mockRestore();
+    });
+
+    test('clear() should work when state is already empty', () => {
+      expect(manager.count()).toBe(0);
+
+      const listener = jest.fn();
+      eventBus.on('state:cleared', listener);
+
+      manager.clear();
+
+      expect(manager.count()).toBe(0);
+      expect(listener).toHaveBeenCalled();
+    });
+
+    test('cleanupDeadTabs() should handle empty state', () => {
+      expect(manager.count()).toBe(0);
+
+      const listener = jest.fn();
+      eventBus.on('state:cleaned', listener);
+
+      manager.cleanupDeadTabs([100, 200]);
+
+      // Event should not be emitted when nothing cleaned
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('cleanupDeadTabs() should handle tabs with no solo/mute arrays', () => {
+      const quickTab = QuickTab.create({
+        id: 'qt-no-arrays',
+        url: 'https://example.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      manager.add(quickTab);
+      manager.cleanupDeadTabs([100, 200]);
+
+      // Should not throw, just complete
+      expect(manager.count()).toBe(1);
+    });
+  });
 });
