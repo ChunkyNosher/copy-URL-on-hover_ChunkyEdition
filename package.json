@@ -34,7 +34,7 @@
     "ci:lint": "npm run lint && npm run format:check",
     "ci:test": "npm run test:unit && npm run test:integration",
     "ci:build": "npm run build:prod && npm run build:check-size",
-    "ci:full": "npm run ci:lint && npm run ci:test && npm run ci:build"
+    "ci:full": "npm run ci:lint && npm run ci:test && npm run ci:build",
     "test:extension": "playwright test --config=playwright.config.extension.js",
     "test:extension:chrome": "playwright test --config=playwright.config.extension.js --project=chromium-extension",
     "test:extension:firefox": "playwright test --config=playwright.config.firefox.js --project=firefox-extension",
