@@ -5,10 +5,10 @@
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
+import { MessageRouter } from './src/background/MessageRouter.js';
 import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
-import { MessageRouter } from './src/background/MessageRouter.js';
 
 const runtimeAPI =
   (typeof browser !== 'undefined' && browser.runtime) ||
@@ -21,6 +21,21 @@ const downloadsAPI =
   null;
 
 const EXTENSION_ID = runtimeAPI?.id || null;
+
+function isAuthorizedExtensionSender(sender) {
+  if (!sender || !sender.id) {
+    return false;
+  }
+
+  if (!EXTENSION_ID) {
+    console.warn(
+      '[Background] Extension ID not resolved - defaulting to optimistic sender validation'
+    );
+    return true;
+  }
+
+  return sender.id === EXTENSION_ID;
+}
 
 // ==================== LOG CAPTURE FOR EXPORT ====================
 // Log buffer for background script
@@ -42,7 +57,11 @@ function addBackgroundLog(type, ...args) {
   });
 }
 
-
+function clearBackgroundLogs() {
+  const cleared = BACKGROUND_LOG_BUFFER.length;
+  BACKGROUND_LOG_BUFFER.length = 0;
+  return cleared;
+}
 
 // Override console methods to capture logs
 const originalConsoleLog = console.log;
@@ -734,11 +753,6 @@ const quickTabHandler = new QuickTabHandler(
 
 const tabHandler = new TabHandler(quickTabStates, browser);
 
-// Set initialization flag for QuickTabHandler if state is already initialized
-if (isInitialized) {
-  quickTabHandler.setInitialized(true);
-}
-
 // Register log handlers (3 actions)
 messageRouter.register('CLEAR_CONSOLE_LOGS', (msg, sender) =>
   logHandler.handleClearLogs(msg, sender)
@@ -798,6 +812,914 @@ console.log('[Background] MessageRouter initialized with 21 registered handlers'
 
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
+
+  // ==================== LOG EXPORT HANDLER ====================
+  if (message.action === 'CLEAR_CONSOLE_LOGS') {
+    if (!isAuthorizedExtensionSender(sender)) {
+      console.error('[Background] Unauthorized CLEAR_CONSOLE_LOGS sender', sender);
+      sendResponse({ success: false, error: 'Unauthorized sender' });
+      return true;
+    }
+
+    const clearedBackgroundEntries = clearBackgroundLogs();
+    let clearedTabs = 0;
+
+    if (browser?.tabs?.query) {
+      try {
+        const tabs = await browser.tabs.query({});
+        const results = await Promise.allSettled(
+          tabs.map(tab =>
+            browser.tabs
+              .sendMessage(tab.id, {
+                action: 'CLEAR_CONTENT_LOGS'
+              })
+              .catch(() => ({ success: false }))
+          )
+        );
+
+        clearedTabs = results.filter(
+          result => result.status === 'fulfilled' && result.value?.success
+        ).length;
+      } catch (error) {
+        console.warn('[Background] Failed to broadcast CLEAR_CONTENT_LOGS to tabs:', error);
+      }
+    }
+
+    sendResponse({ success: true, clearedTabs, clearedBackgroundEntries });
+    return true;
+  }
+
+  // Handle log export requests from popup
+  if (message.action === 'GET_BACKGROUND_LOGS') {
+    sendResponse({ logs: [...BACKGROUND_LOG_BUFFER] });
+    return true;
+  }
+
+  if (message.action === 'EXPORT_LOGS') {
+    if (!isAuthorizedExtensionSender(sender)) {
+      console.error('[Background] Unauthorized EXPORT_LOGS sender', sender);
+      sendResponse({ success: false, error: 'Unauthorized sender' });
+      return true;
+    }
+
+    if (typeof message.logText !== 'string' || typeof message.filename !== 'string') {
+      console.error('[Background] Invalid EXPORT_LOGS payload', {
+        hasText: typeof message.logText === 'string',
+        hasFilename: typeof message.filename === 'string'
+      });
+      sendResponse({ success: false, error: 'Invalid log export payload' });
+      return true;
+    }
+
+    handleLogExport(message.logText, message.filename)
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch(error => {
+        console.error('[Background] Log export failed:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+
+    return true; // Async response
+  }
+  // ==================== END LOG EXPORT HANDLER ====================
+
+  // ==================== PROMISE-BASED SAVE QUEUE HANDLER ====================
+  // NEW: Handle batch updates from save queue
+  if (message.action === 'BATCH_QUICK_TAB_UPDATE') {
+    try {
+      const result = await stateCoordinator.processBatchUpdate(
+        tabId,
+        message.operations,
+        message.tabInstanceId
+      );
+      sendResponse(result); // { success: true }
+      return true; // Keep channel open for async response
+    } catch (err) {
+      console.error('[Background] Batch update failed:', err);
+      sendResponse({ success: false, error: err.message });
+      return true;
+    }
+  }
+  // ==================== END SAVE QUEUE HANDLER ====================
+
+  // ==================== REAL-TIME STATE COORDINATION ====================
+
+  // Handle Quick Tab creation (container-aware)
+  if (message.action === 'CREATE_QUICK_TAB') {
+    console.log(
+      '[Background] Received create Quick Tab:',
+      message.url,
+      'ID:',
+      message.id,
+      'Container:',
+      message.cookieStoreId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Check if tab already exists in global state by ID (not URL)
+    // This allows multiple Quick Tabs with the same URL
+    const existingIndex = containerState.tabs.findIndex(t => t.id === message.id);
+
+    if (existingIndex !== -1) {
+      // Update existing entry
+      containerState.tabs[existingIndex] = {
+        id: message.id,
+        url: message.url,
+        left: message.left,
+        top: message.top,
+        width: message.width,
+        height: message.height,
+        pinnedToUrl: message.pinnedToUrl || null,
+        title: message.title || 'Quick Tab',
+        minimized: message.minimized || false
+      };
+    } else {
+      // Add new entry
+      containerState.tabs.push({
+        id: message.id,
+        url: message.url,
+        left: message.left,
+        top: message.top,
+        width: message.width,
+        height: message.height,
+        pinnedToUrl: message.pinnedToUrl || null,
+        title: message.title || 'Quick Tab',
+        minimized: message.minimized || false
+      });
+    }
+
+    containerState.lastUpdate = Date.now();
+
+    // v1.5.8.15 FIX: Save with proper format including saveId for transaction tracking
+    const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const stateToSave = {
+      containers: globalQuickTabState.containers,
+      saveId: saveId,
+      timestamp: Date.now()
+    };
+
+    // Save to storage for persistence
+    browser.storage.sync
+      .set({
+        quick_tabs_state_v2: stateToSave
+      })
+      .catch(err => {
+        console.error('[Background] Error saving created tab to storage:', err);
+      });
+
+    // Also save to session storage if available
+    if (typeof browser.storage.session !== 'undefined') {
+      browser.storage.session
+        .set({
+          quick_tabs_session: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving to session storage:', err);
+        });
+    }
+
+    // Broadcast ONLY to tabs in the same container
+    browser.tabs.query({ cookieStoreId: cookieStoreId }).then(tabs => {
+      tabs.forEach(tab => {
+        browser.tabs
+          .sendMessage(tab.id, {
+            action: 'CREATE_QUICK_TAB_FROM_BACKGROUND',
+            id: message.id,
+            url: message.url,
+            left: message.left,
+            top: message.top,
+            width: message.width,
+            height: message.height,
+            title: message.title,
+            cookieStoreId: cookieStoreId
+          })
+          .catch(() => {});
+      });
+    });
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // Handle Quick Tab close (container-aware)
+  if (message.action === 'CLOSE_QUICK_TAB') {
+    console.log(
+      '[Background] Received close Quick Tab:',
+      message.url,
+      'ID:',
+      message.id,
+      'Container:',
+      message.cookieStoreId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Check if container state exists
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      sendResponse({ success: false, error: 'Container state not found' });
+      return true;
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Remove from global state by ID (not URL) to avoid closing wrong duplicate
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs.splice(tabIndex, 1);
+      containerState.lastUpdate = Date.now();
+
+      // Broadcast to all tabs in the SAME container
+      browser.tabs.query({ cookieStoreId: cookieStoreId }).then(tabs => {
+        tabs.forEach(tab => {
+          browser.tabs
+            .sendMessage(tab.id, {
+              action: 'CLOSE_QUICK_TAB_FROM_BACKGROUND',
+              id: message.id,
+              url: message.url,
+              cookieStoreId: cookieStoreId
+            })
+            .catch(() => {});
+        });
+      });
+
+      // v1.5.8.15 FIX: Save with proper format including saveId
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
+      // Save updated state to storage
+      browser.storage.sync
+        .set({
+          quick_tabs_state_v2: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving after close:', err);
+        });
+
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session
+          .set({
+            quick_tabs_session: stateToSave
+          })
+          .catch(err => {
+            console.error('[Background] Error saving to session storage:', err);
+          });
+      }
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // Handle position and size updates from content scripts (container-aware)
+  // v1.5.8.14 - Enhanced with transaction ID (saveId) to prevent race conditions
+  if (
+    message.action === 'UPDATE_QUICK_TAB_POSITION' ||
+    message.action === 'UPDATE_QUICK_TAB_POSITION_FINAL'
+  ) {
+    console.log(
+      '[Background] Received position update:',
+      message.url,
+      'ID:',
+      message.id,
+      message.left,
+      message.top,
+      'Container:',
+      message.cookieStoreId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state by ID (not URL) to avoid updating wrong duplicate
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs[tabIndex].left = message.left;
+      containerState.tabs[tabIndex].top = message.top;
+      if (message.width !== undefined) containerState.tabs[tabIndex].width = message.width;
+      if (message.height !== undefined) containerState.tabs[tabIndex].height = message.height;
+    } else {
+      // Tab doesn't exist in global state - add it
+      containerState.tabs.push({
+        id: message.id,
+        url: message.url,
+        left: message.left,
+        top: message.top,
+        width: message.width,
+        height: message.height
+      });
+    }
+    containerState.lastUpdate = Date.now();
+
+    // Broadcast to tabs in the SAME container immediately for real-time sync
+    browser.tabs.query({ cookieStoreId: cookieStoreId }).then(tabs => {
+      tabs.forEach(tab => {
+        browser.tabs
+          .sendMessage(tab.id, {
+            action: 'UPDATE_QUICK_TAB_FROM_BACKGROUND',
+            id: message.id,
+            url: message.url,
+            left: message.left,
+            top: message.top,
+            width: message.width,
+            height: message.height,
+            cookieStoreId: cookieStoreId
+          })
+          .catch(() => {
+            // Content script might not be loaded in this tab
+          });
+      });
+    });
+
+    // v1.5.8.15 FIX: Save with proper container wrapper
+    const stateToSave = {
+      containers: globalQuickTabState.containers,
+      saveId: message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now()
+    };
+
+    // Also save to storage.sync for persistence (async, non-blocking)
+    browser.storage.sync
+      .set({
+        quick_tabs_state_v2: stateToSave
+      })
+      .catch(err => {
+        console.error('[Background] Error saving to storage.sync:', err);
+      });
+
+    // Also save to session storage if available
+    if (typeof browser.storage.session !== 'undefined') {
+      browser.storage.session
+        .set({
+          quick_tabs_session: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving to session storage:', err);
+        });
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // Handle Quick Tab pin/unpin updates (container-aware)
+  if (message.action === 'UPDATE_QUICK_TAB_PIN') {
+    console.log(
+      '[Background] Received pin update:',
+      message.id,
+      'pinnedToUrl:',
+      message.pinnedToUrl,
+      'Container:',
+      message.cookieStoreId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs[tabIndex].pinnedToUrl = message.pinnedToUrl;
+      containerState.lastUpdate = Date.now();
+
+      // v1.5.8.15 FIX: Save with proper format
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
+      // Save to storage
+      browser.storage.sync
+        .set({
+          quick_tabs_state_v2: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving pin state to storage:', err);
+        });
+
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session
+          .set({
+            quick_tabs_session: stateToSave
+          })
+          .catch(err => {
+            console.error('[Background] Error saving to session storage:', err);
+          });
+      }
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // v1.5.9.13 - Handle Quick Tab solo state updates (container-aware)
+  if (message.action === 'UPDATE_QUICK_TAB_SOLO') {
+    console.log(
+      '[Background] Received solo update:',
+      message.id,
+      'soloedOnTabs:',
+      message.soloedOnTabs,
+      'Container:',
+      message.cookieStoreId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs[tabIndex].soloedOnTabs = message.soloedOnTabs;
+      containerState.tabs[tabIndex].mutedOnTabs = []; // Clear mute state
+      containerState.lastUpdate = Date.now();
+
+      // Save with transaction ID
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
+      // Save to storage
+      browser.storage.sync
+        .set({
+          quick_tabs_state_v2: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving solo state to storage:', err);
+        });
+
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session
+          .set({
+            quick_tabs_session: stateToSave
+          })
+          .catch(err => {
+            console.error('[Background] Error saving to session storage:', err);
+          });
+      }
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // v1.5.9.13 - Handle Quick Tab mute state updates (container-aware)
+  if (message.action === 'UPDATE_QUICK_TAB_MUTE') {
+    console.log(
+      '[Background] Received mute update:',
+      message.id,
+      'mutedOnTabs:',
+      message.mutedOnTabs,
+      'Container:',
+      message.cookieStoreId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs[tabIndex].mutedOnTabs = message.mutedOnTabs;
+      containerState.tabs[tabIndex].soloedOnTabs = []; // Clear solo state
+      containerState.lastUpdate = Date.now();
+
+      // Save with transaction ID
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
+      // Save to storage
+      browser.storage.sync
+        .set({
+          quick_tabs_state_v2: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving mute state to storage:', err);
+        });
+
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session
+          .set({
+            quick_tabs_session: stateToSave
+          })
+          .catch(err => {
+            console.error('[Background] Error saving to session storage:', err);
+          });
+      }
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // v1.5.9.13 - Handle tab ID requests from content scripts
+  // Enhanced with fallback for cases where sender.tab is not populated
+  if (message.action === 'GET_CURRENT_TAB_ID') {
+    // FIRST: Try sender.tab (standard approach for content scripts)
+    if (sender.tab && sender.tab.id) {
+      console.log(
+        `[Background] GET_CURRENT_TAB_ID: Returning tab ID ${sender.tab.id} from sender.tab`
+      );
+      sendResponse({ tabId: sender.tab.id });
+      return true;
+    }
+
+    // FALLBACK: Query active tab in current window
+    // This handles cases where sender.tab is not populated during initialization
+    browser.tabs
+      .query({ active: true, currentWindow: true })
+      .then(tabs => {
+        if (tabs && tabs.length > 0 && tabs[0].id) {
+          console.log(
+            `[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`
+          );
+          sendResponse({ tabId: tabs[0].id });
+        } else {
+          console.warn('[Background] GET_CURRENT_TAB_ID: Could not determine tab ID');
+          sendResponse({ tabId: null });
+        }
+      })
+      .catch(err => {
+        console.error('[Background] GET_CURRENT_TAB_ID: Error querying tabs:', err);
+        sendResponse({ tabId: null });
+      });
+
+    return true; // Keep channel open for async response
+  }
+
+  // v1.5.9.8 - FIX: Handle Quick Tab minimize/restore state updates (container-aware)
+  if (message.action === 'UPDATE_QUICK_TAB_MINIMIZE') {
+    console.log(
+      '[Background] Received minimize state update:',
+      message.id,
+      'minimized:',
+      message.minimized,
+      'saveId:',
+      message.saveId
+    );
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs[tabIndex].minimized = message.minimized;
+      containerState.lastUpdate = Date.now();
+
+      // Save with transaction ID
+      const saveId = message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const stateToSave = {
+        containers: globalQuickTabState.containers,
+        saveId: saveId,
+        timestamp: Date.now()
+      };
+
+      // Save to storage
+      browser.storage.sync
+        .set({
+          quick_tabs_state_v2: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving minimize state to storage:', err);
+        });
+
+      // Also save to session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        browser.storage.session
+          .set({
+            quick_tabs_session: stateToSave
+          })
+          .catch(err => {
+            console.error('[Background] Error saving minimize to session storage:', err);
+          });
+      }
+
+      console.log(`[Background] Updated minimize state for ${message.id}: ${message.minimized}`);
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (
+    message.action === 'UPDATE_QUICK_TAB_SIZE' ||
+    message.action === 'UPDATE_QUICK_TAB_SIZE_FINAL'
+  ) {
+    console.log('[Background] Received size update:', message.url, message.width, message.height);
+
+    // Wait for initialization if needed
+    if (!isInitialized) {
+      await initializeGlobalState();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    // Initialize container state if it doesn't exist
+    if (!globalQuickTabState.containers[cookieStoreId]) {
+      globalQuickTabState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
+    }
+
+    const containerState = globalQuickTabState.containers[cookieStoreId];
+
+    // Update global state by ID
+    const tabIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    if (tabIndex !== -1) {
+      containerState.tabs[tabIndex].width = message.width;
+      containerState.tabs[tabIndex].height = message.height;
+      if (message.left !== undefined) containerState.tabs[tabIndex].left = message.left;
+      if (message.top !== undefined) containerState.tabs[tabIndex].top = message.top;
+    } else {
+      containerState.tabs.push({
+        id: message.id,
+        url: message.url,
+        width: message.width,
+        height: message.height,
+        left: message.left,
+        top: message.top
+      });
+    }
+    containerState.lastUpdate = Date.now();
+
+    // Broadcast to tabs in the SAME container immediately
+    browser.tabs.query({ cookieStoreId: cookieStoreId }).then(tabs => {
+      tabs.forEach(tab => {
+        browser.tabs
+          .sendMessage(tab.id, {
+            action: 'UPDATE_QUICK_TAB_FROM_BACKGROUND',
+            id: message.id,
+            url: message.url,
+            width: message.width,
+            height: message.height,
+            left: message.left,
+            top: message.top,
+            cookieStoreId: cookieStoreId
+          })
+          .catch(() => {
+            // Content script might not be loaded
+          });
+      });
+    });
+
+    // v1.5.8.14 - Include saveId in storage for transaction tracking
+    const stateToSave = {
+      containers: globalQuickTabState.containers,
+      saveId: message.saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now()
+    };
+
+    // Save to storage.sync
+    browser.storage.sync
+      .set({
+        quick_tabs_state_v2: stateToSave
+      })
+      .catch(err => {
+        console.error('[Background] Error saving size to storage.sync:', err);
+      });
+
+    // Save to session storage if available
+    if (typeof browser.storage.session !== 'undefined') {
+      browser.storage.session
+        .set({
+          quick_tabs_session: stateToSave
+        })
+        .catch(err => {
+          console.error('[Background] Error saving to session storage:', err);
+        });
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+  // ==================== END REAL-TIME STATE COORDINATION ====================
+
+  if (message.action === 'openTab') {
+    chrome.tabs.create({
+      url: message.url,
+      active: message.switchFocus
+    });
+  } else if (message.action === 'saveQuickTabState' && tabId) {
+    // Store Quick Tab state for this tab
+    quickTabStates.set(tabId, {
+      quickTabs: message.quickTabs,
+      timestamp: Date.now()
+    });
+  } else if (message.action === 'getQuickTabState' && tabId) {
+    // Retrieve Quick Tab state for this tab
+    const state = quickTabStates.get(tabId);
+    sendResponse({
+      quickTabs: state?.quickTabs || []
+    });
+    return true; // Keep channel open for async response
+  } else if (message.action === 'clearQuickTabState' && tabId) {
+    // Clear Quick Tab state for this tab
+    quickTabStates.delete(tabId);
+  } else if (message.action === 'createQuickTab') {
+    // Forward Quick Tab creation message to the sidebar
+    // The sidebar panel listens for this message via browser.runtime.onMessage
+    console.log('[Background] Forwarding createQuickTab to sidebar:', message);
+
+    // Send message to the sidebar extension page
+    // Note: This uses the broadcast approach - all listeners will receive it
+    browser.runtime
+      .sendMessage({
+        action: 'createQuickTab',
+        url: message.url,
+        title: message.title || document.title,
+        sourceTabId: tabId // Tell sidebar which tab it came from (optional)
+      })
+      .then(response => {
+        console.log('[Background] Sidebar responded:', response);
+        sendResponse({ success: true });
+      })
+      .catch(err => {
+        console.error('[Background] Error forwarding to sidebar:', err);
+        // Still send success response to content script
+        // The content script already showed the notification
+        sendResponse({ success: true });
+      });
+
+    // Return true to indicate we'll respond asynchronously
+    return true;
+  }
+});
+
+// ==================== LOG EXPORT BACKGROUND HANDLER (v1.5.9.7) ====================
+async function handleLogExport(logText, filename) {
+  if (!downloadsAPI || typeof downloadsAPI.download !== 'function') {
+    throw new Error('Downloads API unavailable');
+  }
+
+  if (!filename || typeof filename !== 'string') {
+    throw new Error('Missing export filename');
+  }
+
+  if (typeof logText !== 'string' || logText.length === 0) {
+    throw new Error('Log payload is empty');
+  }
+
+  const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  console.log(
+    `[Background] Prepared log export ${filename} (${blob.size} bytes / ${(blob.size / 1024).toFixed(2)} KB)`
+  );
+
+  let revokeListenerActive = true;
+  let fallbackTimeoutId = null;
+  let revokeListener = null;
+  let activeDownloadId = null;
+
+  const cleanup = reason => {
+    if (!revokeListenerActive) {
+      return;
+    }
+
+    revokeListenerActive = false;
+
+    try {
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.warn('[Background] Failed to revoke Blob URL during cleanup:', error);
+    }
+
+    if (revokeListener && downloadsAPI?.onChanged?.removeListener) {
+      downloadsAPI.onChanged.removeListener(revokeListener);
+    }
+
+    if (fallbackTimeoutId) {
+      clearTimeout(fallbackTimeoutId);
+    }
+
+    const suffix = activeDownloadId !== null ? ` for download ${activeDownloadId}` : '';
+    console.log(`[Background] Blob URL revoked (${reason})${suffix}`);
+  };
+
+  try {
+    activeDownloadId = await downloadsAPI.download({
+      url: blobUrl,
+      filename: filename,
+      saveAs: true,
+      conflictAction: 'uniquify'
+    });
+
+    console.log(`✓ [Background] Download ${activeDownloadId} initiated for ${filename}`);
+
+    revokeListener = delta => {
+      if (delta.id !== activeDownloadId || !delta.state) {
+        return;
+      }
+
+      const currentState = delta.state.current;
+      console.log(`[Background] Download ${activeDownloadId} state: ${currentState}`);
+
+      if (currentState === 'complete') {
+        cleanup('complete');
+      } else if (currentState === 'interrupted') {
+        cleanup('interrupted');
+      }
+    };
+
+    downloadsAPI.onChanged.addListener(revokeListener);
+
+    fallbackTimeoutId = setTimeout(() => {
+      cleanup('timeout');
+    }, 60000);
+  } catch (error) {
+    cleanup('failed');
+    throw error;
+  }
+}
+// ==================== END LOG EXPORT BACKGROUND HANDLER ====================
 
 // ==================== KEYBOARD COMMAND LISTENER ====================
 // Handle keyboard shortcuts defined in manifest.json
