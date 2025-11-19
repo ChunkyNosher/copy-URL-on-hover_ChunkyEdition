@@ -473,6 +473,82 @@ jobs:
         run: npm run build
 
       # ====================================================================
+      # NEW STEP: Create Firefox Profile with Extension Pre-installed
+      # ====================================================================
+      - name: Create Firefox profile with extension
+        run: |
+          echo "=========================================="
+          echo "Creating Firefox Profile with Extension"
+          echo "=========================================="
+          
+          # Create Firefox profile directory
+          FIREFOX_PROFILE_DIR="${GITHUB_WORKSPACE}/firefox-profile"
+          mkdir -p "$FIREFOX_PROFILE_DIR"
+          
+          # Install Firefox if not already installed
+          if ! command -v firefox &> /dev/null; then
+            echo "Installing Firefox..."
+            sudo apt-get update
+            sudo apt-get install -y firefox
+          fi
+          
+          # Get absolute path to extension
+          EXTENSION_PATH="${GITHUB_WORKSPACE}/dist"
+          echo "Extension path: $EXTENSION_PATH"
+          
+          # Create Firefox profile
+          firefox -CreateProfile "copilot-testing $FIREFOX_PROFILE_DIR" -headless
+          
+          # Create user.js with preferences to allow unsigned extensions
+          cat > "$FIREFOX_PROFILE_DIR/user.js" << 'EOF'
+          // Allow unsigned extensions
+          user_pref("xpinstall.signatures.required", false);
+          user_pref("extensions.autoDisableScopes", 0);
+          user_pref("extensions.enabledScopes", 15);
+          
+          // Disable update checks
+          user_pref("app.update.enabled", false);
+          user_pref("app.update.auto", false);
+          
+          // Disable first-run pages
+          user_pref("browser.startup.homepage_override.mstone", "ignore");
+          user_pref("startup.homepage_welcome_url", "about:blank");
+          user_pref("startup.homepage_welcome_url.additional", "");
+          
+          // Enable extension debugging
+          user_pref("devtools.chrome.enabled", true);
+          user_pref("devtools.debugger.remote-enabled", true);
+          EOF
+          
+          # Install extension using web-ext
+          echo "Installing extension in Firefox profile..."
+          cd "$EXTENSION_PATH"
+          
+          # Get extension ID from manifest
+          EXTENSION_ID=$(node -p "require('./manifest.json').browser_specific_settings?.gecko?.id || require('./manifest.json').applications?.gecko?.id || 'copy-url-on-hover@chunky'")
+          echo "Extension ID: $EXTENSION_ID"
+          
+          # Create extensions directory in profile
+          mkdir -p "$FIREFOX_PROFILE_DIR/extensions"
+          
+          # Package extension as XPI
+          zip -r -FS "$FIREFOX_PROFILE_DIR/extensions/${EXTENSION_ID}.xpi" * -x "*.DS_Store"
+          
+          echo "✓ Firefox profile created at: $FIREFOX_PROFILE_DIR"
+          echo "✓ Extension installed with ID: $EXTENSION_ID"
+          
+          # Verify profile was created
+          if [ -d "$FIREFOX_PROFILE_DIR" ]; then
+            echo "✓ Profile directory exists"
+            ls -la "$FIREFOX_PROFILE_DIR"
+          else
+            echo "✗ Failed to create profile directory"
+            exit 1
+          fi
+          
+          echo "=========================================="
+
+      # ====================================================================
       # STEP 14: Verify Build Output
       # ====================================================================
       - name: Verify build artifacts
