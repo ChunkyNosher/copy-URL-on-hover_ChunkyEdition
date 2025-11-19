@@ -30,6 +30,38 @@ export class QuickTabHandler {
   }
 
   /**
+   * Helper method to update Quick Tab properties
+   * Reduces duplication across update handlers
+   * @param {Object} message - Message with id, cookieStoreId, and properties to update
+   * @param {Function} updateFn - Function to update tab properties
+   * @param {boolean} shouldSave - Whether to save to storage immediately
+   * @returns {Object} Success response
+   */
+  async updateQuickTabProperty(message, updateFn, shouldSave = true) {
+    if (!this.isInitialized) {
+      await this.initializeFn();
+    }
+
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    if (this.globalState.containers[cookieStoreId]) {
+      const containerState = this.globalState.containers[cookieStoreId];
+      const tab = containerState.tabs.find(t => t.id === message.id);
+
+      if (tab) {
+        updateFn(tab, message);
+        containerState.lastUpdate = Date.now();
+
+        if (shouldSave) {
+          await this.saveStateToStorage();
+        }
+      }
+    }
+
+    return { success: true };
+  }
+
+  /**
    * Handle batch Quick Tab update
    */
   async handleBatchUpdate(message, sender) {
@@ -140,153 +172,67 @@ export class QuickTabHandler {
   /**
    * Handle position update
    */
-  async handlePositionUpdate(message, _sender) {
-    if (!this.isInitialized) {
-      await this.initializeFn();
-    }
-
-    const cookieStoreId = message.cookieStoreId || 'firefox-default';
-
-    if (this.globalState.containers[cookieStoreId]) {
-      const containerState = this.globalState.containers[cookieStoreId];
-      const tab = containerState.tabs.find(t => t.id === message.id);
-
-      if (tab) {
-        tab.left = message.left;
-        tab.top = message.top;
-        containerState.lastUpdate = Date.now();
-
-        if (message.action === 'UPDATE_QUICK_TAB_POSITION_FINAL') {
-          await this.saveStateToStorage();
-        }
-      }
-    }
-
-    return { success: true };
+  handlePositionUpdate(message, _sender) {
+    const shouldSave = message.action === 'UPDATE_QUICK_TAB_POSITION_FINAL';
+    return this.updateQuickTabProperty(
+      message,
+      (tab, msg) => {
+        tab.left = msg.left;
+        tab.top = msg.top;
+      },
+      shouldSave
+    );
   }
 
   /**
    * Handle size update
    */
-  async handleSizeUpdate(message, _sender) {
-    if (!this.isInitialized) {
-      await this.initializeFn();
-    }
-
-    const cookieStoreId = message.cookieStoreId || 'firefox-default';
-
-    if (this.globalState.containers[cookieStoreId]) {
-      const containerState = this.globalState.containers[cookieStoreId];
-      const tab = containerState.tabs.find(t => t.id === message.id);
-
-      if (tab) {
-        tab.width = message.width;
-        tab.height = message.height;
-        containerState.lastUpdate = Date.now();
-
-        if (message.action === 'UPDATE_QUICK_TAB_SIZE_FINAL') {
-          await this.saveStateToStorage();
-        }
-      }
-    }
-
-    return { success: true };
+  handleSizeUpdate(message, _sender) {
+    const shouldSave = message.action === 'UPDATE_QUICK_TAB_SIZE_FINAL';
+    return this.updateQuickTabProperty(
+      message,
+      (tab, msg) => {
+        tab.width = msg.width;
+        tab.height = msg.height;
+      },
+      shouldSave
+    );
   }
 
   /**
    * Handle pin update
    */
-  async handlePinUpdate(message, _sender) {
-    if (!this.isInitialized) {
-      await this.initializeFn();
-    }
-
-    const cookieStoreId = message.cookieStoreId || 'firefox-default';
-
-    if (this.globalState.containers[cookieStoreId]) {
-      const containerState = this.globalState.containers[cookieStoreId];
-      const tab = containerState.tabs.find(t => t.id === message.id);
-
-      if (tab) {
-        tab.pinnedToUrl = message.pinnedToUrl;
-        containerState.lastUpdate = Date.now();
-        await this.saveStateToStorage();
-      }
-    }
-
-    return { success: true };
+  handlePinUpdate(message, _sender) {
+    return this.updateQuickTabProperty(message, (tab, msg) => {
+      tab.pinnedToUrl = msg.pinnedToUrl;
+    });
   }
 
   /**
    * Handle solo update
    */
-  async handleSoloUpdate(message, _sender) {
-    if (!this.isInitialized) {
-      await this.initializeFn();
-    }
-
-    const cookieStoreId = message.cookieStoreId || 'firefox-default';
-
-    if (this.globalState.containers[cookieStoreId]) {
-      const containerState = this.globalState.containers[cookieStoreId];
-      const tab = containerState.tabs.find(t => t.id === message.id);
-
-      if (tab) {
-        tab.soloedOnTabs = message.soloedOnTabs || [];
-        containerState.lastUpdate = Date.now();
-        await this.saveStateToStorage();
-      }
-    }
-
-    return { success: true };
+  handleSoloUpdate(message, _sender) {
+    return this.updateQuickTabProperty(message, (tab, msg) => {
+      tab.soloedOnTabs = msg.soloedOnTabs || [];
+    });
   }
 
   /**
    * Handle mute update
    */
-  async handleMuteUpdate(message, _sender) {
-    if (!this.isInitialized) {
-      await this.initializeFn();
-    }
-
-    const cookieStoreId = message.cookieStoreId || 'firefox-default';
-
-    if (this.globalState.containers[cookieStoreId]) {
-      const containerState = this.globalState.containers[cookieStoreId];
-      const tab = containerState.tabs.find(t => t.id === message.id);
-
-      if (tab) {
-        tab.mutedOnTabs = message.mutedOnTabs || [];
-        containerState.lastUpdate = Date.now();
-        await this.saveStateToStorage();
-      }
-    }
-
-    return { success: true };
+  handleMuteUpdate(message, _sender) {
+    return this.updateQuickTabProperty(message, (tab, msg) => {
+      tab.mutedOnTabs = msg.mutedOnTabs || [];
+    });
   }
 
   /**
    * Handle minimize update
    */
-  async handleMinimizeUpdate(message, _sender) {
-    if (!this.isInitialized) {
-      await this.initializeFn();
-    }
-
-    const cookieStoreId = message.cookieStoreId || 'firefox-default';
-
-    if (this.globalState.containers[cookieStoreId]) {
-      const containerState = this.globalState.containers[cookieStoreId];
-      const tab = containerState.tabs.find(t => t.id === message.id);
-
-      if (tab) {
-        tab.minimized = message.minimized;
-        containerState.lastUpdate = Date.now();
-        await this.saveStateToStorage();
-      }
-    }
-
-    return { success: true };
+  handleMinimizeUpdate(message, _sender) {
+    return this.updateQuickTabProperty(message, (tab, msg) => {
+      tab.minimized = msg.minimized;
+    });
   }
 
   /**
