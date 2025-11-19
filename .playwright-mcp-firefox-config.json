@@ -1,0 +1,31 @@
+{
+  "browser": {
+    "browserName": "firefox",
+    "launchOptions": {
+      "headless": false,
+      "firefoxUserPrefs": {
+        "xpinstall.signatures.required": false,
+        "extensions.autoDisableScopes": 0,
+        "extensions.enabledScopes": 15
+      },
+      "args": []
+    },
+    "contextOptions": {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "ignoreHTTPSErrors": true,
+      "permissions": ["clipboard-read", "clipboard-write", "notifications"]
+    }
+  },
+  "server": {
+    "port": 8932
+  },
+  "outputDir": "${GITHUB_WORKSPACE}/test-results/firefox",
+  "tracing": {
+    "enabled": true,
+    "screenshots": true,
+    "snapshots": true
+  }
+}
