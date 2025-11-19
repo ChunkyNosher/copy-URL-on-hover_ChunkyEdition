@@ -42,8 +42,6 @@ function addBackgroundLog(type, ...args) {
   });
 }
 
-
-
 // Override console methods to capture logs
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
