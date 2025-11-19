@@ -155,14 +155,11 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      expect(console.log).toHaveBeenCalledWith(
-        '[MinimizedManager] Restored tab with position:',
-        {
-          id: 'test-tab-1',
-          left: 100,
-          top: 200
-        }
-      );
+      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Restored tab with position:', {
+        id: 'test-tab-1',
+        left: 100,
+        top: 200
+      });
     });
 
     test('should return false for non-existent tab', () => {
@@ -326,9 +323,7 @@ describe('MinimizedManager', () => {
     test('should log clearing', () => {
       manager.clear();
 
-      expect(console.log).toHaveBeenCalledWith(
-        '[MinimizedManager] Cleared all minimized tabs'
-      );
+      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Cleared all minimized tabs');
     });
 
     test('should handle clearing when already empty', () => {
