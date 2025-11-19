@@ -1,7 +1,7 @@
 /**
  * Edge Case Tests for PanelContentManager
  * v1.6.0 - Phase 7.6: Additional coverage for error paths and edge cases
- * 
+ *
  * Target: Close coverage gap from 90.8% to 95%+
  * Uncovered lines: 132-133, 156, 290-291, 296-302, 331
  */
@@ -95,9 +95,7 @@ describe('PanelContentManager - Edge Cases', () => {
   describe('Error Handling - _fetchContainerInfo()', () => {
     test('should handle contextualIdentities.query throwing error', async () => {
       // Setup: Make query throw an error
-      mockBrowser.contextualIdentities.query.mockRejectedValue(
-        new Error('API not available')
-      );
+      mockBrowser.contextualIdentities.query.mockRejectedValue(new Error('API not available'));
 
       // Mock console.error to suppress output
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -157,11 +155,13 @@ describe('PanelContentManager - Edge Cases', () => {
         quick_tabs_state_v2: {
           containers: {
             'firefox-container-2': {
-              tabs: [{
-                id: 'qt-1',
-                url: 'https://example.com',
-                minimized: false
-              }],
+              tabs: [
+                {
+                  id: 'qt-1',
+                  url: 'https://example.com',
+                  minimized: false
+                }
+              ],
               lastUpdate: Date.now()
             }
           }
@@ -195,7 +195,7 @@ describe('PanelContentManager - Edge Cases', () => {
           containers: {
             'firefox-default': {
               tabs: [],
-              lastUpdate: 0  // Edge case: timestamp = 0
+              lastUpdate: 0 // Edge case: timestamp = 0
             }
           }
         }
@@ -219,11 +219,13 @@ describe('PanelContentManager - Edge Cases', () => {
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
-              tabs: [{
-                id: 'qt-1',
-                url: 'https://example.com',
-                minimized: false
-              }],
+              tabs: [
+                {
+                  id: 'qt-1',
+                  url: 'https://example.com',
+                  minimized: false
+                }
+              ],
               lastUpdate: Date.now()
             }
           }
@@ -244,11 +246,13 @@ describe('PanelContentManager - Edge Cases', () => {
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
-              tabs: [{
-                id: 'qt-1',
-                url: 'https://example.com',
-                minimized: false
-              }],
+              tabs: [
+                {
+                  id: 'qt-1',
+                  url: 'https://example.com',
+                  minimized: false
+                }
+              ],
               lastUpdate: Date.now()
             }
           }
@@ -284,9 +288,7 @@ describe('PanelContentManager - Edge Cases', () => {
       await contentManager._handleQuickTabAction(null, 'qt-1', '123');
 
       // Verify
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        '[PanelContentManager] Unknown action: null'
-      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith('[PanelContentManager] Unknown action: null');
 
       consoleWarnSpy.mockRestore();
     });
@@ -353,7 +355,7 @@ describe('PanelContentManager - Edge Cases', () => {
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
-              tabs: null,  // Corrupted: null instead of array
+              tabs: null, // Corrupted: null instead of array
               lastUpdate: Date.now()
             }
           }
@@ -393,7 +395,7 @@ describe('PanelContentManager - Edge Cases', () => {
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
-              tabs: { '0': { id: 'qt-1' } },  // Object, not array
+              tabs: { 0: { id: 'qt-1' } }, // Object, not array
               lastUpdate: Date.now()
             }
           }
@@ -412,14 +414,16 @@ describe('PanelContentManager - Edge Cases', () => {
       mockBrowser.storage.sync.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
-            saveId: 'some-uuid-12345',  // Should be skipped
-            timestamp: Date.now(),      // Should be skipped
+            saveId: 'some-uuid-12345', // Should be skipped
+            timestamp: Date.now(), // Should be skipped
             'firefox-default': {
-              tabs: [{
-                id: 'qt-1',
-                url: 'https://example.com',
-                minimized: true
-              }],
+              tabs: [
+                {
+                  id: 'qt-1',
+                  url: 'https://example.com',
+                  minimized: true
+                }
+              ],
               lastUpdate: Date.now()
             }
           }
@@ -431,11 +435,11 @@ describe('PanelContentManager - Edge Cases', () => {
 
       // Verify: Storage saved (container was processed, minimized tab removed)
       expect(mockBrowser.storage.sync.set).toHaveBeenCalled();
-      
+
       // Check that the saved state doesn't have the minimized tab
       const savedState = mockBrowser.storage.sync.set.mock.calls[0][0].quick_tabs_state_v2;
       const defaultContainerTabs = savedState.containers['firefox-default'].tabs;
-      
+
       // Tab should be filtered out
       expect(defaultContainerTabs).toHaveLength(0);
     });
@@ -447,9 +451,7 @@ describe('PanelContentManager - Edge Cases', () => {
 
       await contentManager._handleQuickTabAction('', 'qt-1', '123');
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        '[PanelContentManager] Unknown action: '
-      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith('[PanelContentManager] Unknown action: ');
 
       consoleWarnSpy.mockRestore();
     });
@@ -511,7 +513,7 @@ describe('PanelContentManager - Edge Cases', () => {
       });
 
       const specialId = 'qt-<script>alert("xss")</script>';
-      
+
       await contentManager._handleQuickTabAction('close', specialId, '123');
 
       // Verify: ID passed as-is (sanitization should happen elsewhere)
