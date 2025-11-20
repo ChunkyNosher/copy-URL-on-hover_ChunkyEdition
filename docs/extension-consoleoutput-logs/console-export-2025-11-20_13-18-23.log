@@ -1,0 +1,60 @@
+[Copy-URL-on-Hover] About to initialize Quick Tabs... content.js:64:24
+[QuickTabs] Initializing Quick Tabs feature module... content.js:64:24
+[QuickTabsManager] Error details: 
+Object { message: "this.uiBuilder.injectStyles is not a function", name: "TypeError", stack: "init@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2947:100\nasync*_initStep4_Panel@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3116:31\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3087:22\nasync*Se/me<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4189:96\nSe/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4191:10\nSe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4193:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4245:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4309:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4528:2\n", type: "object", error: TypeError }
+content.js:66:28
+[Copy-URL-on-Hover] ❌ EXCEPTION during Quick Tabs initialization: 
+Object { message: "this.uiBuilder.injectStyles is not a function", name: "TypeError", stack: "init@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2947:100\nasync*_initStep4_Panel@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3116:31\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3087:22\nasync*Se/me<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4189:96\nSe/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4191:10\nSe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4193:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4245:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4309:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4528:2\n", type: "object", stringified: "{}", keys: [], error: TypeError }
+content.js:66:28
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem content.js:64:24
+[Quick Tab] Manager not available, using legacy creation path content.js:68:26
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem content.js:64:24
+[Quick Tab] Manager not available, using legacy creation path content.js:68:26
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[Content] Quick Tabs manager not initialized content.js:66:28
+[Content] Quick Tabs manager not initialized content.js:66:28
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Oozora_Subaru content.js:64:24
+[Quick Tab] Manager not available, using legacy creation path content.js:68:26
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Japan content.js:64:24
+[Quick Tab] Manager not available, using legacy creation path content.js:68:26
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Mie_Prefecture content.js:64:24
+[Quick Tab] Manager not available, using legacy creation path content.js:68:26
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[Copy-URL-on-Hover] About to initialize Quick Tabs... content.js:64:24
+[QuickTabs] Initializing Quick Tabs feature module... content.js:64:24
+[QuickTabsManager] Error details: 
+Object { message: "this.uiBuilder.injectStyles is not a function", name: "TypeError", stack: "init@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2947:100\nasync*_initStep4_Panel@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3116:31\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3087:22\nasync*Se/me<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4189:96\nSe/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4191:10\nSe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4193:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4245:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4309:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4528:2\n", type: "object", error: TypeError }
+content.js:66:28
+[Copy-URL-on-Hover] ❌ EXCEPTION during Quick Tabs initialization: 
+Object { message: "this.uiBuilder.injectStyles is not a function", name: "TypeError", stack: "init@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2947:100\nasync*_initStep4_Panel@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3116:31\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3087:22\nasync*Se/me<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4189:96\nSe/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4191:10\nSe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4193:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4245:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4309:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4528:2\n", type: "object", stringified: "{}", keys: [], error: TypeError }
+content.js:66:28
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Axis_power content.js:64:24
+[Quick Tab] Manager not available, using legacy creation path content.js:68:26
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Axis_power content.js:64:24
+[Quick Tab] Manager not available, using legacy creation path content.js:68:26
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
