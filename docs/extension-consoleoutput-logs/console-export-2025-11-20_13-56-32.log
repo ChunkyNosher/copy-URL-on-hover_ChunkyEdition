@@ -1,0 +1,61 @@
+[Copy-URL-on-Hover] About to initialize Quick Tabs... content.js:64:24
+[QuickTabs] Initializing Quick Tabs feature module... content.js:64:24
+[StateManager] Hydrated 0 Quick Tabs content.js:64:24
+[QuickTabsManager] Hydrated 0 Quick Tabs content.js:64:24
+[QuickTabs] Quick Tabs feature module initialized content.js:64:24
+[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully content.js:64:24
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Cocoa_Fujiwara content.js:64:24
+[CreateHandler] Creating Quick Tab with options: 
+Object { id: "qt-1763664938040-labcn8w6p", url: "https://en.wikipedia.org/wiki/Cocoa_Fujiwara", left: 1086, top: 738, width: 960, height: 540, title: "Cocoa Fujiwara", cookieStoreId: "firefox-default", minimized: false, pinnedToUrl: null, … }
+content.js:64:24
+[CreateHandler] Quick Tab created successfully: qt-1763664938040-labcn8w6p content.js:64:24
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Cocoa_Fujiwara background.js:14:25
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Livestreaming content.js:64:24
+[CreateHandler] Creating Quick Tab with options: 
+Object { id: "qt-1763664940987-v19ik4i7s", url: "https://en.wikipedia.org/wiki/Livestreaming", left: 1146, top: 439, width: 960, height: 540, title: "livestreams", cookieStoreId: "firefox-default", minimized: false, pinnedToUrl: null, … }
+content.js:64:24
+[CreateHandler] Quick Tab created successfully: qt-1763664940987-v19ik4i7s content.js:64:24
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Livestreaming background.js:14:25
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Hololive_Production content.js:64:24
+[CreateHandler] Creating Quick Tab with options: 
+Object { id: "qt-1763664941828-1371zv49x", url: "https://en.wikipedia.org/wiki/Hololive_Production", left: 1206, top: 387, width: 960, height: 540, title: "Hololive Production", cookieStoreId: "firefox-default", minimized: false, pinnedToUrl: null, … }
+content.js:64:24
+[CreateHandler] Quick Tab created successfully: qt-1763664941828-1371zv49x content.js:64:24
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Hololive_Production background.js:14:25
+[Copy-URL-on-Hover] About to initialize Quick Tabs... content.js:64:24
+[QuickTabs] Initializing Quick Tabs feature module... content.js:64:24
+[StateManager] Hydrated 0 Quick Tabs content.js:64:24
+[QuickTabsManager] Hydrated 0 Quick Tabs content.js:64:24
+[QuickTabs] Quick Tabs feature module initialized content.js:64:24
+[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully content.js:64:24
+[DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Constitutional_monarchy content.js:64:24
+[CreateHandler] Creating Quick Tab with options: 
+Object { id: "qt-1763664958255-j3qey7zrm", url: "https://en.wikipedia.org/wiki/Constitutional_monarchy", left: 902, top: 726, width: 960, height: 540, title: "constitutional monarchy", cookieStoreId: "firefox-default", minimized: false, pinnedToUrl: null, … }
+content.js:64:24
+[CreateHandler] Quick Tab created successfully: qt-1763664958255-j3qey7zrm content.js:64:24
+[CreateHandler] Creating Quick Tab with options: 
+Object { id: "qt-1763664958255-j3qey7zrm", url: "https://en.wikipedia.org/wiki/Constitutional_monarchy", left: 902, top: 726, width: 960, height: 540, title: "constitutional monarchy", cookieStoreId: "firefox-default", minimized: false, soloedOnTabs: [], … }
+content.js:64:24
+[CreateHandler] Quick Tab created successfully: qt-1763664958255-j3qey7zrm content.js:64:24
+[CreateHandler] Creating Quick Tab with options: 
+Object { id: "qt-1763664958255-j3qey7zrm", url: "https://en.wikipedia.org/wiki/Constitutional_monarchy", left: 902, top: 726, width: 960, height: 540, title: "constitutional monarchy", cookieStoreId: "firefox-default", minimized: false, soloedOnTabs: [], … }
+content.js:64:24
+[CreateHandler] Quick Tab already exists and is rendered: qt-1763664958255-j3qey7zrm content.js:68:26
+[DEBUG] Notification: ✓ Quick Tab created! success content.js:64:24
+[NotificationManager] Showing notification: ✓ Quick Tab created! success content.js:64:24
+[Tooltip] Displayed: ✓ Quick Tab created! content.js:64:24
+[DEBUG] Quick Tab created successfully content.js:64:24
+[Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Constitutional_monarchy background.js:14:25
+[Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Constitutional_monarchy background.js:14:25

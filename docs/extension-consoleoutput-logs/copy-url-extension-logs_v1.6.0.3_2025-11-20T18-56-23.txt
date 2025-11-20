@@ -1,0 +1,495 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.0.3
+Export Date: 2025-11-20T18:56:23.212Z
+Export Date (Local): 11/20/2025, 1:56:23 PM
+Total Logs: 269
+
+================================================================================
+[2025-11-20T18:55:26.610Z] [DEBUG] [Background] Tab activated: 332
+[2025-11-20T18:55:31.031Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-20T18:55:33.703Z] [LOG  ] [Copy-URL-on-Hover] Script loaded! @ 2025-11-20T18:55:33.703Z
+[2025-11-20T18:55:33.703Z] [LOG  ] [Copy-URL-on-Hover] Debug marker set successfully
+[2025-11-20T18:55:33.703Z] [LOG  ] [Copy-URL-on-Hover] Global error handlers installed
+[2025-11-20T18:55:33.703Z] [LOG  ] [Copy-URL-on-Hover] Starting module imports...
+[2025-11-20T18:55:33.703Z] [LOG  ] [Copy-URL-on-Hover] All module imports completed successfully
+[2025-11-20T18:55:33.703Z] [LOG  ] [Copy-URL-on-Hover] Initializing core systems...
+[2025-11-20T18:55:33.703Z] [LOG  ] [Copy-URL-on-Hover] ConfigManager initialized
+[2025-11-20T18:55:33.703Z] [LOG  ] [Copy-URL-on-Hover] StateManager initialized
+[2025-11-20T18:55:33.703Z] [LOG  ] [Copy-URL-on-Hover] EventBus initialized
+[2025-11-20T18:55:33.704Z] [LOG  ] [Copy-URL-on-Hover] URLHandlerRegistry initialized
+[2025-11-20T18:55:33.704Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting extension initialization...
+[2025-11-20T18:55:33.704Z] [LOG  ] [Copy-URL-on-Hover] STEP: Loading user configuration...
+[2025-11-20T18:55:33.704Z] [LOG  ] [ConfigManager] Starting configuration load...
+[2025-11-20T18:55:33.704Z] [LOG  ] [ConfigManager] Calling browser.storage.local.get...
+[2025-11-20T18:55:33.724Z] [LOG  ] [ConfigManager] Storage get completed, processing result...
+[2025-11-20T18:55:33.724Z] [LOG  ] [ConfigManager] Configuration loaded successfully
+[2025-11-20T18:55:33.724Z] [LOG  ] [ConfigManager] Config summary: {
+  "debugMode": true,
+  "totalKeys": 42
+}
+[2025-11-20T18:55:33.728Z] [LOG  ] [Copy-URL-on-Hover] ✓ Configuration loaded successfully
+[2025-11-20T18:55:33.728Z] [LOG  ] [Copy-URL-on-Hover] Config values: {
+  "debugMode": true,
+  "hasDefaultConfig": true
+}
+[2025-11-20T18:55:33.728Z] [LOG  ] [Copy-URL-on-Hover] STEP: Enabling debug mode...
+[2025-11-20T18:55:33.728Z] [LOG  ] [DEBUG] Debug mode enabled
+[2025-11-20T18:55:33.728Z] [LOG  ] [Copy-URL-on-Hover] ✓ Debug mode activated
+[2025-11-20T18:55:33.728Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing state...
+[2025-11-20T18:55:33.728Z] [LOG  ] [Copy-URL-on-Hover] ✓ State initialized
+[2025-11-20T18:55:33.728Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing feature modules...
+[2025-11-20T18:55:33.728Z] [LOG  ] [Copy-URL-on-Hover] About to initialize Quick Tabs...
+[2025-11-20T18:55:33.728Z] [LOG  ] [QuickTabs] Initializing Quick Tabs feature module...
+[2025-11-20T18:55:33.728Z] [LOG  ] [QuickTabsManager] Initializing facade...
+[2025-11-20T18:55:33.728Z] [LOG  ] [QuickTabsManager] STEP 1: Detecting container context...
+[2025-11-20T18:55:33.728Z] [DEBUG] Debug mode enabled
+[2025-11-20T18:55:34.004Z] [LOG  ] [QuickTabsManager] Detected container: firefox-container-9
+[2025-11-20T18:55:34.004Z] [LOG  ] [QuickTabsManager] STEP 1: Detecting tab ID...
+[2025-11-20T18:55:34.136Z] [LOG  ] [QuickTabsManager] Detected current tab ID: 308
+[2025-11-20T18:55:34.136Z] [LOG  ] [QuickTabsManager] STEP 1 Complete
+[2025-11-20T18:55:34.136Z] [LOG  ] [QuickTabsManager] STEP 2: Initializing managers...
+[2025-11-20T18:55:34.136Z] [LOG  ] [QuickTabsManager] STEP 2 Complete
+[2025-11-20T18:55:34.136Z] [LOG  ] [QuickTabsManager] STEP 3: Initializing handlers...
+[2025-11-20T18:55:34.136Z] [LOG  ] [QuickTabsManager] STEP 3 Complete
+[2025-11-20T18:55:34.136Z] [LOG  ] [QuickTabsManager] STEP 4: Initializing panel manager...
+[2025-11-20T18:55:34.136Z] [LOG  ] [DEBUG] [PanelManager] Initializing...
+[2025-11-20T18:55:34.136Z] [DEBUG] [PanelManager] Initializing...
+[2025-11-20T18:55:34.156Z] [LOG  ] [DEBUG] [PanelManager] Container: firefox-container-9
+[2025-11-20T18:55:34.156Z] [DEBUG] [PanelManager] Container: firefox-container-9
+[2025-11-20T18:55:34.242Z] [LOG  ] [DEBUG] [PanelStateManager] Container detected: firefox-container-9
+[2025-11-20T18:55:34.242Z] [DEBUG] [PanelStateManager] Container detected: firefox-container-9
+[2025-11-20T18:55:34.243Z] [LOG  ] [DEBUG] [PanelStateManager] BroadcastChannel initialized
+[2025-11-20T18:55:34.243Z] [DEBUG] [PanelStateManager] BroadcastChannel initialized
+[2025-11-20T18:55:34.245Z] [LOG  ] [DEBUG] [PanelStateManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 0,
+  "height": 0,
+  "isOpen": false
+}
+[2025-11-20T18:55:34.245Z] [DEBUG] [PanelStateManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 0,
+  "height": 0,
+  "isOpen": false
+}
+[2025-11-20T18:55:34.246Z] [LOG  ] [DEBUG] [PanelStateManager] Initialized
+[2025-11-20T18:55:34.246Z] [LOG  ] [DEBUG] [PanelResizeController] Attached 8 resize handles
+[2025-11-20T18:55:34.246Z] [LOG  ] [DEBUG] [PanelContentManager] Event listeners setup
+[2025-11-20T18:55:34.246Z] [LOG  ] [DEBUG] [PanelManager] Initialized
+[2025-11-20T18:55:34.246Z] [DEBUG] [PanelStateManager] Initialized
+[2025-11-20T18:55:34.246Z] [DEBUG] [PanelResizeController] Attached 8 resize handles
+[2025-11-20T18:55:34.246Z] [DEBUG] [PanelContentManager] Event listeners setup
+[2025-11-20T18:55:34.246Z] [DEBUG] [PanelManager] Initialized
+[2025-11-20T18:55:34.248Z] [LOG  ] [QuickTabsManager] STEP 4 Complete - Panel manager initialized
+[2025-11-20T18:55:34.248Z] [LOG  ] [QuickTabsManager] STEP 5: Initializing coordinators...
+[2025-11-20T18:55:34.248Z] [LOG  ] [QuickTabsManager] STEP 5 Complete
+[2025-11-20T18:55:34.248Z] [LOG  ] [QuickTabsManager] STEP 6: Setting up components...
+[2025-11-20T18:55:34.248Z] [LOG  ] [StorageManager] Storage listeners attached
+[2025-11-20T18:55:34.248Z] [LOG  ] [BroadcastManager] BroadcastChannel created: quick-tabs-sync-firefox-container-9
+[2025-11-20T18:55:34.249Z] [LOG  ] [BroadcastManager] Initialized for container: firefox-container-9
+[2025-11-20T18:55:34.249Z] [LOG  ] [EventManager] Emergency save handlers attached
+[2025-11-20T18:55:34.249Z] [LOG  ] [SyncCoordinator] Setting up listeners
+[2025-11-20T18:55:34.249Z] [LOG  ] [SyncCoordinator] Listeners setup complete
+[2025-11-20T18:55:34.249Z] [LOG  ] [UICoordinator] Initializing...
+[2025-11-20T18:55:34.249Z] [LOG  ] [UICoordinator] Setting up state listeners
+[2025-11-20T18:55:34.249Z] [LOG  ] [UICoordinator] Rendering all visible tabs
+[2025-11-20T18:55:34.249Z] [LOG  ] [UICoordinator] Rendered 0 tabs
+[2025-11-20T18:55:34.249Z] [LOG  ] [UICoordinator] Initialized
+[2025-11-20T18:55:34.249Z] [LOG  ] [QuickTabsManager] STEP 6 Complete
+[2025-11-20T18:55:34.249Z] [LOG  ] [QuickTabsManager] STEP 7: Hydrating state...
+[2025-11-20T18:55:34.249Z] [LOG  ] [QuickTabsManager] Hydrating state from storage...
+[2025-11-20T18:55:34.249Z] [ERROR] [SessionStorageAdapter] Load failed: {}
+[2025-11-20T18:55:34.407Z] [LOG  ] [StorageManager] No data found for container firefox-container-9
+[2025-11-20T18:55:34.408Z] [LOG  ] [StateManager] Hydrated 0 Quick Tabs
+[2025-11-20T18:55:34.408Z] [LOG  ] [QuickTabsManager] Hydrated 0 Quick Tabs
+[2025-11-20T18:55:34.408Z] [LOG  ] [QuickTabsManager] STEP 7 Complete
+[2025-11-20T18:55:34.408Z] [LOG  ] [QuickTabsManager] STEP 8: Exposing manager globally...
+[2025-11-20T18:55:34.408Z] [LOG  ] [QuickTabsManager] Manager exposed globally
+[2025-11-20T18:55:34.408Z] [LOG  ] [QuickTabsManager] STEP 8 Complete
+[2025-11-20T18:55:34.408Z] [LOG  ] [QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓
+[2025-11-20T18:55:34.408Z] [LOG  ] [QuickTabs] Quick Tabs feature module initialized
+[2025-11-20T18:55:34.408Z] [LOG  ] [Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully
+[2025-11-20T18:55:34.408Z] [LOG  ] [Copy-URL-on-Hover] Manager has createQuickTab: function
+[2025-11-20T18:55:34.408Z] [LOG  ] [Notifications] Initializing Notifications feature module...
+[2025-11-20T18:55:34.408Z] [LOG  ] [NotificationManager] Initializing...
+[2025-11-20T18:55:34.408Z] [LOG  ] [NotificationManager] Styles injected from CSS module
+[2025-11-20T18:55:34.408Z] [LOG  ] [NotificationManager] Initialized successfully
+[2025-11-20T18:55:34.408Z] [LOG  ] [Notifications] Notifications feature module initialized
+[2025-11-20T18:55:34.408Z] [LOG  ] [Copy-URL-on-Hover] ✓ Notifications feature initialized
+[2025-11-20T18:55:34.410Z] [LOG  ] [DEBUG] Extension initialized successfully
+[2025-11-20T18:55:34.410Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting main features...
+[2025-11-20T18:55:34.410Z] [LOG  ] [DEBUG] Loading main features...
+[2025-11-20T18:55:34.410Z] [LOG  ] [Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓
+[2025-11-20T18:55:34.410Z] [DEBUG] Extension initialized successfully
+[2025-11-20T18:55:34.410Z] [DEBUG] Loading main features...
+[2025-11-20T18:55:34.411Z] [LOG  ] [Copy-URL-on-Hover] Extension is ready for use!
+[2025-11-20T18:55:38.040Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-20T18:55:38.040Z] [LOG  ] [QuickTabsManager] Tracking pending save: 1763664938040-ttytgl9pl
+[2025-11-20T18:55:38.040Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-1763664938040-labcn8w6p",
+  "url": "https://en.wikipedia.org/wiki/Cocoa_Fujiwara",
+  "left": 1086,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Cocoa Fujiwara",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-20T18:55:38.040Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-20T18:55:38.043Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Cocoa_Fujiwara ID: qt-1763664938040-labcn8w6p Container: firefox-default
+[2025-11-20T18:55:38.043Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763664938040-labcn8w6p
+[2025-11-20T18:55:38.043Z] [LOG  ] [BroadcastManager] Broadcasted CREATE: {
+  "id": "qt-1763664938040-labcn8w6p",
+  "url": "https://en.wikipedia.org/wiki/Cocoa_Fujiwara",
+  "left": 1086,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Cocoa Fujiwara",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-20T18:55:38.043Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-1763664938040-labcn8w6p
+[2025-11-20T18:55:38.044Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:38.046Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:55:38.062Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T18:55:38.062Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T18:55:38.062Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T18:55:38.062Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T18:55:38.063Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T18:55:38.063Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T18:55:38.122Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-20T18:55:39.331Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763664938040-labcn8w6p 1086 738
+[2025-11-20T18:55:39.331Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664938040-labcn8w6p
+[2025-11-20T18:55:39.331Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664938040-labcn8w6p
+[2025-11-20T18:55:40.239Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763664938040-labcn8w6p 243 698
+[2025-11-20T18:55:40.240Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664938040-labcn8w6p",
+  "left": 243,
+  "top": 698
+}
+[2025-11-20T18:55:40.241Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:40.242Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:55:40.987Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-20T18:55:40.987Z] [LOG  ] [QuickTabsManager] Tracking pending save: 1763664940987-z6c5dgsae
+[2025-11-20T18:55:40.987Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-1763664940987-v19ik4i7s",
+  "url": "https://en.wikipedia.org/wiki/Livestreaming",
+  "left": 1146,
+  "top": 439,
+  "width": 960,
+  "height": 540,
+  "title": "livestreams",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-20T18:55:40.987Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-20T18:55:40.990Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763664940987-v19ik4i7s
+[2025-11-20T18:55:40.990Z] [LOG  ] [BroadcastManager] Broadcasted CREATE: {
+  "id": "qt-1763664940987-v19ik4i7s",
+  "url": "https://en.wikipedia.org/wiki/Livestreaming",
+  "left": 1146,
+  "top": 439,
+  "width": 960,
+  "height": 540,
+  "title": "livestreams",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-20T18:55:40.990Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-1763664940987-v19ik4i7s
+[2025-11-20T18:55:40.992Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Livestreaming ID: qt-1763664940987-v19ik4i7s Container: firefox-default
+[2025-11-20T18:55:40.992Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:40.993Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:55:40.999Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T18:55:40.999Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T18:55:41.000Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T18:55:41.000Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T18:55:41.000Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T18:55:41.000Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T18:55:41.060Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-20T18:55:41.828Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Hololive_Production
+[2025-11-20T18:55:41.828Z] [LOG  ] [QuickTabsManager] Tracking pending save: 1763664941828-azs2vk1lr
+[2025-11-20T18:55:41.828Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-1763664941828-1371zv49x",
+  "url": "https://en.wikipedia.org/wiki/Hololive_Production",
+  "left": 1206,
+  "top": 387,
+  "width": 960,
+  "height": 540,
+  "title": "Hololive Production",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-20T18:55:41.828Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Hololive_Production
+[2025-11-20T18:55:41.830Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763664941828-1371zv49x
+[2025-11-20T18:55:41.830Z] [LOG  ] [BroadcastManager] Broadcasted CREATE: {
+  "id": "qt-1763664941828-1371zv49x",
+  "url": "https://en.wikipedia.org/wiki/Hololive_Production",
+  "left": 1206,
+  "top": 387,
+  "width": 960,
+  "height": 540,
+  "title": "Hololive Production",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-20T18:55:41.830Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-1763664941828-1371zv49x
+[2025-11-20T18:55:41.837Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Hololive_Production ID: qt-1763664941828-1371zv49x Container: firefox-default
+[2025-11-20T18:55:41.838Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:41.864Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:55:41.874Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T18:55:41.874Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T18:55:41.874Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T18:55:41.874Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T18:55:41.874Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T18:55:41.874Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T18:55:41.923Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Hololive_Production
+[2025-11-20T18:55:42.665Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763664941828-1371zv49x 1206 387
+[2025-11-20T18:55:42.666Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664941828-1371zv49x
+[2025-11-20T18:55:42.666Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664941828-1371zv49x
+[2025-11-20T18:55:43.292Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763664941828-1371zv49x 233 237
+[2025-11-20T18:55:43.292Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664941828-1371zv49x",
+  "left": 233,
+  "top": 237
+}
+[2025-11-20T18:55:43.420Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:43.443Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:55:44.179Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763664940987-v19ik4i7s 1146 439
+[2025-11-20T18:55:44.179Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664940987-v19ik4i7s
+[2025-11-20T18:55:44.179Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664940987-v19ik4i7s
+[2025-11-20T18:55:44.463Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763664940987-v19ik4i7s 1243 283
+[2025-11-20T18:55:44.463Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664940987-v19ik4i7s",
+  "left": 1243,
+  "top": 283
+}
+[2025-11-20T18:55:44.466Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:44.481Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:55:46.887Z] [DEBUG] [Background] Tab activated: 332
+[2025-11-20T18:55:47.103Z] [LOG  ] [EventManager] Tab hidden - triggering emergency save
+[2025-11-20T18:55:49.768Z] [DEBUG] [Background] Tab activated: 307
+[2025-11-20T18:55:55.243Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-20T18:55:56.154Z] [DEBUG] [Background] Tab activated: 307
+[2025-11-20T18:55:56.335Z] [LOG  ] [EventManager] Tab hidden - triggering emergency save
+[2025-11-20T18:55:58.259Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Constitutional_monarchy ID: qt-1763664958255-j3qey7zrm Container: firefox-default
+[2025-11-20T18:55:58.259Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CREATE",
+  "data": {
+    "id": "qt-1763664958255-j3qey7zrm",
+    "url": "https://en.wikipedia.org/wiki/Constitutional_monarchy",
+    "left": 902,
+    "top": 726,
+    "width": 960,
+    "height": 540,
+    "title": "constitutional monarchy",
+    "cookieStoreId": "firefox-default",
+    "minimized": false,
+    "soloedOnTabs": [],
+    "mutedOnTabs": []
+  }
+}
+[2025-11-20T18:55:58.259Z] [LOG  ] [SyncCoordinator] Received broadcast: CREATE
+[2025-11-20T18:55:58.259Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-1763664958255-j3qey7zrm",
+  "url": "https://en.wikipedia.org/wiki/Constitutional_monarchy",
+  "left": 902,
+  "top": 726,
+  "width": 960,
+  "height": 540,
+  "title": "constitutional monarchy",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-20T18:55:58.260Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:58.262Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763664958255-j3qey7zrm
+[2025-11-20T18:55:58.262Z] [LOG  ] [BroadcastManager] Broadcasted CREATE: {
+  "id": "qt-1763664958255-j3qey7zrm",
+  "url": "https://en.wikipedia.org/wiki/Constitutional_monarchy",
+  "left": 902,
+  "top": 726,
+  "width": 960,
+  "height": 540,
+  "title": "constitutional monarchy",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-20T18:55:58.262Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-1763664958255-j3qey7zrm
+[2025-11-20T18:55:58.263Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:55:58.322Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Constitutional_monarchy
+[2025-11-20T18:55:58.723Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Constitutional_monarchy
+[2025-11-20T18:55:59.499Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "UPDATE_POSITION",
+  "data": {
+    "id": "qt-1763664958255-j3qey7zrm",
+    "left": 522,
+    "top": 364
+  }
+}
+[2025-11-20T18:55:59.500Z] [LOG  ] [SyncCoordinator] Received broadcast: UPDATE_POSITION
+[2025-11-20T18:55:59.501Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664958255-j3qey7zrm",
+  "left": 522,
+  "top": 364
+}
+[2025-11-20T18:55:59.502Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "UPDATE_POSITION",
+  "data": {
+    "id": "qt-1763664958255-j3qey7zrm",
+    "left": 522,
+    "top": 364
+  }
+}
+[2025-11-20T18:55:59.503Z] [LOG  ] [BroadcastManager] Ignoring duplicate broadcast (debounced): UPDATE_POSITION qt-1763664958255-j3qey7zrm
+[2025-11-20T18:55:59.530Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:59.533Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:59.534Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:55:59.543Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:55:59.543Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:55:59.544Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:00.191Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-20T18:56:01.375Z] [DEBUG] [Background] Tab activated: 307
+[2025-11-20T18:56:01.552Z] [LOG  ] [EventManager] Tab hidden - triggering emergency save
+[2025-11-20T18:56:03.589Z] [DEBUG] [QuickTabHandler] Close: https://en.wikipedia.org/wiki/Constitutional_monarchy ID: qt-1763664958255-j3qey7zrm Container: firefox-default
+[2025-11-20T18:56:03.589Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CLOSE",
+  "data": {
+    "id": "qt-1763664958255-j3qey7zrm"
+  }
+}
+[2025-11-20T18:56:03.589Z] [LOG  ] [SyncCoordinator] Received broadcast: CLOSE
+[2025-11-20T18:56:03.590Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:03.590Z] [LOG  ] [DestroyHandler] Handling destroy for: qt-1763664958255-j3qey7zrm
+[2025-11-20T18:56:03.590Z] [LOG  ] [MinimizedManager] Removed minimized tab: qt-1763664958255-j3qey7zrm
+[2025-11-20T18:56:03.590Z] [LOG  ] [BroadcastManager] Broadcasted CLOSE: {
+  "id": "qt-1763664958255-j3qey7zrm"
+}
+[2025-11-20T18:56:03.591Z] [DEBUG] [QuickTabHandler] Close: https://en.wikipedia.org/wiki/Constitutional_monarchy ID: qt-1763664958255-j3qey7zrm Container: firefox-default
+[2025-11-20T18:56:03.591Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:03.592Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:03.593Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:03.595Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CLOSE",
+  "data": {
+    "id": "qt-1763664958255-j3qey7zrm"
+  }
+}
+[2025-11-20T18:56:03.595Z] [LOG  ] [BroadcastManager] Ignoring duplicate broadcast (debounced): CLOSE qt-1763664958255-j3qey7zrm
+[2025-11-20T18:56:03.598Z] [DEBUG] [QuickTabHandler] Close: null ID: qt-1763664958255-j3qey7zrm Container: firefox-default
+[2025-11-20T18:56:03.598Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:03.601Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:04.461Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-20T18:56:06.366Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763664958255-j3qey7zrm 902 726
+[2025-11-20T18:56:06.814Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763664958255-j3qey7zrm 270 994
+[2025-11-20T18:56:07.789Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763664941828-1371zv49x 233 237
+[2025-11-20T18:56:07.789Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664941828-1371zv49x
+[2025-11-20T18:56:07.790Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664941828-1371zv49x
+[2025-11-20T18:56:08.188Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763664941828-1371zv49x 26 94
+[2025-11-20T18:56:08.188Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664941828-1371zv49x",
+  "left": 26,
+  "top": 94
+}
+[2025-11-20T18:56:08.191Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "UPDATE_POSITION",
+  "data": {
+    "id": "qt-1763664941828-1371zv49x",
+    "left": 26,
+    "top": 94
+  }
+}
+[2025-11-20T18:56:08.191Z] [LOG  ] [SyncCoordinator] Received broadcast: UPDATE_POSITION
+[2025-11-20T18:56:08.191Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664941828-1371zv49x",
+  "left": 26,
+  "top": 94
+}
+[2025-11-20T18:56:08.205Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:08.206Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:08.206Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:08.251Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:08.252Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:08.252Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:14.239Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763664938040-labcn8w6p 243 698
+[2025-11-20T18:56:14.240Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664938040-labcn8w6p
+[2025-11-20T18:56:14.241Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664938040-labcn8w6p
+[2025-11-20T18:56:14.991Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763664938040-labcn8w6p 159 353
+[2025-11-20T18:56:14.991Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664938040-labcn8w6p",
+  "left": 159,
+  "top": 353
+}
+[2025-11-20T18:56:14.993Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:14.994Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:14.996Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "UPDATE_POSITION",
+  "data": {
+    "id": "qt-1763664938040-labcn8w6p",
+    "left": 159,
+    "top": 353
+  }
+}
+[2025-11-20T18:56:14.996Z] [LOG  ] [SyncCoordinator] Received broadcast: UPDATE_POSITION
+[2025-11-20T18:56:14.996Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664938040-labcn8w6p",
+  "left": 159,
+  "top": 353
+}
+[2025-11-20T18:56:14.997Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:14.997Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:14.998Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:14.998Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:15.584Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763664958255-j3qey7zrm 270 994
+[2025-11-20T18:56:15.865Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763664958255-j3qey7zrm 221 751
+[2025-11-20T18:56:16.599Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763664940987-v19ik4i7s 1243 283
+[2025-11-20T18:56:16.600Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664940987-v19ik4i7s
+[2025-11-20T18:56:16.600Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763664940987-v19ik4i7s
+[2025-11-20T18:56:16.854Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763664940987-v19ik4i7s 1099 231
+[2025-11-20T18:56:16.854Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664940987-v19ik4i7s",
+  "left": 1099,
+  "top": 231
+}
+[2025-11-20T18:56:16.856Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:16.857Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:16.859Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "UPDATE_POSITION",
+  "data": {
+    "id": "qt-1763664940987-v19ik4i7s",
+    "left": 1099,
+    "top": 231
+  }
+}
+[2025-11-20T18:56:16.859Z] [LOG  ] [SyncCoordinator] Received broadcast: UPDATE_POSITION
+[2025-11-20T18:56:16.859Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763664940987-v19ik4i7s",
+  "left": 1099,
+  "top": 231
+}
+[2025-11-20T18:56:16.860Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:16.860Z] [DEBUG] [Background] State already initialized
+[2025-11-20T18:56:16.861Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:16.862Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T18:56:23.210Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
