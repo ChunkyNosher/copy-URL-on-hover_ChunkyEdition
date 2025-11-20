@@ -6,7 +6,6 @@ Both of the errors you reported have been fixed:
 
 1. ✅ **"Export Console Logs" button now works**
    - Fixed error: `can't access property "length", tabs is undefined`
-   
 2. ✅ **"Clear Quick Tabs Storage" button now works**
    - Fixed error: `can't access property "then", browser.tabs.query(...) is undefined`
 
@@ -15,14 +14,16 @@ Both of the errors you reported have been fixed:
 The issue was a **variable shadowing bug** in `popup.js`. Here's what happened:
 
 **The buggy code:**
+
 ```javascript
-let browser;  // This created a NEW variable
+let browser; // This created a NEW variable
 if (typeof browser === 'undefined') {
-  browser = chrome;  // This always ran in Firefox
+  browser = chrome; // This always ran in Firefox
 }
 ```
 
 **Why it broke:**
+
 - Firefox has a global `browser` object for extension APIs
 - The code created a LOCAL variable named `browser`
 - This "shadowed" (hid) Firefox's global `browser` object
@@ -30,6 +31,7 @@ if (typeof browser === 'undefined') {
 - When the code tried to use `.length` or `.then()`, it crashed
 
 **Think of it like this:**
+
 ```
 You: "Hey browser, get me the tabs!"
 Code: *looks at empty local variable* "browser? I don't see any tabs."
@@ -50,6 +52,7 @@ Now it properly accesses Firefox's global `browser` object, and all API calls wo
 ## Testing
 
 ✅ **Automated tests all pass**
+
 - Build succeeds
 - All 68 unit tests pass
 - No linting errors
@@ -107,6 +110,7 @@ I've created two documentation files for you:
 ## Questions?
 
 If you have any questions about:
+
 - How the fix works
 - Why the bug happened
 - How to test it

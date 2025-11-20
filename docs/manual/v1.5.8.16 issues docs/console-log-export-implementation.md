@@ -1,4 +1,5 @@
 # Console Log Export Feature Implementation Guide
+
 **copy-URL-on-hover Extension v1.5.8.16**
 
 **Feature:** Export browser console logs from extension as downloadable .txt file  
@@ -36,11 +37,13 @@ copy-url-extension-logs_v1.5.8.16_2025-11-14T15-24-30.txt
 ```
 
 **Pattern:**
+
 ```
 copy-url-extension-logs_v{VERSION}_{TIMESTAMP}.txt
 ```
 
 Where:
+
 - `{VERSION}` = Extension version from `manifest.json`
 - `{TIMESTAMP}` = ISO 8601 timestamp with colons replaced by hyphens for filename compatibility
 
@@ -129,13 +132,14 @@ Add the `downloads` permission to use `browser.downloads.download()` API (option
     "<all_urls>",
     "contextualIdentities",
     "cookies",
-    "downloads"  // ← Add this (optional)
-  ],
+    "downloads" // ← Add this (optional)
+  ]
   // ... rest of manifest
 }
 ```
 
 **Note:** The `downloads` permission is **optional**. We'll implement both methods:
+
 - **Method 1:** Blob URL + `<a>` download attribute (works without permission)
 - **Method 2:** `browser.downloads.download()` API (requires permission, more reliable)
 
@@ -182,9 +186,9 @@ function addToBuffer(type, ...args) {
   LOG_BUFFER.push({
     type: type,
     timestamp: Date.now(),
-    message: args.map(arg =>
-      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-    ).join(' '),
+    message: args
+      .map(arg => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)))
+      .join(' '),
     args: args
   });
 }
@@ -278,16 +282,16 @@ export function clearLogBuffer() {
 export function formatLogsAsText(logs, version = '1.5.8.16') {
   const now = new Date();
   const header = [
-    '=' .repeat(80),
+    '='.repeat(80),
     'Copy URL on Hover - Extension Console Logs',
-    '=' .repeat(80),
+    '='.repeat(80),
     '',
     `Version: ${version}`,
     `Export Date: ${now.toISOString()}`,
     `Export Date (Local): ${now.toLocaleString()}`,
     `Total Logs: ${logs.length}`,
     '',
-    '=' .repeat(80),
+    '='.repeat(80),
     ''
   ].join('\n');
 
@@ -297,12 +301,7 @@ export function formatLogsAsText(logs, version = '1.5.8.16') {
     return `[${timestamp}] [${entry.type.padEnd(5)}] ${entry.message}`;
   });
 
-  const footer = [
-    '',
-    '=' .repeat(80),
-    'End of Logs',
-    '=' .repeat(80)
-  ].join('\n');
+  const footer = ['', '='.repeat(80), 'End of Logs', '='.repeat(80)].join('\n');
 
   return header + logLines.join('\n') + footer;
 }
@@ -464,9 +463,9 @@ function addBackgroundLog(type, ...args) {
   BACKGROUND_LOG_BUFFER.push({
     type: type,
     timestamp: Date.now(),
-    message: args.map(arg =>
-      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-    ).join(' '),
+    message: args
+      .map(arg => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)))
+      .join(' '),
     args: args
   });
 }
@@ -477,22 +476,22 @@ const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
 const originalConsoleInfo = console.info;
 
-console.log = function(...args) {
+console.log = function (...args) {
   addBackgroundLog('DEBUG', ...args);
   originalConsoleLog.apply(console, args);
 };
 
-console.error = function(...args) {
+console.error = function (...args) {
   addBackgroundLog('ERROR', ...args);
   originalConsoleError.apply(console, args);
 };
 
-console.warn = function(...args) {
+console.warn = function (...args) {
   addBackgroundLog('WARN', ...args);
   originalConsoleWarn.apply(console, args);
 };
 
-console.info = function(...args) {
+console.info = function (...args) {
   addBackgroundLog('INFO', ...args);
   originalConsoleInfo.apply(console, args);
 };
@@ -525,48 +524,46 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 <div class="section">
   <h3>Debug & Logs</h3>
-  <button id="export-logs-btn" class="btn-primary">
-    📥 Export Console Logs
-  </button>
+  <button id="export-logs-btn" class="btn-primary">📥 Export Console Logs</button>
   <p class="help-text">
     Download all extension console logs as a .txt file for debugging or support.
   </p>
 </div>
 
 <style>
-.section {
-  margin: 15px 0;
-  padding: 10px;
-  border-top: 1px solid #e0e0e0;
-}
+  .section {
+    margin: 15px 0;
+    padding: 10px;
+    border-top: 1px solid #e0e0e0;
+  }
 
-.btn-primary {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  text-align: center;
-  text-decoration: none;
-  display: inline-block;
-  font-size: 14px;
-  cursor: pointer;
-  border-radius: 4px;
-  width: 100%;
-}
+  .btn-primary {
+    background-color: #4caf50;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    width: 100%;
+  }
 
-.btn-primary:hover {
-  background-color: #45a049;
-}
+  .btn-primary:hover {
+    background-color: #45a049;
+  }
 
-.btn-primary:active {
-  background-color: #3d8b40;
-}
+  .btn-primary:active {
+    background-color: #3d8b40;
+  }
 
-.help-text {
-  font-size: 12px;
-  color: #666;
-  margin-top: 8px;
-}
+  .help-text {
+    font-size: 12px;
+    color: #666;
+    margin-top: 8px;
+  }
 </style>
 ```
 
@@ -636,7 +633,7 @@ export default {
   output: {
     file: 'content.js',
     format: 'iife'
-  },
+  }
   // ... existing config
 };
 ```
@@ -701,12 +698,14 @@ End of Logs
 ### Test 1: Basic Export Functionality
 
 **Steps:**
+
 1. Open extension popup
 2. Click "Export Console Logs" button
 3. Check that download starts
 4. Open downloaded file
 
 **Expected Results:**
+
 - ✅ File downloads with correct name format
 - ✅ File contains header with version and timestamp
 - ✅ File contains all recent console logs
@@ -716,15 +715,18 @@ End of Logs
 ### Test 2: Filename Format Validation
 
 **Steps:**
+
 1. Export logs
 2. Check filename
 
 **Expected Format:**
+
 ```
 copy-url-extension-logs_v1.5.8.16_2025-11-14T15-24-30.txt
 ```
 
 **Validation:**
+
 - ✅ Prefix: `copy-url-extension-logs_`
 - ✅ Version: `v1.5.8.16` (matches manifest.json)
 - ✅ Timestamp: ISO 8601 with hyphens instead of colons
@@ -733,11 +735,13 @@ copy-url-extension-logs_v1.5.8.16_2025-11-14T15-24-30.txt
 ### Test 3: Log Buffer Size Limits
 
 **Steps:**
+
 1. Generate 6000+ console logs (more than MAX_BUFFER_SIZE)
 2. Export logs
 3. Check file size
 
 **Expected Results:**
+
 - ✅ File contains maximum 5000 logs (from content script)
 - ✅ Oldest logs are discarded (FIFO)
 - ✅ No memory overflow
@@ -745,11 +749,13 @@ copy-url-extension-logs_v1.5.8.16_2025-11-14T15-24-30.txt
 ### Test 4: Background Script Logs
 
 **Steps:**
+
 1. Trigger background script actions (e.g., create Quick Tab)
 2. Export logs
 3. Check file contents
 
 **Expected Results:**
+
 - ✅ File contains both content script and background script logs
 - ✅ Logs are merged and sorted by timestamp
 - ✅ Background logs clearly identifiable
@@ -757,11 +763,13 @@ copy-url-extension-logs_v1.5.8.16_2025-11-14T15-24-30.txt
 ### Test 5: Cross-Browser Compatibility
 
 **Test in:**
+
 - ✅ Firefox 100+
 - ✅ Firefox ESR
 - ✅ Firefox Android (if applicable)
 
 **Check:**
+
 - ✅ Blob URL download works
 - ✅ Filename format preserved
 - ✅ No console errors
@@ -769,11 +777,13 @@ copy-url-extension-logs_v1.5.8.16_2025-11-14T15-24-30.txt
 ### Test 6: Error Handling
 
 **Scenarios:**
+
 1. Export with empty log buffer
 2. Export while downloads permission denied
 3. Export during page unload
 
 **Expected Results:**
+
 - ✅ Empty logs create valid file with header
 - ✅ Fallback to Blob URL if browser.downloads unavailable
 - ✅ Error feedback shown if export fails
@@ -788,17 +798,20 @@ Add checkboxes to filter which log types to export:
 
 ```html
 <div class="log-filters">
-  <label><input type="checkbox" id="filter-debug" checked> DEBUG</label>
-  <label><input type="checkbox" id="filter-error" checked> ERROR</label>
-  <label><input type="checkbox" id="filter-warn" checked> WARN</label>
-  <label><input type="checkbox" id="filter-info" checked> INFO</label>
+  <label><input type="checkbox" id="filter-debug" checked /> DEBUG</label>
+  <label><input type="checkbox" id="filter-error" checked /> ERROR</label>
+  <label><input type="checkbox" id="filter-warn" checked /> WARN</label>
+  <label><input type="checkbox" id="filter-info" checked /> INFO</label>
 </div>
 ```
 
 Update `exportLogs()`:
 
 ```javascript
-export async function exportLogs(version, filters = { DEBUG: true, ERROR: true, WARN: true, INFO: true }) {
+export async function exportLogs(
+  version,
+  filters = { DEBUG: true, ERROR: true, WARN: true, INFO: true }
+) {
   let logs = getLogBuffer();
 
   // Filter by type
@@ -819,9 +832,7 @@ export function debugError(...args) {
 
   // Auto-export on critical errors
   if (args[0] && args[0].toString().includes('CRITICAL')) {
-    exportLogs('1.5.8.16').catch(err =>
-      console.error('Failed to auto-export logs:', err)
-    );
+    exportLogs('1.5.8.16').catch(err => console.error('Failed to auto-export logs:', err));
   }
 }
 ```
@@ -855,14 +866,17 @@ function getLogStats(logs) {
 ## References
 
 **Blob API Documentation:**
+
 - [MDN: Blob](https://developer.mozilla.org/en-US/docs/Web/API/Blob)
 - [MDN: URL.createObjectURL()](https://developer.mozilla.org/en-US/docs/Web/API/URL/createObjectURL)
 
 **Firefox Extensions API:**
+
 - [MDN: browser.downloads.download()](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/download)[140]
 - [MDN: browser.runtime.sendMessage()](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/sendMessage)
 
 **Implementation Examples:**
+
 - [Downloading Text Using Blobs (Ben Nadel)](https://www.bennadel.com/blog/3472-downloading-text-using-blobs-url-createobjecturl-and-the-anchor-download-attribute-in-javascript.htm)[148]
 - [Download Any File from Blob (DEV Community)](https://dev.to/nombrekeff/download-file-from-blob-21ho)[142]
 

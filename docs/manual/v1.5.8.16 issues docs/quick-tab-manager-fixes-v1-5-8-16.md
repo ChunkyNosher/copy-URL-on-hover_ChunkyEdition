@@ -11,6 +11,7 @@ This document details the required changes to the Quick Tab Manager and Quick Ta
 **Repository:** ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
 **Version Analyzed:** v1.5.8.16  
 **Primary Files:**
+
 - `content-legacy.js` - Main Quick Tab implementation
 - `background.js` - State coordinator and cross-tab synchronization
 - `sidebar/quick-tabs-manager.js` - Sidebar panel implementation
@@ -41,6 +42,7 @@ The extension uses a **three-layer synchronization architecture**:
 ### Quick Tab Data Structure
 
 Each Quick Tab is stored with the following properties:
+
 ```javascript
 {
   id: "qt_1234567890_abc123",      // Unique identifier
@@ -62,6 +64,7 @@ Each Quick Tab is stored with the following properties:
 ## Issue #1: Quick Tab Manager Position/Size Not Syncing Across Tabs
 
 ### Current Behavior
+
 When a user moves or resizes the Quick Tab Manager in Tab 1, then switches to Tab 2, the Quick Tab Manager's position and size in Tab 2 do not reflect the changes made in Tab 1.
 
 ### Root Cause Analysis
@@ -83,12 +86,13 @@ let panelState = {
 **Problem 1:** Position/size changes are saved to `browser.storage.local` under the key `quick_tabs_panel_state`, but there is **no mechanism to broadcast these changes to other tabs** in real-time.
 
 **Problem 2:** The `savePanelState()` function (lines 4706-4720) only saves to local storage:
+
 ```javascript
 function savePanelState() {
   if (!quickTabsPanel) return;
-  
+
   const rect = quickTabsPanel.getBoundingClientRect();
-  
+
   panelState = {
     left: Math.round(rect.left),
     top: Math.round(rect.top),
@@ -96,7 +100,7 @@ function savePanelState() {
     height: Math.round(rect.height),
     isOpen: isPanelOpen
   };
-  
+
   browser.storage.local.set({ quick_tabs_panel_state: panelState }).catch(err => {
     debug('[Panel] Error saving panel state:', err);
   });
@@ -108,6 +112,7 @@ function savePanelState() {
 ### Proposed Solution
 
 **Strategy:** Implement a **hybrid sync approach** similar to Quick Tabs:
+
 1. **BroadcastChannel** for same-origin tabs (instant updates)
 2. **browser.runtime.sendMessage()** to background script for cross-origin tabs
 3. **browser.storage.onChanged** listener to apply updates when other tabs modify state
@@ -124,11 +129,11 @@ let quickTabPanelChannel = null;
 
 function initializePanelBroadcastChannel() {
   if (quickTabPanelChannel) return;
-  
+
   try {
     quickTabPanelChannel = new BroadcastChannel('quick-tab-panel-sync');
     debug(`Panel BroadcastChannel initialized (Instance ID: ${tabInstanceId})`);
-    
+
     quickTabPanelChannel.onmessage = handlePanelBroadcastMessage;
   } catch (err) {
     console.error('Failed to create panel BroadcastChannel:', err);
@@ -137,18 +142,18 @@ function initializePanelBroadcastChannel() {
 
 async function handlePanelBroadcastMessage(event) {
   const message = event.data;
-  
+
   // Ignore broadcasts from ourselves
   if (message.senderId === tabInstanceId) {
     return;
   }
-  
+
   // Container filtering
   const currentCookieStore = await getCurrentCookieStoreId();
   if (message.cookieStoreId && message.cookieStoreId !== currentCookieStore) {
     return;
   }
-  
+
   if (message.action === 'updatePanelState') {
     // Apply position/size changes from other tabs
     if (quickTabsPanel && isPanelOpen) {
@@ -156,15 +161,17 @@ async function handlePanelBroadcastMessage(event) {
       quickTabsPanel.style.top = message.top + 'px';
       quickTabsPanel.style.width = message.width + 'px';
       quickTabsPanel.style.height = message.height + 'px';
-      
-      debug(`[Panel] Updated position/size from broadcast: (${message.left}, ${message.top}) ${message.width}x${message.height}`);
+
+      debug(
+        `[Panel] Updated position/size from broadcast: (${message.left}, ${message.top}) ${message.width}x${message.height}`
+      );
     }
   }
 }
 
 async function broadcastPanelState(left, top, width, height, isOpen) {
   if (!quickTabPanelChannel) return;
-  
+
   quickTabPanelChannel.postMessage({
     action: 'updatePanelState',
     left: left,
@@ -176,7 +183,7 @@ async function broadcastPanelState(left, top, width, height, isOpen) {
     senderId: tabInstanceId,
     timestamp: Date.now()
   });
-  
+
   debug(`[Panel] Broadcasting state to other tabs`);
 }
 
@@ -210,7 +217,7 @@ async function savePanelState() {
   browser.storage.local.set({ quick_tabs_panel_state: panelState }).catch(err => {
     debug('[Panel] Error saving panel state:', err);
   });
-  
+
   // Broadcast to other tabs (same-origin)
   await broadcastPanelState(
     panelState.left,
@@ -219,7 +226,7 @@ async function savePanelState() {
     panelState.height,
     panelState.isOpen
   );
-  
+
   // Send to background script (cross-origin)
   sendRuntimeMessage({
     action: 'UPDATE_PANEL_STATE',
@@ -241,25 +248,33 @@ In `background.js`, add a new handler for panel state updates (after line 686 wh
 ```javascript
 // Handle Quick Tab Manager Panel state updates
 if (message.action === 'UPDATE_PANEL_STATE') {
-  console.log('[Background] Received panel state update:', message.left, message.top, message.width, message.height);
-  
+  console.log(
+    '[Background] Received panel state update:',
+    message.left,
+    message.top,
+    message.width,
+    message.height
+  );
+
   const cookieStoreId = message.cookieStoreId || 'firefox-default';
-  
+
   // Broadcast to all tabs in the same container
   browser.tabs.query({ cookieStoreId: cookieStoreId }).then(tabs => {
     tabs.forEach(tab => {
-      browser.tabs.sendMessage(tab.id, {
-        action: 'UPDATE_PANEL_STATE_FROM_BACKGROUND',
-        left: message.left,
-        top: message.top,
-        width: message.width,
-        height: message.height,
-        isOpen: message.isOpen,
-        cookieStoreId: cookieStoreId
-      }).catch(() => {});
+      browser.tabs
+        .sendMessage(tab.id, {
+          action: 'UPDATE_PANEL_STATE_FROM_BACKGROUND',
+          left: message.left,
+          top: message.top,
+          width: message.width,
+          height: message.height,
+          isOpen: message.isOpen,
+          cookieStoreId: cookieStoreId
+        })
+        .catch(() => {});
     });
   });
-  
+
   sendResponse({ success: true });
   return true;
 }
@@ -278,10 +293,12 @@ if (message.action === 'UPDATE_PANEL_STATE_FROM_BACKGROUND') {
     quickTabsPanel.style.top = message.top + 'px';
     quickTabsPanel.style.width = message.width + 'px';
     quickTabsPanel.style.height = message.height + 'px';
-    
-    debug(`[Panel] Updated position/size from background: (${message.left}, ${message.top}) ${message.width}x${message.height}`);
+
+    debug(
+      `[Panel] Updated position/size from background: (${message.left}, ${message.top}) ${message.width}x${message.height}`
+    );
   }
-  
+
   sendResponse({ success: true });
   return true;
 }
@@ -360,6 +377,7 @@ indicator.className = `panel-status-indicator ${isMinimized ? 'yellow' : 'green'
 **Root cause:** The issue is likely in how the Quick Tabs are being **restored from storage**. When Quick Tabs are restored on page load (via `restoreQuickTabsFromStorage()`, lines 2177-2315), minimized tabs should remain minimized and appear in the manager with yellow indicators, but the code may be incorrectly creating active Quick Tabs instead.
 
 Checking `restoreQuickTabsFromStorage()` (line 2262):
+
 ```javascript
 // Restore minimized tabs (also check for duplicates by ID and pin status)
 const existingMinimizedIds = new Set(minimizedQuickTabs.map(t => t.id).filter(id => id));
@@ -367,13 +385,15 @@ const minimized = tabs.filter(t => {
   if (!t.minimized) return false;
   if (!t.url || t.url.trim() === '') return false; // Skip empty URLs
   if (t.id && existingMinimizedIds.has(t.id)) return false;
-  
+
   // Filter based on pin status
   if (t.pinnedToUrl && t.pinnedToUrl !== currentPageUrl) {
-    debug(`Skipping minimized pinned Quick Tab (pinned to ${t.pinnedToUrl}, current: ${currentPageUrl})`);
+    debug(
+      `Skipping minimized pinned Quick Tab (pinned to ${t.pinnedToUrl}, current: ${currentPageUrl})`
+    );
     return false;
   }
-  
+
   return true;
 });
 
@@ -408,6 +428,7 @@ minimizedTabs.forEach(tab => {
 **Actual Root Cause:** The issue is that when a Quick Tab is minimized via `minimizeQuickTab()`, the state is saved to storage with `minimized: true`, BUT the sidebar panel code (`sidebar/quick-tabs-manager.js`) is reading from `browser.storage.sync` with key `quick_tabs_state_v2`, which is in a **container-aware format**.
 
 Looking at the sidebar code (lines 136-142):
+
 ```javascript
 // Separate active and minimized tabs
 const activeTabs = containerState.tabs.filter(t => !t.minimized);
@@ -432,7 +453,7 @@ In the `renderQuickTabItem()` function:
 ```javascript
 if (!isMinimized) {
   // Active Quick Tab actions
-  
+
   // Go to Tab button (NEW FEATURE)
   if (tab.activeTabId) {
     const goToTabBtn = document.createElement('button');
@@ -443,7 +464,7 @@ if (!isMinimized) {
     goToTabBtn.dataset.tabId = tab.activeTabId;
     actions.appendChild(goToTabBtn);
   }
-  
+
   // Minimize button
   const minimizeBtn = document.createElement('button');
   minimizeBtn.className = 'btn-icon';
@@ -454,7 +475,7 @@ if (!isMinimized) {
   actions.appendChild(minimizeBtn);
 } else {
   // Minimized Quick Tab actions
-  
+
   // Restore button
   const restoreBtn = document.createElement('button');
   restoreBtn.className = 'btn-icon';
@@ -480,6 +501,7 @@ actions.appendChild(closeBtn);
 **Hypothesis:** When a Quick Tab is minimized, it's being rendered in BOTH the "active" section AND the "minimized" section, causing both buttons to appear.
 
 Checking the filtering logic (lines 136-148):
+
 ```javascript
 // Separate active and minimized tabs
 const activeTabs = containerState.tabs.filter(t => !t.minimized);
@@ -511,7 +533,7 @@ const minimizedData = {
   top: Math.round(rect.top),
   width: Math.round(rect.width),
   height: Math.round(rect.height),
-  minimized: true,  // <-- THIS IS SET CORRECTLY
+  minimized: true, // <-- THIS IS SET CORRECTLY
   pinnedToUrl: container._pinnedToUrl || null,
   slotNumber: CONFIG.debugMode ? quickTabSlots.get(quickTabId) || null : null,
   activeTabId: activeTabId,
@@ -661,7 +683,7 @@ const minimizedData = {
   id: quickTabId,
   url: url,
   title: title || 'Quick Tab',
-  left: Math.round(rect.left),  // <-- Position IS being saved
+  left: Math.round(rect.left), // <-- Position IS being saved
   top: Math.round(rect.top),
   width: Math.round(rect.width),
   height: Math.round(rect.height),
@@ -756,6 +778,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 Modify `minimizeQuickTab()` to force an immediate storage update instead of using the save queue:
 
 **Current code (lines 2548-2551):**
+
 ```javascript
 // Save to storage via queue if persistence is enabled
 if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
@@ -766,6 +789,7 @@ if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
 ```
 
 **Replace with:**
+
 ```javascript
 // Save to storage IMMEDIATELY (bypass save queue) if persistence is enabled
 if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
@@ -774,17 +798,17 @@ if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
     try {
       const cookieStoreId = await getCurrentCookieStoreId();
       const result = await browser.storage.sync.get('quick_tabs_state_v2');
-      
+
       let state = result?.quick_tabs_state_v2 || {};
-      
+
       // Initialize container state if needed
       if (!state[cookieStoreId]) {
         state[cookieStoreId] = { tabs: [], lastUpdate: 0 };
       }
-      
+
       // Find and update the tab in storage
       const tabIndex = state[cookieStoreId].tabs.findIndex(t => t.id === quickTabId);
-      
+
       if (tabIndex !== -1) {
         // Update existing tab
         state[cookieStoreId].tabs[tabIndex] = minimizedData;
@@ -792,12 +816,12 @@ if (CONFIG.quickTabPersistAcrossTabs && quickTabId) {
         // Add new minimized tab
         state[cookieStoreId].tabs.push(minimizedData);
       }
-      
+
       state[cookieStoreId].lastUpdate = Date.now();
-      
+
       // Save immediately to storage
       await browser.storage.sync.set({ quick_tabs_state_v2: state });
-      
+
       debug(`Quick Tab ${quickTabId} minimized and saved immediately to storage`);
     } catch (err) {
       console.error('Error saving minimized Quick Tab:', err);
@@ -813,6 +837,7 @@ This ensures that when a Quick Tab is minimized, the storage is updated **immedi
 Similarly, modify `restoreQuickTab()` to force an immediate update when restoring:
 
 **Current code (lines 2608-2637):**
+
 ```javascript
 // Update storage to mark as not minimized
 if (CONFIG.quickTabPersistAcrossTabs && tab.id) {
@@ -885,7 +910,7 @@ createQuickTabWindow(
   tab.url,
   tab.width,
   tab.height,
-  tab.left,    // <-- Position IS being passed
+  tab.left, // <-- Position IS being passed
   tab.top,
   true,
   tab.pinnedToUrl,
@@ -910,7 +935,7 @@ createQuickTabWindow(
   tab.url,
   tab.width || CONFIG.quickTabDefaultWidth,
   tab.height || CONFIG.quickTabDefaultHeight,
-  tab.left,  // May be undefined - createQuickTabWindow will use default
+  tab.left, // May be undefined - createQuickTabWindow will use default
   tab.top,
   true,
   tab.pinnedToUrl,
@@ -981,7 +1006,7 @@ function renderContainerSection(cookieStoreId, containerInfo, containerState) {
   // Separate active and minimized tabs
   const activeTabs = containerState.tabs.filter(t => !t.minimized);
   const minimizedTabs = containerState.tabs.filter(t => t.minimized);
-  
+
   // DEDUPLICATE: Use Set to track rendered tab IDs
   const renderedIds = new Set();
 
@@ -1106,7 +1131,7 @@ This will prevent the same Quick Tab from being rendered twice if its `minimized
 
 1. **Container Isolation**: All state is keyed by `cookieStoreId` (Firefox Containers feature). Ensure all operations preserve this isolation.
 
-2. **Three-Layer Sync**: 
+2. **Three-Layer Sync**:
    - **BroadcastChannel** for same-origin tabs (instant, < 10ms)
    - **browser.runtime.sendMessage()** for cross-origin tabs (< 50ms)
    - **browser.storage.sync** for persistence (read on page load)
@@ -1150,10 +1175,12 @@ This will prevent the same Quick Tab from being rendered twice if its `minimized
 ## Estimated Complexity
 
 **Panel Sync (Issue #1):** Medium complexity (3-4 hours)
+
 - Requires understanding of BroadcastChannel, message passing, and storage
 - Similar to existing Quick Tab sync logic, can reuse patterns
 
-**Status Indicators and Restore (Issue #2):** Low-Medium complexity (2-3 hours)  
+**Status Indicators and Restore (Issue #2):** Low-Medium complexity (2-3 hours)
+
 - Main fix is forcing immediate storage updates
 - Deduplication logic is straightforward
 - Restore position logic is already correct, just needs defensive checks
