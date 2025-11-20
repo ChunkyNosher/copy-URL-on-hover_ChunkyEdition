@@ -3,242 +3,174 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.0.3 (Architecture Refactoring In Progress - Phase 1 COMPLETE)  
+**Version:** 1.6.0.3  
 **Language:** JavaScript (ES6+)  
-**Architecture:** Transitioning from Hybrid Modular/EventBus to Domain-Driven Design with Clean Architecture  
-**Refactoring Status:** Phase 1 (Domain + Storage) 100% complete - Phase 2.1 (QuickTabsManager) next  
-**Purpose:** URL management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and
-persistent floating panel manager
+**Architecture:** Domain-Driven Design with Clean Architecture  
+**Purpose:** URL management with Solo/Mute visibility control, complete Firefox Container isolation, and persistent floating panel manager
 
-**🔧 v1.6.0 Refactoring:** Major architectural transformation following evidence-based patterns (Mozilla/Chrome/Industry best practices).  
-**Domain Layer:** ✅ Complete (QuickTab, Container entities with 100% test coverage)  
-**Storage Layer:** ✅ Complete (SyncStorageAdapter, SessionStorageAdapter, FormatMigrator with 92% coverage)  
-**Bug Fixes:** ✅ v1.6.0.3 critical initialization race conditions resolved  
-**See:** `docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md` for Phase 1 summary
-
----
-
-## 🎯 CRITICAL: Robust Solutions Philosophy
-
-**This applies to ALL Copilot agents for ALL code changes, bug fixes, and feature implementations.**
-
-### Core Principle: Fix Root Causes, Not Symptoms
-
-**ALWAYS prioritize solutions that:**
-- ✅ **Fix the actual underlying behavior** causing the issue
-- ✅ **Address root causes** at the architectural level
-- ✅ **Eliminate technical debt** rather than accumulating it
-- ✅ **Prevent entire classes of bugs** from recurring
-- ✅ **Accept increased complexity** if it means a proper, lasting fix
-- ✅ **Use the RIGHT pattern/API** even if it takes more code
-
-**NEVER accept solutions that:**
-- ❌ **Mask symptoms** without fixing the root problem
-- ❌ **Add workarounds** instead of fixing the core issue
-- ❌ **Use quick hacks** just to "make it work"
-- ❌ **Sacrifice correctness** for perceived simplicity
-- ❌ **Add technical debt** for short-term convenience
-- ❌ **Postpone proper fixes** with temporary band-aids
-
-### Why This Matters
-
-**Bad Example (Band-Aid):**
-```javascript
-// ❌ WRONG: Mask the timing issue with setTimeout
-setTimeout(() => {
-  renderQuickTab(data);
-}, 100); // Hope 100ms is enough...
-```
-
-**Good Example (Root Cause Fix):**
-```javascript
-// ✅ CORRECT: Fix the actual timing issue architecturally
-// Direct local creation - content script renders immediately,
-// THEN notifies background for persistence. Eliminates race condition.
-function handleCreateQuickTab(data) {
-  // Create locally first for instant feedback
-  const quickTab = quickTabsManager.createQuickTab(data);
-  
-  // Then persist in background (async, non-blocking)
-  browser.runtime.sendMessage({
-    action: 'PERSIST_QUICK_TAB',
-    data: quickTab.serialize()
-  });
-  
-  // BroadcastChannel handles cross-tab sync (<10ms)
-  broadcastChannel.postMessage({
-    type: 'QUICK_TAB_CREATED',
-    data: quickTab.serialize()
-  });
-}
-```
-
-### Implementation Guidelines
-
-1. **Diagnose thoroughly** - Understand WHY the bug occurs, not just WHAT fails
-2. **Design architecturally** - Plan solutions that prevent similar bugs
-3. **Implement robustly** - Write code that handles edge cases properly
-4. **Test comprehensively** - Validate the root cause is actually fixed
-5. **Document clearly** - Explain why this approach fixes the underlying issue
-
-### Code Review Red Flags
-
-If you find yourself thinking:
-- "This setTimeout should fix it" → ❌ Probably masking a timing issue
-- "I'll just catch and ignore this error" → ❌ Hiding a real problem
-- "This workaround is easier than fixing it properly" → ❌ Creating technical debt
-- "I'll add a flag to skip the broken code path" → ❌ Avoiding the real issue
-
-Instead, ask:
-- "What's the ROOT CAUSE of this timing issue?" → ✅ Fix the race condition
-- "WHY is this error occurring?" → ✅ Fix the source of the error
-- "What's the CORRECT pattern for this?" → ✅ Implement it properly
-- "How can I ELIMINATE this code path entirely?" → ✅ Refactor to remove fragility
-
-### When Complexity is Justified
-
-**Prefer complex-but-correct over simple-but-broken:**
-
-- Complex error handling that covers all edge cases ✅ BETTER THAN simple try-catch that swallows errors ❌
-- Architectural refactor that eliminates race conditions ✅ BETTER THAN adding delays with setTimeout ❌
-- Proper state management with immutability ✅ BETTER THAN mutating global state haphazardly ❌
-- Container-specific BroadcastChannel isolation ✅ BETTER THAN manual filtering everywhere ❌
-
-### Success Criteria
-
-A solution is acceptable when:
-1. ✅ The root cause is identified and addressed
-2. ✅ The fix prevents the bug class from recurring
-3. ✅ The code is more maintainable after the fix
-4. ✅ Technical debt is reduced, not increased
-5. ✅ Edge cases are properly handled
-6. ✅ The solution will scale with future features
-
-**Remember: A complex solution that ACTUALLY WORKS is infinitely better than a simple solution that MASKS THE PROBLEM.**
-
----
-
-### v1.6.0 Highlights (Refactoring In Progress)
-
-- **Major Architecture Refactoring - Domain-Driven Design:** Comprehensive transformation to reduce technical debt and improve maintainability following evidence-based patterns from Mozilla, Chrome, and industry best practices.
-- **Phase 0 (COMPLETE):** Enhanced build system with module aliasing, comprehensive test infrastructure with layer-specific coverage thresholds, ESLint complexity rules, automated architecture validation.
-- **Phase 1.1-1.2 (COMPLETE):** Domain layer entities extracted - QuickTab (410 lines) and Container (207 lines) with **100% test coverage** (83 tests, 0 technical debt).
-- **Phase 1.3-1.4 (IN PROGRESS):** Storage abstraction layer - async-first adapters (SyncStorageAdapter, SessionStorageAdapter), format migrator for v1.5.8.13-15 legacy formats.
-- **Quality Gates:** Domain layer requires 100% coverage, storage layer 90%, features 80%. Complexity limits enforced: cc ≤ 9, max-depth ≤ 2, max-lines ≤ 70.
-- **All Features Preserved:** Zero breaking changes, full backward compatibility maintained throughout refactoring.
-- **Test Infrastructure:** Fast unit tests (<1s), module-aware build system, bundle size monitoring, architecture boundary enforcement via ESLint.
-- See `docs/misc/v1.6.0-REFACTORING-PHASE1-STATUS.md` for detailed progress and handoff instructions.
-
-### v1.6.0.3 Highlights (Critical Bug Fixes)
-
-- **Initialization Race Condition Fix:** Fixed PanelManager initialization order where callbacks were invoked before panel DOM element existed. Panel now created BEFORE state manager initialization, eliminating race condition that prevented Quick Tabs from rendering.
-- **Enhanced Error Logging:** DOMException and browser-native errors now log correctly with explicit property extraction (message, name, stack). Empty error objects `{}` eliminated.
-- **Root Cause Resolution:** Single architectural fix (initialization order) resolved three cascading failures: Quick Tabs not rendering, panel not opening, copy text failures.
-- **Zero Breaking Changes:** ~40 lines changed across 5 files, fully backward compatible.
-- See `docs/manual/v1.6.0.3-bug-diagnosis-and-fix-report.md` for complete analysis and `docs/misc/v1.6.0.3-RELEASE-SUMMARY.md` for quick reference.
-
-### Initialization Order Best Practices (v1.6.0.3 Lesson)
-
-**CRITICAL RULE:** Always create DOM elements BEFORE registering callbacks that access them.
-
-**Anti-pattern (WRONG):**
-```javascript
-// ❌ BAD: Register callback first, create element later
-this.callbacks = { onStateLoaded: state => this.updateElement(state) };
-await this.loadState();  // Triggers callback
-this.element = createElement();  // Too late!
-```
-
-**Correct pattern:**
-```javascript
-// ✅ GOOD: Create element first, then register callbacks
-this.element = createElement();
-this.callbacks = { onStateLoaded: state => this.updateElement(state) };
-await this.loadState();  // Safe - element exists
-```
-
-**Real-world example from v1.6.0.3 fix:**
-```javascript
-// BEFORE (v1.6.0.1) - WRONG ORDER
-this.stateManager = new PanelStateManager({
-  onStateLoaded: state => this._applyState(state)  // Callback accesses this.panel
-});
-await this.stateManager.init();  // ❌ Triggers callback NOW
-this.panel = createElement();    // Created AFTER callback runs
-
-// AFTER (v1.6.0.3) - CORRECT ORDER
-this.panel = createElement();    // ✅ Create FIRST
-this.stateManager = new PanelStateManager({
-  onStateLoaded: state => this._applyState(state)  // Safe - panel exists
-});
-await this.stateManager.init();  // Callback can now access panel
-```
-
-**Why this matters:**
-- Silent failures are hard to debug
-- Race conditions cause unpredictable behavior
-- Early returns mask root problems
-- Proper initialization order eliminates entire bug classes
-
-### Current Architecture (v1.6.0.3)
-
-**Architecture:** Domain-Driven Design with Clean Architecture (Refactoring Phase 1 Complete)
-
-**Core Features:**
+**Key Features:**
 - Solo/Mute tab-specific visibility control
 - Firefox Container complete isolation
 - Floating Quick Tabs Manager with persistent panel
 - Cross-tab sync via BroadcastChannel + browser.storage
 - Direct local creation pattern (content renders first, background persists)
 
-**Key Implementation Details:**
-- **Domain Layer:** Pure business logic entities (QuickTab, Container) with 100% test coverage
-- **Storage Layer:** Async-first adapters (Sync, Session) with automatic fallback and quota management (92% coverage)
-- **Container Isolation:** Container-specific BroadcastChannel (`quick-tabs-sync-firefox-container-{id}`) for message isolation
-- **Solo/Mute State:** Stored in `soloedOnTabs` and `mutedOnTabs` arrays per container in browser.storage.sync
-- **Real-time Sync:** BroadcastChannel provides <10ms cross-tab synchronization
-- **Persistence:** browser.storage.sync for state, browser.storage.local for panel position/size
+---
 
-**For detailed version history and feature evolution, see** `docs/CHANGELOG.md`
+## 🎯 CRITICAL: Robust Solutions Philosophy
+
+### Core Principle: Fix Root Causes, Not Symptoms
+
+**ALWAYS prioritize solutions that:**
+- ✅ Fix the actual underlying behavior causing the issue
+- ✅ Address root causes at the architectural level
+- ✅ Eliminate technical debt rather than accumulating it
+- ✅ Prevent entire classes of bugs from recurring
+- ✅ Use the RIGHT pattern/API even if it takes more code
+
+**NEVER accept solutions that:**
+- ❌ Mask symptoms without fixing the root problem
+- ❌ Add workarounds instead of fixing the core issue
+- ❌ Use quick hacks just to "make it work"
+- ❌ Sacrifice correctness for perceived simplicity
+- ❌ Add technical debt for short-term convenience
+
+**Code Review Red Flags:**
+
+If you think: "This setTimeout should fix it" → ❌ Fix the race condition  
+If you think: "I'll catch and ignore this error" → ❌ Fix the error source  
+If you think: "This workaround is easier" → ❌ Implement properly  
+
+**Remember: Complex-but-correct is better than simple-but-broken.**
 
 ---
 
-# Memory Persistence Instructions
+## Memory Persistence Instructions 🧠
 
-## CRITICAL: At the end of EVERY task, you MUST:
+### CRITICAL: At the end of EVERY task, you MUST:
 
-1. Stage memory files for commit:
-   - Use `git add .in-memoria/`
-   - Use `git add .agentic-tools/`
-   - Use `git add .mcp-data/`
+1. **Stage memory files for commit:**
+   - `git add .in-memoria/`
+   - `git add .agentic-tools/`
+   - `git add .mcp-data/`
 
-2. Commit memory files with your code changes:
+2. **Commit memory files with your code changes:**
    - Include memory files in your final commit
    - Use commit message: "chore: persist agent memory from task"
 
-3. Push to the PR branch:
+3. **Push to the PR branch:**
    - Ensure memory files are included in the push
 
-## Memory File Locations
+### Memory File Locations
 
-The following directories contain your persistent memory:
-- `.in-memoria/` - Code intelligence patterns
-- `.agentic-tools/` - Task tracking and session memory
-- `.mcp-data/` - SQLite database for structured memory
+- `.in-memoria/` - Code intelligence patterns (In-Memoria MCP)
+- `.agentic-tools/` - Task tracking and session memory (Agentic-Tools MCP)
+- `.mcp-data/` - SQLite database for structured memory (Persistent-Memory MCP)
 
-**These files MUST be committed to every PR you create.**
+**Why This Matters:** Your memory files are stored in an ephemeral environment that gets destroyed when your session ends. If you don't commit them to the PR, they will be lost forever.
 
-## Why This Matters
+### Verification Before Finishing
 
-Your memory files are stored in an ephemeral environment that gets destroyed when your session ends. If you don't commit them to the PR, they will be lost forever and you'll have no memory of this work in future tasks.
+Check that `.in-memoria/`, `.agentic-tools/`, and `.mcp-data/` appear in your commit. If missing, ADD THEM NOW.
 
-## Verification
+**This is NON-NEGOTIABLE for memory persistence across tasks.**
 
-Before finishing your work, verify memory files are staged:
-- Check that `.in-memoria/`, `.agentic-tools/`, and `.mcp-data/` appear in your commit
-- If these directories don't appear in your commit, ADD THEM NOW
+---
 
-This is NON-NEGOTIABLE for memory persistence across tasks.
+## MCP Server Utilization (12 Servers Configured)
+
+### Critical Priority MCPs (ALWAYS Use)
+
+#### ESLint MCP ⭐ MANDATORY
+- **Purpose:** JavaScript linting, auto-fixing, code quality
+- **Rule:** EVERY code change MUST be linted before committing
+- **Workflow:** Write code → Lint immediately → Apply fixes → Verify zero errors → Commit
+
+#### Context7 MCP ⭐ MANDATORY
+- **Purpose:** Up-to-date API documentation
+- **Rule:** ALWAYS fetch current docs instead of relying on training data
+- **Use For:** WebExtensions APIs, external libraries, Firefox compatibility
+
+#### Perplexity MCP ⭐ MANDATORY
+- **Purpose:** Real-time web search with reasoning
+- **Model:** sonar-reasoning-pro (with citations)
+- **Use For:** Current information, best practices, recent solutions
+- **Tool:** `perplexity_reason` - Advanced reasoning with web search
+
+### High Priority MCPs (Use Frequently)
+
+#### GitHub MCP (Write-Enabled)
+- **Capabilities:** Create/update issues & PRs, add comments, trigger workflows
+- **Use For:** Auto-creating issues from bug reports, updating status, PR management
+
+#### Playwright (Firefox & Chrome) MCPs
+- **Configuration:** Firefox & Chrome browsers, clipboard permissions, isolated mode
+- **Use For:** Testing extension functionality, verifying UI changes, automated tests
+
+#### CodeScene MCP
+- **Purpose:** Code health analysis, technical debt detection
+- **Use For:** Architecture analysis, refactoring priorities, complexity monitoring
+
+#### Codecov MCP
+- **Purpose:** Test coverage analysis
+- **Use For:** Coverage reports, tracking test quality, identifying gaps
+
+#### GitHub Actions MCP
+- **Purpose:** CI/CD workflow management
+- **Use For:** Triggering workflows, checking build status, automation
+
+### Memory & Intelligence MCPs (Session Persistence)
+
+#### In-Memoria MCP 🧠
+- **Purpose:** Semantic code intelligence with vector embeddings
+- **Storage:** `.in-memoria/patterns.db` (SQLite) + embeddings (SurrealDB)
+- **Tools:** `learn_codebase_intelligence`, `query_patterns`, `contribute_insights`
+- **CRITICAL:** Commit `.in-memoria/patterns.db` to persist learnings
+
+#### Agentic-Tools MCP 🧠
+- **Purpose:** Task management and agent memories
+- **Storage:** `.agentic-tools/` (JSON files)
+- **Tools:** `create_task`, `create_memory`, `search_memories`, `get_project_info`
+- **CRITICAL:** Commit `.agentic-tools/*.json` to persist tasks/memories
+
+#### Persistent-Memory MCP 🧠
+- **Purpose:** SQLite-based structured memory
+- **Storage:** `.mcp-data/memory.db`
+- **Tools:** `sqlite_execute`, `sqlite_get_catalog`
+- **CRITICAL:** Commit `.mcp-data/memory.db` to persist data
+
+---
+
+## Standard MCP Workflows
+
+### Bug Fix Workflow
+```
+1. Context7 MCP: Get API docs ⭐
+2. Write fix
+3. ESLint MCP: Lint and fix ⭐ MANDATORY
+4. Playwright MCP: Test fix
+5. GitHub MCP: Update issue
+6. Commit memory files 🧠
+```
+
+### New Feature Workflow
+```
+1. Perplexity MCP: Research best practices ⭐
+2. Context7 MCP: Get API docs ⭐
+3. Write feature code
+4. ESLint MCP: Lint and fix ⭐ MANDATORY
+5. Playwright MCP: Create tests
+6. GitHub MCP: Create PR
+7. Commit memory files 🧠
+```
+
+### Memory Persistence Workflow (EVERY Task)
+```
+1. Complete work
+2. git add .in-memoria/ .agentic-tools/ .mcp-data/
+3. git commit -m "chore: persist agent memory from task"
+4. git push
+```
 
 ---
 
@@ -246,145 +178,73 @@ This is NON-NEGOTIABLE for memory persistence across tasks.
 
 ### Message Passing Security
 
-**For all `browser.runtime.onMessage` handlers:**
-
+**ALWAYS validate sender:**
 ```javascript
-// ❌ BAD - No sender validation
-browser.runtime.onMessage.addListener((message, sender) => {
-  if (message.action === 'getData') {
-    return processData(message.data);
-  }
-});
-
 // ✅ GOOD - Validate sender
 browser.runtime.onMessage.addListener((message, sender) => {
-  // Validate sender is from this extension
   if (!sender.id || sender.id !== browser.runtime.id) {
-    console.error('Message from unknown sender:', sender);
     return Promise.reject(new Error('Unauthorized'));
   }
-
-  // Validate sender tab if applicable
-  if (sender.tab && !sender.tab.id) {
-    return Promise.reject(new Error('Invalid tab'));
-  }
-
-  if (message.action === 'getData') {
-    return processData(message.data);
-  }
+  // Process message
 });
 ```
-
-**Always check:**
-
-- ✅ Sender ID matches extension ID
-- ✅ Sender tab is valid (if applicable)
-- ✅ Message format is validated before processing
 
 ### Storage API Best Practices
 
-**For `browser.storage.sync` operations:**
-
+**Always handle quotas and errors:**
 ```javascript
-// ❌ BAD - No error handling or quota check
-async function saveState(state) {
-  await browser.storage.sync.set({ state });
-}
-
-// ✅ GOOD - Error handling + quota awareness
+// ✅ GOOD - Check quota and handle errors
 async function saveState(state) {
   try {
-    // Check size before saving (sync has 100KB limit)
     const stateSize = new Blob([JSON.stringify(state)]).size;
-    if (stateSize > 100 * 1024) {
-      throw new Error(`State too large: ${stateSize} bytes (max 100KB)`);
+    if (stateSize > 100 * 1024) { // sync has 100KB limit
+      throw new Error(`State too large: ${stateSize} bytes`);
     }
-
     await browser.storage.sync.set({ state });
   } catch (error) {
-    // Handle quota exceeded
-    if (error.message.includes('QUOTA_BYTES')) {
-      console.error('Storage quota exceeded, clearing old data');
-      await browser.storage.sync.clear();
-      await browser.storage.sync.set({ state });
-    } else {
-      console.error('Failed to save state:', error);
-      // Fallback to local storage
-      await browser.storage.local.set({ state });
-    }
+    console.error('Storage error:', error);
+    // Fallback to local storage
+    await browser.storage.local.set({ state });
   }
 }
 ```
-
-**Always:**
-
-- ✅ Wrap all storage calls in try-catch
-- ✅ Check quota limits (100KB for sync, ~10MB for local)
-- ✅ Provide user feedback for storage failures
-- ✅ Consider fallback to local storage
 
 ### Container Isolation
 
-**For Firefox Multi-Account Containers integration:**
-
+**Always use `cookieStoreId` for container-aware operations:**
 ```javascript
-// Always check cookieStoreId for container-aware operations
 async function getTabState(tabId) {
   const tab = await browser.tabs.get(tabId);
   const cookieStoreId = tab.cookieStoreId || 'firefox-default';
-
-  // Use cookieStoreId as key to isolate state per container
-  const containerState = await getStateForContainer(cookieStoreId);
-  return containerState;
-}
-
-// Prevent cross-container state leaks
-function validateContainerAccess(sourceContainer, targetContainer) {
-  if (sourceContainer !== targetContainer) {
-    throw new Error('Cross-container access denied');
-  }
+  return await getStateForContainer(cookieStoreId);
 }
 ```
-
-**Always:**
-
-- ✅ Use `cookieStoreId` to isolate state between containers
-- ✅ Validate container ID before sharing data
-- ✅ Test with multiple containers active
-- ✅ Handle default container (no cookieStoreId)
 
 ---
 
 ## Testing Requirements
 
 ### Minimum Coverage Standards
-
-- **Overall:** Maintain current coverage level (do not decrease)
-- **Critical paths:** 100% coverage required
-  - Container isolation logic
-  - State management operations
-  - Message passing handlers
+- **Critical paths:** 100% coverage (container isolation, state management, message handlers)
 - **New features:** 80% coverage minimum
 - **Bug fixes:** Add regression test
 
 ### Required Test Types
-
-1. **Unit tests** - Test individual functions
-2. **Integration tests** - Test component interactions
-3. **Error scenario tests** - Test failure cases
-4. **Container isolation tests** - Test multi-container scenarios
+1. Unit tests - Individual functions
+2. Integration tests - Component interactions
+3. Error scenario tests - Failure cases
+4. Container isolation tests - Multi-container scenarios
 
 ---
 
 ## Code Style & Patterns
 
 ### Preferred Patterns
-
 ```javascript
 // ✅ Use const for immutable values
 const MAX_RETRIES = 3;
 
-// ✅ Use async/await over promises
+// ✅ Use async/await
 async function fetchData() {
   const data = await fetch(url);
   return data;
@@ -401,68 +261,84 @@ const { id, name } = user;
 ```
 
 ### Patterns to Avoid
-
 ```javascript
 // ❌ Don't use var
-var count = 0;
-
 // ❌ Don't use eval or new Function
-eval(userInput);
-
 // ❌ Don't use innerHTML with user input
-element.innerHTML = userInput;
-
-// ❌ Don't ignore errors
-try {
-  await doSomething();
-} catch (e) {
-  // empty catch
-}
-
+// ❌ Don't ignore errors (empty catch blocks)
 // ❌ Don't use console.log in production
-console.log('Debug info'); // Use proper logging
 ```
 
 ---
 
-## When Reviewing Pull Requests
+## Documentation Update Requirements
 
-### Checklist for All PRs
+### MANDATORY Updates Based on Change Type
 
-- [ ] All GitHub Actions checks pass (ESLint, Prettier, Build, Tests)
-- [ ] DeepSource analysis passes or issues are acknowledged
-- [ ] CodeRabbit review completed
-- [ ] Test coverage maintained or improved
-- [ ] No new security warnings from CodeQL
-- [ ] Container isolation tested (if applicable)
-- [ ] Error handling present in all async operations
-- [ ] JSDoc comments added for new public functions
+#### Update README.md when:
+- Version numbers change
+- Features or functionality change
+- User interface or UX changes
+- Settings or configuration change
+- Known limitations change
 
-### For Copilot-Generated PRs
+**README must stay under 10KB** - Remove outdated information, historical data goes to `docs/CHANGELOG.md`
 
-When reviewing PRs created by GitHub Copilot Coding Agent:
+#### Update Agent Files when:
+- Version numbers change
+- Architecture changes (patterns, structure)
+- New APIs or features across multiple agents
+- Build/test/deploy processes change
+- Repository structure changes
 
-1. **Verify the approach** - Is the solution optimal?
-2. **Check edge cases** - Did Copilot consider error scenarios?
-3. **Validate tests** - Are tests comprehensive?
-4. **Review security** - Are there any security implications?
-5. **Check integration** - Does it work with existing code?
+**Agent files to update:**
+- `.github/copilot-instructions.md` (this file) - Common knowledge
+- Individual files in `.github/agents/` - Agent-specific methodologies
 
-### For Bot PRs (Dependabot, Renovate)
+### Version Synchronization
 
-- Focus on breaking changes in dependencies
-- Verify tests still pass
-- Check for security vulnerabilities in new versions
-- Update documentation if API changes
+When version changes from X.Y.Z to X.Y.Z+1:
+- Update `manifest.json` version
+- Update `package.json` version
+- Update README header & footer
+- Update `.github/copilot-instructions.md` (Project Overview)
+- Add "What's New" section to README
+
+---
+
+## Bug Reporting and Issue Creation
+
+### Automatic Issue Creation (ENABLED)
+
+When user reports bugs or requests features:
+
+1. **Document all issues** in `docs/manual/` or `docs/implementation-summaries/`
+2. **CREATE GITHUB ISSUES** automatically using GitHub MCP
+3. **DO NOT auto-close issues** - User closes manually
+4. **Include:**
+   - Clear, actionable title
+   - Detailed description
+   - Root cause analysis (for bugs)
+   - Implementation strategy
+   - Appropriate labels
+
+### Checklist Format
+
+Use `- [ ]` for pending items (NOT `- [x]`):
+
+```markdown
+✅ CORRECT:
+- [ ] Fix RAM usage bug (GitHub issue #123 created)
+- [ ] Add console log export (GitHub issue #124 created)
+```
 
 ---
 
 ## Common Issues to Watch For
 
 ### Race Conditions
-
 ```javascript
-// ❌ BAD - Race condition
+// ❌ BAD
 async function incrementCounter() {
   const { counter } = await browser.storage.sync.get('counter');
   await browser.storage.sync.set({ counter: counter + 1 });
@@ -470,25 +346,19 @@ async function incrementCounter() {
 
 // ✅ GOOD - Atomic operation
 async function incrementCounter() {
-  return browser.storage.sync.get('counter').then(({ counter = 0 }) => {
-    return browser.storage.sync.set({ counter: counter + 1 });
-  });
+  return browser.storage.sync.get('counter').then(({ counter = 0 }) =>
+    browser.storage.sync.set({ counter: counter + 1 })
+  );
 }
 ```
 
 ### Memory Leaks
-
 ```javascript
-// ❌ BAD - Listeners not removed
-function setupListener() {
-  browser.tabs.onUpdated.addListener(handleUpdate);
-}
-
 // ✅ GOOD - Cleanup listeners
 function setupListener() {
   const listener = handleUpdate;
   browser.tabs.onUpdated.addListener(listener);
-
+  
   // Return cleanup function
   return () => {
     browser.tabs.onUpdated.removeListener(listener);
@@ -497,11 +367,7 @@ function setupListener() {
 ```
 
 ### Unhandled Promise Rejections
-
 ```javascript
-// ❌ BAD - Unhandled rejection
-browser.storage.sync.set({ data });
-
 // ✅ GOOD - Handle all rejections
 browser.storage.sync.set({ data }).catch(error => {
   console.error('Storage error:', error);
@@ -511,643 +377,47 @@ browser.storage.sync.set({ data }).catch(error => {
 
 ---
 
-## Manifest V2 Requirements
-
-- ✅ Use `manifest_version: 2` (required for webRequestBlocking)
-- ✅ Use `background.scripts` with persistent: true
-- ✅ Use `browser_action` instead of `action`
-- ✅ Declare all permissions explicitly
-- ✅ Use `content_scripts` for page injection
-- ✅ CSP: `script-src 'self'` (no inline scripts)
-
----
-
-## Final Notes
-
-When in doubt:
-
-1. **Prioritize security** over convenience
-2. **Add error handling** rather than assuming success
-3. **Write tests** before marking as done
-4. **Document decisions** in code comments
-5. **Ask for human review** on security-critical changes
-
-**Remember:** This extension handles user data and has access to browsing
-history. Security and privacy are paramount.
-
----
-
-## MANDATORY: Documentation Update Requirements
-
-**Every GitHub Copilot Agent MUST follow these requirements for ALL pull
-requests:**
-
-### 1. README Update (REQUIRED)
-
-**ALWAYS update the README.md file** when making changes to:
-
-- Version numbers (manifest.json, package.json)
-- Feature functionality or architecture
-- API changes or new APIs used
-- User-facing behavior
-- Settings or configuration options
-- Known limitations or bugs
-
-**README Update Checklist:**
-
-- [ ] **Ensure README.md remains under 10KB** - The README must be concise and focused on current v1.6.x information only
-- [ ] Update version number in header
-- [ ] Update "What's New in v{version}" section with latest release info only
-- [ ] Update feature list if functionality changed
-- [ ] Update usage instructions if UI/UX changed
-- [ ] Update settings documentation if config changed
-- [ ] Update version footer at bottom
-- [ ] Remove outdated information
-- [ ] **Do NOT add version history** - All historical changes belong in `docs/CHANGELOG.md`
-
-### 2. Copilot Agent Files Update (REQUIRED)
-
-**ALWAYS update ALL agent files** in `.github/agents/` and
-`.github/copilot-instructions.md` when making changes to:
-
-- Version numbers
-- Architecture (new patterns, refactoring, module structure)
-- Framework or technology changes
-- New APIs or features
-- Build/test/deploy processes
-- Repository structure
-- Development workflows
-
-**Agent Files to Update:**
-
-1. `.github/copilot-instructions.md` - Main instructions
-2. `.github/agents/bug-architect.md` - Bug analysis specialist
-3. `.github/agents/bug-fixer.md` - Bug fixing specialist
-4. `.github/agents/feature-builder.md` - Feature implementation specialist
-5. `.github/agents/feature-optimizer.md` - Feature optimization specialist
-6. `.github/agents/master-orchestrator.md` - Coordination specialist
-7. `.github/agents/refactor-specialist.md` - Code refactoring specialist
-
-**Agent Files Update Checklist:**
-
-- [ ] Update version numbers in all agent files
-- [ ] Update architecture knowledge (if structure changed)
-- [ ] Update API/framework information (if changed)
-- [ ] Add new features to knowledge base
-- [ ] Update build/test/deploy instructions (if changed)
-- [ ] Ensure consistency across all agent files
-
-### 3. Implementation Rules
-
-**When implementing changes:**
-
-1. **Before starting work:**
-   - Check current README for accuracy
-   - Check current agent files for accuracy
-   - Plan what documentation needs updating
-
-2. **During implementation:**
-   - Keep a mental note of changes that affect documentation
-   - Note new features, changed behaviors, removed features
-
-3. **Before finalizing PR:**
-   - Update README with all changes
-   - Update ALL agent files with new information
-   - Verify consistency across all documentation
-   - Double-check version numbers match everywhere
-
-4. **PR Description:**
-   - Include "README Updated" checklist item
-   - Include "Agent Files Updated" checklist item
-   - List specific documentation changes made
-
-### 4. Non-Compliance Consequences
-
-**Failure to update documentation will result in:**
-
-- PR rejection
-- Request for immediate documentation updates
-- Potential delays in merging
-
-**No exceptions.** Documentation is as important as code changes.
-
-### 5. Quick Reference
-
-**Files that must be kept in sync:**
-
-- `manifest.json` (version)
-- `package.json` (version)
-- `README.md` (version, features, architecture)
-- `.github/copilot-instructions.md` (version, architecture)
-- All files in `.github/agents/` (version, architecture, features)
-
-**When version changes from X.Y.Z to X.Y.Z+1:**
-
-- Update 5 version references (manifest, package, README header, README footer,
-  copilot-instructions)
-- Add "What's New" section to README
-- Update all 7 agent files with version and changes
-
----
-
-## Bug Reporting and Issue Creation Workflow
-
-**IMPORTANT: When users report bugs or request features:**
-
-### Automatic Issue Creation (ENABLED)
-
-When a user provides a list of bugs or features to implement:
-
-1. **Document all issues** in a markdown file in `docs/manual/` or
-   `docs/implementation-summaries/`
-2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs
-   and features
-3. **DO NOT mark issues as completed automatically** - The user will manually
-   close issues when work is done
-4. **Provide a clear list** of all bugs/features with:
-   - Issue title
-   - Detailed description
-   - Priority level
-   - Suggested labels
-   - Root cause analysis (for bugs)
-   - Implementation strategy
-
-### How to Create GitHub Issues
-
-When creating GitHub issues from user input or .md files:
-
-1. **Extract all bugs/features** from the user's prompt or from .md files in the
-   repository
-2. **For each bug/feature**, create a GitHub issue with:
-   - **Title**: Clear, actionable title (e.g., "Fix Quick Tab flash in top-left
-     corner")
-   - **Description**: Complete description including:
-     - Problem statement or feature request
-     - Root cause analysis (for bugs)
-     - Implementation strategy
-     - Testing requirements
-   - **Labels**: Appropriate labels (bug, enhancement, documentation, etc.)
-   - **Assignees**: Leave unassigned unless specified
-3. **Track created issues** in your implementation documentation
-4. **DO NOT automatically close issues** - Let the user manually close them
-
-### Issue Documentation Format
-
-For each bug/feature, document:
-
-```markdown
-### Issue Title: [Clear, descriptive title]
-
-**Priority:** [Critical/High/Medium/Low]  
-**Labels:** [bug/feature], [component], [other-labels]  
-**GitHub Issue:** #XXX (link to created issue)
-
-**Description:** [Detailed description of the issue or feature]
-
-**Root Cause Analysis:** (for bugs) [Why the bug occurs, what code is affected]
-
-**Implementation Strategy:** (for features) or **Fix Strategy:** (for bugs) [How
-to implement/fix, what changes are needed]
-```
-
-### Checklist Items
-
-When creating a checklist in PR descriptions:
-
-- Use `- [ ]` for pending items (NOT `- [x]`)
-- Let the user manually check off completed items
-- Don't auto-check items even after you've completed the work
-- Include links to GitHub issues you created
-
-### Example
-
-❌ **WRONG:**
-
-```markdown
-- [x] Fixed RAM usage bug (completed)
-- [x] Closed GitHub issue #123
-```
-
-✅ **CORRECT:**
-
-```markdown
-- [ ] Fix RAM usage bug (GitHub issue #123 created)
-- [ ] Fix Quick Tab flash (GitHub issue #124 created)
-- [ ] Add console log export (GitHub issue #125 created)
-```
-
-This ensures that all bugs and features are tracked in GitHub issues while
-allowing the user to manually mark them as complete when satisfied with the
-implementation.
-
----
-
-## MCP Server Utilization (MANDATORY)
-
-This repository has **15 MCP servers** configured. GitHub Copilot Coding Agent MUST utilize them optimally for all tasks.
-
-### Critical Priority MCPs (ALWAYS Use)
-
-#### ESLint MCP Server ⭐ MANDATORY
-
-**Rule:** EVERY code change MUST be linted with ESLint before committing.
-
-**Workflow:**
-1. Write/modify JavaScript
-2. IMMEDIATELY: "Lint [filename] with ESLint"
-3. Apply auto-fixes
-4. Fix remaining issues
-5. Verify zero errors
-6. Proceed with commit
-
-**NO EXCEPTIONS** - This is the primary quality gate.
-
-#### Context7 MCP Server ⭐ MANDATORY
-
-**Rule:** ALWAYS fetch current API documentation instead of relying on training data.
-
-**Use Cases:**
-- Implementing WebExtensions APIs
-- Using external libraries
-- Verifying API syntax
-- Checking Firefox compatibility
-
-**Example:** "Use Context7 to get latest Firefox clipboard API documentation"
-
-#### NPM Package Registry MCP Server ⭐ MANDATORY
-
-**Rule:** ALWAYS check packages before adding dependencies.
-
-**Workflow:**
-1. Search NPM Registry for package
-2. Get package details
-3. Check for vulnerabilities
-4. Verify Firefox compatibility
-5. Confirm active maintenance
-6. Proceed with installation
-
-**Example:** "Search npm for clipboard libraries compatible with WebExtensions and check for vulnerabilities"
-
-### High Priority MCPs (Use Frequently)
-
-#### GitHub MCP Server (Write-Enabled)
-
-**Capabilities:** Create issues/PRs, add comments, update labels, trigger workflows
-
-**Use For:**
-- Creating GitHub issues automatically from bug reports
-- Updating issue status and labels
-- Creating pull requests
-- Adding review comments
-
-**Auto-Issue Creation:** When user provides bug list, automatically create GitHub issues using GitHub MCP.
-
-#### Filesystem MCP Server
-
-**Configured Paths:**
-- `/workspace/src`, `/workspace/tests`, `/workspace/docs`
-- `/workspace/background.js`, `/workspace/popup.js`, `/workspace/manifest.json`
-
-**Use For:** Reading source code, writing new files, updating existing files
-
-#### Git MCP Server
-
-**Use For:** Creating commits, checking status, viewing history, showing diffs
-
-#### Playwright (Firefox) MCP Server
-
-**Configuration:** Firefox browser, clipboard permissions, isolated mode, traces saved
-
-**Use For:** Testing extension functionality, verifying UI changes, creating automated tests
-
-**ALWAYS test UI changes** with Playwright before finalizing.
-
-### Medium Priority MCPs
-
-- **Sentry MCP**: Error monitoring, stack traces, AI fix suggestions
-- **Memory MCP**: Context persistence across sessions
-- **Code Review MCP**: Automated PR reviews
-- **Screenshot MCP**: Visual verification
-
-### Lower Priority MCPs
-
-- **Perplexity MCP**: Real-time web search
-- **Brave Deep Research MCP**: Deep research
-- **REST API Tester MCP**: API endpoint testing
-- **GitHub Actions MCP**: CI/CD management
-
----
-
-## Standard MCP Workflows
-
-### Bug Fix Standard Workflow
-
-```
-1. Sentry MCP: Query error traces
-2. Filesystem MCP: Read affected code
-3. Context7 MCP: Get API docs ⭐
-4. Filesystem MCP: Write fix
-5. ESLint MCP: Lint code ⭐ MANDATORY
-6. Playwright MCP: Test fix
-7. Git MCP: Create commit
-8. GitHub MCP: Update issue
-```
-
-### New Feature Standard Workflow
-
-```
-1. NPM Registry MCP: Search packages ⭐ MANDATORY
-2. Context7 MCP: Get API docs ⭐ MANDATORY
-3. Perplexity/Brave MCP: Research practices
-4. Filesystem MCP: Write code
-5. ESLint MCP: Lint code ⭐ MANDATORY
-6. Playwright MCP: Create tests
-7. Screenshot MCP: Document UI
-8. Git MCP: Commit
-9. GitHub MCP: Create PR
-```
-
-### Code Review Standard Workflow
-
-```
-1. Code Review MCP: Analyze changes
-2. ESLint MCP: Check linting ⭐ MANDATORY
-3. Git MCP: View history
-4. Playwright MCP: Run tests
-5. GitHub MCP: Add comments
-```
-
-### Dependency Update Standard Workflow
-
-```
-1. NPM Registry MCP: Check updates ⭐ MANDATORY
-2. NPM Registry MCP: Check vulnerabilities ⭐ MANDATORY
-3. Context7 MCP: Get migration guides
-4. Filesystem MCP: Update package.json
-5. ESLint MCP: Verify passes ⭐ MANDATORY
-6. Playwright MCP: Run tests
-7. Git MCP: Commit
-8. GitHub MCP: Create PR
-```
-
----
-
-## MCP Usage Enforcement
-
-### Before Every Commit Checklist
-
-- [ ] ESLint MCP used on all modified JavaScript files
-- [ ] Zero ESLint errors remaining
-- [ ] Context7 used for any API implementations
-- [ ] NPM Registry checked for any new dependencies
+## Before Every Commit Checklist
+
+- [ ] ESLint MCP used on all modified JS files ⭐
+- [ ] Zero ESLint errors remaining ⭐
+- [ ] Context7 used for API implementations ⭐
 - [ ] Playwright tests run for UI changes
-- [ ] Git commit created with descriptive message
+- [ ] **Memory files committed** (.in-memoria/, .agentic-tools/, .mcp-data/) 🧠
 
-### Before Every PR Checklist
+---
 
-- [ ] All commits linted with ESLint
-- [ ] Code Review MCP analysis completed
+## Before Every PR Checklist
+
+- [ ] All commits linted with ESLint ⭐
 - [ ] Playwright test suite passes
+- [ ] Documentation updated (README, agent files if applicable)
+- [ ] **Memory files included in PR** 🧠
 - [ ] GitHub MCP used to create PR
-- [ ] Documentation updated (README, agent files)
-
----
-
-## Quick Reference
-
-**Full MCP Reference:** See `.github/mcp-utilization-guide.md` for complete details on all 15 MCP servers.
-
-**Key Principle:** Utilize MCPs proactively and systematically to ensure highest quality code and comprehensive testing.
-
-
----
-
-## MANDATORY: Documentation Update Requirements
-
-**This section applies to ALL Copilot agents unless otherwise specified in the agent-specific file.**
-
-**CRITICAL: Every pull request by any agent MUST update documentation when applicable!**
-
-### Required Updates Based on Change Type:
-
-#### 1. README.md (Update when user-facing changes occur)
-
-Update README.md when changes affect:
-- Version numbers (manifest.json or package.json)
-- Features or functionality
-- User interface or user experience
-- Settings or configuration options
-- Known limitations or bugs
-
-**README Update Checklist:**
-- [ ] Update version number in header if version changed
-- [ ] Add/update "What's New in v{version}" section for new features or fixes
-- [ ] Update feature list if functionality changed
-- [ ] Update usage instructions if UI/UX changed
-- [ ] Update settings documentation if configuration changed
-- [ ] Remove outdated information
-- [ ] Update version footer at bottom
-
-#### 2. Copilot Agent Files (Update when architecture/technical changes occur)
-
-**When to update `.github/copilot-instructions.md` (this file):**
-- Version numbers change
-- Architecture changes affecting ALL agents (new patterns, shared frameworks)
-- New APIs or features used ACROSS multiple agents
-- Build/test/deploy processes change affecting all agents
-- Repository structure changes
-- Common workflows or standards change
-
-**When to update individual agent files in `.github/agents/`:**
-- Agent-specific methodologies change
-- Agent-specific examples need updating
-- Agent-specific tools or workflows change
-- New specialized knowledge for that agent only
-
-**Agent files to consider updating:**
-- `.github/copilot-instructions.md` (common knowledge)
-- `.github/agents/bug-architect.md` (if architecture/methodology changes)
-- `.github/agents/bug-fixer.md` (if fix strategies change)
-- `.github/agents/feature-builder.md` (if implementation patterns change)
-- `.github/agents/feature-optimizer.md` (if optimization strategies change)
-- `.github/agents/master-orchestrator.md` (if delegation patterns change)
-- `.github/agents/refactor-specialist.md` (if refactoring principles change)
-
-### Implementation Workflow:
-
-**BEFORE starting work:**
-1. Check README for accuracy
-2. Check relevant agent files for accuracy
-3. Plan which documentation needs updating
-
-**DURING implementation:**
-4. Track changes that affect documentation
-5. Note new features, changed behaviors, removed features
-6. Distinguish between common changes (copilot-instructions.md) and agent-specific changes
-
-**BEFORE finalizing PR:**
-7. Update README if user-facing changes were made
-8. Update copilot-instructions.md if common architectural/API/framework changes were made
-9. Update specific agent files if agent-specific methodologies/examples changed
-10. Verify version consistency across files (manifest.json, package.json, README, copilot-instructions.md)
-11. Add documentation update checklist to PR description
-
-**PR Description MUST include:**
-- "README Updated: [specific changes]" (if applicable)
-- "copilot-instructions.md Updated: [specific changes]" (if applicable)
-- "Agent Files Updated: [which files and why]" (if applicable)
-- Documentation changes checklist
-
-### Version Synchronization:
-
-When version changes from X.Y.Z to X.Y.Z+1:
-- Update `manifest.json` version
-- Update `package.json` version
-- Update README header version
-- Update README footer version
-- Update `.github/copilot-instructions.md` version (in Project Overview section)
-- Consider updating agent file versions if significant changes occurred
-- Add "What's New in vX.Y.Z+1" section to README
-
-### Guideline for Choosing Where to Update:
-
-**Update copilot-instructions.md when:**
-- ✅ Change affects 3+ agents
-- ✅ New architecture pattern introduced
-- ✅ Common API usage changes
-- ✅ Shared workflow changes
-- ✅ Repository structure changes
-- ✅ Version number updates
-
-**Update specific agent file when:**
-- ✅ Change affects only 1-2 agents
-- ✅ Agent-specific methodology improves
-- ✅ Agent-specific examples need refinement
-- ✅ Specialized knowledge for that agent added
-
-**Update both when:**
-- ✅ Common pattern changes AND agent needs specific guidance
-- ✅ Version changes AND agent methodologies updated
-
-### Non-Compliance = PR Rejection
-
-**No exceptions.** Documentation is as important as code.
-
-Failure to update documentation results in:
-- Immediate PR rejection
-- Request for documentation updates before re-review  
-- Delays in merging
-
-### Quick Checklist for Every PR:
-
-- [ ] Code changes implemented and tested
-- [ ] README.md updated if user-facing changes made
-- [ ] copilot-instructions.md updated if common architectural changes made
-- [ ] Specific agent files updated if agent methodologies changed
-- [ ] Version numbers synchronized across all relevant files
-- [ ] PR description includes clear documentation update notes
-- [ ] No outdated information remains in documentation
-
----
-
-## Bug Reporting and Issue Creation Workflow
-
-**This section applies to ALL Copilot agents.**
-
-**IMPORTANT: When users report bugs or request features:**
-
-### Automatic Issue Creation (ENABLED)
-
-When a user provides a list of bugs or features to implement:
-
-1. **Document all issues** in a markdown file in `docs/manual/` or `docs/implementation-summaries/`
-2. **DO AUTOMATICALLY CREATE GITHUB ISSUES** - Create GitHub issues for all bugs and features
-3. **DO NOT mark issues as completed automatically** - The user will manually close issues when work is done
-4. **Provide a clear list** of all bugs/features with:
-   - Issue title
-   - Detailed description
-   - Priority level
-   - Suggested labels
-   - Root cause analysis (for bugs)
-   - Implementation strategy
-
-### How to Create GitHub Issues
-
-When creating GitHub issues from user input or .md files in the repository:
-
-1. **Extract all bugs/features** from the user's prompt or from .md files
-2. **For each bug/feature**, create a GitHub issue with:
-   - **Title**: Clear, actionable title (e.g., "Fix Quick Tab flash in top-left corner")
-   - **Description**: Complete description including:
-     - Problem statement or feature request
-     - Root cause analysis (for bugs)
-     - Implementation strategy
-     - Testing requirements
-   - **Labels**: Appropriate labels (bug, enhancement, documentation, etc.)
-   - **Assignees**: Leave unassigned unless specified
-3. **Track created issues** in your implementation documentation
-4. **DO NOT automatically close issues** - Let the user manually close them
-
-### Issue Documentation Format
-
-For each bug/feature, document:
-
-```markdown
-### Issue Title: [Clear, descriptive title]
-
-**Priority:** [Critical/High/Medium/Low]  
-**Labels:** [bug/feature], [component], [other-labels]  
-**GitHub Issue:** #XXX (link to created issue)
-
-**Description:** [Detailed description of the issue or feature]
-
-**Root Cause Analysis:** (for bugs) [Why the bug occurs, what code is affected]
-
-**Implementation Strategy:** (for features) or **Fix Strategy:** (for bugs)
-[How to implement/fix, what changes are needed]
-```
-
-### Checklist Items
-
-When creating a checklist in PR descriptions:
-- Use `- [ ]` for pending items (NOT `- [x]`)
-- Let the user manually check off completed items
-- Don't auto-check items even after you've completed the work
-- Include links to GitHub issues you created
-
-### Example
-
-❌ **WRONG:**
-```markdown
-- [x] Fixed RAM usage bug (completed)
-- [x] Closed GitHub issue #123
-```
-
-✅ **CORRECT:**
-```markdown
-- [ ] Fix RAM usage bug (GitHub issue #123 created)
-- [ ] Fix Quick Tab flash (GitHub issue #124 created)
-- [ ] Add console log export (GitHub issue #125 created)
-```
-
-This ensures that all bugs and features are tracked in GitHub issues while allowing the user to manually mark them as complete when satisfied with the implementation.
 
 ---
 
 ## Documentation Organization
 
-**This section applies to ALL Copilot agents.**
+**Save markdown files to appropriate `docs/` subdirectories:**
+- Bug analysis → `docs/manual/`
+- Implementation guides → `docs/manual/`
+- Implementation summaries → `docs/implementation-summaries/`
+- Release summaries → `docs/misc/`
+- Changelog updates → **APPEND to `docs/CHANGELOG.md`**
 
-When creating markdown documentation files, always save them to the appropriate `docs/` subdirectory:
+**DO NOT** save markdown files to root directory (except README.md).
 
-- **Bug analysis documents** → `docs/manual/`
-- **Testing guides** → `docs/manual/`
-- **Implementation guides** → `docs/manual/`
-- **Architecture documents** → `docs/manual/`
-- **Implementation summaries** → `docs/implementation-summaries/` (use format: `IMPLEMENTATION-SUMMARY-{description}.md`)
-- **Security summaries** → `docs/security-summaries/` (use format: `SECURITY-SUMMARY-v{version}.md`)
-- **Changelog updates** → **APPEND to `docs/CHANGELOG.md` only** - DO NOT create individual changelog files in `docs/changelogs/`
-- **Release summaries** → `docs/misc/` (use format: `RELEASE-SUMMARY-v{version}.md`)
-- **Miscellaneous documentation** → `docs/misc/`
+---
 
-**DO NOT** save markdown files to the root directory (except README.md).
+## Final Notes
+
+**When in doubt:**
+1. Prioritize security over convenience
+2. Add error handling rather than assuming success
+3. Write tests before marking as done
+4. Document decisions in code comments
+5. Ask for human review on security-critical changes
+6. **ALWAYS commit memory files before finishing** 🧠
+
+**This extension handles user data and browsing history. Security and privacy are paramount.**
