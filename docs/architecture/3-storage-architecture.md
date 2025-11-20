@@ -35,15 +35,15 @@ graph TD
     QTM --> STM
     STM --> SSA
     STM --> SESA
-    
+
     SSA --> SA
     SESA --> SA
-    
+
     SSA --> FM
     FM --> V15
     FM --> V14
     FM --> Legacy
-    
+
     SSA --> SyncAPI
     SSA -.->|Quota exceeded| LocalAPI
     SESA --> SessionAPI
@@ -94,6 +94,7 @@ graph TD
 ```
 
 **Benefits**:
+
 - Complete container isolation
 - Explicit lastUpdate per container
 - SaveId for race condition tracking
@@ -117,6 +118,7 @@ graph TD
 ```
 
 **Issues**:
+
 - Container keys mixed with metadata keys
 - Hard to distinguish containers from other properties
 - No global saveId or timestamp
@@ -139,6 +141,7 @@ graph TD
 ```
 
 **Issues**:
+
 - No container support
 - No solo/mute features
 - All tabs visible to all tabs
@@ -149,27 +152,27 @@ graph TD
 graph TD
     A[StorageManager.load] --> B[Get raw data from browser.storage]
     B --> C[FormatMigrator.detect]
-    
+
     C --> D{Check Format}
-    
+
     D -->|Has containers key| E[V1_5_8_15_Strategy]
     D -->|Unwrapped containers| F[V1_5_8_14_Strategy]
     D -->|Has tabs array| G[LegacyStrategy]
     D -->|Empty/Invalid| H[EmptyStrategy]
-    
+
     E --> I[V1_5_8_15_Strategy.parse]
     F --> J[V1_5_8_14_Strategy.parse]
     G --> K[LegacyStrategy.parse]
     H --> L[Return empty containers]
-    
+
     I --> M[Return parsed containers]
     J --> N[Wrap in containers key]
     N --> M
     K --> O[Migrate to firefox-default container]
     O --> M
-    
+
     M --> P[StateManager hydrates QuickTab entities]
-    
+
     style E fill:#c8e6c9
     style F fill:#fff9c4
     style G fill:#ffcdd2
@@ -185,22 +188,22 @@ class FormatMigrator {
     if (!data || typeof data !== 'object') {
       return new EmptyStrategy();
     }
-    
+
     // v1.5.8.15+ format (containers key exists)
     if (data.containers && typeof data.containers === 'object') {
       return new V1_5_8_15_Strategy();
     }
-    
+
     // v1.5.8.14 format (unwrapped containers, no 'tabs' key)
     if (!Array.isArray(data.tabs) && !data.containers) {
       return new V1_5_8_14_Strategy();
     }
-    
+
     // Legacy format (flat tabs array)
     if (Array.isArray(data.tabs) || data.tabs) {
       return new LegacyStrategy();
     }
-    
+
     // Fallback
     return new EmptyStrategy();
   }
@@ -237,9 +240,9 @@ class StorageAdapter {
     throw new Error('Must implement');
   }
 
-  async delete(containerId, quickTabId) { }
-  async deleteContainer(containerId) { }
-  async clear() { }
+  async delete(containerId, quickTabId) {}
+  async deleteContainer(containerId) {}
+  async clear() {}
 }
 ```
 
@@ -255,16 +258,16 @@ sequenceDiagram
     participant API as browser.storage.sync
 
     App->>SSA: save('firefox-default', [quickTab1, quickTab2])
-    
+
     SSA->>SSA: Generate saveId<br/>timestamp-random
     SSA->>SSA: Add saveId to pendingSaves Set
-    
+
     SSA->>SSA: Serialize QuickTab entities<br/>to plain objects
-    
+
     SSA->>SSA: Build v1.5.8.15 format<br/>with containers key
-    
+
     SSA->>SSA: Check data size<br/>(must be < 100KB)
-    
+
     alt Size OK
         SSA->>API: browser.storage.sync.set({ quick_tabs_state_v2: {...} })
         API-->>SSA: Success
@@ -275,7 +278,7 @@ sequenceDiagram
         API-->>SSA: Success
         SSA-->>App: Return saveId + warning
     end
-    
+
     Note over SSA: saveId stays in pendingSaves<br/>for 5 seconds (debounce)
 ```
 
@@ -289,18 +292,18 @@ sequenceDiagram
     participant API as browser.storage.sync
 
     App->>SSA: load('firefox-default')
-    
+
     SSA->>API: browser.storage.sync.get('quick_tabs_state_v2')
     API-->>SSA: Raw data (any format)
-    
+
     SSA->>FM: detect(rawData)
     FM-->>SSA: Strategy (V1_5_8_15 | V1_5_8_14 | Legacy | Empty)
-    
+
     SSA->>FM: strategy.parse(rawData)
     FM-->>SSA: Parsed containers object
-    
+
     SSA->>SSA: Filter by containerId<br/>containers['firefox-default']
-    
+
     alt Container found
         SSA->>SSA: Hydrate QuickTab entities<br/>from plain objects
         SSA-->>App: { tabs: [QuickTab, ...], lastUpdate: timestamp }
@@ -318,11 +321,11 @@ sequenceDiagram
     participant App as Application
 
     Note over API: Tab 1 writes to storage
-    
+
     API->>SSA: onChanged event fired
     SSA->>SSA: Extract new value
     SSA->>SSA: Check if saveId in pendingSaves
-    
+
     alt Own write (saveId in pendingSaves)
         SSA->>SSA: Ignore change<br/>(prevent self-sync)
         SSA->>SSA: Remove saveId after 5s debounce
@@ -345,14 +348,14 @@ graph TB
     subgraph "browser.storage.sync"
         Root[quick_tabs_state_v2]
     end
-    
+
     subgraph "Containers"
         Root --> C1[firefox-default<br/>tabs: [...]]
         Root --> C2[firefox-container-1<br/>tabs: [...]]
         Root --> C3[firefox-container-2<br/>tabs: [...]]
         Root --> C4[firefox-private<br/>tabs: [...]]
     end
-    
+
     subgraph "Tab 1 (Container 1)"
         T1[SyncStorageAdapter]
         T1 -.->|load('firefox-container-1')| C2
@@ -360,7 +363,7 @@ graph TB
         T1 -.->|Cannot access| C3
         T1 -.->|Cannot access| C4
     end
-    
+
     subgraph "Tab 2 (Default)"
         T2[SyncStorageAdapter]
         T2 -.->|load('firefox-default')| C1
@@ -368,14 +371,15 @@ graph TB
         T2 -.->|Cannot access| C3
         T2 -.->|Cannot access| C4
     end
-    
+
     style C1 fill:#ffcdd2
     style C2 fill:#c8e6c9
     style C3 fill:#bbdefb
     style C4 fill:#fff9c4
 ```
 
-**Implementation**: 
+**Implementation**:
+
 - Each `SyncStorageAdapter.load(containerId)` only returns data for that container
 - Other containers' data is never exposed to the calling code
 - Enforced at adapter level, not application level
@@ -405,6 +409,7 @@ graph TB
 ```
 
 **Difference from Sync**:
+
 - Uses `browser.storage.session` API
 - No quota limit
 - Data cleared when tab/window closes
@@ -420,19 +425,19 @@ graph TD
     A[SyncStorageAdapter.save] --> B{Check Size}
     B -->|< 100KB| C[browser.storage.sync.set]
     B -->|≥ 100KB| D[Throw ValidationError]
-    
+
     C --> E{Success?}
     E -->|Yes| F[Return saveId]
     E -->|No| G{Check Error Type}
-    
+
     G -->|QUOTA_BYTES| H[Log warning]
     H --> I[Fallback: browser.storage.local.set]
     I --> J{Success?}
     J -->|Yes| K[Show user notification<br/>'Sync disabled']
     J -->|No| L[Throw StorageError]
-    
+
     G -->|Other Error| M[Throw StorageError]
-    
+
     style F fill:#c8e6c9
     style K fill:#fff9c4
     style D fill:#ffcdd2
@@ -446,17 +451,17 @@ graph TD
 graph TD
     A[SyncStorageAdapter.load] --> B[browser.storage.sync.get]
     B --> C{Data Valid?}
-    
+
     C -->|Yes| D[FormatMigrator.detect]
     D --> E[Parse and return]
-    
+
     C -->|No: Corrupted| F[Log error]
     F --> G[Clear corrupted data]
     G --> H[Return empty state]
     H --> I[Show user notification<br/>'Storage reset']
-    
+
     C -->|No: Empty| J[Return empty state<br/>(first run)]
-    
+
     style E fill:#c8e6c9
     style H fill:#fff9c4
     style J fill:#e0e0e0
@@ -464,15 +469,16 @@ graph TD
 
 ## Storage Performance
 
-| Operation | SyncStorageAdapter | SessionStorageAdapter | Notes |
-|-----------|--------------------|-----------------------|-------|
-| **Save** | 30-100ms | 10-30ms | Sync is slower due to network |
-| **Load** | 20-50ms | 5-20ms | Session is faster (local only) |
-| **LoadAll** | 50-150ms | 20-50ms | Depends on # of containers |
-| **Delete** | 30-100ms | 10-30ms | Same as save |
-| **Clear** | 30-100ms | 10-30ms | Full wipe |
+| Operation   | SyncStorageAdapter | SessionStorageAdapter | Notes                          |
+| ----------- | ------------------ | --------------------- | ------------------------------ |
+| **Save**    | 30-100ms           | 10-30ms               | Sync is slower due to network  |
+| **Load**    | 20-50ms            | 5-20ms                | Session is faster (local only) |
+| **LoadAll** | 50-150ms           | 20-50ms               | Depends on # of containers     |
+| **Delete**  | 30-100ms           | 10-30ms               | Same as save                   |
+| **Clear**   | 30-100ms           | 10-30ms               | Full wipe                      |
 
 **Optimizations**:
+
 - Debounced saves (50ms) prevent storage spam during resize
 - SaveId tracking eliminates unnecessary sync operations
 - FormatMigrator caches strategy for repeated operations
@@ -480,13 +486,13 @@ graph TD
 
 ## Storage API Comparison
 
-| Feature | browser.storage.sync | browser.storage.session | browser.storage.local |
-|---------|---------------------|------------------------|----------------------|
-| **Quota** | 100KB total | Unlimited | ~10MB |
-| **Sync** | Cross-device | No | No |
-| **Persistence** | Permanent | Tab session | Permanent |
-| **Speed** | Slow (network) | Fast (memory) | Medium (disk) |
-| **Use Case** | Settings, state | Temporary cache | Large data fallback |
+| Feature         | browser.storage.sync | browser.storage.session | browser.storage.local |
+| --------------- | -------------------- | ----------------------- | --------------------- |
+| **Quota**       | 100KB total          | Unlimited               | ~10MB                 |
+| **Sync**        | Cross-device         | No                      | No                    |
+| **Persistence** | Permanent            | Tab session             | Permanent             |
+| **Speed**       | Slow (network)       | Fast (memory)           | Medium (disk)         |
+| **Use Case**    | Settings, state      | Temporary cache         | Large data fallback   |
 
 ## Related Documentation
 

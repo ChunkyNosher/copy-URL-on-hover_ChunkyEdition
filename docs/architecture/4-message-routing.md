@@ -22,7 +22,7 @@ graph TD
     subgraph "Background Script"
         BG[background.js<br/>Entry Point]
         MR[MessageRouter<br/>Handler Registry]
-        
+
         subgraph "Handlers"
             QTH[QuickTabHandler<br/>13 actions]
             TH[TabHandler<br/>5 actions]
@@ -35,17 +35,17 @@ graph TD
     CS3 -->|browser.runtime<br/>.sendMessage| BG
     POPUP -->|browser.runtime<br/>.sendMessage| BG
     SIDEBAR -->|browser.runtime<br/>.sendMessage| BG
-    
+
     BG --> MR
-    
+
     MR -->|Route by action| QTH
     MR -->|Route by action| TH
     MR -->|Route by action| LH
-    
+
     QTH -->|Response| MR
     TH -->|Response| MR
     LH -->|Response| MR
-    
+
     MR -->|Promise| BG
     BG -->|Return| CS1
     BG -->|Return| POPUP
@@ -91,7 +91,7 @@ class MessageRouter {
 
       // Get handler for action
       const handler = this.handlers.get(message.action);
-      
+
       if (!handler) {
         console.warn('[MessageRouter] No handler for action:', message.action);
         return Promise.resolve({ error: 'Unknown action' });
@@ -135,37 +135,33 @@ const router = new MessageRouter();
 
 // Register handlers
 const quickTabHandler = new QuickTabHandler(/* dependencies */);
-router.register([
-  'CREATE_QUICK_TAB',
-  'CLOSE_QUICK_TAB',
-  'UPDATE_QUICK_TAB_POSITION',
-  'UPDATE_QUICK_TAB_SIZE',
-  'MINIMIZE_QUICK_TAB',
-  'RESTORE_QUICK_TAB',
-  'SOLO_QUICK_TAB',
-  'UNSOLO_QUICK_TAB',
-  'MUTE_QUICK_TAB',
-  'UNMUTE_QUICK_TAB',
-  'GET_QUICK_TABS',
-  'GET_QUICK_TAB',
-  'CLEANUP_DEAD_TABS'
-], quickTabHandler);
+router.register(
+  [
+    'CREATE_QUICK_TAB',
+    'CLOSE_QUICK_TAB',
+    'UPDATE_QUICK_TAB_POSITION',
+    'UPDATE_QUICK_TAB_SIZE',
+    'MINIMIZE_QUICK_TAB',
+    'RESTORE_QUICK_TAB',
+    'SOLO_QUICK_TAB',
+    'UNSOLO_QUICK_TAB',
+    'MUTE_QUICK_TAB',
+    'UNMUTE_QUICK_TAB',
+    'GET_QUICK_TABS',
+    'GET_QUICK_TAB',
+    'CLEANUP_DEAD_TABS'
+  ],
+  quickTabHandler
+);
 
 const tabHandler = new TabHandler();
-router.register([
-  'OPEN_TAB',
-  'GET_TAB_INFO',
-  'SAVE_TAB_STATE',
-  'GET_TAB_STATE',
-  'CLEAR_TAB_STATE'
-], tabHandler);
+router.register(
+  ['OPEN_TAB', 'GET_TAB_INFO', 'SAVE_TAB_STATE', 'GET_TAB_STATE', 'CLEAR_TAB_STATE'],
+  tabHandler
+);
 
 const logHandler = new LogHandler();
-router.register([
-  'CLEAR_CONSOLE_LOGS',
-  'GET_BACKGROUND_LOGS',
-  'EXPORT_LOGS'
-], logHandler);
+router.register(['CLEAR_CONSOLE_LOGS', 'GET_BACKGROUND_LOGS', 'EXPORT_LOGS'], logHandler);
 
 // Install listener
 browser.runtime.onMessage.addListener(router.createListener());
@@ -184,26 +180,26 @@ sequenceDiagram
     participant Storage as browser.storage
 
     CS->>BG: browser.runtime.sendMessage({<br/>action: 'CREATE_QUICK_TAB',<br/>url: 'https://example.com',<br/>...options<br/>})
-    
+
     BG->>BG: Validate sender.id<br/>= browser.runtime.id
-    
+
     BG->>MR: Route message
-    
+
     MR->>MR: handlers.get('CREATE_QUICK_TAB')
-    
+
     MR->>QTH: handle(message, sender)
-    
+
     QTH->>QTH: Validate parameters
     QTH->>QTH: Create QuickTab entity
     QTH->>Storage: Save to storage
     Storage-->>QTH: Saved
-    
+
     QTH-->>MR: Return { success: true, quickTab: {...} }
-    
+
     MR-->>BG: Promise resolves
-    
+
     BG-->>CS: Response object
-    
+
     CS->>CS: Handle response<br/>(render Quick Tab)
 ```
 
@@ -218,22 +214,22 @@ sequenceDiagram
     participant Storage as browser.storage
 
     POPUP->>BG: browser.runtime.sendMessage({<br/>action: 'GET_QUICK_TABS',<br/>containerId: 'firefox-default'<br/>})
-    
+
     BG->>MR: Route message
-    
+
     MR->>QTH: handle(message, sender)
-    
+
     QTH->>Storage: Load from storage
     Storage-->>QTH: Container data
-    
+
     QTH->>QTH: Serialize to plain objects
-    
+
     QTH-->>MR: Return { quickTabs: [...] }
-    
+
     MR-->>BG: Promise resolves
-    
+
     BG-->>POPUP: Response object
-    
+
     POPUP->>POPUP: Update UI with Quick Tabs
 ```
 
@@ -252,15 +248,15 @@ sequenceDiagram
     BG->>Storage: Update Quick Tab state
     Storage->>CS1: storage.onChanged event
     Storage->>CS2: storage.onChanged event
-    
+
     CS1->>CS1: StorageManager detects external change
     CS1->>CS1: Sync state from storage
-    
+
     CS2->>CS2: StorageManager detects external change
     CS2->>CS2: Sync state from storage
-    
+
     Note over CS1,CS2: Alternative: BroadcastChannel
-    
+
     CS1->>BC: postMessage({ type: 'UPDATE', data })
     BC-->>CS2: Message received (<10ms)
     CS2->>CS2: Update local state
@@ -283,43 +279,43 @@ class QuickTabHandler {
     switch (action) {
       case 'CREATE_QUICK_TAB':
         return this.handleCreate(message, sender);
-      
+
       case 'CLOSE_QUICK_TAB':
         return this.handleClose(message, sender);
-      
+
       case 'UPDATE_QUICK_TAB_POSITION':
         return this.handleUpdatePosition(message, sender);
-      
+
       case 'UPDATE_QUICK_TAB_SIZE':
         return this.handleUpdateSize(message, sender);
-      
+
       case 'MINIMIZE_QUICK_TAB':
         return this.handleMinimize(message, sender);
-      
+
       case 'RESTORE_QUICK_TAB':
         return this.handleRestore(message, sender);
-      
+
       case 'SOLO_QUICK_TAB':
         return this.handleSolo(message, sender);
-      
+
       case 'UNSOLO_QUICK_TAB':
         return this.handleUnsolo(message, sender);
-      
+
       case 'MUTE_QUICK_TAB':
         return this.handleMute(message, sender);
-      
+
       case 'UNMUTE_QUICK_TAB':
         return this.handleUnmute(message, sender);
-      
+
       case 'GET_QUICK_TABS':
         return this.handleGetAll(message, sender);
-      
+
       case 'GET_QUICK_TAB':
         return this.handleGet(message, sender);
-      
+
       case 'CLEANUP_DEAD_TABS':
         return this.handleCleanup(message, sender);
-      
+
       default:
         return { error: 'Unknown action' };
     }
@@ -329,7 +325,7 @@ class QuickTabHandler {
     try {
       // Extract container from sender
       const containerId = sender.tab?.cookieStoreId || 'firefox-default';
-      
+
       // Create QuickTab entity
       const quickTab = QuickTab.create({
         id: message.id || generateId(),
@@ -341,13 +337,13 @@ class QuickTabHandler {
         height: message.height,
         container: containerId
       });
-      
+
       // Persist to state
       await this.state.add(quickTab);
-      
+
       // Persist to storage
       await this.storage.save(containerId, [quickTab]);
-      
+
       return {
         success: true,
         quickTab: quickTab.serialize()
@@ -373,19 +369,19 @@ class TabHandler {
     switch (action) {
       case 'OPEN_TAB':
         return this.handleOpenTab(message);
-      
+
       case 'GET_TAB_INFO':
         return this.handleGetTabInfo(sender);
-      
+
       case 'SAVE_TAB_STATE':
         return this.handleSaveState(message, sender);
-      
+
       case 'GET_TAB_STATE':
         return this.handleGetState(message, sender);
-      
+
       case 'CLEAR_TAB_STATE':
         return this.handleClearState(message, sender);
-      
+
       default:
         return { error: 'Unknown action' };
     }
@@ -417,13 +413,13 @@ class LogHandler {
     switch (action) {
       case 'CLEAR_CONSOLE_LOGS':
         return this.handleClearLogs();
-      
+
       case 'GET_BACKGROUND_LOGS':
         return this.handleGetLogs();
-      
+
       case 'EXPORT_LOGS':
         return this.handleExportLogs(message);
-      
+
       default:
         return { error: 'Unknown action' };
     }
@@ -434,28 +430,28 @@ class LogHandler {
       // Create Blob from log text
       const blob = new Blob([message.logText], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
-      
+
       // Start download with saveAs dialog
       const downloadId = await browser.downloads.download({
         url: url,
         filename: message.filename,
         saveAs: true
       });
-      
+
       // Cleanup URL after download completes
-      const cleanup = (delta) => {
+      const cleanup = delta => {
         if (delta.id === downloadId && delta.state?.current === 'complete') {
           URL.revokeObjectURL(url);
           browser.downloads.onChanged.removeListener(cleanup);
         }
       };
       browser.downloads.onChanged.addListener(cleanup);
-      
+
       // Fallback cleanup after 60s
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 60000);
-      
+
       return { success: true, downloadId };
     } catch (error) {
       console.error('[LogHandler] Export failed:', error);
@@ -473,24 +469,25 @@ class LogHandler {
 graph TD
     A[Message Received] --> B{sender.id exists?}
     B -->|No| Z[Reject: No sender ID]
-    
+
     B -->|Yes| C{sender.id = browser.runtime.id?}
     C -->|No| Z[Reject: Wrong extension]
-    
+
     C -->|Yes| D{Has sender.tab?}
     D -->|No| E[Accept: Popup/Sidebar]
-    
+
     D -->|Yes| F{sender.tab.id exists?}
     F -->|No| Z[Reject: Invalid tab]
     F -->|Yes| E[Accept: Content Script]
-    
+
     E --> G[Route to handler]
-    
+
     style E fill:#c8e6c9
     style Z fill:#ffcdd2
 ```
 
 **Implementation**:
+
 ```javascript
 _isAuthorizedSender(sender) {
   // Must be from this extension
@@ -566,6 +563,7 @@ async handle(message, sender) {
 ### Response Patterns
 
 #### Success Response
+
 ```javascript
 {
   success: true,
@@ -575,6 +573,7 @@ async handle(message, sender) {
 ```
 
 #### Error Response
+
 ```javascript
 {
   success: false,
@@ -585,6 +584,7 @@ async handle(message, sender) {
 ```
 
 #### Partial Success (Batch Operations)
+
 ```javascript
 {
   success: true,
@@ -602,15 +602,16 @@ async handle(message, sender) {
 
 ## Performance Characteristics
 
-| Message Type | Latency | Notes |
-|-------------|---------|-------|
-| **Content → Background** | 1-5ms | In-process message passing |
-| **Popup → Background** | 1-5ms | In-process message passing |
-| **With Storage Read** | 20-50ms | + browser.storage.sync.get |
-| **With Storage Write** | 30-100ms | + browser.storage.sync.set |
-| **With Download** | 50-200ms | + browser.downloads.download |
+| Message Type             | Latency  | Notes                        |
+| ------------------------ | -------- | ---------------------------- |
+| **Content → Background** | 1-5ms    | In-process message passing   |
+| **Popup → Background**   | 1-5ms    | In-process message passing   |
+| **With Storage Read**    | 20-50ms  | + browser.storage.sync.get   |
+| **With Storage Write**   | 30-100ms | + browser.storage.sync.set   |
+| **With Download**        | 50-200ms | + browser.downloads.download |
 
 **Optimizations**:
+
 - Handlers cache frequently accessed data
 - Debouncing prevents message spam (e.g., during resize)
 - Batch operations reduce round trips
@@ -619,39 +620,39 @@ async handle(message, sender) {
 
 ### Quick Tab Actions (13)
 
-| Action | Handler | Description |
-|--------|---------|-------------|
-| `CREATE_QUICK_TAB` | QuickTabHandler | Create new Quick Tab |
-| `CLOSE_QUICK_TAB` | QuickTabHandler | Close and remove Quick Tab |
-| `UPDATE_QUICK_TAB_POSITION` | QuickTabHandler | Update left/top position |
-| `UPDATE_QUICK_TAB_SIZE` | QuickTabHandler | Update width/height |
-| `MINIMIZE_QUICK_TAB` | QuickTabHandler | Hide Quick Tab |
-| `RESTORE_QUICK_TAB` | QuickTabHandler | Show minimized Quick Tab |
-| `SOLO_QUICK_TAB` | QuickTabHandler | Show ONLY on specific tab |
-| `UNSOLO_QUICK_TAB` | QuickTabHandler | Remove from solo list |
-| `MUTE_QUICK_TAB` | QuickTabHandler | Hide ONLY on specific tab |
-| `UNMUTE_QUICK_TAB` | QuickTabHandler | Remove from mute list |
-| `GET_QUICK_TABS` | QuickTabHandler | Get all Quick Tabs for container |
-| `GET_QUICK_TAB` | QuickTabHandler | Get single Quick Tab by ID |
-| `CLEANUP_DEAD_TABS` | QuickTabHandler | Remove closed tabs from solo/mute lists |
+| Action                      | Handler         | Description                             |
+| --------------------------- | --------------- | --------------------------------------- |
+| `CREATE_QUICK_TAB`          | QuickTabHandler | Create new Quick Tab                    |
+| `CLOSE_QUICK_TAB`           | QuickTabHandler | Close and remove Quick Tab              |
+| `UPDATE_QUICK_TAB_POSITION` | QuickTabHandler | Update left/top position                |
+| `UPDATE_QUICK_TAB_SIZE`     | QuickTabHandler | Update width/height                     |
+| `MINIMIZE_QUICK_TAB`        | QuickTabHandler | Hide Quick Tab                          |
+| `RESTORE_QUICK_TAB`         | QuickTabHandler | Show minimized Quick Tab                |
+| `SOLO_QUICK_TAB`            | QuickTabHandler | Show ONLY on specific tab               |
+| `UNSOLO_QUICK_TAB`          | QuickTabHandler | Remove from solo list                   |
+| `MUTE_QUICK_TAB`            | QuickTabHandler | Hide ONLY on specific tab               |
+| `UNMUTE_QUICK_TAB`          | QuickTabHandler | Remove from mute list                   |
+| `GET_QUICK_TABS`            | QuickTabHandler | Get all Quick Tabs for container        |
+| `GET_QUICK_TAB`             | QuickTabHandler | Get single Quick Tab by ID              |
+| `CLEANUP_DEAD_TABS`         | QuickTabHandler | Remove closed tabs from solo/mute lists |
 
 ### Tab Actions (5)
 
-| Action | Handler | Description |
-|--------|---------|-------------|
-| `OPEN_TAB` | TabHandler | Open new browser tab |
-| `GET_TAB_INFO` | TabHandler | Get current tab info (ID, container) |
-| `SAVE_TAB_STATE` | TabHandler | Save tab-specific state |
-| `GET_TAB_STATE` | TabHandler | Load tab-specific state |
-| `CLEAR_TAB_STATE` | TabHandler | Clear tab-specific state |
+| Action            | Handler    | Description                          |
+| ----------------- | ---------- | ------------------------------------ |
+| `OPEN_TAB`        | TabHandler | Open new browser tab                 |
+| `GET_TAB_INFO`    | TabHandler | Get current tab info (ID, container) |
+| `SAVE_TAB_STATE`  | TabHandler | Save tab-specific state              |
+| `GET_TAB_STATE`   | TabHandler | Load tab-specific state              |
+| `CLEAR_TAB_STATE` | TabHandler | Clear tab-specific state             |
 
 ### Log Actions (3)
 
-| Action | Handler | Description |
-|--------|---------|-------------|
-| `CLEAR_CONSOLE_LOGS` | LogHandler | Clear all log buffers |
+| Action                | Handler    | Description                |
+| --------------------- | ---------- | -------------------------- |
+| `CLEAR_CONSOLE_LOGS`  | LogHandler | Clear all log buffers      |
 | `GET_BACKGROUND_LOGS` | LogHandler | Get background script logs |
-| `EXPORT_LOGS` | LogHandler | Export logs to file |
+| `EXPORT_LOGS`         | LogHandler | Export logs to file        |
 
 ## Related Documentation
 

@@ -15,7 +15,7 @@ graph TD
 
     subgraph "URL Handler Registry"
         REGISTRY[HandlerRegistry<br/>Map&lt;domain, handler&gt;]
-        
+
         subgraph "Site-Specific Handlers (13)"
             SM[social-media.js<br/>Twitter, Facebook,<br/>Instagram, etc.]
             DEV[developer.js<br/>GitHub, GitLab,<br/>Stack Overflow, etc.]
@@ -29,7 +29,7 @@ graph TD
             IMG[image-design.js<br/>Figma, Canva, etc.]
             OTHER[other.js<br/>Wikipedia, etc.]
         end
-        
+
         GEN[generic.js<br/>Fallback Handler]
     end
 
@@ -41,7 +41,7 @@ graph TD
 
     CS --> HD
     HD --> REGISTRY
-    
+
     REGISTRY -->|Match domain| SM
     REGISTRY -->|Match domain| DEV
     REGISTRY -->|Match domain| VIDEO
@@ -54,11 +54,11 @@ graph TD
     REGISTRY -->|Match domain| IMG
     REGISTRY -->|Match domain| OTHER
     REGISTRY -->|No match| GEN
-    
+
     SM --> EXTRACT
     DEV --> EXTRACT
     GEN --> EXTRACT
-    
+
     EXTRACT --> VAL
     VAL --> NOTIFY
 
@@ -98,23 +98,23 @@ export class URLHandlerRegistry {
     this.register('instagram.com', socialMedia.findInstagramUrl);
     this.register('linkedin.com', socialMedia.findLinkedInUrl);
     this.register('reddit.com', newsDiscussion.findRedditUrl);
-    
+
     // Developer (Priority 2)
     this.register('github.com', developer.findGitHubUrl);
     this.register('gitlab.com', developer.findGitLabUrl);
     this.register('stackoverflow.com', developer.findStackOverflowUrl);
     this.register('npmjs.com', developer.findNpmUrl);
-    
+
     // Video (Priority 3)
     this.register('youtube.com', video.findYouTubeUrl);
     this.register('vimeo.com', video.findVimeoUrl);
     this.register('twitch.tv', video.findTwitchUrl);
-    
+
     // E-commerce (Priority 4)
     this.register('amazon.com', ecommerce.findAmazonUrl);
     this.register('ebay.com', ecommerce.findEbayUrl);
     this.register('etsy.com', ecommerce.findEtsyUrl);
-    
+
     // ... 100+ more domain registrations
   }
 
@@ -134,7 +134,7 @@ export class URLHandlerRegistry {
         }
       }
     }
-    
+
     // Fallback to generic handler
     return generic.findGenericUrl(element);
   }
@@ -159,13 +159,13 @@ export function findTwitterUrl(element) {
       return linkElement.href;
     }
   }
-  
+
   // Check for profile links
   const profileLink = element.closest('a[href^="/"][href*="@"]');
   if (profileLink) {
     return 'https://twitter.com' + profileLink.getAttribute('href');
   }
-  
+
   return null;
 }
 
@@ -178,7 +178,7 @@ export function findInstagramUrl(element) {
       return linkElement.href;
     }
   }
-  
+
   return null;
 }
 ```
@@ -201,13 +201,13 @@ export function findGitHubUrl(element) {
       return 'https://github.com' + href;
     }
   }
-  
+
   // Check for issue/PR links
   const issueLink = element.closest('a[href*="/issues/"], a[href*="/pull/"]');
   if (issueLink) {
     return issueLink.href;
   }
-  
+
   return null;
 }
 
@@ -220,7 +220,7 @@ export function findStackOverflowUrl(element) {
       return linkElement.href;
     }
   }
-  
+
   return null;
 }
 ```
@@ -241,13 +241,13 @@ export function findYouTubeUrl(element) {
       return linkElement.href;
     }
   }
-  
+
   // Check for video ID in URL
   const videoLink = element.closest('a[href*="/watch?v="]');
   if (videoLink) {
     return videoLink.href;
   }
-  
+
   return null;
 }
 ```
@@ -268,28 +268,28 @@ export function findAmazonUrl(element) {
       return `https://www.amazon.com/dp/${asin}`;
     }
   }
-  
+
   // Check for product links
   const productLink = element.closest('a[href*="/dp/"], a[href*="/gp/product/"]');
   if (productLink) {
     return productLink.href;
   }
-  
+
   return null;
 }
 ```
 
 ### 5-11. Other Categories
 
-| Category | Key Sites | Handler Count | Coverage |
-|----------|-----------|---------------|----------|
-| **News/Discussion** | Reddit, HN, Slashdot | 8 | 100% |
-| **Blogging** | Medium, Dev.to, Substack | 10 | 90.19% |
-| **Gaming** | Steam, Epic, Itch.io | 6 | 95.34% |
-| **Learning** | Coursera, Udemy, Khan | 8 | 94% |
-| **Entertainment** | Spotify, Netflix, IMDb | 9 | 100% |
-| **Image/Design** | Figma, Canva, Behance | 8 | 100% |
-| **Other** | Wikipedia, Docs, Maps | 5 | 100% |
+| Category            | Key Sites                | Handler Count | Coverage |
+| ------------------- | ------------------------ | ------------- | -------- |
+| **News/Discussion** | Reddit, HN, Slashdot     | 8             | 100%     |
+| **Blogging**        | Medium, Dev.to, Substack | 10            | 90.19%   |
+| **Gaming**          | Steam, Epic, Itch.io     | 6             | 95.34%   |
+| **Learning**        | Coursera, Udemy, Khan    | 8             | 94%      |
+| **Entertainment**   | Spotify, Netflix, IMDb   | 9             | 100%     |
+| **Image/Design**    | Figma, Canva, Behance    | 8             | 100%     |
+| **Other**           | Wikipedia, Docs, Maps    | 5             | 100%     |
 
 ### 12. Generic Handler (generic.js)
 
@@ -302,26 +302,27 @@ export function findGenericUrl(element) {
   if (anchor && anchor.href) {
     return anchor.href;
   }
-  
+
   // Strategy 2: Check for href attribute on element
   if (element.hasAttribute('href')) {
     return element.getAttribute('href');
   }
-  
+
   // Strategy 3: Search children for links
   const childLink = element.querySelector('a[href]');
   if (childLink) {
     return childLink.href;
   }
-  
+
   // Strategy 4: Check data attributes
-  const dataUrl = element.getAttribute('data-url') || 
-                  element.getAttribute('data-href') ||
-                  element.getAttribute('data-link');
+  const dataUrl =
+    element.getAttribute('data-url') ||
+    element.getAttribute('data-href') ||
+    element.getAttribute('data-link');
   if (dataUrl) {
     return dataUrl;
   }
-  
+
   return null;
 }
 ```
@@ -340,17 +341,17 @@ sequenceDiagram
 
     User->>DOM: Mouseover element
     DOM->>CS: mouseover event
-    
+
     CS->>CS: Get hostname<br/>window.location.hostname
-    
+
     CS->>REG: findUrl(element, hostname)
-    
+
     REG->>REG: Loop through handlers<br/>for matching domains
-    
+
     alt Site-specific handler found
         REG->>HAND: handler(element)
         HAND->>HAND: Extract URL<br/>(site-specific logic)
-        
+
         alt URL found
             HAND-->>REG: Return URL
             REG-->>CS: URL
@@ -365,7 +366,7 @@ sequenceDiagram
         GEN-->>REG: URL or null
         REG-->>CS: URL or null
     end
-    
+
     alt URL found
         CS->>CS: Validate URL
         CS->>UI: Show notification<br/>with URL
@@ -406,7 +407,7 @@ findUrl(element, hostname) {
     const url = handler(element);
     if (url) return url;
   }
-  
+
   // Priority 2: Subdomain match (includes check)
   for (const [domain, handler] of this.handlers) {
     if (hostname.includes(domain)) {
@@ -419,7 +420,7 @@ findUrl(element, hostname) {
       }
     }
   }
-  
+
   // Priority 3: Domain aliases (configured separately)
   const alias = this.aliases.get(hostname);
   if (alias && this.handlers.has(alias)) {
@@ -427,7 +428,7 @@ findUrl(element, hostname) {
     const url = handler(element);
     if (url) return url;
   }
-  
+
   // Priority 4: Generic fallback
   return generic.findGenericUrl(element);
 }
@@ -462,9 +463,9 @@ return generic.findGenericUrl(element);
 ```javascript
 findUrl(element, hostname) {
   const url = this._detectUrl(element, hostname);
-  
+
   if (!url) return null;
-  
+
   // Validate URL
   try {
     new URL(url); // Throws if invalid
@@ -480,12 +481,12 @@ findUrl(element, hostname) {
 
 ### Handler Execution Time
 
-| Operation | Time | Notes |
-|-----------|------|-------|
-| **Registry Lookup** | <1ms | Map.get() or includes() |
-| **Site Handler** | 1-5ms | DOM traversal (closest, querySelector) |
-| **Generic Handler** | 2-8ms | More extensive DOM search |
-| **Total Detection** | 3-13ms | Includes validation |
+| Operation           | Time   | Notes                                  |
+| ------------------- | ------ | -------------------------------------- |
+| **Registry Lookup** | <1ms   | Map.get() or includes()                |
+| **Site Handler**    | 1-5ms  | DOM traversal (closest, querySelector) |
+| **Generic Handler** | 2-8ms  | More extensive DOM search              |
+| **Total Detection** | 3-13ms | Includes validation                    |
 
 ### Optimization Strategies
 
@@ -499,7 +500,7 @@ class URLHandlerRegistry {
   constructor() {
     this.handlers = new Map();
     this.hostnameCache = new Map(); // hostname → handler
-    this.urlCache = new Map();      // element → {url, timestamp}
+    this.urlCache = new Map(); // element → {url, timestamp}
   }
 
   findUrl(element, hostname) {
@@ -508,18 +509,18 @@ class URLHandlerRegistry {
     if (cached && Date.now() - cached.timestamp < 100) {
       return cached.url;
     }
-    
+
     // Detect URL
     const url = this._detectUrl(element, hostname);
-    
+
     // Cache result
     this.urlCache.set(element, { url, timestamp: Date.now() });
-    
+
     // Cleanup old cache entries
     if (this.urlCache.size > 1000) {
       this._cleanupCache();
     }
-    
+
     return url;
   }
 }
@@ -529,21 +530,21 @@ class URLHandlerRegistry {
 
 ### Handler Category Coverage
 
-| Category | Coverage | Tests | Status |
-|----------|----------|-------|--------|
-| **social-media.js** | 100% | 53 | ✅ Perfect |
-| **developer.js** | 100% | 48 | ✅ Perfect |
-| **video.js** | 100% | 32 | ✅ Perfect |
-| **news-discussion.js** | 100% | 36 | ✅ Perfect |
-| **ecommerce.js** | 100% | 50 | ✅ Perfect |
-| **blogging.js** | 90.19% | 31 | ✅ Excellent |
-| **gaming.js** | 95.34% | 29 | ✅ Excellent |
-| **learning.js** | 94% | 32 | ✅ Excellent |
-| **entertainment.js** | 100% | 54 | ✅ Perfect |
-| **image-design.js** | 100% | 51 | ✅ Perfect |
-| **generic.js** | 94.11% | 28 | ✅ Excellent |
-| **other.js** | 100% | 20 | ✅ Perfect |
-| **Overall** | 98.5% | 464 | ⭐ Near Perfect |
+| Category               | Coverage | Tests | Status          |
+| ---------------------- | -------- | ----- | --------------- |
+| **social-media.js**    | 100%     | 53    | ✅ Perfect      |
+| **developer.js**       | 100%     | 48    | ✅ Perfect      |
+| **video.js**           | 100%     | 32    | ✅ Perfect      |
+| **news-discussion.js** | 100%     | 36    | ✅ Perfect      |
+| **ecommerce.js**       | 100%     | 50    | ✅ Perfect      |
+| **blogging.js**        | 90.19%   | 31    | ✅ Excellent    |
+| **gaming.js**          | 95.34%   | 29    | ✅ Excellent    |
+| **learning.js**        | 94%      | 32    | ✅ Excellent    |
+| **entertainment.js**   | 100%     | 54    | ✅ Perfect      |
+| **image-design.js**    | 100%     | 51    | ✅ Perfect      |
+| **generic.js**         | 94.11%   | 28    | ✅ Excellent    |
+| **other.js**           | 100%     | 20    | ✅ Perfect      |
+| **Overall**            | 98.5%    | 464   | ⭐ Near Perfect |
 
 **11 out of 13 categories at 100% coverage!**
 
