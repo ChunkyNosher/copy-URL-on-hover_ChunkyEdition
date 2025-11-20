@@ -91,26 +91,24 @@ export class PanelManager {
   /**
    * Detect and store the current tab's container context
    * v1.5.9.12 - Container integration
+   * v1.6.0.1 - Fixed to use message passing (browser.tabs not available in content scripts)
    * @private
    */
   async detectContainerContext() {
     this.currentContainerId = 'firefox-default';
 
-    if (typeof browser === 'undefined' || !browser.tabs) {
-      debug('[PanelManager] Browser tabs API not available');
-      return;
-    }
-
     try {
-      const tabs = await browser.tabs.query({
-        active: true,
-        currentWindow: true
+      // Content scripts cannot access browser.tabs API
+      // Must request container info from background script
+      const response = await browser.runtime.sendMessage({
+        action: 'GET_CONTAINER_CONTEXT'
       });
-      if (tabs?.[0]?.cookieStoreId) {
-        this.currentContainerId = tabs[0].cookieStoreId;
+
+      if (response && response.success && response.cookieStoreId) {
+        this.currentContainerId = response.cookieStoreId;
         debug(`[PanelManager] Container: ${this.currentContainerId}`);
       } else {
-        debug('[PanelManager] Using default container');
+        debug('[PanelManager] Using default container (no response from background)');
       }
     } catch (err) {
       debug('[PanelManager] Failed to detect container:', err);

@@ -65,18 +65,18 @@ export class PanelStateManager {
   async detectContainerContext() {
     this.currentContainerId = 'firefox-default';
 
-    if (typeof browser === 'undefined' || !browser.tabs) {
-      debug('[PanelStateManager] Browser tabs API not available, using default container');
-      return this.currentContainerId;
-    }
-
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (tabs && tabs.length > 0 && tabs[0].cookieStoreId) {
-        this.currentContainerId = tabs[0].cookieStoreId;
+      // Content scripts cannot access browser.tabs API
+      // Must request container info from background script
+      const response = await browser.runtime.sendMessage({
+        action: 'GET_CONTAINER_CONTEXT'
+      });
+
+      if (response && response.success && response.cookieStoreId) {
+        this.currentContainerId = response.cookieStoreId;
         debug(`[PanelStateManager] Container detected: ${this.currentContainerId}`);
       } else {
-        debug('[PanelStateManager] No cookieStoreId, using default container');
+        debug('[PanelStateManager] No cookieStoreId from background, using default container');
       }
     } catch (err) {
       debug('[PanelStateManager] Failed to detect container:', err);

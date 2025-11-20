@@ -89,7 +89,10 @@ class QuickTabsManager {
     console.log('[QuickTabsManager] Initializing facade...');
 
     // STEP 1: Detect context (container, tab ID)
-    await this.detectContainerContext();
+    const containerDetected = await this.detectContainerContext();
+    if (!containerDetected) {
+      console.warn('[QuickTabsManager] Container detection failed, using default container');
+    }
     await this.detectCurrentTabId();
 
     // STEP 2: Initialize managers
@@ -225,33 +228,50 @@ class QuickTabsManager {
   /**
    * Detect Firefox container context
    * v1.5.9.12 - Container integration
+   * v1.6.0.1 - Fixed to use message passing (browser.tabs not available in content scripts)
    */
   async detectContainerContext() {
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length > 0 && tabs[0].cookieStoreId) {
-        this.cookieStoreId = tabs[0].cookieStoreId;
+      // Content scripts cannot access browser.tabs API
+      // Must request container info from background script
+      const response = await browser.runtime.sendMessage({
+        action: 'GET_CONTAINER_CONTEXT'
+      });
+
+      if (response && response.success && response.cookieStoreId) {
+        this.cookieStoreId = response.cookieStoreId;
         console.log('[QuickTabsManager] Detected container:', this.cookieStoreId);
+        return true; // Success
       } else {
+        console.error(
+          '[QuickTabsManager] Failed to get container from background:',
+          response?.error
+        );
         this.cookieStoreId = 'firefox-default';
-        console.log('[QuickTabsManager] Using default container');
+        return false; // Failure
       }
     } catch (err) {
       console.error('[QuickTabsManager] Failed to detect container:', err);
       this.cookieStoreId = 'firefox-default';
+      return false; // Failure
     }
   }
 
   /**
    * Get current container context (backward compat)
+   * v1.6.0.1 - Fixed to use message passing instead of direct browser.tabs access
    */
   async getCurrentContainer() {
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length > 0 && tabs[0].cookieStoreId) {
-        return tabs[0].cookieStoreId;
+      // Content scripts cannot access browser.tabs API
+      const response = await browser.runtime.sendMessage({
+        action: 'GET_CONTAINER_CONTEXT'
+      });
+
+      if (response && response.success && response.cookieStoreId) {
+        return response.cookieStoreId;
       }
-      return 'firefox-default';
+      return this.cookieStoreId || 'firefox-default';
     } catch (err) {
       console.error('[QuickTabsManager] Failed to get current container:', err);
       return this.cookieStoreId || 'firefox-default';

@@ -1029,6 +1029,12 @@ messageRouter.register('UPDATE_QUICK_TAB_MINIMIZE', (msg, sender) =>
 messageRouter.register('GET_CURRENT_TAB_ID', (msg, sender) =>
   quickTabHandler.handleGetCurrentTabId(msg, sender)
 );
+messageRouter.register('GET_CONTAINER_CONTEXT', (msg, sender) =>
+  quickTabHandler.handleGetContainerContext(msg, sender)
+);
+messageRouter.register('SWITCH_TO_TAB', (msg, sender) =>
+  quickTabHandler.handleSwitchToTab(msg, sender)
+);
 
 // Register tab handlers (5 actions)
 messageRouter.register('openTab', (msg, sender) => tabHandler.handleOpenTab(msg, sender));
@@ -1043,7 +1049,7 @@ messageRouter.register('createQuickTab', (msg, sender) =>
   tabHandler.handleLegacyCreate(msg, sender)
 );
 
-console.log('[Background] MessageRouter initialized with 21 registered handlers');
+console.log('[Background] MessageRouter initialized with 23 registered handlers');
 
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());

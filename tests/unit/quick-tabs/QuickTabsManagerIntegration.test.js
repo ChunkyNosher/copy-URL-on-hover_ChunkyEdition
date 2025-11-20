@@ -64,7 +64,19 @@ describe('QuickTabsManager Integration', () => {
           .mockResolvedValue([{ cookieStoreId: 'firefox-container-1', id: 123, active: true }])
       },
       runtime: {
-        sendMessage: jest.fn().mockResolvedValue({ tabId: 123 })
+        sendMessage: jest.fn().mockImplementation(msg => {
+          if (msg.action === 'GET_CONTAINER_CONTEXT') {
+            return Promise.resolve({
+              success: true,
+              cookieStoreId: 'firefox-container-1',
+              tabId: 123
+            });
+          }
+          if (msg.action === 'GET_CURRENT_TAB_ID') {
+            return Promise.resolve({ tabId: 123 });
+          }
+          return Promise.resolve({});
+        })
       }
     };
 
@@ -589,26 +601,33 @@ describe('QuickTabsManager Integration', () => {
     });
 
     describe('getCurrentContainer()', () => {
-      test('should query active tab and return cookieStoreId', async () => {
+      test('should send message to background and return cookieStoreId', async () => {
+        browser.runtime.sendMessage.mockResolvedValueOnce({
+          success: true,
+          cookieStoreId: 'firefox-container-1'
+        });
+
         const result = await manager.getCurrentContainer();
 
-        expect(browser.tabs.query).toHaveBeenCalledWith({
-          active: true,
-          currentWindow: true
+        expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+          action: 'GET_CONTAINER_CONTEXT'
         });
         expect(result).toBe('firefox-container-1');
       });
 
-      test('should return firefox-default when no cookieStoreId', async () => {
-        browser.tabs.query.mockResolvedValue([{ id: 123, active: true }]);
+      test('should return stored cookieStoreId when background returns no cookieStoreId', async () => {
+        browser.runtime.sendMessage.mockResolvedValueOnce({
+          success: false
+        });
 
         const result = await manager.getCurrentContainer();
 
-        expect(result).toBe('firefox-default');
+        // Falls back to stored cookieStoreId from initialization
+        expect(result).toBe('firefox-container-1');
       });
 
       test('should return stored cookieStoreId on failure', async () => {
-        browser.tabs.query.mockRejectedValue(new Error('Query failed'));
+        browser.runtime.sendMessage.mockRejectedValueOnce(new Error('Message failed'));
 
         const result = await manager.getCurrentContainer();
 

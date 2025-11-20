@@ -35,19 +35,24 @@
     }
   }
   async function r(e) {
+    if (!e || "string" != typeof e) return console.error("[Browser API] Invalid text for clipboard:", e), 
+    !1;
     try {
       return await navigator.clipboard.writeText(e), !0;
     } catch (t) {
-      console.error("[Browser API] Failed to copy to clipboard:", t);
-      try {
-        const t = document.createElement("textarea");
-        t.value = e, t.style.position = "fixed", t.style.opacity = "0", document.body.appendChild(t), 
-        t.select();
-        const n = document.execCommand("copy");
-        return document.body.removeChild(t), n;
-      } catch (e) {
-        return console.error("[Browser API] Fallback copy also failed:", e), !1;
-      }
+      return console.error("[Browser API] Failed to copy to clipboard:", t), console.error("[Browser API] Text length:", e.length, "Preview:", e.substring(0, 50)), 
+      function(e) {
+        try {
+          const t = document.createElement("textarea");
+          t.value = e, t.style.position = "fixed", t.style.opacity = "0", document.body.appendChild(t), 
+          t.select();
+          const n = document.execCommand("copy");
+          return document.body.removeChild(t), n || console.error("[Browser API] execCommand copy returned false"), 
+          n;
+        } catch (e) {
+          return console.error("[Browser API] Fallback copy also failed:", e), !1;
+        }
+      }(e);
     }
   }
   console.log = function(...e) {
@@ -1192,7 +1197,7 @@
       };
     }
   }
-  class x {
+  class _ {
     constructor(e, t, n, i, o, s, a) {
       this.quickTabsMap = e, this.currentZIndex = t, this.cookieStoreId = n, this.broadcastManager = i, 
       this.eventBus = o, this.Events = s, this.generateId = a;
@@ -1282,7 +1287,7 @@
       });
     }
   }
-  class _ {
+  class x {
     constructor(e, t, n, i, o, s, a, r, l) {
       this.quickTabsMap = e, this.broadcastManager = t, this.minimizedManager = n, this.eventBus = i, 
       this.currentZIndex = o, this.generateSaveId = s, this.releasePendingSave = a, this.Events = r, 
@@ -1389,7 +1394,7 @@
       });
     }
   }
-  class q {
+  class O {
     constructor(e, t, n, i, o, s, a, r, l, c, d) {
       this.quickTabsMap = e, this.broadcastManager = t, this.storageManager = n, this.minimizedManager = i, 
       this.eventBus = o, this.currentZIndex = s, this.generateSaveId = a, this.trackPendingSave = r, 
@@ -1469,7 +1474,7 @@
       } else this.releasePendingSave(o);
     }
   }
-  class O {
+  class P {
     constructor(e, t = "firefox-default") {
       this.eventBus = e, this.cookieStoreId = t, this.broadcastChannel = null, this.currentChannelName = null, 
       this.broadcastDebounce = new Map, this.BROADCAST_DEBOUNCE_MS = 50;
@@ -1569,7 +1574,7 @@
       this.broadcastChannel.close(), this.broadcastChannel = null, this.currentChannelName = null);
     }
   }
-  class P {
+  class B {
     constructor(e, t) {
       this.eventBus = e, this.quickTabsMap = t, this.boundHandlers = {
         visibilityChange: null,
@@ -1604,13 +1609,13 @@
       console.log("[EventManager] Event handlers removed");
     }
   }
-  function B(e, t) {
+  function q(e, t) {
     if (!e || "string" != typeof e) throw new Error(`QuickTab requires a valid string ${t}`);
   }
   class A {
     constructor({id: e, url: t, position: n, size: i, visibility: o, container: s, createdAt: a = Date.now(), title: r = "Quick Tab", zIndex: l = 1e3}) {
       (function({id: e, url: t, position: n, size: i}) {
-        B(e, "id"), B(t, "url"), function(e) {
+        q(e, "id"), q(t, "url"), function(e) {
           if (!e || "number" != typeof e.left || "number" != typeof e.top) throw new Error("QuickTab requires valid position {left, top}");
         }(n), function(e) {
           if (!e || "number" != typeof e.width || "number" != typeof e.height) throw new Error("QuickTab requires valid size {width, height}");
@@ -1947,7 +1952,7 @@
       return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
   }
-  class $ extends R {
+  class N extends R {
     constructor() {
       super(), this.STORAGE_KEY = "quick_tabs_state_v2", this.MAX_SYNC_SIZE = 102400;
     }
@@ -2040,9 +2045,9 @@
       }
     }
   }
-  class N {
+  class $ {
     constructor(e, t = "firefox-default") {
-      this.eventBus = e, this.cookieStoreId = t, this.syncAdapter = new $, this.sessionAdapter = new U, 
+      this.eventBus = e, this.cookieStoreId = t, this.syncAdapter = new N, this.sessionAdapter = new U, 
       this.pendingSaveIds = new Set, this.saveIdTimers = new Map, this.SAVE_ID_GRACE_MS = 1e3, 
       this.latestStorageSnapshot = null, this.storageSyncTimer = null, this.STORAGE_SYNC_DELAY_MS = 100;
     }
@@ -2200,7 +2205,7 @@
       });
     }("DEBUG", ...e), Q && console.log("[DEBUG]", ...e);
   }
-  class W {
+  class G {
     constructor(e, t) {
       this.panel = e, this.uiBuilder = t.uiBuilder, this.stateManager = t.stateManager, 
       this.quickTabsManager = t.quickTabsManager, this.currentContainerId = t.currentContainerId, 
@@ -2387,9 +2392,11 @@
     }
     async handleGoToTab(e) {
       try {
-        await browser.tabs.update(e, {
-          active: !0
-        }), Z(`[PanelContentManager] Switched to tab ${e}`);
+        const t = await browser.runtime.sendMessage({
+          action: "SWITCH_TO_TAB",
+          tabId: e
+        });
+        t && t.success ? Z(`[PanelContentManager] Switched to tab ${e}`) : console.error("[PanelContentManager] Failed to switch to tab:", t?.error);
       } catch (e) {
         console.error("[PanelContentManager] Error switching to tab:", e);
       }
@@ -2416,7 +2423,7 @@
       this.quickTabsManager = null, this.onClose = null, Z("[PanelContentManager] Destroyed");
     }
   }
-  class G {
+  class W {
     constructor(e, t, n = {}) {
       this.panel = e, this.handle = t, this.onDragEnd = n.onDragEnd || null, this.onBroadcast = n.onBroadcast || null, 
       this.isDragging = !1, this.currentPointerId = null, this.offsetX = 0, this.offsetY = 0, 
@@ -2681,15 +2688,13 @@
       Z("[PanelStateManager] Initialized");
     }
     async detectContainerContext() {
-      if (this.currentContainerId = "firefox-default", "undefined" == typeof browser || !browser.tabs) return Z("[PanelStateManager] Browser tabs API not available, using default container"), 
-      this.currentContainerId;
+      this.currentContainerId = "firefox-default";
       try {
-        const e = await browser.tabs.query({
-          active: !0,
-          currentWindow: !0
+        const e = await browser.runtime.sendMessage({
+          action: "GET_CONTAINER_CONTEXT"
         });
-        e && e.length > 0 && e[0].cookieStoreId ? (this.currentContainerId = e[0].cookieStoreId, 
-        Z(`[PanelStateManager] Container detected: ${this.currentContainerId}`)) : Z("[PanelStateManager] No cookieStoreId, using default container");
+        e && e.success && e.cookieStoreId ? (this.currentContainerId = e.cookieStoreId, 
+        Z(`[PanelStateManager] Container detected: ${this.currentContainerId}`)) : Z("[PanelStateManager] No cookieStoreId from background, using default container");
       } catch (e) {
         Z("[PanelStateManager] Failed to detect container:", e);
       }
@@ -2912,19 +2917,20 @@
       this._initializeControllers(), this.setupMessageListener(), Z("[PanelManager] Initialized");
     }
     async detectContainerContext() {
-      if (this.currentContainerId = "firefox-default", "undefined" != typeof browser && browser.tabs) try {
-        const e = await browser.tabs.query({
-          active: !0,
-          currentWindow: !0
+      this.currentContainerId = "firefox-default";
+      try {
+        const e = await browser.runtime.sendMessage({
+          action: "GET_CONTAINER_CONTEXT"
         });
-        e?.[0]?.cookieStoreId ? (this.currentContainerId = e[0].cookieStoreId, Z(`[PanelManager] Container: ${this.currentContainerId}`)) : Z("[PanelManager] Using default container");
+        e && e.success && e.cookieStoreId ? (this.currentContainerId = e.cookieStoreId, 
+        Z(`[PanelManager] Container: ${this.currentContainerId}`)) : Z("[PanelManager] Using default container (no response from background)");
       } catch (e) {
         Z("[PanelManager] Failed to detect container:", e);
-      } else Z("[PanelManager] Browser tabs API not available");
+      }
     }
     _initializeControllers() {
       const e = this.panel.querySelector(".panel-header");
-      this.dragController = new G(this.panel, e, {
+      this.dragController = new W(this.panel, e, {
         onDragEnd: (e, t) => {
           this.stateManager.savePanelState(this.panel);
         },
@@ -2946,7 +2952,7 @@
             top: e.top
           });
         }
-      }), this.contentManager = new W(this.panel, {
+      }), this.contentManager = new G(this.panel, {
         uiBuilder: this.uiBuilder,
         stateManager: this.stateManager,
         quickTabsManager: this.quickTabsManager,
@@ -3031,7 +3037,7 @@
     }
     async init(e, t) {
       this.initialized ? console.log("[QuickTabsManager] Already initialized, skipping") : (this.eventBus = e, 
-      this.Events = t, console.log("[QuickTabsManager] Initializing facade..."), await this.detectContainerContext(), 
+      this.Events = t, console.log("[QuickTabsManager] Initializing facade..."), await this.detectContainerContext() || console.warn("[QuickTabsManager] Container detection failed, using default container"), 
       await this.detectCurrentTabId(), this._initializeManagers(), this._initializeHandlers(), 
       this.panelManager = new V(this), await this.panelManager.init(), console.log("[QuickTabsManager] Panel manager initialized"), 
       this._initializeCoordinators(), this._setupComponents(), await this._hydrateState(), 
@@ -3039,14 +3045,14 @@
       this.initialized = !0, console.log("[QuickTabsManager] Facade initialized successfully"));
     }
     _initializeManagers() {
-      this.storage = new N(this.internalEventBus, this.cookieStoreId), this.broadcast = new O(this.internalEventBus, this.cookieStoreId), 
-      this.state = new L(this.internalEventBus, this.currentTabId), this.events = new P(this.internalEventBus, this.tabs);
+      this.storage = new $(this.internalEventBus, this.cookieStoreId), this.broadcast = new P(this.internalEventBus, this.cookieStoreId), 
+      this.state = new L(this.internalEventBus, this.currentTabId), this.events = new B(this.internalEventBus, this.tabs);
     }
     _initializeHandlers() {
-      this.createHandler = new x(this.tabs, this.currentZIndex, this.cookieStoreId, this.broadcast, this.eventBus, this.Events, this.generateId.bind(this)), 
+      this.createHandler = new _(this.tabs, this.currentZIndex, this.cookieStoreId, this.broadcast, this.eventBus, this.Events, this.generateId.bind(this)), 
       this.updateHandler = new z(this.tabs, this.broadcast, this.storage, this.internalEventBus, this.generateSaveId.bind(this), this.releasePendingSave.bind(this)), 
-      this.visibilityHandler = new q(this.tabs, this.broadcast, this.storage, this.minimizedManager, this.internalEventBus, this.currentZIndex, this.generateSaveId.bind(this), this.trackPendingSave.bind(this), this.releasePendingSave.bind(this), this.currentTabId, this.Events), 
-      this.destroyHandler = new _(this.tabs, this.broadcast, this.minimizedManager, this.eventBus, this.currentZIndex, this.generateSaveId.bind(this), this.releasePendingSave.bind(this), this.Events, c);
+      this.visibilityHandler = new O(this.tabs, this.broadcast, this.storage, this.minimizedManager, this.internalEventBus, this.currentZIndex, this.generateSaveId.bind(this), this.trackPendingSave.bind(this), this.releasePendingSave.bind(this), this.currentTabId, this.Events), 
+      this.destroyHandler = new x(this.tabs, this.broadcast, this.minimizedManager, this.eventBus, this.currentZIndex, this.generateSaveId.bind(this), this.releasePendingSave.bind(this), this.Events, c);
     }
     _initializeCoordinators() {
       this.uiCoordinator = new w(this.state, this.minimizedManager, this.panelManager, this.internalEventBus), 
@@ -3063,23 +3069,23 @@
     }
     async detectContainerContext() {
       try {
-        const e = await browser.tabs.query({
-          active: !0,
-          currentWindow: !0
+        const e = await browser.runtime.sendMessage({
+          action: "GET_CONTAINER_CONTEXT"
         });
-        e.length > 0 && e[0].cookieStoreId ? (this.cookieStoreId = e[0].cookieStoreId, console.log("[QuickTabsManager] Detected container:", this.cookieStoreId)) : (this.cookieStoreId = "firefox-default", 
-        console.log("[QuickTabsManager] Using default container"));
+        return e && e.success && e.cookieStoreId ? (this.cookieStoreId = e.cookieStoreId, 
+        console.log("[QuickTabsManager] Detected container:", this.cookieStoreId), !0) : (console.error("[QuickTabsManager] Failed to get container from background:", e?.error), 
+        this.cookieStoreId = "firefox-default", !1);
       } catch (e) {
-        console.error("[QuickTabsManager] Failed to detect container:", e), this.cookieStoreId = "firefox-default";
+        return console.error("[QuickTabsManager] Failed to detect container:", e), this.cookieStoreId = "firefox-default", 
+        !1;
       }
     }
     async getCurrentContainer() {
       try {
-        const e = await browser.tabs.query({
-          active: !0,
-          currentWindow: !0
+        const e = await browser.runtime.sendMessage({
+          action: "GET_CONTAINER_CONTEXT"
         });
-        return e.length > 0 && e[0].cookieStoreId ? e[0].cookieStoreId : "firefox-default";
+        return e && e.success && e.cookieStoreId ? e.cookieStoreId : this.cookieStoreId || "firefox-default";
       } catch (e) {
         return console.error("[QuickTabsManager] Failed to get current container:", e), 
         this.cookieStoreId || "firefox-default";
@@ -4208,13 +4214,25 @@
     handler: async function(e) {
       try {
         const t = function(e) {
-          if ("A" === e.tagName) return e.textContent.trim();
+          if (!e) return "";
+          if ("A" === e.tagName) {
+            const t = e.textContent.trim();
+            if (t) return t;
+          }
           const t = e.querySelector("a[href]");
-          return t ? t.textContent.trim() : e.textContent.trim().substring(0, 100);
+          if (t) {
+            const e = t.textContent.trim();
+            if (e) return e;
+          }
+          const n = e.textContent.trim();
+          return n ? n.substring(0, 100) : "";
         }(e);
+        if (!t || 0 === t.trim().length) return console.warn("[Copy Text] No text found to copy"), 
+        void Ce("✗ No text found", "error");
         await r(t) ? (fe.emit(d.TEXT_COPIED, {
           text: t
-        }), Ce("✓ Text copied!", "success"), Z("Copied text:", t)) : Ce("✗ Failed to copy text", "error");
+        }), Ce("✓ Text copied!", "success"), Z("Copied text:", t)) : (Ce("✗ Failed to copy text", "error"), 
+        console.error("[Copy Text] Clipboard operation returned false"));
       } catch (e) {
         console.error("[Copy Text] Failed:", e), Ce("✗ Failed to copy text", "error");
       }

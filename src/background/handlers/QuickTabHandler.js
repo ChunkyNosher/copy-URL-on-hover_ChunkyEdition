@@ -247,6 +247,56 @@ export class QuickTabHandler {
   }
 
   /**
+   * Get container context (cookieStoreId and tabId) for content script
+   * Content scripts cannot access browser.tabs API, so they must request this from background
+   */
+  async handleGetContainerContext(_message, sender) {
+    try {
+      // Get the tab that sent the message
+      const tab = await this.browserAPI.tabs.get(sender.tab.id);
+      return {
+        success: true,
+        cookieStoreId: tab.cookieStoreId || 'firefox-default',
+        tabId: tab.id
+      };
+    } catch (err) {
+      console.error('[QuickTabHandler] Error getting container context:', err);
+      return {
+        success: false,
+        cookieStoreId: 'firefox-default',
+        error: err.message
+      };
+    }
+  }
+
+  /**
+   * Switch to a specific browser tab
+   * Content scripts cannot use browser.tabs.update, so they must request this from background
+   */
+  async handleSwitchToTab(message, _sender) {
+    try {
+      const { tabId } = message;
+      if (!tabId) {
+        return {
+          success: false,
+          error: 'Missing tabId'
+        };
+      }
+
+      await this.browserAPI.tabs.update(tabId, { active: true });
+      return {
+        success: true
+      };
+    } catch (err) {
+      console.error('[QuickTabHandler] Error switching to tab:', err);
+      return {
+        success: false,
+        error: err.message
+      };
+    }
+  }
+
+  /**
    * Save state to storage
    */
   async saveState(saveId, cookieStoreId, message) {

@@ -10,6 +10,9 @@ global.browser = {
   tabs: {
     query: jest.fn()
   },
+  runtime: {
+    sendMessage: jest.fn()
+  },
   storage: {
     local: {
       get: jest.fn(),
@@ -48,6 +51,10 @@ describe('PanelStateManager', () => {
 
     // Default mock implementations
     browser.tabs.query.mockResolvedValue([{ cookieStoreId: 'firefox-container-1' }]);
+    browser.runtime.sendMessage.mockResolvedValue({
+      success: true,
+      cookieStoreId: 'firefox-container-1'
+    });
     browser.storage.local.get.mockResolvedValue({
       quick_tabs_panel_state: { left: 200, top: 200, width: 400, height: 600, isOpen: false }
     });
@@ -88,21 +95,24 @@ describe('PanelStateManager', () => {
   });
 
   describe('Container Detection', () => {
-    test('should detect container context from active tab', async () => {
+    test('should detect container context from background', async () => {
       manager = new PanelStateManager(mockCallbacks);
+      browser.runtime.sendMessage.mockResolvedValue({
+        success: true,
+        cookieStoreId: 'firefox-container-1'
+      });
 
       const containerId = await manager.detectContainerContext();
 
-      expect(browser.tabs.query).toHaveBeenCalledWith({
-        active: true,
-        currentWindow: true
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+        action: 'GET_CONTAINER_CONTEXT'
       });
       expect(containerId).toBe('firefox-container-1');
       expect(manager.currentContainerId).toBe('firefox-container-1');
     });
 
     test('should use default container if no cookieStoreId', async () => {
-      browser.tabs.query.mockResolvedValue([{ id: 1 }]); // No cookieStoreId
+      browser.runtime.sendMessage.mockResolvedValue({ success: false }); // No cookieStoreId
       manager = new PanelStateManager(mockCallbacks);
 
       const containerId = await manager.detectContainerContext();
@@ -111,8 +121,8 @@ describe('PanelStateManager', () => {
       expect(manager.currentContainerId).toBe('firefox-default');
     });
 
-    test('should use default container if tabs API fails', async () => {
-      browser.tabs.query.mockRejectedValue(new Error('API error'));
+    test('should use default container if message fails', async () => {
+      browser.runtime.sendMessage.mockRejectedValue(new Error('API error'));
       manager = new PanelStateManager(mockCallbacks);
 
       const containerId = await manager.detectContainerContext();
@@ -121,9 +131,9 @@ describe('PanelStateManager', () => {
       expect(manager.currentContainerId).toBe('firefox-default');
     });
 
-    test('should use default container if browser.tabs not available', async () => {
-      const originalTabs = browser.tabs;
-      delete browser.tabs;
+    test('should use default container if browser runtime not available', async () => {
+      const originalRuntime = browser.runtime;
+      delete browser.runtime;
 
       manager = new PanelStateManager(mockCallbacks);
 
@@ -131,7 +141,7 @@ describe('PanelStateManager', () => {
 
       expect(containerId).toBe('firefox-default');
 
-      browser.tabs = originalTabs;
+      browser.runtime = originalRuntime;
     });
   });
 
@@ -405,7 +415,7 @@ describe('PanelStateManager', () => {
 
       await manager.init();
 
-      expect(browser.tabs.query).toHaveBeenCalled();
+      expect(browser.runtime.sendMessage).toHaveBeenCalled();
       expect(BroadcastChannel).toHaveBeenCalled();
       expect(browser.storage.local.get).toHaveBeenCalled();
     });

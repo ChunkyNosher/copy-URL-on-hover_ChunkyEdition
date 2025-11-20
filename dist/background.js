@@ -9,11 +9,11 @@
       args: t
     });
   }
-  const n = console.log, r = console.error, i = console.warn, c = console.info;
+  const r = console.log, n = console.error, i = console.warn, c = console.info;
   console.log = function(...e) {
-    o("DEBUG", ...e), n.apply(console, e);
+    o("DEBUG", ...e), r.apply(console, e);
   }, console.error = function(...e) {
-    o("ERROR", ...e), r.apply(console, e);
+    o("ERROR", ...e), n.apply(console, e);
   }, console.warn = function(...e) {
     o("WARN", ...e), i.apply(console, e);
   }, console.info = function(...e) {
@@ -462,7 +462,7 @@
       }), s = URL.createObjectURL(a);
       return new Promise((e, a) => {
         let o = null;
-        const n = setTimeout(() => {
+        const r = setTimeout(() => {
           URL.revokeObjectURL(s), o && this.pendingDownloads.delete(o), a(new Error("Download timeout after 60 seconds"));
         }, 6e4);
         this.downloadsAPI.download({
@@ -471,22 +471,22 @@
           saveAs: !0
         }, t => {
           if (o = t, !t) {
-            clearTimeout(n), URL.revokeObjectURL(s);
+            clearTimeout(r), URL.revokeObjectURL(s);
             const e = this.downloadsAPI.runtime?.lastError;
             return void a(new Error(e?.message || "Download failed"));
           }
           this.pendingDownloads.set(t, {
             url: s,
-            timeoutId: n
+            timeoutId: r
           });
-          const r = o => {
-            o.id === t && ("complete" === o.state?.current ? (clearTimeout(n), URL.revokeObjectURL(s), 
-            this.pendingDownloads.delete(t), this.downloadsAPI.onChanged.removeListener(r), 
-            e()) : "interrupted" === o.state?.current && (clearTimeout(n), URL.revokeObjectURL(s), 
-            this.pendingDownloads.delete(t), this.downloadsAPI.onChanged.removeListener(r), 
+          const n = o => {
+            o.id === t && ("complete" === o.state?.current ? (clearTimeout(r), URL.revokeObjectURL(s), 
+            this.pendingDownloads.delete(t), this.downloadsAPI.onChanged.removeListener(n), 
+            e()) : "interrupted" === o.state?.current && (clearTimeout(r), URL.revokeObjectURL(s), 
+            this.pendingDownloads.delete(t), this.downloadsAPI.onChanged.removeListener(n), 
             a(new Error("Download interrupted"))));
           };
-          this.downloadsAPI.onChanged.addListener(r);
+          this.downloadsAPI.onChanged.addListener(n);
         });
       });
     }
@@ -504,8 +504,8 @@
       if (!o) return {
         success: !0
       };
-      const n = o.tabs.find(t => t.id === e.id);
-      return n ? (t(n, e), o.lastUpdate = Date.now(), a && await this.saveStateToStorage(), 
+      const r = o.tabs.find(t => t.id === e.id);
+      return r ? (t(r, e), o.lastUpdate = Date.now(), a && await this.saveStateToStorage(), 
       {
         success: !0
       }) : {
@@ -524,7 +524,7 @@
         tabs: [],
         lastUpdate: 0
       });
-      const s = this.globalState.containers[a], o = s.tabs.findIndex(t => t.id === e.id), n = {
+      const s = this.globalState.containers[a], o = s.tabs.findIndex(t => t.id === e.id), r = {
         id: e.id,
         url: e.url,
         left: e.left,
@@ -535,7 +535,7 @@
         title: e.title || "Quick Tab",
         minimized: e.minimized || !1
       };
-      return -1 !== o ? s.tabs[o] = n : s.tabs.push(n), s.lastUpdate = Date.now(), await this.saveState(e.saveId, a, e), 
+      return -1 !== o ? s.tabs[o] = r : s.tabs.push(r), s.lastUpdate = Date.now(), await this.saveState(e.saveId, a, e), 
       {
         success: !0
       };
@@ -596,6 +596,40 @@
         success: !0,
         tabId: a
       };
+    }
+    async handleGetContainerContext(e, t) {
+      try {
+        const e = await this.browserAPI.tabs.get(t.tab.id);
+        return {
+          success: !0,
+          cookieStoreId: e.cookieStoreId || "firefox-default",
+          tabId: e.id
+        };
+      } catch (e) {
+        return console.error("[QuickTabHandler] Error getting container context:", e), {
+          success: !1,
+          cookieStoreId: "firefox-default",
+          error: e.message
+        };
+      }
+    }
+    async handleSwitchToTab(e, t) {
+      try {
+        const {tabId: t} = e;
+        return t ? (await this.browserAPI.tabs.update(t, {
+          active: !0
+        }), {
+          success: !0
+        }) : {
+          success: !1,
+          error: "Missing tabId"
+        };
+      } catch (e) {
+        return console.error("[QuickTabHandler] Error switching to tab:", e), {
+          success: !1,
+          error: e.message
+        };
+      }
     }
     async saveState(e, t, a) {
       const s = e || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, o = {
@@ -708,10 +742,11 @@
   I.register([ "UPDATE_QUICK_TAB_SIZE", "UPDATE_QUICK_TAB_SIZE_FINAL" ], (e, t) => k.handleSizeUpdate(e, t)), 
   I.register("UPDATE_QUICK_TAB_PIN", (e, t) => k.handlePinUpdate(e, t)), I.register("UPDATE_QUICK_TAB_SOLO", (e, t) => k.handleSoloUpdate(e, t)), 
   I.register("UPDATE_QUICK_TAB_MUTE", (e, t) => k.handleMuteUpdate(e, t)), I.register("UPDATE_QUICK_TAB_MINIMIZE", (e, t) => k.handleMinimizeUpdate(e, t)), 
-  I.register("GET_CURRENT_TAB_ID", (e, t) => k.handleGetCurrentTabId(e, t)), I.register("openTab", (e, t) => A.handleOpenTab(e, t)), 
+  I.register("GET_CURRENT_TAB_ID", (e, t) => k.handleGetCurrentTabId(e, t)), I.register("GET_CONTAINER_CONTEXT", (e, t) => k.handleGetContainerContext(e, t)), 
+  I.register("SWITCH_TO_TAB", (e, t) => k.handleSwitchToTab(e, t)), I.register("openTab", (e, t) => A.handleOpenTab(e, t)), 
   I.register("saveQuickTabState", (e, t) => A.handleSaveState(e, t)), I.register("getQuickTabState", (e, t) => A.handleGetState(e, t)), 
   I.register("clearQuickTabState", (e, t) => A.handleClearState(e, t)), I.register("createQuickTab", (e, t) => A.handleLegacyCreate(e, t)), 
-  console.log("[Background] MessageRouter initialized with 21 registered handlers"), 
+  console.log("[Background] MessageRouter initialized with 23 registered handlers"), 
   chrome.runtime.onMessage.addListener(I.createListener()), chrome.sidePanel && chrome.action.onClicked.addListener(e => {
     chrome.sidePanel.open({
       windowId: e.windowId

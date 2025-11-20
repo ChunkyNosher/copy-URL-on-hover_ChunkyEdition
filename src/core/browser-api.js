@@ -93,32 +93,54 @@ export async function clearStorage(storageType = 'local') {
 }
 
 /**
+ * Fallback clipboard copy using execCommand
+ * @param {string} text - Text to copy
+ * @returns {boolean} True if successful
+ */
+function fallbackCopyToClipboard(text) {
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const success = document.execCommand('copy');
+    document.body.removeChild(textarea);
+
+    if (!success) {
+      console.error('[Browser API] execCommand copy returned false');
+    }
+
+    return success;
+  } catch (fallbackErr) {
+    console.error('[Browser API] Fallback copy also failed:', fallbackErr);
+    return false;
+  }
+}
+
+/**
  * Copy text to clipboard
+ * v1.6.0.1 - Added validation and improved error logging
  * @param {string} text - Text to copy
  * @returns {Promise<boolean>} True if successful
  */
 export async function copyToClipboard(text) {
+  // Validate input
+  if (!text || typeof text !== 'string') {
+    console.error('[Browser API] Invalid text for clipboard:', text);
+    return false;
+  }
+
   try {
     await navigator.clipboard.writeText(text);
     return true;
   } catch (err) {
     console.error('[Browser API] Failed to copy to clipboard:', err);
+    console.error('[Browser API] Text length:', text.length, 'Preview:', text.substring(0, 50));
 
     // Fallback to execCommand
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      const success = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      return success;
-    } catch (fallbackErr) {
-      console.error('[Browser API] Fallback copy also failed:', fallbackErr);
-      return false;
-    }
+    return fallbackCopyToClipboard(text);
   }
 }
 

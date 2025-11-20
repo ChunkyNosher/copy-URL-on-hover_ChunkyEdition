@@ -340,11 +340,17 @@ describe('PanelContentManager - Edge Cases', () => {
         }
       });
 
+      // Mock successful tab switch response
+      mockBrowser.runtime.sendMessage.mockResolvedValue({ success: true });
+
       // Execute
       await contentManager._handleQuickTabAction('goToTab', 'qt-1', '789');
 
-      // Verify: tab ID parsed as integer
-      expect(mockBrowser.tabs.update).toHaveBeenCalledWith(789, { active: true });
+      // Verify: message sent to background with tab ID as integer
+      expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({
+        action: 'SWITCH_TO_TAB',
+        tabId: 789
+      });
     });
   });
 
@@ -468,11 +474,20 @@ describe('PanelContentManager - Edge Cases', () => {
         }
       });
 
+      // Mock failed response for invalid tab ID
+      mockBrowser.runtime.sendMessage.mockResolvedValue({
+        success: false,
+        error: 'Invalid tab ID'
+      });
+
       // Execute with non-numeric tab ID
       await contentManager._handleQuickTabAction('goToTab', 'qt-1', 'invalid');
 
-      // Verify: NaN passed to parseInt results in NaN being passed to tabs.update
-      expect(mockBrowser.tabs.update).toHaveBeenCalledWith(NaN, { active: true });
+      // Verify: NaN passed to parseInt results in NaN being sent to background
+      expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({
+        action: 'SWITCH_TO_TAB',
+        tabId: NaN
+      });
     });
 
     test('should handle concurrent action calls', async () => {
