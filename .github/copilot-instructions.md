@@ -201,34 +201,6 @@ await this.stateManager.init();  // Callback can now access panel
 
 **For detailed version history and feature evolution, see** `docs/CHANGELOG.md`
 
-## Code Quality Tool Priority
-
-When reviewing code, prioritize findings in this order:
-
-### CRITICAL (Must fix before merge):
-
-1. **CodeQL** HIGH/CRITICAL security findings
-2. **DeepSource** critical severity issues
-3. **ESLint** errors (not warnings)
-4. Any use of `eval()`, `new Function()`, or `innerHTML` with user input
-5. Missing message sender validation in browser.runtime.onMessage handlers
-
-### HIGH PRIORITY (Should fix):
-
-1. **DeepSource** high severity issues
-2. **ESLint** warnings in new code
-3. Test coverage drops below current level
-4. Build failures
-5. Prettier formatting violations
-6. Missing error handling in async functions
-
-### MEDIUM PRIORITY (Nice to fix):
-
-1. **DeepSource** medium severity issues
-2. Code complexity warnings (CC > 15)
-3. Missing JSDoc comments for public functions
-4. Console.log statements in production code
-
 ---
 
 # Memory Persistence Instructions
