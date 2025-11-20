@@ -243,7 +243,10 @@ class QuickTabsManager {
         console.log('[QuickTabsManager] Detected container:', this.cookieStoreId);
         return true; // Success
       } else {
-        console.error('[QuickTabsManager] Failed to get container from background:', response?.error);
+        console.error(
+          '[QuickTabsManager] Failed to get container from background:',
+          response?.error
+        );
         this.cookieStoreId = 'firefox-default';
         return false; // Failure
       }

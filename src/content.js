@@ -457,7 +457,7 @@ async function handleCopyURL(url) {
 async function handleCopyText(element) {
   try {
     const text = getLinkText(element);
-    
+
     // Validate text is not empty
     if (!text || text.trim().length === 0) {
       console.warn('[Copy Text] No text found to copy');

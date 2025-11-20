@@ -107,11 +107,11 @@ function fallbackCopyToClipboard(text) {
     textarea.select();
     const success = document.execCommand('copy');
     document.body.removeChild(textarea);
-    
+
     if (!success) {
       console.error('[Browser API] execCommand copy returned false');
     }
-    
+
     return success;
   } catch (fallbackErr) {
     console.error('[Browser API] Fallback copy also failed:', fallbackErr);

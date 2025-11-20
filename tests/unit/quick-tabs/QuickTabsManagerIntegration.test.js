@@ -64,10 +64,10 @@ describe('QuickTabsManager Integration', () => {
           .mockResolvedValue([{ cookieStoreId: 'firefox-container-1', id: 123, active: true }])
       },
       runtime: {
-        sendMessage: jest.fn().mockImplementation((msg) => {
+        sendMessage: jest.fn().mockImplementation(msg => {
           if (msg.action === 'GET_CONTAINER_CONTEXT') {
-            return Promise.resolve({ 
-              success: true, 
+            return Promise.resolve({
+              success: true,
               cookieStoreId: 'firefox-container-1',
               tabId: 123
             });

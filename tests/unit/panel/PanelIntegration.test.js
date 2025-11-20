@@ -102,7 +102,9 @@ describe('PanelManager Integration', () => {
         query: jest.fn().mockResolvedValue([{ cookieStoreId: 'firefox-container-1', active: true }])
       },
       runtime: {
-        sendMessage: jest.fn().mockResolvedValue({ success: true, cookieStoreId: 'firefox-container-1' }),
+        sendMessage: jest
+          .fn()
+          .mockResolvedValue({ success: true, cookieStoreId: 'firefox-container-1' }),
         onMessage: {
           addListener: jest.fn()
         }
