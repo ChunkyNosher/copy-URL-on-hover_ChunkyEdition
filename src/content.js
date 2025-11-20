@@ -335,7 +335,7 @@ function getDomainType() {
 function setupHoverDetection() {
   // Track hover start time for duration calculation
   let hoverStartTime = null;
-  
+
   document.addEventListener('mouseover', event => {
     hoverStartTime = performance.now();
     const domainType = getDomainType();
@@ -388,7 +388,7 @@ function setupHoverDetection() {
   document.addEventListener('mouseout', event => {
     const hoverDuration = hoverStartTime ? performance.now() - hoverStartTime : 0;
     const wasURLDetected = !!stateManager.get('currentHoveredLink');
-    
+
     // Log hover end with duration and context
     console.log('[Hover] [End] Mouse left element', {
       duration: `${hoverDuration.toFixed(2)}ms`,
@@ -396,7 +396,7 @@ function setupHoverDetection() {
       elementTag: event.target.tagName,
       timestamp: Date.now()
     });
-    
+
     stateManager.setState({
       currentHoveredLink: null,
       currentHoveredElement: null
@@ -499,7 +499,7 @@ function logKeyboardEvent(event, isInInputField) {
  */
 async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement) {
   const executionStart = performance.now();
-  
+
   // Pass correct parameters based on handler's requirements
   if (shortcut.needsLink && shortcut.needsElement) {
     await shortcut.handler(hoveredLink, hoveredElement);
@@ -508,9 +508,9 @@ async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement) {
   } else if (shortcut.needsElement) {
     await shortcut.handler(hoveredElement);
   }
-  
+
   const executionDuration = performance.now() - executionStart;
-  
+
   console.log('[Keyboard] [Complete] Handler execution finished', {
     shortcutName: shortcut.name,
     executionTime: `${executionDuration.toFixed(2)}ms`,
@@ -527,10 +527,10 @@ async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement) {
 async function handleKeyboardShortcut(event) {
   // Check if in input field first
   const isInInputField = isInputField(event.target);
-  
+
   // Log keyboard event detection
   logKeyboardEvent(event, isInInputField);
-  
+
   // Ignore if typing in an interactive field
   if (isInInputField) {
     console.log('[Keyboard] [Ignored] Key press ignored - user typing in input field');
@@ -551,7 +551,7 @@ async function handleKeyboardShortcut(event) {
   // Check each shortcut using table-driven approach
   for (const shortcut of SHORTCUT_HANDLERS) {
     const matches = matchesShortcut(event, shortcut, hoveredLink, hoveredElement);
-    
+
     // Log shortcut matching attempt
     console.log('[Keyboard] [Matching] Checking shortcut', {
       shortcutName: shortcut.name,
@@ -562,7 +562,7 @@ async function handleKeyboardShortcut(event) {
       hasElement: !!hoveredElement,
       timestamp: Date.now()
     });
-    
+
     if (!matches) continue;
 
     // Log successful shortcut match and execution
@@ -573,12 +573,12 @@ async function handleKeyboardShortcut(event) {
     });
 
     event.preventDefault();
-    
+
     await executeShortcutHandler(shortcut, hoveredLink, hoveredElement);
-    
+
     return;
   }
-  
+
   // No shortcut matched
   console.log('[Keyboard] [NoMatch] No shortcut matched for key combination');
 }
@@ -615,7 +615,7 @@ async function handleCopyURL(url) {
     triggeredBy: 'keyboard-shortcut',
     timestamp: Date.now()
   });
-  
+
   try {
     const copyStart = performance.now();
     const success = await copyToClipboard(url);
@@ -657,7 +657,7 @@ async function handleCopyText(element) {
     triggeredBy: 'keyboard-shortcut',
     timestamp: Date.now()
   });
-  
+
   try {
     const extractStart = performance.now();
     const text = getLinkText(element);

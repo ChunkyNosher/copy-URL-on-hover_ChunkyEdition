@@ -105,7 +105,7 @@ function fallbackCopyToClipboard(text) {
     textPreview: text.substring(0, 50),
     timestamp: Date.now()
   });
-  
+
   try {
     const fallbackStart = performance.now();
     const textarea = document.createElement('textarea');
@@ -179,14 +179,14 @@ export async function copyToClipboard(text) {
     const apiStart = performance.now();
     await navigator.clipboard.writeText(text);
     const apiDuration = performance.now() - apiStart;
-    
+
     console.log('[Clipboard] [Success] Clipboard API copy successful', {
       method: 'navigator.clipboard.writeText',
       textLength: text.length,
       duration: `${apiDuration.toFixed(2)}ms`,
       timestamp: Date.now()
     });
-    
+
     return true;
   } catch (err) {
     console.error('[Browser API] [Failure] Clipboard API failed:', {
@@ -200,16 +200,16 @@ export async function copyToClipboard(text) {
     });
 
     console.log('[Clipboard] [Fallback] Attempting execCommand fallback');
-    
+
     // Fallback to execCommand
     const fallbackResult = fallbackCopyToClipboard(text);
-    
+
     console.log('[Clipboard] [Final Result] Copy operation final result', {
       success: fallbackResult,
       methodUsed: 'execCommand-fallback',
       timestamp: Date.now()
     });
-    
+
     return fallbackResult;
   }
 }

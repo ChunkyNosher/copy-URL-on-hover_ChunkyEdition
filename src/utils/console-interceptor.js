@@ -39,14 +39,14 @@ function serializeError(error) {
     ...(error.columnNumber && { columnNumber: error.columnNumber }),
     ...(error.cause && { cause: serializeError(error.cause) })
   };
-  
+
   // Include any custom enumerable properties
   Object.keys(error).forEach(key => {
     if (!errorDetails[key]) {
       errorDetails[key] = error[key];
     }
   });
-  
+
   try {
     return JSON.stringify(errorDetails, null, 2);
   } catch (err) {
@@ -64,12 +64,12 @@ function serializeArgument(arg) {
   if (arg === null || arg === undefined) {
     return String(arg);
   }
-  
+
   // Handle Error objects specially to preserve stack traces
   if (arg instanceof Error) {
     return serializeError(arg);
   }
-  
+
   // Handle regular objects
   if (typeof arg === 'object') {
     try {
@@ -78,7 +78,7 @@ function serializeArgument(arg) {
       return String(arg);
     }
   }
-  
+
   // Handle primitives
   return String(arg);
 }
@@ -174,23 +174,31 @@ console.debug = function (...args) {
 // Only add listeners if in browser context (not in background/service worker without window)
 if (typeof window !== 'undefined') {
   // Capture uncaught exceptions
-  window.addEventListener('error', (event) => {
-    const errorInfo = {
-      message: event.message,
-      filename: event.filename,
-      lineno: event.lineno,
-      colno: event.colno,
-      error: event.error
-    };
-    
-    addToLogBuffer('ERROR', ['[Uncaught Exception]', errorInfo]);
-  }, true);  // Use capture phase to get it first
+  window.addEventListener(
+    'error',
+    event => {
+      const errorInfo = {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error
+      };
+
+      addToLogBuffer('ERROR', ['[Uncaught Exception]', errorInfo]);
+    },
+    true
+  ); // Use capture phase to get it first
 
   // Capture unhandled promise rejections
-  window.addEventListener('unhandledrejection', (event) => {
-    addToLogBuffer('ERROR', ['[Unhandled Promise Rejection]', event.reason]);
-  }, true);
-  
+  window.addEventListener(
+    'unhandledrejection',
+    event => {
+      addToLogBuffer('ERROR', ['[Unhandled Promise Rejection]', event.reason]);
+    },
+    true
+  );
+
   originalConsole.log('[Console Interceptor] Global error handlers installed');
 }
 

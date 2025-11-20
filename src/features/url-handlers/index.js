@@ -60,7 +60,7 @@ export class URLHandlerRegistry {
 
     let parent = element.parentElement;
     let levelsTraversed = 0;
-    
+
     for (let i = 0; i < 20; i++) {
       if (!parent) {
         console.log('[URL Detection] [Hierarchy] No more parent elements to check', {
@@ -69,9 +69,9 @@ export class URLHandlerRegistry {
         });
         break;
       }
-      
+
       levelsTraversed++;
-      
+
       if (parent.tagName === 'A' && parent.href) {
         console.log('[URL Detection] [Success] Anchor link found in parent', {
           url: parent.href,
@@ -84,7 +84,7 @@ export class URLHandlerRegistry {
       }
       parent = parent.parentElement;
     }
-    
+
     return null;
   }
 
@@ -105,7 +105,7 @@ export class URLHandlerRegistry {
     const handlerStart = performance.now();
     const url = this.handlers[domainType](element);
     const handlerDuration = performance.now() - handlerStart;
-    
+
     if (url) {
       console.log('[URL Detection] [Success] Site-specific handler found URL', {
         url: url,
@@ -116,13 +116,13 @@ export class URLHandlerRegistry {
       });
       return url;
     }
-    
+
     console.log('[URL Detection] [Handler] Site-specific handler returned null', {
       domainType: domainType,
       handlerTime: `${handlerDuration.toFixed(2)}ms`,
       timestamp: Date.now()
     });
-    
+
     return null;
   }
 
@@ -137,7 +137,7 @@ export class URLHandlerRegistry {
     const genericStart = performance.now();
     const genericUrl = findGenericUrl(element);
     const genericDuration = performance.now() - genericStart;
-    
+
     if (genericUrl) {
       console.log('[URL Detection] [Success] Generic handler found URL', {
         url: genericUrl,
@@ -153,7 +153,7 @@ export class URLHandlerRegistry {
         timestamp: Date.now()
       });
     }
-    
+
     return genericUrl;
   }
 
