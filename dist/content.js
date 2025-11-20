@@ -1197,7 +1197,7 @@
       };
     }
   }
-  class x {
+  class _ {
     constructor(e, t, n, i, o, s, a) {
       this.quickTabsMap = e, this.currentZIndex = t, this.cookieStoreId = n, this.broadcastManager = i, 
       this.eventBus = o, this.Events = s, this.generateId = a;
@@ -1287,7 +1287,7 @@
       });
     }
   }
-  class _ {
+  class x {
     constructor(e, t, n, i, o, s, a, r, l) {
       this.quickTabsMap = e, this.broadcastManager = t, this.minimizedManager = n, this.eventBus = i, 
       this.currentZIndex = o, this.generateSaveId = s, this.releasePendingSave = a, this.Events = r, 
@@ -2392,9 +2392,11 @@
     }
     async handleGoToTab(e) {
       try {
-        await browser.tabs.update(e, {
-          active: !0
-        }), Z(`[PanelContentManager] Switched to tab ${e}`);
+        const t = await browser.runtime.sendMessage({
+          action: "SWITCH_TO_TAB",
+          tabId: e
+        });
+        t && t.success ? Z(`[PanelContentManager] Switched to tab ${e}`) : console.error("[PanelContentManager] Failed to switch to tab:", t?.error);
       } catch (e) {
         console.error("[PanelContentManager] Error switching to tab:", e);
       }
@@ -2686,15 +2688,13 @@
       Z("[PanelStateManager] Initialized");
     }
     async detectContainerContext() {
-      if (this.currentContainerId = "firefox-default", "undefined" == typeof browser || !browser.tabs) return Z("[PanelStateManager] Browser tabs API not available, using default container"), 
-      this.currentContainerId;
+      this.currentContainerId = "firefox-default";
       try {
-        const e = await browser.tabs.query({
-          active: !0,
-          currentWindow: !0
+        const e = await browser.runtime.sendMessage({
+          action: "GET_CONTAINER_CONTEXT"
         });
-        e && e.length > 0 && e[0].cookieStoreId ? (this.currentContainerId = e[0].cookieStoreId, 
-        Z(`[PanelStateManager] Container detected: ${this.currentContainerId}`)) : Z("[PanelStateManager] No cookieStoreId, using default container");
+        e && e.success && e.cookieStoreId ? (this.currentContainerId = e.cookieStoreId, 
+        Z(`[PanelStateManager] Container detected: ${this.currentContainerId}`)) : Z("[PanelStateManager] No cookieStoreId from background, using default container");
       } catch (e) {
         Z("[PanelStateManager] Failed to detect container:", e);
       }
@@ -3049,10 +3049,10 @@
       this.state = new L(this.internalEventBus, this.currentTabId), this.events = new B(this.internalEventBus, this.tabs);
     }
     _initializeHandlers() {
-      this.createHandler = new x(this.tabs, this.currentZIndex, this.cookieStoreId, this.broadcast, this.eventBus, this.Events, this.generateId.bind(this)), 
+      this.createHandler = new _(this.tabs, this.currentZIndex, this.cookieStoreId, this.broadcast, this.eventBus, this.Events, this.generateId.bind(this)), 
       this.updateHandler = new z(this.tabs, this.broadcast, this.storage, this.internalEventBus, this.generateSaveId.bind(this), this.releasePendingSave.bind(this)), 
       this.visibilityHandler = new O(this.tabs, this.broadcast, this.storage, this.minimizedManager, this.internalEventBus, this.currentZIndex, this.generateSaveId.bind(this), this.trackPendingSave.bind(this), this.releasePendingSave.bind(this), this.currentTabId, this.Events), 
-      this.destroyHandler = new _(this.tabs, this.broadcast, this.minimizedManager, this.eventBus, this.currentZIndex, this.generateSaveId.bind(this), this.releasePendingSave.bind(this), this.Events, c);
+      this.destroyHandler = new x(this.tabs, this.broadcast, this.minimizedManager, this.eventBus, this.currentZIndex, this.generateSaveId.bind(this), this.releasePendingSave.bind(this), this.Events, c);
     }
     _initializeCoordinators() {
       this.uiCoordinator = new w(this.state, this.minimizedManager, this.panelManager, this.internalEventBus), 

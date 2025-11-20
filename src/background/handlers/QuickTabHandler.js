@@ -270,6 +270,33 @@ export class QuickTabHandler {
   }
 
   /**
+   * Switch to a specific browser tab
+   * Content scripts cannot use browser.tabs.update, so they must request this from background
+   */
+  async handleSwitchToTab(message, _sender) {
+    try {
+      const { tabId } = message;
+      if (!tabId) {
+        return {
+          success: false,
+          error: 'Missing tabId'
+        };
+      }
+
+      await this.browserAPI.tabs.update(tabId, { active: true });
+      return {
+        success: true
+      };
+    } catch (err) {
+      console.error('[QuickTabHandler] Error switching to tab:', err);
+      return {
+        success: false,
+        error: err.message
+      };
+    }
+  }
+
+  /**
    * Save state to storage
    */
   async saveState(saveId, cookieStoreId, message) {

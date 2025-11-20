@@ -410,15 +410,18 @@ describe('PanelContentManager', () => {
 
   describe('handleGoToTab()', () => {
     it('should activate tab', async () => {
+      mockBrowser.runtime.sendMessage.mockResolvedValue({ success: true });
+
       await contentManager.handleGoToTab(123);
 
-      expect(mockBrowser.tabs.update).toHaveBeenCalledWith(123, {
-        active: true
+      expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({
+        action: 'SWITCH_TO_TAB',
+        tabId: 123
       });
     });
 
     it('should handle errors', async () => {
-      mockBrowser.tabs.update.mockRejectedValue(new Error('Tab error'));
+      mockBrowser.runtime.sendMessage.mockRejectedValue(new Error('Tab error'));
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       await contentManager.handleGoToTab(123);

@@ -412,12 +412,23 @@ export class PanelContentManager {
 
   /**
    * Go to browser tab
+   * v1.6.0.1 - Fixed to use message passing (browser.tabs.update not available in content scripts)
    * @param {number} tabId - Browser tab ID
    */
   async handleGoToTab(tabId) {
     try {
-      await browser.tabs.update(tabId, { active: true });
-      debug(`[PanelContentManager] Switched to tab ${tabId}`);
+      // Content scripts cannot access browser.tabs.update API
+      // Must request tab switch from background script
+      const response = await browser.runtime.sendMessage({
+        action: 'SWITCH_TO_TAB',
+        tabId
+      });
+
+      if (response && response.success) {
+        debug(`[PanelContentManager] Switched to tab ${tabId}`);
+      } else {
+        console.error('[PanelContentManager] Failed to switch to tab:', response?.error);
+      }
     } catch (err) {
       console.error('[PanelContentManager] Error switching to tab:', err);
     }
