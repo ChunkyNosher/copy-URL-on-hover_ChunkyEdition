@@ -1,0 +1,19 @@
+# GitHub Actions runner temporary files
+runner-temp/
+
+# Large memory database files (don't commit these)
+.in-memoria/embeddings.db
+.in-memoria/*.db-wal
+.in-memoria/*.db-shm
+
+# Keep smaller files (DO commit these)
+!.in-memoria/patterns.db
+!.in-memoria/learned_intel.json
+!.agentic-tools/*.json
+!.mcp-data/memory.db
+
+# MCP server logs
+*.mcp-log
+
+# Cache files
+.cache/
