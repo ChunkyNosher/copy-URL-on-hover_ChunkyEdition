@@ -32,7 +32,7 @@ export class EventManager {
    * - User switches tabs (visibilitychange)
    * - User closes tab or navigates away (beforeunload)
    * - Page is hidden (pagehide)
-   * 
+   *
    * CRITICAL FIX for Issue #35 and #51: Also refresh state when tab becomes visible
    * This ensures position/size updates from other tabs are loaded
    */

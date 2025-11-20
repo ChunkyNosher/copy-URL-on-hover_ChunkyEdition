@@ -84,15 +84,15 @@ export class SyncCoordinator {
    */
   async handleTabVisible() {
     console.log('[SyncCoordinator] Tab became visible - refreshing state from background');
-    
+
     try {
       // Re-hydrate state from storage (which will call background first)
       const quickTabs = await this.storageManager.loadAll();
       this.stateManager.hydrate(quickTabs);
-      
+
       // Notify UI coordinator to re-render
       this.eventBus.emit('state:refreshed', { quickTabs });
-      
+
       console.log(`[SyncCoordinator] Refreshed ${quickTabs.length} Quick Tabs on tab visible`);
     } catch (err) {
       console.error('[SyncCoordinator] Error refreshing state on tab visible:', err);

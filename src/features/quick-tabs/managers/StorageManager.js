@@ -79,7 +79,7 @@ export class StorageManager {
    * Load all Quick Tabs for current container
    * CRITICAL FIX for Issue #35 and #51: Load from background script's authoritative state
    * Background script maintains the single source of truth across all tabs
-   * 
+   *
    * @returns {Promise<Array<QuickTab>>} - Array of QuickTab domain entities
    */
   async loadAll() {
@@ -88,9 +88,8 @@ export class StorageManager {
       // This ensures tabs always load the latest state, even when switching tabs
       // Use global browser object (not imported) for test compatibility
       const browserAPI =
-        (typeof browser !== 'undefined' && browser) || 
-        (typeof chrome !== 'undefined' && chrome);
-      
+        (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome);
+
       const response = await browserAPI.runtime.sendMessage({
         action: 'GET_QUICK_TABS_STATE',
         cookieStoreId: this.cookieStoreId
