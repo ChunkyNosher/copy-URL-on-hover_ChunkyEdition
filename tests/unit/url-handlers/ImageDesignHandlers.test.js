@@ -121,6 +121,22 @@ describe('Image Design Platform URL Handlers', () => {
 
       expect(result).toBe('https://example.com/');
     });
+
+    test('should return null when no /post/ link in container', () => {
+      const post = document.createElement('div');
+      post.setAttribute('data-id', '123');
+
+      const link = document.createElement('a');
+      link.href = 'https://tumblr.com/dashboard';
+      post.appendChild(link);
+
+      const element = document.createElement('div');
+      post.appendChild(element);
+
+      const result = findTumblrUrl(element);
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('findDribbbleUrl', () => {
@@ -166,6 +182,22 @@ describe('Image Design Platform URL Handlers', () => {
 
       expect(result).toBe('https://example.com/');
     });
+
+    test('should return null when no /shots/ link in container', () => {
+      const shot = document.createElement('div');
+      shot.className = 'shot-thumbnail';
+
+      const link = document.createElement('a');
+      link.href = 'https://dribbble.com/designers';
+      shot.appendChild(link);
+
+      const element = document.createElement('div');
+      shot.appendChild(element);
+
+      const result = findDribbbleUrl(element);
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('findBehanceUrl', () => {
@@ -210,6 +242,22 @@ describe('Image Design Platform URL Handlers', () => {
       const result = findBehanceUrl(link);
 
       expect(result).toBe('https://example.com/');
+    });
+
+    test('should return null when no /gallery/ link in container', () => {
+      const project = document.createElement('div');
+      project.className = 'Project';
+
+      const link = document.createElement('a');
+      link.href = 'https://www.behance.net/search';
+      project.appendChild(link);
+
+      const element = document.createElement('div');
+      project.appendChild(element);
+
+      const result = findBehanceUrl(element);
+
+      expect(result).toBeNull();
     });
   });
 
@@ -258,6 +306,22 @@ describe('Image Design Platform URL Handlers', () => {
 
       expect(result).toBe('https://example.com/');
     });
+
+    test('should return null when no deviation_link in container', () => {
+      const deviation = document.createElement('div');
+      deviation.setAttribute('data-deviationid', '123');
+
+      const link = document.createElement('a');
+      link.href = 'https://www.deviantart.com/';
+      deviation.appendChild(link);
+
+      const element = document.createElement('div');
+      deviation.appendChild(element);
+
+      const result = findDeviantartUrl(element);
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('findFlickrUrl', () => {
@@ -303,6 +367,22 @@ describe('Image Design Platform URL Handlers', () => {
 
       expect(result).toBe('https://example.com/');
     });
+
+    test('should return null when no /photos/ link in container', () => {
+      const photo = document.createElement('div');
+      photo.setAttribute('data-photo-id', '123');
+
+      const link = document.createElement('a');
+      link.href = 'https://www.flickr.com/explore';
+      photo.appendChild(link);
+
+      const element = document.createElement('div');
+      photo.appendChild(element);
+
+      const result = findFlickrUrl(element);
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('find500pxUrl', () => {
@@ -331,6 +411,22 @@ describe('Image Design Platform URL Handlers', () => {
       const result = find500pxUrl(link);
 
       expect(result).toBe('https://example.com/');
+    });
+
+    test('should return null when no /photo/ link in container', () => {
+      const photo = document.createElement('div');
+      photo.setAttribute('data-test', 'photo-item');
+
+      const link = document.createElement('a');
+      link.href = 'https://500px.com/popular';
+      photo.appendChild(link);
+
+      const element = document.createElement('div');
+      photo.appendChild(element);
+
+      const result = find500pxUrl(element);
+
+      expect(result).toBeNull();
     });
   });
 
@@ -376,6 +472,21 @@ describe('Image Design Platform URL Handlers', () => {
 
       expect(result).toBe('https://example.com/');
     });
+
+    test('should return null when no /photos/ link in container', () => {
+      const photo = document.createElement('figure');
+
+      const link = document.createElement('a');
+      link.href = 'https://unsplash.com/collections';
+      photo.appendChild(link);
+
+      const element = document.createElement('div');
+      photo.appendChild(element);
+
+      const result = findUnsplashUrl(element);
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('findPexelsUrl', () => {
@@ -419,6 +530,21 @@ describe('Image Design Platform URL Handlers', () => {
       const result = findPexelsUrl(link);
 
       expect(result).toBe('https://example.com/');
+    });
+
+    test('should return null when no /photo/ link in container', () => {
+      const photo = document.createElement('article');
+
+      const link = document.createElement('a');
+      link.href = 'https://www.pexels.com/videos';
+      photo.appendChild(link);
+
+      const element = document.createElement('div');
+      photo.appendChild(element);
+
+      const result = findPexelsUrl(element);
+
+      expect(result).toBeNull();
     });
   });
 
@@ -465,6 +591,22 @@ describe('Image Design Platform URL Handlers', () => {
 
       expect(result).toBe('https://example.com/');
     });
+
+    test('should return null when no /photos/ or /illustrations/ link', () => {
+      const photo = document.createElement('div');
+      photo.className = 'item';
+
+      const link = document.createElement('a');
+      link.href = 'https://pixabay.com/videos';
+      photo.appendChild(link);
+
+      const element = document.createElement('div');
+      photo.appendChild(element);
+
+      const result = findPixabayUrl(element);
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('findArtstationUrl', () => {
@@ -509,6 +651,22 @@ describe('Image Design Platform URL Handlers', () => {
       const result = findArtstationUrl(link);
 
       expect(result).toBe('https://example.com/');
+    });
+
+    test('should return null when no /artwork/ link in container', () => {
+      const project = document.createElement('div');
+      project.className = 'project';
+
+      const link = document.createElement('a');
+      link.href = 'https://www.artstation.com/marketplace';
+      project.appendChild(link);
+
+      const element = document.createElement('div');
+      project.appendChild(element);
+
+      const result = findArtstationUrl(element);
+
+      expect(result).toBeNull();
     });
   });
 
@@ -555,6 +713,22 @@ describe('Image Design Platform URL Handlers', () => {
 
       expect(result).toBe('https://example.com/');
     });
+
+    test('should return null when no /gallery/ link in container', () => {
+      const post = document.createElement('div');
+      post.className = 'Post';
+
+      const link = document.createElement('a');
+      link.href = 'https://imgur.com/hot';
+      post.appendChild(link);
+
+      const element = document.createElement('div');
+      post.appendChild(element);
+
+      const result = findImgurUrl(element);
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('findGiphyUrl', () => {
@@ -599,6 +773,22 @@ describe('Image Design Platform URL Handlers', () => {
       const result = findGiphyUrl(link);
 
       expect(result).toBe('https://example.com/');
+    });
+
+    test('should return null when no /gifs/ link in container', () => {
+      const gif = document.createElement('div');
+      gif.setAttribute('data-giphy-id', 'abc123');
+
+      const link = document.createElement('a');
+      link.href = 'https://giphy.com/search';
+      gif.appendChild(link);
+
+      const element = document.createElement('div');
+      gif.appendChild(element);
+
+      const result = findGiphyUrl(element);
+
+      expect(result).toBeNull();
     });
   });
 });

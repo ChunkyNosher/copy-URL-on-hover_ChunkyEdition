@@ -13,7 +13,12 @@ const {
   spotify: findSpotifyUrl,
   soundcloud: findSoundcloudUrl,
   letterboxd: findLetterboxdUrl,
-  goodreads: findGoodreadsUrl
+  goodreads: findGoodreadsUrl,
+  myAnimeList: findMyAnimeListUrl,
+  aniList: findAniListUrl,
+  kitsu: findKitsuUrl,
+  lastFm: findLastFmUrl,
+  bandcamp: findBandcampUrl
 } = entertainmentHandlers;
 
 describe('Entertainment Platform URL Handlers', () => {
@@ -419,6 +424,320 @@ describe('Entertainment Platform URL Handlers', () => {
       const result = findGoodreadsUrl(link);
 
       expect(result).toBe('https://example.com/');
+    });
+  });
+
+  describe('findMyAnimeListUrl', () => {
+    test('should extract /anime/ URL from .anime_ranking_h3', () => {
+      const anime = document.createElement('div');
+      anime.className = 'anime_ranking_h3';
+
+      const link = document.createElement('a');
+      link.href = 'https://myanimelist.net/anime/5114/Fullmetal_Alchemist_Brotherhood';
+      anime.appendChild(link);
+
+      const result = findMyAnimeListUrl(anime);
+
+      expect(result).toBe('https://myanimelist.net/anime/5114/Fullmetal_Alchemist_Brotherhood');
+    });
+
+    test('should extract URL from data-id', () => {
+      const anime = document.createElement('div');
+      anime.setAttribute('data-id', '123');
+
+      const link = document.createElement('a');
+      link.href = 'https://myanimelist.net/anime/123/Death_Note';
+      anime.appendChild(link);
+
+      const result = findMyAnimeListUrl(anime);
+
+      expect(result).toBe('https://myanimelist.net/anime/123/Death_Note');
+    });
+
+    test('should require /anime/ in URL', () => {
+      const anime = document.createElement('div');
+      anime.className = 'anime_ranking_h3';
+
+      const link = document.createElement('a');
+      link.href = 'https://myanimelist.net/manga/456';
+      anime.appendChild(link);
+
+      const result = findMyAnimeListUrl(anime);
+
+      expect(result).toBeNull();
+    });
+
+    test('should fallback to generic handler', () => {
+      const div = document.createElement('div');
+      const link = document.createElement('a');
+      link.href = 'https://example.com/';
+      div.appendChild(link);
+
+      const result = findMyAnimeListUrl(link);
+
+      expect(result).toBe('https://example.com/');
+    });
+  });
+
+  describe('findAniListUrl', () => {
+    test('should extract /anime/ URL from .media-card', () => {
+      const media = document.createElement('div');
+      media.className = 'media-card';
+
+      const link = document.createElement('a');
+      link.href = 'https://anilist.co/anime/20958/Shingeki-no-Kyojin';
+      media.appendChild(link);
+
+      const result = findAniListUrl(media);
+
+      expect(result).toBe('https://anilist.co/anime/20958/Shingeki-no-Kyojin');
+    });
+
+    test('should extract /manga/ URL from data-media-id', () => {
+      const media = document.createElement('div');
+      media.setAttribute('data-media-id', '789');
+
+      const link = document.createElement('a');
+      link.href = 'https://anilist.co/manga/30011/Naruto';
+      media.appendChild(link);
+
+      const result = findAniListUrl(media);
+
+      expect(result).toBe('https://anilist.co/manga/30011/Naruto');
+    });
+
+    test('should return first matching link (/anime/ or /manga/)', () => {
+      const media = document.createElement('div');
+      media.className = 'media-card';
+
+      const animeLink = document.createElement('a');
+      animeLink.href = 'https://anilist.co/anime/456';
+      media.appendChild(animeLink);
+
+      const mangaLink = document.createElement('a');
+      mangaLink.href = 'https://anilist.co/manga/123';
+      media.appendChild(mangaLink);
+
+      const result = findAniListUrl(media);
+
+      // querySelector returns first match - /anime/ comes first in selector
+      expect(result).toBe('https://anilist.co/anime/456');
+    });
+
+    test('should fallback to generic handler', () => {
+      const div = document.createElement('div');
+      const link = document.createElement('a');
+      link.href = 'https://example.com/';
+      div.appendChild(link);
+
+      const result = findAniListUrl(link);
+
+      expect(result).toBe('https://example.com/');
+    });
+
+    test('should return null when no /anime/ or /manga/ link', () => {
+      const media = document.createElement('div');
+      media.className = 'media-card';
+
+      const link = document.createElement('a');
+      link.href = 'https://anilist.co/user/profile';
+      media.appendChild(link);
+
+      const result = findAniListUrl(media);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('findKitsuUrl', () => {
+    test('should extract /anime/ URL from .media-card', () => {
+      const media = document.createElement('div');
+      media.className = 'media-card';
+
+      const link = document.createElement('a');
+      link.href = 'https://kitsu.io/anime/attack-on-titan';
+      media.appendChild(link);
+
+      const result = findKitsuUrl(media);
+
+      expect(result).toBe('https://kitsu.io/anime/attack-on-titan');
+    });
+
+    test('should extract /manga/ URL from .media-card', () => {
+      const media = document.createElement('div');
+      media.className = 'media-card';
+
+      const link = document.createElement('a');
+      link.href = 'https://kitsu.io/manga/one-piece';
+      media.appendChild(link);
+
+      const result = findKitsuUrl(media);
+
+      expect(result).toBe('https://kitsu.io/manga/one-piece');
+    });
+
+    test('should return first matching link (/anime/ or /manga/)', () => {
+      const media = document.createElement('div');
+      media.className = 'media-card';
+
+      const animeLink = document.createElement('a');
+      animeLink.href = 'https://kitsu.io/anime/test';
+      media.appendChild(animeLink);
+
+      const mangaLink = document.createElement('a');
+      mangaLink.href = 'https://kitsu.io/manga/test';
+      media.appendChild(mangaLink);
+
+      const result = findKitsuUrl(media);
+
+      // querySelector returns first match - /anime/ comes first in selector
+      expect(result).toBe('https://kitsu.io/anime/test');
+    });
+
+    test('should fallback to generic handler', () => {
+      const div = document.createElement('div');
+      const link = document.createElement('a');
+      link.href = 'https://example.com/';
+      div.appendChild(link);
+
+      const result = findKitsuUrl(link);
+
+      expect(result).toBe('https://example.com/');
+    });
+
+    test('should return null when no matching link', () => {
+      const media = document.createElement('div');
+      media.className = 'media-card';
+
+      const link = document.createElement('a');
+      link.href = 'https://kitsu.io/users/profile';
+      media.appendChild(link);
+
+      const result = findKitsuUrl(media);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('findLastFmUrl', () => {
+    test('should extract /music/ URL from .chartlist-row', () => {
+      const item = document.createElement('div');
+      item.className = 'chartlist-row';
+
+      const link = document.createElement('a');
+      link.href = 'https://last.fm/music/Radiohead';
+      item.appendChild(link);
+
+      const result = findLastFmUrl(item);
+
+      expect(result).toBe('https://last.fm/music/Radiohead');
+    });
+
+    test('should extract URL from data-track-id', () => {
+      const item = document.createElement('div');
+      item.setAttribute('data-track-id', '12345');
+
+      const link = document.createElement('a');
+      link.href = 'https://last.fm/music/The+Beatles/_/Hey+Jude';
+      item.appendChild(link);
+
+      const result = findLastFmUrl(item);
+
+      expect(result).toBe('https://last.fm/music/The+Beatles/_/Hey+Jude');
+    });
+
+    test('should require /music/ in URL', () => {
+      const item = document.createElement('div');
+      item.className = 'chartlist-row';
+
+      const link = document.createElement('a');
+      link.href = 'https://last.fm/user/profile';
+      item.appendChild(link);
+
+      const result = findLastFmUrl(item);
+
+      expect(result).toBeNull();
+    });
+
+    test('should fallback to generic handler', () => {
+      const div = document.createElement('div');
+      const link = document.createElement('a');
+      link.href = 'https://example.com/';
+      div.appendChild(link);
+
+      const result = findLastFmUrl(link);
+
+      expect(result).toBe('https://example.com/');
+    });
+  });
+
+  describe('findBandcampUrl', () => {
+    test('should extract /track/ URL from .item-details', () => {
+      const item = document.createElement('div');
+      item.className = 'item-details';
+
+      const link = document.createElement('a');
+      link.href = 'https://artist.bandcamp.com/track/song-name';
+      item.appendChild(link);
+
+      const result = findBandcampUrl(item);
+
+      expect(result).toBe('https://artist.bandcamp.com/track/song-name');
+    });
+
+    test('should extract /album/ URL from data-item-id', () => {
+      const item = document.createElement('div');
+      item.setAttribute('data-item-id', '789');
+
+      const link = document.createElement('a');
+      link.href = 'https://artist.bandcamp.com/album/album-name';
+      item.appendChild(link);
+
+      const result = findBandcampUrl(item);
+
+      expect(result).toBe('https://artist.bandcamp.com/album/album-name');
+    });
+
+    test('should return first matching link (/track/ or /album/)', () => {
+      const item = document.createElement('div');
+      item.className = 'item-details';
+
+      const trackLink = document.createElement('a');
+      trackLink.href = 'https://artist.bandcamp.com/track/test';
+      item.appendChild(trackLink);
+
+      const albumLink = document.createElement('a');
+      albumLink.href = 'https://artist.bandcamp.com/album/test';
+      item.appendChild(albumLink);
+
+      const result = findBandcampUrl(item);
+
+      // querySelector returns first match - /track/ comes first in selector
+      expect(result).toBe('https://artist.bandcamp.com/track/test');
+    });
+
+    test('should fallback to generic handler', () => {
+      const div = document.createElement('div');
+      const link = document.createElement('a');
+      link.href = 'https://example.com/';
+      div.appendChild(link);
+
+      const result = findBandcampUrl(link);
+
+      expect(result).toBe('https://example.com/');
+    });
+
+    test('should return null when no /track/ or /album/ link', () => {
+      const item = document.createElement('div');
+      item.className = 'item-details';
+
+      const link = document.createElement('a');
+      link.href = 'https://bandcamp.com/discover';
+      item.appendChild(link);
+
+      const result = findBandcampUrl(item);
+
+      expect(result).toBeNull();
     });
   });
 });
