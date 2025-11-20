@@ -1,0 +1,24 @@
+# Build artifacts
+dist/
+build/
+coverage/
+
+# Node modules
+node_modules/
+
+# Firefox profile (not extension code)
+firefox-profile/
+
+# Playwright test artifacts
+test-results/
+playwright-report/
+.playwright-browsers/
+.playwright-zen-profile/
+
+# Legacy/backup files
+*.backup
+*-old.js
+
+# MCP memory
+.mcp-memory/
+.mcp/
