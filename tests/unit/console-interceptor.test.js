@@ -19,10 +19,10 @@ describe('Console Interceptor Error Serialization', () => {
   beforeEach(async () => {
     // Clear any previous module cache
     jest.resetModules();
-    
+
     // Import fresh interceptor for each test
     consoleInterceptor = await import('../../src/utils/console-interceptor.js');
-    
+
     // Clear log buffer
     consoleInterceptor.clearConsoleLogs();
   });
@@ -36,16 +36,16 @@ describe('Console Interceptor Error Serialization', () => {
 
   test('captures Error stack traces in console.error', () => {
     const testError = new Error('Test error message');
-    
+
     // Log the error
     console.error('Error occurred:', testError);
-    
+
     // Get captured logs
     const logs = consoleInterceptor.getConsoleLogs();
-    
+
     // Verify error was captured
     expect(logs.length).toBeGreaterThan(0);
-    
+
     const lastLog = logs[logs.length - 1];
     expect(lastLog.type).toBe('ERROR');
     expect(lastLog.message).toContain('Test error message');
@@ -55,12 +55,12 @@ describe('Console Interceptor Error Serialization', () => {
   test('preserves Error.stack property', () => {
     const testError = new Error('Stack test');
     testError.stack = 'Error: Stack test\n    at testFunction (file.js:10:5)';
-    
+
     console.error(testError);
-    
+
     const logs = consoleInterceptor.getConsoleLogs();
     const lastLog = logs[logs.length - 1];
-    
+
     expect(lastLog.message).toContain('Stack test');
     expect(lastLog.message).toContain('testFunction');
     expect(lastLog.message).toContain('file.js:10:5');
@@ -70,12 +70,12 @@ describe('Console Interceptor Error Serialization', () => {
     const rootCause = new Error('Root cause');
     const mainError = new Error('Main error');
     mainError.cause = rootCause;
-    
+
     console.error(mainError);
-    
+
     const logs = consoleInterceptor.getConsoleLogs();
     const lastLog = logs[logs.length - 1];
-    
+
     expect(lastLog.message).toContain('Main error');
     expect(lastLog.message).toContain('Root cause');
     expect(lastLog.message).toContain('cause');
@@ -85,12 +85,12 @@ describe('Console Interceptor Error Serialization', () => {
     const customError = new Error('Custom error');
     customError.code = 'ERR_CUSTOM';
     customError.details = { foo: 'bar' };
-    
+
     console.error(customError);
-    
+
     const logs = consoleInterceptor.getConsoleLogs();
     const lastLog = logs[logs.length - 1];
-    
+
     expect(lastLog.message).toContain('Custom error');
     expect(lastLog.message).toContain('ERR_CUSTOM');
   });
@@ -98,12 +98,12 @@ describe('Console Interceptor Error Serialization', () => {
   test('handles TypeError with proper serialization', () => {
     const typeError = new TypeError('Cannot read property of undefined');
     typeError.stack = 'TypeError: Cannot read property\n    at handler (content.js:100:10)';
-    
+
     console.error('Type error:', typeError);
-    
+
     const logs = consoleInterceptor.getConsoleLogs();
     const lastLog = logs[logs.length - 1];
-    
+
     expect(lastLog.message).toContain('TypeError');
     expect(lastLog.message).toContain('Cannot read property');
     expect(lastLog.message).toContain('content.js:100:10');
@@ -111,12 +111,12 @@ describe('Console Interceptor Error Serialization', () => {
 
   test('handles regular objects without Error properties', () => {
     const regularObject = { message: 'Not an error', data: [1, 2, 3] };
-    
+
     console.log('Regular object:', regularObject);
-    
+
     const logs = consoleInterceptor.getConsoleLogs();
     const lastLog = logs[logs.length - 1];
-    
+
     expect(lastLog.type).toBe('LOG');
     expect(lastLog.message).toContain('Not an error');
     expect(lastLog.message).toContain('1');
@@ -129,12 +129,12 @@ describe('Console Interceptor Error Serialization', () => {
     firefoxError.fileName = 'moz-extension://abc123/content.js';
     firefoxError.lineNumber = 42;
     firefoxError.columnNumber = 15;
-    
+
     console.error(firefoxError);
-    
+
     const logs = consoleInterceptor.getConsoleLogs();
     const lastLog = logs[logs.length - 1];
-    
+
     expect(lastLog.message).toContain('Firefox error');
     expect(lastLog.message).toContain('moz-extension://abc123/content.js');
     expect(lastLog.message).toContain('42');
@@ -145,9 +145,9 @@ describe('Console Interceptor Error Serialization', () => {
     console.log('Test log 1');
     console.error(new Error('Test error'));
     console.warn('Test warning');
-    
+
     const stats = consoleInterceptor.getBufferStats();
-    
+
     expect(stats.totalLogs).toBeGreaterThanOrEqual(3);
     expect(stats.maxSize).toBe(5000);
     expect(stats.oldestTimestamp).toBeDefined();

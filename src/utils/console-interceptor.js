@@ -39,14 +39,14 @@ function serializeError(error) {
     ...(error.columnNumber && { columnNumber: error.columnNumber }),
     ...(error.cause && { cause: serializeArgument(error.cause) })
   };
-  
+
   // Include any custom enumerable properties
   Object.keys(error).forEach(key => {
     if (!errorDetails[key]) {
       errorDetails[key] = error[key];
     }
   });
-  
+
   try {
     return JSON.stringify(errorDetails, null, 2);
   } catch (err) {
@@ -57,7 +57,7 @@ function serializeError(error) {
 /**
  * Serialize any argument type with special handling for Errors
  * Preserves stack traces, line numbers, and error causality chains
- * 
+ *
  * @param {*} arg - Argument to serialize
  * @returns {string} Serialized string representation
  */
@@ -66,12 +66,12 @@ function serializeArgument(arg) {
   if (arg === null || arg === undefined) {
     return String(arg);
   }
-  
+
   // Handle Error objects specially
   if (arg instanceof Error) {
     return serializeError(arg);
   }
-  
+
   // Handle regular objects
   if (typeof arg === 'object') {
     try {
@@ -80,7 +80,7 @@ function serializeArgument(arg) {
       return String(arg);
     }
   }
-  
+
   // Handle primitives
   return String(arg);
 }
@@ -179,26 +179,34 @@ if (typeof window !== 'undefined') {
    * Capture uncaught exceptions
    * These errors occur when code throws but isn't caught by try-catch
    */
-  window.addEventListener('error', (event) => {
-    const errorInfo = {
-      message: event.message,
-      filename: event.filename,
-      lineno: event.lineno,
-      colno: event.colno,
-      error: event.error
-    };
-    
-    addToLogBuffer('ERROR', ['[Uncaught Exception]', errorInfo]);
-  }, true);  // Use capture phase to get errors first
+  window.addEventListener(
+    'error',
+    event => {
+      const errorInfo = {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error
+      };
+
+      addToLogBuffer('ERROR', ['[Uncaught Exception]', errorInfo]);
+    },
+    true
+  ); // Use capture phase to get errors first
 
   /**
    * Capture unhandled promise rejections
    * These occur when promises reject without .catch() handlers
    */
-  window.addEventListener('unhandledrejection', (event) => {
-    addToLogBuffer('ERROR', ['[Unhandled Promise Rejection]', event.reason]);
-  }, true);
-  
+  window.addEventListener(
+    'unhandledrejection',
+    event => {
+      addToLogBuffer('ERROR', ['[Unhandled Promise Rejection]', event.reason]);
+    },
+    true
+  );
+
   originalConsole.log('[Console Interceptor] Global error handlers installed');
 }
 // ==================== END GLOBAL ERROR CAPTURE ====================
