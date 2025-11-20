@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.0 (Architecture Refactoring In Progress - Phase 1 COMPLETE)  
+**Version:** 1.6.0.3 (Architecture Refactoring In Progress - Phase 1 COMPLETE)  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Transitioning from Hybrid Modular/EventBus to Domain-Driven Design with Clean Architecture  
 **Refactoring Status:** Phase 1 (Domain + Storage) 100% complete - Phase 2.1 (QuickTabsManager) next  
@@ -13,6 +13,7 @@ persistent floating panel manager
 **🔧 v1.6.0 Refactoring:** Major architectural transformation following evidence-based patterns (Mozilla/Chrome/Industry best practices).  
 **Domain Layer:** ✅ Complete (QuickTab, Container entities with 100% test coverage)  
 **Storage Layer:** ✅ Complete (SyncStorageAdapter, SessionStorageAdapter, FormatMigrator with 92% coverage)  
+**Bug Fixes:** ✅ v1.6.0.3 critical initialization race conditions resolved  
 **See:** `docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md` for Phase 1 summary
 
 ---
@@ -127,6 +128,57 @@ A solution is acceptable when:
 - **All Features Preserved:** Zero breaking changes, full backward compatibility maintained throughout refactoring.
 - **Test Infrastructure:** Fast unit tests (<1s), module-aware build system, bundle size monitoring, architecture boundary enforcement via ESLint.
 - See `docs/misc/v1.6.0-REFACTORING-PHASE1-STATUS.md` for detailed progress and handoff instructions.
+
+### v1.6.0.3 Highlights (Critical Bug Fixes)
+
+- **Initialization Race Condition Fix:** Fixed PanelManager initialization order where callbacks were invoked before panel DOM element existed. Panel now created BEFORE state manager initialization, eliminating race condition that prevented Quick Tabs from rendering.
+- **Enhanced Error Logging:** DOMException and browser-native errors now log correctly with explicit property extraction (message, name, stack). Empty error objects `{}` eliminated.
+- **Root Cause Resolution:** Single architectural fix (initialization order) resolved three cascading failures: Quick Tabs not rendering, panel not opening, copy text failures.
+- **Zero Breaking Changes:** ~40 lines changed across 5 files, fully backward compatible.
+- See `docs/manual/v1.6.0.3-bug-diagnosis-and-fix-report.md` for complete analysis and `docs/misc/v1.6.0.3-RELEASE-SUMMARY.md` for quick reference.
+
+### Initialization Order Best Practices (v1.6.0.3 Lesson)
+
+**CRITICAL RULE:** Always create DOM elements BEFORE registering callbacks that access them.
+
+**Anti-pattern (WRONG):**
+```javascript
+// ❌ BAD: Register callback first, create element later
+this.callbacks = { onStateLoaded: state => this.updateElement(state) };
+await this.loadState();  // Triggers callback
+this.element = createElement();  // Too late!
+```
+
+**Correct pattern:**
+```javascript
+// ✅ GOOD: Create element first, then register callbacks
+this.element = createElement();
+this.callbacks = { onStateLoaded: state => this.updateElement(state) };
+await this.loadState();  // Safe - element exists
+```
+
+**Real-world example from v1.6.0.3 fix:**
+```javascript
+// BEFORE (v1.6.0.1) - WRONG ORDER
+this.stateManager = new PanelStateManager({
+  onStateLoaded: state => this._applyState(state)  // Callback accesses this.panel
+});
+await this.stateManager.init();  // ❌ Triggers callback NOW
+this.panel = createElement();    // Created AFTER callback runs
+
+// AFTER (v1.6.0.3) - CORRECT ORDER
+this.panel = createElement();    // ✅ Create FIRST
+this.stateManager = new PanelStateManager({
+  onStateLoaded: state => this._applyState(state)  // Safe - panel exists
+});
+await this.stateManager.init();  // Callback can now access panel
+```
+
+**Why this matters:**
+- Silent failures are hard to debug
+- Race conditions cause unpredictable behavior
+- Early returns mask root problems
+- Proper initialization order eliminates entire bug classes
 
 ### v1.5.9.13 Highlights
 
