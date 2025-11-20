@@ -94,11 +94,20 @@ export async function clearStorage(storageType = 'local') {
 
 /**
  * Fallback clipboard copy using execCommand
+ * v1.6.0.7 - Enhanced logging for fallback clipboard operations
  * @param {string} text - Text to copy
  * @returns {boolean} True if successful
  */
 function fallbackCopyToClipboard(text) {
+  console.log('[Clipboard] [Fallback] Using execCommand method', {
+    reason: 'Clipboard API failed',
+    textLength: text.length,
+    textPreview: text.substring(0, 50),
+    timestamp: Date.now()
+  });
+  
   try {
+    const fallbackStart = performance.now();
     const textarea = document.createElement('textarea');
     textarea.value = text;
     textarea.style.position = 'fixed';
@@ -107,14 +116,29 @@ function fallbackCopyToClipboard(text) {
     textarea.select();
     const success = document.execCommand('copy');
     document.body.removeChild(textarea);
+    const fallbackDuration = performance.now() - fallbackStart;
+
+    console.log('[Clipboard] [Fallback] execCommand result', {
+      success: success,
+      duration: `${fallbackDuration.toFixed(2)}ms`,
+      timestamp: Date.now()
+    });
 
     if (!success) {
-      console.error('[Browser API] execCommand copy returned false');
+      console.error('[Browser API] [Fallback] execCommand copy returned false', {
+        textLength: text.length,
+        timestamp: Date.now()
+      });
     }
 
     return success;
   } catch (fallbackErr) {
-    console.error('[Browser API] Fallback copy also failed:', fallbackErr);
+    console.error('[Browser API] [Fallback] Fallback copy also failed:', {
+      error: fallbackErr,
+      message: fallbackErr.message,
+      stack: fallbackErr.stack,
+      timestamp: Date.now()
+    });
     return false;
   }
 }
@@ -122,30 +146,71 @@ function fallbackCopyToClipboard(text) {
 /**
  * Copy text to clipboard
  * v1.6.0.1 - Added validation and improved error logging
+ * v1.6.0.7 - Enhanced logging for clipboard API interactions
  * @param {string} text - Text to copy
  * @returns {Promise<boolean>} True if successful
  */
 export async function copyToClipboard(text) {
+  console.log('[Clipboard] [Start] Copy attempt started', {
+    textLength: text?.length || 0,
+    textPreview: text?.substring(0, 100) || '<empty>',
+    clipboardAPIAvailable: !!navigator.clipboard,
+    execCommandAvailable: !!document.execCommand,
+    userAgent: navigator.userAgent,
+    timestamp: Date.now()
+  });
+
   // Validate input
   if (!text || typeof text !== 'string') {
-    console.error('[Browser API] Invalid text for clipboard:', text);
+    console.error('[Browser API] [Validation] Invalid text for clipboard:', {
+      textType: typeof text,
+      textValue: text,
+      timestamp: Date.now()
+    });
     return false;
   }
 
+  console.log('[Clipboard] [API Selection] Using navigator.clipboard API', {
+    method: 'navigator.clipboard.writeText',
+    timestamp: Date.now()
+  });
+
   try {
+    const apiStart = performance.now();
     await navigator.clipboard.writeText(text);
+    const apiDuration = performance.now() - apiStart;
+    
+    console.log('[Clipboard] [Success] Clipboard API copy successful', {
+      method: 'navigator.clipboard.writeText',
+      textLength: text.length,
+      duration: `${apiDuration.toFixed(2)}ms`,
+      timestamp: Date.now()
+    });
+    
     return true;
   } catch (err) {
-    console.error('[Browser API] Failed to copy to clipboard:', {
-      message: err.message,
-      name: err.name,
+    console.error('[Browser API] [Failure] Clipboard API failed:', {
+      errorName: err.name,
+      errorMessage: err.message,
       stack: err.stack,
       textLength: text.length,
-      textPreview: text.substring(0, 50)
+      textPreview: text.substring(0, 50),
+      permissionDenied: err.name === 'NotAllowedError',
+      timestamp: Date.now()
     });
 
+    console.log('[Clipboard] [Fallback] Attempting execCommand fallback');
+    
     // Fallback to execCommand
-    return fallbackCopyToClipboard(text);
+    const fallbackResult = fallbackCopyToClipboard(text);
+    
+    console.log('[Clipboard] [Final Result] Copy operation final result', {
+      success: fallbackResult,
+      methodUsed: 'execCommand-fallback',
+      timestamp: Date.now()
+    });
+    
+    return fallbackResult;
   }
 }
 
