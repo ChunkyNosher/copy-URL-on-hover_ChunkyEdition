@@ -9330,7 +9330,7 @@
         isOpen: false
       };
       this.panel = this.uiBuilder.createPanel(defaultState);
-      
+
       // Safety check: Ensure document.body exists before appending
       // (should always be true with run_at: "document_idle", but defensive programming)
       if (!document.body) {
@@ -11818,10 +11818,13 @@
   async function initializeQuickTabsFeature() {
     console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
     quickTabsManager = await initQuickTabs(eventBus, Events);
-    
+
     if (quickTabsManager) {
       console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
-      console.log('[Copy-URL-on-Hover] Manager has createQuickTab:', typeof quickTabsManager.createQuickTab);
+      console.log(
+        '[Copy-URL-on-Hover] Manager has createQuickTab:',
+        typeof quickTabsManager.createQuickTab
+      );
     } else {
       console.error('[Copy-URL-on-Hover] ✗ Quick Tabs manager is null after initialization!');
     }
@@ -12096,7 +12099,7 @@
       if (!matchesShortcut(event, shortcut, hoveredLink, hoveredElement)) continue;
 
       event.preventDefault();
-      
+
       // v1.6.0.3 - Pass correct parameters based on handler's requirements
       // - URL-only handlers (needsLink=true, needsElement=false): handleCopyURL, handleOpenInNewTab
       // - Element-only handlers (needsLink=false, needsElement=true): handleCopyText
