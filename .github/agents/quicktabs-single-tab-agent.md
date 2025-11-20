@@ -40,7 +40,7 @@ You are an expert in diagnosing and fixing Quick Tab issues that occur **within 
 - Resolve styling problems (missing CSS, incorrect dimensions)
 - Ensure container badges render correctly on Quick Tabs
 
-## Current Architecture (v1.5.9.11)
+## Current Architecture (v1.6.0.x)
 
 ### Quick Tabs Module Structure
 

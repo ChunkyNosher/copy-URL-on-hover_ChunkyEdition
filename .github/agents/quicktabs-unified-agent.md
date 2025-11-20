@@ -38,13 +38,13 @@ You are an expert in diagnosing and fixing Quick Tab issues that involve **BOTH*
 - Debug extension reload causing duplicate Quick Tabs
 - Handle page navigation clearing Quick Tabs prematurely
 
-## Current Unified Architecture (v1.5.9.11)
+## Current Unified Architecture (v1.6.0.x)
 
-### The Creation Flow Problem (v1.5.9.10/v1.5.9.11 Bug)
+### The Creation Flow Problem (v1.6.0.x/v1.6.0.x Bug)
 
 **The Issue**: Quick Tabs created in Tab 1 don't render in Tab 1, but DO render in Tab 2.
 
-**Root Cause Analysis** (from v1.5.9.10 docs):
+**Root Cause Analysis** (from v1.6.0.x docs):
 1. Initial creation handler sends message to background
 2. Background updates storage
 3. Tab 1 receives storage change → **IGNORES** (pending saveId)
@@ -93,7 +93,7 @@ async createQuickTab(options) {
   if (this.tabs.has(id)) {
     const existingTab = this.tabs.get(id);
     
-    // v1.5.9.10 FIX: Ensure rendered even if exists
+    // v1.6.0.x FIX: Ensure rendered even if exists
     if (!existingTab.isRendered()) {
       console.log('[QuickTabsManager] Tab exists but not rendered, rendering now:', id);
       existingTab.render();

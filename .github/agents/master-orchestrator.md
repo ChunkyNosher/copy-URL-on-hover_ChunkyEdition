@@ -52,7 +52,7 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 
 ## v1.6.0 Refactoring Awareness
 
-**IMPORTANT:** The extension is undergoing a major v1.6.0 refactoring from Hybrid Modular/EventBus to Domain-Driven Design. When delegating work:
+**IMPORTANT:** The extension is undergoing a major v1.6.0 refactoring from Domain-Driven Design with Clean Architecture to Domain-Driven Design. When delegating work:
 
 **Checklist Location:** `docs/misc/v1.6.0-REFACTORING-MASTER-CHECKLIST.md`
 
@@ -79,7 +79,7 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 
 > **Note:** Full architecture details in `.github/copilot-instructions.md`.
 
-**Current Version:** v1.5.9.13 - Hybrid Modular/EventBus with Solo/Mute visibility control
+**Current Version:** v1.6.0.3 - Domain-Driven Design with Clean Architecture (Phase 1 Complete)
 
 **Key Files:**
 - src/content.js: Main entry point with EventBus orchestration

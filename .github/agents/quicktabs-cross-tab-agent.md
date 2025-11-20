@@ -39,7 +39,7 @@ You are an expert in diagnosing and fixing Quick Tab synchronization issues that
 - Fix timing issues where storage changes ignored due to pending saves
 - Handle grace period expiration and saveId cleanup
 
-## Current Cross-Tab Architecture (v1.5.9.11)
+## Current Cross-Tab Architecture (v1.6.0.x)
 
 ### Three-Layer Synchronization System
 
@@ -93,7 +93,7 @@ setupBroadcastChannel() {
     
     console.log('[QuickTabsManager] BroadcastChannel message received:', { type, data });
     
-    // v1.5.9.10: Always process CREATE messages to ensure rendering
+    // v1.6.0.x: Always process CREATE messages to ensure rendering
     switch (type) {
       case 'CREATE':
         this.createQuickTab(data);
@@ -300,7 +300,7 @@ setupBroadcastChannel() {
 }
 ```
 
-### Issue #2: Message Action Name Mismatch (v1.5.9.10 Bug)
+### Issue #2: Message Action Name Mismatch (v1.6.0.x Bug)
 
 **Symptoms**:
 - Background sends `SYNC_QUICK_TAB_STATE` message
@@ -350,7 +350,7 @@ setupMessageListeners() {
 
 **Root Cause**: Pending saveId blocks BOTH storage AND message sync
 
-**From v1.5.9.10 Analysis**:
+**From v1.6.0.x Analysis**:
 ```
 Tab 1 creates Quick Tab → saveId: 1763414314118-el3h351ur
   ↓

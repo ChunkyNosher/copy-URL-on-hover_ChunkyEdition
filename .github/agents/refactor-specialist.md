@@ -48,11 +48,11 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 
 > **Note:** Full architecture details in `.github/copilot-instructions.md`. Key points for refactor-specialist:
 
-**Current Version:** v1.5.9.13 - Hybrid Modular/EventBus with Solo/Mute visibility control
+**Current Version:** v1.6.0.3 - Domain-Driven Design with Clean Architecture (Phase 1 Complete)
 
 **Recent Refactorings to Understand:**
-- **v1.5.9.11**: Direct local creation pattern eliminated three cascading failures
-- **v1.5.9.10**: Separated creation logic from rendering logic
+- **v1.6.0.x**: Direct local creation pattern eliminated three cascading failures
+- **v1.6.0.x**: Separated creation logic from rendering logic
 
 **Critical APIs to Preserve - PRIORITIZE THESE:**
 1. Content Script Panel Injection
@@ -91,71 +91,25 @@ You are a code refactoring specialist for the copy-URL-on-hover_ChunkyEdition Fi
 - Validate cross-browser compatibility
 - **Validate all core APIs still work correctly after refactoring**
 
-## v1.6.0 Refactoring Master Checklist
+## v1.6.0 Architecture Refactoring Status
 
-**CRITICAL:** Before starting ANY refactoring work, you MUST read and update the master checklist:
+**Phase 1 COMPLETE ✅** - Domain Layer and Storage Abstraction (100%)
 
-**Checklist Location:** `docs/misc/v1.6.0-REFACTORING-MASTER-CHECKLIST.md`
+**Completed Work:**
+- ✅ Domain Layer: QuickTab and Container entities with 100% test coverage
+- ✅ Storage Layer: SyncStorageAdapter, SessionStorageAdapter, FormatMigrator with 92% coverage
+- ✅ Build Infrastructure: Module aliasing, test infrastructure, ESLint rules, bundle size monitoring
+- ✅ Architecture Validation: Boundary enforcement, complexity limits, coverage thresholds
 
-### How to Use the Checklist
+**Current State:**
+- Extension fully functional with v1.6.0.3 refactored architecture
+- All features preserved with zero breaking changes
+- 96% average test coverage (domain 100%, storage 92%)
+- Fast test execution (<2s for 249 tests)
 
-1. **At Session Start:**
-   - Read the master checklist to understand current progress
-   - Identify where you left off last session (check "Last Updated" date)
-   - Select work items from current phase or next unblocked items
-   - Note current "Overall Progress" percentage for reference
+**Next Phase (Phase 2.1):** QuickTabsManager decomposition - NOT currently in active development
 
-2. **During Work:**
-   - Keep the checklist in mind as you work
-   - If you complete a checklist item, mark it mentally
-   - If you discover work items are wrong/missing, note for update
-
-3. **At Session End (MANDATORY):**
-   - Update checklist: mark completed items with [x]
-   - Update "Last Updated" date at top
-   - Recalculate "Overall Progress" percentage
-   - Update "Progress Summary" table with new phase percentages
-   - Update "Next Priority" statement
-   - Commit checklist changes with descriptive message
-
-### Checklist Update Example
-
-**Before:**
-```markdown
-### Phase 2.3: ESLint Cleanup ⏳ IN PROGRESS (70%)
-- [x] Fix content.js import ordering
-- [ ] Fix remaining 90 ESLint errors
-- [ ] Resolve 88 ESLint warnings
-```
-
-**After (if you fixed ESLint errors):**
-```markdown
-### Phase 2.3: ESLint Cleanup ⏳ IN PROGRESS (85%)
-- [x] Fix content.js import ordering
-- [x] Fix remaining 90 ESLint errors - Resolved by categorizing errors and applying systematic fixes
-- [ ] Resolve 88 ESLint warnings
-```
-
-**And update Progress Summary:**
-```markdown
-| Phase 2.3: ESLint Cleanup | ⏳ In Progress | 85% |
-```
-
-**And update Overall Progress:**
-```markdown
-**Overall Progress: ~43%** (was ~40%)
-```
-
-### Why This Matters
-
-The master checklist:
-- ✅ Reduces token usage on documentation (all progress in ONE file)
-- ✅ Prevents work duplication across sessions
-- ✅ Shows user exactly what's done and what remains
-- ✅ Helps you pick up where you left off
-- ✅ Provides clear structure for GitHub Copilot Agent
-
-**No Exceptions:** You MUST update the checklist when completing work items.
+**Reference:** See `docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md` for complete Phase 1 summary
 
 ---
 
@@ -164,7 +118,6 @@ The master checklist:
 When assigned a refactoring task:
 
 1. **Analysis Phase:**
-   - **Read the master checklist** to understand current state
    - Read and understand current implementation completely
    - Identify all dependencies and side effects
    - Document existing behavior with test cases
@@ -173,7 +126,6 @@ When assigned a refactoring task:
    - Check Zen Browser compatibility implications
 
 2. **Planning:**
-   - **Check checklist for next priority items**
    - Define success criteria (performance metrics, code quality)
    - Create refactoring plan with incremental steps
    - Identify potential breaking points

@@ -180,79 +180,26 @@ await this.stateManager.init();  // Callback can now access panel
 - Early returns mask root problems
 - Proper initialization order eliminates entire bug classes
 
-### v1.5.9.13 Highlights
+### Current Architecture (v1.6.0.3)
 
-- **Solo and Mute Quick Tabs - Tab-Specific Visibility Control:** Replaced "Pin to Page" with powerful Solo/Mute features for precise tab-specific Quick Tab visibility.
-- **Solo Mode (🎯):** Show Quick Tab ONLY on specific browser tabs - click Solo on Tab 1, Quick Tab hidden on all other tabs.
-- **Mute Mode (🔇):** Hide Quick Tab ONLY on specific browser tabs - click Mute on Tab 1, Quick Tab visible everywhere else.
-- **Mutual Exclusivity:** Solo and Mute cannot be active simultaneously - setting one clears the other automatically.
-- **Real-time Cross-Tab Sync:** Visibility changes propagate instantly via BroadcastChannel (<10ms latency).
-- **Automatic Cleanup:** Dead tab IDs removed when tabs close to prevent orphaned references.
-- **Container Isolation:** Solo/Mute state respects Firefox Container boundaries - container-specific BroadcastChannel prevents leaks.
-- **State Storage:** `soloedOnTabs` and `mutedOnTabs` arrays stored per-container in browser.storage.sync.
-- **Tab ID Detection:** Content scripts request current tab ID from background (`sender.tab.id`).
-- **Visibility Filtering:** QuickTabsManager filters Quick Tabs during state hydration based on solo/mute arrays.
-- **Automatic Migration:** Old `pinnedToUrl` format automatically converted to new solo/mute arrays.
-- **UI Controls:** Solo button (🎯/⭕) and Mute button (🔇/🔊) in Quick Tab titlebar.
-- See `docs/manual/1.5.9 docs/solo-mute-quicktabs-implementation-guide.md` for full implementation details.
+**Architecture:** Domain-Driven Design with Clean Architecture (Refactoring Phase 1 Complete)
 
-### v1.5.9.12 Highlights
+**Core Features:**
+- Solo/Mute tab-specific visibility control
+- Firefox Container complete isolation
+- Floating Quick Tabs Manager with persistent panel
+- Cross-tab sync via BroadcastChannel + browser.storage
+- Direct local creation pattern (content renders first, background persists)
 
-- **Firefox Container Tabs Integration - Complete Isolation:** Implemented full container isolation so Quick Tabs created in one Firefox Container remain invisible and unsynchronized from Quick Tabs in other containers.
-- **Container-specific BroadcastChannel:** Each container uses its own broadcast channel (e.g., `'quick-tabs-sync-firefox-container-1'`) for automatic message isolation without manual filtering.
-- **Container-filtered storage sync:** Storage operations filtered by `cookieStoreId` at multiple layers to prevent cross-container state leakage.
-- **Container-aware Panel Manager:** Quick Tab Manager panel detects container context and displays only current container's Quick Tabs.
-- **Auto-container assignment:** Quick Tabs automatically inherit container context from the tab they're created in.
-- **Defense-in-depth isolation:** Container filtering enforced at detection, communication, storage, and UI layers.
-- See `docs/implementation-summaries/IMPLEMENTATION-SUMMARY-container-integration-v1.5.9.12.md` for full implementation details.
+**Key Implementation Details:**
+- **Domain Layer:** Pure business logic entities (QuickTab, Container) with 100% test coverage
+- **Storage Layer:** Async-first adapters (Sync, Session) with automatic fallback and quota management (92% coverage)
+- **Container Isolation:** Container-specific BroadcastChannel (`quick-tabs-sync-firefox-container-{id}`) for message isolation
+- **Solo/Mute State:** Stored in `soloedOnTabs` and `mutedOnTabs` arrays per container in browser.storage.sync
+- **Real-time Sync:** BroadcastChannel provides <10ms cross-tab synchronization
+- **Persistence:** browser.storage.sync for state, browser.storage.local for panel position/size
 
-### v1.5.9.11 Highlights
-
-- **Quick Tab rendering bug - Root cause resolution:** Fixed critical bug with
-  robust architectural solution. Quick Tabs created in Tab 1 now appear
-  immediately in Tab 1 (not just other tabs). Root cause was THREE cascading
-  failures: (1) Message action name mismatch between background and content
-  scripts, (2) Initial creation flow bypassing local `createQuickTab()` call,
-  (3) Pending saveId system creating deadlock. Fix implements **direct local
-  creation** - originating tab creates and renders immediately, THEN notifies
-  background for persistence. BroadcastChannel handles cross-tab sync (<10ms),
-  storage serves as backup (see
-  `docs/manual/1.5.9 docs/quick-tabs-rendering-bug-analysis-v15910.md`).
-- **Architectural improvement:** Proper separation of concerns - content script
-  handles UI rendering, BroadcastChannel handles real-time sync, background
-  handles persistence. Eliminates race conditions and ensures immediate visual
-  feedback.
-
-### v1.5.9.10 Highlights
-
-- **Quick Tab cross-tab rendering fix:** Fixed critical bug where Quick Tabs
-  created in Tab 1 didn't appear visually in Tab 1, but appeared in other tabs
-  instead. Root cause was BroadcastChannel message timing—tabs received their
-  own broadcasts but skipped rendering because the tab "already existed" in
-  memory. Now `QuickTabWindow` tracks rendering state with `isRendered()`, and
-  `createQuickTab()` always ensures tabs are rendered even when they exist in
-  memory (see
-  `docs/manual/1.5.9 docs/quick-tabs-cross-tab-rendering-bug-v1599.md`).
-- **Architectural improvement:** Separated creation logic from rendering logic
-  by tracking rendering state independently, preventing memory/visual
-  desynchronization.
-
-### v1.5.9.8 Highlights
-
-- **Quick Tab race condition fixes:** Content-side `CREATE_QUICK_TAB` requests
-  now include a tracked `saveId`, background persists the same token, and
-  QuickTabsManager ignores storage changes while any save is pending. Debounced
-  storage sync means resize storms can't cascade-delete the entire stack (see
-  `docs/manual/1.5.9 docs/v1-5-9-7-forensic-debug.md`).
-- **Single-source creation + off-screen staging:** Quick Tabs don't render
-  immediately on shortcut. The manager waits for the storage snapshot, then
-  spawns each window off-screen before animating into the tooltip-clamped
-  position derived from the hovered element/mouse location, eliminating the
-  top-left flash.
-- **Advanced tab log maintenance:** A new **Clear Log History** button (under
-  Export Console Logs) sends `CLEAR_CONSOLE_LOGS` to `background.js`, which
-  wipes its buffer and broadcasts `CLEAR_CONTENT_LOGS` so every tab purges both
-  the console interceptor and `debug.js` buffers.
+**For detailed version history and feature evolution, see** `docs/CHANGELOG.md`
 
 ## Code Quality Tool Priority
 
@@ -433,22 +380,6 @@ function validateContainerAccess(sourceContainer, targetContainer) {
 - ✅ Validate container ID before sharing data
 - ✅ Test with multiple containers active
 - ✅ Handle default container (no cookieStoreId)
-
-### Log Export Pipeline (v1.5.9.7+)
-
-- Popup collects logs but immediately sends an `EXPORT_LOGS` message to
-  `background.js`.
-- Background script validates `sender.id === browser.runtime.id` and checks that
-  `logText` + `filename` are strings before starting downloads.
-- `handleLogExport()` creates the Blob, calls `downloads.download()` with
-  `saveAs: true`, and revokes the Blob URL only after `downloads.onChanged`
-  reports `complete`/`interrupted` (plus a 60s fallback timeout).
-- Never reintroduce popup-side download logic—Firefox kills the popup whenever
-  the Save As dialog opens, which terminates event listeners.
-- Advanced tab now also exposes **Clear Log History**, which sends
-  `CLEAR_CONSOLE_LOGS` to background so both the persistent buffer and each
-  content script's console interceptors/`debug.js` buffers are wiped before the
-  next export.
 
 ---
 
@@ -652,13 +583,15 @@ requests:**
 
 **README Update Checklist:**
 
+- [ ] **Ensure README.md remains under 10KB** - The README must be concise and focused on current v1.6.x information only
 - [ ] Update version number in header
-- [ ] Update "What's New in v{version}" section
+- [ ] Update "What's New in v{version}" section with latest release info only
 - [ ] Update feature list if functionality changed
 - [ ] Update usage instructions if UI/UX changed
 - [ ] Update settings documentation if config changed
 - [ ] Update version footer at bottom
 - [ ] Remove outdated information
+- [ ] **Do NOT add version history** - All historical changes belong in `docs/CHANGELOG.md`
 
 ### 2. Copilot Agent Files Update (REQUIRED)
 
@@ -1241,7 +1174,7 @@ When creating markdown documentation files, always save them to the appropriate 
 - **Architecture documents** → `docs/manual/`
 - **Implementation summaries** → `docs/implementation-summaries/` (use format: `IMPLEMENTATION-SUMMARY-{description}.md`)
 - **Security summaries** → `docs/security-summaries/` (use format: `SECURITY-SUMMARY-v{version}.md`)
-- **Changelogs** → `docs/changelogs/` (use format: `CHANGELOG-v{version}.md`)
+- **Changelog updates** → **APPEND to `docs/CHANGELOG.md` only** - DO NOT create individual changelog files in `docs/changelogs/`
 - **Release summaries** → `docs/misc/` (use format: `RELEASE-SUMMARY-v{version}.md`)
 - **Miscellaneous documentation** → `docs/misc/`
 
