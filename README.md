@@ -1,6 +1,6 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.6.0** - A feature-rich Firefox/Zen Browser extension undergoing
+**Version 1.6.0.3** - A feature-rich Firefox/Zen Browser extension undergoing
 **major architectural refactoring** to a clean, modular, maintainable codebase
 with **Domain-Driven Design**, **100% test coverage**, and **evidence-based patterns**
 for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**,
@@ -14,9 +14,38 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 Now with **Solo and Mute visibility controls**, **full Firefox Container Tabs integration** for complete isolation, and a persistent Quick Tabs Manager
 panel optimized for Zen Browser.
 
-## 🎉 What's New in v1.6.0
+## 🎉 What's New in v1.6.0.3
 
-**⚠️ v1.6.0 Critical Bug Fixes (November 20, 2025) - ALL FIXED ✅**
+**🐛 v1.6.0.3 Critical Bug Fixes (November 20, 2025) - ALL FIXED ✅**
+
+Three critical bugs identified and resolved in this patch release:
+
+**Issues Fixed:**
+
+- ✅ **Quick Tabs Not Rendering** - Fixed race condition in PanelManager initialization
+  - Root cause: Panel element created AFTER state manager callbacks invoked
+  - Fix: Reordered initialization to create panel BEFORE state loading
+  - Impact: Quick Tabs now render immediately when created
+- ✅ **Quick Tab Manager Panel Not Opening** - Cascading failure from initialization issue
+  - Keyboard shortcut (Ctrl+Alt+Z) had no panel to toggle
+  - Fixed by resolving initialization order
+- ✅ **Copy Text Keyboard Shortcut Failing** - Enhanced error logging revealed root cause
+  - Empty error objects `{}` in console masked real issues
+  - Fix: Explicit DOMException property extraction
+  - Impact: Clear error messages for debugging
+
+**Root Cause:** Single architectural defect - PanelManager callbacks invoked before panel DOM element existed, causing silent failures and initialization errors.
+
+**Technical Details:** ~40 lines changed across 5 files, no breaking changes, fully backward compatible.
+
+**Documentation:**
+
+- [Bug Diagnosis & Fix Report](docs/manual/v1.6.0.3-bug-diagnosis-and-fix-report.md) - Comprehensive analysis
+- [Release Summary](docs/misc/v1.6.0.3-RELEASE-SUMMARY.md) - Quick reference
+
+---
+
+**⚠️ v1.6.0 Initial Bug Fixes (Earlier) - ALL FIXED ✅**
 
 The initial v1.6.0 release had critical integration issues that prevented core functionality. **All issues have been identified and fixed:**
 

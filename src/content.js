@@ -148,7 +148,12 @@ async function initializeFeatures() {
     quickTabsManager = await initQuickTabs(eventBus, Events);
     console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized');
   } catch (qtErr) {
-    console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:', qtErr);
+    console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:', {
+      message: qtErr.message,
+      name: qtErr.name,
+      stack: qtErr.stack,
+      error: qtErr
+    });
   }
 
   // Notifications feature
@@ -476,7 +481,12 @@ async function handleCopyText(element) {
       console.error('[Copy Text] Clipboard operation returned false');
     }
   } catch (err) {
-    console.error('[Copy Text] Failed:', err);
+    console.error('[Copy Text] Failed:', {
+      message: err.message,
+      name: err.name,
+      stack: err.stack,
+      error: err
+    });
     showNotification('✗ Failed to copy text', 'error');
   }
 }

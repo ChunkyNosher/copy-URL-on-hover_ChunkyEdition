@@ -136,8 +136,13 @@ export async function copyToClipboard(text) {
     await navigator.clipboard.writeText(text);
     return true;
   } catch (err) {
-    console.error('[Browser API] Failed to copy to clipboard:', err);
-    console.error('[Browser API] Text length:', text.length, 'Preview:', text.substring(0, 50));
+    console.error('[Browser API] Failed to copy to clipboard:', {
+      message: err.message,
+      name: err.name,
+      stack: err.stack,
+      textLength: text.length,
+      textPreview: text.substring(0, 50)
+    });
 
     // Fallback to execCommand
     return fallbackCopyToClipboard(text);
