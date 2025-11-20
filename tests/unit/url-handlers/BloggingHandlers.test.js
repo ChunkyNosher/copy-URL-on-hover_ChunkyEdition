@@ -417,7 +417,7 @@ describe('Blogging Platform URL Handlers', () => {
     test('should return current page URL', () => {
       // Mock window.location.href
       const originalLocation = window.location.href;
-      
+
       Object.defineProperty(window, 'location', {
         value: {
           href: 'https://notion.so/page-123'

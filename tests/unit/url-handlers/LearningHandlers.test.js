@@ -103,7 +103,9 @@ describe('Learning Platform URL Handlers', () => {
 
       const result = findUdemyUrl(element);
 
-      expect(result).toBe('https://www.udemy.com/course/python-for-data-science/?couponCode=ABC123');
+      expect(result).toBe(
+        'https://www.udemy.com/course/python-for-data-science/?couponCode=ABC123'
+      );
     });
 
     test('should fallback to generic when no course found', () => {
@@ -340,7 +342,9 @@ describe('Learning Platform URL Handlers', () => {
 
       const result = findUdacityUrl(element);
 
-      expect(result).toBe('https://www.udacity.com/course/full-stack-web-developer-nanodegree--nd0044');
+      expect(result).toBe(
+        'https://www.udacity.com/course/full-stack-web-developer-nanodegree--nd0044'
+      );
     });
 
     test('should extract nanodegree URL', () => {
