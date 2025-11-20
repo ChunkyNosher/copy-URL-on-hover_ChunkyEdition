@@ -16,6 +16,28 @@ panel optimized for Zen Browser.
 
 ## 🎉 What's New in v1.6.0
 
+**⚠️ v1.6.0 Critical Bug Fixes (November 20, 2025) - ALL FIXED ✅**
+
+The initial v1.6.0 release had critical integration issues that prevented core functionality. **All issues have been identified and fixed:**
+
+**Issues Fixed:**
+- ✅ **Content Script Loading** - Fixed manifest.json path mismatch (was `content.js`, now `dist/content.js`)
+- ✅ **Keyboard Shortcut (Ctrl+Alt+Z)** - Implemented missing `TOGGLE_QUICK_TABS_PANEL` message handler
+- ✅ **Log Export Functionality** - Verified LogHandler properly registered (was already correct)
+- ✅ **Log Clear Functionality** - Verified CLEAR_CONSOLE_LOGS handler (was already correct)
+- ✅ **Dead Code Removal** - Removed obsolete `toggle-minimized-manager` command listener
+
+**Root Cause:** Incomplete integration during refactoring - architecture was sound but key wiring connections were missing.
+
+**Testing:** Comprehensive E2E test suite created (21 test cases) covering all fixes. See [Manual Testing Guide](docs/manual/v1.6.0/MANUAL-TESTING-GUIDE.md) for verification steps.
+
+**Documentation:**
+- [Bug Diagnosis Report](docs/manual/v1.6.0/v1.6.0-critical-bugs-diagnosis.md) - Original analysis
+- [Fixes Implementation](docs/manual/v1.6.0/v1.6.0-critical-bugs-fixes-implemented.md) - Complete fix details
+- [Manual Testing Guide](docs/manual/v1.6.0/MANUAL-TESTING-GUIDE.md) - Step-by-step verification
+
+---
+
 **🏗️ Major Architecture Refactoring - Domain-Driven Design**
 
 v1.6.0 represents a comprehensive architectural transformation to reduce technical debt, improve maintainability, and establish a solid foundation for future features. This is an ongoing refactoring project following evidence-based patterns from Mozilla, Chrome, and industry best practices.
@@ -1597,6 +1619,6 @@ See repository for license information.
 
 ---
 
-**Current Version**: 1.6.0 (Refactoring in progress - Phase 1)  
-**Last Updated**: 2025-01-18  
+**Current Version**: 1.6.0 (Critical bugs fixed ✅ - Phase 1 complete)  
+**Last Updated**: 2025-11-20  
 **Repository**: [ChunkyNosher/copy-URL-on-hover_ChunkyEdition](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition)
