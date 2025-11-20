@@ -643,27 +643,30 @@ try {
 - runtime.lastError: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/lastError
 - Error.stack: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error/stack
 
-
 ---
 
 ## Testing Plan
 
 ### Test 1: Verify Error Stack Traces Are Captured
+
 1. Trigger a JavaScript error in content script
 2. Export console logs
 3. Verify exported file contains complete stack trace with file/line numbers
 
 ### Test 2: Verify Global Error Handler Works
+
 1. Cause an uncaught exception (e.g., access undefined.property)
 2. Export console logs
 3. Verify "[Uncaught Exception]" appears in exported file
 
 ### Test 3: Verify Promise Rejection Capture
+
 1. Create unhandled promise rejection
 2. Export console logs
 3. Verify "[Unhandled Promise Rejection]" appears in exported file
 
 ### Test 4: Document Browser API Limitation
+
 1. Call browser.tabs.sendMessage on non-existent tab
 2. Check Browser Console (should show error)
 3. Export console logs (should NOT show error)
@@ -674,12 +677,14 @@ try {
 ## References
 
 ### Mozilla Documentation Consulted
+
 1. [runtime.lastError - MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/lastError) - Understanding browser-generated errors
 2. [Error.prototype.stack - MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error/stack) - Non-enumerable error properties
 3. [Browser Console - MDN](https://firefox-source-docs.mozilla.org/devtools-user/browser_console/index.html) - Multiple console contexts
 4. [try...catch - MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/try...catch) - Error handling patterns
 
 ### Stack Overflow References
+
 1. [Intercept console.log in Chrome](https://stackoverflow.com/questions/9216441/intercept-calls-to-console-log-in-chrome) - Console interception patterns
 2. [Firefox WebExtension console.log not working](https://stackoverflow.com/questions/19531865/firefox-addon-console-log-not-working) - Console context issues
 3. [runtime.lastError in console](https://stackoverflow.com/questions/55589519/how-to-prevent-runtime-lasterror-error-message-from-appearing-in-console) - Browser API error handling
@@ -687,11 +692,13 @@ try {
 ### Key Quotes Supporting Diagnosis
 
 From MDN runtime.lastError documentation:
+
 > "If lastError has been set and you don't check it within the callback function, then **an error will be raised**."
 
 This explains why errors appear in Browser Console but aren't intercepted - they're raised by Firefox's internal code, not JavaScript's console object.
 
 From MDN Error.stack documentation:
+
 > "The non-standard stack property... **In Firefox, it's an accessor property** on Error.prototype."
 > "Because the stack property is non-standard, **implementations differ** about where it's installed."
 
@@ -704,14 +711,19 @@ This explains why `JSON.stringify(error)` loses stack traces - it's a non-enumer
 The console log export feature is working as designed for **JavaScript-level logs**, but it has inherent limitations when capturing **browser-generated errors** and needs improvements to **preserve error stack traces**.
 
 **Primary issues identified:**
+
 1. Error object serialization loses non-enumerable properties (stack traces)
 2. Browser API errors bypass JavaScript console interception
 3. Missing documentation about feature limitations
 
 **Recommended fixes:**
+
 1. ✅ Enhance error serialization to preserve stack traces (P0)
 2. ✅ Document limitations and provide user guidance (P1)
 3. ⚠️ Add global error event listeners (P2)
 
 These changes will significantly improve the debug export feature while setting proper expectations for users about what can and cannot be captured.
+
+```
+
 ```
