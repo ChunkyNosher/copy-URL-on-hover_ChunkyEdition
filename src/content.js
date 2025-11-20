@@ -140,20 +140,54 @@ function initializeState() {
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for feature initialization
  */
+/**
+ * v1.6.0.3 - Helper to log Quick Tabs initialization error details
+ */
+function logQuickTabsInitError(qtErr) {
+  console.error('[Copy-URL-on-Hover] ❌ EXCEPTION during Quick Tabs initialization:', {
+    message: qtErr?.message || 'No message',
+    name: qtErr?.name || 'No name',
+    stack: qtErr?.stack || 'No stack',
+    type: typeof qtErr,
+    stringified: JSON.stringify(qtErr),
+    keys: Object.keys(qtErr || {}),
+    error: qtErr
+  });
+  // Log error properties explicitly (helps debug empty error objects)
+  if (qtErr) {
+    for (const key in qtErr) {
+      console.error(`[Copy-URL-on-Hover] Error property "${key}":`, qtErr[key]);
+    }
+  }
+}
+
+/**
+ * v1.6.0.3 - Helper to initialize Quick Tabs
+ */
+async function initializeQuickTabsFeature() {
+  console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
+  quickTabsManager = await initQuickTabs(eventBus, Events);
+  
+  if (quickTabsManager) {
+    console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
+    console.log('[Copy-URL-on-Hover] Manager has createQuickTab:', typeof quickTabsManager.createQuickTab);
+  } else {
+    console.error('[Copy-URL-on-Hover] ✗ Quick Tabs manager is null after initialization!');
+  }
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for feature initialization
+ * v1.6.0.3 - Extracted Quick Tabs init to reduce complexity
+ */
 async function initializeFeatures() {
   console.log('[Copy-URL-on-Hover] STEP: Initializing feature modules...');
 
   // Quick Tabs feature
   try {
-    quickTabsManager = await initQuickTabs(eventBus, Events);
-    console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized');
+    await initializeQuickTabsFeature();
   } catch (qtErr) {
-    console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:', {
-      message: qtErr.message,
-      name: qtErr.name,
-      stack: qtErr.stack,
-      error: qtErr
-    });
+    logQuickTabsInitError(qtErr);
   }
 
   // Notifications feature
@@ -397,6 +431,7 @@ function matchesShortcut(event, shortcut, hoveredLink, hoveredElement) {
 /**
  * v1.6.0 Phase 2.4 - Extracted handler for keyboard shortcuts
  * Reduced complexity and nesting using table-driven pattern with guard clauses
+ * v1.6.0.3 - Fixed parameter passing: pass correct args based on handler's needs
  */
 async function handleKeyboardShortcut(event) {
   // Ignore if typing in an interactive field
@@ -410,7 +445,18 @@ async function handleKeyboardShortcut(event) {
     if (!matchesShortcut(event, shortcut, hoveredLink, hoveredElement)) continue;
 
     event.preventDefault();
-    await shortcut.handler(hoveredLink, hoveredElement);
+    
+    // v1.6.0.3 - Pass correct parameters based on handler's requirements
+    // - URL-only handlers (needsLink=true, needsElement=false): handleCopyURL, handleOpenInNewTab
+    // - Element-only handlers (needsLink=false, needsElement=true): handleCopyText
+    // - Both handlers (needsLink=true, needsElement=true): handleCreateQuickTab
+    if (shortcut.needsLink && shortcut.needsElement) {
+      await shortcut.handler(hoveredLink, hoveredElement);
+    } else if (shortcut.needsLink) {
+      await shortcut.handler(hoveredLink);
+    } else if (shortcut.needsElement) {
+      await shortcut.handler(hoveredElement);
+    }
     return;
   }
 }
