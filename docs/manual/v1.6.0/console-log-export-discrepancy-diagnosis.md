@@ -5,7 +5,8 @@
 The extension's "Export Console Logs" debug feature fails to capture ALL browser console output created by the extension. Specifically, **errors from browser API calls and cross-context messages are missing** from the exported .txt file, even though they appear in the Browser Console.
 
 **Evidence from user report:**
-- Screenshot shows: `[ERROR] [Content] Quick Tabs manager not initialized` 
+
+- Screenshot shows: `[ERROR] [Content] Quick Tabs manager not initialized`
 - Exported .txt file shows: Only successful Quick Tab creation logs, no initialization errors
 - Discrepancy: The error visible in Browser Console is **completely absent** from exported logs
 
@@ -26,11 +27,13 @@ console.error = function (...args) {
 ```
 
 **What this captures:**
+
 - ✅ Direct calls to `console.error()` from extension code
 - ✅ Logs from content scripts that explicitly use `console.*` methods
 - ✅ Background script logs using overridden methods
 
 **What this DOES NOT capture:**
+
 - ❌ **Browser-generated errors** (e.g., `browser.tabs.sendMessage` failing when content script not loaded)
 - ❌ **Uncaught promise rejections** from browser APIs
 - ❌ **`browser.runtime.lastError` warnings** generated automatically by Firefox
@@ -42,6 +45,7 @@ console.error = function (...args) {
 **Mozilla Documentation Evidence:**
 
 From MDN Web Docs on `runtime.lastError`:
+
 > "If you call an asynchronous function that may set lastError, you are expected to check for the error when you handle the result of the function. If lastError has been set and you don't check it within the callback function, then **an error will be raised**."
 
 These browser-generated errors are logged to the Browser Console **natively by Firefox** and cannot be intercepted by overriding `console.*` methods because they bypass JavaScript's console object entirely.
@@ -52,17 +56,19 @@ These browser-generated errors are logged to the Browser Console **natively by F
 
 Firefox has **multiple console contexts** that receive different types of messages:
 
-| Console Type | Location | What It Shows |
-|--------------|----------|---------------|
-| **Browser Console** (Ctrl+Shift+J) | Global | All logs: extension background, content scripts, web pages, AND browser-generated errors |
-| **Web Console** (F12) | Per-tab | Only logs from current page and its content scripts |
-| **Add-on Debugger Console** | Per-extension | Extension background script logs only |
+| Console Type                       | Location      | What It Shows                                                                            |
+| ---------------------------------- | ------------- | ---------------------------------------------------------------------------------------- |
+| **Browser Console** (Ctrl+Shift+J) | Global        | All logs: extension background, content scripts, web pages, AND browser-generated errors |
+| **Web Console** (F12)              | Per-tab       | Only logs from current page and its content scripts                                      |
+| **Add-on Debugger Console**        | Per-extension | Extension background script logs only                                                    |
 
 **The screenshot shows Browser Console**, which receives:
+
 1. Extension-generated logs (captured by interceptor) ✅
 2. **Browser-generated error messages** (NOT captured by interceptor) ❌
 
 From Stack Overflow discussion on Firefox extension console.log:
+
 > "Console logs appear in different places depending on the context. **Content script errors are sometimes only visible in the Browser Console**, not the Web Console, especially during initialization."
 
 ---
@@ -72,6 +78,7 @@ From Stack Overflow discussion on Firefox extension console.log:
 Looking at the exported log vs screenshot:
 
 **Exported .txt file shows:**
+
 ```
 [2025-11-20T16:50:30.751Z] [LOG  ] [Content] Received TOGGLE_QUICK_TABS_PANEL request
 [2025-11-20T16:50:30.751Z] [ERROR] [Content] Quick Tabs manager not initialized
@@ -80,6 +87,7 @@ Looking at the exported log vs screenshot:
 Wait - actually the error **IS** in the exported file! Let me re-examine the screenshot more carefully.
 
 Looking at the screenshot again at line 1211 (the red error text visible):
+
 ```
 [ERROR] [Content] Quick Tabs manager not initialized
 ```
@@ -89,6 +97,7 @@ This appears to be the **SAME** error that IS captured in the exported file. How
 **Re-examining the issue:** The user states "there seems to be a discrepancy between the output in the browser console logs and the output in the .txt file" and points to "some sort of error that pops up after the attempt to open the Quick Tab."
 
 The issue is likely that the **browser console shows additional context or stack traces** that aren't being captured in the text export. The console interceptor captures the **error message** but may be losing:
+
 - Stack traces
 - Source file/line number information
 - Additional error object properties
@@ -106,34 +115,37 @@ function addToLogBuffer(type, args) {
     .map(arg => {
       if (typeof arg === 'object' && arg !== null) {
         try {
-          return JSON.stringify(arg, null, 2);  // ❌ Loses stack traces!
+          return JSON.stringify(arg, null, 2); // ❌ Loses stack traces!
         } catch (err) {
-          return String(arg);  // ❌ Even worse for complex errors
+          return String(arg); // ❌ Even worse for complex errors
         }
       }
       return String(arg);
     })
     .join(' ');
-  
+
   CONSOLE_LOG_BUFFER.push({
     type: type,
     timestamp: Date.now(),
-    message: message  // ❌ Stack trace lost here
+    message: message // ❌ Stack trace lost here
   });
 }
 ```
 
 **Problem with current serialization:**
+
 - `JSON.stringify(errorObject)` only captures enumerable properties
 - JavaScript `Error` objects have **non-enumerable properties** like `stack`, `lineNumber`, `columnNumber`
 - Stack traces are **completely lost** in the export
 
 From MDN Web Docs on Error.prototype.stack:
+
 > "The non-standard **stack property** of an Error instance offers a trace of which functions were called, in what order, from which line and file... Because the stack property is non-standard, implementations differ about where it's installed. **In Firefox, it's an accessor property** on Error.prototype."
 
 **Example of what's lost:**
 
 Browser Console shows:
+
 ```javascript
 TypeError: e.querySelector is not a function
     handler/t<@moz-extension://3f020ab4.../content.js:4279:23
@@ -142,6 +154,7 @@ TypeError: e.querySelector is not a function
 ```
 
 Exported file shows:
+
 ```
 [ERROR] [Copy Text] Failed: {
   "message": "e.querySelector is not a function",
@@ -192,6 +205,7 @@ import { getConsoleLogs, getBufferStats, clearConsoleLogs } from './utils/consol
 ### 3. **Missing: Global Error Event Listeners**
 
 The current implementation captures `console.*` calls but doesn't capture:
+
 - `window.addEventListener('error')` events (uncaught exceptions)
 - `window.addEventListener('unhandledrejection')` events (unhandled promise rejections)
 
@@ -215,7 +229,7 @@ function serializeErrorObject(error) {
       return String(error);
     }
   }
-  
+
   // Special handling for Error objects
   const serialized = {
     message: error.message,
@@ -228,13 +242,17 @@ function serializeErrorObject(error) {
     ...(error.cause && { cause: serializeErrorObject(error.cause) }),
     // Include enumerable properties too
     ...Object.getOwnPropertyNames(error).reduce((acc, key) => {
-      if (!['message', 'name', 'stack', 'fileName', 'lineNumber', 'columnNumber', 'cause'].includes(key)) {
+      if (
+        !['message', 'name', 'stack', 'fileName', 'lineNumber', 'columnNumber', 'cause'].includes(
+          key
+        )
+      ) {
         acc[key] = error[key];
       }
       return acc;
     }, {})
   };
-  
+
   return JSON.stringify(serialized, null, 2);
 }
 
@@ -242,12 +260,12 @@ function addToLogBuffer(type, args) {
   const message = Array.from(args)
     .map(arg => {
       if (typeof arg === 'object' && arg !== null) {
-        return serializeErrorObject(arg);  // Use enhanced serializer
+        return serializeErrorObject(arg); // Use enhanced serializer
       }
       return String(arg);
     })
     .join(' ');
-  
+
   CONSOLE_LOG_BUFFER.push({
     type: type,
     timestamp: Date.now(),
@@ -263,7 +281,8 @@ function addToLogBuffer(type, args) {
 }
 ```
 
-**Impact:** 
+**Impact:**
+
 - ✅ Captures complete stack traces
 - ✅ Preserves error causality chains (`error.cause`)
 - ✅ Includes file/line number information
@@ -280,22 +299,31 @@ Add global error event capture in `console-interceptor.js` to catch errors that 
 // Add to console-interceptor.js after console override
 
 // Capture uncaught exceptions
-window.addEventListener('error', (event) => {
-  addToLogBuffer('ERROR', `[Uncaught Exception] ${event.message}`, {
-    filename: event.filename,
-    lineno: event.lineno,
-    colno: event.colno,
-    error: event.error
-  });
-}, true);  // Use capture phase to get it first
+window.addEventListener(
+  'error',
+  event => {
+    addToLogBuffer('ERROR', `[Uncaught Exception] ${event.message}`, {
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error
+    });
+  },
+  true
+); // Use capture phase to get it first
 
 // Capture unhandled promise rejections
-window.addEventListener('unhandledrejection', (event) => {
-  addToLogBuffer('ERROR', '[Unhandled Promise Rejection]', event.reason);
-}, true);
+window.addEventListener(
+  'unhandledrejection',
+  event => {
+    addToLogBuffer('ERROR', '[Unhandled Promise Rejection]', event.reason);
+  },
+  true
+);
 ```
 
 **Impact:**
+
 - ✅ Captures errors that don't go through console
 - ✅ Catches async errors that would otherwise be silent
 - ⚠️ May capture duplicate errors (same error logged + thrown)
@@ -311,18 +339,19 @@ For capturing browser API errors like `browser.tabs.sendMessage` failures, wrap 
 ```javascript
 // Example wrapper for browser.tabs.sendMessage
 const originalSendMessage = browser.tabs.sendMessage;
-browser.tabs.sendMessage = async function(...args) {
+browser.tabs.sendMessage = async function (...args) {
   try {
     const result = await originalSendMessage.apply(this, args);
     return result;
   } catch (error) {
     console.error('[Browser API Error] browser.tabs.sendMessage failed:', error);
-    throw error;  // Re-throw to maintain original behavior
+    throw error; // Re-throw to maintain original behavior
   }
 };
 ```
 
 **Impact:**
+
 - ✅ Captures browser API errors explicitly
 - ❌ Requires wrapping many browser APIs
 - ❌ May conflict with future browser API changes
@@ -348,12 +377,14 @@ The "Export Console Logs" feature captures logs from extension code, but **canno
 5. **Stack traces may be incomplete** - Some error details may be lost during serialization
 
 **To capture complete diagnostic information:**
+
 1. Export console logs (captures extension code output)
 2. **Also** manually copy errors from Browser Console (Ctrl+Shift+J)
 3. Include both sources when reporting issues
 ```
 
 **Impact:**
+
 - ✅ Sets correct user expectations
 - ✅ Provides workaround guidance
 - ✅ Low implementation cost
@@ -362,12 +393,12 @@ The "Export Console Logs" feature captures logs from extension code, but **canno
 
 ## Implementation Priority
 
-| Priority | Solution | Effort | Impact | Recommendation |
-|----------|----------|--------|--------|----------------|
-| **P0** | Solution 1: Enhanced Error Serialization | Medium | High | **IMPLEMENT** - Core fix for missing stack traces |
-| **P1** | Solution 4: Document Limitations | Low | High | **IMPLEMENT** - User guidance critical |
-| **P2** | Solution 2: Global Error Events | Medium | Medium | **CONSIDER** - Catches additional errors |
-| **P3** | Solution 3: Browser API Wrappers | High | Low | **SKIP** - Too complex, limited benefit |
+| Priority | Solution                                 | Effort | Impact | Recommendation                                    |
+| -------- | ---------------------------------------- | ------ | ------ | ------------------------------------------------- |
+| **P0**   | Solution 1: Enhanced Error Serialization | Medium | High   | **IMPLEMENT** - Core fix for missing stack traces |
+| **P1**   | Solution 4: Document Limitations         | Low    | High   | **IMPLEMENT** - User guidance critical            |
+| **P2**   | Solution 2: Global Error Events          | Medium | Medium | **CONSIDER** - Catches additional errors          |
+| **P3**   | Solution 3: Browser API Wrappers         | High   | Low    | **SKIP** - Too complex, limited benefit           |
 
 ---
 
@@ -380,7 +411,7 @@ The "Export Console Logs" feature captures logs from extension code, but **canno
 ```javascript
 /**
  * Serialize Error objects with all properties including non-enumerable ones
- * 
+ *
  * @param {*} arg - Argument to serialize
  * @returns {string} Serialized string representation
  */
@@ -389,7 +420,7 @@ function serializeArgument(arg) {
   if (arg === null || arg === undefined) {
     return String(arg);
   }
-  
+
   // Handle Error objects specially
   if (arg instanceof Error) {
     const errorDetails = {
@@ -401,21 +432,21 @@ function serializeArgument(arg) {
       ...(arg.columnNumber && { columnNumber: arg.columnNumber }),
       ...(arg.cause && { cause: serializeArgument(arg.cause) })
     };
-    
+
     // Include any custom enumerable properties
     Object.keys(arg).forEach(key => {
       if (!errorDetails[key]) {
         errorDetails[key] = arg[key];
       }
     });
-    
+
     try {
       return JSON.stringify(errorDetails, null, 2);
     } catch (err) {
       return `[Error: ${arg.message}]\nStack: ${arg.stack || 'unavailable'}`;
     }
   }
-  
+
   // Handle regular objects
   if (typeof arg === 'object') {
     try {
@@ -424,7 +455,7 @@ function serializeArgument(arg) {
       return String(arg);
     }
   }
-  
+
   // Handle primitives
   return String(arg);
 }
@@ -441,7 +472,7 @@ function addToLogBuffer(type, args) {
 
   // Format arguments into string using enhanced serializer
   const message = Array.from(args)
-    .map(arg => serializeArgument(arg))  // ✅ Use new serializer
+    .map(arg => serializeArgument(arg)) // ✅ Use new serializer
     .join(' ');
 
   // Add to buffer
@@ -465,23 +496,31 @@ function addToLogBuffer(type, args) {
 // Only add listeners if in browser context (not in background/service worker)
 if (typeof window !== 'undefined') {
   // Capture uncaught exceptions
-  window.addEventListener('error', (event) => {
-    const errorInfo = {
-      message: event.message,
-      filename: event.filename,
-      lineno: event.lineno,
-      colno: event.colno,
-      error: event.error
-    };
-    
-    addToLogBuffer('ERROR', '[Uncaught Exception]', errorInfo);
-  }, true);  // Use capture phase
+  window.addEventListener(
+    'error',
+    event => {
+      const errorInfo = {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error
+      };
+
+      addToLogBuffer('ERROR', '[Uncaught Exception]', errorInfo);
+    },
+    true
+  ); // Use capture phase
 
   // Capture unhandled promise rejections
-  window.addEventListener('unhandledrejection', (event) => {
-    addToLogBuffer('ERROR', '[Unhandled Promise Rejection]', event.reason);
-  }, true);
-  
+  window.addEventListener(
+    'unhandledrejection',
+    event => {
+      addToLogBuffer('ERROR', '[Unhandled Promise Rejection]', event.reason);
+    },
+    true
+  );
+
   originalConsole.log('[Console Interceptor] Global error handlers installed');
 }
 // ==================== END GLOBAL ERROR CAPTURE ====================
@@ -491,15 +530,17 @@ if (typeof window !== 'undefined') {
 
 **Create new file**: `docs/debugging/console-log-export-limitations.md`
 
-```markdown
+````markdown
 # Console Log Export - Feature Documentation
 
 ## Overview
+
 The "Export Console Logs" debug feature captures console output from the extension for bug reporting and diagnostics.
 
 ## What Gets Captured
+
 - ✅ All `console.log()` calls from extension code
-- ✅ All `console.error()` calls from extension code  
+- ✅ All `console.error()` calls from extension code
 - ✅ All `console.warn()` calls from extension code
 - ✅ All `console.info()` calls from extension code
 - ✅ Uncaught exceptions in content scripts
@@ -508,28 +549,37 @@ The "Export Console Logs" debug feature captures console output from the extensi
 - ✅ Timestamps for all log entries
 
 ## Known Limitations
+
 The export feature **cannot** capture:
 
 ### 1. Browser-Generated Errors
+
 Errors created by Firefox internally are not intercepted:
+
 - `browser.runtime.lastError` warnings
 - "Could not establish connection" messages when content scripts aren't loaded
 - Browser API parameter validation errors
 
-### 2. Cross-Context Errors  
+### 2. Cross-Context Errors
+
 Errors from isolated execution contexts:
+
 - Errors in iframes (unless extension has access)
 - Errors in web workers
 - Errors in other extensions
 
 ### 3. Native Browser Errors
+
 Browser-level errors bypass JavaScript console:
+
 - Network request failures (CORS, CSP violations)
 - Mixed content warnings
 - Certificate errors
 
 ### 4. Pre-Initialization Errors
+
 Errors that occur before the console interceptor loads:
+
 - Module import errors
 - Syntax errors in scripts
 - Early initialization failures
@@ -553,6 +603,7 @@ To capture **all** diagnostic information when reporting bugs:
 ## Technical Details
 
 The console log export works by:
+
 1. Overriding JavaScript's global `console.*` methods
 2. Intercepting all console calls before they execute
 3. Storing messages in a circular buffer (max 5000 entries)
@@ -565,25 +616,29 @@ The console log export works by:
 Browser APIs like `browser.tabs.sendMessage()` log errors **directly to Browser Console** without going through JavaScript's `console` object. These errors are generated by Firefox's internal code and cannot be intercepted by overriding `console.*` methods.
 
 **Example:**
+
 ```javascript
 // This error is logged by Firefox internals, not JavaScript
 browser.tabs.sendMessage(invalidTabId, {});
 // Browser Console: "Could not establish connection. Receiving end does not exist."
 // Exported logs: ❌ Not captured (browser-generated error)
 ```
+````
 
 ## Workarounds
 
 If you need to capture browser API errors:
+
 ```javascript
 try {
   await browser.tabs.sendMessage(tabId, message);
 } catch (error) {
-  console.error('[Browser API Error]', error);  // ✅ Now captured
+  console.error('[Browser API Error]', error); // ✅ Now captured
 }
 ```
 
 ## References
+
 - Mozilla WebExtensions API: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions
 - runtime.lastError: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/lastError
 - Error.stack: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error/stack
@@ -593,21 +648,25 @@ try {
 ## Testing Plan
 
 ### Test 1: Verify Error Stack Traces Are Captured
+
 1. Trigger a JavaScript error in content script
 2. Export console logs
 3. Verify exported file contains complete stack trace with file/line numbers
 
 ### Test 2: Verify Global Error Handler Works
+
 1. Cause an uncaught exception (e.g., access undefined.property)
 2. Export console logs
 3. Verify "[Uncaught Exception]" appears in exported file
 
 ### Test 3: Verify Promise Rejection Capture
+
 1. Create unhandled promise rejection
 2. Export console logs
 3. Verify "[Unhandled Promise Rejection]" appears in exported file
 
 ### Test 4: Document Browser API Limitation
+
 1. Call browser.tabs.sendMessage on non-existent tab
 2. Check Browser Console (should show error)
 3. Export console logs (should NOT show error)
@@ -618,12 +677,14 @@ try {
 ## References
 
 ### Mozilla Documentation Consulted
+
 1. [runtime.lastError - MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/lastError) - Understanding browser-generated errors
 2. [Error.prototype.stack - MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error/stack) - Non-enumerable error properties
 3. [Browser Console - MDN](https://firefox-source-docs.mozilla.org/devtools-user/browser_console/index.html) - Multiple console contexts
 4. [try...catch - MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/try...catch) - Error handling patterns
 
 ### Stack Overflow References
+
 1. [Intercept console.log in Chrome](https://stackoverflow.com/questions/9216441/intercept-calls-to-console-log-in-chrome) - Console interception patterns
 2. [Firefox WebExtension console.log not working](https://stackoverflow.com/questions/19531865/firefox-addon-console-log-not-working) - Console context issues
 3. [runtime.lastError in console](https://stackoverflow.com/questions/55589519/how-to-prevent-runtime-lasterror-error-message-from-appearing-in-console) - Browser API error handling
@@ -631,11 +692,13 @@ try {
 ### Key Quotes Supporting Diagnosis
 
 From MDN runtime.lastError documentation:
+
 > "If lastError has been set and you don't check it within the callback function, then **an error will be raised**."
 
 This explains why errors appear in Browser Console but aren't intercepted - they're raised by Firefox's internal code, not JavaScript's console object.
 
 From MDN Error.stack documentation:
+
 > "The non-standard stack property... **In Firefox, it's an accessor property** on Error.prototype."
 > "Because the stack property is non-standard, **implementations differ** about where it's installed."
 
@@ -648,11 +711,13 @@ This explains why `JSON.stringify(error)` loses stack traces - it's a non-enumer
 The console log export feature is working as designed for **JavaScript-level logs**, but it has inherent limitations when capturing **browser-generated errors** and needs improvements to **preserve error stack traces**.
 
 **Primary issues identified:**
+
 1. Error object serialization loses non-enumerable properties (stack traces)
 2. Browser API errors bypass JavaScript console interception
 3. Missing documentation about feature limitations
 
 **Recommended fixes:**
+
 1. ✅ Enhance error serialization to preserve stack traces (P0)
 2. ✅ Document limitations and provide user guidance (P1)
 3. ⚠️ Add global error event listeners (P2)
