@@ -1,4 +1,3 @@
-[refactor-specialist-updated.md](https://github.com/user-attachments/files/23664947/refactor-specialist-updated.md)
 ---
 name: refactor-specialist
 description: |
