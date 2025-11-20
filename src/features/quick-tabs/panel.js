@@ -67,7 +67,8 @@ export class PanelManager {
     await this.detectContainerContext();
 
     // Inject CSS early (needed for panel creation)
-    this.uiBuilder.injectStyles();
+    // v1.6.0.3 - FIX: injectStyles() is a static method, not instance method
+    PanelUIBuilder.injectStyles();
 
     // Create panel with default state (hidden by default)
     // CRITICAL: Panel must exist BEFORE state manager callbacks are invoked
@@ -78,7 +79,8 @@ export class PanelManager {
       height: 500,
       isOpen: false
     };
-    this.panel = this.uiBuilder.createPanel(defaultState);
+    // v1.6.0.3 - FIX: createPanel() is a static method, not instance method
+    this.panel = PanelUIBuilder.createPanel(defaultState);
 
     // Safety check: Ensure document.body exists before appending
     // (should always be true with run_at: "document_idle", but defensive programming)

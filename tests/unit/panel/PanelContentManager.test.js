@@ -6,6 +6,10 @@
 import { jest } from '@jest/globals';
 
 import { PanelContentManager } from '../../../src/features/quick-tabs/panel/PanelContentManager.js';
+import { PanelUIBuilder } from '../../../src/features/quick-tabs/panel/PanelUIBuilder.js';
+
+// Mock PanelUIBuilder static methods
+jest.mock('../../../src/features/quick-tabs/panel/PanelUIBuilder.js');
 
 describe('PanelContentManager', () => {
   let panelElement;
@@ -16,6 +20,13 @@ describe('PanelContentManager', () => {
   let contentManager;
 
   beforeEach(() => {
+    // Clear all mocks
+    jest.clearAllMocks();
+
+    // v1.6.0.3 - Mock static methods of PanelUIBuilder
+    PanelUIBuilder.renderContainerSection = jest.fn().mockReturnValue(document.createElement('div'));
+    PanelUIBuilder.getContainerIcon = jest.fn(icon => `icon-${icon}`);
+
     // Create mock panel element
     panelElement = document.createElement('div');
     panelElement.innerHTML = `
@@ -35,7 +46,7 @@ describe('PanelContentManager', () => {
       <div id="panel-emptyState" style="display: none;"></div>
     `;
 
-    // Mock dependencies
+    // Mock dependencies (kept for backward compatibility in constructor)
     mockUIBuilder = {
       renderContainerSection: jest.fn(),
       getContainerIcon: jest.fn(icon => `icon-${icon}`)
@@ -137,7 +148,8 @@ describe('PanelContentManager', () => {
       await contentManager.updateContent();
 
       expect(mockBrowser.storage.sync.get).toHaveBeenCalledWith('quick_tabs_state_v2');
-      expect(mockUIBuilder.renderContainerSection).toHaveBeenCalled();
+      // v1.6.0.3 - Check static method instead
+      expect(PanelUIBuilder.renderContainerSection).toHaveBeenCalled();
     });
 
     it('should handle wrapped container format', async () => {
@@ -156,7 +168,8 @@ describe('PanelContentManager', () => {
 
       await contentManager.updateContent();
 
-      expect(mockUIBuilder.renderContainerSection).toHaveBeenCalled();
+      // v1.6.0.3 - Check static method instead
+      expect(PanelUIBuilder.renderContainerSection).toHaveBeenCalled();
     });
 
     it('should show empty state when no tabs', async () => {
@@ -235,8 +248,8 @@ describe('PanelContentManager', () => {
       await contentManager.updateContent();
 
       expect(mockBrowser.contextualIdentities.query).toHaveBeenCalled();
-      expect(mockUIBuilder.renderContainerSection).toHaveBeenCalledWith(
-        expect.any(HTMLElement),
+      // v1.6.0.3 - Check static method instead
+      expect(PanelUIBuilder.renderContainerSection).toHaveBeenCalledWith(
         'firefox-container-1',
         expect.objectContaining({ name: 'Personal' }),
         mockState['firefox-container-1']
@@ -531,7 +544,8 @@ describe('PanelContentManager', () => {
       // Update content
       await contentManager.updateContent();
 
-      expect(mockUIBuilder.renderContainerSection).toHaveBeenCalled();
+      // v1.6.0.3 - Check static method instead
+      expect(PanelUIBuilder.renderContainerSection).toHaveBeenCalled();
 
       // Test action
       await contentManager.handleMinimizeTab('1');

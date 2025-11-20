@@ -9,6 +9,10 @@
 import { jest } from '@jest/globals';
 
 import { PanelContentManager } from '../../../src/features/quick-tabs/panel/PanelContentManager.js';
+import { PanelUIBuilder } from '../../../src/features/quick-tabs/panel/PanelUIBuilder.js';
+
+// Mock PanelUIBuilder static methods
+jest.mock('../../../src/features/quick-tabs/panel/PanelUIBuilder.js');
 
 describe('PanelContentManager - Edge Cases', () => {
   let panelElement;
@@ -19,6 +23,13 @@ describe('PanelContentManager - Edge Cases', () => {
   let contentManager;
 
   beforeEach(() => {
+    // Clear all mocks
+    jest.clearAllMocks();
+
+    // v1.6.0.3 - Mock static methods of PanelUIBuilder
+    PanelUIBuilder.renderContainerSection = jest.fn().mockReturnValue(document.createElement('div'));
+    PanelUIBuilder.getContainerIcon = jest.fn(icon => `icon-${icon}`);
+
     // Create mock panel element
     panelElement = document.createElement('div');
     panelElement.innerHTML = `
@@ -38,7 +49,7 @@ describe('PanelContentManager - Edge Cases', () => {
       <div id="panel-emptyState" style="display: none;"></div>
     `;
 
-    // Mock dependencies
+    // Mock dependencies (kept for backward compatibility in constructor)
     mockUIBuilder = {
       renderContainerSection: jest.fn(),
       getContainerIcon: jest.fn(icon => `icon-${icon}`)
@@ -181,7 +192,8 @@ describe('PanelContentManager - Edge Cases', () => {
 
       // Verify: Error logged, default info used
       expect(consoleErrorSpy).toHaveBeenCalled();
-      expect(mockUIBuilder.renderContainerSection).toHaveBeenCalled();
+      // v1.6.0.3 - Check static method instead
+      expect(PanelUIBuilder.renderContainerSection).toHaveBeenCalled();
 
       consoleErrorSpy.mockRestore();
     });

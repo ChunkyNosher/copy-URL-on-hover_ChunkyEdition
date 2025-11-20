@@ -78,14 +78,11 @@ describe('PanelManager Additional Coverage', () => {
     };
     PanelStateManager.mockImplementation(() => mockStateManager);
 
-    // Mock PanelUIBuilder instance
-    const mockUIBuilder = {
-      injectStyles: jest.fn(),
-      createPanel: jest.fn().mockReturnValue(mockPanel),
-      updateContainer: jest.fn(),
-      updateContent: jest.fn()
-    };
-    PanelUIBuilder.mockImplementation(() => mockUIBuilder);
+    // v1.6.0.3 - Mock static methods of PanelUIBuilder
+    PanelUIBuilder.injectStyles = jest.fn();
+    PanelUIBuilder.createPanel = jest.fn().mockReturnValue(mockPanel);
+    PanelUIBuilder.renderContainerSection = jest.fn().mockReturnValue(document.createElement('div'));
+    PanelUIBuilder.getContainerIcon = jest.fn(icon => `icon-${icon}`);
 
     // Mock PanelDragController instance
     mockDragController = {
