@@ -156,10 +156,8 @@ Access settings by clicking the extension icon.
 
 **Copy URL Tab:**
 
-
 - Keyboard shortcuts (Y, X, O defaults)
 - Modifier keys (Ctrl, Alt, Shift)
-
 
 **Quick Tabs Tab:**
 
@@ -168,7 +166,6 @@ Access settings by clicking the extension icon.
 - Max windows (1-10)
 - Default size and position
 - Close on open toggle
-
 
 **Appearance Tab:**
 
