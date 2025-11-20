@@ -247,7 +247,8 @@ describe('QuickTabWindow - Edge Cases', () => {
         get: () => null,
         configurable: true
       });
-      quickTabWindow.iframe.src = 'javascript:void(0)'; // Invalid URL that won't parse
+      // Use data URI instead of javascript: protocol (ESLint no-script-url rule)
+      quickTabWindow.iframe.src = 'data:text/html,invalid-url-test';
 
       // Trigger load event
       const loadEvent = new Event('load');
