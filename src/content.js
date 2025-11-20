@@ -452,10 +452,19 @@ async function handleCopyURL(url) {
 
 /**
  * Handle copy text action
+ * v1.6.0.1 - Added validation for empty text
  */
 async function handleCopyText(element) {
   try {
     const text = getLinkText(element);
+    
+    // Validate text is not empty
+    if (!text || text.trim().length === 0) {
+      console.warn('[Copy Text] No text found to copy');
+      showNotification('✗ No text found', 'error');
+      return;
+    }
+
     const success = await copyToClipboard(text);
 
     if (success) {
@@ -464,6 +473,7 @@ async function handleCopyText(element) {
       debug('Copied text:', text);
     } else {
       showNotification('✗ Failed to copy text', 'error');
+      console.error('[Copy Text] Clipboard operation returned false');
     }
   } catch (err) {
     console.error('[Copy Text] Failed:', err);

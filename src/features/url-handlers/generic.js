@@ -44,18 +44,29 @@ export function findGenericUrl(element) {
 
 /**
  * Get link text from element
+ * v1.6.0.1 - Improved handling of empty text and edge cases
  * @param {Element} element - DOM element
  * @returns {string} Link text
  */
 export function getLinkText(element) {
-  if (element.tagName === 'A') {
-    return element.textContent.trim();
+  if (!element) {
+    return '';
   }
 
+  // Try direct text from link
+  if (element.tagName === 'A') {
+    const text = element.textContent.trim();
+    if (text) return text;
+  }
+
+  // Try finding link within element
   const link = element.querySelector('a[href]');
   if (link) {
-    return link.textContent.trim();
+    const text = link.textContent.trim();
+    if (text) return text;
   }
 
-  return element.textContent.trim().substring(0, 100);
+  // Fallback to element's text content
+  const text = element.textContent.trim();
+  return text ? text.substring(0, 100) : '';
 }

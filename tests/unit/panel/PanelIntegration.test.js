@@ -102,6 +102,7 @@ describe('PanelManager Integration', () => {
         query: jest.fn().mockResolvedValue([{ cookieStoreId: 'firefox-container-1', active: true }])
       },
       runtime: {
+        sendMessage: jest.fn().mockResolvedValue({ success: true, cookieStoreId: 'firefox-container-1' }),
         onMessage: {
           addListener: jest.fn()
         }
@@ -147,15 +148,14 @@ describe('PanelManager Integration', () => {
       test('should detect container context', async () => {
         await panelManager.init();
 
-        expect(browser.tabs.query).toHaveBeenCalledWith({
-          active: true,
-          currentWindow: true
+        expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+          action: 'GET_CONTAINER_CONTEXT'
         });
         expect(panelManager.currentContainerId).toBe('firefox-container-1');
       });
 
-      test('should use default container if tabs API unavailable', async () => {
-        delete global.browser.tabs;
+      test('should use default container if message fails', async () => {
+        browser.runtime.sendMessage.mockRejectedValueOnce(new Error('Message failed'));
 
         await panelManager.init();
 
@@ -163,7 +163,7 @@ describe('PanelManager Integration', () => {
       });
 
       test('should use default container if query fails', async () => {
-        browser.tabs.query.mockRejectedValueOnce(new Error('Query failed'));
+        browser.runtime.sendMessage.mockResolvedValueOnce({ success: false });
 
         await panelManager.init();
 
@@ -171,7 +171,7 @@ describe('PanelManager Integration', () => {
       });
 
       test('should use default container if no cookieStoreId', async () => {
-        browser.tabs.query.mockResolvedValueOnce([{ active: true }]);
+        browser.runtime.sendMessage.mockResolvedValueOnce({ success: true });
 
         await panelManager.init();
 
@@ -623,9 +623,10 @@ describe('PanelManager Integration', () => {
 
   describe('Container Detection', () => {
     test('should detect Firefox container', async () => {
-      browser.tabs.query.mockResolvedValueOnce([
-        { cookieStoreId: 'firefox-container-2', active: true }
-      ]);
+      browser.runtime.sendMessage.mockResolvedValueOnce({
+        success: true,
+        cookieStoreId: 'firefox-container-2'
+      });
 
       await panelManager.init();
 
@@ -633,9 +634,10 @@ describe('PanelManager Integration', () => {
     });
 
     test('should handle default container', async () => {
-      browser.tabs.query.mockResolvedValueOnce([
-        { cookieStoreId: 'firefox-default', active: true }
-      ]);
+      browser.runtime.sendMessage.mockResolvedValueOnce({
+        success: true,
+        cookieStoreId: 'firefox-default'
+      });
 
       await panelManager.init();
 
@@ -643,7 +645,9 @@ describe('PanelManager Integration', () => {
     });
 
     test('should handle missing cookieStoreId', async () => {
-      browser.tabs.query.mockResolvedValueOnce([{ active: true }]);
+      browser.runtime.sendMessage.mockResolvedValueOnce({
+        success: false
+      });
 
       await panelManager.init();
 
@@ -651,7 +655,9 @@ describe('PanelManager Integration', () => {
     });
 
     test('should handle empty tabs array', async () => {
-      browser.tabs.query.mockResolvedValueOnce([]);
+      browser.runtime.sendMessage.mockResolvedValueOnce({
+        success: false
+      });
 
       await panelManager.init();
 
@@ -659,7 +665,7 @@ describe('PanelManager Integration', () => {
     });
 
     test('should handle null tabs result', async () => {
-      browser.tabs.query.mockResolvedValueOnce(null);
+      browser.runtime.sendMessage.mockResolvedValueOnce(null);
 
       await panelManager.init();
 
