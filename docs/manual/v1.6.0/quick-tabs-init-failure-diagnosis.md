@@ -3,6 +3,7 @@
 **Date:** November 20, 2025, 12:24 AM EST  
 **Extension Version:** 1.6.0.1  
 **Reported Issues:**
+
 1. Quick Tabs do not appear when created (notification shows success but no UI)
 2. Quick Tabs Manager panel does not open when pressing Ctrl+Alt+Z (toggle command)
 
@@ -85,6 +86,7 @@ async detectContainerContext() {
 ```
 
 **What happens:**
+
 1. Content script tries to call `browser.tabs.query()`
 2. `browser.tabs` is `undefined` in content script context
 3. Code catches error and logs "Failed to detect container"
@@ -101,6 +103,7 @@ async detectContainerContext() {
 ```
 
 When user presses Ctrl+Alt+Z:
+
 1. Background script receives command
 2. Sends `TOGGLE_QUICK_TABS_PANEL` message to content script
 3. Content script receives message
@@ -116,6 +119,7 @@ When user presses Ctrl+Alt+Z:
 ```
 
 When user tries to create Quick Tab:
+
 1. Falls back to "legacy creation path" (minimal/broken implementation)
 2. State is saved to storage (notification fires)
 3. **But UI is never created** because QuickTabsManager/PanelManager are not initialized
@@ -137,6 +141,7 @@ When user tries to create Quick Tab:
 > Source: [MDN: Work with the Tabs API](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Working_with_the_Tabs_API)
 
 **Available APIs in content scripts (from MDN):**
+
 - `runtime.sendMessage()` ✅
 - `runtime.onMessage` ✅
 - `storage` ✅
@@ -144,6 +149,7 @@ When user tries to create Quick Tab:
 - `extension.getURL()` ✅
 
 **NOT available in content scripts:**
+
 - `tabs` ❌
 - `windows` ❌
 - `browserAction` ❌
@@ -168,6 +174,7 @@ When user tries to create Quick Tab:
 **Solution:** Use message passing to ask the background script for tab/container information.
 
 **Files to modify:**
+
 - `src/features/quick-tabs/index.js` - `detectContainerContext()` method
 - `src/features/quick-tabs/panel.js` - `detectContainerContext()` method
 - `src/features/quick-tabs/index.js` - `detectCurrentTabId()` method
@@ -179,6 +186,7 @@ When user tries to create Quick Tab:
 **Step 2:** Replace with message to background script
 
 **In content script (QuickTabsManager):**
+
 ```javascript
 async detectContainerContext() {
   try {
@@ -186,7 +194,7 @@ async detectContainerContext() {
     const response = await browser.runtime.sendMessage({
       action: 'GET_CONTAINER_CONTEXT'
     });
-    
+
     if (response && response.cookieStoreId) {
       this.cookieStoreId = response.cookieStoreId;
       console.log('[QuickTabsManager] Detected container:', this.cookieStoreId);
@@ -204,6 +212,7 @@ async detectContainerContext() {
 **Step 3:** Add handler in background script
 
 **In background script (background.js):**
+
 ```javascript
 messageRouter.register('GET_CONTAINER_CONTEXT', async (msg, sender) => {
   try {
@@ -255,7 +264,7 @@ async init(eventBus, Events) {
   if (!contextDetected) {
     throw new Error('Failed to detect container context - required for initialization');
   }
-  
+
   await this.detectCurrentTabId();
 
   // STEP 2: Initialize managers
@@ -267,12 +276,12 @@ async init(eventBus, Events) {
   // STEP 4: Initialize panel manager (must happen before coordinators)
   this.panelManager = new PanelManager(this);
   await this.panelManager.init();
-  
+
   // Validate panel manager initialized successfully
   if (!this.panelManager || !this.panelManager.panel) {
     throw new Error('Panel manager failed to initialize - required for Quick Tabs UI');
   }
-  
+
   console.log('[QuickTabsManager] Panel manager initialized');
 
   // ... rest of initialization
@@ -290,7 +299,7 @@ async detectContainerContext() {
     const response = await browser.runtime.sendMessage({
       action: 'GET_CONTAINER_CONTEXT'
     });
-    
+
     if (response && response.success && response.cookieStoreId) {
       this.cookieStoreId = response.cookieStoreId;
       console.log('[QuickTabsManager] Detected container:', this.cookieStoreId);
@@ -323,30 +332,24 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Check if manager is initialized
       if (!quickTabsManager || !quickTabsManager.initialized) {
         console.error('[Content] Quick Tabs manager not initialized');
-        
+
         // Show user-facing notification
-        showNotification(
-          '✗ Quick Tabs not available. Please reload the page.',
-          'error'
-        );
-        
+        showNotification('✗ Quick Tabs not available. Please reload the page.', 'error');
+
         sendResponse({ success: false, error: 'Manager not initialized' });
         return true;
       }
-      
+
       // Check if panel manager exists
       if (!quickTabsManager.panelManager) {
         console.error('[Content] Panel manager not initialized');
-        
-        showNotification(
-          '✗ Quick Tabs panel not available. Please reload the page.',
-          'error'
-        );
-        
+
+        showNotification('✗ Quick Tabs panel not available. Please reload the page.', 'error');
+
         sendResponse({ success: false, error: 'Panel not initialized' });
         return true;
       }
-      
+
       // Toggle panel
       quickTabsManager.panelManager.toggle();
       sendResponse({ success: true });
@@ -375,21 +378,18 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       // If not initialized, try to initialize now
       if (!quickTabsManager || !quickTabsManager.initialized) {
         console.log('[Content] Manager not initialized, attempting lazy init...');
-        
+
         try {
           await quickTabsManager.init(eventBus, Events);
           console.log('[Content] Lazy initialization successful');
         } catch (initErr) {
           console.error('[Content] Lazy initialization failed:', initErr);
-          showNotification(
-            '✗ Could not initialize Quick Tabs. Please reload the page.',
-            'error'
-          );
+          showNotification('✗ Could not initialize Quick Tabs. Please reload the page.', 'error');
           sendResponse({ success: false, error: 'Initialization failed' });
           return true;
         }
       }
-      
+
       // Now toggle panel
       quickTabsManager.panelManager.toggle();
       sendResponse({ success: true });
@@ -406,13 +406,13 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 
 ## Summary of Required Changes
 
-| Issue | File(s) | Change Required | Priority |
-|-------|---------|-----------------|----------|
+| Issue                                             | File(s)                                                                  | Change Required                                    | Priority     |
+| ------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------- | ------------ |
 | **Direct `browser.tabs` usage in content script** | `src/features/quick-tabs/index.js`<br>`src/features/quick-tabs/panel.js` | Replace with `runtime.sendMessage()` to background | **CRITICAL** |
-| **Missing background handler** | `background.js` | Add `GET_CONTAINER_CONTEXT` message handler | **CRITICAL** |
-| **Silent initialization failures** | `src/features/quick-tabs/index.js` | Add validation, throw errors on critical failures | **HIGH** |
-| **No user feedback on failure** | `src/content.js` | Show notifications when features unavailable | **MEDIUM** |
-| **No recovery mechanism** | `src/content.js` | Implement lazy initialization fallback | **MEDIUM** |
+| **Missing background handler**                    | `background.js`                                                          | Add `GET_CONTAINER_CONTEXT` message handler        | **CRITICAL** |
+| **Silent initialization failures**                | `src/features/quick-tabs/index.js`                                       | Add validation, throw errors on critical failures  | **HIGH**     |
+| **No user feedback on failure**                   | `src/content.js`                                                         | Show notifications when features unavailable       | **MEDIUM**   |
+| **No recovery mechanism**                         | `src/content.js`                                                         | Implement lazy initialization fallback             | **MEDIUM**   |
 
 ---
 
@@ -421,24 +421,29 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 ### Mozilla Developer Network (MDN)
 
 **Content script API restrictions:**
+
 > "Content scripts get only a subset of the WebExtension APIs. [...] Note that the following APIs are **NOT** available to content scripts: `tabs`, `windows`, `browserAction`, `commands`"  
 > Source: [MDN: Content scripts - WebExtension APIs](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#webextension_apis)
 
 **Proper communication pattern:**
+
 > "Content scripts can communicate with background scripts using `runtime.sendMessage()` and `runtime.onMessage`. This is the correct way for content scripts to request information that requires privileged APIs."  
 > Source: [MDN: Content scripts - Communication](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#communication_with_other_scripts)
 
 **Tab API availability:**
+
 > "The `tabs` API is not available in content scripts. To get information about tabs from a content script, you must send a message to the background script using `runtime.sendMessage()`."  
 > Source: [MDN: Working with Tabs API](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Working_with_the_Tabs_API)
 
 **Message sender object:**
+
 > "When a content script sends a message to the background script, the `sender` parameter in the message handler includes a `tab` property containing the `Tab` object of the tab that sent the message. Background scripts can use `sender.tab.id` to identify which tab sent the message."  
 > Source: [MDN: runtime.onMessage](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/onMessage)
 
 ### Mozilla Discourse Community
 
 **browser.tabs undefined error:**
+
 > "When calling `browser.tabs.getCurrent()` from inside a content script [...] I get 'TypeError: browser.tabs is undefined'. Content scripts only get a subset of the extension APIs. You'll likely want to send the data the content script needs via `runtime.sendMessage` to the background page."  
 > Source: [Mozilla Discourse: TypeError browser.tabs undefined](https://discourse.mozilla.org/t/typeerror-browser-tabs-is-undefined/88885)
 
