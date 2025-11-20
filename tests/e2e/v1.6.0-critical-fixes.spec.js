@@ -166,9 +166,7 @@ test.describe('v1.6.0 Critical Fixes - Keyboard Shortcut (Ctrl+Alt+Z)', () => {
     await page.waitForTimeout(1000);
 
     // Should not have "Could not establish connection" errors
-    const connectionErrors = errors.filter(err =>
-      err.includes('Could not establish connection')
-    );
+    const connectionErrors = errors.filter(err => err.includes('Could not establish connection'));
 
     expect(connectionErrors).toHaveLength(0);
   });
