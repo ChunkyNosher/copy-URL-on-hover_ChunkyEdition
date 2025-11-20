@@ -139,13 +139,26 @@ export class StorageManager {
    * @param {Object} newValue - New storage value
    */
   handleStorageChange(newValue) {
-    if (!newValue) {
+    if (!newValue || this._shouldSkipStorageChange(newValue)) {
       return;
     }
 
+    const stateToSync = this._extractSyncState(newValue);
+    if (stateToSync) {
+      this.scheduleStorageSync(stateToSync);
+    }
+  }
+
+  /**
+   * Determine if storage change should be skipped
+   * @private
+   * @param {Object} newValue - New storage value
+   * @returns {boolean} True if should skip
+   */
+  _shouldSkipStorageChange(newValue) {
     // Ignore changes from our own saves (race condition prevention)
     if (this.shouldIgnoreStorageChange(newValue?.saveId)) {
-      return;
+      return true;
     }
 
     // Ignore changes while saves are pending
@@ -154,27 +167,47 @@ export class StorageManager {
         '[StorageManager] Ignoring change while pending saves in-flight:',
         Array.from(this.pendingSaveIds)
       );
-      return;
+      return true;
     }
 
-    // Extract container-specific state
+    return false;
+  }
+
+  /**
+   * Extract state to sync from storage change
+   * @private
+   * @param {Object} newValue - New storage value
+   * @returns {Object|null} State to sync, or null if none
+   */
+  _extractSyncState(newValue) {
+    // Modern container-aware format
     if (newValue.containers && this.cookieStoreId) {
-      const containerState = newValue.containers[this.cookieStoreId];
-      if (containerState) {
-        console.log(`[StorageManager] Scheduling sync for container ${this.cookieStoreId}`);
-        // Create container-filtered snapshot
-        const filteredState = {
-          containers: {
-            [this.cookieStoreId]: containerState
-          }
-        };
-        this.scheduleStorageSync(filteredState);
-      }
-    } else {
-      // Legacy format - process as-is
-      console.log('[StorageManager] Scheduling sync (legacy format)');
-      this.scheduleStorageSync(newValue);
+      return this._extractContainerState(newValue);
     }
+
+    // Legacy format - process as-is
+    console.log('[StorageManager] Scheduling sync (legacy format)');
+    return newValue;
+  }
+
+  /**
+   * Extract container-specific state
+   * @private
+   * @param {Object} newValue - Storage value with containers
+   * @returns {Object|null} Filtered state or null
+   */
+  _extractContainerState(newValue) {
+    const containerState = newValue.containers[this.cookieStoreId];
+    if (!containerState) {
+      return null;
+    }
+
+    console.log(`[StorageManager] Scheduling sync for container ${this.cookieStoreId}`);
+    return {
+      containers: {
+        [this.cookieStoreId]: containerState
+      }
+    };
   }
 
   /**
@@ -264,26 +297,44 @@ export class StorageManager {
    * @param {string} quickTabId - Quick Tab ID to delete
    */
   async delete(quickTabId) {
-    try {
-      await this.syncAdapter.delete(this.cookieStoreId, quickTabId);
-      this.eventBus?.emit('storage:deleted', { cookieStoreId: this.cookieStoreId, quickTabId });
-    } catch (error) {
-      console.error('[StorageManager] Delete error:', error);
-      this.eventBus?.emit('storage:error', { operation: 'delete', error });
-      throw error;
-    }
+    await this._executeStorageOperation(
+      'delete',
+      () => this.syncAdapter.delete(this.cookieStoreId, quickTabId),
+      { cookieStoreId: this.cookieStoreId, quickTabId }
+    );
   }
 
   /**
    * Clear all Quick Tabs for current container
    */
   async clear() {
+    await this._executeStorageOperation(
+      'clear',
+      () => this.syncAdapter.deleteContainer(this.cookieStoreId),
+      { cookieStoreId: this.cookieStoreId }
+    );
+  }
+
+  /**
+   * Execute storage operation with consistent error handling
+   * @private
+   * @param {string} operation - Operation name ('delete' or 'clear')
+   * @param {Function} action - Async function to execute
+   * @param {Object} eventData - Data to emit with success event
+   * @returns {Promise<void>}
+   */
+  async _executeStorageOperation(operation, action, eventData) {
     try {
-      await this.syncAdapter.deleteContainer(this.cookieStoreId);
-      this.eventBus?.emit('storage:cleared', { cookieStoreId: this.cookieStoreId });
+      await action();
+      // Emit success event based on operation type
+      const successEvent = operation === 'delete' ? 'storage:deleted' : 'storage:cleared';
+      this.eventBus?.emit(successEvent, eventData);
     } catch (error) {
-      console.error('[StorageManager] Clear error:', error);
-      this.eventBus?.emit('storage:error', { operation: 'clear', error });
+      console.error(
+        `[StorageManager] ${operation.charAt(0).toUpperCase() + operation.slice(1)} error:`,
+        error
+      );
+      this.eventBus?.emit('storage:error', { operation, error });
       throw error;
     }
   }

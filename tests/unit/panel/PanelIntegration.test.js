@@ -198,7 +198,7 @@ describe('PanelManager Integration', () => {
         expect(panelManager.uiBuilder.injectStyles).toHaveBeenCalled();
       });
 
-      test('should create panel with saved state', async () => {
+      test('should create panel with default state then apply saved state', async () => {
         const savedState = {
           left: 200,
           top: 150,
@@ -218,9 +218,23 @@ describe('PanelManager Integration', () => {
 
         await panelManager.init();
 
-        expect(panelManager.uiBuilder.createPanel).toHaveBeenCalledWith(savedState);
+        // v1.6.0.3 fix: Panel created with default state first to prevent race condition
+        const defaultState = {
+          left: 100,
+          top: 100,
+          width: 350,
+          height: 500,
+          isOpen: false
+        };
+        expect(panelManager.uiBuilder.createPanel).toHaveBeenCalledWith(defaultState);
         expect(document.body.appendChild).toHaveBeenCalledWith(mockPanel);
         expect(panelManager.panel).toBe(mockPanel);
+
+        // Saved state should be applied to panel styles after creation
+        expect(mockPanel.style.left).toBe('200px');
+        expect(mockPanel.style.top).toBe('150px');
+        expect(mockPanel.style.width).toBe('500px');
+        expect(mockPanel.style.height).toBe('700px');
       });
 
       test('should initialize controllers', async () => {

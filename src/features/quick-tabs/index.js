@@ -160,19 +160,19 @@ class QuickTabsManager {
       this.releasePendingSave.bind(this)
     );
 
-    this.visibilityHandler = new VisibilityHandler(
-      this.tabs,
-      this.broadcast,
-      this.storage,
-      this.minimizedManager,
-      this.internalEventBus,
-      this.currentZIndex,
-      this.generateSaveId.bind(this),
-      this.trackPendingSave.bind(this),
-      this.releasePendingSave.bind(this),
-      this.currentTabId,
-      this.Events
-    );
+    this.visibilityHandler = new VisibilityHandler({
+      quickTabsMap: this.tabs,
+      broadcastManager: this.broadcast,
+      storageManager: this.storage,
+      minimizedManager: this.minimizedManager,
+      eventBus: this.internalEventBus,
+      currentZIndex: this.currentZIndex,
+      generateSaveId: this.generateSaveId.bind(this),
+      trackPendingSave: this.trackPendingSave.bind(this),
+      releasePendingSave: this.releasePendingSave.bind(this),
+      currentTabId: this.currentTabId,
+      Events: this.Events
+    });
 
     this.destroyHandler = new DestroyHandler(
       this.tabs,
