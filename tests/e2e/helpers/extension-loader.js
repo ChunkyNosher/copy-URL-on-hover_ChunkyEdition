@@ -1,6 +1,6 @@
+import { firefox } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { firefox } from '@playwright/test';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,7 +96,7 @@ export async function clearExtensionStorage(page) {
  * @returns {Promise<Object>} Storage data
  */
 export async function getExtensionStorage(page, key = null) {
-  return await page.evaluate(async storageKey => {
+  return page.evaluate(async storageKey => {
     if (typeof browser !== 'undefined') {
       const syncData = await browser.storage.sync.get(storageKey);
       const localData = await browser.storage.local.get(storageKey);
@@ -139,7 +139,7 @@ export async function triggerShortcut(page, shortcut) {
  * @returns {Promise<ElementHandle>} The Quick Tab element
  */
 export async function waitForQuickTab(page, timeout = 5000) {
-  return await page.waitForSelector('[data-quick-tab-id]', {
+  return page.waitForSelector('[data-quick-tab-id]', {
     state: 'visible',
     timeout
   });
@@ -152,7 +152,7 @@ export async function waitForQuickTab(page, timeout = 5000) {
  * @returns {Promise<ElementHandle[]>} Array of Quick Tab elements
  */
 export async function getQuickTabs(page) {
-  return await page.$$('[data-quick-tab-id]');
+  return page.$$('[data-quick-tab-id]');
 }
 
 /**
