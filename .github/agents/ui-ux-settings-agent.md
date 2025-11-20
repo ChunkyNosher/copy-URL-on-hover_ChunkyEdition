@@ -45,7 +45,7 @@ You are an expert in the user interface, user experience, and settings menu syst
 - Handle settings backup/restore
 - Implement settings sync across devices
 
-## Current Settings Menu Architecture (v1.5.9.11)
+## Current Settings Menu Architecture (v1.6.0.x)
 
 ### Popup HTML Structure (popup.html)
 

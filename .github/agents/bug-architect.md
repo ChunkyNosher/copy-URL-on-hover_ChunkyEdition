@@ -49,11 +49,11 @@ frameworks.
 
 > **Note:** Full architecture details in `.github/copilot-instructions.md`. Key points for bug-architect:
 
-**Current Version:** v1.5.9.13 - Hybrid Modular/EventBus with Solo/Mute visibility control
+**Current Version:** v1.6.0.3 - Domain-Driven Design with Clean Architecture (Phase 1 Complete)
 
 **Recent Critical Fixes to Understand:**
-- **v1.5.9.13**: Solo/Mute tab-specific visibility with container isolation
-- **v1.5.9.11**: Direct local creation pattern fixing rendering deadlock
+- **v1.6.0.3**: Solo/Mute tab-specific visibility with container isolation
+- **v1.6.0.x**: Direct local creation pattern fixing rendering deadlock
 
 **Critical APIs - Debug These First:**
 

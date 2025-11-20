@@ -40,7 +40,7 @@ You are an expert in debugging and implementing features for the **Quick Tabs Ma
 - Handle manager actions (click, edit, delete) triggering Quick Tab operations
 - Ensure bidirectional sync (manager ↔ Quick Tabs)
 
-## Current Manager Architecture (v1.5.9)
+## Current Manager Architecture (v1.6.0)
 
 ### Quick Tabs Panel (src/features/quick-tabs/panel.js)
 

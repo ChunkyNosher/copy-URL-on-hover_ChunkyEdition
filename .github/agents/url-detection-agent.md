@@ -40,7 +40,7 @@ You are an expert in the URL detection system of the copy-URL-on-hover extension
 - Handle rapid mouse movements
 - Ensure URL detection works in all contexts (popups, modals, overlays)
 
-## Current URL Detection Architecture (v1.5.9.11)
+## Current URL Detection Architecture (v1.6.0.x)
 
 ### URL Handler Registry Structure
 

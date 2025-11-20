@@ -48,7 +48,7 @@ You are a feature implementation specialist for the copy-URL-on-hover_ChunkyEdit
 
 > **Note:** Full architecture details in `.github/copilot-instructions.md`. Key points for feature-builder:
 
-**Current Version:** v1.5.9.13 - Hybrid Modular/EventBus with Solo/Mute visibility control
+**Current Version:** v1.6.0.3 - Domain-Driven Design with Clean Architecture (Phase 1 Complete)
 
 **Key Systems to Understand:**
 - CONFIG object: Central configuration with user settings
