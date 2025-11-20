@@ -28,6 +28,67 @@
   };
 
   /**
+   * Serialize Error objects with all non-enumerable properties
+   * @param {Error} error - Error object to serialize
+   * @returns {string} Serialized error with stack trace
+   */
+  function serializeError(error) {
+    const errorDetails = {
+      type: error.constructor.name,
+      message: error.message,
+      stack: error.stack || '<no stack trace available>',
+      ...(error.fileName && { fileName: error.fileName }),
+      ...(error.lineNumber && { lineNumber: error.lineNumber }),
+      ...(error.columnNumber && { columnNumber: error.columnNumber }),
+      ...(error.cause && { cause: serializeArgument(error.cause) })
+    };
+    
+    // Include any custom enumerable properties
+    Object.keys(error).forEach(key => {
+      if (!errorDetails[key]) {
+        errorDetails[key] = error[key];
+      }
+    });
+    
+    try {
+      return JSON.stringify(errorDetails, null, 2);
+    } catch (err) {
+      return `[Error: ${error.message}]\nStack: ${error.stack || 'unavailable'}`;
+    }
+  }
+
+  /**
+   * Serialize any argument type with special handling for Errors
+   * Preserves stack traces, line numbers, and error causality chains
+   * 
+   * @param {*} arg - Argument to serialize
+   * @returns {string} Serialized string representation
+   */
+  function serializeArgument(arg) {
+    // Handle null/undefined
+    if (arg === null || arg === undefined) {
+      return String(arg);
+    }
+    
+    // Handle Error objects specially
+    if (arg instanceof Error) {
+      return serializeError(arg);
+    }
+    
+    // Handle regular objects
+    if (typeof arg === 'object') {
+      try {
+        return JSON.stringify(arg, null, 2);
+      } catch (err) {
+        return String(arg);
+      }
+    }
+    
+    // Handle primitives
+    return String(arg);
+  }
+
+  /**
    * Add log entry to buffer with automatic size management
    */
   function addToLogBuffer(type, args) {
@@ -36,18 +97,9 @@
       CONSOLE_LOG_BUFFER.shift(); // Remove oldest entry
     }
 
-    // Format arguments into string
+    // Format arguments into string using enhanced serializer
     const message = Array.from(args)
-      .map(arg => {
-        if (typeof arg === 'object' && arg !== null) {
-          try {
-            return JSON.stringify(arg, null, 2);
-          } catch (err) {
-            return String(arg);
-          }
-        }
-        return String(arg);
-      })
+      .map(arg => serializeArgument(arg))
       .join(' ');
 
     // Add to buffer
@@ -120,6 +172,39 @@
     addToLogBuffer('DEBUG', args);
     originalConsole.debug.apply(console, args);
   };
+
+  // ==================== GLOBAL ERROR CAPTURE ====================
+  // Capture errors that don't go through console.*
+
+  // Only add listeners if in browser context (not in background/service worker)
+  if (typeof window !== 'undefined') {
+    /**
+     * Capture uncaught exceptions
+     * These errors occur when code throws but isn't caught by try-catch
+     */
+    window.addEventListener('error', (event) => {
+      const errorInfo = {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error
+      };
+      
+      addToLogBuffer('ERROR', ['[Uncaught Exception]', errorInfo]);
+    }, true);  // Use capture phase to get errors first
+
+    /**
+     * Capture unhandled promise rejections
+     * These occur when promises reject without .catch() handlers
+     */
+    window.addEventListener('unhandledrejection', (event) => {
+      addToLogBuffer('ERROR', ['[Unhandled Promise Rejection]', event.reason]);
+    }, true);
+    
+    originalConsole.log('[Console Interceptor] Global error handlers installed');
+  }
+  // ==================== END GLOBAL ERROR CAPTURE ====================
 
   // ==================== EXPORT API ====================
 
