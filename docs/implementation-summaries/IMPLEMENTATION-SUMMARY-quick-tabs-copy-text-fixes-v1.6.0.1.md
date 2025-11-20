@@ -20,13 +20,15 @@ Fixed critical bug where Quick Tabs failed to initialize due to improper use of 
 
 **Root Cause:** Content scripts attempted to directly call `browser.tabs.query()` and `browser.tabs.update()`, which are not available in content script context per Firefox WebExtension security model.
 
-**Impact:** 
+**Impact:**
+
 - Quick Tabs never initialized (manager remained in uninitialized state)
 - Panel didn't open when pressing Ctrl+Alt+Z
 - Quick Tabs couldn't be created (fell back to broken legacy path)
 - All Quick Tabs functionality was broken
 
 **Files Affected:**
+
 - `src/features/quick-tabs/index.js` - `detectContainerContext()`, `getCurrentContainer()`
 - `src/features/quick-tabs/panel.js` - `detectContainerContext()`
 - `src/features/quick-tabs/panel/PanelStateManager.js` - `detectContainerContext()`
@@ -39,15 +41,18 @@ Fixed critical bug where Quick Tabs failed to initialize due to improper use of 
 **Root Cause:** `getLinkText()` could return empty strings, and `copyToClipboard()` didn't validate input, causing clipboard API to fail silently.
 
 **Impact:**
+
 - Pressing Copy Text key showed "Failed to Copy Text" notification
 - No helpful error message about what went wrong
 
 **Files Affected:**
+
 - `src/content.js` - `handleCopyText()`
 - `src/features/url-handlers/generic.js` - `getLinkText()`
 - `src/core/browser-api.js` - `copyToClipboard()`
 
-**Solution:** 
+**Solution:**
+
 - Added validation for empty text with specific "No text found" error
 - Improved `getLinkText()` to handle edge cases
 - Enhanced error logging in `copyToClipboard()`
@@ -60,6 +65,7 @@ Fixed critical bug where Quick Tabs failed to initialize due to improper use of 
 ### Message Passing Architecture
 
 **New Pattern:**
+
 ```
 Content Script → browser.runtime.sendMessage() → Background Script
                                                     ↓
@@ -77,13 +83,15 @@ Background Script → returns result → Content Script
 **Purpose:** Provides container context (cookieStoreId, tabId) to content scripts
 
 **Request:**
+
 ```javascript
 {
-  action: 'GET_CONTAINER_CONTEXT'
+  action: 'GET_CONTAINER_CONTEXT';
 }
 ```
 
 **Response:**
+
 ```javascript
 {
   success: true,
@@ -93,6 +101,7 @@ Background Script → returns result → Content Script
 ```
 
 **Used By:**
+
 - `QuickTabsManager.detectContainerContext()`
 - `QuickTabsManager.getCurrentContainer()`
 - `PanelManager.detectContainerContext()`
@@ -105,6 +114,7 @@ Background Script → returns result → Content Script
 **Purpose:** Switches to a specific browser tab (activates it)
 
 **Request:**
+
 ```javascript
 {
   action: 'SWITCH_TO_TAB',
@@ -113,13 +123,15 @@ Background Script → returns result → Content Script
 ```
 
 **Response:**
+
 ```javascript
 {
-  success: true
+  success: true;
 }
 ```
 
 **Used By:**
+
 - `PanelContentManager.handleGoToTab()`
 
 ---
@@ -129,16 +141,19 @@ Background Script → returns result → Content Script
 ### Background Script Changes
 
 **File:** `background.js`
+
 - Added 2 new message route registrations
 - Updated handler count from 21 to 23
 
 **File:** `src/background/handlers/QuickTabHandler.js`
+
 - Added `handleGetContainerContext()` method
 - Added `handleSwitchToTab()` method
 
 ### Content Script Changes
 
 **File:** `src/features/quick-tabs/index.js`
+
 ```javascript
 // BEFORE (BROKEN)
 async detectContainerContext() {
@@ -156,12 +171,15 @@ async detectContainerContext() {
 ```
 
 **File:** `src/features/quick-tabs/panel.js`
+
 - Same pattern as above
 
 **File:** `src/features/quick-tabs/panel/PanelStateManager.js`
+
 - Same pattern as above
 
 **File:** `src/features/quick-tabs/panel/PanelContentManager.js`
+
 ```javascript
 // BEFORE (BROKEN)
 async handleGoToTab(tabId) {
@@ -180,6 +198,7 @@ async handleGoToTab(tabId) {
 ```
 
 **File:** `src/content.js`
+
 ```javascript
 // BEFORE
 async function handleCopyText(element) {
@@ -191,20 +210,21 @@ async function handleCopyText(element) {
 // AFTER
 async function handleCopyText(element) {
   const text = getLinkText(element);
-  
+
   // Validate text is not empty
   if (!text || text.trim().length === 0) {
     console.warn('[Copy Text] No text found to copy');
     showNotification('✗ No text found', 'error');
     return;
   }
-  
+
   const success = await copyToClipboard(text);
   // ...
 }
 ```
 
 **File:** `src/features/url-handlers/generic.js`
+
 ```javascript
 // BEFORE
 export function getLinkText(element) {
@@ -219,7 +239,7 @@ export function getLinkText(element) {
   if (!element) {
     return '';
   }
-  
+
   if (element.tagName === 'A') {
     const text = element.textContent.trim();
     if (text) return text; // Only return if non-empty
@@ -229,6 +249,7 @@ export function getLinkText(element) {
 ```
 
 **File:** `src/core/browser-api.js`
+
 ```javascript
 // BEFORE - Max depth violation
 export async function copyToClipboard(text) {
@@ -255,7 +276,7 @@ export async function copyToClipboard(text) {
     console.error('[Browser API] Invalid text for clipboard:', text);
     return false;
   }
-  
+
   try {
     await navigator.clipboard.writeText(text);
     return true;
@@ -308,6 +329,7 @@ Time:        ~4s
 ### 1. Extension Loads Without Errors
 
 **Check browser console on any page:**
+
 ```
 ✅ [QuickTabsManager] Detected container: firefox-default
 ✅ [QuickTabsManager] Facade initialized successfully
@@ -315,6 +337,7 @@ Time:        ~4s
 ```
 
 **Should NOT see:**
+
 ```
 ❌ [QuickTabsManager] Failed to detect container
 ❌ [PanelManager] Browser tabs API not available
@@ -328,10 +351,12 @@ Time:        ~4s
 3. Press `Ctrl+Alt+Z`
 
 **Expected:**
+
 - ✅ Panel appears on page
 - ✅ Console shows: `[PanelManager] Panel opened`
 
 **Should NOT see:**
+
 - ❌ No panel appears
 - ❌ Console shows: `Quick Tabs manager not initialized`
 
@@ -341,11 +366,13 @@ Time:        ~4s
 2. Press `Y` (or configured Quick Tab shortcut)
 
 **Expected:**
+
 - ✅ Quick Tab window appears
 - ✅ Notification: "✓ Quick Tab created!"
 - ✅ Console shows: `Quick Tab created successfully`
 
 **Should NOT see:**
+
 - ❌ Notification shows but no UI appears
 - ❌ Console shows: `Manager not available, using legacy creation path`
 
@@ -355,10 +382,12 @@ Time:        ~4s
 2. Press `X` (or configured Copy Text shortcut)
 
 **Expected:**
+
 - ✅ Notification: "✓ Text copied!" (if text found)
 - ✅ Notification: "✗ No text found" (if no text)
 
 **Should NOT see:**
+
 - ❌ Notification: "✗ Failed to copy text" (without reason)
 
 ---
@@ -366,18 +395,21 @@ Time:        ~4s
 ## Build Status
 
 ### Linting
+
 ```bash
 npm run lint
 # Result: ✅ 0 errors, 2 warnings (pre-existing)
 ```
 
 ### Tests
+
 ```bash
 npm run test:unit
 # Result: ✅ 1725 passed, 2 skipped, 0 failed
 ```
 
 ### Build
+
 ```bash
 npm run build:prod
 # Result: ✅ Successful
@@ -394,12 +426,14 @@ npm run build:prod
 Per [MDN Documentation](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#webextension_apis):
 
 **Available in Content Scripts:**
+
 - ✅ `runtime.sendMessage()`
 - ✅ `runtime.onMessage`
 - ✅ `storage`
 - ✅ `i18n`
 
 **NOT Available in Content Scripts:**
+
 - ❌ `tabs` (this was the bug!)
 - ❌ `windows`
 - ❌ `browserAction`
@@ -417,6 +451,7 @@ Per [MDN Documentation](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons
 When moving code between contexts (background → content script), verify each API is available in the target context.
 
 **Pattern to use:**
+
 ```javascript
 // In content script - use message passing
 const response = await browser.runtime.sendMessage({ action: 'DO_PRIVILEGED_THING' });
@@ -433,6 +468,7 @@ messageRouter.register('DO_PRIVILEGED_THING', async (msg, sender) => {
 Always validate input at the earliest possible point to provide clear error messages.
 
 **Pattern to use:**
+
 ```javascript
 async function handleAction(input) {
   // Validate first
@@ -441,7 +477,7 @@ async function handleAction(input) {
     showNotification('✗ Specific error message', 'error');
     return;
   }
-  
+
   // Then process
   await processInput(input);
 }
@@ -452,11 +488,12 @@ async function handleAction(input) {
 When refactoring across different execution contexts, ensure tests properly mock the cross-context communication.
 
 **Pattern to use:**
+
 ```javascript
 // Mock message passing in tests
 global.browser = {
   runtime: {
-    sendMessage: jest.fn().mockImplementation((msg) => {
+    sendMessage: jest.fn().mockImplementation(msg => {
       if (msg.action === 'GET_SOMETHING') {
         return Promise.resolve({ success: true, data: 'test' });
       }
@@ -471,10 +508,12 @@ global.browser = {
 ## Files Changed Summary
 
 ### Background Script (2 files)
+
 - `background.js`
 - `src/background/handlers/QuickTabHandler.js`
 
 ### Content Scripts (5 files)
+
 - `src/features/quick-tabs/index.js`
 - `src/features/quick-tabs/panel.js`
 - `src/features/quick-tabs/panel/PanelStateManager.js`
@@ -484,6 +523,7 @@ global.browser = {
 - `src/core/browser-api.js`
 
 ### Tests (5 files)
+
 - `tests/unit/quick-tabs/QuickTabsManagerIntegration.test.js`
 - `tests/unit/panel/PanelIntegration.test.js`
 - `tests/unit/panel/PanelStateManager.test.js`
