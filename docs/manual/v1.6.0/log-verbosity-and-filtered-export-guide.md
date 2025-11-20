@@ -24,10 +24,12 @@ User Action → Logger (Captures Everything) → Verbosity Filter → Console In
 ```
 
 **Layer 1: Verbosity Filter** (affects what gets logged to console)
+
 - **Non-Verbose Mode** (Default/Current): Only essential operations logged
 - **Verbose Mode** (After implementing enhanced-logging-implementation-guide.md): All detailed diagnostic logs
 
 **Layer 2: Export Filter** (affects what appears in exported file)
+
 - Category-based filtering (URL Detection, Quick Tabs, Clipboard, Keyboard, etc.)
 - Always captures everything to buffer
 - Filters ONLY during export operation
@@ -35,6 +37,7 @@ User Action → Logger (Captures Everything) → Verbosity Filter → Console In
 ### Design Rationale
 
 **Why separate verbosity and export filters?**
+
 1. **Performance**: Non-verbose mode reduces console output overhead in production
 2. **Debugging flexibility**: Users can enable verbose when troubleshooting specific issues
 3. **Export completeness**: Buffer always has full diagnostic data available
@@ -49,11 +52,13 @@ User Action → Logger (Captures Everything) → Verbosity Filter → Console In
 **Where:** `src/core/config.js` - Add to `DEFAULT_CONFIG`
 
 **Add new configuration option:**
+
 ```
 logVerbosity: 'normal'  // Options: 'normal' or 'verbose'
 ```
 
 **Configuration schema:**
+
 - `'normal'`: Non-verbose mode (current logging level)
   - Essential operations only
   - Quick Tab CRUD
@@ -107,6 +112,7 @@ logVerbosity: 'normal'  // Options: 'normal' or 'verbose'
    - Helps identify slow operations
 
 **Function signature structure:**
+
 ```javascript
 /**
  * category: String - Log category (see Part 3 for categories)
@@ -114,10 +120,11 @@ logVerbosity: 'normal'  // Options: 'normal' or 'verbose'
  * message: String - Human-readable description
  * context: Object - Additional context data
  */
-logNormal(category, action, message, context = {})
+logNormal(category, action, message, (context = {}));
 ```
 
 **Implementation approach:**
+
 - Check current verbosity setting from ConfigManager
 - Format log message using standard format: `[Category] [Action] Message`
 - Add timestamp to context object
@@ -127,6 +134,7 @@ logNormal(category, action, message, context = {})
 ### 2.3 Verbosity Check Logic
 
 **Core verbosity check function:**
+
 ```javascript
 function shouldLogVerbose() {
   // Get current config
@@ -136,13 +144,14 @@ function shouldLogVerbose() {
 ```
 
 **Usage in logging functions:**
+
 ```javascript
 function logVerbose(category, action, message, context = {}) {
   // Only log if verbose mode enabled
   if (!shouldLogVerbose()) {
     return;
   }
-  
+
   // Format and log
   const formattedMessage = `[${category}] [${action}] ${message}`;
   console.log(formattedMessage, {
@@ -155,16 +164,19 @@ function logVerbose(category, action, message, context = {}) {
 ### 2.4 Migration Strategy for Existing Logs
 
 **Phase 1: Identify existing log statements**
+
 - All current `console.log()` calls remain as "normal" logs
 - They continue working exactly as before
 
 **Phase 2: Replace with wrapper functions**
+
 - Replace `console.log()` with `logNormal()` for essential logs
 - Add new `logVerbose()` calls for enhanced logging (from guide)
 - Replace `console.error()` with `logError()`
 - Replace `console.warn()` with `logWarn()`
 
 **Example migration:**
+
 ```javascript
 // BEFORE (current code)
 console.log('[Quick Tab] Created:', url);
@@ -178,6 +190,7 @@ logNormal('Quick Tabs', 'Created', 'Quick Tab created successfully', {
 ```
 
 **Example new verbose log:**
+
 ```javascript
 // NEW verbose log (not in current code)
 logVerbose('URL Detection', 'Start', 'Starting URL detection for element', {
@@ -192,6 +205,7 @@ logVerbose('URL Detection', 'Start', 'Starting URL detection for element', {
 **Where:** Extension popup settings (Debug section)
 
 **Add UI control:**
+
 - Radio button or toggle switch
 - Label: "Log Verbosity"
 - Options:
@@ -201,11 +215,13 @@ logVerbose('URL Detection', 'Start', 'Starting URL detection for element', {
 - Description text: "Verbose mode logs detailed diagnostic information useful for troubleshooting. May impact performance."
 
 **Settings persistence:**
+
 - Store in `browser.storage.sync` as part of config
 - Sync across devices
 - Persists across browser restarts
 
 **Dynamic switching:**
+
 - User can toggle verbosity without reloading extension
 - New setting takes effect immediately for new logs
 - Existing logs in buffer remain unchanged
@@ -218,24 +234,24 @@ logVerbose('URL Detection', 'Start', 'Starting URL detection for element', {
 
 **Define standard log categories aligned with enhanced-logging-implementation-guide.md:**
 
-| Category ID | Display Name | Description | Examples |
-|-------------|--------------|-------------|----------|
-| `url-detection` | URL Detection | URL finding and handler operations | Handler matching, selector checks, URL extraction |
-| `hover` | Hover Events | Hover lifecycle and element tracking | Hover start/end, element context, duration |
-| `clipboard` | Clipboard Operations | Copy URL/text actions and API calls | Copy attempts, API selection, success/failure |
-| `keyboard` | Keyboard Shortcuts | Shortcut detection and execution | Key events, matching process, handler invocation |
-| `quick-tabs` | Quick Tab Actions | Quick Tab CRUD operations | Create, update, delete, minimize, restore |
-| `quick-tab-manager` | Quick Tab Manager | Panel operations and interactions | Toggle panel, list updates, user interactions |
-| `event-bus` | Event Bus | Event emissions and handler execution | Event emitted, listeners notified, propagation |
-| `config` | Configuration | Settings load/change operations | Config load, setting changes, validation |
-| `state` | State Management | State changes and access | State updates, batch changes, critical state |
-| `storage` | Browser Storage | Storage read/write operations | Storage get/set, sync events, quota |
-| `messaging` | Message Passing | Inter-script communication | Background ↔ Content messaging, message routing |
-| `webrequest` | Web Requests | WebRequest API operations | Header modifications, iframe loading, request lifecycle |
-| `tabs` | Tab Management | Browser tab operations | Tab created, activated, closed, updated |
-| `performance` | Performance | Timing and metrics | Operation duration, slow operations, benchmarks |
-| `errors` | Errors | Error handling and exceptions | Try-catch blocks, global errors, edge cases |
-| `initialization` | Initialization | Extension startup and feature init | Extension load, feature initialization, dependencies |
+| Category ID         | Display Name         | Description                           | Examples                                                |
+| ------------------- | -------------------- | ------------------------------------- | ------------------------------------------------------- |
+| `url-detection`     | URL Detection        | URL finding and handler operations    | Handler matching, selector checks, URL extraction       |
+| `hover`             | Hover Events         | Hover lifecycle and element tracking  | Hover start/end, element context, duration              |
+| `clipboard`         | Clipboard Operations | Copy URL/text actions and API calls   | Copy attempts, API selection, success/failure           |
+| `keyboard`          | Keyboard Shortcuts   | Shortcut detection and execution      | Key events, matching process, handler invocation        |
+| `quick-tabs`        | Quick Tab Actions    | Quick Tab CRUD operations             | Create, update, delete, minimize, restore               |
+| `quick-tab-manager` | Quick Tab Manager    | Panel operations and interactions     | Toggle panel, list updates, user interactions           |
+| `event-bus`         | Event Bus            | Event emissions and handler execution | Event emitted, listeners notified, propagation          |
+| `config`            | Configuration        | Settings load/change operations       | Config load, setting changes, validation                |
+| `state`             | State Management     | State changes and access              | State updates, batch changes, critical state            |
+| `storage`           | Browser Storage      | Storage read/write operations         | Storage get/set, sync events, quota                     |
+| `messaging`         | Message Passing      | Inter-script communication            | Background ↔ Content messaging, message routing        |
+| `webrequest`        | Web Requests         | WebRequest API operations             | Header modifications, iframe loading, request lifecycle |
+| `tabs`              | Tab Management       | Browser tab operations                | Tab created, activated, closed, updated                 |
+| `performance`       | Performance          | Timing and metrics                    | Operation duration, slow operations, benchmarks         |
+| `errors`            | Errors               | Error handling and exceptions         | Try-catch blocks, global errors, edge cases             |
+| `initialization`    | Initialization       | Extension startup and feature init    | Extension load, feature initialization, dependencies    |
 
 **Total: 16 categories**
 
@@ -244,96 +260,112 @@ logVerbose('URL Detection', 'Start', 'Starting URL detection for element', {
 **When adding new logs, assign appropriate category:**
 
 **URL Detection category:**
+
 - `URLHandlerRegistry.findURL()` operations
 - Platform-specific handler execution
 - Selector matching and element traversal
 - URL extraction and validation
 
 **Hover category:**
+
 - `mouseover` and `mouseout` events
 - Element identification
 - Hover duration tracking
 - Hover state changes
 
 **Clipboard category:**
+
 - `copyToClipboard()` function
 - `handleCopyURL()` and `handleCopyText()` functions
 - Clipboard API vs execCommand selection
 - Copy success/failure
 
 **Keyboard category:**
+
 - `keydown` event handling
 - Shortcut matching logic
 - Handler execution
 - Input field detection
 
 **Quick Tabs category:**
+
 - `createQuickTab()`, `updateQuickTab()`, `deleteQuickTab()`
 - Quick Tab positioning calculations
 - Quick Tab state changes (minimize, restore, pin, solo, mute)
 - Quick Tab data structure operations
 
 **Quick Tab Manager category:**
+
 - Panel toggle operations
 - Panel visibility changes
 - Quick Tab list rendering
 - User interactions within panel
 
 **Event Bus category:**
+
 - `EventBus.emit()` calls
 - Listener registration/unregistration
 - Event propagation
 - Listener execution and errors
 
 **Config category:**
+
 - `ConfigManager.load()` operations
 - Setting value changes
 - Configuration validation
 - Default vs loaded values
 
 **State category:**
+
 - `StateManager.set()` and `setState()`
 - State access (`get()`)
 - Critical state changes
 - State audit trail
 
 **Storage category:**
+
 - `browser.storage.sync.get()`/`set()`
 - `browser.storage.session` operations
 - Storage change events
 - Storage quota management
 
 **Messaging category:**
+
 - `browser.runtime.sendMessage()`
 - `browser.tabs.sendMessage()`
 - Message routing in background
 - Message handler execution
 
 **Web Request category:**
+
 - `browser.webRequest.onBeforeRequest`
 - `browser.webRequest.onHeadersReceived`
 - `browser.webRequest.onCompleted`
 - `browser.webRequest.onErrorOccurred`
 
 **Tabs category:**
+
 - `browser.tabs.onCreated`
 - `browser.tabs.onActivated`
 - `browser.tabs.onRemoved`
 - `browser.tabs.onUpdated`
 
 **Performance category:**
+
 - Operation timing (start/end)
 - Duration calculations
 - Slow operation detection
 - Performance benchmarks
 
 **Errors category:**
+
 - try-catch blocks
 - Global error handler
 - Unhandled promise rejections
 - Edge case handling
 
 **Initialization category:**
+
 - Extension startup sequence
 - Feature module initialization
 - Dependency loading
@@ -344,6 +376,7 @@ logVerbose('URL Detection', 'Start', 'Starting URL detection for element', {
 **Where:** `src/utils/logger.js`
 
 **Define category metadata for UI rendering:**
+
 ```javascript
 const LOG_CATEGORIES = {
   'url-detection': {
@@ -353,25 +386,26 @@ const LOG_CATEGORIES = {
     icon: '🔍',
     defaultEnabled: true
   },
-  'hover': {
+  hover: {
     id: 'hover',
     displayName: 'Hover Events',
     description: 'Hover lifecycle and element tracking',
     icon: '👆',
     defaultEnabled: true
   },
-  'clipboard': {
+  clipboard: {
     id: 'clipboard',
     displayName: 'Clipboard Operations',
     description: 'Copy URL/text actions',
     icon: '📋',
     defaultEnabled: true
-  },
+  }
   // ... continue for all 16 categories
 };
 ```
 
 **Category metadata fields:**
+
 - `id`: Unique identifier (used in code)
 - `displayName`: User-friendly name (shown in UI)
 - `description`: Brief explanation (tooltip/help text)
@@ -389,6 +423,7 @@ const LOG_CATEGORIES = {
 **Storage key:** `logExportFilters`
 
 **Data structure:**
+
 ```javascript
 {
   logExportFilters: {
@@ -413,6 +448,7 @@ const LOG_CATEGORIES = {
 ```
 
 **Defaults:**
+
 - User-facing actions: enabled (clipboard, keyboard, quick-tabs, tabs)
 - System operations: disabled (event-bus, state, messaging, performance)
 - Critical diagnostics: enabled (errors, initialization, webrequest)
@@ -500,34 +536,38 @@ const LOG_CATEGORIES = {
 **How to identify log category from captured log entry:**
 
 **Approach 1: Prefix parsing** (Recommended)
+
 - All logs use format: `[Category] [Action] Message`
 - Parse first bracketed text as category identifier
 - Map display name to category ID
 
 **Example:**
+
 ```javascript
-const logMessage = "[URL Detection] [Start] Detecting URL for element";
+const logMessage = '[URL Detection] [Start] Detecting URL for element';
 const categoryMatch = logMessage.match(/^\[([^\]]+)\]/);
 const categoryDisplayName = categoryMatch[1]; // "URL Detection"
 const categoryId = getCategoryIdFromDisplayName(categoryDisplayName); // "url-detection"
 ```
 
 **Approach 2: Metadata tagging** (Alternative)
+
 - Logging wrapper functions add category metadata to context object
 - Console interceptor preserves metadata
 - Export filter reads metadata directly
 
 **Example:**
+
 ```javascript
 // In logger.js
 function logNormal(category, action, message, context = {}) {
   const enrichedContext = {
     ...context,
-    _logCategory: category,  // Add metadata
+    _logCategory: category, // Add metadata
     _logAction: action,
     timestamp: Date.now()
   };
-  
+
   console.log(`[${getCategoryDisplayName(category)}] [${action}] ${message}`, enrichedContext);
 }
 ```
@@ -539,11 +579,13 @@ function logNormal(category, action, message, context = {}) {
 **Where:** Enhance existing log export handler in popup
 
 **Current flow:**
+
 ```
 User clicks Export → Get all logs from buffer → Download as .txt
 ```
 
 **New flow:**
+
 ```
 User clicks Export → Get all logs from buffer → Apply category filters → Download filtered .txt
 ```
@@ -555,7 +597,7 @@ function filterLogsByCategory(allLogs, enabledCategories) {
   return allLogs.filter(logEntry => {
     // Extract category from log message
     const category = extractCategoryFromLog(logEntry);
-    
+
     // Check if category is enabled in filter
     return enabledCategories[category] === true;
   });
@@ -564,17 +606,17 @@ function filterLogsByCategory(allLogs, enabledCategories) {
 function extractCategoryFromLog(logEntry) {
   // Parse log message for category
   const message = logEntry.message || '';
-  
+
   // Match pattern: [Category Display Name]
   const match = message.match(/^\[([^\]]+)\]/);
-  
+
   if (!match) {
     // No category found - include by default (backwards compatibility)
     return 'uncategorized';
   }
-  
+
   const displayName = match[1];
-  
+
   // Map display name to category ID
   return getCategoryIdFromDisplayName(displayName);
 }
@@ -582,42 +624,43 @@ function extractCategoryFromLog(logEntry) {
 function getCategoryIdFromDisplayName(displayName) {
   // Normalize: remove extra spaces, lowercase
   const normalized = displayName.trim().toLowerCase();
-  
+
   // Map display names to IDs
   const mapping = {
     'url detection': 'url-detection',
-    'hover': 'hover',
+    hover: 'hover',
     'hover events': 'hover',
-    'clipboard': 'clipboard',
+    clipboard: 'clipboard',
     'clipboard operations': 'clipboard',
-    'keyboard': 'keyboard',
+    keyboard: 'keyboard',
     'keyboard shortcuts': 'keyboard',
     'quick tabs': 'quick-tabs',
     'quick tab actions': 'quick-tabs',
     'quick tab manager': 'quick-tab-manager',
     'event bus': 'event-bus',
-    'config': 'config',
-    'configuration': 'config',
-    'state': 'state',
+    config: 'config',
+    configuration: 'config',
+    state: 'state',
     'state management': 'state',
-    'storage': 'storage',
+    storage: 'storage',
     'browser storage': 'storage',
-    'messaging': 'messaging',
+    messaging: 'messaging',
     'message passing': 'messaging',
-    'webrequest': 'webrequest',
+    webrequest: 'webrequest',
     'web requests': 'webrequest',
-    'tabs': 'tabs',
+    tabs: 'tabs',
     'tab management': 'tabs',
-    'performance': 'performance',
-    'errors': 'errors',
-    'initialization': 'initialization'
+    performance: 'performance',
+    errors: 'errors',
+    initialization: 'initialization'
   };
-  
+
   return mapping[normalized] || 'uncategorized';
 }
 ```
 
 **Handling uncategorized logs:**
+
 - Logs without recognizable category are marked as 'uncategorized'
 - Uncategorized logs are ALWAYS exported (fail-safe)
 - Prevents losing important logs due to parsing failures
@@ -666,6 +709,7 @@ BEGIN LOGS
 ```
 
 **Metadata benefits:**
+
 - User knows what filters were applied
 - Can identify if important categories were excluded
 - Helps troubleshoot incomplete exports
@@ -726,7 +770,7 @@ const LOG_CATEGORIES = {
     description: 'URL finding and handler operations',
     icon: '🔍',
     defaultEnabled: true
-  },
+  }
   // ... all 16 categories
 };
 
@@ -738,7 +782,9 @@ function getCategoryDisplayName(categoryId) {
 // Get category ID from display name
 function getCategoryIdFromDisplayName(displayName) {
   const normalized = displayName.trim().toLowerCase();
-  const mapping = { /* ... see 4.4 ... */ };
+  const mapping = {
+    /* ... see 4.4 ... */
+  };
   return mapping[normalized] || 'uncategorized';
 }
 
@@ -752,7 +798,7 @@ function shouldLogVerbose() {
 export function logNormal(category, action, message, context = {}) {
   const categoryName = getCategoryDisplayName(category);
   const formattedMessage = `[${categoryName}] [${action}] ${message}`;
-  
+
   console.log(formattedMessage, {
     ...context,
     _logCategory: category,
@@ -766,10 +812,10 @@ export function logVerbose(category, action, message, context = {}) {
   if (!shouldLogVerbose()) {
     return; // Skip in normal mode
   }
-  
+
   const categoryName = getCategoryDisplayName(category);
   const formattedMessage = `[${categoryName}] [${action}] ${message}`;
-  
+
   console.log(formattedMessage, {
     ...context,
     _logCategory: category,
@@ -782,7 +828,7 @@ export function logVerbose(category, action, message, context = {}) {
 export function logError(category, action, message, context = {}) {
   const categoryName = getCategoryDisplayName(category);
   const formattedMessage = `[${categoryName}] [${action}] ${message}`;
-  
+
   console.error(formattedMessage, {
     ...context,
     _logCategory: category,
@@ -795,7 +841,7 @@ export function logError(category, action, message, context = {}) {
 export function logWarn(category, action, message, context = {}) {
   const categoryName = getCategoryDisplayName(category);
   const formattedMessage = `[${categoryName}] [${action}] ${message}`;
-  
+
   console.warn(formattedMessage, {
     ...context,
     _logCategory: category,
@@ -809,10 +855,10 @@ export function logPerformance(category, action, message, context = {}) {
   if (!shouldLogVerbose()) {
     return;
   }
-  
+
   const categoryName = getCategoryDisplayName(category);
   const formattedMessage = `[${categoryName}] [${action}] ${message}`;
-  
+
   console.log(formattedMessage, {
     ...context,
     _logCategory: category,
@@ -837,11 +883,11 @@ import { LOG_CATEGORIES } from '../src/utils/logger.js';
 // Load filter preferences from storage
 async function loadFilterPreferences() {
   const result = await browser.storage.local.get('logExportFilters');
-  
+
   if (result.logExportFilters) {
     return result.logExportFilters;
   }
-  
+
   // Return defaults if not saved
   const defaults = {};
   for (const [id, meta] of Object.entries(LOG_CATEGORIES)) {
@@ -858,12 +904,19 @@ async function saveFilterPreferences(filters) {
 // Render filter checkboxes
 function renderFilterCheckboxes() {
   const container = document.getElementById('log-filter-container');
-  
+
   // Group categories
-  const userActions = ['url-detection', 'hover', 'clipboard', 'keyboard', 'quick-tabs', 'quick-tab-manager'];
+  const userActions = [
+    'url-detection',
+    'hover',
+    'clipboard',
+    'keyboard',
+    'quick-tabs',
+    'quick-tab-manager'
+  ];
   const systemOps = ['event-bus', 'config', 'state', 'storage', 'messaging', 'webrequest', 'tabs'];
   const diagnostics = ['performance', 'errors', 'initialization'];
-  
+
   // Render each group
   renderGroup(container, 'User Actions', userActions);
   renderGroup(container, 'System Operations', systemOps);
@@ -873,43 +926,43 @@ function renderFilterCheckboxes() {
 function renderGroup(container, groupName, categoryIds) {
   const groupDiv = document.createElement('div');
   groupDiv.className = 'filter-group';
-  
+
   const groupTitle = document.createElement('h4');
   groupTitle.textContent = groupName;
   groupDiv.appendChild(groupTitle);
-  
+
   categoryIds.forEach(id => {
     const meta = LOG_CATEGORIES[id];
     const checkbox = createCheckbox(id, meta);
     groupDiv.appendChild(checkbox);
   });
-  
+
   container.appendChild(groupDiv);
 }
 
 function createCheckbox(categoryId, metadata) {
   const label = document.createElement('label');
   label.className = 'filter-checkbox-label';
-  
+
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
   checkbox.id = `filter-${categoryId}`;
   checkbox.value = categoryId;
   checkbox.className = 'filter-checkbox';
-  
+
   const icon = document.createElement('span');
   icon.textContent = metadata.icon;
   icon.className = 'filter-icon';
-  
+
   const text = document.createElement('span');
   text.textContent = metadata.displayName;
   text.className = 'filter-text';
   text.title = metadata.description;
-  
+
   label.appendChild(checkbox);
   label.appendChild(icon);
   label.appendChild(text);
-  
+
   return label;
 }
 
@@ -938,7 +991,7 @@ function getCurrentFilterState() {
 // Apply saved filters to UI
 async function applyFiltersToUI() {
   const savedFilters = await loadFilterPreferences();
-  
+
   for (const [categoryId, enabled] of Object.entries(savedFilters)) {
     const checkbox = document.getElementById(`filter-${categoryId}`);
     if (checkbox) {
@@ -951,7 +1004,7 @@ async function applyFiltersToUI() {
 async function initFilterUI() {
   renderFilterCheckboxes();
   await applyFiltersToUI();
-  
+
   // Attach event listeners
   document.getElementById('select-all-filters').addEventListener('click', selectAllFilters);
   document.getElementById('deselect-all-filters').addEventListener('click', deselectAllFilters);
@@ -973,19 +1026,19 @@ async function initFilterUI() {
 async function exportFilteredLogs() {
   // Get all logs from buffer
   const allLogs = await getAllLogsFromExtension();
-  
+
   // Get current filter settings
   const filters = getCurrentFilterState();
-  
+
   // Apply filters
   const filteredLogs = filterLogsByCategory(allLogs, filters);
-  
+
   // Generate metadata
   const metadata = generateExportMetadata(allLogs.length, filteredLogs.length, filters);
-  
+
   // Format export content
   const exportContent = formatLogsForExport(metadata, filteredLogs);
-  
+
   // Download file
   downloadLogsFile(exportContent);
 }
@@ -993,12 +1046,12 @@ async function exportFilteredLogs() {
 function filterLogsByCategory(allLogs, enabledCategories) {
   return allLogs.filter(logEntry => {
     const category = extractCategoryFromLog(logEntry);
-    
+
     // Always include uncategorized logs
     if (category === 'uncategorized') {
       return true;
     }
-    
+
     // Check if category is enabled
     return enabledCategories[category] === true;
   });
@@ -1007,26 +1060,28 @@ function filterLogsByCategory(allLogs, enabledCategories) {
 function generateExportMetadata(totalCount, exportCount, filters) {
   const now = new Date();
   const timestamp = now.toISOString().replace('T', ' ').substring(0, 19);
-  
+
   // Get extension version
   const manifest = browser.runtime.getManifest();
   const version = manifest.version;
-  
+
   // Get verbosity mode
   const config = ConfigManager.getCurrentConfig();
   const verbosity = config.logVerbosity === 'verbose' ? 'Verbose' : 'Normal';
-  
+
   // Format filter list
-  const filterList = Object.entries(filters).map(([id, enabled]) => {
-    const meta = LOG_CATEGORIES[id];
-    const symbol = enabled ? '✓' : '✗';
-    return `${symbol} ${meta.displayName}`;
-  }).join('\n');
-  
+  const filterList = Object.entries(filters)
+    .map(([id, enabled]) => {
+      const meta = LOG_CATEGORIES[id];
+      const symbol = enabled ? '✓' : '✗';
+      return `${symbol} ${meta.displayName}`;
+    })
+    .join('\n');
+
   const percentage = ((exportCount / totalCount) * 100).toFixed(1);
   const filteredOut = totalCount - exportCount;
   const filteredPercentage = ((filteredOut / totalCount) * 100).toFixed(1);
-  
+
   return `===================================
 Copy-URL-on-Hover Extension Logs
 Exported: ${timestamp}
@@ -1049,11 +1104,13 @@ BEGIN LOGS
 }
 
 function formatLogsForExport(metadata, logs) {
-  const logLines = logs.map(entry => {
-    const timestamp = new Date(entry.timestamp).toISOString();
-    return `[${timestamp}] ${entry.message}`;
-  }).join('\n');
-  
+  const logLines = logs
+    .map(entry => {
+      const timestamp = new Date(entry.timestamp).toISOString();
+      return `[${timestamp}] ${entry.message}`;
+    })
+    .join('\n');
+
   return metadata + logLines;
 }
 ```
@@ -1065,10 +1122,12 @@ function formatLogsForExport(metadata, logs) {
 ### 6.1 First-Time User Experience
 
 **Default state:**
+
 - Log verbosity: Normal (non-verbose)
 - Export filters: Default categories enabled (see 4.1)
 
 **User sees:**
+
 - Minimal console output (essential operations only)
 - Export includes user-facing actions + critical diagnostics
 - Clean, performant logging experience
@@ -1076,6 +1135,7 @@ function formatLogsForExport(metadata, logs) {
 ### 6.2 Troubleshooting User Experience
 
 **User encounters issue:**
+
 1. Opens extension popup → Debug tab
 2. Enables "Verbose" logging
 3. Reproduces issue
@@ -1084,6 +1144,7 @@ function formatLogsForExport(metadata, logs) {
 6. Attaches to bug report
 
 **Developer receives:**
+
 - Complete diagnostic trail
 - All detailed logs captured
 - Full context for debugging
@@ -1091,6 +1152,7 @@ function formatLogsForExport(metadata, logs) {
 ### 6.3 Advanced User Experience
 
 **Power user wants specific category:**
+
 1. Opens Debug tab
 2. Deselects all filters
 3. Selects only "URL Detection" category
@@ -1098,6 +1160,7 @@ function formatLogsForExport(metadata, logs) {
 5. Gets focused diagnostic file for URL issues
 
 **Benefits:**
+
 - Smaller file size
 - Easier to analyze (signal vs noise)
 - Targeted troubleshooting
@@ -1105,12 +1168,14 @@ function formatLogsForExport(metadata, logs) {
 ### 6.4 Settings Persistence
 
 **Verbosity setting:**
+
 - Stored in `browser.storage.sync`
 - Syncs across devices
 - Persists across browser restarts
 - Applies to new browser sessions
 
 **Export filter preferences:**
+
 - Stored in `browser.storage.local`
 - Device-specific (not synced)
 - Persists across browser restarts
@@ -1123,18 +1188,21 @@ function formatLogsForExport(metadata, logs) {
 ### 7.1 Verbosity Mode Performance
 
 **Normal mode (non-verbose):**
+
 - Minimal logging overhead
 - Essential operations only
 - ~10-20 log statements per user action
 - Negligible performance impact
 
 **Verbose mode:**
+
 - Significant logging overhead
 - All diagnostic details
 - ~50-100 log statements per user action
 - May impact performance on slow devices
 
 **Mitigation strategies:**
+
 1. **Warn users about verbose mode overhead** in UI
 2. **Auto-disable verbose mode** after 15 minutes of inactivity
 3. **Throttle high-frequency logs** (mouse position, performance metrics)
@@ -1143,11 +1211,13 @@ function formatLogsForExport(metadata, logs) {
 ### 7.2 Export Filter Performance
 
 **No impact on runtime performance:**
+
 - Filtering happens ONLY during export
 - Buffer captures everything always
 - No runtime overhead from filter settings
 
 **Export operation performance:**
+
 - Filtering 1000 logs: ~10ms
 - Filtering 10000 logs: ~50ms
 - Negligible compared to file download time
@@ -1155,11 +1225,13 @@ function formatLogsForExport(metadata, logs) {
 ### 7.3 Memory Considerations
 
 **Buffer size:**
+
 - Console interceptor has fixed buffer size (2000 entries)
 - Oldest logs rotated out when buffer full
 - No memory leak regardless of verbosity
 
 **Verbose mode memory impact:**
+
 - More frequent buffer rotation (due to more logs)
 - Context objects may be larger
 - Still bounded by buffer size
@@ -1171,6 +1243,7 @@ function formatLogsForExport(metadata, logs) {
 ### 8.1 Functional Testing Checklist
 
 **Verbosity control:**
+
 - [ ] Normal mode logs only essential operations
 - [ ] Verbose mode logs all diagnostic details
 - [ ] Switching modes works without reload
@@ -1178,6 +1251,7 @@ function formatLogsForExport(metadata, logs) {
 - [ ] Setting syncs across devices
 
 **Export filtering:**
+
 - [ ] All categories render in UI
 - [ ] Checkboxes toggle correctly
 - [ ] Select All / Deselect All work
@@ -1188,6 +1262,7 @@ function formatLogsForExport(metadata, logs) {
 - [ ] Uncategorized logs always exported
 
 **Category detection:**
+
 - [ ] All log formats parse correctly
 - [ ] Category mapping is accurate
 - [ ] Unknown categories marked as uncategorized
@@ -1221,10 +1296,12 @@ function formatLogsForExport(metadata, logs) {
 **Section: "Debug Features"**
 
 **Log Verbosity Modes:**
+
 - **Normal Mode** (Default): Logs essential operations only. Minimal overhead, suitable for daily use.
 - **Verbose Mode**: Logs detailed diagnostic information. Useful for troubleshooting issues. May impact performance.
 
 **To enable Verbose mode:**
+
 1. Click extension icon
 2. Go to Debug tab
 3. Select "Verbose" under Log Verbosity
@@ -1241,6 +1318,7 @@ You can choose which categories of logs to include in exports:
 - **Diagnostics**: Performance, Errors, Initialization
 
 **To customize export filters:**
+
 1. Go to Debug tab
 2. Check/uncheck categories
 3. Click "Save Filter Preferences"
@@ -1255,6 +1333,7 @@ You can choose which categories of logs to include in exports:
 **File: `docs/logging-system.md`**
 
 **Content:**
+
 - Logging wrapper API reference
 - Category taxonomy
 - Verbosity mode guidelines
@@ -1267,30 +1346,35 @@ You can choose which categories of logs to include in exports:
 ## Part 10: Implementation Priority
 
 ### Phase 1: Core Infrastructure (Week 1)
+
 1. Create `src/utils/logger.js` with wrapper functions
 2. Define LOG_CATEGORIES metadata
 3. Add `logVerbosity` to config
 4. Implement verbosity check logic
 
 ### Phase 2: UI Implementation (Week 1-2)
+
 1. Add verbosity toggle to popup settings
 2. Create filter checkbox UI
 3. Implement filter save/load
 4. Add Select All / Deselect All
 
 ### Phase 3: Export Enhancement (Week 2)
+
 1. Implement category detection
 2. Implement filtering logic
 3. Add metadata generation
 4. Test export with various filter combinations
 
 ### Phase 4: Migration (Week 3)
+
 1. Replace console.log with logNormal in critical paths
 2. Add logVerbose calls per enhanced-logging-implementation-guide.md
 3. Test verbosity modes
 4. Validate category assignments
 
 ### Phase 5: Testing & Documentation (Week 3-4)
+
 1. Comprehensive testing per Part 8
 2. Update user documentation
 3. Update developer documentation
@@ -1303,6 +1387,7 @@ You can choose which categories of logs to include in exports:
 This implementation guide provides comprehensive specifications for a two-tier logging system with verbosity control and category-based filtered export.
 
 **Key Features:**
+
 1. **Verbosity Control**: Normal vs Verbose modes
 2. **Category-Based Filtering**: 16 distinct log categories
 3. **Always-Capturing Buffer**: Logs everything regardless of filters
@@ -1311,6 +1396,7 @@ This implementation guide provides comprehensive specifications for a two-tier l
 6. **Backward Compatible**: Existing logs continue working
 
 **Design Principles:**
+
 - Logger captures everything always
 - Verbosity controls what gets logged
 - Export filters control what gets exported
@@ -1320,6 +1406,7 @@ This implementation guide provides comprehensive specifications for a two-tier l
 
 **Expected Outcome:**
 After implementation, users will have:
+
 - Fine-grained control over logging detail level
 - Ability to export only relevant log categories
 - Complete diagnostic capability when needed
