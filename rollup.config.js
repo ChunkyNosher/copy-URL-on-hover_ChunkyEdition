@@ -34,6 +34,12 @@ const commonPlugins = [
       },
       mangle: {
         properties: false // Don't mangle browser API properties
+      },
+      format: {
+        beautify: true, // Format code for readability
+        indent_level: 2, // Use 2-space indentation
+        comments: 'some', // Keep some comments
+        max_line_len: 120 // Reasonable line length
       }
     })
 ];
