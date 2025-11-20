@@ -1,1180 +1,3876 @@
-!function(e) {
-  "use strict";
-  const t = 5e3, n = [], i = {
+(function (browser$1) {
+  'use strict';
+
+  /**
+   * Console Interceptor for Log Export
+   * Captures all console.log/error/warn/info calls and stores them in a buffer
+   *
+   * CRITICAL: This must be imported FIRST in any script that needs log capture
+   * to ensure console methods are overridden before any other code runs.
+   */
+
+  // ==================== LOG BUFFER CONFIGURATION ====================
+  const MAX_BUFFER_SIZE$1 = 5000;
+  const CONSOLE_LOG_BUFFER = [];
+
+  // ==================== CONSOLE METHOD OVERRIDES ====================
+
+  /**
+   * Store original console methods
+   * We save these to call after capturing logs
+   */
+  const originalConsole = {
     log: console.log.bind(console),
     error: console.error.bind(console),
     warn: console.warn.bind(console),
     info: console.info.bind(console),
     debug: console.debug.bind(console)
   };
-  function o(e, i) {
-    n.length >= t && n.shift();
-    const o = Array.from(i).map(e => {
-      if ("object" == typeof e && null !== e) try {
-        return JSON.stringify(e, null, 2);
-      } catch (t) {
-        return String(e);
-      }
-      return String(e);
-    }).join(" ");
-    n.push({
-      type: e,
+
+  /**
+   * Add log entry to buffer with automatic size management
+   */
+  function addToLogBuffer(type, args) {
+    // Prevent buffer overflow
+    if (CONSOLE_LOG_BUFFER.length >= MAX_BUFFER_SIZE$1) {
+      CONSOLE_LOG_BUFFER.shift(); // Remove oldest entry
+    }
+
+    // Format arguments into string
+    const message = Array.from(args)
+      .map(arg => {
+        if (typeof arg === 'object' && arg !== null) {
+          try {
+            return JSON.stringify(arg, null, 2);
+          } catch (err) {
+            return String(arg);
+          }
+        }
+        return String(arg);
+      })
+      .join(' ');
+
+    // Add to buffer
+    CONSOLE_LOG_BUFFER.push({
+      type: type,
       timestamp: Date.now(),
-      message: o,
-      context: s()
+      message: message,
+      context: getExecutionContext()
     });
   }
-  function s() {
-    return "undefined" != typeof document && document.currentScript ? "content-script" : "undefined" != typeof browser && browser.runtime && browser.runtime.getBackgroundPage ? "background" : "undefined" != typeof window && window.location && "moz-extension:" === window.location.protocol ? "popup" : "unknown";
+
+  /**
+   * Detect execution context for debugging
+   */
+  function getExecutionContext() {
+    if (typeof document !== 'undefined' && document.currentScript) {
+      return 'content-script';
+    } else if (
+      typeof browser !== 'undefined' &&
+      browser.runtime &&
+      browser.runtime.getBackgroundPage
+    ) {
+      return 'background';
+    } else if (
+      typeof window !== 'undefined' &&
+      window.location &&
+      window.location.protocol === 'moz-extension:'
+    ) {
+      return 'popup';
+    }
+    return 'unknown';
   }
-  async function a(e) {
+
+  /**
+   * Override console.log to capture logs
+   */
+  console.log = function (...args) {
+    addToLogBuffer('LOG', args);
+    originalConsole.log.apply(console, args);
+  };
+
+  /**
+   * Override console.error to capture errors
+   */
+  console.error = function (...args) {
+    addToLogBuffer('ERROR', args);
+    originalConsole.error.apply(console, args);
+  };
+
+  /**
+   * Override console.warn to capture warnings
+   */
+  console.warn = function (...args) {
+    addToLogBuffer('WARN', args);
+    originalConsole.warn.apply(console, args);
+  };
+
+  /**
+   * Override console.info to capture info
+   */
+  console.info = function (...args) {
+    addToLogBuffer('INFO', args);
+    originalConsole.info.apply(console, args);
+  };
+
+  /**
+   * Override console.debug to capture debug messages
+   */
+  console.debug = function (...args) {
+    addToLogBuffer('DEBUG', args);
+    originalConsole.debug.apply(console, args);
+  };
+
+  // ==================== EXPORT API ====================
+
+  /**
+   * Get all captured logs
+   * @returns {Array<Object>} Array of log entries
+   */
+  function getConsoleLogs() {
+    return [...CONSOLE_LOG_BUFFER]; // Return copy to prevent mutation
+  }
+
+  /**
+   * Clear all captured logs
+   */
+  function clearConsoleLogs() {
+    CONSOLE_LOG_BUFFER.length = 0;
+    originalConsole.log('[Console Interceptor] Log buffer cleared');
+  }
+
+  /**
+   * Get buffer statistics
+   * @returns {Object} Buffer stats
+   */
+  function getBufferStats() {
+    return {
+      totalLogs: CONSOLE_LOG_BUFFER.length,
+      maxSize: MAX_BUFFER_SIZE$1,
+      utilizationPercent: ((CONSOLE_LOG_BUFFER.length / MAX_BUFFER_SIZE$1) * 100).toFixed(2),
+      oldestTimestamp: CONSOLE_LOG_BUFFER[0]?.timestamp || null,
+      newestTimestamp: CONSOLE_LOG_BUFFER[CONSOLE_LOG_BUFFER.length - 1]?.timestamp || null
+    };
+  }
+
+  /**
+   * Restore original console methods (for testing)
+   */
+  function restoreConsole() {
+    console.log = originalConsole.log;
+    console.error = originalConsole.error;
+    console.warn = originalConsole.warn;
+    console.info = originalConsole.info;
+    console.debug = originalConsole.debug;
+    originalConsole.log('[Console Interceptor] Original console methods restored');
+  }
+
+  // Log successful initialization
+  originalConsole.log('[Console Interceptor] ✓ Console methods overridden successfully');
+  originalConsole.log('[Console Interceptor] Buffer size:', MAX_BUFFER_SIZE$1);
+  originalConsole.log('[Console Interceptor] Context:', getExecutionContext());
+
+  /**
+   * Browser API Utilities
+   * Wrapper functions for WebExtension APIs
+   */
+
+  /**
+   * Send message to background script
+   * @param {object} message - Message object
+   * @returns {Promise<any>} Response from background script
+   */
+  async function sendMessageToBackground(message) {
     try {
-      return await browser.runtime.sendMessage(e);
-    } catch (e) {
-      throw console.error("[Browser API] Failed to send message to background:", e), e;
+      return await browser.runtime.sendMessage(message);
+    } catch (err) {
+      console.error('[Browser API] Failed to send message to background:', err);
+      throw err;
     }
   }
-  async function r(e) {
+
+  /**
+   * Get data from storage
+   * @param {string|string[]} keys - Storage key(s)
+   * @param {string} storageType - Storage type (local, sync, or session)
+   * @returns {Promise<object>} Storage data
+   */
+  async function getStorage(keys, storageType = 'local') {
     try {
-      return await navigator.clipboard.writeText(e), !0;
-    } catch (t) {
-      console.error("[Browser API] Failed to copy to clipboard:", t);
+      const storage = browser.storage[storageType];
+      if (!storage) {
+        throw new Error(`Storage type "${storageType}" not available`);
+      }
+      return await storage.get(keys);
+    } catch (err) {
+      console.error('[Browser API] Failed to get storage:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Set data in storage
+   * @param {object} data - Data to store
+   * @param {string} storageType - Storage type (local, sync, or session)
+   * @returns {Promise<void>}
+   */
+  async function setStorage(data, storageType = 'local') {
+    try {
+      const storage = browser.storage[storageType];
+      if (!storage) {
+        throw new Error(`Storage type "${storageType}" not available`);
+      }
+      await storage.set(data);
+    } catch (err) {
+      console.error('[Browser API] Failed to set storage:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Remove data from storage
+   * @param {string|string[]} keys - Storage key(s) to remove
+   * @param {string} storageType - Storage type (local, sync, or session)
+   * @returns {Promise<void>}
+   */
+  async function removeStorage(keys, storageType = 'local') {
+    try {
+      const storage = browser.storage[storageType];
+      if (!storage) {
+        throw new Error(`Storage type "${storageType}" not available`);
+      }
+      await storage.remove(keys);
+    } catch (err) {
+      console.error('[Browser API] Failed to remove storage:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Clear all data from storage
+   * @param {string} storageType - Storage type (local, sync, or session)
+   * @returns {Promise<void>}
+   */
+  async function clearStorage(storageType = 'local') {
+    try {
+      const storage = browser.storage[storageType];
+      if (!storage) {
+        throw new Error(`Storage type "${storageType}" not available`);
+      }
+      await storage.clear();
+    } catch (err) {
+      console.error('[Browser API] Failed to clear storage:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Copy text to clipboard
+   * @param {string} text - Text to copy
+   * @returns {Promise<boolean>} True if successful
+   */
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.error('[Browser API] Failed to copy to clipboard:', err);
+
+      // Fallback to execCommand
       try {
-        const t = document.createElement("textarea");
-        t.value = e, t.style.position = "fixed", t.style.opacity = "0", document.body.appendChild(t), 
-        t.select();
-        const n = document.execCommand("copy");
-        return document.body.removeChild(t), n;
-      } catch (e) {
-        return console.error("[Browser API] Fallback copy also failed:", e), !1;
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return success;
+      } catch (fallbackErr) {
+        console.error('[Browser API] Fallback copy also failed:', fallbackErr);
+        return false;
       }
     }
   }
-  console.log = function(...e) {
-    o("LOG", e), i.log.apply(console, e);
-  }, console.error = function(...e) {
-    o("ERROR", e), i.error.apply(console, e);
-  }, console.warn = function(...e) {
-    o("WARN", e), i.warn.apply(console, e);
-  }, console.info = function(...e) {
-    o("INFO", e), i.info.apply(console, e);
-  }, console.debug = function(...e) {
-    o("DEBUG", e), i.debug.apply(console, e);
-  }, i.log("[Console Interceptor] ✓ Console methods overridden successfully"), i.log("[Console Interceptor] Buffer size:", t), 
-  i.log("[Console Interceptor] Context:", s());
-  const l = {
-    copyUrlKey: "y",
-    copyUrlCtrl: !1,
-    copyUrlAlt: !1,
-    copyUrlShift: !1,
-    copyTextKey: "x",
-    copyTextCtrl: !1,
-    copyTextAlt: !1,
-    copyTextShift: !1,
-    openNewTabKey: "o",
-    openNewTabCtrl: !1,
-    openNewTabAlt: !1,
-    openNewTabShift: !1,
-    openNewTabSwitchFocus: !1,
-    quickTabKey: "q",
-    quickTabCtrl: !1,
-    quickTabAlt: !1,
-    quickTabShift: !1,
-    quickTabCloseKey: "Escape",
+
+  /**
+   * Get current tab information
+   * @returns {Promise<object>} Tab information
+   */
+  async function getCurrentTab() {
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      return tabs[0] || null;
+    } catch (err) {
+      console.error('[Browser API] Failed to get current tab:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Create a new tab
+   * @param {object} options - Tab creation options
+   * @returns {Promise<object>} Created tab
+   */
+  async function createTab(options) {
+    try {
+      return await browser.tabs.create(options);
+    } catch (err) {
+      console.error('[Browser API] Failed to create tab:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Get container information (Firefox only)
+   * @param {number} containerId - Container ID
+   * @returns {Promise<object|null>} Container information
+   */
+  async function getContainer(containerId) {
+    try {
+      if (browser.contextualIdentities && browser.contextualIdentities.get) {
+        return await browser.contextualIdentities.get(`firefox-container-${containerId}`);
+      }
+      return null;
+    } catch (err) {
+      console.error('[Browser API] Failed to get container:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Check if browser supports a specific API
+   * @param {string} apiPath - API path (e.g., 'storage.session')
+   * @returns {boolean} True if API is supported
+   */
+  function isApiSupported(apiPath) {
+    const parts = apiPath.split('.');
+    let current = browser;
+
+    for (const part of parts) {
+      if (!current || !current[part]) {
+        return false;
+      }
+      current = current[part];
+    }
+
+    return true;
+  }
+
+  /**
+   * Configuration Manager
+   * Handles extension configuration and constants
+   */
+
+  const DEFAULT_CONFIG = {
+    copyUrlKey: 'y',
+    copyUrlCtrl: false,
+    copyUrlAlt: false,
+    copyUrlShift: false,
+
+    copyTextKey: 'x',
+    copyTextCtrl: false,
+    copyTextAlt: false,
+    copyTextShift: false,
+
+    // Open Link in New Tab settings
+    openNewTabKey: 'o',
+    openNewTabCtrl: false,
+    openNewTabAlt: false,
+    openNewTabShift: false,
+    openNewTabSwitchFocus: false,
+
+    // Quick Tab on Hover settings
+    quickTabKey: 'q',
+    quickTabCtrl: false,
+    quickTabAlt: false,
+    quickTabShift: false,
+    quickTabCloseKey: 'Escape',
     quickTabMaxWindows: 3,
     quickTabDefaultWidth: 800,
     quickTabDefaultHeight: 600,
-    quickTabPosition: "follow-cursor",
+    quickTabPosition: 'follow-cursor',
     quickTabCustomX: 100,
     quickTabCustomY: 100,
-    quickTabCloseOnOpen: !1,
-    quickTabEnableResize: !0,
-    quickTabUpdateRate: 360,
-    showNotification: !0,
-    notifDisplayMode: "tooltip",
-    tooltipColor: "#4CAF50",
+    quickTabCloseOnOpen: false,
+    quickTabEnableResize: true,
+    quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
+
+    showNotification: true,
+    notifDisplayMode: 'tooltip',
+
+    // Tooltip settings
+    tooltipColor: '#4CAF50',
     tooltipDuration: 1500,
-    tooltipAnimation: "fade",
-    notifColor: "#4CAF50",
-    notifDuration: 2e3,
-    notifPosition: "bottom-right",
-    notifSize: "medium",
-    notifBorderColor: "#000000",
+    tooltipAnimation: 'fade',
+
+    // Notification settings
+    notifColor: '#4CAF50',
+    notifDuration: 2000,
+    notifPosition: 'bottom-right',
+    notifSize: 'medium',
+    notifBorderColor: '#000000',
     notifBorderWidth: 1,
-    notifAnimation: "slide",
-    debugMode: !1,
-    darkMode: !0,
-    menuSize: "medium"
-  }, c = 1e6, d = {
-    QUICK_TAB_CREATED: "quickTab:created",
-    QUICK_TAB_CLOSED: "quickTab:closed",
-    QUICK_TAB_MINIMIZED: "quickTab:minimized",
-    QUICK_TAB_RESTORED: "quickTab:restored",
-    QUICK_TAB_PINNED: "quickTab:pinned",
-    QUICK_TAB_UNPINNED: "quickTab:unpinned",
-    QUICK_TAB_MOVED: "quickTab:moved",
-    QUICK_TAB_RESIZED: "quickTab:resized",
-    QUICK_TAB_ALL_CLOSED: "quickTab:allClosed",
-    QUICK_TAB_REQUESTED: "quickTab:requested",
-    QUICK_TAB_FOCUS_CHANGED: "quickTab:focusChanged",
-    PANEL_TOGGLED: "panel:toggled",
-    PANEL_OPENED: "panel:opened",
-    PANEL_CLOSED: "panel:closed",
-    PANEL_MOVED: "panel:moved",
-    PANEL_RESIZED: "panel:resized",
-    URL_COPIED: "url:copied",
-    TEXT_COPIED: "text:copied",
-    LINK_OPENED: "link:opened",
-    HOVER_START: "hover:start",
-    HOVER_END: "hover:end",
-    STORAGE_UPDATED: "storage:updated",
-    STORAGE_SYNCED: "storage:synced",
-    BROADCAST_RECEIVED: "broadcast:received",
-    ERROR: "error",
-    DRAG_START: "drag:start",
-    DRAG_MOVE: "drag:move",
-    DRAG_END: "drag:end",
-    RESIZE_START: "resize:start",
-    RESIZE_MOVE: "resize:move",
-    RESIZE_END: "resize:end"
+    notifAnimation: 'slide',
+
+    debugMode: false,
+    darkMode: true,
+    menuSize: 'medium'
   };
-  function h(e, t = {}, n = null) {
-    const i = document.createElement(e);
-    return Object.entries(t).forEach(([e, t]) => {
-      if ("className" === e) i.className = t; else if ("style" === e && "object" == typeof t) Object.assign(i.style, t); else if (e.startsWith("on") && "function" == typeof t) {
-        const n = e.substring(2).toLowerCase();
-        i.addEventListener(n, t);
-      } else i.setAttribute(e, t);
-    }), n && ("string" == typeof n ? i.textContent = n : Array.isArray(n) ? n.forEach(e => {
-      e instanceof Element ? i.appendChild(e) : "string" == typeof e && i.appendChild(document.createTextNode(e));
-    }) : n instanceof Element && i.appendChild(n)), i;
-  }
-  function u(e, t) {
-    return e && "function" == typeof e.get && e.get(t) || 0;
-  }
-  function g(e) {
-    return "bounce" === e?.tooltipAnimation ? "cuo-anim-bounce" : "cuo-anim-fade";
-  }
-  const p = new class {
+
+  const CONSTANTS = {
+    GOOGLE_FAVICON_URL: 'https://www.google.com/s2/favicons?domain=',
+    TOOLTIP_OFFSET_X: 10,
+    TOOLTIP_OFFSET_Y: 10,
+    TOOLTIP_DURATION_MS: 1500,
+    TOOLTIP_FADE_OUT_MS: 200,
+    QUICK_TAB_BASE_Z_INDEX: 1000000
+  };
+
+  class ConfigManager {
     constructor() {
-      this.config = null, this.stateManager = null, this.styleInjected = !1;
+      this.config = { ...DEFAULT_CONFIG };
+      this.listeners = [];
     }
-    init(e, t) {
-      this.config = e, this.stateManager = t, console.log("[NotificationManager] Initializing..."), 
-      this.injectStyles(), console.log("[NotificationManager] Initialized successfully");
+
+    /**
+     * Load configuration from browser storage
+     */
+    async load() {
+      console.log('[ConfigManager] Starting configuration load...');
+      try {
+        // Verify browser.storage is available
+        if (!browser || !browser.storage || !browser.storage.local) {
+          console.error('[ConfigManager] browser.storage.local is not available!');
+          console.warn('[ConfigManager] Using DEFAULT_CONFIG as fallback');
+          this.config = { ...DEFAULT_CONFIG };
+          return this.config;
+        }
+
+        console.log('[ConfigManager] Calling browser.storage.local.get...');
+        // Load all settings from storage (popup.js saves them as individual keys)
+        const result = await browser.storage.local.get(DEFAULT_CONFIG);
+
+        console.log('[ConfigManager] Storage get completed, processing result...');
+        if (!result || typeof result !== 'object') {
+          console.warn('[ConfigManager] Invalid storage result, using DEFAULT_CONFIG');
+          this.config = { ...DEFAULT_CONFIG };
+          return this.config;
+        }
+
+        // Merge with defaults (user settings override defaults)
+        this.config = { ...DEFAULT_CONFIG, ...result };
+
+        console.log('[ConfigManager] Configuration loaded successfully');
+        console.log('[ConfigManager] Config summary:', {
+          debugMode: this.config.debugMode,
+          totalKeys: Object.keys(this.config).length
+        });
+      } catch (err) {
+        console.error('[ConfigManager] Exception during load:', {
+          message: err.message,
+          stack: err.stack,
+          name: err.name
+        });
+        console.warn('[ConfigManager] Falling back to DEFAULT_CONFIG due to exception');
+        this.config = { ...DEFAULT_CONFIG };
+      }
+
+      return this.config;
     }
+
+    /**
+     * Save configuration to browser storage
+     */
+    async save() {
+      try {
+        // Save settings as individual keys to match popup.js behavior
+        await browser.storage.local.set(this.config);
+      } catch (err) {
+        console.error('[Config] Failed to save configuration:', err);
+      }
+    }
+
+    /**
+     * Get a configuration value
+     * @param {string} key - Configuration key
+     * @returns {any} Configuration value
+     */
+    get(key) {
+      return this.config[key];
+    }
+
+    /**
+     * Set a configuration value
+     * @param {string} key - Configuration key
+     * @param {any} value - Configuration value
+     */
+    set(key, value) {
+      this.config[key] = value;
+      this.notifyListeners(key, value);
+    }
+
+    /**
+     * Get all configuration
+     * @returns {object} Configuration object
+     */
+    getAll() {
+      return { ...this.config };
+    }
+
+    /**
+     * Update multiple configuration values
+     * @param {object} updates - Configuration updates
+     */
+    update(updates) {
+      this.config = { ...this.config, ...updates };
+      this.notifyListeners();
+    }
+
+    /**
+     * Register a listener for configuration changes
+     * @param {function} callback - Callback function
+     */
+    onChange(callback) {
+      this.listeners.push(callback);
+    }
+
+    /**
+     * Notify all listeners of configuration changes
+     * @param {string} key - Optional key that changed
+     * @param {any} value - Optional new value
+     */
+    notifyListeners(key, value) {
+      this.listeners.forEach(listener => listener(key, value, this.config));
+    }
+  }
+
+  /**
+   * Event Bus
+   * Pub/sub event system for inter-module communication
+   */
+
+  class EventBus {
+    constructor() {
+      this.events = new Map();
+      this.debugMode = false;
+    }
+
+    /**
+     * Subscribe to an event
+     * @param {string} eventName - Event name
+     * @param {function} callback - Callback function
+     * @returns {function} Unsubscribe function
+     */
+    on(eventName, callback) {
+      if (!this.events.has(eventName)) {
+        this.events.set(eventName, []);
+      }
+
+      this.events.get(eventName).push(callback);
+
+      if (this.debugMode) {
+        console.log(`[EventBus] Subscribed to "${eventName}"`);
+      }
+
+      // Return unsubscribe function
+      return () => this.off(eventName, callback);
+    }
+
+    /**
+     * Unsubscribe from an event
+     * @param {string} eventName - Event name
+     * @param {function} callback - Callback function
+     */
+    off(eventName, callback) {
+      if (!this.events.has(eventName)) return;
+
+      const callbacks = this.events.get(eventName);
+      const index = callbacks.indexOf(callback);
+
+      if (index !== -1) {
+        callbacks.splice(index, 1);
+
+        if (this.debugMode) {
+          console.log(`[EventBus] Unsubscribed from "${eventName}"`);
+        }
+      }
+
+      // Clean up empty event arrays
+      if (callbacks.length === 0) {
+        this.events.delete(eventName);
+      }
+    }
+
+    /**
+     * Emit an event
+     * @param {string} eventName - Event name
+     * @param {any} data - Event data
+     */
+    emit(eventName, data) {
+      if (!this.events.has(eventName)) return;
+
+      if (this.debugMode) {
+        console.log(`[EventBus] Emitting "${eventName}"`, data);
+      }
+
+      const callbacks = this.events.get(eventName);
+      callbacks.forEach(callback => {
+        try {
+          callback(data);
+        } catch (err) {
+          console.error(`[EventBus] Error in "${eventName}" handler:`, err);
+        }
+      });
+    }
+
+    /**
+     * Subscribe to an event once
+     * @param {string} eventName - Event name
+     * @param {function} callback - Callback function
+     * @returns {function} Unsubscribe function
+     */
+    once(eventName, callback) {
+      const onceCallback = data => {
+        callback(data);
+        this.off(eventName, onceCallback);
+      };
+
+      return this.on(eventName, onceCallback);
+    }
+
+    /**
+     * Enable debug logging
+     */
+    enableDebug() {
+      this.debugMode = true;
+    }
+
+    /**
+     * Disable debug logging
+     */
+    disableDebug() {
+      this.debugMode = false;
+    }
+
+    /**
+     * Clear all event listeners
+     */
+    clear() {
+      this.events.clear();
+    }
+
+    /**
+     * Get all registered event names
+     * @returns {string[]} Array of event names
+     */
+    getEventNames() {
+      return Array.from(this.events.keys());
+    }
+
+    /**
+     * Get listener count for an event
+     * @param {string} eventName - Event name
+     * @returns {number} Number of listeners
+     */
+    listenerCount(eventName) {
+      return this.events.has(eventName) ? this.events.get(eventName).length : 0;
+    }
+  }
+
+  /**
+   * Predefined event names for type safety and documentation
+   */
+  const Events = {
+    // Quick Tab events
+    QUICK_TAB_CREATED: 'quickTab:created',
+    QUICK_TAB_CLOSED: 'quickTab:closed',
+    QUICK_TAB_MINIMIZED: 'quickTab:minimized',
+    QUICK_TAB_RESTORED: 'quickTab:restored',
+    QUICK_TAB_PINNED: 'quickTab:pinned',
+    QUICK_TAB_UNPINNED: 'quickTab:unpinned',
+    QUICK_TAB_MOVED: 'quickTab:moved',
+    QUICK_TAB_RESIZED: 'quickTab:resized',
+    QUICK_TAB_ALL_CLOSED: 'quickTab:allClosed',
+    QUICK_TAB_REQUESTED: 'quickTab:requested',
+    QUICK_TAB_FOCUS_CHANGED: 'quickTab:focusChanged',
+
+    // Panel events
+    PANEL_TOGGLED: 'panel:toggled',
+    PANEL_OPENED: 'panel:opened',
+    PANEL_CLOSED: 'panel:closed',
+    PANEL_MOVED: 'panel:moved',
+    PANEL_RESIZED: 'panel:resized',
+
+    // URL events
+    URL_COPIED: 'url:copied',
+    TEXT_COPIED: 'text:copied',
+    LINK_OPENED: 'link:opened',
+
+    // Hover events
+    HOVER_START: 'hover:start',
+    HOVER_END: 'hover:end',
+
+    // Storage events
+    STORAGE_UPDATED: 'storage:updated',
+    STORAGE_SYNCED: 'storage:synced',
+
+    // Broadcast events
+    BROADCAST_RECEIVED: 'broadcast:received',
+
+    // Error events
+    ERROR: 'error',
+
+    // Drag events
+    DRAG_START: 'drag:start',
+    DRAG_MOVE: 'drag:move',
+    DRAG_END: 'drag:end',
+
+    // Resize events
+    RESIZE_START: 'resize:start',
+    RESIZE_MOVE: 'resize:move',
+    RESIZE_END: 'resize:end'
+  };
+
+  /**
+   * State Manager
+   * Centralized state management for the extension
+   */
+
+  let StateManager$1 = class StateManager {
+    constructor() {
+      this.state = {
+        currentHoveredLink: null,
+        currentHoveredElement: null,
+        quickTabWindows: [],
+        minimizedQuickTabs: [],
+        quickTabZIndex: 1000000,
+        lastMouseX: 0,
+        lastMouseY: 0,
+        isSavingToStorage: false,
+        isPanelOpen: false
+      };
+      this.listeners = new Map();
+    }
+
+    /**
+     * Get current state
+     * @returns {object} Current state
+     */
+    getState() {
+      return { ...this.state };
+    }
+
+    /**
+     * Get a specific state value
+     * @param {string} key - State key
+     * @returns {any} State value
+     */
+    get(key) {
+      return this.state[key];
+    }
+
+    /**
+     * Set a specific state value
+     * @param {string} key - State key
+     * @param {any} value - State value
+     */
+    set(key, value) {
+      const oldValue = this.state[key];
+      this.state[key] = value;
+      this.notifyListeners(key, value, oldValue);
+    }
+
+    /**
+     * Update multiple state values
+     * @param {object} updates - State updates
+     */
+    setState(updates) {
+      const oldState = { ...this.state };
+      this.state = { ...this.state, ...updates };
+
+      // Notify listeners for each changed key
+      Object.keys(updates).forEach(key => {
+        if (oldState[key] !== updates[key]) {
+          this.notifyListeners(key, updates[key], oldState[key]);
+        }
+      });
+    }
+
+    /**
+     * Subscribe to state changes
+     * @param {string|function} keyOrCallback - State key or callback for all changes
+     * @param {function} callback - Optional callback if key is provided
+     * @returns {function} Unsubscribe function
+     */
+    subscribe(keyOrCallback, callback) {
+      if (typeof keyOrCallback === 'function') {
+        // Subscribe to all state changes
+        const id = Symbol('listener');
+        this.listeners.set(id, { key: '*', callback: keyOrCallback });
+        return () => this.listeners.delete(id);
+      } else {
+        // Subscribe to specific key changes
+        const id = Symbol('listener');
+        this.listeners.set(id, { key: keyOrCallback, callback });
+        return () => this.listeners.delete(id);
+      }
+    }
+
+    /**
+     * Notify listeners of state changes
+     * @param {string} key - Changed key
+     * @param {any} newValue - New value
+     * @param {any} oldValue - Old value
+     */
+    notifyListeners(key, newValue, oldValue) {
+      this.listeners.forEach(({ key: listenerKey, callback }) => {
+        if (listenerKey === '*' || listenerKey === key) {
+          try {
+            callback(key, newValue, oldValue, this.state);
+          } catch (err) {
+            console.error('[State] Listener error:', err);
+          }
+        }
+      });
+    }
+
+    /**
+     * Reset state to initial values
+     */
+    reset() {
+      this.state = {
+        currentHoveredLink: null,
+        currentHoveredElement: null,
+        quickTabWindows: [],
+        minimizedQuickTabs: [],
+        quickTabZIndex: 1000000,
+        lastMouseX: 0,
+        lastMouseY: 0,
+        isSavingToStorage: false,
+        isPanelOpen: false
+      };
+      this.notifyListeners('*', this.state, {});
+    }
+  };
+
+  /**
+   * DOM Utilities
+   * Helper functions for DOM manipulation
+   */
+
+  /**
+   * Create an element with attributes
+   * @param {string} tag - HTML tag name
+   * @param {object} attributes - Element attributes
+   * @param {string|Element|Element[]} children - Child content
+   * @returns {Element} Created element
+   */
+  function createElement$1(tag, attributes = {}, children = null) {
+    const element = document.createElement(tag);
+
+    // Set attributes
+    Object.entries(attributes).forEach(([key, value]) => {
+      if (key === 'className') {
+        element.className = value;
+      } else if (key === 'style' && typeof value === 'object') {
+        Object.assign(element.style, value);
+      } else if (key.startsWith('on') && typeof value === 'function') {
+        const eventName = key.substring(2).toLowerCase();
+        element.addEventListener(eventName, value);
+      } else {
+        element.setAttribute(key, value);
+      }
+    });
+
+    // Add children
+    if (children) {
+      if (typeof children === 'string') {
+        element.textContent = children;
+      } else if (Array.isArray(children)) {
+        children.forEach(child => {
+          if (child instanceof Element) {
+            element.appendChild(child);
+          } else if (typeof child === 'string') {
+            element.appendChild(document.createTextNode(child));
+          }
+        });
+      } else if (children instanceof Element) {
+        element.appendChild(children);
+      }
+    }
+
+    return element;
+  }
+
+  /**
+   * Find closest ancestor matching selector
+   * @param {Element} element - Starting element
+   * @param {string} selector - CSS selector
+   * @returns {Element|null} Matching ancestor or null
+   */
+  function findClosest$1(element, selector) {
+    return element ? element.closest(selector) : null;
+  }
+
+  /**
+   * Remove an element from the DOM
+   * @param {Element|string} elementOrSelector - Element or CSS selector
+   */
+  function removeElement$1(elementOrSelector) {
+    const element =
+      typeof elementOrSelector === 'string'
+        ? document.querySelector(elementOrSelector)
+        : elementOrSelector;
+
+    if (element && element.parentNode) {
+      element.parentNode.removeChild(element);
+    }
+  }
+
+  /**
+   * Check if element is visible
+   * @param {Element} element - Element to check
+   * @returns {boolean} True if visible
+   */
+  function isVisible$1(element) {
+    if (!element) return false;
+
+    const style = window.getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+  }
+
+  /**
+   * Get element position relative to viewport
+   * @param {Element} element - Element
+   * @returns {object} Position object with x, y, width, height
+   */
+  function getElementPosition$1(element) {
+    if (!element) return { x: 0, y: 0, width: 0, height: 0 };
+
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  /**
+   * Set element position
+   * @param {Element} element - Element
+   * @param {number} x - X position
+   * @param {number} y - Y position
+   */
+  function setElementPosition$1(element, x, y) {
+    if (!element) return;
+
+    element.style.left = `${x}px`;
+    element.style.top = `${y}px`;
+  }
+
+  /**
+   * Set element size
+   * @param {Element} element - Element
+   * @param {number} width - Width
+   * @param {number} height - Height
+   */
+  function setElementSize$1(element, width, height) {
+    if (!element) return;
+
+    element.style.width = `${width}px`;
+    element.style.height = `${height}px`;
+  }
+
+  /**
+   * Add CSS class to element
+   * @param {Element} element - Element
+   * @param {string} className - CSS class name
+   */
+  function addClass$1(element, className) {
+    if (element) {
+      element.classList.add(className);
+    }
+  }
+
+  /**
+   * Remove CSS class from element
+   * @param {Element} element - Element
+   * @param {string} className - CSS class name
+   */
+  function removeClass$1(element, className) {
+    if (element) {
+      element.classList.remove(className);
+    }
+  }
+
+  /**
+   * Toggle CSS class on element
+   * @param {Element} element - Element
+   * @param {string} className - CSS class name
+   * @returns {boolean} True if class is now present
+   */
+  function toggleClass$1(element, className) {
+    if (element) {
+      return element.classList.toggle(className);
+    }
+    return false;
+  }
+
+  /**
+   * Check if element has CSS class
+   * @param {Element} element - Element
+   * @param {string} className - CSS class name
+   * @returns {boolean} True if element has class
+   */
+  function hasClass$1(element, className) {
+    return element ? element.classList.contains(className) : false;
+  }
+
+  /**
+   * Toast Notification Module
+   * Handles toast notifications (for Quick Tabs - appears in corner)
+   * v1.5.8.10 - Extracted from notifications/index.js
+   */
+
+
+  /**
+   * Show toast notification in configured corner
+   * @param {string} message - Message to display
+   * @param {string} type - Notification type (info, success, warning, error)
+   * @param {object} config - Configuration object
+   */
+  function showToast(message, type, config) {
+    const existing = document.getElementById('copy-url-toast');
+    if (existing) existing.remove();
+
+    const positions = {
+      'top-left': { top: '20px', left: '20px' },
+      'top-right': { top: '20px', right: '20px' },
+      'bottom-left': { bottom: '20px', left: '20px' },
+      'bottom-right': { bottom: '20px', right: '20px' }
+    };
+
+    const pos = positions[config?.notifPosition] || positions['bottom-right'];
+
+    // Determine animation class with null-safe config access
+    let animClass = 'cuo-anim-fade'; // Default
+    if (config?.notifAnimation === 'slide') {
+      animClass = 'cuo-anim-slide';
+    } else if (config?.notifAnimation === 'bounce') {
+      animClass = 'cuo-anim-bounce';
+    }
+
+    // Ensure border width is a number with null-safe access
+    const borderWidth = parseInt(config?.notifBorderWidth) || 1;
+
+    const toast = createElement$1(
+      'div',
+      {
+        id: 'copy-url-toast',
+        className: animClass,
+        style: {
+          position: 'fixed',
+          ...pos,
+          backgroundColor: config?.notifColor || '#333',
+          color: 'white',
+          padding: '12px 20px',
+          borderRadius: '4px',
+          fontSize: '14px',
+          zIndex: '999999998',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+          border: `${borderWidth}px solid ${config?.notifBorderColor || '#444'}`,
+          pointerEvents: 'none',
+          opacity: '1'
+        }
+      },
+      message
+    );
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s';
+      setTimeout(() => toast.remove(), 300);
+    }, config?.notifDuration || 2000);
+
+    console.log('[Toast] Displayed:', message);
+  }
+
+  /**
+   * Tooltip Notification Module
+   * Handles tooltip notifications (for Copy URL - appears at cursor)
+   * v1.5.8.10 - Extracted from notifications/index.js
+   */
+
+
+  /**
+   * Get mouse coordinate from state manager safely
+   * @param {object} stateManager - State manager
+   * @param {string} key - Key to get (lastMouseX or lastMouseY)
+   * @returns {number} Mouse coordinate or 0 if unavailable
+   */
+  function getMouseCoordinate(stateManager, key) {
+    if (!stateManager || typeof stateManager.get !== 'function') {
+      return 0;
+    }
+    return stateManager.get(key) || 0;
+  }
+
+  /**
+   * Get animation class based on config
+   * @param {object} config - Configuration object
+   * @returns {string} Animation class name
+   */
+  function getAnimationClass(config) {
+    return config?.tooltipAnimation === 'bounce' ? 'cuo-anim-bounce' : 'cuo-anim-fade';
+  }
+
+  /**
+   * Show tooltip notification at cursor position
+   * @param {string} message - Message to display
+   * @param {object} config - Configuration object
+   * @param {object} stateManager - State manager for mouse position
+   */
+  function showTooltip(message, config, stateManager) {
+    const existing = document.getElementById('copy-url-tooltip');
+    if (existing) existing.remove();
+
+    const mouseX = getMouseCoordinate(stateManager, 'lastMouseX');
+    const mouseY = getMouseCoordinate(stateManager, 'lastMouseY');
+
+    const tooltip = createElement$1(
+      'div',
+      {
+        id: 'copy-url-tooltip',
+        className: getAnimationClass(config),
+        style: {
+          position: 'fixed',
+          left: `${mouseX + CONSTANTS.TOOLTIP_OFFSET_X}px`,
+          top: `${mouseY + CONSTANTS.TOOLTIP_OFFSET_Y}px`,
+          backgroundColor: config?.tooltipColor || '#333',
+          color: 'white',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          fontSize: '14px',
+          zIndex: '999999999',
+          pointerEvents: 'none',
+          opacity: '1'
+        }
+      },
+      message
+    );
+
+    document.body.appendChild(tooltip);
+
+    setTimeout(() => {
+      tooltip.style.opacity = '0';
+      tooltip.style.transition = 'opacity 0.2s';
+      setTimeout(() => tooltip.remove(), CONSTANTS.TOOLTIP_FADE_OUT_MS);
+    }, config?.tooltipDuration || 1000);
+
+    console.log('[Tooltip] Displayed:', message);
+  }
+
+  /**
+   * Notifications Feature Module
+   * Handles tooltip and toast notifications with animations
+   *
+   * v1.5.8.10 - Hybrid Architecture: Modularized with separate toast/tooltip files
+   * and CSS extracted to ui/css/notifications.css
+   */
+
+
+  // CSS content will be injected from string
+  const notificationsCss = `
+/* Notification Animations */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Animation Classes */
+.cuo-anim-slide {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.cuo-anim-fade {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.cuo-anim-bounce {
+  animation: bounce 0.5s ease-out;
+}
+
+/* Tooltip Base Styles */
+.cuo-tooltip {
+  position: fixed;
+  background-color: #333;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  z-index: 999999999;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.2s;
+}
+
+/* Toast Base Styles */
+.cuo-toast {
+  position: fixed;
+  background-color: #333;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 4px;
+  font-size: 14px;
+  z-index: 999999998;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  border: 1px solid #444;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+`;
+
+  /**
+   * NotificationManager - Coordinates notification display
+   */
+  class NotificationManager {
+    constructor() {
+      this.config = null;
+      this.stateManager = null;
+      this.styleInjected = false;
+    }
+
+    /**
+     * Initialize the notification manager
+     */
+    init(config, stateManager) {
+      this.config = config;
+      this.stateManager = stateManager;
+
+      console.log('[NotificationManager] Initializing...');
+
+      // Inject notification styles from CSS module
+      this.injectStyles();
+
+      console.log('[NotificationManager] Initialized successfully');
+    }
+
+    /**
+     * Inject notification CSS from external CSS module
+     */
     injectStyles() {
       if (this.styleInjected) return;
-      const e = document.createElement("style");
-      e.id = "cuo-notification-styles", e.textContent = "\n/* Notification Animations */\n@keyframes slideInRight {\n  from {\n    transform: translateX(100%);\n    opacity: 0;\n  }\n  to {\n    transform: translateX(0);\n    opacity: 1;\n  }\n}\n\n@keyframes slideInLeft {\n  from {\n    transform: translateX(-100%);\n    opacity: 0;\n  }\n  to {\n    transform: translateX(0);\n    opacity: 1;\n  }\n}\n\n@keyframes fadeIn {\n  from {\n    opacity: 0;\n  }\n  to {\n    opacity: 1;\n  }\n}\n\n@keyframes bounce {\n  0%,\n  100% {\n    transform: translateY(0);\n  }\n  50% {\n    transform: translateY(-10px);\n  }\n}\n\n/* Animation Classes */\n.cuo-anim-slide {\n  animation: slideInRight 0.3s ease-out;\n}\n\n.cuo-anim-fade {\n  animation: fadeIn 0.3s ease-out;\n}\n\n.cuo-anim-bounce {\n  animation: bounce 0.5s ease-out;\n}\n\n/* Tooltip Base Styles */\n.cuo-tooltip {\n  position: fixed;\n  background-color: #333;\n  color: white;\n  padding: 8px 12px;\n  border-radius: 4px;\n  font-size: 14px;\n  z-index: 999999999;\n  pointer-events: none;\n  opacity: 1;\n  transition: opacity 0.2s;\n}\n\n/* Toast Base Styles */\n.cuo-toast {\n  position: fixed;\n  background-color: #333;\n  color: white;\n  padding: 12px 20px;\n  border-radius: 4px;\n  font-size: 14px;\n  z-index: 999999998;\n  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);\n  border: 1px solid #444;\n  pointer-events: none;\n  opacity: 1;\n  transition: opacity 0.3s;\n}\n", 
-      document.head.appendChild(e), this.styleInjected = !0, console.log("[NotificationManager] Styles injected from CSS module");
-    }
-    showNotification(e, t = "info") {
-      this.config && this.config.showNotification ? (console.log("[NotificationManager] Showing notification:", e, t), 
-      "tooltip" === this.config.notifDisplayMode ? this.showTooltip(e) : this.showToast(e, t)) : console.log("[NotificationManager] Notifications disabled");
-    }
-    showTooltip(e) {
-      !function(e, t, n) {
-        const i = document.getElementById("copy-url-tooltip");
-        i && i.remove();
-        const o = u(n, "lastMouseX"), s = u(n, "lastMouseY"), a = h("div", {
-          id: "copy-url-tooltip",
-          className: g(t),
-          style: {
-            position: "fixed",
-            left: `${o + 10}px`,
-            top: `${s + 10}px`,
-            backgroundColor: t?.tooltipColor || "#333",
-            color: "white",
-            padding: "8px 12px",
-            borderRadius: "4px",
-            fontSize: "14px",
-            zIndex: "999999999",
-            pointerEvents: "none",
-            opacity: "1"
-          }
-        }, e);
-        document.body.appendChild(a), setTimeout(() => {
-          a.style.opacity = "0", a.style.transition = "opacity 0.2s", setTimeout(() => a.remove(), 200);
-        }, t?.tooltipDuration || 1e3), console.log("[Tooltip] Displayed:", e);
-      }(e, this.config, this.stateManager);
-    }
-    showToast(e, t = "info") {
-      !function(e, t, n) {
-        const i = document.getElementById("copy-url-toast");
-        i && i.remove();
-        const o = {
-          "top-left": {
-            top: "20px",
-            left: "20px"
-          },
-          "top-right": {
-            top: "20px",
-            right: "20px"
-          },
-          "bottom-left": {
-            bottom: "20px",
-            left: "20px"
-          },
-          "bottom-right": {
-            bottom: "20px",
-            right: "20px"
-          }
-        }, s = o[n?.notifPosition] || o["bottom-right"];
-        let a = "cuo-anim-fade";
-        "slide" === n?.notifAnimation ? a = "cuo-anim-slide" : "bounce" === n?.notifAnimation && (a = "cuo-anim-bounce");
-        const r = parseInt(n?.notifBorderWidth) || 1, l = h("div", {
-          id: "copy-url-toast",
-          className: a,
-          style: {
-            position: "fixed",
-            ...s,
-            backgroundColor: n?.notifColor || "#333",
-            color: "white",
-            padding: "12px 20px",
-            borderRadius: "4px",
-            fontSize: "14px",
-            zIndex: "999999998",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
-            border: `${r}px solid ${n?.notifBorderColor || "#444"}`,
-            pointerEvents: "none",
-            opacity: "1"
-          }
-        }, e);
-        document.body.appendChild(l), setTimeout(() => {
-          l.style.opacity = "0", l.style.transition = "opacity 0.3s", setTimeout(() => l.remove(), 300);
-        }, n?.notifDuration || 2e3), console.log("[Toast] Displayed:", e);
-      }(e, 0, this.config);
-    }
-    updateConfig(e) {
-      this.config = e, console.log("[NotificationManager] Configuration updated");
-    }
-  };
-  function f(e) {
-    return e && e.__esModule && Object.prototype.hasOwnProperty.call(e, "default") ? e.default : e;
-  }
-  var b = {
-    exports: {}
-  };
-  !function(e) {
-    var t = Object.prototype.hasOwnProperty, n = "~";
-    function i() {}
-    function o(e, t, n) {
-      this.fn = e, this.context = t, this.once = n || !1;
-    }
-    function s(e, t, i, s, a) {
-      if ("function" != typeof i) throw new TypeError("The listener must be a function");
-      var r = new o(i, s || e, a), l = n ? n + t : t;
-      return e._events[l] ? e._events[l].fn ? e._events[l] = [ e._events[l], r ] : e._events[l].push(r) : (e._events[l] = r, 
-      e._eventsCount++), e;
-    }
-    function a(e, t) {
-      0 === --e._eventsCount ? e._events = new i : delete e._events[t];
-    }
-    function r() {
-      this._events = new i, this._eventsCount = 0;
-    }
-    Object.create && (i.prototype = Object.create(null), (new i).__proto__ || (n = !1)), 
-    r.prototype.eventNames = function() {
-      var e, i, o = [];
-      if (0 === this._eventsCount) return o;
-      for (i in e = this._events) t.call(e, i) && o.push(n ? i.slice(1) : i);
-      return Object.getOwnPropertySymbols ? o.concat(Object.getOwnPropertySymbols(e)) : o;
-    }, r.prototype.listeners = function(e) {
-      var t = n ? n + e : e, i = this._events[t];
-      if (!i) return [];
-      if (i.fn) return [ i.fn ];
-      for (var o = 0, s = i.length, a = new Array(s); o < s; o++) a[o] = i[o].fn;
-      return a;
-    }, r.prototype.listenerCount = function(e) {
-      var t = n ? n + e : e, i = this._events[t];
-      return i ? i.fn ? 1 : i.length : 0;
-    }, r.prototype.emit = function(e, t, i, o, s, a) {
-      var r = n ? n + e : e;
-      if (!this._events[r]) return !1;
-      var l, c, d = this._events[r], h = arguments.length;
-      if (d.fn) {
-        switch (d.once && this.removeListener(e, d.fn, void 0, !0), h) {
-         case 1:
-          return d.fn.call(d.context), !0;
 
-         case 2:
-          return d.fn.call(d.context, t), !0;
+      const styleElement = document.createElement('style');
+      styleElement.id = 'cuo-notification-styles';
+      styleElement.textContent = notificationsCss;
 
-         case 3:
-          return d.fn.call(d.context, t, i), !0;
+      document.head.appendChild(styleElement);
+      this.styleInjected = true;
+      console.log('[NotificationManager] Styles injected from CSS module');
+    }
 
-         case 4:
-          return d.fn.call(d.context, t, i, o), !0;
+    /**
+     * Show a notification (auto-selects tooltip or toast based on config)
+     */
+    showNotification(message, type = 'info') {
+      if (!this.config || !this.config.showNotification) {
+        console.log('[NotificationManager] Notifications disabled');
+        return;
+      }
 
-         case 5:
-          return d.fn.call(d.context, t, i, o, s), !0;
+      console.log('[NotificationManager] Showing notification:', message, type);
 
-         case 6:
-          return d.fn.call(d.context, t, i, o, s, a), !0;
-        }
-        for (c = 1, l = new Array(h - 1); c < h; c++) l[c - 1] = arguments[c];
-        d.fn.apply(d.context, l);
+      if (this.config.notifDisplayMode === 'tooltip') {
+        this.showTooltip(message);
       } else {
-        var u, g = d.length;
-        for (c = 0; c < g; c++) switch (d[c].once && this.removeListener(e, d[c].fn, void 0, !0), 
-        h) {
-         case 1:
-          d[c].fn.call(d[c].context);
-          break;
-
-         case 2:
-          d[c].fn.call(d[c].context, t);
-          break;
-
-         case 3:
-          d[c].fn.call(d[c].context, t, i);
-          break;
-
-         case 4:
-          d[c].fn.call(d[c].context, t, i, o);
-          break;
-
-         default:
-          if (!l) for (u = 1, l = new Array(h - 1); u < h; u++) l[u - 1] = arguments[u];
-          d[c].fn.apply(d[c].context, l);
-        }
+        this.showToast(message, type);
       }
-      return !0;
-    }, r.prototype.on = function(e, t, n) {
-      return s(this, e, t, n, !1);
-    }, r.prototype.once = function(e, t, n) {
-      return s(this, e, t, n, !0);
-    }, r.prototype.removeListener = function(e, t, i, o) {
-      var s = n ? n + e : e;
-      if (!this._events[s]) return this;
-      if (!t) return a(this, s), this;
-      var r = this._events[s];
-      if (r.fn) r.fn !== t || o && !r.once || i && r.context !== i || a(this, s); else {
-        for (var l = 0, c = [], d = r.length; l < d; l++) (r[l].fn !== t || o && !r[l].once || i && r[l].context !== i) && c.push(r[l]);
-        c.length ? this._events[s] = 1 === c.length ? c[0] : c : a(this, s);
-      }
-      return this;
-    }, r.prototype.removeAllListeners = function(e) {
-      var t;
-      return e ? (t = n ? n + e : e, this._events[t] && a(this, t)) : (this._events = new i, 
-      this._eventsCount = 0), this;
-    }, r.prototype.off = r.prototype.removeListener, r.prototype.addListener = r.prototype.on, 
-    r.prefixed = n, r.EventEmitter = r, e.exports = r;
-  }(b);
-  var m = f(b.exports);
-  class y {
-    constructor(e, t, n, i, o) {
-      this.stateManager = e, this.storageManager = t, this.broadcastManager = n, this.handlers = i, 
-      this.eventBus = o;
     }
+
+    /**
+     * Show tooltip notification (for Copy URL - appears at cursor)
+     */
+    showTooltip(message) {
+      showTooltip(message, this.config, this.stateManager);
+    }
+
+    /**
+     * Show toast notification (for Quick Tabs - appears in corner)
+     */
+    showToast(message, type = 'info') {
+      showToast(message, type, this.config);
+    }
+
+    /**
+     * Update configuration
+     */
+    updateConfig(newConfig) {
+      this.config = newConfig;
+      console.log('[NotificationManager] Configuration updated');
+    }
+  }
+
+  // Create singleton instance
+  const notificationManager$1 = new NotificationManager();
+
+  /**
+   * Initialize Notifications feature
+   * Called from content.js during initialization
+   */
+  function initNotifications(config, stateManager) {
+    console.log('[Notifications] Initializing Notifications feature module...');
+    notificationManager$1.init(config, stateManager);
+    console.log('[Notifications] Notifications feature module initialized');
+    return notificationManager$1;
+  }
+
+  var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+
+  function getDefaultExportFromCjs (x) {
+  	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
+  }
+
+  function getDefaultExportFromNamespaceIfPresent (n) {
+  	return n && Object.prototype.hasOwnProperty.call(n, 'default') ? n['default'] : n;
+  }
+
+  function getDefaultExportFromNamespaceIfNotNamed (n) {
+  	return n && Object.prototype.hasOwnProperty.call(n, 'default') && Object.keys(n).length === 1 ? n['default'] : n;
+  }
+
+  function getAugmentedNamespace(n) {
+    if (n.__esModule) return n;
+    var f = n.default;
+  	if (typeof f == "function") {
+  		var a = function a () {
+  			if (this instanceof a) {
+          return Reflect.construct(f, arguments, this.constructor);
+  			}
+  			return f.apply(this, arguments);
+  		};
+  		a.prototype = f.prototype;
+    } else a = {};
+    Object.defineProperty(a, '__esModule', {value: true});
+  	Object.keys(n).forEach(function (k) {
+  		var d = Object.getOwnPropertyDescriptor(n, k);
+  		Object.defineProperty(a, k, d.get ? d : {
+  			enumerable: true,
+  			get: function () {
+  				return n[k];
+  			}
+  		});
+  	});
+  	return a;
+  }
+
+  var eventemitter3$1 = {exports: {}};
+
+  var eventemitter3 = eventemitter3$1.exports;
+
+  (function (module) {
+  	'use strict';
+
+  	var has = Object.prototype.hasOwnProperty
+  	  , prefix = '~';
+
+  	/**
+  	 * Constructor to create a storage for our `EE` objects.
+  	 * An `Events` instance is a plain object whose properties are event names.
+  	 *
+  	 * @constructor
+  	 * @private
+  	 */
+  	function Events() {}
+
+  	//
+  	// We try to not inherit from `Object.prototype`. In some engines creating an
+  	// instance in this way is faster than calling `Object.create(null)` directly.
+  	// If `Object.create(null)` is not supported we prefix the event names with a
+  	// character to make sure that the built-in object properties are not
+  	// overridden or used as an attack vector.
+  	//
+  	if (Object.create) {
+  	  Events.prototype = Object.create(null);
+
+  	  //
+  	  // This hack is needed because the `__proto__` property is still inherited in
+  	  // some old browsers like Android 4, iPhone 5.1, Opera 11 and Safari 5.
+  	  //
+  	  if (!new Events().__proto__) prefix = false;
+  	}
+
+  	/**
+  	 * Representation of a single event listener.
+  	 *
+  	 * @param {Function} fn The listener function.
+  	 * @param {*} context The context to invoke the listener with.
+  	 * @param {Boolean} [once=false] Specify if the listener is a one-time listener.
+  	 * @constructor
+  	 * @private
+  	 */
+  	function EE(fn, context, once) {
+  	  this.fn = fn;
+  	  this.context = context;
+  	  this.once = once || false;
+  	}
+
+  	/**
+  	 * Add a listener for a given event.
+  	 *
+  	 * @param {EventEmitter} emitter Reference to the `EventEmitter` instance.
+  	 * @param {(String|Symbol)} event The event name.
+  	 * @param {Function} fn The listener function.
+  	 * @param {*} context The context to invoke the listener with.
+  	 * @param {Boolean} once Specify if the listener is a one-time listener.
+  	 * @returns {EventEmitter}
+  	 * @private
+  	 */
+  	function addListener(emitter, event, fn, context, once) {
+  	  if (typeof fn !== 'function') {
+  	    throw new TypeError('The listener must be a function');
+  	  }
+
+  	  var listener = new EE(fn, context || emitter, once)
+  	    , evt = prefix ? prefix + event : event;
+
+  	  if (!emitter._events[evt]) emitter._events[evt] = listener, emitter._eventsCount++;
+  	  else if (!emitter._events[evt].fn) emitter._events[evt].push(listener);
+  	  else emitter._events[evt] = [emitter._events[evt], listener];
+
+  	  return emitter;
+  	}
+
+  	/**
+  	 * Clear event by name.
+  	 *
+  	 * @param {EventEmitter} emitter Reference to the `EventEmitter` instance.
+  	 * @param {(String|Symbol)} evt The Event name.
+  	 * @private
+  	 */
+  	function clearEvent(emitter, evt) {
+  	  if (--emitter._eventsCount === 0) emitter._events = new Events();
+  	  else delete emitter._events[evt];
+  	}
+
+  	/**
+  	 * Minimal `EventEmitter` interface that is molded against the Node.js
+  	 * `EventEmitter` interface.
+  	 *
+  	 * @constructor
+  	 * @public
+  	 */
+  	function EventEmitter() {
+  	  this._events = new Events();
+  	  this._eventsCount = 0;
+  	}
+
+  	/**
+  	 * Return an array listing the events for which the emitter has registered
+  	 * listeners.
+  	 *
+  	 * @returns {Array}
+  	 * @public
+  	 */
+  	EventEmitter.prototype.eventNames = function eventNames() {
+  	  var names = []
+  	    , events
+  	    , name;
+
+  	  if (this._eventsCount === 0) return names;
+
+  	  for (name in (events = this._events)) {
+  	    if (has.call(events, name)) names.push(prefix ? name.slice(1) : name);
+  	  }
+
+  	  if (Object.getOwnPropertySymbols) {
+  	    return names.concat(Object.getOwnPropertySymbols(events));
+  	  }
+
+  	  return names;
+  	};
+
+  	/**
+  	 * Return the listeners registered for a given event.
+  	 *
+  	 * @param {(String|Symbol)} event The event name.
+  	 * @returns {Array} The registered listeners.
+  	 * @public
+  	 */
+  	EventEmitter.prototype.listeners = function listeners(event) {
+  	  var evt = prefix ? prefix + event : event
+  	    , handlers = this._events[evt];
+
+  	  if (!handlers) return [];
+  	  if (handlers.fn) return [handlers.fn];
+
+  	  for (var i = 0, l = handlers.length, ee = new Array(l); i < l; i++) {
+  	    ee[i] = handlers[i].fn;
+  	  }
+
+  	  return ee;
+  	};
+
+  	/**
+  	 * Return the number of listeners listening to a given event.
+  	 *
+  	 * @param {(String|Symbol)} event The event name.
+  	 * @returns {Number} The number of listeners.
+  	 * @public
+  	 */
+  	EventEmitter.prototype.listenerCount = function listenerCount(event) {
+  	  var evt = prefix ? prefix + event : event
+  	    , listeners = this._events[evt];
+
+  	  if (!listeners) return 0;
+  	  if (listeners.fn) return 1;
+  	  return listeners.length;
+  	};
+
+  	/**
+  	 * Calls each of the listeners registered for a given event.
+  	 *
+  	 * @param {(String|Symbol)} event The event name.
+  	 * @returns {Boolean} `true` if the event had listeners, else `false`.
+  	 * @public
+  	 */
+  	EventEmitter.prototype.emit = function emit(event, a1, a2, a3, a4, a5) {
+  	  var evt = prefix ? prefix + event : event;
+
+  	  if (!this._events[evt]) return false;
+
+  	  var listeners = this._events[evt]
+  	    , len = arguments.length
+  	    , args
+  	    , i;
+
+  	  if (listeners.fn) {
+  	    if (listeners.once) this.removeListener(event, listeners.fn, undefined, true);
+
+  	    switch (len) {
+  	      case 1: return listeners.fn.call(listeners.context), true;
+  	      case 2: return listeners.fn.call(listeners.context, a1), true;
+  	      case 3: return listeners.fn.call(listeners.context, a1, a2), true;
+  	      case 4: return listeners.fn.call(listeners.context, a1, a2, a3), true;
+  	      case 5: return listeners.fn.call(listeners.context, a1, a2, a3, a4), true;
+  	      case 6: return listeners.fn.call(listeners.context, a1, a2, a3, a4, a5), true;
+  	    }
+
+  	    for (i = 1, args = new Array(len -1); i < len; i++) {
+  	      args[i - 1] = arguments[i];
+  	    }
+
+  	    listeners.fn.apply(listeners.context, args);
+  	  } else {
+  	    var length = listeners.length
+  	      , j;
+
+  	    for (i = 0; i < length; i++) {
+  	      if (listeners[i].once) this.removeListener(event, listeners[i].fn, undefined, true);
+
+  	      switch (len) {
+  	        case 1: listeners[i].fn.call(listeners[i].context); break;
+  	        case 2: listeners[i].fn.call(listeners[i].context, a1); break;
+  	        case 3: listeners[i].fn.call(listeners[i].context, a1, a2); break;
+  	        case 4: listeners[i].fn.call(listeners[i].context, a1, a2, a3); break;
+  	        default:
+  	          if (!args) for (j = 1, args = new Array(len -1); j < len; j++) {
+  	            args[j - 1] = arguments[j];
+  	          }
+
+  	          listeners[i].fn.apply(listeners[i].context, args);
+  	      }
+  	    }
+  	  }
+
+  	  return true;
+  	};
+
+  	/**
+  	 * Add a listener for a given event.
+  	 *
+  	 * @param {(String|Symbol)} event The event name.
+  	 * @param {Function} fn The listener function.
+  	 * @param {*} [context=this] The context to invoke the listener with.
+  	 * @returns {EventEmitter} `this`.
+  	 * @public
+  	 */
+  	EventEmitter.prototype.on = function on(event, fn, context) {
+  	  return addListener(this, event, fn, context, false);
+  	};
+
+  	/**
+  	 * Add a one-time listener for a given event.
+  	 *
+  	 * @param {(String|Symbol)} event The event name.
+  	 * @param {Function} fn The listener function.
+  	 * @param {*} [context=this] The context to invoke the listener with.
+  	 * @returns {EventEmitter} `this`.
+  	 * @public
+  	 */
+  	EventEmitter.prototype.once = function once(event, fn, context) {
+  	  return addListener(this, event, fn, context, true);
+  	};
+
+  	/**
+  	 * Remove the listeners of a given event.
+  	 *
+  	 * @param {(String|Symbol)} event The event name.
+  	 * @param {Function} fn Only remove the listeners that match this function.
+  	 * @param {*} context Only remove the listeners that have this context.
+  	 * @param {Boolean} once Only remove one-time listeners.
+  	 * @returns {EventEmitter} `this`.
+  	 * @public
+  	 */
+  	EventEmitter.prototype.removeListener = function removeListener(event, fn, context, once) {
+  	  var evt = prefix ? prefix + event : event;
+
+  	  if (!this._events[evt]) return this;
+  	  if (!fn) {
+  	    clearEvent(this, evt);
+  	    return this;
+  	  }
+
+  	  var listeners = this._events[evt];
+
+  	  if (listeners.fn) {
+  	    if (
+  	      listeners.fn === fn &&
+  	      (!once || listeners.once) &&
+  	      (!context || listeners.context === context)
+  	    ) {
+  	      clearEvent(this, evt);
+  	    }
+  	  } else {
+  	    for (var i = 0, events = [], length = listeners.length; i < length; i++) {
+  	      if (
+  	        listeners[i].fn !== fn ||
+  	        (once && !listeners[i].once) ||
+  	        (context && listeners[i].context !== context)
+  	      ) {
+  	        events.push(listeners[i]);
+  	      }
+  	    }
+
+  	    //
+  	    // Reset the array, or remove it completely if we have no more listeners.
+  	    //
+  	    if (events.length) this._events[evt] = events.length === 1 ? events[0] : events;
+  	    else clearEvent(this, evt);
+  	  }
+
+  	  return this;
+  	};
+
+  	/**
+  	 * Remove all listeners, or those of the specified event.
+  	 *
+  	 * @param {(String|Symbol)} [event] The event name.
+  	 * @returns {EventEmitter} `this`.
+  	 * @public
+  	 */
+  	EventEmitter.prototype.removeAllListeners = function removeAllListeners(event) {
+  	  var evt;
+
+  	  if (event) {
+  	    evt = prefix ? prefix + event : event;
+  	    if (this._events[evt]) clearEvent(this, evt);
+  	  } else {
+  	    this._events = new Events();
+  	    this._eventsCount = 0;
+  	  }
+
+  	  return this;
+  	};
+
+  	//
+  	// Alias methods names because people roll like that.
+  	//
+  	EventEmitter.prototype.off = EventEmitter.prototype.removeListener;
+  	EventEmitter.prototype.addListener = EventEmitter.prototype.on;
+
+  	//
+  	// Expose the prefix.
+  	//
+  	EventEmitter.prefixed = prefix;
+
+  	//
+  	// Allow `EventEmitter` to be imported as module namespace.
+  	//
+  	EventEmitter.EventEmitter = EventEmitter;
+
+  	//
+  	// Expose the module.
+  	//
+  	if ('undefined' !== 'object') {
+  	  module.exports = EventEmitter;
+  	} 
+  } (eventemitter3$1));
+
+  var eventemitter3Exports = eventemitter3$1.exports;
+  var EventEmitter = /*@__PURE__*/getDefaultExportFromCjs(eventemitter3Exports);
+
+  /**
+   * SyncCoordinator - Coordinates storage and broadcast synchronization
+   *
+   * Responsibilities:
+   * - Route broadcast messages to appropriate handlers
+   * - Coordinate storage ↔ state sync
+   * - Ignore own storage changes to prevent loops
+   * - Handle cross-tab communication
+   *
+   * Complexity: cc ≤ 3 per method
+   */
+
+  class SyncCoordinator {
+    /**
+     * @param {StateManager} stateManager - State manager instance
+     * @param {StorageManager} storageManager - Storage manager instance
+     * @param {BroadcastManager} broadcastManager - Broadcast manager instance
+     * @param {Object} handlers - Handler instances {create, update, visibility, destroy}
+     * @param {EventEmitter} eventBus - Internal event bus
+     */
+    constructor(stateManager, storageManager, broadcastManager, handlers, eventBus) {
+      this.stateManager = stateManager;
+      this.storageManager = storageManager;
+      this.broadcastManager = broadcastManager;
+      this.handlers = handlers;
+      this.eventBus = eventBus;
+    }
+
+    /**
+     * Setup event listeners for storage and broadcast events
+     */
     setupListeners() {
-      console.log("[SyncCoordinator] Setting up listeners"), this.eventBus.on("storage:changed", e => {
-        this.handleStorageChange(e);
-      }), this.eventBus.on("broadcast:received", ({type: e, data: t}) => {
-        this.handleBroadcastMessage(e, t);
-      }), console.log("[SyncCoordinator] Listeners setup complete");
+      console.log('[SyncCoordinator] Setting up listeners');
+
+      // Listen to storage changes
+      this.eventBus.on('storage:changed', newValue => {
+        this.handleStorageChange(newValue);
+      });
+
+      // Listen to broadcast messages
+      this.eventBus.on('broadcast:received', ({ type, data }) => {
+        this.handleBroadcastMessage(type, data);
+      });
+
+      console.log('[SyncCoordinator] Listeners setup complete');
     }
-    handleStorageChange(e) {
-      e ? (console.log("[SyncCoordinator] Storage changed, checking if should sync"), 
-      this.storageManager.shouldIgnoreStorageChange(e.saveId) ? console.log("[SyncCoordinator] Ignoring own storage change") : (console.log("[SyncCoordinator] Syncing state from storage"), 
-      this.stateManager.hydrate(e.quickTabs || []))) : console.log("[SyncCoordinator] Ignoring null storage change");
+
+    /**
+     * Handle storage change events
+     *
+     * @param {Object} newValue - New storage value
+     */
+    handleStorageChange(newValue) {
+      // Handle null/undefined
+      if (!newValue) {
+        console.log('[SyncCoordinator] Ignoring null storage change');
+        return;
+      }
+
+      console.log('[SyncCoordinator] Storage changed, checking if should sync');
+
+      // Ignore changes from our own saves to prevent loops
+      if (this.storageManager.shouldIgnoreStorageChange(newValue.saveId)) {
+        console.log('[SyncCoordinator] Ignoring own storage change');
+        return;
+      }
+
+      console.log('[SyncCoordinator] Syncing state from storage');
+
+      // Sync state from storage
+      // This will trigger state:added, state:updated, state:deleted events
+      this.stateManager.hydrate(newValue.quickTabs || []);
     }
-    handleBroadcastMessage(e, t) {
-      t ? (console.log("[SyncCoordinator] Received broadcast:", e), this._routeMessage(e, t)) : console.warn("[SyncCoordinator] Received broadcast with null data, ignoring");
+
+    /**
+     * Handle broadcast messages and route to appropriate handlers
+     *
+     * @param {string} type - Message type
+     * @param {Object} data - Message data
+     */
+    handleBroadcastMessage(type, data) {
+      // Handle null/undefined data
+      if (!data) {
+        console.warn('[SyncCoordinator] Received broadcast with null data, ignoring');
+        return;
+      }
+
+      console.log('[SyncCoordinator] Received broadcast:', type);
+
+      // Route to appropriate handler based on message type
+      this._routeMessage(type, data);
     }
-    _routeMessage(e, t) {
-      switch (e) {
-       case "CREATE":
-        this.handlers.create.create(t);
-        break;
 
-       case "UPDATE_POSITION":
-        this.handlers.update.handlePositionChangeEnd(t.id, t.left, t.top);
-        break;
+    /**
+     * Route message to appropriate handler
+     * @private
+     *
+     * @param {string} type - Message type
+     * @param {Object} data - Message data
+     */
+    _routeMessage(type, data) {
+      switch (type) {
+        case 'CREATE':
+          this.handlers.create.create(data);
+          break;
 
-       case "UPDATE_SIZE":
-        this.handlers.update.handleSizeChangeEnd(t.id, t.width, t.height);
-        break;
+        case 'UPDATE_POSITION':
+          this.handlers.update.handlePositionChangeEnd(data.id, data.left, data.top);
+          break;
 
-       case "SOLO":
-        this.handlers.visibility.handleSoloToggle(t.id, t.soloedOnTabs);
-        break;
+        case 'UPDATE_SIZE':
+          this.handlers.update.handleSizeChangeEnd(data.id, data.width, data.height);
+          break;
 
-       case "MUTE":
-        this.handlers.visibility.handleMuteToggle(t.id, t.mutedOnTabs);
-        break;
+        case 'SOLO':
+          this.handlers.visibility.handleSoloToggle(data.id, data.soloedOnTabs);
+          break;
 
-       case "MINIMIZE":
-        this.handlers.visibility.handleMinimize(t.id);
-        break;
+        case 'MUTE':
+          this.handlers.visibility.handleMuteToggle(data.id, data.mutedOnTabs);
+          break;
 
-       case "RESTORE":
-        this.handlers.visibility.handleRestore(t.id);
-        break;
+        case 'MINIMIZE':
+          this.handlers.visibility.handleMinimize(data.id);
+          break;
 
-       case "CLOSE":
-        this.handlers.destroy.handleDestroy(t.id);
-        break;
+        case 'RESTORE':
+          this.handlers.visibility.handleRestore(data.id);
+          break;
 
-       default:
-        console.warn("[SyncCoordinator] Unknown broadcast type:", e);
+        case 'CLOSE':
+          this.handlers.destroy.handleDestroy(data.id);
+          break;
+
+        default:
+          console.warn('[SyncCoordinator] Unknown broadcast type:', type);
       }
     }
   }
-  class w {
-    constructor(e, t, n, i) {
-      this.stateManager = e, this.minimizedManager = t, this.panelManager = n, this.eventBus = i, 
-      this.renderedTabs = new Map;
+
+  /**
+   * UICoordinator - Coordinates QuickTabWindow rendering and lifecycle
+   *
+   * Responsibilities:
+   * - Render QuickTabWindow instances from QuickTab entities
+   * - Update UI when state changes
+   * - Manage QuickTabWindow lifecycle
+   * - Listen to state events and trigger UI updates
+   *
+   * Complexity: cc ≤ 3 per method
+   */
+
+  /* global createQuickTabWindow */
+
+  class UICoordinator {
+    /**
+     * @param {StateManager} stateManager - State manager instance
+     * @param {MinimizedManager} minimizedManager - Minimized manager instance
+     * @param {PanelManager} panelManager - Panel manager instance
+     * @param {EventEmitter} eventBus - Internal event bus
+     */
+    constructor(stateManager, minimizedManager, panelManager, eventBus) {
+      this.stateManager = stateManager;
+      this.minimizedManager = minimizedManager;
+      this.panelManager = panelManager;
+      this.eventBus = eventBus;
+      this.renderedTabs = new Map(); // id -> QuickTabWindow
     }
+
+    /**
+     * Initialize coordinator - setup listeners and render initial state
+     */
     init() {
-      console.log("[UICoordinator] Initializing..."), this.setupStateListeners(), this.renderAll(), 
-      console.log("[UICoordinator] Initialized");
+      console.log('[UICoordinator] Initializing...');
+
+      // Setup state listeners
+      this.setupStateListeners();
+
+      // Render initial state
+      this.renderAll();
+
+      console.log('[UICoordinator] Initialized');
     }
+
+    /**
+     * Render all visible Quick Tabs from state
+     */
     renderAll() {
-      console.log("[UICoordinator] Rendering all visible tabs");
-      const e = this.stateManager.getVisible();
-      for (const t of e) this.render(t);
-      console.log(`[UICoordinator] Rendered ${e.length} tabs`);
+      console.log('[UICoordinator] Rendering all visible tabs');
+
+      const visibleTabs = this.stateManager.getVisible();
+
+      for (const quickTab of visibleTabs) {
+        this.render(quickTab);
+      }
+
+      console.log(`[UICoordinator] Rendered ${visibleTabs.length} tabs`);
     }
-    render(e) {
-      if (this.renderedTabs.has(e.id)) return console.log("[UICoordinator] Tab already rendered:", e.id), 
-      this.renderedTabs.get(e.id);
-      console.log("[UICoordinator] Rendering tab:", e.id);
-      const t = this._createWindow(e);
-      return this.renderedTabs.set(e.id, t), console.log("[UICoordinator] Tab rendered:", e.id), 
-      t;
+
+    /**
+     * Render a single QuickTabWindow from QuickTab entity
+     *
+     * @param {QuickTab} quickTab - QuickTab domain entity
+     * @returns {QuickTabWindow} Rendered tab window
+     */
+    render(quickTab) {
+      // Skip if already rendered
+      if (this.renderedTabs.has(quickTab.id)) {
+        console.log('[UICoordinator] Tab already rendered:', quickTab.id);
+        return this.renderedTabs.get(quickTab.id);
+      }
+
+      console.log('[UICoordinator] Rendering tab:', quickTab.id);
+
+      // Create QuickTabWindow from QuickTab entity
+      const tabWindow = this._createWindow(quickTab);
+
+      // Store in map
+      this.renderedTabs.set(quickTab.id, tabWindow);
+
+      console.log('[UICoordinator] Tab rendered:', quickTab.id);
+      return tabWindow;
     }
-    update(e) {
-      const t = this.renderedTabs.get(e.id);
-      if (!t) return console.warn("[UICoordinator] Tab not rendered, rendering now:", e.id), 
-      this.render(e);
-      console.log("[UICoordinator] Updating tab:", e.id), t.updatePosition(e.position.left, e.position.top), 
-      t.updateSize(e.size.width, e.size.height), t.updateZIndex(e.zIndex), console.log("[UICoordinator] Tab updated:", e.id);
+
+    /**
+     * Update an existing QuickTabWindow
+     *
+     * @param {QuickTab} quickTab - Updated QuickTab entity
+     */
+    update(quickTab) {
+      const tabWindow = this.renderedTabs.get(quickTab.id);
+
+      if (!tabWindow) {
+        console.warn('[UICoordinator] Tab not rendered, rendering now:', quickTab.id);
+        return this.render(quickTab);
+      }
+
+      console.log('[UICoordinator] Updating tab:', quickTab.id);
+
+      // Update tab properties
+      tabWindow.updatePosition(quickTab.position.left, quickTab.position.top);
+      tabWindow.updateSize(quickTab.size.width, quickTab.size.height);
+      tabWindow.updateZIndex(quickTab.zIndex);
+
+      console.log('[UICoordinator] Tab updated:', quickTab.id);
     }
-    destroy(e) {
-      const t = this.renderedTabs.get(e);
-      t ? (console.log("[UICoordinator] Destroying tab:", e), t.destroy && t.destroy(), 
-      this.renderedTabs.delete(e), console.log("[UICoordinator] Tab destroyed:", e)) : console.warn("[UICoordinator] Tab not found for destruction:", e);
+
+    /**
+     * Destroy a QuickTabWindow
+     *
+     * @param {string} quickTabId - ID of tab to destroy
+     */
+    destroy(quickTabId) {
+      const tabWindow = this.renderedTabs.get(quickTabId);
+
+      if (!tabWindow) {
+        console.warn('[UICoordinator] Tab not found for destruction:', quickTabId);
+        return;
+      }
+
+      console.log('[UICoordinator] Destroying tab:', quickTabId);
+
+      // Call tab's destroy method if it exists
+      if (tabWindow.destroy) {
+        tabWindow.destroy();
+      }
+
+      // Remove from map
+      this.renderedTabs.delete(quickTabId);
+
+      console.log('[UICoordinator] Tab destroyed:', quickTabId);
     }
+
+    /**
+     * Setup state event listeners
+     */
     setupStateListeners() {
-      console.log("[UICoordinator] Setting up state listeners"), this.eventBus.on("state:added", ({quickTab: e}) => {
-        this.render(e);
-      }), this.eventBus.on("state:updated", ({quickTab: e}) => {
-        this.update(e);
-      }), this.eventBus.on("state:deleted", ({id: e}) => {
-        this.destroy(e);
+      console.log('[UICoordinator] Setting up state listeners');
+
+      // Listen to state changes and trigger UI updates
+      this.eventBus.on('state:added', ({ quickTab }) => {
+        this.render(quickTab);
+      });
+
+      this.eventBus.on('state:updated', ({ quickTab }) => {
+        this.update(quickTab);
+      });
+
+      this.eventBus.on('state:deleted', ({ id }) => {
+        this.destroy(id);
       });
     }
-    _createWindow(e) {
+
+    /**
+     * Create QuickTabWindow from QuickTab entity
+     * @private
+     *
+     * @param {QuickTab} quickTab - QuickTab domain entity
+     * @returns {QuickTabWindow} Created window
+     */
+    _createWindow(quickTab) {
+      // Use global createQuickTabWindow function
+      // (This function is defined in window.js and attached to global scope)
       return createQuickTabWindow({
-        id: e.id,
-        url: e.url,
-        left: e.position.left,
-        top: e.position.top,
-        width: e.size.width,
-        height: e.size.height,
-        title: e.title,
-        cookieStoreId: e.container,
-        minimized: e.visibility.minimized,
-        zIndex: e.zIndex,
-        soloedOnTabs: e.visibility.soloedOnTabs,
-        mutedOnTabs: e.visibility.mutedOnTabs
+        id: quickTab.id,
+        url: quickTab.url,
+        left: quickTab.position.left,
+        top: quickTab.position.top,
+        width: quickTab.size.width,
+        height: quickTab.size.height,
+        title: quickTab.title,
+        cookieStoreId: quickTab.container,
+        minimized: quickTab.visibility.minimized,
+        zIndex: quickTab.zIndex,
+        soloedOnTabs: quickTab.visibility.soloedOnTabs,
+        mutedOnTabs: quickTab.visibility.mutedOnTabs
+        // Note: Callbacks are passed through from QuickTabsManager facade
+        // They will be added when QuickTabsManager calls this with options
       });
     }
   }
-  class v {
-    constructor(e, t = {}) {
-      this.element = e, this.onDragStart = t.onDragStart || null, this.onDrag = t.onDrag || null, 
-      this.onDragEnd = t.onDragEnd || null, this.onDragCancel = t.onDragCancel || null, 
-      this.isDragging = !1, this.currentPointerId = null, this.offsetX = 0, this.offsetY = 0, 
-      this.currentX = 0, this.currentY = 0, this.rafId = null, this.boundHandlePointerDown = this.handlePointerDown.bind(this), 
-      this.boundHandlePointerMove = this.handlePointerMove.bind(this), this.boundHandlePointerUp = this.handlePointerUp.bind(this), 
-      this.boundHandlePointerCancel = this.handlePointerCancel.bind(this), this.attach();
+
+  /**
+   * DragController - Handles drag operations using Pointer Events API
+   *
+   * Uses Pointer Events API (pointerdown/pointermove/pointerup/pointercancel) instead
+   * of Mouse Events to support Issue #51 fix (handling tab switch during drag).
+   * The pointercancel event is critical for saving state when drag is interrupted.
+   *
+   * Prevents "slipping" on high-refresh monitors by using requestAnimationFrame
+   * and tracking actual pointer position. Extracted from QuickTabWindow.js as part
+   * of v1.6.0 Phase 2.9 refactoring.
+   *
+   * @see docs/misc/v1.6.0-REFACTORING-PHASE3.4-NEXT-STEPS.md
+   */
+
+  class DragController {
+    /**
+     * Create a drag controller
+     * @param {HTMLElement} element - Element to make draggable
+     * @param {Object} callbacks - Event callbacks
+     * @param {Function} callbacks.onDragStart - Called when drag starts (x, y)
+     * @param {Function} callbacks.onDrag - Called during drag (newX, newY)
+     * @param {Function} callbacks.onDragEnd - Called when drag ends (finalX, finalY)
+     * @param {Function} callbacks.onDragCancel - Called when drag is cancelled (lastX, lastY)
+     */
+    constructor(element, callbacks = {}) {
+      this.element = element;
+      this.onDragStart = callbacks.onDragStart || null;
+      this.onDrag = callbacks.onDrag || null;
+      this.onDragEnd = callbacks.onDragEnd || null;
+      this.onDragCancel = callbacks.onDragCancel || null;
+
+      this.isDragging = false;
+      this.currentPointerId = null;
+      this.offsetX = 0;
+      this.offsetY = 0;
+      this.currentX = 0;
+      this.currentY = 0;
+      this.rafId = null;
+
+      this.boundHandlePointerDown = this.handlePointerDown.bind(this);
+      this.boundHandlePointerMove = this.handlePointerMove.bind(this);
+      this.boundHandlePointerUp = this.handlePointerUp.bind(this);
+      this.boundHandlePointerCancel = this.handlePointerCancel.bind(this);
+
+      this.attach();
     }
+
+    /**
+     * Attach drag listeners
+     */
     attach() {
-      this.element.addEventListener("pointerdown", this.boundHandlePointerDown), this.element.addEventListener("pointermove", this.boundHandlePointerMove), 
-      this.element.addEventListener("pointerup", this.boundHandlePointerUp), this.element.addEventListener("pointercancel", this.boundHandlePointerCancel);
+      this.element.addEventListener('pointerdown', this.boundHandlePointerDown);
+      this.element.addEventListener('pointermove', this.boundHandlePointerMove);
+      this.element.addEventListener('pointerup', this.boundHandlePointerUp);
+      this.element.addEventListener('pointercancel', this.boundHandlePointerCancel);
     }
+
+    /**
+     * Handle pointer down - start drag
+     * @param {PointerEvent} e
+     */
     handlePointerDown(e) {
-      if ("BUTTON" === e.target.tagName || "INPUT" === e.target.tagName) return;
-      this.isDragging = !0, this.currentPointerId = e.pointerId;
-      const t = this.element.parentElement.getBoundingClientRect();
-      this.currentX = t.left, this.currentY = t.top, this.offsetX = e.clientX - this.currentX, 
-      this.offsetY = e.clientY - this.currentY, this.element.setPointerCapture(e.pointerId), 
-      this.onDragStart && this.onDragStart(this.currentX, this.currentY);
+      // Don't drag if clicking on button or other interactive element
+      if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') {
+        return;
+      }
+
+      this.isDragging = true;
+      this.currentPointerId = e.pointerId;
+
+      // Calculate offset from current element position
+      const rect = this.element.parentElement.getBoundingClientRect();
+      this.currentX = rect.left;
+      this.currentY = rect.top;
+      this.offsetX = e.clientX - this.currentX;
+      this.offsetY = e.clientY - this.currentY;
+
+      // Capture pointer events
+      this.element.setPointerCapture(e.pointerId);
+
+      if (this.onDragStart) {
+        this.onDragStart(this.currentX, this.currentY);
+      }
     }
+
+    /**
+     * Handle pointer move - update position
+     * Uses requestAnimationFrame to prevent slipping on high-refresh monitors
+     * @param {PointerEvent} e
+     */
     handlePointerMove(e) {
-      this.isDragging && (this.rafId || (this.rafId = requestAnimationFrame(() => {
-        const t = e.clientX - this.offsetX, n = e.clientY - this.offsetY;
-        this.currentX = t, this.currentY = n, this.onDrag && this.onDrag(t, n), this.rafId = null;
-      })));
+      if (!this.isDragging) return;
+
+      // Use requestAnimationFrame to prevent excessive updates
+      if (this.rafId) return;
+
+      this.rafId = requestAnimationFrame(() => {
+        const newX = e.clientX - this.offsetX;
+        const newY = e.clientY - this.offsetY;
+
+        this.currentX = newX;
+        this.currentY = newY;
+
+        if (this.onDrag) {
+          this.onDrag(newX, newY);
+        }
+
+        this.rafId = null;
+      });
     }
+
+    /**
+     * Handle pointer up - end drag
+     * @param {PointerEvent} e
+     */
     handlePointerUp(e) {
       if (!this.isDragging) return;
-      this.isDragging = !1, this.rafId && (cancelAnimationFrame(this.rafId), this.rafId = null), 
-      null !== this.currentPointerId && (this.element.releasePointerCapture(this.currentPointerId), 
-      this.currentPointerId = null);
-      const t = e.clientX - this.offsetX, n = e.clientY - this.offsetY;
-      this.onDragEnd && this.onDragEnd(t, n);
+
+      this.isDragging = false;
+
+      if (this.rafId) {
+        cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+      }
+
+      // Release pointer capture
+      if (this.currentPointerId !== null) {
+        this.element.releasePointerCapture(this.currentPointerId);
+        this.currentPointerId = null;
+      }
+
+      // Calculate final position
+      const finalX = e.clientX - this.offsetX;
+      const finalY = e.clientY - this.offsetY;
+
+      if (this.onDragEnd) {
+        this.onDragEnd(finalX, finalY);
+      }
     }
-    handlePointerCancel(e) {
+
+    /**
+     * Handle pointer cancel - CRITICAL FOR ISSUE #51
+     * This fires when drag is interrupted (e.g., user switches tabs during drag)
+     * @param {PointerEvent} _e
+     */
+    handlePointerCancel(_e) {
       if (!this.isDragging) return;
-      this.isDragging = !1, this.rafId && (cancelAnimationFrame(this.rafId), this.rafId = null);
-      const t = this.onDragCancel || this.onDragEnd;
-      t && t(this.currentX, this.currentY), this.currentPointerId = null;
+
+      this.isDragging = false;
+
+      if (this.rafId) {
+        cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+      }
+
+      // Call onDragCancel with last known position (or onDragEnd as fallback)
+      const callback = this.onDragCancel || this.onDragEnd;
+      if (callback) {
+        callback(this.currentX, this.currentY);
+      }
+
+      this.currentPointerId = null;
     }
+
+    /**
+     * Detach drag listeners and cleanup
+     */
     destroy() {
-      this.element.removeEventListener("pointerdown", this.boundHandlePointerDown), this.element.removeEventListener("pointermove", this.boundHandlePointerMove), 
-      this.element.removeEventListener("pointerup", this.boundHandlePointerUp), this.element.removeEventListener("pointercancel", this.boundHandlePointerCancel), 
-      this.rafId && (cancelAnimationFrame(this.rafId), this.rafId = null), this.isDragging = !1, 
+      this.element.removeEventListener('pointerdown', this.boundHandlePointerDown);
+      this.element.removeEventListener('pointermove', this.boundHandlePointerMove);
+      this.element.removeEventListener('pointerup', this.boundHandlePointerUp);
+      this.element.removeEventListener('pointercancel', this.boundHandlePointerCancel);
+
+      if (this.rafId) {
+        cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+      }
+
+      this.isDragging = false;
       this.currentPointerId = null;
     }
   }
-  function S(e, t = {}, n = null) {
-    const i = document.createElement(e);
-    return Object.entries(t).forEach(([e, t]) => {
-      if ("className" === e) i.className = t; else if ("style" === e && "object" == typeof t) Object.assign(i.style, t); else if (e.startsWith("on") && "function" == typeof t) {
-        const n = e.substring(2).toLowerCase();
-        i.addEventListener(n, t);
-      } else i.setAttribute(e, t);
-    }), n && ("string" == typeof n ? i.textContent = n : Array.isArray(n) ? n.forEach(e => {
-      e instanceof Element ? i.appendChild(e) : "string" == typeof e && i.appendChild(document.createTextNode(e));
-    }) : n instanceof Element && i.appendChild(n)), i;
+
+  /**
+   * DOM Utilities
+   * Helper functions for DOM manipulation
+   */
+
+  /**
+   * Create an element with attributes
+   * @param {string} tag - HTML tag name
+   * @param {object} attributes - Element attributes
+   * @param {string|Element|Element[]} children - Child content
+   * @returns {Element} Created element
+   */
+  function createElement(tag, attributes = {}, children = null) {
+    const element = document.createElement(tag);
+
+    // Set attributes
+    Object.entries(attributes).forEach(([key, value]) => {
+      if (key === 'className') {
+        element.className = value;
+      } else if (key === 'style' && typeof value === 'object') {
+        Object.assign(element.style, value);
+      } else if (key.startsWith('on') && typeof value === 'function') {
+        const eventName = key.substring(2).toLowerCase();
+        element.addEventListener(eventName, value);
+      } else {
+        element.setAttribute(key, value);
+      }
+    });
+
+    // Add children
+    if (children) {
+      if (typeof children === 'string') {
+        element.textContent = children;
+      } else if (Array.isArray(children)) {
+        children.forEach(child => {
+          if (child instanceof Element) {
+            element.appendChild(child);
+          } else if (typeof child === 'string') {
+            element.appendChild(document.createTextNode(child));
+          }
+        });
+      } else if (children instanceof Element) {
+        element.appendChild(children);
+      }
+    }
+
+    return element;
   }
-  const T = {
+
+  /**
+   * Find closest ancestor matching selector
+   * @param {Element} element - Starting element
+   * @param {string} selector - CSS selector
+   * @returns {Element|null} Matching ancestor or null
+   */
+  function findClosest(element, selector) {
+    return element ? element.closest(selector) : null;
+  }
+
+  /**
+   * Remove an element from the DOM
+   * @param {Element|string} elementOrSelector - Element or CSS selector
+   */
+  function removeElement(elementOrSelector) {
+    const element =
+      typeof elementOrSelector === 'string'
+        ? document.querySelector(elementOrSelector)
+        : elementOrSelector;
+
+    if (element && element.parentNode) {
+      element.parentNode.removeChild(element);
+    }
+  }
+
+  /**
+   * Check if element is visible
+   * @param {Element} element - Element to check
+   * @returns {boolean} True if visible
+   */
+  function isVisible(element) {
+    if (!element) return false;
+
+    const style = window.getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+  }
+
+  /**
+   * Get element position relative to viewport
+   * @param {Element} element - Element
+   * @returns {object} Position object with x, y, width, height
+   */
+  function getElementPosition(element) {
+    if (!element) return { x: 0, y: 0, width: 0, height: 0 };
+
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  /**
+   * Set element position
+   * @param {Element} element - Element
+   * @param {number} x - X position
+   * @param {number} y - Y position
+   */
+  function setElementPosition(element, x, y) {
+    if (!element) return;
+
+    element.style.left = `${x}px`;
+    element.style.top = `${y}px`;
+  }
+
+  /**
+   * Set element size
+   * @param {Element} element - Element
+   * @param {number} width - Width
+   * @param {number} height - Height
+   */
+  function setElementSize(element, width, height) {
+    if (!element) return;
+
+    element.style.width = `${width}px`;
+    element.style.height = `${height}px`;
+  }
+
+  /**
+   * Add CSS class to element
+   * @param {Element} element - Element
+   * @param {string} className - CSS class name
+   */
+  function addClass(element, className) {
+    if (element) {
+      element.classList.add(className);
+    }
+  }
+
+  /**
+   * Remove CSS class from element
+   * @param {Element} element - Element
+   * @param {string} className - CSS class name
+   */
+  function removeClass(element, className) {
+    if (element) {
+      element.classList.remove(className);
+    }
+  }
+
+  /**
+   * Toggle CSS class on element
+   * @param {Element} element - Element
+   * @param {string} className - CSS class name
+   * @returns {boolean} True if class is now present
+   */
+  function toggleClass(element, className) {
+    if (element) {
+      return element.classList.toggle(className);
+    }
+    return false;
+  }
+
+  /**
+   * Check if element has CSS class
+   * @param {Element} element - Element
+   * @param {string} className - CSS class name
+   * @returns {boolean} True if element has class
+   */
+  function hasClass(element, className) {
+    return element ? element.classList.contains(className) : false;
+  }
+
+  /**
+   * ResizeHandle - Individual resize handle with table-driven configuration
+   * Part of Phase 2.3 refactoring to reduce window.js complexity
+   *
+   * This demonstrates the table-driven configuration pattern from the refactoring plan.
+   * Reduces complexity from cc=25 to cc=3 by eliminating directional conditionals.
+   */
+
+
+  /**
+   * Configuration for each resize direction
+   * Eliminates conditional logic - direction behavior is data-driven
+   */
+  const RESIZE_CONFIGS$1 = {
+    // Corner handles
     se: {
-      cursor: "se-resize",
-      position: {
-        bottom: 0,
-        right: 0
-      },
-      size: {
-        width: 10,
-        height: 10
-      },
-      directions: [ "e", "s" ]
+      cursor: 'se-resize',
+      position: { bottom: 0, right: 0 },
+      size: { width: 10, height: 10 },
+      directions: ['e', 's']
     },
     sw: {
-      cursor: "sw-resize",
-      position: {
-        bottom: 0,
-        left: 0
-      },
-      size: {
-        width: 10,
-        height: 10
-      },
-      directions: [ "w", "s" ]
+      cursor: 'sw-resize',
+      position: { bottom: 0, left: 0 },
+      size: { width: 10, height: 10 },
+      directions: ['w', 's']
     },
     ne: {
-      cursor: "ne-resize",
-      position: {
-        top: 0,
-        right: 0
-      },
-      size: {
-        width: 10,
-        height: 10
-      },
-      directions: [ "e", "n" ]
+      cursor: 'ne-resize',
+      position: { top: 0, right: 0 },
+      size: { width: 10, height: 10 },
+      directions: ['e', 'n']
     },
     nw: {
-      cursor: "nw-resize",
-      position: {
-        top: 0,
-        left: 0
-      },
-      size: {
-        width: 10,
-        height: 10
-      },
-      directions: [ "w", "n" ]
+      cursor: 'nw-resize',
+      position: { top: 0, left: 0 },
+      size: { width: 10, height: 10 },
+      directions: ['w', 'n']
     },
+    // Edge handles
     e: {
-      cursor: "e-resize",
-      position: {
-        top: 10,
-        right: 0,
-        bottom: 10
-      },
-      size: {
-        width: 10
-      },
-      directions: [ "e" ]
+      cursor: 'e-resize',
+      position: { top: 10, right: 0, bottom: 10 },
+      size: { width: 10 },
+      directions: ['e']
     },
     w: {
-      cursor: "w-resize",
-      position: {
-        top: 10,
-        left: 0,
-        bottom: 10
-      },
-      size: {
-        width: 10
-      },
-      directions: [ "w" ]
+      cursor: 'w-resize',
+      position: { top: 10, left: 0, bottom: 10 },
+      size: { width: 10 },
+      directions: ['w']
     },
     s: {
-      cursor: "s-resize",
-      position: {
-        bottom: 0,
-        left: 10,
-        right: 10
-      },
-      size: {
-        height: 10
-      },
-      directions: [ "s" ]
+      cursor: 's-resize',
+      position: { bottom: 0, left: 10, right: 10 },
+      size: { height: 10 },
+      directions: ['s']
     },
     n: {
-      cursor: "n-resize",
-      position: {
-        top: 0,
-        left: 10,
-        right: 10
-      },
-      size: {
-        height: 10
-      },
-      directions: [ "n" ]
+      cursor: 'n-resize',
+      position: { top: 0, left: 10, right: 10 },
+      size: { height: 10 },
+      directions: ['n']
     }
   };
-  class C {
-    constructor(e, t, n = {}) {
-      if (this.direction = e, this.window = t, this.config = T[e], this.minWidth = n.minWidth || 400, 
-      this.minHeight = n.minHeight || 300, !this.config) throw new Error(`Invalid resize direction: ${e}`);
-      this.element = null, this.isResizing = !1, this.startState = null;
+
+  /**
+   * ResizeHandle class - Manages a single resize handle
+   * Generic implementation works for all 8 directions via configuration
+   */
+  class ResizeHandle {
+    constructor(direction, window, options = {}) {
+      this.direction = direction;
+      this.window = window;
+      this.config = RESIZE_CONFIGS$1[direction];
+      this.minWidth = options.minWidth || 400;
+      this.minHeight = options.minHeight || 300;
+
+      if (!this.config) {
+        throw new Error(`Invalid resize direction: ${direction}`);
+      }
+
+      this.element = null;
+      this.isResizing = false;
+      this.startState = null;
     }
+
+    /**
+     * Create and attach the handle element
+     */
     create() {
-      const {cursor: e, position: t, size: n} = this.config, i = {
-        position: "absolute",
-        cursor: e,
-        zIndex: "10",
-        backgroundColor: "transparent",
-        ...Object.entries(t).reduce((e, [t, n]) => (e[t] = `${n}px`, e), {}),
-        ...Object.entries(n).reduce((e, [t, n]) => (e[t] = `${n}px`, e), {})
+      const { cursor, position, size } = this.config;
+
+      // Build style object from configuration
+      const style = {
+        position: 'absolute',
+        cursor,
+        zIndex: '10',
+        backgroundColor: 'transparent', // Invisible but interactive
+        ...Object.entries(position).reduce((acc, [key, value]) => {
+          acc[key] = `${value}px`;
+          return acc;
+        }, {}),
+        ...Object.entries(size).reduce((acc, [key, value]) => {
+          acc[key] = `${value}px`;
+          return acc;
+        }, {})
       };
-      return this.element = S("div", {
+
+      this.element = createElement('div', {
         className: `quick-tab-resize-handle-${this.direction}`,
-        style: i
-      }), this.attachEventListeners(), this.element;
+        style
+      });
+
+      this.attachEventListeners();
+      return this.element;
     }
+
+    /**
+     * Attach pointer event listeners
+     */
     attachEventListeners() {
-      this.element.addEventListener("pointerdown", this.handlePointerDown.bind(this)), 
-      this.element.addEventListener("pointermove", this.handlePointerMove.bind(this)), 
-      this.element.addEventListener("pointerup", this.handlePointerUp.bind(this)), this.element.addEventListener("pointercancel", this.handlePointerCancel.bind(this));
+      this.element.addEventListener('pointerdown', this.handlePointerDown.bind(this));
+      this.element.addEventListener('pointermove', this.handlePointerMove.bind(this));
+      this.element.addEventListener('pointerup', this.handlePointerUp.bind(this));
+      this.element.addEventListener('pointercancel', this.handlePointerCancel.bind(this));
     }
+
+    /**
+     * Start resize operation
+     */
     handlePointerDown(e) {
-      0 === e.button && (e.stopPropagation(), e.preventDefault(), this.isResizing = !0, 
-      this.element.setPointerCapture(e.pointerId), this.startState = {
+      if (e.button !== 0) return;
+
+      e.stopPropagation();
+      e.preventDefault();
+
+      this.isResizing = true;
+      this.element.setPointerCapture(e.pointerId);
+
+      this.startState = {
         x: e.clientX,
         y: e.clientY,
         width: this.window.width,
         height: this.window.height,
         left: this.window.left,
         top: this.window.top
-      });
-    }
-    handlePointerMove(e) {
-      if (!this.isResizing) return;
-      const t = e.clientX - this.startState.x, n = e.clientY - this.startState.y, i = this.calculateNewDimensions(t, n);
-      Object.assign(this.window, i), this.window.container.style.width = `${i.width}px`, 
-      this.window.container.style.height = `${i.height}px`, this.window.container.style.left = `${i.left}px`, 
-      this.window.container.style.top = `${i.top}px`, this.notifyChanges(i), e.preventDefault();
-    }
-    calculateNewDimensions(e, t) {
-      const {directions: n} = this.config, {width: i, height: o, left: s, top: a} = this.startState;
-      let r = i, l = o, c = s, d = a;
-      for (const h of n) switch (h) {
-       case "e":
-        r = Math.max(this.minWidth, i + e);
-        break;
-
-       case "w":
-        {
-          const t = i - this.minWidth, n = Math.min(e, t);
-          r = i - n, c = s + n;
-        }
-        break;
-
-       case "s":
-        l = Math.max(this.minHeight, o + t);
-        break;
-
-       case "n":
-        {
-          const e = o - this.minHeight, n = Math.min(t, e);
-          l = o - n, d = a + n;
-        }
-      }
-      return {
-        width: r,
-        height: l,
-        left: c,
-        top: d
       };
     }
-    notifyChanges(e) {
-      const {width: t, height: n, left: i, top: o} = e, {width: s, height: a, left: r, top: l} = this.startState;
-      t === s && n === a || this.window.onSizeChange?.(this.window.id, t, n), i === r && o === l || this.window.onPositionChange?.(this.window.id, i, o);
+
+    /**
+     * Handle resize drag
+     * Uses configuration to determine which dimensions to modify
+     */
+    handlePointerMove(e) {
+      if (!this.isResizing) return;
+
+      const dx = e.clientX - this.startState.x;
+      const dy = e.clientY - this.startState.y;
+
+      const newDimensions = this.calculateNewDimensions(dx, dy);
+
+      // Apply dimensions
+      Object.assign(this.window, newDimensions);
+
+      // Update DOM
+      this.window.container.style.width = `${newDimensions.width}px`;
+      this.window.container.style.height = `${newDimensions.height}px`;
+      this.window.container.style.left = `${newDimensions.left}px`;
+      this.window.container.style.top = `${newDimensions.top}px`;
+
+      // Notify callbacks
+      this.notifyChanges(newDimensions);
+
+      e.preventDefault();
     }
+
+    /**
+     * Calculate new dimensions based on direction configuration
+     * This is where the table-driven approach shines - no directional conditionals!
+     */
+    calculateNewDimensions(dx, dy) {
+      const { directions } = this.config;
+      const { width, height, left, top } = this.startState;
+
+      let newWidth = width;
+      let newHeight = height;
+      let newLeft = left;
+      let newTop = top;
+
+      // Process each direction in the configuration
+      for (const dir of directions) {
+        switch (dir) {
+          case 'e': // East - expand right
+            newWidth = Math.max(this.minWidth, width + dx);
+            break;
+          case 'w': // West - expand left
+            {
+              const maxDx = width - this.minWidth;
+              const constrainedDx = Math.min(dx, maxDx);
+              newWidth = width - constrainedDx;
+              newLeft = left + constrainedDx;
+            }
+            break;
+          case 's': // South - expand down
+            newHeight = Math.max(this.minHeight, height + dy);
+            break;
+          case 'n': // North - expand up
+            {
+              const maxDy = height - this.minHeight;
+              const constrainedDy = Math.min(dy, maxDy);
+              newHeight = height - constrainedDy;
+              newTop = top + constrainedDy;
+            }
+            break;
+        }
+      }
+
+      return { width: newWidth, height: newHeight, left: newLeft, top: newTop };
+    }
+
+    /**
+     * Notify parent of dimension changes
+     */
+    notifyChanges(newDimensions) {
+      const { width, height, left, top } = newDimensions;
+      const { width: oldWidth, height: oldHeight, left: oldLeft, top: oldTop } = this.startState;
+
+      // Size changed
+      if (width !== oldWidth || height !== oldHeight) {
+        this.window.onSizeChange?.(this.window.id, width, height);
+      }
+
+      // Position changed
+      if (left !== oldLeft || top !== oldTop) {
+        this.window.onPositionChange?.(this.window.id, left, top);
+      }
+    }
+
+    /**
+     * End resize operation
+     */
     handlePointerUp(e) {
-      this.isResizing && (this.isResizing = !1, this.element.releasePointerCapture(e.pointerId), 
-      e.preventDefault(), e.stopPropagation(), this.window.onSizeChangeEnd?.(this.window.id, this.window.width, this.window.height), 
-      this.window.left === this.startState.left && this.window.top === this.startState.top || this.window.onPositionChangeEnd?.(this.window.id, this.window.left, this.window.top), 
-      this.startState = null);
+      if (!this.isResizing) return;
+
+      this.isResizing = false;
+      this.element.releasePointerCapture(e.pointerId);
+
+      // Prevent click propagation
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Final save callbacks
+      this.window.onSizeChangeEnd?.(this.window.id, this.window.width, this.window.height);
+
+      if (this.window.left !== this.startState.left || this.window.top !== this.startState.top) {
+        this.window.onPositionChangeEnd?.(this.window.id, this.window.left, this.window.top);
+      }
+
+      this.startState = null;
     }
-    handlePointerCancel(e) {
-      this.isResizing && (this.isResizing = !1, this.window.onSizeChangeEnd?.(this.window.id, this.window.width, this.window.height), 
-      this.window.onPositionChangeEnd?.(this.window.id, this.window.left, this.window.top), 
-      this.startState = null);
+
+    /**
+     * Handle resize cancellation
+     */
+    handlePointerCancel(_e) {
+      if (!this.isResizing) return;
+
+      this.isResizing = false;
+
+      // Emergency save
+      this.window.onSizeChangeEnd?.(this.window.id, this.window.width, this.window.height);
+      this.window.onPositionChangeEnd?.(this.window.id, this.window.left, this.window.top);
+
+      this.startState = null;
     }
+
+    /**
+     * Cleanup event listeners
+     */
     destroy() {
-      this.element && (this.element.remove(), this.element = null);
+      if (this.element) {
+        this.element.remove();
+        this.element = null;
+      }
     }
   }
-  const k = [ "nw", "n", "ne", "e", "se", "s", "sw", "w" ];
-  class I {
-    constructor(e, t = {}) {
-      this.window = e, this.options = t, this.handles = [];
-    }
-    attachHandles() {
-      for (const e of k) {
-        const t = new C(e, this.window, this.options), n = t.create();
-        this.window.container.appendChild(n), this.handles.push(t);
-      }
-      return this.handles;
-    }
-    detachAll() {
-      for (const e of this.handles) e.destroy();
+
+  /**
+   * ResizeController - Coordinates all resize handles for a Quick Tab window
+   * Part of Phase 2.3 refactoring to reduce window.js complexity
+   *
+   * This demonstrates the facade/coordinator pattern from the refactoring plan.
+   * Reduces setupResizeHandlers from 195 lines to ~15 lines of orchestration.
+   */
+
+
+  /**
+   * All 8 resize directions
+   * Adding a new direction is as simple as adding to this array
+   */
+  const RESIZE_DIRECTIONS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
+  /**
+   * ResizeController class - Manages all resize handles for a window
+   */
+  class ResizeController {
+    constructor(window, options = {}) {
+      this.window = window;
+      this.options = options;
       this.handles = [];
     }
-    getHandle(e) {
-      return this.handles.find(t => t.direction === e);
+
+    /**
+     * Create and attach all resize handles
+     * This replaces 195 lines of repeated code in setupResizeHandlers()
+     */
+    attachHandles() {
+      // Create a handle for each direction
+      for (const direction of RESIZE_DIRECTIONS) {
+        const handle = new ResizeHandle(direction, this.window, this.options);
+        const element = handle.create();
+
+        // Append to window container
+        this.window.container.appendChild(element);
+
+        // Track for cleanup
+        this.handles.push(handle);
+      }
+
+      return this.handles;
+    }
+
+    /**
+     * Remove all resize handles and cleanup
+     */
+    detachAll() {
+      for (const handle of this.handles) {
+        handle.destroy();
+      }
+      this.handles = [];
+    }
+
+    /**
+     * Get specific handle by direction
+     */
+    getHandle(direction) {
+      return this.handles.find(h => h.direction === direction);
     }
   }
-  class E {
-    constructor(e, t) {
-      this.config = e, this.callbacks = t, this.titlebar = null, this.titleElement = null, 
-      this.soloButton = null, this.muteButton = null, this.faviconElement = null, this.currentZoom = 100, 
+
+  /**
+   * TitlebarBuilder Component - v1.6.0 Phase 2.9 Task 4
+   *
+   * Extracted from QuickTabWindow.createTitlebar() (157 lines, cc unknown)
+   * Follows facade pattern used by ResizeController and DragController
+   *
+   * Responsibilities:
+   * - Build titlebar with left section (navigation + favicon + title)
+   * - Build control buttons (solo/mute/minimize/close)
+   * - Manage button state updates
+   * - Handle button event delegation
+   *
+   * @created 2025-11-19
+   * @refactoring Phase 2.9 Task 4
+   */
+
+
+  /**
+   * TitlebarBuilder - Builds and manages Quick Tab titlebar
+   *
+   * Follows facade pattern - encapsulates titlebar creation logic
+   * that was previously in QuickTabWindow.createTitlebar()
+   */
+  class TitlebarBuilder {
+    /**
+     * @param {Object} config - Titlebar configuration
+     * @param {string} config.title - Initial title text
+     * @param {string} config.url - URL for favicon extraction
+     * @param {Array<number>} config.soloedOnTabs - Solo tab IDs
+     * @param {Array<number>} config.mutedOnTabs - Mute tab IDs
+     * @param {number} config.currentTabId - Current tab ID for solo/mute checks
+     * @param {HTMLIFrameElement} config.iframe - Iframe element for navigation/zoom
+     * @param {Object} callbacks - Event callbacks
+     * @param {Function} callbacks.onClose - Close button clicked
+     * @param {Function} callbacks.onMinimize - Minimize button clicked
+     * @param {Function} callbacks.onSolo - Solo button clicked
+     * @param {Function} callbacks.onMute - Mute button clicked
+     * @param {Function} callbacks.onOpenInTab - Open in tab button clicked
+     */
+    constructor(config, callbacks) {
+      this.config = config;
+      this.callbacks = callbacks;
+
+      // DOM element references (public for window.js access)
+      this.titlebar = null;
+      this.titleElement = null;
+      this.soloButton = null;
+      this.muteButton = null;
+      this.faviconElement = null;
+
+      // Zoom state (internal to titlebar)
+      this.currentZoom = 100;
       this.zoomDisplay = null;
     }
+
+    /**
+     * Build and return the complete titlebar element
+     * @returns {HTMLElement} The titlebar DOM element
+     */
     build() {
       this.titlebar = this._createContainer();
-      const e = this._createLeftSection(), t = this._createRightSection();
-      return this.titlebar.appendChild(e), this.titlebar.appendChild(t), this.titlebar;
+
+      // Build sections
+      const leftSection = this._createLeftSection();
+      const controls = this._createRightSection();
+
+      this.titlebar.appendChild(leftSection);
+      this.titlebar.appendChild(controls);
+
+      return this.titlebar;
     }
-    updateTitle(e) {
-      this.titleElement && (this.titleElement.textContent = e);
+
+    /**
+     * Update title text dynamically
+     * @param {string} newTitle - New title text
+     */
+    updateTitle(newTitle) {
+      if (this.titleElement) {
+        this.titleElement.textContent = newTitle;
+      }
     }
-    updateSoloButton(e) {
-      this.soloButton && (this.soloButton.textContent = e ? "🎯" : "⭕", this.soloButton.title = e ? "Un-solo (show on all tabs)" : "Solo (show only on this tab)", 
-      this.soloButton.style.background = e ? "#444" : "transparent");
+
+    /**
+     * Update solo button state
+     * @param {boolean} isSoloed - Whether currently soloed on this tab
+     */
+    updateSoloButton(isSoloed) {
+      if (this.soloButton) {
+        this.soloButton.textContent = isSoloed ? '🎯' : '⭕';
+        this.soloButton.title = isSoloed
+          ? 'Un-solo (show on all tabs)'
+          : 'Solo (show only on this tab)';
+        this.soloButton.style.background = isSoloed ? '#444' : 'transparent';
+      }
     }
-    updateMuteButton(e) {
-      this.muteButton && (this.muteButton.textContent = e ? "🔇" : "🔊", this.muteButton.title = e ? "Unmute (show on this tab)" : "Mute (hide on this tab)", 
-      this.muteButton.style.background = e ? "#c44" : "transparent");
+
+    /**
+     * Update mute button state
+     * @param {boolean} isMuted - Whether currently muted on this tab
+     */
+    updateMuteButton(isMuted) {
+      if (this.muteButton) {
+        this.muteButton.textContent = isMuted ? '🔇' : '🔊';
+        this.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
+        this.muteButton.style.background = isMuted ? '#c44' : 'transparent';
+      }
     }
+
+    // ============================================================================
+    // Private Helper Methods
+    // ============================================================================
+
+    /**
+     * Create titlebar container
+     * @private
+     */
     _createContainer() {
-      return S("div", {
-        className: "quick-tab-titlebar",
+      return createElement('div', {
+        className: 'quick-tab-titlebar',
         style: {
-          height: "40px",
-          backgroundColor: "#2d2d2d",
-          borderBottom: "1px solid #444",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 12px",
-          cursor: "move",
-          userSelect: "none"
+          height: '40px',
+          backgroundColor: '#2d2d2d',
+          borderBottom: '1px solid #444',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 12px',
+          cursor: 'move',
+          userSelect: 'none'
         }
       });
     }
+
+    /**
+     * Create left section with navigation + favicon + title
+     * @private
+     */
     _createLeftSection() {
-      const e = S("div", {
+      const leftSection = createElement('div', {
         style: {
-          display: "flex",
-          alignItems: "center",
-          flex: "1",
-          overflow: "hidden",
-          gap: "8px"
+          display: 'flex',
+          alignItems: 'center',
+          flex: '1',
+          overflow: 'hidden',
+          gap: '8px'
         }
-      }), t = this._createNavigationButtons();
-      return e.appendChild(t), this.faviconElement = this._createFavicon(), e.appendChild(this.faviconElement), 
-      this.titleElement = this._createTitle(), e.appendChild(this.titleElement), e;
+      });
+
+      // Navigation buttons container
+      const navContainer = this._createNavigationButtons();
+      leftSection.appendChild(navContainer);
+
+      // Favicon
+      this.faviconElement = this._createFavicon();
+      leftSection.appendChild(this.faviconElement);
+
+      // Title text
+      this.titleElement = this._createTitle();
+      leftSection.appendChild(this.titleElement);
+
+      return leftSection;
     }
+
+    /**
+     * Create navigation buttons container (back/forward/reload/zoom)
+     * @private
+     */
     _createNavigationButtons() {
-      const e = S("div", {
+      const navContainer = createElement('div', {
         style: {
-          display: "flex",
-          gap: "4px",
-          alignItems: "center"
+          display: 'flex',
+          gap: '4px',
+          alignItems: 'center'
         }
       });
-      return this._appendHistoryButtons(e), this._appendZoomControls(e), e;
+
+      this._appendHistoryButtons(navContainer);
+      this._appendZoomControls(navContainer);
+
+      return navContainer;
     }
-    _appendHistoryButtons(e) {
-      const t = this._createButton("←", () => {
-        if (this.config.iframe.contentWindow) try {
-          this.config.iframe.contentWindow.history.back();
-        } catch (e) {
-          console.warn("[QuickTab] Cannot navigate back - cross-origin restriction");
+
+    /**
+     * Append history navigation buttons (back/forward/reload)
+     * @private
+     */
+    _appendHistoryButtons(navContainer) {
+      // Back button
+      const backBtn = this._createButton('←', () => {
+        if (this.config.iframe.contentWindow) {
+          try {
+            this.config.iframe.contentWindow.history.back();
+          } catch (err) {
+            console.warn('[QuickTab] Cannot navigate back - cross-origin restriction');
+          }
         }
       });
-      t.title = "Back", e.appendChild(t);
-      const n = this._createButton("→", () => {
-        if (this.config.iframe.contentWindow) try {
-          this.config.iframe.contentWindow.history.forward();
-        } catch (e) {
-          console.warn("[QuickTab] Cannot navigate forward - cross-origin restriction");
+      backBtn.title = 'Back';
+      navContainer.appendChild(backBtn);
+
+      // Forward button
+      const forwardBtn = this._createButton('→', () => {
+        if (this.config.iframe.contentWindow) {
+          try {
+            this.config.iframe.contentWindow.history.forward();
+          } catch (err) {
+            console.warn('[QuickTab] Cannot navigate forward - cross-origin restriction');
+          }
         }
       });
-      n.title = "Forward", e.appendChild(n);
-      const i = this._createButton("↻", () => {
-        const e = this.config.iframe.src;
-        this.config.iframe.src = "about:blank", setTimeout(() => {
-          this.config.iframe.src = e;
+      forwardBtn.title = 'Forward';
+      navContainer.appendChild(forwardBtn);
+
+      // Reload button
+      const reloadBtn = this._createButton('↻', () => {
+        // Proper iframe reload technique (fixes no-self-assign ESLint error)
+        const currentSrc = this.config.iframe.src;
+        this.config.iframe.src = 'about:blank';
+        setTimeout(() => {
+          this.config.iframe.src = currentSrc;
         }, 10);
       });
-      i.title = "Reload", e.appendChild(i);
+      reloadBtn.title = 'Reload';
+      navContainer.appendChild(reloadBtn);
     }
-    _appendZoomControls(e) {
-      const t = this._createButton("−", () => {
-        this.currentZoom > 50 && (this.currentZoom -= 10, this._applyZoom(this.currentZoom));
-      });
-      t.title = "Zoom Out", e.appendChild(t), this.zoomDisplay = S("span", {
-        style: {
-          fontSize: "11px",
-          color: "#fff",
-          minWidth: "38px",
-          textAlign: "center",
-          fontWeight: "500"
+
+    /**
+     * Append zoom controls (zoom out/display/zoom in)
+     * @private
+     */
+    _appendZoomControls(navContainer) {
+      // Zoom out button
+      const zoomOutBtn = this._createButton('−', () => {
+        if (this.currentZoom > 50) {
+          this.currentZoom -= 10;
+          this._applyZoom(this.currentZoom);
         }
-      }, "100%"), e.appendChild(this.zoomDisplay);
-      const n = this._createButton("+", () => {
-        this.currentZoom < 200 && (this.currentZoom += 10, this._applyZoom(this.currentZoom));
       });
-      n.title = "Zoom In", e.appendChild(n);
+      zoomOutBtn.title = 'Zoom Out';
+      navContainer.appendChild(zoomOutBtn);
+
+      // Zoom display
+      this.zoomDisplay = createElement(
+        'span',
+        {
+          style: {
+            fontSize: '11px',
+            color: '#fff',
+            minWidth: '38px',
+            textAlign: 'center',
+            fontWeight: '500'
+          }
+        },
+        '100%'
+      );
+      navContainer.appendChild(this.zoomDisplay);
+
+      // Zoom in button
+      const zoomInBtn = this._createButton('+', () => {
+        if (this.currentZoom < 200) {
+          this.currentZoom += 10;
+          this._applyZoom(this.currentZoom);
+        }
+      });
+      zoomInBtn.title = 'Zoom In';
+      navContainer.appendChild(zoomInBtn);
     }
+
+    /**
+     * Create favicon element
+     * @private
+     */
     _createFavicon() {
-      const e = S("img", {
-        className: "quick-tab-favicon",
+      const favicon = createElement('img', {
+        className: 'quick-tab-favicon',
         style: {
-          width: "16px",
-          height: "16px",
-          marginLeft: "5px",
-          marginRight: "5px",
-          flexShrink: "0"
+          width: '16px',
+          height: '16px',
+          marginLeft: '5px',
+          marginRight: '5px',
+          flexShrink: '0'
         }
       });
+
+      // Extract domain for favicon
       try {
-        const t = new URL(this.config.url), n = "https://www.google.com/s2/favicons?domain=";
-        e.src = `${n}${t.hostname}&sz=32`, e.onerror = () => {
-          e.style.display = "none";
+        const urlObj = new URL(this.config.url);
+        const GOOGLE_FAVICON_URL = 'https://www.google.com/s2/favicons?domain=';
+        favicon.src = `${GOOGLE_FAVICON_URL}${urlObj.hostname}&sz=32`;
+        favicon.onerror = () => {
+          favicon.style.display = 'none';
         };
-      } catch (t) {
-        e.style.display = "none";
-      }
-      return e;
-    }
-    _createTitle() {
-      return S("div", {
-        className: "quick-tab-title",
-        style: {
-          color: "#fff",
-          fontSize: "14px",
-          fontWeight: "bold",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          flex: "1"
-        }
-      }, this.config.title);
-    }
-    _createRightSection() {
-      const e = S("div", {
-        style: {
-          display: "flex",
-          gap: "8px"
-        }
-      }), t = this._createButton("🔗", () => {
-        this.callbacks.onOpenInTab && this.callbacks.onOpenInTab();
-      });
-      t.title = "Open in New Tab", e.appendChild(t);
-      const n = this._isCurrentTabSoloed();
-      this.soloButton = this._createButton(n ? "🎯" : "⭕", () => {
-        this.callbacks.onSolo && this.callbacks.onSolo(this.soloButton);
-      }), this.soloButton.title = n ? "Un-solo (show on all tabs)" : "Solo (show only on this tab)", 
-      this.soloButton.style.background = n ? "#444" : "transparent", e.appendChild(this.soloButton);
-      const i = this._isCurrentTabMuted();
-      this.muteButton = this._createButton(i ? "🔇" : "🔊", () => {
-        this.callbacks.onMute && this.callbacks.onMute(this.muteButton);
-      }), this.muteButton.title = i ? "Unmute (show on this tab)" : "Mute (hide on this tab)", 
-      this.muteButton.style.background = i ? "#c44" : "transparent", e.appendChild(this.muteButton);
-      const o = this._createButton("−", () => {
-        this.callbacks.onMinimize && this.callbacks.onMinimize();
-      });
-      o.title = "Minimize", e.appendChild(o);
-      const s = this._createButton("×", () => {
-        this.callbacks.onClose && this.callbacks.onClose();
-      });
-      return s.title = "Close", e.appendChild(s), e;
-    }
-    _createButton(e, t) {
-      const n = S("button", {
-        style: {
-          width: "24px",
-          height: "24px",
-          backgroundColor: "transparent",
-          border: "1px solid #666",
-          borderRadius: "4px",
-          color: "#fff",
-          fontSize: "16px",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "0",
-          transition: "background-color 0.2s"
-        }
-      }, e);
-      return n.addEventListener("mouseenter", () => {
-        n.style.backgroundColor = "#444";
-      }), n.addEventListener("mouseleave", () => {
-        n.style.backgroundColor = "transparent";
-      }), n.addEventListener("click", e => {
-        e.stopPropagation(), t();
-      }), n;
-    }
-    _applyZoom(e) {
-      const t = e / 100;
-      if (this.config.iframe.contentWindow) try {
-        this.config.iframe.contentWindow.document.body.style.zoom = t;
       } catch (e) {
-        this.config.iframe.style.transform = `scale(${t})`, this.config.iframe.style.transformOrigin = "top left", 
-        this.config.iframe.style.width = 100 / t + "%", this.config.iframe.style.height = 100 / t + "%";
+        favicon.style.display = 'none';
       }
-      this.zoomDisplay && (this.zoomDisplay.textContent = `${e}%`), console.log(`[TitlebarBuilder] Zoom applied: ${e}% on ${this.config.url}`);
+
+      return favicon;
     }
+
+    /**
+     * Create title text element
+     * @private
+     */
+    _createTitle() {
+      return createElement(
+        'div',
+        {
+          className: 'quick-tab-title',
+          style: {
+            color: '#fff',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            flex: '1'
+          }
+        },
+        this.config.title
+      );
+    }
+
+    /**
+     * Create right section with control buttons
+     * @private
+     */
+    _createRightSection() {
+      const controls = createElement('div', {
+        style: {
+          display: 'flex',
+          gap: '8px'
+        }
+      });
+
+      // Open in New Tab button
+      const openBtn = this._createButton('🔗', () => {
+        if (this.callbacks.onOpenInTab) {
+          this.callbacks.onOpenInTab();
+        }
+      });
+      openBtn.title = 'Open in New Tab';
+      controls.appendChild(openBtn);
+
+      // v1.5.9.13 - Solo button
+      const isSoloed = this._isCurrentTabSoloed();
+      this.soloButton = this._createButton(isSoloed ? '🎯' : '⭕', () => {
+        if (this.callbacks.onSolo) {
+          this.callbacks.onSolo(this.soloButton);
+        }
+      });
+      this.soloButton.title = isSoloed
+        ? 'Un-solo (show on all tabs)'
+        : 'Solo (show only on this tab)';
+      this.soloButton.style.background = isSoloed ? '#444' : 'transparent';
+      controls.appendChild(this.soloButton);
+
+      // v1.5.9.13 - Mute button
+      const isMuted = this._isCurrentTabMuted();
+      this.muteButton = this._createButton(isMuted ? '🔇' : '🔊', () => {
+        if (this.callbacks.onMute) {
+          this.callbacks.onMute(this.muteButton);
+        }
+      });
+      this.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
+      this.muteButton.style.background = isMuted ? '#c44' : 'transparent';
+      controls.appendChild(this.muteButton);
+
+      // Minimize button
+      const minimizeBtn = this._createButton('−', () => {
+        if (this.callbacks.onMinimize) {
+          this.callbacks.onMinimize();
+        }
+      });
+      minimizeBtn.title = 'Minimize';
+      controls.appendChild(minimizeBtn);
+
+      // Close button
+      const closeBtn = this._createButton('×', () => {
+        if (this.callbacks.onClose) {
+          this.callbacks.onClose();
+        }
+      });
+      closeBtn.title = 'Close';
+      controls.appendChild(closeBtn);
+
+      return controls;
+    }
+
+    /**
+     * Create a button element with hover effects
+     * @private
+     * @param {string} text - Button text/icon
+     * @param {Function} onClick - Click handler
+     * @returns {HTMLElement} Button element
+     */
+    _createButton(text, onClick) {
+      const button = createElement(
+        'button',
+        {
+          style: {
+            width: '24px',
+            height: '24px',
+            backgroundColor: 'transparent',
+            border: '1px solid #666',
+            borderRadius: '4px',
+            color: '#fff',
+            fontSize: '16px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0',
+            transition: 'background-color 0.2s'
+          }
+        },
+        text
+      );
+
+      button.addEventListener('mouseenter', () => {
+        button.style.backgroundColor = '#444';
+      });
+
+      button.addEventListener('mouseleave', () => {
+        button.style.backgroundColor = 'transparent';
+      });
+
+      button.addEventListener('click', e => {
+        e.stopPropagation();
+        onClick();
+      });
+
+      return button;
+    }
+
+    /**
+     * Apply zoom level to iframe
+     * @private
+     * @param {number} zoomLevel - Zoom percentage (50-200)
+     */
+    _applyZoom(zoomLevel) {
+      const zoomFactor = zoomLevel / 100;
+      if (this.config.iframe.contentWindow) {
+        try {
+          this.config.iframe.contentWindow.document.body.style.zoom = zoomFactor;
+        } catch (err) {
+          // Cross-origin restriction - use CSS transform fallback
+          this.config.iframe.style.transform = `scale(${zoomFactor})`;
+          this.config.iframe.style.transformOrigin = 'top left';
+          this.config.iframe.style.width = `${100 / zoomFactor}%`;
+          this.config.iframe.style.height = `${100 / zoomFactor}%`;
+        }
+      }
+      if (this.zoomDisplay) {
+        this.zoomDisplay.textContent = `${zoomLevel}%`;
+      }
+      console.log(`[TitlebarBuilder] Zoom applied: ${zoomLevel}% on ${this.config.url}`);
+    }
+
+    /**
+     * Check if current tab is soloed
+     * @private
+     * @returns {boolean} True if current tab is in soloedOnTabs array
+     */
     _isCurrentTabSoloed() {
       return this.config.soloedOnTabs && this.config.soloedOnTabs.includes(this.config.currentTabId);
     }
+
+    /**
+     * Check if current tab is muted
+     * @private
+     * @returns {boolean} True if current tab is in mutedOnTabs array
+     */
     _isCurrentTabMuted() {
       return this.config.mutedOnTabs && this.config.mutedOnTabs.includes(this.config.currentTabId);
     }
   }
-  class M {
-    constructor(e) {
-      this._initializeBasicProperties(e), this._initializePositionAndSize(e), this._initializeVisibility(e), 
-      this._initializeCallbacks(e), this._initializeState();
+
+  /**
+   * Quick Tab Window Component
+   * Handles creation, rendering, and lifecycle of individual Quick Tab overlay windows
+   *
+   * v1.5.9.0 - Restored missing UI logic identified in v1589-quick-tabs-root-cause.md
+   */
+
+
+  /**
+   * QuickTabWindow class - Manages a single Quick Tab overlay instance
+   */
+  class QuickTabWindow {
+    constructor(options) {
+      // v1.6.0 Phase 2.4 - Extract initialization methods to reduce complexity
+      this._initializeBasicProperties(options);
+      this._initializePositionAndSize(options);
+      this._initializeVisibility(options);
+      this._initializeCallbacks(options);
+      this._initializeState();
     }
-    _initializeBasicProperties(e) {
-      this.id = e.id, this.url = e.url, this.title = e.title || "Quick Tab", this.cookieStoreId = e.cookieStoreId || "firefox-default";
+
+    /**
+     * Initialize basic properties (id, url, title, etc.)
+     */
+    _initializeBasicProperties(options) {
+      this.id = options.id;
+      this.url = options.url;
+      this.title = options.title || 'Quick Tab';
+      this.cookieStoreId = options.cookieStoreId || 'firefox-default';
     }
-    _initializePositionAndSize(e) {
-      this.left = e.left || 100, this.top = e.top || 100, this.width = e.width || 800, 
-      this.height = e.height || 600, this.zIndex = e.zIndex || c;
+
+    /**
+     * Initialize position and size properties
+     */
+    _initializePositionAndSize(options) {
+      this.left = options.left || 100;
+      this.top = options.top || 100;
+      this.width = options.width || 800;
+      this.height = options.height || 600;
+      this.zIndex = options.zIndex || CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
     }
-    _initializeVisibility(e) {
-      this.minimized = e.minimized || !1, this.soloedOnTabs = e.soloedOnTabs || [], this.mutedOnTabs = e.mutedOnTabs || [];
+
+    /**
+     * Initialize visibility-related properties (minimized, solo, mute)
+     */
+    _initializeVisibility(options) {
+      this.minimized = options.minimized || false;
+      // v1.5.9.13 - Replace pinnedToUrl with solo/mute arrays
+      this.soloedOnTabs = options.soloedOnTabs || [];
+      this.mutedOnTabs = options.mutedOnTabs || [];
     }
-    _initializeCallbacks(e) {
-      const t = () => {};
-      [ "onDestroy", "onMinimize", "onFocus", "onPositionChange", "onPositionChangeEnd", "onSizeChange", "onSizeChangeEnd", "onSolo", "onMute" ].forEach(n => {
-        this[n] = e[n] || t;
+
+    /**
+     * Initialize lifecycle and event callbacks
+     * v1.6.0 Phase 2.4 - Table-driven to reduce complexity
+     */
+    _initializeCallbacks(options) {
+      const noop = () => {};
+      const callbacks = [
+        'onDestroy',
+        'onMinimize',
+        'onFocus',
+        'onPositionChange',
+        'onPositionChangeEnd',
+        'onSizeChange',
+        'onSizeChangeEnd',
+        'onSolo', // v1.5.9.13
+        'onMute' // v1.5.9.13
+      ];
+
+      callbacks.forEach(name => {
+        this[name] = options[name] || noop;
       });
     }
+
+    /**
+     * Initialize internal state properties
+     */
     _initializeState() {
-      this.container = null, this.iframe = null, this.rendered = !1, this.isDragging = !1, 
-      this.isResizing = !1, this.resizeStartWidth = 0, this.resizeStartHeight = 0, this.soloButton = null, 
-      this.muteButton = null, this.dragController = null, this.resizeController = null;
+      this.container = null;
+      this.iframe = null;
+      this.rendered = false; // v1.5.9.10 - Track rendering state to prevent rendering bugs
+      // v1.6.0 Phase 2.9 - isDragging kept for external checks, managed by DragController
+      this.isDragging = false;
+      this.isResizing = false;
+      // v1.6.0 Phase 2.9 - dragStartX/Y removed, managed internally by DragController
+      this.resizeStartWidth = 0;
+      this.resizeStartHeight = 0;
+      this.soloButton = null; // v1.5.9.13 - Reference to solo button
+      this.muteButton = null; // v1.5.9.13 - Reference to mute button
+      // v1.6.0 Phase 2.9 - Controllers for drag and resize
+      this.dragController = null;
+      this.resizeController = null;
     }
+
+    /**
+     * Create and render the Quick Tab window
+     */
     render() {
-      if (this.container) return console.warn("[QuickTabWindow] Already rendered:", this.id), 
-      this.container;
-      const t = Number.isFinite(this.left) ? this.left : 100, n = Number.isFinite(this.top) ? this.top : 100;
-      this.left = t, this.top = n, this.container = S("div", {
+      if (this.container) {
+        console.warn('[QuickTabWindow] Already rendered:', this.id);
+        return this.container;
+      }
+
+      const targetLeft = Number.isFinite(this.left) ? this.left : 100;
+      const targetTop = Number.isFinite(this.top) ? this.top : 100;
+      this.left = targetLeft;
+      this.top = targetTop;
+
+      // Create main container
+      this.container = createElement('div', {
         id: `quick-tab-${this.id}`,
-        className: "quick-tab-window",
+        className: 'quick-tab-window',
         style: {
-          position: "fixed",
-          left: "-9999px",
-          top: "-9999px",
+          position: 'fixed',
+          left: '-9999px',
+          top: '-9999px',
           width: `${this.width}px`,
           height: `${this.height}px`,
           zIndex: this.zIndex.toString(),
-          backgroundColor: "#1e1e1e",
-          border: "2px solid #444",
-          borderRadius: "8px",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-          display: this.minimized ? "none" : "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          transition: "box-shadow 0.2s, opacity 0.15s ease-in",
-          visibility: "hidden",
-          opacity: "0"
-        }
-      }), this.titlebarBuilder = new E({
-        title: this.title,
-        url: this.url,
-        soloedOnTabs: this.soloedOnTabs,
-        mutedOnTabs: this.mutedOnTabs,
-        currentTabId: this.currentTabId,
-        iframe: null
-      }, {
-        onClose: () => this.destroy(),
-        onMinimize: () => this.minimize(),
-        onSolo: e => this.toggleSolo(e),
-        onMute: e => this.toggleMute(e),
-        onOpenInTab: () => {
-          const t = this.iframe.src || this.iframe.getAttribute("data-deferred-src");
-          e.runtime.sendMessage({
-            action: "openTab",
-            url: t,
-            switchFocus: !0
-          });
+          backgroundColor: '#1e1e1e',
+          border: '2px solid #444',
+          borderRadius: '8px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          display: this.minimized ? 'none' : 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          transition: 'box-shadow 0.2s, opacity 0.15s ease-in',
+          visibility: 'hidden',
+          opacity: '0'
         }
       });
-      const i = this.titlebarBuilder.build();
-      return this.container.appendChild(i), this.soloButton = this.titlebarBuilder.soloButton, 
-      this.muteButton = this.titlebarBuilder.muteButton, this.iframe = S("iframe", {
+
+      // v1.6.0 Phase 2.9 Task 4 - Use TitlebarBuilder facade pattern
+      // Create titlebar using TitlebarBuilder component
+      this.titlebarBuilder = new TitlebarBuilder(
+        {
+          title: this.title,
+          url: this.url,
+          soloedOnTabs: this.soloedOnTabs,
+          mutedOnTabs: this.mutedOnTabs,
+          currentTabId: this.currentTabId,
+          iframe: null // Will be set after iframe creation
+        },
+        {
+          onClose: () => this.destroy(),
+          onMinimize: () => this.minimize(),
+          onSolo: btn => this.toggleSolo(btn),
+          onMute: btn => this.toggleMute(btn),
+          onOpenInTab: () => {
+            const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
+            browser$1.runtime.sendMessage({
+              action: 'openTab',
+              url: currentSrc,
+              switchFocus: true
+            });
+          }
+        }
+      );
+
+      // Note: iframe is null during titlebar build, will be updated before first use
+      const titlebar = this.titlebarBuilder.build();
+      this.container.appendChild(titlebar);
+
+      // Store button references for updating (solo/mute state changes)
+      this.soloButton = this.titlebarBuilder.soloButton;
+      this.muteButton = this.titlebarBuilder.muteButton;
+
+      // Create iframe content area
+      this.iframe = createElement('iframe', {
         src: this.url,
         style: {
-          flex: "1",
-          border: "none",
-          width: "100%",
-          height: "calc(100% - 40px)"
+          flex: '1',
+          border: 'none',
+          width: '100%',
+          height: 'calc(100% - 40px)'
         },
-        sandbox: "allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
-      }), this.container.appendChild(this.iframe), this.titlebarBuilder.config.iframe = this.iframe, 
-      this.setupIframeLoadHandler(), document.body.appendChild(this.container), this.rendered = !0, 
+        sandbox:
+          'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
+      });
+
+      this.container.appendChild(this.iframe);
+
+      // Update TitlebarBuilder with iframe reference (needed for navigation/zoom)
+      this.titlebarBuilder.config.iframe = this.iframe;
+
+      // Setup iframe load listener to update title
+      this.setupIframeLoadHandler();
+
+      // Add to document
+      document.body.appendChild(this.container);
+
+      // v1.5.9.10 - Mark as rendered
+      this.rendered = true;
+
+      // Fix Quick Tab flash by moving into place after a frame
       requestAnimationFrame(() => {
-        this.container.style.left = `${t}px`, this.container.style.top = `${n}px`, this.container.style.visibility = "visible", 
-        this.container.style.opacity = "1";
-      }), this.dragController = new v(i, {
-        onDragStart: (e, t) => {
-          console.log("[QuickTabWindow] Drag started:", this.id, e, t), this.isDragging = !0, 
+        this.container.style.left = `${targetLeft}px`;
+        this.container.style.top = `${targetTop}px`;
+        this.container.style.visibility = 'visible';
+        this.container.style.opacity = '1';
+      });
+
+      // v1.6.0 Phase 2.9 Task 3 - Use DragController facade pattern
+      this.dragController = new DragController(titlebar, {
+        onDragStart: (x, y) => {
+          console.log('[QuickTabWindow] Drag started:', this.id, x, y);
+          this.isDragging = true;
           this.onFocus(this.id);
         },
-        onDrag: (e, t) => {
-          this.left = e, this.top = t, this.container.style.left = `${e}px`, this.container.style.top = `${t}px`, 
-          this.onPositionChange && this.onPositionChange(this.id, e, t);
+        onDrag: (newX, newY) => {
+          // Update position
+          this.left = newX;
+          this.top = newY;
+          this.container.style.left = `${newX}px`;
+          this.container.style.top = `${newY}px`;
+
+          // Call position change callback (throttled by DragController's RAF)
+          if (this.onPositionChange) {
+            this.onPositionChange(this.id, newX, newY);
+          }
         },
-        onDragEnd: (e, t) => {
-          console.log("[QuickTabWindow] Drag ended:", this.id, e, t), this.isDragging = !1, 
-          this.onPositionChangeEnd && this.onPositionChangeEnd(this.id, e, t);
+        onDragEnd: (finalX, finalY) => {
+          console.log('[QuickTabWindow] Drag ended:', this.id, finalX, finalY);
+          this.isDragging = false;
+
+          // Final save on drag end
+          if (this.onPositionChangeEnd) {
+            this.onPositionChangeEnd(this.id, finalX, finalY);
+          }
         },
-        onDragCancel: (e, t) => {
-          console.log("[QuickTabWindow] Drag cancelled:", this.id, e, t), this.isDragging = !1, 
-          this.onPositionChangeEnd && this.onPositionChangeEnd(this.id, e, t);
+        onDragCancel: (lastX, lastY) => {
+          // CRITICAL FOR ISSUE #51: Emergency save position when drag is interrupted
+          console.log('[QuickTabWindow] Drag cancelled:', this.id, lastX, lastY);
+          this.isDragging = false;
+
+          // Emergency save position before tab loses focus
+          if (this.onPositionChangeEnd) {
+            this.onPositionChangeEnd(this.id, lastX, lastY);
+          }
         }
-      }), this.resizeController = new I(this, {
+      });
+
+      // v1.6.0 Phase 2.4 - Use ResizeController facade pattern
+      this.resizeController = new ResizeController(this, {
         minWidth: 400,
         minHeight: 300
-      }), this.resizeController.attachHandles(), this.setupFocusHandlers(), console.log("[QuickTabWindow] Rendered:", this.id), 
-      this.container;
+      });
+      this.resizeController.attachHandles();
+
+      this.setupFocusHandlers();
+
+      console.log('[QuickTabWindow] Rendered:', this.id);
+      return this.container;
     }
+
+    // v1.6.0 Phase 2.9 Task 4 - createFavicon() moved to TitlebarBuilder
+
+    // v1.6.0 Phase 2.9 Task 4 - createTitlebar() moved to TitlebarBuilder (157 lines)
+    // v1.6.0 Phase 2.9 Task 4 - createButton() moved to TitlebarBuilder (38 lines)
+    // v1.6.0 Phase 2.9 Task 4 - createFavicon() moved to TitlebarBuilder (26 lines)
+    // See TitlebarBuilder.js for extracted implementation
+
+    /**
+     * v1.6.0 Phase 2.9 Task 4 - applyZoom() REMOVED
+     * Zoom functionality now handled internally by TitlebarBuilder
+     * Old method signature: applyZoom(zoomLevel, displayElement)
+     * If zoom needs to be exposed externally, add public method to TitlebarBuilder
+     */
+
+    // The following event handlers still in window.js (toggleSolo, toggleMute, minimize, destroy, etc.)
+
+    /**
+     * Setup drag handlers using Pointer Events API
+     */
+    /**
+     * v1.6.0 Phase 2.9 Task 3 - setupDragHandlers removed
+     * Replaced with DragController facade pattern (see render() method)
+     * This eliminates ~50 lines of drag logic and uses Pointer Events API
+     * for Issue #51 fix (pointercancel handles tab switch during drag)
+     */
+
+    /**
+     * v1.6.0 Phase 2.4 - setupResizeHandlers removed
+     * Replaced with ResizeController facade pattern (see render() method)
+     * This eliminates 195 lines of complex conditional logic
+     */
+
+    /**
+     * Setup focus handlers
+     */
     setupFocusHandlers() {
-      this.container.addEventListener("mousedown", () => {
+      this.container.addEventListener('mousedown', () => {
         this.onFocus(this.id);
       });
     }
+
+    /**
+     * Minimize the Quick Tab window
+     */
     minimize() {
-      this.minimized = !0, this.container.style.display = "none", console.log(`[Quick Tab] Minimized - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`), 
+      this.minimized = true;
+      this.container.style.display = 'none';
+
+      // Enhanced logging for console log export (Issue #1)
+      console.log(
+        `[Quick Tab] Minimized - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+      );
+
       this.onMinimize(this.id);
     }
+
+    /**
+     * Restore minimized Quick Tab window
+     * v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's in the same place
+     */
     restore() {
-      this.minimized = !1, this.container.style.display = "flex", this.container.style.left = `${this.left}px`, 
-      this.container.style.top = `${this.top}px`, this.container.style.width = `${this.width}px`, 
-      this.container.style.height = `${this.height}px`, console.log(`[Quick Tab] Restored - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`), 
+      this.minimized = false;
+      this.container.style.display = 'flex';
+
+      // v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's restored to the same place
+      this.container.style.left = `${this.left}px`;
+      this.container.style.top = `${this.top}px`;
+      this.container.style.width = `${this.width}px`;
+      this.container.style.height = `${this.height}px`;
+
+      // Enhanced logging for console log export (Issue #1)
+      console.log(
+        `[Quick Tab] Restored - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+      );
+
       this.onFocus(this.id);
     }
-    updateZIndex(e) {
-      this.zIndex = e, this.container && (this.container.style.zIndex = e.toString());
+
+    // v1.6.0 Phase 2.9 Task 4 - applyZoom() removed (now in TitlebarBuilder._applyZoom())
+
+    /**
+     * Update z-index for stacking
+     */
+    updateZIndex(newZIndex) {
+      this.zIndex = newZIndex;
+      if (this.container) {
+        this.container.style.zIndex = newZIndex.toString();
+      }
     }
+
+    /**
+     * Setup iframe load handler to update title
+     * v1.6.0 Phase 2.4 - Extracted helper to reduce nesting
+     */
     setupIframeLoadHandler() {
-      this.iframe.addEventListener("load", () => {
+      this.iframe.addEventListener('load', () => {
         this._updateTitleFromIframe();
       });
     }
+
+    /**
+     * Update title from iframe content or URL
+     * v1.6.0 Phase 2.4 - Extracted to reduce nesting depth
+     */
     _updateTitleFromIframe() {
-      const e = this._tryGetIframeTitle();
-      if (e) return void this._setTitle(e, e);
-      const t = this._tryGetHostname();
-      t ? this._setTitle(t, this.iframe.src) : this.title = "Quick Tab";
+      // Try same-origin title first
+      const iframeTitle = this._tryGetIframeTitle();
+      if (iframeTitle) {
+        this._setTitle(iframeTitle, iframeTitle);
+        return;
+      }
+
+      // Fallback to hostname
+      const hostname = this._tryGetHostname();
+      if (hostname) {
+        this._setTitle(hostname, this.iframe.src);
+        return;
+      }
+
+      // Final fallback
+      this.title = 'Quick Tab';
     }
+
+    /**
+     * Try to get title from iframe (same-origin only)
+     */
     _tryGetIframeTitle() {
       try {
         return this.iframe.contentDocument?.title;
-      } catch (e) {
+      } catch (_e) {
         return null;
       }
     }
+
+    /**
+     * Try to get hostname from iframe URL
+     */
     _tryGetHostname() {
       try {
-        return new URL(this.iframe.src).hostname;
-      } catch (e) {
+        const urlObj = new URL(this.iframe.src);
+        return urlObj.hostname;
+      } catch (_e) {
         return null;
       }
     }
-    _setTitle(e, t) {
-      this.title = e, this.titlebarBuilder && (this.titlebarBuilder.updateTitle(e), this.titlebarBuilder.titleElement && (this.titlebarBuilder.titleElement.title = t));
+
+    /**
+     * Set title in both property and UI
+     */
+    _setTitle(title, tooltip) {
+      this.title = title;
+      // v1.6.0 Phase 2.9 Task 4 - Use TitlebarBuilder to update title
+      if (this.titlebarBuilder) {
+        this.titlebarBuilder.updateTitle(title);
+        // Update tooltip on title element
+        if (this.titlebarBuilder.titleElement) {
+          this.titlebarBuilder.titleElement.title = tooltip;
+        }
+      }
     }
+
+    /**
+     * v1.5.9.13 - Check if current tab is in solo list
+     */
     isCurrentTabSoloed() {
-      return this.soloedOnTabs && this.soloedOnTabs.length > 0 && window.quickTabsManager && window.quickTabsManager.currentTabId && this.soloedOnTabs.includes(window.quickTabsManager.currentTabId);
+      return (
+        this.soloedOnTabs &&
+        this.soloedOnTabs.length > 0 &&
+        window.quickTabsManager &&
+        window.quickTabsManager.currentTabId &&
+        this.soloedOnTabs.includes(window.quickTabsManager.currentTabId)
+      );
     }
+
+    /**
+     * v1.5.9.13 - Check if current tab is in mute list
+     */
     isCurrentTabMuted() {
-      return this.mutedOnTabs && this.mutedOnTabs.length > 0 && window.quickTabsManager && window.quickTabsManager.currentTabId && this.mutedOnTabs.includes(window.quickTabsManager.currentTabId);
+      return (
+        this.mutedOnTabs &&
+        this.mutedOnTabs.length > 0 &&
+        window.quickTabsManager &&
+        window.quickTabsManager.currentTabId &&
+        this.mutedOnTabs.includes(window.quickTabsManager.currentTabId)
+      );
     }
-    toggleSolo(e) {
-      if (console.log("[QuickTabWindow] toggleSolo called for:", this.id), console.log("[QuickTabWindow] window.quickTabsManager:", window.quickTabsManager), 
-      console.log("[QuickTabWindow] currentTabId:", window.quickTabsManager?.currentTabId), 
-      !window.quickTabsManager || !window.quickTabsManager.currentTabId) return console.warn("[QuickTabWindow] Cannot toggle solo - no current tab ID"), 
-      console.warn("[QuickTabWindow] window.quickTabsManager:", window.quickTabsManager), 
-      void console.warn("[QuickTabWindow] currentTabId:", window.quickTabsManager?.currentTabId);
-      const t = window.quickTabsManager.currentTabId;
-      this.isCurrentTabSoloed() ? (this.soloedOnTabs = this.soloedOnTabs.filter(e => e !== t), 
-      e.textContent = "⭕", e.title = "Solo (show only on this tab)", e.style.background = "transparent", 
-      0 === this.soloedOnTabs.length && console.log("[QuickTabWindow] Un-soloed - now visible on all tabs")) : (this.soloedOnTabs = [ t ], 
-      this.mutedOnTabs = [], e.textContent = "🎯", e.title = "Un-solo (show on all tabs)", 
-      e.style.background = "#444", this.muteButton && (this.muteButton.textContent = "🔊", 
-      this.muteButton.title = "Mute (hide on this tab)", this.muteButton.style.background = "transparent"), 
-      console.log("[QuickTabWindow] Soloed - only visible on this tab")), this.onSolo && this.onSolo(this.id, this.soloedOnTabs);
+
+    /**
+     * v1.5.9.13 - Toggle solo state for current tab
+     */
+    toggleSolo(soloBtn) {
+      console.log('[QuickTabWindow] toggleSolo called for:', this.id);
+      console.log('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
+      console.log('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
+
+      if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
+        console.warn('[QuickTabWindow] Cannot toggle solo - no current tab ID');
+        console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
+        console.warn('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
+        return;
+      }
+
+      const currentTabId = window.quickTabsManager.currentTabId;
+
+      if (this.isCurrentTabSoloed()) {
+        // Un-solo: Remove current tab from solo list
+        this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== currentTabId);
+        soloBtn.textContent = '⭕';
+        soloBtn.title = 'Solo (show only on this tab)';
+        soloBtn.style.background = 'transparent';
+
+        // If no tabs left in solo list, Quick Tab becomes visible everywhere
+        if (this.soloedOnTabs.length === 0) {
+          console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
+        }
+      } else {
+        // Solo: Set current tab as the only tab (replace entire list for simplicity)
+        this.soloedOnTabs = [currentTabId];
+        this.mutedOnTabs = []; // Clear mute state (mutually exclusive)
+        soloBtn.textContent = '🎯';
+        soloBtn.title = 'Un-solo (show on all tabs)';
+        soloBtn.style.background = '#444';
+
+        // Update mute button if it exists
+        if (this.muteButton) {
+          this.muteButton.textContent = '🔊';
+          this.muteButton.title = 'Mute (hide on this tab)';
+          this.muteButton.style.background = 'transparent';
+        }
+
+        console.log('[QuickTabWindow] Soloed - only visible on this tab');
+      }
+
+      // Notify parent manager
+      if (this.onSolo) {
+        this.onSolo(this.id, this.soloedOnTabs);
+      }
     }
-    toggleMute(e) {
-      if (console.log("[QuickTabWindow] toggleMute called for:", this.id), console.log("[QuickTabWindow] window.quickTabsManager:", window.quickTabsManager), 
-      console.log("[QuickTabWindow] currentTabId:", window.quickTabsManager?.currentTabId), 
-      !window.quickTabsManager || !window.quickTabsManager.currentTabId) return console.warn("[QuickTabWindow] Cannot toggle mute - no current tab ID"), 
-      console.warn("[QuickTabWindow] window.quickTabsManager:", window.quickTabsManager), 
-      void console.warn("[QuickTabWindow] currentTabId:", window.quickTabsManager?.currentTabId);
-      const t = window.quickTabsManager.currentTabId;
-      this.isCurrentTabMuted() ? (this.mutedOnTabs = this.mutedOnTabs.filter(e => e !== t), 
-      e.textContent = "🔊", e.title = "Mute (hide on this tab)", e.style.background = "transparent", 
-      console.log("[QuickTabWindow] Unmuted on this tab")) : (this.mutedOnTabs.includes(t) || this.mutedOnTabs.push(t), 
-      this.soloedOnTabs = [], e.textContent = "🔇", e.title = "Unmute (show on this tab)", 
-      e.style.background = "#c44", this.soloButton && (this.soloButton.textContent = "⭕", 
-      this.soloButton.title = "Solo (show only on this tab)", this.soloButton.style.background = "transparent"), 
-      console.log("[QuickTabWindow] Muted on this tab")), this.onMute && this.onMute(this.id, this.mutedOnTabs);
+
+    /**
+     * v1.5.9.13 - Toggle mute state for current tab
+     */
+    toggleMute(muteBtn) {
+      console.log('[QuickTabWindow] toggleMute called for:', this.id);
+      console.log('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
+      console.log('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
+
+      if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
+        console.warn('[QuickTabWindow] Cannot toggle mute - no current tab ID');
+        console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
+        console.warn('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
+        return;
+      }
+
+      const currentTabId = window.quickTabsManager.currentTabId;
+
+      if (this.isCurrentTabMuted()) {
+        // Unmute: Remove current tab from mute list
+        this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== currentTabId);
+        muteBtn.textContent = '🔊';
+        muteBtn.title = 'Mute (hide on this tab)';
+        muteBtn.style.background = 'transparent';
+
+        console.log('[QuickTabWindow] Unmuted on this tab');
+      } else {
+        // Mute: Add current tab to mute list
+        if (!this.mutedOnTabs.includes(currentTabId)) {
+          this.mutedOnTabs.push(currentTabId);
+        }
+        this.soloedOnTabs = []; // Clear solo state (mutually exclusive)
+        muteBtn.textContent = '🔇';
+        muteBtn.title = 'Unmute (show on this tab)';
+        muteBtn.style.background = '#c44';
+
+        // Update solo button if it exists
+        if (this.soloButton) {
+          this.soloButton.textContent = '⭕';
+          this.soloButton.title = 'Solo (show only on this tab)';
+          this.soloButton.style.background = 'transparent';
+        }
+
+        console.log('[QuickTabWindow] Muted on this tab');
+      }
+
+      // Notify parent manager
+      if (this.onMute) {
+        this.onMute(this.id, this.mutedOnTabs);
+      }
     }
-    setPosition(e, t) {
-      this.left = e, this.top = t, this.container && (this.container.style.left = `${e}px`, 
-      this.container.style.top = `${t}px`);
+
+    /**
+     * Set position of Quick Tab window (v1.5.8.13 - for sync from other tabs)
+     * @param {number} left - X position
+     * @param {number} top - Y position
+     */
+    setPosition(left, top) {
+      this.left = left;
+      this.top = top;
+      if (this.container) {
+        this.container.style.left = `${left}px`;
+        this.container.style.top = `${top}px`;
+      }
     }
-    setSize(e, t) {
-      this.width = e, this.height = t, this.container && (this.container.style.width = `${e}px`, 
-      this.container.style.height = `${t}px`);
+
+    /**
+     * Set size of Quick Tab window (v1.5.8.13 - for sync from other tabs)
+     * @param {number} width - Width in pixels
+     * @param {number} height - Height in pixels
+     */
+    setSize(width, height) {
+      this.width = width;
+      this.height = height;
+      if (this.container) {
+        this.container.style.width = `${width}px`;
+        this.container.style.height = `${height}px`;
+      }
     }
+
+    /**
+     * v1.5.9.10 - Check if Quick Tab is rendered on the page
+     * @returns {boolean} True if rendered and attached to DOM
+     */
     isRendered() {
       return this.rendered && this.container && this.container.parentNode;
     }
+
+    /**
+     * Destroy the Quick Tab window
+     */
     destroy() {
-      this.dragController && (this.dragController.destroy(), this.dragController = null), 
-      this.resizeController && (this.resizeController.detachAll(), this.resizeController = null), 
-      this.container && (this.container.remove(), this.container = null, this.iframe = null, 
-      this.rendered = !1), this.onDestroy(this.id), console.log("[QuickTabWindow] Destroyed:", this.id);
+      // v1.6.0 Phase 2.9 - Cleanup drag controller
+      if (this.dragController) {
+        this.dragController.destroy();
+        this.dragController = null;
+      }
+
+      // v1.6.0 Phase 2.4 - Cleanup resize controller
+      if (this.resizeController) {
+        this.resizeController.detachAll();
+        this.resizeController = null;
+      }
+
+      if (this.container) {
+        this.container.remove();
+        this.container = null;
+        this.iframe = null;
+        this.rendered = false; // v1.5.9.10 - Reset rendering state
+      }
+      this.onDestroy(this.id);
+      console.log('[QuickTabWindow] Destroyed:', this.id);
     }
+
+    /**
+     * Get current state for persistence
+     * v1.5.9.13 - Updated to include soloedOnTabs and mutedOnTabs
+     */
     getState() {
       return {
         id: this.id,
@@ -1187,3206 +3883,8315 @@
         cookieStoreId: this.cookieStoreId,
         minimized: this.minimized,
         zIndex: this.zIndex,
-        soloedOnTabs: this.soloedOnTabs,
-        mutedOnTabs: this.mutedOnTabs
+        soloedOnTabs: this.soloedOnTabs, // v1.5.9.13
+        mutedOnTabs: this.mutedOnTabs // v1.5.9.13
       };
     }
   }
-  class x {
-    constructor(e, t, n, i, o, s, a) {
-      this.quickTabsMap = e, this.currentZIndex = t, this.cookieStoreId = n, this.broadcastManager = i, 
-      this.eventBus = o, this.Events = s, this.generateId = a;
+
+  /**
+   * Create a Quick Tab window
+   * @param {Object} options - Quick Tab configuration
+   * @returns {QuickTabWindow} The created Quick Tab window instance
+   */
+  function createQuickTabWindow$1(options) {
+    const window = new QuickTabWindow(options);
+    window.render();
+    return window;
+  }
+
+  /**
+   * CreateHandler
+   * Handles Quick Tab creation logic
+   *
+   * Extracted from QuickTabsManager to reduce complexity
+   * Lines 903-992 from original index.js
+   */
+
+
+  /**
+   * CreateHandler - Responsible for creating new Quick Tabs
+   *
+   * Responsibilities:
+   * - Generate ID if not provided
+   * - Auto-assign container if not provided
+   * - Handle existing tabs (render if not rendered)
+   * - Create QuickTabWindow instance
+   * - Store in tabs Map
+   * - Broadcast CREATE message
+   * - Emit QUICK_TAB_CREATED event
+   */
+  class CreateHandler {
+    /**
+     * @param {Map} quickTabsMap - Map of id -> QuickTabWindow
+     * @param {Object} currentZIndex - Ref object { value: number }
+     * @param {string} cookieStoreId - Current container ID
+     * @param {Object} broadcastManager - BroadcastManager instance
+     * @param {Object} eventBus - EventEmitter for DOM events
+     * @param {Object} Events - Event constants
+     * @param {Function} generateId - ID generation function
+     */
+    constructor(
+      quickTabsMap,
+      currentZIndex,
+      cookieStoreId,
+      broadcastManager,
+      eventBus,
+      Events,
+      generateId
+    ) {
+      this.quickTabsMap = quickTabsMap;
+      this.currentZIndex = currentZIndex;
+      this.cookieStoreId = cookieStoreId;
+      this.broadcastManager = broadcastManager;
+      this.eventBus = eventBus;
+      this.Events = Events;
+      this.generateId = generateId;
     }
-    create(e) {
-      console.log("[CreateHandler] Creating Quick Tab with options:", e);
-      const t = e.id || this.generateId(), n = e.cookieStoreId || this.cookieStoreId || "firefox-default";
-      return this.quickTabsMap.has(t) ? this._handleExistingTab(t) : this._createNewTab(t, n, e);
+
+    /**
+     * Create a new Quick Tab
+     *
+     * @param {Object} options - Quick Tab options
+     * @returns {{ tabWindow: Object, newZIndex: number }} Created tab and new z-index
+     */
+    create(options) {
+      console.log('[CreateHandler] Creating Quick Tab with options:', options);
+
+      const id = options.id || this.generateId();
+      const cookieStoreId = options.cookieStoreId || this.cookieStoreId || 'firefox-default';
+
+      // Handle existing tab
+      if (this.quickTabsMap.has(id)) {
+        return this._handleExistingTab(id);
+      }
+
+      // Create new tab
+      return this._createNewTab(id, cookieStoreId, options);
     }
-    _handleExistingTab(e) {
-      const t = this.quickTabsMap.get(e);
-      return t.isRendered && t.isRendered() ? console.warn("[CreateHandler] Quick Tab already exists and is rendered:", e) : (console.log("[CreateHandler] Tab exists but not rendered, rendering now:", e), 
-      t.render()), this.currentZIndex.value++, t.updateZIndex(this.currentZIndex.value), 
-      {
-        tabWindow: t,
-        newZIndex: this.currentZIndex.value
-      };
-    }
-    _createNewTab(e, t, n) {
+
+    /**
+     * Handle existing tab (render if not rendered, bring to front)
+     * @private
+     */
+    _handleExistingTab(id) {
+      const existingTab = this.quickTabsMap.get(id);
+
+      // v1.5.9.10 - Ensure tab is rendered
+      if (!existingTab.isRendered || !existingTab.isRendered()) {
+        console.log('[CreateHandler] Tab exists but not rendered, rendering now:', id);
+        existingTab.render();
+      } else {
+        console.warn('[CreateHandler] Quick Tab already exists and is rendered:', id);
+      }
+
       this.currentZIndex.value++;
-      const i = this._getDefaults(), o = function(e) {
-        const t = new M(e);
-        return t.render(), t;
-      }(this._buildTabOptions(e, t, n, i));
-      return this.quickTabsMap.set(e, o), this._broadcastCreation(e, t, n, i), this._emitCreationEvent(e, n.url), 
-      console.log("[CreateHandler] Quick Tab created successfully:", e), {
-        tabWindow: o,
+      existingTab.updateZIndex(this.currentZIndex.value);
+
+      return {
+        tabWindow: existingTab,
         newZIndex: this.currentZIndex.value
       };
     }
+
+    /**
+     * Create and store new tab
+     * @private
+     */
+    _createNewTab(id, cookieStoreId, options) {
+      this.currentZIndex.value++;
+
+      const defaults = this._getDefaults();
+      const tabOptions = this._buildTabOptions(id, cookieStoreId, options, defaults);
+      const tabWindow = createQuickTabWindow$1(tabOptions);
+
+      this.quickTabsMap.set(id, tabWindow);
+      this._broadcastCreation(id, cookieStoreId, options, defaults);
+      this._emitCreationEvent(id, options.url);
+
+      console.log('[CreateHandler] Quick Tab created successfully:', id);
+
+      return {
+        tabWindow,
+        newZIndex: this.currentZIndex.value
+      };
+    }
+
+    /**
+     * Get default option values
+     * @private
+     */
     _getDefaults() {
       return {
         left: 100,
         top: 100,
         width: 800,
         height: 600,
-        title: "Quick Tab",
-        minimized: !1,
+        title: 'Quick Tab',
+        minimized: false,
         soloedOnTabs: [],
         mutedOnTabs: []
       };
     }
-    _buildTabOptions(e, t, n, i) {
+
+    /**
+     * Build options for createQuickTabWindow
+     * @private
+     */
+    _buildTabOptions(id, cookieStoreId, options, defaults) {
       return {
-        id: e,
-        url: n.url,
-        left: n.left ?? i.left,
-        top: n.top ?? i.top,
-        width: n.width ?? i.width,
-        height: n.height ?? i.height,
-        title: n.title ?? i.title,
-        cookieStoreId: t,
-        minimized: n.minimized ?? i.minimized,
+        id,
+        url: options.url,
+        left: options.left ?? defaults.left,
+        top: options.top ?? defaults.top,
+        width: options.width ?? defaults.width,
+        height: options.height ?? defaults.height,
+        title: options.title ?? defaults.title,
+        cookieStoreId,
+        minimized: options.minimized ?? defaults.minimized,
         zIndex: this.currentZIndex.value,
-        soloedOnTabs: n.soloedOnTabs ?? i.soloedOnTabs,
-        mutedOnTabs: n.mutedOnTabs ?? i.mutedOnTabs,
-        onDestroy: n.onDestroy,
-        onMinimize: n.onMinimize,
-        onFocus: n.onFocus,
-        onPositionChange: n.onPositionChange,
-        onPositionChangeEnd: n.onPositionChangeEnd,
-        onSizeChange: n.onSizeChange,
-        onSizeChangeEnd: n.onSizeChangeEnd,
-        onSolo: n.onSolo,
-        onMute: n.onMute
+        soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
+        mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs,
+        onDestroy: options.onDestroy,
+        onMinimize: options.onMinimize,
+        onFocus: options.onFocus,
+        onPositionChange: options.onPositionChange,
+        onPositionChangeEnd: options.onPositionChangeEnd,
+        onSizeChange: options.onSizeChange,
+        onSizeChangeEnd: options.onSizeChangeEnd,
+        onSolo: options.onSolo,
+        onMute: options.onMute
       };
     }
-    _broadcastCreation(e, t, n, i) {
-      this.broadcastManager.broadcast("CREATE", {
-        id: e,
-        url: n.url,
-        left: n.left ?? i.left,
-        top: n.top ?? i.top,
-        width: n.width ?? i.width,
-        height: n.height ?? i.height,
-        title: n.title ?? i.title,
-        cookieStoreId: t,
-        minimized: n.minimized ?? i.minimized,
-        soloedOnTabs: n.soloedOnTabs ?? i.soloedOnTabs,
-        mutedOnTabs: n.mutedOnTabs ?? i.mutedOnTabs
+
+    /**
+     * Broadcast creation to other tabs
+     * @private
+     */
+    _broadcastCreation(id, cookieStoreId, options, defaults) {
+      this.broadcastManager.broadcast('CREATE', {
+        id,
+        url: options.url,
+        left: options.left ?? defaults.left,
+        top: options.top ?? defaults.top,
+        width: options.width ?? defaults.width,
+        height: options.height ?? defaults.height,
+        title: options.title ?? defaults.title,
+        cookieStoreId,
+        minimized: options.minimized ?? defaults.minimized,
+        soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
+        mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs
       });
     }
-    _emitCreationEvent(e, t) {
-      this.eventBus && this.Events && this.eventBus.emit(this.Events.QUICK_TAB_CREATED, {
-        id: e,
-        url: t
-      });
+
+    /**
+     * Emit creation event
+     * @private
+     */
+    _emitCreationEvent(id, url) {
+      if (this.eventBus && this.Events) {
+        this.eventBus.emit(this.Events.QUICK_TAB_CREATED, { id, url });
+      }
     }
   }
-  class _ {
-    constructor(e, t, n, i, o, s, a, r, l) {
-      this.quickTabsMap = e, this.broadcastManager = t, this.minimizedManager = n, this.eventBus = i, 
-      this.currentZIndex = o, this.generateSaveId = s, this.releasePendingSave = a, this.Events = r, 
-      this.baseZIndex = l;
+
+  /**
+   * @fileoverview DestroyHandler - Handles Quick Tab destruction and cleanup
+   * Extracted from QuickTabsManager Phase 2.1 refactoring
+   *
+   * Responsibilities:
+   * - Handle single Quick Tab destruction
+   * - Close Quick Tabs via closeById (calls tab.destroy())
+   * - Close all Quick Tabs via closeAll
+   * - Cleanup minimized manager references
+   * - Reset z-index when all tabs closed
+   * - Emit destruction events
+   *
+   * @version 1.6.0
+   * @author refactor-specialist
+   */
+
+  /**
+   * DestroyHandler class
+   * Manages Quick Tab destruction and cleanup operations
+   */
+  class DestroyHandler {
+    /**
+     * @param {Map} quickTabsMap - Map of Quick Tab instances
+     * @param {BroadcastManager} broadcastManager - Broadcast manager for cross-tab sync
+     * @param {MinimizedManager} minimizedManager - Manager for minimized Quick Tabs
+     * @param {EventEmitter} eventBus - Event bus for internal communication
+     * @param {Object} currentZIndex - Reference object with value property for z-index
+     * @param {Function} generateSaveId - Function to generate saveId for transaction tracking
+     * @param {Function} releasePendingSave - Function to release pending saveId
+     * @param {Object} Events - Events constants object
+     * @param {number} baseZIndex - Base z-index value to reset to
+     */
+    constructor(
+      quickTabsMap,
+      broadcastManager,
+      minimizedManager,
+      eventBus,
+      currentZIndex,
+      generateSaveId,
+      releasePendingSave,
+      Events,
+      baseZIndex
+    ) {
+      this.quickTabsMap = quickTabsMap;
+      this.broadcastManager = broadcastManager;
+      this.minimizedManager = minimizedManager;
+      this.eventBus = eventBus;
+      this.currentZIndex = currentZIndex;
+      this.generateSaveId = generateSaveId;
+      this.releasePendingSave = releasePendingSave;
+      this.Events = Events;
+      this.baseZIndex = baseZIndex;
     }
-    async handleDestroy(e) {
-      console.log("[DestroyHandler] Handling destroy for:", e);
-      const t = this._getTabInfoAndCleanup(e), n = this.generateSaveId();
-      this.broadcastManager.notifyClose(e), await this._sendCloseToBackground(e, t, n), 
-      this._emitDestructionEvent(e), this._resetZIndexIfEmpty();
+
+    /**
+     * Handle Quick Tab destruction
+     * v1.5.8.13 - Broadcast close to other tabs
+     * v1.5.8.16 - Send to background to update storage and notify all tabs
+     *
+     * @param {string} id - Quick Tab ID
+     * @returns {Promise<void>}
+     */
+    async handleDestroy(id) {
+      console.log('[DestroyHandler] Handling destroy for:', id);
+
+      // Get tab info and cleanup
+      const tabInfo = this._getTabInfoAndCleanup(id);
+
+      // Generate save ID for transaction tracking
+      const saveId = this.generateSaveId();
+
+      // Broadcast and persist
+      this.broadcastManager.notifyClose(id);
+      await this._sendCloseToBackground(id, tabInfo, saveId);
+
+      // Emit destruction event
+      this._emitDestructionEvent(id);
+
+      // Reset z-index if all tabs are closed
+      this._resetZIndexIfEmpty();
     }
-    _getTabInfoAndCleanup(e) {
-      const t = this.quickTabsMap.get(e), n = t && t.url ? t.url : null, i = t && t.cookieStoreId || "firefox-default";
-      return this.quickTabsMap.delete(e), this.minimizedManager.remove(e), {
-        url: n,
-        cookieStoreId: i
-      };
+
+    /**
+     * Get tab info and perform cleanup
+     * @private
+     * @param {string} id - Quick Tab ID
+     * @returns {Object} Tab info with url and cookieStoreId
+     */
+    _getTabInfoAndCleanup(id) {
+      const tabWindow = this.quickTabsMap.get(id);
+      const url = tabWindow && tabWindow.url ? tabWindow.url : null;
+      const cookieStoreId = tabWindow
+        ? tabWindow.cookieStoreId || 'firefox-default'
+        : 'firefox-default';
+
+      // Delete from map and minimized manager
+      this.quickTabsMap.delete(id);
+      this.minimizedManager.remove(id);
+
+      return { url, cookieStoreId };
     }
-    async _sendCloseToBackground(e, t, n) {
-      if ("undefined" != typeof browser && browser.runtime) try {
-        await browser.runtime.sendMessage({
-          action: "CLOSE_QUICK_TAB",
-          id: e,
-          url: t.url,
-          cookieStoreId: t.cookieStoreId,
-          saveId: n
-        });
-      } catch (e) {
-        console.error("[DestroyHandler] Error closing Quick Tab in background:", e), this.releasePendingSave(n);
-      } else this.releasePendingSave(n);
+
+    /**
+     * Send close message to background
+     * @private
+     * @param {string} id - Quick Tab ID
+     * @param {Object} tabInfo - Tab info with url and cookieStoreId
+     * @param {string} saveId - Save ID for transaction tracking
+     * @returns {Promise<void>}
+     */
+    async _sendCloseToBackground(id, tabInfo, saveId) {
+      if (typeof browser !== 'undefined' && browser.runtime) {
+        try {
+          await browser.runtime.sendMessage({
+            action: 'CLOSE_QUICK_TAB',
+            id: id,
+            url: tabInfo.url,
+            cookieStoreId: tabInfo.cookieStoreId,
+            saveId: saveId
+          });
+        } catch (err) {
+          console.error('[DestroyHandler] Error closing Quick Tab in background:', err);
+          this.releasePendingSave(saveId);
+        }
+      } else {
+        this.releasePendingSave(saveId);
+      }
     }
-    _emitDestructionEvent(e) {
-      this.eventBus && this.Events && this.eventBus.emit(this.Events.QUICK_TAB_CLOSED, {
-        id: e
-      });
+
+    /**
+     * Emit destruction event
+     * @private
+     * @param {string} id - Quick Tab ID
+     */
+    _emitDestructionEvent(id) {
+      if (this.eventBus && this.Events) {
+        this.eventBus.emit(this.Events.QUICK_TAB_CLOSED, { id });
+      }
     }
+
+    /**
+     * Reset z-index if all tabs are closed
+     * @private
+     */
     _resetZIndexIfEmpty() {
-      0 === this.quickTabsMap.size && (this.currentZIndex.value = this.baseZIndex, console.log("[DestroyHandler] All tabs closed, reset z-index"));
+      if (this.quickTabsMap.size === 0) {
+        this.currentZIndex.value = this.baseZIndex;
+        console.log('[DestroyHandler] All tabs closed, reset z-index');
+      }
     }
-    closeById(e) {
-      const t = this.quickTabsMap.get(e);
-      t && t.destroy && t.destroy();
+
+    /**
+     * Close Quick Tab by ID (calls tab.destroy() method)
+     *
+     * @param {string} id - Quick Tab ID
+     */
+    closeById(id) {
+      const tabWindow = this.quickTabsMap.get(id);
+      if (tabWindow && tabWindow.destroy) {
+        tabWindow.destroy();
+      }
     }
+
+    /**
+     * Close all Quick Tabs
+     * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
+     */
     closeAll() {
-      console.log("[DestroyHandler] Closing all Quick Tabs");
-      for (const e of this.quickTabsMap.values()) e.destroy && e.destroy();
-      this.quickTabsMap.clear(), this.minimizedManager.clear(), this.currentZIndex.value = this.baseZIndex;
+      console.log('[DestroyHandler] Closing all Quick Tabs');
+
+      // Destroy all tabs
+      for (const tabWindow of this.quickTabsMap.values()) {
+        if (tabWindow.destroy) {
+          tabWindow.destroy();
+        }
+      }
+
+      // Clear everything
+      this.quickTabsMap.clear();
+      this.minimizedManager.clear();
+      this.currentZIndex.value = this.baseZIndex;
     }
   }
-  class z {
-    constructor(e, t, n, i, o, s) {
-      this.quickTabsMap = e, this.broadcastManager = t, this.storageManager = n, this.eventBus = i, 
-      this.generateSaveId = o, this.releasePendingSave = s, this.positionChangeThrottle = new Map, 
-      this.sizeChangeThrottle = new Map;
+
+  /**
+   * @fileoverview UpdateHandler - Handles Quick Tab position and size updates
+   * Extracted from QuickTabsManager Phase 2.1 refactoring
+   *
+   * Responsibilities:
+   * - Handle position updates during drag (no broadcast/save)
+   * - Handle position updates at drag end (broadcast + save)
+   * - Handle size updates during resize (no broadcast/save)
+   * - Handle size updates at resize end (broadcast + save)
+   * - Emit update events for coordinators
+   *
+   * @version 1.6.0
+   * @author refactor-specialist
+   */
+
+  /**
+   * UpdateHandler class
+   * Manages Quick Tab position and size updates with throttling and broadcast coordination
+   */
+  class UpdateHandler {
+    /**
+     * @param {Map} quickTabsMap - Map of Quick Tab instances
+     * @param {BroadcastManager} broadcastManager - Broadcast manager for cross-tab sync
+     * @param {StorageManager} storageManager - Storage manager (currently unused, kept for future use)
+     * @param {EventEmitter} eventBus - Event bus for internal communication
+     * @param {Function} generateSaveId - Function to generate saveId for transaction tracking
+     * @param {Function} releasePendingSave - Function to release pending saveId
+     */
+    constructor(
+      quickTabsMap,
+      broadcastManager,
+      storageManager,
+      eventBus,
+      generateSaveId,
+      releasePendingSave
+    ) {
+      this.quickTabsMap = quickTabsMap;
+      this.broadcastManager = broadcastManager;
+      this.storageManager = storageManager;
+      this.eventBus = eventBus;
+      this.generateSaveId = generateSaveId;
+      this.releasePendingSave = releasePendingSave;
+
+      // Throttle tracking (for future use if needed)
+      this.positionChangeThrottle = new Map();
+      this.sizeChangeThrottle = new Map();
     }
-    handlePositionChange(e, t, n) {}
-    async handlePositionChangeEnd(e, t, n) {
-      this.positionChangeThrottle.has(e) && this.positionChangeThrottle.delete(e);
-      const i = Math.round(t), o = Math.round(n);
-      this.broadcastManager.notifyPositionUpdate(e, i, o);
-      const s = this.generateSaveId(), a = this.quickTabsMap.get(e), r = a?.cookieStoreId || "firefox-default";
-      if ("undefined" != typeof browser && browser.runtime) try {
-        await browser.runtime.sendMessage({
-          action: "UPDATE_QUICK_TAB_POSITION_FINAL",
-          id: e,
-          left: i,
-          top: o,
-          cookieStoreId: r,
-          saveId: s,
-          timestamp: Date.now()
-        });
-      } catch (e) {
-        console.error("[UpdateHandler] Final position save error:", e), this.releasePendingSave(s);
-      } else this.releasePendingSave(s);
-      this.eventBus?.emit("tab:position-updated", {
-        id: e,
-        left: i,
-        top: o
+
+    /**
+     * Handle position change during drag
+     * v1.5.8.15 - No longer broadcasts or syncs during drag
+     * This prevents excessive BroadcastChannel messages and storage writes
+     * Position syncs only on drag end via handlePositionChangeEnd
+     *
+     * @param {string} id - Quick Tab ID
+     * @param {number} left - New left position
+     * @param {number} top - New top position
+     */
+    handlePositionChange(_id, _left, _top) {
+      // v1.5.8.15 - No longer broadcasts or syncs during drag
+      // This prevents excessive BroadcastChannel messages and storage writes
+      // Position syncs only on drag end via handlePositionChangeEnd
+      // Local UI update happens automatically via pointer events
+    }
+
+    /**
+     * Handle position change end (drag end) - broadcast and save
+     * v1.5.8.13 - Enhanced with BroadcastChannel sync
+     * v1.5.8.14 - Added transaction ID for race condition prevention
+     * v1.5.9.12 - Container integration: Include container context
+     *
+     * @param {string} id - Quick Tab ID
+     * @param {number} left - Final left position
+     * @param {number} top - Final top position
+     * @returns {Promise<void>}
+     */
+    async handlePositionChangeEnd(id, left, top) {
+      // Clear throttle (if exists)
+      if (this.positionChangeThrottle.has(id)) {
+        this.positionChangeThrottle.delete(id);
+      }
+
+      // Round values
+      const roundedLeft = Math.round(left);
+      const roundedTop = Math.round(top);
+
+      // v1.5.8.13 - Final position broadcast
+      this.broadcastManager.notifyPositionUpdate(id, roundedLeft, roundedTop);
+
+      // v1.5.8.14 - Generate save ID for transaction tracking
+      const saveId = this.generateSaveId();
+
+      // v1.5.9.12 - Get cookieStoreId from tab
+      const tabWindow = this.quickTabsMap.get(id);
+      const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
+
+      // Send final position to background
+      if (typeof browser !== 'undefined' && browser.runtime) {
+        try {
+          await browser.runtime.sendMessage({
+            action: 'UPDATE_QUICK_TAB_POSITION_FINAL',
+            id: id,
+            left: roundedLeft,
+            top: roundedTop,
+            cookieStoreId: cookieStoreId, // v1.5.9.12 - Include container context
+            saveId: saveId, // v1.5.8.14 - Include save ID
+            timestamp: Date.now()
+          });
+        } catch (err) {
+          console.error('[UpdateHandler] Final position save error:', err);
+          this.releasePendingSave(saveId);
+        }
+      } else {
+        this.releasePendingSave(saveId);
+      }
+
+      // Emit event for coordinators
+      this.eventBus?.emit('tab:position-updated', {
+        id,
+        left: roundedLeft,
+        top: roundedTop
       });
     }
-    handleSizeChange(e, t, n) {}
-    async handleSizeChangeEnd(e, t, n) {
-      this.sizeChangeThrottle.has(e) && this.sizeChangeThrottle.delete(e);
-      const i = Math.round(t), o = Math.round(n);
-      this.broadcastManager.notifySizeUpdate(e, i, o);
-      const s = this.generateSaveId(), a = this.quickTabsMap.get(e), r = a?.cookieStoreId || "firefox-default";
-      if ("undefined" != typeof browser && browser.runtime) try {
-        await browser.runtime.sendMessage({
-          action: "UPDATE_QUICK_TAB_SIZE_FINAL",
-          id: e,
-          width: i,
-          height: o,
-          cookieStoreId: r,
-          saveId: s,
-          timestamp: Date.now()
-        });
-      } catch (e) {
-        console.error("[UpdateHandler] Final size save error:", e), this.releasePendingSave(s);
-      } else this.releasePendingSave(s);
-      this.eventBus?.emit("tab:size-updated", {
-        id: e,
-        width: i,
-        height: o
+
+    /**
+     * Handle size change during resize
+     * v1.5.8.15 - REMOVED broadcast/sync during resize to prevent performance issues
+     * Size only syncs on resize end for optimal performance
+     *
+     * @param {string} id - Quick Tab ID
+     * @param {number} width - New width
+     * @param {number} height - New height
+     */
+    handleSizeChange(_id, _width, _height) {
+      // v1.5.8.15 - No longer broadcasts or syncs during resize
+      // This prevents excessive BroadcastChannel messages and storage writes
+      // Size syncs only on resize end via handleSizeChangeEnd
+      // Local UI update happens automatically via pointer events
+    }
+
+    /**
+     * Handle size change end (resize end) - broadcast and save
+     * v1.5.8.13 - Enhanced with BroadcastChannel sync
+     * v1.5.8.14 - Added transaction ID for race condition prevention
+     * v1.5.9.12 - Container integration: Include container context
+     *
+     * @param {string} id - Quick Tab ID
+     * @param {number} width - Final width
+     * @param {number} height - Final height
+     * @returns {Promise<void>}
+     */
+    async handleSizeChangeEnd(id, width, height) {
+      // Clear throttle (if exists)
+      if (this.sizeChangeThrottle.has(id)) {
+        this.sizeChangeThrottle.delete(id);
+      }
+
+      // Round values
+      const roundedWidth = Math.round(width);
+      const roundedHeight = Math.round(height);
+
+      // v1.5.8.13 - Final size broadcast
+      this.broadcastManager.notifySizeUpdate(id, roundedWidth, roundedHeight);
+
+      // v1.5.8.14 - Generate save ID for transaction tracking
+      const saveId = this.generateSaveId();
+
+      // v1.5.9.12 - Get cookieStoreId from tab
+      const tabWindow = this.quickTabsMap.get(id);
+      const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
+
+      // Send final size to background
+      if (typeof browser !== 'undefined' && browser.runtime) {
+        try {
+          await browser.runtime.sendMessage({
+            action: 'UPDATE_QUICK_TAB_SIZE_FINAL',
+            id: id,
+            width: roundedWidth,
+            height: roundedHeight,
+            cookieStoreId: cookieStoreId, // v1.5.9.12 - Include container context
+            saveId: saveId, // v1.5.8.14 - Include save ID
+            timestamp: Date.now()
+          });
+        } catch (err) {
+          console.error('[UpdateHandler] Final size save error:', err);
+          this.releasePendingSave(saveId);
+        }
+      } else {
+        this.releasePendingSave(saveId);
+      }
+
+      // Emit event for coordinators
+      this.eventBus?.emit('tab:size-updated', {
+        id,
+        width: roundedWidth,
+        height: roundedHeight
       });
     }
   }
-  class q {
-    constructor(e, t, n, i, o, s, a, r, l, c, d) {
-      this.quickTabsMap = e, this.broadcastManager = t, this.storageManager = n, this.minimizedManager = i, 
-      this.eventBus = o, this.currentZIndex = s, this.generateSaveId = a, this.trackPendingSave = r, 
-      this.releasePendingSave = l, this.currentTabId = c, this.Events = d;
+
+  /**
+   * @fileoverview VisibilityHandler - Handles Quick Tab visibility operations
+   * Extracted from QuickTabsManager Phase 2.1 refactoring
+   *
+   * Responsibilities:
+   * - Handle solo toggle (show only on specific tabs)
+   * - Handle mute toggle (hide on specific tabs)
+   * - Handle minimize operation
+   * - Handle focus operation (bring to front)
+   * - Update button appearances
+   * - Emit events for coordinators
+   *
+   * @version 1.6.0
+   * @author refactor-specialist
+   */
+
+  /**
+   * VisibilityHandler class
+   * Manages Quick Tab visibility states (solo, mute, minimize, focus)
+   */
+  class VisibilityHandler {
+    /**
+     * @param {Map} quickTabsMap - Map of Quick Tab instances
+     * @param {BroadcastManager} broadcastManager - Broadcast manager for cross-tab sync
+     * @param {StorageManager} storageManager - Storage manager (currently unused, kept for future use)
+     * @param {MinimizedManager} minimizedManager - Manager for minimized Quick Tabs
+     * @param {EventEmitter} eventBus - Event bus for internal communication
+     * @param {Object} currentZIndex - Reference object with value property for z-index
+     * @param {Function} generateSaveId - Function to generate saveId for transaction tracking
+     * @param {Function} trackPendingSave - Function to track pending saveId
+     * @param {Function} releasePendingSave - Function to release pending saveId
+     * @param {number} currentTabId - Current browser tab ID
+     * @param {Object} Events - Events constants object
+     */
+    constructor(
+      quickTabsMap,
+      broadcastManager,
+      storageManager,
+      minimizedManager,
+      eventBus,
+      currentZIndex,
+      generateSaveId,
+      trackPendingSave,
+      releasePendingSave,
+      currentTabId,
+      Events
+    ) {
+      this.quickTabsMap = quickTabsMap;
+      this.broadcastManager = broadcastManager;
+      this.storageManager = storageManager;
+      this.minimizedManager = minimizedManager;
+      this.eventBus = eventBus;
+      this.currentZIndex = currentZIndex;
+      this.generateSaveId = generateSaveId;
+      this.trackPendingSave = trackPendingSave;
+      this.releasePendingSave = releasePendingSave;
+      this.currentTabId = currentTabId;
+      this.Events = Events;
     }
-    async handleSoloToggle(e, t) {
-      console.log(`[VisibilityHandler] Toggling solo for ${e}:`, t);
-      const n = this.quickTabsMap.get(e);
-      n && (n.soloedOnTabs = t, n.mutedOnTabs = [], this._updateSoloButton(n, t), this.broadcastManager.notifySolo(e, t), 
-      await this._sendToBackground(e, n, "SOLO", {
-        soloedOnTabs: t
-      }));
-    }
-    async handleMuteToggle(e, t) {
-      console.log(`[VisibilityHandler] Toggling mute for ${e}:`, t);
-      const n = this.quickTabsMap.get(e);
-      n && (n.mutedOnTabs = t, n.soloedOnTabs = [], this._updateMuteButton(n, t), this.broadcastManager.notifyMute(e, t), 
-      await this._sendToBackground(e, n, "MUTE", {
-        mutedOnTabs: t
-      }));
-    }
-    async handleMinimize(e) {
-      console.log("[VisibilityHandler] Handling minimize for:", e);
-      const t = this.quickTabsMap.get(e);
-      if (!t) return;
-      this.minimizedManager.add(e, t), this.broadcastManager.notifyMinimize(e), this.eventBus && this.Events && this.eventBus.emit(this.Events.QUICK_TAB_MINIMIZED, {
-        id: e
+
+    /**
+     * Handle solo toggle from Quick Tab window or panel
+     * v1.5.9.13 - Solo feature: show Quick Tab ONLY on specific tabs
+     *
+     * @param {string} quickTabId - Quick Tab ID
+     * @param {number[]} newSoloedTabs - Array of tab IDs where Quick Tab should be visible
+     * @returns {Promise<void>}
+     */
+    async handleSoloToggle(quickTabId, newSoloedTabs) {
+      console.log(`[VisibilityHandler] Toggling solo for ${quickTabId}:`, newSoloedTabs);
+
+      const tab = this.quickTabsMap.get(quickTabId);
+      if (!tab) return;
+
+      // Update solo state
+      tab.soloedOnTabs = newSoloedTabs;
+      tab.mutedOnTabs = []; // Clear mute state (mutually exclusive)
+
+      // Update button states if tab has them
+      this._updateSoloButton(tab, newSoloedTabs);
+
+      // Broadcast to other tabs
+      this.broadcastManager.notifySolo(quickTabId, newSoloedTabs);
+
+      // Save to background
+      await this._sendToBackground(quickTabId, tab, 'SOLO', {
+        soloedOnTabs: newSoloedTabs
       });
-      const n = this.generateSaveId();
-      this.trackPendingSave(n);
-      const i = t.cookieStoreId || "firefox-default";
-      if ("undefined" != typeof browser && browser.runtime) try {
-        await browser.runtime.sendMessage({
-          action: "UPDATE_QUICK_TAB_MINIMIZE",
-          id: e,
-          minimized: !0,
-          cookieStoreId: i,
-          saveId: n,
-          timestamp: Date.now()
-        }), this.releasePendingSave(n);
-      } catch (e) {
-        console.error("[VisibilityHandler] Error updating minimize state:", e), this.releasePendingSave(n);
-      } else this.releasePendingSave(n);
     }
-    handleFocus(e) {
-      console.log("[VisibilityHandler] Bringing to front:", e);
-      const t = this.quickTabsMap.get(e);
-      t && (this.currentZIndex.value++, t.updateZIndex(this.currentZIndex.value), this.eventBus && this.Events && this.eventBus.emit(this.Events.QUICK_TAB_FOCUSED, {
-        id: e
-      }));
+
+    /**
+     * Handle mute toggle from Quick Tab window or panel
+     * v1.5.9.13 - Mute feature: hide Quick Tab ONLY on specific tabs
+     *
+     * @param {string} quickTabId - Quick Tab ID
+     * @param {number[]} newMutedTabs - Array of tab IDs where Quick Tab should be hidden
+     * @returns {Promise<void>}
+     */
+    async handleMuteToggle(quickTabId, newMutedTabs) {
+      console.log(`[VisibilityHandler] Toggling mute for ${quickTabId}:`, newMutedTabs);
+
+      const tab = this.quickTabsMap.get(quickTabId);
+      if (!tab) return;
+
+      // Update mute state
+      tab.mutedOnTabs = newMutedTabs;
+      tab.soloedOnTabs = []; // Clear solo state (mutually exclusive)
+
+      // Update button states if tab has them
+      this._updateMuteButton(tab, newMutedTabs);
+
+      // Broadcast to other tabs
+      this.broadcastManager.notifyMute(quickTabId, newMutedTabs);
+
+      // Save to background
+      await this._sendToBackground(quickTabId, tab, 'MUTE', {
+        mutedOnTabs: newMutedTabs
+      });
     }
-    _updateSoloButton(e, t) {
-      if (!e.soloButton) return;
-      const n = t.length > 0;
-      e.soloButton.textContent = n ? "🎯" : "⭕", e.soloButton.title = n ? "Un-solo (show on all tabs)" : "Solo (show only on this tab)", 
-      e.soloButton.style.background = n ? "#444" : "transparent";
+
+    /**
+     * Handle Quick Tab minimize
+     * v1.5.8.13 - Broadcast minimize to other tabs
+     * v1.5.9.8 - Update storage immediately to reflect minimized state
+     *
+     * @param {string} id - Quick Tab ID
+     * @returns {Promise<void>}
+     */
+    async handleMinimize(id) {
+      console.log('[VisibilityHandler] Handling minimize for:', id);
+
+      const tabWindow = this.quickTabsMap.get(id);
+      if (!tabWindow) return;
+
+      // Add to minimized manager
+      this.minimizedManager.add(id, tabWindow);
+
+      // v1.5.8.13 - Broadcast minimize to other tabs
+      this.broadcastManager.notifyMinimize(id);
+
+      // Emit minimize event
+      if (this.eventBus && this.Events) {
+        this.eventBus.emit(this.Events.QUICK_TAB_MINIMIZED, { id });
+      }
+
+      // v1.5.9.8 - FIX: Update storage immediately to reflect minimized state
+      const saveId = this.generateSaveId();
+      this.trackPendingSave(saveId);
+
+      // v1.5.9.12 - Get cookieStoreId from tab
+      const cookieStoreId = tabWindow.cookieStoreId || 'firefox-default';
+
+      if (typeof browser !== 'undefined' && browser.runtime) {
+        try {
+          await browser.runtime.sendMessage({
+            action: 'UPDATE_QUICK_TAB_MINIMIZE',
+            id: id,
+            minimized: true,
+            cookieStoreId: cookieStoreId, // v1.5.9.12 - Include container context
+            saveId: saveId,
+            timestamp: Date.now()
+          });
+          this.releasePendingSave(saveId);
+        } catch (err) {
+          console.error('[VisibilityHandler] Error updating minimize state:', err);
+          this.releasePendingSave(saveId);
+        }
+      } else {
+        this.releasePendingSave(saveId);
+      }
     }
-    _updateMuteButton(e, t) {
-      if (!e.muteButton) return;
-      const n = t.includes(this.currentTabId);
-      e.muteButton.textContent = n ? "🔇" : "🔊", e.muteButton.title = n ? "Unmute (show on this tab)" : "Mute (hide on this tab)", 
-      e.muteButton.style.background = n ? "#c44" : "transparent";
+
+    /**
+     * Handle Quick Tab focus (bring to front)
+     *
+     * @param {string} id - Quick Tab ID
+     */
+    handleFocus(id) {
+      console.log('[VisibilityHandler] Bringing to front:', id);
+
+      const tabWindow = this.quickTabsMap.get(id);
+      if (!tabWindow) return;
+
+      // Increment z-index and update tab
+      this.currentZIndex.value++;
+      tabWindow.updateZIndex(this.currentZIndex.value);
+
+      // Emit focus event
+      if (this.eventBus && this.Events) {
+        this.eventBus.emit(this.Events.QUICK_TAB_FOCUSED, { id });
+      }
     }
-    async _sendToBackground(e, t, n, i) {
-      const o = this.generateSaveId(), s = t?.cookieStoreId || "firefox-default";
-      if ("undefined" != typeof browser && browser.runtime) try {
-        await browser.runtime.sendMessage({
-          action: `UPDATE_QUICK_TAB_${n}`,
-          id: e,
-          ...i,
-          cookieStoreId: s,
-          saveId: o,
-          timestamp: Date.now()
-        });
-      } catch (e) {
-        console.error(`[VisibilityHandler] ${n} update error:`, e), this.releasePendingSave(o);
-      } else this.releasePendingSave(o);
+
+    /**
+     * Update solo button appearance
+     * @private
+     * @param {Object} tab - Quick Tab instance
+     * @param {number[]} soloedOnTabs - Array of tab IDs
+     */
+    _updateSoloButton(tab, soloedOnTabs) {
+      if (!tab.soloButton) return;
+
+      const isSoloed = soloedOnTabs.length > 0;
+      tab.soloButton.textContent = isSoloed ? '🎯' : '⭕';
+      tab.soloButton.title = isSoloed ? 'Un-solo (show on all tabs)' : 'Solo (show only on this tab)';
+      tab.soloButton.style.background = isSoloed ? '#444' : 'transparent';
+    }
+
+    /**
+     * Update mute button appearance
+     * @private
+     * @param {Object} tab - Quick Tab instance
+     * @param {number[]} mutedOnTabs - Array of tab IDs
+     */
+    _updateMuteButton(tab, mutedOnTabs) {
+      if (!tab.muteButton) return;
+
+      const isMuted = mutedOnTabs.includes(this.currentTabId);
+      tab.muteButton.textContent = isMuted ? '🔇' : '🔊';
+      tab.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
+      tab.muteButton.style.background = isMuted ? '#c44' : 'transparent';
+    }
+
+    /**
+     * Send message to background for persistence
+     * @private
+     * @param {string} quickTabId - Quick Tab ID
+     * @param {Object} tab - Quick Tab instance
+     * @param {string} action - Action type ('SOLO' or 'MUTE')
+     * @param {Object} data - Additional data to send
+     * @returns {Promise<void>}
+     */
+    async _sendToBackground(quickTabId, tab, action, data) {
+      const saveId = this.generateSaveId();
+      const cookieStoreId = tab?.cookieStoreId || 'firefox-default';
+
+      if (typeof browser !== 'undefined' && browser.runtime) {
+        try {
+          await browser.runtime.sendMessage({
+            action: `UPDATE_QUICK_TAB_${action}`,
+            id: quickTabId,
+            ...data,
+            cookieStoreId: cookieStoreId,
+            saveId: saveId,
+            timestamp: Date.now()
+          });
+        } catch (err) {
+          console.error(`[VisibilityHandler] ${action} update error:`, err);
+          this.releasePendingSave(saveId);
+        }
+      } else {
+        this.releasePendingSave(saveId);
+      }
     }
   }
-  class O {
-    constructor(e, t = "firefox-default") {
-      this.eventBus = e, this.cookieStoreId = t, this.broadcastChannel = null, this.currentChannelName = null, 
-      this.broadcastDebounce = new Map, this.BROADCAST_DEBOUNCE_MS = 50;
+
+  /**
+   * BroadcastManager - Handles cross-tab real-time messaging
+   * Phase 2.1: Extracted from QuickTabsManager
+   *
+   * Responsibilities:
+   * - Setup BroadcastChannel for container-specific messaging
+   * - Send broadcast messages to other tabs
+   * - Receive and route broadcast messages
+   * - Debounce rapid broadcasts to prevent loops
+   * - Container-aware channel management
+   *
+   * Uses:
+   * - BroadcastChannel API for <10ms cross-tab sync
+   * - EventBus for decoupled message handling
+   */
+
+  class BroadcastManager {
+    constructor(eventBus, cookieStoreId = 'firefox-default') {
+      this.eventBus = eventBus;
+      this.cookieStoreId = cookieStoreId;
+
+      // Broadcast channel
+      this.broadcastChannel = null;
+      this.currentChannelName = null;
+
+      // Debounce to prevent message loops
+      this.broadcastDebounce = new Map(); // key -> timestamp
+      this.BROADCAST_DEBOUNCE_MS = 50; // Ignore duplicate broadcasts within 50ms
     }
+
+    /**
+     * Setup BroadcastChannel for cross-tab messaging
+     */
     setupBroadcastChannel() {
-      if ("undefined" != typeof BroadcastChannel) try {
-        const e = `quick-tabs-sync-${this.cookieStoreId}`;
-        this.broadcastChannel && (console.log(`[BroadcastManager] Closing old channel: ${this.currentChannelName}`), 
-        this.broadcastChannel.close()), this.broadcastChannel = new BroadcastChannel(e), 
-        this.currentChannelName = e, console.log(`[BroadcastManager] BroadcastChannel created: ${e}`), 
-        this.broadcastChannel.onmessage = e => {
-          this.handleBroadcastMessage(e.data);
-        }, console.log(`[BroadcastManager] Initialized for container: ${this.cookieStoreId}`);
-      } catch (e) {
-        console.error("[BroadcastManager] Failed to setup BroadcastChannel:", e);
-      } else console.warn("[BroadcastManager] BroadcastChannel not available, using storage-only sync");
+      if (typeof BroadcastChannel === 'undefined') {
+        console.warn('[BroadcastManager] BroadcastChannel not available, using storage-only sync');
+        return;
+      }
+
+      try {
+        // Container-specific channel for isolation
+        const channelName = `quick-tabs-sync-${this.cookieStoreId}`;
+
+        // Close existing channel if present
+        if (this.broadcastChannel) {
+          console.log(`[BroadcastManager] Closing old channel: ${this.currentChannelName}`);
+          this.broadcastChannel.close();
+        }
+
+        this.broadcastChannel = new BroadcastChannel(channelName);
+        this.currentChannelName = channelName;
+
+        console.log(`[BroadcastManager] BroadcastChannel created: ${channelName}`);
+
+        // Setup message handler
+        this.broadcastChannel.onmessage = event => {
+          this.handleBroadcastMessage(event.data);
+        };
+
+        console.log(`[BroadcastManager] Initialized for container: ${this.cookieStoreId}`);
+      } catch (err) {
+        console.error('[BroadcastManager] Failed to setup BroadcastChannel:', err);
+      }
     }
-    handleBroadcastMessage(e) {
-      console.log("[BroadcastManager] Message received:", e);
-      const {type: t, data: n} = e;
-      this.shouldDebounce(t, n) ? console.log("[BroadcastManager] Ignoring duplicate broadcast (debounced):", t, n.id) : this.eventBus?.emit("broadcast:received", {
-        type: t,
-        data: n
-      });
+
+    /**
+     * Handle incoming broadcast message
+     * @param {Object} message - Message data with type and data
+     */
+    handleBroadcastMessage(message) {
+      console.log('[BroadcastManager] Message received:', message);
+
+      const { type, data } = message;
+
+      // Debounce rapid messages to prevent loops
+      if (this.shouldDebounce(type, data)) {
+        console.log('[BroadcastManager] Ignoring duplicate broadcast (debounced):', type, data.id);
+        return;
+      }
+
+      // Emit event for handlers to process
+      this.eventBus?.emit('broadcast:received', { type, data });
     }
-    shouldDebounce(e, t) {
-      if (!t || !t.id) return !1;
-      const n = `${e}-${t.id}`, i = Date.now(), o = this.broadcastDebounce.get(n);
-      return !!(o && i - o < this.BROADCAST_DEBOUNCE_MS) || (this.broadcastDebounce.set(n, i), 
-      this._cleanupOldDebounceEntries(i), !1);
+
+    /**
+     * Check if message should be debounced
+     * @param {string} type - Message type
+     * @param {Object} data - Message data
+     * @returns {boolean} - True if should skip
+     */
+    shouldDebounce(type, data) {
+      if (!data || !data.id) {
+        return false;
+      }
+
+      const debounceKey = `${type}-${data.id}`;
+      const now = Date.now();
+      const lastProcessed = this.broadcastDebounce.get(debounceKey);
+
+      if (lastProcessed && now - lastProcessed < this.BROADCAST_DEBOUNCE_MS) {
+        return true;
+      }
+
+      // Update timestamp
+      this.broadcastDebounce.set(debounceKey, now);
+
+      // Clean up old entries to prevent memory leak
+      this._cleanupOldDebounceEntries(now);
+
+      return false;
     }
-    _cleanupOldDebounceEntries(e) {
-      if (this.broadcastDebounce.size <= 100) return;
-      const t = e - 2 * this.BROADCAST_DEBOUNCE_MS;
-      for (const [e, n] of this.broadcastDebounce.entries()) n < t && this.broadcastDebounce.delete(e);
+
+    /**
+     * Clean up old debounce entries to prevent memory leak
+     * @private
+     */
+    _cleanupOldDebounceEntries(now) {
+      if (this.broadcastDebounce.size <= 100) {
+        return;
+      }
+
+      const oldestAllowed = now - this.BROADCAST_DEBOUNCE_MS * 2;
+      for (const [key, timestamp] of this.broadcastDebounce.entries()) {
+        if (timestamp < oldestAllowed) {
+          this.broadcastDebounce.delete(key);
+        }
+      }
     }
-    broadcast(e, t) {
-      if (this.broadcastChannel) try {
-        this.broadcastChannel.postMessage({
-          type: e,
-          data: t
-        }), console.log(`[BroadcastManager] Broadcasted ${e}:`, t);
-      } catch (e) {
-        console.error("[BroadcastManager] Failed to broadcast:", e);
-      } else console.warn("[BroadcastManager] No broadcast channel available");
+
+    /**
+     * Broadcast message to other tabs
+     * @param {string} type - Message type (CREATE, UPDATE_POSITION, etc.)
+     * @param {Object} data - Message payload
+     */
+    broadcast(type, data) {
+      if (!this.broadcastChannel) {
+        console.warn('[BroadcastManager] No broadcast channel available');
+        return;
+      }
+
+      try {
+        this.broadcastChannel.postMessage({ type, data });
+        console.log(`[BroadcastManager] Broadcasted ${type}:`, data);
+      } catch (err) {
+        console.error('[BroadcastManager] Failed to broadcast:', err);
+      }
     }
-    async notifyCreate(e) {
-      await this.broadcast("CREATE", e);
+
+    /**
+     * Broadcast Quick Tab creation
+     * @param {Object} quickTabData - Quick Tab data to broadcast
+     */
+    async notifyCreate(quickTabData) {
+      await this.broadcast('CREATE', quickTabData);
     }
-    async notifyPositionUpdate(e, t, n) {
-      await this.broadcast("UPDATE_POSITION", {
-        id: e,
-        left: t,
-        top: n
-      });
+
+    /**
+     * Broadcast position update
+     * @param {string} id - Quick Tab ID
+     * @param {number} left - Left position
+     * @param {number} top - Top position
+     */
+    async notifyPositionUpdate(id, left, top) {
+      await this.broadcast('UPDATE_POSITION', { id, left, top });
     }
-    async notifySizeUpdate(e, t, n) {
-      await this.broadcast("UPDATE_SIZE", {
-        id: e,
-        width: t,
-        height: n
-      });
+
+    /**
+     * Broadcast size update
+     * @param {string} id - Quick Tab ID
+     * @param {number} width - Width
+     * @param {number} height - Height
+     */
+    async notifySizeUpdate(id, width, height) {
+      await this.broadcast('UPDATE_SIZE', { id, width, height });
     }
-    async notifyMinimize(e) {
-      await this.broadcast("MINIMIZE", {
-        id: e
-      });
+
+    /**
+     * Broadcast minimize
+     * @param {string} id - Quick Tab ID
+     */
+    async notifyMinimize(id) {
+      await this.broadcast('MINIMIZE', { id });
     }
-    async notifyRestore(e) {
-      await this.broadcast("RESTORE", {
-        id: e
-      });
+
+    /**
+     * Broadcast restore
+     * @param {string} id - Quick Tab ID
+     */
+    async notifyRestore(id) {
+      await this.broadcast('RESTORE', { id });
     }
-    async notifyClose(e) {
-      await this.broadcast("CLOSE", {
-        id: e
-      });
+
+    /**
+     * Broadcast close
+     * @param {string} id - Quick Tab ID
+     */
+    async notifyClose(id) {
+      await this.broadcast('CLOSE', { id });
     }
-    async notifySolo(e, t) {
-      await this.broadcast("SOLO", {
-        id: e,
-        soloedOnTabs: t
-      });
+
+    /**
+     * Broadcast solo state change
+     * @param {string} id - Quick Tab ID
+     * @param {Array<number>} soloedOnTabs - Array of tab IDs where Quick Tab is soloed
+     */
+    async notifySolo(id, soloedOnTabs) {
+      await this.broadcast('SOLO', { id, soloedOnTabs });
     }
-    async notifyMute(e, t) {
-      await this.broadcast("MUTE", {
-        id: e,
-        mutedOnTabs: t
-      });
+
+    /**
+     * Broadcast mute state change
+     * @param {string} id - Quick Tab ID
+     * @param {Array<number>} mutedOnTabs - Array of tab IDs where Quick Tab is muted
+     */
+    async notifyMute(id, mutedOnTabs) {
+      await this.broadcast('MUTE', { id, mutedOnTabs });
     }
-    updateContainer(e) {
-      this.cookieStoreId !== e && (console.log(`[BroadcastManager] Updating container: ${this.cookieStoreId} → ${e}`), 
-      this.cookieStoreId = e, this.setupBroadcastChannel());
+
+    /**
+     * Update container context (re-creates channel)
+     * @param {string} cookieStoreId - New container ID
+     */
+    updateContainer(cookieStoreId) {
+      if (this.cookieStoreId === cookieStoreId) {
+        return; // No change
+      }
+
+      console.log(`[BroadcastManager] Updating container: ${this.cookieStoreId} → ${cookieStoreId}`);
+      this.cookieStoreId = cookieStoreId;
+      this.setupBroadcastChannel(); // Re-create channel for new container
     }
+
+    /**
+     * Close broadcast channel
+     */
     close() {
-      this.broadcastChannel && (console.log(`[BroadcastManager] Closing channel: ${this.currentChannelName}`), 
-      this.broadcastChannel.close(), this.broadcastChannel = null, this.currentChannelName = null);
+      if (this.broadcastChannel) {
+        console.log(`[BroadcastManager] Closing channel: ${this.currentChannelName}`);
+        this.broadcastChannel.close();
+        this.broadcastChannel = null;
+        this.currentChannelName = null;
+      }
     }
   }
-  class P {
-    constructor(e, t) {
-      this.eventBus = e, this.quickTabsMap = t, this.boundHandlers = {
+
+  /**
+   * EventManager - Manages window-level DOM event listeners
+   *
+   * Responsibilities:
+   * - Setup emergency save handlers (beforeunload, visibilitychange, pagehide)
+   * - Coordinate window event listeners
+   * - Clean up event listeners on teardown
+   *
+   * @module EventManager
+   */
+
+  class EventManager {
+    /**
+     * @param {EventEmitter} eventBus - Event bus for inter-component communication
+     * @param {Map} quickTabsMap - Reference to Quick Tabs map for size checking
+     */
+    constructor(eventBus, quickTabsMap) {
+      this.eventBus = eventBus;
+      this.quickTabsMap = quickTabsMap;
+
+      // Store bound handlers for cleanup
+      this.boundHandlers = {
         visibilityChange: null,
         beforeUnload: null,
         pageHide: null
       };
     }
+
+    /**
+     * Setup emergency save handlers for tab visibility and page unload
+     * These ensure Quick Tabs state is preserved when:
+     * - User switches tabs (visibilitychange)
+     * - User closes tab or navigates away (beforeunload)
+     * - Page is hidden (pagehide)
+     */
     setupEmergencySaveHandlers() {
+      // Emergency save when tab becomes hidden (user switches tabs)
       this.boundHandlers.visibilityChange = () => {
-        document.hidden && this.quickTabsMap.size > 0 && (console.log("[EventManager] Tab hidden - triggering emergency save"), 
-        this.eventBus?.emit("event:emergency-save", {
-          trigger: "visibilitychange"
-        }));
-      }, this.boundHandlers.beforeUnload = () => {
-        this.quickTabsMap.size > 0 && (console.log("[EventManager] Page unloading - triggering emergency save"), 
-        this.eventBus?.emit("event:emergency-save", {
-          trigger: "beforeunload"
-        }));
-      }, this.boundHandlers.pageHide = () => {
-        this.quickTabsMap.size > 0 && (console.log("[EventManager] Page hiding - triggering emergency save"), 
-        this.eventBus?.emit("event:emergency-save", {
-          trigger: "pagehide"
-        }));
-      }, document.addEventListener("visibilitychange", this.boundHandlers.visibilityChange), 
-      window.addEventListener("beforeunload", this.boundHandlers.beforeUnload), window.addEventListener("pagehide", this.boundHandlers.pageHide), 
-      console.log("[EventManager] Emergency save handlers attached");
+        if (document.hidden && this.quickTabsMap.size > 0) {
+          console.log('[EventManager] Tab hidden - triggering emergency save');
+          this.eventBus?.emit('event:emergency-save', { trigger: 'visibilitychange' });
+        }
+      };
+
+      // Emergency save before page unload
+      this.boundHandlers.beforeUnload = () => {
+        if (this.quickTabsMap.size > 0) {
+          console.log('[EventManager] Page unloading - triggering emergency save');
+          this.eventBus?.emit('event:emergency-save', { trigger: 'beforeunload' });
+        }
+      };
+
+      // Emergency save before page is hidden (more reliable than beforeunload in some browsers)
+      this.boundHandlers.pageHide = () => {
+        if (this.quickTabsMap.size > 0) {
+          console.log('[EventManager] Page hiding - triggering emergency save');
+          this.eventBus?.emit('event:emergency-save', { trigger: 'pagehide' });
+        }
+      };
+
+      // Attach listeners
+      document.addEventListener('visibilitychange', this.boundHandlers.visibilityChange);
+      window.addEventListener('beforeunload', this.boundHandlers.beforeUnload);
+      window.addEventListener('pagehide', this.boundHandlers.pageHide);
+
+      console.log('[EventManager] Emergency save handlers attached');
     }
+
+    /**
+     * Teardown all event listeners
+     * Call this when QuickTabsManager is being destroyed
+     */
     teardown() {
-      this.boundHandlers.visibilityChange && document.removeEventListener("visibilitychange", this.boundHandlers.visibilityChange), 
-      this.boundHandlers.beforeUnload && window.removeEventListener("beforeunload", this.boundHandlers.beforeUnload), 
-      this.boundHandlers.pageHide && window.removeEventListener("pagehide", this.boundHandlers.pageHide), 
-      console.log("[EventManager] Event handlers removed");
+      if (this.boundHandlers.visibilityChange) {
+        document.removeEventListener('visibilitychange', this.boundHandlers.visibilityChange);
+      }
+
+      if (this.boundHandlers.beforeUnload) {
+        window.removeEventListener('beforeunload', this.boundHandlers.beforeUnload);
+      }
+
+      if (this.boundHandlers.pageHide) {
+        window.removeEventListener('pagehide', this.boundHandlers.pageHide);
+      }
+
+      console.log('[EventManager] Event handlers removed');
     }
   }
-  function B(e, t) {
-    if (!e || "string" != typeof e) throw new Error(`QuickTab requires a valid string ${t}`);
+
+  /**
+   * QuickTab Domain Entity
+   * v1.6.0 - Pure business logic, no browser APIs or UI dependencies
+   *
+   * Represents a Quick Tab with its state and behavior.
+   * Extracted from QuickTabsManager to separate domain logic from infrastructure.
+   */
+
+  /**
+   * Validate string parameter
+   * @private
+   */
+  function _validateString(value, name) {
+    if (!value || typeof value !== 'string') {
+      throw new Error(`QuickTab requires a valid string ${name}`);
+    }
   }
-  class A {
-    constructor({id: e, url: t, position: n, size: i, visibility: o, container: s, createdAt: a = Date.now(), title: r = "Quick Tab", zIndex: l = 1e3}) {
-      (function({id: e, url: t, position: n, size: i}) {
-        B(e, "id"), B(t, "url"), function(e) {
-          if (!e || "number" != typeof e.left || "number" != typeof e.top) throw new Error("QuickTab requires valid position {left, top}");
-        }(n), function(e) {
-          if (!e || "number" != typeof e.width || "number" != typeof e.height) throw new Error("QuickTab requires valid size {width, height}");
-        }(i);
-      })({
-        id: e,
-        url: t,
-        position: n,
-        size: i
-      }), this.id = e, this.url = t, this.container = s || "firefox-default", this.createdAt = a, 
-      this.title = r, this.position = {
-        ...n
-      }, this.size = {
-        ...i
-      }, this.zIndex = l, this.visibility = {
-        minimized: o?.minimized || !1,
-        soloedOnTabs: o?.soloedOnTabs || [],
-        mutedOnTabs: o?.mutedOnTabs || []
+
+  /**
+   * Validate position object
+   * @private
+   */
+  function _validatePosition(position) {
+    if (!position || typeof position.left !== 'number' || typeof position.top !== 'number') {
+      throw new Error('QuickTab requires valid position {left, top}');
+    }
+  }
+
+  /**
+   * Validate size object
+   * @private
+   */
+  function _validateSize(size) {
+    if (!size || typeof size.width !== 'number' || typeof size.height !== 'number') {
+      throw new Error('QuickTab requires valid size {width, height}');
+    }
+  }
+
+  /**
+   * Validate QuickTab constructor parameters
+   * @private
+   */
+  function _validateParams({ id, url, position, size }) {
+    _validateString(id, 'id');
+    _validateString(url, 'url');
+    _validatePosition(position);
+    _validateSize(size);
+  }
+
+  class QuickTab {
+    /**
+     * Create a new QuickTab instance
+     * @param {Object} params - QuickTab parameters
+     * @param {string} params.id - Unique identifier
+     * @param {string} params.url - URL of the Quick Tab
+     * @param {Object} params.position - {left, top} position
+     * @param {Object} params.size - {width, height} size
+     * @param {Object} params.visibility - Visibility state
+     * @param {string} params.container - Firefox container ID (cookieStoreId)
+     * @param {number} [params.createdAt] - Creation timestamp
+     * @param {string} [params.title] - Tab title
+     * @param {number} [params.zIndex] - Z-index for stacking
+     */
+    constructor({
+      id,
+      url,
+      position,
+      size,
+      visibility,
+      container,
+      createdAt = Date.now(),
+      title = 'Quick Tab',
+      zIndex = 1000
+    }) {
+      // Validation
+      _validateParams({ id, url, position, size });
+
+      // Immutable core properties
+      this.id = id;
+      this.url = url;
+      this.container = container || 'firefox-default';
+      this.createdAt = createdAt;
+
+      // Mutable properties
+      this.title = title;
+      this.position = { ...position }; // Clone to prevent external mutation
+      this.size = { ...size };
+      this.zIndex = zIndex;
+
+      // Visibility state (v1.5.9.13 - Solo/Mute feature)
+      this.visibility = {
+        minimized: visibility?.minimized || false,
+        soloedOnTabs: visibility?.soloedOnTabs || [],
+        mutedOnTabs: visibility?.mutedOnTabs || []
       };
     }
-    shouldBeVisible(e) {
-      return !this.visibility.minimized && (this.visibility.soloedOnTabs.length > 0 ? this.visibility.soloedOnTabs.includes(e) : !(this.visibility.mutedOnTabs.length > 0 && this.visibility.mutedOnTabs.includes(e)));
+
+    /**
+     * Determine if this Quick Tab should be visible on a specific tab
+     * v1.5.9.13 - Implements Solo/Mute visibility logic
+     *
+     * Business Rules:
+     * 1. If minimized, never visible
+     * 2. If soloedOnTabs has entries, only visible on those tabs
+     * 3. If mutedOnTabs has entries, NOT visible on those tabs
+     * 4. Solo takes precedence over mute
+     *
+     * @param {number} tabId - Browser tab ID to check visibility for
+     * @returns {boolean} - True if Quick Tab should be visible on this tab
+     */
+    shouldBeVisible(tabId) {
+      // Rule 1: Minimized tabs are never visible
+      if (this.visibility.minimized) {
+        return false;
+      }
+
+      // Rule 2: Solo mode - only visible on specific tabs
+      if (this.visibility.soloedOnTabs.length > 0) {
+        return this.visibility.soloedOnTabs.includes(tabId);
+      }
+
+      // Rule 3: Mute mode - NOT visible on specific tabs
+      if (this.visibility.mutedOnTabs.length > 0) {
+        return !this.visibility.mutedOnTabs.includes(tabId);
+      }
+
+      // Default: visible everywhere
+      return true;
     }
-    toggleSolo(e) {
-      const t = this.visibility.soloedOnTabs.indexOf(e);
-      return -1 === t ? (this.visibility.soloedOnTabs.push(e), this.visibility.mutedOnTabs = [], 
-      !0) : (this.visibility.soloedOnTabs.splice(t, 1), !1);
+
+    /**
+     * Toggle solo mode for a specific tab
+     * v1.5.9.13 - Solo: Show ONLY on this tab
+     *
+     * @param {number} tabId - Tab ID to solo on
+     * @returns {boolean} - True if tab was added to solo list, false if removed
+     */
+    toggleSolo(tabId) {
+      const index = this.visibility.soloedOnTabs.indexOf(tabId);
+
+      if (index === -1) {
+        // Add to solo list
+        this.visibility.soloedOnTabs.push(tabId);
+        // Clear mute list (mutual exclusivity)
+        this.visibility.mutedOnTabs = [];
+        return true;
+      } else {
+        // Remove from solo list
+        this.visibility.soloedOnTabs.splice(index, 1);
+        return false;
+      }
     }
-    solo(e) {
-      this.visibility.soloedOnTabs.includes(e) || this.visibility.soloedOnTabs.push(e), 
+
+    /**
+     * Add tab to solo list (make visible ONLY on this tab)
+     * v1.5.9.13
+     *
+     * @param {number} tabId - Tab ID to solo on
+     */
+    solo(tabId) {
+      if (!this.visibility.soloedOnTabs.includes(tabId)) {
+        this.visibility.soloedOnTabs.push(tabId);
+      }
+      // Clear mute list (mutual exclusivity)
       this.visibility.mutedOnTabs = [];
     }
-    unsolo(e) {
-      this.visibility.soloedOnTabs = this.visibility.soloedOnTabs.filter(t => t !== e);
+
+    /**
+     * Remove tab from solo list
+     * v1.5.9.13
+     *
+     * @param {number} tabId - Tab ID to remove from solo list
+     */
+    unsolo(tabId) {
+      this.visibility.soloedOnTabs = this.visibility.soloedOnTabs.filter(id => id !== tabId);
     }
+
+    /**
+     * Clear all solo tabs
+     * v1.5.9.13
+     */
     clearSolo() {
       this.visibility.soloedOnTabs = [];
     }
-    toggleMute(e) {
-      const t = this.visibility.mutedOnTabs.indexOf(e);
-      return -1 === t ? (this.visibility.mutedOnTabs.push(e), this.visibility.soloedOnTabs = [], 
-      !0) : (this.visibility.mutedOnTabs.splice(t, 1), !1);
+
+    /**
+     * Toggle mute mode for a specific tab
+     * v1.5.9.13 - Mute: Hide ONLY on this tab
+     *
+     * @param {number} tabId - Tab ID to mute on
+     * @returns {boolean} - True if tab was added to mute list, false if removed
+     */
+    toggleMute(tabId) {
+      const index = this.visibility.mutedOnTabs.indexOf(tabId);
+
+      if (index === -1) {
+        // Add to mute list
+        this.visibility.mutedOnTabs.push(tabId);
+        // Clear solo list (mutual exclusivity)
+        this.visibility.soloedOnTabs = [];
+        return true;
+      } else {
+        // Remove from mute list
+        this.visibility.mutedOnTabs.splice(index, 1);
+        return false;
+      }
     }
-    mute(e) {
-      this.visibility.mutedOnTabs.includes(e) || this.visibility.mutedOnTabs.push(e), 
+
+    /**
+     * Add tab to mute list (hide ONLY on this tab)
+     * v1.5.9.13
+     *
+     * @param {number} tabId - Tab ID to mute on
+     */
+    mute(tabId) {
+      if (!this.visibility.mutedOnTabs.includes(tabId)) {
+        this.visibility.mutedOnTabs.push(tabId);
+      }
+      // Clear solo list (mutual exclusivity)
       this.visibility.soloedOnTabs = [];
     }
-    unmute(e) {
-      this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(t => t !== e);
+
+    /**
+     * Remove tab from mute list
+     * v1.5.9.13
+     *
+     * @param {number} tabId - Tab ID to remove from mute list
+     */
+    unmute(tabId) {
+      this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(id => id !== tabId);
     }
+
+    /**
+     * Clear all muted tabs
+     * v1.5.9.13
+     */
     clearMute() {
       this.visibility.mutedOnTabs = [];
     }
+
+    /**
+     * Toggle minimized state
+     *
+     * @returns {boolean} - New minimized state
+     */
     toggleMinimized() {
-      return this.visibility.minimized = !this.visibility.minimized, this.visibility.minimized;
+      this.visibility.minimized = !this.visibility.minimized;
+      return this.visibility.minimized;
     }
-    setMinimized(e) {
-      this.visibility.minimized = e;
+
+    /**
+     * Set minimized state
+     *
+     * @param {boolean} minimized - New minimized state
+     */
+    setMinimized(minimized) {
+      this.visibility.minimized = minimized;
     }
-    updatePosition(e, t) {
-      if ("number" != typeof e || "number" != typeof t) throw new Error("Position must be numeric {left, top}");
-      this.position = {
-        left: e,
-        top: t
-      };
+
+    /**
+     * Update position
+     *
+     * @param {number} left - New left position
+     * @param {number} top - New top position
+     */
+    updatePosition(left, top) {
+      if (typeof left !== 'number' || typeof top !== 'number') {
+        throw new Error('Position must be numeric {left, top}');
+      }
+      this.position = { left, top };
     }
-    updateSize(e, t) {
-      if ("number" != typeof e || "number" != typeof t) throw new Error("Size must be numeric {width, height}");
-      if (e <= 0 || t <= 0) throw new Error("Size must be positive");
-      this.size = {
-        width: e,
-        height: t
-      };
+
+    /**
+     * Update size
+     *
+     * @param {number} width - New width
+     * @param {number} height - New height
+     */
+    updateSize(width, height) {
+      if (typeof width !== 'number' || typeof height !== 'number') {
+        throw new Error('Size must be numeric {width, height}');
+      }
+      if (width <= 0 || height <= 0) {
+        throw new Error('Size must be positive');
+      }
+      this.size = { width, height };
     }
-    updateZIndex(e) {
-      if ("number" != typeof e) throw new Error("zIndex must be a number");
-      this.zIndex = e;
+
+    /**
+     * Update z-index for stacking order
+     *
+     * @param {number} zIndex - New z-index
+     */
+    updateZIndex(zIndex) {
+      if (typeof zIndex !== 'number') {
+        throw new Error('zIndex must be a number');
+      }
+      this.zIndex = zIndex;
     }
-    updateTitle(e) {
-      if ("string" != typeof e) throw new Error("Title must be a string");
-      this.title = e;
+
+    /**
+     * Update title
+     *
+     * @param {string} title - New title
+     */
+    updateTitle(title) {
+      if (typeof title !== 'string') {
+        throw new Error('Title must be a string');
+      }
+      this.title = title;
     }
-    cleanupDeadTabs(e) {
-      const t = new Set(e);
-      this.visibility.soloedOnTabs = this.visibility.soloedOnTabs.filter(e => t.has(e)), 
-      this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(e => t.has(e));
+
+    /**
+     * Clean up dead tab IDs from solo/mute arrays
+     * Should be called when tabs are closed
+     *
+     * @param {number[]} activeTabIds - Array of currently active tab IDs
+     */
+    cleanupDeadTabs(activeTabIds) {
+      const activeSet = new Set(activeTabIds);
+
+      this.visibility.soloedOnTabs = this.visibility.soloedOnTabs.filter(id => activeSet.has(id));
+
+      this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(id => activeSet.has(id));
     }
-    belongsToContainer(e) {
-      return this.container === e;
+
+    /**
+     * Check if this Quick Tab belongs to a specific container
+     *
+     * @param {string} containerIdOrCookieStoreId - Container ID or cookieStoreId to check
+     * @returns {boolean} - True if this Quick Tab belongs to the container
+     */
+    belongsToContainer(containerIdOrCookieStoreId) {
+      return this.container === containerIdOrCookieStoreId;
     }
+
+    /**
+     * Serialize to storage format
+     * Converts domain entity to plain object for storage
+     *
+     * @returns {Object} - Plain object suitable for storage
+     */
     serialize() {
       return {
         id: this.id,
         url: this.url,
         title: this.title,
-        position: {
-          ...this.position
-        },
-        size: {
-          ...this.size
-        },
+        position: { ...this.position },
+        size: { ...this.size },
         visibility: {
           minimized: this.visibility.minimized,
-          soloedOnTabs: [ ...this.visibility.soloedOnTabs ],
-          mutedOnTabs: [ ...this.visibility.mutedOnTabs ]
+          soloedOnTabs: [...this.visibility.soloedOnTabs],
+          mutedOnTabs: [...this.visibility.mutedOnTabs]
         },
         container: this.container,
         zIndex: this.zIndex,
         createdAt: this.createdAt
       };
     }
-    static fromStorage(e) {
-      return new A({
-        id: e.id,
-        url: e.url,
-        title: e.title || "Quick Tab",
-        position: e.position || {
-          left: 100,
-          top: 100
-        },
-        size: e.size || {
-          width: 800,
-          height: 600
-        },
-        visibility: e.visibility || {
-          minimized: !1,
+
+    /**
+     * Create QuickTab from storage format
+     * Static factory method to hydrate from plain object
+     *
+     * @param {Object} data - Plain object from storage
+     * @returns {QuickTab} - QuickTab domain entity
+     */
+    static fromStorage(data) {
+      return new QuickTab({
+        id: data.id,
+        url: data.url,
+        title: data.title || 'Quick Tab',
+        position: data.position || { left: 100, top: 100 },
+        size: data.size || { width: 800, height: 600 },
+        visibility: data.visibility || {
+          minimized: false,
           soloedOnTabs: [],
           mutedOnTabs: []
         },
-        container: e.container || e.cookieStoreId || "firefox-default",
-        zIndex: e.zIndex || 1e3,
-        createdAt: e.createdAt || Date.now()
+        container: data.container || data.cookieStoreId || 'firefox-default',
+        zIndex: data.zIndex || 1000,
+        createdAt: data.createdAt || Date.now()
       });
     }
-    static create({id: e, url: t, left: n = 100, top: i = 100, width: o = 800, height: s = 600, container: a, title: r}) {
-      if (!e) throw new Error("QuickTab.create requires id");
-      if (!t) throw new Error("QuickTab.create requires url");
-      return new A({
-        id: e,
-        url: t,
-        title: r || "Quick Tab",
-        position: {
-          left: n,
-          top: i
-        },
-        size: {
-          width: o,
-          height: s
-        },
+
+    /**
+     * Create QuickTab with defaults
+     * Convenience factory method for creating new Quick Tabs
+     *
+     * @param {Object} params - Partial parameters
+     * @returns {QuickTab} - QuickTab domain entity with defaults
+     */
+    static create({ id, url, left = 100, top = 100, width = 800, height = 600, container, title }) {
+      if (!id) {
+        throw new Error('QuickTab.create requires id');
+      }
+      if (!url) {
+        throw new Error('QuickTab.create requires url');
+      }
+
+      return new QuickTab({
+        id,
+        url,
+        title: title || 'Quick Tab',
+        position: { left, top },
+        size: { width, height },
         visibility: {
-          minimized: !1,
+          minimized: false,
           soloedOnTabs: [],
           mutedOnTabs: []
         },
-        container: a || "firefox-default",
-        zIndex: 1e3,
+        container: container || 'firefox-default',
+        zIndex: 1000,
         createdAt: Date.now()
       });
     }
   }
-  var D = Object.freeze({
+
+  var QuickTab$1 = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    QuickTab: A
+    QuickTab: QuickTab
   });
-  class L {
-    constructor(e, t = null) {
-      this.eventBus = e, this.currentTabId = t, this.quickTabs = new Map, this.currentZIndex = 1e4;
+
+  /**
+   * StateManager - Manages local in-memory Quick Tab state
+   * Phase 2.1: Extracted from QuickTabsManager
+   *
+   * Responsibilities:
+   * - Maintain Map of QuickTab instances
+   * - Add/update/delete Quick Tabs
+   * - Query Quick Tabs by ID or criteria
+   * - Hydrate state from storage
+   * - Track current tab ID for visibility filtering
+   *
+   * Uses:
+   * - QuickTab domain entities (not QuickTabWindow UI components)
+   * - Map for O(1) lookups
+   */
+
+
+  class StateManager {
+    constructor(eventBus, currentTabId = null) {
+      this.eventBus = eventBus;
+      this.currentTabId = currentTabId;
+
+      // In-memory state: Map<id, QuickTab>
+      this.quickTabs = new Map();
+
+      // Z-index management
+      this.currentZIndex = 10000; // Base z-index from CONSTANTS
     }
-    add(e) {
-      if (!(e instanceof A)) throw new Error("StateManager.add() requires QuickTab instance");
-      this.quickTabs.set(e.id, e), this.eventBus?.emit("state:added", e), console.log(`[StateManager] Added Quick Tab: ${e.id}`);
+
+    /**
+     * Add Quick Tab to state
+     * @param {QuickTab} quickTab - QuickTab domain entity
+     */
+    add(quickTab) {
+      if (!(quickTab instanceof QuickTab)) {
+        throw new Error('StateManager.add() requires QuickTab instance');
+      }
+
+      this.quickTabs.set(quickTab.id, quickTab);
+      this.eventBus?.emit('state:added', quickTab);
+
+      console.log(`[StateManager] Added Quick Tab: ${quickTab.id}`);
     }
-    get(e) {
-      return this.quickTabs.get(e);
+
+    /**
+     * Get Quick Tab by ID
+     * @param {string} id - Quick Tab ID
+     * @returns {QuickTab|undefined} - Quick Tab instance or undefined
+     */
+    get(id) {
+      return this.quickTabs.get(id);
     }
-    has(e) {
-      return this.quickTabs.has(e);
+
+    /**
+     * Check if Quick Tab exists
+     * @param {string} id - Quick Tab ID
+     * @returns {boolean} - True if exists
+     */
+    has(id) {
+      return this.quickTabs.has(id);
     }
-    update(e) {
-      if (!(e instanceof A)) throw new Error("StateManager.update() requires QuickTab instance");
-      this.quickTabs.has(e.id) ? (this.quickTabs.set(e.id, e), this.eventBus?.emit("state:updated", e), 
-      console.log(`[StateManager] Updated Quick Tab: ${e.id}`)) : console.warn(`[StateManager] Cannot update non-existent Quick Tab: ${e.id}`);
+
+    /**
+     * Update Quick Tab
+     * @param {QuickTab} quickTab - Updated QuickTab domain entity
+     */
+    update(quickTab) {
+      if (!(quickTab instanceof QuickTab)) {
+        throw new Error('StateManager.update() requires QuickTab instance');
+      }
+
+      if (!this.quickTabs.has(quickTab.id)) {
+        console.warn(`[StateManager] Cannot update non-existent Quick Tab: ${quickTab.id}`);
+        return;
+      }
+
+      this.quickTabs.set(quickTab.id, quickTab);
+      this.eventBus?.emit('state:updated', quickTab);
+
+      console.log(`[StateManager] Updated Quick Tab: ${quickTab.id}`);
     }
-    delete(e) {
-      const t = this.quickTabs.get(e), n = this.quickTabs.delete(e);
-      return n && (this.eventBus?.emit("state:deleted", t), console.log(`[StateManager] Deleted Quick Tab: ${e}`)), 
-      n;
+
+    /**
+     * Delete Quick Tab from state
+     * @param {string} id - Quick Tab ID
+     * @returns {boolean} - True if deleted
+     */
+    delete(id) {
+      const quickTab = this.quickTabs.get(id);
+      const deleted = this.quickTabs.delete(id);
+
+      if (deleted) {
+        this.eventBus?.emit('state:deleted', quickTab);
+        console.log(`[StateManager] Deleted Quick Tab: ${id}`);
+      }
+
+      return deleted;
     }
+
+    /**
+     * Get all Quick Tabs
+     * @returns {Array<QuickTab>} - Array of all Quick Tabs
+     */
     getAll() {
       return Array.from(this.quickTabs.values());
     }
+
+    /**
+     * Get visible Quick Tabs based on current tab ID
+     * @returns {Array<QuickTab>} - Array of visible Quick Tabs
+     */
     getVisible() {
-      return this.currentTabId ? this.getAll().filter(e => e.shouldBeVisible(this.currentTabId)) : this.getAll();
+      if (!this.currentTabId) {
+        // No filtering if current tab ID unknown
+        return this.getAll();
+      }
+
+      return this.getAll().filter(qt => qt.shouldBeVisible(this.currentTabId));
     }
+
+    /**
+     * Get minimized Quick Tabs
+     * @returns {Array<QuickTab>} - Array of minimized Quick Tabs
+     */
     getMinimized() {
-      return this.getAll().filter(e => e.visibility.minimized);
+      return this.getAll().filter(qt => qt.visibility.minimized);
     }
-    getByContainer(e) {
-      return this.getAll().filter(t => t.belongsToContainer(e));
+
+    /**
+     * Get Quick Tabs for specific container
+     * @param {string} cookieStoreId - Container ID
+     * @returns {Array<QuickTab>} - Array of Quick Tabs for container
+     */
+    getByContainer(cookieStoreId) {
+      return this.getAll().filter(qt => qt.belongsToContainer(cookieStoreId));
     }
-    hydrate(e) {
-      if (!Array.isArray(e)) throw new Error("StateManager.hydrate() requires array of QuickTab instances");
+
+    /**
+     * Hydrate state from array of QuickTab entities
+     * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
+     */
+    hydrate(quickTabs) {
+      if (!Array.isArray(quickTabs)) {
+        throw new Error('StateManager.hydrate() requires array of QuickTab instances');
+      }
+
       this.quickTabs.clear();
-      for (const t of e) t instanceof A ? this.quickTabs.set(t.id, t) : console.warn("[StateManager] Skipping non-QuickTab instance during hydration");
-      this.eventBus?.emit("state:hydrated", {
-        count: e.length
-      }), console.log(`[StateManager] Hydrated ${e.length} Quick Tabs`);
+
+      for (const qt of quickTabs) {
+        if (qt instanceof QuickTab) {
+          this.quickTabs.set(qt.id, qt);
+        } else {
+          console.warn('[StateManager] Skipping non-QuickTab instance during hydration');
+        }
+      }
+
+      this.eventBus?.emit('state:hydrated', { count: quickTabs.length });
+      console.log(`[StateManager] Hydrated ${quickTabs.length} Quick Tabs`);
     }
+
+    /**
+     * Clear all Quick Tabs
+     */
     clear() {
-      const e = this.quickTabs.size;
-      this.quickTabs.clear(), this.currentZIndex = 1e4, this.eventBus?.emit("state:cleared", {
-        count: e
-      }), console.log(`[StateManager] Cleared ${e} Quick Tabs`);
+      const count = this.quickTabs.size;
+      this.quickTabs.clear();
+      this.currentZIndex = 10000; // Reset z-index
+
+      this.eventBus?.emit('state:cleared', { count });
+      console.log(`[StateManager] Cleared ${count} Quick Tabs`);
     }
+
+    /**
+     * Get count of Quick Tabs
+     * @returns {number} - Number of Quick Tabs
+     */
     count() {
       return this.quickTabs.size;
     }
-    setCurrentTabId(e) {
-      this.currentTabId = e, console.log(`[StateManager] Current tab ID set to: ${e}`);
+
+    /**
+     * Update current tab ID for visibility filtering
+     * @param {number} tabId - Firefox tab ID
+     */
+    setCurrentTabId(tabId) {
+      this.currentTabId = tabId;
+      console.log(`[StateManager] Current tab ID set to: ${tabId}`);
     }
+
+    /**
+     * Get next z-index for new Quick Tab
+     * @returns {number} - Next z-index value
+     */
     getNextZIndex() {
-      return this.currentZIndex += 1, this.currentZIndex;
+      this.currentZIndex += 1;
+      return this.currentZIndex;
     }
-    updateZIndex(e, t) {
-      const n = this.quickTabs.get(e);
-      n && (n.updateZIndex(t), this.quickTabs.set(e, n), t > this.currentZIndex && (this.currentZIndex = t));
+
+    /**
+     * Update Quick Tab z-index
+     * @param {string} id - Quick Tab ID
+     * @param {number} zIndex - New z-index
+     */
+    updateZIndex(id, zIndex) {
+      const quickTab = this.quickTabs.get(id);
+      if (quickTab) {
+        quickTab.updateZIndex(zIndex);
+        this.quickTabs.set(id, quickTab);
+
+        // Track highest z-index
+        if (zIndex > this.currentZIndex) {
+          this.currentZIndex = zIndex;
+        }
+      }
     }
-    bringToFront(e) {
-      const t = this.getNextZIndex();
-      this.updateZIndex(e, t), this.eventBus?.emit("state:z-index-changed", {
-        id: e,
-        zIndex: t
+
+    /**
+     * Bring Quick Tab to front
+     * @param {string} id - Quick Tab ID
+     */
+    bringToFront(id) {
+      const nextZIndex = this.getNextZIndex();
+      this.updateZIndex(id, nextZIndex);
+      this.eventBus?.emit('state:z-index-changed', { id, zIndex: nextZIndex });
+    }
+
+    /**
+     * Clean up dead tab IDs from solo/mute arrays
+     * @param {Array<number>} activeTabIds - Array of currently active tab IDs
+     */
+    cleanupDeadTabs(activeTabIds) {
+      let cleaned = 0;
+
+      for (const quickTab of this.quickTabs.values()) {
+        const before =
+          quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
+        quickTab.cleanupDeadTabs(activeTabIds);
+        const after =
+          quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
+
+        if (before !== after) {
+          this.quickTabs.set(quickTab.id, quickTab);
+          cleaned++;
+        }
+      }
+
+      if (cleaned > 0) {
+        console.log(`[StateManager] Cleaned dead tabs from ${cleaned} Quick Tabs`);
+        this.eventBus?.emit('state:cleaned', { count: cleaned });
+      }
+    }
+  }
+
+  /**
+   * Container Domain Entity
+   * v1.6.0 - Firefox Multi-Account Containers support
+   *
+   * Represents a Firefox container (contextual identity) for state isolation.
+   * Extracted from background.js to separate domain logic from infrastructure.
+   */
+
+  class Container {
+    /**
+     * Create a new Container instance
+     * @param {Object} params - Container parameters
+     * @param {string} params.id - Container ID (cookieStoreId)
+     * @param {string} [params.name] - Human-readable container name
+     * @param {string} [params.color] - Container color
+     * @param {string} [params.icon] - Container icon
+     */
+    constructor({ id, name, color, icon }) {
+      // Validation
+      if (!id || typeof id !== 'string') {
+        throw new Error('Container requires a valid string id');
+      }
+
+      this.id = id;
+      this.name = name || this.getDefaultName(id);
+      this.color = color || 'grey';
+      this.icon = icon || 'circle';
+    }
+
+    /**
+     * Get default name for a container ID
+     * @private
+     * @param {string} id - Container ID (cookieStoreId)
+     * @returns {string} - Default name
+     */
+    getDefaultName(id) {
+      if (id === 'firefox-default') {
+        return 'Default';
+      }
+      if (id.startsWith('firefox-container-')) {
+        const num = id.split('-').pop();
+        return `Container ${num}`;
+      }
+      if (id.startsWith('firefox-private')) {
+        return 'Private';
+      }
+      return 'Unknown Container';
+    }
+
+    /**
+     * Check if this is the default container
+     * @returns {boolean} - True if this is the default container
+     */
+    isDefault() {
+      return this.id === 'firefox-default';
+    }
+
+    /**
+     * Check if this is a private container
+     * @returns {boolean} - True if this is a private browsing container
+     */
+    isPrivate() {
+      return this.id.startsWith('firefox-private');
+    }
+
+    /**
+     * Check if this is a custom container
+     * @returns {boolean} - True if this is a custom multi-account container
+     */
+    isCustom() {
+      return this.id.startsWith('firefox-container-');
+    }
+
+    /**
+     * Get container number (for custom containers)
+     * @returns {number|null} - Container number or null if not a custom container
+     */
+    getContainerNumber() {
+      if (!this.isCustom()) {
+        return null;
+      }
+      const match = this.id.match(/firefox-container-(\d+)/);
+      return match ? parseInt(match[1], 10) : null;
+    }
+
+    /**
+     * Validate container ID format
+     * @static
+     * @param {string} id - Container ID to validate
+     * @returns {boolean} - True if valid Firefox container ID
+     */
+    static isValidId(id) {
+      if (!id || typeof id !== 'string') {
+        return false;
+      }
+
+      return (
+        id === 'firefox-default' ||
+        id.startsWith('firefox-container-') ||
+        id.startsWith('firefox-private')
+      );
+    }
+
+    /**
+     * Sanitize container ID
+     * Ensures the ID is a valid Firefox container ID
+     *
+     * @static
+     * @param {string} id - Container ID to sanitize
+     * @returns {string} - Sanitized container ID (defaults to 'firefox-default' if invalid)
+     */
+    static sanitize(id) {
+      if (!id || typeof id !== 'string') {
+        return 'firefox-default';
+      }
+
+      if (Container.isValidId(id)) {
+        return id;
+      }
+
+      return 'firefox-default';
+    }
+
+    /**
+     * Extract container number from ID
+     * @static
+     * @param {string} id - Container ID
+     * @returns {number|null} - Container number or null
+     */
+    static extractNumber(id) {
+      if (!id || typeof id !== 'string') {
+        return null;
+      }
+
+      const match = id.match(/firefox-container-(\d+)/);
+      return match ? parseInt(match[1], 10) : null;
+    }
+
+    /**
+     * Create Container from Firefox contextualIdentities API response
+     * @static
+     * @param {Object} identity - Firefox contextualIdentities.get() response
+     * @returns {Container} - Container domain entity
+     */
+    static fromContextualIdentity(identity) {
+      return new Container({
+        id: identity.cookieStoreId,
+        name: identity.name,
+        color: identity.color,
+        icon: identity.icon
       });
     }
-    cleanupDeadTabs(e) {
-      let t = 0;
-      for (const n of this.quickTabs.values()) {
-        const i = n.visibility.soloedOnTabs.length + n.visibility.mutedOnTabs.length;
-        n.cleanupDeadTabs(e), i !== n.visibility.soloedOnTabs.length + n.visibility.mutedOnTabs.length && (this.quickTabs.set(n.id, n), 
-        t++);
-      }
-      t > 0 && (console.log(`[StateManager] Cleaned dead tabs from ${t} Quick Tabs`), 
-      this.eventBus?.emit("state:cleaned", {
-        count: t
-      }));
+
+    /**
+     * Create default container
+     * @static
+     * @returns {Container} - Default container
+     */
+    static default() {
+      return new Container({
+        id: 'firefox-default',
+        name: 'Default',
+        color: 'grey',
+        icon: 'circle'
+      });
+    }
+
+    /**
+     * Serialize to storage format
+     * @returns {Object} - Plain object suitable for storage
+     */
+    serialize() {
+      return {
+        id: this.id,
+        name: this.name,
+        color: this.color,
+        icon: this.icon
+      };
+    }
+
+    /**
+     * Create Container from storage format
+     * @static
+     * @param {Object} data - Plain object from storage
+     * @returns {Container} - Container domain entity
+     */
+    static fromStorage(data) {
+      return new Container({
+        id: data.id,
+        name: data.name,
+        color: data.color,
+        icon: data.icon
+      });
     }
   }
-  class R {
-    async save(e, t) {
-      throw new Error("StorageAdapter.save() must be implemented by subclass");
+
+  /**
+   * StorageAdapter - Abstract base class for storage implementations
+   *
+   * Defines the contract that all storage adapters must implement.
+   * Ensures consistent async-first API across all storage backends.
+   *
+   * @abstract
+   */
+  /* eslint-disable require-await */
+  class StorageAdapter {
+    /**
+     * Save Quick Tabs for a specific container
+     *
+     * @param {string} containerId - Firefox container ID (e.g., 'firefox-default', 'firefox-container-1')
+     * @param {QuickTab[]} tabs - Array of QuickTab domain entities
+     * @returns {Promise<string>} Save ID for tracking race conditions
+     * @throws {Error} If not implemented by subclass
+     */
+    async save(_containerId, _tabs) {
+      throw new Error('StorageAdapter.save() must be implemented by subclass');
     }
-    async load(e) {
-      throw new Error("StorageAdapter.load() must be implemented by subclass");
+
+    /**
+     * Load Quick Tabs for a specific container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @returns {Promise<{tabs: QuickTab[], lastUpdate: number}|null>} Container data or null if not found
+     * @throws {Error} If not implemented by subclass
+     */
+    async load(_containerId) {
+      throw new Error('StorageAdapter.load() must be implemented by subclass');
     }
+
+    /**
+     * Load all Quick Tabs across all containers
+     *
+     * @returns {Promise<Object.<string, {tabs: QuickTab[], lastUpdate: number}>>} Map of container ID to container data
+     * @throws {Error} If not implemented by subclass
+     */
     async loadAll() {
-      throw new Error("StorageAdapter.loadAll() must be implemented by subclass");
+      throw new Error('StorageAdapter.loadAll() must be implemented by subclass');
     }
-    async delete(e, t) {
-      throw new Error("StorageAdapter.delete() must be implemented by subclass");
+
+    /**
+     * Delete a specific Quick Tab from a container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @param {string} quickTabId - Quick Tab ID to delete
+     * @returns {Promise<void>}
+     * @throws {Error} If not implemented by subclass
+     */
+    async delete(_containerId, _quickTabId) {
+      throw new Error('StorageAdapter.delete() must be implemented by subclass');
     }
-    async deleteContainer(e) {
-      throw new Error("StorageAdapter.deleteContainer() must be implemented by subclass");
+
+    /**
+     * Delete all Quick Tabs for a specific container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @returns {Promise<void>}
+     * @throws {Error} If not implemented by subclass
+     */
+    async deleteContainer(_containerId) {
+      throw new Error('StorageAdapter.deleteContainer() must be implemented by subclass');
     }
+
+    /**
+     * Clear all Quick Tabs across all containers
+     *
+     * @returns {Promise<void>}
+     * @throws {Error} If not implemented by subclass
+     */
     async clear() {
-      throw new Error("StorageAdapter.clear() must be implemented by subclass");
+      throw new Error('StorageAdapter.clear() must be implemented by subclass');
     }
   }
-  class U extends R {
+
+  /**
+   * SessionStorageAdapter - Storage adapter for browser.storage.session API
+   *
+   * Features:
+   * - Container-aware storage format
+   * - Temporary storage (cleared on browser restart)
+   * - No quota limits (unlike sync storage)
+   * - Faster than sync storage (no cross-device sync overhead)
+   * - SaveId tracking to prevent race conditions
+   *
+   * Use Cases:
+   * - Quick Tab state during active browser session
+   * - Temporary caching to reduce sync storage writes
+   * - Rollback buffer before committing to sync storage
+   *
+   * Storage Format (same as SyncStorageAdapter):
+   * {
+   *   quick_tabs_state_v2: {
+   *     containers: {
+   *       'firefox-default': {
+   *         tabs: [QuickTab, ...],
+   *         lastUpdate: timestamp
+   *       }
+   *     },
+   *     saveId: 'timestamp-random',
+   *     timestamp: timestamp
+   *   }
+   * }
+   */
+  class SessionStorageAdapter extends StorageAdapter {
     constructor() {
-      super(), this.STORAGE_KEY = "quick_tabs_state_v2";
+      super();
+      this.STORAGE_KEY = 'quick_tabs_state_v2';
     }
-    async save(t, n) {
-      const i = await this._loadRawState();
-      i.containers || (i.containers = {}), i.containers[t] = {
-        tabs: n.map(e => e.serialize()),
+
+    /**
+     * Save Quick Tabs for a specific container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @param {QuickTab[]} tabs - Array of QuickTab domain entities
+     * @returns {Promise<string>} Save ID for tracking race conditions
+     */
+    async save(containerId, tabs) {
+      // Load existing state
+      const existingState = await this._loadRawState();
+
+      // Update container
+      if (!existingState.containers) {
+        existingState.containers = {};
+      }
+
+      existingState.containers[containerId] = {
+        tabs: tabs.map(t => t.serialize()),
         lastUpdate: Date.now()
       };
-      const o = this._generateSaveId();
-      i.saveId = o, i.timestamp = Date.now();
-      const s = {
-        [this.STORAGE_KEY]: i
+
+      // Generate save ID for race condition tracking
+      const saveId = this._generateSaveId();
+      existingState.saveId = saveId;
+      existingState.timestamp = Date.now();
+
+      // Wrap in storage key
+      const stateToSave = {
+        [this.STORAGE_KEY]: existingState
       };
+
       try {
-        return await e.storage.session.set(s), console.log(`[SessionStorageAdapter] Saved ${n.length} tabs for container ${t} (saveId: ${o})`), 
-        o;
-      } catch (e) {
-        throw console.error("[SessionStorageAdapter] Save failed:", e), e;
+        await browser$1.storage.session.set(stateToSave);
+        console.log(
+          `[SessionStorageAdapter] Saved ${tabs.length} tabs for container ${containerId} (saveId: ${saveId})`
+        );
+        return saveId;
+      } catch (error) {
+        console.error('[SessionStorageAdapter] Save failed:', error);
+        throw error;
       }
     }
-    async load(e) {
-      const t = await this._loadRawState();
-      return t.containers && t.containers[e] ? t.containers[e] : null;
+
+    /**
+     * Load Quick Tabs for a specific container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @returns {Promise<{tabs: Array, lastUpdate: number}|null>} Container data or null if not found
+     */
+    async load(containerId) {
+      const state = await this._loadRawState();
+
+      if (!state.containers || !state.containers[containerId]) {
+        return null;
+      }
+
+      return state.containers[containerId];
     }
+
+    /**
+     * Load all Quick Tabs across all containers
+     *
+     * @returns {Promise<Object.<string, {tabs: Array, lastUpdate: number}>>} Map of container ID to container data
+     */
     async loadAll() {
-      return (await this._loadRawState()).containers || {};
+      const state = await this._loadRawState();
+      return state.containers || {};
     }
-    async delete(e, t) {
-      const n = await this.load(e);
-      if (!n) return void console.warn(`[SessionStorageAdapter] Container ${e} not found for deletion`);
-      const i = n.tabs.filter(e => e.id !== t);
-      if (i.length === n.tabs.length) return void console.warn(`[SessionStorageAdapter] Quick Tab ${t} not found in container ${e}`);
-      const {QuickTab: o} = await Promise.resolve().then(function() {
-        return D;
-      }), s = i.map(e => o.fromStorage(e));
-      await this.save(e, s), console.log(`[SessionStorageAdapter] Deleted Quick Tab ${t} from container ${e}`);
+
+    /**
+     * Delete a specific Quick Tab from a container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @param {string} quickTabId - Quick Tab ID to delete
+     * @returns {Promise<void>}
+     */
+    async delete(containerId, quickTabId) {
+      const containerData = await this.load(containerId);
+
+      if (!containerData) {
+        console.warn(`[SessionStorageAdapter] Container ${containerId} not found for deletion`);
+        return;
+      }
+
+      // Filter out the tab
+      const filteredTabs = containerData.tabs.filter(t => t.id !== quickTabId);
+
+      if (filteredTabs.length === containerData.tabs.length) {
+        console.warn(
+          `[SessionStorageAdapter] Quick Tab ${quickTabId} not found in container ${containerId}`
+        );
+        return;
+      }
+
+      // Save updated tabs
+      // Note: We need to reconstruct QuickTab objects for save()
+      const { QuickTab } = await Promise.resolve().then(function () { return QuickTab$1; });
+      const quickTabs = filteredTabs.map(data => QuickTab.fromStorage(data));
+      await this.save(containerId, quickTabs);
+
+      console.log(
+        `[SessionStorageAdapter] Deleted Quick Tab ${quickTabId} from container ${containerId}`
+      );
     }
-    async deleteContainer(t) {
-      const n = await this._loadRawState();
-      n.containers && n.containers[t] ? (delete n.containers[t], n.timestamp = Date.now(), 
-      n.saveId = this._generateSaveId(), await e.storage.session.set({
-        [this.STORAGE_KEY]: n
-      }), console.log(`[SessionStorageAdapter] Deleted all Quick Tabs for container ${t}`)) : console.warn(`[SessionStorageAdapter] Container ${t} not found for deletion`);
+
+    /**
+     * Delete all Quick Tabs for a specific container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @returns {Promise<void>}
+     */
+    async deleteContainer(containerId) {
+      const existingState = await this._loadRawState();
+
+      if (!existingState.containers || !existingState.containers[containerId]) {
+        console.warn(`[SessionStorageAdapter] Container ${containerId} not found for deletion`);
+        return;
+      }
+
+      delete existingState.containers[containerId];
+      existingState.timestamp = Date.now();
+      existingState.saveId = this._generateSaveId();
+
+      await browser$1.storage.session.set({
+        [this.STORAGE_KEY]: existingState
+      });
+
+      console.log(`[SessionStorageAdapter] Deleted all Quick Tabs for container ${containerId}`);
     }
+
+    /**
+     * Clear all Quick Tabs across all containers
+     *
+     * @returns {Promise<void>}
+     */
     async clear() {
-      await e.storage.session.remove(this.STORAGE_KEY), console.log("[SessionStorageAdapter] Cleared all Quick Tabs");
+      await browser$1.storage.session.remove(this.STORAGE_KEY);
+      console.log('[SessionStorageAdapter] Cleared all Quick Tabs');
     }
+
+    /**
+     * Load raw state from storage
+     *
+     * @private
+     * @returns {Promise<Object>} Raw state object
+     */
     async _loadRawState() {
       try {
-        const t = await e.storage.session.get(this.STORAGE_KEY);
-        return t[this.STORAGE_KEY] ? t[this.STORAGE_KEY] : {
+        const result = await browser$1.storage.session.get(this.STORAGE_KEY);
+
+        if (result[this.STORAGE_KEY]) {
+          return result[this.STORAGE_KEY];
+        }
+
+        // Return empty state
+        return {
           containers: {},
           timestamp: Date.now(),
           saveId: this._generateSaveId()
         };
-      } catch (e) {
-        return console.error("[SessionStorageAdapter] Load failed:", e), {
+      } catch (error) {
+        console.error('[SessionStorageAdapter] Load failed:', error);
+        // Return empty state on error
+        return {
           containers: {},
           timestamp: Date.now(),
           saveId: this._generateSaveId()
         };
       }
     }
+
+    /**
+     * Generate unique save ID for race condition tracking
+     *
+     * @private
+     * @returns {string} Save ID in format 'timestamp-random'
+     */
     _generateSaveId() {
       return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
   }
-  class $ extends R {
+
+  /**
+   * SyncStorageAdapter - Storage adapter for browser.storage.sync API
+   *
+   * Features:
+   * - Container-aware storage format
+   * - Quota management (100KB limit for sync storage)
+   * - Automatic fallback to local storage on quota exceeded
+   * - SaveId tracking to prevent race conditions
+   * - Error handling with user feedback
+   *
+   * Storage Format (v1.5.8.15+):
+   * {
+   *   quick_tabs_state_v2: {
+   *     containers: {
+   *       'firefox-default': {
+   *         tabs: [QuickTab, ...],
+   *         lastUpdate: timestamp
+   *       },
+   *       'firefox-container-1': {
+   *         tabs: [QuickTab, ...],
+   *         lastUpdate: timestamp
+   *       }
+   *     },
+   *     saveId: 'timestamp-random',
+   *     timestamp: timestamp
+   *   }
+   * }
+   */
+  class SyncStorageAdapter extends StorageAdapter {
     constructor() {
-      super(), this.STORAGE_KEY = "quick_tabs_state_v2", this.MAX_SYNC_SIZE = 102400;
+      super();
+      this.STORAGE_KEY = 'quick_tabs_state_v2';
+      this.MAX_SYNC_SIZE = 100 * 1024; // 100KB limit for sync storage
     }
-    async save(t, n) {
-      const i = await this._loadRawState();
-      i.containers || (i.containers = {}), i.containers[t] = {
-        tabs: n.map(e => e.serialize()),
+
+    /**
+     * Save Quick Tabs for a specific container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @param {QuickTab[]} tabs - Array of QuickTab domain entities
+     * @returns {Promise<string>} Save ID for tracking race conditions
+     */
+    async save(containerId, tabs) {
+      // Load existing state
+      const existingState = await this._loadRawState();
+
+      // Update container
+      if (!existingState.containers) {
+        existingState.containers = {};
+      }
+
+      existingState.containers[containerId] = {
+        tabs: tabs.map(t => t.serialize()),
         lastUpdate: Date.now()
       };
-      const o = this._generateSaveId();
-      i.saveId = o, i.timestamp = Date.now();
-      const s = {
-        [this.STORAGE_KEY]: i
-      }, a = this._calculateSize(s);
+
+      // Generate save ID for race condition tracking
+      const saveId = this._generateSaveId();
+      existingState.saveId = saveId;
+      existingState.timestamp = Date.now();
+
+      // Wrap in storage key
+      const stateToSave = {
+        [this.STORAGE_KEY]: existingState
+      };
+
+      // Check size
+      const size = this._calculateSize(stateToSave);
+
       try {
-        if (a > this.MAX_SYNC_SIZE) throw console.warn(`[SyncStorageAdapter] State size ${a} bytes exceeds sync limit of ${this.MAX_SYNC_SIZE} bytes`), 
-        new Error(`QUOTA_BYTES: State too large (${a} bytes, max ${this.MAX_SYNC_SIZE} bytes)`);
-        return await e.storage.sync.set(s), console.log(`[SyncStorageAdapter] Saved ${n.length} tabs for container ${t} (saveId: ${o})`), 
-        o;
-      } catch (e) {
-        return this._handleSaveError(e, s, o);
+        if (size > this.MAX_SYNC_SIZE) {
+          console.warn(
+            `[SyncStorageAdapter] State size ${size} bytes exceeds sync limit of ${this.MAX_SYNC_SIZE} bytes`
+          );
+          throw new Error(
+            `QUOTA_BYTES: State too large (${size} bytes, max ${this.MAX_SYNC_SIZE} bytes)`
+          );
+        }
+
+        await browser$1.storage.sync.set(stateToSave);
+        console.log(
+          `[SyncStorageAdapter] Saved ${tabs.length} tabs for container ${containerId} (saveId: ${saveId})`
+        );
+        return saveId;
+      } catch (error) {
+        return this._handleSaveError(error, stateToSave, saveId);
       }
     }
-    async _handleSaveError(t, n, i) {
-      if (!t.message || !t.message.includes("QUOTA_BYTES")) throw console.error("[SyncStorageAdapter] Save failed:", t), 
-      t;
-      console.error("[SyncStorageAdapter] Sync storage quota exceeded, falling back to local storage");
+
+    /**
+     * Handle save error with fallback to local storage
+     * @private
+     */
+    async _handleSaveError(error, stateToSave, saveId) {
+      // Handle quota exceeded - fallback to local storage
+      if (!error.message || !error.message.includes('QUOTA_BYTES')) {
+        console.error('[SyncStorageAdapter] Save failed:', error);
+        throw error;
+      }
+
+      console.error(
+        '[SyncStorageAdapter] Sync storage quota exceeded, falling back to local storage'
+      );
+
       try {
-        return await e.storage.local.set(n), console.log(`[SyncStorageAdapter] Fallback: Saved to local storage (saveId: ${i})`), 
-        i;
-      } catch (e) {
-        throw console.error("[SyncStorageAdapter] Local storage fallback failed:", e), new Error(`Failed to save: ${e.message}`);
+        await browser$1.storage.local.set(stateToSave);
+        console.log(`[SyncStorageAdapter] Fallback: Saved to local storage (saveId: ${saveId})`);
+        return saveId;
+      } catch (localError) {
+        console.error('[SyncStorageAdapter] Local storage fallback failed:', localError);
+        throw new Error(`Failed to save: ${localError.message}`);
       }
     }
-    async load(e) {
-      const t = await this._loadRawState();
-      return t.containers && t.containers[e] ? t.containers[e] : null;
+
+    /**
+     * Load Quick Tabs for a specific container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @returns {Promise<{tabs: Array, lastUpdate: number}|null>} Container data or null if not found
+     */
+    async load(containerId) {
+      const state = await this._loadRawState();
+
+      if (!state.containers || !state.containers[containerId]) {
+        return null;
+      }
+
+      return state.containers[containerId];
     }
+
+    /**
+     * Load all Quick Tabs across all containers
+     *
+     * @returns {Promise<Object.<string, {tabs: Array, lastUpdate: number}>>} Map of container ID to container data
+     */
     async loadAll() {
-      return (await this._loadRawState()).containers || {};
+      const state = await this._loadRawState();
+      return state.containers || {};
     }
-    async delete(e, t) {
-      const n = await this.load(e);
-      if (!n) return void console.warn(`[SyncStorageAdapter] Container ${e} not found for deletion`);
-      const i = n.tabs.filter(e => e.id !== t);
-      if (i.length === n.tabs.length) return void console.warn(`[SyncStorageAdapter] Quick Tab ${t} not found in container ${e}`);
-      const {QuickTab: o} = await Promise.resolve().then(function() {
-        return D;
-      }), s = i.map(e => o.fromStorage(e));
-      await this.save(e, s), console.log(`[SyncStorageAdapter] Deleted Quick Tab ${t} from container ${e}`);
+
+    /**
+     * Delete a specific Quick Tab from a container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @param {string} quickTabId - Quick Tab ID to delete
+     * @returns {Promise<void>}
+     */
+    async delete(containerId, quickTabId) {
+      const containerData = await this.load(containerId);
+
+      if (!containerData) {
+        console.warn(`[SyncStorageAdapter] Container ${containerId} not found for deletion`);
+        return;
+      }
+
+      // Filter out the tab
+      const filteredTabs = containerData.tabs.filter(t => t.id !== quickTabId);
+
+      if (filteredTabs.length === containerData.tabs.length) {
+        console.warn(
+          `[SyncStorageAdapter] Quick Tab ${quickTabId} not found in container ${containerId}`
+        );
+        return;
+      }
+
+      // Save updated tabs
+      // Note: We need to reconstruct QuickTab objects for save()
+      const { QuickTab } = await Promise.resolve().then(function () { return QuickTab$1; });
+      const quickTabs = filteredTabs.map(data => QuickTab.fromStorage(data));
+      await this.save(containerId, quickTabs);
+
+      console.log(
+        `[SyncStorageAdapter] Deleted Quick Tab ${quickTabId} from container ${containerId}`
+      );
     }
-    async deleteContainer(t) {
-      const n = await this._loadRawState();
-      n.containers && n.containers[t] ? (delete n.containers[t], n.timestamp = Date.now(), 
-      n.saveId = this._generateSaveId(), await e.storage.sync.set({
-        [this.STORAGE_KEY]: n
-      }), console.log(`[SyncStorageAdapter] Deleted all Quick Tabs for container ${t}`)) : console.warn(`[SyncStorageAdapter] Container ${t} not found for deletion`);
+
+    /**
+     * Delete all Quick Tabs for a specific container
+     *
+     * @param {string} containerId - Firefox container ID
+     * @returns {Promise<void>}
+     */
+    async deleteContainer(containerId) {
+      const existingState = await this._loadRawState();
+
+      if (!existingState.containers || !existingState.containers[containerId]) {
+        console.warn(`[SyncStorageAdapter] Container ${containerId} not found for deletion`);
+        return;
+      }
+
+      delete existingState.containers[containerId];
+      existingState.timestamp = Date.now();
+      existingState.saveId = this._generateSaveId();
+
+      await browser$1.storage.sync.set({
+        [this.STORAGE_KEY]: existingState
+      });
+
+      console.log(`[SyncStorageAdapter] Deleted all Quick Tabs for container ${containerId}`);
     }
+
+    /**
+     * Clear all Quick Tabs across all containers
+     *
+     * @returns {Promise<void>}
+     */
     async clear() {
-      await e.storage.sync.remove(this.STORAGE_KEY), console.log("[SyncStorageAdapter] Cleared all Quick Tabs");
+      await browser$1.storage.sync.remove(this.STORAGE_KEY);
+      console.log('[SyncStorageAdapter] Cleared all Quick Tabs');
     }
+
+    /**
+     * Load raw state from storage (checks both sync and local for fallback)
+     *
+     * @private
+     * @returns {Promise<Object>} Raw state object
+     */
     async _loadRawState() {
       try {
-        const t = await e.storage.sync.get(this.STORAGE_KEY);
-        if (t[this.STORAGE_KEY]) return t[this.STORAGE_KEY];
-        const n = await e.storage.local.get(this.STORAGE_KEY);
-        return n[this.STORAGE_KEY] ? (console.log("[SyncStorageAdapter] Loaded from local storage (fallback)"), 
-        n[this.STORAGE_KEY]) : {
+        // Try sync first
+        const result = await browser$1.storage.sync.get(this.STORAGE_KEY);
+
+        if (result[this.STORAGE_KEY]) {
+          return result[this.STORAGE_KEY];
+        }
+
+        // Fallback to local if sync is empty
+        const localResult = await browser$1.storage.local.get(this.STORAGE_KEY);
+
+        if (localResult[this.STORAGE_KEY]) {
+          console.log('[SyncStorageAdapter] Loaded from local storage (fallback)');
+          return localResult[this.STORAGE_KEY];
+        }
+
+        // Return empty state
+        return {
           containers: {},
           timestamp: Date.now(),
           saveId: this._generateSaveId()
         };
-      } catch (e) {
-        return console.error("[SyncStorageAdapter] Load failed:", e), {
+      } catch (error) {
+        console.error('[SyncStorageAdapter] Load failed:', error);
+        // Return empty state on error
+        return {
           containers: {},
           timestamp: Date.now(),
           saveId: this._generateSaveId()
         };
       }
     }
+
+    /**
+     * Generate unique save ID for race condition tracking
+     *
+     * @private
+     * @returns {string} Save ID in format 'timestamp-random'
+     */
     _generateSaveId() {
       return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
-    _calculateSize(e) {
+
+    /**
+     * Calculate size of data in bytes
+     *
+     * @private
+     * @param {Object} data - Data to measure
+     * @returns {number} Size in bytes
+     */
+    _calculateSize(data) {
       try {
-        const t = JSON.stringify(e);
-        return new Blob([ t ]).size;
-      } catch (e) {
-        return console.error("[SyncStorageAdapter] Size calculation failed:", e), 0;
+        const jsonString = JSON.stringify(data);
+        return new Blob([jsonString]).size;
+      } catch (error) {
+        console.error('[SyncStorageAdapter] Size calculation failed:', error);
+        return 0;
       }
     }
   }
-  class N {
-    constructor(e, t = "firefox-default") {
-      this.eventBus = e, this.cookieStoreId = t, this.syncAdapter = new $, this.sessionAdapter = new U, 
-      this.pendingSaveIds = new Set, this.saveIdTimers = new Map, this.SAVE_ID_GRACE_MS = 1e3, 
-      this.latestStorageSnapshot = null, this.storageSyncTimer = null, this.STORAGE_SYNC_DELAY_MS = 100;
+
+  /**
+   * StorageManager - Handles persistent storage for Quick Tabs
+   * Phase 2.1: Extracted from QuickTabsManager
+   *
+   * Responsibilities:
+   * - Save Quick Tabs to browser.storage
+   * - Load Quick Tabs from browser.storage
+   * - Listen for storage changes
+   * - Track pending saves to prevent race conditions
+   * - Container-aware storage operations
+   *
+   * Uses:
+   * - SyncStorageAdapter from @storage layer
+   * - QuickTab from @domain layer
+   */
+
+
+  class StorageManager {
+    constructor(eventBus, cookieStoreId = 'firefox-default') {
+      this.eventBus = eventBus;
+      this.cookieStoreId = cookieStoreId;
+
+      // Storage adapters
+      this.syncAdapter = new SyncStorageAdapter();
+      this.sessionAdapter = new SessionStorageAdapter();
+
+      // Transaction tracking to prevent race conditions
+      this.pendingSaveIds = new Set();
+      this.saveIdTimers = new Map();
+      this.SAVE_ID_GRACE_MS = 1000;
+
+      // Debounced sync
+      this.latestStorageSnapshot = null;
+      this.storageSyncTimer = null;
+      this.STORAGE_SYNC_DELAY_MS = 100;
     }
-    async save(e) {
-      if (!e || 0 === e.length) return console.log("[StorageManager] No Quick Tabs to save"), 
-      null;
+
+    /**
+     * Save Quick Tabs to persistent storage
+     * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
+     * @returns {Promise<string>} - Save ID for tracking
+     */
+    async save(quickTabs) {
+      if (!quickTabs || quickTabs.length === 0) {
+        console.log('[StorageManager] No Quick Tabs to save');
+        return null;
+      }
+
       try {
-        const t = e.map(e => e.serialize()), n = await this.syncAdapter.save(this.cookieStoreId, t);
-        return this.trackPendingSave(n), this.eventBus?.emit("storage:saved", {
-          cookieStoreId: this.cookieStoreId,
-          saveId: n
-        }), console.log(`[StorageManager] Saved ${e.length} Quick Tabs for container ${this.cookieStoreId}`), 
-        n;
-      } catch (e) {
-        throw console.error("[StorageManager] Save error:", e), this.eventBus?.emit("storage:error", {
-          operation: "save",
-          error: e
-        }), e;
+        // Serialize QuickTab domain entities to storage format
+        const serializedTabs = quickTabs.map(qt => qt.serialize());
+
+        // Save using SyncStorageAdapter (handles quota, fallback, etc.)
+        const saveId = await this.syncAdapter.save(this.cookieStoreId, serializedTabs);
+
+        // Track saveId to prevent race conditions
+        this.trackPendingSave(saveId);
+
+        // Emit event
+        this.eventBus?.emit('storage:saved', { cookieStoreId: this.cookieStoreId, saveId });
+
+        console.log(
+          `[StorageManager] Saved ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`
+        );
+        return saveId;
+      } catch (error) {
+        console.error('[StorageManager] Save error:', error);
+        this.eventBus?.emit('storage:error', { operation: 'save', error });
+        throw error;
       }
     }
+
+    /**
+     * Load all Quick Tabs for current container
+     * @returns {Promise<Array<QuickTab>>} - Array of QuickTab domain entities
+     */
     async loadAll() {
       try {
-        let e = await this.sessionAdapter.load(this.cookieStoreId);
-        if (e || (e = await this.syncAdapter.load(this.cookieStoreId)), !e || !e.tabs) return console.log(`[StorageManager] No data found for container ${this.cookieStoreId}`), 
-        [];
-        const t = e.tabs.map(e => A.fromStorage(e));
-        return console.log(`[StorageManager] Loaded ${t.length} Quick Tabs for container ${this.cookieStoreId}`), 
-        t;
-      } catch (e) {
-        return console.error("[StorageManager] Load error:", e), this.eventBus?.emit("storage:error", {
-          operation: "load",
-          error: e
-        }), [];
+        // Try session storage first (faster, temporary)
+        let containerData = await this.sessionAdapter.load(this.cookieStoreId);
+
+        // Fall back to sync storage
+        if (!containerData) {
+          containerData = await this.syncAdapter.load(this.cookieStoreId);
+        }
+
+        if (!containerData || !containerData.tabs) {
+          console.log(`[StorageManager] No data found for container ${this.cookieStoreId}`);
+          return [];
+        }
+
+        // Deserialize to QuickTab domain entities
+        const quickTabs = containerData.tabs.map(tabData => QuickTab.fromStorage(tabData));
+
+        console.log(
+          `[StorageManager] Loaded ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`
+        );
+        return quickTabs;
+      } catch (error) {
+        console.error('[StorageManager] Load error:', error);
+        this.eventBus?.emit('storage:error', { operation: 'load', error });
+        return [];
       }
     }
+
+    /**
+     * Setup storage change listeners
+     */
     setupStorageListeners() {
-      "undefined" != typeof browser && browser.storage ? (browser.storage.onChanged.addListener((e, t) => {
-        console.log("[StorageManager] Storage changed:", t, Object.keys(e)), "sync" === t && e.quick_tabs_state_v2 && this.handleStorageChange(e.quick_tabs_state_v2.newValue), 
-        "session" === t && e.quick_tabs_session && this.handleStorageChange(e.quick_tabs_session.newValue);
-      }), console.log("[StorageManager] Storage listeners attached")) : console.warn("[StorageManager] Storage API not available");
+      if (typeof browser === 'undefined' || !browser.storage) {
+        console.warn('[StorageManager] Storage API not available');
+        return;
+      }
+
+      browser.storage.onChanged.addListener((changes, areaName) => {
+        console.log('[StorageManager] Storage changed:', areaName, Object.keys(changes));
+
+        // Handle sync storage changes
+        if (areaName === 'sync' && changes.quick_tabs_state_v2) {
+          this.handleStorageChange(changes.quick_tabs_state_v2.newValue);
+        }
+
+        // Handle session storage changes
+        if (areaName === 'session' && changes.quick_tabs_session) {
+          this.handleStorageChange(changes.quick_tabs_session.newValue);
+        }
+      });
+
+      console.log('[StorageManager] Storage listeners attached');
     }
-    handleStorageChange(e) {
-      if (e && !this.shouldIgnoreStorageChange(e?.saveId)) if (this.pendingSaveIds.size > 0 && !e?.saveId) console.log("[StorageManager] Ignoring change while pending saves in-flight:", Array.from(this.pendingSaveIds)); else if (e.containers && this.cookieStoreId) {
-        const t = e.containers[this.cookieStoreId];
-        if (t) {
+
+    /**
+     * Handle storage change event
+     * @param {Object} newValue - New storage value
+     */
+    handleStorageChange(newValue) {
+      if (!newValue) {
+        return;
+      }
+
+      // Ignore changes from our own saves (race condition prevention)
+      if (this.shouldIgnoreStorageChange(newValue?.saveId)) {
+        return;
+      }
+
+      // Ignore changes while saves are pending
+      if (this.pendingSaveIds.size > 0 && !newValue?.saveId) {
+        console.log(
+          '[StorageManager] Ignoring change while pending saves in-flight:',
+          Array.from(this.pendingSaveIds)
+        );
+        return;
+      }
+
+      // Extract container-specific state
+      if (newValue.containers && this.cookieStoreId) {
+        const containerState = newValue.containers[this.cookieStoreId];
+        if (containerState) {
           console.log(`[StorageManager] Scheduling sync for container ${this.cookieStoreId}`);
-          const e = {
+          // Create container-filtered snapshot
+          const filteredState = {
             containers: {
-              [this.cookieStoreId]: t
+              [this.cookieStoreId]: containerState
             }
           };
-          this.scheduleStorageSync(e);
+          this.scheduleStorageSync(filteredState);
         }
-      } else console.log("[StorageManager] Scheduling sync (legacy format)"), this.scheduleStorageSync(e);
+      } else {
+        // Legacy format - process as-is
+        console.log('[StorageManager] Scheduling sync (legacy format)');
+        this.scheduleStorageSync(newValue);
+      }
     }
-    shouldIgnoreStorageChange(e) {
-      return !(!e || !this.pendingSaveIds.has(e) || (console.log("[StorageManager] Ignoring storage change for pending save:", e), 
-      0));
+
+    /**
+     * Check if storage change should be ignored
+     * @param {string} saveId - Save ID from storage change
+     * @returns {boolean} - True if should ignore
+     */
+    shouldIgnoreStorageChange(saveId) {
+      if (saveId && this.pendingSaveIds.has(saveId)) {
+        console.log('[StorageManager] Ignoring storage change for pending save:', saveId);
+        return true;
+      }
+      return false;
     }
-    scheduleStorageSync(e) {
-      this.latestStorageSnapshot = e, this.storageSyncTimer && clearTimeout(this.storageSyncTimer), 
+
+    /**
+     * Schedule debounced storage sync
+     * @param {Object} stateSnapshot - Storage state snapshot
+     */
+    scheduleStorageSync(stateSnapshot) {
+      this.latestStorageSnapshot = stateSnapshot;
+
+      if (this.storageSyncTimer) {
+        clearTimeout(this.storageSyncTimer);
+      }
+
+      // eslint-disable-next-line require-await
       this.storageSyncTimer = setTimeout(async () => {
-        const e = this.latestStorageSnapshot;
-        this.latestStorageSnapshot = null, this.storageSyncTimer = null, this.eventBus?.emit("storage:changed", {
+        const snapshot = this.latestStorageSnapshot;
+        this.latestStorageSnapshot = null;
+        this.storageSyncTimer = null;
+
+        // Emit event for coordinator to handle sync
+        this.eventBus?.emit('storage:changed', {
           containerFilter: this.cookieStoreId,
-          state: e
+          state: snapshot
         });
       }, this.STORAGE_SYNC_DELAY_MS);
     }
-    trackPendingSave(e) {
-      if (!e) return;
-      this.saveIdTimers.has(e) && (clearTimeout(this.saveIdTimers.get(e)), this.saveIdTimers.delete(e)), 
-      this.pendingSaveIds.add(e);
-      const t = setTimeout(() => {
-        this.releasePendingSave(e);
+
+    /**
+     * Track pending save to prevent race conditions
+     * @param {string} saveId - Unique save identifier
+     */
+    trackPendingSave(saveId) {
+      if (!saveId) {
+        return;
+      }
+
+      // Clear existing timer if present
+      if (this.saveIdTimers.has(saveId)) {
+        clearTimeout(this.saveIdTimers.get(saveId));
+        this.saveIdTimers.delete(saveId);
+      }
+
+      this.pendingSaveIds.add(saveId);
+
+      // Auto-release after grace period
+      const timer = setTimeout(() => {
+        this.releasePendingSave(saveId);
       }, this.SAVE_ID_GRACE_MS);
-      this.saveIdTimers.set(e, t);
+
+      this.saveIdTimers.set(saveId, timer);
     }
-    releasePendingSave(e) {
-      e && (this.saveIdTimers.has(e) && (clearTimeout(this.saveIdTimers.get(e)), this.saveIdTimers.delete(e)), 
-      this.pendingSaveIds.delete(e) && console.log("[StorageManager] Released saveId:", e));
-    }
-    async delete(e) {
-      try {
-        await this.syncAdapter.delete(this.cookieStoreId, e), this.eventBus?.emit("storage:deleted", {
-          cookieStoreId: this.cookieStoreId,
-          quickTabId: e
-        });
-      } catch (e) {
-        throw console.error("[StorageManager] Delete error:", e), this.eventBus?.emit("storage:error", {
-          operation: "delete",
-          error: e
-        }), e;
+
+    /**
+     * Release pending save ID
+     * @param {string} saveId - Save identifier to release
+     */
+    releasePendingSave(saveId) {
+      if (!saveId) {
+        return;
+      }
+
+      if (this.saveIdTimers.has(saveId)) {
+        clearTimeout(this.saveIdTimers.get(saveId));
+        this.saveIdTimers.delete(saveId);
+      }
+
+      if (this.pendingSaveIds.delete(saveId)) {
+        console.log('[StorageManager] Released saveId:', saveId);
       }
     }
+
+    /**
+     * Delete specific Quick Tab from storage
+     * @param {string} quickTabId - Quick Tab ID to delete
+     */
+    async delete(quickTabId) {
+      try {
+        await this.syncAdapter.delete(this.cookieStoreId, quickTabId);
+        this.eventBus?.emit('storage:deleted', { cookieStoreId: this.cookieStoreId, quickTabId });
+      } catch (error) {
+        console.error('[StorageManager] Delete error:', error);
+        this.eventBus?.emit('storage:error', { operation: 'delete', error });
+        throw error;
+      }
+    }
+
+    /**
+     * Clear all Quick Tabs for current container
+     */
     async clear() {
       try {
-        await this.syncAdapter.deleteContainer(this.cookieStoreId), this.eventBus?.emit("storage:cleared", {
-          cookieStoreId: this.cookieStoreId
-        });
-      } catch (e) {
-        throw console.error("[StorageManager] Clear error:", e), this.eventBus?.emit("storage:error", {
-          operation: "clear",
-          error: e
-        }), e;
+        await this.syncAdapter.deleteContainer(this.cookieStoreId);
+        this.eventBus?.emit('storage:cleared', { cookieStoreId: this.cookieStoreId });
+      } catch (error) {
+        console.error('[StorageManager] Clear error:', error);
+        this.eventBus?.emit('storage:error', { operation: 'clear', error });
+        throw error;
       }
     }
   }
-  class H {
+
+  /**
+   * Minimized Quick Tabs Manager
+   * Manages the minimized state of Quick Tabs and provides restoration interface
+   *
+   * v1.5.9.0 - New module following modular-architecture-blueprint.md
+   */
+
+  /**
+   * MinimizedManager class - Tracks and manages minimized Quick Tabs
+   */
+  class MinimizedManager {
     constructor() {
-      this.minimizedTabs = new Map;
+      this.minimizedTabs = new Map(); // id -> QuickTabWindow instance
     }
-    add(e, t) {
-      this.minimizedTabs.set(e, t), console.log("[MinimizedManager] Added minimized tab:", e);
+
+    /**
+     * Add a minimized Quick Tab
+     */
+    add(id, tabWindow) {
+      this.minimizedTabs.set(id, tabWindow);
+      console.log('[MinimizedManager] Added minimized tab:', id);
     }
-    remove(e) {
-      this.minimizedTabs.delete(e), console.log("[MinimizedManager] Removed minimized tab:", e);
+
+    /**
+     * Remove a minimized Quick Tab
+     */
+    remove(id) {
+      this.minimizedTabs.delete(id);
+      console.log('[MinimizedManager] Removed minimized tab:', id);
     }
-    restore(e) {
-      const t = this.minimizedTabs.get(e);
-      if (t) {
-        const n = t.left, i = t.top, o = t.width, s = t.height;
-        return t.restore(), t.container && (t.container.style.left = `${n}px`, t.container.style.top = `${i}px`, 
-        t.container.style.width = `${o}px`, t.container.style.height = `${s}px`), this.minimizedTabs.delete(e), 
-        console.log("[MinimizedManager] Restored tab with position:", {
-          id: e,
-          left: n,
-          top: i
-        }), !0;
+
+    /**
+     * Restore a minimized Quick Tab
+     * v1.5.9.8 - FIX: Ensure position state is preserved before calling restore
+     */
+    restore(id) {
+      const tabWindow = this.minimizedTabs.get(id);
+      if (tabWindow) {
+        // v1.5.9.8 - FIX: Ensure position state is preserved before calling restore
+        const savedLeft = tabWindow.left;
+        const savedTop = tabWindow.top;
+        const savedWidth = tabWindow.width;
+        const savedHeight = tabWindow.height;
+
+        tabWindow.restore();
+
+        // Double-check position was applied (defensive)
+        if (tabWindow.container) {
+          tabWindow.container.style.left = `${savedLeft}px`;
+          tabWindow.container.style.top = `${savedTop}px`;
+          tabWindow.container.style.width = `${savedWidth}px`;
+          tabWindow.container.style.height = `${savedHeight}px`;
+        }
+
+        this.minimizedTabs.delete(id);
+        console.log('[MinimizedManager] Restored tab with position:', {
+          id,
+          left: savedLeft,
+          top: savedTop
+        });
+        return true;
       }
-      return !1;
+      return false;
     }
+
+    /**
+     * Get all minimized tabs
+     */
     getAll() {
       return Array.from(this.minimizedTabs.values());
     }
+
+    /**
+     * Get minimized tab count
+     */
     getCount() {
       return this.minimizedTabs.size;
     }
-    isMinimized(e) {
-      return this.minimizedTabs.has(e);
+
+    /**
+     * Check if a tab is minimized
+     */
+    isMinimized(id) {
+      return this.minimizedTabs.has(id);
     }
+
+    /**
+     * Clear all minimized tabs
+     */
     clear() {
-      this.minimizedTabs.clear(), console.log("[MinimizedManager] Cleared all minimized tabs");
+      this.minimizedTabs.clear();
+      console.log('[MinimizedManager] Cleared all minimized tabs');
     }
   }
-  let Q = !1;
-  const F = [];
-  function Z(...e) {
-    !function(e, ...t) {
-      F.length >= 5e3 && F.shift(), F.push({
-        type: e,
-        timestamp: Date.now(),
-        message: t.map(e => "object" == typeof e ? JSON.stringify(e, null, 2) : String(e)).join(" "),
-        args: t
+
+  /**
+   * Debug Utilities with Log Export
+   * Helper functions for debugging, logging, and exporting logs
+   */
+
+  let DEBUG_MODE = false;
+
+  // Log buffer to store all logs
+  const LOG_BUFFER = [];
+  const MAX_BUFFER_SIZE = 5000; // Prevent memory overflow
+
+  /**
+   * Log entry structure
+   * @typedef {Object} LogEntry
+   * @property {string} type - Log type (DEBUG, ERROR, WARN, INFO)
+   * @property {number} timestamp - Unix timestamp
+   * @property {string} message - Log message
+   * @property {Array} args - Additional arguments
+   */
+
+  /**
+   * Add log entry to buffer
+   * @param {string} type - Log type
+   * @param {...any} args - Arguments to log
+   */
+  function addToBuffer(type, ...args) {
+    if (LOG_BUFFER.length >= MAX_BUFFER_SIZE) {
+      // Remove oldest entry if buffer is full
+      LOG_BUFFER.shift();
+    }
+
+    LOG_BUFFER.push({
+      type: type,
+      timestamp: Date.now(),
+      message: args
+        .map(arg => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)))
+        .join(' '),
+      args: args
+    });
+  }
+
+  /**
+   * Enable debug mode
+   */
+  function enableDebug() {
+    DEBUG_MODE = true;
+  }
+
+  /**
+   * Disable debug mode
+   */
+  function disableDebug() {
+    DEBUG_MODE = false;
+  }
+
+  /**
+   * Check if debug mode is enabled
+   * @returns {boolean} True if debug mode is enabled
+   */
+  function isDebugEnabled() {
+    return DEBUG_MODE;
+  }
+
+  /**
+   * Debug logging function
+   * @param {...any} args - Arguments to log
+   */
+  function debug(...args) {
+    addToBuffer('DEBUG', ...args);
+    if (DEBUG_MODE) {
+      console.log('[DEBUG]', ...args);
+    }
+  }
+
+  /**
+   * Error logging function
+   * @param {...any} args - Arguments to log
+   */
+  function debugError(...args) {
+    addToBuffer('ERROR', ...args);
+    console.error('[ERROR]', ...args);
+  }
+
+  /**
+   * Warning logging function
+   * @param {...any} args - Arguments to log
+   */
+  function debugWarn(...args) {
+    addToBuffer('WARN', ...args);
+    if (DEBUG_MODE) {
+      console.warn('[WARN]', ...args);
+    }
+  }
+
+  /**
+   * Info logging function
+   * @param {...any} args - Arguments to log
+   */
+  function debugInfo(...args) {
+    addToBuffer('INFO', ...args);
+    console.info('[INFO]', ...args);
+  }
+
+  /**
+   * Get all buffered logs
+   * @returns {Array<LogEntry>} Array of log entries
+   */
+  function getLogBuffer() {
+    return [...LOG_BUFFER]; // Return copy to prevent mutation
+  }
+
+  /**
+   * Clear log buffer
+   */
+  function clearLogBuffer() {
+    LOG_BUFFER.length = 0;
+    console.log('[DEBUG] Log buffer cleared');
+  }
+
+  /**
+   * Format logs as plain text
+   * @param {Array<LogEntry>} logs - Array of log entries
+   * @param {string} version - Extension version
+   * @returns {string} Formatted log text
+   */
+  function formatLogsAsText(logs, version = '1.5.9') {
+    const now = new Date();
+    const header = [
+      '='.repeat(80),
+      'Copy URL on Hover - Extension Console Logs',
+      '='.repeat(80),
+      '',
+      `Version: ${version}`,
+      `Export Date: ${now.toISOString()}`,
+      `Export Date (Local): ${now.toLocaleString()}`,
+      `Total Logs: ${logs.length}`,
+      '',
+      '='.repeat(80),
+      ''
+    ].join('\n');
+
+    const logLines = logs.map(entry => {
+      const date = new Date(entry.timestamp);
+      const timestamp = date.toISOString();
+      return `[${timestamp}] [${entry.type.padEnd(5)}] ${entry.message}`;
+    });
+
+    const footer = ['', '='.repeat(80), 'End of Logs', '='.repeat(80)].join('\n');
+
+    return header + logLines.join('\n') + footer;
+  }
+
+  /**
+   * Generate filename for log export
+   * @param {string} version - Extension version
+   * @returns {string} Filename with version and timestamp
+   */
+  function generateLogFilename(version = '1.5.9') {
+    const now = new Date();
+    // ISO 8601 format with hyphens instead of colons for filename compatibility
+    const timestamp = now.toISOString().replace(/:/g, '-').split('.')[0];
+    return `copy-url-extension-logs_v${version}_${timestamp}.txt`;
+  }
+
+  /**
+   * Export logs as downloadable .txt file
+   * @param {string} version - Extension version from manifest
+   * @returns {Promise<void>}
+   */
+  /**
+   * Try to get logs from background script
+   * @param {Array} logs - Logs array to append to
+   * @private
+   */
+  async function _fetchBackgroundLogs(logs) {
+    try {
+      const response = await browser.runtime.sendMessage({
+        action: 'GET_BACKGROUND_LOGS'
       });
-    }("DEBUG", ...e), Q && console.log("[DEBUG]", ...e);
+      if (response && response.logs) {
+        logs.push(...response.logs);
+      }
+    } catch (error) {
+      console.warn('[WARN] Could not retrieve background logs:', error);
+    }
   }
-  class W {
-    constructor(e, t) {
-      this.panel = e, this.uiBuilder = t.uiBuilder, this.stateManager = t.stateManager, 
-      this.quickTabsManager = t.quickTabsManager, this.currentContainerId = t.currentContainerId, 
-      this.eventListeners = [], this.isOpen = !1;
+
+  /**
+   * Try to download using browser.downloads API
+   * @param {string} logText - Formatted log text
+   * @param {string} filename - Filename for download
+   * @returns {boolean} True if successful
+   * @private
+   */
+  async function _tryBrowserDownloadsAPI(logText, filename) {
+    if (!browser || !browser.downloads || !browser.downloads.download) {
+      return false;
     }
-    setIsOpen(e) {
-      this.isOpen = e;
+
+    try {
+      // Create blob
+      const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      // Download via browser API
+      await browser.downloads.download({
+        url: url,
+        filename: filename,
+        saveAs: true
+      });
+
+      // Clean up
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+
+      console.log('[INFO] Logs exported successfully via browser.downloads API');
+      return true;
+    } catch (error) {
+      console.warn('[WARN] browser.downloads failed, falling back to Blob URL:', error);
+      return false;
     }
+  }
+
+  /**
+   * Download using blob URL fallback method
+   * @param {string} logText - Formatted log text
+   * @param {string} filename - Filename for download
+   * @private
+   */
+  function _downloadViaBlob(logText, filename) {
+    const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    // Create temporary download link
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    link.style.display = 'none';
+
+    // Append to body (required for Firefox)
+    document.body.appendChild(link);
+
+    // Trigger download
+    link.click();
+
+    // Cleanup
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    }, 100);
+
+    console.log('[INFO] Logs exported successfully via Blob URL fallback');
+  }
+
+  async function exportLogs(version = '1.5.9') {
+    try {
+      // Get logs from current page
+      const logs = getLogBuffer();
+
+      // Try to get logs from background script
+      await _fetchBackgroundLogs(logs);
+
+      // Sort logs by timestamp
+      logs.sort((a, b) => a.timestamp - b.timestamp);
+
+      // Format logs
+      const logText = formatLogsAsText(logs, version);
+
+      // Generate filename
+      const filename = generateLogFilename(version);
+
+      // Try Method 1: browser.downloads.download() API (if permission granted)
+      const browserApiSuccess = await _tryBrowserDownloadsAPI(logText, filename);
+      if (browserApiSuccess) {
+        return;
+      }
+
+      // Method 2: Blob URL + <a> download attribute (fallback)
+      _downloadViaBlob(logText, filename);
+
+      console.log('[INFO] Logs exported successfully via Blob URL');
+    } catch (error) {
+      console.error('[ERROR] Failed to export logs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate a unique ID
+   * @returns {string} Unique ID
+   */
+  function generateId() {
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  }
+
+  /**
+   * Throttle function execution
+   * @param {function} func - Function to throttle
+   * @param {number} delay - Delay in milliseconds
+   * @returns {function} Throttled function
+   */
+  function throttle(func, delay) {
+    let lastCall = 0;
+    return function (...args) {
+      const now = Date.now();
+      if (now - lastCall >= delay) {
+        lastCall = now;
+        return func.apply(this, args);
+      }
+    };
+  }
+
+  /**
+   * Debounce function execution
+   * @param {function} func - Function to debounce
+   * @param {number} delay - Delay in milliseconds
+   * @returns {function} Debounced function
+   */
+  function debounce(func, delay) {
+    let timeoutId;
+    return function (...args) {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func.apply(this, args), delay);
+    };
+  }
+
+  /**
+   * PanelContentManager Component
+   * Handles content updates and Quick Tab operations for the Manager Panel
+   *
+   * Extracted from panel.js as part of Phase 2.10 refactoring
+   * Responsibilities:
+   * - Update panel content from storage
+   * - Fetch and display Quick Tabs grouped by container
+   * - Handle bulk operations (close minimized, close all)
+   * - Handle individual Quick Tab actions (minimize, restore, close, go to tab)
+   * - Setup event listeners with event delegation
+   *
+   * v1.6.0 - Phase 2.10: Extracted content management logic
+   */
+
+
+  /**
+   * PanelContentManager
+   * Manages panel content updates and user interactions
+   */
+  class PanelContentManager {
+    /**
+     * Create a new PanelContentManager
+     * @param {HTMLElement} panelElement - The panel DOM element
+     * @param {Object} dependencies - Required dependencies
+     * @param {Object} dependencies.uiBuilder - PanelUIBuilder instance
+     * @param {Object} dependencies.stateManager - PanelStateManager instance
+     * @param {Object} dependencies.quickTabsManager - QuickTabsManager instance
+     * @param {string} dependencies.currentContainerId - Current container ID
+     */
+    constructor(panelElement, dependencies) {
+      this.panel = panelElement;
+      this.uiBuilder = dependencies.uiBuilder;
+      this.stateManager = dependencies.stateManager;
+      this.quickTabsManager = dependencies.quickTabsManager;
+      this.currentContainerId = dependencies.currentContainerId;
+      this.eventListeners = [];
+      this.isOpen = false;
+    }
+
+    /**
+     * Update panel open state
+     * @param {boolean} isOpen - Whether panel is open
+     */
+    setIsOpen(isOpen) {
+      this.isOpen = isOpen;
+    }
+
+    /**
+     * Update panel content with current Quick Tabs state
+     * v1.5.9.12 - Container integration: Filter by current container
+     */
     async updateContent() {
       if (!this.panel || !this.isOpen) return;
-      const e = await this._fetchQuickTabsFromStorage();
-      if (!e) return;
-      const t = e[this.currentContainerId], n = t?.tabs || [], i = t?.lastUpdate || 0;
-      if (this._updateStatistics(n.length, i), 0 === n.length) return void this._renderEmptyState();
-      const o = await this._fetchContainerInfo();
-      this._renderContainerSection(t, o);
+
+      // Fetch Quick Tabs from storage
+      const quickTabsState = await this._fetchQuickTabsFromStorage();
+      if (!quickTabsState) return;
+
+      // Get current container's tabs
+      const currentContainerState = quickTabsState[this.currentContainerId];
+      const currentContainerTabs = currentContainerState?.tabs || [];
+      const latestTimestamp = currentContainerState?.lastUpdate || 0;
+
+      // Update statistics
+      this._updateStatistics(currentContainerTabs.length, latestTimestamp);
+
+      // Show/hide empty state
+      if (currentContainerTabs.length === 0) {
+        this._renderEmptyState();
+        return;
+      }
+
+      // Fetch container info
+      const containerInfo = await this._fetchContainerInfo();
+
+      // Render container section
+      this._renderContainerSection(currentContainerState, containerInfo);
     }
+
+    /**
+     * Fetch Quick Tabs state from browser storage
+     * @returns {Object|null} Quick Tabs state by container
+     * @private
+     */
     async _fetchQuickTabsFromStorage() {
       try {
-        const e = await browser.storage.sync.get("quick_tabs_state_v2");
-        if (!e || !e.quick_tabs_state_v2) return null;
-        const t = e.quick_tabs_state_v2;
-        return t.containers || t;
-      } catch (e) {
-        return console.error("[PanelContentManager] Error loading Quick Tabs:", e), null;
+        const result = await browser.storage.sync.get('quick_tabs_state_v2');
+        if (!result || !result.quick_tabs_state_v2) return null;
+
+        const state = result.quick_tabs_state_v2;
+        // v1.5.8.15: Handle wrapped format
+        return state.containers || state;
+      } catch (err) {
+        console.error('[PanelContentManager] Error loading Quick Tabs:', err);
+        return null;
       }
     }
+
+    /**
+     * Fetch container info from browser API
+     * @returns {Object} Container info (name, icon, color)
+     * @private
+     */
     async _fetchContainerInfo() {
-      const e = {
-        name: "Default",
-        icon: "📁",
-        color: "grey"
+      const defaultInfo = {
+        name: 'Default',
+        icon: '📁',
+        color: 'grey'
       };
+
       try {
-        if ("firefox-default" === this.currentContainerId || void 0 === browser.contextualIdentities) return e;
-        const t = (await browser.contextualIdentities.query({})).find(e => e.cookieStoreId === this.currentContainerId);
-        return t ? {
-          name: t.name,
-          icon: this.uiBuilder.getContainerIcon(t.icon),
-          color: t.color
-        } : e;
-      } catch (t) {
-        return console.error("[PanelContentManager] Error loading container:", t), e;
+        if (
+          this.currentContainerId === 'firefox-default' ||
+          typeof browser.contextualIdentities === 'undefined'
+        ) {
+          return defaultInfo;
+        }
+
+        const containers = await browser.contextualIdentities.query({});
+        const container = containers.find(c => c.cookieStoreId === this.currentContainerId);
+
+        if (!container) return defaultInfo;
+
+        return {
+          name: container.name,
+          icon: this.uiBuilder.getContainerIcon(container.icon),
+          color: container.color
+        };
+      } catch (err) {
+        console.error('[PanelContentManager] Error loading container:', err);
+        return defaultInfo;
       }
     }
-    _updateStatistics(e, t) {
-      const n = this.panel.querySelector("#panel-totalTabs"), i = this.panel.querySelector("#panel-lastSync");
-      if (n && (n.textContent = `${e} Quick Tab${1 !== e ? "s" : ""}`), i) if (t > 0) {
-        const e = new Date(t);
-        i.textContent = `Last sync: ${e.toLocaleTimeString()}`;
-      } else i.textContent = "Last sync: Never";
+
+    /**
+     * Update statistics display
+     * @param {number} tabCount - Number of tabs
+     * @param {number} timestamp - Last update timestamp
+     * @private
+     */
+    _updateStatistics(tabCount, timestamp) {
+      const totalTabsEl = this.panel.querySelector('#panel-totalTabs');
+      const lastSyncEl = this.panel.querySelector('#panel-lastSync');
+
+      if (totalTabsEl) {
+        totalTabsEl.textContent = `${tabCount} Quick Tab${tabCount !== 1 ? 's' : ''}`;
+      }
+
+      if (lastSyncEl) {
+        if (timestamp > 0) {
+          const date = new Date(timestamp);
+          lastSyncEl.textContent = `Last sync: ${date.toLocaleTimeString()}`;
+        } else {
+          lastSyncEl.textContent = 'Last sync: Never';
+        }
+      }
     }
+
+    /**
+     * Render empty state when no Quick Tabs exist
+     * @private
+     */
     _renderEmptyState() {
-      const e = this.panel.querySelector("#panel-containersList"), t = this.panel.querySelector("#panel-emptyState");
-      e && (e.style.display = "none"), t && (t.style.display = "flex");
-    }
-    _renderContainerSection(e, t) {
-      const n = this.panel.querySelector("#panel-containersList"), i = this.panel.querySelector("#panel-emptyState");
-      i && (i.style.display = "none"), n && (n.style.display = "block", n.innerHTML = "", 
-      this.uiBuilder.renderContainerSection(n, this.currentContainerId, t, e));
-    }
-    setupEventListeners() {
-      const e = this.panel.querySelector(".panel-close"), t = e => {
-        e.stopPropagation(), this.onClose && this.onClose();
-      };
-      e.addEventListener("click", t), this.eventListeners.push({
-        element: e,
-        type: "click",
-        handler: t
-      });
-      const n = this.panel.querySelector(".panel-minimize"), i = e => {
-        e.stopPropagation(), this.onClose && this.onClose();
-      };
-      n.addEventListener("click", i), this.eventListeners.push({
-        element: n,
-        type: "click",
-        handler: i
-      });
-      const o = this.panel.querySelector("#panel-closeMinimized"), s = async e => {
-        e.stopPropagation(), await this.handleCloseMinimized();
-      };
-      o.addEventListener("click", s), this.eventListeners.push({
-        element: o,
-        type: "click",
-        handler: s
-      });
-      const a = this.panel.querySelector("#panel-closeAll"), r = async e => {
-        e.stopPropagation(), await this.handleCloseAll();
-      };
-      a.addEventListener("click", r), this.eventListeners.push({
-        element: a,
-        type: "click",
-        handler: r
-      });
-      const l = this.panel.querySelector("#panel-containersList"), c = async e => {
-        const t = e.target.closest("button[data-action]");
-        if (!t) return;
-        e.stopPropagation();
-        const n = t.dataset.action, i = t.dataset.quickTabId, o = t.dataset.tabId;
-        await this._handleQuickTabAction(n, i, o);
-      };
-      l.addEventListener("click", c), this.eventListeners.push({
-        element: l,
-        type: "click",
-        handler: c
-      }), Z("[PanelContentManager] Event listeners setup");
-    }
-    async _handleQuickTabAction(e, t, n) {
-      switch (e) {
-       case "goToTab":
-        await this.handleGoToTab(parseInt(n, 10));
-        break;
+      const containersList = this.panel.querySelector('#panel-containersList');
+      const emptyState = this.panel.querySelector('#panel-emptyState');
 
-       case "minimize":
-        await this.handleMinimizeTab(t);
-        break;
-
-       case "restore":
-        await this.handleRestoreTab(t);
-        break;
-
-       case "close":
-        await this.handleCloseTab(t);
-        break;
-
-       default:
-        console.warn(`[PanelContentManager] Unknown action: ${e}`);
+      if (containersList) {
+        containersList.style.display = 'none';
       }
+      if (emptyState) {
+        emptyState.style.display = 'flex';
+      }
+    }
+
+    /**
+     * Render container section with Quick Tabs
+     * @param {Object} containerState - Container state with tabs
+     * @param {Object} containerInfo - Container info (name, icon, color)
+     * @private
+     */
+    _renderContainerSection(containerState, containerInfo) {
+      const containersList = this.panel.querySelector('#panel-containersList');
+      const emptyState = this.panel.querySelector('#panel-emptyState');
+
+      if (emptyState) {
+        emptyState.style.display = 'none';
+      }
+      if (containersList) {
+        containersList.style.display = 'block';
+        containersList.innerHTML = '';
+
+        // Use UIBuilder to render the section
+        this.uiBuilder.renderContainerSection(
+          containersList,
+          this.currentContainerId,
+          containerInfo,
+          containerState
+        );
+      }
+    }
+
+    /**
+     * Setup event listeners for panel interactions
+     */
+    setupEventListeners() {
+      // Close button
+      const closeBtn = this.panel.querySelector('.panel-close');
+      const closeBtnHandler = e => {
+        e.stopPropagation();
+        if (this.onClose) this.onClose();
+      };
+      closeBtn.addEventListener('click', closeBtnHandler);
+      this.eventListeners.push({ element: closeBtn, type: 'click', handler: closeBtnHandler });
+
+      // Minimize button (same as close)
+      const minimizeBtn = this.panel.querySelector('.panel-minimize');
+      const minimizeBtnHandler = e => {
+        e.stopPropagation();
+        if (this.onClose) this.onClose();
+      };
+      minimizeBtn.addEventListener('click', minimizeBtnHandler);
+      this.eventListeners.push({
+        element: minimizeBtn,
+        type: 'click',
+        handler: minimizeBtnHandler
+      });
+
+      // Close Minimized button
+      const closeMinimizedBtn = this.panel.querySelector('#panel-closeMinimized');
+      const closeMinimizedHandler = async e => {
+        e.stopPropagation();
+        await this.handleCloseMinimized();
+      };
+      closeMinimizedBtn.addEventListener('click', closeMinimizedHandler);
+      this.eventListeners.push({
+        element: closeMinimizedBtn,
+        type: 'click',
+        handler: closeMinimizedHandler
+      });
+
+      // Close All button
+      const closeAllBtn = this.panel.querySelector('#panel-closeAll');
+      const closeAllHandler = async e => {
+        e.stopPropagation();
+        await this.handleCloseAll();
+      };
+      closeAllBtn.addEventListener('click', closeAllHandler);
+      this.eventListeners.push({
+        element: closeAllBtn,
+        type: 'click',
+        handler: closeAllHandler
+      });
+
+      // Delegated listener for Quick Tab item actions
+      const containersList = this.panel.querySelector('#panel-containersList');
+      const actionHandler = async e => {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+
+        e.stopPropagation();
+
+        const action = button.dataset.action;
+        const quickTabId = button.dataset.quickTabId;
+        const tabId = button.dataset.tabId;
+
+        await this._handleQuickTabAction(action, quickTabId, tabId);
+      };
+      containersList.addEventListener('click', actionHandler);
+      this.eventListeners.push({
+        element: containersList,
+        type: 'click',
+        handler: actionHandler
+      });
+
+      debug('[PanelContentManager] Event listeners setup');
+    }
+
+    /**
+     * Handle Quick Tab action button clicks
+     * @param {string} action - Action type (goToTab, minimize, restore, close)
+     * @param {string} quickTabId - Quick Tab ID
+     * @param {string} tabId - Browser tab ID
+     * @private
+     */
+    async _handleQuickTabAction(action, quickTabId, tabId) {
+      switch (action) {
+        case 'goToTab':
+          await this.handleGoToTab(parseInt(tabId, 10));
+          break;
+        case 'minimize':
+          await this.handleMinimizeTab(quickTabId);
+          break;
+        case 'restore':
+          await this.handleRestoreTab(quickTabId);
+          break;
+        case 'close':
+          await this.handleCloseTab(quickTabId);
+          break;
+        default:
+          console.warn(`[PanelContentManager] Unknown action: ${action}`);
+      }
+
+      // Update panel after action
       setTimeout(() => this.updateContent(), 100);
     }
+
+    /**
+     * Close all minimized Quick Tabs
+     * v1.5.8.15 - Fixed to handle wrapped container format
+     */
     async handleCloseMinimized() {
       try {
-        const e = await browser.storage.sync.get("quick_tabs_state_v2");
-        if (!e || !e.quick_tabs_state_v2) return;
-        const t = e.quick_tabs_state_v2;
-        let n = !1;
-        const i = t.containers || t;
-        if (Object.keys(i).forEach(e => {
-          if ("saveId" === e || "timestamp" === e) return;
-          const t = i[e];
-          if (!t?.tabs || !Array.isArray(t.tabs)) return;
-          const o = t.tabs.length;
-          t.tabs = t.tabs.filter(e => !e.minimized), t.tabs.length !== o && (n = !0, t.lastUpdate = Date.now());
-        }), n) {
-          const e = {
-            containers: i,
+        const result = await browser.storage.sync.get('quick_tabs_state_v2');
+        if (!result || !result.quick_tabs_state_v2) return;
+
+        const state = result.quick_tabs_state_v2;
+        let hasChanges = false;
+
+        // v1.5.8.15: Handle wrapped format
+        const containers = state.containers || state;
+
+        // Iterate through containers
+        Object.keys(containers).forEach(key => {
+          // Skip metadata keys
+          if (key === 'saveId' || key === 'timestamp') return;
+
+          const containerState = containers[key];
+          if (!containerState?.tabs || !Array.isArray(containerState.tabs)) {
+            return;
+          }
+
+          const originalLength = containerState.tabs.length;
+
+          // Filter out minimized tabs
+          containerState.tabs = containerState.tabs.filter(t => !t.minimized);
+
+          if (containerState.tabs.length !== originalLength) {
+            hasChanges = true;
+            containerState.lastUpdate = Date.now();
+          }
+        });
+
+        if (hasChanges) {
+          // Save with proper wrapper format
+          const stateToSave = {
+            containers,
             saveId: this._generateSaveId(),
             timestamp: Date.now()
           };
-          await browser.storage.sync.set({
-            quick_tabs_state_v2: e
-          }), await this._updateSessionStorage(e), Z("[PanelContentManager] Closed minimized Quick Tabs"), 
+
+          await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
+
+          // Update session storage
+          await this._updateSessionStorage(stateToSave);
+
+          debug('[PanelContentManager] Closed minimized Quick Tabs');
           await this.updateContent();
         }
-      } catch (e) {
-        console.error("[PanelContentManager] Error closing minimized:", e);
+      } catch (err) {
+        console.error('[PanelContentManager] Error closing minimized:', err);
       }
     }
-    async _updateSessionStorage(e) {
-      void 0 !== browser.storage.session && await browser.storage.session.set({
-        quick_tabs_session: e
-      });
+
+    /**
+     * Update session storage helper
+     * @param {Object} state - State to save
+     * @private
+     */
+    async _updateSessionStorage(state) {
+      if (typeof browser.storage.session !== 'undefined') {
+        await browser.storage.session.set({ quick_tabs_session: state });
+      }
     }
+
+    /**
+     * Close all Quick Tabs
+     * v1.5.8.15 - Fixed to use proper wrapped format
+     */
     async handleCloseAll() {
       try {
-        const e = {
+        // Use wrapped container format
+        const emptyState = {
           containers: {
-            "firefox-default": {
-              tabs: [],
-              lastUpdate: Date.now()
-            }
+            'firefox-default': { tabs: [], lastUpdate: Date.now() }
           },
           saveId: this._generateSaveId(),
           timestamp: Date.now()
         };
-        await browser.storage.sync.set({
-          quick_tabs_state_v2: e
-        }), await this._updateSessionStorage(e), browser.runtime.sendMessage({
-          action: "CLEAR_ALL_QUICK_TABS"
-        }).catch(() => {}), Z("[PanelContentManager] Closed all Quick Tabs"), await this.updateContent();
-      } catch (e) {
-        console.error("[PanelContentManager] Error closing all:", e);
+
+        await browser.storage.sync.set({ quick_tabs_state_v2: emptyState });
+
+        // Clear session storage
+        await this._updateSessionStorage(emptyState);
+
+        // Notify all tabs via background
+        browser.runtime
+          .sendMessage({
+            action: 'CLEAR_ALL_QUICK_TABS'
+          })
+          .catch(() => {
+            // Ignore errors when background script is not available
+          });
+
+        debug('[PanelContentManager] Closed all Quick Tabs');
+        await this.updateContent();
+      } catch (err) {
+        console.error('[PanelContentManager] Error closing all:', err);
       }
     }
-    async handleGoToTab(e) {
+
+    /**
+     * Go to browser tab
+     * @param {number} tabId - Browser tab ID
+     */
+    async handleGoToTab(tabId) {
       try {
-        await browser.tabs.update(e, {
-          active: !0
-        }), Z(`[PanelContentManager] Switched to tab ${e}`);
-      } catch (e) {
-        console.error("[PanelContentManager] Error switching to tab:", e);
+        await browser.tabs.update(tabId, { active: true });
+        debug(`[PanelContentManager] Switched to tab ${tabId}`);
+      } catch (err) {
+        console.error('[PanelContentManager] Error switching to tab:', err);
       }
     }
-    handleMinimizeTab(e) {
-      this.quickTabsManager?.minimizeById && this.quickTabsManager.minimizeById(e);
+
+    /**
+     * Minimize Quick Tab
+     * @param {string} quickTabId - Quick Tab ID
+     */
+    handleMinimizeTab(quickTabId) {
+      if (this.quickTabsManager?.minimizeById) {
+        this.quickTabsManager.minimizeById(quickTabId);
+      }
     }
-    handleRestoreTab(e) {
-      this.quickTabsManager?.restoreById && this.quickTabsManager.restoreById(e);
+
+    /**
+     * Restore Quick Tab
+     * @param {string} quickTabId - Quick Tab ID
+     */
+    handleRestoreTab(quickTabId) {
+      if (this.quickTabsManager?.restoreById) {
+        this.quickTabsManager.restoreById(quickTabId);
+      }
     }
-    handleCloseTab(e) {
-      this.quickTabsManager?.closeById && this.quickTabsManager.closeById(e);
+
+    /**
+     * Close Quick Tab
+     * @param {string} quickTabId - Quick Tab ID
+     */
+    handleCloseTab(quickTabId) {
+      if (this.quickTabsManager?.closeById) {
+        this.quickTabsManager.closeById(quickTabId);
+      }
     }
+
+    /**
+     * Generate unique save ID for transaction tracking
+     * @returns {string} Unique save ID
+     * @private
+     */
     _generateSaveId() {
       return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
-    setOnClose(e) {
-      this.onClose = e;
+
+    /**
+     * Set callback for panel close
+     * @param {Function} callback - Close callback
+     */
+    setOnClose(callback) {
+      this.onClose = callback;
     }
+
+    /**
+     * Cleanup event listeners and references
+     */
     destroy() {
-      this.eventListeners.forEach(({element: e, type: t, handler: n}) => {
-        e && e.removeEventListener(t, n);
-      }), this.eventListeners = [], this.panel = null, this.uiBuilder = null, this.stateManager = null, 
-      this.quickTabsManager = null, this.onClose = null, Z("[PanelContentManager] Destroyed");
+      // Remove all event listeners
+      this.eventListeners.forEach(({ element, type, handler }) => {
+        if (element) {
+          element.removeEventListener(type, handler);
+        }
+      });
+      this.eventListeners = [];
+
+      // Clear references
+      this.panel = null;
+      this.uiBuilder = null;
+      this.stateManager = null;
+      this.quickTabsManager = null;
+      this.onClose = null;
+
+      debug('[PanelContentManager] Destroyed');
     }
   }
-  class G {
-    constructor(e, t, n = {}) {
-      this.panel = e, this.handle = t, this.onDragEnd = n.onDragEnd || null, this.onBroadcast = n.onBroadcast || null, 
-      this.isDragging = !1, this.currentPointerId = null, this.offsetX = 0, this.offsetY = 0, 
+
+  /**
+   * PanelDragController Component
+   * Handles drag operations for the Quick Tabs Manager Panel using Pointer Events API
+   *
+   * Extracted from panel.js as part of Phase 2.10 refactoring
+   * Based on window/DragController.js pattern from Phase 2.9
+   *
+   * Responsibilities:
+   * - Handle panel dragging via header/drag handle
+   * - Use Pointer Events API (pointerdown/move/up/cancel)
+   * - Update panel position during drag
+   * - Save state and broadcast position on drag end
+   * - Handle drag cancellation gracefully
+   *
+   * v1.6.0 - Phase 2.10: Extracted drag logic from PanelManager
+   */
+
+  class PanelDragController {
+    /**
+     * Create a drag controller for the panel
+     * @param {HTMLElement} panel - Panel element
+     * @param {HTMLElement} handle - Drag handle element (usually panel header)
+     * @param {Object} callbacks - Event callbacks
+     * @param {Function} callbacks.onDragEnd - Called when drag ends (left, top)
+     * @param {Function} callbacks.onBroadcast - Called to broadcast position updates
+     */
+    constructor(panel, handle, callbacks = {}) {
+      this.panel = panel;
+      this.handle = handle;
+      this.onDragEnd = callbacks.onDragEnd || null;
+      this.onBroadcast = callbacks.onBroadcast || null;
+
+      this.isDragging = false;
+      this.currentPointerId = null;
+      this.offsetX = 0;
+      this.offsetY = 0;
+
       this._setupEventListeners();
     }
+
+    /**
+     * Setup drag event listeners on handle
+     * @private
+     */
     _setupEventListeners() {
-      this.handle.addEventListener("pointerdown", this._handlePointerDown.bind(this)), 
-      this.handle.addEventListener("pointermove", this._handlePointerMove.bind(this)), 
-      this.handle.addEventListener("pointerup", this._handlePointerUp.bind(this)), this.handle.addEventListener("pointercancel", this._handlePointerCancel.bind(this));
+      this.handle.addEventListener('pointerdown', this._handlePointerDown.bind(this));
+      this.handle.addEventListener('pointermove', this._handlePointerMove.bind(this));
+      this.handle.addEventListener('pointerup', this._handlePointerUp.bind(this));
+      this.handle.addEventListener('pointercancel', this._handlePointerCancel.bind(this));
     }
+
+    /**
+     * Handle pointer down - start drag
+     * @param {PointerEvent} e - Pointer event
+     * @private
+     */
     _handlePointerDown(e) {
-      if (0 !== e.button) return;
-      if (e.target.classList.contains("panel-btn")) return;
-      this.isDragging = !0, this.currentPointerId = e.pointerId, this.handle.setPointerCapture(e.pointerId);
-      const t = this.panel.getBoundingClientRect();
-      this.offsetX = e.clientX - t.left, this.offsetY = e.clientY - t.top, this.handle.style.cursor = "grabbing", 
+      // Only left click
+      if (e.button !== 0) return;
+
+      // Ignore clicks on buttons
+      if (e.target.classList.contains('panel-btn')) return;
+
+      this.isDragging = true;
+      this.currentPointerId = e.pointerId;
+
+      // Capture pointer
+      this.handle.setPointerCapture(e.pointerId);
+
+      // Calculate offset from panel position
+      const rect = this.panel.getBoundingClientRect();
+      this.offsetX = e.clientX - rect.left;
+      this.offsetY = e.clientY - rect.top;
+
+      // Visual feedback
+      this.handle.style.cursor = 'grabbing';
+
       e.preventDefault();
     }
+
+    /**
+     * Handle pointer move - update position
+     * @param {PointerEvent} e - Pointer event
+     * @private
+     */
     _handlePointerMove(e) {
       if (!this.isDragging || e.pointerId !== this.currentPointerId) return;
-      const t = e.clientX - this.offsetX, n = e.clientY - this.offsetY;
-      this.panel.style.left = `${t}px`, this.panel.style.top = `${n}px`, e.preventDefault();
+
+      // Calculate new position
+      const newLeft = e.clientX - this.offsetX;
+      const newTop = e.clientY - this.offsetY;
+
+      // Apply position
+      this.panel.style.left = `${newLeft}px`;
+      this.panel.style.top = `${newTop}px`;
+
+      e.preventDefault();
     }
+
+    /**
+     * Handle pointer up - end drag
+     * @param {PointerEvent} e - Pointer event
+     * @private
+     */
     _handlePointerUp(e) {
       if (!this.isDragging || e.pointerId !== this.currentPointerId) return;
-      this.isDragging = !1, this.handle.releasePointerCapture(e.pointerId), this.handle.style.cursor = "grab";
-      const t = this.panel.getBoundingClientRect(), n = t.left, i = t.top;
-      this.onDragEnd && this.onDragEnd(n, i), this.onBroadcast && this.onBroadcast({
-        left: n,
-        top: i
-      });
+
+      this.isDragging = false;
+      this.handle.releasePointerCapture(e.pointerId);
+      this.handle.style.cursor = 'grab';
+
+      // Get final position
+      const rect = this.panel.getBoundingClientRect();
+      const finalLeft = rect.left;
+      const finalTop = rect.top;
+
+      // Save final position
+      if (this.onDragEnd) {
+        this.onDragEnd(finalLeft, finalTop);
+      }
+
+      // Broadcast position to other tabs
+      if (this.onBroadcast) {
+        this.onBroadcast({ left: finalLeft, top: finalTop });
+      }
     }
-    _handlePointerCancel(e) {
+
+    /**
+     * Handle pointer cancel - drag interrupted
+     * @param {PointerEvent} _e - Pointer event
+     * @private
+     */
+    _handlePointerCancel(_e) {
       if (!this.isDragging) return;
-      this.isDragging = !1, this.handle.style.cursor = "grab";
-      const t = this.panel.getBoundingClientRect();
-      this.onDragEnd && this.onDragEnd(t.left, t.top);
+
+      this.isDragging = false;
+      this.handle.style.cursor = 'grab';
+
+      // Save position even though drag was cancelled
+      const rect = this.panel.getBoundingClientRect();
+      if (this.onDragEnd) {
+        this.onDragEnd(rect.left, rect.top);
+      }
     }
+
+    /**
+     * Destroy controller and clean up
+     */
     destroy() {
-      this.handle.removeEventListener("pointerdown", this._handlePointerDown), this.handle.removeEventListener("pointermove", this._handlePointerMove), 
-      this.handle.removeEventListener("pointerup", this._handlePointerUp), this.handle.removeEventListener("pointercancel", this._handlePointerCancel), 
-      this.panel = null, this.handle = null, this.onDragEnd = null, this.onBroadcast = null;
+      // Remove event listeners
+      this.handle.removeEventListener('pointerdown', this._handlePointerDown);
+      this.handle.removeEventListener('pointermove', this._handlePointerMove);
+      this.handle.removeEventListener('pointerup', this._handlePointerUp);
+      this.handle.removeEventListener('pointercancel', this._handlePointerCancel);
+
+      // Clear references
+      this.panel = null;
+      this.handle = null;
+      this.onDragEnd = null;
+      this.onBroadcast = null;
     }
   }
-  const Y = {
+
+  /**
+   * PanelResizeController - Manages 8-direction resize handles for Quick Tabs Manager Panel
+   * Part of Phase 2.10 refactoring - Panel component extraction
+   *
+   * Follows the table-driven configuration pattern established in Phase 2.3
+   * (window/ResizeHandle.js and window/ResizeController.js)
+   *
+   * Features:
+   * - 8-direction resize (n, s, e, w, ne, nw, se, sw)
+   * - Pointer Events API (pointerdown/move/up/cancel)
+   * - Min constraints: 250px width, 300px height
+   * - Position updates for nw/ne/sw directions
+   * - Broadcasts size/position on resize end
+   *
+   * Extracted from panel.js (lines 957-1096, cc=high) → (cc=3 target)
+   */
+
+
+  /**
+   * Configuration for each resize direction
+   * Table-driven approach eliminates conditional complexity
+   */
+  const RESIZE_CONFIGS = {
+    // Corner handles
     nw: {
-      cursor: "nw-resize",
-      position: {
-        top: 0,
-        left: 0
-      },
-      size: {
-        width: 10,
-        height: 10
-      },
-      directions: [ "w", "n" ]
+      cursor: 'nw-resize',
+      position: { top: 0, left: 0 },
+      size: { width: 10, height: 10 },
+      directions: ['w', 'n']
     },
     ne: {
-      cursor: "ne-resize",
-      position: {
-        top: 0,
-        right: 0
-      },
-      size: {
-        width: 10,
-        height: 10
-      },
-      directions: [ "e", "n" ]
+      cursor: 'ne-resize',
+      position: { top: 0, right: 0 },
+      size: { width: 10, height: 10 },
+      directions: ['e', 'n']
     },
     sw: {
-      cursor: "sw-resize",
-      position: {
-        bottom: 0,
-        left: 0
-      },
-      size: {
-        width: 10,
-        height: 10
-      },
-      directions: [ "w", "s" ]
+      cursor: 'sw-resize',
+      position: { bottom: 0, left: 0 },
+      size: { width: 10, height: 10 },
+      directions: ['w', 's']
     },
     se: {
-      cursor: "se-resize",
-      position: {
-        bottom: 0,
-        right: 0
-      },
-      size: {
-        width: 10,
-        height: 10
-      },
-      directions: [ "e", "s" ]
+      cursor: 'se-resize',
+      position: { bottom: 0, right: 0 },
+      size: { width: 10, height: 10 },
+      directions: ['e', 's']
     },
+    // Edge handles
     n: {
-      cursor: "n-resize",
-      position: {
-        top: 0,
-        left: 10,
-        right: 10
-      },
-      size: {
-        height: 10
-      },
-      directions: [ "n" ]
+      cursor: 'n-resize',
+      position: { top: 0, left: 10, right: 10 },
+      size: { height: 10 },
+      directions: ['n']
     },
     s: {
-      cursor: "s-resize",
-      position: {
-        bottom: 0,
-        left: 10,
-        right: 10
-      },
-      size: {
-        height: 10
-      },
-      directions: [ "s" ]
+      cursor: 's-resize',
+      position: { bottom: 0, left: 10, right: 10 },
+      size: { height: 10 },
+      directions: ['s']
     },
     e: {
-      cursor: "e-resize",
-      position: {
-        top: 10,
-        right: 0,
-        bottom: 10
-      },
-      size: {
-        width: 10
-      },
-      directions: [ "e" ]
+      cursor: 'e-resize',
+      position: { top: 10, right: 0, bottom: 10 },
+      size: { width: 10 },
+      directions: ['e']
     },
     w: {
-      cursor: "w-resize",
-      position: {
-        top: 10,
-        left: 0,
-        bottom: 10
-      },
-      size: {
-        width: 10
-      },
-      directions: [ "w" ]
+      cursor: 'w-resize',
+      position: { top: 10, left: 0, bottom: 10 },
+      size: { width: 10 },
+      directions: ['w']
     }
   };
-  class K {
-    constructor(e, t = {}) {
-      this.panel = e, this.callbacks = t, this.handles = [], this.minWidth = 250, this.minHeight = 300, 
+
+  /**
+   * PanelResizeController class
+   *
+   * Public API:
+   * - constructor(panel, callbacks) - Initialize with panel element and callbacks
+   * - destroy() - Clean up handles and listeners
+   *
+   * Callbacks:
+   * - onSizeChange(width, height) - Called during resize
+   * - onPositionChange(left, top) - Called when position changes (nw/ne/sw)
+   * - onResizeEnd(width, height, left, top) - Called when resize completes
+   * - onBroadcast({width, height, left, top}) - Called to broadcast to other tabs
+   */
+  class PanelResizeController {
+    constructor(panel, callbacks = {}) {
+      this.panel = panel;
+      this.callbacks = callbacks;
+      this.handles = [];
+      this.minWidth = 250;
+      this.minHeight = 300;
+
       this._attachHandles();
     }
+
+    /**
+     * Create and attach all resize handles
+     * Private method - called in constructor
+     */
     _attachHandles() {
-      Object.entries(Y).forEach(([e, t]) => {
-        const n = this._createHandle(e, t);
-        this.panel.appendChild(n), this.handles.push({
-          direction: e,
-          element: n
-        });
-      }), Z("[PanelResizeController] Attached 8 resize handles");
-    }
-    _createHandle(e, t) {
-      const n = document.createElement("div");
-      n.className = `panel-resize-handle ${e}`;
-      const i = {
-        position: "absolute",
-        cursor: t.cursor,
-        zIndex: "10",
-        ...this._buildPositionStyles(t.position),
-        ...this._buildSizeStyles(t.size)
-      };
-      return n.style.cssText = Object.entries(i).map(([e, t]) => `${this._camelToKebab(e)}: ${t};`).join(" "), 
-      this._attachHandleListeners(n, e, t), n;
-    }
-    _buildPositionStyles(e) {
-      const t = {};
-      return void 0 !== e.top && (t.top = `${e.top}px`), void 0 !== e.bottom && (t.bottom = `${e.bottom}px`), 
-      void 0 !== e.left && (t.left = `${e.left}px`), void 0 !== e.right && (t.right = `${e.right}px`), 
-      t;
-    }
-    _buildSizeStyles(e) {
-      const t = {};
-      return e.width && (t.width = `${e.width}px`), e.height && (t.height = `${e.height}px`), 
-      t;
-    }
-    _camelToKebab(e) {
-      return e.replace(/[A-Z]/g, e => `-${e.toLowerCase()}`);
-    }
-    _attachHandleListeners(e, t, n) {
-      let i = !1, o = null, s = null;
-      e.addEventListener("pointerdown", t => {
-        s = this._initResize(t, e), s && (i = !0, o = t.pointerId);
-      }), e.addEventListener("pointermove", e => {
-        i && e.pointerId === o && (this._performResize(e, s, n, t), e.preventDefault());
-      }), e.addEventListener("pointerup", t => {
-        i && t.pointerId === o && (this._finishResize(e, t.pointerId), i = !1);
-      }), e.addEventListener("pointercancel", t => {
-        i && (this._finishResize(e, null), i = !1);
+      Object.entries(RESIZE_CONFIGS).forEach(([direction, config]) => {
+        const handle = this._createHandle(direction, config);
+        this.panel.appendChild(handle);
+        this.handles.push({ direction, element: handle });
       });
+
+      debug('[PanelResizeController] Attached 8 resize handles');
     }
-    _initResize(e, t) {
-      if (0 !== e.button) return null;
-      t.setPointerCapture && t.setPointerCapture(e.pointerId);
-      const n = this.panel.getBoundingClientRect(), i = {
+
+    /**
+     * Create a single resize handle element
+     * Returns DOM element with event listeners attached
+     */
+    _createHandle(direction, config) {
+      const handle = document.createElement('div');
+      handle.className = `panel-resize-handle ${direction}`;
+
+      // Apply positioning and sizing from config
+      const styleProps = {
+        position: 'absolute',
+        cursor: config.cursor,
+        zIndex: '10',
+        ...this._buildPositionStyles(config.position),
+        ...this._buildSizeStyles(config.size)
+      };
+
+      handle.style.cssText = Object.entries(styleProps)
+        .map(([key, value]) => `${this._camelToKebab(key)}: ${value};`)
+        .join(' ');
+
+      // Attach pointer event handlers
+      this._attachHandleListeners(handle, direction, config);
+
+      return handle;
+    }
+
+    /**
+     * Build CSS position styles from config
+     */
+    _buildPositionStyles(position) {
+      const styles = {};
+      if (position.top !== undefined) styles.top = `${position.top}px`;
+      if (position.bottom !== undefined) styles.bottom = `${position.bottom}px`;
+      if (position.left !== undefined) styles.left = `${position.left}px`;
+      if (position.right !== undefined) styles.right = `${position.right}px`;
+      return styles;
+    }
+
+    /**
+     * Build CSS size styles from config
+     */
+    _buildSizeStyles(size) {
+      const styles = {};
+      if (size.width) styles.width = `${size.width}px`;
+      if (size.height) styles.height = `${size.height}px`;
+      return styles;
+    }
+
+    /**
+     * Convert camelCase to kebab-case for CSS properties
+     */
+    _camelToKebab(str) {
+      return str.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+    }
+
+    /**
+     * Attach pointer event listeners to a handle
+     */
+    _attachHandleListeners(handle, direction, config) {
+      let isResizing = false;
+      let currentPointerId = null;
+      let startState = null;
+
+      const handlePointerDown = e => {
+        startState = this._initResize(e, handle);
+        if (!startState) return;
+
+        isResizing = true;
+        currentPointerId = e.pointerId;
+      };
+
+      const handlePointerMove = e => {
+        if (!isResizing || e.pointerId !== currentPointerId) return;
+
+        this._performResize(e, startState, config, direction);
+        e.preventDefault();
+      };
+
+      const handlePointerUp = e => {
+        if (!isResizing || e.pointerId !== currentPointerId) return;
+
+        this._finishResize(handle, e.pointerId);
+        isResizing = false;
+      };
+
+      const handlePointerCancel = _e => {
+        if (!isResizing) return;
+        this._finishResize(handle, null);
+        isResizing = false;
+      };
+
+      // Attach listeners
+      handle.addEventListener('pointerdown', handlePointerDown);
+      handle.addEventListener('pointermove', handlePointerMove);
+      handle.addEventListener('pointerup', handlePointerUp);
+      handle.addEventListener('pointercancel', handlePointerCancel);
+    }
+
+    /**
+     * Initialize resize operation on pointerdown
+     */
+    _initResize(e, handle) {
+      if (e.button !== 0) return null; // Left button only
+
+      if (handle.setPointerCapture) {
+        handle.setPointerCapture(e.pointerId);
+      }
+
+      const rect = this.panel.getBoundingClientRect();
+      const startState = {
         x: e.clientX,
         y: e.clientY,
-        width: n.width,
-        height: n.height,
-        left: n.left,
-        top: n.top
+        width: rect.width,
+        height: rect.height,
+        left: rect.left,
+        top: rect.top
       };
-      return e.preventDefault(), e.stopPropagation(), i;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      return startState;
     }
-    _performResize(e, t, n, i) {
-      const o = e.clientX - t.x, s = e.clientY - t.y, {newWidth: a, newHeight: r, newLeft: l, newTop: c} = this._calculateNewDimensions(i, n.directions, t, o, s);
-      this.panel.style.width = `${a}px`, this.panel.style.height = `${r}px`, this.panel.style.left = `${l}px`, 
-      this.panel.style.top = `${c}px`, this.callbacks.onSizeChange && this.callbacks.onSizeChange(a, r), 
-      !this.callbacks.onPositionChange || l === t.left && c === t.top || this.callbacks.onPositionChange(l, c);
-    }
-    _finishResize(e, t) {
-      t && e.releasePointerCapture && e.releasePointerCapture(t);
-      const n = this.panel.getBoundingClientRect();
-      this.callbacks.onResizeEnd && this.callbacks.onResizeEnd(n.width, n.height, n.left, n.top), 
-      this.callbacks.onBroadcast && this.callbacks.onBroadcast({
-        width: n.width,
-        height: n.height,
-        left: n.left,
-        top: n.top
-      }), Z(`[PanelResizeController] Resize end: ${n.width}x${n.height} at (${n.left}, ${n.top})`);
-    }
-    _calculateNewDimensions(e, t, n, i, o) {
-      let s = n.width, a = n.height, r = n.left, l = n.top;
-      if (t.includes("e") && (s = Math.max(this.minWidth, n.width + i)), t.includes("w")) {
-        const e = n.width - this.minWidth, t = Math.min(i, e);
-        s = n.width - t, r = n.left + t;
+
+    /**
+     * Perform resize on pointermove
+     */
+    _performResize(e, startState, config, direction) {
+      const dx = e.clientX - startState.x;
+      const dy = e.clientY - startState.y;
+
+      const { newWidth, newHeight, newLeft, newTop } = this._calculateNewDimensions(
+        direction,
+        config.directions,
+        startState,
+        dx,
+        dy
+      );
+
+      // Apply new dimensions
+      this.panel.style.width = `${newWidth}px`;
+      this.panel.style.height = `${newHeight}px`;
+      this.panel.style.left = `${newLeft}px`;
+      this.panel.style.top = `${newTop}px`;
+
+      // Notify via callbacks
+      if (this.callbacks.onSizeChange) {
+        this.callbacks.onSizeChange(newWidth, newHeight);
       }
-      if (t.includes("s") && (a = Math.max(this.minHeight, n.height + o)), t.includes("n")) {
-        const e = n.height - this.minHeight, t = Math.min(o, e);
-        a = n.height - t, l = n.top + t;
+      if (
+        this.callbacks.onPositionChange &&
+        (newLeft !== startState.left || newTop !== startState.top)
+      ) {
+        this.callbacks.onPositionChange(newLeft, newTop);
       }
-      return {
-        newWidth: s,
-        newHeight: a,
-        newLeft: r,
-        newTop: l
-      };
     }
+
+    /**
+     * Finish resize on pointerup/pointercancel
+     */
+    _finishResize(handle, pointerId) {
+      if (pointerId && handle.releasePointerCapture) {
+        handle.releasePointerCapture(pointerId);
+      }
+
+      const rect = this.panel.getBoundingClientRect();
+
+      // Notify resize end
+      if (this.callbacks.onResizeEnd) {
+        this.callbacks.onResizeEnd(rect.width, rect.height, rect.left, rect.top);
+      }
+
+      // Broadcast to other tabs (v1.5.9.8 fix)
+      if (this.callbacks.onBroadcast) {
+        this.callbacks.onBroadcast({
+          width: rect.width,
+          height: rect.height,
+          left: rect.left,
+          top: rect.top
+        });
+      }
+
+      debug(
+        `[PanelResizeController] Resize end: ${rect.width}x${rect.height} at (${rect.left}, ${rect.top})`
+      );
+    }
+
+    /**
+     * Calculate new dimensions based on resize direction
+     * Handles min constraints and position updates for nw/ne/sw directions
+     */
+    _calculateNewDimensions(direction, directions, startState, dx, dy) {
+      let newWidth = startState.width;
+      let newHeight = startState.height;
+      let newLeft = startState.left;
+      let newTop = startState.top;
+
+      // East (right edge)
+      if (directions.includes('e')) {
+        newWidth = Math.max(this.minWidth, startState.width + dx);
+      }
+
+      // West (left edge) - also moves position
+      if (directions.includes('w')) {
+        const maxDx = startState.width - this.minWidth;
+        const constrainedDx = Math.min(dx, maxDx);
+        newWidth = startState.width - constrainedDx;
+        newLeft = startState.left + constrainedDx;
+      }
+
+      // South (bottom edge)
+      if (directions.includes('s')) {
+        newHeight = Math.max(this.minHeight, startState.height + dy);
+      }
+
+      // North (top edge) - also moves position
+      if (directions.includes('n')) {
+        const maxDy = startState.height - this.minHeight;
+        const constrainedDy = Math.min(dy, maxDy);
+        newHeight = startState.height - constrainedDy;
+        newTop = startState.top + constrainedDy;
+      }
+
+      return { newWidth, newHeight, newLeft, newTop };
+    }
+
+    /**
+     * Clean up all handles and listeners
+     */
     destroy() {
-      this.handles.forEach(({element: e}) => {
-        e.remove();
-      }), this.handles = [], Z("[PanelResizeController] Destroyed all handles");
+      this.handles.forEach(({ element }) => {
+        element.remove();
+      });
+      this.handles = [];
+
+      debug('[PanelResizeController] Destroyed all handles');
     }
   }
-  class j {
-    constructor(e = {}) {
-      this.callbacks = e, this.currentContainerId = "firefox-default", this.broadcastChannel = null, 
-      this.broadcastDebounce = new Map, this.BROADCAST_DEBOUNCE_MS = 50, this.panelState = {
+
+  /**
+   * PanelStateManager - Manages state persistence and cross-tab synchronization
+   * Part of Phase 2.10 refactoring - Panel component extraction
+   *
+   * Features:
+   * - Container context detection (Firefox Multi-Account Containers)
+   * - BroadcastChannel setup for cross-tab sync
+   * - State persistence to browser.storage.local
+   * - Debounced broadcast message handling (50ms, v1.5.9.8 fix)
+   * - Local-only state updates (prevents infinite broadcast loops)
+   *
+   * Extracted from panel.js (lines 430-451, 457-528, 596-650, cc=high) → (cc=3 target)
+   */
+
+
+  /**
+   * PanelStateManager class
+   *
+   * Public API:
+   * - constructor(callbacks) - Initialize with callbacks
+   * - async init() - Initialize (detect container, setup broadcast, load state)
+   * - async detectContainerContext() - Detect and return current container ID
+   * - setupBroadcastChannel() - Setup BroadcastChannel for cross-tab sync
+   * - async loadPanelState() - Load panel state from browser.storage.local
+   * - async savePanelState(panel) - Save panel state to storage + broadcast
+   * - savePanelStateLocal(panel) - Save state locally without storage write (v1.5.9.8)
+   * - broadcast(type, data) - Broadcast message to other tabs
+   * - destroy() - Clean up broadcast channel
+   *
+   * Callbacks:
+   * - onStateLoaded(state) - Called when state is loaded from storage
+   * - onBroadcastReceived(type, data) - Called when broadcast message received
+   */
+  class PanelStateManager {
+    constructor(callbacks = {}) {
+      this.callbacks = callbacks;
+      this.currentContainerId = 'firefox-default';
+      this.broadcastChannel = null;
+      this.broadcastDebounce = new Map();
+      this.BROADCAST_DEBOUNCE_MS = 50;
+      this.panelState = {
         left: 100,
         top: 100,
         width: 350,
         height: 500,
-        isOpen: !1
+        isOpen: false
       };
     }
+
+    /**
+     * Initialize all components
+     */
     async init() {
-      await this.detectContainerContext(), this.setupBroadcastChannel(), await this.loadPanelState(), 
-      Z("[PanelStateManager] Initialized");
+      await this.detectContainerContext();
+      this.setupBroadcastChannel();
+      await this.loadPanelState();
+      debug('[PanelStateManager] Initialized');
     }
+
+    /**
+     * Detect container context (Firefox Multi-Account Containers)
+     * Returns the current tab's cookieStoreId
+     */
     async detectContainerContext() {
-      if (this.currentContainerId = "firefox-default", "undefined" == typeof browser || !browser.tabs) return Z("[PanelStateManager] Browser tabs API not available, using default container"), 
-      this.currentContainerId;
-      try {
-        const e = await browser.tabs.query({
-          active: !0,
-          currentWindow: !0
-        });
-        e && e.length > 0 && e[0].cookieStoreId ? (this.currentContainerId = e[0].cookieStoreId, 
-        Z(`[PanelStateManager] Container detected: ${this.currentContainerId}`)) : Z("[PanelStateManager] No cookieStoreId, using default container");
-      } catch (e) {
-        Z("[PanelStateManager] Failed to detect container:", e);
+      this.currentContainerId = 'firefox-default';
+
+      if (typeof browser === 'undefined' || !browser.tabs) {
+        debug('[PanelStateManager] Browser tabs API not available, using default container');
+        return this.currentContainerId;
       }
+
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs && tabs.length > 0 && tabs[0].cookieStoreId) {
+          this.currentContainerId = tabs[0].cookieStoreId;
+          debug(`[PanelStateManager] Container detected: ${this.currentContainerId}`);
+        } else {
+          debug('[PanelStateManager] No cookieStoreId, using default container');
+        }
+      } catch (err) {
+        debug('[PanelStateManager] Failed to detect container:', err);
+      }
+
       return this.currentContainerId;
     }
+
+    /**
+     * Setup BroadcastChannel for cross-tab panel sync
+     * v1.5.9.8 - Added position/size sync and debouncing
+     */
     setupBroadcastChannel() {
-      if ("undefined" != typeof BroadcastChannel) try {
-        this.broadcastChannel = new BroadcastChannel("quick-tabs-panel-sync"), this.broadcastChannel.onmessage = e => {
-          this._handleBroadcast(e.data);
-        }, Z("[PanelStateManager] BroadcastChannel initialized");
-      } catch (e) {
-        console.error("[PanelStateManager] Failed to setup BroadcastChannel:", e);
-      } else Z("[PanelStateManager] BroadcastChannel not available");
+      if (typeof BroadcastChannel === 'undefined') {
+        debug('[PanelStateManager] BroadcastChannel not available');
+        return;
+      }
+
+      try {
+        this.broadcastChannel = new BroadcastChannel('quick-tabs-panel-sync');
+
+        this.broadcastChannel.onmessage = event => {
+          this._handleBroadcast(event.data);
+        };
+
+        debug('[PanelStateManager] BroadcastChannel initialized');
+      } catch (err) {
+        console.error('[PanelStateManager] Failed to setup BroadcastChannel:', err);
+      }
     }
-    _handleBroadcast(e) {
-      const {type: t, data: n} = e, i = Date.now(), o = this.broadcastDebounce.get(t);
-      o && i - o < this.BROADCAST_DEBOUNCE_MS ? Z(`[PanelStateManager] Ignoring duplicate broadcast: ${t}`) : (this.broadcastDebounce.set(t, i), 
-      this.callbacks.onBroadcastReceived && this.callbacks.onBroadcastReceived(t, n));
+
+    /**
+     * Handle incoming broadcast messages
+     * v1.5.9.8 - Debounce rapid messages (50ms)
+     */
+    _handleBroadcast(eventData) {
+      const { type, data } = eventData;
+
+      // Debounce rapid messages
+      const now = Date.now();
+      const lastProcessed = this.broadcastDebounce.get(type);
+
+      if (lastProcessed && now - lastProcessed < this.BROADCAST_DEBOUNCE_MS) {
+        debug(`[PanelStateManager] Ignoring duplicate broadcast: ${type}`);
+        return;
+      }
+
+      this.broadcastDebounce.set(type, now);
+
+      // Notify via callback
+      if (this.callbacks.onBroadcastReceived) {
+        this.callbacks.onBroadcastReceived(type, data);
+      }
     }
+
+    /**
+     * Load panel state from browser.storage.local
+     */
     async loadPanelState() {
       try {
-        const e = await browser.storage.local.get("quick_tabs_panel_state");
-        if (!e || !e.quick_tabs_panel_state) return this.panelState;
-        this.panelState = {
-          ...this.panelState,
-          ...e.quick_tabs_panel_state
-        }, Z("[PanelStateManager] Loaded panel state:", this.panelState), this.callbacks.onStateLoaded && this.callbacks.onStateLoaded(this.panelState);
-      } catch (e) {
-        console.error("[PanelStateManager] Error loading panel state:", e);
+        const result = await browser.storage.local.get('quick_tabs_panel_state');
+        if (!result || !result.quick_tabs_panel_state) {
+          return this.panelState;
+        }
+
+        this.panelState = { ...this.panelState, ...result.quick_tabs_panel_state };
+        debug('[PanelStateManager] Loaded panel state:', this.panelState);
+
+        // Notify via callback
+        if (this.callbacks.onStateLoaded) {
+          this.callbacks.onStateLoaded(this.panelState);
+        }
+      } catch (err) {
+        console.error('[PanelStateManager] Error loading panel state:', err);
       }
+
       return this.panelState;
     }
-    async savePanelState(e) {
-      if (!e) return;
-      const t = e.getBoundingClientRect();
+
+    /**
+     * Save panel state to browser.storage.local
+     * Also broadcasts to other tabs
+     */
+    async savePanelState(panel) {
+      if (!panel) return;
+
+      const rect = panel.getBoundingClientRect();
+
       this.panelState = {
-        left: Math.round(t.left),
-        top: Math.round(t.top),
-        width: Math.round(t.width),
-        height: Math.round(t.height),
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
         isOpen: this.panelState.isOpen
       };
+
       try {
-        await browser.storage.local.set({
-          quick_tabs_panel_state: this.panelState
-        }), Z("[PanelStateManager] Saved panel state");
-      } catch (e) {
-        console.error("[PanelStateManager] Error saving panel state:", e);
+        await browser.storage.local.set({ quick_tabs_panel_state: this.panelState });
+        debug('[PanelStateManager] Saved panel state');
+      } catch (err) {
+        console.error('[PanelStateManager] Error saving panel state:', err);
       }
     }
-    savePanelStateLocal(e) {
-      if (!e) return;
-      const t = e.getBoundingClientRect();
+
+    /**
+     * v1.5.9.8 - Save panel state locally without storage write
+     * Prevents infinite loops when receiving broadcast messages
+     */
+    savePanelStateLocal(panel) {
+      if (!panel) return;
+
+      const rect = panel.getBoundingClientRect();
+
       this.panelState = {
-        left: Math.round(t.left),
-        top: Math.round(t.top),
-        width: Math.round(t.width),
-        height: Math.round(t.height),
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
         isOpen: this.panelState.isOpen
-      }, Z("[PanelStateManager] Updated local state (no storage write)");
+      };
+
+      debug('[PanelStateManager] Updated local state (no storage write)');
     }
-    broadcast(e, t) {
-      if (this.broadcastChannel) try {
-        this.broadcastChannel.postMessage({
-          type: e,
-          data: t,
-          timestamp: Date.now()
-        }), Z(`[PanelStateManager] Broadcast sent: ${e}`);
-      } catch (e) {
-        console.error("[PanelStateManager] Error broadcasting:", e);
+
+    /**
+     * Broadcast message to other tabs
+     */
+    broadcast(type, data) {
+      if (!this.broadcastChannel) return;
+
+      try {
+        this.broadcastChannel.postMessage({ type, data, timestamp: Date.now() });
+        debug(`[PanelStateManager] Broadcast sent: ${type}`);
+      } catch (err) {
+        console.error('[PanelStateManager] Error broadcasting:', err);
       }
     }
-    setIsOpen(e) {
-      this.panelState.isOpen = e;
+
+    /**
+     * Update isOpen state
+     */
+    setIsOpen(isOpen) {
+      this.panelState.isOpen = isOpen;
     }
+
+    /**
+     * Get current state
+     */
     getState() {
-      return {
-        ...this.panelState
-      };
+      return { ...this.panelState };
     }
+
+    /**
+     * Clean up broadcast channel
+     */
     destroy() {
-      this.broadcastChannel && (this.broadcastChannel.close(), this.broadcastChannel = null), 
-      this.broadcastDebounce.clear(), Z("[PanelStateManager] Destroyed");
+      if (this.broadcastChannel) {
+        this.broadcastChannel.close();
+        this.broadcastChannel = null;
+      }
+
+      this.broadcastDebounce.clear();
+      debug('[PanelStateManager] Destroyed');
     }
   }
-  class X {
+
+  /**
+   * PanelUIBuilder Component
+   * Handles DOM creation and rendering for the Quick Tabs Manager Panel
+   *
+   * Extracted from panel.js as part of Phase 2.10 refactoring
+   * Responsibilities:
+   * - Inject CSS styles into document
+   * - Create panel DOM structure from HTML template
+   * - Render container sections with Quick Tabs
+   * - Render individual Quick Tab items
+   * - Get container icon emojis
+   *
+   * v1.6.0 - Phase 2.10: Extracted UI building logic
+   */
+
+  // Panel HTML template
+  const PANEL_HTML = `
+<div id="quick-tabs-manager-panel" class="quick-tabs-manager-panel" style="display: none;">
+  <div class="panel-header">
+    <span class="panel-drag-handle">≡</span>
+    <h2 class="panel-title">Quick Tabs Manager</h2>
+    <div class="panel-controls">
+      <button class="panel-btn panel-minimize" title="Minimize Panel">−</button>
+      <button class="panel-btn panel-close" title="Close Panel (Ctrl+Alt+Z)">✕</button>
+    </div>
+  </div>
+  
+  <div class="panel-actions">
+    <button id="panel-closeMinimized" class="panel-btn-secondary" title="Close all minimized Quick Tabs">
+      Close Minimized
+    </button>
+    <button id="panel-closeAll" class="panel-btn-danger" title="Close all Quick Tabs">
+      Close All
+    </button>
+  </div>
+  
+  <div class="panel-stats">
+    <span id="panel-totalTabs">0 Quick Tabs</span>
+    <span id="panel-lastSync">Last sync: Never</span>
+  </div>
+  
+  <div id="panel-containersList" class="panel-containers-list">
+    <!-- Dynamically populated -->
+  </div>
+  
+  <div id="panel-emptyState" class="panel-empty-state" style="display: none;">
+    <div class="empty-icon">📭</div>
+    <div class="empty-text">No Quick Tabs</div>
+    <div class="empty-hint">Press Q while hovering over a link</div>
+  </div>
+</div>
+`;
+
+  // Panel CSS styles
+  const PANEL_CSS = `
+/* Quick Tabs Manager Floating Panel Styles */
+
+.quick-tabs-manager-panel {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  width: 350px;
+  height: 500px;
+  background: #2d2d2d;
+  border: 2px solid #555;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 999999999; /* Above all Quick Tabs */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  color: #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 250px;
+  min-height: 300px;
+}
+
+/* Panel Header (draggable) */
+.panel-header {
+  background: #1e1e1e;
+  border-bottom: 1px solid #555;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  user-select: none;
+}
+
+.panel-header:active {
+  cursor: grabbing;
+}
+
+.panel-drag-handle {
+  font-size: 18px;
+  color: #888;
+  cursor: grab;
+}
+
+.panel-title {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.panel-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.panel-btn {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  color: #e0e0e0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.panel-btn:hover {
+  background: #444;
+}
+
+.panel-close:hover {
+  background: #ff5555;
+}
+
+/* Panel Actions */
+.panel-actions {
+  padding: 10px 12px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #555;
+  display: flex;
+  gap: 8px;
+}
+
+.panel-btn-secondary,
+.panel-btn-danger {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: opacity 0.2s;
+}
+
+.panel-btn-secondary {
+  background: #4a90e2;
+  color: white;
+}
+
+.panel-btn-secondary:hover {
+  opacity: 0.8;
+}
+
+.panel-btn-danger {
+  background: #f44336;
+  color: white;
+}
+
+.panel-btn-danger:hover {
+  opacity: 0.8;
+}
+
+/* Panel Stats */
+.panel-stats {
+  padding: 8px 12px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #555;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #999;
+}
+
+/* Containers List */
+.panel-containers-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0;
+}
+
+/* Container Section */
+.panel-container-section {
+  margin-bottom: 16px;
+}
+
+.panel-container-header {
+  padding: 8px 12px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  background: #1e1e1e;
+  border-top: 1px solid #555;
+  border-bottom: 1px solid #555;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-container-icon {
+  font-size: 14px;
+}
+
+.panel-container-count {
+  margin-left: auto;
+  font-weight: normal;
+  color: #999;
+  font-size: 11px;
+}
+
+/* Quick Tab Items */
+.panel-quick-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #555;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.panel-quick-tab-item:hover {
+  background: #3a3a3a;
+}
+
+.panel-quick-tab-item.active {
+  border-left: 3px solid #4CAF50;
+  padding-left: 9px;
+}
+
+.panel-quick-tab-item.minimized {
+  border-left: 3px solid #FFC107;
+  padding-left: 9px;
+}
+
+.panel-status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.panel-status-indicator.green {
+  background: #4CAF50;
+}
+
+.panel-status-indicator.yellow {
+  background: #FFC107;
+}
+
+.panel-favicon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.panel-tab-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-tab-title {
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel-tab-meta {
+  font-size: 10px;
+  color: #999;
+  margin-top: 2px;
+}
+
+.panel-tab-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.panel-btn-icon {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e0e0e0;
+}
+
+.panel-btn-icon:hover {
+  background: #555;
+}
+
+/* Empty State */
+.panel-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: #999;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-text {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.empty-hint {
+  font-size: 12px;
+}
+
+/* Resize Handles */
+.panel-resize-handle {
+  position: absolute;
+  z-index: 10;
+}
+
+.panel-resize-handle.n { top: 0; left: 10px; right: 10px; height: 10px; cursor: n-resize; }
+.panel-resize-handle.s { bottom: 0; left: 10px; right: 10px; height: 10px; cursor: s-resize; }
+.panel-resize-handle.e { right: 0; top: 10px; bottom: 10px; width: 10px; cursor: e-resize; }
+.panel-resize-handle.w { left: 0; top: 10px; bottom: 10px; width: 10px; cursor: w-resize; }
+.panel-resize-handle.ne { top: 0; right: 0; width: 10px; height: 10px; cursor: ne-resize; }
+.panel-resize-handle.nw { top: 0; left: 0; width: 10px; height: 10px; cursor: nw-resize; }
+.panel-resize-handle.se { bottom: 0; right: 0; width: 10px; height: 10px; cursor: se-resize; }
+.panel-resize-handle.sw { bottom: 0; left: 0; width: 10px; height: 10px; cursor: sw-resize; }
+
+/* Scrollbar Styling */
+.panel-containers-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.panel-containers-list::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.panel-containers-list::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.panel-containers-list::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+`;
+
+  /**
+   * PanelUIBuilder - Handles DOM creation and rendering for panel UI
+   */
+  class PanelUIBuilder {
+    /**
+     * Inject panel styles into the document
+     * @returns {boolean} - True if styles were injected, false if already present
+     */
     static injectStyles() {
-      if (document.getElementById("quick-tabs-manager-panel-styles")) return !1;
-      const e = document.createElement("style");
-      return e.id = "quick-tabs-manager-panel-styles", e.textContent = '\n/* Quick Tabs Manager Floating Panel Styles */\n\n.quick-tabs-manager-panel {\n  position: fixed;\n  top: 100px;\n  right: 20px;\n  width: 350px;\n  height: 500px;\n  background: #2d2d2d;\n  border: 2px solid #555;\n  border-radius: 8px;\n  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);\n  z-index: 999999999; /* Above all Quick Tabs */\n  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;\n  font-size: 13px;\n  color: #e0e0e0;\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;\n  min-width: 250px;\n  min-height: 300px;\n}\n\n/* Panel Header (draggable) */\n.panel-header {\n  background: #1e1e1e;\n  border-bottom: 1px solid #555;\n  padding: 10px 12px;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  cursor: grab;\n  user-select: none;\n}\n\n.panel-header:active {\n  cursor: grabbing;\n}\n\n.panel-drag-handle {\n  font-size: 18px;\n  color: #888;\n  cursor: grab;\n}\n\n.panel-title {\n  flex: 1;\n  margin: 0;\n  font-size: 14px;\n  font-weight: 600;\n}\n\n.panel-controls {\n  display: flex;\n  gap: 4px;\n}\n\n.panel-btn {\n  width: 24px;\n  height: 24px;\n  background: transparent;\n  color: #e0e0e0;\n  border: none;\n  border-radius: 4px;\n  cursor: pointer;\n  font-size: 16px;\n  font-weight: bold;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  transition: background 0.2s;\n}\n\n.panel-btn:hover {\n  background: #444;\n}\n\n.panel-close:hover {\n  background: #ff5555;\n}\n\n/* Panel Actions */\n.panel-actions {\n  padding: 10px 12px;\n  background: #2d2d2d;\n  border-bottom: 1px solid #555;\n  display: flex;\n  gap: 8px;\n}\n\n.panel-btn-secondary,\n.panel-btn-danger {\n  flex: 1;\n  padding: 6px 12px;\n  border: none;\n  border-radius: 4px;\n  cursor: pointer;\n  font-size: 12px;\n  font-weight: 500;\n  transition: opacity 0.2s;\n}\n\n.panel-btn-secondary {\n  background: #4a90e2;\n  color: white;\n}\n\n.panel-btn-secondary:hover {\n  opacity: 0.8;\n}\n\n.panel-btn-danger {\n  background: #f44336;\n  color: white;\n}\n\n.panel-btn-danger:hover {\n  opacity: 0.8;\n}\n\n/* Panel Stats */\n.panel-stats {\n  padding: 8px 12px;\n  background: #1e1e1e;\n  border-bottom: 1px solid #555;\n  display: flex;\n  justify-content: space-between;\n  font-size: 11px;\n  color: #999;\n}\n\n/* Containers List */\n.panel-containers-list {\n  flex: 1;\n  overflow-y: auto;\n  padding: 10px 0;\n}\n\n/* Container Section */\n.panel-container-section {\n  margin-bottom: 16px;\n}\n\n.panel-container-header {\n  padding: 8px 12px;\n  margin: 0;\n  font-size: 13px;\n  font-weight: 600;\n  background: #1e1e1e;\n  border-top: 1px solid #555;\n  border-bottom: 1px solid #555;\n  display: flex;\n  align-items: center;\n  gap: 6px;\n}\n\n.panel-container-icon {\n  font-size: 14px;\n}\n\n.panel-container-count {\n  margin-left: auto;\n  font-weight: normal;\n  color: #999;\n  font-size: 11px;\n}\n\n/* Quick Tab Items */\n.panel-quick-tab-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 10px 12px;\n  border-bottom: 1px solid #555;\n  transition: background 0.2s;\n  cursor: pointer;\n}\n\n.panel-quick-tab-item:hover {\n  background: #3a3a3a;\n}\n\n.panel-quick-tab-item.active {\n  border-left: 3px solid #4CAF50;\n  padding-left: 9px;\n}\n\n.panel-quick-tab-item.minimized {\n  border-left: 3px solid #FFC107;\n  padding-left: 9px;\n}\n\n.panel-status-indicator {\n  width: 8px;\n  height: 8px;\n  border-radius: 50%;\n  flex-shrink: 0;\n}\n\n.panel-status-indicator.green {\n  background: #4CAF50;\n}\n\n.panel-status-indicator.yellow {\n  background: #FFC107;\n}\n\n.panel-favicon {\n  width: 16px;\n  height: 16px;\n  flex-shrink: 0;\n}\n\n.panel-tab-info {\n  flex: 1;\n  min-width: 0;\n}\n\n.panel-tab-title {\n  font-weight: 500;\n  font-size: 12px;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.panel-tab-meta {\n  font-size: 10px;\n  color: #999;\n  margin-top: 2px;\n}\n\n.panel-tab-actions {\n  display: flex;\n  gap: 4px;\n  flex-shrink: 0;\n}\n\n.panel-btn-icon {\n  width: 24px;\n  height: 24px;\n  padding: 0;\n  border: none;\n  background: transparent;\n  cursor: pointer;\n  border-radius: 4px;\n  font-size: 12px;\n  transition: background 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: #e0e0e0;\n}\n\n.panel-btn-icon:hover {\n  background: #555;\n}\n\n/* Empty State */\n.panel-empty-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  padding: 60px 20px;\n  text-align: center;\n  color: #999;\n}\n\n.empty-icon {\n  font-size: 48px;\n  margin-bottom: 16px;\n  opacity: 0.5;\n}\n\n.empty-text {\n  font-size: 16px;\n  font-weight: 500;\n  margin-bottom: 8px;\n}\n\n.empty-hint {\n  font-size: 12px;\n}\n\n/* Resize Handles */\n.panel-resize-handle {\n  position: absolute;\n  z-index: 10;\n}\n\n.panel-resize-handle.n { top: 0; left: 10px; right: 10px; height: 10px; cursor: n-resize; }\n.panel-resize-handle.s { bottom: 0; left: 10px; right: 10px; height: 10px; cursor: s-resize; }\n.panel-resize-handle.e { right: 0; top: 10px; bottom: 10px; width: 10px; cursor: e-resize; }\n.panel-resize-handle.w { left: 0; top: 10px; bottom: 10px; width: 10px; cursor: w-resize; }\n.panel-resize-handle.ne { top: 0; right: 0; width: 10px; height: 10px; cursor: ne-resize; }\n.panel-resize-handle.nw { top: 0; left: 0; width: 10px; height: 10px; cursor: nw-resize; }\n.panel-resize-handle.se { bottom: 0; right: 0; width: 10px; height: 10px; cursor: se-resize; }\n.panel-resize-handle.sw { bottom: 0; left: 0; width: 10px; height: 10px; cursor: sw-resize; }\n\n/* Scrollbar Styling */\n.panel-containers-list::-webkit-scrollbar {\n  width: 8px;\n}\n\n.panel-containers-list::-webkit-scrollbar-track {\n  background: #1e1e1e;\n}\n\n.panel-containers-list::-webkit-scrollbar-thumb {\n  background: #555;\n  border-radius: 4px;\n}\n\n.panel-containers-list::-webkit-scrollbar-thumb:hover {\n  background: #666;\n}\n', 
-      document.head.appendChild(e), !0;
-    }
-    static createPanel(e) {
-      const t = document.createElement("div");
-      t.innerHTML = '\n<div id="quick-tabs-manager-panel" class="quick-tabs-manager-panel" style="display: none;">\n  <div class="panel-header">\n    <span class="panel-drag-handle">≡</span>\n    <h2 class="panel-title">Quick Tabs Manager</h2>\n    <div class="panel-controls">\n      <button class="panel-btn panel-minimize" title="Minimize Panel">−</button>\n      <button class="panel-btn panel-close" title="Close Panel (Ctrl+Alt+Z)">✕</button>\n    </div>\n  </div>\n  \n  <div class="panel-actions">\n    <button id="panel-closeMinimized" class="panel-btn-secondary" title="Close all minimized Quick Tabs">\n      Close Minimized\n    </button>\n    <button id="panel-closeAll" class="panel-btn-danger" title="Close all Quick Tabs">\n      Close All\n    </button>\n  </div>\n  \n  <div class="panel-stats">\n    <span id="panel-totalTabs">0 Quick Tabs</span>\n    <span id="panel-lastSync">Last sync: Never</span>\n  </div>\n  \n  <div id="panel-containersList" class="panel-containers-list">\n    \x3c!-- Dynamically populated --\x3e\n  </div>\n  \n  <div id="panel-emptyState" class="panel-empty-state" style="display: none;">\n    <div class="empty-icon">📭</div>\n    <div class="empty-text">No Quick Tabs</div>\n    <div class="empty-hint">Press Q while hovering over a link</div>\n  </div>\n</div>\n';
-      const n = t.firstElementChild;
-      return n.style.left = `${e.left}px`, n.style.top = `${e.top}px`, n.style.width = `${e.width}px`, 
-      n.style.height = `${e.height}px`, e.isOpen && (n.style.display = "flex"), n;
-    }
-    static renderContainerSection(e, t, n) {
-      const i = document.createElement("div");
-      i.className = "panel-container-section";
-      const o = X._createHeader(t, n);
-      i.appendChild(o);
-      const s = n.tabs.filter(e => !e.minimized), a = n.tabs.filter(e => e.minimized);
-      return s.forEach(e => {
-        i.appendChild(X.renderQuickTabItem(e, !1));
-      }), a.forEach(e => {
-        i.appendChild(X.renderQuickTabItem(e, !0));
-      }), i;
-    }
-    static _createHeader(e, t) {
-      const n = document.createElement("h3");
-      n.className = "panel-container-header";
-      const i = t.tabs.length, o = 1 !== i ? "s" : "";
-      return n.innerHTML = `\n      <span class="panel-container-icon">${e.icon}</span>\n      <span class="panel-container-name">${e.name}</span>\n      <span class="panel-container-count">(${i} tab${o})</span>\n    `, 
-      n;
-    }
-    static renderQuickTabItem(e, t) {
-      const n = Boolean(t), i = document.createElement("div");
-      i.className = "panel-quick-tab-item " + (n ? "minimized" : "active");
-      const o = X._createIndicator(n);
-      i.appendChild(o);
-      const s = X._createFavicon(e.url);
-      i.appendChild(s);
-      const a = X._createInfo(e, n);
-      i.appendChild(a);
-      const r = X._createActions(e, n);
-      return i.appendChild(r), i;
-    }
-    static _createIndicator(e) {
-      const t = document.createElement("span");
-      return t.className = "panel-status-indicator " + (e ? "yellow" : "green"), t;
-    }
-    static _createFavicon(e) {
-      const t = document.createElement("img");
-      t.className = "panel-favicon";
-      try {
-        const n = new URL(e);
-        t.src = `https://www.google.com/s2/favicons?domain=${n.hostname}&sz=32`, t.onerror = () => t.style.display = "none";
-      } catch (e) {
-        t.style.display = "none";
+      // Check if already injected
+      if (document.getElementById('quick-tabs-manager-panel-styles')) {
+        return false;
       }
-      return t;
+
+      const style = document.createElement('style');
+      style.id = 'quick-tabs-manager-panel-styles';
+      style.textContent = PANEL_CSS;
+      document.head.appendChild(style);
+
+      return true;
     }
-    static _createInfo(e, t) {
-      const n = document.createElement("div");
-      n.className = "panel-tab-info";
-      const i = document.createElement("div");
-      i.className = "panel-tab-title", i.textContent = e.title || "Quick Tab";
-      const o = document.createElement("div");
-      o.className = "panel-tab-meta";
-      const s = [];
-      return t && s.push("Minimized"), e.activeTabId && s.push(`Tab ${e.activeTabId}`), 
-      e.width && e.height && s.push(`${Math.round(e.width)}×${Math.round(e.height)}`), 
-      o.textContent = s.join(" • "), n.appendChild(i), n.appendChild(o), n;
-    }
-    static _createActions(e, t) {
-      const n = document.createElement("div");
-      if (n.className = "panel-tab-actions", t) {
-        const t = X._createButton("↑", "Restore", "restore", {
-          quickTabId: e.id
-        });
-        n.appendChild(t);
-      } else {
-        if (e.activeTabId) {
-          const t = X._createButton("🔗", "Go to Tab", "goToTab", {
-            tabId: e.activeTabId
-          });
-          n.appendChild(t);
-        }
-        const t = X._createButton("➖", "Minimize", "minimize", {
-          quickTabId: e.id
-        });
-        n.appendChild(t);
+
+    /**
+     * Create panel DOM structure
+     * @param {Object} state - Panel state with position and size
+     * @returns {HTMLElement} - Panel element
+     */
+    static createPanel(state) {
+      const container = document.createElement('div');
+      container.innerHTML = PANEL_HTML;
+      const panel = container.firstElementChild;
+
+      // Apply saved position and size
+      panel.style.left = `${state.left}px`;
+      panel.style.top = `${state.top}px`;
+      panel.style.width = `${state.width}px`;
+      panel.style.height = `${state.height}px`;
+
+      // Show panel if it was open before
+      if (state.isOpen) {
+        panel.style.display = 'flex';
       }
-      const i = X._createButton("✕", "Close", "close", {
-        quickTabId: e.id
+
+      return panel;
+    }
+
+    /**
+     * Render a container section with Quick Tabs
+     * @param {string} cookieStoreId - Container ID
+     * @param {Object} containerInfo - Container display info
+     * @param {Object} containerState - Container state with tabs
+     * @returns {HTMLElement} - Container section element
+     */
+    static renderContainerSection(cookieStoreId, containerInfo, containerState) {
+      const section = document.createElement('div');
+      section.className = 'panel-container-section';
+
+      // Header
+      const header = PanelUIBuilder._createHeader(containerInfo, containerState);
+      section.appendChild(header);
+
+      // Tabs
+      const activeTabs = containerState.tabs.filter(t => !t.minimized);
+      const minimizedTabs = containerState.tabs.filter(t => t.minimized);
+
+      activeTabs.forEach(tab => {
+        section.appendChild(PanelUIBuilder.renderQuickTabItem(tab, false));
       });
-      return n.appendChild(i), n;
+
+      minimizedTabs.forEach(tab => {
+        section.appendChild(PanelUIBuilder.renderQuickTabItem(tab, true));
+      });
+
+      return section;
     }
-    static _createButton(e, t, n, i) {
-      const o = document.createElement("button");
-      return o.className = "panel-btn-icon", o.textContent = e, o.title = t, o.dataset.action = n, 
-      Object.entries(i).forEach(([e, t]) => {
-        o.dataset[e] = t;
-      }), o;
+
+    /**
+     * Create container header element
+     * @param {Object} containerInfo - Container display info
+     * @param {Object} containerState - Container state with tabs
+     * @returns {HTMLElement} - Header element
+     * @private
+     */
+    static _createHeader(containerInfo, containerState) {
+      const header = document.createElement('h3');
+      header.className = 'panel-container-header';
+
+      const tabCount = containerState.tabs.length;
+      const plural = tabCount !== 1 ? 's' : '';
+
+      header.innerHTML = `
+      <span class="panel-container-icon">${containerInfo.icon}</span>
+      <span class="panel-container-name">${containerInfo.name}</span>
+      <span class="panel-container-count">(${tabCount} tab${plural})</span>
+    `;
+
+      return header;
     }
-    static getContainerIcon(e) {
-      return {
-        fingerprint: "🔒",
-        briefcase: "💼",
-        dollar: "💰",
-        cart: "🛒",
-        circle: "⭕",
-        gift: "🎁",
-        vacation: "🏖️",
-        food: "🍴",
-        fruit: "🍎",
-        pet: "🐾",
-        tree: "🌳",
-        chill: "❄️",
-        fence: "🚧"
-      }[e] || "📁";
+
+    /**
+     * Render a Quick Tab item element
+     * @param {Object} tab - Quick Tab data
+     * @param {boolean} isMinimized - Whether tab is minimized
+     * @returns {HTMLElement} - Quick Tab item element
+     */
+    static renderQuickTabItem(tab, isMinimized) {
+      // Convert to boolean explicitly to prevent string 'false' issues
+      const minimized = Boolean(isMinimized);
+
+      const item = document.createElement('div');
+      item.className = `panel-quick-tab-item ${minimized ? 'minimized' : 'active'}`;
+
+      // Indicator
+      const indicator = PanelUIBuilder._createIndicator(minimized);
+      item.appendChild(indicator);
+
+      // Favicon
+      const favicon = PanelUIBuilder._createFavicon(tab.url);
+      item.appendChild(favicon);
+
+      // Info
+      const info = PanelUIBuilder._createInfo(tab, minimized);
+      item.appendChild(info);
+
+      // Actions
+      const actions = PanelUIBuilder._createActions(tab, minimized);
+      item.appendChild(actions);
+
+      return item;
+    }
+
+    /**
+     * Create status indicator element
+     * @param {boolean} minimized - Whether tab is minimized
+     * @returns {HTMLElement} - Indicator element
+     * @private
+     */
+    static _createIndicator(minimized) {
+      const indicator = document.createElement('span');
+      indicator.className = `panel-status-indicator ${minimized ? 'yellow' : 'green'}`;
+      return indicator;
+    }
+
+    /**
+     * Create favicon element
+     * @param {string} url - Tab URL
+     * @returns {HTMLElement} - Favicon element
+     * @private
+     */
+    static _createFavicon(url) {
+      const favicon = document.createElement('img');
+      favicon.className = 'panel-favicon';
+
+      try {
+        const urlObj = new URL(url);
+        favicon.src = `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
+        favicon.onerror = () => (favicon.style.display = 'none');
+      } catch (e) {
+        favicon.style.display = 'none';
+      }
+
+      return favicon;
+    }
+
+    /**
+     * Create tab info element
+     * @param {Object} tab - Tab data
+     * @param {boolean} minimized - Whether tab is minimized
+     * @returns {HTMLElement} - Info element
+     * @private
+     */
+    static _createInfo(tab, minimized) {
+      const info = document.createElement('div');
+      info.className = 'panel-tab-info';
+
+      const title = document.createElement('div');
+      title.className = 'panel-tab-title';
+      title.textContent = tab.title || 'Quick Tab';
+
+      const meta = document.createElement('div');
+      meta.className = 'panel-tab-meta';
+
+      const metaParts = [];
+      if (minimized) metaParts.push('Minimized');
+      if (tab.activeTabId) metaParts.push(`Tab ${tab.activeTabId}`);
+      if (tab.width && tab.height) {
+        metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
+      }
+      meta.textContent = metaParts.join(' • ');
+
+      info.appendChild(title);
+      info.appendChild(meta);
+
+      return info;
+    }
+
+    /**
+     * Create action buttons element
+     * @param {Object} tab - Tab data
+     * @param {boolean} minimized - Whether tab is minimized
+     * @returns {HTMLElement} - Actions element
+     * @private
+     */
+    static _createActions(tab, minimized) {
+      const actions = document.createElement('div');
+      actions.className = 'panel-tab-actions';
+
+      if (!minimized) {
+        // Go to Tab button
+        if (tab.activeTabId) {
+          const goToBtn = PanelUIBuilder._createButton('🔗', 'Go to Tab', 'goToTab', {
+            tabId: tab.activeTabId
+          });
+          actions.appendChild(goToBtn);
+        }
+
+        // Minimize button
+        const minBtn = PanelUIBuilder._createButton('➖', 'Minimize', 'minimize', {
+          quickTabId: tab.id
+        });
+        actions.appendChild(minBtn);
+      } else {
+        // Restore button
+        const restoreBtn = PanelUIBuilder._createButton('↑', 'Restore', 'restore', {
+          quickTabId: tab.id
+        });
+        actions.appendChild(restoreBtn);
+      }
+
+      // Close button (always present)
+      const closeBtn = PanelUIBuilder._createButton('✕', 'Close', 'close', {
+        quickTabId: tab.id
+      });
+      actions.appendChild(closeBtn);
+
+      return actions;
+    }
+
+    /**
+     * Create action button element
+     * @param {string} text - Button text
+     * @param {string} title - Button tooltip
+     * @param {string} action - Action type
+     * @param {Object} data - Data attributes
+     * @returns {HTMLElement} - Button element
+     * @private
+     */
+    static _createButton(text, title, action, data) {
+      const button = document.createElement('button');
+      button.className = 'panel-btn-icon';
+      button.textContent = text;
+      button.title = title;
+      button.dataset.action = action;
+
+      // Set data attributes
+      Object.entries(data).forEach(([key, value]) => {
+        button.dataset[key] = value;
+      });
+
+      return button;
+    }
+
+    /**
+     * Get container icon emoji
+     * @param {string} icon - Icon name
+     * @returns {string} - Icon emoji
+     */
+    static getContainerIcon(icon) {
+      const iconMap = {
+        fingerprint: '🔒',
+        briefcase: '💼',
+        dollar: '💰',
+        cart: '🛒',
+        circle: '⭕',
+        gift: '🎁',
+        vacation: '🏖️',
+        food: '🍴',
+        fruit: '🍎',
+        pet: '🐾',
+        tree: '🌳',
+        chill: '❄️',
+        fence: '🚧'
+      };
+
+      return iconMap[icon] || '📁';
     }
   }
-  class V {
-    constructor(e) {
-      this.quickTabsManager = e, this.panel = null, this.isOpen = !1, this.currentContainerId = "firefox-default", 
-      this.uiBuilder = new X, this.dragController = null, this.resizeController = null, 
-      this.stateManager = null, this.contentManager = null, this.updateInterval = null;
+
+  /**
+   * Quick Tabs Manager Persistent Floating Panel
+   * Facade integrating all panel components
+   *
+   * v1.6.0 - Phase 2.10: Refactored to facade pattern
+   * Previously 1497 lines → Now ~300 lines facade orchestrating components
+   *
+   * Components:
+   * - PanelUIBuilder: DOM creation and rendering
+   * - PanelDragController: Drag handling
+   * - PanelResizeController: Resize handling
+   * - PanelStateManager: State persistence and BroadcastChannel
+   * - PanelContentManager: Content updates and Quick Tab operations
+   *
+   * Features:
+   * - Persistent across page navigations (re-injected on load)
+   * - Draggable using Pointer Events API
+   * - Resizable from all edges/corners
+   * - Position/size persisted to browser.storage.local
+   * - Container-aware Quick Tabs categorization
+   * - Action buttons: Close Minimized, Close All
+   * - Individual tab actions: Minimize, Restore, Close, Go to Tab
+   */
+
+
+  /**
+   * PanelManager - Facade for Quick Tabs Manager Panel
+   */
+  class PanelManager {
+    /**
+     * Create a new PanelManager
+     * @param {Object} quickTabsManager - QuickTabsManager instance
+     */
+    constructor(quickTabsManager) {
+      this.quickTabsManager = quickTabsManager;
+      this.panel = null;
+      this.isOpen = false;
+      this.currentContainerId = 'firefox-default';
+
+      // Component instances
+      this.uiBuilder = new PanelUIBuilder();
+      this.dragController = null;
+      this.resizeController = null;
+      this.stateManager = null;
+      this.contentManager = null;
+
+      // Auto-refresh interval
+      this.updateInterval = null;
     }
+
+    /**
+     * Initialize the panel
+     * v1.5.9.12 - Container integration: Detect container context
+     */
     async init() {
-      Z("[PanelManager] Initializing..."), await this.detectContainerContext(), this.stateManager = new j({
-        onStateLoaded: e => this._applyState(e),
-        onBroadcastReceived: (e, t) => this._handleBroadcast(e, t)
-      }), await this.stateManager.init(), this.uiBuilder.injectStyles();
-      const e = this.stateManager.getState();
-      this.panel = this.uiBuilder.createPanel(e), document.body.appendChild(this.panel), 
-      this._initializeControllers(), this.setupMessageListener(), Z("[PanelManager] Initialized");
+      debug('[PanelManager] Initializing...');
+
+      // Detect container context
+      await this.detectContainerContext();
+
+      // Initialize state manager
+      this.stateManager = new PanelStateManager({
+        onStateLoaded: state => this._applyState(state),
+        onBroadcastReceived: (type, data) => this._handleBroadcast(type, data)
+      });
+      await this.stateManager.init();
+
+      // Inject CSS
+      this.uiBuilder.injectStyles();
+
+      // Create panel (hidden by default)
+      const savedState = this.stateManager.getState();
+      this.panel = this.uiBuilder.createPanel(savedState);
+      document.body.appendChild(this.panel);
+
+      // Initialize controllers
+      this._initializeControllers();
+
+      // Set up message listener for toggle command
+      this.setupMessageListener();
+
+      debug('[PanelManager] Initialized');
     }
+
+    /**
+     * Detect and store the current tab's container context
+     * v1.5.9.12 - Container integration
+     * @private
+     */
     async detectContainerContext() {
-      if (this.currentContainerId = "firefox-default", "undefined" != typeof browser && browser.tabs) try {
-        const e = await browser.tabs.query({
-          active: !0,
-          currentWindow: !0
+      this.currentContainerId = 'firefox-default';
+
+      if (typeof browser === 'undefined' || !browser.tabs) {
+        debug('[PanelManager] Browser tabs API not available');
+        return;
+      }
+
+      try {
+        const tabs = await browser.tabs.query({
+          active: true,
+          currentWindow: true
         });
-        e?.[0]?.cookieStoreId ? (this.currentContainerId = e[0].cookieStoreId, Z(`[PanelManager] Container: ${this.currentContainerId}`)) : Z("[PanelManager] Using default container");
-      } catch (e) {
-        Z("[PanelManager] Failed to detect container:", e);
-      } else Z("[PanelManager] Browser tabs API not available");
-    }
-    _initializeControllers() {
-      const e = this.panel.querySelector(".panel-header");
-      this.dragController = new G(this.panel, e, {
-        onDragEnd: (e, t) => {
-          this.stateManager.savePanelState(this.panel);
-        },
-        onBroadcast: e => {
-          this.stateManager.broadcast("PANEL_POSITION_UPDATED", e);
+        if (tabs?.[0]?.cookieStoreId) {
+          this.currentContainerId = tabs[0].cookieStoreId;
+          debug(`[PanelManager] Container: ${this.currentContainerId}`);
+        } else {
+          debug('[PanelManager] Using default container');
         }
-      }), this.resizeController = new K(this.panel, {
-        onSizeChange: (e, t) => {},
-        onPositionChange: (e, t) => {},
-        onResizeEnd: (e, t, n, i) => {
+      } catch (err) {
+        debug('[PanelManager] Failed to detect container:', err);
+      }
+    }
+
+    /**
+     * Initialize all controllers
+     * @private
+     */
+    _initializeControllers() {
+      const handle = this.panel.querySelector('.panel-header');
+
+      // Drag controller
+      this.dragController = new PanelDragController(this.panel, handle, {
+        onDragEnd: (_left, _top) => {
           this.stateManager.savePanelState(this.panel);
         },
-        onBroadcast: e => {
-          this.stateManager.broadcast("PANEL_SIZE_UPDATED", {
-            width: e.width,
-            height: e.height
-          }), this.stateManager.broadcast("PANEL_POSITION_UPDATED", {
-            left: e.left,
-            top: e.top
+        onBroadcast: data => {
+          this.stateManager.broadcast('PANEL_POSITION_UPDATED', data);
+        }
+      });
+
+      // Resize controller
+      this.resizeController = new PanelResizeController(this.panel, {
+        onSizeChange: (_width, _height) => {
+          // Optional: Update UI during resize
+        },
+        onPositionChange: (_left, _top) => {
+          // Optional: Update UI during position change
+        },
+        onResizeEnd: (_w, _h, _l, _t) => {
+          this.stateManager.savePanelState(this.panel);
+        },
+        onBroadcast: data => {
+          this.stateManager.broadcast('PANEL_SIZE_UPDATED', {
+            width: data.width,
+            height: data.height
+          });
+          this.stateManager.broadcast('PANEL_POSITION_UPDATED', {
+            left: data.left,
+            top: data.top
           });
         }
-      }), this.contentManager = new W(this.panel, {
+      });
+
+      // Content manager
+      this.contentManager = new PanelContentManager(this.panel, {
         uiBuilder: this.uiBuilder,
         stateManager: this.stateManager,
         quickTabsManager: this.quickTabsManager,
         currentContainerId: this.currentContainerId
-      }), this.contentManager.setOnClose(() => this.close()), this.contentManager.setupEventListeners();
+      });
+      this.contentManager.setOnClose(() => this.close());
+      this.contentManager.setupEventListeners();
     }
+
+    /**
+     * Setup message listener for toggle command
+     */
     setupMessageListener() {
-      browser.runtime.onMessage.addListener((e, t) => "TOGGLE_QUICK_TABS_PANEL" === e.action && (this.toggle(), 
-      Promise.resolve({
-        success: !0
-      })));
+      browser.runtime.onMessage.addListener((message, _sender) => {
+        if (message.action === 'TOGGLE_QUICK_TABS_PANEL') {
+          this.toggle();
+          return Promise.resolve({ success: true });
+        }
+        return false;
+      });
     }
+
+    /**
+     * Toggle panel visibility
+     */
     toggle() {
-      this.panel ? this.isOpen ? this.close() : this.open() : console.error("[PanelManager] Panel not initialized");
+      if (!this.panel) {
+        console.error('[PanelManager] Panel not initialized');
+        return;
+      }
+
+      if (this.isOpen) {
+        this.close();
+      } else {
+        this.open();
+      }
     }
+
+    /**
+     * Open panel
+     */
     open() {
-      this.panel ? (this.panel.style.display = "flex", this.isOpen = !0, this.stateManager.setIsOpen(!0), 
-      this.panel.style.zIndex = "999999999", this.contentManager.setIsOpen(!0), this.contentManager.updateContent(), 
-      this.updateInterval || (this.updateInterval = setInterval(() => {
-        this.contentManager.updateContent();
-      }, 2e3)), this.stateManager.savePanelState(this.panel), this.stateManager.broadcast("PANEL_OPENED", {}), 
-      Z("[PanelManager] Panel opened")) : console.error("[PanelManager] Panel not initialized");
+      if (!this.panel) {
+        console.error('[PanelManager] Panel not initialized');
+        return;
+      }
+
+      this.panel.style.display = 'flex';
+      this.isOpen = true;
+      this.stateManager.setIsOpen(true);
+
+      // Bring to front
+      this.panel.style.zIndex = '999999999';
+
+      // Update content
+      this.contentManager.setIsOpen(true);
+      this.contentManager.updateContent();
+
+      // Start auto-refresh
+      if (!this.updateInterval) {
+        this.updateInterval = setInterval(() => {
+          this.contentManager.updateContent();
+        }, 2000);
+      }
+
+      // Save state and broadcast
+      this.stateManager.savePanelState(this.panel);
+      this.stateManager.broadcast('PANEL_OPENED', {});
+
+      debug('[PanelManager] Panel opened');
     }
+
+    /**
+     * Close panel
+     */
     close() {
-      this.panel && (this.panel.style.display = "none", this.isOpen = !1, this.stateManager.setIsOpen(!1), 
-      this.contentManager.setIsOpen(!1), this.updateInterval && (clearInterval(this.updateInterval), 
-      this.updateInterval = null), this.stateManager.savePanelState(this.panel), this.stateManager.broadcast("PANEL_CLOSED", {}), 
-      Z("[PanelManager] Panel closed"));
+      if (!this.panel) return;
+
+      this.panel.style.display = 'none';
+      this.isOpen = false;
+      this.stateManager.setIsOpen(false);
+      this.contentManager.setIsOpen(false);
+
+      // Stop auto-refresh
+      if (this.updateInterval) {
+        clearInterval(this.updateInterval);
+        this.updateInterval = null;
+      }
+
+      // Save state and broadcast
+      this.stateManager.savePanelState(this.panel);
+      this.stateManager.broadcast('PANEL_CLOSED', {});
+
+      debug('[PanelManager] Panel closed');
     }
+
+    /**
+     * Open panel silently (no broadcast)
+     * Used when responding to broadcasts from other tabs
+     */
     openSilent() {
-      this.panel && (this.panel.style.display = "flex", this.isOpen = !0, this.stateManager.setIsOpen(!0), 
-      this.contentManager.setIsOpen(!0), this.contentManager.updateContent(), this.updateInterval || (this.updateInterval = setInterval(() => {
-        this.contentManager.updateContent();
-      }, 2e3)), Z("[PanelManager] Panel opened (silent)"));
+      if (!this.panel) return;
+
+      this.panel.style.display = 'flex';
+      this.isOpen = true;
+      this.stateManager.setIsOpen(true);
+      this.contentManager.setIsOpen(true);
+
+      // Update content
+      this.contentManager.updateContent();
+
+      // Start auto-refresh
+      if (!this.updateInterval) {
+        this.updateInterval = setInterval(() => {
+          this.contentManager.updateContent();
+        }, 2000);
+      }
+
+      debug('[PanelManager] Panel opened (silent)');
     }
+
+    /**
+     * Close panel silently (no broadcast)
+     * Used when responding to broadcasts from other tabs
+     */
     closeSilent() {
-      this.panel && (this.panel.style.display = "none", this.isOpen = !1, this.stateManager.setIsOpen(!1), 
-      this.contentManager.setIsOpen(!1), this.updateInterval && (clearInterval(this.updateInterval), 
-      this.updateInterval = null), Z("[PanelManager] Panel closed (silent)"));
+      if (!this.panel) return;
+
+      this.panel.style.display = 'none';
+      this.isOpen = false;
+      this.stateManager.setIsOpen(false);
+      this.contentManager.setIsOpen(false);
+
+      // Stop auto-refresh
+      if (this.updateInterval) {
+        clearInterval(this.updateInterval);
+        this.updateInterval = null;
+      }
+
+      debug('[PanelManager] Panel closed (silent)');
     }
-    _applyState(e) {
-      this.panel && (this.panel.style.left = `${e.left}px`, this.panel.style.top = `${e.top}px`, 
-      this.panel.style.width = `${e.width}px`, this.panel.style.height = `${e.height}px`, 
-      e.isOpen && this.open());
+
+    /**
+     * Apply loaded state to panel
+     * @param {Object} state - State object with position/size/isOpen
+     * @private
+     */
+    _applyState(state) {
+      if (!this.panel) return;
+
+      // Apply position and size
+      this.panel.style.left = `${state.left}px`;
+      this.panel.style.top = `${state.top}px`;
+      this.panel.style.width = `${state.width}px`;
+      this.panel.style.height = `${state.height}px`;
+
+      // Apply open state
+      if (state.isOpen) {
+        this.open();
+      }
     }
-    _handleBroadcast(e, t) {
-      const n = {
+
+    /**
+     * Handle broadcast messages from other tabs
+     * @param {string} type - Message type
+     * @param {Object} data - Message data
+     * @private
+     */
+    _handleBroadcast(type, data) {
+      const handlers = {
         PANEL_OPENED: () => !this.isOpen && this.openSilent(),
         PANEL_CLOSED: () => this.isOpen && this.closeSilent(),
-        PANEL_POSITION_UPDATED: () => this._updatePosition(t),
-        PANEL_SIZE_UPDATED: () => this._updateSize(t)
-      }[e];
-      n ? n() : Z(`[PanelManager] Unknown broadcast: ${e}`);
+        PANEL_POSITION_UPDATED: () => this._updatePosition(data),
+        PANEL_SIZE_UPDATED: () => this._updateSize(data)
+      };
+
+      const handler = handlers[type];
+      if (handler) {
+        handler();
+      } else {
+        debug(`[PanelManager] Unknown broadcast: ${type}`);
+      }
     }
-    _updatePosition(e) {
-      void 0 !== e.left && void 0 !== e.top && (this.panel.style.left = `${e.left}px`, 
-      this.panel.style.top = `${e.top}px`, this.stateManager.savePanelStateLocal(this.panel));
+
+    /**
+     * Update panel position from broadcast
+     * @param {Object} data - Position data
+     * @private
+     */
+    _updatePosition(data) {
+      if (data.left === undefined || data.top === undefined) return;
+
+      this.panel.style.left = `${data.left}px`;
+      this.panel.style.top = `${data.top}px`;
+      this.stateManager.savePanelStateLocal(this.panel);
     }
-    _updateSize(e) {
-      void 0 !== e.width && void 0 !== e.height && (this.panel.style.width = `${e.width}px`, 
-      this.panel.style.height = `${e.height}px`, this.stateManager.savePanelStateLocal(this.panel));
+
+    /**
+     * Update panel size from broadcast
+     * @param {Object} data - Size data
+     * @private
+     */
+    _updateSize(data) {
+      if (data.width === undefined || data.height === undefined) return;
+
+      this.panel.style.width = `${data.width}px`;
+      this.panel.style.height = `${data.height}px`;
+      this.stateManager.savePanelStateLocal(this.panel);
     }
+
+    /**
+     * Destroy panel and cleanup
+     */
     destroy() {
-      this.updateInterval && (clearInterval(this.updateInterval), this.updateInterval = null), 
-      this.dragController && (this.dragController.destroy(), this.dragController = null), 
-      this.resizeController && (this.resizeController.destroy(), this.resizeController = null), 
-      this.contentManager && (this.contentManager.destroy(), this.contentManager = null), 
-      this.stateManager && (this.stateManager.destroy(), this.stateManager = null), this.panel && (this.panel.remove(), 
-      this.panel = null), Z("[PanelManager] Destroyed");
+      // Stop auto-refresh
+      if (this.updateInterval) {
+        clearInterval(this.updateInterval);
+        this.updateInterval = null;
+      }
+
+      // Destroy controllers
+      if (this.dragController) {
+        this.dragController.destroy();
+        this.dragController = null;
+      }
+      if (this.resizeController) {
+        this.resizeController.destroy();
+        this.resizeController = null;
+      }
+      if (this.contentManager) {
+        this.contentManager.destroy();
+        this.contentManager = null;
+      }
+      if (this.stateManager) {
+        this.stateManager.destroy();
+        this.stateManager = null;
+      }
+
+      // Remove panel from DOM
+      if (this.panel) {
+        this.panel.remove();
+        this.panel = null;
+      }
+
+      debug('[PanelManager] Destroyed');
     }
   }
-  const J = new class {
+
+  /**
+   * Quick Tabs Feature Module - REFACTORED FACADE
+   * Main entrypoint for Quick Tabs functionality
+   *
+   * v1.6.0 - PHASE 2.2: Facade pattern implementation
+   * Reduces complexity from 1453 lines to ~400 lines by delegating to extracted components
+   *
+   * Architecture:
+   * - Facade orchestrates 4 managers, 4 handlers, 2 coordinators
+   * - Maintains backward compatibility with legacy API
+   * - Delegates all business logic to specialized components
+   */
+
+
+  /**
+   * QuickTabsManager - Facade for Quick Tab management
+   * v1.6.0 - Simplified to orchestration layer, delegates to specialized components
+   */
+  class QuickTabsManager {
     constructor() {
-      this.tabs = new Map, this.currentZIndex = {
-        value: c
-      }, this.initialized = !1, this.cookieStoreId = null, this.currentTabId = null, this.pendingSaveIds = new Set, 
-      this.internalEventBus = new m, this.storage = null, this.broadcast = null, this.state = null, 
-      this.events = null, this.createHandler = null, this.updateHandler = null, this.visibilityHandler = null, 
-      this.destroyHandler = null, this.uiCoordinator = null, this.syncCoordinator = null, 
-      this.minimizedManager = new H, this.panelManager = null, this.eventBus = null, this.Events = null, 
-      this.broadcastChannel = null;
+      // Backward compatibility fields (MUST KEEP - other code depends on these)
+      this.tabs = new Map(); // id -> QuickTabWindow instance (used by panel.js, etc.)
+      this.currentZIndex = { value: CONSTANTS.QUICK_TAB_BASE_Z_INDEX }; // Changed to ref object
+      this.initialized = false;
+      this.cookieStoreId = null;
+      this.currentTabId = null;
+      this.pendingSaveIds = new Set(); // For saveId tracking (backward compat)
+
+      // Internal event bus for component communication (NEW in v1.6.0)
+      this.internalEventBus = new EventEmitter();
+
+      // Managers (initialized in init())
+      this.storage = null;
+      this.broadcast = null;
+      this.state = null;
+      this.events = null;
+
+      // Handlers (initialized in init())
+      this.createHandler = null;
+      this.updateHandler = null;
+      this.visibilityHandler = null;
+      this.destroyHandler = null;
+
+      // Coordinators (initialized in init())
+      this.uiCoordinator = null;
+      this.syncCoordinator = null;
+
+      // Legacy UI managers (KEEP - used by other modules)
+      this.minimizedManager = new MinimizedManager();
+      this.panelManager = null;
+
+      // Legacy fields for backward compatibility (KEEP - required by old code)
+      this.eventBus = null; // External event bus from content.js
+      this.Events = null; // Event constants
+      this.broadcastChannel = null; // Legacy field (now handled by BroadcastManager)
     }
-    async init(e, t) {
-      this.initialized ? console.log("[QuickTabsManager] Already initialized, skipping") : (this.eventBus = e, 
-      this.Events = t, console.log("[QuickTabsManager] Initializing facade..."), await this.detectContainerContext(), 
-      await this.detectCurrentTabId(), this._initializeManagers(), this._initializeHandlers(), 
-      this.panelManager = new V(this), await this.panelManager.init(), console.log("[QuickTabsManager] Panel manager initialized"), 
-      this._initializeCoordinators(), this._setupComponents(), await this._hydrateState(), 
-      "undefined" != typeof window && (window.__quickTabsManager = this, console.log("[QuickTabsManager] Manager exposed globally")), 
-      this.initialized = !0, console.log("[QuickTabsManager] Facade initialized successfully"));
+
+    /**
+     * Initialize the Quick Tabs manager
+     * v1.6.0 - Refactored to wire together extracted components
+     *
+     * @param {EventEmitter} eventBus - External event bus from content.js
+     * @param {Object} Events - Event constants
+     */
+    async init(eventBus, Events) {
+      if (this.initialized) {
+        console.log('[QuickTabsManager] Already initialized, skipping');
+        return;
+      }
+
+      this.eventBus = eventBus;
+      this.Events = Events;
+
+      console.log('[QuickTabsManager] Initializing facade...');
+
+      // STEP 1: Detect context (container, tab ID)
+      await this.detectContainerContext();
+      await this.detectCurrentTabId();
+
+      // STEP 2: Initialize managers
+      this._initializeManagers();
+
+      // STEP 3: Initialize handlers
+      this._initializeHandlers();
+
+      // STEP 4: Initialize panel manager (must happen before coordinators)
+      this.panelManager = new PanelManager(this);
+      await this.panelManager.init();
+      console.log('[QuickTabsManager] Panel manager initialized');
+
+      // STEP 5: Initialize coordinators
+      this._initializeCoordinators();
+
+      // STEP 6: Setup managers (attach listeners)
+      this._setupComponents();
+
+      // STEP 7: Hydrate state from storage (EAGER LOADING)
+      await this._hydrateState();
+
+      // STEP 8: Expose manager globally for QuickTabWindow button access (backward compat)
+      if (typeof window !== 'undefined') {
+        window.__quickTabsManager = this;
+        console.log('[QuickTabsManager] Manager exposed globally');
+      }
+
+      this.initialized = true;
+      console.log('[QuickTabsManager] Facade initialized successfully');
     }
+
+    /**
+     * Initialize manager components
+     * @private
+     */
     _initializeManagers() {
-      this.storage = new N(this.internalEventBus, this.cookieStoreId), this.broadcast = new O(this.internalEventBus, this.cookieStoreId), 
-      this.state = new L(this.internalEventBus, this.currentTabId), this.events = new P(this.internalEventBus, this.tabs);
+      this.storage = new StorageManager(this.internalEventBus, this.cookieStoreId);
+      this.broadcast = new BroadcastManager(this.internalEventBus, this.cookieStoreId);
+      this.state = new StateManager(this.internalEventBus, this.currentTabId);
+      this.events = new EventManager(this.internalEventBus, this.tabs);
     }
+
+    /**
+     * Initialize handler components
+     * @private
+     */
     _initializeHandlers() {
-      this.createHandler = new x(this.tabs, this.currentZIndex, this.cookieStoreId, this.broadcast, this.eventBus, this.Events, this.generateId.bind(this)), 
-      this.updateHandler = new z(this.tabs, this.broadcast, this.storage, this.internalEventBus, this.generateSaveId.bind(this), this.releasePendingSave.bind(this)), 
-      this.visibilityHandler = new q(this.tabs, this.broadcast, this.storage, this.minimizedManager, this.internalEventBus, this.currentZIndex, this.generateSaveId.bind(this), this.trackPendingSave.bind(this), this.releasePendingSave.bind(this), this.currentTabId, this.Events), 
-      this.destroyHandler = new _(this.tabs, this.broadcast, this.minimizedManager, this.eventBus, this.currentZIndex, this.generateSaveId.bind(this), this.releasePendingSave.bind(this), this.Events, c);
+      this.createHandler = new CreateHandler(
+        this.tabs,
+        this.currentZIndex,
+        this.cookieStoreId,
+        this.broadcast,
+        this.eventBus,
+        this.Events,
+        this.generateId.bind(this)
+      );
+
+      this.updateHandler = new UpdateHandler(
+        this.tabs,
+        this.broadcast,
+        this.storage,
+        this.internalEventBus,
+        this.generateSaveId.bind(this),
+        this.releasePendingSave.bind(this)
+      );
+
+      this.visibilityHandler = new VisibilityHandler(
+        this.tabs,
+        this.broadcast,
+        this.storage,
+        this.minimizedManager,
+        this.internalEventBus,
+        this.currentZIndex,
+        this.generateSaveId.bind(this),
+        this.trackPendingSave.bind(this),
+        this.releasePendingSave.bind(this),
+        this.currentTabId,
+        this.Events
+      );
+
+      this.destroyHandler = new DestroyHandler(
+        this.tabs,
+        this.broadcast,
+        this.minimizedManager,
+        this.eventBus,
+        this.currentZIndex,
+        this.generateSaveId.bind(this),
+        this.releasePendingSave.bind(this),
+        this.Events,
+        CONSTANTS.QUICK_TAB_BASE_Z_INDEX
+      );
     }
+
+    /**
+     * Initialize coordinator components
+     * @private
+     */
     _initializeCoordinators() {
-      this.uiCoordinator = new w(this.state, this.minimizedManager, this.panelManager, this.internalEventBus), 
-      this.syncCoordinator = new y(this.state, this.storage, this.broadcast, {
-        create: this.createHandler,
-        update: this.updateHandler,
-        visibility: this.visibilityHandler,
-        destroy: this.destroyHandler
-      }, this.internalEventBus);
+      this.uiCoordinator = new UICoordinator(
+        this.state,
+        this.minimizedManager,
+        this.panelManager,
+        this.internalEventBus
+      );
+
+      this.syncCoordinator = new SyncCoordinator(
+        this.state,
+        this.storage,
+        this.broadcast,
+        {
+          create: this.createHandler,
+          update: this.updateHandler,
+          visibility: this.visibilityHandler,
+          destroy: this.destroyHandler
+        },
+        this.internalEventBus
+      );
     }
+
+    /**
+     * Setup component listeners and event flows
+     * @private
+     */
     async _setupComponents() {
-      this.storage.setupStorageListeners(), this.broadcast.setupBroadcastChannel(), this.events.setupEmergencySaveHandlers(), 
-      this.syncCoordinator.setupListeners(), await this.uiCoordinator.init();
+      this.storage.setupStorageListeners();
+      this.broadcast.setupBroadcastChannel();
+      this.events.setupEmergencySaveHandlers();
+      this.syncCoordinator.setupListeners();
+      await this.uiCoordinator.init();
     }
+
+    /**
+     * Detect Firefox container context
+     * v1.5.9.12 - Container integration
+     */
     async detectContainerContext() {
       try {
-        const e = await browser.tabs.query({
-          active: !0,
-          currentWindow: !0
-        });
-        e.length > 0 && e[0].cookieStoreId ? (this.cookieStoreId = e[0].cookieStoreId, console.log("[QuickTabsManager] Detected container:", this.cookieStoreId)) : (this.cookieStoreId = "firefox-default", 
-        console.log("[QuickTabsManager] Using default container"));
-      } catch (e) {
-        console.error("[QuickTabsManager] Failed to detect container:", e), this.cookieStoreId = "firefox-default";
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length > 0 && tabs[0].cookieStoreId) {
+          this.cookieStoreId = tabs[0].cookieStoreId;
+          console.log('[QuickTabsManager] Detected container:', this.cookieStoreId);
+        } else {
+          this.cookieStoreId = 'firefox-default';
+          console.log('[QuickTabsManager] Using default container');
+        }
+      } catch (err) {
+        console.error('[QuickTabsManager] Failed to detect container:', err);
+        this.cookieStoreId = 'firefox-default';
       }
     }
+
+    /**
+     * Get current container context (backward compat)
+     */
     async getCurrentContainer() {
       try {
-        const e = await browser.tabs.query({
-          active: !0,
-          currentWindow: !0
-        });
-        return e.length > 0 && e[0].cookieStoreId ? e[0].cookieStoreId : "firefox-default";
-      } catch (e) {
-        return console.error("[QuickTabsManager] Failed to get current container:", e), 
-        this.cookieStoreId || "firefox-default";
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length > 0 && tabs[0].cookieStoreId) {
+          return tabs[0].cookieStoreId;
+        }
+        return 'firefox-default';
+      } catch (err) {
+        console.error('[QuickTabsManager] Failed to get current container:', err);
+        return this.cookieStoreId || 'firefox-default';
       }
     }
+
+    /**
+     * Detect current Firefox tab ID
+     * v1.5.9.13 - Solo/Mute functionality
+     */
     async detectCurrentTabId() {
       try {
-        const e = await browser.runtime.sendMessage({
-          action: "GET_CURRENT_TAB_ID"
-        });
-        e && e.tabId && (this.currentTabId = e.tabId, console.log("[QuickTabsManager] Detected current tab ID:", this.currentTabId));
-      } catch (e) {
-        console.error("[QuickTabsManager] Failed to detect tab ID:", e);
+        const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
+        if (response && response.tabId) {
+          this.currentTabId = response.tabId;
+          console.log('[QuickTabsManager] Detected current tab ID:', this.currentTabId);
+        }
+      } catch (err) {
+        console.error('[QuickTabsManager] Failed to detect tab ID:', err);
       }
     }
+
+    /**
+     * Hydrate state from storage
+     * @private
+     */
     async _hydrateState() {
-      console.log("[QuickTabsManager] Hydrating state from storage...");
+      console.log('[QuickTabsManager] Hydrating state from storage...');
       try {
-        const e = await this.storage.loadAll();
-        this.state.hydrate(e), console.log(`[QuickTabsManager] Hydrated ${e.length} Quick Tabs`);
-      } catch (e) {
-        console.error("[QuickTabsManager] Failed to hydrate state:", e);
+        const quickTabs = await this.storage.loadAll();
+        this.state.hydrate(quickTabs);
+        console.log(`[QuickTabsManager] Hydrated ${quickTabs.length} Quick Tabs`);
+      } catch (err) {
+        console.error('[QuickTabsManager] Failed to hydrate state:', err);
       }
     }
-    createQuickTab(e) {
-      const t = {
-        ...e,
-        onDestroy: e => this.handleDestroy(e),
-        onMinimize: e => this.handleMinimize(e),
-        onFocus: e => this.handleFocus(e),
-        onPositionChange: (e, t, n) => this.handlePositionChange(e, t, n),
-        onPositionChangeEnd: (e, t, n) => this.handlePositionChangeEnd(e, t, n),
-        onSizeChange: (e, t, n) => this.handleSizeChange(e, t, n),
-        onSizeChangeEnd: (e, t, n) => this.handleSizeChangeEnd(e, t, n),
-        onSolo: (e, t) => this.handleSoloToggle(e, t),
-        onMute: (e, t) => this.handleMuteToggle(e, t)
-      }, n = this.createHandler.create(t);
-      return this.currentZIndex.value = n.newZIndex, n.tabWindow;
+
+    // ============================================================================
+    // PUBLIC API - Delegate to handlers and coordinators
+    // ============================================================================
+
+    /**
+     * Create a new Quick Tab
+     * Delegates to CreateHandler
+     */
+    createQuickTab(options) {
+      // Add callbacks to options (required by QuickTabWindow)
+      const optionsWithCallbacks = {
+        ...options,
+        onDestroy: tabId => this.handleDestroy(tabId),
+        onMinimize: tabId => this.handleMinimize(tabId),
+        onFocus: tabId => this.handleFocus(tabId),
+        onPositionChange: (tabId, left, top) => this.handlePositionChange(tabId, left, top),
+        onPositionChangeEnd: (tabId, left, top) => this.handlePositionChangeEnd(tabId, left, top),
+        onSizeChange: (tabId, width, height) => this.handleSizeChange(tabId, width, height),
+        onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height),
+        onSolo: (tabId, soloedOnTabs) => this.handleSoloToggle(tabId, soloedOnTabs),
+        onMute: (tabId, mutedOnTabs) => this.handleMuteToggle(tabId, mutedOnTabs)
+      };
+
+      const result = this.createHandler.create(optionsWithCallbacks);
+      this.currentZIndex.value = result.newZIndex;
+      return result.tabWindow;
     }
-    handleDestroy(e) {
-      return this.destroyHandler.handleDestroy(e);
+
+    /**
+     * Handle Quick Tab destruction
+     * Delegates to DestroyHandler
+     */
+    handleDestroy(id) {
+      return this.destroyHandler.handleDestroy(id);
     }
-    handleMinimize(e) {
-      return this.visibilityHandler.handleMinimize(e);
+
+    /**
+     * Handle Quick Tab minimize
+     * Delegates to VisibilityHandler
+     */
+    handleMinimize(id) {
+      return this.visibilityHandler.handleMinimize(id);
     }
-    handleFocus(e) {
-      return this.visibilityHandler.handleFocus(e);
+
+    /**
+     * Handle Quick Tab focus
+     * Delegates to VisibilityHandler
+     */
+    handleFocus(id) {
+      return this.visibilityHandler.handleFocus(id);
     }
-    handlePositionChange(e, t, n) {
-      return this.updateHandler.handlePositionChange(e, t, n);
+
+    /**
+     * Handle position change (during drag)
+     * Delegates to UpdateHandler
+     */
+    handlePositionChange(id, left, top) {
+      return this.updateHandler.handlePositionChange(id, left, top);
     }
-    handlePositionChangeEnd(e, t, n) {
-      return this.updateHandler.handlePositionChangeEnd(e, t, n);
+
+    /**
+     * Handle position change end (drag complete)
+     * Delegates to UpdateHandler
+     */
+    handlePositionChangeEnd(id, left, top) {
+      return this.updateHandler.handlePositionChangeEnd(id, left, top);
     }
-    handleSizeChange(e, t, n) {
-      return this.updateHandler.handleSizeChange(e, t, n);
+
+    /**
+     * Handle size change (during resize)
+     * Delegates to UpdateHandler
+     */
+    handleSizeChange(id, width, height) {
+      return this.updateHandler.handleSizeChange(id, width, height);
     }
-    handleSizeChangeEnd(e, t, n) {
-      return this.updateHandler.handleSizeChangeEnd(e, t, n);
+
+    /**
+     * Handle size change end (resize complete)
+     * Delegates to UpdateHandler
+     */
+    handleSizeChangeEnd(id, width, height) {
+      return this.updateHandler.handleSizeChangeEnd(id, width, height);
     }
-    handleSoloToggle(e, t) {
-      return this.visibilityHandler.handleSoloToggle(e, t);
+
+    /**
+     * Handle solo toggle
+     * Delegates to VisibilityHandler
+     */
+    handleSoloToggle(quickTabId, newSoloedTabs) {
+      return this.visibilityHandler.handleSoloToggle(quickTabId, newSoloedTabs);
     }
-    handleMuteToggle(e, t) {
-      return this.visibilityHandler.handleMuteToggle(e, t);
+
+    /**
+     * Handle mute toggle
+     * Delegates to VisibilityHandler
+     */
+    handleMuteToggle(quickTabId, newMutedTabs) {
+      return this.visibilityHandler.handleMuteToggle(quickTabId, newMutedTabs);
     }
-    closeById(e) {
-      return this.destroyHandler.closeById(e);
+
+    /**
+     * Close Quick Tab by ID
+     * Delegates to DestroyHandler
+     */
+    closeById(id) {
+      return this.destroyHandler.closeById(id);
     }
+
+    /**
+     * Close all Quick Tabs
+     * Delegates to DestroyHandler
+     */
     closeAll() {
       return this.destroyHandler.closeAll();
     }
-    restoreQuickTab(e) {
-      return this.visibilityHandler.restoreQuickTab(e);
+
+    /**
+     * Restore Quick Tab from minimized state
+     * Delegates to VisibilityHandler
+     */
+    restoreQuickTab(id) {
+      return this.visibilityHandler.restoreQuickTab(id);
     }
-    minimizeById(e) {
-      return this.handleMinimize(e);
+
+    /**
+     * Minimize Quick Tab by ID (backward compat)
+     * Delegates to VisibilityHandler
+     */
+    minimizeById(id) {
+      return this.handleMinimize(id);
     }
-    restoreById(e) {
-      return this.visibilityHandler.restoreById(e);
+
+    /**
+     * Restore Quick Tab by ID (backward compat)
+     * Delegates to VisibilityHandler
+     */
+    restoreById(id) {
+      return this.visibilityHandler.restoreById(id);
     }
-    getQuickTab(e) {
-      return this.tabs.get(e);
+
+    /**
+     * Get Quick Tab by ID (backward compat)
+     */
+    getQuickTab(id) {
+      return this.tabs.get(id);
     }
+
+    /**
+     * Get all Quick Tabs (backward compat)
+     */
     getAllQuickTabs() {
       return Array.from(this.tabs.values());
     }
+
+    /**
+     * Get minimized Quick Tabs (backward compat)
+     */
     getMinimizedQuickTabs() {
       return this.minimizedManager.getAll();
     }
+
+    // ============================================================================
+    // UTILITY METHODS (KEEP - core functionality)
+    // ============================================================================
+
+    /**
+     * Generate unique ID for Quick Tab
+     */
     generateId() {
       return `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
+
+    /**
+     * Generate unique save ID for transaction tracking
+     */
     generateSaveId() {
       return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
-    trackPendingSave(e) {
-      this.pendingSaveIds.add(e), console.log("[QuickTabsManager] Tracking pending save:", e);
+
+    /**
+     * Track pending save to prevent race conditions
+     */
+    trackPendingSave(saveId) {
+      this.pendingSaveIds.add(saveId);
+      console.log('[QuickTabsManager] Tracking pending save:', saveId);
     }
-    releasePendingSave(e) {
-      this.pendingSaveIds.delete(e), console.log("[QuickTabsManager] Released pending save:", e);
+
+    /**
+     * Release pending save
+     */
+    releasePendingSave(saveId) {
+      this.pendingSaveIds.delete(saveId);
+      console.log('[QuickTabsManager] Released pending save:', saveId);
     }
-    updateQuickTabPosition(e, t, n) {
-      return this.handlePositionChange(e, t, n);
+
+    // ============================================================================
+    // LEGACY METHODS (kept for backward compatibility, delegate to new components)
+    // ============================================================================
+
+    /**
+     * Update Quick Tab position (legacy - backward compat)
+     * @deprecated Use handlePositionChange instead
+     */
+    updateQuickTabPosition(id, left, top) {
+      return this.handlePositionChange(id, left, top);
     }
-    updateQuickTabSize(e, t, n) {
-      return this.handleSizeChange(e, t, n);
+
+    /**
+     * Update Quick Tab size (legacy - backward compat)
+     * @deprecated Use handleSizeChange instead
+     */
+    updateQuickTabSize(id, width, height) {
+      return this.handleSizeChange(id, width, height);
     }
-  };
-  function ee(e) {
-    if (e.href) return e.href;
-    const t = e.closest("a[href]");
-    if (t?.href) return t.href;
-    if (function(e) {
-      return "ARTICLE" === e.tagName || "article" === e.getAttribute("role") || "link" === e.getAttribute("role") || e.classList.contains("post") || e.hasAttribute("data-testid") || e.hasAttribute("data-id");
-    }(e)) {
-      const t = e.querySelector("a[href]");
-      if (t?.href) return t.href;
+  }
+
+  // ============================================================================
+  // MODULE INITIALIZATION
+  // ============================================================================
+
+  const quickTabsManager$1 = new QuickTabsManager();
+
+  /**
+   * Initialize Quick Tabs feature module
+   * v1.6.0 - Facade pattern, delegates to extracted components
+   *
+   * @param {EventEmitter} eventBus - External event bus from content.js
+   * @param {Object} Events - Event constants
+   * @returns {QuickTabsManager} Initialized manager instance
+   */
+  async function initQuickTabs(eventBus, Events) {
+    console.log('[QuickTabs] Initializing Quick Tabs feature module...');
+    await quickTabsManager$1.init(eventBus, Events);
+    console.log('[QuickTabs] Quick Tabs feature module initialized');
+    return quickTabsManager$1;
+  }
+
+  /**
+   * Generic URL Handler
+   * Fallback URL detection for any website
+   */
+
+  /**
+   * Check if element is a container that should be searched for links
+   * @param {Element} element - DOM element
+   * @returns {boolean} True if element is a link container
+   */
+  function isLinkContainer(element) {
+    return (
+      element.tagName === 'ARTICLE' ||
+      element.getAttribute('role') === 'article' ||
+      element.getAttribute('role') === 'link' ||
+      element.classList.contains('post') ||
+      element.hasAttribute('data-testid') ||
+      element.hasAttribute('data-id')
+    );
+  }
+
+  /**
+   * Find generic URL from any element
+   * @param {Element} element - DOM element
+   * @returns {string|null} Found URL or null
+   */
+  function findGenericUrl(element) {
+    // Look for direct href on clicked element
+    if (element.href) return element.href;
+
+    // Look for closest link
+    const link = element.closest('a[href]');
+    if (link?.href) return link.href;
+
+    // Only search within element if it's a clear container
+    if (isLinkContainer(element)) {
+      const innerLink = element.querySelector('a[href]');
+      if (innerLink?.href) return innerLink.href;
     }
+
+    // Don't search siblings - that's too broad and causes false positives
     return null;
   }
-  const te = {
-    medium: function(e) {
-      const t = e.closest("[data-post-id], article");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[data-action="open-post"], h2 a, h3 a');
-      return n?.href ? n.href : null;
-    },
-    devTo: function(e) {
-      const t = e.closest(".crayons-story, [data-article-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[id*="article-link"], h2 a, h3 a');
-      return n?.href ? n.href : null;
-    },
-    hashnode: function(e) {
-      const t = e.closest("[data-post-id], .post-card");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/post/"], h1 a, h2 a');
-      return n?.href ? n.href : null;
-    },
-    substack: function(e) {
-      const t = e.closest('.post, [data-testid="post-preview"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/p/"], h2 a, h3 a');
-      return n?.href ? n.href : null;
-    },
-    wordpress: function(e) {
-      const t = e.closest(".post, .hentry, article");
-      if (!t) return ee(e);
-      const n = t.querySelector("a.entry-title-link, h2 a, .entry-title a");
-      return n?.href ? n.href : null;
-    },
-    blogger: function(e) {
-      const t = e.closest(".post, .post-outer");
-      if (!t) return ee(e);
-      const n = t.querySelector("h3.post-title a, a.post-title");
-      return n?.href ? n.href : null;
-    },
-    ghost: function(e) {
-      const t = e.closest(".post-card, article");
-      if (!t) return ee(e);
-      const n = t.querySelector(".post-card-title a, h2 a");
-      return n?.href ? n.href : null;
-    },
-    notion: function(e) {
-      return window.location.href;
+
+  /**
+   * Get link text from element
+   * @param {Element} element - DOM element
+   * @returns {string} Link text
+   */
+  function getLinkText(element) {
+    if (element.tagName === 'A') {
+      return element.textContent.trim();
     }
-  };
-  function ne(e) {
-    const t = e.closest(".s-post-summary, .question-summary");
-    if (!t) return ee(e);
-    const n = t.querySelector('a[href*="/questions/"]');
-    return n?.href ? n.href : null;
+
+    const link = element.querySelector('a[href]');
+    if (link) {
+      return link.textContent.trim();
+    }
+
+    return element.textContent.trim().substring(0, 100);
   }
-  const ie = {
-    gitHub: function(e) {
-      const t = e.closest('[data-testid="issue-row"], .Box-row, .issue, [role="article"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/issues/"], a[href*="/pull/"], a[href*="/discussions/"]');
-      return n?.href ? n.href : null;
-    },
-    gitLab: function(e) {
-      const t = e.closest(".issue, .merge-request, [data-qa-selector]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/issues/"], a[href*="/merge_requests/"]');
-      return n?.href ? n.href : null;
-    },
-    bitbucket: function(e) {
-      const t = e.closest('[data-testid="issue-row"], .iterable-item');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/issues/"], a[href*="/pull-requests/"]');
-      return n?.href ? n.href : null;
-    },
-    stackOverflow: function(e) {
-      const t = e.closest(".s-post-summary, [data-post-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a.s-link[href*="/questions/"]');
-      return n?.href ? n.href : null;
-    },
-    stackExchange: ne,
-    serverFault: function(e) {
-      return ne(e);
-    },
-    superUser: function(e) {
-      return ne(e);
-    },
-    codepen: function(e) {
-      const t = e.closest("[data-slug], .single-pen");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/pen/"]');
-      return n?.href ? n.href : null;
-    },
-    jSFiddle: function(e) {
-      const t = e.closest(".fiddle, [data-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="jsfiddle.net"]');
-      return n?.href ? n.href : null;
-    },
-    replit: function(e) {
-      const t = e.closest("[data-repl-id], .repl-item");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/@"]');
-      return n?.href ? n.href : null;
-    },
-    glitch: function(e) {
-      const t = e.closest(".project, [data-project-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="glitch.com/~"]');
-      return n?.href ? n.href : null;
-    },
-    codesandbox: function(e) {
-      const t = e.closest("[data-id], .sandbox-item");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/s/"]');
-      return n?.href ? n.href : null;
-    }
-  }, oe = {
-    amazon: function(e) {
-      const t = e.closest('[data-component-type="s-search-result"], .s-result-item, [data-asin]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a.a-link-normal[href*="/dp/"], h2 a');
-      return n?.href ? n.href : null;
-    },
-    ebay: function(e) {
-      const t = e.closest('.s-item, [data-view="mi"]');
-      if (!t) return ee(e);
-      const n = t.querySelector("a.s-item__link, .vip a");
-      return n?.href ? n.href : null;
-    },
-    etsy: function(e) {
-      const t = e.closest("[data-listing-id], .listing-link");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/listing/"]');
-      return n?.href ? n.href : null;
-    },
-    walmart: function(e) {
-      const t = e.closest("[data-item-id], .search-result-gridview-item");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/ip/"]');
-      return n?.href ? n.href : null;
-    },
-    flipkart: function(e) {
-      const t = e.closest("[data-id], ._2kHMtA");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/p/"]');
-      return n?.href ? n.href : null;
-    },
-    aliexpress: function(e) {
-      const t = e.closest("[data-product-id], .product-item");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/item/"]');
-      return n?.href ? n.href : null;
-    },
-    alibaba: function(e) {
-      const t = e.closest("[data-content], .organic-list-offer");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/product-detail/"]');
-      return n?.href ? n.href : null;
-    },
-    shopify: function(e) {
-      const t = e.closest(".product-item, .grid-item, [data-product-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/products/"]');
-      return n?.href ? n.href : null;
-    },
-    target: function(e) {
-      const t = e.closest('[data-test="product-grid-item"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/p/"]');
-      return n?.href ? n.href : null;
-    },
-    bestBuy: function(e) {
-      const t = e.closest(".sku-item, [data-sku-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/site/"]');
-      return n?.href ? n.href : null;
-    },
-    newegg: function(e) {
-      const t = e.closest(".item-cell, [data-item]");
-      if (!t) return ee(e);
-      const n = t.querySelector("a.item-title");
-      return n?.href ? n.href : null;
-    },
-    wish: function(e) {
-      const t = e.closest("[data-productid], .ProductCard");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/product/"]');
-      return n?.href ? n.href : null;
-    }
-  }, se = {
-    wikipedia: function(e) {
-      return ee(e);
-    },
-    imdb: function(e) {
-      const t = e.closest('.lister-item, [data-testid="title"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/title/"], a[href*="/name/"]');
-      return n?.href ? n.href : null;
-    },
-    rottenTomatoes: function(e) {
-      const t = e.closest('[data-qa="discovery-media-list-item"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/m/"], a[href*="/tv/"]');
-      return n?.href ? n.href : null;
-    },
-    netflix: function(e) {
-      return window.location.href;
-    },
-    letterboxd: function(e) {
-      const t = e.closest(".film-poster, [data-film-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/film/"]');
-      return n?.href ? n.href : null;
-    },
-    goodreads: function(e) {
-      const t = e.closest(".bookBox, [data-book-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/book/show/"]');
-      return n?.href ? n.href : null;
-    },
-    myAnimeList: function(e) {
-      const t = e.closest(".anime_ranking_h3, [data-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/anime/"]');
-      return n?.href ? n.href : null;
-    },
-    aniList: function(e) {
-      const t = e.closest(".media-card, [data-media-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/anime/"], a[href*="/manga/"]');
-      return n?.href ? n.href : null;
-    },
-    kitsu: function(e) {
-      const t = e.closest(".media-card");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/anime/"], a[href*="/manga/"]');
-      return n?.href ? n.href : null;
-    },
-    lastFm: function(e) {
-      const t = e.closest(".chartlist-row, [data-track-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/music/"]');
-      return n?.href ? n.href : null;
-    },
-    spotify: function(e) {
-      const t = e.closest('[data-testid="tracklist-row"], .track');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/track/"], a[href*="/album/"]');
-      return n?.href ? n.href : null;
-    },
-    soundcloud: function(e) {
-      const t = e.closest(".searchItem, .soundList__item");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="soundcloud.com/"]');
-      return n?.href ? n.href : null;
-    },
-    bandcamp: function(e) {
-      const t = e.closest(".item-details, [data-item-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/track/"], a[href*="/album/"]');
-      return n?.href ? n.href : null;
-    }
-  }, ae = {
-    steam: function(e) {
-      const t = e.closest("[data-ds-appid], .search_result_row");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/app/"]');
-      return n?.href ? n.href : null;
-    },
-    steamPowered: function(e) {
-      const t = e.closest("[data-ds-appid], .game_area");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/app/"]');
-      return n?.href ? n.href : null;
-    },
-    epicGames: function(e) {
-      const t = e.closest('[data-component="Card"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/p/"]');
-      return n?.href ? n.href : null;
-    },
-    gOG: function(e) {
-      const t = e.closest(".product-row, [data-game-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/game/"]');
-      return n?.href ? n.href : null;
-    },
-    itchIo: function(e) {
-      const t = e.closest(".game_cell, [data-game_id]");
-      if (!t) return ee(e);
-      const n = t.querySelector("a.game_link, a.title");
-      return n?.href ? n.href : null;
-    },
-    gameJolt: function(e) {
-      const t = e.closest(".game-card, [data-game-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/games/"]');
-      return n?.href ? n.href : null;
-    }
-  }, re = {
-    pinterest: function(e) {
-      const t = e.closest('[data-test-id="pin"], [role="button"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/pin/"]');
-      return n?.href ? n.href : null;
-    },
-    tumblr: function(e) {
-      const t = e.closest("[data-id], article");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/post/"]');
-      return n?.href ? n.href : null;
-    },
-    dribbble: function(e) {
-      const t = e.closest("[data-thumbnail-target], .shot-thumbnail");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/shots/"]');
-      return n?.href ? n.href : null;
-    },
-    behance: function(e) {
-      const t = e.closest("[data-project-id], .Project");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/gallery/"]');
-      return n?.href ? n.href : null;
-    },
-    deviantart: function(e) {
-      const t = e.closest("[data-deviationid], ._2vUXu");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[data-hook="deviation_link"]');
-      return n?.href ? n.href : null;
-    },
-    flickr: function(e) {
-      const t = e.closest(".photo-list-photo-view, [data-photo-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/photos/"]');
-      return n?.href ? n.href : null;
-    },
-    "500px": function(e) {
-      const t = e.closest('[data-test="photo-item"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/photo/"]');
-      return n?.href ? n.href : null;
-    },
-    unsplash: function(e) {
-      const t = e.closest('figure, [data-test="photo-grid-single-column-figure"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/photos/"]');
-      return n?.href ? n.href : null;
-    },
-    pexels: function(e) {
-      const t = e.closest("[data-photo-modal-medium], article");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/photo/"]');
-      return n?.href ? n.href : null;
-    },
-    pixabay: function(e) {
-      const t = e.closest("[data-id], .item");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/photos/"], a[href*="/illustrations/"]');
-      return n?.href ? n.href : null;
-    },
-    artstation: function(e) {
-      const t = e.closest(".project, [data-project-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/artwork/"]');
-      return n?.href ? n.href : null;
-    },
-    imgur: function(e) {
-      const t = e.closest('[id^="post-"], .Post');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/gallery/"]');
-      return n?.href ? n.href : null;
-    },
-    giphy: function(e) {
-      const t = e.closest("[data-giphy-id], .gif");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/gifs/"]');
-      return n?.href ? n.href : null;
-    }
-  }, le = {
-    coursera: function(e) {
-      const t = e.closest('[data-e2e="CourseCard"], .CourseCard');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/learn/"]');
-      return n?.href ? n.href : null;
-    },
-    udemy: function(e) {
-      const t = e.closest('[data-purpose="course-card"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/course/"]');
-      return n?.href ? n.href : null;
-    },
-    edX: function(e) {
-      const t = e.closest(".course-card, [data-course-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/course/"]');
-      return n?.href ? n.href : null;
-    },
-    khanAcademy: function(e) {
-      const t = e.closest("[data-test-id], .link-item");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/math/"], a[href*="/science/"]');
-      return n?.href ? n.href : null;
-    },
-    skillshare: function(e) {
-      const t = e.closest("[data-class-id], .class-card");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/classes/"]');
-      return n?.href ? n.href : null;
-    },
-    pluralsight: function(e) {
-      const t = e.closest("[data-course-id], .course-card");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/courses/"]');
-      return n?.href ? n.href : null;
-    },
-    udacity: function(e) {
-      const t = e.closest('[data-testid="catalog-card"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/course/"]');
-      return n?.href ? n.href : null;
-    }
-  }, ce = {
-    hackerNews: function(e) {
-      const t = e.closest(".athing");
-      if (!t) return ee(e);
-      const n = t.querySelector("a.titlelink, .storylink");
-      return n?.href ? n.href : null;
-    },
-    productHunt: function(e) {
-      const t = e.closest('[data-test="post-item"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/posts/"]');
-      return n?.href ? n.href : null;
-    },
-    quora: function(e) {
-      const t = e.closest("[data-scroll-id], .q-box");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/q/"], a[href*="/question/"], a.question_link');
-      return n?.href ? n.href : null;
-    },
-    discord: function(e) {
-      const t = e.closest('[id^="chat-messages-"], .message');
-      if (!t) return ee(e);
-      const n = t.querySelector("a[href]");
-      return n?.href ? n.href : null;
-    },
-    slack: function(e) {
-      const t = e.closest('[data-qa="message_container"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/archives/"]');
-      return n?.href ? n.href : null;
-    },
-    lobsters: function(e) {
-      const t = e.closest(".story");
-      if (!t) return ee(e);
-      const n = t.querySelector("a.u-url");
-      return n?.href ? n.href : null;
-    },
-    googleNews: function(e) {
-      const t = e.closest("article, [data-n-tid]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="./articles/"], h3 a, h4 a');
-      return n?.href ? n.href : null;
-    },
-    feedly: function(e) {
-      const t = e.closest("[data-entry-id], .entry");
-      if (!t) return ee(e);
-      const n = t.querySelector("a.entry__title");
-      return n?.href ? n.href : null;
-    }
-  }, de = {
-    archiveOrg: function(e) {
-      const t = e.closest(".item-ia, [data-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/details/"]');
-      return n?.href ? n.href : null;
-    },
-    patreon: function(e) {
-      const t = e.closest('[data-tag="post-card"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/posts/"]');
-      return n?.href ? n.href : null;
-    },
-    koFi: function(e) {
-      const t = e.closest(".feed-item, [data-post-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/post/"]');
-      return n?.href ? n.href : null;
-    },
-    buyMeACoffee: function(e) {
-      const t = e.closest(".feed-card");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/p/"]');
-      return n?.href ? n.href : null;
-    },
-    gumroad: function(e) {
-      const t = e.closest("[data-permalink], .product-card");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="gumroad.com/"]');
-      return n?.href ? n.href : null;
-    }
-  }, he = {
-    twitter: function(e) {
-      return Z("=== TWITTER URL FINDER ==="), Z("Hovered element: " + e.tagName + " - " + e.className), 
-      e && e.href ? (Z(`URL found directly from hovered element: ${e.href}`), e.href) : (Z("No Twitter URL found on the provided element."), 
-      null);
-    },
-    reddit: function(e) {
-      const t = e.closest('[data-testid="post-container"], .Post, .post-container, [role="article"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[data-testid="post-title"], h3 a, .PostTitle a, [data-click-id="body"] a');
-      return n?.href ? n.href : null;
-    },
-    linkedIn: function(e) {
-      const t = e.closest('[data-id], .feed-shared-update-v2, [data-test="activity-item"]');
-      if (!t) return ee(e);
-      const n = t.querySelectorAll("a[href]");
-      for (const e of n) {
-        const t = e.href;
-        if (t.includes("/feed/") || t.includes("/posts/")) return t;
-      }
-      return null;
-    },
-    instagram: function(e) {
-      const t = e.closest('[role="article"], article');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/p/"], a[href*="/reel/"], time a');
-      return n?.href ? n.href : null;
-    },
-    facebook: function(e) {
-      const t = e.closest('[role="article"], [data-testid="post"]');
-      if (!t) return ee(e);
-      const n = t.querySelectorAll('a[href*="/posts/"], a[href*="/photos/"], a[href*="/videos/"]');
-      return n.length > 0 ? n[0].href : null;
-    },
-    tikTok: function(e) {
-      const t = e.closest('[data-e2e="user-post-item"], .video-feed-item');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/@"]');
-      return n?.href ? n.href : null;
-    },
-    threads: function(e) {
-      const t = e.closest('[role="article"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/t/"], time a');
-      return n?.href ? n.href : null;
-    },
-    bluesky: function(e) {
-      const t = e.closest('[data-testid="postThreadItem"], [role="article"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/post/"]');
-      return n?.href ? n.href : null;
-    },
-    mastodon: function(e) {
-      const t = e.closest(".status, [data-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector("a.status__relative-time, a.detailed-status__datetime");
-      return n?.href ? n.href : null;
-    },
-    snapchat: function(e) {
-      const t = e.closest('[role="article"], .Story');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/add/"], a[href*="/spotlight/"]');
-      return n?.href ? n.href : null;
-    },
-    whatsapp: function(e) {
-      return window.location.href;
-    },
-    telegram: function(e) {
-      const t = e.closest(".message, [data-mid]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="t.me"]');
-      return n?.href ? n.href : null;
-    }
-  }, ue = {
-    youTube: function(e) {
-      const t = e.closest('ytd-rich-grid-media, ytd-thumbnail, ytd-video-renderer, ytd-grid-video-renderer, a[href*="/watch"]');
-      if (!t) return ee(e);
-      const n = t.querySelector('a#thumbnail[href*="watch?v="]');
-      if (n?.href) return n.href;
-      const i = t.querySelector('a[href*="watch?v="]');
-      return i?.href ? i.href : null;
-    },
-    vimeo: function(e) {
-      const t = e.closest("[data-clip-id], .clip_grid_item");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/video/"], a[href*="vimeo.com/"]');
-      return n?.href ? n.href : null;
-    },
-    dailyMotion: function(e) {
-      const t = e.closest("[data-video], .sd_video_item");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/video/"]');
-      return n?.href ? n.href : null;
-    },
-    twitch: function(e) {
-      const t = e.closest('[data-a-target="video-card"], .video-card');
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/videos/"], a[href*="/clip/"]');
-      return n?.href ? n.href : null;
-    },
-    rumble: function(e) {
-      const t = e.closest(".video-item, [data-video]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*=".html"]');
-      return n?.href ? n.href : null;
-    },
-    odysee: function(e) {
-      const t = e.closest(".claim-preview, [data-id]");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/@"]');
-      return n?.href ? n.href : null;
-    },
-    bitchute: function(e) {
-      const t = e.closest(".video-card, .channel-videos-container");
-      if (!t) return ee(e);
-      const n = t.querySelector('a[href*="/video/"]');
-      return n?.href ? n.href : null;
-    }
-  };
-  console.log("[Copy-URL-on-Hover] Script loaded! @", (new Date).toISOString());
-  try {
-    window.CUO_debug_marker = "JS executed to top of file!", console.log("[Copy-URL-on-Hover] Debug marker set successfully");
-  } catch (e) {
-    console.error("[Copy-URL-on-Hover] CRITICAL: Failed to set window marker", e);
+
+  /**
+   * Blogging URL Handlers
+   * URL detection for blogging platforms
+   */
+
+
+  function findMediumUrl(element) {
+    const article = element.closest('[data-post-id], article');
+    if (!article) return findGenericUrl(element);
+
+    const link = article.querySelector('a[data-action="open-post"], h2 a, h3 a');
+    if (link?.href) return link.href;
+
+    return null;
   }
-  window.addEventListener("error", e => {
-    console.error("[Copy-URL-on-Hover] GLOBAL ERROR:", {
-      message: e.message,
-      filename: e.filename,
-      lineno: e.lineno,
-      colno: e.colno,
-      error: e.error,
-      stack: e.error?.stack
-    });
-  }), window.addEventListener("unhandledrejection", e => {
-    console.error("[Copy-URL-on-Hover] UNHANDLED PROMISE REJECTION:", {
-      reason: e.reason,
-      promise: e.promise
-    });
-  }), console.log("[Copy-URL-on-Hover] Global error handlers installed"), console.log("[Copy-URL-on-Hover] Starting module imports..."), 
-  console.log("[Copy-URL-on-Hover] All module imports completed successfully"), console.log("[Copy-URL-on-Hover] Initializing core systems...");
-  const ge = new class {
-    constructor() {
-      this.config = {
-        ...l
-      }, this.listeners = [];
-    }
-    async load() {
-      console.log("[ConfigManager] Starting configuration load...");
-      try {
-        if (!browser || !browser.storage || !browser.storage.local) return console.error("[ConfigManager] browser.storage.local is not available!"), 
-        console.warn("[ConfigManager] Using DEFAULT_CONFIG as fallback"), this.config = {
-          ...l
-        }, this.config;
-        console.log("[ConfigManager] Calling browser.storage.local.get...");
-        const e = await browser.storage.local.get(l);
-        if (console.log("[ConfigManager] Storage get completed, processing result..."), 
-        !e || "object" != typeof e) return console.warn("[ConfigManager] Invalid storage result, using DEFAULT_CONFIG"), 
-        this.config = {
-          ...l
-        }, this.config;
-        this.config = {
-          ...l,
-          ...e
-        }, console.log("[ConfigManager] Configuration loaded successfully"), console.log("[ConfigManager] Config summary:", {
-          debugMode: this.config.debugMode,
-          totalKeys: Object.keys(this.config).length
-        });
-      } catch (e) {
-        console.error("[ConfigManager] Exception during load:", {
-          message: e.message,
-          stack: e.stack,
-          name: e.name
-        }), console.warn("[ConfigManager] Falling back to DEFAULT_CONFIG due to exception"), 
-        this.config = {
-          ...l
-        };
-      }
-      return this.config;
-    }
-    async save() {
-      try {
-        await browser.storage.local.set(this.config);
-      } catch (e) {
-        console.error("[Config] Failed to save configuration:", e);
-      }
-    }
-    get(e) {
-      return this.config[e];
-    }
-    set(e, t) {
-      this.config[e] = t, this.notifyListeners(e, t);
-    }
-    getAll() {
-      return {
-        ...this.config
-      };
-    }
-    update(e) {
-      this.config = {
-        ...this.config,
-        ...e
-      }, this.notifyListeners();
-    }
-    onChange(e) {
-      this.listeners.push(e);
-    }
-    notifyListeners(e, t) {
-      this.listeners.forEach(n => n(e, t, this.config));
-    }
+
+  function findDevToUrl(element) {
+    const article = element.closest('.crayons-story, [data-article-id]');
+    if (!article) return findGenericUrl(element);
+
+    const link = article.querySelector('a[id*="article-link"], h2 a, h3 a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findHashnodeUrl(element) {
+    const article = element.closest('[data-post-id], .post-card');
+    if (!article) return findGenericUrl(element);
+
+    const link = article.querySelector('a[href*="/post/"], h1 a, h2 a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findSubstackUrl(element) {
+    const article = element.closest('.post, [data-testid="post-preview"]');
+    if (!article) return findGenericUrl(element);
+
+    const link = article.querySelector('a[href*="/p/"], h2 a, h3 a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findWordpressUrl(element) {
+    const post = element.closest('.post, .hentry, article');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a.entry-title-link, h2 a, .entry-title a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findBloggerUrl(element) {
+    const post = element.closest('.post, .post-outer');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('h3.post-title a, a.post-title');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findGhostUrl(element) {
+    const article = element.closest('.post-card, article');
+    if (!article) return findGenericUrl(element);
+
+    const link = article.querySelector('.post-card-title a, h2 a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findNotionUrl(_element) {
+    // Notion typically uses current page URL
+    return window.location.href;
+  }
+
+  const bloggingHandlers = {
+    medium: findMediumUrl,
+    devTo: findDevToUrl,
+    hashnode: findHashnodeUrl,
+    substack: findSubstackUrl,
+    wordpress: findWordpressUrl,
+    blogger: findBloggerUrl,
+    ghost: findGhostUrl,
+    notion: findNotionUrl
   };
-  console.log("[Copy-URL-on-Hover] ConfigManager initialized");
-  const pe = new class {
-    constructor() {
-      this.state = {
-        currentHoveredLink: null,
-        currentHoveredElement: null,
-        quickTabWindows: [],
-        minimizedQuickTabs: [],
-        quickTabZIndex: 1e6,
-        lastMouseX: 0,
-        lastMouseY: 0,
-        isSavingToStorage: !1,
-        isPanelOpen: !1
-      }, this.listeners = new Map;
-    }
-    getState() {
-      return {
-        ...this.state
-      };
-    }
-    get(e) {
-      return this.state[e];
-    }
-    set(e, t) {
-      const n = this.state[e];
-      this.state[e] = t, this.notifyListeners(e, t, n);
-    }
-    setState(e) {
-      const t = {
-        ...this.state
-      };
-      this.state = {
-        ...this.state,
-        ...e
-      }, Object.keys(e).forEach(n => {
-        t[n] !== e[n] && this.notifyListeners(n, e[n], t[n]);
-      });
-    }
-    subscribe(e, t) {
-      if ("function" == typeof e) {
-        const t = Symbol("listener");
-        return this.listeners.set(t, {
-          key: "*",
-          callback: e
-        }), () => this.listeners.delete(t);
-      }
-      {
-        const n = Symbol("listener");
-        return this.listeners.set(n, {
-          key: e,
-          callback: t
-        }), () => this.listeners.delete(n);
-      }
-    }
-    notifyListeners(e, t, n) {
-      this.listeners.forEach(({key: i, callback: o}) => {
-        if ("*" === i || i === e) try {
-          o(e, t, n, this.state);
-        } catch (e) {
-          console.error("[State] Listener error:", e);
-        }
-      });
-    }
-    reset() {
-      this.state = {
-        currentHoveredLink: null,
-        currentHoveredElement: null,
-        quickTabWindows: [],
-        minimizedQuickTabs: [],
-        quickTabZIndex: 1e6,
-        lastMouseX: 0,
-        lastMouseY: 0,
-        isSavingToStorage: !1,
-        isPanelOpen: !1
-      }, this.notifyListeners("*", this.state, {});
-    }
+
+  /**
+   * Developer URL Handlers
+   * URL detection for developer platforms
+   */
+
+
+  function findGitHubUrl(element) {
+    const item = element.closest('[data-testid="issue-row"], .Box-row, .issue, [role="article"]');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector(
+      'a[href*="/issues/"], a[href*="/pull/"], a[href*="/discussions/"]'
+    );
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findGitLabUrl(element) {
+    const item = element.closest('.issue, .merge-request, [data-qa-selector]');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/issues/"], a[href*="/merge_requests/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findBitbucketUrl(element) {
+    const item = element.closest('[data-testid="issue-row"], .iterable-item');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/issues/"], a[href*="/pull-requests/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findStackOverflowUrl(element) {
+    const question = element.closest('.s-post-summary, [data-post-id]');
+    if (!question) return findGenericUrl(element);
+
+    const link = question.querySelector('a.s-link[href*="/questions/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findStackExchangeUrl(element) {
+    const question = element.closest('.s-post-summary, .question-summary');
+    if (!question) return findGenericUrl(element);
+
+    const link = question.querySelector('a[href*="/questions/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findServerFaultUrl(element) {
+    // Server Fault uses the same Stack Exchange structure
+    return findStackExchangeUrl(element);
+  }
+
+  function findSuperUserUrl(element) {
+    // Super User uses the same Stack Exchange structure
+    return findStackExchangeUrl(element);
+  }
+
+  function findCodepenUrl(element) {
+    const pen = element.closest('[data-slug], .single-pen');
+    if (!pen) return findGenericUrl(element);
+
+    const link = pen.querySelector('a[href*="/pen/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findJSFiddleUrl(element) {
+    const fiddle = element.closest('.fiddle, [data-id]');
+    if (!fiddle) return findGenericUrl(element);
+
+    const link = fiddle.querySelector('a[href*="jsfiddle.net"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findReplitUrl(element) {
+    const repl = element.closest('[data-repl-id], .repl-item');
+    if (!repl) return findGenericUrl(element);
+
+    const link = repl.querySelector('a[href*="/@"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findGlitchUrl(element) {
+    const project = element.closest('.project, [data-project-id]');
+    if (!project) return findGenericUrl(element);
+
+    const link = project.querySelector('a[href*="glitch.com/~"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findCodesandboxUrl(element) {
+    const sandbox = element.closest('[data-id], .sandbox-item');
+    if (!sandbox) return findGenericUrl(element);
+
+    const link = sandbox.querySelector('a[href*="/s/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const developerHandlers = {
+    gitHub: findGitHubUrl,
+    gitLab: findGitLabUrl,
+    bitbucket: findBitbucketUrl,
+    stackOverflow: findStackOverflowUrl,
+    stackExchange: findStackExchangeUrl,
+    serverFault: findServerFaultUrl,
+    superUser: findSuperUserUrl,
+    codepen: findCodepenUrl,
+    jSFiddle: findJSFiddleUrl,
+    replit: findReplitUrl,
+    glitch: findGlitchUrl,
+    codesandbox: findCodesandboxUrl
   };
-  console.log("[Copy-URL-on-Hover] StateManager initialized");
-  const fe = new class {
-    constructor() {
-      this.events = new Map, this.debugMode = !1;
-    }
-    on(e, t) {
-      return this.events.has(e) || this.events.set(e, []), this.events.get(e).push(t), 
-      this.debugMode && console.log(`[EventBus] Subscribed to "${e}"`), () => this.off(e, t);
-    }
-    off(e, t) {
-      if (!this.events.has(e)) return;
-      const n = this.events.get(e), i = n.indexOf(t);
-      -1 !== i && (n.splice(i, 1), this.debugMode && console.log(`[EventBus] Unsubscribed from "${e}"`)), 
-      0 === n.length && this.events.delete(e);
-    }
-    emit(e, t) {
-      this.events.has(e) && (this.debugMode && console.log(`[EventBus] Emitting "${e}"`, t), 
-      this.events.get(e).forEach(n => {
-        try {
-          n(t);
-        } catch (t) {
-          console.error(`[EventBus] Error in "${e}" handler:`, t);
-        }
-      }));
-    }
-    once(e, t) {
-      const n = i => {
-        t(i), this.off(e, n);
-      };
-      return this.on(e, n);
-    }
-    enableDebug() {
-      this.debugMode = !0;
-    }
-    disableDebug() {
-      this.debugMode = !1;
-    }
-    clear() {
-      this.events.clear();
-    }
-    getEventNames() {
-      return Array.from(this.events.keys());
-    }
-    listenerCount(e) {
-      return this.events.has(e) ? this.events.get(e).length : 0;
-    }
+
+  /**
+   * Ecommerce URL Handlers
+   * URL detection for ecommerce platforms
+   */
+
+
+  function findAmazonUrl(element) {
+    const product = element.closest(
+      '[data-component-type="s-search-result"], .s-result-item, [data-asin]'
+    );
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a.a-link-normal[href*="/dp/"], h2 a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findEbayUrl(element) {
+    const item = element.closest('.s-item, [data-view="mi"]');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a.s-item__link, .vip a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findEtsyUrl(element) {
+    const listing = element.closest('[data-listing-id], .listing-link');
+    if (!listing) return findGenericUrl(element);
+
+    const link = listing.querySelector('a[href*="/listing/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findWalmartUrl(element) {
+    const product = element.closest('[data-item-id], .search-result-gridview-item');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="/ip/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findFlipkartUrl(element) {
+    const product = element.closest('[data-id], ._2kHMtA');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="/p/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findAliexpressUrl(element) {
+    const product = element.closest('[data-product-id], .product-item');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="/item/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findAlibabaUrl(element) {
+    const product = element.closest('[data-content], .organic-list-offer');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="/product-detail/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findShopifyUrl(element) {
+    const product = element.closest('.product-item, .grid-item, [data-product-id]');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="/products/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findTargetUrl(element) {
+    const product = element.closest('[data-test="product-grid-item"]');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="/p/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findBestBuyUrl(element) {
+    const product = element.closest('.sku-item, [data-sku-id]');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="/site/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findNeweggUrl(element) {
+    const item = element.closest('.item-cell, [data-item]');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a.item-title');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findWishUrl(element) {
+    const product = element.closest('[data-productid], .ProductCard');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="/product/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const ecommerceHandlers = {
+    amazon: findAmazonUrl,
+    ebay: findEbayUrl,
+    etsy: findEtsyUrl,
+    walmart: findWalmartUrl,
+    flipkart: findFlipkartUrl,
+    aliexpress: findAliexpressUrl,
+    alibaba: findAlibabaUrl,
+    shopify: findShopifyUrl,
+    target: findTargetUrl,
+    bestBuy: findBestBuyUrl,
+    newegg: findNeweggUrl,
+    wish: findWishUrl
   };
-  console.log("[Copy-URL-on-Hover] EventBus initialized");
-  const be = new class {
+
+  /**
+   * Entertainment URL Handlers
+   * URL detection for entertainment platforms
+   */
+
+
+  function findWikipediaUrl(element) {
+    // Only return URL if hovering over an actual link element
+    // Don't default to current page URL
+    return findGenericUrl(element);
+  }
+
+  function findImdbUrl(element) {
+    const item = element.closest('.lister-item, [data-testid="title"]');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/title/"], a[href*="/name/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findRottenTomatoesUrl(element) {
+    const item = element.closest('[data-qa="discovery-media-list-item"]');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/m/"], a[href*="/tv/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findNetflixUrl(_element) {
+    // Netflix uses current page URL
+    return window.location.href;
+  }
+
+  function findLetterboxdUrl(element) {
+    const film = element.closest('.film-poster, [data-film-id]');
+    if (!film) return findGenericUrl(element);
+
+    const link = film.querySelector('a[href*="/film/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findGoodreadsUrl(element) {
+    const book = element.closest('.bookBox, [data-book-id]');
+    if (!book) return findGenericUrl(element);
+
+    const link = book.querySelector('a[href*="/book/show/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findMyAnimeListUrl(element) {
+    const anime = element.closest('.anime_ranking_h3, [data-id]');
+    if (!anime) return findGenericUrl(element);
+
+    const link = anime.querySelector('a[href*="/anime/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findAniListUrl(element) {
+    const media = element.closest('.media-card, [data-media-id]');
+    if (!media) return findGenericUrl(element);
+
+    const link = media.querySelector('a[href*="/anime/"], a[href*="/manga/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findKitsuUrl(element) {
+    const media = element.closest('.media-card');
+    if (!media) return findGenericUrl(element);
+
+    const link = media.querySelector('a[href*="/anime/"], a[href*="/manga/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findLastFmUrl(element) {
+    const item = element.closest('.chartlist-row, [data-track-id]');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/music/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findSpotifyUrl(element) {
+    const item = element.closest('[data-testid="tracklist-row"], .track');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/track/"], a[href*="/album/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findSoundcloudUrl(element) {
+    const track = element.closest('.searchItem, .soundList__item');
+    if (!track) return findGenericUrl(element);
+
+    const link = track.querySelector('a[href*="soundcloud.com/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findBandcampUrl(_element) {
+    const item = _element.closest('.item-details, [data-item-id]');
+    if (!item) return findGenericUrl(_element);
+
+    const link = item.querySelector('a[href*="/track/"], a[href*="/album/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const entertainmentHandlers = {
+    wikipedia: findWikipediaUrl,
+    imdb: findImdbUrl,
+    rottenTomatoes: findRottenTomatoesUrl,
+    netflix: findNetflixUrl,
+    letterboxd: findLetterboxdUrl,
+    goodreads: findGoodreadsUrl,
+    myAnimeList: findMyAnimeListUrl,
+    aniList: findAniListUrl,
+    kitsu: findKitsuUrl,
+    lastFm: findLastFmUrl,
+    spotify: findSpotifyUrl,
+    soundcloud: findSoundcloudUrl,
+    bandcamp: findBandcampUrl
+  };
+
+  /**
+   * Gaming URL Handlers
+   * URL detection for gaming platforms
+   */
+
+
+  function findSteamUrl(element) {
+    const item = element.closest('[data-ds-appid], .search_result_row');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/app/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findSteamPoweredUrl(element) {
+    const item = element.closest('[data-ds-appid], .game_area');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/app/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findEpicGamesUrl(element) {
+    const game = element.closest('[data-component="Card"]');
+    if (!game) return findGenericUrl(element);
+
+    const link = game.querySelector('a[href*="/p/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findGOGUrl(element) {
+    const product = element.closest('.product-row, [data-game-id]');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="/game/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findItchIoUrl(element) {
+    const game = element.closest('.game_cell, [data-game_id]');
+    if (!game) return findGenericUrl(element);
+
+    const link = game.querySelector('a.game_link, a.title');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findGameJoltUrl(element) {
+    const game = element.closest('.game-card, [data-game-id]');
+    if (!game) return findGenericUrl(element);
+
+    const link = game.querySelector('a[href*="/games/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const gamingHandlers = {
+    steam: findSteamUrl,
+    steamPowered: findSteamPoweredUrl,
+    epicGames: findEpicGamesUrl,
+    gOG: findGOGUrl,
+    itchIo: findItchIoUrl,
+    gameJolt: findGameJoltUrl
+  };
+
+  /**
+   * Image Design URL Handlers
+   * URL detection for image design platforms
+   */
+
+
+  function findPinterestUrl(element) {
+    const pin = element.closest('[data-test-id="pin"], [role="button"]');
+    if (!pin) return findGenericUrl(element);
+
+    const link = pin.querySelector('a[href*="/pin/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findTumblrUrl(element) {
+    const post = element.closest('[data-id], article');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a[href*="/post/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findDribbbleUrl(element) {
+    const shot = element.closest('[data-thumbnail-target], .shot-thumbnail');
+    if (!shot) return findGenericUrl(element);
+
+    const link = shot.querySelector('a[href*="/shots/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findBehanceUrl(element) {
+    const project = element.closest('[data-project-id], .Project');
+    if (!project) return findGenericUrl(element);
+
+    const link = project.querySelector('a[href*="/gallery/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findDeviantartUrl(element) {
+    const deviation = element.closest('[data-deviationid], ._2vUXu');
+    if (!deviation) return findGenericUrl(element);
+
+    const link = deviation.querySelector('a[data-hook="deviation_link"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findFlickrUrl(element) {
+    const photo = element.closest('.photo-list-photo-view, [data-photo-id]');
+    if (!photo) return findGenericUrl(element);
+
+    const link = photo.querySelector('a[href*="/photos/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function find500pxUrl(element) {
+    const photo = element.closest('[data-test="photo-item"]');
+    if (!photo) return findGenericUrl(element);
+
+    const link = photo.querySelector('a[href*="/photo/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findUnsplashUrl(element) {
+    const photo = element.closest('figure, [data-test="photo-grid-single-column-figure"]');
+    if (!photo) return findGenericUrl(element);
+
+    const link = photo.querySelector('a[href*="/photos/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findPexelsUrl(element) {
+    const photo = element.closest('[data-photo-modal-medium], article');
+    if (!photo) return findGenericUrl(element);
+
+    const link = photo.querySelector('a[href*="/photo/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findPixabayUrl(element) {
+    const photo = element.closest('[data-id], .item');
+    if (!photo) return findGenericUrl(element);
+
+    const link = photo.querySelector('a[href*="/photos/"], a[href*="/illustrations/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findArtstationUrl(element) {
+    const project = element.closest('.project, [data-project-id]');
+    if (!project) return findGenericUrl(element);
+
+    const link = project.querySelector('a[href*="/artwork/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findImgurUrl(element) {
+    const post = element.closest('[id^="post-"], .Post');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a[href*="/gallery/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findGiphyUrl(element) {
+    const gif = element.closest('[data-giphy-id], .gif');
+    if (!gif) return findGenericUrl(element);
+
+    const link = gif.querySelector('a[href*="/gifs/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const image_designHandlers = {
+    pinterest: findPinterestUrl,
+    tumblr: findTumblrUrl,
+    dribbble: findDribbbleUrl,
+    behance: findBehanceUrl,
+    deviantart: findDeviantartUrl,
+    flickr: findFlickrUrl,
+    '500px': find500pxUrl,
+    unsplash: findUnsplashUrl,
+    pexels: findPexelsUrl,
+    pixabay: findPixabayUrl,
+    artstation: findArtstationUrl,
+    imgur: findImgurUrl,
+    giphy: findGiphyUrl
+  };
+
+  /**
+   * Learning URL Handlers
+   * URL detection for learning platforms
+   */
+
+
+  function findCourseraUrl(element) {
+    const course = element.closest('[data-e2e="CourseCard"], .CourseCard');
+    if (!course) return findGenericUrl(element);
+
+    const link = course.querySelector('a[href*="/learn/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findUdemyUrl(element) {
+    const course = element.closest('[data-purpose="course-card"]');
+    if (!course) return findGenericUrl(element);
+
+    const link = course.querySelector('a[href*="/course/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findEdXUrl(element) {
+    const course = element.closest('.course-card, [data-course-id]');
+    if (!course) return findGenericUrl(element);
+
+    const link = course.querySelector('a[href*="/course/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findKhanAcademyUrl(element) {
+    const item = element.closest('[data-test-id], .link-item');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/math/"], a[href*="/science/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findSkillshareUrl(element) {
+    const classCard = element.closest('[data-class-id], .class-card');
+    if (!classCard) return findGenericUrl(element);
+
+    const link = classCard.querySelector('a[href*="/classes/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findPluralsightUrl(element) {
+    const course = element.closest('[data-course-id], .course-card');
+    if (!course) return findGenericUrl(element);
+
+    const link = course.querySelector('a[href*="/courses/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findUdacityUrl(element) {
+    const course = element.closest('[data-testid="catalog-card"]');
+    if (!course) return findGenericUrl(element);
+
+    const link = course.querySelector('a[href*="/course/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const learningHandlers = {
+    coursera: findCourseraUrl,
+    udemy: findUdemyUrl,
+    edX: findEdXUrl,
+    khanAcademy: findKhanAcademyUrl,
+    skillshare: findSkillshareUrl,
+    pluralsight: findPluralsightUrl,
+    udacity: findUdacityUrl
+  };
+
+  /**
+   * News Discussion URL Handlers
+   * URL detection for news discussion platforms
+   */
+
+
+  function findHackerNewsUrl(element) {
+    const row = element.closest('.athing');
+    if (!row) return findGenericUrl(element);
+
+    const link = row.querySelector('a.titlelink, .storylink');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findProductHuntUrl(element) {
+    const item = element.closest('[data-test="post-item"]');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/posts/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findQuoraUrl(element) {
+    const question = element.closest('[data-scroll-id], .q-box');
+    if (!question) return findGenericUrl(element);
+
+    const link = question.querySelector('a[href*="/q/"], a[href*="/question/"], a.question_link');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findDiscordUrl(element) {
+    const message = element.closest('[id^="chat-messages-"], .message');
+    if (!message) return findGenericUrl(element);
+
+    const link = message.querySelector('a[href]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findSlackUrl(element) {
+    const message = element.closest('[data-qa="message_container"]');
+    if (!message) return findGenericUrl(element);
+
+    const link = message.querySelector('a[href*="/archives/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findLobstersUrl(element) {
+    const story = element.closest('.story');
+    if (!story) return findGenericUrl(element);
+
+    const link = story.querySelector('a.u-url');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findGoogleNewsUrl(element) {
+    const article = element.closest('article, [data-n-tid]');
+    if (!article) return findGenericUrl(element);
+
+    const link = article.querySelector('a[href*="./articles/"], h3 a, h4 a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findFeedlyUrl(element) {
+    const entry = element.closest('[data-entry-id], .entry');
+    if (!entry) return findGenericUrl(element);
+
+    const link = entry.querySelector('a.entry__title');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const news_discussionHandlers = {
+    hackerNews: findHackerNewsUrl,
+    productHunt: findProductHuntUrl,
+    quora: findQuoraUrl,
+    discord: findDiscordUrl,
+    slack: findSlackUrl,
+    lobsters: findLobstersUrl,
+    googleNews: findGoogleNewsUrl,
+    feedly: findFeedlyUrl
+  };
+
+  /**
+   * Other URL Handlers
+   * URL detection for other platforms
+   */
+
+
+  function findArchiveOrgUrl(element) {
+    const item = element.closest('.item-ia, [data-id]');
+    if (!item) return findGenericUrl(element);
+
+    const link = item.querySelector('a[href*="/details/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findPatreonUrl(element) {
+    const post = element.closest('[data-tag="post-card"]');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a[href*="/posts/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findKoFiUrl(element) {
+    const post = element.closest('.feed-item, [data-post-id]');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a[href*="/post/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findBuyMeACoffeeUrl(element) {
+    const post = element.closest('.feed-card');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a[href*="/p/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findGumroadUrl(element) {
+    const product = element.closest('[data-permalink], .product-card');
+    if (!product) return findGenericUrl(element);
+
+    const link = product.querySelector('a[href*="gumroad.com/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const otherHandlers = {
+    archiveOrg: findArchiveOrgUrl,
+    patreon: findPatreonUrl,
+    koFi: findKoFiUrl,
+    buyMeACoffee: findBuyMeACoffeeUrl,
+    gumroad: findGumroadUrl
+  };
+
+  /**
+   * Social Media URL Handlers
+   * URL detection for social media platforms
+   */
+
+
+  function findTwitterUrl(element) {
+    debug('=== TWITTER URL FINDER ===');
+    debug('Hovered element: ' + element.tagName + ' - ' + element.className);
+
+    if (element && element.href) {
+      debug(`URL found directly from hovered element: ${element.href}`);
+      return element.href;
+    }
+
+    debug('No Twitter URL found on the provided element.');
+    return null;
+  }
+
+  function findRedditUrl(element) {
+    const post = element.closest(
+      '[data-testid="post-container"], .Post, .post-container, [role="article"]'
+    );
+    if (!post) return findGenericUrl(element);
+
+    const titleLink = post.querySelector(
+      'a[data-testid="post-title"], h3 a, .PostTitle a, [data-click-id="body"] a'
+    );
+    if (titleLink?.href) return titleLink.href;
+
+    return null;
+  }
+
+  function findLinkedInUrl(element) {
+    const post = element.closest('[data-id], .feed-shared-update-v2, [data-test="activity-item"]');
+    if (!post) return findGenericUrl(element);
+
+    const links = post.querySelectorAll('a[href]');
+    for (const link of links) {
+      const url = link.href;
+      if (url.includes('/feed/') || url.includes('/posts/')) return url;
+    }
+
+    return null;
+  }
+
+  function findInstagramUrl(element) {
+    const post = element.closest('[role="article"], article');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a[href*="/p/"], a[href*="/reel/"], time a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findFacebookUrl(element) {
+    const post = element.closest('[role="article"], [data-testid="post"]');
+    if (!post) return findGenericUrl(element);
+
+    const links = post.querySelectorAll(
+      'a[href*="/posts/"], a[href*="/photos/"], a[href*="/videos/"]'
+    );
+    if (links.length > 0) return links[0].href;
+
+    return null;
+  }
+
+  function findTikTokUrl(element) {
+    const video = element.closest('[data-e2e="user-post-item"], .video-feed-item');
+    if (!video) return findGenericUrl(element);
+
+    const link = video.querySelector('a[href*="/@"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findThreadsUrl(element) {
+    const post = element.closest('[role="article"]');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a[href*="/t/"], time a');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findBlueskyUrl(element) {
+    const post = element.closest('[data-testid="postThreadItem"], [role="article"]');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a[href*="/post/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findMastodonUrl(element) {
+    const post = element.closest('.status, [data-id]');
+    if (!post) return findGenericUrl(element);
+
+    const link = post.querySelector('a.status__relative-time, a.detailed-status__datetime');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findSnapchatUrl(element) {
+    const story = element.closest('[role="article"], .Story');
+    if (!story) return findGenericUrl(element);
+
+    const link = story.querySelector('a[href*="/add/"], a[href*="/spotlight/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findWhatsappUrl(_element) {
+    // WhatsApp Web doesn't use traditional links - it's a single-page app
+    // The current chat/conversation URL is the most relevant URL to copy
+    return window.location.href;
+  }
+
+  function findTelegramUrl(element) {
+    const message = element.closest('.message, [data-mid]');
+    if (!message) return findGenericUrl(element);
+
+    const link = message.querySelector('a[href*="t.me"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const social_mediaHandlers = {
+    twitter: findTwitterUrl,
+    reddit: findRedditUrl,
+    linkedIn: findLinkedInUrl,
+    instagram: findInstagramUrl,
+    facebook: findFacebookUrl,
+    tikTok: findTikTokUrl,
+    threads: findThreadsUrl,
+    bluesky: findBlueskyUrl,
+    mastodon: findMastodonUrl,
+    snapchat: findSnapchatUrl,
+    whatsapp: findWhatsappUrl,
+    telegram: findTelegramUrl
+  };
+
+  /**
+   * Video URL Handlers
+   * URL detection for video platforms
+   */
+
+
+  function findYouTubeUrl(element) {
+    const videoCard = element.closest(
+      'ytd-rich-grid-media, ytd-thumbnail, ytd-video-renderer, ytd-grid-video-renderer, a[href*="/watch"]'
+    );
+    if (!videoCard) return findGenericUrl(element);
+
+    const thumbnailLink = videoCard.querySelector('a#thumbnail[href*="watch?v="]');
+    if (thumbnailLink?.href) return thumbnailLink.href;
+
+    const watchLink = videoCard.querySelector('a[href*="watch?v="]');
+    if (watchLink?.href) return watchLink.href;
+
+    return null;
+  }
+
+  function findVimeoUrl(element) {
+    const video = element.closest('[data-clip-id], .clip_grid_item');
+    if (!video) return findGenericUrl(element);
+
+    const link = video.querySelector('a[href*="/video/"], a[href*="vimeo.com/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findDailyMotionUrl(element) {
+    const video = element.closest('[data-video], .sd_video_item');
+    if (!video) return findGenericUrl(element);
+
+    const link = video.querySelector('a[href*="/video/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findTwitchUrl(element) {
+    const stream = element.closest('[data-a-target="video-card"], .video-card');
+    if (!stream) return findGenericUrl(element);
+
+    const link = stream.querySelector('a[href*="/videos/"], a[href*="/clip/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findRumbleUrl(element) {
+    const video = element.closest('.video-item, [data-video]');
+    if (!video) return findGenericUrl(element);
+
+    const link = video.querySelector('a[href*=".html"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findOdyseeUrl(element) {
+    const video = element.closest('.claim-preview, [data-id]');
+    if (!video) return findGenericUrl(element);
+
+    const link = video.querySelector('a[href*="/@"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  function findBitchuteUrl(element) {
+    const video = element.closest('.video-card, .channel-videos-container');
+    if (!video) return findGenericUrl(element);
+
+    const link = video.querySelector('a[href*="/video/"]');
+    if (link?.href) return link.href;
+
+    return null;
+  }
+
+  const videoHandlers = {
+    youTube: findYouTubeUrl,
+    vimeo: findVimeoUrl,
+    dailyMotion: findDailyMotionUrl,
+    twitch: findTwitchUrl,
+    rumble: findRumbleUrl,
+    odysee: findOdyseeUrl,
+    bitchute: findBitchuteUrl
+  };
+
+  /**
+   * URL Handler Registry
+   * Main entry point for URL detection across all supported sites
+   */
+
+
+  /**
+   * URL Handler Registry
+   * Manages URL detection for all supported sites
+   */
+  class URLHandlerRegistry {
     constructor() {
+      // Merge all handler categories
       this.handlers = {
-        ...he,
-        ...ue,
-        ...ie,
-        ...te,
-        ...oe,
-        ...re,
-        ...ce,
-        ...se,
-        ...ae,
-        ...le,
-        ...de
+        ...social_mediaHandlers,
+        ...videoHandlers,
+        ...developerHandlers,
+        ...bloggingHandlers,
+        ...ecommerceHandlers,
+        ...image_designHandlers,
+        ...news_discussionHandlers,
+        ...entertainmentHandlers,
+        ...gamingHandlers,
+        ...learningHandlers,
+        ...otherHandlers
       };
     }
-    findURL(e, t) {
-      if ("A" === e.tagName && e.href) return e.href;
-      let n = e.parentElement;
-      for (let e = 0; e < 20 && n; e++) {
-        if ("A" === n.tagName && n.href) return n.href;
-        n = n.parentElement;
+
+    /**
+     * Find URL for an element based on domain type
+     * @param {Element} element - DOM element
+     * @param {string} domainType - Domain type (e.g., 'twitter', 'github')
+     * @returns {string|null} Found URL or null
+     */
+    findURL(element, domainType) {
+      // Try direct link first
+      if (element.tagName === 'A' && element.href) {
+        return element.href;
       }
-      if (this.handlers[t]) {
-        const n = this.handlers[t](e);
-        if (n) return n;
+
+      // Check parents for href (up to 20 levels)
+      let parent = element.parentElement;
+      for (let i = 0; i < 20; i++) {
+        if (!parent) break;
+        if (parent.tagName === 'A' && parent.href) {
+          return parent.href;
+        }
+        parent = parent.parentElement;
       }
-      return ee(e);
+
+      // Try site-specific handler
+      if (this.handlers[domainType]) {
+        const url = this.handlers[domainType](element);
+        if (url) return url;
+      }
+
+      // Final fallback - find ANY link
+      return findGenericUrl(element);
     }
+
+    /**
+     * Get all supported domain types
+     * @returns {string[]} Array of supported domain types
+     */
     getSupportedDomains() {
       return Object.keys(this.handlers);
     }
-    isSupported(e) {
-      return e in this.handlers;
+
+    /**
+     * Check if a domain type is supported
+     * @param {string} domainType - Domain type to check
+     * @returns {boolean} True if supported
+     */
+    isSupported(domainType) {
+      // Use 'in' operator instead of hasOwnProperty (ESLint compliant)
+      return domainType in this.handlers;
     }
-  };
-  console.log("[Copy-URL-on-Hover] URLHandlerRegistry initialized");
-  let me = null, ye = null, we = {
-    ...l
-  };
-  !async function() {
-    try {
-      console.log("[Copy-URL-on-Hover] STEP: Starting extension initialization..."), we = await async function() {
-        console.log("[Copy-URL-on-Hover] STEP: Loading user configuration...");
-        try {
-          const e = await ge.load();
-          return console.log("[Copy-URL-on-Hover] ✓ Configuration loaded successfully"), console.log("[Copy-URL-on-Hover] Config values:", {
-            debugMode: e.debugMode,
-            quickTabPersistAcrossTabs: e.quickTabPersistAcrossTabs,
-            hasDefaultConfig: null != e
-          }), e;
-        } catch (e) {
-          return console.error("[Copy-URL-on-Hover] ERROR: Failed to load configuration:", e), 
-          console.log("[Copy-URL-on-Hover] Falling back to DEFAULT_CONFIG"), {
-            ...l
-          };
-        }
-      }(), function() {
-        if (we.debugMode) {
-          console.log("[Copy-URL-on-Hover] STEP: Enabling debug mode...");
-          try {
-            Q = !0, fe.enableDebug(), Z("Debug mode enabled"), console.log("[Copy-URL-on-Hover] ✓ Debug mode activated");
-          } catch (e) {
-            console.error("[Copy-URL-on-Hover] ERROR: Failed to enable debug mode:", e);
-          }
-        }
-      }(), console.log("[Copy-URL-on-Hover] STEP: Initializing state..."), pe.setState({
-        quickTabZIndex: c
-      }), console.log("[Copy-URL-on-Hover] ✓ State initialized"), await async function() {
-        console.log("[Copy-URL-on-Hover] STEP: Initializing feature modules...");
-        try {
-          me = await async function(e, t) {
-            return console.log("[QuickTabs] Initializing Quick Tabs feature module..."), await J.init(e, t), 
-            console.log("[QuickTabs] Quick Tabs feature module initialized"), J;
-          }(fe, d), console.log("[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized");
-        } catch (e) {
-          console.error("[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:", e);
-        }
-        try {
-          ye = function(e, t) {
-            return console.log("[Notifications] Initializing Notifications feature module..."), 
-            p.init(e, t), console.log("[Notifications] Notifications feature module initialized"), 
-            p;
-          }(we, pe), console.log("[Copy-URL-on-Hover] ✓ Notifications feature initialized");
-        } catch (e) {
-          console.error("[Copy-URL-on-Hover] ERROR: Failed to initialize Notifications:", e);
-        }
-      }(), Z("Extension initialized successfully"), console.log("[Copy-URL-on-Hover] STEP: Starting main features..."), 
-      await (Z("Loading main features..."), document.addEventListener("mousemove", e => {
-        pe.set("lastMouseX", e.clientX), pe.set("lastMouseY", e.clientY);
-      }, !0), document.addEventListener("mouseover", e => {
-        const t = function() {
-          const e = window.location.hostname.toLowerCase(), t = {
-            "twitter.com": "twitter",
-            "x.com": "twitter",
-            "reddit.com": "reddit",
-            "linkedin.com": "linkedin",
-            "instagram.com": "instagram",
-            "facebook.com": "facebook",
-            "tiktok.com": "tiktok",
-            "threads.net": "threads",
-            "bsky.app": "bluesky",
-            "youtube.com": "youtube",
-            "vimeo.com": "vimeo",
-            "github.com": "github",
-            "gitlab.com": "gitlab",
-            "stackoverflow.com": "stackoverflow",
-            "medium.com": "medium",
-            "amazon.com": "amazon",
-            "ebay.com": "ebay",
-            "pinterest.com": "pinterest",
-            "wikipedia.org": "wikipedia",
-            "netflix.com": "netflix",
-            "spotify.com": "spotify",
-            "twitch.tv": "twitch",
-            steam: "steam"
-          };
-          for (const [n, i] of Object.entries(t)) if (e.includes(n)) return i;
-          return "generic";
-        }(), n = e.target, i = be.findURL(n, t);
-        pe.setState({
-          currentHoveredLink: i || null,
-          currentHoveredElement: n
-        }), i && fe.emit(d.HOVER_START, {
-          url: i,
-          element: n,
-          domainType: t
-        });
-      }), document.addEventListener("mouseout", e => {
-        pe.setState({
-          currentHoveredLink: null,
-          currentHoveredElement: null
-        }), fe.emit(d.HOVER_END);
-      }), void document.addEventListener("keydown", Te)), console.log("[Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓"), 
-      window.CUO_initialized = !0, console.log("[Copy-URL-on-Hover] Extension is ready for use!");
-    } catch (e) {
-      !function(e) {
-        console.error("[Copy-URL-on-Hover] ❌ CRITICAL INITIALIZATION ERROR ❌"), console.error("[Copy-URL-on-Hover] Error details:", {
-          message: e.message,
-          stack: e.stack,
-          name: e.name
-        });
-        try {
-          const t = `Copy-URL-on-Hover failed to initialize.\n\nError: ${e.message}\n\nPlease check the browser console (F12) for details.`;
-          console.error("[Copy-URL-on-Hover] User will see alert:", t);
-        } catch (e) {
-          console.error("[Copy-URL-on-Hover] Could not show error alert:", e);
-        }
-      }(e);
-    }
-  }();
-  const ve = [ {
-    name: "copyUrl",
-    needsLink: !0,
-    needsElement: !1,
-    handler: async function(e) {
-      try {
-        await r(e) ? (fe.emit(d.URL_COPIED, {
-          url: e
-        }), Ce("✓ URL copied!", "success"), Z("Copied URL:", e)) : Ce("✗ Failed to copy URL", "error");
-      } catch (e) {
-        console.error("[Copy URL] Failed:", e), Ce("✗ Failed to copy URL", "error");
-      }
-    }
-  }, {
-    name: "copyText",
-    needsLink: !1,
-    needsElement: !0,
-    handler: async function(e) {
-      try {
-        const t = function(e) {
-          if ("A" === e.tagName) return e.textContent.trim();
-          const t = e.querySelector("a[href]");
-          return t ? t.textContent.trim() : e.textContent.trim().substring(0, 100);
-        }(e);
-        await r(t) ? (fe.emit(d.TEXT_COPIED, {
-          text: t
-        }), Ce("✓ Text copied!", "success"), Z("Copied text:", t)) : Ce("✗ Failed to copy text", "error");
-      } catch (e) {
-        console.error("[Copy Text] Failed:", e), Ce("✗ Failed to copy text", "error");
-      }
-    }
-  }, {
-    name: "quickTab",
-    needsLink: !0,
-    needsElement: !0,
-    handler: async function(e, t = null) {
-      if (!e) return void console.warn("[Quick Tab] Missing URL for creation");
-      Z("Creating Quick Tab for:", e), fe.emit(d.QUICK_TAB_REQUESTED, {
-        url: e
-      });
-      const n = we.quickTabDefaultWidth || 800, i = we.quickTabDefaultHeight || 600, o = function(e, t, n) {
-        const i = 16, o = window.innerWidth || document.documentElement.clientWidth || t, s = window.innerHeight || document.documentElement.clientHeight || n;
-        let a = pe.get("lastMouseX") ?? i, r = pe.get("lastMouseY") ?? i;
-        if (e?.getBoundingClientRect) try {
-          const t = e.getBoundingClientRect();
-          a = t.right + i, r = t.top;
-        } catch (e) {
-          console.warn("[Quick Tab] Failed to read target bounds:", e);
-        }
-        const l = Math.max(i, o - t - i), c = Math.max(i, s - n - i);
-        return a = Math.min(Math.max(a, i), l), r = Math.min(Math.max(r, i), c), {
-          left: Math.round(a),
-          top: Math.round(r)
-        };
-      }(t, n, i), s = t?.textContent?.trim() || "Quick Tab", {quickTabId: r, saveId: l, canUseManagerSaveId: c} = function() {
-        const e = Boolean(me && "function" == typeof me.generateSaveId);
-        return {
-          quickTabId: me && "function" == typeof me.generateId ? me.generateId() : `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          saveId: e ? me.generateSaveId() : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          canUseManagerSaveId: e
-        };
-      }(), h = function(e, t, n, i, o, s) {
-        return {
-          id: t,
-          url: e,
-          left: n.left,
-          top: n.top,
-          width: i,
-          height: o,
-          title: s,
-          cookieStoreId: "firefox-default",
-          minimized: !1,
-          pinnedToUrl: null
-        };
-      }(e, r, o, n, i, s);
-      try {
-        await async function(e, t, n) {
-          me && "function" == typeof me.createQuickTab ? function(e, t, n) {
-            n && me.trackPendingSave && me.trackPendingSave(t), me.createQuickTab(e);
-          }(e, t, n) : console.warn("[Quick Tab] Manager not available, using legacy creation path"), 
-          await async function(e, t) {
-            await a({
-              action: "CREATE_QUICK_TAB",
-              ...e,
-              saveId: t
-            });
-          }(e, t), Ce("✓ Quick Tab created!", "success"), Z("Quick Tab created successfully");
-        }(h, l, c);
-      } catch (e) {
-        !function(e, t, n) {
-          console.error("[Quick Tab] Failed:", e), n && me?.releasePendingSave && me.releasePendingSave(t), 
-          Ce("✗ Failed to create Quick Tab", "error");
-        }(e, l, c);
-      }
-    }
-  }, {
-    name: "openNewTab",
-    needsLink: !0,
-    needsElement: !1,
-    handler: async function(e) {
-      try {
-        await a({
-          action: "openTab",
-          url: e,
-          switchFocus: we.openNewTabSwitchFocus
-        }), fe.emit(d.LINK_OPENED, {
-          url: e
-        }), Ce("✓ Opened in new tab", "success"), Z("Opened in new tab:", e);
-      } catch (e) {
-        console.error("[Open Tab] Failed:", e), Ce("✗ Failed to open tab", "error");
-      }
-    }
-  } ];
-  function Se(e, t, n, i) {
-    const o = `${t.name}Key`, s = `${t.name}Ctrl`, a = `${t.name}Alt`, r = `${t.name}Shift`;
-    return !(!function(e, t, n, i, o) {
-      return e.key.toLowerCase() === t.toLowerCase() && e.ctrlKey === n && e.altKey === i && e.shiftKey === o;
-    }(e, we[o], we[s], we[a], we[r]) || t.needsLink && !n || t.needsElement && !i);
   }
-  async function Te(e) {
-    if ((t = e.target) && ("INPUT" === t.tagName || "TEXTAREA" === t.tagName || t.isContentEditable || t.closest('[contenteditable="true"]'))) return;
-    var t;
-    const n = pe.get("currentHoveredLink"), i = pe.get("currentHoveredElement");
-    for (const t of ve) if (Se(e, t, n, i)) return e.preventDefault(), void await t.handler(n, i);
+
+  /**
+   * Copy URL on Hover - Enhanced with Quick Tabs
+   * Main Content Script Entry Point (Hybrid Architecture v1.5.9.3)
+   *
+   * This file serves as the main entry point and coordinates between modules.
+   * URL handlers have been extracted to features/url-handlers/ for better maintainability.
+   *
+   * v1.5.9.3 Changes:
+   * - Added console interceptor for comprehensive log capture
+   * - Fixed log export "No logs found" issue by capturing all console.log() calls
+   * - Console interceptor must be imported FIRST to capture all subsequent logs
+   *
+   * v1.5.8.10 Changes:
+   * - Implemented Hybrid Modular/EventBus Architecture (Architecture #10)
+   * - Moved dom.js and browser-api.js from utils/ to core/
+   * - Created modular CSS files in ui/css/ (base.css, notifications.css, quick-tabs.css)
+   * - Extracted notification logic into separate toast.js and tooltip.js modules
+   * - Renamed quick-tab-window.js to window.js following architecture guidelines
+   * - Enhanced EventBus integration for all features
+   * - Follows hybrid-architecture-implementation.md
+   */
+
+
+  // CRITICAL: Early detection marker - must execute first
+  console.log('[Copy-URL-on-Hover] Script loaded! @', new Date().toISOString());
+  try {
+    window.CUO_debug_marker = 'JS executed to top of file!';
+    console.log('[Copy-URL-on-Hover] Debug marker set successfully');
+  } catch (e) {
+    console.error('[Copy-URL-on-Hover] CRITICAL: Failed to set window marker', e);
   }
-  function Ce(e, t = "info") {
-    Z("Notification:", e, t), ye ? ye.showNotification(e, t) : console.warn("[Content] Notification manager not initialized, skipping notification");
-  }
-  "undefined" != typeof browser && browser.runtime && browser.runtime.onMessage.addListener((e, o, s) => {
-    if ("GET_CONTENT_LOGS" === e.action) {
-      console.log("[Content] Received GET_CONTENT_LOGS request");
-      try {
-        const e = [ ...n ], i = [ ...F ], o = [ ...e, ...i ];
-        o.sort((e, t) => e.timestamp - t.timestamp), console.log(`[Content] Sending ${o.length} logs to popup`), 
-        console.log(`[Content] Console logs: ${e.length}, Debug logs: ${i.length}`);
-        const a = {
-          totalLogs: n.length,
-          maxSize: t,
-          utilizationPercent: (n.length / t * 100).toFixed(2),
-          oldestTimestamp: n[0]?.timestamp || null,
-          newestTimestamp: n[n.length - 1]?.timestamp || null
-        };
-        console.log("[Content] Buffer stats:", a), s({
-          logs: o,
-          stats: a
-        });
-      } catch (e) {
-        console.error("[Content] Error getting log buffer:", e), s({
-          logs: [],
-          error: e.message
-        });
-      }
-      return !0;
-    }
-    if ("CLEAR_CONTENT_LOGS" === e.action) {
-      try {
-        n.length = 0, i.log("[Console Interceptor] Log buffer cleared"), F.length = 0, console.log("[DEBUG] Log buffer cleared"), 
-        s({
-          success: !0,
-          clearedAt: Date.now()
-        });
-      } catch (e) {
-        console.error("[Content] Error clearing log buffer:", e), s({
-          success: !1,
-          error: e.message
-        });
-      }
-      return !0;
-    }
-    if ("TOGGLE_QUICK_TABS_PANEL" === e.action) return function(e) {
-      console.log("[Content] Received TOGGLE_QUICK_TABS_PANEL request");
-      try {
-        if (!me) return console.error("[Content] Quick Tabs manager not initialized"), void e({
-          success: !1,
-          error: "Quick Tabs manager not initialized"
-        });
-        if (!me.panelManager) return console.error("[Content] Quick Tabs panel manager not available"), 
-        void e({
-          success: !1,
-          error: "Panel manager not available"
-        });
-        me.panelManager.toggle(), console.log("[Content] ✓ Quick Tabs panel toggled successfully"), 
-        e({
-          success: !0
-        });
-      } catch (t) {
-        console.error("[Content] Error toggling Quick Tabs panel:", t), e({
-          success: !1,
-          error: t.message
-        });
-      }
-    }(s), !0;
-  }), "undefined" != typeof window && (window.CopyURLExtension = {
-    configManager: ge,
-    stateManager: pe,
-    eventBus: fe,
-    urlRegistry: be,
-    quickTabsManager: me,
-    notificationManager: ye,
-    CONFIG: we
+
+  // Global error handler to catch all unhandled errors
+  window.addEventListener('error', event => {
+    console.error('[Copy-URL-on-Hover] GLOBAL ERROR:', {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error,
+      stack: event.error?.stack
+    });
   });
-}(browser);
+
+  // Unhandled promise rejection handler
+  window.addEventListener('unhandledrejection', event => {
+    console.error('[Copy-URL-on-Hover] UNHANDLED PROMISE REJECTION:', {
+      reason: event.reason,
+      promise: event.promise
+    });
+  });
+
+  console.log('[Copy-URL-on-Hover] Global error handlers installed');
+
+  // Import core modules
+  console.log('[Copy-URL-on-Hover] Starting module imports...');
+
+  console.log('[Copy-URL-on-Hover] All module imports completed successfully');
+
+  // Initialize core systems
+  console.log('[Copy-URL-on-Hover] Initializing core systems...');
+  const configManager = new ConfigManager();
+  console.log('[Copy-URL-on-Hover] ConfigManager initialized');
+  const stateManager = new StateManager$1();
+  console.log('[Copy-URL-on-Hover] StateManager initialized');
+  const eventBus = new EventBus();
+  console.log('[Copy-URL-on-Hover] EventBus initialized');
+  const urlRegistry = new URLHandlerRegistry();
+  console.log('[Copy-URL-on-Hover] URLHandlerRegistry initialized');
+
+  // Feature managers (initialized after config is loaded)
+  let quickTabsManager = null;
+  let notificationManager = null;
+
+  // Load configuration
+  let CONFIG = { ...DEFAULT_CONFIG };
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for config loading
+   */
+  async function loadConfiguration() {
+    console.log('[Copy-URL-on-Hover] STEP: Loading user configuration...');
+    try {
+      const config = await configManager.load();
+      console.log('[Copy-URL-on-Hover] ✓ Configuration loaded successfully');
+      console.log('[Copy-URL-on-Hover] Config values:', {
+        debugMode: config.debugMode,
+        quickTabPersistAcrossTabs: config.quickTabPersistAcrossTabs,
+        hasDefaultConfig: config !== null && config !== undefined
+      });
+      return config;
+    } catch (configErr) {
+      console.error('[Copy-URL-on-Hover] ERROR: Failed to load configuration:', configErr);
+      console.log('[Copy-URL-on-Hover] Falling back to DEFAULT_CONFIG');
+      return { ...DEFAULT_CONFIG };
+    }
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for debug mode setup
+   */
+  function setupDebugMode() {
+    if (!CONFIG.debugMode) return;
+
+    console.log('[Copy-URL-on-Hover] STEP: Enabling debug mode...');
+    try {
+      enableDebug();
+      eventBus.enableDebug();
+      debug('Debug mode enabled');
+      console.log('[Copy-URL-on-Hover] ✓ Debug mode activated');
+    } catch (debugErr) {
+      console.error('[Copy-URL-on-Hover] ERROR: Failed to enable debug mode:', debugErr);
+    }
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for state initialization
+   */
+  function initializeState() {
+    console.log('[Copy-URL-on-Hover] STEP: Initializing state...');
+    stateManager.setState({
+      quickTabZIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
+    });
+    console.log('[Copy-URL-on-Hover] ✓ State initialized');
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for feature initialization
+   */
+  async function initializeFeatures() {
+    console.log('[Copy-URL-on-Hover] STEP: Initializing feature modules...');
+
+    // Quick Tabs feature
+    try {
+      quickTabsManager = await initQuickTabs(eventBus, Events);
+      console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized');
+    } catch (qtErr) {
+      console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:', qtErr);
+    }
+
+    // Notifications feature
+    try {
+      notificationManager = initNotifications(CONFIG, stateManager);
+      console.log('[Copy-URL-on-Hover] ✓ Notifications feature initialized');
+    } catch (notifErr) {
+      console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Notifications:', notifErr);
+    }
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for error reporting
+   */
+  function reportInitializationError(err) {
+    console.error('[Copy-URL-on-Hover] ❌ CRITICAL INITIALIZATION ERROR ❌');
+    console.error('[Copy-URL-on-Hover] Error details:', {
+      message: err.message,
+      stack: err.stack,
+      name: err.name
+    });
+
+    try {
+      const errorMsg = `Copy-URL-on-Hover failed to initialize.\n\nError: ${err.message}\n\nPlease check the browser console (F12) for details.`;
+      console.error('[Copy-URL-on-Hover] User will see alert:', errorMsg);
+      // Uncomment for production debugging: alert(errorMsg);
+    } catch (alertErr) {
+      console.error('[Copy-URL-on-Hover] Could not show error alert:', alertErr);
+    }
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 10 to <9
+   */
+  (async function initExtension() {
+    try {
+      console.log('[Copy-URL-on-Hover] STEP: Starting extension initialization...');
+
+      // Load configuration
+      CONFIG = await loadConfiguration();
+
+      // Setup debug mode
+      setupDebugMode();
+
+      // Initialize state (critical - will throw on error)
+      initializeState();
+
+      // Initialize features
+      await initializeFeatures();
+
+      debug('Extension initialized successfully');
+
+      // Start main functionality
+      console.log('[Copy-URL-on-Hover] STEP: Starting main features...');
+      await initMainFeatures();
+      console.log('[Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓');
+
+      // Set success marker
+      window.CUO_initialized = true;
+      console.log('[Copy-URL-on-Hover] Extension is ready for use!');
+    } catch (err) {
+      reportInitializationError(err);
+    }
+  })();
+
+  /**
+   * Initialize main features
+   */
+  function initMainFeatures() {
+    debug('Loading main features...');
+
+    // Note: Notification styles now injected by notifications module (v1.5.9.0)
+
+    // Track mouse position for Quick Tab placement
+    document.addEventListener(
+      'mousemove',
+      event => {
+        stateManager.set('lastMouseX', event.clientX);
+        stateManager.set('lastMouseY', event.clientY);
+      },
+      true
+    );
+
+    // Set up hover detection
+    setupHoverDetection();
+
+    // Set up keyboard shortcuts
+    setupKeyboardShortcuts();
+
+    // Note: Quick Tabs now initialized in main initExtension (v1.5.9.0)
+    // Note: Panel Manager is separate feature - not reimplemented in modular architecture yet
+  }
+
+  /**
+   * Get domain type from current URL
+   */
+  function getDomainType() {
+    const hostname = window.location.hostname.toLowerCase();
+
+    // Check against all supported domains
+    const domainMappings = {
+      'twitter.com': 'twitter',
+      'x.com': 'twitter',
+      'reddit.com': 'reddit',
+      'linkedin.com': 'linkedin',
+      'instagram.com': 'instagram',
+      'facebook.com': 'facebook',
+      'tiktok.com': 'tiktok',
+      'threads.net': 'threads',
+      'bsky.app': 'bluesky',
+      'youtube.com': 'youtube',
+      'vimeo.com': 'vimeo',
+      'github.com': 'github',
+      'gitlab.com': 'gitlab',
+      'stackoverflow.com': 'stackoverflow',
+      'medium.com': 'medium',
+      'amazon.com': 'amazon',
+      'ebay.com': 'ebay',
+      'pinterest.com': 'pinterest',
+      'wikipedia.org': 'wikipedia',
+      'netflix.com': 'netflix',
+      'spotify.com': 'spotify',
+      'twitch.tv': 'twitch',
+      steam: 'steam'
+      // Add more mappings as needed
+    };
+
+    // Check for exact matches
+    for (const [domain, type] of Object.entries(domainMappings)) {
+      if (hostname.includes(domain)) {
+        return type;
+      }
+    }
+
+    return 'generic';
+  }
+
+  /**
+   * Set up hover detection
+   */
+  function setupHoverDetection() {
+    document.addEventListener('mouseover', event => {
+      const domainType = getDomainType();
+      const element = event.target;
+
+      // Find URL using the modular URL registry
+      const url = urlRegistry.findURL(element, domainType);
+
+      // Always set element, URL can be null
+      stateManager.setState({
+        currentHoveredLink: url || null, // Set to null if not found
+        currentHoveredElement: element
+      });
+
+      if (url) {
+        eventBus.emit(Events.HOVER_START, { url, element, domainType });
+      }
+    });
+
+    document.addEventListener('mouseout', _event => {
+      stateManager.setState({
+        currentHoveredLink: null,
+        currentHoveredElement: null
+      });
+
+      eventBus.emit(Events.HOVER_END);
+    });
+  }
+
+  /**
+   * Check if element is an input field or editable
+   */
+  function isInputField(element) {
+    return (
+      element &&
+      (element.tagName === 'INPUT' ||
+        element.tagName === 'TEXTAREA' ||
+        element.isContentEditable ||
+        element.closest('[contenteditable="true"]'))
+    );
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Table-driven shortcut handling
+   */
+  const SHORTCUT_HANDLERS = [
+    {
+      name: 'copyUrl',
+      needsLink: true,
+      needsElement: false,
+      handler: handleCopyURL
+    },
+    {
+      name: 'copyText',
+      needsLink: false,
+      needsElement: true,
+      handler: handleCopyText
+    },
+    {
+      name: 'quickTab',
+      needsLink: true,
+      needsElement: true,
+      handler: handleCreateQuickTab
+    },
+    {
+      name: 'openNewTab',
+      needsLink: true,
+      needsElement: false,
+      handler: handleOpenInNewTab
+    }
+  ];
+
+  /**
+   * v1.6.0 Phase 2.4 - Check if shortcut matches and prerequisites are met
+   */
+  function matchesShortcut(event, shortcut, hoveredLink, hoveredElement) {
+    const keyConfig = `${shortcut.name}Key`;
+    const ctrlConfig = `${shortcut.name}Ctrl`;
+    const altConfig = `${shortcut.name}Alt`;
+    const shiftConfig = `${shortcut.name}Shift`;
+
+    if (
+      !checkShortcut(
+        event,
+        CONFIG[keyConfig],
+        CONFIG[ctrlConfig],
+        CONFIG[altConfig],
+        CONFIG[shiftConfig]
+      )
+    ) {
+      return false;
+    }
+
+    // Check prerequisites
+    if (shortcut.needsLink && !hoveredLink) return false;
+    if (shortcut.needsElement && !hoveredElement) return false;
+
+    return true;
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted handler for keyboard shortcuts
+   * Reduced complexity and nesting using table-driven pattern with guard clauses
+   */
+  async function handleKeyboardShortcut(event) {
+    // Ignore if typing in an interactive field
+    if (isInputField(event.target)) return;
+
+    const hoveredLink = stateManager.get('currentHoveredLink');
+    const hoveredElement = stateManager.get('currentHoveredElement');
+
+    // Check each shortcut using table-driven approach
+    for (const shortcut of SHORTCUT_HANDLERS) {
+      if (!matchesShortcut(event, shortcut, hoveredLink, hoveredElement)) continue;
+
+      event.preventDefault();
+      await shortcut.handler(hoveredLink, hoveredElement);
+      return;
+    }
+  }
+
+  /**
+   * Set up keyboard shortcuts
+   * v1.6.0 Phase 2.4 - Extracted handler to reduce complexity
+   */
+  function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', handleKeyboardShortcut);
+  }
+
+  /**
+   * Check if keyboard shortcut matches configuration
+   */
+  function checkShortcut(event, key, needCtrl, needAlt, needShift) {
+    return (
+      event.key.toLowerCase() === key.toLowerCase() &&
+      event.ctrlKey === needCtrl &&
+      event.altKey === needAlt &&
+      event.shiftKey === needShift
+    );
+  }
+
+  /**
+   * Handle copy URL action
+   */
+  async function handleCopyURL(url) {
+    try {
+      const success = await copyToClipboard(url);
+
+      if (success) {
+        eventBus.emit(Events.URL_COPIED, { url });
+        showNotification('✓ URL copied!', 'success');
+        debug('Copied URL:', url);
+      } else {
+        showNotification('✗ Failed to copy URL', 'error');
+      }
+    } catch (err) {
+      console.error('[Copy URL] Failed:', err);
+      showNotification('✗ Failed to copy URL', 'error');
+    }
+  }
+
+  /**
+   * Handle copy text action
+   */
+  async function handleCopyText(element) {
+    try {
+      const text = getLinkText(element);
+      const success = await copyToClipboard(text);
+
+      if (success) {
+        eventBus.emit(Events.TEXT_COPIED, { text });
+        showNotification('✓ Text copied!', 'success');
+        debug('Copied text:', text);
+      } else {
+        showNotification('✗ Failed to copy text', 'error');
+      }
+    } catch (err) {
+      console.error('[Copy Text] Failed:', err);
+      showNotification('✗ Failed to copy text', 'error');
+    }
+  }
+
+  /**
+   * Handle create Quick Tab action
+   */
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab data structure
+   */
+  function buildQuickTabData(url, quickTabId, position, width, height, title) {
+    return {
+      id: quickTabId,
+      url,
+      left: position.left,
+      top: position.top,
+      width,
+      height,
+      title,
+      cookieStoreId: 'firefox-default',
+      minimized: false,
+      pinnedToUrl: null
+    };
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab IDs
+   */
+  function generateQuickTabIds() {
+    const canUseManagerSaveId = Boolean(
+      quickTabsManager && typeof quickTabsManager.generateSaveId === 'function'
+    );
+    const quickTabId =
+      quickTabsManager && typeof quickTabsManager.generateId === 'function'
+        ? quickTabsManager.generateId()
+        : generateQuickTabId();
+    const saveId = canUseManagerSaveId ? quickTabsManager.generateSaveId() : generateSaveTrackingId();
+
+    return { quickTabId, saveId, canUseManagerSaveId };
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for local Quick Tab creation
+   */
+  function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
+    if (canUseManagerSaveId && quickTabsManager.trackPendingSave) {
+      quickTabsManager.trackPendingSave(saveId);
+    }
+    quickTabsManager.createQuickTab(quickTabData);
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for background persistence
+   */
+  async function persistQuickTabToBackground(quickTabData, saveId) {
+    await sendMessageToBackground({
+      action: 'CREATE_QUICK_TAB',
+      ...quickTabData,
+      saveId
+    });
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Create Quick Tab (handle success)
+   */
+  async function executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId) {
+    const hasManager = quickTabsManager && typeof quickTabsManager.createQuickTab === 'function';
+
+    if (hasManager) {
+      createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId);
+    } else {
+      console.warn('[Quick Tab] Manager not available, using legacy creation path');
+    }
+
+    await persistQuickTabToBackground(quickTabData, saveId);
+    showNotification('✓ Quick Tab created!', 'success');
+    debug('Quick Tab created successfully');
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Handle Quick Tab creation failure
+   */
+  function handleQuickTabCreationError(err, saveId, canUseManagerSaveId) {
+    console.error('[Quick Tab] Failed:', err);
+    if (canUseManagerSaveId && quickTabsManager?.releasePendingSave) {
+      quickTabsManager.releasePendingSave(saveId);
+    }
+    showNotification('✗ Failed to create Quick Tab', 'error');
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 18 to <9
+   */
+  async function handleCreateQuickTab(url, targetElement = null) {
+    // Early validation
+    if (!url) {
+      console.warn('[Quick Tab] Missing URL for creation');
+      return;
+    }
+
+    // Setup and emit event
+    debug('Creating Quick Tab for:', url);
+    eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
+
+    // Prepare Quick Tab data
+    const width = CONFIG.quickTabDefaultWidth || 800;
+    const height = CONFIG.quickTabDefaultHeight || 600;
+    const position = calculateQuickTabPosition(targetElement, width, height);
+    const title = targetElement?.textContent?.trim() || 'Quick Tab';
+    const { quickTabId, saveId, canUseManagerSaveId } = generateQuickTabIds();
+    const quickTabData = buildQuickTabData(url, quickTabId, position, width, height, title);
+
+    // Execute creation with error handling
+    try {
+      await executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
+    } catch (err) {
+      handleQuickTabCreationError(err, saveId, canUseManagerSaveId);
+    }
+  }
+
+  function calculateQuickTabPosition(targetElement, width, height) {
+    const padding = 16;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || width;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || height;
+
+    let left = stateManager.get('lastMouseX') ?? padding;
+    let top = stateManager.get('lastMouseY') ?? padding;
+
+    if (targetElement?.getBoundingClientRect) {
+      try {
+        const rect = targetElement.getBoundingClientRect();
+        left = rect.right + padding;
+        top = rect.top;
+      } catch (error) {
+        console.warn('[Quick Tab] Failed to read target bounds:', error);
+      }
+    }
+
+    const maxLeft = Math.max(padding, viewportWidth - width - padding);
+    const maxTop = Math.max(padding, viewportHeight - height - padding);
+
+    left = Math.min(Math.max(left, padding), maxLeft);
+    top = Math.min(Math.max(top, padding), maxTop);
+
+    return {
+      left: Math.round(left),
+      top: Math.round(top)
+    };
+  }
+
+  /**
+   * Helper function to generate unique Quick Tab ID
+   */
+  function generateQuickTabId() {
+    return `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  function generateSaveTrackingId() {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Handle open in new tab action
+   */
+  async function handleOpenInNewTab(url) {
+    try {
+      await sendMessageToBackground({
+        action: 'openTab',
+        url: url,
+        switchFocus: CONFIG.openNewTabSwitchFocus
+      });
+
+      eventBus.emit(Events.LINK_OPENED, { url });
+      showNotification('✓ Opened in new tab', 'success');
+      debug('Opened in new tab:', url);
+    } catch (err) {
+      console.error('[Open Tab] Failed:', err);
+      showNotification('✗ Failed to open tab', 'error');
+    }
+  }
+
+  /**
+   * Show notification to user
+   * v1.5.9.0 - Now delegates to notification manager
+   */
+  function showNotification(message, type = 'info') {
+    debug('Notification:', message, type);
+
+    // Delegate to notification manager
+    if (notificationManager) {
+      notificationManager.showNotification(message, type);
+    } else {
+      console.warn('[Content] Notification manager not initialized, skipping notification');
+    }
+  }
+
+  /**
+   * v1.6.0 - Helper function to handle Quick Tabs panel toggle
+   * Extracted to meet max-depth=2 ESLint requirement
+   *
+   * @param {Function} sendResponse - Response callback from message listener
+   */
+  function _handleQuickTabsPanelToggle(sendResponse) {
+    console.log('[Content] Received TOGGLE_QUICK_TABS_PANEL request');
+
+    try {
+      // Guard: Quick Tabs manager not initialized
+      if (!quickTabsManager) {
+        console.error('[Content] Quick Tabs manager not initialized');
+        sendResponse({
+          success: false,
+          error: 'Quick Tabs manager not initialized'
+        });
+        return;
+      }
+
+      // Guard: Panel manager not available
+      if (!quickTabsManager.panelManager) {
+        console.error('[Content] Quick Tabs panel manager not available');
+        sendResponse({
+          success: false,
+          error: 'Panel manager not available'
+        });
+        return;
+      }
+
+      // Toggle the panel
+      quickTabsManager.panelManager.toggle();
+      console.log('[Content] ✓ Quick Tabs panel toggled successfully');
+
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('[Content] Error toggling Quick Tabs panel:', error);
+      sendResponse({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // ==================== LOG EXPORT MESSAGE HANDLER ====================
+  // Listen for log export requests from popup
+  if (typeof browser !== 'undefined' && browser.runtime) {
+    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.action === 'GET_CONTENT_LOGS') {
+        console.log('[Content] Received GET_CONTENT_LOGS request');
+
+        try {
+          // ✅ NEW: Get logs from console interceptor (captures ALL console calls)
+          const consoleLogs = getConsoleLogs();
+
+          // ✅ NEW: Also get logs from debug.js (if any code uses debug() functions)
+          const debugLogs = getLogBuffer();
+
+          // ✅ NEW: Merge both sources
+          const allLogs = [...consoleLogs, ...debugLogs];
+
+          // Sort by timestamp
+          allLogs.sort((a, b) => a.timestamp - b.timestamp);
+
+          console.log(`[Content] Sending ${allLogs.length} logs to popup`);
+          console.log(
+            `[Content] Console logs: ${consoleLogs.length}, Debug logs: ${debugLogs.length}`
+          );
+
+          // ✅ NEW: Get buffer stats for debugging
+          const stats = getBufferStats();
+          console.log('[Content] Buffer stats:', stats);
+
+          sendResponse({
+            logs: allLogs,
+            stats: stats
+          });
+        } catch (error) {
+          console.error('[Content] Error getting log buffer:', error);
+          sendResponse({ logs: [], error: error.message });
+        }
+
+        return true; // Keep message channel open for async response
+      }
+
+      if (message.action === 'CLEAR_CONTENT_LOGS') {
+        try {
+          clearConsoleLogs();
+          clearLogBuffer();
+          sendResponse({ success: true, clearedAt: Date.now() });
+        } catch (error) {
+          console.error('[Content] Error clearing log buffer:', error);
+          sendResponse({ success: false, error: error.message });
+        }
+
+        return true;
+      }
+
+      // ==================== QUICK TABS PANEL TOGGLE HANDLER ====================
+      // v1.6.0 - Added to support keyboard shortcut (Ctrl+Alt+Z)
+      // Refactored with early returns to meet max-depth=2 requirement
+      if (message.action === 'TOGGLE_QUICK_TABS_PANEL') {
+        _handleQuickTabsPanelToggle(sendResponse);
+        return true; // Keep message channel open for async response
+      }
+      // ==================== END QUICK TABS PANEL TOGGLE HANDLER ====================
+    });
+  }
+  // ==================== END LOG EXPORT MESSAGE HANDLER ====================
+
+  // Export for testing and module access
+  if (typeof window !== 'undefined') {
+    window.CopyURLExtension = {
+      configManager,
+      stateManager,
+      eventBus,
+      urlRegistry,
+      quickTabsManager,
+      notificationManager,
+      CONFIG
+    };
+  }
+
+})(browser);
+//# sourceMappingURL=content.js.map
