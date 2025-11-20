@@ -5,7 +5,7 @@
       "headless": false,
       "args": [
         "-profile",
-        "${GITHUB_WORKSPACE}/firefox-profile"
+        "/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/firefox-profile"
       ],
       "firefoxUserPrefs": {
         "xpinstall.signatures.required": false,
@@ -24,10 +24,7 @@
       "permissions": ["clipboard-read", "clipboard-write", "notifications"]
     }
   },
-  "server": {
-    "port": 8932
-  },
-  "outputDir": "${GITHUB_WORKSPACE}/test-results/firefox",
+  "outputDir": "/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/test-results/firefox",
   "tracing": {
     "enabled": true,
     "screenshots": true,
