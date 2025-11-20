@@ -663,6 +663,50 @@ function showNotification(message, type = 'info') {
   }
 }
 
+/**
+ * v1.6.0 - Helper function to handle Quick Tabs panel toggle
+ * Extracted to meet max-depth=2 ESLint requirement
+ *
+ * @param {Function} sendResponse - Response callback from message listener
+ */
+function _handleQuickTabsPanelToggle(sendResponse) {
+  console.log('[Content] Received TOGGLE_QUICK_TABS_PANEL request');
+
+  try {
+    // Guard: Quick Tabs manager not initialized
+    if (!quickTabsManager) {
+      console.error('[Content] Quick Tabs manager not initialized');
+      sendResponse({
+        success: false,
+        error: 'Quick Tabs manager not initialized'
+      });
+      return;
+    }
+
+    // Guard: Panel manager not available
+    if (!quickTabsManager.panelManager) {
+      console.error('[Content] Quick Tabs panel manager not available');
+      sendResponse({
+        success: false,
+        error: 'Panel manager not available'
+      });
+      return;
+    }
+
+    // Toggle the panel
+    quickTabsManager.panelManager.toggle();
+    console.log('[Content] ✓ Quick Tabs panel toggled successfully');
+
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[Content] Error toggling Quick Tabs panel:', error);
+    sendResponse({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
 // ==================== LOG EXPORT MESSAGE HANDLER ====================
 // Listen for log export requests from popup
 if (typeof browser !== 'undefined' && browser.runtime) {
@@ -716,6 +760,15 @@ if (typeof browser !== 'undefined' && browser.runtime) {
 
       return true;
     }
+
+    // ==================== QUICK TABS PANEL TOGGLE HANDLER ====================
+    // v1.6.0 - Added to support keyboard shortcut (Ctrl+Alt+Z)
+    // Refactored with early returns to meet max-depth=2 requirement
+    if (message.action === 'TOGGLE_QUICK_TABS_PANEL') {
+      _handleQuickTabsPanelToggle(sendResponse);
+      return true; // Keep message channel open for async response
+    }
+    // ==================== END QUICK TABS PANEL TOGGLE HANDLER ====================
   });
 }
 // ==================== END LOG EXPORT MESSAGE HANDLER ====================
