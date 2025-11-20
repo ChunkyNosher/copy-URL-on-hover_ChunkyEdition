@@ -53,7 +53,9 @@ describe('PanelManager Integration', () => {
     // v1.6.0.3 - Mock static methods of PanelUIBuilder
     PanelUIBuilder.injectStyles = jest.fn();
     PanelUIBuilder.createPanel = jest.fn().mockReturnValue(mockPanel);
-    PanelUIBuilder.renderContainerSection = jest.fn().mockReturnValue(document.createElement('div'));
+    PanelUIBuilder.renderContainerSection = jest
+      .fn()
+      .mockReturnValue(document.createElement('div'));
     PanelUIBuilder.getContainerIcon = jest.fn(icon => `icon-${icon}`);
 
     // Mock PanelStateManager - return actual mock instance

@@ -24,7 +24,9 @@ describe('PanelContentManager', () => {
     jest.clearAllMocks();
 
     // v1.6.0.3 - Mock static methods of PanelUIBuilder
-    PanelUIBuilder.renderContainerSection = jest.fn().mockReturnValue(document.createElement('div'));
+    PanelUIBuilder.renderContainerSection = jest
+      .fn()
+      .mockReturnValue(document.createElement('div'));
     PanelUIBuilder.getContainerIcon = jest.fn(icon => `icon-${icon}`);
 
     // Create mock panel element
