@@ -1049,25 +1049,8 @@ console.log('[Background] MessageRouter initialized with 21 registered handlers'
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
 
 // ==================== KEYBOARD COMMAND LISTENER ====================
-// Handle keyboard shortcuts defined in manifest.json
-browser.commands.onCommand.addListener(command => {
-  if (command === 'toggle-minimized-manager') {
-    console.log('[Background] Toggle minimized manager command received');
-
-    // Send message to active tab
-    browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
-      if (tabs.length > 0) {
-        browser.tabs
-          .sendMessage(tabs[0].id, {
-            action: 'TOGGLE_MINIMIZED_MANAGER'
-          })
-          .catch(err => {
-            console.error('[Background] Error sending toggle command:', err);
-          });
-      }
-    });
-  }
-});
+// v1.6.0 - Removed obsolete toggle-minimized-manager listener
+// Now handled by the toggle-quick-tabs-manager listener below (line 1240)
 // ==================== END KEYBOARD COMMAND LISTENER ====================
 
 // Handle sidePanel toggle for Chrome (optional)
