@@ -1,0 +1,370 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.0.1
+Export Date: 2025-11-20T06:04:33.871Z
+Export Date (Local): 11/20/2025, 1:04:33 AM
+Total Logs: 283
+
+================================================================================
+[2025-11-20T06:04:01.964Z] [DEBUG] [Background] Tab activated: 20
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] Script loaded! @ 2025-11-20T06:04:03.408Z
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] Debug marker set successfully
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] Global error handlers installed
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] Starting module imports...
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] All module imports completed successfully
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] Initializing core systems...
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] ConfigManager initialized
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] StateManager initialized
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] EventBus initialized
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] URLHandlerRegistry initialized
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting extension initialization...
+[2025-11-20T06:04:03.408Z] [LOG  ] [Copy-URL-on-Hover] STEP: Loading user configuration...
+[2025-11-20T06:04:03.408Z] [LOG  ] [ConfigManager] Starting configuration load...
+[2025-11-20T06:04:03.408Z] [LOG  ] [ConfigManager] Calling browser.storage.local.get...
+[2025-11-20T06:04:03.431Z] [LOG  ] [ConfigManager] Storage get completed, processing result...
+[2025-11-20T06:04:03.431Z] [LOG  ] [ConfigManager] Configuration loaded successfully
+[2025-11-20T06:04:03.431Z] [LOG  ] [ConfigManager] Config summary: {
+  "debugMode": true,
+  "totalKeys": 42
+}
+[2025-11-20T06:04:03.431Z] [LOG  ] [Copy-URL-on-Hover] ✓ Configuration loaded successfully
+[2025-11-20T06:04:03.431Z] [LOG  ] [Copy-URL-on-Hover] Config values: {
+  "debugMode": true,
+  "hasDefaultConfig": true
+}
+[2025-11-20T06:04:03.431Z] [LOG  ] [Copy-URL-on-Hover] STEP: Enabling debug mode...
+[2025-11-20T06:04:03.431Z] [LOG  ] [DEBUG] Debug mode enabled
+[2025-11-20T06:04:03.431Z] [LOG  ] [Copy-URL-on-Hover] ✓ Debug mode activated
+[2025-11-20T06:04:03.431Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing state...
+[2025-11-20T06:04:03.431Z] [LOG  ] [Copy-URL-on-Hover] ✓ State initialized
+[2025-11-20T06:04:03.431Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing feature modules...
+[2025-11-20T06:04:03.431Z] [LOG  ] [QuickTabs] Initializing Quick Tabs feature module...
+[2025-11-20T06:04:03.431Z] [LOG  ] [QuickTabsManager] Initializing facade...
+[2025-11-20T06:04:03.431Z] [DEBUG] Debug mode enabled
+[2025-11-20T06:04:03.571Z] [LOG  ] [QuickTabsManager] Detected container: firefox-container-9
+[2025-11-20T06:04:03.575Z] [LOG  ] [QuickTabsManager] Detected current tab ID: 20
+[2025-11-20T06:04:03.575Z] [LOG  ] [DEBUG] [PanelManager] Initializing...
+[2025-11-20T06:04:03.575Z] [DEBUG] [PanelManager] Initializing...
+[2025-11-20T06:04:03.638Z] [LOG  ] [DEBUG] [PanelManager] Container: firefox-container-9
+[2025-11-20T06:04:03.638Z] [DEBUG] [PanelManager] Container: firefox-container-9
+[2025-11-20T06:04:03.756Z] [LOG  ] [DEBUG] [PanelStateManager] Container detected: firefox-container-9
+[2025-11-20T06:04:03.756Z] [LOG  ] [DEBUG] [PanelStateManager] BroadcastChannel initialized
+[2025-11-20T06:04:03.756Z] [DEBUG] [PanelStateManager] Container detected: firefox-container-9
+[2025-11-20T06:04:03.756Z] [DEBUG] [PanelStateManager] BroadcastChannel initialized
+[2025-11-20T06:04:03.757Z] [LOG  ] [DEBUG] [PanelStateManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 0,
+  "height": 0,
+  "isOpen": false
+}
+[2025-11-20T06:04:03.757Z] [LOG  ] [DEBUG] [PanelStateManager] Initialized
+[2025-11-20T06:04:03.757Z] [ERROR] [Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs: {}
+[2025-11-20T06:04:03.757Z] [LOG  ] [Notifications] Initializing Notifications feature module...
+[2025-11-20T06:04:03.757Z] [LOG  ] [NotificationManager] Initializing...
+[2025-11-20T06:04:03.757Z] [LOG  ] [NotificationManager] Styles injected from CSS module
+[2025-11-20T06:04:03.757Z] [LOG  ] [NotificationManager] Initialized successfully
+[2025-11-20T06:04:03.757Z] [LOG  ] [Notifications] Notifications feature module initialized
+[2025-11-20T06:04:03.757Z] [LOG  ] [Copy-URL-on-Hover] ✓ Notifications feature initialized
+[2025-11-20T06:04:03.757Z] [DEBUG] [PanelStateManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 0,
+  "height": 0,
+  "isOpen": false
+}
+[2025-11-20T06:04:03.757Z] [DEBUG] [PanelStateManager] Initialized
+[2025-11-20T06:04:03.758Z] [LOG  ] [DEBUG] Extension initialized successfully
+[2025-11-20T06:04:03.758Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting main features...
+[2025-11-20T06:04:03.758Z] [LOG  ] [DEBUG] Loading main features...
+[2025-11-20T06:04:03.758Z] [LOG  ] [Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓
+[2025-11-20T06:04:03.758Z] [LOG  ] [Copy-URL-on-Hover] Extension is ready for use!
+[2025-11-20T06:04:03.758Z] [DEBUG] Extension initialized successfully
+[2025-11-20T06:04:03.758Z] [DEBUG] Loading main features...
+[2025-11-20T06:04:04.696Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-20T06:04:04.696Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:04.696Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-20T06:04:04.702Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763618644696-lc2yb8b0p Container: firefox-default
+[2025-11-20T06:04:04.702Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:04.715Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:04.715Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:04.715Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:04.723Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:04.726Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:04.726Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:04.726Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:04.726Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:04.726Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:04.726Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:05.684Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-20T06:04:05.684Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:05.684Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-20T06:04:05.689Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Livestreaming ID: qt-1763618645684-3lzz0auxj Container: firefox-default
+[2025-11-20T06:04:05.689Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:05.704Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:05.704Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:05.704Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:05.716Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:05.723Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:05.723Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:05.723Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:05.723Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:05.723Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:05.723Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:06.295Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Hololive_Production
+[2025-11-20T06:04:06.295Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Hololive_Production
+[2025-11-20T06:04:06.296Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Hololive_Production ID: qt-1763618646296-rhk3rconl Container: firefox-default
+[2025-11-20T06:04:06.296Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:06.296Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:06.308Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:06.308Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:06.308Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:06.318Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:06.345Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:06.345Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:06.345Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:06.345Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:06.345Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:06.345Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:07.086Z] [ERROR] [Copy Text] Failed: {}
+[2025-11-20T06:04:07.087Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T06:04:07.087Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T06:04:07.087Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T06:04:07.087Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T06:04:08.392Z] [ERROR] [Copy Text] Failed: {}
+[2025-11-20T06:04:08.393Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T06:04:08.393Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T06:04:08.393Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T06:04:08.393Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T06:04:08.825Z] [ERROR] [Copy Text] Failed: {}
+[2025-11-20T06:04:08.826Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T06:04:08.826Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T06:04:08.826Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T06:04:08.826Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T06:04:10.184Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Yokkaichi ID: qt-1763618650184-h8hjdc4zb Container: firefox-default
+[2025-11-20T06:04:10.184Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Yokkaichi
+[2025-11-20T06:04:10.184Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:10.184Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Yokkaichi
+[2025-11-20T06:04:10.185Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:10.193Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:10.193Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:10.194Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:10.202Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:10.204Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:10.204Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:10.204Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:10.204Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:10.205Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:10.205Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:11.186Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/VTuber
+[2025-11-20T06:04:11.186Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/VTuber
+[2025-11-20T06:04:11.187Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/VTuber ID: qt-1763618651187-c5ugfpqit Container: firefox-default
+[2025-11-20T06:04:11.187Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:11.188Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:11.192Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:11.192Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:11.192Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:11.199Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:11.202Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:11.202Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:11.202Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:11.202Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:11.202Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:11.202Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:11.783Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Personal_name
+[2025-11-20T06:04:11.783Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:11.783Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Personal_name
+[2025-11-20T06:04:11.784Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Personal_name ID: qt-1763618651783-qr22tub0x Container: firefox-default
+[2025-11-20T06:04:11.784Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:11.794Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:11.794Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:11.794Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:11.801Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:11.805Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:11.805Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:11.805Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:11.805Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:11.805Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:11.805Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:12.746Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Personal_name#Western_name_order
+[2025-11-20T06:04:12.746Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:12.746Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Personal_name#Western_name_order
+[2025-11-20T06:04:12.757Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Personal_name#Western_name_order ID: qt-1763618652746-p693notrd Container: firefox-default
+[2025-11-20T06:04:12.758Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:12.770Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:12.770Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:12.770Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:12.787Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:12.804Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:12.804Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:12.804Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:12.804Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:12.804Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:12.804Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:14.378Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Musician
+[2025-11-20T06:04:14.378Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:14.378Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Musician
+[2025-11-20T06:04:14.379Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Musician ID: qt-1763618654378-be1tzylfi Container: firefox-default
+[2025-11-20T06:04:14.379Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:14.387Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:14.387Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:14.387Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:14.395Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:14.397Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:14.397Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:14.397Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:14.397Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:14.397Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:14.397Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:15.770Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-20T06:04:15.770Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:15.770Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-20T06:04:15.771Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763618655770-5ylgzmglz Container: firefox-default
+[2025-11-20T06:04:15.772Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:15.779Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:15.780Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:15.780Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:15.787Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:15.791Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:15.791Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:15.791Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:15.791Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:15.791Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:15.791Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:16.681Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763618656681-k18pcrx78 Container: firefox-default
+[2025-11-20T06:04:16.681Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-20T06:04:16.681Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:16.681Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-20T06:04:16.682Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:16.686Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:16.686Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:16.686Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:16.694Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:16.701Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:16.701Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:16.701Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:16.701Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:16.701Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:16.701Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:17.238Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-20T06:04:17.238Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-20T06:04:17.239Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763618657239-5wdtpiznh Container: firefox-default
+[2025-11-20T06:04:17.239Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:17.239Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:17.248Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:17.248Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:17.248Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:17.256Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:17.259Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:17.259Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:17.259Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:17.259Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:17.259Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:17.259Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:17.799Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-20T06:04:17.799Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:17.799Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-20T06:04:17.801Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763618657799-qfvyhjiqv Container: firefox-default
+[2025-11-20T06:04:17.801Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:17.805Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:17.806Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:17.806Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:17.813Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:17.815Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:17.815Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:17.815Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:17.815Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:17.815Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:17.815Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:27.815Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-20T06:04:27.815Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-20T06:04:27.816Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Livestreaming ID: qt-1763618667815-it78h834p Container: firefox-default
+[2025-11-20T06:04:27.816Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:27.816Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:27.825Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:27.825Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:27.825Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:27.834Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:27.836Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:27.836Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:27.836Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:27.836Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:27.836Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:27.836Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:28.557Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Hololive_Production ID: qt-1763618668557-u8gz48mu2 Container: firefox-default
+[2025-11-20T06:04:28.557Z] [DEBUG] [Background] State already initialized
+[2025-11-20T06:04:28.557Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Hololive_Production
+[2025-11-20T06:04:28.557Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T06:04:28.557Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Hololive_Production
+[2025-11-20T06:04:28.566Z] [DEBUG] [Background] Storage changed: sync [
+  "quick_tabs_state_v2"
+]
+[2025-11-20T06:04:28.566Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-20T06:04:28.566Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-20T06:04:28.577Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-20T06:04:28.578Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:28.578Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:28.578Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T06:04:28.578Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:28.578Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T06:04:28.578Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T06:04:33.869Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
