@@ -2,19 +2,193 @@
 
 ## Overview
 
-This repository has **15 MCP servers** configured to enhance GitHub Copilot Coding Agent's capabilities for Mozilla extension development. This guide provides explicit instructions on optimal usage.
+This repository has **12 MCP servers** configured to enhance GitHub Copilot Coding Agent's capabilities. This guide provides explicit instructions on optimal usage with emphasis on **memory persistence across sessions**.
 
 ---
 
-## Configured MCP Servers
+## 🧠 Memory Persistence MCPs (NEW - CRITICAL)
 
-### Critical Priority MCPs (Use First)
+### Architecture: 3-Tier Memory System
 
-#### 1. ESLint MCP Server ⭐⭐⭐
+**Tier 1: In-Memoria MCP** - Semantic code intelligence  
+**Tier 2: Agentic-Tools MCP** - Task tracking and session memory  
+**Tier 3: Persistent-Memory MCP** - Structured SQLite database
+
+**CRITICAL REQUIREMENT:** All three memory MCPs MUST have their storage directories committed to Git for persistence across agent runs.
+
+---
+
+### 1. In-Memoria MCP 🧠 ⭐⭐⭐
+
+**Purpose:** Semantic code intelligence using knowledge graphs and vector embeddings
+
+**Storage Location:** `.in-memoria/`
+- `patterns.db` (SQLite) - Code patterns, frequencies, naming conventions
+- `embeddings.db` (SurrealDB) - Vector embeddings for semantic search
+- `learned_intel.json` - Metadata and learning summaries
+
+**When to Use:**
+- Learning codebase patterns and conventions
+- Querying semantic relationships between code
+- Understanding project architecture
+- Finding similar code patterns
+- Generating documentation from learned patterns
+
+**Tools:**
+- `learn_codebase_intelligence` - Analyze and learn from codebase
+- `query_patterns` - Search learned patterns semantically
+- `contribute_insights` - Add manual insights to knowledge base
+- `generate_documentation` - Create docs from learned patterns
+- `get_intelligence_metrics` - View learning statistics
+
+**Example Prompts:**
+```
+"Learn the Quick Tabs architecture patterns from the codebase"
+"Query In-Memoria for container isolation patterns"
+"What patterns have you learned about state management?"
+"Generate documentation from learned Quick Tabs patterns"
+```
+
+**Memory Persistence Workflow:**
+```
+1. Agent learns patterns during work
+2. Patterns stored in .in-memoria/patterns.db
+3. MUST commit: git add .in-memoria/
+4. Next agent run: Patterns available immediately
+```
+
+**CRITICAL:** Commit `.in-memoria/patterns.db` to Git. Large `embeddings.db` can be gitignored if needed (see `.github/.gitignore`).
+
+---
+
+### 2. Agentic-Tools MCP 🧠 ⭐⭐⭐
+
+**Purpose:** Task management and session memory with project-specific isolation
+
+**Storage Location:** `.agentic-tools/`
+- `tasks.json` - Task database
+- `memories.json` - Memory database
+- `projects.json` - Project metadata
+
+**When to Use:**
+- Creating and tracking tasks
+- Storing important decisions
+- Recording learnings from current session
+- Managing work-in-progress
+- Tracking subtasks and dependencies
+
+**Tools:**
+- `create_task` - Create new task
+- `update_task` - Update task status/details
+- `create_memory` - Store important memory
+- `search_memories` - Search stored memories
+- `get_tasks` - List all tasks
+- `get_memories` - Retrieve memories
+- `get_project_info` - Get project metadata
+
+**Example Prompts:**
+```
+"Create task to fix Quick Tab rendering issue"
+"Store memory that container isolation uses BroadcastChannel"
+"Search memories for previous Quick Tabs decisions"
+"Update task #5 to completed status"
+"Get all active tasks for this project"
+```
+
+**Memory Persistence Workflow:**
+```
+1. Agent creates tasks/memories during work
+2. Data stored in .agentic-tools/*.json
+3. MUST commit: git add .agentic-tools/
+4. Next agent run: Tasks/memories available
+```
+
+**CRITICAL:** Commit `.agentic-tools/*.json` files to Git for session persistence.
+
+---
+
+### 3. Persistent-Memory MCP 🧠 ⭐⭐⭐
+
+**Purpose:** SQLite-based structured memory for relational data
+
+**Storage Location:** `.mcp-data/memory.db` (SQLite database)
+
+**When to Use:**
+- Storing structured relational data
+- Complex queries across memory
+- Building relationships between memories
+- Long-term data persistence
+- Structured knowledge retrieval
+
+**Tools:**
+- `sqlite_execute` - Execute SQL queries
+- `sqlite_execute_main_*` - Named SQL operations
+- `sqlite_get_catalog` - View database schema
+
+**Example Prompts:**
+```
+"Store in SQLite memory: Quick Tab architecture uses isRendered() tracking"
+"Query SQLite memory for all container isolation decisions"
+"Execute SQL to find patterns related to BroadcastChannel"
+```
+
+**Memory Persistence Workflow:**
+```
+1. Agent stores data in SQLite during work
+2. Data written to .mcp-data/memory.db
+3. MUST commit: git add .mcp-data/
+4. Next agent run: Database persists
+```
+
+**CRITICAL:** Commit `.mcp-data/memory.db` to Git for database persistence.
+
+---
+
+## Memory Persistence Instructions (MANDATORY FOR ALL AGENTS)
+
+### At the End of EVERY Task:
+
+1. **Stage memory files:**
+   ```bash
+   git add .in-memoria/
+   git add .agentic-tools/
+   git add .mcp-data/
+   ```
+
+2. **Commit with your code changes:**
+   ```bash
+   git commit -m "chore: persist agent memory from task"
+   ```
+
+3. **Push to PR branch:**
+   ```bash
+   git push
+   ```
+
+### Why This Is Critical
+
+Your memory files are stored in an **ephemeral GitHub Actions workspace** that gets destroyed when your session ends. If you don't commit them to the PR, they will be lost forever and you'll have NO MEMORY of this work in future tasks.
+
+### Verification Checklist
+
+Before finishing work:
+- [ ] `.in-memoria/` appears in git status
+- [ ] `.agentic-tools/` appears in git status
+- [ ] `.mcp-data/` appears in git status
+- [ ] Memory files committed to PR branch
+- [ ] Memory files will be merged to main with code
+
+**This is NON-NEGOTIABLE for memory persistence.**
+
+---
+
+## Critical Priority MCPs (ALWAYS Use)
+
+### 4. ESLint MCP ⭐⭐⭐
 
 **Purpose:** JavaScript linting, auto-fixing, code quality enforcement
 
-**MANDATORY USAGE:** Every code change MUST be linted before finalizing.
+**MANDATORY USAGE:** Every code change MUST be linted before committing.
 
 **When to Use:**
 - BEFORE creating any commit or PR
@@ -23,23 +197,15 @@ This repository has **15 MCP servers** configured to enhance GitHub Copilot Codi
 - To enforce consistent code style
 
 **Tools:**
-- `lint_file` - Check specific files for errors
-- `fix_file` - Apply ESLint auto-fixes automatically
-- `explain_rule` - Get rule violation explanations
+- `lint_file` - Check specific files
+- `fix_file` - Apply auto-fixes
+- `explain_rule` - Get rule explanations
 - `lint_directory` - Lint entire directories
-
-**Example Prompts:**
-```
-"Run ESLint on background.js and apply all auto-fixes"
-"Check src/ directory for ESLint violations"
-"Explain the 'no-unused-vars' violation in popup.js line 45"
-"Lint all modified JavaScript files before committing"
-```
 
 **Workflow:**
 ```
 1. Write/modify code
-2. IMMEDIATELY: "Lint [filename] with ESLint"
+2. IMMEDIATELY: Lint files with ESLint
 3. Apply auto-fixes
 4. Fix remaining issues manually
 5. Verify zero errors
@@ -50,7 +216,7 @@ This repository has **15 MCP servers** configured to enhance GitHub Copilot Codi
 
 ---
 
-#### 2. Context7 MCP Server ⭐⭐⭐
+### 5. Context7 MCP ⭐⭐⭐
 
 **Purpose:** Up-to-date documentation for libraries, frameworks, and APIs
 
@@ -60,8 +226,8 @@ This repository has **15 MCP servers** configured to enhance GitHub Copilot Codi
 - Implementing features with external APIs
 - Using WebExtensions APIs
 - Updating deprecated API usage
-- Need current best practices
 - Verifying API syntax/parameters
+- Checking Firefox compatibility
 
 **Tools:**
 - `get-library-docs` - Fetch library documentation
@@ -69,61 +235,43 @@ This repository has **15 MCP servers** configured to enhance GitHub Copilot Codi
 
 **Example Prompts:**
 ```
-"Use Context7 to get latest Firefox WebExtensions clipboard API docs"
-"Fetch current Manifest V3 migration guidelines for Firefox"
-"Get documentation for browser.storage.sync with quota limits"
-"Find latest best practices for Firefox container integration"
+"Use Context7 to get latest Firefox clipboard API docs"
+"Fetch current browser.storage.sync documentation with quota limits"
+"Get latest best practices for Firefox container integration"
 ```
-
-**ALWAYS use Context7 when:**
-- User mentions "latest" or "current" documentation
-- Implementing with external APIs
-- Unsure about API syntax
-- Need to verify Firefox compatibility
 
 ---
 
-#### 3. NPM Package Registry MCP Server ⭐⭐⭐
+### 6. Perplexity MCP ⭐⭐⭐
 
-**Purpose:** Package search, dependency management, vulnerability checking
+**Purpose:** Real-time web search with advanced reasoning
 
-**MANDATORY USAGE:** Check packages before adding dependencies.
+**Configuration:**
+- Model: `sonar-reasoning-pro`
+- Citations: Enabled (returns sources)
 
 **When to Use:**
-- Adding new npm packages
-- Updating dependencies
-- Checking for vulnerabilities
-- Finding compatible packages
-- Researching alternatives
+- Need current information
+- Researching best practices
+- Finding recent solutions
+- Verifying API availability
+- Understanding new patterns
 
 **Tools:**
-- `search-npm-packages` - Search registry
-- `get-npm-package-details` - Get package info
-- `check_vulnerability` - Security check
-- `check_outdated` - Find outdated deps
+- `perplexity_reason` - Advanced reasoning with web search and citations
 
 **Example Prompts:**
 ```
-"Search npm for clipboard management libraries compatible with WebExtensions"
-"Check package.json for outdated dependencies"
-"Get security vulnerabilities in current dependencies"
-"Find the latest compatible Playwright version for Firefox"
-```
-
-**Workflow:**
-```
-1. Before adding dependency: Search NPM Registry
-2. Get package details and check vulnerabilities
-3. Verify compatibility with Firefox/WebExtensions
-4. Check package is actively maintained
-5. Proceed with installation
+"Use Perplexity to research current Firefox container API best practices"
+"Search for latest solutions to WebExtension clipboard issues"
+"Find current recommendations for cross-tab communication"
 ```
 
 ---
 
-### High Priority MCPs (Use Frequently)
+## High Priority MCPs (Use Frequently)
 
-#### 4. GitHub MCP Server (Write-Enabled)
+### 7. GitHub MCP (Write-Enabled)
 
 **Purpose:** Repository management with write permissions
 
@@ -138,451 +286,175 @@ This repository has **15 MCP servers** configured to enhance GitHub Copilot Codi
 - Updating issue status
 - Creating pull requests
 - Adding review comments
-- Triggering CI/CD
-
-**Example Prompts:**
-```
-"Create GitHub issue for Quick Tab rendering bug with high priority label"
-"Add comment to PR #45 explaining memory leak fix"
-"Update issue #23 to mark completed and close"
-"Create pull request for container isolation feature"
-```
 
 **Auto-Issue Creation:**
 - When user provides bug list → Create issues automatically
 - Use detailed descriptions with root cause analysis
-- Apply appropriate labels (bug, enhancement, etc.)
-- DO NOT auto-close issues - let user close manually
+- Apply appropriate labels
+- DO NOT auto-close issues
 
 ---
 
-#### 5. Filesystem MCP Server
-
-**Purpose:** Read/write files in repository
-
-**Configured Paths:**
-- `/workspace/src` - Source code
-- `/workspace/tests` - Test files
-- `/workspace/docs` - Documentation
-- `/workspace/background.js` - Main background script
-- `/workspace/popup.js` - Popup script
-- `/workspace/manifest.json` - Extension manifest
-
-**When to Use:**
-- Reading source code
-- Writing new code
-- Updating documentation
-- Searching for code patterns
-- Analyzing project structure
-
-**Example Prompts:**
-```
-"Read background.js and analyze message handlers"
-"Update manifest.json to add clipboard permission"
-"Search for all files using browser.storage API"
-"Create new helper file in src/ for URL validation"
-```
-
-**ALWAYS use specific paths** from configured list above.
-
----
-
-#### 6. Git MCP Server
-
-**Purpose:** Version control operations
-
-**When to Use:**
-- Creating commits
-- Checking file changes
-- Viewing commit history
-- Generating commit messages
-- Tracking modifications
-
-**Tools:**
-- `git_status` - Check repo status
-- `git_commit` - Create commits
-- `git_log` - View history
-- `git_diff` - Show differences
-
-**Example Prompts:**
-```
-"Show what files changed since last commit"
-"Create commit with descriptive message for background.js changes"
-"View git history for manifest.json to see permission changes"
-```
-
----
-
-#### 7. Playwright (Firefox) MCP Server
+### 8. Playwright (Firefox & Chrome) MCPs
 
 **Purpose:** Browser automation and testing
 
 **Configuration:**
-- Browser: Firefox (optimized for Mozilla extensions)
-- Permissions: clipboard-read, clipboard-write, notifications
+- Firefox: `.playwright-mcp-firefox-config.json`
+- Chrome: `.playwright-mcp-chrome-config.json`
+- Permissions: clipboard-read, clipboard-write
 - Isolated mode: Clean environment per test
-- Output: /workspace/test-results
 
 **When to Use:**
 - Testing extension functionality
 - Verifying UI changes
 - Reproducing bugs
 - Creating automated tests
-- Cross-site compatibility testing
-
-**Example Prompts:**
-```
-"Use Playwright to test URL copy functionality on GitHub.com"
-"Load extension in Firefox and verify popup appears on hover"
-"Take screenshot of Quick Tab creation flow"
-"Test clipboard access in containerized tab"
-```
 
 **ALWAYS test UI changes** with Playwright before finalizing.
 
 ---
 
-### Medium Priority MCPs (Use As Needed)
+### 9. CodeScene MCP
 
-#### 8. Sentry MCP Server
-
-**Purpose:** Error monitoring and debugging
+**Purpose:** Code health analysis and technical debt detection
 
 **When to Use:**
-- Debugging production errors
-- Analyzing error trends
-- Getting AI fix suggestions
-- Investigating crashes
-- Monitoring error rates
-
-**Tools:**
-- `list-issues` - Search Sentry issues
-- `get-issue` - Get error details
-- `invoke-seer` - AI-powered fix suggestions
-- `search-errors-in-file` - Find file-specific errors
-
-**Example Prompts:**
-```
-"Query Sentry for errors in background.js from last week"
-"Get stack trace for most recent clipboard error"
-"Use Sentry Seer to suggest fixes for container isolation bug"
-```
+- Analyzing code complexity
+- Identifying refactoring priorities
+- Detecting hotspots
+- Architecture analysis
 
 ---
 
-#### 9. Memory MCP Server
+### 10. Codecov MCP
 
-**Purpose:** Context persistence across sessions
+**Purpose:** Test coverage analysis
 
 **When to Use:**
-- Starting new task on same issue
-- Referencing previous decisions
-- Continuing work from previous session
-- Avoiding repeated mistakes
-- Building on previous context
-
-**Example Prompts:**
-```
-"Remember Quick Tab rendering issue was fixed using isRendered() tracking"
-"Recall container isolation approach we implemented"
-"What was workaround for storage sync race condition?"
-```
-
-**ALWAYS store important decisions** in memory.
+- Generating coverage reports
+- Tracking test quality
+- Identifying coverage gaps
+- Validating test completeness
 
 ---
 
-#### 10. Code Review MCP Server
+### 11. GitHub Actions MCP
 
-**Purpose:** Automated PR reviews
-
-**When to Use:**
-- Before merging PRs
-- Reviewing code changes
-- Comparing branches
-- Quality assurance checks
-- Pre-merge validation
-
-**Example Prompts:**
-```
-"Review latest PR for code quality issues"
-"Compare feature/quick-tabs branch with main"
-"Generate code review for changes in background.js"
-```
-
----
-
-#### 11. Screenshot Website MCP Server
-
-**Purpose:** Visual verification
+**Purpose:** CI/CD workflow management
 
 **When to Use:**
-- Verifying UI changes
-- Documenting visual bugs
-- Creating README screenshots
-- Comparing before/after states
-- Visual regression testing
-
-**Example Prompts:**
-```
-"Take screenshot of extension popup after style changes"
-"Capture how Quick Tab appears on GitHub.com"
-"Screenshot options page with all settings visible"
-```
-
----
-
-### Lower Priority MCPs (Specialized Use)
-
-#### 12. Perplexity MCP Server
-
-**Purpose:** Real-time web search
-
-**When to Use:**
-- Need current information
-- Researching best practices
-- Finding recent solutions
-- Verifying API availability
-
-**Example:** "Use Perplexity to research current Firefox container API best practices"
-
----
-
-#### 13. Brave Deep Research MCP Server
-
-**Purpose:** Deep research and analysis
-
-**When to Use:**
-- Complex research questions
-- Comprehensive understanding needed
-- Comparing multiple approaches
-- Deep technical investigations
-
-**Example:** "Use Brave Deep Research to compare approaches for cross-tab communication"
-
----
-
-#### 14. REST API Tester MCP Server
-
-**Purpose:** API endpoint testing
-
-**When to Use:**
-- Testing external APIs
-- Debugging API responses
-- Verifying webhooks
-- Validating API contracts
-
-**Example:** "Test the GitHub API endpoint for repository information"
-
----
-
-#### 15. GitHub Actions MCP Server
-
-**Purpose:** CI/CD management
-
-**When to Use:**
-- Running workflows
+- Triggering workflows
 - Checking build status
-- Creating automation
+- Managing automation
 - Debugging failed builds
 
-**Example:** "Trigger the test workflow for the latest commit"
-
 ---
 
-## MCP Utilization Workflows
+## Standard MCP Workflows
 
-### Bug Fix Standard Workflow
-
+### Bug Fix Workflow
 ```
-1. Sentry MCP: Query error stack traces
-2. Filesystem MCP: Read affected code
-3. Context7 MCP: Get API documentation ⭐ MANDATORY
-4. Filesystem MCP: Write fix
-5. ESLint MCP: Lint and fix code ⭐ MANDATORY
-6. Playwright MCP: Test fix
-7. Git MCP: Create commit
-8. GitHub MCP: Update issue status
+1. Context7 MCP: Get API docs ⭐
+2. Write fix
+3. ESLint MCP: Lint and fix ⭐ MANDATORY
+4. Playwright MCP: Test fix
+5. GitHub MCP: Update issue
+6. Memory MCPs: Store learnings 🧠
+7. Git commit with memory files 🧠
 ```
 
-### New Feature Standard Workflow
-
+### New Feature Workflow
 ```
-1. NPM Registry MCP: Search compatible packages ⭐ MANDATORY
-2. NPM Registry MCP: Check vulnerabilities ⭐ MANDATORY
-3. Context7 MCP: Get API docs ⭐ MANDATORY
-4. Perplexity/Brave MCP: Research best practices
-5. Filesystem MCP: Write feature code
-6. ESLint MCP: Lint and fix ⭐ MANDATORY
-7. Playwright MCP: Create tests
-8. Screenshot MCP: Document UI changes
-9. Git MCP: Commit changes
-10. GitHub MCP: Create pull request
-```
-
-### Code Review Standard Workflow
-
-```
-1. Code Review MCP: Analyze changes
-2. ESLint MCP: Check linting ⭐ MANDATORY
-3. Git MCP: View commit history
-4. Playwright MCP: Run tests
-5. GitHub MCP: Add review comments
-```
-
-### Dependency Update Standard Workflow
-
-```
-1. NPM Registry MCP: Check for updates ⭐ MANDATORY
-2. NPM Registry MCP: Check vulnerabilities ⭐ MANDATORY
-3. Context7 MCP: Get migration guides
-4. Filesystem MCP: Update package.json
-5. ESLint MCP: Verify code passes ⭐ MANDATORY
-6. Playwright MCP: Run test suite
-7. Git MCP: Commit updates
+1. Perplexity MCP: Research best practices ⭐
+2. Context7 MCP: Get API docs ⭐
+3. In-Memoria MCP: Query existing patterns 🧠
+4. Write feature code
+5. ESLint MCP: Lint and fix ⭐ MANDATORY
+6. Playwright MCP: Create tests
+7. Agentic-Tools MCP: Create tasks 🧠
 8. GitHub MCP: Create PR
+9. Git commit with memory files 🧠
 ```
 
----
-
-## MANDATORY MCP Usage Rules
-
-### Rule 1: ALWAYS Use ESLint Before Finalizing
-
-**Process:**
-1. Write/modify code
-2. IMMEDIATELY run ESLint on changed files
-3. Apply auto-fixes
-4. Fix remaining issues
-5. Verify zero errors
-6. Proceed with commit
-
-**NO EXCEPTIONS.**
-
-### Rule 2: ALWAYS Use Context7 for API Docs
-
-**Never rely on training data** for API syntax - always fetch current docs from Context7.
-
-### Rule 3: ALWAYS Check Dependencies with NPM Registry
-
-Before adding dependencies:
-1. Search NPM Registry
-2. Check vulnerabilities
-3. Verify maintenance status
-4. Check Firefox compatibility
-
-### Rule 4: ALWAYS Use GitHub MCP for Issues
-
-When creating issues from bug reports - use GitHub MCP to create them automatically.
-
-### Rule 5: ALWAYS Test UI Changes with Playwright
-
-When modifying UI:
-1. Test with Playwright
-2. Capture screenshots
-3. Verify in Firefox
-
----
-
-## MCP Server Priority Matrix
-
-### Critical (Use First)
-1. ESLint MCP - Code quality
-2. Context7 MCP - API documentation
-3. NPM Registry MCP - Dependency management
-
-### High Priority (Use Frequently)
-4. GitHub MCP - Issue/PR management
-5. Filesystem MCP - Code access
-6. Git MCP - Version control
-7. Playwright MCP - Testing
-
-### Medium Priority (Use As Needed)
-8. Sentry MCP - Error debugging
-9. Memory MCP - Context persistence
-10. Code Review MCP - Quality assurance
-11. Screenshot MCP - Visual verification
-
-### Lower Priority (Specialized Use)
-12. Perplexity MCP - Research
-13. Brave Deep Research MCP - Deep analysis
-14. REST API Tester MCP - API testing
-15. GitHub Actions MCP - CI/CD management
-
----
-
-## Common MCP Combinations
-
-### Bug Investigation
+### Memory Persistence Workflow (EVERY Task)
 ```
-Sentry MCP → Filesystem MCP → Context7 MCP → ESLint MCP → Playwright MCP → Git MCP → GitHub MCP
-```
-
-### Feature Implementation
-```
-NPM Registry MCP → Context7 MCP → Filesystem MCP → ESLint MCP → Playwright MCP → Screenshot MCP → Git MCP → GitHub MCP
-```
-
-### Code Quality Improvement
-```
-ESLint MCP → Code Review MCP → Filesystem MCP → Git MCP → GitHub MCP
-```
-
-### Documentation Update
-```
-Filesystem MCP → Screenshot MCP → Git MCP → GitHub MCP
+1. Complete work
+2. In-Memoria MCP: Learned patterns automatically stored 🧠
+3. Agentic-Tools MCP: Tasks/memories automatically stored 🧠
+4. Persistent-Memory MCP: Data automatically stored 🧠
+5. git add .in-memoria/ .agentic-tools/ .mcp-data/
+6. git commit -m "chore: persist agent memory from task"
+7. git push
 ```
 
 ---
 
 ## Before Every Commit Checklist
 
-- [ ] ESLint MCP used on all modified JavaScript files ⭐
+- [ ] ESLint MCP used on all modified JS files ⭐
 - [ ] Zero ESLint errors remaining ⭐
-- [ ] Context7 used for any API implementations ⭐
-- [ ] NPM Registry checked for any new dependencies ⭐
+- [ ] Context7 used for API implementations ⭐
 - [ ] Playwright tests run for UI changes
-- [ ] Git commit created with descriptive message
+- [ ] **Memory files staged** (.in-memoria/, .agentic-tools/, .mcp-data/) 🧠
+- [ ] **Memory files committed** 🧠
 
 ---
 
 ## Before Every PR Checklist
 
 - [ ] All commits linted with ESLint ⭐
-- [ ] Code Review MCP analysis completed
 - [ ] Playwright test suite passes
+- [ ] Documentation updated
+- [ ] **Memory files included in PR** 🧠
 - [ ] GitHub MCP used to create PR
-- [ ] Documentation updated (README, agent files)
 
 ---
 
-## Troubleshooting MCP Issues
+## Memory Persistence Best Practices
 
-### If MCP Server Fails
+### DO:
+✅ Commit memory files at end of EVERY task  
+✅ Store important decisions in Agentic-Tools MCP  
+✅ Let In-Memoria learn patterns automatically  
+✅ Use Persistent-Memory for relational data  
+✅ Verify memory files in git status before finishing
 
-1. Check error message
-2. Verify secrets configured correctly
-3. Try alternative MCP
-4. Document the issue
+### DON'T:
+❌ Skip committing memory files  
+❌ Assume memory persists without Git commits  
+❌ Delete memory directories  
+❌ Commit large embeddings.db (optional, check .gitignore)  
+❌ Auto-close issues after creating them
 
-### If Tool Not Available
+---
 
-1. Verify tool name
-2. Check MCP configuration
-3. Use alternative approach
+## Troubleshooting Memory Persistence
+
+**Problem:** Memory not available in next session
+
+**Solution:**
+1. Check if memory files were committed to PR
+2. Verify PR was merged to main
+3. Confirm next agent run checked out main branch
+4. Check `.github/.gitignore` for excluded files
+
+**Problem:** Memory directories missing
+
+**Solution:**
+1. Create directories: `mkdir -p .in-memoria .agentic-tools .mcp-data`
+2. Add .gitkeep files: `touch .in-memoria/.gitkeep`
+3. Commit to repository
 
 ---
 
 ## Summary
 
-**Always utilize appropriate MCP servers** for:
+**12 MCP Servers Configured:**
+- 🧠 **3 Memory MCPs** - In-Memoria, Agentic-Tools, Persistent-Memory
+- ⭐ **3 Critical MCPs** - ESLint, Context7, Perplexity
+- 📋 **6 High Priority MCPs** - GitHub, Playwright (2), CodeScene, Codecov, GitHub Actions
 
-- ✅ High code quality (ESLint)
-- ✅ Current documentation (Context7)
-- ✅ Secure dependencies (NPM Registry)
-- ✅ Proper tracking (GitHub)
-- ✅ Comprehensive testing (Playwright)
-- ✅ Effective debugging (Sentry)
-- ✅ Professional workflows (Git, Code Review)
+**Key Principle:** Always commit memory files (.in-memoria/, .agentic-tools/, .mcp-data/) at the end of EVERY task for persistence across sessions.
 
-**MCPs are tools that enhance capabilities - use them proactively and systematically.**
+**MCPs enhance capabilities - use them proactively and systematically, especially memory MCPs for cumulative learning.**
