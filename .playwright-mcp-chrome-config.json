@@ -1,13 +1,13 @@
 {
   "browser": {
     "browserName": "chromium",
-    "userDataDir": "${GITHUB_WORKSPACE}/chrome-profile",
+    "userDataDir": "/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/chrome-profile",
     "launchOptions": {
       "channel": "chrome",
       "headless": false,
       "args": [
-        "--load-extension=${GITHUB_WORKSPACE}/dist",
-        "--disable-extensions-except=${GITHUB_WORKSPACE}/dist",
+        "--load-extension=/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/dist",
+        "--disable-extensions-except=/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/dist",
         "--no-sandbox",
         "--disable-dev-shm-usage",
         "--disable-blink-features=AutomationControlled",
@@ -23,10 +23,7 @@
       "permissions": ["clipboard-read", "clipboard-write", "notifications"]
     }
   },
-  "server": {
-    "port": 8931
-  },
-  "outputDir": "${GITHUB_WORKSPACE}/test-results/chrome",
+  "outputDir": "/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/test-results/chrome",
   "tracing": {
     "enabled": true,
     "screenshots": true,
