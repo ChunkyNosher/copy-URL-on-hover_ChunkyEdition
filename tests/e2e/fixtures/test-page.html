@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Page for Copy URL Extension</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 40px;
+      line-height: 1.6;
+    }
+    
+    .test-section {
+      margin-bottom: 40px;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    
+    h2 {
+      color: #333;
+      margin-top: 0;
+    }
+    
+    a {
+      display: block;
+      margin: 10px 0;
+      padding: 10px;
+      background: #f0f0f0;
+      text-decoration: none;
+      color: #0066cc;
+      border-radius: 3px;
+      transition: background 0.2s;
+    }
+    
+    a:hover {
+      background: #e0e0e0;
+    }
+    
+    .link-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Extension Test Page</h1>
+  
+  <div class="test-section">
+    <h2>Basic Links</h2>
+    <a href="https://example.com/page1" id="link-1">Link 1</a>
+    <a href="https://example.com/page2" id="link-2">Link 2</a>
+    <a href="https://example.com/page3" id="link-3">Link 3</a>
+  </div>
+  
+  <div class="test-section">
+    <h2>Multiple Links Grid</h2>
+    <div class="link-grid">
+      <a href="https://github.com/user/repo1">GitHub Repo 1</a>
+      <a href="https://github.com/user/repo2">GitHub Repo 2</a>
+      <a href="https://stackoverflow.com/questions/123">Stack Overflow Q</a>
+      <a href="https://reddit.com/r/programming">Reddit Programming</a>
+      <a href="https://twitter.com/user/status/123">Twitter Post</a>
+      <a href="https://youtube.com/watch?v=abc123">YouTube Video</a>
+    </div>
+  </div>
+  
+  <div class="test-section">
+    <h2>Special Cases</h2>
+    <a href="https://example.com/very-long-url-that-needs-to-be-truncated-for-display-purposes?param1=value1&param2=value2&param3=value3">
+      Very Long URL
+    </a>
+    <a href="https://example.com/unicode/测试/test">Unicode Path</a>
+    <a href="https://example.com/special#fragment">URL with Fragment</a>
+  </div>
+  
+  <div class="test-section">
+    <h2>Container Test Links</h2>
+    <p>These links are used to test Firefox Multi-Account Containers isolation:</p>
+    <a href="https://personal.example.com/test" id="personal-link">Personal Container Link</a>
+    <a href="https://work.example.com/test" id="work-link">Work Container Link</a>
+  </div>
+</body>
+</html>
