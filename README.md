@@ -155,10 +155,12 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 Access settings by clicking the extension icon.
 
 **Copy URL Tab:**
+
 - Keyboard shortcuts (Y, X, O defaults)
 - Modifier keys (Ctrl, Alt, Shift)
 
 **Quick Tabs Tab:**
+
 - Quick Tab shortcut (Q default)
 - Close all shortcut (Esc default)
 - Max windows (1-10)
@@ -166,6 +168,7 @@ Access settings by clicking the extension icon.
 - Close on open toggle
 
 **Appearance Tab:**
+
 - Notification style (tooltip/notification)
 - Colors, borders, animations
 - Position and size
@@ -173,6 +176,7 @@ Access settings by clicking the extension icon.
 - Debug mode toggle
 
 **Advanced Tab:**
+
 - Clear Quick Tab Storage
 - Export Console Logs
 - Clear Log History
