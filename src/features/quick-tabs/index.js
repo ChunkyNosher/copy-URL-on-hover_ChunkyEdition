@@ -73,6 +73,7 @@ class QuickTabsManager {
   /**
    * Initialize the Quick Tabs manager
    * v1.6.0 - Refactored to wire together extracted components
+   * v1.6.0.3 - Added comprehensive error logging to debug initialization failures
    *
    * @param {EventEmitter} eventBus - External event bus from content.js
    * @param {Object} Events - Event constants
@@ -85,44 +86,120 @@ class QuickTabsManager {
 
     this.eventBus = eventBus;
     this.Events = Events;
-
     console.log('[QuickTabsManager] Initializing facade...');
 
-    // STEP 1: Detect context (container, tab ID)
+    try {
+      await this._initStep1_Context();
+      this._initStep2_Managers();
+      this._initStep3_Handlers();
+      await this._initStep4_Panel();
+      this._initStep5_Coordinators();
+      await this._initStep6_Setup();
+      await this._initStep7_Hydrate();
+      this._initStep8_Expose();
+
+      this.initialized = true;
+      console.log('[QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓');
+    } catch (err) {
+      console.error('[QuickTabsManager] ❌❌❌ INITIALIZATION FAILED ❌❌❌');
+      console.error('[QuickTabsManager] Error details:', {
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack,
+        type: typeof err,
+        error: err
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * STEP 1: Detect context (container, tab ID)
+   * @private
+   */
+  async _initStep1_Context() {
+    console.log('[QuickTabsManager] STEP 1: Detecting container context...');
     const containerDetected = await this.detectContainerContext();
     if (!containerDetected) {
       console.warn('[QuickTabsManager] Container detection failed, using default container');
     }
+    console.log('[QuickTabsManager] STEP 1: Detecting tab ID...');
     await this.detectCurrentTabId();
+    console.log('[QuickTabsManager] STEP 1 Complete');
+  }
 
-    // STEP 2: Initialize managers
+  /**
+   * STEP 2: Initialize managers
+   * @private
+   */
+  _initStep2_Managers() {
+    console.log('[QuickTabsManager] STEP 2: Initializing managers...');
     this._initializeManagers();
+    console.log('[QuickTabsManager] STEP 2 Complete');
+  }
 
-    // STEP 3: Initialize handlers
+  /**
+   * STEP 3: Initialize handlers
+   * @private
+   */
+  _initStep3_Handlers() {
+    console.log('[QuickTabsManager] STEP 3: Initializing handlers...');
     this._initializeHandlers();
+    console.log('[QuickTabsManager] STEP 3 Complete');
+  }
 
-    // STEP 4: Initialize panel manager (must happen before coordinators)
+  /**
+   * STEP 4: Initialize panel manager
+   * @private
+   */
+  async _initStep4_Panel() {
+    console.log('[QuickTabsManager] STEP 4: Initializing panel manager...');
     this.panelManager = new PanelManager(this);
     await this.panelManager.init();
-    console.log('[QuickTabsManager] Panel manager initialized');
+    console.log('[QuickTabsManager] STEP 4 Complete - Panel manager initialized');
+  }
 
-    // STEP 5: Initialize coordinators
+  /**
+   * STEP 5: Initialize coordinators
+   * @private
+   */
+  _initStep5_Coordinators() {
+    console.log('[QuickTabsManager] STEP 5: Initializing coordinators...');
     this._initializeCoordinators();
+    console.log('[QuickTabsManager] STEP 5 Complete');
+  }
 
-    // STEP 6: Setup managers (attach listeners)
-    this._setupComponents();
+  /**
+   * STEP 6: Setup managers (attach listeners)
+   * @private
+   */
+  async _initStep6_Setup() {
+    console.log('[QuickTabsManager] STEP 6: Setting up components...');
+    await this._setupComponents();
+    console.log('[QuickTabsManager] STEP 6 Complete');
+  }
 
-    // STEP 7: Hydrate state from storage (EAGER LOADING)
+  /**
+   * STEP 7: Hydrate state from storage
+   * @private
+   */
+  async _initStep7_Hydrate() {
+    console.log('[QuickTabsManager] STEP 7: Hydrating state...');
     await this._hydrateState();
+    console.log('[QuickTabsManager] STEP 7 Complete');
+  }
 
-    // STEP 8: Expose manager globally for QuickTabWindow button access (backward compat)
+  /**
+   * STEP 8: Expose manager globally
+   * @private
+   */
+  _initStep8_Expose() {
+    console.log('[QuickTabsManager] STEP 8: Exposing manager globally...');
     if (typeof window !== 'undefined') {
       window.__quickTabsManager = this;
       console.log('[QuickTabsManager] Manager exposed globally');
     }
-
-    this.initialized = true;
-    console.log('[QuickTabsManager] Facade initialized successfully');
+    console.log('[QuickTabsManager] STEP 8 Complete');
   }
 
   /**

@@ -386,6 +386,12 @@ export class PanelUIBuilder {
       return false;
     }
 
+    // Safety check: Ensure document.head exists
+    if (!document.head) {
+      console.error('[PanelUIBuilder] document.head is null - DOM not ready!');
+      throw new Error('[PanelUIBuilder] Cannot inject styles - document.head is null');
+    }
+
     const style = document.createElement('style');
     style.id = 'quick-tabs-manager-panel-styles';
     style.textContent = PANEL_CSS;

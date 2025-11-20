@@ -3733,46 +3733,13 @@
      * v1.5.9.13 - Toggle solo state for current tab
      */
     toggleSolo(soloBtn) {
-      console.log('[QuickTabWindow] toggleSolo called for:', this.id);
-      console.log('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
-      console.log('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
-
-      if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
-        console.warn('[QuickTabWindow] Cannot toggle solo - no current tab ID');
-        console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
-        console.warn('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
-        return;
-      }
-
-      const currentTabId = window.quickTabsManager.currentTabId;
+      const currentTabId = this._validateCurrentTabId('solo');
+      if (!currentTabId) return;
 
       if (this.isCurrentTabSoloed()) {
-        // Un-solo: Remove current tab from solo list
-        this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== currentTabId);
-        soloBtn.textContent = '⭕';
-        soloBtn.title = 'Solo (show only on this tab)';
-        soloBtn.style.background = 'transparent';
-
-        // If no tabs left in solo list, Quick Tab becomes visible everywhere
-        if (this.soloedOnTabs.length === 0) {
-          console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
-        }
+        this._unsoloCurrentTab(soloBtn, currentTabId);
       } else {
-        // Solo: Set current tab as the only tab (replace entire list for simplicity)
-        this.soloedOnTabs = [currentTabId];
-        this.mutedOnTabs = []; // Clear mute state (mutually exclusive)
-        soloBtn.textContent = '🎯';
-        soloBtn.title = 'Un-solo (show on all tabs)';
-        soloBtn.style.background = '#444';
-
-        // Update mute button if it exists
-        if (this.muteButton) {
-          this.muteButton.textContent = '🔊';
-          this.muteButton.title = 'Mute (hide on this tab)';
-          this.muteButton.style.background = 'transparent';
-        }
-
-        console.log('[QuickTabWindow] Soloed - only visible on this tab');
+        this._soloCurrentTab(soloBtn, currentTabId);
       }
 
       // Notify parent manager
@@ -3785,51 +3752,110 @@
      * v1.5.9.13 - Toggle mute state for current tab
      */
     toggleMute(muteBtn) {
-      console.log('[QuickTabWindow] toggleMute called for:', this.id);
-      console.log('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
-      console.log('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
-
-      if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
-        console.warn('[QuickTabWindow] Cannot toggle mute - no current tab ID');
-        console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
-        console.warn('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
-        return;
-      }
-
-      const currentTabId = window.quickTabsManager.currentTabId;
+      const currentTabId = this._validateCurrentTabId('mute');
+      if (!currentTabId) return;
 
       if (this.isCurrentTabMuted()) {
-        // Unmute: Remove current tab from mute list
-        this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== currentTabId);
-        muteBtn.textContent = '🔊';
-        muteBtn.title = 'Mute (hide on this tab)';
-        muteBtn.style.background = 'transparent';
-
-        console.log('[QuickTabWindow] Unmuted on this tab');
+        this._unmuteCurrentTab(muteBtn, currentTabId);
       } else {
-        // Mute: Add current tab to mute list
-        if (!this.mutedOnTabs.includes(currentTabId)) {
-          this.mutedOnTabs.push(currentTabId);
-        }
-        this.soloedOnTabs = []; // Clear solo state (mutually exclusive)
-        muteBtn.textContent = '🔇';
-        muteBtn.title = 'Unmute (show on this tab)';
-        muteBtn.style.background = '#c44';
-
-        // Update solo button if it exists
-        if (this.soloButton) {
-          this.soloButton.textContent = '⭕';
-          this.soloButton.title = 'Solo (show only on this tab)';
-          this.soloButton.style.background = 'transparent';
-        }
-
-        console.log('[QuickTabWindow] Muted on this tab');
+        this._muteCurrentTab(muteBtn, currentTabId);
       }
 
       // Notify parent manager
       if (this.onMute) {
         this.onMute(this.id, this.mutedOnTabs);
       }
+    }
+
+    /**
+     * Validate current tab ID availability
+     * @private
+     * @param {string} action - Action name for logging ('solo' or 'mute')
+     * @returns {number|null} Current tab ID or null if unavailable
+     */
+    _validateCurrentTabId(action) {
+      console.log(
+        `[QuickTabWindow] toggle${action.charAt(0).toUpperCase() + action.slice(1)} called for:`,
+        this.id
+      );
+
+      if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
+        console.warn(`[QuickTabWindow] Cannot toggle ${action} - no current tab ID`);
+        return null;
+      }
+
+      return window.quickTabsManager.currentTabId;
+    }
+
+    /**
+     * Un-solo current tab
+     * @private
+     */
+    _unsoloCurrentTab(soloBtn, currentTabId) {
+      this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== currentTabId);
+      soloBtn.textContent = '⭕';
+      soloBtn.title = 'Solo (show only on this tab)';
+      soloBtn.style.background = 'transparent';
+
+      if (this.soloedOnTabs.length === 0) {
+        console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
+      }
+    }
+
+    /**
+     * Solo current tab
+     * @private
+     */
+    _soloCurrentTab(soloBtn, currentTabId) {
+      this.soloedOnTabs = [currentTabId];
+      this.mutedOnTabs = []; // Clear mute state (mutually exclusive)
+      soloBtn.textContent = '🎯';
+      soloBtn.title = 'Un-solo (show on all tabs)';
+      soloBtn.style.background = '#444';
+
+      // Update mute button if it exists
+      if (this.muteButton) {
+        this.muteButton.textContent = '🔊';
+        this.muteButton.title = 'Mute (hide on this tab)';
+        this.muteButton.style.background = 'transparent';
+      }
+
+      console.log('[QuickTabWindow] Soloed - only visible on this tab');
+    }
+
+    /**
+     * Unmute current tab
+     * @private
+     */
+    _unmuteCurrentTab(muteBtn, currentTabId) {
+      this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== currentTabId);
+      muteBtn.textContent = '🔊';
+      muteBtn.title = 'Mute (hide on this tab)';
+      muteBtn.style.background = 'transparent';
+      console.log('[QuickTabWindow] Unmuted on this tab');
+    }
+
+    /**
+     * Mute current tab
+     * @private
+     */
+    _muteCurrentTab(muteBtn, currentTabId) {
+      if (!this.mutedOnTabs.includes(currentTabId)) {
+        this.mutedOnTabs.push(currentTabId);
+      }
+      this.soloedOnTabs = []; // Clear solo state (mutually exclusive)
+      muteBtn.textContent = '🔇';
+      muteBtn.title = 'Unmute (show on this tab)';
+      muteBtn.style.background = '#c44';
+
+      // Update solo button if it exists
+      if (this.soloButton) {
+        this.soloButton.textContent = '⭕';
+        this.soloButton.title = 'Solo (show only on this tab)';
+        this.soloButton.style.background = 'transparent';
+      }
+
+      console.log('[QuickTabWindow] Muted on this tab');
     }
 
     /**
@@ -4528,42 +4554,31 @@
    */
   class VisibilityHandler {
     /**
-     * @param {Map} quickTabsMap - Map of Quick Tab instances
-     * @param {BroadcastManager} broadcastManager - Broadcast manager for cross-tab sync
-     * @param {StorageManager} storageManager - Storage manager (currently unused, kept for future use)
-     * @param {MinimizedManager} minimizedManager - Manager for minimized Quick Tabs
-     * @param {EventEmitter} eventBus - Event bus for internal communication
-     * @param {Object} currentZIndex - Reference object with value property for z-index
-     * @param {Function} generateSaveId - Function to generate saveId for transaction tracking
-     * @param {Function} trackPendingSave - Function to track pending saveId
-     * @param {Function} releasePendingSave - Function to release pending saveId
-     * @param {number} currentTabId - Current browser tab ID
-     * @param {Object} Events - Events constants object
+     * @param {Object} options - Configuration options
+     * @param {Map} options.quickTabsMap - Map of Quick Tab instances
+     * @param {BroadcastManager} options.broadcastManager - Broadcast manager for cross-tab sync
+     * @param {StorageManager} options.storageManager - Storage manager (currently unused, kept for future use)
+     * @param {MinimizedManager} options.minimizedManager - Manager for minimized Quick Tabs
+     * @param {EventEmitter} options.eventBus - Event bus for internal communication
+     * @param {Object} options.currentZIndex - Reference object with value property for z-index
+     * @param {Function} options.generateSaveId - Function to generate saveId for transaction tracking
+     * @param {Function} options.trackPendingSave - Function to track pending saveId
+     * @param {Function} options.releasePendingSave - Function to release pending saveId
+     * @param {number} options.currentTabId - Current browser tab ID
+     * @param {Object} options.Events - Events constants object
      */
-    constructor(
-      quickTabsMap,
-      broadcastManager,
-      storageManager,
-      minimizedManager,
-      eventBus,
-      currentZIndex,
-      generateSaveId,
-      trackPendingSave,
-      releasePendingSave,
-      currentTabId,
-      Events
-    ) {
-      this.quickTabsMap = quickTabsMap;
-      this.broadcastManager = broadcastManager;
-      this.storageManager = storageManager;
-      this.minimizedManager = minimizedManager;
-      this.eventBus = eventBus;
-      this.currentZIndex = currentZIndex;
-      this.generateSaveId = generateSaveId;
-      this.trackPendingSave = trackPendingSave;
-      this.releasePendingSave = releasePendingSave;
-      this.currentTabId = currentTabId;
-      this.Events = Events;
+    constructor(options) {
+      this.quickTabsMap = options.quickTabsMap;
+      this.broadcastManager = options.broadcastManager;
+      this.storageManager = options.storageManager;
+      this.minimizedManager = options.minimizedManager;
+      this.eventBus = options.eventBus;
+      this.currentZIndex = options.currentZIndex;
+      this.generateSaveId = options.generateSaveId;
+      this.trackPendingSave = options.trackPendingSave;
+      this.releasePendingSave = options.releasePendingSave;
+      this.currentTabId = options.currentTabId;
+      this.Events = options.Events;
     }
 
     /**
@@ -4575,24 +4590,13 @@
      * @returns {Promise<void>}
      */
     async handleSoloToggle(quickTabId, newSoloedTabs) {
-      console.log(`[VisibilityHandler] Toggling solo for ${quickTabId}:`, newSoloedTabs);
-
-      const tab = this.quickTabsMap.get(quickTabId);
-      if (!tab) return;
-
-      // Update solo state
-      tab.soloedOnTabs = newSoloedTabs;
-      tab.mutedOnTabs = []; // Clear mute state (mutually exclusive)
-
-      // Update button states if tab has them
-      this._updateSoloButton(tab, newSoloedTabs);
-
-      // Broadcast to other tabs
-      this.broadcastManager.notifySolo(quickTabId, newSoloedTabs);
-
-      // Save to background
-      await this._sendToBackground(quickTabId, tab, 'SOLO', {
-        soloedOnTabs: newSoloedTabs
+      await this._handleVisibilityToggle(quickTabId, {
+        mode: 'SOLO',
+        newTabs: newSoloedTabs,
+        tabsProperty: 'soloedOnTabs',
+        clearProperty: 'mutedOnTabs',
+        updateButton: this._updateSoloButton.bind(this),
+        broadcastNotify: tabs => this.broadcastManager.notifySolo(quickTabId, tabs)
       });
     }
 
@@ -4605,25 +4609,45 @@
      * @returns {Promise<void>}
      */
     async handleMuteToggle(quickTabId, newMutedTabs) {
-      console.log(`[VisibilityHandler] Toggling mute for ${quickTabId}:`, newMutedTabs);
+      await this._handleVisibilityToggle(quickTabId, {
+        mode: 'MUTE',
+        newTabs: newMutedTabs,
+        tabsProperty: 'mutedOnTabs',
+        clearProperty: 'soloedOnTabs',
+        updateButton: this._updateMuteButton.bind(this),
+        broadcastNotify: tabs => this.broadcastManager.notifyMute(quickTabId, tabs)
+      });
+    }
+
+    /**
+     * Common handler for solo/mute visibility toggles
+     * Extracts shared logic to reduce duplication
+     * @private
+     * @param {string} quickTabId - Quick Tab ID
+     * @param {Object} config - Configuration for toggle operation
+     * @returns {Promise<void>}
+     */
+    async _handleVisibilityToggle(quickTabId, config) {
+      const { mode, newTabs, tabsProperty, clearProperty, updateButton, broadcastNotify } = config;
+
+      console.log(`[VisibilityHandler] Toggling ${mode.toLowerCase()} for ${quickTabId}:`, newTabs);
 
       const tab = this.quickTabsMap.get(quickTabId);
       if (!tab) return;
 
-      // Update mute state
-      tab.mutedOnTabs = newMutedTabs;
-      tab.soloedOnTabs = []; // Clear solo state (mutually exclusive)
+      // Update visibility state (mutually exclusive)
+      tab[tabsProperty] = newTabs;
+      tab[clearProperty] = [];
 
       // Update button states if tab has them
-      this._updateMuteButton(tab, newMutedTabs);
+      updateButton(tab, newTabs);
 
       // Broadcast to other tabs
-      this.broadcastManager.notifyMute(quickTabId, newMutedTabs);
+      broadcastNotify(newTabs);
 
       // Save to background
-      await this._sendToBackground(quickTabId, tab, 'MUTE', {
-        mutedOnTabs: newMutedTabs
-      });
+      const data = { [tabsProperty]: newTabs };
+      await this._sendToBackground(quickTabId, tab, mode, data);
     }
 
     /**
@@ -6677,13 +6701,26 @@
      * @param {Object} newValue - New storage value
      */
     handleStorageChange(newValue) {
-      if (!newValue) {
+      if (!newValue || this._shouldSkipStorageChange(newValue)) {
         return;
       }
 
+      const stateToSync = this._extractSyncState(newValue);
+      if (stateToSync) {
+        this.scheduleStorageSync(stateToSync);
+      }
+    }
+
+    /**
+     * Determine if storage change should be skipped
+     * @private
+     * @param {Object} newValue - New storage value
+     * @returns {boolean} True if should skip
+     */
+    _shouldSkipStorageChange(newValue) {
       // Ignore changes from our own saves (race condition prevention)
       if (this.shouldIgnoreStorageChange(newValue?.saveId)) {
-        return;
+        return true;
       }
 
       // Ignore changes while saves are pending
@@ -6692,27 +6729,47 @@
           '[StorageManager] Ignoring change while pending saves in-flight:',
           Array.from(this.pendingSaveIds)
         );
-        return;
+        return true;
       }
 
-      // Extract container-specific state
+      return false;
+    }
+
+    /**
+     * Extract state to sync from storage change
+     * @private
+     * @param {Object} newValue - New storage value
+     * @returns {Object|null} State to sync, or null if none
+     */
+    _extractSyncState(newValue) {
+      // Modern container-aware format
       if (newValue.containers && this.cookieStoreId) {
-        const containerState = newValue.containers[this.cookieStoreId];
-        if (containerState) {
-          console.log(`[StorageManager] Scheduling sync for container ${this.cookieStoreId}`);
-          // Create container-filtered snapshot
-          const filteredState = {
-            containers: {
-              [this.cookieStoreId]: containerState
-            }
-          };
-          this.scheduleStorageSync(filteredState);
-        }
-      } else {
-        // Legacy format - process as-is
-        console.log('[StorageManager] Scheduling sync (legacy format)');
-        this.scheduleStorageSync(newValue);
+        return this._extractContainerState(newValue);
       }
+
+      // Legacy format - process as-is
+      console.log('[StorageManager] Scheduling sync (legacy format)');
+      return newValue;
+    }
+
+    /**
+     * Extract container-specific state
+     * @private
+     * @param {Object} newValue - Storage value with containers
+     * @returns {Object|null} Filtered state or null
+     */
+    _extractContainerState(newValue) {
+      const containerState = newValue.containers[this.cookieStoreId];
+      if (!containerState) {
+        return null;
+      }
+
+      console.log(`[StorageManager] Scheduling sync for container ${this.cookieStoreId}`);
+      return {
+        containers: {
+          [this.cookieStoreId]: containerState
+        }
+      };
     }
 
     /**
@@ -6802,26 +6859,44 @@
      * @param {string} quickTabId - Quick Tab ID to delete
      */
     async delete(quickTabId) {
-      try {
-        await this.syncAdapter.delete(this.cookieStoreId, quickTabId);
-        this.eventBus?.emit('storage:deleted', { cookieStoreId: this.cookieStoreId, quickTabId });
-      } catch (error) {
-        console.error('[StorageManager] Delete error:', error);
-        this.eventBus?.emit('storage:error', { operation: 'delete', error });
-        throw error;
-      }
+      await this._executeStorageOperation(
+        'delete',
+        () => this.syncAdapter.delete(this.cookieStoreId, quickTabId),
+        { cookieStoreId: this.cookieStoreId, quickTabId }
+      );
     }
 
     /**
      * Clear all Quick Tabs for current container
      */
     async clear() {
+      await this._executeStorageOperation(
+        'clear',
+        () => this.syncAdapter.deleteContainer(this.cookieStoreId),
+        { cookieStoreId: this.cookieStoreId }
+      );
+    }
+
+    /**
+     * Execute storage operation with consistent error handling
+     * @private
+     * @param {string} operation - Operation name ('delete' or 'clear')
+     * @param {Function} action - Async function to execute
+     * @param {Object} eventData - Data to emit with success event
+     * @returns {Promise<void>}
+     */
+    async _executeStorageOperation(operation, action, eventData) {
       try {
-        await this.syncAdapter.deleteContainer(this.cookieStoreId);
-        this.eventBus?.emit('storage:cleared', { cookieStoreId: this.cookieStoreId });
+        await action();
+        // Emit success event based on operation type
+        const successEvent = operation === 'delete' ? 'storage:deleted' : 'storage:cleared';
+        this.eventBus?.emit(successEvent, eventData);
       } catch (error) {
-        console.error('[StorageManager] Clear error:', error);
-        this.eventBus?.emit('storage:error', { operation: 'clear', error });
+        console.error(
+          `[StorageManager] ${operation.charAt(0).toUpperCase() + operation.slice(1)} error:`,
+          error
+        );
+        this.eventBus?.emit('storage:error', { operation, error });
         throw error;
       }
     }
@@ -8900,6 +8975,12 @@
         return false;
       }
 
+      // Safety check: Ensure document.head exists
+      if (!document.head) {
+        console.error('[PanelUIBuilder] document.head is null - DOM not ready!');
+        throw new Error('[PanelUIBuilder] Cannot inject styles - document.head is null');
+      }
+
       const style = document.createElement('style');
       style.id = 'quick-tabs-manager-panel-styles';
       style.textContent = PANEL_CSS;
@@ -9228,6 +9309,7 @@
      * Initialize the panel
      * v1.5.9.12 - Container integration: Detect container context
      * v1.6.0.3 - Fixed initialization order: Create panel BEFORE loading state
+     * v1.6.0.3 - Added document.body safety check to prevent null reference error
      */
     async init() {
       debug('[PanelManager] Initializing...');
@@ -9248,6 +9330,12 @@
         isOpen: false
       };
       this.panel = this.uiBuilder.createPanel(defaultState);
+      
+      // Safety check: Ensure document.body exists before appending
+      // (should always be true with run_at: "document_idle", but defensive programming)
+      if (!document.body) {
+        throw new Error('[PanelManager] document.body is null - DOM not ready!');
+      }
       document.body.appendChild(this.panel);
 
       // Initialize state manager (callbacks can now safely access this.panel)
@@ -9647,6 +9735,7 @@
     /**
      * Initialize the Quick Tabs manager
      * v1.6.0 - Refactored to wire together extracted components
+     * v1.6.0.3 - Added comprehensive error logging to debug initialization failures
      *
      * @param {EventEmitter} eventBus - External event bus from content.js
      * @param {Object} Events - Event constants
@@ -9659,44 +9748,120 @@
 
       this.eventBus = eventBus;
       this.Events = Events;
-
       console.log('[QuickTabsManager] Initializing facade...');
 
-      // STEP 1: Detect context (container, tab ID)
+      try {
+        await this._initStep1_Context();
+        this._initStep2_Managers();
+        this._initStep3_Handlers();
+        await this._initStep4_Panel();
+        this._initStep5_Coordinators();
+        await this._initStep6_Setup();
+        await this._initStep7_Hydrate();
+        this._initStep8_Expose();
+
+        this.initialized = true;
+        console.log('[QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓');
+      } catch (err) {
+        console.error('[QuickTabsManager] ❌❌❌ INITIALIZATION FAILED ❌❌❌');
+        console.error('[QuickTabsManager] Error details:', {
+          message: err?.message,
+          name: err?.name,
+          stack: err?.stack,
+          type: typeof err,
+          error: err
+        });
+        throw err;
+      }
+    }
+
+    /**
+     * STEP 1: Detect context (container, tab ID)
+     * @private
+     */
+    async _initStep1_Context() {
+      console.log('[QuickTabsManager] STEP 1: Detecting container context...');
       const containerDetected = await this.detectContainerContext();
       if (!containerDetected) {
         console.warn('[QuickTabsManager] Container detection failed, using default container');
       }
+      console.log('[QuickTabsManager] STEP 1: Detecting tab ID...');
       await this.detectCurrentTabId();
+      console.log('[QuickTabsManager] STEP 1 Complete');
+    }
 
-      // STEP 2: Initialize managers
+    /**
+     * STEP 2: Initialize managers
+     * @private
+     */
+    _initStep2_Managers() {
+      console.log('[QuickTabsManager] STEP 2: Initializing managers...');
       this._initializeManagers();
+      console.log('[QuickTabsManager] STEP 2 Complete');
+    }
 
-      // STEP 3: Initialize handlers
+    /**
+     * STEP 3: Initialize handlers
+     * @private
+     */
+    _initStep3_Handlers() {
+      console.log('[QuickTabsManager] STEP 3: Initializing handlers...');
       this._initializeHandlers();
+      console.log('[QuickTabsManager] STEP 3 Complete');
+    }
 
-      // STEP 4: Initialize panel manager (must happen before coordinators)
+    /**
+     * STEP 4: Initialize panel manager
+     * @private
+     */
+    async _initStep4_Panel() {
+      console.log('[QuickTabsManager] STEP 4: Initializing panel manager...');
       this.panelManager = new PanelManager(this);
       await this.panelManager.init();
-      console.log('[QuickTabsManager] Panel manager initialized');
+      console.log('[QuickTabsManager] STEP 4 Complete - Panel manager initialized');
+    }
 
-      // STEP 5: Initialize coordinators
+    /**
+     * STEP 5: Initialize coordinators
+     * @private
+     */
+    _initStep5_Coordinators() {
+      console.log('[QuickTabsManager] STEP 5: Initializing coordinators...');
       this._initializeCoordinators();
+      console.log('[QuickTabsManager] STEP 5 Complete');
+    }
 
-      // STEP 6: Setup managers (attach listeners)
-      this._setupComponents();
+    /**
+     * STEP 6: Setup managers (attach listeners)
+     * @private
+     */
+    async _initStep6_Setup() {
+      console.log('[QuickTabsManager] STEP 6: Setting up components...');
+      await this._setupComponents();
+      console.log('[QuickTabsManager] STEP 6 Complete');
+    }
 
-      // STEP 7: Hydrate state from storage (EAGER LOADING)
+    /**
+     * STEP 7: Hydrate state from storage
+     * @private
+     */
+    async _initStep7_Hydrate() {
+      console.log('[QuickTabsManager] STEP 7: Hydrating state...');
       await this._hydrateState();
+      console.log('[QuickTabsManager] STEP 7 Complete');
+    }
 
-      // STEP 8: Expose manager globally for QuickTabWindow button access (backward compat)
+    /**
+     * STEP 8: Expose manager globally
+     * @private
+     */
+    _initStep8_Expose() {
+      console.log('[QuickTabsManager] STEP 8: Exposing manager globally...');
       if (typeof window !== 'undefined') {
         window.__quickTabsManager = this;
         console.log('[QuickTabsManager] Manager exposed globally');
       }
-
-      this.initialized = true;
-      console.log('[QuickTabsManager] Facade initialized successfully');
+      console.log('[QuickTabsManager] STEP 8 Complete');
     }
 
     /**
@@ -9734,19 +9899,19 @@
         this.releasePendingSave.bind(this)
       );
 
-      this.visibilityHandler = new VisibilityHandler(
-        this.tabs,
-        this.broadcast,
-        this.storage,
-        this.minimizedManager,
-        this.internalEventBus,
-        this.currentZIndex,
-        this.generateSaveId.bind(this),
-        this.trackPendingSave.bind(this),
-        this.releasePendingSave.bind(this),
-        this.currentTabId,
-        this.Events
-      );
+      this.visibilityHandler = new VisibilityHandler({
+        quickTabsMap: this.tabs,
+        broadcastManager: this.broadcast,
+        storageManager: this.storage,
+        minimizedManager: this.minimizedManager,
+        eventBus: this.internalEventBus,
+        currentZIndex: this.currentZIndex,
+        generateSaveId: this.generateSaveId.bind(this),
+        trackPendingSave: this.trackPendingSave.bind(this),
+        releasePendingSave: this.releasePendingSave.bind(this),
+        currentTabId: this.currentTabId,
+        Events: this.Events
+      });
 
       this.destroyHandler = new DestroyHandler(
         this.tabs,
@@ -11626,20 +11791,54 @@
   /**
    * v1.6.0 Phase 2.4 - Extracted helper for feature initialization
    */
+  /**
+   * v1.6.0.3 - Helper to log Quick Tabs initialization error details
+   */
+  function logQuickTabsInitError(qtErr) {
+    console.error('[Copy-URL-on-Hover] ❌ EXCEPTION during Quick Tabs initialization:', {
+      message: qtErr?.message || 'No message',
+      name: qtErr?.name || 'No name',
+      stack: qtErr?.stack || 'No stack',
+      type: typeof qtErr,
+      stringified: JSON.stringify(qtErr),
+      keys: Object.keys(qtErr || {}),
+      error: qtErr
+    });
+    // Log error properties explicitly (helps debug empty error objects)
+    if (qtErr) {
+      for (const key in qtErr) {
+        console.error(`[Copy-URL-on-Hover] Error property "${key}":`, qtErr[key]);
+      }
+    }
+  }
+
+  /**
+   * v1.6.0.3 - Helper to initialize Quick Tabs
+   */
+  async function initializeQuickTabsFeature() {
+    console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
+    quickTabsManager = await initQuickTabs(eventBus, Events);
+    
+    if (quickTabsManager) {
+      console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
+      console.log('[Copy-URL-on-Hover] Manager has createQuickTab:', typeof quickTabsManager.createQuickTab);
+    } else {
+      console.error('[Copy-URL-on-Hover] ✗ Quick Tabs manager is null after initialization!');
+    }
+  }
+
+  /**
+   * v1.6.0 Phase 2.4 - Extracted helper for feature initialization
+   * v1.6.0.3 - Extracted Quick Tabs init to reduce complexity
+   */
   async function initializeFeatures() {
     console.log('[Copy-URL-on-Hover] STEP: Initializing feature modules...');
 
     // Quick Tabs feature
     try {
-      quickTabsManager = await initQuickTabs(eventBus, Events);
-      console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized');
+      await initializeQuickTabsFeature();
     } catch (qtErr) {
-      console.error('[Copy-URL-on-Hover] ERROR: Failed to initialize Quick Tabs:', {
-        message: qtErr.message,
-        name: qtErr.name,
-        stack: qtErr.stack,
-        error: qtErr
-      });
+      logQuickTabsInitError(qtErr);
     }
 
     // Notifications feature
@@ -11883,6 +12082,7 @@
   /**
    * v1.6.0 Phase 2.4 - Extracted handler for keyboard shortcuts
    * Reduced complexity and nesting using table-driven pattern with guard clauses
+   * v1.6.0.3 - Fixed parameter passing: pass correct args based on handler's needs
    */
   async function handleKeyboardShortcut(event) {
     // Ignore if typing in an interactive field
@@ -11896,7 +12096,18 @@
       if (!matchesShortcut(event, shortcut, hoveredLink, hoveredElement)) continue;
 
       event.preventDefault();
-      await shortcut.handler(hoveredLink, hoveredElement);
+      
+      // v1.6.0.3 - Pass correct parameters based on handler's requirements
+      // - URL-only handlers (needsLink=true, needsElement=false): handleCopyURL, handleOpenInNewTab
+      // - Element-only handlers (needsLink=false, needsElement=true): handleCopyText
+      // - Both handlers (needsLink=true, needsElement=true): handleCreateQuickTab
+      if (shortcut.needsLink && shortcut.needsElement) {
+        await shortcut.handler(hoveredLink, hoveredElement);
+      } else if (shortcut.needsLink) {
+        await shortcut.handler(hoveredLink);
+      } else if (shortcut.needsElement) {
+        await shortcut.handler(hoveredElement);
+      }
       return;
     }
   }
