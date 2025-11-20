@@ -103,7 +103,7 @@ describe('EventManager', () => {
       emitSpy.mockRestore();
     });
 
-    test('should not emit when document is visible', () => {
+    test('should emit event:tab-visible when document becomes visible', () => {
       const emitSpy = jest.spyOn(eventBus, 'emit');
       quickTabsMap.set('qt-1', {});
 
@@ -118,7 +118,8 @@ describe('EventManager', () => {
       // Trigger visibilitychange
       eventManager.boundHandlers.visibilityChange();
 
-      expect(emitSpy).not.toHaveBeenCalled();
+      // Should emit event:tab-visible when tab becomes visible (fixes Issue #35 and #51)
+      expect(emitSpy).toHaveBeenCalledWith('event:tab-visible', { trigger: 'visibilitychange' });
 
       emitSpy.mockRestore();
     });

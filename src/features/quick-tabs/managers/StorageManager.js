@@ -77,14 +77,37 @@ export class StorageManager {
 
   /**
    * Load all Quick Tabs for current container
+   * CRITICAL FIX for Issue #35 and #51: Load from background script's authoritative state
+   * Background script maintains the single source of truth across all tabs
+   *
    * @returns {Promise<Array<QuickTab>>} - Array of QuickTab domain entities
    */
   async loadAll() {
     try {
-      // Try session storage first (faster, temporary)
+      // STEP 1: Request state from background script (authoritative source)
+      // This ensures tabs always load the latest state, even when switching tabs
+      // Use global browser object (not imported) for test compatibility
+      const browserAPI =
+        (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome);
+
+      const response = await browserAPI.runtime.sendMessage({
+        action: 'GET_QUICK_TABS_STATE',
+        cookieStoreId: this.cookieStoreId
+      });
+
+      if (response && response.success && response.tabs && response.tabs.length > 0) {
+        // Deserialize to QuickTab domain entities
+        const quickTabs = response.tabs.map(tabData => QuickTab.fromStorage(tabData));
+        console.log(
+          `[StorageManager] Loaded ${quickTabs.length} Quick Tabs from background for container ${this.cookieStoreId}`
+        );
+        return quickTabs;
+      }
+
+      // STEP 2: Fallback - Try session storage (faster, temporary)
       let containerData = await this.sessionAdapter.load(this.cookieStoreId);
 
-      // Fall back to sync storage
+      // STEP 3: Fallback - Try sync storage
       if (!containerData) {
         containerData = await this.syncAdapter.load(this.cookieStoreId);
       }

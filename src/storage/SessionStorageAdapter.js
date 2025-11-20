@@ -75,7 +75,15 @@ export class SessionStorageAdapter extends StorageAdapter {
       );
       return saveId;
     } catch (error) {
-      console.error('[SessionStorageAdapter] Save failed:', error);
+      // DOMException and browser-native errors don't serialize properly
+      // Extract properties explicitly for proper logging
+      console.error('[SessionStorageAdapter] Save failed:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        code: error?.code,
+        error: error
+      });
       throw error;
     }
   }
@@ -198,7 +206,15 @@ export class SessionStorageAdapter extends StorageAdapter {
         saveId: this._generateSaveId()
       };
     } catch (error) {
-      console.error('[SessionStorageAdapter] Load failed:', error);
+      // DOMException and browser-native errors don't serialize properly
+      // Extract properties explicitly for proper logging
+      console.error('[SessionStorageAdapter] Load failed:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        code: error?.code,
+        error: error
+      });
       // Return empty state on error
       return {
         containers: {},

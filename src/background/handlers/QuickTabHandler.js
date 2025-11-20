@@ -270,6 +270,49 @@ export class QuickTabHandler {
   }
 
   /**
+   * Get Quick Tabs state for a specific container
+   * Critical for fixing Issue #35 and #51 - content scripts need to load from background's authoritative state
+   */
+  async handleGetQuickTabsState(message, _sender) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeFn();
+      }
+
+      const cookieStoreId = message.cookieStoreId || 'firefox-default';
+      const containerState = this.globalState.containers[cookieStoreId];
+
+      if (!containerState || !containerState.tabs) {
+        return {
+          success: true,
+          tabs: [],
+          cookieStoreId: cookieStoreId
+        };
+      }
+
+      return {
+        success: true,
+        tabs: containerState.tabs,
+        cookieStoreId: cookieStoreId,
+        lastUpdate: containerState.lastUpdate
+      };
+    } catch (err) {
+      console.error('[QuickTabHandler] Error getting Quick Tabs state:', {
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack,
+        code: err?.code,
+        error: err
+      });
+      return {
+        success: false,
+        tabs: [],
+        error: err.message
+      };
+    }
+  }
+
+  /**
    * Switch to a specific browser tab
    * Content scripts cannot use browser.tabs.update, so they must request this from background
    */
@@ -331,7 +374,15 @@ export class QuickTabHandler {
         cookieStoreId: cookieStoreId
       });
     } catch (err) {
-      console.error('[QuickTabHandler] Error saving state:', err);
+      // DOMException and browser-native errors don't serialize properly
+      // Extract properties explicitly for proper logging
+      console.error('[QuickTabHandler] Error saving state:', {
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack,
+        code: err?.code,
+        error: err
+      });
     }
   }
 
@@ -355,7 +406,15 @@ export class QuickTabHandler {
         });
       }
     } catch (err) {
-      console.error('[QuickTabHandler] Error saving state:', err);
+      // DOMException and browser-native errors don't serialize properly
+      // Extract properties explicitly for proper logging
+      console.error('[QuickTabHandler] Error saving state:', {
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack,
+        code: err?.code,
+        error: err
+      });
     }
   }
 

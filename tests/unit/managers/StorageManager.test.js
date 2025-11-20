@@ -147,6 +147,22 @@ describe('StorageManager', () => {
   });
 
   describe('loadAll()', () => {
+    beforeEach(() => {
+      // Mock browser.runtime.sendMessage for loadAll tests
+      global.browser = {
+        runtime: {
+          sendMessage: jest.fn().mockResolvedValue({
+            success: false,
+            tabs: []
+          })
+        }
+      };
+    });
+
+    afterEach(() => {
+      delete global.browser;
+    });
+
     test('should load Quick Tabs from session storage first', async () => {
       const tabData = {
         tabs: [
@@ -767,6 +783,23 @@ describe('StorageManager', () => {
   });
 
   describe('Error Handling Paths', () => {
+    beforeEach(() => {
+      // Mock browser.runtime.sendMessage for error handling tests
+      // Return empty array so tests fall through to testing storage adapters
+      global.browser = {
+        runtime: {
+          sendMessage: jest.fn().mockResolvedValue({
+            success: false,
+            tabs: []
+          })
+        }
+      };
+    });
+
+    afterEach(() => {
+      delete global.browser;
+    });
+
     test('should handle network errors during sync', async () => {
       const quickTab = QuickTab.create({
         id: 'qt-network',
