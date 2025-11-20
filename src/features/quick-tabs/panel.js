@@ -79,7 +79,7 @@ export class PanelManager {
       isOpen: false
     };
     this.panel = this.uiBuilder.createPanel(defaultState);
-    
+
     // Safety check: Ensure document.body exists before appending
     // (should always be true with run_at: "document_idle", but defensive programming)
     if (!document.body) {
