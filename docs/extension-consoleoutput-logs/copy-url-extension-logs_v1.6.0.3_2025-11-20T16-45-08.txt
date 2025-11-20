@@ -1,0 +1,241 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.0.3
+Export Date: 2025-11-20T16:45:08.122Z
+Export Date (Local): 11/20/2025, 11:45:08 AM
+Total Logs: 208
+
+================================================================================
+[2025-11-20T16:44:38.014Z] [LOG  ] [DEBUG] Log buffer cleared
+[2025-11-20T16:44:43.872Z] [LOG  ] [DEBUG] Notification: ✓ URL copied! success
+[2025-11-20T16:44:43.872Z] [DEBUG] Notification: ✓ URL copied! success
+[2025-11-20T16:44:43.873Z] [LOG  ] [NotificationManager] Showing notification: ✓ URL copied! success
+[2025-11-20T16:44:43.874Z] [LOG  ] [Tooltip] Displayed: ✓ URL copied!
+[2025-11-20T16:44:43.874Z] [LOG  ] [DEBUG] Copied URL: https://en.wikipedia.org/wiki/Noizi_Ito
+[2025-11-20T16:44:43.874Z] [DEBUG] Copied URL: https://en.wikipedia.org/wiki/Noizi_Ito
+[2025-11-20T16:44:45.129Z] [LOG  ] [DEBUG] Notification: ✓ URL copied! success
+[2025-11-20T16:44:45.129Z] [LOG  ] [NotificationManager] Showing notification: ✓ URL copied! success
+[2025-11-20T16:44:45.129Z] [LOG  ] [Tooltip] Displayed: ✓ URL copied!
+[2025-11-20T16:44:45.129Z] [LOG  ] [DEBUG] Copied URL: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-20T16:44:45.129Z] [DEBUG] Notification: ✓ URL copied! success
+[2025-11-20T16:44:45.129Z] [DEBUG] Copied URL: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-20T16:44:46.138Z] [LOG  ] [DEBUG] Notification: ✓ URL copied! success
+[2025-11-20T16:44:46.138Z] [LOG  ] [NotificationManager] Showing notification: ✓ URL copied! success
+[2025-11-20T16:44:46.138Z] [LOG  ] [Tooltip] Displayed: ✓ URL copied!
+[2025-11-20T16:44:46.138Z] [DEBUG] Notification: ✓ URL copied! success
+[2025-11-20T16:44:46.139Z] [LOG  ] [DEBUG] Copied URL: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-20T16:44:46.139Z] [DEBUG] Copied URL: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-20T16:44:47.425Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:44:47.425Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:44:47.425Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:44:47.425Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:44:47.425Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:44:48.276Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:44:48.276Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:44:48.276Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:44:48.276Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:44:48.276Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:44:48.766Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:44:48.766Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:44:48.766Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:44:48.766Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:44:48.766Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:44:49.685Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:44:49.686Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:44:49.686Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:44:49.686Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:44:49.686Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:44:50.505Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Oozora_Subaru
+[2025-11-20T16:44:50.505Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:50.505Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Oozora_Subaru
+[2025-11-20T16:44:50.507Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Oozora_Subaru ID: qt-1763657090505-fk8d0lc2k Container: firefox-default
+[2025-11-20T16:44:50.507Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:50.508Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:50.509Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:50.509Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:50.509Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:50.509Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:50.510Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:50.510Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:52.327Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Mie_Prefecture
+[2025-11-20T16:44:52.327Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:52.327Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Mie_Prefecture
+[2025-11-20T16:44:52.328Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Mie_Prefecture ID: qt-1763657092327-wj0857r26 Container: firefox-default
+[2025-11-20T16:44:52.328Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:52.330Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:52.330Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:52.330Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:52.330Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:52.330Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:52.330Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:52.330Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:53.033Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Yokkaichi
+[2025-11-20T16:44:53.033Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:53.033Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Yokkaichi
+[2025-11-20T16:44:53.034Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Yokkaichi ID: qt-1763657093033-evnmgomm8 Container: firefox-default
+[2025-11-20T16:44:53.034Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:53.035Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:53.036Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:53.036Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:53.036Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:53.036Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:53.036Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:53.036Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:53.682Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Japan
+[2025-11-20T16:44:53.682Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:53.682Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Japan
+[2025-11-20T16:44:53.684Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Japan ID: qt-1763657093682-9kku4uo90 Container: firefox-default
+[2025-11-20T16:44:53.684Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:53.686Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:53.687Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:53.687Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:53.687Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:53.687Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:53.687Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:53.687Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:54.844Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Hololive_Production
+[2025-11-20T16:44:54.844Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:54.844Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Hololive_Production
+[2025-11-20T16:44:54.845Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Hololive_Production ID: qt-1763657094844-y5uocwxhy Container: firefox-default
+[2025-11-20T16:44:54.845Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:54.846Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:54.847Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:54.847Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:54.847Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:54.848Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:54.848Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:54.848Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:55.967Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-20T16:44:55.967Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:55.967Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-20T16:44:55.968Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Livestreaming ID: qt-1763657095967-1avaxaip5 Container: firefox-default
+[2025-11-20T16:44:55.968Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:55.970Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:55.971Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:55.971Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:55.971Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:55.971Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:55.971Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:55.971Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:57.391Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Musician
+[2025-11-20T16:44:57.391Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:57.391Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Musician
+[2025-11-20T16:44:57.392Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Musician ID: qt-1763657097391-nqwrmpzk0 Container: firefox-default
+[2025-11-20T16:44:57.392Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:57.401Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:57.402Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:57.402Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:57.402Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:57.402Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:57.402Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:57.402Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:58.301Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Personal_name ID: qt-1763657098301-td2gl0lii Container: firefox-default
+[2025-11-20T16:44:58.301Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Personal_name
+[2025-11-20T16:44:58.301Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:58.301Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Personal_name
+[2025-11-20T16:44:58.302Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:58.304Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:58.304Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:58.304Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:58.304Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:58.304Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:58.304Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:58.304Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:59.212Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Personal_name#Western_name_order
+[2025-11-20T16:44:59.212Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:59.212Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Personal_name#Western_name_order
+[2025-11-20T16:44:59.213Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Personal_name#Western_name_order ID: qt-1763657099212-tqigl8pnn Container: firefox-default
+[2025-11-20T16:44:59.213Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:59.215Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:59.215Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:59.215Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:59.215Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:59.215Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:59.215Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:59.215Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:59.732Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Light_novel
+[2025-11-20T16:44:59.732Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Light_novel
+[2025-11-20T16:44:59.733Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Light_novel ID: qt-1763657099733-38m4g6irc Container: firefox-default
+[2025-11-20T16:44:59.733Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:44:59.733Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:44:59.735Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:44:59.735Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:59.735Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:59.735Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:44:59.735Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:44:59.735Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:44:59.735Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:45:00.137Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Manga_artist
+[2025-11-20T16:45:00.137Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:45:00.137Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Manga_artist
+[2025-11-20T16:45:00.138Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Manga_artist ID: qt-1763657100137-ei32n9fzr Container: firefox-default
+[2025-11-20T16:45:00.138Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:45:00.139Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:45:00.139Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:00.139Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:00.139Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:00.140Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:45:00.140Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:45:00.140Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:45:00.501Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Illustrator
+[2025-11-20T16:45:00.501Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:45:00.501Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Illustrator
+[2025-11-20T16:45:00.502Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Illustrator ID: qt-1763657100501-a2773rade Container: firefox-default
+[2025-11-20T16:45:00.502Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:45:00.506Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:45:00.506Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:00.506Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:00.506Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:45:00.506Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:45:00.506Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:00.506Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:45:02.102Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-20T16:45:02.102Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-20T16:45:02.103Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:45:02.105Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Cocoa_Fujiwara ID: qt-1763657102103-nohnv5mot Container: firefox-default
+[2025-11-20T16:45:02.105Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:45:02.107Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:45:02.107Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:02.107Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:02.107Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:45:02.107Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:45:02.107Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:02.107Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:45:02.630Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Noizi_Ito
+[2025-11-20T16:45:02.630Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:45:02.630Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Noizi_Ito
+[2025-11-20T16:45:02.631Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Noizi_Ito ID: qt-1763657102630-hf7urrpfo Container: firefox-default
+[2025-11-20T16:45:02.631Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:45:02.632Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:45:02.633Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:02.633Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:02.633Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:45:02.633Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:45:02.633Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:45:02.633Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:45:08.119Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
