@@ -63,6 +63,20 @@ jobs:
           fi
           echo "✓ No source files in dist/"
 
+          # Verify manifest paths are correct (no "dist/" prefix)
+          echo "Validating manifest.json paths..."
+          if grep -q '"dist/background.js"' dist/manifest.json; then
+            echo "ERROR: manifest.json contains incorrect path 'dist/background.js'!"
+            echo "Paths should be relative to manifest.json location (just 'background.js')"
+            exit 1
+          fi
+          if grep -q '"dist/content.js"' dist/manifest.json; then
+            echo "ERROR: manifest.json contains incorrect path 'dist/content.js'!"
+            echo "Paths should be relative to manifest.json location (just 'content.js')"
+            exit 1
+          fi
+          echo "✓ Manifest paths are correct"
+
       - name: Get version from manifest
         id: get_version
         run: |
