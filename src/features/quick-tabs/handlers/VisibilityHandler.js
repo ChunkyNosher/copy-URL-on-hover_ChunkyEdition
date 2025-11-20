@@ -95,7 +95,7 @@ export class VisibilityHandler {
    */
   async _handleVisibilityToggle(quickTabId, config) {
     const { mode, newTabs, tabsProperty, clearProperty, updateButton, broadcastNotify } = config;
-    
+
     console.log(`[VisibilityHandler] Toggling ${mode.toLowerCase()} for ${quickTabId}:`, newTabs);
 
     const tab = this.quickTabsMap.get(quickTabId);

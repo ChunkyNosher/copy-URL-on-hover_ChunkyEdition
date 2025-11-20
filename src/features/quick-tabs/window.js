@@ -493,8 +493,11 @@ export class QuickTabWindow {
    * @returns {number|null} Current tab ID or null if unavailable
    */
   _validateCurrentTabId(action) {
-    console.log(`[QuickTabWindow] toggle${action.charAt(0).toUpperCase() + action.slice(1)} called for:`, this.id);
-    
+    console.log(
+      `[QuickTabWindow] toggle${action.charAt(0).toUpperCase() + action.slice(1)} called for:`,
+      this.id
+    );
+
     if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
       console.warn(`[QuickTabWindow] Cannot toggle ${action} - no current tab ID`);
       return null;

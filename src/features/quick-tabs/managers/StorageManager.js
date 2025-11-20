@@ -184,7 +184,7 @@ export class StorageManager {
     if (newValue.containers && this.cookieStoreId) {
       return this._extractContainerState(newValue);
     }
-    
+
     // Legacy format - process as-is
     console.log('[StorageManager] Scheduling sync (legacy format)');
     return newValue;
@@ -330,7 +330,10 @@ export class StorageManager {
       const successEvent = operation === 'delete' ? 'storage:deleted' : 'storage:cleared';
       this.eventBus?.emit(successEvent, eventData);
     } catch (error) {
-      console.error(`[StorageManager] ${operation.charAt(0).toUpperCase() + operation.slice(1)} error:`, error);
+      console.error(
+        `[StorageManager] ${operation.charAt(0).toUpperCase() + operation.slice(1)} error:`,
+        error
+      );
       this.eventBus?.emit('storage:error', { operation, error });
       throw error;
     }
