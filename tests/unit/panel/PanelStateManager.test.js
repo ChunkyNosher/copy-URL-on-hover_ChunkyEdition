@@ -51,7 +51,10 @@ describe('PanelStateManager', () => {
 
     // Default mock implementations
     browser.tabs.query.mockResolvedValue([{ cookieStoreId: 'firefox-container-1' }]);
-    browser.runtime.sendMessage.mockResolvedValue({ success: true, cookieStoreId: 'firefox-container-1' });
+    browser.runtime.sendMessage.mockResolvedValue({
+      success: true,
+      cookieStoreId: 'firefox-container-1'
+    });
     browser.storage.local.get.mockResolvedValue({
       quick_tabs_panel_state: { left: 200, top: 200, width: 400, height: 600, isOpen: false }
     });

@@ -475,7 +475,10 @@ describe('PanelContentManager - Edge Cases', () => {
       });
 
       // Mock failed response for invalid tab ID
-      mockBrowser.runtime.sendMessage.mockResolvedValue({ success: false, error: 'Invalid tab ID' });
+      mockBrowser.runtime.sendMessage.mockResolvedValue({
+        success: false,
+        error: 'Invalid tab ID'
+      });
 
       // Execute with non-numeric tab ID
       await contentManager._handleQuickTabAction('goToTab', 'qt-1', 'invalid');
