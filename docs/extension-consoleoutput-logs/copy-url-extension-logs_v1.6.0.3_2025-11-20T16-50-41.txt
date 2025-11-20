@@ -1,0 +1,199 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.0.3
+Export Date: 2025-11-20T16:50:41.430Z
+Export Date (Local): 11/20/2025, 11:50:41 AM
+Total Logs: 151
+
+================================================================================
+[2025-11-20T16:49:54.738Z] [LOG  ] [DEBUG] Log buffer cleared
+[2025-11-20T16:50:00.153Z] [DEBUG] [Background] Tab activated: 20
+[2025-11-20T16:50:03.451Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763657403451-19iz90z9y Container: firefox-default
+[2025-11-20T16:50:03.451Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-20T16:50:03.451Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:50:03.451Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-20T16:50:03.452Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:50:03.453Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:50:03.454Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:03.454Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:03.454Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:50:03.454Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:03.454Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:03.454Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:04.208Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-20T16:50:04.208Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:50:04.208Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-20T16:50:04.209Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763657404208-65ge3n5ku Container: firefox-default
+[2025-11-20T16:50:04.209Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:50:04.211Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:50:04.212Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:04.212Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:04.212Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:50:04.212Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:04.212Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:04.212Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:05.566Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Oozora_Subaru
+[2025-11-20T16:50:05.566Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:50:05.566Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Oozora_Subaru
+[2025-11-20T16:50:05.567Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Oozora_Subaru ID: qt-1763657405566-b8ujmfhla Container: firefox-default
+[2025-11-20T16:50:05.568Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:50:05.576Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:50:05.577Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:05.577Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:05.577Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:50:05.577Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:05.577Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:05.577Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:06.511Z] [LOG  ] [DEBUG] Notification: ✓ URL copied! success
+[2025-11-20T16:50:06.511Z] [LOG  ] [NotificationManager] Showing notification: ✓ URL copied! success
+[2025-11-20T16:50:06.511Z] [DEBUG] Notification: ✓ URL copied! success
+[2025-11-20T16:50:06.512Z] [LOG  ] [Tooltip] Displayed: ✓ URL copied!
+[2025-11-20T16:50:06.512Z] [LOG  ] [DEBUG] Copied URL: https://en.wikipedia.org/wiki/Oozora_Subaru
+[2025-11-20T16:50:06.512Z] [DEBUG] Copied URL: https://en.wikipedia.org/wiki/Oozora_Subaru
+[2025-11-20T16:50:07.666Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Yokkaichi
+[2025-11-20T16:50:07.666Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:50:07.666Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Yokkaichi
+[2025-11-20T16:50:07.667Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Yokkaichi ID: qt-1763657407666-w0al79ly1 Container: firefox-default
+[2025-11-20T16:50:07.667Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:50:07.669Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:50:07.670Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:07.670Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:07.670Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:50:07.670Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:07.670Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:07.670Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:08.195Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Mie_Prefecture
+[2025-11-20T16:50:08.195Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:50:08.195Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Mie_Prefecture
+[2025-11-20T16:50:08.197Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Mie_Prefecture ID: qt-1763657408195-gbaqfnzok Container: firefox-default
+[2025-11-20T16:50:08.197Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:50:08.200Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:50:08.200Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:08.200Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:08.200Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:08.201Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:50:08.201Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:08.201Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:09.359Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:50:09.359Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:09.359Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:50:09.359Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:50:09.359Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:10.278Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:50:10.279Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:10.279Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:50:10.279Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:50:10.279Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:12.529Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:50:12.530Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:12.530Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:50:12.530Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:50:12.530Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:13.685Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:50:13.686Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:13.686Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:50:13.686Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:50:13.686Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:14.825Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:50:14.825Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:14.825Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:50:14.825Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:50:14.825Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:15.562Z] [WARN ] [Copy Text] No text found to copy
+[2025-11-20T16:50:15.563Z] [LOG  ] [DEBUG] Notification: ✗ No text found error
+[2025-11-20T16:50:15.563Z] [LOG  ] [NotificationManager] Showing notification: ✗ No text found error
+[2025-11-20T16:50:15.563Z] [LOG  ] [Tooltip] Displayed: ✗ No text found
+[2025-11-20T16:50:15.563Z] [DEBUG] Notification: ✗ No text found error
+[2025-11-20T16:50:16.558Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:50:16.558Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:16.558Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:50:16.558Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:50:16.558Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:17.058Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Musician
+[2025-11-20T16:50:17.058Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Musician
+[2025-11-20T16:50:17.059Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Musician ID: qt-1763657417058-ewqv75eue Container: firefox-default
+[2025-11-20T16:50:17.059Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:50:17.059Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:50:17.062Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:50:17.063Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:17.063Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:17.063Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:50:17.063Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:17.063Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:17.063Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:17.953Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/VTuber
+[2025-11-20T16:50:17.953Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/VTuber
+[2025-11-20T16:50:17.954Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/VTuber ID: qt-1763657417954-esq5z6y33 Container: firefox-default
+[2025-11-20T16:50:17.954Z] [DEBUG] [Background] State already initialized
+[2025-11-20T16:50:17.954Z] [WARN ] [Quick Tab] Manager not available, using legacy creation path
+[2025-11-20T16:50:17.956Z] [ERROR] [QuickTabHandler] Error saving state: {}
+[2025-11-20T16:50:17.958Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:17.958Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:17.958Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-20T16:50:17.958Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:17.958Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-20T16:50:17.958Z] [DEBUG] Quick Tab created successfully
+[2025-11-20T16:50:29.873Z] [ERROR] [Copy Text] Failed: {
+  "message": "e.querySelector is not a function",
+  "name": "TypeError",
+  "stack": "handler/t<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4279:23\nhandler@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4286:10\nTe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4394:85\n",
+  "error": {}
+}
+[2025-11-20T16:50:29.874Z] [LOG  ] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:29.874Z] [LOG  ] [NotificationManager] Showing notification: ✗ Failed to copy text error
+[2025-11-20T16:50:29.874Z] [LOG  ] [Tooltip] Displayed: ✗ Failed to copy text
+[2025-11-20T16:50:29.874Z] [DEBUG] Notification: ✗ Failed to copy text error
+[2025-11-20T16:50:30.751Z] [LOG  ] [Content] Received TOGGLE_QUICK_TABS_PANEL request
+[2025-11-20T16:50:30.751Z] [ERROR] [Content] Quick Tabs manager not initialized
+[2025-11-20T16:50:30.752Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 20
+[2025-11-20T16:50:31.563Z] [LOG  ] [Content] Received TOGGLE_QUICK_TABS_PANEL request
+[2025-11-20T16:50:31.564Z] [ERROR] [Content] Quick Tabs manager not initialized
+[2025-11-20T16:50:31.565Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 20
+[2025-11-20T16:50:32.569Z] [LOG  ] [Content] Received TOGGLE_QUICK_TABS_PANEL request
+[2025-11-20T16:50:32.569Z] [ERROR] [Content] Quick Tabs manager not initialized
+[2025-11-20T16:50:32.571Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 20
+[2025-11-20T16:50:33.339Z] [LOG  ] [Content] Received TOGGLE_QUICK_TABS_PANEL request
+[2025-11-20T16:50:33.339Z] [ERROR] [Content] Quick Tabs manager not initialized
+[2025-11-20T16:50:33.340Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 20
+[2025-11-20T16:50:34.383Z] [LOG  ] [Content] Received TOGGLE_QUICK_TABS_PANEL request
+[2025-11-20T16:50:34.383Z] [ERROR] [Content] Quick Tabs manager not initialized
+[2025-11-20T16:50:34.384Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 20
+[2025-11-20T16:50:35.348Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 20
+[2025-11-20T16:50:35.348Z] [LOG  ] [Content] Received TOGGLE_QUICK_TABS_PANEL request
+[2025-11-20T16:50:35.348Z] [ERROR] [Content] Quick Tabs manager not initialized
+[2025-11-20T16:50:41.426Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
