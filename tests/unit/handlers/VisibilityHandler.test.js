@@ -94,19 +94,19 @@ describe('VisibilityHandler', () => {
     };
 
     // Create handler
-    visibilityHandler = new VisibilityHandler(
-      mockQuickTabsMap,
-      mockBroadcastManager,
-      mockStorageManager,
-      mockMinimizedManager,
-      mockEventBus,
-      mockCurrentZIndex,
-      mockGenerateSaveId,
-      mockTrackPendingSave,
-      mockReleasePendingSave,
-      mockCurrentTabId,
-      mockEvents
-    );
+    visibilityHandler = new VisibilityHandler({
+      quickTabsMap: mockQuickTabsMap,
+      broadcastManager: mockBroadcastManager,
+      storageManager: mockStorageManager,
+      minimizedManager: mockMinimizedManager,
+      eventBus: mockEventBus,
+      currentZIndex: mockCurrentZIndex,
+      generateSaveId: mockGenerateSaveId,
+      trackPendingSave: mockTrackPendingSave,
+      releasePendingSave: mockReleasePendingSave,
+      currentTabId: mockCurrentTabId,
+      Events: mockEvents
+    });
   });
 
   describe('Constructor', () => {

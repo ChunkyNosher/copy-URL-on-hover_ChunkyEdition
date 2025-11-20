@@ -20,42 +20,31 @@
  */
 export class VisibilityHandler {
   /**
-   * @param {Map} quickTabsMap - Map of Quick Tab instances
-   * @param {BroadcastManager} broadcastManager - Broadcast manager for cross-tab sync
-   * @param {StorageManager} storageManager - Storage manager (currently unused, kept for future use)
-   * @param {MinimizedManager} minimizedManager - Manager for minimized Quick Tabs
-   * @param {EventEmitter} eventBus - Event bus for internal communication
-   * @param {Object} currentZIndex - Reference object with value property for z-index
-   * @param {Function} generateSaveId - Function to generate saveId for transaction tracking
-   * @param {Function} trackPendingSave - Function to track pending saveId
-   * @param {Function} releasePendingSave - Function to release pending saveId
-   * @param {number} currentTabId - Current browser tab ID
-   * @param {Object} Events - Events constants object
+   * @param {Object} options - Configuration options
+   * @param {Map} options.quickTabsMap - Map of Quick Tab instances
+   * @param {BroadcastManager} options.broadcastManager - Broadcast manager for cross-tab sync
+   * @param {StorageManager} options.storageManager - Storage manager (currently unused, kept for future use)
+   * @param {MinimizedManager} options.minimizedManager - Manager for minimized Quick Tabs
+   * @param {EventEmitter} options.eventBus - Event bus for internal communication
+   * @param {Object} options.currentZIndex - Reference object with value property for z-index
+   * @param {Function} options.generateSaveId - Function to generate saveId for transaction tracking
+   * @param {Function} options.trackPendingSave - Function to track pending saveId
+   * @param {Function} options.releasePendingSave - Function to release pending saveId
+   * @param {number} options.currentTabId - Current browser tab ID
+   * @param {Object} options.Events - Events constants object
    */
-  constructor(
-    quickTabsMap,
-    broadcastManager,
-    storageManager,
-    minimizedManager,
-    eventBus,
-    currentZIndex,
-    generateSaveId,
-    trackPendingSave,
-    releasePendingSave,
-    currentTabId,
-    Events
-  ) {
-    this.quickTabsMap = quickTabsMap;
-    this.broadcastManager = broadcastManager;
-    this.storageManager = storageManager;
-    this.minimizedManager = minimizedManager;
-    this.eventBus = eventBus;
-    this.currentZIndex = currentZIndex;
-    this.generateSaveId = generateSaveId;
-    this.trackPendingSave = trackPendingSave;
-    this.releasePendingSave = releasePendingSave;
-    this.currentTabId = currentTabId;
-    this.Events = Events;
+  constructor(options) {
+    this.quickTabsMap = options.quickTabsMap;
+    this.broadcastManager = options.broadcastManager;
+    this.storageManager = options.storageManager;
+    this.minimizedManager = options.minimizedManager;
+    this.eventBus = options.eventBus;
+    this.currentZIndex = options.currentZIndex;
+    this.generateSaveId = options.generateSaveId;
+    this.trackPendingSave = options.trackPendingSave;
+    this.releasePendingSave = options.releasePendingSave;
+    this.currentTabId = options.currentTabId;
+    this.Events = options.Events;
   }
 
   /**
@@ -67,24 +56,13 @@ export class VisibilityHandler {
    * @returns {Promise<void>}
    */
   async handleSoloToggle(quickTabId, newSoloedTabs) {
-    console.log(`[VisibilityHandler] Toggling solo for ${quickTabId}:`, newSoloedTabs);
-
-    const tab = this.quickTabsMap.get(quickTabId);
-    if (!tab) return;
-
-    // Update solo state
-    tab.soloedOnTabs = newSoloedTabs;
-    tab.mutedOnTabs = []; // Clear mute state (mutually exclusive)
-
-    // Update button states if tab has them
-    this._updateSoloButton(tab, newSoloedTabs);
-
-    // Broadcast to other tabs
-    this.broadcastManager.notifySolo(quickTabId, newSoloedTabs);
-
-    // Save to background
-    await this._sendToBackground(quickTabId, tab, 'SOLO', {
-      soloedOnTabs: newSoloedTabs
+    await this._handleVisibilityToggle(quickTabId, {
+      mode: 'SOLO',
+      newTabs: newSoloedTabs,
+      tabsProperty: 'soloedOnTabs',
+      clearProperty: 'mutedOnTabs',
+      updateButton: this._updateSoloButton.bind(this),
+      broadcastNotify: tabs => this.broadcastManager.notifySolo(quickTabId, tabs)
     });
   }
 
@@ -97,25 +75,45 @@ export class VisibilityHandler {
    * @returns {Promise<void>}
    */
   async handleMuteToggle(quickTabId, newMutedTabs) {
-    console.log(`[VisibilityHandler] Toggling mute for ${quickTabId}:`, newMutedTabs);
+    await this._handleVisibilityToggle(quickTabId, {
+      mode: 'MUTE',
+      newTabs: newMutedTabs,
+      tabsProperty: 'mutedOnTabs',
+      clearProperty: 'soloedOnTabs',
+      updateButton: this._updateMuteButton.bind(this),
+      broadcastNotify: tabs => this.broadcastManager.notifyMute(quickTabId, tabs)
+    });
+  }
+
+  /**
+   * Common handler for solo/mute visibility toggles
+   * Extracts shared logic to reduce duplication
+   * @private
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {Object} config - Configuration for toggle operation
+   * @returns {Promise<void>}
+   */
+  async _handleVisibilityToggle(quickTabId, config) {
+    const { mode, newTabs, tabsProperty, clearProperty, updateButton, broadcastNotify } = config;
+    
+    console.log(`[VisibilityHandler] Toggling ${mode.toLowerCase()} for ${quickTabId}:`, newTabs);
 
     const tab = this.quickTabsMap.get(quickTabId);
     if (!tab) return;
 
-    // Update mute state
-    tab.mutedOnTabs = newMutedTabs;
-    tab.soloedOnTabs = []; // Clear solo state (mutually exclusive)
+    // Update visibility state (mutually exclusive)
+    tab[tabsProperty] = newTabs;
+    tab[clearProperty] = [];
 
     // Update button states if tab has them
-    this._updateMuteButton(tab, newMutedTabs);
+    updateButton(tab, newTabs);
 
     // Broadcast to other tabs
-    this.broadcastManager.notifyMute(quickTabId, newMutedTabs);
+    broadcastNotify(newTabs);
 
     // Save to background
-    await this._sendToBackground(quickTabId, tab, 'MUTE', {
-      mutedOnTabs: newMutedTabs
-    });
+    const data = { [tabsProperty]: newTabs };
+    await this._sendToBackground(quickTabId, tab, mode, data);
   }
 
   /**

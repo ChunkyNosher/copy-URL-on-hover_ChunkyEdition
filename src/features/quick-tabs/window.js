@@ -452,46 +452,13 @@ export class QuickTabWindow {
    * v1.5.9.13 - Toggle solo state for current tab
    */
   toggleSolo(soloBtn) {
-    console.log('[QuickTabWindow] toggleSolo called for:', this.id);
-    console.log('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
-    console.log('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
-
-    if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
-      console.warn('[QuickTabWindow] Cannot toggle solo - no current tab ID');
-      console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
-      console.warn('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
-      return;
-    }
-
-    const currentTabId = window.quickTabsManager.currentTabId;
+    const currentTabId = this._validateCurrentTabId('solo');
+    if (!currentTabId) return;
 
     if (this.isCurrentTabSoloed()) {
-      // Un-solo: Remove current tab from solo list
-      this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== currentTabId);
-      soloBtn.textContent = '⭕';
-      soloBtn.title = 'Solo (show only on this tab)';
-      soloBtn.style.background = 'transparent';
-
-      // If no tabs left in solo list, Quick Tab becomes visible everywhere
-      if (this.soloedOnTabs.length === 0) {
-        console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
-      }
+      this._unsoloCurrentTab(soloBtn, currentTabId);
     } else {
-      // Solo: Set current tab as the only tab (replace entire list for simplicity)
-      this.soloedOnTabs = [currentTabId];
-      this.mutedOnTabs = []; // Clear mute state (mutually exclusive)
-      soloBtn.textContent = '🎯';
-      soloBtn.title = 'Un-solo (show on all tabs)';
-      soloBtn.style.background = '#444';
-
-      // Update mute button if it exists
-      if (this.muteButton) {
-        this.muteButton.textContent = '🔊';
-        this.muteButton.title = 'Mute (hide on this tab)';
-        this.muteButton.style.background = 'transparent';
-      }
-
-      console.log('[QuickTabWindow] Soloed - only visible on this tab');
+      this._soloCurrentTab(soloBtn, currentTabId);
     }
 
     // Notify parent manager
@@ -504,51 +471,107 @@ export class QuickTabWindow {
    * v1.5.9.13 - Toggle mute state for current tab
    */
   toggleMute(muteBtn) {
-    console.log('[QuickTabWindow] toggleMute called for:', this.id);
-    console.log('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
-    console.log('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
-
-    if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
-      console.warn('[QuickTabWindow] Cannot toggle mute - no current tab ID');
-      console.warn('[QuickTabWindow] window.quickTabsManager:', window.quickTabsManager);
-      console.warn('[QuickTabWindow] currentTabId:', window.quickTabsManager?.currentTabId);
-      return;
-    }
-
-    const currentTabId = window.quickTabsManager.currentTabId;
+    const currentTabId = this._validateCurrentTabId('mute');
+    if (!currentTabId) return;
 
     if (this.isCurrentTabMuted()) {
-      // Unmute: Remove current tab from mute list
-      this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== currentTabId);
-      muteBtn.textContent = '🔊';
-      muteBtn.title = 'Mute (hide on this tab)';
-      muteBtn.style.background = 'transparent';
-
-      console.log('[QuickTabWindow] Unmuted on this tab');
+      this._unmuteCurrentTab(muteBtn, currentTabId);
     } else {
-      // Mute: Add current tab to mute list
-      if (!this.mutedOnTabs.includes(currentTabId)) {
-        this.mutedOnTabs.push(currentTabId);
-      }
-      this.soloedOnTabs = []; // Clear solo state (mutually exclusive)
-      muteBtn.textContent = '🔇';
-      muteBtn.title = 'Unmute (show on this tab)';
-      muteBtn.style.background = '#c44';
-
-      // Update solo button if it exists
-      if (this.soloButton) {
-        this.soloButton.textContent = '⭕';
-        this.soloButton.title = 'Solo (show only on this tab)';
-        this.soloButton.style.background = 'transparent';
-      }
-
-      console.log('[QuickTabWindow] Muted on this tab');
+      this._muteCurrentTab(muteBtn, currentTabId);
     }
 
     // Notify parent manager
     if (this.onMute) {
       this.onMute(this.id, this.mutedOnTabs);
     }
+  }
+
+  /**
+   * Validate current tab ID availability
+   * @private
+   * @param {string} action - Action name for logging ('solo' or 'mute')
+   * @returns {number|null} Current tab ID or null if unavailable
+   */
+  _validateCurrentTabId(action) {
+    console.log(`[QuickTabWindow] toggle${action.charAt(0).toUpperCase() + action.slice(1)} called for:`, this.id);
+    
+    if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
+      console.warn(`[QuickTabWindow] Cannot toggle ${action} - no current tab ID`);
+      return null;
+    }
+
+    return window.quickTabsManager.currentTabId;
+  }
+
+  /**
+   * Un-solo current tab
+   * @private
+   */
+  _unsoloCurrentTab(soloBtn, currentTabId) {
+    this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== currentTabId);
+    soloBtn.textContent = '⭕';
+    soloBtn.title = 'Solo (show only on this tab)';
+    soloBtn.style.background = 'transparent';
+
+    if (this.soloedOnTabs.length === 0) {
+      console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
+    }
+  }
+
+  /**
+   * Solo current tab
+   * @private
+   */
+  _soloCurrentTab(soloBtn, currentTabId) {
+    this.soloedOnTabs = [currentTabId];
+    this.mutedOnTabs = []; // Clear mute state (mutually exclusive)
+    soloBtn.textContent = '🎯';
+    soloBtn.title = 'Un-solo (show on all tabs)';
+    soloBtn.style.background = '#444';
+
+    // Update mute button if it exists
+    if (this.muteButton) {
+      this.muteButton.textContent = '🔊';
+      this.muteButton.title = 'Mute (hide on this tab)';
+      this.muteButton.style.background = 'transparent';
+    }
+
+    console.log('[QuickTabWindow] Soloed - only visible on this tab');
+  }
+
+  /**
+   * Unmute current tab
+   * @private
+   */
+  _unmuteCurrentTab(muteBtn, currentTabId) {
+    this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== currentTabId);
+    muteBtn.textContent = '🔊';
+    muteBtn.title = 'Mute (hide on this tab)';
+    muteBtn.style.background = 'transparent';
+    console.log('[QuickTabWindow] Unmuted on this tab');
+  }
+
+  /**
+   * Mute current tab
+   * @private
+   */
+  _muteCurrentTab(muteBtn, currentTabId) {
+    if (!this.mutedOnTabs.includes(currentTabId)) {
+      this.mutedOnTabs.push(currentTabId);
+    }
+    this.soloedOnTabs = []; // Clear solo state (mutually exclusive)
+    muteBtn.textContent = '🔇';
+    muteBtn.title = 'Unmute (show on this tab)';
+    muteBtn.style.background = '#c44';
+
+    // Update solo button if it exists
+    if (this.soloButton) {
+      this.soloButton.textContent = '⭕';
+      this.soloButton.title = 'Solo (show only on this tab)';
+      this.soloButton.style.background = 'transparent';
+    }
+
+    console.log('[QuickTabWindow] Muted on this tab');
   }
 
   /**
