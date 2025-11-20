@@ -49,7 +49,7 @@ src/features/quick-tabs/
 ├── index.js           - QuickTabsManager (main orchestrator, EventBus integration)
 ├── window.js          - QuickTabWindow (individual tab UI, drag/resize)
 ├── minimized-manager.js - MinimizedManager (minimized tabs panel)
-└── panel.js           - QuickTabsPanel (persistent floating panel, NEW in v1.5.9)
+└── panel.js           - QuickTabsPanel (persistent floating panel, Introduced in v1.5.9, part of v1.6.0 architecture)
 ```
 
 ### Key Classes and Responsibilities
