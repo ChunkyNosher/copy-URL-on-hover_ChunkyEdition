@@ -337,7 +337,7 @@ describe('Generic URL Handler', () => {
 
     test('should get link text from within container', () => {
       const div = document.createElement('div');
-      
+
       const link = document.createElement('a');
       link.textContent = 'Link text';
       div.appendChild(link);
