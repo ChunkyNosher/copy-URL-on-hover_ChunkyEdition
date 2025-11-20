@@ -58,6 +58,7 @@ export class PanelManager {
    * Initialize the panel
    * v1.5.9.12 - Container integration: Detect container context
    * v1.6.0.3 - Fixed initialization order: Create panel BEFORE loading state
+   * v1.6.0.3 - Added document.body safety check to prevent null reference error
    */
   async init() {
     debug('[PanelManager] Initializing...');
@@ -78,6 +79,12 @@ export class PanelManager {
       isOpen: false
     };
     this.panel = this.uiBuilder.createPanel(defaultState);
+    
+    // Safety check: Ensure document.body exists before appending
+    // (should always be true with run_at: "document_idle", but defensive programming)
+    if (!document.body) {
+      throw new Error('[PanelManager] document.body is null - DOM not ready!');
+    }
     document.body.appendChild(this.panel);
 
     // Initialize state manager (callbacks can now safely access this.panel)

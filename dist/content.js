@@ -8975,6 +8975,12 @@
         return false;
       }
 
+      // Safety check: Ensure document.head exists
+      if (!document.head) {
+        console.error('[PanelUIBuilder] document.head is null - DOM not ready!');
+        throw new Error('[PanelUIBuilder] Cannot inject styles - document.head is null');
+      }
+
       const style = document.createElement('style');
       style.id = 'quick-tabs-manager-panel-styles';
       style.textContent = PANEL_CSS;
@@ -9303,6 +9309,7 @@
      * Initialize the panel
      * v1.5.9.12 - Container integration: Detect container context
      * v1.6.0.3 - Fixed initialization order: Create panel BEFORE loading state
+     * v1.6.0.3 - Added document.body safety check to prevent null reference error
      */
     async init() {
       debug('[PanelManager] Initializing...');
@@ -9323,6 +9330,12 @@
         isOpen: false
       };
       this.panel = this.uiBuilder.createPanel(defaultState);
+      
+      // Safety check: Ensure document.body exists before appending
+      // (should always be true with run_at: "document_idle", but defensive programming)
+      if (!document.body) {
+        throw new Error('[PanelManager] document.body is null - DOM not ready!');
+      }
       document.body.appendChild(this.panel);
 
       // Initialize state manager (callbacks can now safely access this.panel)
