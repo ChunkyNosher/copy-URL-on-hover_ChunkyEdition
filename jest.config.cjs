@@ -9,7 +9,7 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
 
   // Exclude playwright tests (they need a different environment)
-  testPathIgnorePatterns: ['/node_modules/', '/tests/extension/'],
+  testPathIgnorePatterns: ['/node_modules/', '/tests/extension/', '/tests/e2e/'],
 
   // Module aliasing (must match Rollup aliases)
   moduleNameMapper: {
