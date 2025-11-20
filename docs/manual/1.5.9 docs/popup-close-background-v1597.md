@@ -182,9 +182,7 @@ async function exportAllLogs(version) {
     const logText = formatLogsAsText(allLogs, version);
     const filename = generateLogFilename(version);
 
-    console.log(
-      `[Popup] Formatted ${allLogs.length} logs, delegating to background script`
-    );
+    console.log(`[Popup] Formatted ${allLogs.length} logs, delegating to background script`);
 
     // ✅ Send to background script to handle download
     // Popup can close safely after this - background will handle it
@@ -268,9 +266,7 @@ async function handleLogExport(logText, filename) {
       if (delta.state) {
         const currentState = delta.state.current;
 
-        console.log(
-          `[Background] Download ${downloadId} state: ${currentState}`
-        );
+        console.log(`[Background] Download ${downloadId} state: ${currentState}`);
 
         if (currentState === 'complete' || currentState === 'interrupted') {
           if (revokeListenerActive) {
@@ -280,13 +276,9 @@ async function handleLogExport(logText, filename) {
             browserAPI.downloads.onChanged.removeListener(revokeListener);
 
             if (currentState === 'complete') {
-              console.log(
-                `✓ [Background] Blob URL revoked after successful download`
-              );
+              console.log(`✓ [Background] Blob URL revoked after successful download`);
             } else {
-              console.log(
-                `⚠ [Background] Blob URL revoked after download interruption`
-              );
+              console.log(`⚠ [Background] Blob URL revoked after download interruption`);
             }
           }
         }
@@ -429,9 +421,7 @@ async function exportAllLogs(version) {
             'Try navigating to a regular webpage first.'
         );
       } else if (tabs.length === 0) {
-        throw new Error(
-          'No active tab found. Try clicking on a webpage tab first.'
-        );
+        throw new Error('No active tab found. Try clicking on a webpage tab first.');
       } else if (contentLogs.length === 0 && backgroundLogs.length === 0) {
         throw new Error(
           'No logs found. Make sure debug mode is enabled and try using the extension ' +
@@ -443,9 +433,7 @@ async function exportAllLogs(version) {
             'Content script may not be loaded. Try reloading the webpage.'
         );
       } else {
-        throw new Error(
-          'No logs found. Try enabling debug mode and using the extension first.'
-        );
+        throw new Error('No logs found. Try enabling debug mode and using the extension first.');
       }
     }
 
@@ -482,9 +470,7 @@ async function exportAllLogs(version) {
     });
 
     if (response && response.success) {
-      console.log(
-        '✓ [Popup] Export delegated successfully to background script'
-      );
+      console.log('✓ [Popup] Export delegated successfully to background script');
     } else {
       throw new Error(response?.error || 'Background script did not respond');
     }
@@ -571,9 +557,7 @@ async function handleLogExport(logText, filename) {
       conflictAction: 'uniquify'
     });
 
-    console.log(
-      `✓ [Background] Download initiated! Download ID: ${downloadId}`
-    );
+    console.log(`✓ [Background] Download initiated! Download ID: ${downloadId}`);
     console.log('✓ [Background] Method: Blob URL via background script');
 
     // Register completion listener
@@ -590,9 +574,7 @@ async function handleLogExport(logText, filename) {
       if (delta.state) {
         const currentState = delta.state.current;
 
-        console.log(
-          `[Background] Download ${downloadId} state: ${currentState}`
-        );
+        console.log(`[Background] Download ${downloadId} state: ${currentState}`);
 
         // Download completed or failed - safe to revoke
         if (currentState === 'complete' || currentState === 'interrupted') {
@@ -603,13 +585,9 @@ async function handleLogExport(logText, filename) {
             browserAPI.downloads.onChanged.removeListener(revokeListener);
 
             if (currentState === 'complete') {
-              console.log(
-                `✓ [Background] Blob URL revoked after successful download`
-              );
+              console.log(`✓ [Background] Blob URL revoked after successful download`);
             } else {
-              console.log(
-                `⚠ [Background] Blob URL revoked after download interruption`
-              );
+              console.log(`⚠ [Background] Blob URL revoked after download interruption`);
             }
           }
         }
@@ -634,9 +612,7 @@ async function handleLogExport(logText, filename) {
   } catch (downloadError) {
     // If download initiation fails, revoke immediately
     URL.revokeObjectURL(blobUrl);
-    console.error(
-      '[Background] Download initiation failed, Blob URL revoked immediately'
-    );
+    console.error('[Background] Download initiation failed, Blob URL revoked immediately');
     throw downloadError;
   }
 }
