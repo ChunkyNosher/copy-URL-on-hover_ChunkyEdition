@@ -61,6 +61,50 @@ jobs:
           echo "DISPLAY=:99" >> $GITHUB_ENV
           sleep 2
 
+      # ====================================================================
+      # NEW STEP: Restore Memory from Previous Runs
+      # ====================================================================
+      - name: Restore Agent Memory Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .in-memoria/
+            .agentic-tools/
+            .mcp-data/
+          key: copilot-memory-${{ github.repository }}
+          restore-keys: |
+            copilot-memory-
+        continue-on-error: true
+
+      - name: Display Memory Status
+        run: |
+          echo "=========================================="
+          echo "Agent Memory Status"
+          echo "=========================================="
+          
+          if [ -f ".in-memoria/patterns.db" ]; then
+            echo "✓ In-Memoria patterns database found"
+            ls -lh .in-memoria/patterns.db
+          else
+            echo "⚠ No In-Memoria patterns database (first run)"
+          fi
+          
+          if [ -f ".agentic-tools/memories.json" ]; then
+            echo "✓ Agentic-Tools memories found"
+            MEMORY_COUNT=$(cat .agentic-tools/memories.json | jq '.memories | length' 2>/dev/null || echo "0")
+            echo "  Memories: $MEMORY_COUNT"
+          else
+            echo "⚠ No Agentic-Tools memories (first run)"
+          fi
+          
+          if [ -f ".mcp-data/memory.db" ]; then
+            echo "✓ SQLite memory database found"
+            ls -lh .mcp-data/memory.db
+          else
+            echo "⚠ No SQLite memory database (first run)"
+          fi
+          
+          echo "=========================================="
 
       # ====================================================================
       # STEP 5: Verify ALL Testing Libraries (UPDATED)
