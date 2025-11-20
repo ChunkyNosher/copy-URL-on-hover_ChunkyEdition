@@ -43,6 +43,23 @@
     "test:extension:debug": "playwright test --config=playwright.config.extension.js --debug",
     "test:extension:ui": "playwright test --config=playwright.config.extension.js --ui",
     "test:extension:report": "playwright show-report"
+    "dev:firefox": "web-ext run --target=firefox-desktop",
+    "dev:chrome": "web-ext run --target=chromium",
+    "dev:both": "web-ext run --target=firefox-desktop --target=chromium",
+    "package": "web-ext build --overwrite-dest",
+    "package:source": "web-ext build --as-tmp-file --source-dir=.",
+    "lint:webext": "web-ext lint",
+    "sign:firefox": "web-ext sign --channel=unlisted"
+    "lint:specific": "eslint",
+    "lint:print-config": "eslint --print-config",
+    "lint:cache": "eslint --cache --cache-location node_modules/.cache/eslint",
+    "lint:fix:dry": "eslint --fix-dry-run",
+    "lint:output-file": "eslint --output-file eslint-report.json --format json"
+    "debug:background": "node --inspect-brk background.js",
+    "debug:popup": "node --inspect-brk popup.js",
+    "profile:build": "npm run build -- --profile",
+    "analyze:bundle": "rollup -c --environment BUILD:production --plugin visualizer",
+    "check:types": "tsc --noEmit"
   },
   "devDependencies": {
     "@babel/core": "^7.28.5",
