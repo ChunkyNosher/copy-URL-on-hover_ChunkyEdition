@@ -50,14 +50,13 @@ describe('PanelManager Integration', () => {
       restoreQuickTab: jest.fn()
     };
 
-    // Mock PanelUIBuilder - return actual mock instance
-    const mockUIBuilder = {
-      injectStyles: jest.fn(),
-      createPanel: jest.fn().mockReturnValue(mockPanel),
-      updateContainer: jest.fn(),
-      updateContent: jest.fn()
-    };
-    PanelUIBuilder.mockImplementation(() => mockUIBuilder);
+    // v1.6.0.3 - Mock static methods of PanelUIBuilder
+    PanelUIBuilder.injectStyles = jest.fn();
+    PanelUIBuilder.createPanel = jest.fn().mockReturnValue(mockPanel);
+    PanelUIBuilder.renderContainerSection = jest
+      .fn()
+      .mockReturnValue(document.createElement('div'));
+    PanelUIBuilder.getContainerIcon = jest.fn(icon => `icon-${icon}`);
 
     // Mock PanelStateManager - return actual mock instance
     const mockStateManager = {
@@ -193,9 +192,13 @@ describe('PanelManager Integration', () => {
       });
 
       test('should inject CSS styles', async () => {
+        // Mock the static method
+        PanelUIBuilder.injectStyles = jest.fn();
+
         await panelManager.init();
 
-        expect(panelManager.uiBuilder.injectStyles).toHaveBeenCalled();
+        // v1.6.0.3 - FIX: injectStyles is now called as static method
+        expect(PanelUIBuilder.injectStyles).toHaveBeenCalled();
       });
 
       test('should create panel with default state then apply saved state', async () => {
@@ -226,7 +229,8 @@ describe('PanelManager Integration', () => {
           height: 500,
           isOpen: false
         };
-        expect(panelManager.uiBuilder.createPanel).toHaveBeenCalledWith(defaultState);
+        // v1.6.0.3 - Check static method instead
+        expect(PanelUIBuilder.createPanel).toHaveBeenCalledWith(defaultState);
         expect(document.body.appendChild).toHaveBeenCalledWith(mockPanel);
         expect(panelManager.panel).toBe(mockPanel);
 
@@ -406,9 +410,11 @@ describe('PanelManager Integration', () => {
     });
 
     test('should create PanelUIBuilder instance', () => {
+      // v1.6.0.3 - uiBuilder is still created (for backward compat) but methods are static
       expect(panelManager.uiBuilder).toBeDefined();
-      expect(panelManager.uiBuilder.injectStyles).toBeDefined();
-      expect(panelManager.uiBuilder.createPanel).toBeDefined();
+      // Check that static methods exist on the class
+      expect(PanelUIBuilder.injectStyles).toBeDefined();
+      expect(PanelUIBuilder.createPanel).toBeDefined();
     });
 
     test('should create PanelStateManager with callbacks', () => {

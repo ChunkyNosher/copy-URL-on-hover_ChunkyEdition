@@ -13,6 +13,7 @@
  * v1.6.0 - Phase 2.10: Extracted content management logic
  */
 
+import { PanelUIBuilder } from './PanelUIBuilder.js';
 import { debug } from '../../../utils/debug.js';
 
 /**
@@ -123,9 +124,10 @@ export class PanelContentManager {
 
       if (!container) return defaultInfo;
 
+      // v1.6.0.3 - FIX: getContainerIcon() is a static method
       return {
         name: container.name,
-        icon: this.uiBuilder.getContainerIcon(container.icon),
+        icon: PanelUIBuilder.getContainerIcon(container.icon),
         color: container.color
       };
     } catch (err) {
@@ -191,13 +193,13 @@ export class PanelContentManager {
       containersList.style.display = 'block';
       containersList.innerHTML = '';
 
-      // Use UIBuilder to render the section
-      this.uiBuilder.renderContainerSection(
-        containersList,
+      // v1.6.0.3 - FIX: renderContainerSection() is a static method that returns an element
+      const section = PanelUIBuilder.renderContainerSection(
         this.currentContainerId,
         containerInfo,
         containerState
       );
+      containersList.appendChild(section);
     }
   }
 
