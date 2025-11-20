@@ -63,6 +63,9 @@ jobs:
           fi
           echo "✓ No source files in dist/"
 
+          # Verify manifest paths are correct (no "dist/" prefix)
+          npm run validate:manifest
+
       - name: Get version from manifest
         id: get_version
         run: |
