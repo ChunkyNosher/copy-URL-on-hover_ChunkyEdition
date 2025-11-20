@@ -20,30 +20,30 @@ sequenceDiagram
     participant Storage as browser.storage.sync
 
     User->>Content: Press Alt+Shift+Q<br/>(Create Quick Tab)
-    
+
     Content->>QTM: createQuickTab(url, options)
-    
+
     QTM->>CH: handle(message)
     CH->>CH: Validate URL, options
     CH->>CH: Create QuickTab entity<br/>(domain logic)
-    
+
     CH->>SM: add(quickTab)
     SM->>SM: quickTabs.set(id, quickTab)
     SM-->>CH: State updated
-    
+
     CH->>STM: save(quickTab)
     STM->>STM: Generate saveId<br/>(track race conditions)
     STM->>Storage: browser.storage.sync.set({...})
     Storage-->>STM: Saved
     STM-->>CH: Save complete (saveId)
-    
+
     CH->>BC: postMessage({<br/>type: 'CREATE_QUICK_TAB',<br/>data: quickTab.serialize()<br/>})
     BC-->>Content2: Message received (<10ms)
-    
+
     CH->>QTM: UI.render(quickTab)
     QTM->>Content: Render QuickTabWindow
     Content->>User: Quick Tab visible (Tab 1)
-    
+
     Content2->>Content2: Handle broadcast message
     Content2->>Content2: Render QuickTabWindow
     Content2->>User: Quick Tab visible (Tab 2)
@@ -64,7 +64,7 @@ graph TD
     C --> D[UICoordinator renders immediately]
     D --> E[StorageManager persists async]
     E --> F[BroadcastChannel notifies other tabs]
-    
+
     style B fill:#e1f5ff
     style C fill:#fff3e0
     style D fill:#e8f5e9
@@ -83,18 +83,18 @@ graph TD
     A[Quick Tab State Loaded] --> B{Check Minimized}
     B -->|Yes| Z[Hide]
     B -->|No| C{Check Solo List}
-    
+
     C -->|Has Entries| D{Current Tab in Solo List?}
     D -->|Yes| Y[Show]
     D -->|No| Z
-    
+
     C -->|Empty| E{Check Mute List}
     E -->|Has Entries| F{Current Tab in Mute List?}
     F -->|Yes| Z
     F -->|No| Y
-    
+
     E -->|Empty| Y[Show]
-    
+
     style Y fill:#c8e6c9
     style Z fill:#ffcdd2
 ```
@@ -114,16 +114,16 @@ sequenceDiagram
 
     T1->>T1: Update Quick Tab position
     T1->>BC: postMessage({<br/>type: 'UPDATE_POSITION',<br/>data: { id, left, top }<br/>})
-    
+
     BC-->>T2: Message (<10ms)
     BC-->>T3: Message (<10ms)
-    
+
     T2->>T2: quickTabs.get(id).updatePosition(left, top)
     T2->>T2: UI re-render
-    
+
     T3->>T3: quickTabs.get(id).updatePosition(left, top)
     T3->>T3: UI re-render
-    
+
     Note over T1,T3: All tabs synchronized in <10ms
 ```
 
@@ -144,16 +144,16 @@ sequenceDiagram
     T1->>STM: save(quickTab1)
     STM->>STM: Generate saveId_1<br/>pendingSaves.add(saveId_1)
     STM->>Storage: set({ saveId: saveId_1, ... })
-    
+
     Note over STM: storage.onChanged fires
-    
+
     Storage-->>STM: onChanged(changes)
     STM->>STM: Check if saveId_1 in pendingSaves
     STM->>STM: pendingSaves.has(saveId_1) = true
     STM->>STM: Ignore change (own write)
-    
+
     Note over Storage: Different tab's write
-    
+
     Storage-->>STM: onChanged(changes)
     STM->>STM: Check if saveId_X in pendingSaves
     STM->>STM: pendingSaves.has(saveId_X) = false
@@ -199,19 +199,19 @@ graph TB
 ```mermaid
 graph LR
     A[browser.storage.sync] --> B{FormatMigrator<br/>Detect Version}
-    
+
     B -->|v1.5.8.15+| C[containers: {<br/>'firefox-default': {...},<br/>'firefox-container-1': {...}<br/>}]
-    
+
     B -->|v1.5.8.14| D[Unwrapped object<br/>(migrate to containers)]
-    
+
     B -->|Legacy| E[tabs: []<br/>(migrate to containers)]
-    
+
     C --> F[Filter by cookieStoreId]
     D --> F
     E --> F
-    
+
     F --> G[Return container-specific tabs]
-    
+
     style C fill:#c8e6c9
     style D fill:#fff9c4
     style E fill:#ffcdd2
@@ -226,6 +226,7 @@ graph LR
 **Starting State**: No Quick Tabs exist
 
 **Actions**:
+
 1. User presses `Alt+Shift+Q` in Tab 1 (Container: firefox-default)
 2. CreateHandler creates QuickTab entity
 3. StateManager adds to local Map
@@ -235,7 +236,8 @@ graph LR
 7. Tab 2 (same container) receives broadcast, renders Quick Tab
 8. Tab 3 (different container) doesn't receive broadcast, no action
 
-**Final State**: 
+**Final State**:
+
 - Tab 1: Quick Tab visible (local render)
 - Tab 2: Quick Tab visible (broadcast sync)
 - Tab 3: No Quick Tab (different container)
@@ -245,6 +247,7 @@ graph LR
 **Starting State**: Quick Tab visible in Tab 1, Tab 2, Tab 3 (all same container)
 
 **Actions**:
+
 1. User clicks Solo button in Tab 1
 2. VisibilityHandler calls `quickTab.solo(Tab1.id)`
 3. Domain logic: `visibility.soloedOnTabs = [Tab1.id]`, `visibility.mutedOnTabs = []`
@@ -258,6 +261,7 @@ graph LR
    - Tab 3: `shouldBeVisible(Tab3.id) = false` (not in solo list) → Hide
 
 **Final State**:
+
 - Tab 1: Quick Tab visible
 - Tab 2: Quick Tab hidden
 - Tab 3: Quick Tab hidden
@@ -267,6 +271,7 @@ graph LR
 **Starting State**: Quick Tab visible at 800x600
 
 **Actions**:
+
 1. User drags resize handle in Tab 1
 2. ResizeController detects `pointermove` events
 3. UpdateHandler debounces resize updates (50ms)
@@ -285,6 +290,7 @@ graph LR
 **Starting State**: Quick Tab soloed on Tab 2 (ID: 123)
 
 **Actions**:
+
 1. User closes Tab 2
 2. Background script receives `tabs.onRemoved(tabId: 123)`
 3. StateCoordinator detects tab closure
@@ -302,14 +308,14 @@ graph LR
 
 ## Performance Characteristics
 
-| Operation | Latency | Details |
-|-----------|---------|---------|
-| **Local Create** | <50ms | Direct DOM manipulation + state update |
-| **Cross-Tab Broadcast** | <10ms | BroadcastChannel is synchronous within browser |
-| **Storage Persist** | 30-100ms | Async browser.storage.sync.set() |
-| **Storage Load (Init)** | 20-50ms | Async browser.storage.sync.get() |
-| **Visibility Check** | <1ms | Pure JS array filtering in domain entity |
-| **Format Migration** | <10ms | Strategy pattern, minimal overhead |
+| Operation               | Latency  | Details                                        |
+| ----------------------- | -------- | ---------------------------------------------- |
+| **Local Create**        | <50ms    | Direct DOM manipulation + state update         |
+| **Cross-Tab Broadcast** | <10ms    | BroadcastChannel is synchronous within browser |
+| **Storage Persist**     | 30-100ms | Async browser.storage.sync.set()               |
+| **Storage Load (Init)** | 20-50ms  | Async browser.storage.sync.get()               |
+| **Visibility Check**    | <1ms     | Pure JS array filtering in domain entity       |
+| **Format Migration**    | <10ms    | Strategy pattern, minimal overhead             |
 
 ## Error Handling & Edge Cases
 
@@ -321,15 +327,15 @@ graph TD
     B -->|> 100KB| C[Throw Error]
     C --> D[Log Error]
     D --> E[Show User Notification]
-    
+
     B -->|< 100KB| F[browser.storage.sync.set]
     F --> G{Success?}
     G -->|Yes| H[Return saveId]
     G -->|No| I{Quota Exceeded?}
-    
+
     I -->|Yes| J[Fallback to browser.storage.local]
     I -->|No| C
-    
+
     J --> K{Success?}
     K -->|Yes| L[Warn User: Not syncing]
     K -->|No| C
@@ -345,7 +351,8 @@ graph TD
 
 **Scenario**: `cookieStoreId` not available in content script
 
-**Handling**: 
+**Handling**:
+
 1. Content script requests tab info from background: `browser.runtime.sendMessage({ action: 'GET_TAB_INFO' })`
 2. Background responds with `sender.tab.cookieStoreId`
 3. Content script caches container ID for session

@@ -199,6 +199,7 @@ graph TD
 ### Facade Pattern
 
 The **QuickTabsManager** acts as a facade that:
+
 - Hides complexity of 10+ internal components
 - Provides simple public API for content script
 - Orchestrates managers, handlers, and coordinators
@@ -215,36 +216,43 @@ The **QuickTabsManager** acts as a facade that:
 ## Component Responsibilities
 
 ### QuickTabsManager (Facade)
+
 - **Purpose**: Single entry point for Quick Tab operations
 - **Delegates to**: 5 managers, 4 handlers, 2 coordinators
 - **Complexity**: Reduced from cc=25 to cc<3 via decomposition
 
 ### StateManager
+
 - **Purpose**: In-memory state management (Map<id, QuickTab>)
 - **Operations**: add, update, delete, get, getAll, clear
 - **Events**: Emits state change events for listeners
 
 ### StorageManager
+
 - **Purpose**: Persistent storage operations
 - **Handles**: Save, load, sync, format migration
 - **Race conditions**: Uses saveId tracking to prevent overwrites
 
 ### BroadcastManager
+
 - **Purpose**: Cross-tab real-time synchronization
 - **Channel**: Container-specific (e.g., `quick-tabs-sync-firefox-container-1`)
 - **Latency**: <10ms message propagation
 
 ### CreateHandler / UpdateHandler / VisibilityHandler / DestroyHandler
+
 - **Purpose**: Encapsulate specific operation logic
 - **Pattern**: Orchestrate State → Storage → Broadcast → UI updates
 - **Benefit**: Eliminates duplication across similar operations
 
 ### UICoordinator
+
 - **Purpose**: Render QuickTab entities to QuickTabWindow instances
 - **Lifecycle**: create → render → update → destroy
 - **Separation**: Domain entities ≠ UI components
 
 ### SyncCoordinator
+
 - **Purpose**: Route broadcast messages + coordinate storage ↔ state sync
 - **Handles**: Storage changes, broadcast messages, conflict resolution
 
@@ -277,6 +285,7 @@ graph LR
 ```
 
 **Key**: Each container has its own:
+
 - BroadcastChannel (automatic message isolation)
 - Storage namespace (manual filtering by cookieStoreId)
 - State partition in StateManager
