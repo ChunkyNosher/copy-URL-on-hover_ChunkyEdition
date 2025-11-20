@@ -229,7 +229,7 @@ describe('PanelManager Integration', () => {
         expect(panelManager.uiBuilder.createPanel).toHaveBeenCalledWith(defaultState);
         expect(document.body.appendChild).toHaveBeenCalledWith(mockPanel);
         expect(panelManager.panel).toBe(mockPanel);
-        
+
         // Saved state should be applied to panel styles after creation
         expect(mockPanel.style.left).toBe('200px');
         expect(mockPanel.style.top).toBe('150px');
