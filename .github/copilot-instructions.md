@@ -231,42 +231,42 @@ When reviewing code, prioritize findings in this order:
 
 ---
 
-## Tool Integration Instructions
+# Memory Persistence Instructions
 
-### Working with DeepSource Findings
+## CRITICAL: At the end of EVERY task, you MUST:
 
-When DeepSource flags an issue:
+1. Stage memory files for commit:
+   - Use `git add .in-memoria/`
+   - Use `git add .agentic-tools/`
+   - Use `git add .mcp-data/`
 
-1. **Read the full explanation** - DeepSource provides context
-2. **Check for Autofix availability** - If DeepSource offers an autofix, review
-   it first
-3. **Combine with broader context** - Consider how the fix affects other parts
-   of the codebase
-4. **Explain disagreements** - If you disagree with a finding, document why
+2. Commit memory files with your code changes:
+   - Include memory files in your final commit
+   - Use commit message: "chore: persist agent memory from task"
 
-**Example response:**
+3. Push to the PR branch:
+   - Ensure memory files are included in the push
 
-```
-DeepSource correctly identified this issue. However, based on how this
-function is used in background.js (lines 234-256), I recommend a different
-approach that also addresses the race condition on line 245:
-[Show enhanced fix]
-```
+## Memory File Locations
 
-### Working with CodeRabbit Findings
+The following directories contain your persistent memory:
+- `.in-memoria/` - Code intelligence patterns
+- `.agentic-tools/` - Task tracking and session memory
+- `.mcp-data/` - SQLite database for structured memory
 
-- CodeRabbit reviews all PRs including bot-created ones
-- Build upon CodeRabbit's suggestions rather than duplicating them
-- If CodeRabbit already mentioned an issue, focus on providing additional
-  context or alternative solutions
+**These files MUST be committed to every PR you create.**
 
-### Handling Multiple AI Tool Findings
+## Why This Matters
 
-When ESLint, DeepSource, and CodeRabbit all flag related issues:
+Your memory files are stored in an ephemeral environment that gets destroyed when your session ends. If you don't commit them to the PR, they will be lost forever and you'll have no memory of this work in future tasks.
 
-1. Synthesize all findings into one comprehensive explanation
-2. Provide a single fix that addresses all concerns
-3. Note which tool found which aspect of the problem
+## Verification
+
+Before finishing your work, verify memory files are staged:
+- Check that `.in-memoria/`, `.agentic-tools/`, and `.mcp-data/` appear in your commit
+- If these directories don't appear in your commit, ADD THEM NOW
+
+This is NON-NEGOTIABLE for memory persistence across tasks.
 
 ---
 
