@@ -644,16 +644,17 @@ try {
 - Error.stack: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error/stack
 
 ---
-
 ## Testing Plan
 
 ### Test 1: Verify Error Stack Traces Are Captured
 
 1. Trigger a JavaScript error in content script
+
 2. Export console logs
 3. Verify exported file contains complete stack trace with file/line numbers
 
 ### Test 2: Verify Global Error Handler Works
+
 
 1. Cause an uncaught exception (e.g., access undefined.property)
 2. Export console logs
@@ -661,9 +662,11 @@ try {
 
 ### Test 3: Verify Promise Rejection Capture
 
+
 1. Create unhandled promise rejection
 2. Export console logs
 3. Verify "[Unhandled Promise Rejection]" appears in exported file
+
 
 ### Test 4: Document Browser API Limitation
 
@@ -676,11 +679,13 @@ try {
 
 ## References
 
+
 ### Mozilla Documentation Consulted
 
 1. [runtime.lastError - MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/lastError) - Understanding browser-generated errors
 2. [Error.prototype.stack - MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error/stack) - Non-enumerable error properties
 3. [Browser Console - MDN](https://firefox-source-docs.mozilla.org/devtools-user/browser_console/index.html) - Multiple console contexts
+
 4. [try...catch - MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/try...catch) - Error handling patterns
 
 ### Stack Overflow References
@@ -689,9 +694,11 @@ try {
 2. [Firefox WebExtension console.log not working](https://stackoverflow.com/questions/19531865/firefox-addon-console-log-not-working) - Console context issues
 3. [runtime.lastError in console](https://stackoverflow.com/questions/55589519/how-to-prevent-runtime-lasterror-error-message-from-appearing-in-console) - Browser API error handling
 
+
 ### Key Quotes Supporting Diagnosis
 
 From MDN runtime.lastError documentation:
+
 
 > "If lastError has been set and you don't check it within the callback function, then **an error will be raised**."
 
@@ -706,15 +713,20 @@ This explains why `JSON.stringify(error)` loses stack traces - it's a non-enumer
 
 ---
 
+
 ## Conclusion
 
 The console log export feature is working as designed for **JavaScript-level logs**, but it has inherent limitations when capturing **browser-generated errors** and needs improvements to **preserve error stack traces**.
+
 
 **Primary issues identified:**
 
 1. Error object serialization loses non-enumerable properties (stack traces)
 2. Browser API errors bypass JavaScript console interception
 3. Missing documentation about feature limitations
+
+```
+
 
 **Recommended fixes:**
 
