@@ -1,0 +1,88 @@
+name: Sync Agent Memory on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  sync-memory:
+    # Only run if PR was merged and came from copilot
+    if: |
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'copilot/')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+      
+      - name: Verify memory files exist in merge
+        run: |
+          echo "=========================================="
+          echo "Checking for Agent Memory in Merged PR"
+          echo "=========================================="
+          
+          # Check if memory directories exist
+          if [ -d ".in-memoria" ]; then
+            echo "✓ .in-memoria/ directory found"
+            ls -la .in-memoria/
+          else
+            echo "⚠️ .in-memoria/ directory not found"
+            echo "Agent may not have committed memory files"
+          fi
+          
+          if [ -d ".agentic-tools" ]; then
+            echo "✓ .agentic-tools/ directory found"
+            ls -la .agentic-tools/
+          else
+            echo "⚠️ .agentic-tools/ directory not found"
+          fi
+          
+          if [ -d ".mcp-data" ]; then
+            echo "✓ .mcp-data/ directory found"
+            ls -la .mcp-data/
+          else
+            echo "⚠️ .mcp-data/ directory not found"
+          fi
+          
+          echo "=========================================="
+      
+      - name: Create memory verification comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let message = '## 🧠 Agent Memory Sync Status\n\n';
+            
+            const hasInMemoria = fs.existsSync('.in-memoria');
+            const hasAgenticTools = fs.existsSync('.agentic-tools');
+            const hasMcpData = fs.existsSync('.mcp-data');
+            
+            if (hasInMemoria && hasAgenticTools && hasMcpData) {
+              message += '✅ All memory files successfully persisted to main branch\n\n';
+              message += '- ✓ In-Memoria patterns database\n';
+              message += '- ✓ Agentic-Tools task memory\n';
+              message += '- ✓ SQLite memory database\n';
+            } else {
+              message += '⚠️ Some memory files missing:\n\n';
+              message += `- ${hasInMemoria ? '✓' : '❌'} In-Memoria patterns database\n`;
+              message += `- ${hasAgenticTools ? '✓' : '❌'} Agentic-Tools task memory\n`;
+              message += `- ${hasMcpData ? '✓' : '❌'} SQLite memory database\n\n`;
+              message += '**Action Required:** Check if Copilot committed memory files in this PR.';
+            }
+            
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: message
+            });
