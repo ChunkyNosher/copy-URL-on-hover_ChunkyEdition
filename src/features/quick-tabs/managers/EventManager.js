@@ -32,13 +32,24 @@ export class EventManager {
    * - User switches tabs (visibilitychange)
    * - User closes tab or navigates away (beforeunload)
    * - Page is hidden (pagehide)
+   * 
+   * CRITICAL FIX for Issue #35 and #51: Also refresh state when tab becomes visible
+   * This ensures position/size updates from other tabs are loaded
    */
   setupEmergencySaveHandlers() {
     // Emergency save when tab becomes hidden (user switches tabs)
+    // AND refresh state when tab becomes visible (fixes Issue #35 and #51)
     this.boundHandlers.visibilityChange = () => {
-      if (document.hidden && this.quickTabsMap.size > 0) {
-        console.log('[EventManager] Tab hidden - triggering emergency save');
-        this.eventBus?.emit('event:emergency-save', { trigger: 'visibilitychange' });
+      if (document.hidden) {
+        // Tab hidden - save current state
+        if (this.quickTabsMap.size > 0) {
+          console.log('[EventManager] Tab hidden - triggering emergency save');
+          this.eventBus?.emit('event:emergency-save', { trigger: 'visibilitychange' });
+        }
+      } else {
+        // Tab visible - refresh state from background
+        console.log('[EventManager] Tab visible - triggering state refresh');
+        this.eventBus?.emit('event:tab-visible', { trigger: 'visibilitychange' });
       }
     };
 

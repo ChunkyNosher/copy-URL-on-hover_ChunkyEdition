@@ -98,7 +98,15 @@ export class SyncStorageAdapter extends StorageAdapter {
   async _handleSaveError(error, stateToSave, saveId) {
     // Handle quota exceeded - fallback to local storage
     if (!error.message || !error.message.includes('QUOTA_BYTES')) {
-      console.error('[SyncStorageAdapter] Save failed:', error);
+      // DOMException and browser-native errors don't serialize properly
+      // Extract properties explicitly for proper logging
+      console.error('[SyncStorageAdapter] Save failed:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        code: error?.code,
+        error: error
+      });
       throw error;
     }
 
@@ -111,7 +119,15 @@ export class SyncStorageAdapter extends StorageAdapter {
       console.log(`[SyncStorageAdapter] Fallback: Saved to local storage (saveId: ${saveId})`);
       return saveId;
     } catch (localError) {
-      console.error('[SyncStorageAdapter] Local storage fallback failed:', localError);
+      // DOMException and browser-native errors don't serialize properly
+      // Extract properties explicitly for proper logging
+      console.error('[SyncStorageAdapter] Local storage fallback failed:', {
+        message: localError?.message,
+        name: localError?.name,
+        stack: localError?.stack,
+        code: localError?.code,
+        error: localError
+      });
       throw new Error(`Failed to save: ${localError.message}`);
     }
   }
@@ -243,7 +259,15 @@ export class SyncStorageAdapter extends StorageAdapter {
         saveId: this._generateSaveId()
       };
     } catch (error) {
-      console.error('[SyncStorageAdapter] Load failed:', error);
+      // DOMException and browser-native errors don't serialize properly
+      // Extract properties explicitly for proper logging
+      console.error('[SyncStorageAdapter] Load failed:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        code: error?.code,
+        error: error
+      });
       // Return empty state on error
       return {
         containers: {},
@@ -275,7 +299,15 @@ export class SyncStorageAdapter extends StorageAdapter {
       const jsonString = JSON.stringify(data);
       return new Blob([jsonString]).size;
     } catch (error) {
-      console.error('[SyncStorageAdapter] Size calculation failed:', error);
+      // DOMException and browser-native errors don't serialize properly
+      // Extract properties explicitly for proper logging
+      console.error('[SyncStorageAdapter] Size calculation failed:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        code: error?.code,
+        error: error
+      });
       return 0;
     }
   }

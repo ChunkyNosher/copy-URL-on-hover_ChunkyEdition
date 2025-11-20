@@ -28,6 +28,7 @@ export class SyncCoordinator {
 
   /**
    * Setup event listeners for storage and broadcast events
+   * CRITICAL FIX for Issue #35 and #51: Also listen for tab visibility changes
    */
   setupListeners() {
     console.log('[SyncCoordinator] Setting up listeners');
@@ -40,6 +41,11 @@ export class SyncCoordinator {
     // Listen to broadcast messages
     this.eventBus.on('broadcast:received', ({ type, data }) => {
       this.handleBroadcastMessage(type, data);
+    });
+
+    // Listen to tab visibility changes (fixes Issue #35 and #51)
+    this.eventBus.on('event:tab-visible', () => {
+      this.handleTabVisible();
     });
 
     console.log('[SyncCoordinator] Listeners setup complete');
@@ -70,6 +76,27 @@ export class SyncCoordinator {
     // Sync state from storage
     // This will trigger state:added, state:updated, state:deleted events
     this.stateManager.hydrate(newValue.quickTabs || []);
+  }
+
+  /**
+   * Handle tab becoming visible - refresh state from background
+   * CRITICAL FIX for Issue #35 and #51: Load latest state when switching to this tab
+   */
+  async handleTabVisible() {
+    console.log('[SyncCoordinator] Tab became visible - refreshing state from background');
+    
+    try {
+      // Re-hydrate state from storage (which will call background first)
+      const quickTabs = await this.storageManager.loadAll();
+      this.stateManager.hydrate(quickTabs);
+      
+      // Notify UI coordinator to re-render
+      this.eventBus.emit('state:refreshed', { quickTabs });
+      
+      console.log(`[SyncCoordinator] Refreshed ${quickTabs.length} Quick Tabs on tab visible`);
+    } catch (err) {
+      console.error('[SyncCoordinator] Error refreshing state on tab visible:', err);
+    }
   }
 
   /**

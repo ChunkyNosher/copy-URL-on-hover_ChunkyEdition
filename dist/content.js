@@ -1809,6 +1809,7 @@
 
     /**
      * Setup event listeners for storage and broadcast events
+     * CRITICAL FIX for Issue #35 and #51: Also listen for tab visibility changes
      */
     setupListeners() {
       console.log('[SyncCoordinator] Setting up listeners');
@@ -1821,6 +1822,11 @@
       // Listen to broadcast messages
       this.eventBus.on('broadcast:received', ({ type, data }) => {
         this.handleBroadcastMessage(type, data);
+      });
+
+      // Listen to tab visibility changes (fixes Issue #35 and #51)
+      this.eventBus.on('event:tab-visible', () => {
+        this.handleTabVisible();
       });
 
       console.log('[SyncCoordinator] Listeners setup complete');
@@ -1851,6 +1857,27 @@
       // Sync state from storage
       // This will trigger state:added, state:updated, state:deleted events
       this.stateManager.hydrate(newValue.quickTabs || []);
+    }
+
+    /**
+     * Handle tab becoming visible - refresh state from background
+     * CRITICAL FIX for Issue #35 and #51: Load latest state when switching to this tab
+     */
+    async handleTabVisible() {
+      console.log('[SyncCoordinator] Tab became visible - refreshing state from background');
+      
+      try {
+        // Re-hydrate state from storage (which will call background first)
+        const quickTabs = await this.storageManager.loadAll();
+        this.stateManager.hydrate(quickTabs);
+        
+        // Notify UI coordinator to re-render
+        this.eventBus.emit('state:refreshed', { quickTabs });
+        
+        console.log(`[SyncCoordinator] Refreshed ${quickTabs.length} Quick Tabs on tab visible`);
+      } catch (err) {
+        console.error('[SyncCoordinator] Error refreshing state on tab visible:', err);
+      }
     }
 
     /**
@@ -5065,13 +5092,24 @@
      * - User switches tabs (visibilitychange)
      * - User closes tab or navigates away (beforeunload)
      * - Page is hidden (pagehide)
+     * 
+     * CRITICAL FIX for Issue #35 and #51: Also refresh state when tab becomes visible
+     * This ensures position/size updates from other tabs are loaded
      */
     setupEmergencySaveHandlers() {
       // Emergency save when tab becomes hidden (user switches tabs)
+      // AND refresh state when tab becomes visible (fixes Issue #35 and #51)
       this.boundHandlers.visibilityChange = () => {
-        if (document.hidden && this.quickTabsMap.size > 0) {
-          console.log('[EventManager] Tab hidden - triggering emergency save');
-          this.eventBus?.emit('event:emergency-save', { trigger: 'visibilitychange' });
+        if (document.hidden) {
+          // Tab hidden - save current state
+          if (this.quickTabsMap.size > 0) {
+            console.log('[EventManager] Tab hidden - triggering emergency save');
+            this.eventBus?.emit('event:emergency-save', { trigger: 'visibilitychange' });
+          }
+        } else {
+          // Tab visible - refresh state from background
+          console.log('[EventManager] Tab visible - triggering state refresh');
+          this.eventBus?.emit('event:tab-visible', { trigger: 'visibilitychange' });
         }
       };
 
@@ -6142,7 +6180,15 @@
         );
         return saveId;
       } catch (error) {
-        console.error('[SessionStorageAdapter] Save failed:', error);
+        // DOMException and browser-native errors don't serialize properly
+        // Extract properties explicitly for proper logging
+        console.error('[SessionStorageAdapter] Save failed:', {
+          message: error?.message,
+          name: error?.name,
+          stack: error?.stack,
+          code: error?.code,
+          error: error
+        });
         throw error;
       }
     }
@@ -6265,7 +6311,15 @@
           saveId: this._generateSaveId()
         };
       } catch (error) {
-        console.error('[SessionStorageAdapter] Load failed:', error);
+        // DOMException and browser-native errors don't serialize properly
+        // Extract properties explicitly for proper logging
+        console.error('[SessionStorageAdapter] Load failed:', {
+          message: error?.message,
+          name: error?.name,
+          stack: error?.stack,
+          code: error?.code,
+          error: error
+        });
         // Return empty state on error
         return {
           containers: {},
@@ -6382,7 +6436,15 @@
     async _handleSaveError(error, stateToSave, saveId) {
       // Handle quota exceeded - fallback to local storage
       if (!error.message || !error.message.includes('QUOTA_BYTES')) {
-        console.error('[SyncStorageAdapter] Save failed:', error);
+        // DOMException and browser-native errors don't serialize properly
+        // Extract properties explicitly for proper logging
+        console.error('[SyncStorageAdapter] Save failed:', {
+          message: error?.message,
+          name: error?.name,
+          stack: error?.stack,
+          code: error?.code,
+          error: error
+        });
         throw error;
       }
 
@@ -6395,7 +6457,15 @@
         console.log(`[SyncStorageAdapter] Fallback: Saved to local storage (saveId: ${saveId})`);
         return saveId;
       } catch (localError) {
-        console.error('[SyncStorageAdapter] Local storage fallback failed:', localError);
+        // DOMException and browser-native errors don't serialize properly
+        // Extract properties explicitly for proper logging
+        console.error('[SyncStorageAdapter] Local storage fallback failed:', {
+          message: localError?.message,
+          name: localError?.name,
+          stack: localError?.stack,
+          code: localError?.code,
+          error: localError
+        });
         throw new Error(`Failed to save: ${localError.message}`);
       }
     }
@@ -6527,7 +6597,15 @@
           saveId: this._generateSaveId()
         };
       } catch (error) {
-        console.error('[SyncStorageAdapter] Load failed:', error);
+        // DOMException and browser-native errors don't serialize properly
+        // Extract properties explicitly for proper logging
+        console.error('[SyncStorageAdapter] Load failed:', {
+          message: error?.message,
+          name: error?.name,
+          stack: error?.stack,
+          code: error?.code,
+          error: error
+        });
         // Return empty state on error
         return {
           containers: {},
@@ -6559,7 +6637,15 @@
         const jsonString = JSON.stringify(data);
         return new Blob([jsonString]).size;
       } catch (error) {
-        console.error('[SyncStorageAdapter] Size calculation failed:', error);
+        // DOMException and browser-native errors don't serialize properly
+        // Extract properties explicitly for proper logging
+        console.error('[SyncStorageAdapter] Size calculation failed:', {
+          message: error?.message,
+          name: error?.name,
+          stack: error?.stack,
+          code: error?.code,
+          error: error
+        });
         return 0;
       }
     }
@@ -6639,14 +6725,38 @@
 
     /**
      * Load all Quick Tabs for current container
+     * CRITICAL FIX for Issue #35 and #51: Load from background script's authoritative state
+     * Background script maintains the single source of truth across all tabs
+     * 
      * @returns {Promise<Array<QuickTab>>} - Array of QuickTab domain entities
      */
     async loadAll() {
       try {
-        // Try session storage first (faster, temporary)
+        // STEP 1: Request state from background script (authoritative source)
+        // This ensures tabs always load the latest state, even when switching tabs
+        // Use global browser object (not imported) for test compatibility
+        const browserAPI =
+          (typeof browser !== 'undefined' && browser) || 
+          (typeof chrome !== 'undefined' && chrome);
+        
+        const response = await browserAPI.runtime.sendMessage({
+          action: 'GET_QUICK_TABS_STATE',
+          cookieStoreId: this.cookieStoreId
+        });
+
+        if (response && response.success && response.tabs && response.tabs.length > 0) {
+          // Deserialize to QuickTab domain entities
+          const quickTabs = response.tabs.map(tabData => QuickTab.fromStorage(tabData));
+          console.log(
+            `[StorageManager] Loaded ${quickTabs.length} Quick Tabs from background for container ${this.cookieStoreId}`
+          );
+          return quickTabs;
+        }
+
+        // STEP 2: Fallback - Try session storage (faster, temporary)
         let containerData = await this.sessionAdapter.load(this.cookieStoreId);
 
-        // Fall back to sync storage
+        // STEP 3: Fallback - Try sync storage
         if (!containerData) {
           containerData = await this.syncAdapter.load(this.cookieStoreId);
         }
