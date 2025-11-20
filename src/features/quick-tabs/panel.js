@@ -57,6 +57,7 @@ export class PanelManager {
   /**
    * Initialize the panel
    * v1.5.9.12 - Container integration: Detect container context
+   * v1.6.0.3 - Fixed initialization order: Create panel BEFORE loading state
    */
   async init() {
     debug('[PanelManager] Initializing...');
@@ -64,20 +65,31 @@ export class PanelManager {
     // Detect container context
     await this.detectContainerContext();
 
-    // Initialize state manager
+    // Inject CSS early (needed for panel creation)
+    this.uiBuilder.injectStyles();
+
+    // Create panel with default state (hidden by default)
+    // CRITICAL: Panel must exist BEFORE state manager callbacks are invoked
+    const defaultState = {
+      left: 100,
+      top: 100,
+      width: 350,
+      height: 500,
+      isOpen: false
+    };
+    this.panel = this.uiBuilder.createPanel(defaultState);
+    document.body.appendChild(this.panel);
+
+    // Initialize state manager (callbacks can now safely access this.panel)
     this.stateManager = new PanelStateManager({
       onStateLoaded: state => this._applyState(state),
       onBroadcastReceived: (type, data) => this._handleBroadcast(type, data)
     });
     await this.stateManager.init();
 
-    // Inject CSS
-    this.uiBuilder.injectStyles();
-
-    // Create panel (hidden by default)
+    // Apply loaded state to panel (if different from default)
     const savedState = this.stateManager.getState();
-    this.panel = this.uiBuilder.createPanel(savedState);
-    document.body.appendChild(this.panel);
+    this._applyState(savedState);
 
     // Initialize controllers
     this._initializeControllers();
