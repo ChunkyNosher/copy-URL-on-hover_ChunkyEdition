@@ -156,8 +156,10 @@ Access settings by clicking the extension icon.
 
 **Copy URL Tab:**
 
+
 - Keyboard shortcuts (Y, X, O defaults)
 - Modifier keys (Ctrl, Alt, Shift)
+
 
 **Quick Tabs Tab:**
 
@@ -167,12 +169,14 @@ Access settings by clicking the extension icon.
 - Default size and position
 - Close on open toggle
 
+
 **Appearance Tab:**
 
 - Notification style (tooltip/notification)
 - Colors, borders, animations
 - Position and size
 - Dark mode toggle
+
 - Debug mode toggle
 
 **Advanced Tab:**
