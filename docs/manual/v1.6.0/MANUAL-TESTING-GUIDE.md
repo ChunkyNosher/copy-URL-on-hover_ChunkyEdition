@@ -9,6 +9,7 @@
 ## Prerequisites
 
 1. **Build the extension:**
+
    ```bash
    npm run build
    ```
@@ -38,6 +39,7 @@
 ### Expected Results:
 
 ✅ **PASS if:**
+
 - Extension loads without errors
 - Console shows: `[Copy-URL-on-Hover] Script loaded! @` with timestamp
 - Console shows: `[Copy-URL-on-Hover] All module imports completed successfully`
@@ -45,6 +47,7 @@
 - No "Could not establish connection" errors appear
 
 ❌ **FAIL if:**
+
 - Console shows: "Could not establish connection. Receiving end does not exist"
 - Console shows: "Content script failed to load"
 - Extension icon is grayed out
@@ -52,6 +55,7 @@
 ### Troubleshooting:
 
 If FAIL:
+
 1. Check `dist/content.js` exists
 2. Verify `dist/manifest.json` has `"js": ["dist/content.js"]` (not just `"content.js"`)
 3. Rebuild: `npm run build`
@@ -73,12 +77,14 @@ If FAIL:
 ### Expected Results:
 
 ✅ **PASS if:**
+
 - Console shows: `[Content] Received TOGGLE_QUICK_TABS_PANEL request`
 - Console shows: `[Content] ✓ Quick Tabs panel toggled successfully`
 - OR console shows: `[Content] Quick Tabs manager not initialized` (acceptable if no Quick Tabs exist yet)
 - No "Could not establish connection" errors
 
 ❌ **FAIL if:**
+
 - Console shows: "Could not establish connection. Receiving end does not exist"
 - Nothing happens when pressing Ctrl+Alt+Z
 - Browser shows "Unknown command" or "Command not registered"
@@ -86,6 +92,7 @@ If FAIL:
 ### Troubleshooting:
 
 If FAIL:
+
 1. Verify content script loaded (see Test 1)
 2. Check browser console for error messages
 3. Try reloading the page
@@ -108,12 +115,14 @@ If FAIL:
 ### Expected Results:
 
 ✅ **PASS if:**
+
 - File save dialog appears
 - Default filename is `console-logs-v1.6.0-[timestamp].txt`
 - File downloads successfully
 - File contains log entries from extension
 
 ❌ **FAIL if:**
+
 - Error message appears: "Export Failed"
 - Console shows: "Could not establish connection. Receiving end does not exist"
 - No file save dialog appears
@@ -122,6 +131,7 @@ If FAIL:
 ### Troubleshooting:
 
 If FAIL:
+
 1. Check browser console for specific error messages
 2. Verify LogHandler is imported in background.js (line 8)
 3. Verify messageRouter.register('EXPORT_LOGS', ...) exists (line 998)
@@ -144,11 +154,13 @@ If FAIL:
 ### Expected Results:
 
 ✅ **PASS if:**
+
 - Success message appears: "Log history cleared successfully"
 - Button changes color/state to indicate success
 - Clicking "Export Console Logs" afterward shows fewer/no old logs
 
 ❌ **FAIL if:**
+
 - Error message appears: "Clear Failed"
 - Console shows: "Could not establish connection. Receiving end does not exist"
 - Logs are not actually cleared (check by exporting after clearing)
@@ -156,6 +168,7 @@ If FAIL:
 ### Troubleshooting:
 
 If FAIL:
+
 1. Check browser console for error messages
 2. Verify CLEAR_CONSOLE_LOGS handler is registered (background.js line 992)
 3. Verify CLEAR_CONTENT_LOGS handler exists in content.js (line 707)
@@ -177,11 +190,13 @@ If FAIL:
 ### Expected Results:
 
 ✅ **PASS if:**
+
 - No warnings about duplicate command listeners
 - No references to "toggle-minimized-manager" in console
 - Only "toggle-quick-tabs-manager" command is registered
 
 ❌ **FAIL if:**
+
 - Console shows warnings about multiple command listeners
 - "toggle-minimized-manager" appears in logs
 - Pressing Ctrl+Alt+Z triggers multiple handlers
@@ -189,6 +204,7 @@ If FAIL:
 ### Troubleshooting:
 
 If FAIL:
+
 1. Check background.js around line 1051-1070
 2. Verify obsolete listener was removed
 3. Only one listener should exist at line 1240
@@ -223,11 +239,13 @@ If FAIL:
 ### Expected Results:
 
 ✅ **PASS if:**
+
 - All features work without errors
 - No "Could not establish connection" errors anywhere
 - Extension feels responsive and stable
 
 ❌ **FAIL if:**
+
 - Any feature crashes or shows errors
 - Extension becomes unresponsive
 - Errors appear in console during normal use
@@ -248,6 +266,7 @@ Use this checklist to track testing progress:
 **All tests passing?** ✅ v1.6.0 critical bugs are FIXED!
 
 **Any tests failing?** ❌ See troubleshooting sections or create GitHub issue with:
+
 - Test number that failed
 - Expected vs actual behavior
 - Console error messages
@@ -272,6 +291,7 @@ npm test
 ```
 
 Expected E2E test results:
+
 - 21 test cases in v1.6.0-critical-fixes.spec.js
 - All tests should PASS
 - Tests cover: content loading, keyboard shortcuts, log export, log clear, architecture
@@ -283,6 +303,7 @@ Expected E2E test results:
 After completing manual testing, report results in GitHub issue:
 
 **Format:**
+
 ```
 ## v1.6.0 Manual Testing Results
 
@@ -308,6 +329,7 @@ After completing manual testing, report results in GitHub issue:
 ---
 
 **Questions?** Check:
+
 - `v1.6.0-critical-bugs-diagnosis.md` - Original bug analysis
 - `v1.6.0-critical-bugs-fixes-implemented.md` - Implementation details
 - GitHub Issues for this milestone

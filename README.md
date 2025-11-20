@@ -21,6 +21,7 @@ panel optimized for Zen Browser.
 The initial v1.6.0 release had critical integration issues that prevented core functionality. **All issues have been identified and fixed:**
 
 **Issues Fixed:**
+
 - ✅ **Content Script Loading** - Fixed manifest.json path mismatch (was `content.js`, now `dist/content.js`)
 - ✅ **Keyboard Shortcut (Ctrl+Alt+Z)** - Implemented missing `TOGGLE_QUICK_TABS_PANEL` message handler
 - ✅ **Log Export Functionality** - Verified LogHandler properly registered (was already correct)
@@ -32,6 +33,7 @@ The initial v1.6.0 release had critical integration issues that prevented core f
 **Testing:** Comprehensive E2E test suite created (21 test cases) covering all fixes. See [Manual Testing Guide](docs/manual/v1.6.0/MANUAL-TESTING-GUIDE.md) for verification steps.
 
 **Documentation:**
+
 - [Bug Diagnosis Report](docs/manual/v1.6.0/v1.6.0-critical-bugs-diagnosis.md) - Original analysis
 - [Fixes Implementation](docs/manual/v1.6.0/v1.6.0-critical-bugs-fixes-implemented.md) - Complete fix details
 - [Manual Testing Guide](docs/manual/v1.6.0/MANUAL-TESTING-GUIDE.md) - Step-by-step verification
