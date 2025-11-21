@@ -703,6 +703,138 @@ jobs:
           echo "=========================================="
 
       # ====================================================================
+      # NEW STEP: Validate Task Status and Tracking
+      # ====================================================================
+      - name: Validate agentic task status
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "Agentic Task Status Validation"
+          echo "=========================================="
+          
+          # Check if there are tasks
+          if [ -f ".agentic-tools-mcp/tasks/tasks.json" ]; then
+            echo "✓ Task database found"
+            
+            # Get task counts by status
+            PENDING_COUNT=$(cat .agentic-tools-mcp/tasks/tasks.json | jq '[.tasks[] | select(.status == "pending")] | length' 2>/dev/null || echo "0")
+            IN_PROGRESS_COUNT=$(cat .agentic-tools-mcp/tasks/tasks.json | jq '[.tasks[] | select(.status == "in-progress")] | length' 2>/dev/null || echo "0")
+            BLOCKED_COUNT=$(cat .agentic-tools-mcp/tasks/tasks.json | jq '[.tasks[] | select(.status == "blocked")] | length' 2>/dev/null || echo "0")
+            DONE_COUNT=$(cat .agentic-tools-mcp/tasks/tasks.json | jq '[.tasks[] | select(.status == "done")] | length' 2>/dev/null || echo "0")
+            TOTAL_COUNT=$(cat .agentic-tools-mcp/tasks/tasks.json | jq '.tasks | length' 2>/dev/null || echo "0")
+            
+            echo ""
+            echo "Task Status Summary:"
+            echo "  Pending: $PENDING_COUNT"
+            echo "  In Progress: $IN_PROGRESS_COUNT"
+            echo "  Blocked: $BLOCKED_COUNT"
+            echo "  Done: $DONE_COUNT"
+            echo "  Total: $TOTAL_COUNT"
+            echo ""
+            
+            # Check for stale in-progress tasks
+            if [ "$IN_PROGRESS_COUNT" -gt 0 ]; then
+              echo "⚠️ Found $IN_PROGRESS_COUNT in-progress task(s)"
+              echo "Workflow successful - tasks remain in-progress for Copilot to complete"
+            fi
+            
+            # Validate JSON structure
+            if jq empty .agentic-tools-mcp/tasks/tasks.json 2>/dev/null; then
+              echo "✓ Task database has valid JSON structure"
+            else
+              echo "✗ Task database has INVALID JSON"
+              exit 1
+            fi
+            
+            # Check for feature commits without task tracking
+            if git log -1 --pretty=%B | grep -qE "^feat:|^feature:"; then
+              if [ "$DONE_COUNT" -eq 0 ] && [ "$TOTAL_COUNT" -eq 0 ]; then
+                echo "⚠️ Feature commit detected but no tasks tracked"
+                echo "Suggestion: Use task management for complex features"
+              else
+                echo "✓ Feature development is tracked with tasks"
+              fi
+            fi
+          else
+            echo "ℹ️ No task database found (first run or no tasks created yet)"
+            echo "Tasks are optional but recommended for complex features"
+          fi
+          
+          echo "=========================================="
+        continue-on-error: true
+
+      # ====================================================================
+      # NEW STEP: Verify Memory Quality
+      # ====================================================================
+      - name: Verify memory file quality
+        run: |
+          echo "=========================================="
+          echo "Memory Quality Check"
+          echo "=========================================="
+          
+          if [ -d ".agentic-tools-mcp/memories" ]; then
+            # Count memories by category
+            echo "Memories by category:"
+            TOTAL_MEMORIES=0
+            for category in .agentic-tools-mcp/memories/*/; do
+              if [ -d "$category" ]; then
+                CATEGORY_NAME=$(basename "$category")
+                FILE_COUNT=$(find "$category" -name "*.json" 2>/dev/null | wc -l)
+                echo "  $CATEGORY_NAME: $FILE_COUNT file(s)"
+                TOTAL_MEMORIES=$((TOTAL_MEMORIES + FILE_COUNT))
+              fi
+            done
+            
+            echo ""
+            echo "Total memories: $TOTAL_MEMORIES"
+            echo ""
+            
+            # Check for memories without categories
+            UNCATEGORIZED=$(find .agentic-tools-mcp/memories -maxdepth 1 -name "*.json" 2>/dev/null | wc -l)
+            if [ "$UNCATEGORIZED" -gt 0 ]; then
+              echo "⚠️ Warning: $UNCATEGORIZED uncategorized memory file(s) found"
+              echo "Recommendation: All memories should have categories"
+            else
+              echo "✓ All memories properly categorized"
+            fi
+            
+            echo ""
+            
+            # Validate JSON structure
+            INVALID_COUNT=0
+            for memfile in $(find .agentic-tools-mcp/memories -name "*.json" 2>/dev/null); do
+              if ! jq empty "$memfile" 2>/dev/null; then
+                echo "✗ Invalid JSON: $memfile"
+                INVALID_COUNT=$((INVALID_COUNT + 1))
+              fi
+            done
+            
+            if [ "$INVALID_COUNT" -eq 0 ]; then
+              echo "✓ All memory files have valid JSON"
+            else
+              echo "✗ Found $INVALID_COUNT invalid memory file(s)"
+              exit 1
+            fi
+            
+            # Check for recommended categories
+            echo ""
+            echo "Category usage analysis:"
+            RECOMMENDED_CATEGORIES="architecture technical best-practices preferences research troubleshooting project-context verification-notes"
+            for cat in $RECOMMENDED_CATEGORIES; do
+              if [ -d ".agentic-tools-mcp/memories/$cat" ]; then
+                COUNT=$(find ".agentic-tools-mcp/memories/$cat" -name "*.json" 2>/dev/null | wc -l)
+                if [ "$COUNT" -gt 0 ]; then
+                  echo "  ✓ $cat ($COUNT)"
+                fi
+              fi
+            done
+          else
+            echo "ℹ️ No memories directory found (first run or no memories created yet)"
+          fi
+          
+          echo "=========================================="
+
+      # ====================================================================
       # STEP 17: Environment Ready Summary (UPDATED)
       # ====================================================================
       - name: Display environment ready summary
@@ -742,6 +874,8 @@ jobs:
           echo "✓ Build completed successfully"
           echo "✓ Manifest validated with web-ext"
           echo "✓ Browser API mocks working"
+          echo "✓ Task status validated"
+          echo "✓ Memory quality checked"
           echo ""
           echo "Copilot can now use ALL libraries for:"
           echo "  • Complex browser API mocking (sinon-chrome)"
