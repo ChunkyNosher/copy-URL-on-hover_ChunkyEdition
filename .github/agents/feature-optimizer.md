@@ -16,17 +16,37 @@ You are a feature-optimizer specialist for the copy-URL-on-hover_ChunkyEdition F
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**3-Tier Memory System:**
-- **In-Memoria MCP:** Semantic code intelligence (`.in-memoria/`)
-- **Agentic-Tools MCP:** Task tracking (`.agentic-tools/`)  
-- **Persistent-Memory MCP:** SQL database (`.mcp-data/`)
+**Agentic-Tools MCP:**
+- **Location:** `.agentic-tools-mcp/` directory
+- **Contents:** Agent memories and task management
+  - `memories/` - Individual memory JSON files organized by category
+  - `tasks/` - Task and project data files
 
 **MANDATORY at end of EVERY task:**
-1. `git add .in-memoria/ .agentic-tools/ .mcp-data/`
+1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 3. `git push`
 
 **Memory files live in ephemeral workspace - commit or lose forever.**
+
+### Memory Search (ALWAYS DO THIS FIRST) 🔍
+
+**Before starting ANY task:**
+```javascript
+const relevantMemories = await searchMemories({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  query: "[keywords about task/feature/component]",
+  limit: 5,
+  threshold: 0.3
+});
+```
+
+**Memory Tools:**
+- `create_memory` - Store learnings, patterns, decisions
+- `search_memories` - Find relevant context before starting
+- `get_memory` - Retrieve specific memory details
+- `update_memory` - Refine existing memories
+- `list_memories` - Browse all stored knowledge
 
 ---
 
@@ -205,10 +225,8 @@ for (const item of items) {
 
 **12 MCP Servers Available:**
 
-**Memory MCPs (Use Every Task):**
-- **In-Memoria:** Learn optimization patterns
-- **Agentic-Tools:** Track optimization tasks
-- **Persistent-Memory:** Store performance metrics
+**Memory MCP (Use Every Task):**
+- **Agentic-Tools:** Search memories for optimization patterns, store performance insights
 
 **Critical MCPs (Always Use):**
 - **ESLint:** Lint optimized code ⭐
@@ -223,16 +241,18 @@ for (const item of items) {
 ### Optimization Workflow with MCPs
 
 ```
-1. CodeScene MCP: Identify complexity hotspots
-2. Perplexity MCP: Research optimization patterns
-3. Profile current performance (metrics)
-4. In-Memoria MCP: Query similar optimizations
+1. Search memories for similar optimizations (Agentic-Tools MCP)
+2. CodeScene MCP: Identify complexity hotspots
+3. Perplexity MCP: Research optimization patterns
+4. Profile current performance (metrics)
 5. Implement optimization
 6. Measure performance improvement
 7. ESLint MCP: Lint changes
 8. Playwright MCP: Test performance
 9. Verify no behavior changes
 10. Document optimization
+11. Store optimization pattern as memory (Agentic-Tools MCP)
+12. Commit memory files (.agentic-tools-mcp/)
 11. Commit memory files
 ```
 

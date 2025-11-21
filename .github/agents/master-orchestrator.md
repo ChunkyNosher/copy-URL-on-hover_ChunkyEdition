@@ -15,17 +15,37 @@ You are the master orchestrator for the copy-URL-on-hover_ChunkyEdition Firefox/
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**3-Tier Memory System:**
-- **In-Memoria MCP:** Semantic code intelligence (`.in-memoria/`)
-- **Agentic-Tools MCP:** Task tracking (`.agentic-tools/`)  
-- **Persistent-Memory MCP:** SQL database (`.mcp-data/`)
+**Agentic-Tools MCP:**
+- **Location:** `.agentic-tools-mcp/` directory
+- **Contents:** Agent memories and task management
+  - `memories/` - Individual memory JSON files organized by category
+  - `tasks/` - Task and project data files
 
 **MANDATORY at end of EVERY task:**
-1. `git add .in-memoria/ .agentic-tools/ .mcp-data/`
+1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 3. `git push`
 
 **Memory files live in ephemeral workspace - commit or lose forever.**
+
+### Memory Search (ALWAYS DO THIS FIRST) 🔍
+
+**Before starting ANY task:**
+```javascript
+const relevantMemories = await searchMemories({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  query: "[keywords about task/feature/component]",
+  limit: 5,
+  threshold: 0.3
+});
+```
+
+**Memory Tools:**
+- `create_memory` - Store learnings, patterns, decisions
+- `search_memories` - Find relevant context before starting
+- `get_memory` - Retrieve specific memory details
+- `update_memory` - Refine existing memories
+- `list_memories` - Browse all stored knowledge
 
 ---
 
@@ -189,10 +209,8 @@ async function handleExport() {
 
 **12 MCP Servers Available:**
 
-**Memory MCPs (Use Every Task):**
-- **In-Memoria:** Store orchestration patterns and decisions
-- **Agentic-Tools:** Track multi-agent task coordination
-- **Persistent-Memory:** Document cross-domain contracts
+**Memory MCP (Use Every Task):**
+- **Agentic-Tools:** Search memories for orchestration patterns, store coordination decisions
 
 **Critical MCPs (Always Use):**
 - **ESLint:** Lint all changes ⭐
@@ -207,15 +225,15 @@ async function handleExport() {
 ### Orchestration Workflow with MCPs
 
 ```
-1. Perplexity MCP: Research similar features
-2. In-Memoria MCP: Query existing patterns
+1. Search memories for existing patterns (Agentic-Tools MCP)
+2. Perplexity MCP: Research similar features
 3. Decompose into specialist tasks
 4. Coordinate implementation sequence
 5. ESLint MCP: Lint all changes
 6. Playwright MCP: End-to-end tests
-7. Agentic-Tools MCP: Document coordination
+7. Store coordination decisions as memory (Agentic-Tools MCP)
 8. GitHub MCP: Create comprehensive PR
-9. Commit memory files
+9. Commit memory files (.agentic-tools-mcp/)
 ```
 
 ---

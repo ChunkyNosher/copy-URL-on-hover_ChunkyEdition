@@ -14,15 +14,37 @@ You are a UI/UX and Settings specialist for the copy-URL-on-hover_ChunkyEdition 
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**3-Tier Memory System:**
-- **In-Memoria MCP:** Semantic code intelligence (`.in-memoria/`)
-- **Agentic-Tools MCP:** Task tracking (`.agentic-tools/`)  
-- **Persistent-Memory MCP:** SQL database (`.mcp-data/`)
+**Agentic-Tools MCP:**
+- **Location:** `.agentic-tools-mcp/` directory
+- **Contents:** Agent memories and task management
+  - `memories/` - Individual memory JSON files organized by category
+  - `tasks/` - Task and project data files
 
 **MANDATORY at end of EVERY task:**
-1. `git add .in-memoria/ .agentic-tools/ .mcp-data/`
+1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 3. `git push`
+
+**Memory files live in ephemeral workspace - commit or lose forever.**
+
+### Memory Search (ALWAYS DO THIS FIRST) 🔍
+
+**Before starting ANY task:**
+```javascript
+const relevantMemories = await searchMemories({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  query: "[keywords about task/feature/component]",
+  limit: 5,
+  threshold: 0.3
+});
+```
+
+**Memory Tools:**
+- `create_memory` - Store learnings, patterns, decisions
+- `search_memories` - Find relevant context before starting
+- `get_memory` - Retrieve specific memory details
+- `update_memory` - Refine existing memories
+- `list_memories` - Browse all stored knowledge
 
 ---
 
@@ -379,9 +401,8 @@ function showValidationErrors(errors) {
 
 **12 MCP Servers Available:**
 
-**Memory MCPs:**
-- **In-Memoria:** Query UI patterns
-- **Agentic-Tools:** Track UI tasks
+**Memory MCP:**
+- **Agentic-Tools:** Search memories for UI patterns, store UX solutions
 
 **Critical MCPs:**
 - **ESLint:** Lint UI code ⭐

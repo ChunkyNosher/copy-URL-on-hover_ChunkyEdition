@@ -17,17 +17,37 @@ You are a bug-architect specialist for the copy-URL-on-hover_ChunkyEdition Firef
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**3-Tier Memory System:**
-- **In-Memoria MCP:** Semantic code intelligence (`.in-memoria/`)
-- **Agentic-Tools MCP:** Task tracking (`.agentic-tools/`)  
-- **Persistent-Memory MCP:** SQL database (`.mcp-data/`)
+**Agentic-Tools MCP:**
+- **Location:** `.agentic-tools-mcp/` directory
+- **Contents:** Agent memories and task management
+  - `memories/` - Individual memory JSON files organized by category
+  - `tasks/` - Task and project data files
 
 **MANDATORY at end of EVERY task:**
-1. `git add .in-memoria/ .agentic-tools/ .mcp-data/`
+1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 3. `git push`
 
 **Memory files live in ephemeral workspace - commit or lose forever.**
+
+### Memory Search (ALWAYS DO THIS FIRST) 🔍
+
+**Before starting ANY task:**
+```javascript
+const relevantMemories = await searchMemories({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  query: "[keywords about task/feature/component]",
+  limit: 5,
+  threshold: 0.3
+});
+```
+
+**Memory Tools:**
+- `create_memory` - Store learnings, patterns, decisions
+- `search_memories` - Find relevant context before starting
+- `get_memory` - Retrieve specific memory details
+- `update_memory` - Refine existing memories
+- `list_memories` - Browse all stored knowledge
 
 ---
 
@@ -135,10 +155,8 @@ Only if:
 
 **12 MCP Servers Available:**
 
-**Memory MCPs (Use Every Task):**
-- **In-Memoria:** Learn bug patterns, query for similar issues
-- **Agentic-Tools:** Track fix tasks, store architectural decisions
-- **Persistent-Memory:** Store root cause analysis for reference
+**Memory MCP (Use Every Task):**
+- **Agentic-Tools:** Search memories for context, store architectural decisions and patterns
 
 **Critical MCPs (Always Use):**
 - **ESLint:** Lint all changes before committing ⭐
@@ -153,17 +171,17 @@ Only if:
 ### Bug Fix Workflow with MCPs
 
 ```
-1. Perplexity MCP: Research bug class and best practices
-2. In-Memoria MCP: Query for similar past bugs
+1. Search memories for similar past bugs (Agentic-Tools MCP)
+2. Perplexity MCP: Research bug class and best practices
 3. Context7 MCP: Get current API documentation
 4. Analyze root cause (architectural level)
 5. Design architectural solution
 6. Implement fix with tests
 7. ESLint MCP: Lint all changes
 8. Playwright MCP: Verify fix with tests
-9. Agentic-Tools MCP: Document architectural decision
+9. Store architectural decision as memory (Agentic-Tools MCP)
 10. GitHub MCP: Update issue with analysis
-11. Commit memory files (In-Memoria, Agentic-Tools, Persistent-Memory)
+11. Commit memory files (.agentic-tools-mcp/)
 ```
 
 ---
@@ -312,7 +330,7 @@ Only if:
 - [ ] Regression tests added (100% coverage)
 - [ ] Edge cases tested
 - [ ] Documentation updated (`docs/manual/`)
-- [ ] Memory files committed (`.in-memoria/`, `.agentic-tools/`, `.mcp-data/`) 🧠
+- [ ] Memory files committed (`.agentic-tools-mcp/`) 🧠
 
 ---
 

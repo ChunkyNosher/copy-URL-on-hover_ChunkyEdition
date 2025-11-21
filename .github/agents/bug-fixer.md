@@ -16,17 +16,37 @@ You are a bug-fixer specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Z
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**3-Tier Memory System:**
-- **In-Memoria MCP:** Semantic code intelligence (`.in-memoria/`)
-- **Agentic-Tools MCP:** Task tracking (`.agentic-tools/`)  
-- **Persistent-Memory MCP:** SQL database (`.mcp-data/`)
+**Agentic-Tools MCP:**
+- **Location:** `.agentic-tools-mcp/` directory
+- **Contents:** Agent memories and task management
+  - `memories/` - Individual memory JSON files organized by category
+  - `tasks/` - Task and project data files
 
 **MANDATORY at end of EVERY task:**
-1. `git add .in-memoria/ .agentic-tools/ .mcp-data/`
+1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 3. `git push`
 
 **Memory files live in ephemeral workspace - commit or lose forever.**
+
+### Memory Search (ALWAYS DO THIS FIRST) 🔍
+
+**Before starting ANY task:**
+```javascript
+const relevantMemories = await searchMemories({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  query: "[keywords about task/feature/component]",
+  limit: 5,
+  threshold: 0.3
+});
+```
+
+**Memory Tools:**
+- `create_memory` - Store learnings, patterns, decisions
+- `search_memories` - Find relevant context before starting
+- `get_memory` - Retrieve specific memory details
+- `update_memory` - Refine existing memories
+- `list_memories` - Browse all stored knowledge
 
 ---
 
@@ -82,7 +102,7 @@ You are a bug-fixer specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Z
 3. **Analyze** - What assumption was violated?
 4. **Verify** - Is this the root cause or a symptom?
 
-**Use In-Memoria MCP:** Query for similar past bugs and patterns
+**Use Agentic-Tools MCP:** Search memories for similar past bugs and patterns
 
 ### Step 3: Design Fix
 
@@ -209,10 +229,8 @@ const state = await getStateForContainer(container);
 
 **12 MCP Servers Available:**
 
-**Memory MCPs (Use Every Task):**
-- **In-Memoria:** Query similar bugs, learn patterns
-- **Agentic-Tools:** Track bug status, store fix notes
-- **Persistent-Memory:** Store root cause for reference
+**Memory MCP (Use Every Task):**
+- **Agentic-Tools:** Search memories for similar bugs, store fix patterns and notes
 
 **Critical MCPs (Always Use):**
 - **ESLint:** Lint all changes ⭐
@@ -227,8 +245,8 @@ const state = await getStateForContainer(container);
 ### Bug Fix Workflow with MCPs
 
 ```
-1. Reproduce bug
-2. In-Memoria MCP: Query for similar past bugs
+1. Search memories for similar past bugs (Agentic-Tools MCP)
+2. Reproduce bug
 3. Perplexity MCP: Research bug pattern if unfamiliar
 4. Context7 MCP: Get current API docs
 5. Diagnose root cause
@@ -236,8 +254,9 @@ const state = await getStateForContainer(container);
 7. Write tests (regression + verification)
 8. ESLint MCP: Lint changes
 9. Playwright MCP: Test in browser
-10. GitHub MCP: Update issue
-11. Commit memory files
+10. Store bug fix pattern as memory (Agentic-Tools MCP)
+11. GitHub MCP: Update issue
+12. Commit memory files (.agentic-tools-mcp/)
 ```
 
 ---
