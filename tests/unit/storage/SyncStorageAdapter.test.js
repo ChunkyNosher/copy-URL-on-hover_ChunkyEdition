@@ -132,7 +132,9 @@ describe('SyncStorageAdapter', () => {
       });
 
       // v1.6.0.12 - Only uses local storage now, so error propagates directly
-      await expect(adapter.save('firefox-default', [quickTab])).rejects.toThrow('Local storage failed');
+      await expect(adapter.save('firefox-default', [quickTab])).rejects.toThrow(
+        'Local storage failed'
+      );
     });
 
     test('should save multiple Quick Tabs', async () => {
