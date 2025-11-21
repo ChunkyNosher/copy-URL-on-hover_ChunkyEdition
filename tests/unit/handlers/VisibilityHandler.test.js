@@ -396,11 +396,11 @@ describe('VisibilityHandler', () => {
       expect(mockTab.updateZIndex).toHaveBeenCalledWith(mockCurrentZIndex.value);
     });
 
-    test('should emit focus event', () => {
+    test('should emit focus event', async () => {
       const eventSpy = jest.fn();
       mockEventBus.on('quick-tab:focused', eventSpy);
 
-      visibilityHandler.handleFocus('qt-123');
+      await visibilityHandler.handleFocus('qt-123');
 
       expect(eventSpy).toHaveBeenCalledWith({ id: 'qt-123' });
     });
@@ -449,11 +449,11 @@ describe('VisibilityHandler', () => {
       expect(eventSpy).toHaveBeenCalled();
     });
 
-    test('should handle complete focus flow', () => {
+    test('should handle complete focus flow', async () => {
       const eventSpy = jest.fn();
       mockEventBus.on('quick-tab:focused', eventSpy);
 
-      visibilityHandler.handleFocus('qt-123');
+      await visibilityHandler.handleFocus('qt-123');
 
       expect(mockCurrentZIndex.value).toBeGreaterThan(10000);
       expect(mockTab.updateZIndex).toHaveBeenCalled();
