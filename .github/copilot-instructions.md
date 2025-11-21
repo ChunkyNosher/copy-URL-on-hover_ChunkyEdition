@@ -50,9 +50,7 @@ If you think: "This workaround is easier" → ❌ Implement properly
 ### CRITICAL: At the end of EVERY task, you MUST:
 
 1. **Stage memory files for commit:**
-   - `git add .in-memoria/`
    - `git add .agentic-tools-mcp/`
-   - `git add .mcp-data/`
 
 2. **Commit memory files with your code changes:**
    - Include memory files in your final commit
@@ -63,24 +61,24 @@ If you think: "This workaround is easier" → ❌ Implement properly
 
 ### Memory File Locations
 
-- `.in-memoria/` - Code intelligence patterns (In-Memoria MCP)
-- `.agentic-tools/` - Task tracking and session memory (Agentic-Tools MCP)
-- `.mcp-data/` - SQLite database for structured memory (Persistent-Memory MCP)
+- `.agentic-tools-mcp/` - Agent memories and task management (Agentic-Tools MCP)
+  - `memories/` - Individual memory JSON files organized by category
+  - `tasks/` - Task and project data files
 
 **Why This Matters:** Your memory files are stored in an ephemeral environment that gets destroyed when your session ends. If you don't commit them to the PR, they will be lost forever.
 
 ### Verification Before Finishing
 
-Check that `.in-memoria/`, `.agentic-tools/`, and `.mcp-data/` appear in your commit. If missing, ADD THEM NOW.
+Check that `.agentic-tools/` appears in your commit. If missing, ADD IT NOW.
 
 ### CRITICAL: Memory Tool Names: DO NOT USE "store_memory" TOOL CALL TO STORE A MEMORY, IT DOES NOT EXIST. 
-Use either in-memoria, agentic-tools, or persistent-memory MCP to properly store a memory.
+Use either agentic-tools MCP to properly store a memory.
 
 **This is NON-NEGOTIABLE for memory persistence across tasks.**
 
 ---
 
-## MCP Server Utilization (12 Servers Configured)
+## MCP Server Utilization (10 Servers Configured)
 
 ### Critical Priority MCPs (ALWAYS Use)
 
@@ -124,23 +122,19 @@ Use either in-memoria, agentic-tools, or persistent-memory MCP to properly store
 
 ### Memory & Intelligence MCPs (Session Persistence)
 
-#### In-Memoria MCP 🧠
-- **Purpose:** Semantic code intelligence with vector embeddings
-- **Storage:** `.in-memoria/patterns.db` (SQLite) + embeddings (SurrealDB)
-- **Tools:** `learn_codebase_intelligence`, `query_patterns`, `contribute_insights`
-- **CRITICAL:** Commit `.in-memoria/patterns.db` to persist learnings
-
 #### Agentic-Tools MCP 🧠
-- **Purpose:** Task management and agent memories
-- **Storage:** `.agentic-tools/` (JSON files)
-- **Tools:** `create_task`, `create_memory`, `search_memories`, `get_project_info`
-- **CRITICAL:** Commit `.agentic-tools/*.json` to persist tasks/memories
+- **Purpose:** Agent memories and advanced task management
+- **Storage:** `.agentic-tools-mcp/` (directory with individual JSON files)
+- **Memory Tools:** `create_memory`, `search_memories`, `get_memory`, `list_memories`, `update_memory`, `delete_memory`
+- **Task Tools:** `create_task`, `get_task`, `update_task`, `list_tasks`, `create_project`, `get_project_info`
+- **Advanced Tools:** `parse_prd`, `get_next_task_recommendation`, `analyze_task_complexity`, `research_task`
+- **CRITICAL:** Commit `.agentic-tools-mcp/` directory to persist all learnings and tasks
 
-#### Persistent-Memory MCP 🧠
-- **Purpose:** SQLite-based structured memory
-- **Storage:** `.mcp-data/memory.db`
-- **Tools:** `sqlite_execute`, `sqlite_get_catalog`
-- **CRITICAL:** Commit `.mcp-data/memory.db` to persist data
+**Memory Storage Architecture:**
+- Individual JSON files per memory (not single memories.json)
+- Organized by category in subdirectories
+- File names based on memory titles
+- Example: `memories/preferences/User_prefers_concise_responses.json`
 
 ---
 
@@ -170,7 +164,7 @@ Use either in-memoria, agentic-tools, or persistent-memory MCP to properly store
 ### Memory Persistence Workflow (EVERY Task)
 ```
 1. Complete work
-2. git add .in-memoria/ .agentic-tools/ .mcp-data/
+2. git add .agentic-tools-mcp/ 
 3. git commit -m "chore: persist agent memory from task"
 4. git push
 ```
