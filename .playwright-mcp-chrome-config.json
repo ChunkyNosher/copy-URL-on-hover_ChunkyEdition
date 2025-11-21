@@ -11,8 +11,12 @@
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
-        "--disable-blink-features=AutomationControlled"
-      ]
+        "--disable-blink-features=AutomationControlled",
+        "--enable-features=NetworkService,NetworkServiceInProcess"
+      ],
+      "env": {
+        "TEST_MODE": "true"
+      }
     },
     "contextOptions": {
       "viewport": {
@@ -20,6 +24,7 @@
         "height": 1080
       },
       "ignoreHTTPSErrors": true,
+      "bypassCSP": true,
       "permissions": ["clipboard-read", "clipboard-write", "notifications"]
     }
   },

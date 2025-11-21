@@ -13,6 +13,9 @@
         "dom.events.testing.asyncClipboard": true,
         "browser.startup.homepage_override.mstone": "ignore",
         "trailhead.firstrun.didSeeAboutWelcome": true
+      },
+      "env": {
+        "TEST_MODE": "true"
       }
     },
     "contextOptions": {
