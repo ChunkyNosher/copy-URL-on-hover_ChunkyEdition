@@ -230,9 +230,15 @@ async function _delegateLogExport(logText, filename) {
 /**
  * Extract category from log entry for export filtering
  * v1.6.0.9 - Added export filter support
+ * v1.6.0.13 - Enhanced to handle background script component names
  */
 function extractCategoryFromLogEntry(logEntry) {
   const message = logEntry.message || '';
+
+  // Use category if already extracted by console-interceptor (v1.6.0.13)
+  if (logEntry.category && logEntry.category !== 'uncategorized') {
+    return logEntry.category;
+  }
 
   // Match pattern: [emoji displayName] [Action] Message
   const match = message.match(/^\[([^\]]+)\]/);
@@ -248,7 +254,7 @@ function extractCategoryFromLogEntry(logEntry) {
     .replace(/[^\w\s-]/g, '')
     .trim();
 
-  // Category mapping
+  // Category mapping - includes both display names and component names
   const mapping = {
     'url detection': 'url-detection',
     hover: 'hover',
@@ -275,7 +281,18 @@ function extractCategoryFromLogEntry(logEntry) {
     'tab management': 'tabs',
     performance: 'performance',
     errors: 'errors',
-    initialization: 'initialization'
+    initialization: 'initialization',
+    // Background script component names (v1.6.0.13)
+    background: 'state',
+    quicktabhandler: 'quick-tab-manager',
+    quicktabsmanager: 'quick-tab-manager',
+    storagemanager: 'storage',
+    statecoordinator: 'state',
+    eventbus: 'event-bus',
+    popup: 'config',
+    content: 'messaging',
+    debug: 'quick-tabs',
+    'copy-url-on-hover': 'initialization'
   };
 
   return mapping[normalized] || 'uncategorized';
@@ -319,14 +336,21 @@ async function getExportFilterSettings() {
 /**
  * Filter logs by export category settings
  * v1.6.0.9 - Added export filter support
+ * v1.6.0.13 - FIX: Now respects disabled categories for uncategorized logs
  */
 function filterLogsByExportSettings(allLogs, exportSettings) {
+  // Check if ALL categories are disabled
+  const allDisabled = Object.values(exportSettings).every(enabled => enabled === false);
+
   return allLogs.filter(logEntry => {
     const category = extractCategoryFromLogEntry(logEntry);
 
-    // Always include uncategorized logs (fail-safe)
+    // If all categories disabled, exclude uncategorized too (user wants minimal export)
     if (category === 'uncategorized') {
-      return true;
+      if (allDisabled) {
+        return false; // Respect user's choice to disable everything
+      }
+      return true; // Otherwise include uncategorized as fail-safe
     }
 
     // Check if category is enabled for export

@@ -204,8 +204,17 @@ export class QuickTabHandler {
 
   /**
    * Handle pin update
+   * v1.6.0.13 - Added logging
    */
   handlePinUpdate(message, _sender) {
+    console.log('[QuickTabHandler] Pin Update:', {
+      action: 'UPDATE_QUICK_TAB_PIN',
+      quickTabId: message.id,
+      pinnedToUrl: message.pinnedToUrl,
+      cookieStoreId: message.cookieStoreId || 'firefox-default',
+      timestamp: Date.now()
+    });
+
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.pinnedToUrl = msg.pinnedToUrl;
     });
@@ -213,8 +222,18 @@ export class QuickTabHandler {
 
   /**
    * Handle solo update
+   * v1.6.0.13 - Added logging
    */
   handleSoloUpdate(message, _sender) {
+    console.log('[QuickTabHandler] Solo Update:', {
+      action: 'UPDATE_QUICK_TAB_SOLO',
+      quickTabId: message.id,
+      soloedOnTabs: message.soloedOnTabs || [],
+      tabCount: (message.soloedOnTabs || []).length,
+      cookieStoreId: message.cookieStoreId || 'firefox-default',
+      timestamp: Date.now()
+    });
+
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.soloedOnTabs = msg.soloedOnTabs || [];
     });
@@ -222,8 +241,18 @@ export class QuickTabHandler {
 
   /**
    * Handle mute update
+   * v1.6.0.13 - Added logging
    */
   handleMuteUpdate(message, _sender) {
+    console.log('[QuickTabHandler] Mute Update:', {
+      action: 'UPDATE_QUICK_TAB_MUTE',
+      quickTabId: message.id,
+      mutedOnTabs: message.mutedOnTabs || [],
+      tabCount: (message.mutedOnTabs || []).length,
+      cookieStoreId: message.cookieStoreId || 'firefox-default',
+      timestamp: Date.now()
+    });
+
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.mutedOnTabs = msg.mutedOnTabs || [];
     });
@@ -231,8 +260,17 @@ export class QuickTabHandler {
 
   /**
    * Handle minimize update
+   * v1.6.0.13 - Added logging
    */
   handleMinimizeUpdate(message, _sender) {
+    console.log('[QuickTabHandler] Minimize Update:', {
+      action: 'UPDATE_QUICK_TAB_MINIMIZE',
+      quickTabId: message.id,
+      minimized: message.minimized,
+      cookieStoreId: message.cookieStoreId || 'firefox-default',
+      timestamp: Date.now()
+    });
+
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.minimized = msg.minimized;
     });
@@ -241,8 +279,17 @@ export class QuickTabHandler {
   /**
    * Handle z-index update
    * v1.6.0.12 - NEW: Save z-index for cross-tab sync
+   * v1.6.0.13 - Added logging
    */
   handleZIndexUpdate(message, _sender) {
+    console.log('[QuickTabHandler] Z-Index Update:', {
+      action: 'UPDATE_QUICK_TAB_ZINDEX',
+      quickTabId: message.id,
+      zIndex: message.zIndex,
+      cookieStoreId: message.cookieStoreId || 'firefox-default',
+      timestamp: Date.now()
+    });
+
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.zIndex = msg.zIndex;
     });
