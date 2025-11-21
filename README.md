@@ -1,22 +1,43 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.6.0.3** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and Persistent Floating Panel Manager.
+**Version 1.6.0.8** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and Persistent Floating Panel Manager.
 
 **🔧 v1.6.0 Status:** Architecture refactoring Phase 1 COMPLETE ✅ (Domain + Storage layers with 96% coverage)
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.0.3
+## 🎉 What's New in v1.6.0.8
 
-**🐛 Critical Bug Fixes (November 20, 2025) - ALL FIXED ✅**
+**🔍 Live Console Output & Export Filtering (November 21, 2025) ✅**
+
+Granular control over console log output to reduce noise and improve debugging experience:
+
+- ✅ **Live Console Filtering** - Control what appears in browser console in real-time
+  - 16 log categories organized into 3 groups (User Actions, System Operations, Diagnostics)
+  - Disable noisy categories (Hover, URL Detection) by default for cleaner console
+  - Independent settings for each category
+- ✅ **Export Log Filtering** - Control what gets included in .txt export files
+  - Separate filter settings for live console vs export (maximum flexibility)
+  - All categories enabled by default for comprehensive debugging
+  - Export metadata shows which filters were applied
+- ✅ **Collapsible Filter UI** - Space-efficient accordion groups in Advanced tab
+  - Expandable/collapsible category groups
+  - Select All / Deselect All buttons per group
+  - Visual category icons for easy identification
+
+**Why This Matters:** Hover and URL Detection events can generate hundreds of logs, flooding the console and making Quick Tab debugging difficult. With filtering, you can disable noisy categories while keeping important logs visible.
+
+**Usage:** Extension popup → Advanced tab → Console Log Filters section
+
+**Documentation:** [Implementation Guide](docs/manual/v1.6.0/live-console-and-export-filtering-guide.md)
+
+---
+
+**Previous Release: v1.6.0.3 - Critical Bug Fixes (November 20, 2025)**
 
 - ✅ **Quick Tabs Not Rendering** - Fixed PanelManager initialization race condition
-  - Panel element now created BEFORE state manager callbacks
-  - Quick Tabs render immediately when created
 - ✅ **Quick Tab Manager Panel Not Opening** - Keyboard shortcut (Ctrl+Alt+Z) now works
-- ✅ **Copy Text Keyboard Shortcut Failing** - Enhanced error logging with DOMException handling
-
-**Root Cause:** PanelManager callbacks invoked before panel DOM element existed. Fixed in ~40 lines across 5 files, fully backward compatible.
+- ✅ **Copy Text Keyboard Shortcut Failing** - Enhanced error logging
 
 **Documentation:** [Bug Diagnosis Report](docs/manual/v1.6.0.3-bug-diagnosis-and-fix-report.md) | [Release Summary](docs/misc/v1.6.0.3-RELEASE-SUMMARY.md)
 
@@ -264,4 +285,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Version 1.6.0.3** | [Changelog](docs/CHANGELOG.md) | [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) | [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
+**Version 1.6.0.8** | [Changelog](docs/CHANGELOG.md) | [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) | [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
