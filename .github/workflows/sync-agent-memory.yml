@@ -30,57 +30,124 @@ jobs:
           echo "Checking for Agent Memory in Merged PR"
           echo "=========================================="
           
-          # Check if memory directories exist
-          if [ -d ".in-memoria" ]; then
-            echo "✓ .in-memoria/ directory found"
-            ls -la .in-memoria/
-          else
-            echo "⚠️ .in-memoria/ directory not found"
-            echo "Agent may not have committed memory files"
-          fi
-          
+          # Check if agentic-tools-mcp directory exists
           if [ -d ".agentic-tools-mcp" ]; then
             echo "✓ .agentic-tools-mcp/ directory found"
+            echo ""
+            
+            # Count memory files (individual JSON files in subdirectories)
+            if [ -d ".agentic-tools-mcp/memories" ]; then
+              MEMORY_COUNT=$(find .agentic-tools-mcp/memories -name "*.json" 2>/dev/null | wc -l)
+              echo "  Memory files: $MEMORY_COUNT"
+              if [ $MEMORY_COUNT -gt 0 ]; then
+                echo "  Categories:"
+                ls -d .agentic-tools-mcp/memories/*/ 2>/dev/null | xargs -n1 basename
+                echo ""
+                echo "  Latest memory files:"
+                find .agentic-tools-mcp/memories -name "*.json" -type f -exec ls -lth {} + | head -3
+              fi
+            else
+              echo "  Memory files: 0 (directory doesn't exist)"
+            fi
+            
+            echo ""
+            
+            # Count task data
+            if [ -f ".agentic-tools-mcp/tasks/tasks.json" ]; then
+              TASK_COUNT=$(cat .agentic-tools-mcp/tasks/tasks.json | jq '.tasks | length' 2>/dev/null || echo "0")
+              echo "  Task count: $TASK_COUNT"
+            else
+              echo "  Task count: 0 (tasks.json doesn't exist)"
+            fi
+            
+            echo ""
             ls -la .agentic-tools-mcp/
           else
             echo "⚠️ .agentic-tools-mcp/ directory not found"
-          fi
-          
-          if [ -d ".mcp-data" ]; then
-            echo "✓ .mcp-data/ directory found"
-            ls -la .mcp-data/
-          else
-            echo "⚠️ .mcp-data/ directory not found"
+            echo "Agent may not have committed memory files"
           fi
           
           echo "=========================================="
-      
+   
       - name: Create memory verification comment
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
+            const path = require('path');
+            const { execSync } = require('child_process');
             
             let message = '## 🧠 Agent Memory Sync Status\n\n';
             
-            const hasInMemoria = fs.existsSync('.in-memoria');
             const hasAgenticTools = fs.existsSync('.agentic-tools-mcp');
-            const hasMcpData = fs.existsSync('.mcp-data');
             
-            if (hasInMemoria && hasAgenticTools && hasMcpData) {
-              message += '✅ All memory files successfully persisted to main branch\n\n';
-              message += '- ✓ In-Memoria patterns database\n';
-              message += '- ✓ Agentic-Tools task memory\n';
-              message += '- ✓ SQLite memory database\n';
+            if (hasAgenticTools) {
+              message += '✅ Memory files successfully persisted to main branch\n\n';
+              
+              // Count individual memory JSON files
+              let memoryCount = 0;
+              const memoriesDir = '.agentic-tools-mcp/memories';
+              if (fs.existsSync(memoriesDir)) {
+                try {
+                  const result = execSync(`find ${memoriesDir} -name "*.json" | wc -l`).toString().trim();
+                  memoryCount = parseInt(result) || 0;
+                } catch (e) {
+                  memoryCount = 0;
+                }
+              }
+              
+              // Count tasks
+              let taskCount = 0;
+              const tasksFile = '.agentic-tools-mcp/tasks/tasks.json';
+              if (fs.existsSync(tasksFile)) {
+                try {
+                  const tasksData = JSON.parse(fs.readFileSync(tasksFile, 'utf8'));
+                  taskCount = tasksData.tasks?.length || 0;
+                } catch (e) {
+                  taskCount = 0;
+                }
+              }
+              
+              message += `### 📊 Summary\n\n`;
+              message += `- ✓ Agentic-Tools directory: **present**\n`;
+              message += `- ✓ Memory files: **${memoryCount}** individual JSON files\n`;
+              message += `- ✓ Tasks: **${taskCount}**\n\n`;
+              
+              if (memoryCount > 0) {
+                message += '### 📝 Memory Files Structure\n\n';
+                message += 'Memories are stored as individual JSON files organized by category:\n';
+                message += '```\n';
+                message += '.agentic-tools-mcp/memories/\n';
+                message += '  ├── preferences/\n';
+                message += '  ├── technical/\n';
+                message += '  └── context/\n';
+                message += '```\n\n';
+              }
+              
+              if (memoryCount > 0 || taskCount > 0) {
+                message += '**Agent successfully persisted learnings from this PR!** 🎉';
+              } else {
+                message += '**Note:** Directory exists but no memory/task files yet (this may be expected for the first PR).';
+              }
             } else {
-              message += '⚠️ Some memory files missing:\n\n';
-              message += `- ${hasInMemoria ? '✓' : '❌'} In-Memoria patterns database\n`;
-              message += `- ${hasAgenticTools ? '✓' : '❌'} Agentic-Tools task memory\n`;
-              message += `- ${hasMcpData ? '✓' : '❌'} SQLite memory database\n\n`;
-              message += '**Action Required:** Check if Copilot committed memory files in this PR.';
+              message += '⚠️ Memory files missing:\n\n';
+              message += `- ❌ Agentic-Tools directory not found\n\n`;
+              message += '**Action Required:** Check if Copilot committed `.agentic-tools-mcp/` directory in this PR.\n\n';
+              message += '### Expected Structure\n\n';
+              message += 'Copilot should create:\n';
+              message += '```\n';
+              message += '.agentic-tools-mcp/\n';
+              message += '  ├── memories/          # Individual JSON files per memory\n';
+              message += '  │   ├── preferences/\n';
+              message += '  │   ├── technical/\n';
+              message += '  │   └── context/\n';
+              message += '  └── tasks/\n';
+              message += '      └── tasks.json     # Task data\n';
+              message += '```\n\n';
+              message += 'Copilot must run: `git add .agentic-tools-mcp/` before final commit.';
             }
             
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
