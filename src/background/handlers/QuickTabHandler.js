@@ -239,6 +239,16 @@ export class QuickTabHandler {
   }
 
   /**
+   * Handle z-index update
+   * v1.6.0.12 - NEW: Save z-index for cross-tab sync
+   */
+  handleZIndexUpdate(message, _sender) {
+    return this.updateQuickTabProperty(message, (tab, msg) => {
+      tab.zIndex = msg.zIndex;
+    });
+  }
+
+  /**
    * Get current tab ID
    */
   handleGetCurrentTabId(_message, sender) {

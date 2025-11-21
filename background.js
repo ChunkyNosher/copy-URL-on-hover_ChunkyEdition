@@ -1045,6 +1045,10 @@ messageRouter.register('UPDATE_QUICK_TAB_MUTE', (msg, sender) =>
 messageRouter.register('UPDATE_QUICK_TAB_MINIMIZE', (msg, sender) =>
   quickTabHandler.handleMinimizeUpdate(msg, sender)
 );
+// v1.6.0.12 - NEW: Handle z-index updates for cross-tab sync
+messageRouter.register('UPDATE_QUICK_TAB_ZINDEX', (msg, sender) =>
+  quickTabHandler.handleZIndexUpdate(msg, sender)
+);
 messageRouter.register('GET_CURRENT_TAB_ID', (msg, sender) =>
   quickTabHandler.handleGetCurrentTabId(msg, sender)
 );
@@ -1071,7 +1075,7 @@ messageRouter.register('createQuickTab', (msg, sender) =>
   tabHandler.handleLegacyCreate(msg, sender)
 );
 
-console.log('[Background] MessageRouter initialized with 24 registered handlers');
+console.log('[Background] MessageRouter initialized with 25 registered handlers');
 
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
