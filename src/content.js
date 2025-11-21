@@ -67,6 +67,7 @@ import { initQuickTabs } from './features/quick-tabs/index.js';
 import { getLinkText } from './features/url-handlers/generic.js';
 import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
+import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -342,13 +343,12 @@ function setupHoverDetection() {
     const element = event.target;
 
     // Log hover start with element context
-    console.log('[Hover] [Start] Mouse entered element', {
+    logNormal('hover', 'Start', 'Mouse entered element', {
       elementTag: element.tagName,
       elementClasses: element.className || '<none>',
       elementId: element.id || '<none>',
       elementText: element.textContent?.substring(0, 100) || '<empty>',
-      domainType: domainType,
-      timestamp: Date.now()
+      domainType: domainType
     });
 
     // Find URL using the modular URL registry
@@ -358,19 +358,17 @@ function setupHoverDetection() {
 
     // Log URL detection result
     if (url) {
-      console.log('[URL Detection] [Success] URL found', {
+      logNormal('url-detection', 'Success', 'URL found', {
         url: url,
         domainType: domainType,
-        detectionTime: `${urlDetectionDuration.toFixed(2)}ms`,
-        timestamp: Date.now()
+        detectionTime: `${urlDetectionDuration.toFixed(2)}ms`
       });
     } else {
-      console.log('[URL Detection] [Failure] No URL found', {
+      logNormal('url-detection', 'Failure', 'No URL found', {
         elementTag: element.tagName,
         elementClasses: element.className || '<none>',
         domainType: domainType,
-        detectionTime: `${urlDetectionDuration.toFixed(2)}ms`,
-        timestamp: Date.now()
+        detectionTime: `${urlDetectionDuration.toFixed(2)}ms`
       });
     }
 
@@ -390,11 +388,10 @@ function setupHoverDetection() {
     const wasURLDetected = !!stateManager.get('currentHoveredLink');
 
     // Log hover end with duration and context
-    console.log('[Hover] [End] Mouse left element', {
+    logNormal('hover', 'End', 'Mouse left element', {
       duration: `${hoverDuration.toFixed(2)}ms`,
       urlWasDetected: wasURLDetected,
-      elementTag: event.target.tagName,
-      timestamp: Date.now()
+      elementTag: event.target.tagName
     });
 
     stateManager.setState({
@@ -482,15 +479,14 @@ function matchesShortcut(event, shortcut, hoveredLink, hoveredElement) {
  * Log keyboard event
  */
 function logKeyboardEvent(event, isInInputField) {
-  console.log('[Keyboard] [Event] Key pressed', {
+  logNormal('keyboard', 'Event', 'Key pressed', {
     key: event.key,
     ctrl: event.ctrlKey,
     alt: event.altKey,
     shift: event.shiftKey,
     targetTag: event.target.tagName,
     targetType: event.target.type || '<none>',
-    isInInputField: isInInputField,
-    timestamp: Date.now()
+    isInInputField: isInInputField
   });
 }
 
@@ -511,10 +507,9 @@ async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement) {
 
   const executionDuration = performance.now() - executionStart;
 
-  console.log('[Keyboard] [Complete] Handler execution finished', {
+  logNormal('keyboard', 'Complete', 'Handler execution finished', {
     shortcutName: shortcut.name,
-    executionTime: `${executionDuration.toFixed(2)}ms`,
-    timestamp: Date.now()
+    executionTime: `${executionDuration.toFixed(2)}ms`
   });
 }
 
@@ -533,7 +528,7 @@ async function handleKeyboardShortcut(event) {
 
   // Ignore if typing in an interactive field
   if (isInInputField) {
-    console.log('[Keyboard] [Ignored] Key press ignored - user typing in input field');
+    logNormal('keyboard', 'Ignored', 'Key press ignored - user typing in input field');
     return;
   }
 
@@ -541,11 +536,10 @@ async function handleKeyboardShortcut(event) {
   const hoveredElement = stateManager.get('currentHoveredElement');
 
   // Log current hover state
-  console.log('[Keyboard] [Context] Current hover state', {
+  logNormal('keyboard', 'Context', 'Current hover state', {
     hasHoveredLink: !!hoveredLink,
     hasHoveredElement: !!hoveredElement,
-    hoveredLink: hoveredLink || '<none>',
-    timestamp: Date.now()
+    hoveredLink: hoveredLink || '<none>'
   });
 
   // Check each shortcut using table-driven approach
@@ -553,23 +547,21 @@ async function handleKeyboardShortcut(event) {
     const matches = matchesShortcut(event, shortcut, hoveredLink, hoveredElement);
 
     // Log shortcut matching attempt
-    console.log('[Keyboard] [Matching] Checking shortcut', {
+    logNormal('keyboard', 'Matching', 'Checking shortcut', {
       shortcutName: shortcut.name,
       matches: matches,
       needsLink: shortcut.needsLink,
       needsElement: shortcut.needsElement,
       hasLink: !!hoveredLink,
-      hasElement: !!hoveredElement,
-      timestamp: Date.now()
+      hasElement: !!hoveredElement
     });
 
     if (!matches) continue;
 
     // Log successful shortcut match and execution
-    console.log('[Keyboard] [Execute] Shortcut matched - executing handler', {
+    logNormal('keyboard', 'Execute', 'Shortcut matched - executing handler', {
       shortcutName: shortcut.name,
-      handler: shortcut.handler.name,
-      timestamp: Date.now()
+      handler: shortcut.handler.name
     });
 
     event.preventDefault();
@@ -580,7 +572,7 @@ async function handleKeyboardShortcut(event) {
   }
 
   // No shortcut matched
-  console.log('[Keyboard] [NoMatch] No shortcut matched for key combination');
+  logNormal('keyboard', 'NoMatch', 'No shortcut matched for key combination');
 }
 
 /**
@@ -608,12 +600,11 @@ function checkShortcut(event, key, needCtrl, needAlt, needShift) {
  * v1.6.0.7 - Enhanced logging for clipboard operations and action context
  */
 async function handleCopyURL(url) {
-  console.log('[Clipboard] [Action] Copy URL requested', {
+  logNormal('clipboard', 'Action', 'Copy URL requested', {
     url: url,
     urlLength: url?.length || 0,
     currentPage: window.location.href,
-    triggeredBy: 'keyboard-shortcut',
-    timestamp: Date.now()
+    triggeredBy: 'keyboard-shortcut'
   });
 
   try {
@@ -621,11 +612,10 @@ async function handleCopyURL(url) {
     const success = await copyToClipboard(url);
     const copyDuration = performance.now() - copyStart;
 
-    console.log('[Clipboard] [Result] Copy operation completed', {
+    logNormal('clipboard', 'Result', 'Copy operation completed', {
       success: success,
       url: url,
-      duration: `${copyDuration.toFixed(2)}ms`,
-      timestamp: Date.now()
+      duration: `${copyDuration.toFixed(2)}ms`
     });
 
     if (success) {
@@ -651,11 +641,10 @@ async function handleCopyURL(url) {
  * v1.6.0.7 - Enhanced logging for text extraction and clipboard operations
  */
 async function handleCopyText(element) {
-  console.log('[Clipboard] [Action] Copy text requested', {
+  logNormal('clipboard', 'Action', 'Copy text requested', {
     elementTag: element?.tagName || '<none>',
     elementText: element?.textContent?.substring(0, 100) || '<empty>',
-    triggeredBy: 'keyboard-shortcut',
-    timestamp: Date.now()
+    triggeredBy: 'keyboard-shortcut'
   });
 
   try {
@@ -663,18 +652,16 @@ async function handleCopyText(element) {
     const text = getLinkText(element);
     const extractDuration = performance.now() - extractStart;
 
-    console.log('[Clipboard] [Extract] Text extraction completed', {
+    logNormal('clipboard', 'Extract', 'Text extraction completed', {
       textLength: text?.length || 0,
       textPreview: text?.substring(0, 100) || '<empty>',
-      extractionTime: `${extractDuration.toFixed(2)}ms`,
-      timestamp: Date.now()
+      extractionTime: `${extractDuration.toFixed(2)}ms`
     });
 
     // Validate text is not empty
     if (!text || text.trim().length === 0) {
-      console.warn('[Copy Text] [Validation] No text found to copy', {
-        element: element,
-        timestamp: Date.now()
+      logWarn('clipboard', 'Validation', 'No text found to copy', {
+        element: element
       });
       showNotification('✗ No text found', 'error');
       return;
@@ -684,11 +671,10 @@ async function handleCopyText(element) {
     const success = await copyToClipboard(text);
     const copyDuration = performance.now() - copyStart;
 
-    console.log('[Clipboard] [Result] Copy operation completed', {
+    logNormal('clipboard', 'Result', 'Copy operation completed', {
       success: success,
       textLength: text.length,
-      duration: `${copyDuration.toFixed(2)}ms`,
-      timestamp: Date.now()
+      duration: `${copyDuration.toFixed(2)}ms`
     });
 
     if (success) {
@@ -1002,6 +988,21 @@ if (typeof browser !== 'undefined' && browser.runtime) {
 
       return true;
     }
+
+    // ==================== LIVE CONSOLE FILTER REFRESH HANDLER ====================
+    // v1.6.0.9 - Added to refresh filter settings when changed in popup
+    if (message.action === 'REFRESH_LIVE_CONSOLE_FILTERS') {
+      try {
+        refreshLiveConsoleSettings();
+        sendResponse({ success: true, refreshedAt: Date.now() });
+      } catch (error) {
+        console.error('[Content] Error refreshing live console filters:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+
+      return true;
+    }
+    // ==================== END LIVE CONSOLE FILTER REFRESH HANDLER ====================
 
     // ==================== QUICK TABS PANEL TOGGLE HANDLER ====================
     // v1.6.0 - Added to support keyboard shortcut (Ctrl+Alt+Z)

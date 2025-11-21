@@ -15,6 +15,7 @@ import { news_discussionHandlers } from './news-discussion.js';
 import { otherHandlers } from './other.js';
 import { social_mediaHandlers } from './social-media.js';
 import { videoHandlers } from './video.js';
+import { logNormal } from '../../utils/logger.js';
 
 /**
  * URL Handler Registry
@@ -42,13 +43,12 @@ export class URLHandlerRegistry {
    * Log detection start
    */
   _logDetectionStart(element, domainType) {
-    console.log('[URL Detection] [Start] Detecting URL for element', {
+    logNormal('url-detection', 'Start', 'Detecting URL for element', {
       elementTag: element?.tagName || '<none>',
       elementId: element?.id || '<none>',
       elementClasses: element?.className || '<none>',
       domainType: domainType,
-      availableHandlers: this.isSupported(domainType) ? 'yes' : 'no',
-      timestamp: Date.now()
+      availableHandlers: this.isSupported(domainType) ? 'yes' : 'no'
     });
   }
 
@@ -56,16 +56,15 @@ export class URLHandlerRegistry {
    * Try to find URL in parent elements
    */
   _findInParents(element) {
-    console.log('[URL Detection] [Hierarchy] Element not direct link, checking parent elements');
+    logNormal('url-detection', 'Hierarchy', 'Element not direct link, checking parent elements');
 
     let parent = element.parentElement;
     let levelsTraversed = 0;
 
     for (let i = 0; i < 20; i++) {
       if (!parent) {
-        console.log('[URL Detection] [Hierarchy] No more parent elements to check', {
-          levelsTraversed: levelsTraversed,
-          timestamp: Date.now()
+        logNormal('url-detection', 'Hierarchy', 'No more parent elements to check', {
+          levelsTraversed: levelsTraversed
         });
         break;
       }
@@ -73,12 +72,11 @@ export class URLHandlerRegistry {
       levelsTraversed++;
 
       if (parent.tagName === 'A' && parent.href) {
-        console.log('[URL Detection] [Success] Anchor link found in parent', {
+        logNormal('url-detection', 'Success', 'Anchor link found in parent', {
           url: parent.href,
           method: 'parent-anchor',
           levelsUp: levelsTraversed,
-          parentTag: parent.tagName,
-          timestamp: Date.now()
+          parentTag: parent.tagName
         });
         return parent.href;
       }
@@ -92,10 +90,9 @@ export class URLHandlerRegistry {
    * Try site-specific handler
    */
   _trySiteHandler(element, domainType) {
-    console.log('[URL Detection] [Handler] Trying site-specific handler', {
+    logNormal('url-detection', 'Handler', 'Trying site-specific handler', {
       domainType: domainType,
-      hasHandler: this.isSupported(domainType),
-      timestamp: Date.now()
+      hasHandler: this.isSupported(domainType)
     });
 
     if (!this.handlers[domainType]) {
@@ -107,20 +104,18 @@ export class URLHandlerRegistry {
     const handlerDuration = performance.now() - handlerStart;
 
     if (url) {
-      console.log('[URL Detection] [Success] Site-specific handler found URL', {
+      logNormal('url-detection', 'Success', 'Site-specific handler found URL', {
         url: url,
         domainType: domainType,
         method: 'site-specific-handler',
-        handlerTime: `${handlerDuration.toFixed(2)}ms`,
-        timestamp: Date.now()
+        handlerTime: `${handlerDuration.toFixed(2)}ms`
       });
       return url;
     }
 
-    console.log('[URL Detection] [Handler] Site-specific handler returned null', {
+    logNormal('url-detection', 'Handler', 'Site-specific handler returned null', {
       domainType: domainType,
-      handlerTime: `${handlerDuration.toFixed(2)}ms`,
-      timestamp: Date.now()
+      handlerTime: `${handlerDuration.toFixed(2)}ms`
     });
 
     return null;

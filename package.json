@@ -1,6 +1,6 @@
 {
   "name": "copy-url-on-hover-chunkyedition",
-  "version": "1.6.0.8",
+  "version": "1.6.0.9",
   "description": "Copy URL on Hover extension with hybrid modular architecture, solo/mute Quick Tabs, and persistent panel manager",
   "type": "module",
   "private": true,

@@ -62,8 +62,10 @@ export const CATEGORY_GROUPS = {
 
 // ==================== FILTER SETTINGS CACHE ====================
 
+// Settings cache - preloaded synchronously at module init
 let liveConsoleSettingsCache = null;
 let exportLogSettingsCache = null;
+let settingsInitialized = false;
 
 /**
  * Get default live console filter settings
@@ -116,88 +118,118 @@ export function getDefaultExportSettings() {
 }
 
 /**
- * Get live console filter settings (cached for performance)
+ * Initialize filter settings - called once at module load
+ * ARCHITECTURAL FIX: Preload settings synchronously to avoid async issues in logging functions
  */
-async function getLiveConsoleSettings() {
-  if (liveConsoleSettingsCache !== null) {
-    return liveConsoleSettingsCache;
+async function initializeFilterSettings() {
+  if (settingsInitialized) {
+    return;
   }
 
+  try {
+    if (typeof browser !== 'undefined' && browser.storage) {
+      const result = await browser.storage.local.get([
+        'liveConsoleCategoriesEnabled',
+        'exportLogCategoriesEnabled'
+      ]);
+
+      liveConsoleSettingsCache =
+        result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
+      exportLogSettingsCache = result.exportLogCategoriesEnabled || getDefaultExportSettings();
+
+      console.log('[Copy-URL-on-Hover] Live console filters initialized:', {
+        enabled: Object.entries(liveConsoleSettingsCache)
+          .filter(([_, enabled]) => enabled)
+          .map(([cat]) => cat),
+        disabled: Object.entries(liveConsoleSettingsCache)
+          .filter(([_, enabled]) => !enabled)
+          .map(([cat]) => cat)
+      });
+    } else {
+      liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
+      exportLogSettingsCache = getDefaultExportSettings();
+      console.log('[Logger] Browser API not available - using default settings');
+    }
+
+    settingsInitialized = true;
+  } catch (error) {
+    console.error('[Logger] Failed to initialize filter settings:', error);
+    liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
+    exportLogSettingsCache = getDefaultExportSettings();
+    settingsInitialized = true;
+  }
+}
+
+// Initialize settings immediately when module loads
+initializeFilterSettings();
+
+/**
+ * Get live console filter settings (synchronous - uses preloaded cache)
+ */
+function getLiveConsoleSettings() {
+  // Fail-safe: if not initialized yet, use defaults
+  if (!settingsInitialized || liveConsoleSettingsCache === null) {
+    return getDefaultLiveConsoleSettings();
+  }
+  return liveConsoleSettingsCache;
+}
+
+/**
+ * Get export filter settings (synchronous - uses preloaded cache)
+ */
+export function getExportSettings() {
+  // Fail-safe: if not initialized yet, use defaults
+  if (!settingsInitialized || exportLogSettingsCache === null) {
+    return getDefaultExportSettings();
+  }
+  return exportLogSettingsCache;
+}
+
+/**
+ * Refresh live console settings from storage
+ * Call this after settings change in popup
+ */
+export async function refreshLiveConsoleSettings() {
   try {
     if (typeof browser !== 'undefined' && browser.storage) {
       const result = await browser.storage.local.get('liveConsoleCategoriesEnabled');
       liveConsoleSettingsCache =
         result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
-    } else {
-      liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
+      console.log('[Copy-URL-on-Hover] Live console filters refreshed:', {
+        enabled: Object.entries(liveConsoleSettingsCache)
+          .filter(([_, enabled]) => enabled)
+          .map(([cat]) => cat),
+        disabled: Object.entries(liveConsoleSettingsCache)
+          .filter(([_, enabled]) => !enabled)
+          .map(([cat]) => cat)
+      });
     }
   } catch (error) {
-    console.error('[Logger] Failed to load live console settings:', error);
-    liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
+    console.error('[Logger] Failed to refresh live console settings:', error);
   }
-
-  return liveConsoleSettingsCache;
 }
 
 /**
- * Get export filter settings (cached for performance)
+ * Refresh export settings from storage
  */
-async function getExportSettings() {
-  if (exportLogSettingsCache !== null) {
-    return exportLogSettingsCache;
-  }
-
+export async function refreshExportSettings() {
   try {
     if (typeof browser !== 'undefined' && browser.storage) {
       const result = await browser.storage.local.get('exportLogCategoriesEnabled');
       exportLogSettingsCache = result.exportLogCategoriesEnabled || getDefaultExportSettings();
-    } else {
-      exportLogSettingsCache = getDefaultExportSettings();
+      console.log('[Logger] Export filter cache refreshed');
     }
   } catch (error) {
-    console.error('[Logger] Failed to load export settings:', error);
-    exportLogSettingsCache = getDefaultExportSettings();
+    console.error('[Logger] Failed to refresh export settings:', error);
   }
-
-  return exportLogSettingsCache;
-}
-
-/**
- * Clear cached settings (call when settings change)
- */
-export function refreshLiveConsoleSettings() {
-  liveConsoleSettingsCache = null;
-  console.log('[Logger] Live console filter cache cleared');
-}
-
-/**
- * Clear export settings cache
- */
-export function refreshExportSettings() {
-  exportLogSettingsCache = null;
-  console.log('[Logger] Export filter cache cleared');
 }
 
 /**
  * Check if category is enabled for live console output
+ * ARCHITECTURAL FIX: Now synchronous using preloaded settings
  */
-async function isCategoryEnabledForLiveConsole(category) {
-  const settings = await getLiveConsoleSettings();
-
-  // Default to true if category not in settings (fail-safe)
-  if (!(category in settings)) {
-    return true;
-  }
-
-  return settings[category] === true;
-}
-
-/**
- * Check if category is enabled for export
- * Note: Currently not used directly but available for future use
- */
-async function _isCategoryEnabledForExport(category) {
-  const settings = await getExportSettings();
+function isCategoryEnabledForLiveConsole(category) {
+  const settings = getLiveConsoleSettings();
 
   // Default to true if category not in settings (fail-safe)
   if (!(category in settings)) {
@@ -280,11 +312,11 @@ function formatLogMessage(category, action, message) {
 
 /**
  * Log with category filter - Normal level
+ * ARCHITECTURAL FIX: Now synchronous using preloaded settings
  */
-export async function logNormal(category, action, message, context = {}) {
-  // Check live console filter
-  const enabled = await isCategoryEnabledForLiveConsole(category);
-  if (!enabled) {
+export function logNormal(category, action, message, context = {}) {
+  // Check live console filter (synchronous)
+  if (!isCategoryEnabledForLiveConsole(category)) {
     return; // Silent - don't log to console
   }
 
@@ -299,11 +331,11 @@ export async function logNormal(category, action, message, context = {}) {
 
 /**
  * Log with category filter - Error level
+ * ARCHITECTURAL FIX: Now synchronous using preloaded settings
  */
-export async function logError(category, action, message, context = {}) {
-  // Check live console filter
-  const enabled = await isCategoryEnabledForLiveConsole(category);
-  if (!enabled) {
+export function logError(category, action, message, context = {}) {
+  // Check live console filter (synchronous)
+  if (!isCategoryEnabledForLiveConsole(category)) {
     return; // Silent - don't log to console
   }
 
@@ -318,11 +350,11 @@ export async function logError(category, action, message, context = {}) {
 
 /**
  * Log with category filter - Warning level
+ * ARCHITECTURAL FIX: Now synchronous using preloaded settings
  */
-export async function logWarn(category, action, message, context = {}) {
-  // Check live console filter
-  const enabled = await isCategoryEnabledForLiveConsole(category);
-  if (!enabled) {
+export function logWarn(category, action, message, context = {}) {
+  // Check live console filter (synchronous)
+  if (!isCategoryEnabledForLiveConsole(category)) {
     return; // Silent - don't log to console
   }
 
@@ -337,11 +369,11 @@ export async function logWarn(category, action, message, context = {}) {
 
 /**
  * Log with category filter - Info level
+ * ARCHITECTURAL FIX: Now synchronous using preloaded settings
  */
-export async function logInfo(category, action, message, context = {}) {
-  // Check live console filter
-  const enabled = await isCategoryEnabledForLiveConsole(category);
-  if (!enabled) {
+export function logInfo(category, action, message, context = {}) {
+  // Check live console filter (synchronous)
+  if (!isCategoryEnabledForLiveConsole(category)) {
     return; // Silent - don't log to console
   }
 
@@ -356,11 +388,11 @@ export async function logInfo(category, action, message, context = {}) {
 
 /**
  * Log performance metric
+ * ARCHITECTURAL FIX: Now synchronous using preloaded settings
  */
-export async function logPerformance(category, action, message, context = {}) {
-  // Check live console filter
-  const enabled = await isCategoryEnabledForLiveConsole(category);
-  if (!enabled) {
+export function logPerformance(category, action, message, context = {}) {
+  // Check live console filter (synchronous)
+  if (!isCategoryEnabledForLiveConsole(category)) {
     return; // Silent - don't log to console
   }
 
@@ -394,9 +426,10 @@ export function extractCategoryFromLog(logEntry) {
 
 /**
  * Filter logs by export category settings
+ * ARCHITECTURAL FIX: Now synchronous using preloaded settings
  */
-export async function filterLogsByExportCategories(allLogs) {
-  const enabledCategories = await getExportSettings();
+export function filterLogsByExportCategories(allLogs) {
+  const enabledCategories = getExportSettings();
 
   return allLogs.filter(logEntry => {
     const category = extractCategoryFromLog(logEntry);
@@ -413,10 +446,11 @@ export async function filterLogsByExportCategories(allLogs) {
 
 /**
  * Generate export metadata showing filter state
+ * ARCHITECTURAL FIX: Now synchronous using preloaded settings
  */
-export async function generateExportMetadata(totalLogs, filteredLogs) {
-  const liveSettings = await getLiveConsoleSettings();
-  const exportSettings = await getExportSettings();
+export function generateExportMetadata(totalLogs, filteredLogs) {
+  const liveSettings = getLiveConsoleSettings();
+  const exportSettings = getExportSettings();
 
   const liveFilters = Object.entries(liveSettings)
     .map(([cat, enabled]) => {
