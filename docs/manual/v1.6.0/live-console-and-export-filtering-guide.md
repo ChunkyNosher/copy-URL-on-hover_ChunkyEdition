@@ -3,6 +3,7 @@
 ## Purpose
 
 This document specifies how to implement granular filtering controls for BOTH:
+
 1. **Live console output** - What you see in the browser's DevTools console in real-time
 2. **Exported logs** - What gets included in the .txt file when you click "Export Console Logs"
 
@@ -19,13 +20,15 @@ The solution addresses the critical issue identified: **Hover and URL Detection 
 Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00-53-33.txt`:
 
 **Log volume breakdown:**
+
 - **Hover events**: ~40% of all logs (every mouseover/mouseout)
 - **URL Detection events**: ~35% of all logs (multiple attempts per hover)
-- **Keyboard events**: ~10% of all logs  
+- **Keyboard events**: ~10% of all logs
 - **Quick Tab operations**: ~8% of all logs
 - **Other** (storage, errors, notifications): ~7%
 
 **The flood problem:**
+
 ```
 [Hover] [Start] Mouse entered element
 [URL Detection] [Start] Detecting URL for element
@@ -42,6 +45,7 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
 **10 log lines for a single failed hover attempt** - repeated hundreds of times.
 
 **User impact:**
+
 - Finding Quick Tab logs requires scrolling through hundreds of hover/detection logs
 - Console performance degrades with massive log output
 - Difficult to focus on specific feature debugging
@@ -106,6 +110,7 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
    - Controlled by `enabledCategoriesExport` settings
 
 **Why two separate filters?**
+
 - User might want to see Quick Tabs in console but export ALL categories for comprehensive debugging
 - Or disable noisy Hover/URL Detection in console but still export them for analysis
 - Independent control = maximum flexibility
@@ -117,12 +122,14 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
 ### Why Dropdown/Collapsible Design?
 
 **Problem with long checkbox lists:**
+
 - 16 categories × 2 filters = 32 checkboxes
 - Takes up massive screen space in popup
 - Overwhelming visual clutter
 - Difficult to scan and find specific categories
 
 **Solution: Accordion/collapsible groups**
+
 - Categories organized into logical groups
 - Groups collapsed by default
 - Click/tap to expand group
@@ -185,8 +192,9 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
 ```
 
 **Group controls (in header):**
+
 - **[↑]** - Select All in this group
-- **[↓]** - Deselect All in this group  
+- **[↓]** - Deselect All in this group
 - **[×]** - Close/collapse group
 
 ### Category Groups
@@ -194,6 +202,7 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
 **Same 3 groups as before, used for BOTH filters:**
 
 **User Actions:** (Most frequently logged)
+
 - 🔍 URL Detection
 - 👆 Hover Events
 - 📋 Clipboard Operations
@@ -202,6 +211,7 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
 - 📊 Quick Tab Manager
 
 **System Operations:** (Internal operations)
+
 - 📡 Event Bus
 - ⚙️ Configuration
 - 💾 State Management
@@ -211,6 +221,7 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
 - 📑 Tab Management
 
 **Diagnostics:** (Errors and performance)
+
 - ⏱️ Performance
 - ❌ Errors
 - 🚀 Initialization
@@ -224,6 +235,7 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
 **Where:** `browser.storage.local`
 
 **Storage keys:**
+
 ```javascript
 {
   liveConsoleCategoriesEnabled: {
@@ -244,7 +256,7 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
     'errors': true,
     'initialization': true
   },
-  
+
   exportLogCategoriesEnabled: {
     'url-detection': true,        // Export ALL by default
     'hover': true,
@@ -267,6 +279,7 @@ Based on the provided log export `copy-url-extension-logs_v1.6.0.7_2025-11-21T00
 ```
 
 **Default philosophy:**
+
 - **Live Console**: Disable noisy categories (Hover, URL Detection) by default
 - **Export**: Enable ALL categories by default (comprehensive debugging)
 
@@ -282,10 +295,10 @@ export function logVerbose(category, action, message, context = {}) {
   if (!shouldLogVerbose()) {
     return; // Skip in normal mode
   }
-  
+
   const categoryName = getCategoryDisplayName(category);
   const formattedMessage = `[${categoryName}] [${action}] ${message}`;
-  
+
   console.log(formattedMessage, {
     ...context,
     _logCategory: category,
@@ -300,15 +313,15 @@ export function logVerbose(category, action, message, context = {}) {
   if (!shouldLogVerbose()) {
     return;
   }
-  
+
   // NEW: Check if category enabled for live console output
   if (!isCategoryEnabledForLiveConsole(category)) {
     return; // Silent - don't log to console
   }
-  
+
   const categoryName = getCategoryDisplayName(category);
   const formattedMessage = `[${categoryName}] [${action}] ${message}`;
-  
+
   console.log(formattedMessage, {
     ...context,
     _logCategory: category,
@@ -329,12 +342,12 @@ export function logVerbose(category, action, message, context = {}) {
 function isCategoryEnabledForLiveConsole(category) {
   // Get live console filter settings from storage
   const settings = getLiveConsoleSettings();
-  
+
   // Default to true if category not in settings (fail-safe)
   if (!(category in settings)) {
     return true;
   }
-  
+
   return settings[category] === true;
 }
 
@@ -348,18 +361,18 @@ function getLiveConsoleSettings() {
   if (liveConsoleSettingsCache !== null) {
     return liveConsoleSettingsCache;
   }
-  
+
   // Load from storage synchronously (using cached ConfigManager)
   // This assumes ConfigManager.getCurrentConfig() is synchronous
   const config = ConfigManager.getCurrentConfig();
-  
+
   if (config.liveConsoleCategoriesEnabled) {
     liveConsoleSettingsCache = config.liveConsoleCategoriesEnabled;
   } else {
     // Use defaults if not set
     liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
   }
-  
+
   return liveConsoleSettingsCache;
 }
 
@@ -375,22 +388,22 @@ export function refreshLiveConsoleSettings() {
  */
 function getDefaultLiveConsoleSettings() {
   return {
-    'url-detection': false,    // Noisy - disabled by default
-    'hover': false,             // Noisy - disabled by default
-    'clipboard': true,
-    'keyboard': true,
+    'url-detection': false, // Noisy - disabled by default
+    hover: false, // Noisy - disabled by default
+    clipboard: true,
+    keyboard: true,
     'quick-tabs': true,
     'quick-tab-manager': true,
     'event-bus': false,
-    'config': true,
-    'state': false,
-    'storage': true,
-    'messaging': false,
-    'webrequest': true,
-    'tabs': true,
-    'performance': false,
-    'errors': true,
-    'initialization': true
+    config: true,
+    state: false,
+    storage: true,
+    messaging: false,
+    webrequest: true,
+    tabs: true,
+    performance: false,
+    errors: true,
+    initialization: true
   };
 }
 ```
@@ -405,10 +418,10 @@ export function logNormal(category, action, message, context = {}) {
   if (!isCategoryEnabledForLiveConsole(category)) {
     return;
   }
-  
+
   const categoryName = getCategoryDisplayName(category);
   const formattedMessage = `[${categoryName}] [${action}] ${message}`;
-  
+
   console.log(formattedMessage, {
     ...context,
     _logCategory: category,
@@ -422,11 +435,11 @@ export function logError(category, action, message, context = {}) {
   if (!isCategoryEnabledForLiveConsole(category)) {
     return;
   }
-  
+
   // Errors always use console.error
   const categoryName = getCategoryDisplayName(category);
   const formattedMessage = `[${categoryName}] [${action}] ${message}`;
-  
+
   console.error(formattedMessage, {
     ...context,
     _logCategory: category,
@@ -454,21 +467,23 @@ export function logError(category, action, message, context = {}) {
 // In popup settings script
 async function saveLiveConsoleFilters() {
   const filters = getLiveConsoleFilterState(); // Read from UI
-  
+
   await browser.storage.local.set({
     liveConsoleCategoriesEnabled: filters
   });
-  
+
   // Notify content scripts to refresh cache
   const tabs = await browser.tabs.query({});
   tabs.forEach(tab => {
-    browser.tabs.sendMessage(tab.id, {
-      action: 'REFRESH_LIVE_CONSOLE_FILTERS'
-    }).catch(() => {
-      // Tab might not have content script
-    });
+    browser.tabs
+      .sendMessage(tab.id, {
+        action: 'REFRESH_LIVE_CONSOLE_FILTERS'
+      })
+      .catch(() => {
+        // Tab might not have content script
+      });
   });
-  
+
   showSaveConfirmation('Live console filters updated');
 }
 ```
@@ -500,11 +515,13 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 **Where:** Popup export handler
 
 **Current export flow:**
+
 ```
 Click Export → Get all logs → Download .txt
 ```
 
 **New export flow:**
+
 ```
 Click Export → Get all logs → Apply export category filters → Download filtered .txt
 ```
@@ -522,12 +539,12 @@ function filterLogsByExportCategories(allLogs, enabledCategories) {
   return allLogs.filter(logEntry => {
     // Extract category from log message
     const category = extractCategoryFromLog(logEntry);
-    
+
     // Always include uncategorized logs (fail-safe)
     if (category === 'uncategorized') {
       return true;
     }
-    
+
     // Check if category is enabled for export
     return enabledCategories[category] === true;
   });
@@ -539,16 +556,16 @@ function filterLogsByExportCategories(allLogs, enabledCategories) {
  */
 function extractCategoryFromLog(logEntry) {
   const message = logEntry.message || '';
-  
+
   // Match pattern: [Category Display Name] [Action] Message
   const match = message.match(/^\[([^\]]+)\]/);
-  
+
   if (!match) {
     return 'uncategorized';
   }
-  
+
   const displayName = match[1];
-  
+
   // Map display name to category ID
   return getCategoryIdFromDisplayName(displayName);
 }
@@ -559,43 +576,43 @@ function extractCategoryFromLog(logEntry) {
  */
 function getCategoryIdFromDisplayName(displayName) {
   const normalized = displayName.trim().toLowerCase();
-  
+
   const mapping = {
     'url detection': 'url-detection',
-    'hover': 'hover',
+    hover: 'hover',
     'hover events': 'hover',
-    'clipboard': 'clipboard',
+    clipboard: 'clipboard',
     'clipboard operations': 'clipboard',
-    'keyboard': 'keyboard',
+    keyboard: 'keyboard',
     'keyboard shortcuts': 'keyboard',
     'quick tabs': 'quick-tabs',
     'quick tab actions': 'quick-tabs',
     'quick tab manager': 'quick-tab-manager',
     'event bus': 'event-bus',
-    'config': 'config',
-    'configuration': 'config',
-    'state': 'state',
+    config: 'config',
+    configuration: 'config',
+    state: 'state',
     'state management': 'state',
-    'storage': 'storage',
+    storage: 'storage',
     'browser storage': 'storage',
-    'messaging': 'messaging',
+    messaging: 'messaging',
     'message passing': 'messaging',
-    'webrequest': 'webrequest',
+    webrequest: 'webrequest',
     'web requests': 'webrequest',
-    'tabs': 'tabs',
+    tabs: 'tabs',
     'tab management': 'tabs',
-    'performance': 'performance',
-    'errors': 'errors',
-    'initialization': 'initialization',
-    'debug': 'quick-tabs',  // Map [DEBUG] tags to appropriate category
-    'quicktabsmanager': 'quick-tab-manager',
-    'createhandler': 'quick-tabs',
-    'quicktabwindow': 'quick-tabs',
-    'broadcastmanager': 'quick-tabs',
-    'notificationmanager': 'clipboard',
-    'tooltip': 'clipboard'
+    performance: 'performance',
+    errors: 'errors',
+    initialization: 'initialization',
+    debug: 'quick-tabs', // Map [DEBUG] tags to appropriate category
+    quicktabsmanager: 'quick-tab-manager',
+    createhandler: 'quick-tabs',
+    quicktabwindow: 'quick-tabs',
+    broadcastmanager: 'quick-tabs',
+    notificationmanager: 'clipboard',
+    tooltip: 'clipboard'
   };
-  
+
   return mapping[normalized] || 'uncategorized';
 }
 ```
@@ -607,30 +624,25 @@ async function exportFilteredLogs() {
   try {
     // Get all captured logs from console interceptor
     const allLogs = await getAllLogsFromExtension();
-    
+
     // Get export filter settings
     const exportFilters = await browser.storage.local.get('exportLogCategoriesEnabled');
     const enabledCategories = exportFilters.exportLogCategoriesEnabled || getAllCategoriesEnabled();
-    
+
     // Apply export filters
     const filteredLogs = filterLogsByExportCategories(allLogs, enabledCategories);
-    
+
     // Generate metadata showing what was filtered
-    const metadata = generateExportMetadata(
-      allLogs.length,
-      filteredLogs.length,
-      enabledCategories
-    );
-    
+    const metadata = generateExportMetadata(allLogs.length, filteredLogs.length, enabledCategories);
+
     // Format for export
     const exportContent = formatLogsForExport(metadata, filteredLogs);
-    
+
     // Download file
     downloadLogsFile(exportContent);
-    
+
     // Show success message
     showExportSuccess(filteredLogs.length, allLogs.length);
-    
   } catch (error) {
     console.error('[Export] Failed to export logs:', error);
     showExportError(error.message);
@@ -639,7 +651,9 @@ async function exportFilteredLogs() {
 
 function showExportSuccess(exportedCount, totalCount) {
   const percentage = ((exportedCount / totalCount) * 100).toFixed(1);
-  alert(`Exported ${exportedCount.toLocaleString()} of ${totalCount.toLocaleString()} logs (${percentage}%)`);
+  alert(
+    `Exported ${exportedCount.toLocaleString()} of ${totalCount.toLocaleString()} logs (${percentage}%)`
+  );
 }
 ```
 
@@ -718,10 +732,10 @@ BEGIN LOGS
 <div class="filter-section">
   <h3>Live Console Output Filters</h3>
   <p class="filter-description">Control what appears in browser console in real-time</p>
-  
+
   <!-- User Actions Group -->
   <div class="filter-group">
-    <input type="checkbox" id="live-group-user-actions" class="group-toggle">
+    <input type="checkbox" id="live-group-user-actions" class="group-toggle" />
     <label for="live-group-user-actions" class="group-header">
       <span class="group-icon">▶</span>
       <span class="group-title">User Actions</span>
@@ -731,49 +745,74 @@ BEGIN LOGS
         <button class="group-btn" data-action="deselect-all">↓</button>
       </div>
     </label>
-    
+
     <div class="group-content">
       <label class="category-label">
-        <input type="checkbox" class="category-checkbox" data-category="url-detection" data-filter="live">
+        <input
+          type="checkbox"
+          class="category-checkbox"
+          data-category="url-detection"
+          data-filter="live"
+        />
         <span class="category-icon">🔍</span>
         <span class="category-name">URL Detection</span>
       </label>
-      
+
       <label class="category-label">
-        <input type="checkbox" class="category-checkbox" data-category="hover" data-filter="live">
+        <input type="checkbox" class="category-checkbox" data-category="hover" data-filter="live" />
         <span class="category-icon">👆</span>
         <span class="category-name">Hover Events</span>
       </label>
-      
+
       <label class="category-label">
-        <input type="checkbox" class="category-checkbox" data-category="clipboard" data-filter="live">
+        <input
+          type="checkbox"
+          class="category-checkbox"
+          data-category="clipboard"
+          data-filter="live"
+        />
         <span class="category-icon">📋</span>
         <span class="category-name">Clipboard Operations</span>
       </label>
-      
+
       <label class="category-label">
-        <input type="checkbox" class="category-checkbox" data-category="keyboard" data-filter="live">
+        <input
+          type="checkbox"
+          class="category-checkbox"
+          data-category="keyboard"
+          data-filter="live"
+        />
         <span class="category-icon">⌨️</span>
         <span class="category-name">Keyboard Shortcuts</span>
       </label>
-      
+
       <label class="category-label">
-        <input type="checkbox" class="category-checkbox" data-category="quick-tabs" data-filter="live">
+        <input
+          type="checkbox"
+          class="category-checkbox"
+          data-category="quick-tabs"
+          data-filter="live"
+        />
         <span class="category-icon">🪟</span>
         <span class="category-name">Quick Tab Actions</span>
       </label>
-      
+
       <label class="category-label">
-        <input type="checkbox" class="category-checkbox" data-category="quick-tab-manager" data-filter="live">
+        <input
+          type="checkbox"
+          class="category-checkbox"
+          data-category="quick-tab-manager"
+          data-filter="live"
+        />
         <span class="category-icon">📊</span>
         <span class="category-name">Quick Tab Manager</span>
       </label>
     </div>
   </div>
-  
+
   <!-- System Operations Group -->
   <div class="filter-group">
-    <input type="checkbox" id="live-group-system-ops" class="group-toggle">
+    <input type="checkbox" id="live-group-system-ops" class="group-toggle" />
     <label for="live-group-system-ops" class="group-header">
       <span class="group-icon">▶</span>
       <span class="group-title">System Operations</span>
@@ -783,15 +822,15 @@ BEGIN LOGS
         <button class="group-btn" data-action="deselect-all">↓</button>
       </div>
     </label>
-    
+
     <div class="group-content">
       <!-- 7 category checkboxes here -->
     </div>
   </div>
-  
+
   <!-- Diagnostics Group -->
   <div class="filter-group">
-    <input type="checkbox" id="live-group-diagnostics" class="group-toggle">
+    <input type="checkbox" id="live-group-diagnostics" class="group-toggle" />
     <label for="live-group-diagnostics" class="group-header">
       <span class="group-icon">▶</span>
       <span class="group-title">Diagnostics</span>
@@ -801,22 +840,21 @@ BEGIN LOGS
         <button class="group-btn" data-action="deselect-all">↓</button>
       </div>
     </label>
-    
+
     <div class="group-content">
       <!-- 3 category checkboxes here -->
     </div>
   </div>
 </div>
 
-<hr>
+<hr />
 
 <!-- Export Filters Section (same structure) -->
 <div class="filter-section">
   <h3>Export Log Filters</h3>
   <p class="filter-description">Control what gets included in .txt export</p>
-  
+
   <!-- Same 3 groups, but with data-filter="export" -->
-  
 </div>
 
 <div class="filter-actions">
@@ -825,7 +863,7 @@ BEGIN LOGS
   <button id="reset-filters-export" class="btn-secondary">Reset Export Filters</button>
 </div>
 
-<hr>
+<hr />
 
 <button id="export-logs-btn" class="btn-export">📥 Export Console Logs</button>
 ```
@@ -983,26 +1021,26 @@ BEGIN LOGS
 function initCollapsibleGroups() {
   // Handle group toggle
   document.querySelectorAll('.group-toggle').forEach(toggle => {
-    toggle.addEventListener('change', (e) => {
+    toggle.addEventListener('change', e => {
       // Collapsing/expanding is handled by CSS
       // Could add animation or analytics here
     });
   });
-  
+
   // Handle group action buttons (Select All / Deselect All)
   document.querySelectorAll('.group-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation(); // Prevent triggering group toggle
-      
+
       const action = btn.dataset.action;
       const groupContent = btn.closest('.filter-group').querySelector('.group-content');
       const checkboxes = groupContent.querySelectorAll('.category-checkbox');
-      
+
       if (action === 'select-all') {
-        checkboxes.forEach(cb => cb.checked = true);
+        checkboxes.forEach(cb => (cb.checked = true));
       } else if (action === 'deselect-all') {
-        checkboxes.forEach(cb => cb.checked = false);
+        checkboxes.forEach(cb => (cb.checked = false));
       }
     });
   });
@@ -1014,16 +1052,16 @@ async function loadFilterSettings() {
     'liveConsoleCategoriesEnabled',
     'exportLogCategoriesEnabled'
   ]);
-  
+
   const liveSettings = result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
   const exportSettings = result.exportLogCategoriesEnabled || getDefaultExportSettings();
-  
+
   // Apply to checkboxes
   document.querySelectorAll('.category-checkbox[data-filter="live"]').forEach(cb => {
     const category = cb.dataset.category;
     cb.checked = liveSettings[category] === true;
   });
-  
+
   document.querySelectorAll('.category-checkbox[data-filter="export"]').forEach(cb => {
     const category = cb.dataset.category;
     cb.checked = exportSettings[category] === true;
@@ -1034,32 +1072,32 @@ async function loadFilterSettings() {
 async function saveFilterSettings() {
   const liveSettings = {};
   const exportSettings = {};
-  
+
   // Read live filter checkboxes
   document.querySelectorAll('.category-checkbox[data-filter="live"]').forEach(cb => {
     liveSettings[cb.dataset.category] = cb.checked;
   });
-  
+
   // Read export filter checkboxes
   document.querySelectorAll('.category-checkbox[data-filter="export"]').forEach(cb => {
     exportSettings[cb.dataset.category] = cb.checked;
   });
-  
+
   // Save to storage
   await browser.storage.local.set({
     liveConsoleCategoriesEnabled: liveSettings,
     exportLogCategoriesEnabled: exportSettings
   });
-  
+
   // Notify content scripts to refresh live filter cache
   await refreshLiveConsoleFiltersInAllTabs();
-  
+
   showSaveConfirmation();
 }
 
 async function refreshLiveConsoleFiltersInAllTabs() {
   const tabs = await browser.tabs.query({});
-  
+
   for (const tab of tabs) {
     try {
       await browser.tabs.sendMessage(tab.id, {
@@ -1074,7 +1112,7 @@ async function refreshLiveConsoleFiltersInAllTabs() {
 // Reset filters to defaults
 async function resetLiveFilters() {
   const defaults = getDefaultLiveConsoleSettings();
-  
+
   document.querySelectorAll('.category-checkbox[data-filter="live"]').forEach(cb => {
     cb.checked = defaults[cb.dataset.category] === true;
   });
@@ -1082,7 +1120,7 @@ async function resetLiveFilters() {
 
 async function resetExportFilters() {
   const defaults = getDefaultExportSettings();
-  
+
   document.querySelectorAll('.category-checkbox[data-filter="export"]').forEach(cb => {
     cb.checked = defaults[cb.dataset.category] === true;
   });
@@ -1092,7 +1130,7 @@ async function resetExportFilters() {
 document.addEventListener('DOMContentLoaded', async () => {
   initCollapsibleGroups();
   await loadFilterSettings();
-  
+
   document.getElementById('save-filter-settings').addEventListener('click', saveFilterSettings);
   document.getElementById('reset-filters-live').addEventListener('click', resetLiveFilters);
   document.getElementById('reset-filters-export').addEventListener('click', resetExportFilters);
@@ -1124,6 +1162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 7. Much cleaner debugging experience!
 
 **Export considerations:**
+
 - Export filters still have Hover/URL Detection enabled
 - If user wants comprehensive export: keep export filters at defaults
 - If user wants focused Quick Tab export: disable Hover/URL Detection in export filters too
@@ -1133,6 +1172,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 **Scenario:** Developer wants to see EVERYTHING for deep debugging
 
 **Steps:**
+
 1. Expand all groups in **Live Console Filters**
 2. Click "Select All" (↑) button in each group header
 3. Save settings
@@ -1144,6 +1184,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 **Scenario:** User wants clean console during use, but comprehensive export for bug reports
 
 **Steps:**
+
 1. **Live Console Filters**: Disable noisy categories (Hover, URL Detection, Performance, State)
 2. **Export Filters**: Enable ALL categories
 3. Save settings
@@ -1159,6 +1200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 **Scenario:** Exporting logs to developer, want to hide sensitive categories
 
 **Steps:**
+
 1. Keep live filters as desired
 2. In **Export Filters**:
    - Disable "💬 Message Passing" (might contain URLs)
@@ -1176,16 +1218,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 **Disabling categories improves performance:**
 
 **Before (all categories enabled):**
+
 - Every mousemove: 10+ console.log() calls (Hover + URL Detection)
 - 100 mousemoves = 1000+ console operations
 - Console becomes sluggish
 
 **After (Hover/URL Detection disabled):**
+
 - Mousemoves: 0 console operations
 - Only actual user actions logged (keyboard, clicks, Quick Tabs)
 - Console stays responsive
 
 **Memory impact:**
+
 - Console has limited buffer (browser-dependent)
 - Fewer logs = more history retained
 - Less garbage collection overhead
@@ -1193,6 +1238,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 ### 7.2 Export Filter Performance
 
 **Minimal impact:**
+
 - Filtering happens once during export operation
 - Processing 1000 logs: ~50ms
 - Processing 10000 logs: ~200ms
@@ -1201,11 +1247,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 ### 7.3 Settings Cache Performance
 
 **Live filter checks are cached:**
+
 - First load: read from storage
 - Subsequent logs: read from memory cache
 - Negligible overhead per log statement
 
 **Cache invalidation:**
+
 - Only when user saves new settings
 - Propagated via message passing
 - No polling or constant re-reads
@@ -1217,11 +1265,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 ### 8.1 Existing Logs
 
 **Existing code with console.log():**
+
 - Still works (console interceptor captures)
 - Not filtered by live console filter (bypass mechanism)
 - Included in export
 
 **Migration path:**
+
 1. Replace console.log() with logNormal/logVerbose wrappers
 2. Assign appropriate category
 3. Logs now respect filter settings
@@ -1229,11 +1279,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 ### 8.2 Default Behavior
 
 **For new users (fresh install):**
+
 - Live console: Noisy categories disabled (Hover, URL Detection)
 - Export: All categories enabled
 - Clean console experience out of box
 
 **For existing users (upgrade):**
+
 - Check if settings exist in storage
 - If not: use defaults above
 - If yes: preserve user's choices
@@ -1246,12 +1298,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 ### 9.1 Testing Checklist
 
 **Live Console Filtering:**
+
 - [ ] Disable Hover in live filter → No hover logs in console
 - [ ] Enable Hover in live filter → Hover logs appear in console
 - [ ] Change setting without reload → New logs respect new setting
 - [ ] Multiple tabs → Settings apply to all tabs after save
 
 **Export Filtering:**
+
 - [ ] Disable category in export filter → Category excluded from .txt
 - [ ] Enable category in export filter → Category included in .txt
 - [ ] Export metadata shows correct filter state
@@ -1259,6 +1313,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 - [ ] Count summary accurate (filtered vs total)
 
 **Collapsible UI:**
+
 - [ ] Groups collapsed by default
 - [ ] Click to expand/collapse works
 - [ ] Select All button checks all in group
@@ -1267,6 +1322,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 - [ ] Save button persists all settings
 
 **Edge Cases:**
+
 - [ ] Empty log buffer exports cleanly
 - [ ] All categories disabled → Still exports uncategorized
 - [ ] Malformed log messages don't break filtering
@@ -1276,18 +1332,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 ### 9.2 User Acceptance Testing
 
 **Scenario: Debug Quick Tabs**
+
 1. User complains: "Console too noisy, can't find Quick Tab logs"
 2. Disable Hover + URL Detection in live filters
 3. Console now clean, Quick Tab logs visible
 4. ✓ Success
 
 **Scenario: Bug Report Export**
+
 1. User reproduces bug with all categories enabled
 2. Export logs with all categories in export filter
 3. Developer receives comprehensive diagnostic file
 4. ✓ Success
 
 **Scenario: Privacy-Conscious Export**
+
 1. User wants to share logs but hide URLs
 2. Disable relevant categories in export filter only
 3. Export excludes sensitive data
@@ -1329,6 +1388,7 @@ Control what gets included in the exported .txt file:
 - **Note:** Export can only include logs that were actually logged. If a category was disabled in Live Console Filters, those logs don't exist to export.
 
 **Tips:**
+
 - Use Live Filters to keep console clean during normal use
 - Use Export Filters to control what goes in bug reports
 - Reset buttons restore recommended defaults
@@ -1347,6 +1407,7 @@ The logging system supports real-time filtering of console output to reduce nois
 - Cache invalidated on settings change
 
 **How it works:**
+
 ```javascript
 logVerbose('url-detection', 'Start', 'Detecting URL', context);
   ↓
@@ -1357,12 +1418,14 @@ isCategoryEnabledForLiveConsole('url-detection')
 ```
 
 **Adding new categories:**
+
 1. Add to LOG_CATEGORIES in logger.js
 2. Add to default settings in getDefaultLiveConsoleSettings()
 3. Add checkbox to popup UI
 4. Document in user guide
 
 **Performance:**
+
 - Filter check is O(1) dictionary lookup
 - Settings cached in memory
 - Minimal overhead per log statement
@@ -1372,18 +1435,21 @@ isCategoryEnabledForLiveConsole('url-detection')
 ## Part 11: Implementation Priority
 
 ### Phase 1: Core Filtering (Week 1)
+
 1. Implement live console filter check in logger.js
 2. Add liveConsoleCategoriesEnabled storage
 3. Implement cache and refresh mechanism
 4. Test with Hover/URL Detection disabled
 
 ### Phase 2: Export Enhancement (Week 1)
+
 1. Implement export filter logic
 2. Enhance export metadata with filter summary
 3. Add category detection improvements
 4. Test export with various filter combinations
 
 ### Phase 3: UI Implementation (Week 2)
+
 1. Create collapsible group HTML structure
 2. Implement CSS styling
 3. Add JavaScript for collapse/expand
@@ -1391,6 +1457,7 @@ isCategoryEnabledForLiveConsole('url-detection')
 5. Wire up save/load functions
 
 ### Phase 4: Integration & Testing (Week 2)
+
 1. Connect UI to storage
 2. Implement message passing for filter refresh
 3. Add reset buttons
@@ -1398,6 +1465,7 @@ isCategoryEnabledForLiveConsole('url-detection')
 5. User acceptance testing
 
 ### Phase 5: Documentation & Polish (Week 3)
+
 1. Write user documentation
 2. Update developer docs
 3. Add tooltips to UI
@@ -1411,6 +1479,7 @@ isCategoryEnabledForLiveConsole('url-detection')
 This implementation provides granular, independent control over both live console output and exported logs using space-efficient collapsible checkbox groups.
 
 **Key Benefits:**
+
 1. **Solves the flooding problem:** Disable noisy Hover/URL Detection in console
 2. **Maintains debugging capability:** Export can still include all categories (if they were logged)
 3. **Independent control:** Live vs Export filters serve different purposes
@@ -1419,6 +1488,7 @@ This implementation provides granular, independent control over both live consol
 6. **Flexible workflows:** Clean console + comprehensive export, or focused debugging
 
 **Critical Design Decisions:**
+
 - **Two separate filters** for live console vs export (maximum flexibility)
 - **Collapsible groups** instead of long lists (better UX)
 - **Category check before logging** (performance optimization)
@@ -1426,6 +1496,7 @@ This implementation provides granular, independent control over both live consol
 - **Sensible defaults** (disable noisy categories in live, enable all in export)
 
 **Expected User Outcomes:**
+
 - Developers can debug Quick Tabs without console noise
 - Clean console during development
 - Comprehensive exports for bug reports
