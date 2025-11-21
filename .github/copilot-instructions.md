@@ -3,10 +3,10 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.0.3  
+**Version:** 1.6.0.8  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
-**Purpose:** URL management with Solo/Mute visibility control, complete Firefox Container isolation, and persistent floating panel manager
+**Purpose:** URL management with Solo/Mute visibility control, complete Firefox Container isolation, and persistent floating panel manager with granular console log filtering
 
 **Key Features:**
 - Solo/Mute tab-specific visibility control
