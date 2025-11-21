@@ -520,6 +520,79 @@ jobs:
         run: npm run build
 
       # ====================================================================
+      # STEP 13.5: Inject Test Bridge for Copilot Autonomous Testing
+      # ====================================================================
+      - name: Inject Test Bridge for Copilot Autonomous Testing
+        run: |
+          echo "=========================================="
+          echo "Injecting Test Bridge for Autonomous Testing"
+          echo "=========================================="
+          
+          # Set TEST_MODE environment variable
+          echo "TEST_MODE=true" >> $GITHUB_ENV
+          echo "✓ TEST_MODE=true set in environment"
+          
+          # Copy test bridge to dist directory
+          if [ ! -f "src/test-bridge.js" ]; then
+            echo "✗ ERROR: src/test-bridge.js not found"
+            exit 1
+          fi
+          
+          cp src/test-bridge.js dist/test-bridge.js
+          echo "✓ Copied test-bridge.js to dist/"
+          
+          # Append test bridge to background.js
+          echo "" >> dist/background.js
+          echo "// ==================== TEST BRIDGE (Autonomous Testing) ====================" >> dist/background.js
+          cat dist/test-bridge.js >> dist/background.js
+          echo "// ==================== END TEST BRIDGE ====================" >> dist/background.js
+          echo "✓ Appended test-bridge.js to dist/background.js"
+          
+          # Update manifest.json to add test-bridge.js to web_accessible_resources
+          node -e "
+            const fs = require('fs');
+            const manifestPath = 'dist/manifest.json';
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            
+            // Ensure web_accessible_resources exists
+            if (!Array.isArray(manifest.web_accessible_resources)) {
+              manifest.web_accessible_resources = [];
+            }
+            
+            // Add test-bridge.js if not already present
+            if (!manifest.web_accessible_resources.includes('test-bridge.js')) {
+              manifest.web_accessible_resources.push('test-bridge.js');
+              console.log('Added test-bridge.js to web_accessible_resources');
+            } else {
+              console.log('test-bridge.js already in web_accessible_resources');
+            }
+            
+            // Write updated manifest
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+            console.log('✓ Updated manifest.json');
+          "
+          
+          # Verify test bridge was injected
+          if grep -q "COPILOT_TEST_BRIDGE" dist/background.js; then
+            echo "✓ Test bridge verified in dist/background.js"
+          else
+            echo "✗ ERROR: Test bridge not found in dist/background.js"
+            exit 1
+          fi
+          
+          # Verify manifest was updated
+          if grep -q "test-bridge.js" dist/manifest.json; then
+            echo "✓ Manifest updated with test-bridge.js"
+          else
+            echo "✗ ERROR: test-bridge.js not found in manifest.json"
+            exit 1
+          fi
+          
+          echo "=========================================="
+          echo "✓✓✓ Test Bridge Injection Complete ✓✓✓"
+          echo "=========================================="
+
+      # ====================================================================
       # NEW STEP: Create Firefox Profile with Extension Pre-installed
       # ====================================================================
       - name: Create Firefox profile with extension

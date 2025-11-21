@@ -947,6 +947,136 @@ browser.storage.sync.set({ data }).catch(error => {
 
 ---
 
+## Playwright MCP Autonomous Testing 🎭
+
+### Overview
+
+The extension includes a **Test Bridge Pattern** for autonomous testing with Playwright MCP, enabling ~80% test coverage without manual intervention.
+
+**Key Documents:**
+- **Testing Guide**: `.github/COPILOT-TESTING-GUIDE.md` - Complete testing documentation
+- **Implementation Spec**: `docs/manual/v1.6.0/copilot-testing-implementation.md`
+
+### What You CAN Test Autonomously
+
+✅ **Quick Tab Operations** (bypassing keyboard shortcuts):
+- Create Quick Tabs via Test Bridge (no "Q" key needed)
+- Minimize/restore programmatically
+- Pin/unpin behavior
+- Close and cleanup
+
+✅ **State Management**:
+- Storage verification (browser.storage.local)
+- Cross-tab synchronization (BroadcastChannel)
+- Container isolation (cookieStoreId)
+
+✅ **UI Interactions**:
+- Click, hover, drag, resize
+- Form inputs, screenshots
+- Multi-tab testing
+
+### What You CANNOT Test
+
+❌ **Keyboard Shortcuts**: `manifest.json` commands ("Q" key, "Ctrl+Alt+Z") - browser API limitation  
+❌ **Extension Icon**: Toolbar icon clicks  
+❌ **OS-Level Events**: System notifications, some clipboard ops
+
+**These require manual testing.**
+
+### Quick Start
+
+**1. Use ExtensionTestHelper:**
+```javascript
+import { ExtensionTestHelper } from './tests/extension/helpers/extension-test-utils.js';
+
+test('create Quick Tab', async ({ page }) => {
+  const helper = new ExtensionTestHelper(page);
+  await page.goto('https://example.com');
+  
+  // Wait for test bridge
+  const ready = await helper.waitForTestBridge();
+  expect(ready).toBe(true);
+  
+  // Create Quick Tab (bypasses "Q" key!)
+  await helper.createQuickTab('https://github.com');
+  
+  // Verify
+  const tabs = await helper.getQuickTabs();
+  expect(tabs).toHaveLength(1);
+});
+```
+
+**2. Run Tests:**
+```bash
+# All extension tests
+npm run test:extension
+
+# With UI (see what's happening)
+npm run test:extension:ui
+
+# Debug mode
+npm run test:extension:debug
+```
+
+**3. Test Bridge API:**
+
+All methods available via `helper.*`:
+- `createQuickTab(url, options)` - Create Quick Tab
+- `getQuickTabs()` - Get all Quick Tabs
+- `minimizeQuickTab(id)` - Minimize
+- `restoreQuickTab(id)` - Restore
+- `pinQuickTab(id)` - Pin to tab
+- `unpinQuickTab(id)` - Unpin
+- `closeQuickTab(id)` - Close
+- `clearAllQuickTabs()` - Cleanup
+- `waitForQuickTabCount(n)` - Wait for sync
+- `takeScreenshot(name)` - Capture screenshot
+
+### Testing Workflow
+
+**When to Test:**
+- Before committing UI changes
+- After implementing Quick Tab features
+- When fixing bugs related to state management
+- Before creating PRs
+
+**Test Pattern:**
+```javascript
+test.beforeEach(async ({ page }) => {
+  helper = new ExtensionTestHelper(page);
+  await page.goto('https://example.com');
+  await helper.waitForTestBridge();
+  await helper.clearAllQuickTabs(); // Start clean
+});
+
+test.afterEach(async () => {
+  await helper.clearAllQuickTabs(); // Cleanup
+});
+```
+
+**Best Practices:**
+1. **Always wait for test bridge** before using it
+2. **Clean up before and after** each test
+3. **Use polling** for async operations (`waitForQuickTabCount`)
+4. **Take screenshots** on failures for debugging
+5. **Test in both Firefox and Chrome** when possible
+
+### Troubleshooting
+
+**Test Bridge Not Available:**
+- Check TEST_MODE=true in environment
+- Verify extension loaded in browser
+- Check browser console for errors
+
+**Tests Timing Out:**
+- Increase timeout: `test.setTimeout(60000)`
+- Use `waitForQuickTabCount()` instead of immediate checks
+- Add delays between tab operations
+
+**See `.github/COPILOT-TESTING-GUIDE.md` for complete documentation.**
+
+---
+
 ## Before Every Commit Checklist
 
 - [ ] **Searched memories before starting work** 🧠🔍
@@ -954,7 +1084,8 @@ browser.storage.sync.set({ data }).catch(error => {
 - [ ] Zero ESLint errors remaining ⭐
 - [ ] Context7 used for API implementations ⭐
 - [ ] Run all testing suites and make sure that the extension packages correctly ⭐
-- [ ] Playwright tests run for UI changes
+- [ ] **Playwright MCP tests run for extension changes** 🎭 (`npm run test:extension`)
+- [ ] **Test Bridge verified for Quick Tab features** 🎭
 - [ ] **Tasks created for multi-step features** 📋
 - [ ] **Task status updated to reflect current progress** 📋
 - [ ] **Completed tasks marked as "done"** 📋
@@ -968,7 +1099,8 @@ browser.storage.sync.set({ data }).catch(error => {
 ## Before Every PR Checklist
 
 - [ ] All commits linted with ESLint ⭐
-- [ ] Playwright test suite passes
+- [ ] **Playwright MCP test suite passes** 🎭 (`npm run test:extension`)
+- [ ] **Extension tests cover new Quick Tab features** 🎭
 - [ ] Documentation updated (README, agent files if applicable)
 - [ ] **Memory files included in PR** 🧠
 - [ ] GitHub MCP used to create PR
