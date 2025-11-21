@@ -65,7 +65,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 
 **Purpose:** Task management and session memory with project-specific isolation
 
-**Storage Location:** `.agentic-tools/`
+**Storage Location:** `.agentic-tools-mcp/`
 - `tasks.json` - Task database
 - `memories.json` - Memory database
 - `projects.json` - Project metadata
@@ -98,12 +98,12 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 **Memory Persistence Workflow:**
 ```
 1. Agent creates tasks/memories during work
-2. Data stored in .agentic-tools/*.json
-3. MUST commit: git add .agentic-tools/
+2. Data stored in .agentic-tools-mcp/*.json
+3. MUST commit: git add .agentic-tools-mcp/
 4. Next agent run: Tasks/memories available
 ```
 
-**CRITICAL:** Commit `.agentic-tools/*.json` files to Git for session persistence.
+**CRITICAL:** Commit `.agentic-tools-mcp/*.json` files to Git for session persistence.
 
 ---
 
@@ -151,7 +151,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 1. **Stage memory files:**
    ```bash
    git add .in-memoria/
-   git add .agentic-tools/
+   git add .agentic-tools-mcp/
    git add .mcp-data/
    ```
 
@@ -173,7 +173,7 @@ Your memory files are stored in an **ephemeral GitHub Actions workspace** that g
 
 Before finishing work:
 - [ ] `.in-memoria/` appears in git status
-- [ ] `.agentic-tools/` appears in git status
+- [ ] `.agentic-tools-mcp/` appears in git status
 - [ ] `.mcp-data/` appears in git status
 - [ ] Memory files committed to PR branch
 - [ ] Memory files will be merged to main with code
@@ -383,7 +383,7 @@ Before finishing work:
 2. In-Memoria MCP: Learned patterns automatically stored 🧠
 3. Agentic-Tools MCP: Tasks/memories automatically stored 🧠
 4. Persistent-Memory MCP: Data automatically stored 🧠
-5. git add .in-memoria/ .agentic-tools/ .mcp-data/
+5. git add .in-memoria/ .agentic-tools-mcp/ .mcp-data/
 6. git commit -m "chore: persist agent memory from task"
 7. git push
 ```
@@ -396,7 +396,7 @@ Before finishing work:
 - [ ] Zero ESLint errors remaining ⭐
 - [ ] Context7 used for API implementations ⭐
 - [ ] Playwright tests run for UI changes
-- [ ] **Memory files staged** (.in-memoria/, .agentic-tools/, .mcp-data/) 🧠
+- [ ] **Memory files staged** (.in-memoria/, .agentic-tools-mcp/, .mcp-data/) 🧠
 - [ ] **Memory files committed** 🧠
 
 ---
@@ -442,7 +442,7 @@ Before finishing work:
 **Problem:** Memory directories missing
 
 **Solution:**
-1. Create directories: `mkdir -p .in-memoria .agentic-tools .mcp-data`
+1. Create directories: `mkdir -p .in-memoria .agentic-tools-mcp .mcp-data`
 2. Add .gitkeep files: `touch .in-memoria/.gitkeep`
 3. Commit to repository
 
@@ -455,6 +455,6 @@ Before finishing work:
 - ⭐ **3 Critical MCPs** - ESLint, Context7, Perplexity
 - 📋 **6 High Priority MCPs** - GitHub, Playwright (2), CodeScene, Codecov, GitHub Actions
 
-**Key Principle:** Always commit memory files (.in-memoria/, .agentic-tools/, .mcp-data/) at the end of EVERY task for persistence across sessions.
+**Key Principle:** Always commit memory files (.in-memoria/, .agentic-tools-mcp/, .mcp-data/) at the end of EVERY task for persistence across sessions.
 
 **MCPs enhance capabilities - use them proactively and systematically, especially memory MCPs for cumulative learning.**
