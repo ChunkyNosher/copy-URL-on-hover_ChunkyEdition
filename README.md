@@ -1,23 +1,30 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.6.0.10** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and Persistent Floating Panel Manager.
+**Version 1.6.0.11** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and Persistent Floating Panel Manager.
 
 **🔧 v1.6.0 Status:** Architecture refactoring Phase 1 COMPLETE ✅ (Domain + Storage layers with 96% coverage)
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.0.10
+## 🎉 What's New in v1.6.0.11
 
-**🐛 Debug Console Filter & UI Fixes (November 21, 2025) ✅**
+**🎯 Console Filter Integration & UI Polish (November 21, 2025) ✅**
 
-Major quality improvements addressing user feedback on console noise and UI usability:
+Major improvements to filter workflow and UI consistency based on user feedback:
 
-- ✅ **Keyboard Shortcut Logging Fixed** - Eliminated console noise from every keystroke
-  - Only logs when shortcuts are matched and executed
-  - Removed unconditional logging on every keypress
-  - Dramatically cleaner console output
-- ✅ **UI Layout Improvements** - Enhanced filter group interface in Advanced tab
-  - Triangle icons now rotate properly when expanding/collapsing groups
+- ✅ **Filter Settings Integration** - Simplified settings workflow
+  - Console filters now save with main "Save Settings" button
+  - Removed separate "Save Live Filters" and "Save Export Filters" buttons
+  - Filters automatically notify content scripts when changed
+  - Reset button now also resets filter settings to defaults
+- ✅ **UI Alignment Fixes** - Professional layout improvements
+  - Fixed triangle rotation using correct CSS selector (`+` instead of `~`)
+  - Buttons now align with title text (baseline alignment)
+  - Increased spacing between category title and buttons (25px extra)
+- ✅ **Architectural Improvements** - Better code organization
+  - Added `gatherFilterSettings()` for unified filter collection
+  - Modified `saveSettings()` to be async and handle filters
+  - Removed redundant `saveFilterSettings()` and `resetFilterSettings()` functions
   - Buttons aligned with title text baseline (not geometric center)
   - Increased spacing between count and buttons (+25px)
   - Reduced vertical spacing in category lists (-10px)
