@@ -39,11 +39,11 @@ jobs:
             echo "Agent may not have committed memory files"
           fi
           
-          if [ -d ".agentic-tools" ]; then
-            echo "✓ .agentic-tools/ directory found"
-            ls -la .agentic-tools/
+          if [ -d ".agentic-tools-mcp" ]; then
+            echo "✓ .agentic-tools-mcp/ directory found"
+            ls -la .agentic-tools-mcp/
           else
-            echo "⚠️ .agentic-tools/ directory not found"
+            echo "⚠️ .agentic-tools-mcp/ directory not found"
           fi
           
           if [ -d ".mcp-data" ]; then
@@ -64,7 +64,7 @@ jobs:
             let message = '## 🧠 Agent Memory Sync Status\n\n';
             
             const hasInMemoria = fs.existsSync('.in-memoria');
-            const hasAgenticTools = fs.existsSync('.agentic-tools');
+            const hasAgenticTools = fs.existsSync('.agentic-tools-mcp');
             const hasMcpData = fs.existsSync('.mcp-data');
             
             if (hasInMemoria && hasAgenticTools && hasMcpData) {
