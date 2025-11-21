@@ -51,7 +51,7 @@ If you think: "This workaround is easier" → ❌ Implement properly
 
 1. **Stage memory files for commit:**
    - `git add .in-memoria/`
-   - `git add .agentic-tools/`
+   - `git add .agentic-tools-mcp/`
    - `git add .mcp-data/`
 
 2. **Commit memory files with your code changes:**
