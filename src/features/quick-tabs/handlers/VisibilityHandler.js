@@ -170,18 +170,36 @@ export class VisibilityHandler {
 
   /**
    * Handle Quick Tab focus (bring to front)
+   * v1.6.0.12 - FIX: Save z-index to background for proper sync across tabs
    *
    * @param {string} id - Quick Tab ID
    */
-  handleFocus(id) {
+  async handleFocus(id) {
     console.log('[VisibilityHandler] Bringing to front:', id);
 
     const tabWindow = this.quickTabsMap.get(id);
     if (!tabWindow) return;
 
-    // Increment z-index and update tab
+    // Increment z-index and update tab UI
     this.currentZIndex.value++;
-    tabWindow.updateZIndex(this.currentZIndex.value);
+    const newZIndex = this.currentZIndex.value;
+    tabWindow.updateZIndex(newZIndex);
+
+    // v1.6.0.12 - FIX: Save z-index to background for cross-tab sync
+    const cookieStoreId = tabWindow.cookieStoreId || 'firefox-default';
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      try {
+        await browser.runtime.sendMessage({
+          action: 'UPDATE_QUICK_TAB_ZINDEX',
+          id: id,
+          zIndex: newZIndex,
+          cookieStoreId: cookieStoreId
+        });
+        console.log(`[VisibilityHandler] Saved z-index ${newZIndex} to background for ${id}`);
+      } catch (err) {
+        console.error('[VisibilityHandler] Error saving z-index to background:', err);
+      }
+    }
 
     // Emit focus event
     if (this.eventBus && this.Events) {

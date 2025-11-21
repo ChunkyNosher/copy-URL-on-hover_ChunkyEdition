@@ -39,6 +39,7 @@ export class SyncStorageAdapter extends StorageAdapter {
 
   /**
    * Save Quick Tabs for a specific container
+   * v1.6.0.12 - FIX: Use local storage by default to avoid quota issues
    *
    * @param {string} containerId - Firefox container ID
    * @param {QuickTab[]} tabs - Array of QuickTab domain entities
@@ -68,26 +69,26 @@ export class SyncStorageAdapter extends StorageAdapter {
       [this.STORAGE_KEY]: existingState
     };
 
-    // Check size
+    // Check size - if too large, use local storage directly
     const size = this._calculateSize(stateToSave);
 
     try {
-      if (size > this.MAX_SYNC_SIZE) {
-        console.warn(
-          `[SyncStorageAdapter] State size ${size} bytes exceeds sync limit of ${this.MAX_SYNC_SIZE} bytes`
-        );
-        throw new Error(
-          `QUOTA_BYTES: State too large (${size} bytes, max ${this.MAX_SYNC_SIZE} bytes)`
-        );
-      }
-
-      await browser.storage.sync.set(stateToSave);
+      // v1.6.0.12 - FIX: Use local storage by default for Quick Tabs
+      // Local storage has much higher limits (no 100KB restriction)
+      await browser.storage.local.set(stateToSave);
       console.log(
-        `[SyncStorageAdapter] Saved ${tabs.length} tabs for container ${containerId} (saveId: ${saveId})`
+        `[SyncStorageAdapter] Saved ${tabs.length} tabs for container ${containerId} to local storage (saveId: ${saveId}, size: ${size} bytes)`
       );
       return saveId;
     } catch (error) {
-      return this._handleSaveError(error, stateToSave, saveId);
+      console.error('[SyncStorageAdapter] Save failed:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        code: error?.code,
+        error: error
+      });
+      throw error;
     }
   }
 
@@ -196,6 +197,7 @@ export class SyncStorageAdapter extends StorageAdapter {
 
   /**
    * Delete all Quick Tabs for a specific container
+   * v1.6.0.12 - FIX: Use local storage to match save behavior
    *
    * @param {string} containerId - Firefox container ID
    * @returns {Promise<void>}
@@ -212,7 +214,8 @@ export class SyncStorageAdapter extends StorageAdapter {
     existingState.timestamp = Date.now();
     existingState.saveId = this._generateSaveId();
 
-    await browser.storage.sync.set({
+    // v1.6.0.12 - FIX: Save to local storage
+    await browser.storage.local.set({
       [this.STORAGE_KEY]: existingState
     });
 
@@ -221,35 +224,41 @@ export class SyncStorageAdapter extends StorageAdapter {
 
   /**
    * Clear all Quick Tabs across all containers
+   * v1.6.0.12 - FIX: Clear from both local and sync storage
    *
    * @returns {Promise<void>}
    */
   async clear() {
-    await browser.storage.sync.remove(this.STORAGE_KEY);
-    console.log('[SyncStorageAdapter] Cleared all Quick Tabs');
+    // Clear from both storages for complete cleanup
+    await Promise.all([
+      browser.storage.local.remove(this.STORAGE_KEY),
+      browser.storage.sync.remove(this.STORAGE_KEY)
+    ]);
+    console.log('[SyncStorageAdapter] Cleared all Quick Tabs from both storages');
   }
 
   /**
-   * Load raw state from storage (checks both sync and local for fallback)
+   * Load raw state from storage (checks both local and sync, prioritizing local)
+   * v1.6.0.12 - FIX: Prioritize local storage to match save behavior
    *
    * @private
    * @returns {Promise<Object>} Raw state object
    */
   async _loadRawState() {
     try {
-      // Try sync first
-      const result = await browser.storage.sync.get(this.STORAGE_KEY);
-
-      if (result[this.STORAGE_KEY]) {
-        return result[this.STORAGE_KEY];
-      }
-
-      // Fallback to local if sync is empty
+      // v1.6.0.12 - FIX: Try local storage first (where we now save)
       const localResult = await browser.storage.local.get(this.STORAGE_KEY);
 
       if (localResult[this.STORAGE_KEY]) {
-        console.log('[SyncStorageAdapter] Loaded from local storage (fallback)');
         return localResult[this.STORAGE_KEY];
+      }
+
+      // Fallback to sync storage for backward compatibility
+      const syncResult = await browser.storage.sync.get(this.STORAGE_KEY);
+
+      if (syncResult[this.STORAGE_KEY]) {
+        console.log('[SyncStorageAdapter] Loaded from sync storage (legacy fallback)');
+        return syncResult[this.STORAGE_KEY];
       }
 
       // Return empty state

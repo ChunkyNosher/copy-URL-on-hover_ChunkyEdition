@@ -189,15 +189,12 @@ export class PanelManager {
 
   /**
    * Setup message listener for toggle command
+   * v1.6.0.12 - FIX: Removed duplicate listener (already handled in content.js)
+   * This was causing panel to toggle twice when Ctrl+Alt+Z was pressed
    */
   setupMessageListener() {
-    browser.runtime.onMessage.addListener((message, _sender) => {
-      if (message.action === 'TOGGLE_QUICK_TABS_PANEL') {
-        this.toggle();
-        return Promise.resolve({ success: true });
-      }
-      return false;
-    });
+    // Listener removed - toggle command is now handled only in content.js
+    // This prevents the double-toggle bug where panel opens then immediately closes
   }
 
   /**

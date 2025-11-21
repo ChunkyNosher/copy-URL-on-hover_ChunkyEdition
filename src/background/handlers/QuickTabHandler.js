@@ -239,6 +239,16 @@ export class QuickTabHandler {
   }
 
   /**
+   * Handle z-index update
+   * v1.6.0.12 - NEW: Save z-index for cross-tab sync
+   */
+  handleZIndexUpdate(message, _sender) {
+    return this.updateQuickTabProperty(message, (tab, msg) => {
+      tab.zIndex = msg.zIndex;
+    });
+  }
+
+  /**
    * Get current tab ID
    */
   handleGetCurrentTabId(_message, sender) {
@@ -341,6 +351,7 @@ export class QuickTabHandler {
 
   /**
    * Save state to storage
+   * v1.6.0.12 - FIX: Use local storage to avoid quota errors
    */
   async saveState(saveId, cookieStoreId, message) {
     const generatedSaveId = saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -351,7 +362,8 @@ export class QuickTabHandler {
     };
 
     try {
-      await this.browserAPI.storage.sync.set({
+      // v1.6.0.12 - FIX: Use local storage to avoid quota errors
+      await this.browserAPI.storage.local.set({
         quick_tabs_state_v2: stateToSave
       });
 
@@ -388,6 +400,7 @@ export class QuickTabHandler {
 
   /**
    * Save state to storage (simplified)
+   * v1.6.0.12 - FIX: Use local storage to avoid quota errors
    */
   async saveStateToStorage() {
     const stateToSave = {
@@ -396,7 +409,8 @@ export class QuickTabHandler {
     };
 
     try {
-      await this.browserAPI.storage.sync.set({
+      // v1.6.0.12 - FIX: Use local storage to avoid quota errors
+      await this.browserAPI.storage.local.set({
         quick_tabs_state_v2: stateToSave
       });
 

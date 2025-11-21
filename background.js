@@ -163,14 +163,21 @@ async function tryLoadFromSessionStorage() {
 }
 
 /**
- * Helper: Try loading from sync storage
+ * Helper: Try loading from local/sync storage
+ * v1.6.0.12 - FIX: Prioritize local storage to match save behavior
  *
  * @returns {Promise<void>}
  */
 async function tryLoadFromSyncStorage() {
-  const result = await browser.storage.sync.get('quick_tabs_state_v2');
+  // v1.6.0.12 - FIX: Try local storage first (where we now save)
+  let result = await browser.storage.local.get('quick_tabs_state_v2');
 
-  // Guard: No data in sync storage
+  // Fallback to sync storage for backward compatibility
+  if (!result || !result.quick_tabs_state_v2) {
+    result = await browser.storage.sync.get('quick_tabs_state_v2');
+  }
+
+  // Guard: No data in either storage
   if (!result || !result.quick_tabs_state_v2) {
     console.log('[Background] ✓ EAGER LOAD: No saved state found, starting with empty state');
     isInitialized = true;
@@ -183,7 +190,7 @@ async function tryLoadFromSyncStorage() {
 
   if (migrator) {
     migrators[format].migrate(result.quick_tabs_state_v2, globalQuickTabState);
-    logSuccessfulLoad('sync storage', migrator.getFormatName());
+    logSuccessfulLoad('storage', migrator.getFormatName());
 
     // Save migrated legacy format with proper wrapper
     if (format === 'legacy') {
@@ -195,7 +202,8 @@ async function tryLoadFromSyncStorage() {
 }
 
 /**
- * Helper: Save migrated legacy format to sync storage
+ * Helper: Save migrated legacy format to local storage
+ * v1.6.0.12 - FIX: Use local storage to avoid quota errors
  *
  * @returns {Promise<void>}
  */
@@ -203,7 +211,7 @@ async function saveMigratedLegacyFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
-    await browser.storage.sync.set({
+    await browser.storage.local.set({
       quick_tabs_state_v2: {
         containers: globalQuickTabState.containers,
         saveId: saveId,
@@ -329,7 +337,8 @@ async function saveMigratedQuickTabState() {
   };
 
   try {
-    await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
+    // v1.6.0.12 - FIX: Use local storage to avoid quota errors
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
     console.log('[Background Migration] ✓ Migration complete');
   } catch (err) {
     console.error('[Background Migration] Error saving migrated state:', err);
@@ -407,12 +416,19 @@ class StateCoordinator {
   }
 
   /**
-   * Helper: Try loading from sync storage
+   * Helper: Try loading from local/sync storage
+   * v1.6.0.12 - FIX: Prioritize local storage to match save behavior
    *
    * @returns {Promise<void>}
    */
   async tryLoadFromSyncStorage() {
-    const result = await browser.storage.sync.get('quick_tabs_state_v2');
+    // v1.6.0.12 - FIX: Try local storage first (where we now save)
+    let result = await browser.storage.local.get('quick_tabs_state_v2');
+
+    // Fallback to sync storage for backward compatibility
+    if (!result || !result.quick_tabs_state_v2) {
+      result = await browser.storage.sync.get('quick_tabs_state_v2');
+    }
 
     // Guard: No data
     if (!result || !result.quick_tabs_state_v2) {
@@ -631,10 +647,12 @@ class StateCoordinator {
 
   /**
    * Persist state to storage
+   * v1.6.0.12 - FIX: Use local storage to avoid quota errors
    */
   async persistState() {
     try {
-      await browser.storage.sync.set({
+      // v1.6.0.12 - FIX: Use local storage (much higher quota)
+      await browser.storage.local.set({
         quick_tabs_state_v2: this.globalState
       });
 
@@ -946,7 +964,8 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
   };
 
   try {
-    await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
+    // v1.6.0.12 - FIX: Use local storage to avoid quota errors
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
     console.log('[Background] Cleaned up Quick Tab state after tab closure');
     return true;
   } catch (err) {
@@ -1026,6 +1045,10 @@ messageRouter.register('UPDATE_QUICK_TAB_MUTE', (msg, sender) =>
 messageRouter.register('UPDATE_QUICK_TAB_MINIMIZE', (msg, sender) =>
   quickTabHandler.handleMinimizeUpdate(msg, sender)
 );
+// v1.6.0.12 - NEW: Handle z-index updates for cross-tab sync
+messageRouter.register('UPDATE_QUICK_TAB_ZINDEX', (msg, sender) =>
+  quickTabHandler.handleZIndexUpdate(msg, sender)
+);
 messageRouter.register('GET_CURRENT_TAB_ID', (msg, sender) =>
   quickTabHandler.handleGetCurrentTabId(msg, sender)
 );
@@ -1052,7 +1075,7 @@ messageRouter.register('createQuickTab', (msg, sender) =>
   tabHandler.handleLegacyCreate(msg, sender)
 );
 
-console.log('[Background] MessageRouter initialized with 24 registered handlers');
+console.log('[Background] MessageRouter initialized with 25 registered handlers');
 
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
@@ -1162,14 +1185,15 @@ async function _handleSettingsChange(changes) {
 }
 
 // ==================== STORAGE SYNC BROADCASTING ====================
-// Listen for sync storage changes and broadcast them to all tabs
+// Listen for local/sync storage changes and broadcast them to all tabs
 // This enables real-time Quick Tab state synchronization across all tabs
 // v1.6.0 - PHASE 4.3: Refactored to extract handlers (cc=11 → cc<9, max-depth fixed)
+// v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
 browser.storage.onChanged.addListener((changes, areaName) => {
   console.log('[Background] Storage changed:', areaName, Object.keys(changes));
 
-  // Guard: Only process sync storage
-  if (areaName !== 'sync') {
+  // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
+  if (areaName !== 'local' && areaName !== 'sync') {
     return;
   }
 
