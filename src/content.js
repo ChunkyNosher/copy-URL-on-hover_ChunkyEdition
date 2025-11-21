@@ -981,6 +981,228 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       return true; // Keep message channel open for async response
     }
     // ==================== END QUICK TABS PANEL TOGGLE HANDLER ====================
+
+    // ==================== TEST BRIDGE MESSAGE HANDLERS ====================
+    // v1.6.0.13 - Added for autonomous testing with Playwright MCP
+    // Only active when TEST_MODE environment variable is true
+    // See: docs/manual/v1.6.0/copilot-testing-implementation.md
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_CREATE_QUICK_TAB') {
+      console.log('[Test Bridge Handler] TEST_CREATE_QUICK_TAB:', message.data);
+      try {
+        if (!quickTabsManager) {
+          throw new Error('QuickTabsManager not initialized');
+        }
+        
+        const { url, options = {} } = message.data;
+        
+        // Create Quick Tab using the manager
+        // Note: This bypasses keyboard shortcut and creates directly
+        quickTabsManager.createQuickTab({
+          url,
+          title: options.title || 'Test Quick Tab',
+          ...options
+        });
+        
+        sendResponse({
+          success: true,
+          message: 'Quick Tab created',
+          data: { url, options }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_CREATE_QUICK_TAB error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_MINIMIZE_QUICK_TAB') {
+      console.log('[Test Bridge Handler] TEST_MINIMIZE_QUICK_TAB:', message.data);
+      try {
+        if (!quickTabsManager || !quickTabsManager.panelManager) {
+          throw new Error('QuickTabsManager or PanelManager not initialized');
+        }
+        
+        const { id } = message.data;
+        quickTabsManager.panelManager.minimizeTab(id);
+        
+        sendResponse({
+          success: true,
+          message: 'Quick Tab minimized',
+          data: { id }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_MINIMIZE_QUICK_TAB error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_RESTORE_QUICK_TAB') {
+      console.log('[Test Bridge Handler] TEST_RESTORE_QUICK_TAB:', message.data);
+      try {
+        if (!quickTabsManager || !quickTabsManager.panelManager) {
+          throw new Error('QuickTabsManager or PanelManager not initialized');
+        }
+        
+        const { id } = message.data;
+        quickTabsManager.panelManager.restoreTab(id);
+        
+        sendResponse({
+          success: true,
+          message: 'Quick Tab restored',
+          data: { id }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_RESTORE_QUICK_TAB error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_PIN_QUICK_TAB') {
+      console.log('[Test Bridge Handler] TEST_PIN_QUICK_TAB:', message.data);
+      (async () => {
+        try {
+          if (!quickTabsManager) {
+            throw new Error('QuickTabsManager not initialized');
+          }
+          
+          const { id } = message.data;
+          const tab = quickTabsManager.tabs.get(id);
+          
+          if (!tab) {
+            throw new Error(`Quick Tab not found: ${id}`);
+          }
+          
+          // Get current tab URL for pinning
+          const currentUrl = window.location.href;
+          tab.pinnedToUrl = currentUrl;
+          
+          // Update in storage
+          await quickTabsManager.storage.saveQuickTab(tab);
+          
+          sendResponse({
+            success: true,
+            message: 'Quick Tab pinned',
+            data: { id, pinnedToUrl: currentUrl }
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_PIN_QUICK_TAB error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_UNPIN_QUICK_TAB') {
+      console.log('[Test Bridge Handler] TEST_UNPIN_QUICK_TAB:', message.data);
+      (async () => {
+        try {
+          if (!quickTabsManager) {
+            throw new Error('QuickTabsManager not initialized');
+          }
+          
+          const { id } = message.data;
+          const tab = quickTabsManager.tabs.get(id);
+          
+          if (!tab) {
+            throw new Error(`Quick Tab not found: ${id}`);
+          }
+          
+          // Unpin by setting to null
+          tab.pinnedToUrl = null;
+          
+          // Update in storage
+          await quickTabsManager.storage.saveQuickTab(tab);
+          
+          sendResponse({
+            success: true,
+            message: 'Quick Tab unpinned',
+            data: { id }
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_UNPIN_QUICK_TAB error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_CLOSE_QUICK_TAB') {
+      console.log('[Test Bridge Handler] TEST_CLOSE_QUICK_TAB:', message.data);
+      try {
+        if (!quickTabsManager) {
+          throw new Error('QuickTabsManager not initialized');
+        }
+        
+        const { id } = message.data;
+        quickTabsManager.closeQuickTab(id);
+        
+        sendResponse({
+          success: true,
+          message: 'Quick Tab closed',
+          data: { id }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_CLOSE_QUICK_TAB error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_CLEAR_ALL_QUICK_TAB') {
+      console.log('[Test Bridge Handler] TEST_CLEAR_ALL_QUICK_TABS');
+      try {
+        if (!quickTabsManager) {
+          throw new Error('QuickTabsManager not initialized');
+        }
+        
+        // Close all Quick Tabs
+        const tabIds = Array.from(quickTabsManager.tabs.keys());
+        for (const id of tabIds) {
+          quickTabsManager.closeQuickTab(id);
+        }
+        
+        sendResponse({
+          success: true,
+          message: 'All Quick Tabs cleared',
+          data: { count: tabIds.length }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_CLEAR_ALL_QUICK_TABS error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+    // ==================== END TEST BRIDGE MESSAGE HANDLERS ====================
   });
 }
 // ==================== END LOG EXPORT MESSAGE HANDLER ====================
