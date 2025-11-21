@@ -3,15 +3,15 @@
     "browserName": "chromium",
     "userDataDir": "/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/chrome-profile",
     "launchOptions": {
-      "channel": "chrome",
+      "channel": "chromium",
       "headless": false,
       "args": [
-        "--load-extension=/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/dist",
         "--disable-extensions-except=/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/dist",
+        "--load-extension=/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/dist",
         "--no-sandbox",
+        "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
-        "--disable-blink-features=AutomationControlled",
-        "--disable-gpu"
+        "--disable-blink-features=AutomationControlled"
       ]
     },
     "contextOptions": {
@@ -23,6 +23,7 @@
       "permissions": ["clipboard-read", "clipboard-write", "notifications"]
     }
   },
+  "capabilities": ["core", "tabs", "wait", "files", "install"],
   "outputDir": "/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/test-results/chrome",
   "tracing": {
     "enabled": true,
