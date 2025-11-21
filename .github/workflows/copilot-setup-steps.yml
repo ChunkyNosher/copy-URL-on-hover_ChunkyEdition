@@ -69,7 +69,7 @@ jobs:
         with:
           path: |
             .in-memoria/
-            .agentic-tools/
+            .agentic-tools-mcp/
             .mcp-data/
           key: copilot-memory-${{ github.repository }}
           restore-keys: |
@@ -89,9 +89,9 @@ jobs:
             echo "⚠ No In-Memoria patterns database (first run)"
           fi
           
-          if [ -f ".agentic-tools/memories.json" ]; then
+          if [ -f ".agentic-tools-mcp/memories.json" ]; then
             echo "✓ Agentic-Tools memories found"
-            MEMORY_COUNT=$(cat .agentic-tools/memories.json | jq '.memories | length' 2>/dev/null || echo "0")
+            MEMORY_COUNT=$(cat .agentic-tools-mcp/memories.json | jq '.memories | length' 2>/dev/null || echo "0")
             echo "  Memories: $MEMORY_COUNT"
           else
             echo "⚠ No Agentic-Tools memories (first run)"
