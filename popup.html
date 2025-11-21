@@ -349,7 +349,7 @@
       /* Group Header (clickable) */
       .group-header {
         display: flex;
-        align-items: baseline; /* v1.6.0.10 - Changed from 'center' to align buttons with title text */
+        align-items: baseline; /* v1.6.0.11 - Align buttons with title text */
         padding: 10px 12px;
         background-color: #2a2a2a;
         cursor: pointer;
@@ -366,12 +366,13 @@
         margin-right: 8px;
         transition: transform 0.2s;
         color: #4caf50;
+        display: inline-block;
       }
 
       /* Rotate icon when expanded */
-      /* v1.6.0.10 - Added !important to ensure rotation takes precedence */
-      .group-toggle:checked ~ .group-header .group-icon {
-        transform: rotate(90deg) !important;
+      /* v1.6.0.11 - Fixed rotation to work consistently */
+      .group-toggle:checked + .group-header .group-icon {
+        transform: rotate(90deg);
       }
 
       .group-title {
@@ -384,7 +385,7 @@
       .group-count {
         font-size: 11px;
         color: #888;
-        margin-right: 41px; /* v1.6.0.10 - Increased from 16px (adds 25px as requested) */
+        margin-right: 41px; /* v1.6.0.11 - 25px extra spacing from title to buttons */
       }
 
       .group-actions {
@@ -1092,43 +1093,6 @@
                 </label>
               </div>
             </div>
-
-            <div style="display: flex; gap: 8px; margin-top: 12px">
-              <button
-                type="button"
-                id="saveFiltersLive"
-                style="
-                  flex: 1;
-                  padding: 8px;
-                  background: #4caf50;
-                  color: white;
-                  border: none;
-                  border-radius: 4px;
-                  cursor: pointer;
-                  font-size: 12px;
-                  font-weight: 500;
-                "
-              >
-                Save Live Filters
-              </button>
-              <button
-                type="button"
-                id="resetFiltersLive"
-                style="
-                  flex: 1;
-                  padding: 8px;
-                  background: #666;
-                  color: white;
-                  border: none;
-                  border-radius: 4px;
-                  cursor: pointer;
-                  font-size: 12px;
-                  font-weight: 500;
-                "
-              >
-                Reset Live
-              </button>
-            </div>
           </div>
 
           <hr style="border: none; border-top: 1px solid #3a3a3a; margin: 24px 0" />
@@ -1400,43 +1364,6 @@
                   <span class="category-name">Initialization</span>
                 </label>
               </div>
-            </div>
-
-            <div style="display: flex; gap: 8px; margin-top: 12px">
-              <button
-                type="button"
-                id="saveFiltersExport"
-                style="
-                  flex: 1;
-                  padding: 8px;
-                  background: #4caf50;
-                  color: white;
-                  border: none;
-                  border-radius: 4px;
-                  cursor: pointer;
-                  font-size: 12px;
-                  font-weight: 500;
-                "
-              >
-                Save Export Filters
-              </button>
-              <button
-                type="button"
-                id="resetFiltersExport"
-                style="
-                  flex: 1;
-                  padding: 8px;
-                  background: #666;
-                  color: white;
-                  border: none;
-                  border-radius: 4px;
-                  cursor: pointer;
-                  font-size: 12px;
-                  font-weight: 500;
-                "
-              >
-                Reset Export
-              </button>
             </div>
           </div>
 

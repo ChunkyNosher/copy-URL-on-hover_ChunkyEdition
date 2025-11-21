@@ -468,7 +468,12 @@ const DEFAULT_SETTINGS = {
 
   debugMode: false,
   darkMode: true,
-  menuSize: 'medium'
+  menuSize: 'medium',
+
+  // v1.6.0.11 - Added filter defaults (stored separately in storage but reset together)
+  // These are stored as liveConsoleCategoriesEnabled and exportLogCategoriesEnabled
+  // but included here for documentation and reset functionality
+  _filterDefaults: true // Flag to indicate filter defaults should be reset
 };
 
 // Helper function to safely parse integer with fallback
@@ -689,27 +694,84 @@ function gatherSettingsFromForm() {
 }
 
 /**
- * Save settings from form to storage
+ * Gather filter settings from checkboxes
+ * v1.6.0.11 - Integrated with main save workflow
  */
-function saveSettings() {
-  const settings = gatherSettingsFromForm();
-  browserAPI.storage.local.set(settings, () => {
+function gatherFilterSettings() {
+  const liveSettings = {};
+  const exportSettings = {};
+
+  // Gather live filter settings
+  document.querySelectorAll('.category-checkbox[data-filter="live"]').forEach(cb => {
+    liveSettings[cb.dataset.category] = cb.checked;
+  });
+
+  // Gather export filter settings
+  document.querySelectorAll('.category-checkbox[data-filter="export"]').forEach(cb => {
+    exportSettings[cb.dataset.category] = cb.checked;
+  });
+
+  return { liveSettings, exportSettings };
+}
+
+/**
+ * Save settings from form to storage
+ * v1.6.0.11 - Now also saves filter settings and notifies content scripts
+ */
+async function saveSettings() {
+  try {
+    const settings = gatherSettingsFromForm();
+    const { liveSettings, exportSettings } = gatherFilterSettings();
+
+    // Save main settings
+    await browserAPI.storage.local.set(settings);
+
+    // Save filter settings
+    await browserAPI.storage.local.set({
+      liveConsoleCategoriesEnabled: liveSettings,
+      exportLogCategoriesEnabled: exportSettings
+    });
+
+    // Notify all tabs to refresh live console filter cache
+    await refreshLiveConsoleFiltersInAllTabs();
+
     showStatus('✓ Settings saved! Reload tabs to apply changes.');
     applyTheme(settings.darkMode);
     applyMenuSize(settings.menuSize);
-  });
+  } catch (error) {
+    console.error('[Popup] Failed to save settings:', error);
+    showStatus('✗ Failed to save settings', false);
+  }
 }
 
 // Save settings
 document.getElementById('saveBtn').addEventListener('click', saveSettings);
 
 // Reset to defaults
-document.getElementById('resetBtn').addEventListener('click', () => {
+// v1.6.0.11 - Now also resets filter settings
+document.getElementById('resetBtn').addEventListener('click', async () => {
   if (confirm('Reset all settings to defaults?')) {
-    browserAPI.storage.local.set(DEFAULT_SETTINGS, () => {
+    try {
+      // Reset main settings
+      await browserAPI.storage.local.set(DEFAULT_SETTINGS);
+
+      // Reset filter settings
+      await browserAPI.storage.local.set({
+        liveConsoleCategoriesEnabled: getDefaultLiveConsoleSettings(),
+        exportLogCategoriesEnabled: getDefaultExportSettings()
+      });
+
+      // Notify all tabs to refresh live console filter cache
+      await refreshLiveConsoleFiltersInAllTabs();
+
+      // Reload UI
       loadSettings();
+      loadFilterSettings();
       showStatus('✓ Settings reset to defaults!');
-    });
+    } catch (error) {
+      console.error('[Popup] Failed to reset settings:', error);
+      showStatus('✗ Failed to reset settings', false);
+    }
   }
 });
 
@@ -943,24 +1005,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==================== END CLEAR LOGS BUTTON ====================
 
   // ==================== COLLAPSIBLE FILTER GROUPS ====================
+  // v1.6.0.11 - Removed separate save/reset buttons; filters now save with main "Save Settings"
   initCollapsibleGroups();
   loadFilterSettings();
-
-  // Save filter buttons
-  document.getElementById('saveFiltersLive')?.addEventListener('click', () => {
-    saveFilterSettings('live');
-  });
-  document.getElementById('saveFiltersExport')?.addEventListener('click', () => {
-    saveFilterSettings('export');
-  });
-
-  // Reset filter buttons
-  document.getElementById('resetFiltersLive')?.addEventListener('click', () => {
-    resetFilterSettings('live');
-  });
-  document.getElementById('resetFiltersExport')?.addEventListener('click', () => {
-    resetFilterSettings('export');
-  });
   // ==================== END COLLAPSIBLE FILTER GROUPS ====================
 });
 
@@ -1071,59 +1118,9 @@ async function loadFilterSettings() {
   }
 }
 
-/**
- * Save filter settings to storage
- */
-async function saveFilterSettings(filterType) {
-  try {
-    const settings = {};
-
-    // Read checkboxes for this filter type
-    document.querySelectorAll(`.category-checkbox[data-filter="${filterType}"]`).forEach(cb => {
-      settings[cb.dataset.category] = cb.checked;
-    });
-
-    // Save to storage
-    const storageKey =
-      filterType === 'live' ? 'liveConsoleCategoriesEnabled' : 'exportLogCategoriesEnabled';
-    await browserAPI.storage.local.set({
-      [storageKey]: settings
-    });
-
-    // If live filters, notify content scripts to refresh cache
-    if (filterType === 'live') {
-      await refreshLiveConsoleFiltersInAllTabs();
-    }
-
-    showStatus(
-      `${filterType === 'live' ? 'Live' : 'Export'} console filters saved successfully`,
-      true
-    );
-  } catch (error) {
-    console.error('[Popup] Failed to save filter settings:', error);
-    showStatus('Failed to save filter settings', false);
-  }
-}
-
-/**
- * Reset filter settings to defaults
- */
-function resetFilterSettings(filterType) {
-  try {
-    const defaults =
-      filterType === 'live' ? getDefaultLiveConsoleSettings() : getDefaultExportSettings();
-
-    // Apply to checkboxes
-    document.querySelectorAll(`.category-checkbox[data-filter="${filterType}"]`).forEach(cb => {
-      cb.checked = defaults[cb.dataset.category] === true;
-    });
-
-    showStatus(`${filterType === 'live' ? 'Live' : 'Export'} filters reset to defaults`, true);
-  } catch (error) {
-    console.error('[Popup] Failed to reset filter settings:', error);
-    showStatus('Failed to reset filter settings', false);
-  }
-}
+// v1.6.0.11 - Removed saveFilterSettings() and resetFilterSettings()
+// Filter settings now save with main "Save Settings" button via gatherFilterSettings()
+// Reset functionality handled by main "Reset to Defaults" button
 
 /**
  * Notify all tabs to refresh live console filter cache
