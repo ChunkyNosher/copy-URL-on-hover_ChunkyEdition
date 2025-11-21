@@ -349,7 +349,7 @@
       /* Group Header (clickable) */
       .group-header {
         display: flex;
-        align-items: center;
+        align-items: baseline; /* v1.6.0.10 - Changed from 'center' to align buttons with title text */
         padding: 10px 12px;
         background-color: #2a2a2a;
         cursor: pointer;
@@ -369,8 +369,9 @@
       }
 
       /* Rotate icon when expanded */
+      /* v1.6.0.10 - Added !important to ensure rotation takes precedence */
       .group-toggle:checked ~ .group-header .group-icon {
-        transform: rotate(90deg);
+        transform: rotate(90deg) !important;
       }
 
       .group-title {
@@ -383,7 +384,7 @@
       .group-count {
         font-size: 11px;
         color: #888;
-        margin-right: 16px;
+        margin-right: 41px; /* v1.6.0.10 - Increased from 16px (adds 25px as requested) */
       }
 
       .group-actions {
@@ -428,7 +429,7 @@
       .category-label {
         display: flex;
         align-items: center;
-        padding: 6px 8px;
+        padding: 1px 8px; /* v1.6.0.10 - Reduced from 6px (saves 10px vertical as requested) */
         cursor: pointer;
         border-radius: 3px;
         transition: background-color 0.2s;
@@ -846,7 +847,7 @@
                     data-group="user-actions"
                     title="Select All"
                   >
-                    ↑
+                    Select All
                   </button>
                   <button
                     type="button"
@@ -856,7 +857,7 @@
                     data-group="user-actions"
                     title="Deselect All"
                   >
-                    ↓
+                    Deselect All
                   </button>
                 </div>
               </label>
@@ -940,7 +941,7 @@
                     data-group="system-ops"
                     title="Select All"
                   >
-                    ↑
+                    Select All
                   </button>
                   <button
                     type="button"
@@ -950,7 +951,7 @@
                     data-group="system-ops"
                     title="Deselect All"
                   >
-                    ↓
+                    Deselect All
                   </button>
                 </div>
               </label>
@@ -1044,7 +1045,7 @@
                     data-group="diagnostics"
                     title="Select All"
                   >
-                    ↑
+                    Select All
                   </button>
                   <button
                     type="button"
@@ -1054,7 +1055,7 @@
                     data-group="diagnostics"
                     title="Deselect All"
                   >
-                    ↓
+                    Deselect All
                   </button>
                 </div>
               </label>
@@ -1155,7 +1156,7 @@
                     data-group="user-actions"
                     title="Select All"
                   >
-                    ↑
+                    Select All
                   </button>
                   <button
                     type="button"
@@ -1165,7 +1166,7 @@
                     data-group="user-actions"
                     title="Deselect All"
                   >
-                    ↓
+                    Deselect All
                   </button>
                 </div>
               </label>
@@ -1249,7 +1250,7 @@
                     data-group="system-ops"
                     title="Select All"
                   >
-                    ↑
+                    Select All
                   </button>
                   <button
                     type="button"
@@ -1259,7 +1260,7 @@
                     data-group="system-ops"
                     title="Deselect All"
                   >
-                    ↓
+                    Deselect All
                   </button>
                 </div>
               </label>
@@ -1353,7 +1354,7 @@
                     data-group="diagnostics"
                     title="Select All"
                   >
-                    ↑
+                    Select All
                   </button>
                   <button
                     type="button"
@@ -1363,7 +1364,7 @@
                     data-group="diagnostics"
                     title="Deselect All"
                   >
-                    ↓
+                    Deselect All
                   </button>
                 </div>
               </label>

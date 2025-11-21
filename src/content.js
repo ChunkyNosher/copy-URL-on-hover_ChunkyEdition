@@ -476,25 +476,20 @@ function matchesShortcut(event, shortcut, hoveredLink, hoveredElement) {
 }
 
 /**
- * Log keyboard event
- */
-function logKeyboardEvent(event, isInInputField) {
-  logNormal('keyboard', 'Event', 'Key pressed', {
-    key: event.key,
-    ctrl: event.ctrlKey,
-    alt: event.altKey,
-    shift: event.shiftKey,
-    targetTag: event.target.tagName,
-    targetType: event.target.type || '<none>',
-    isInInputField: isInInputField
-  });
-}
-
-/**
  * Execute matched shortcut handler
+ * v1.6.0.10 - Added logging for matched shortcuts only
  */
-async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement) {
+async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement, event) {
   const executionStart = performance.now();
+
+  // Log matched shortcut execution
+  logNormal('keyboard', 'Matched', 'Keyboard shortcut matched and executing', {
+    shortcutName: shortcut.name,
+    key: event.key,
+    modifiers: `Ctrl:${event.ctrlKey} Alt:${event.altKey} Shift:${event.shiftKey}`,
+    hasLink: !!hoveredLink,
+    hasElement: !!hoveredElement
+  });
 
   // Pass correct parameters based on handler's requirements
   if (shortcut.needsLink && shortcut.needsElement) {
@@ -518,61 +513,35 @@ async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement) {
  * Reduced complexity and nesting using table-driven pattern with guard clauses
  * v1.6.0.3 - Fixed parameter passing: pass correct args based on handler's needs
  * v1.6.0.7 - Enhanced logging for keyboard event detection and shortcut matching
+ * v1.6.0.10 - ARCHITECTURAL FIX: Only log matched shortcuts, not every keystroke
+ *             Removes noise from console by logging only when shortcuts are executed
  */
 async function handleKeyboardShortcut(event) {
-  // Check if in input field first
+  // Check if in input field first - silently ignore
   const isInInputField = isInputField(event.target);
-
-  // Log keyboard event detection
-  logKeyboardEvent(event, isInInputField);
-
-  // Ignore if typing in an interactive field
   if (isInInputField) {
-    logNormal('keyboard', 'Ignored', 'Key press ignored - user typing in input field');
     return;
   }
 
   const hoveredLink = stateManager.get('currentHoveredLink');
   const hoveredElement = stateManager.get('currentHoveredElement');
 
-  // Log current hover state
-  logNormal('keyboard', 'Context', 'Current hover state', {
-    hasHoveredLink: !!hoveredLink,
-    hasHoveredElement: !!hoveredElement,
-    hoveredLink: hoveredLink || '<none>'
-  });
-
   // Check each shortcut using table-driven approach
   for (const shortcut of SHORTCUT_HANDLERS) {
     const matches = matchesShortcut(event, shortcut, hoveredLink, hoveredElement);
 
-    // Log shortcut matching attempt
-    logNormal('keyboard', 'Matching', 'Checking shortcut', {
-      shortcutName: shortcut.name,
-      matches: matches,
-      needsLink: shortcut.needsLink,
-      needsElement: shortcut.needsElement,
-      hasLink: !!hoveredLink,
-      hasElement: !!hoveredElement
-    });
-
     if (!matches) continue;
 
-    // Log successful shortcut match and execution
-    logNormal('keyboard', 'Execute', 'Shortcut matched - executing handler', {
-      shortcutName: shortcut.name,
-      handler: shortcut.handler.name
-    });
-
+    // Shortcut matched - prevent default and execute
     event.preventDefault();
 
-    await executeShortcutHandler(shortcut, hoveredLink, hoveredElement);
+    // Execute with logging (logging happens inside executeShortcutHandler)
+    await executeShortcutHandler(shortcut, hoveredLink, hoveredElement, event);
 
     return;
   }
 
-  // No shortcut matched
-  logNormal('keyboard', 'NoMatch', 'No shortcut matched for key combination');
+  // No shortcut matched - silently ignore (no noise in console)
 }
 
 /**
