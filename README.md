@@ -1,14 +1,35 @@
 # Firefox Extension: Copy URL on Hover
 
-**Version 1.6.0.8** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and Persistent Floating Panel Manager.
+**Version 1.6.0.10** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and Persistent Floating Panel Manager.
 
 **🔧 v1.6.0 Status:** Architecture refactoring Phase 1 COMPLETE ✅ (Domain + Storage layers with 96% coverage)
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.0.8
+## 🎉 What's New in v1.6.0.10
 
-**🔍 Live Console Output & Export Filtering (November 21, 2025) ✅**
+**🐛 Debug Console Filter & UI Fixes (November 21, 2025) ✅**
+
+Major quality improvements addressing user feedback on console noise and UI usability:
+
+- ✅ **Keyboard Shortcut Logging Fixed** - Eliminated console noise from every keystroke
+  - Only logs when shortcuts are matched and executed
+  - Removed unconditional logging on every keypress
+  - Dramatically cleaner console output
+- ✅ **UI Layout Improvements** - Enhanced filter group interface in Advanced tab
+  - Triangle icons now rotate properly when expanding/collapsing groups
+  - Buttons aligned with title text baseline (not geometric center)
+  - Increased spacing between count and buttons (+25px)
+  - Reduced vertical spacing in category lists (-10px)
+  - Replaced emoji button labels with clear text ("Select All" / "Deselect All")
+
+**Why This Matters:** The previous implementation logged every keystroke to the console, making debugging impossible. Now only actual shortcut executions are logged, providing clean, actionable debug output.
+
+**Documentation:** [Implementation Analysis](docs/manual/v1.6.0/v1.6.0.9-debug-console-filter-and-ui-issues-comprehensive-analysis.md)
+
+---
+
+**Previous Release: v1.6.0.8 - Live Console Output & Export Filtering (November 21, 2025)**
 
 Granular control over console log output to reduce noise and improve debugging experience:
 
@@ -285,4 +306,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Version 1.6.0.8** | [Changelog](docs/CHANGELOG.md) | [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) | [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
+**Version 1.6.0.10** | [Changelog](docs/CHANGELOG.md) | [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) | [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
