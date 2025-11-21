@@ -1,18 +1,18 @@
 {
   "browser": {
     "browserName": "firefox",
+    "userDataDir": "/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/firefox-profile",
     "launchOptions": {
       "headless": false,
-      "args": [
-        "-profile",
-        "/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/firefox-profile"
-      ],
       "firefoxUserPrefs": {
         "xpinstall.signatures.required": false,
         "extensions.autoDisableScopes": 0,
         "extensions.enabledScopes": 15,
         "devtools.chrome.enabled": true,
-        "devtools.debugger.remote-enabled": true
+        "devtools.debugger.remote-enabled": true,
+        "dom.events.testing.asyncClipboard": true,
+        "browser.startup.homepage_override.mstone": "ignore",
+        "trailhead.firstrun.didSeeAboutWelcome": true
       }
     },
     "contextOptions": {
@@ -24,6 +24,7 @@
       "permissions": ["clipboard-read", "clipboard-write", "notifications"]
     }
   },
+  "capabilities": ["core", "tabs", "wait", "files", "install"],
   "outputDir": "/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition/test-results/firefox",
   "tracing": {
     "enabled": true,

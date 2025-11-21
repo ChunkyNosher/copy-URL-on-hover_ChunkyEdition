@@ -275,6 +275,22 @@ npm run test:storage    # Storage layer (90% coverage required)
 npm run test:watch      # Watch mode
 ```
 
+### Interactive Browser Testing with Playwright MCP
+
+Test the extension in a live browser using Playwright MCP for interactive debugging:
+
+```bash
+npm run build:prod      # Build extension first
+npm run mcp:chrome      # Launch Chrome with extension
+npm run mcp:firefox     # Launch Firefox with extension
+```
+
+See [docs/PLAYWRIGHT_MCP_TESTING.md](docs/PLAYWRIGHT_MCP_TESTING.md) for complete testing guide including:
+- MCP server configuration
+- Testing Quick Tabs features interactively
+- Keyboard shortcut testing
+- Container isolation validation
+
 ### Validation
 
 ```bash
