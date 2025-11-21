@@ -73,6 +73,9 @@ If you think: "This workaround is easier" → ❌ Implement properly
 
 Check that `.in-memoria/`, `.agentic-tools/`, and `.mcp-data/` appear in your commit. If missing, ADD THEM NOW.
 
+### CRITICAL: Memory Tool Names: DO NOT USE "store_memory" TOOL CALL TO STORE A MEMORY, IT DOES NOT EXIST. 
+Use either in-memoria, agentic-tools, or persistent-memory MCP to properly store a memory.
+
 **This is NON-NEGOTIABLE for memory persistence across tasks.**
 
 ---
