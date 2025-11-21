@@ -1,7 +1,23 @@
 /**
  * Category-based Logging System with Live Console & Export Filtering
  * Provides granular control over which log categories appear in console and exports
+ *
+ * v1.6.0.13 - Refactored to use filter-settings.js to avoid circular dependency
  */
+
+// ==================== IMPORTS ====================
+import {
+  getLiveConsoleSettings,
+  getExportSettings,
+  getDefaultLiveConsoleSettings,
+  getDefaultExportSettings,
+  refreshLiveConsoleSettings,
+  refreshExportSettings,
+  getCategoryIdFromDisplayName
+} from './filter-settings.js';
+
+// Export functions for external use
+export { refreshLiveConsoleSettings, refreshExportSettings, getExportSettings };
 
 // ==================== LOG CATEGORIES ====================
 
@@ -60,173 +76,11 @@ export const CATEGORY_GROUPS = {
   }
 };
 
-// ==================== FILTER SETTINGS CACHE ====================
-
-// Settings cache - preloaded synchronously at module init
-let liveConsoleSettingsCache = null;
-let exportLogSettingsCache = null;
-let settingsInitialized = false;
-
-/**
- * Get default live console filter settings
- * Noisy categories (hover, url-detection) disabled by default
- */
-export function getDefaultLiveConsoleSettings() {
-  return {
-    'url-detection': false, // Noisy - disabled by default
-    hover: false, // Noisy - disabled by default
-    clipboard: true,
-    keyboard: true,
-    'quick-tabs': true,
-    'quick-tab-manager': true,
-    'event-bus': false,
-    config: true,
-    state: false,
-    storage: true,
-    messaging: false,
-    webrequest: true,
-    tabs: true,
-    performance: false,
-    errors: true,
-    initialization: true
-  };
-}
-
-/**
- * Get default export filter settings
- * All categories enabled by default for comprehensive debugging
- */
-export function getDefaultExportSettings() {
-  return {
-    'url-detection': true,
-    hover: true,
-    clipboard: true,
-    keyboard: true,
-    'quick-tabs': true,
-    'quick-tab-manager': true,
-    'event-bus': true,
-    config: true,
-    state: true,
-    storage: true,
-    messaging: true,
-    webrequest: true,
-    tabs: true,
-    performance: true,
-    errors: true,
-    initialization: true
-  };
-}
-
-/**
- * Initialize filter settings - called once at module load
- * ARCHITECTURAL FIX: Preload settings synchronously to avoid async issues in logging functions
- */
-async function initializeFilterSettings() {
-  if (settingsInitialized) {
-    return;
-  }
-
-  try {
-    if (typeof browser !== 'undefined' && browser.storage) {
-      const result = await browser.storage.local.get([
-        'liveConsoleCategoriesEnabled',
-        'exportLogCategoriesEnabled'
-      ]);
-
-      liveConsoleSettingsCache =
-        result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
-      exportLogSettingsCache = result.exportLogCategoriesEnabled || getDefaultExportSettings();
-
-      console.log('[Copy-URL-on-Hover] Live console filters initialized:', {
-        enabled: Object.entries(liveConsoleSettingsCache)
-          .filter(([_, enabled]) => enabled)
-          .map(([cat]) => cat),
-        disabled: Object.entries(liveConsoleSettingsCache)
-          .filter(([_, enabled]) => !enabled)
-          .map(([cat]) => cat)
-      });
-    } else {
-      liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
-      exportLogSettingsCache = getDefaultExportSettings();
-      console.log('[Logger] Browser API not available - using default settings');
-    }
-
-    settingsInitialized = true;
-  } catch (error) {
-    console.error('[Logger] Failed to initialize filter settings:', error);
-    liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
-    exportLogSettingsCache = getDefaultExportSettings();
-    settingsInitialized = true;
-  }
-}
-
-// Initialize settings immediately when module loads
-initializeFilterSettings();
-
-/**
- * Get live console filter settings (synchronous - uses preloaded cache)
- */
-function getLiveConsoleSettings() {
-  // Fail-safe: if not initialized yet, use defaults
-  if (!settingsInitialized || liveConsoleSettingsCache === null) {
-    return getDefaultLiveConsoleSettings();
-  }
-  return liveConsoleSettingsCache;
-}
-
-/**
- * Get export filter settings (synchronous - uses preloaded cache)
- */
-export function getExportSettings() {
-  // Fail-safe: if not initialized yet, use defaults
-  if (!settingsInitialized || exportLogSettingsCache === null) {
-    return getDefaultExportSettings();
-  }
-  return exportLogSettingsCache;
-}
-
-/**
- * Refresh live console settings from storage
- * Call this after settings change in popup
- */
-export async function refreshLiveConsoleSettings() {
-  try {
-    if (typeof browser !== 'undefined' && browser.storage) {
-      const result = await browser.storage.local.get('liveConsoleCategoriesEnabled');
-      liveConsoleSettingsCache =
-        result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
-      console.log('[Copy-URL-on-Hover] Live console filters refreshed:', {
-        enabled: Object.entries(liveConsoleSettingsCache)
-          .filter(([_, enabled]) => enabled)
-          .map(([cat]) => cat),
-        disabled: Object.entries(liveConsoleSettingsCache)
-          .filter(([_, enabled]) => !enabled)
-          .map(([cat]) => cat)
-      });
-    }
-  } catch (error) {
-    console.error('[Logger] Failed to refresh live console settings:', error);
-  }
-}
-
-/**
- * Refresh export settings from storage
- */
-export async function refreshExportSettings() {
-  try {
-    if (typeof browser !== 'undefined' && browser.storage) {
-      const result = await browser.storage.local.get('exportLogCategoriesEnabled');
-      exportLogSettingsCache = result.exportLogCategoriesEnabled || getDefaultExportSettings();
-      console.log('[Logger] Export filter cache refreshed');
-    }
-  } catch (error) {
-    console.error('[Logger] Failed to refresh export settings:', error);
-  }
-}
+// ==================== HELPER FUNCTIONS ====================
 
 /**
  * Check if category is enabled for live console output
- * ARCHITECTURAL FIX: Now synchronous using preloaded settings
+ * v1.6.0.13 - Now uses filter-settings module
  */
 function isCategoryEnabledForLiveConsole(category) {
   const settings = getLiveConsoleSettings();
@@ -239,6 +93,9 @@ function isCategoryEnabledForLiveConsole(category) {
   return settings[category] === true;
 }
 
+// Re-export for compatibility
+export { getDefaultLiveConsoleSettings, getDefaultExportSettings, getCategoryIdFromDisplayName };
+
 // ==================== LOGGING FUNCTIONS ====================
 
 /**
@@ -250,56 +107,6 @@ export function getCategoryDisplayName(category) {
     return category;
   }
   return `${categoryInfo.emoji} ${categoryInfo.displayName}`;
-}
-
-/**
- * Get category ID from display name (for export filtering)
- */
-export function getCategoryIdFromDisplayName(displayName) {
-  const normalized = displayName.trim().toLowerCase();
-
-  // Remove emoji and extra spaces
-  const cleanName = normalized.replace(/[^\w\s-]/g, '').trim();
-
-  // Direct mappings
-  const mapping = {
-    'url detection': 'url-detection',
-    hover: 'hover',
-    'hover events': 'hover',
-    clipboard: 'clipboard',
-    'clipboard operations': 'clipboard',
-    keyboard: 'keyboard',
-    'keyboard shortcuts': 'keyboard',
-    'quick tabs': 'quick-tabs',
-    'quick tab actions': 'quick-tabs',
-    'quick tab manager': 'quick-tab-manager',
-    'event bus': 'event-bus',
-    config: 'config',
-    configuration: 'config',
-    state: 'state',
-    'state management': 'state',
-    storage: 'storage',
-    'browser storage': 'storage',
-    messaging: 'messaging',
-    'message passing': 'messaging',
-    webrequest: 'webrequest',
-    'web requests': 'webrequest',
-    tabs: 'tabs',
-    'tab management': 'tabs',
-    performance: 'performance',
-    errors: 'errors',
-    initialization: 'initialization',
-    // Legacy mappings
-    debug: 'quick-tabs',
-    quicktabsmanager: 'quick-tab-manager',
-    createhandler: 'quick-tabs',
-    quicktabwindow: 'quick-tabs',
-    broadcastmanager: 'quick-tabs',
-    notificationmanager: 'clipboard',
-    tooltip: 'clipboard'
-  };
-
-  return mapping[cleanName] || 'uncategorized';
 }
 
 /**

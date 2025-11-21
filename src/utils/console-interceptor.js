@@ -4,7 +4,12 @@
  *
  * CRITICAL: This must be imported FIRST in any script that needs log capture
  * to ensure console methods are overridden before any other code runs.
+ *
+ * v1.6.0.13 - Added live console filter support
  */
+
+// ==================== IMPORTS ====================
+import { isCategoryEnabledForLiveConsole, getCategoryIdFromDisplayName } from './filter-settings.js';
 
 // ==================== LOG BUFFER CONFIGURATION ====================
 const MAX_BUFFER_SIZE = 5000;
@@ -84,9 +89,37 @@ function serializeArgument(arg) {
 }
 
 /**
- * Add log entry to buffer with automatic size management
+ * Extract category from log message
+ * v1.6.0.13 - Added category extraction for filtering
+ * Handles various log formats used throughout extension
  */
-function addToLogBuffer(type, args) {
+function extractCategoryFromMessage(message) {
+  // Pattern 1: [Category Display Name] [Action] Message
+  const categoryPattern = /^\[([^\]]+)\]\s*\[([^\]]+)\]/;
+  const match = message.match(categoryPattern);
+
+  if (match) {
+    const displayName = match[1];
+    return getCategoryIdFromDisplayName(displayName);
+  }
+
+  // Pattern 2: [Component] Message (e.g., [Background], [QuickTabHandler])
+  const componentPattern = /^\[([^\]]+)\]/;
+  const componentMatch = message.match(componentPattern);
+
+  if (componentMatch) {
+    const component = componentMatch[1];
+    return getCategoryIdFromDisplayName(component);
+  }
+
+  return 'uncategorized';
+}
+
+/**
+ * Add log entry to buffer with automatic size management
+ * v1.6.0.13 - Now stores category for export filtering
+ */
+function addToLogBuffer(type, args, category = null) {
   // Prevent buffer overflow
   if (CONSOLE_LOG_BUFFER.length >= MAX_BUFFER_SIZE) {
     CONSOLE_LOG_BUFFER.shift(); // Remove oldest entry
@@ -97,11 +130,15 @@ function addToLogBuffer(type, args) {
     .map(arg => serializeArgument(arg))
     .join(' ');
 
-  // Add to buffer
+  // Extract category from message if not provided
+  const extractedCategory = category || extractCategoryFromMessage(message);
+
+  // Add to buffer (always stored, regardless of filter)
   CONSOLE_LOG_BUFFER.push({
     type: type,
     timestamp: Date.now(),
     message: message,
+    category: extractedCategory,
     context: getExecutionContext()
   });
 }
@@ -129,43 +166,79 @@ function getExecutionContext() {
 }
 
 /**
- * Override console.log to capture logs
+ * Override console.log to capture logs AND respect live console filter
+ * v1.6.0.13 - FIX: Now checks live console filter before logging
  */
 console.log = function (...args) {
-  addToLogBuffer('LOG', args);
-  originalConsole.log.apply(console, args);
+  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const category = extractCategoryFromMessage(message);
+
+  // Always add to buffer (for export)
+  addToLogBuffer('LOG', args, category);
+
+  // Check live console filter before logging to console
+  if (isCategoryEnabledForLiveConsole(category)) {
+    originalConsole.log.apply(console, args);
+  }
+  // If disabled, log is buffered but NOT displayed in console
 };
 
 /**
  * Override console.error to capture errors
+ * v1.6.0.13 - Errors ALWAYS logged regardless of filter (critical)
  */
 console.error = function (...args) {
-  addToLogBuffer('ERROR', args);
+  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const category = extractCategoryFromMessage(message);
+
+  addToLogBuffer('ERROR', args, category);
+
+  // Errors ALWAYS logged to console (critical for debugging)
   originalConsole.error.apply(console, args);
 };
 
 /**
  * Override console.warn to capture warnings
+ * v1.6.0.13 - Warnings ALWAYS logged regardless of filter
  */
 console.warn = function (...args) {
-  addToLogBuffer('WARN', args);
+  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const category = extractCategoryFromMessage(message);
+
+  addToLogBuffer('WARN', args, category);
+
+  // Warnings ALWAYS logged to console
   originalConsole.warn.apply(console, args);
 };
 
 /**
  * Override console.info to capture info
+ * v1.6.0.13 - Respects live console filter
  */
 console.info = function (...args) {
-  addToLogBuffer('INFO', args);
-  originalConsole.info.apply(console, args);
+  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const category = extractCategoryFromMessage(message);
+
+  addToLogBuffer('INFO', args, category);
+
+  if (isCategoryEnabledForLiveConsole(category)) {
+    originalConsole.info.apply(console, args);
+  }
 };
 
 /**
  * Override console.debug to capture debug messages
+ * v1.6.0.13 - Respects live console filter
  */
 console.debug = function (...args) {
-  addToLogBuffer('DEBUG', args);
-  originalConsole.debug.apply(console, args);
+  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const category = extractCategoryFromMessage(message);
+
+  addToLogBuffer('DEBUG', args, category);
+
+  if (isCategoryEnabledForLiveConsole(category)) {
+    originalConsole.debug.apply(console, args);
+  }
 };
 
 // ==================== GLOBAL ERROR CAPTURE ====================
