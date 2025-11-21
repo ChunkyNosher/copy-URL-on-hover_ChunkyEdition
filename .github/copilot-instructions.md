@@ -391,10 +391,12 @@ browser.storage.sync.set({ data }).catch(error => {
 - [ ] ESLint MCP used on all modified JS files ⭐
 - [ ] Zero ESLint errors remaining ⭐
 - [ ] Context7 used for API implementations ⭐
+- [ ] Run all testing suites and make sure that the extension packages correctly ⭐
 - [ ] Playwright tests run for UI changes
-- [ ] **Memory files committed** (.in-memoria/, .agentic-tools/, .mcp-data/) 🧠
+- [ ] **Memory files committed** (.agentic-tools-mcp/) 🧠
+- [ ] Verified `.agentic-tools-mcp/memories/` contains individual JSON files 🧠
+- [ ] Memory files follow naming convention: `Category/Title.json` 🧠
 
----
 
 ## Before Every PR Checklist
 
