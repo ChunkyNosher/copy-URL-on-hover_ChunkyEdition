@@ -1,0 +1,643 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.0.11
+Export Date: 2025-11-21T06:43:21.743Z
+Export Date (Local): 11/21/2025, 1:43:21 AM
+Total Logs: 286
+
+================================================================================
+[2025-11-21T06:42:44.627Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-21T06:42:46.083Z] [LOG  ] [Copy-URL-on-Hover] Script loaded! @ 2025-11-21T06:42:46.083Z
+[2025-11-21T06:42:46.083Z] [LOG  ] [Copy-URL-on-Hover] Debug marker set successfully
+[2025-11-21T06:42:46.083Z] [LOG  ] [Copy-URL-on-Hover] Global error handlers installed
+[2025-11-21T06:42:46.084Z] [LOG  ] [Copy-URL-on-Hover] Starting module imports...
+[2025-11-21T06:42:46.084Z] [LOG  ] [Copy-URL-on-Hover] All module imports completed successfully
+[2025-11-21T06:42:46.084Z] [LOG  ] [Copy-URL-on-Hover] Initializing core systems...
+[2025-11-21T06:42:46.084Z] [LOG  ] [Copy-URL-on-Hover] ConfigManager initialized
+[2025-11-21T06:42:46.084Z] [LOG  ] [Copy-URL-on-Hover] StateManager initialized
+[2025-11-21T06:42:46.084Z] [LOG  ] [Copy-URL-on-Hover] EventBus initialized
+[2025-11-21T06:42:46.084Z] [LOG  ] [Copy-URL-on-Hover] URLHandlerRegistry initialized
+[2025-11-21T06:42:46.084Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting extension initialization...
+[2025-11-21T06:42:46.084Z] [LOG  ] [Copy-URL-on-Hover] STEP: Loading user configuration...
+[2025-11-21T06:42:46.084Z] [LOG  ] [ConfigManager] Starting configuration load...
+[2025-11-21T06:42:46.084Z] [LOG  ] [ConfigManager] Calling browser.storage.local.get...
+[2025-11-21T06:42:46.092Z] [LOG  ] [Copy-URL-on-Hover] Live console filters initialized: {
+  "enabled": [
+    "url-detection",
+    "hover",
+    "clipboard",
+    "keyboard",
+    "quick-tabs",
+    "quick-tab-manager",
+    "event-bus",
+    "config",
+    "state",
+    "storage",
+    "messaging",
+    "webrequest",
+    "tabs",
+    "errors",
+    "initialization"
+  ],
+  "disabled": [
+    "performance"
+  ]
+}
+[2025-11-21T06:42:46.103Z] [LOG  ] [ConfigManager] Storage get completed, processing result...
+[2025-11-21T06:42:46.103Z] [LOG  ] [ConfigManager] Configuration loaded successfully
+[2025-11-21T06:42:46.103Z] [LOG  ] [ConfigManager] Config summary: {
+  "debugMode": true,
+  "totalKeys": 42
+}
+[2025-11-21T06:42:46.103Z] [LOG  ] [Copy-URL-on-Hover] ✓ Configuration loaded successfully
+[2025-11-21T06:42:46.103Z] [LOG  ] [Copy-URL-on-Hover] Config values: {
+  "debugMode": true,
+  "hasDefaultConfig": true
+}
+[2025-11-21T06:42:46.103Z] [LOG  ] [Copy-URL-on-Hover] STEP: Enabling debug mode...
+[2025-11-21T06:42:46.103Z] [LOG  ] [DEBUG] Debug mode enabled
+[2025-11-21T06:42:46.103Z] [LOG  ] [Copy-URL-on-Hover] ✓ Debug mode activated
+[2025-11-21T06:42:46.103Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing state...
+[2025-11-21T06:42:46.103Z] [LOG  ] [Copy-URL-on-Hover] ✓ State initialized
+[2025-11-21T06:42:46.103Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing feature modules...
+[2025-11-21T06:42:46.103Z] [DEBUG] Debug mode enabled
+[2025-11-21T06:42:46.104Z] [LOG  ] [Copy-URL-on-Hover] About to initialize Quick Tabs...
+[2025-11-21T06:42:46.104Z] [LOG  ] [QuickTabs] Initializing Quick Tabs feature module...
+[2025-11-21T06:42:46.104Z] [LOG  ] [QuickTabsManager] Initializing facade...
+[2025-11-21T06:42:46.104Z] [LOG  ] [QuickTabsManager] STEP 1: Detecting container context...
+[2025-11-21T06:42:46.201Z] [LOG  ] [QuickTabsManager] Detected container: firefox-container-9
+[2025-11-21T06:42:46.202Z] [LOG  ] [QuickTabsManager] STEP 1: Detecting tab ID...
+[2025-11-21T06:42:46.233Z] [LOG  ] [QuickTabsManager] Detected current tab ID: 308
+[2025-11-21T06:42:46.233Z] [LOG  ] [QuickTabsManager] STEP 1 Complete
+[2025-11-21T06:42:46.233Z] [LOG  ] [QuickTabsManager] STEP 2: Initializing managers...
+[2025-11-21T06:42:46.233Z] [LOG  ] [QuickTabsManager] STEP 2 Complete
+[2025-11-21T06:42:46.233Z] [LOG  ] [QuickTabsManager] STEP 3: Initializing handlers...
+[2025-11-21T06:42:46.233Z] [LOG  ] [QuickTabsManager] STEP 3 Complete
+[2025-11-21T06:42:46.233Z] [LOG  ] [QuickTabsManager] STEP 4: Initializing panel manager...
+[2025-11-21T06:42:46.233Z] [LOG  ] [DEBUG] [PanelManager] Initializing...
+[2025-11-21T06:42:46.233Z] [DEBUG] [PanelManager] Initializing...
+[2025-11-21T06:42:46.244Z] [LOG  ] [DEBUG] [PanelManager] Container: firefox-container-9
+[2025-11-21T06:42:46.244Z] [DEBUG] [PanelManager] Container: firefox-container-9
+[2025-11-21T06:42:46.247Z] [LOG  ] [DEBUG] [PanelStateManager] Container detected: firefox-container-9
+[2025-11-21T06:42:46.247Z] [LOG  ] [DEBUG] [PanelStateManager] BroadcastChannel initialized
+[2025-11-21T06:42:46.247Z] [LOG  ] [DEBUG] [PanelStateManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 0,
+  "height": 0,
+  "isOpen": false
+}
+[2025-11-21T06:42:46.247Z] [LOG  ] [DEBUG] [PanelStateManager] Initialized
+[2025-11-21T06:42:46.247Z] [DEBUG] [PanelStateManager] Container detected: firefox-container-9
+[2025-11-21T06:42:46.247Z] [DEBUG] [PanelStateManager] BroadcastChannel initialized
+[2025-11-21T06:42:46.247Z] [DEBUG] [PanelStateManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 0,
+  "height": 0,
+  "isOpen": false
+}
+[2025-11-21T06:42:46.247Z] [DEBUG] [PanelStateManager] Initialized
+[2025-11-21T06:42:46.248Z] [LOG  ] [DEBUG] [PanelResizeController] Attached 8 resize handles
+[2025-11-21T06:42:46.248Z] [LOG  ] [DEBUG] [PanelContentManager] Event listeners setup
+[2025-11-21T06:42:46.248Z] [LOG  ] [DEBUG] [PanelManager] Initialized
+[2025-11-21T06:42:46.248Z] [DEBUG] [PanelResizeController] Attached 8 resize handles
+[2025-11-21T06:42:46.248Z] [DEBUG] [PanelContentManager] Event listeners setup
+[2025-11-21T06:42:46.248Z] [DEBUG] [PanelManager] Initialized
+[2025-11-21T06:42:46.249Z] [LOG  ] [QuickTabsManager] STEP 4 Complete - Panel manager initialized
+[2025-11-21T06:42:46.249Z] [LOG  ] [QuickTabsManager] STEP 5: Initializing coordinators...
+[2025-11-21T06:42:46.249Z] [LOG  ] [QuickTabsManager] STEP 5 Complete
+[2025-11-21T06:42:46.249Z] [LOG  ] [QuickTabsManager] STEP 6: Setting up components...
+[2025-11-21T06:42:46.249Z] [LOG  ] [StorageManager] Storage listeners attached
+[2025-11-21T06:42:46.249Z] [LOG  ] [BroadcastManager] BroadcastChannel created: quick-tabs-sync-firefox-container-9
+[2025-11-21T06:42:46.249Z] [LOG  ] [BroadcastManager] Initialized for container: firefox-container-9
+[2025-11-21T06:42:46.249Z] [LOG  ] [EventManager] Emergency save handlers attached
+[2025-11-21T06:42:46.249Z] [LOG  ] [SyncCoordinator] Setting up listeners
+[2025-11-21T06:42:46.249Z] [LOG  ] [SyncCoordinator] Listeners setup complete
+[2025-11-21T06:42:46.249Z] [LOG  ] [UICoordinator] Initializing...
+[2025-11-21T06:42:46.249Z] [LOG  ] [UICoordinator] Setting up state listeners
+[2025-11-21T06:42:46.249Z] [LOG  ] [UICoordinator] Rendering all visible tabs
+[2025-11-21T06:42:46.250Z] [LOG  ] [UICoordinator] Rendered 0 tabs
+[2025-11-21T06:42:46.250Z] [LOG  ] [UICoordinator] Initialized
+[2025-11-21T06:42:46.250Z] [LOG  ] [QuickTabsManager] STEP 6 Complete
+[2025-11-21T06:42:46.250Z] [LOG  ] [QuickTabsManager] STEP 7: Hydrating state...
+[2025-11-21T06:42:46.250Z] [LOG  ] [QuickTabsManager] Hydrating state from storage...
+[2025-11-21T06:42:46.267Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:42:46.274Z] [ERROR] [SessionStorageAdapter] Load failed: {
+  "message": "can't access property \"get\", e.storage.session is undefined",
+  "name": "TypeError",
+  "stack": "_loadRawState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2309:19\nload@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2281:28\nloadAll@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2483:43\nasync*_hydrateState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3591:38\n_initStep7_Hydrate@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3513:80\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3474:22\nasync*ze/_e<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4634:97\nze/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4636:10\nze@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4638:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4690:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4780:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:5098:2\n",
+  "error": {}
+}
+[2025-11-21T06:42:46.281Z] [LOG  ] [StorageManager] No data found for container firefox-container-9
+[2025-11-21T06:42:46.281Z] [LOG  ] [StateManager] Hydrated 0 Quick Tabs
+[2025-11-21T06:42:46.281Z] [LOG  ] [QuickTabsManager] Hydrated 0 Quick Tabs
+[2025-11-21T06:42:46.281Z] [LOG  ] [QuickTabsManager] STEP 7 Complete
+[2025-11-21T06:42:46.282Z] [LOG  ] [QuickTabsManager] STEP 8: Exposing manager globally...
+[2025-11-21T06:42:46.282Z] [LOG  ] [QuickTabsManager] Manager exposed globally
+[2025-11-21T06:42:46.282Z] [LOG  ] [QuickTabsManager] STEP 8 Complete
+[2025-11-21T06:42:46.282Z] [LOG  ] [QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓
+[2025-11-21T06:42:46.282Z] [LOG  ] [QuickTabs] Quick Tabs feature module initialized
+[2025-11-21T06:42:46.282Z] [LOG  ] [Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully
+[2025-11-21T06:42:46.282Z] [LOG  ] [Copy-URL-on-Hover] Manager has createQuickTab: function
+[2025-11-21T06:42:46.282Z] [LOG  ] [Notifications] Initializing Notifications feature module...
+[2025-11-21T06:42:46.282Z] [LOG  ] [NotificationManager] Initializing...
+[2025-11-21T06:42:46.282Z] [LOG  ] [NotificationManager] Styles injected from CSS module
+[2025-11-21T06:42:46.282Z] [LOG  ] [NotificationManager] Initialized successfully
+[2025-11-21T06:42:46.282Z] [LOG  ] [Notifications] Notifications feature module initialized
+[2025-11-21T06:42:46.282Z] [LOG  ] [Copy-URL-on-Hover] ✓ Notifications feature initialized
+[2025-11-21T06:42:46.284Z] [LOG  ] [DEBUG] Extension initialized successfully
+[2025-11-21T06:42:46.284Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting main features...
+[2025-11-21T06:42:46.284Z] [LOG  ] [DEBUG] Loading main features...
+[2025-11-21T06:42:46.284Z] [LOG  ] [Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓
+[2025-11-21T06:42:46.284Z] [LOG  ] [Copy-URL-on-Hover] Extension is ready for use!
+[2025-11-21T06:42:46.284Z] [DEBUG] Extension initialized successfully
+[2025-11-21T06:42:46.284Z] [DEBUG] Loading main features...
+[2025-11-21T06:42:47.864Z] [LOG  ] [⌨️ Keyboard Shortcuts] [Matched] Keyboard shortcut matched and executing {
+  "shortcutName": "quickTab",
+  "key": "e",
+  "modifiers": "Ctrl:true Alt:false Shift:false",
+  "hasLink": true,
+  "hasElement": true,
+  "_logCategory": "keyboard",
+  "_logAction": "Matched",
+  "timestamp": 1763707367864
+}
+[2025-11-21T06:42:47.865Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-21T06:42:47.865Z] [LOG  ] [QuickTabsManager] Tracking pending save: 1763707367865-d5lxfqr3l
+[2025-11-21T06:42:47.865Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-1763707367865-h9hjucc1v",
+  "url": "https://en.wikipedia.org/wiki/Arina_Tanemura",
+  "left": 873,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Arina Tanemura",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-21T06:42:47.865Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-21T06:42:47.867Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763707367865-h9hjucc1v
+[2025-11-21T06:42:47.867Z] [LOG  ] [BroadcastManager] Broadcasted CREATE: {
+  "id": "qt-1763707367865-h9hjucc1v",
+  "url": "https://en.wikipedia.org/wiki/Arina_Tanemura",
+  "left": 873,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Arina Tanemura",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-21T06:42:47.867Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-1763707367865-h9hjucc1v
+[2025-11-21T06:42:47.868Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763707367865-h9hjucc1v Container: firefox-default
+[2025-11-21T06:42:47.868Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:42:47.871Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:42:47.886Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-21T06:42:47.886Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-21T06:42:47.886Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-21T06:42:47.886Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-21T06:42:47.886Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-21T06:42:47.886Z] [DEBUG] Quick Tab created successfully
+[2025-11-21T06:42:47.891Z] [LOG  ] [⌨️ Keyboard Shortcuts] [Complete] Handler execution finished {
+  "shortcutName": "quickTab",
+  "executionTime": "27.00ms",
+  "_logCategory": "keyboard",
+  "_logAction": "Complete",
+  "timestamp": 1763707367891
+}
+[2025-11-21T06:42:47.896Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-21T06:42:48.779Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763707367865-h9hjucc1v 873 738
+[2025-11-21T06:42:48.779Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707367865-h9hjucc1v
+[2025-11-21T06:42:48.780Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707367865-h9hjucc1v
+[2025-11-21T06:42:49.121Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763707367865-h9hjucc1v 437 789
+[2025-11-21T06:42:49.121Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763707367865-h9hjucc1v",
+  "left": 437,
+  "top": 789
+}
+[2025-11-21T06:42:49.123Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:42:49.131Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:42:49.692Z] [LOG  ] [⌨️ Keyboard Shortcuts] [Matched] Keyboard shortcut matched and executing {
+  "shortcutName": "quickTab",
+  "key": "e",
+  "modifiers": "Ctrl:true Alt:false Shift:false",
+  "hasLink": true,
+  "hasElement": true,
+  "_logCategory": "keyboard",
+  "_logAction": "Matched",
+  "timestamp": 1763707369692
+}
+[2025-11-21T06:42:49.693Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-21T06:42:49.693Z] [LOG  ] [QuickTabsManager] Tracking pending save: 1763707369693-1fvlb34z9
+[2025-11-21T06:42:49.693Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-1763707369693-8haxvrtuh",
+  "url": "https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem",
+  "left": 1037,
+  "top": 533,
+  "width": 960,
+  "height": 540,
+  "title": "Shukusei!! Loli Kami Requiem",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null
+}
+[2025-11-21T06:42:49.693Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-21T06:42:49.694Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763707369693-8haxvrtuh
+[2025-11-21T06:42:49.694Z] [LOG  ] [BroadcastManager] Broadcasted CREATE: {
+  "id": "qt-1763707369693-8haxvrtuh",
+  "url": "https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem",
+  "left": 1037,
+  "top": 533,
+  "width": 960,
+  "height": 540,
+  "title": "Shukusei!! Loli Kami Requiem",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-21T06:42:49.694Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-1763707369693-8haxvrtuh
+[2025-11-21T06:42:49.702Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763707369693-8haxvrtuh Container: firefox-default
+[2025-11-21T06:42:49.703Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:42:49.704Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:42:49.705Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-21T06:42:49.705Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-11-21T06:42:49.705Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-11-21T06:42:49.705Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-11-21T06:42:49.705Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-11-21T06:42:49.705Z] [DEBUG] Quick Tab created successfully
+[2025-11-21T06:42:49.706Z] [LOG  ] [⌨️ Keyboard Shortcuts] [Complete] Handler execution finished {
+  "shortcutName": "quickTab",
+  "executionTime": "14.00ms",
+  "_logCategory": "keyboard",
+  "_logAction": "Complete",
+  "timestamp": 1763707369706
+}
+[2025-11-21T06:42:49.823Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-21T06:42:50.524Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763707369693-8haxvrtuh 1037 533
+[2025-11-21T06:42:50.524Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707369693-8haxvrtuh
+[2025-11-21T06:42:50.524Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707369693-8haxvrtuh
+[2025-11-21T06:42:50.790Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763707369693-8haxvrtuh 1191 499
+[2025-11-21T06:42:50.790Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763707369693-8haxvrtuh",
+  "left": 1191,
+  "top": 499
+}
+[2025-11-21T06:42:50.793Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:42:50.797Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:42:51.304Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763707367865-h9hjucc1v 437 789
+[2025-11-21T06:42:51.304Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707367865-h9hjucc1v
+[2025-11-21T06:42:51.305Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707367865-h9hjucc1v
+[2025-11-21T06:42:51.573Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763707367865-h9hjucc1v 449 629
+[2025-11-21T06:42:51.573Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763707367865-h9hjucc1v",
+  "left": 449,
+  "top": 629
+}
+[2025-11-21T06:42:51.576Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:42:51.577Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:42:52.509Z] [DEBUG] [Background] Tab activated: 307
+[2025-11-21T06:42:52.941Z] [LOG  ] [EventManager] Tab hidden - triggering emergency save
+[2025-11-21T06:42:55.280Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:42:57.090Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CREATE",
+  "data": {
+    "id": "qt-1763707377086-faael122b",
+    "url": "https://en.wikipedia.org/wiki/Automotive_industry_in_Japan",
+    "left": 1018,
+    "top": 524,
+    "width": 960,
+    "height": 540,
+    "title": "automotive",
+    "cookieStoreId": "firefox-default",
+    "minimized": false,
+    "soloedOnTabs": [],
+    "mutedOnTabs": []
+  }
+}
+[2025-11-21T06:42:57.094Z] [LOG  ] [SyncCoordinator] Received broadcast: CREATE
+[2025-11-21T06:42:57.094Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-1763707377086-faael122b",
+  "url": "https://en.wikipedia.org/wiki/Automotive_industry_in_Japan",
+  "left": 1018,
+  "top": 524,
+  "width": 960,
+  "height": 540,
+  "title": "automotive",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-21T06:42:57.097Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Automotive_industry_in_Japan ID: qt-1763707377086-faael122b Container: firefox-default
+[2025-11-21T06:42:57.097Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:42:57.099Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763707377086-faael122b
+[2025-11-21T06:42:57.099Z] [LOG  ] [BroadcastManager] Broadcasted CREATE: {
+  "id": "qt-1763707377086-faael122b",
+  "url": "https://en.wikipedia.org/wiki/Automotive_industry_in_Japan",
+  "left": 1018,
+  "top": 524,
+  "width": 960,
+  "height": 540,
+  "title": "automotive",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-21T06:42:57.099Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-1763707377086-faael122b
+[2025-11-21T06:42:57.100Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:42:57.166Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Automotive_industry_in_Japan
+[2025-11-21T06:42:57.215Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Automotive_industry_in_Japan
+[2025-11-21T06:42:59.649Z] [LOG  ] [EventManager] Tab visible - triggering state refresh
+[2025-11-21T06:42:59.649Z] [LOG  ] [SyncCoordinator] Tab became visible - refreshing state from background
+[2025-11-21T06:42:59.755Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-21T06:42:59.800Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:42:59.822Z] [ERROR] [SessionStorageAdapter] Load failed: {
+  "message": "can't access property \"get\", e.storage.session is undefined",
+  "name": "TypeError",
+  "stack": "_loadRawState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2309:19\nload@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2281:28\nloadAll@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2483:43\nasync*handleTabVisible@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:722:45\nsetupListeners/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:711:14\nr.prototype.emit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:636:23\nsetupEmergencySaveHandlers/this.boundHandlers.visibilityChange@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:1954:105\nEventListener.handleEvent*setupEmergencySaveHandlers@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:1967:19\n_setupComponents@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3551:97\n_initStep6_Setup@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3509:86\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3473:85\nasync*ze/_e<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4634:97\nze/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4636:10\nze@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4638:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4690:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4780:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:5098:2\n",
+  "error": {}
+}
+[2025-11-21T06:42:59.840Z] [LOG  ] [StorageManager] No data found for container firefox-container-9
+[2025-11-21T06:42:59.840Z] [LOG  ] [StateManager] Hydrated 0 Quick Tabs
+[2025-11-21T06:42:59.840Z] [LOG  ] [SyncCoordinator] Refreshed 0 Quick Tabs on tab visible
+[2025-11-21T06:43:00.729Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763707377086-faael122b 1018 524
+[2025-11-21T06:43:01.725Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763707377086-faael122b 828 814
+[2025-11-21T06:43:02.253Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763707367865-h9hjucc1v 451 629
+[2025-11-21T06:43:02.253Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707367865-h9hjucc1v
+[2025-11-21T06:43:02.253Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707367865-h9hjucc1v
+[2025-11-21T06:43:03.080Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763707367865-h9hjucc1v 301 717
+[2025-11-21T06:43:03.080Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763707367865-h9hjucc1v",
+  "left": 301,
+  "top": 717
+}
+[2025-11-21T06:43:03.082Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:03.087Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "UPDATE_POSITION",
+  "data": {
+    "id": "qt-1763707367865-h9hjucc1v",
+    "left": 301,
+    "top": 717
+  }
+}
+[2025-11-21T06:43:03.087Z] [LOG  ] [SyncCoordinator] Received broadcast: UPDATE_POSITION
+[2025-11-21T06:43:03.087Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763707367865-h9hjucc1v",
+  "left": 301,
+  "top": 717
+}
+[2025-11-21T06:43:03.091Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:03.091Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:03.092Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:43:03.093Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:43:03.094Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:43:03.438Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763707377086-faael122b 828 814
+[2025-11-21T06:43:04.132Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763707377086-faael122b 469 658
+[2025-11-21T06:43:04.671Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763707369693-8haxvrtuh 1191 499
+[2025-11-21T06:43:04.671Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707369693-8haxvrtuh
+[2025-11-21T06:43:04.672Z] [LOG  ] [VisibilityHandler] Bringing to front: qt-1763707369693-8haxvrtuh
+[2025-11-21T06:43:05.142Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763707369693-8haxvrtuh 1100 825
+[2025-11-21T06:43:05.142Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763707369693-8haxvrtuh",
+  "left": 1100,
+  "top": 825
+}
+[2025-11-21T06:43:05.144Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:05.149Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:05.149Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "UPDATE_POSITION",
+  "data": {
+    "id": "qt-1763707369693-8haxvrtuh",
+    "left": 1100,
+    "top": 825
+  }
+}
+[2025-11-21T06:43:05.149Z] [LOG  ] [SyncCoordinator] Received broadcast: UPDATE_POSITION
+[2025-11-21T06:43:05.149Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763707369693-8haxvrtuh",
+  "left": 1100,
+  "top": 825
+}
+[2025-11-21T06:43:05.156Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:43:05.157Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:05.173Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:43:05.173Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:43:05.617Z] [LOG  ] [QuickTabWindow] Drag started: qt-1763707377086-faael122b 468 660
+[2025-11-21T06:43:06.425Z] [LOG  ] [QuickTabWindow] Drag ended: qt-1763707377086-faael122b 75 252
+[2025-11-21T06:43:07.309Z] [DEBUG] [Background] Tab activated: 307
+[2025-11-21T06:43:07.344Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:07.530Z] [LOG  ] [EventManager] Tab hidden - triggering emergency save
+[2025-11-21T06:43:10.384Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 307
+[2025-11-21T06:43:10.386Z] [LOG  ] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:10.386Z] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:10.387Z] [LOG  ] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:10.387Z] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:10.399Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:10.399Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:10.401Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:10.401Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:11.206Z] [LOG  ] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:11.206Z] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:11.207Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 307
+[2025-11-21T06:43:11.207Z] [LOG  ] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:11.207Z] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:11.208Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:11.209Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:11.213Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:11.213Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:11.915Z] [LOG  ] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:11.915Z] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:11.916Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 307
+[2025-11-21T06:43:11.916Z] [LOG  ] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:11.916Z] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:11.917Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:11.918Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:11.918Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:11.919Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:12.717Z] [LOG  ] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:12.717Z] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:12.718Z] [LOG  ] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:12.718Z] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:12.720Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 307
+[2025-11-21T06:43:12.720Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:12.720Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:12.724Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:12.724Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:13.755Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:13.755Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "UPDATE_POSITION",
+  "data": {
+    "id": "qt-1763707377086-faael122b",
+    "left": 351,
+    "top": 443
+  }
+}
+[2025-11-21T06:43:13.755Z] [LOG  ] [SyncCoordinator] Received broadcast: UPDATE_POSITION
+[2025-11-21T06:43:13.756Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:13.756Z] [LOG  ] [BroadcastManager] Broadcasted UPDATE_POSITION: {
+  "id": "qt-1763707377086-faael122b",
+  "left": 351,
+  "top": 443
+}
+[2025-11-21T06:43:13.757Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:43:13.757Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:13.757Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "UPDATE_POSITION",
+  "data": {
+    "id": "qt-1763707377086-faael122b",
+    "left": 351,
+    "top": 443
+  }
+}
+[2025-11-21T06:43:13.757Z] [LOG  ] [BroadcastManager] Ignoring duplicate broadcast (debounced): UPDATE_POSITION qt-1763707377086-faael122b
+[2025-11-21T06:43:13.758Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:43:13.759Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:43:14.213Z] [LOG  ] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:14.213Z] [DEBUG] [PanelManager] Panel opened (silent)
+[2025-11-21T06:43:14.214Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 307
+[2025-11-21T06:43:14.214Z] [LOG  ] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:14.214Z] [DEBUG] [PanelManager] Panel closed (silent)
+[2025-11-21T06:43:14.215Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:14.215Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:14.218Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:14.218Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-21T06:43:15.475Z] [LOG  ] [EventManager] Tab visible - triggering state refresh
+[2025-11-21T06:43:15.475Z] [LOG  ] [SyncCoordinator] Tab became visible - refreshing state from background
+[2025-11-21T06:43:15.549Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-21T06:43:15.581Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:43:15.588Z] [ERROR] [SessionStorageAdapter] Load failed: {
+  "message": "can't access property \"get\", e.storage.session is undefined",
+  "name": "TypeError",
+  "stack": "_loadRawState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2309:19\nload@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2281:28\nloadAll@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2483:43\nasync*handleTabVisible@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:722:45\nsetupListeners/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:711:14\nr.prototype.emit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:636:23\nsetupEmergencySaveHandlers/this.boundHandlers.visibilityChange@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:1954:105\nEventListener.handleEvent*setupEmergencySaveHandlers@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:1967:19\n_setupComponents@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3551:97\n_initStep6_Setup@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3509:86\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3473:85\nasync*ze/_e<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4634:97\nze/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4636:10\nze@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4638:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4690:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4780:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:5098:2\n",
+  "error": {}
+}
+[2025-11-21T06:43:15.591Z] [LOG  ] [StorageManager] No data found for container firefox-container-9
+[2025-11-21T06:43:15.591Z] [LOG  ] [StateManager] Hydrated 0 Quick Tabs
+[2025-11-21T06:43:15.591Z] [LOG  ] [SyncCoordinator] Refreshed 0 Quick Tabs on tab visible
+[2025-11-21T06:43:21.731Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================

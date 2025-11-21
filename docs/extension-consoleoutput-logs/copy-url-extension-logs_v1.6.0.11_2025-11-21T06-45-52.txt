@@ -1,0 +1,102 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.0.11
+Export Date: 2025-11-21T06:45:52.465Z
+Export Date (Local): 11/21/2025, 1:45:52 AM
+Total Logs: 44
+
+================================================================================
+[2025-11-21T06:45:17.994Z] [LOG  ] [DEBUG] Log buffer cleared
+[2025-11-21T06:45:20.942Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Cocoa_Fujiwara ID: qt-1763707520938-0y6zgcbn9 Container: firefox-default
+[2025-11-21T06:45:20.943Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:20.944Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:45:21.127Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-21T06:45:21.127Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-21T06:45:22.325Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763707522322-1cxu5tjg8 Container: firefox-default
+[2025-11-21T06:45:22.325Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:22.326Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:45:22.596Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-21T06:45:22.596Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-21T06:45:23.550Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:23.554Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:23.556Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:23.558Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:45:23.563Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:45:23.565Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:45:24.573Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:24.576Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:24.577Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:24.578Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:45:24.578Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:45:24.578Z] [ERROR] [QuickTabHandler] Error saving state: {
+  "message": "QuotaExceededError: storage.sync API call exceeded its quota limitations.",
+  "name": "Error",
+  "stack": "",
+  "error": {}
+}
+[2025-11-21T06:45:25.584Z] [DEBUG] [Background] Tab activated: 307
+[2025-11-21T06:45:25.619Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:30.271Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-21T06:45:30.378Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:31.432Z] [DEBUG] [Background] Tab activated: 307
+[2025-11-21T06:45:31.470Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:34.332Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-21T06:45:34.364Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:43.144Z] [LOG  ] [EventManager] Tab visible - triggering state refresh
+[2025-11-21T06:45:43.144Z] [LOG  ] [SyncCoordinator] Tab became visible - refreshing state from background
+[2025-11-21T06:45:43.149Z] [DEBUG] [Background] Tab activated: 285
+[2025-11-21T06:45:43.199Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:43.199Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:43.200Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:43.200Z] [DEBUG] [Background] State already initialized
+[2025-11-21T06:45:43.215Z] [ERROR] [SessionStorageAdapter] Load failed: {
+  "message": "can't access property \"get\", e.storage.session is undefined",
+  "name": "TypeError",
+  "stack": "_loadRawState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2309:19\nload@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2281:28\nloadAll@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2483:43\nasync*handleTabVisible@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:722:45\nsetupListeners/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:711:14\nr.prototype.emit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:636:23\nsetupEmergencySaveHandlers/this.boundHandlers.visibilityChange@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:1954:105\nEventListener.handleEvent*setupEmergencySaveHandlers@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:1967:19\n_setupComponents@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3551:97\n_initStep6_Setup@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3509:86\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3473:85\nasync*ze/_e<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4634:97\nze/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4636:10\nze@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4638:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4690:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4780:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:5098:2\n",
+  "error": {}
+}
+[2025-11-21T06:45:43.231Z] [LOG  ] [StorageManager] No data found for container firefox-container-9
+[2025-11-21T06:45:43.232Z] [LOG  ] [StateManager] Hydrated 0 Quick Tabs
+[2025-11-21T06:45:43.232Z] [LOG  ] [SyncCoordinator] Refreshed 0 Quick Tabs on tab visible
+[2025-11-21T06:45:45.135Z] [DEBUG] [Background] Tab activated: 286
+[2025-11-21T06:45:52.461Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
