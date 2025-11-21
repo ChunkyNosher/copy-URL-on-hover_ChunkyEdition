@@ -228,8 +228,112 @@ async function _delegateLogExport(logText, filename) {
 }
 
 /**
+ * Extract category from log entry for export filtering
+ * v1.6.0.9 - Added export filter support
+ */
+function extractCategoryFromLogEntry(logEntry) {
+  const message = logEntry.message || '';
+
+  // Match pattern: [emoji displayName] [Action] Message
+  const match = message.match(/^\[([^\]]+)\]/);
+
+  if (!match) {
+    return 'uncategorized';
+  }
+
+  const displayName = match[1];
+  const normalized = displayName.trim().toLowerCase().replace(/[^\w\s-]/g, '').trim();
+
+  // Category mapping
+  const mapping = {
+    'url detection': 'url-detection',
+    hover: 'hover',
+    'hover events': 'hover',
+    clipboard: 'clipboard',
+    'clipboard operations': 'clipboard',
+    keyboard: 'keyboard',
+    'keyboard shortcuts': 'keyboard',
+    'quick tabs': 'quick-tabs',
+    'quick tab actions': 'quick-tabs',
+    'quick tab manager': 'quick-tab-manager',
+    'event bus': 'event-bus',
+    config: 'config',
+    configuration: 'config',
+    state: 'state',
+    'state management': 'state',
+    storage: 'storage',
+    'browser storage': 'storage',
+    messaging: 'messaging',
+    'message passing': 'messaging',
+    webrequest: 'webrequest',
+    'web requests': 'webrequest',
+    tabs: 'tabs',
+    'tab management': 'tabs',
+    performance: 'performance',
+    errors: 'errors',
+    initialization: 'initialization'
+  };
+
+  return mapping[normalized] || 'uncategorized';
+}
+
+/**
+ * Get export filter settings from storage
+ * v1.6.0.9 - Added export filter support
+ */
+async function getExportFilterSettings() {
+  try {
+    const result = await browserAPI.storage.local.get('exportLogCategoriesEnabled');
+    if (result.exportLogCategoriesEnabled) {
+      return result.exportLogCategoriesEnabled;
+    }
+  } catch (error) {
+    console.error('[Popup] Failed to load export filter settings:', error);
+  }
+
+  // Default: all categories enabled
+  return {
+    'url-detection': true,
+    hover: true,
+    clipboard: true,
+    keyboard: true,
+    'quick-tabs': true,
+    'quick-tab-manager': true,
+    'event-bus': true,
+    config: true,
+    state: true,
+    storage: true,
+    messaging: true,
+    webrequest: true,
+    tabs: true,
+    performance: true,
+    errors: true,
+    initialization: true
+  };
+}
+
+/**
+ * Filter logs by export category settings
+ * v1.6.0.9 - Added export filter support
+ */
+function filterLogsByExportSettings(allLogs, exportSettings) {
+  return allLogs.filter(logEntry => {
+    const category = extractCategoryFromLogEntry(logEntry);
+
+    // Always include uncategorized logs (fail-safe)
+    if (category === 'uncategorized') {
+      return true;
+    }
+
+    // Check if category is enabled for export
+    return exportSettings[category] === true;
+  });
+}
+
+/**
  * Export all logs as downloadable .txt file
  * Uses Blob URLs for Firefox compatibility (data: URLs are blocked)
+ * v1.6.0.9 - Added export filter support
  *
  * @param {string} version - Extension version
  * @returns {Promise<void>}
@@ -256,13 +360,26 @@ async function exportAllLogs(version) {
     const allLogs = [...backgroundLogs, ...contentLogs];
     allLogs.sort((a, b) => a.timestamp - b.timestamp);
 
-    console.log(`[Popup] Total logs to export: ${allLogs.length}`);
+    console.log(`[Popup] Total logs captured: ${allLogs.length}`);
+
+    // ==================== EXPORT FILTER (v1.6.0.9) ====================
+    // Apply export filter settings
+    const exportSettings = await getExportFilterSettings();
+    console.log('[Popup] Export filter settings:', exportSettings);
+
+    const filteredLogs = filterLogsByExportSettings(allLogs, exportSettings);
+    console.log(`[Popup] Logs after export filter: ${filteredLogs.length}`);
+
+    const percentage =
+      allLogs.length > 0 ? ((filteredLogs.length / allLogs.length) * 100).toFixed(1) : '0.0';
+    console.log(`[Popup] Export filter: ${percentage}% of logs included`);
+    // ==================== END EXPORT FILTER ====================
 
     // Validate logs were collected
-    _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab);
+    _validateCollectedLogs(filteredLogs, backgroundLogs, contentLogs, activeTab);
 
-    // Format logs as plain text
-    const logText = formatLogsAsText(allLogs, version);
+    // Format logs as plain text (using filtered logs)
+    const logText = formatLogsAsText(filteredLogs, version);
 
     // Generate filename with timestamp
     const filename = generateLogFilename(version);

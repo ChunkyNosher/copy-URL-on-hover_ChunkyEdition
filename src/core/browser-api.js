@@ -3,6 +3,8 @@
  * Wrapper functions for WebExtension APIs
  */
 
+import { logNormal, logError } from '../utils/logger.js';
+
 /**
  * Send message to background script
  * @param {object} message - Message object
@@ -99,11 +101,10 @@ export async function clearStorage(storageType = 'local') {
  * @returns {boolean} True if successful
  */
 function fallbackCopyToClipboard(text) {
-  console.log('[Clipboard] [Fallback] Using execCommand method', {
+  logNormal('clipboard', 'Fallback', 'Using execCommand method', {
     reason: 'Clipboard API failed',
     textLength: text.length,
-    textPreview: text.substring(0, 50),
-    timestamp: Date.now()
+    textPreview: text.substring(0, 50)
   });
 
   try {
@@ -118,26 +119,23 @@ function fallbackCopyToClipboard(text) {
     document.body.removeChild(textarea);
     const fallbackDuration = performance.now() - fallbackStart;
 
-    console.log('[Clipboard] [Fallback] execCommand result', {
+    logNormal('clipboard', 'Fallback', 'execCommand result', {
       success: success,
-      duration: `${fallbackDuration.toFixed(2)}ms`,
-      timestamp: Date.now()
+      duration: `${fallbackDuration.toFixed(2)}ms`
     });
 
     if (!success) {
-      console.error('[Browser API] [Fallback] execCommand copy returned false', {
-        textLength: text.length,
-        timestamp: Date.now()
+      logError('clipboard', 'Fallback', 'execCommand copy returned false', {
+        textLength: text.length
       });
     }
 
     return success;
   } catch (fallbackErr) {
-    console.error('[Browser API] [Fallback] Fallback copy also failed:', {
+    logError('clipboard', 'Fallback', 'Fallback copy also failed', {
       error: fallbackErr,
       message: fallbackErr.message,
-      stack: fallbackErr.stack,
-      timestamp: Date.now()
+      stack: fallbackErr.stack
     });
     return false;
   }
@@ -151,28 +149,25 @@ function fallbackCopyToClipboard(text) {
  * @returns {Promise<boolean>} True if successful
  */
 export async function copyToClipboard(text) {
-  console.log('[Clipboard] [Start] Copy attempt started', {
+  logNormal('clipboard', 'Start', 'Copy attempt started', {
     textLength: text?.length || 0,
     textPreview: text?.substring(0, 100) || '<empty>',
     clipboardAPIAvailable: !!navigator.clipboard,
     execCommandAvailable: !!document.execCommand,
-    userAgent: navigator.userAgent,
-    timestamp: Date.now()
+    userAgent: navigator.userAgent
   });
 
   // Validate input
   if (!text || typeof text !== 'string') {
-    console.error('[Browser API] [Validation] Invalid text for clipboard:', {
+    logError('clipboard', 'Validation', 'Invalid text for clipboard', {
       textType: typeof text,
-      textValue: text,
-      timestamp: Date.now()
+      textValue: text
     });
     return false;
   }
 
-  console.log('[Clipboard] [API Selection] Using navigator.clipboard API', {
-    method: 'navigator.clipboard.writeText',
-    timestamp: Date.now()
+  logNormal('clipboard', 'API Selection', 'Using navigator.clipboard API', {
+    method: 'navigator.clipboard.writeText'
   });
 
   try {
@@ -180,34 +175,31 @@ export async function copyToClipboard(text) {
     await navigator.clipboard.writeText(text);
     const apiDuration = performance.now() - apiStart;
 
-    console.log('[Clipboard] [Success] Clipboard API copy successful', {
+    logNormal('clipboard', 'Success', 'Clipboard API copy successful', {
       method: 'navigator.clipboard.writeText',
       textLength: text.length,
-      duration: `${apiDuration.toFixed(2)}ms`,
-      timestamp: Date.now()
+      duration: `${apiDuration.toFixed(2)}ms`
     });
 
     return true;
   } catch (err) {
-    console.error('[Browser API] [Failure] Clipboard API failed:', {
+    logError('clipboard', 'Failure', 'Clipboard API failed', {
       errorName: err.name,
       errorMessage: err.message,
       stack: err.stack,
       textLength: text.length,
       textPreview: text.substring(0, 50),
-      permissionDenied: err.name === 'NotAllowedError',
-      timestamp: Date.now()
+      permissionDenied: err.name === 'NotAllowedError'
     });
 
-    console.log('[Clipboard] [Fallback] Attempting execCommand fallback');
+    logNormal('clipboard', 'Fallback', 'Attempting execCommand fallback');
 
     // Fallback to execCommand
     const fallbackResult = fallbackCopyToClipboard(text);
 
-    console.log('[Clipboard] [Final Result] Copy operation final result', {
+    logNormal('clipboard', 'Final Result', 'Copy operation final result', {
       success: fallbackResult,
-      methodUsed: 'execCommand-fallback',
-      timestamp: Date.now()
+      methodUsed: 'execCommand-fallback'
     });
 
     return fallbackResult;
