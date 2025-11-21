@@ -213,6 +213,19 @@ export function getConsoleLogs() {
 }
 
 /**
+ * Get console logs with export filtering applied
+ * @param {Function} filterFn - Filter function to apply
+ * @returns {Array<Object>} Filtered log entries
+ */
+export function getFilteredConsoleLogs(filterFn) {
+  const logs = getConsoleLogs();
+  if (typeof filterFn === 'function') {
+    return filterFn(logs);
+  }
+  return logs;
+}
+
+/**
  * Clear all captured logs
  */
 export function clearConsoleLogs() {

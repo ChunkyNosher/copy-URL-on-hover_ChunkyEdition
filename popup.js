@@ -820,7 +820,212 @@ document.addEventListener('DOMContentLoaded', () => {
     errorText: '✗ Clear Failed'
   });
   // ==================== END CLEAR LOGS BUTTON ====================
+
+  // ==================== COLLAPSIBLE FILTER GROUPS ====================
+  initCollapsibleGroups();
+  loadFilterSettings();
+
+  // Save filter buttons
+  document.getElementById('saveFiltersLive')?.addEventListener('click', () => {
+    saveFilterSettings('live');
+  });
+  document.getElementById('saveFiltersExport')?.addEventListener('click', () => {
+    saveFilterSettings('export');
+  });
+
+  // Reset filter buttons
+  document.getElementById('resetFiltersLive')?.addEventListener('click', () => {
+    resetFilterSettings('live');
+  });
+  document.getElementById('resetFiltersExport')?.addEventListener('click', () => {
+    resetFilterSettings('export');
+  });
+  // ==================== END COLLAPSIBLE FILTER GROUPS ====================
 });
+
+// ==================== FILTER SETTINGS FUNCTIONS ====================
+
+/**
+ * Get default live console filter settings
+ */
+function getDefaultLiveConsoleSettings() {
+  return {
+    'url-detection': false, // Noisy - disabled by default
+    hover: false, // Noisy - disabled by default
+    clipboard: true,
+    keyboard: true,
+    'quick-tabs': true,
+    'quick-tab-manager': true,
+    'event-bus': false,
+    config: true,
+    state: false,
+    storage: true,
+    messaging: false,
+    webrequest: true,
+    tabs: true,
+    performance: false,
+    errors: true,
+    initialization: true
+  };
+}
+
+/**
+ * Get default export filter settings
+ */
+function getDefaultExportSettings() {
+  return {
+    'url-detection': true, // All enabled by default for comprehensive export
+    hover: true,
+    clipboard: true,
+    keyboard: true,
+    'quick-tabs': true,
+    'quick-tab-manager': true,
+    'event-bus': true,
+    config: true,
+    state: true,
+    storage: true,
+    messaging: true,
+    webrequest: true,
+    tabs: true,
+    performance: true,
+    errors: true,
+    initialization: true
+  };
+}
+
+/**
+ * Initialize collapsible groups functionality
+ */
+function initCollapsibleGroups() {
+  // Handle group action buttons (Select All / Deselect All)
+  document.querySelectorAll('.group-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation(); // Prevent triggering group toggle
+
+      const action = btn.dataset.action;
+      const filter = btn.dataset.filter;
+
+      // Find all checkboxes in this group
+      const groupElement = btn.closest('.filter-group');
+      const checkboxes = groupElement.querySelectorAll(
+        `.category-checkbox[data-filter="${filter}"]`
+      );
+
+      if (action === 'select-all') {
+        checkboxes.forEach(cb => (cb.checked = true));
+      } else if (action === 'deselect-all') {
+        checkboxes.forEach(cb => (cb.checked = false));
+      }
+    });
+  });
+}
+
+/**
+ * Load filter settings from storage
+ */
+async function loadFilterSettings() {
+  try {
+    const result = await browserAPI.storage.local.get([
+      'liveConsoleCategoriesEnabled',
+      'exportLogCategoriesEnabled'
+    ]);
+
+    const liveSettings = result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
+    const exportSettings = result.exportLogCategoriesEnabled || getDefaultExportSettings();
+
+    // Apply to live filter checkboxes
+    document.querySelectorAll('.category-checkbox[data-filter="live"]').forEach(cb => {
+      const category = cb.dataset.category;
+      cb.checked = liveSettings[category] === true;
+    });
+
+    // Apply to export filter checkboxes
+    document.querySelectorAll('.category-checkbox[data-filter="export"]').forEach(cb => {
+      const category = cb.dataset.category;
+      cb.checked = exportSettings[category] === true;
+    });
+  } catch (error) {
+    console.error('[Popup] Failed to load filter settings:', error);
+  }
+}
+
+/**
+ * Save filter settings to storage
+ */
+async function saveFilterSettings(filterType) {
+  try {
+    const settings = {};
+
+    // Read checkboxes for this filter type
+    document.querySelectorAll(`.category-checkbox[data-filter="${filterType}"]`).forEach(cb => {
+      settings[cb.dataset.category] = cb.checked;
+    });
+
+    // Save to storage
+    const storageKey =
+      filterType === 'live' ? 'liveConsoleCategoriesEnabled' : 'exportLogCategoriesEnabled';
+    await browserAPI.storage.local.set({
+      [storageKey]: settings
+    });
+
+    // If live filters, notify content scripts to refresh cache
+    if (filterType === 'live') {
+      await refreshLiveConsoleFiltersInAllTabs();
+    }
+
+    showStatus(
+      `${filterType === 'live' ? 'Live' : 'Export'} console filters saved successfully`,
+      true
+    );
+  } catch (error) {
+    console.error('[Popup] Failed to save filter settings:', error);
+    showStatus('Failed to save filter settings', false);
+  }
+}
+
+/**
+ * Reset filter settings to defaults
+ */
+function resetFilterSettings(filterType) {
+  try {
+    const defaults =
+      filterType === 'live' ? getDefaultLiveConsoleSettings() : getDefaultExportSettings();
+
+    // Apply to checkboxes
+    document.querySelectorAll(`.category-checkbox[data-filter="${filterType}"]`).forEach(cb => {
+      cb.checked = defaults[cb.dataset.category] === true;
+    });
+
+    showStatus(`${filterType === 'live' ? 'Live' : 'Export'} filters reset to defaults`, true);
+  } catch (error) {
+    console.error('[Popup] Failed to reset filter settings:', error);
+    showStatus('Failed to reset filter settings', false);
+  }
+}
+
+/**
+ * Notify all tabs to refresh live console filter cache
+ */
+async function refreshLiveConsoleFiltersInAllTabs() {
+  try {
+    const tabs = await browserAPI.tabs.query({});
+    const messagePromises = tabs.map(tab =>
+      browserAPI.tabs
+        .sendMessage(tab.id, {
+          action: 'REFRESH_LIVE_CONSOLE_FILTERS'
+        })
+        .catch(() => {
+          // Tab might not have content script loaded - silently ignore
+        })
+    );
+    await Promise.all(messagePromises);
+  } catch (error) {
+    console.error('[Popup] Failed to refresh live console filters:', error);
+  }
+}
+
+// ==================== END FILTER SETTINGS FUNCTIONS ====================
 
 // Load settings on popup open
 loadSettings();

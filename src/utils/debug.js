@@ -3,6 +3,8 @@
  * Helper functions for debugging, logging, and exporting logs
  */
 
+import { filterLogsByExportCategories, generateExportMetadata } from './logger.js';
+
 let DEBUG_MODE = false;
 
 // Log buffer to store all logs
@@ -118,12 +120,14 @@ export function clearLogBuffer() {
 }
 
 /**
- * Format logs as plain text
+ * Format logs as plain text with export metadata
  * @param {Array<LogEntry>} logs - Array of log entries
  * @param {string} version - Extension version
+ * @param {number} totalLogsBeforeFilter - Total logs before filtering
+ * @param {string} metadata - Filter metadata
  * @returns {string} Formatted log text
  */
-export function formatLogsAsText(logs, version = '1.5.9') {
+export function formatLogsAsText(logs, version = '1.6.0.8', _totalLogsBeforeFilter = 0, metadata = '') {
   const now = new Date();
   const header = [
     '='.repeat(80),
@@ -133,8 +137,11 @@ export function formatLogsAsText(logs, version = '1.5.9') {
     `Version: ${version}`,
     `Export Date: ${now.toISOString()}`,
     `Export Date (Local): ${now.toLocaleString()}`,
-    `Total Logs: ${logs.length}`,
     '',
+    metadata,
+    '',
+    '='.repeat(80),
+    'BEGIN LOGS',
     '='.repeat(80),
     ''
   ].join('\n');
@@ -155,7 +162,7 @@ export function formatLogsAsText(logs, version = '1.5.9') {
  * @param {string} version - Extension version
  * @returns {string} Filename with version and timestamp
  */
-export function generateLogFilename(version = '1.5.9') {
+export function generateLogFilename(version = '1.6.0.8') {
   const now = new Date();
   // ISO 8601 format with hyphens instead of colons for filename compatibility
   const timestamp = now.toISOString().replace(/:/g, '-').split('.')[0];
@@ -251,7 +258,7 @@ function _downloadViaBlob(logText, filename) {
   console.log('[INFO] Logs exported successfully via Blob URL fallback');
 }
 
-export async function exportLogs(version = '1.5.9') {
+export async function exportLogs(version = '1.6.0.8') {
   try {
     // Get logs from current page
     const logs = getLogBuffer();
@@ -262,8 +269,17 @@ export async function exportLogs(version = '1.5.9') {
     // Sort logs by timestamp
     logs.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Format logs
-    const logText = formatLogsAsText(logs, version);
+    // Store total before filtering
+    const totalLogsBeforeFilter = logs.length;
+
+    // Apply export category filters
+    const filteredLogs = await filterLogsByExportCategories(logs);
+
+    // Generate filter metadata
+    const metadata = await generateExportMetadata(totalLogsBeforeFilter, filteredLogs.length);
+
+    // Format logs with metadata
+    const logText = formatLogsAsText(filteredLogs, version, totalLogsBeforeFilter, metadata);
 
     // Generate filename
     const filename = generateLogFilename(version);
@@ -271,13 +287,14 @@ export async function exportLogs(version = '1.5.9') {
     // Try Method 1: browser.downloads.download() API (if permission granted)
     const browserApiSuccess = await _tryBrowserDownloadsAPI(logText, filename);
     if (browserApiSuccess) {
-      return;
+      return { total: totalLogsBeforeFilter, exported: filteredLogs.length };
     }
 
     // Method 2: Blob URL + <a> download attribute (fallback)
     _downloadViaBlob(logText, filename);
 
     console.log('[INFO] Logs exported successfully via Blob URL');
+    return { total: totalLogsBeforeFilter, exported: filteredLogs.length };
   } catch (error) {
     console.error('[ERROR] Failed to export logs:', error);
     throw error;

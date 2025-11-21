@@ -330,6 +330,125 @@
       #exportLogsBtn.error {
         background: #f44336 !important;
       }
+
+      /* ==================== COLLAPSIBLE FILTER GROUPS ==================== */
+
+      /* Filter Group Container */
+      .filter-group {
+        margin-bottom: 8px;
+        border: 1px solid #4a4a4a;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      /* Hide the toggle checkbox */
+      .group-toggle {
+        display: none;
+      }
+
+      /* Group Header (clickable) */
+      .group-header {
+        display: flex;
+        align-items: center;
+        padding: 10px 12px;
+        background-color: #2a2a2a;
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 0.2s;
+      }
+
+      .group-header:hover {
+        background-color: #333;
+      }
+
+      .group-icon {
+        width: 16px;
+        margin-right: 8px;
+        transition: transform 0.2s;
+        color: #4caf50;
+      }
+
+      /* Rotate icon when expanded */
+      .group-toggle:checked ~ .group-header .group-icon {
+        transform: rotate(90deg);
+      }
+
+      .group-title {
+        font-weight: 600;
+        flex: 1;
+        font-size: 12px;
+      }
+
+      .group-count {
+        font-size: 11px;
+        color: #888;
+        margin-right: 8px;
+      }
+
+      .group-actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      .group-btn {
+        width: 24px;
+        height: 24px;
+        border: 1px solid #4a4a4a;
+        border-radius: 3px;
+        background-color: transparent;
+        color: #e0e0e0;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+
+      .group-btn:hover {
+        background-color: #3a3a3a;
+      }
+
+      /* Group Content (collapsible) */
+      .group-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+        background-color: #1e1e1e;
+      }
+
+      /* Expand when toggle is checked */
+      .group-toggle:checked ~ .group-content {
+        max-height: 500px;
+        padding: 8px 12px;
+      }
+
+      /* Category Checkboxes */
+      .category-label {
+        display: flex;
+        align-items: center;
+        padding: 6px 8px;
+        cursor: pointer;
+        border-radius: 3px;
+        transition: background-color 0.2s;
+      }
+
+      .category-label:hover {
+        background-color: #2a2a2a;
+      }
+
+      .category-checkbox {
+        margin-right: 8px;
+        cursor: pointer;
+      }
+
+      .category-icon {
+        width: 20px;
+        margin-right: 8px;
+        font-size: 16px;
+      }
+
+      .category-name {
+        flex: 1;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
@@ -688,8 +807,650 @@
           </div>
         </div>
 
-        <!-- Tab 4: Advanced -->
+        <!-- Tab 4: Advanced / Debug -->
         <div id="advanced" class="tab-content">
+          <!-- Console Log Filtering Section -->
+          <div class="setting-group">
+            <h3 style="margin-bottom: 8px; font-size: 14px">🔍 Console Log Filters</h3>
+            <div class="info-box">
+              <strong>Live Console:</strong> Control what appears in browser console in real-time.<br />
+              <strong>Export:</strong> Control what gets included in .txt export file.
+            </div>
+          </div>
+
+          <!-- Live Console Filters -->
+          <div class="setting-group">
+            <h4 style="margin-bottom: 8px; font-size: 13px">Live Console Output Filters</h4>
+            <p
+              style="
+                font-size: 11px;
+                color: #888;
+                margin-bottom: 12px;
+                line-height: 1.4;
+              "
+            >
+              Disable noisy categories (Hover, URL Detection) for cleaner console during debugging.
+            </p>
+
+            <!-- User Actions Group -->
+            <div class="filter-group">
+              <input type="checkbox" id="live-group-user-actions" class="group-toggle" />
+              <label for="live-group-user-actions" class="group-header">
+                <span class="group-icon">▶</span>
+                <span class="group-title">User Actions</span>
+                <span class="group-count">(6 categories)</span>
+                <div class="group-actions">
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="select-all"
+                    data-filter="live"
+                    data-group="user-actions"
+                    title="Select All"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="deselect-all"
+                    data-filter="live"
+                    data-group="user-actions"
+                    title="Deselect All"
+                  >
+                    ↓
+                  </button>
+                </div>
+              </label>
+              <div class="group-content">
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="url-detection"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">🔍</span>
+                  <span class="category-name">URL Detection</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="hover"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">👆</span>
+                  <span class="category-name">Hover Events</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="clipboard"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">📋</span>
+                  <span class="category-name">Clipboard Operations</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="keyboard"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">⌨️</span>
+                  <span class="category-name">Keyboard Shortcuts</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="quick-tabs"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">🪟</span>
+                  <span class="category-name">Quick Tab Actions</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="quick-tab-manager"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">📊</span>
+                  <span class="category-name">Quick Tab Manager</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- System Operations Group -->
+            <div class="filter-group">
+              <input type="checkbox" id="live-group-system-ops" class="group-toggle" />
+              <label for="live-group-system-ops" class="group-header">
+                <span class="group-icon">▶</span>
+                <span class="group-title">System Operations</span>
+                <span class="group-count">(7 categories)</span>
+                <div class="group-actions">
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="select-all"
+                    data-filter="live"
+                    data-group="system-ops"
+                    title="Select All"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="deselect-all"
+                    data-filter="live"
+                    data-group="system-ops"
+                    title="Deselect All"
+                  >
+                    ↓
+                  </button>
+                </div>
+              </label>
+              <div class="group-content">
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="event-bus"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">📡</span>
+                  <span class="category-name">Event Bus</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="config"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">⚙️</span>
+                  <span class="category-name">Configuration</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="state"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">💾</span>
+                  <span class="category-name">State Management</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="storage"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">💿</span>
+                  <span class="category-name">Browser Storage</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="messaging"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">💬</span>
+                  <span class="category-name">Message Passing</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="webrequest"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">🌐</span>
+                  <span class="category-name">Web Requests</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="tabs"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">📑</span>
+                  <span class="category-name">Tab Management</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Diagnostics Group -->
+            <div class="filter-group">
+              <input type="checkbox" id="live-group-diagnostics" class="group-toggle" />
+              <label for="live-group-diagnostics" class="group-header">
+                <span class="group-icon">▶</span>
+                <span class="group-title">Diagnostics</span>
+                <span class="group-count">(3 categories)</span>
+                <div class="group-actions">
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="select-all"
+                    data-filter="live"
+                    data-group="diagnostics"
+                    title="Select All"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="deselect-all"
+                    data-filter="live"
+                    data-group="diagnostics"
+                    title="Deselect All"
+                  >
+                    ↓
+                  </button>
+                </div>
+              </label>
+              <div class="group-content">
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="performance"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">⏱️</span>
+                  <span class="category-name">Performance</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="errors"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">❌</span>
+                  <span class="category-name">Errors</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="initialization"
+                    data-filter="live"
+                  />
+                  <span class="category-icon">🚀</span>
+                  <span class="category-name">Initialization</span>
+                </label>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 12px">
+              <button
+                type="button"
+                id="saveFiltersLive"
+                style="
+                  flex: 1;
+                  padding: 8px;
+                  background: #4caf50;
+                  color: white;
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  font-size: 12px;
+                  font-weight: 500;
+                "
+              >
+                Save Live Filters
+              </button>
+              <button
+                type="button"
+                id="resetFiltersLive"
+                style="
+                  flex: 1;
+                  padding: 8px;
+                  background: #666;
+                  color: white;
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  font-size: 12px;
+                  font-weight: 500;
+                "
+              >
+                Reset Live
+              </button>
+            </div>
+          </div>
+
+          <hr style="border: none; border-top: 1px solid #3a3a3a; margin: 24px 0" />
+
+          <!-- Export Filters -->
+          <div class="setting-group">
+            <h4 style="margin-bottom: 8px; font-size: 13px">Export Log Filters</h4>
+            <p
+              style="
+                font-size: 11px;
+                color: #888;
+                margin-bottom: 12px;
+                line-height: 1.4;
+              "
+            >
+              Control what gets included in .txt export. All categories enabled by default.
+            </p>
+
+            <!-- User Actions Group (Export) -->
+            <div class="filter-group">
+              <input type="checkbox" id="export-group-user-actions" class="group-toggle" />
+              <label for="export-group-user-actions" class="group-header">
+                <span class="group-icon">▶</span>
+                <span class="group-title">User Actions</span>
+                <span class="group-count">(6 categories)</span>
+                <div class="group-actions">
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="select-all"
+                    data-filter="export"
+                    data-group="user-actions"
+                    title="Select All"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="deselect-all"
+                    data-filter="export"
+                    data-group="user-actions"
+                    title="Deselect All"
+                  >
+                    ↓
+                  </button>
+                </div>
+              </label>
+              <div class="group-content">
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="url-detection"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">🔍</span>
+                  <span class="category-name">URL Detection</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="hover"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">👆</span>
+                  <span class="category-name">Hover Events</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="clipboard"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">📋</span>
+                  <span class="category-name">Clipboard Operations</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="keyboard"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">⌨️</span>
+                  <span class="category-name">Keyboard Shortcuts</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="quick-tabs"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">🪟</span>
+                  <span class="category-name">Quick Tab Actions</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="quick-tab-manager"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">📊</span>
+                  <span class="category-name">Quick Tab Manager</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- System Operations Group (Export) -->
+            <div class="filter-group">
+              <input type="checkbox" id="export-group-system-ops" class="group-toggle" />
+              <label for="export-group-system-ops" class="group-header">
+                <span class="group-icon">▶</span>
+                <span class="group-title">System Operations</span>
+                <span class="group-count">(7 categories)</span>
+                <div class="group-actions">
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="select-all"
+                    data-filter="export"
+                    data-group="system-ops"
+                    title="Select All"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="deselect-all"
+                    data-filter="export"
+                    data-group="system-ops"
+                    title="Deselect All"
+                  >
+                    ↓
+                  </button>
+                </div>
+              </label>
+              <div class="group-content">
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="event-bus"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">📡</span>
+                  <span class="category-name">Event Bus</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="config"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">⚙️</span>
+                  <span class="category-name">Configuration</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="state"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">💾</span>
+                  <span class="category-name">State Management</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="storage"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">💿</span>
+                  <span class="category-name">Browser Storage</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="messaging"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">💬</span>
+                  <span class="category-name">Message Passing</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="webrequest"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">🌐</span>
+                  <span class="category-name">Web Requests</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="tabs"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">📑</span>
+                  <span class="category-name">Tab Management</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Diagnostics Group (Export) -->
+            <div class="filter-group">
+              <input type="checkbox" id="export-group-diagnostics" class="group-toggle" />
+              <label for="export-group-diagnostics" class="group-header">
+                <span class="group-icon">▶</span>
+                <span class="group-title">Diagnostics</span>
+                <span class="group-count">(3 categories)</span>
+                <div class="group-actions">
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="select-all"
+                    data-filter="export"
+                    data-group="diagnostics"
+                    title="Select All"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    class="group-btn"
+                    data-action="deselect-all"
+                    data-filter="export"
+                    data-group="diagnostics"
+                    title="Deselect All"
+                  >
+                    ↓
+                  </button>
+                </div>
+              </label>
+              <div class="group-content">
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="performance"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">⏱️</span>
+                  <span class="category-name">Performance</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="errors"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">❌</span>
+                  <span class="category-name">Errors</span>
+                </label>
+                <label class="category-label">
+                  <input
+                    type="checkbox"
+                    class="category-checkbox"
+                    data-category="initialization"
+                    data-filter="export"
+                  />
+                  <span class="category-icon">🚀</span>
+                  <span class="category-name">Initialization</span>
+                </label>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 12px">
+              <button
+                type="button"
+                id="saveFiltersExport"
+                style="
+                  flex: 1;
+                  padding: 8px;
+                  background: #4caf50;
+                  color: white;
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  font-size: 12px;
+                  font-weight: 500;
+                "
+              >
+                Save Export Filters
+              </button>
+              <button
+                type="button"
+                id="resetFiltersExport"
+                style="
+                  flex: 1;
+                  padding: 8px;
+                  background: #666;
+                  color: white;
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  font-size: 12px;
+                  font-weight: 500;
+                "
+              >
+                Reset Export
+              </button>
+            </div>
+          </div>
+
+          <hr style="border: none; border-top: 1px solid #3a3a3a; margin: 24px 0" />
+
+          <!-- Original Advanced Settings -->
           <div class="setting-group">
             <label>Extension Menu Size:</label>
             <select
