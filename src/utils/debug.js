@@ -127,7 +127,12 @@ export function clearLogBuffer() {
  * @param {string} metadata - Filter metadata
  * @returns {string} Formatted log text
  */
-export function formatLogsAsText(logs, version = '1.6.0.8', _totalLogsBeforeFilter = 0, metadata = '') {
+export function formatLogsAsText(
+  logs,
+  version = '1.6.0.8',
+  _totalLogsBeforeFilter = 0,
+  metadata = ''
+) {
   const now = new Date();
   const header = [
     '='.repeat(80),
