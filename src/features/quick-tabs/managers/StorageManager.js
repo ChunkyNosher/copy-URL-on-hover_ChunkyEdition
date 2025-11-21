@@ -133,6 +133,7 @@ export class StorageManager {
 
   /**
    * Setup storage change listeners
+   * v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
    */
   setupStorageListeners() {
     if (typeof browser === 'undefined' || !browser.storage) {
@@ -143,7 +144,12 @@ export class StorageManager {
     browser.storage.onChanged.addListener((changes, areaName) => {
       console.log('[StorageManager] Storage changed:', areaName, Object.keys(changes));
 
-      // Handle sync storage changes
+      // v1.6.0.12 - FIX: Handle local storage changes (primary storage)
+      if (areaName === 'local' && changes.quick_tabs_state_v2) {
+        this.handleStorageChange(changes.quick_tabs_state_v2.newValue);
+      }
+
+      // Handle sync storage changes (for backward compatibility)
       if (areaName === 'sync' && changes.quick_tabs_state_v2) {
         this.handleStorageChange(changes.quick_tabs_state_v2.newValue);
       }
