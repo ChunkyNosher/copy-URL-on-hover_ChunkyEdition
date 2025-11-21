@@ -8,7 +8,8 @@ jest.mock('webextension-polyfill', () => ({
     },
     local: {
       get: jest.fn(),
-      set: jest.fn()
+      set: jest.fn(),
+      remove: jest.fn()
     }
   }
 }));
@@ -31,6 +32,7 @@ describe('SyncStorageAdapter', () => {
     browser.storage.sync.remove.mockResolvedValue(undefined);
     browser.storage.local.get.mockResolvedValue({});
     browser.storage.local.set.mockResolvedValue(undefined);
+    browser.storage.local.remove.mockResolvedValue(undefined);
   });
 
   describe('save()', () => {
@@ -44,7 +46,8 @@ describe('SyncStorageAdapter', () => {
 
       const saveId = await adapter.save('firefox-container-1', [quickTab]);
 
-      expect(browser.storage.sync.set).toHaveBeenCalledWith({
+      // v1.6.0.12 - Uses local storage by default
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-container-1': {
@@ -66,8 +69,8 @@ describe('SyncStorageAdapter', () => {
     });
 
     test('should preserve existing containers when saving new container', async () => {
-      // Setup existing state
-      browser.storage.sync.get.mockResolvedValue({
+      // Setup existing state - v1.6.0.12 reads from local storage
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -87,7 +90,8 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.save('firefox-container-1', [quickTab]);
 
-      expect(browser.storage.sync.set).toHaveBeenCalledWith({
+      // v1.6.0.12 - Uses local storage by default
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-default': expect.objectContaining({
@@ -101,9 +105,7 @@ describe('SyncStorageAdapter', () => {
       });
     });
 
-    test('should fallback to local storage when quota exceeded', async () => {
-      browser.storage.sync.set.mockRejectedValue(new Error('QUOTA_BYTES: Storage quota exceeded'));
-
+    test('should use local storage by default (v1.6.0.12)', async () => {
       const quickTab = QuickTab.create({
         id: 'qt-123',
         url: 'https://example.com',
@@ -113,12 +115,13 @@ describe('SyncStorageAdapter', () => {
 
       const saveId = await adapter.save('firefox-default', [quickTab]);
 
+      // v1.6.0.12 - Always uses local storage (no quota limits)
       expect(browser.storage.local.set).toHaveBeenCalled();
+      expect(browser.storage.sync.set).not.toHaveBeenCalled();
       expect(saveId).toMatch(/^\d+-[a-z0-9]+$/);
     });
 
-    test('should throw error when both sync and local storage fail', async () => {
-      browser.storage.sync.set.mockRejectedValue(new Error('QUOTA_BYTES: Storage quota exceeded'));
+    test('should throw error when local storage fails', async () => {
       browser.storage.local.set.mockRejectedValue(new Error('Local storage failed'));
 
       const quickTab = QuickTab.create({
@@ -128,7 +131,10 @@ describe('SyncStorageAdapter', () => {
         size: { width: 400, height: 300 }
       });
 
-      await expect(adapter.save('firefox-default', [quickTab])).rejects.toThrow('Failed to save');
+      // v1.6.0.12 - Only uses local storage now, so error propagates directly
+      await expect(adapter.save('firefox-default', [quickTab])).rejects.toThrow(
+        'Local storage failed'
+      );
     });
 
     test('should save multiple Quick Tabs', async () => {
@@ -148,7 +154,8 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.save('firefox-default', [quickTab1, quickTab2]);
 
-      expect(browser.storage.sync.set).toHaveBeenCalledWith({
+      // v1.6.0.12 - Uses local storage by default
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-default': {
@@ -166,7 +173,8 @@ describe('SyncStorageAdapter', () => {
     test('should save empty array when no Quick Tabs', async () => {
       await adapter.save('firefox-default', []);
 
-      expect(browser.storage.sync.set).toHaveBeenCalledWith({
+      // v1.6.0.12 - Uses local storage by default
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-default': {
@@ -289,7 +297,8 @@ describe('SyncStorageAdapter', () => {
 
   describe('delete()', () => {
     test('should delete specific Quick Tab from container', async () => {
-      browser.storage.sync.get.mockResolvedValue({
+      // v1.6.0.12 - Reads from local storage
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -305,8 +314,8 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.delete('firefox-default', 'qt-1');
 
-      // Should save with only qt-2
-      expect(browser.storage.sync.set).toHaveBeenCalledWith({
+      // v1.6.0.12 - Should save with only qt-2 to local storage
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-default': expect.objectContaining({
@@ -317,13 +326,13 @@ describe('SyncStorageAdapter', () => {
       });
 
       // Should not contain qt-1
-      const setCall = browser.storage.sync.set.mock.calls[0][0];
+      const setCall = browser.storage.local.set.mock.calls[0][0];
       const tabs = setCall.quick_tabs_state_v2.containers['firefox-default'].tabs;
       expect(tabs.find(t => t.id === 'qt-1')).toBeUndefined();
     });
 
     test('should do nothing when container not found', async () => {
-      browser.storage.sync.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {}
         }
@@ -331,11 +340,11 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.delete('firefox-container-999', 'qt-123');
 
-      expect(browser.storage.sync.set).not.toHaveBeenCalled();
+      expect(browser.storage.local.set).not.toHaveBeenCalled();
     });
 
     test('should do nothing when Quick Tab not found in container', async () => {
-      browser.storage.sync.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -348,13 +357,14 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.delete('firefox-default', 'qt-999');
 
-      expect(browser.storage.sync.set).not.toHaveBeenCalled();
+      expect(browser.storage.local.set).not.toHaveBeenCalled();
     });
   });
 
   describe('deleteContainer()', () => {
     test('should delete all Quick Tabs for container', async () => {
-      browser.storage.sync.get.mockResolvedValue({
+      // v1.6.0.12 - Reads from local storage
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -371,7 +381,8 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.deleteContainer('firefox-container-1');
 
-      expect(browser.storage.sync.set).toHaveBeenCalledWith({
+      // v1.6.0.12 - Uses local storage
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           containers: {
             'firefox-default': expect.any(Object)
@@ -380,12 +391,12 @@ describe('SyncStorageAdapter', () => {
         })
       });
 
-      const setCall = browser.storage.sync.set.mock.calls[0][0];
+      const setCall = browser.storage.local.set.mock.calls[0][0];
       expect(setCall.quick_tabs_state_v2.containers['firefox-container-1']).toBeUndefined();
     });
 
     test('should do nothing when container not found', async () => {
-      browser.storage.sync.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -398,7 +409,7 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.deleteContainer('firefox-container-999');
 
-      expect(browser.storage.sync.set).not.toHaveBeenCalled();
+      expect(browser.storage.local.set).not.toHaveBeenCalled();
     });
   });
 
@@ -406,6 +417,8 @@ describe('SyncStorageAdapter', () => {
     test('should remove all Quick Tabs from storage', async () => {
       await adapter.clear();
 
+      // v1.6.0.12 - Clears from both local and sync storage
+      expect(browser.storage.local.remove).toHaveBeenCalledWith('quick_tabs_state_v2');
       expect(browser.storage.sync.remove).toHaveBeenCalledWith('quick_tabs_state_v2');
     });
   });
@@ -420,8 +433,9 @@ describe('SyncStorageAdapter', () => {
       expect(result).toEqual({});
     });
 
-    test('should throw error when storage.set fails with non-quota error', async () => {
-      browser.storage.sync.set.mockRejectedValue(new Error('Network error'));
+    test('should throw error when storage.set fails', async () => {
+      // v1.6.0.12 - Uses local storage, so mock that instead
+      browser.storage.local.set.mockRejectedValue(new Error('Network error'));
 
       const quickTab = QuickTab.create({
         id: 'qt-123',
