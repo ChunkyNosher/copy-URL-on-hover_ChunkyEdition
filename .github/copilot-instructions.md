@@ -86,21 +86,6 @@ Check that `.agentic-tools/` appears in your commit. If missing, ADD IT NOW.
 - `category`: Categorization string (e.g., "preferences", "technical", "context")
 - `metadata`: Flexible metadata object for additional context
 
-**Example Usage:**
-```javascript
-await createMemory({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  title: "Container Isolation Architecture Pattern",
-  content: "This extension uses cookieStoreId for complete Firefox container isolation. Key implementation: Always query tabs with cookieStoreId filter to maintain separation between containers. State manager tracks per-container data.",
-  category: "architecture",
-  metadata: {
-    component: "state-manager.js",
-    importance: "critical",
-    relatedFiles: ["background.js", "content.js"]
-  }
-});
-```
-
 **This is NON-NEGOTIABLE for memory persistence across tasks.**
 
 ---
