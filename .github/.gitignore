@@ -9,7 +9,7 @@ runner-temp/
 # Keep smaller files (DO commit these)
 !.in-memoria/patterns.db
 !.in-memoria/learned_intel.json
-!.agentic-tools/*.json
+!.agentic-tools-mcp/*.json
 !.mcp-data/memory.db
 
 # MCP server logs
