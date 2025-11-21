@@ -68,11 +68,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: |
-            .in-memoria/
             .agentic-tools-mcp/
-            .mcp-data/
-          key: copilot-memory-${{ github.repository }}
+          key: copilot-memory-${{ github.repository }}-${{ github.run_number }}
           restore-keys: |
+            copilot-memory-${{ github.repository }}-
             copilot-memory-
         continue-on-error: true
 
@@ -82,30 +81,34 @@ jobs:
           echo "Agent Memory Status"
           echo "=========================================="
           
-          if [ -f ".in-memoria/patterns.db" ]; then
-            echo "✓ In-Memoria patterns database found"
-            ls -lh .in-memoria/patterns.db
-          else
-            echo "⚠ No In-Memoria patterns database (first run)"
-          fi
-          
-          if [ -f ".agentic-tools-mcp/memories.json" ]; then
+          # Check Agentic-Tools MCP memories (individual JSON files)
+          if [ -d ".agentic-tools-mcp/memories" ] && [ "$(ls -A .agentic-tools-mcp/memories 2>/dev/null)" ]; then
+            MEMORY_COUNT=$(find .agentic-tools-mcp/memories -name "*.json" 2>/dev/null | wc -l)
             echo "✓ Agentic-Tools memories found"
-            MEMORY_COUNT=$(cat .agentic-tools-mcp/memories.json | jq '.memories | length' 2>/dev/null || echo "0")
-            echo "  Memories: $MEMORY_COUNT"
+            echo "  Memory files: $MEMORY_COUNT"
+            echo ""
+            echo "Memory categories:"
+            ls -d .agentic-tools-mcp/memories/*/ 2>/dev/null | xargs -n1 basename || echo "  No categories yet"
+            echo ""
+            echo "Recent memory files:"
+            find .agentic-tools-mcp/memories -name "*.json" -type f -exec ls -lth {} + 2>/dev/null | head -5
           else
-            echo "⚠ No Agentic-Tools memories (first run)"
+            echo "⚠ No Agentic-Tools memories (first run or empty)"
           fi
           
-          if [ -f ".mcp-data/memory.db" ]; then
-            echo "✓ SQLite memory database found"
-            ls -lh .mcp-data/memory.db
+          echo ""
+          
+          # Check Agentic-Tools MCP tasks
+          if [ -d ".agentic-tools-mcp/tasks" ] && [ -f ".agentic-tools-mcp/tasks/tasks.json" ]; then
+            echo "✓ Agentic-Tools tasks database found"
+            TASK_COUNT=$(cat .agentic-tools-mcp/tasks/tasks.json | jq '.tasks | length' 2>/dev/null || echo "0")
+            echo "  Tasks: $TASK_COUNT"
           else
-            echo "⚠ No SQLite memory database (first run)"
+            echo "⚠ No Agentic-Tools tasks (first run or empty)"
           fi
           
           echo "=========================================="
-
+      
       # ====================================================================
       # STEP 5: Verify ALL Testing Libraries (UPDATED)
       # ====================================================================
