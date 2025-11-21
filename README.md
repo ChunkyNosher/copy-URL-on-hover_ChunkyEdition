@@ -16,17 +16,15 @@ Granular control over console log output to reduce noise and improve debugging e
   - 16 log categories organized into 3 groups (User Actions, System Operations, Diagnostics)
   - Disable noisy categories (Hover, URL Detection) by default for cleaner console
   - Independent settings for each category
-  
 - ✅ **Export Log Filtering** - Control what gets included in .txt export files
   - Separate filter settings for live console vs export (maximum flexibility)
   - All categories enabled by default for comprehensive debugging
   - Export metadata shows which filters were applied
-  
 - ✅ **Collapsible Filter UI** - Space-efficient accordion groups in Advanced tab
   - Expandable/collapsible category groups
   - Select All / Deselect All buttons per group
   - Visual category icons for easy identification
-  
+
 **Why This Matters:** Hover and URL Detection events can generate hundreds of logs, flooding the console and making Quick Tab debugging difficult. With filtering, you can disable noisy categories while keeping important logs visible.
 
 **Usage:** Extension popup → Advanced tab → Console Log Filters section
