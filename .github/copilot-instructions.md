@@ -3,43 +3,71 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.0.10  
+**Version:** 1.6.x  
 **Language:** JavaScript (ES6+)  
-**Purpose:** URL management with Solo/Mute visibility control, complete Firefox Container isolation, and persistent floating panel manager
+**Architecture:** Domain-Driven Design with Clean Architecture  
+**Purpose:** URL management with Solo/Mute visibility control, complete Firefox Container isolation, and persistent floating panel manager with granular console log filtering
+
+**Key Features:**
+- Solo/Mute tab-specific visibility control
+- Firefox Container complete isolation
+- Floating Quick Tabs Manager with persistent panel
+- Cross-tab sync via BroadcastChannel + browser.storage
+- Direct local creation pattern (content renders first, background persists)
 
 ---
 
 ## 🎯 CRITICAL: Robust Solutions Philosophy
 
-**ALWAYS prioritize:**
-- ✅ Fix root causes at the architectural level
+### Core Principle: Fix Root Causes, Not Symptoms
+
+**ALWAYS prioritize solutions that:**
+- ✅ Fix the actual underlying behavior causing the issue
+- ✅ Address root causes at the architectural level
 - ✅ Eliminate technical debt rather than accumulating it
+- ✅ Prevent entire classes of bugs from recurring
 - ✅ Use the RIGHT pattern/API even if it takes more code
 
-**NEVER accept:**
+**NEVER accept solutions that:**
 - ❌ Mask symptoms without fixing the root problem
-- ❌ Quick hacks just to "make it work"
+- ❌ Add workarounds instead of fixing the core issue
+- ❌ Use quick hacks just to "make it work"
 - ❌ Sacrifice correctness for perceived simplicity
+- ❌ Add technical debt for short-term convenience
+
+**Code Review Red Flags:**
+
+If you think: "This setTimeout should fix it" → ❌ Fix the race condition  
+If you think: "I'll catch and ignore this error" → ❌ Fix the error source  
+If you think: "This workaround is easier" → ❌ Implement properly  
 
 **Remember: Complex-but-correct is better than simple-but-broken.**
 
 ---
 
-## Memory Persistence 🧠 MANDATORY
+## 🧠 Memory Persistence Instructions (Agentic-Tools MCP)
 
-### At the end of EVERY task:
+### CRITICAL: At the end of EVERY task, you MUST:
 
-```bash
-git add .agentic-tools-mcp/
-git commit -m "chore: persist agent memory from task"
-git push
-```
+1. **Stage memory files for commit:**
+   ```bash
+   git add .agentic-tools-mcp/
+   ```
 
-**Memory File Locations:**
-- `.agentic-tools-mcp/memories/` - Individual JSON files by category
-- `.agentic-tools-mcp/tasks/` - Task and project data
+2. **Commit memory files with your code changes:**
+   ```bash
+   git commit -m "chore: persist agent memory from task"
+   ```
 
-**Why:** Ephemeral environment destroyed when session ends. If you don't commit, they're lost forever.
+3. **Push to the PR branch:**
+   - Ensure memory files are included in the push
+
+### Memory File Locations
+
+- `.agentic-tools-mcp/memories/` - Individual memory JSON files organized by category
+- `.agentic-tools-mcp/tasks/` - Task and project data files
+
+**Why This Matters:** Your memory files are stored in an ephemeral environment that gets destroyed when your session ends. If you don't commit them to the PR, they will be lost forever.
 
 ---
 
@@ -47,9 +75,19 @@ git push
 
 ### 1. ALWAYS Search Memories First 🔍
 
-**Before ANY task:**
+**CRITICAL WORKFLOW RULE:**
+Before starting ANY task, search memories for relevant context.
+
+**When to Search:**
+- Before implementing new features
+- Before refactoring existing code
+- Before researching topics (check if already researched)
+- Before making architectural decisions
+
+**Search Workflow:**
+
 ```javascript
-const memories = await searchMemories({
+const relevantMemories = await searchMemories({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   query: "keywords about task/feature/component",
   limit: 5,
@@ -58,245 +96,549 @@ const memories = await searchMemories({
 });
 ```
 
-**Check for:** Similar work, architectural decisions, research, patterns
+**Check results for:**
+- Similar work done before
+- Past architectural decisions
+- Related research findings
+- Relevant patterns or best practices
+
+**Search Query Tips:**
+- Use specific component names ("state-manager", "container", "quick-tabs")
+- Include action words ("isolation", "tracking", "persistence")
+- Try multiple queries with different keywords
+- Use category filter when relevant
 
 ---
 
 ### 2. Create Memories for Learnings
 
+**For Agent Memories (Learnings, Context, Decisions):**
+
+✅ Use `create_memory` tool from agentic-tools MCP
+
+**Required Parameters:**
+- `workingDirectory`: Absolute path to project (e.g., `/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition`)
+- `title`: Short descriptive title (max 50 characters, used for filename)
+- `content`: Detailed memory content (no limit)
+
+**Optional Parameters:**
+- `category`: Categorization string
+- `metadata`: Flexible metadata object for additional context
+
+**Example:**
 ```javascript
 await createMemory({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  title: "Short Title (max 50 chars)",
-  content: "Detailed content (no limit)",
-  category: "architecture",  // See categories below
+  title: "Container Isolation Architecture Pattern",
+  content: "This extension uses cookieStoreId for complete Firefox container isolation. Key implementation: Always query tabs with cookieStoreId filter to maintain separation between containers. State manager tracks per-container data.",
+  category: "architecture",
   metadata: {
-    components: ["file1.js", "file2.js"],
+    components: ["state-manager.js", "background.js"],
     relatedIssues: ["#123"],
-    importance: "critical",  // critical|high|medium|low
-    tags: ["container", "isolation"],
+    importance: "critical",
+    tags: ["container", "isolation", "state-management"],
     implementedDate: "2025-11-21",
-    confidence: 0.9  // 0-1 scale
+    confidence: 0.9
   }
 });
 ```
 
-**Memory Categories:**
+---
 
-| Category | Use For |
-|----------|---------|
-| `architecture` | Design patterns, system architecture |
-| `technical` | Implementation details, API usage |
-| `best-practices` | Standards, conventions |
-| `preferences` | User preferences, style guides |
-| `research` | Research findings, external resources |
-| `troubleshooting` | Known issues, solutions, fixes |
-| `project-context` | Repo structure, build config |
+### Memory Categorization Standards
+
+**Use consistent categories for efficient retrieval:**
+
+| Category | Use For | Examples |
+|----------|---------|----------|
+| `architecture` | Design patterns, system architecture | "Container Isolation Pattern" |
+| `technical` | Implementation details, API usage | "CookieStoreId API Usage" |
+| `best-practices` | Standards, conventions, patterns | "ESLint Configuration Standards" |
+| `preferences` | User preferences, style guides | "Code Style Preferences" |
+| `research` | Research findings, external resources | "WebExtension Performance Research" |
+| `troubleshooting` | Known issues, solutions, fixes | "Container State Race Condition Fix" |
+| `project-context` | Repo structure, build config | "Repository Structure" |
+
+**Category Selection Guidelines:**
+- Architecture > Technical (if both apply)
+- Specific > General (prefer more specific category)
+- Use metadata for additional tags
 
 ---
 
-## Task Management 📋
+### Memory Metadata Schema
 
-### When to Use
+**Recommended metadata structure for rich context:**
 
-Multi-step features, complex refactors, projects with dependencies, work spanning multiple PR sessions.
+```javascript
+metadata: {
+  // Component references
+  components: ["state-manager.js", "background.js"],
+  
+  // Related files
+  relatedFiles: [
+    "src/state-manager.js",
+    "src/background.js"
+  ],
+  
+  // Related issues/PRs
+  relatedIssues: ["#123"],
+  relatedPRs: ["#456"],
+  
+  // Importance level
+  importance: "critical",  // critical | high | medium | low
+  
+  // Tags for additional context
+  tags: ["container", "isolation", "state-management"],
+  
+  // Source of information
+  source: "implementation",  // implementation | research | documentation | conversation
+  
+  // Date context
+  implementedDate: "2025-11-21",
+  lastVerified: "2025-11-21",
+  
+  // Confidence level
+  confidence: 0.9  // 0-1 scale
+}
+```
 
-### Core Tools
+---
 
-**Create Project:**
+## 📋 Task Management System (Agentic-Tools MCP)
+
+### When to Use Task Management
+
+**Task management is for:**
+- Multi-step features requiring planning
+- Complex refactors spanning multiple files
+- Projects with dependencies between tasks
+- Work that spans multiple PR sessions
+
+### Creating a Project Plan
+
+**1. Start with project creation:**
 ```javascript
 await createProject({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   name: "Feature Name",
-  description: "High-level overview"
+  description: "High-level overview of feature goals"
 });
 ```
 
-**Create Task (Unlimited Nesting):**
+**2. Break down into tasks:**
 ```javascript
 await createTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   projectId: "[project-id]",
-  parentId: "[parent-id]",  // Optional - creates subtask
   name: "Task name",
-  details: "Detailed description",
+  details: "Detailed task description",
   priority: 8,        // 1-10 (10 = highest)
   complexity: 6,      // 1-10 (10 = most complex)
-  status: "pending",  // pending|in-progress|blocked|done
+  status: "pending",  // pending | in-progress | blocked | done
   tags: ["refactor", "architecture"],
-  estimatedHours: 8,
-  dependsOn: ["[other-task-id]"]  // Optional dependencies
+  estimatedHours: 8
 });
 ```
 
-**Update Task:**
+**3. Create subtasks for task breakdown (unlimited nesting):**
 ```javascript
+await createTask({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  projectId: "[project-id]",
+  parentId: "[parent-task-id]",  // Creates subtask
+  name: "Subtask name",
+  details: "Subtask details",
+  priority: 7,
+  complexity: 4,
+  estimatedHours: 3
+});
+
+// Create sub-subtasks (infinite depth!)
+await createTask({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  projectId: "[project-id]",
+  parentId: "[subtask-id]",  // Creates sub-subtask
+  name: "Sub-subtask name"
+  // ... supports unlimited nesting!
+});
+```
+
+**4. Track progress:**
+```javascript
+// Update task status as you work
+await updateTask({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  id: "[task-id]",
+  status: "in-progress",
+  actualHours: 3
+});
+
+// Mark complete
 await updateTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   id: "[task-id]",
   status: "done",
   completed: true,
-  actualHours: 7
+  actualHours: 8
 });
 ```
 
+**Task Dependencies:**
+```javascript
+await createTask({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  projectId: "[project-id]",
+  name: "Write integration tests",
+  dependsOn: ["[implementation-task-id]"],  // Can't start until implementation done
+  priority: 7,
+  complexity: 4
+});
+```
+
+**Workflow Integration:**
+- Create tasks at start of complex features
+- Update status as you work through PR
+- Mark tasks complete before final commit
+- Commit `.agentic-tools-mcp/tasks/` with code changes
+
 ---
 
-## AI Agent Advanced Tools 🤖
+## 🤖 AI Agent Advanced Tools (Agentic-Tools MCP)
 
-### Task Recommendations
+### Intelligent Task Recommendations
 
-Get AI-powered next task suggestion:
+Get AI-powered task prioritization based on dependencies, priority, and complexity:
+
 ```javascript
 const recommendation = await getNextTaskRecommendation({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   projectId: "[project-id]"
 });
-// Returns optimal task based on dependencies, priority, complexity
+// Returns optimal next task to work on
 ```
 
-### Complexity Analysis
+**Benefits:**
+- Autonomous task selection (no human guidance needed)
+- Never works on blocked tasks
+- Balances high-value, achievable work
+- Reduces decision paralysis
 
-Identify overly complex tasks:
+---
+
+### Automatic Task Complexity Analysis
+
+Identify overly complex tasks and get automatic breakdown suggestions:
+
 ```javascript
 const analysis = await analyzeTaskComplexity({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   taskId: "[task-id]",
   complexityThreshold: 7
 });
-// If > threshold, returns suggested subtask breakdown
+// If complexity > threshold, returns suggested subtasks
 ```
 
-### PRD Parsing
+**Benefits:**
+- Prevents overwhelming tasks
+- Improves task completion rate
+- Better progress tracking
+- Reduces cognitive load
 
-Auto-generate tasks from requirements:
+---
+
+### PRD Parsing Automation
+
+Parse Product Requirements Documents into structured task breakdowns automatically:
+
 ```javascript
+const prdContent = `
+## Feature: Enhanced Console Log Filtering
+
+### Requirements
+1. Add granular log level filtering (HIGH PRIORITY)
+   - Filter by: error, warn, info, debug
+   - Per-tab filtering persistence
+   - Estimated: 8 hours
+
+2. Export filtered logs (MEDIUM PRIORITY)
+   - CSV export functionality
+   - JSON export with metadata
+   - Estimated: 6 hours
+`;
+
 await parsePRD({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   projectId: "[project-id]",
-  prdContent: `
-## Feature: Name
-
-### Requirements
-1. Requirement 1 (HIGH PRIORITY)
-   - Detail A
-   - Estimated: 8 hours
-
-2. Requirement 2 (MEDIUM PRIORITY)
-   - Detail B
-   - Estimated: 6 hours
-  `
+  prdContent: prdContent
 });
-// Creates complete project structure automatically
+// Result: Complete project created with tasks, subtasks, priorities, estimates
 ```
 
-### Progress Inference
+**Benefits:**
+- Instant task breakdown from requirements (90% time saved)
+- Consistent task structure
+- Dependencies auto-detected from context
 
-Auto-detect task completion:
+**PRD Format Tips:**
+- Use clear headings for sections
+- Mark priorities (HIGH/MEDIUM/LOW)
+- Include time estimates
+- List dependencies explicitly
+
+---
+
+### Task Progress Inference
+
+Analyze codebase to detect task completion from code evidence:
+
 ```javascript
 const progress = await inferTaskProgress({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   projectId: "[project-id]",
-  autoUpdateTasks: true,
+  autoUpdateTasks: false,
   confidenceThreshold: 0.7
 });
-// Analyzes codebase for completion evidence
+// Returns suggested status, confidence, evidence, recommendations
 ```
 
-### Research Automation
+**Benefits:**
+- Automatic progress tracking
+- Accurate completion detection
+- Prevents forgotten status updates
+- Evidence-based reporting
+
+---
+
+### Research-Enhanced Memory System
+
+Perform comprehensive web research with automatic memory storage:
 
 ```javascript
-// 1. Generate research queries
+// 1. Generate intelligent research queries
 const queries = await generateResearchQueries({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   taskId: "[task-id]",
-  queryTypes: ["implementation", "best_practices"]
+  queryTypes: ["implementation", "best_practices", "examples"]
 });
 
-// 2. Research with Perplexity MCP
+// 2. Use Perplexity MCP for research
 const results = await perplexity_reason({
   messages: [
-    { role: "system", content: "Research assistant" },
+    { role: "system", content: "You are a research assistant." },
     { role: "user", content: queries[0] }
   ]
 });
 
-// 3. Store as memory
+// 3. Store findings as memories
 await createMemory({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   title: "Research: Topic",
   content: results.content,
   category: "research",
-  metadata: { relatedTask: "[task-id]" }
+  metadata: {
+    relatedTask: "[task-id]"
+  }
 });
 ```
 
+**Benefits:**
+- Copilot performs autonomous research
+- Research findings persistent
+- Context-aware implementation
+- Reusable knowledge
+
 ---
 
-## MCP Server Utilization
+## MCP Server Utilization (10 Servers Configured)
 
-### MANDATORY MCPs (ALWAYS Use)
+### Critical Priority MCPs (ALWAYS Use)
 
-**ESLint MCP ⭐**
-- EVERY code change MUST be linted before committing
-- Write code → Lint → Apply fixes → Verify zero errors → Commit
+#### ESLint MCP ⭐ MANDATORY
+- **Purpose:** JavaScript linting, auto-fixing, code quality
+- **Rule:** EVERY code change MUST be linted before committing
+- **Workflow:** Write code → Lint immediately → Apply fixes → Verify zero errors → Commit
 
-**Context7 MCP ⭐**
-- ALWAYS fetch current docs instead of relying on training data
-- Use for WebExtensions APIs, external libraries, Firefox compatibility
+#### Context7 MCP ⭐ MANDATORY
+- **Purpose:** Up-to-date API documentation
+- **Rule:** ALWAYS fetch current docs instead of relying on training data
+- **Use For:** WebExtensions APIs, external libraries, Firefox compatibility
 
-**Perplexity MCP ⭐**
-- Real-time web search with reasoning
-- Model: `sonar-reasoning-pro` (with citations)
-- Tool: `perplexity_reason`
+#### Perplexity MCP ⭐ MANDATORY
+- **Purpose:** Real-time web search with reasoning
+- **Model:** sonar-reasoning-pro (with citations)
+- **Use For:** Current information, best practices, recent solutions
 
-### High Priority MCPs
+### High Priority MCPs (Use Frequently)
 
 **GitHub MCP** - Create/update issues & PRs, add comments, trigger workflows  
-**Playwright (Firefox & Chrome)** - Testing extension functionality, UI verification  
+**Playwright (Firefox & Chrome) MCPs** - Testing extension functionality, UI verification  
 **CodeScene MCP** - Code health analysis, technical debt detection  
 **Codecov MCP** - Test coverage analysis  
 **GitHub Actions MCP** - CI/CD workflow management
 
 ---
 
-## Standard Workflows
+## 🎭 Playwright MCP Autonomous Testing
 
-### Bug Fix
+### Overview
+
+The extension includes a **Test Bridge Pattern** for autonomous testing with Playwright MCP, enabling ~80% test coverage without manual intervention.
+
+**Key Documents:**
+- **Testing Guide**: `.github/COPILOT-TESTING-GUIDE.md`
+- **Test Utilities**: `tests/extension/helpers/extension-test-utils.js`
+
+### What You CAN Test Autonomously
+
+✅ **Quick Tab Operations** (via Test Bridge - bypasses keyboard shortcuts):
+- Create Quick Tabs programmatically
+- Minimize/restore
+- Pin/unpin behavior
+- Close and cleanup
+
+✅ **State Management**:
+- Storage verification (browser.storage.local)
+- Cross-tab synchronization (BroadcastChannel)
+- Container isolation (cookieStoreId)
+
+✅ **UI Interactions**:
+- Click, hover, drag, resize
+- Form inputs, screenshots
+- Multi-tab testing
+
+### What You CANNOT Test
+
+❌ **Keyboard Shortcuts**: `manifest.json` commands ("Q" key, "Ctrl+Alt+Z") - browser API limitation  
+❌ **Extension Icon**: Toolbar icon clicks  
+❌ **OS-Level Events**: System notifications, some clipboard ops
+
+**These require manual testing.**
+
+### Quick Start
+
+**Basic Test Pattern:**
+```javascript
+import { ExtensionTestHelper } from './tests/extension/helpers/extension-test-utils.js';
+
+test('create Quick Tab', async ({ page }) => {
+  const helper = new ExtensionTestHelper(page);
+  await page.goto('https://example.com');
+  
+  // Wait for test bridge
+  const ready = await helper.waitForTestBridge();
+  expect(ready).toBe(true);
+  
+  // Create Quick Tab (bypasses "Q" key!)
+  await helper.createQuickTab('https://github.com');
+  
+  // Verify
+  const tabs = await helper.getQuickTabs();
+  expect(tabs).toHaveLength(1);
+});
 ```
-1. Search memories (similar bugs) 🧠🔍
-2. Context7: Get API docs ⭐
+
+**Run Tests:**
+```bash
+npm run test:extension        # All extension tests
+npm run test:extension:ui     # With UI
+npm run test:extension:debug  # Debug mode
+```
+
+### Test Bridge API
+
+**Core Methods:**
+- `waitForTestBridge()` - Wait for bridge availability
+- `createQuickTab(url, options)` - Create Quick Tab
+- `getQuickTabs()` - Get all Quick Tabs
+- `getQuickTabById(id)` - Get specific Quick Tab
+- `minimizeQuickTab(id)` - Minimize
+- `restoreQuickTab(id)` - Restore
+- `pinQuickTab(id)` - Pin to tab
+- `unpinQuickTab(id)` - Unpin
+- `closeQuickTab(id)` - Close
+- `clearAllQuickTabs()` - Cleanup
+- `waitForQuickTabCount(n)` - Wait for sync
+- `takeScreenshot(name)` - Capture screenshot
+- `verifyQuickTabBehavior(scenario)` - Verify scenarios
+
+### Testing Best Practices
+
+**1. Always wait for test bridge:**
+```javascript
+await helper.waitForTestBridge();
+```
+
+**2. Clean up before and after tests:**
+```javascript
+test.beforeEach(async ({ page }) => {
+  helper = new ExtensionTestHelper(page);
+  await page.goto('https://example.com');
+  await helper.waitForTestBridge();
+  await helper.clearAllQuickTabs();
+});
+
+test.afterEach(async () => {
+  await helper.clearAllQuickTabs();
+});
+```
+
+**3. Use polling for async operations:**
+```javascript
+await helper.waitForQuickTabCount(1, 5000);
+```
+
+**4. Take screenshots on failures:**
+```javascript
+try {
+  // Test code
+} catch (error) {
+  await helper.takeScreenshot('test-failure');
+  throw error;
+}
+```
+
+**See `.github/COPILOT-TESTING-GUIDE.md` for complete documentation.**
+
+---
+
+## Standard MCP Workflows
+
+### Bug Fix Workflow
+```
+1. Search memories for similar bugs 🧠🔍
+2. Context7 MCP: Get API docs ⭐
 3. Write fix
-4. ESLint: Lint and fix ⭐
-5. Playwright: Test fix
-6. GitHub MCP: Update issue
-7. Create memory (fix details) 🧠
-8. Commit memory files 🧠
+4. ESLint MCP: Lint and fix ⭐
+5. Playwright MCP: Test fix 🎭
+6. Create memory with fix details 🧠
+7. Commit memory files 🧠
 ```
 
-### New Feature (With Tasks)
+### New Feature Workflow (With Task Management)
 ```
-1. Search memories (related features) 🧠🔍
-2. Create project + tasks 📋
+1. Search memories for related features 🧠🔍
+2. Create project and tasks 📋
 3. Get task recommendation 📋
-4. Perplexity: Research ⭐
-5. Context7: Get API docs ⭐
+4. Perplexity MCP: Research ⭐
+5. Context7 MCP: Get API docs ⭐
 6. Update task to in-progress 📋
-7. Write code
-8. ESLint: Lint and fix ⭐
-9. Playwright: Create tests
-10. Mark task done 📋
-11. Create memory (architecture) 🧠
+7. Write feature code
+8. ESLint MCP: Lint and fix ⭐
+9. Playwright MCP: Create tests 🎭
+10. Mark task as done 📋
+11. Create architectural memory 🧠
 12. Commit memory + task files 🧠📋
 ```
 
 ---
 
-## Browser Extension Rules
+## Browser Extension Specific Rules
 
 ### Message Passing Security
+
+**ALWAYS validate sender:**
 ```javascript
-// ✅ GOOD - Validate sender
 browser.runtime.onMessage.addListener((message, sender) => {
   if (!sender.id || sender.id !== browser.runtime.id) {
     return Promise.reject(new Error('Unauthorized'));
@@ -305,23 +647,28 @@ browser.runtime.onMessage.addListener((message, sender) => {
 });
 ```
 
-### Storage API
+### Storage API Best Practices
+
+**Always handle quotas and errors:**
 ```javascript
-// ✅ Handle quotas and errors
 async function saveState(state) {
   try {
-    const size = new Blob([JSON.stringify(state)]).size;
-    if (size > 100 * 1024) throw new Error(`Too large: ${size}`);
+    const stateSize = new Blob([JSON.stringify(state)]).size;
+    if (stateSize > 100 * 1024) {
+      throw new Error(`State too large: ${stateSize} bytes`);
+    }
     await browser.storage.sync.set({ state });
   } catch (error) {
-    await browser.storage.local.set({ state }); // Fallback
+    console.error('Storage error:', error);
+    await browser.storage.local.set({ state });
   }
 }
 ```
 
 ### Container Isolation
+
+**Always use `cookieStoreId` for container-aware operations:**
 ```javascript
-// ✅ Always use cookieStoreId
 async function getTabState(tabId) {
   const tab = await browser.tabs.get(tabId);
   const cookieStoreId = tab.cookieStoreId || 'firefox-default';
@@ -331,183 +678,110 @@ async function getTabState(tabId) {
 
 ---
 
-## Testing (Playwright MCP) 🎭
+## Code Style & Patterns
 
-### Test Bridge Pattern
-
-**Setup:**
+### Preferred Patterns
 ```javascript
-import { ExtensionTestHelper } from './tests/extension/helpers/extension-test-utils.js';
-
-test('create Quick Tab', async ({ page }) => {
-  const helper = new ExtensionTestHelper(page);
-  await page.goto('https://example.com');
-  
-  await helper.waitForTestBridge();
-  await helper.createQuickTab('https://github.com');
-  
-  const tabs = await helper.getQuickTabs();
-  expect(tabs).toHaveLength(1);
-});
-```
-
-**Run Tests:**
-```bash
-npm run test:extension        # All tests
-npm run test:extension:ui     # With UI
-npm run test:extension:debug  # Debug mode
-```
-
-**Test Bridge API:**
-- `createQuickTab(url, options)` - Create Quick Tab
-- `getQuickTabs()` - Get all Quick Tabs
-- `minimizeQuickTab(id)` - Minimize
-- `restoreQuickTab(id)` - Restore
-- `closeQuickTab(id)` - Close
-- `clearAllQuickTabs()` - Cleanup
-- `waitForQuickTabCount(n)` - Wait for sync
-
----
-
-## Code Style
-
-### Preferred
-```javascript
-// ✅ const for immutable
+// ✅ Use const for immutable values
 const MAX_RETRIES = 3;
 
-// ✅ async/await
+// ✅ Use async/await
 async function fetchData() {
-  return await fetch(url);
+  const data = await fetch(url);
+  return data;
 }
 
-// ✅ Arrow functions
+// ✅ Use arrow functions for callbacks
 items.map(item => item.value);
 
-// ✅ Template literals
-const msg = `Hello ${name}`;
+// ✅ Use template literals
+const message = `Hello ${name}`;
 
-// ✅ Destructuring
+// ✅ Use destructuring
 const { id, name } = user;
 ```
 
-### Avoid
+### Patterns to Avoid
 ```javascript
 // ❌ Don't use var
 // ❌ Don't use eval or new Function
 // ❌ Don't use innerHTML with user input
-// ❌ Don't ignore errors (empty catch)
+// ❌ Don't ignore errors (empty catch blocks)
 // ❌ Don't use console.log in production
 ```
 
 ---
 
-## Documentation Updates
+## Documentation Update Requirements
 
-### MANDATORY Updates
+### MANDATORY Updates Based on Change Type
 
 **Update README.md when:**
 - Version numbers change
-- Features/functionality change
-- Settings/configuration change
+- Features or functionality change
+- User interface or UX changes
+- Settings or configuration change
+
+**README must stay under 10KB**
 
 **Update Agent Files when:**
-- Architecture changes
+- Architecture changes (patterns, structure)
 - Build/test/deploy processes change
+- Repository structure changes
 
 ### Version Synchronization
 
-When version changes X.Y.Z → X.Y.Z+1:
-- `manifest.json` version
-- `package.json` version
-- README header & footer
-- `.github/copilot-instructions.md` Project Overview
-- Add "What's New" section to README
+When version changes from X.Y.Z to X.Y.Z+1:
+- Update `manifest.json` version
+- Update `package.json` version
+- Update README header & footer
+- Update `.github/copilot-instructions.md` (Project Overview)
 
 ---
 
-## Bug Reporting
+## Bug Reporting and Issue Creation
 
 ### Automatic Issue Creation (ENABLED)
 
-When user reports bugs:
-1. Document in `docs/manual/` or `docs/implementation-summaries/`
-2. CREATE GITHUB ISSUES automatically using GitHub MCP
-3. DO NOT auto-close issues
-4. Include: title, description, root cause, implementation strategy, labels
+When user reports bugs or requests features:
 
-### Checklist Format
-
-Use `- [ ]` for pending (NOT `- [x]`):
-```markdown
-✅ CORRECT:
-- [ ] Fix RAM usage bug (GitHub issue #123 created)
-```
-
----
-
-## Common Issues
-
-### Race Conditions
-```javascript
-// ❌ BAD
-async function incrementCounter() {
-  const { counter } = await browser.storage.sync.get('counter');
-  await browser.storage.sync.set({ counter: counter + 1 });
-}
-
-// ✅ GOOD - Atomic
-async function incrementCounter() {
-  return browser.storage.sync.get('counter').then(({ counter = 0 }) =>
-    browser.storage.sync.set({ counter: counter + 1 })
-  );
-}
-```
-
-### Memory Leaks
-```javascript
-// ✅ Cleanup listeners
-function setupListener() {
-  const listener = handleUpdate;
-  browser.tabs.onUpdated.addListener(listener);
-  return () => browser.tabs.onUpdated.removeListener(listener);
-}
-```
-
-### Unhandled Promises
-```javascript
-// ✅ Handle all rejections
-browser.storage.sync.set({ data }).catch(error => {
-  console.error('Storage error:', error);
-  showUserNotification('Save failed');
-});
-```
+1. **Document all issues** in `docs/manual/` or `docs/implementation-summaries/`
+2. **CREATE GITHUB ISSUES** automatically using GitHub MCP
+3. **DO NOT auto-close issues** - User closes manually
+4. **Include:**
+   - Clear, actionable title
+   - Detailed description
+   - Root cause analysis (for bugs)
+   - Implementation strategy
+   - Appropriate labels
 
 ---
 
 ## Before Every Commit Checklist
 
-- [ ] **Searched memories before starting** 🧠🔍
-- [ ] ESLint used on all modified files ⭐
-- [ ] Zero ESLint errors ⭐
+- [ ] **Searched memories before starting work** 🧠🔍
+- [ ] **Referenced relevant memories in implementation** 🧠
+- [ ] ESLint MCP used on all modified JS files ⭐
+- [ ] Zero ESLint errors remaining ⭐
 - [ ] Context7 used for API implementations ⭐
-- [ ] All testing suites run ⭐
-- [ ] **Playwright tests run for extension changes** 🎭
+- [ ] Run all testing suites ⭐
+- [ ] **Playwright MCP tests run for extension changes** 🎭
+- [ ] **Test Bridge verified for Quick Tab features** 🎭
 - [ ] **Tasks created for multi-step features** 📋
-- [ ] **Task status updated** 📋
-- [ ] **Completed tasks marked done** 📋
+- [ ] **Task status updated to reflect progress** 📋
+- [ ] **Completed tasks marked as "done"** 📋
 - [ ] **Task data committed** (`.agentic-tools-mcp/tasks/`) 📋
 - [ ] **Memory files committed** (`.agentic-tools-mcp/`) 🧠
-- [ ] Memory files follow naming: `Category/Title.json` 🧠
-- [ ] **Referenced relevant memories in code** 🧠
+- [ ] Verified `.agentic-tools-mcp/memories/` contains individual JSON files 🧠
 
 ---
 
 ## Before Every PR Checklist
 
-- [ ] All commits linted ⭐
-- [ ] **Playwright test suite passes** 🎭
-- [ ] Documentation updated
+- [ ] All commits linted with ESLint ⭐
+- [ ] **Playwright MCP test suite passes** 🎭
+- [ ] **Extension tests cover new Quick Tab features** 🎭
+- [ ] Documentation updated (README, agent files if applicable)
 - [ ] **Memory files included in PR** 🧠
 - [ ] GitHub MCP used to create PR
 
@@ -515,13 +789,13 @@ browser.storage.sync.set({ data }).catch(error => {
 
 ## Documentation Organization
 
-**Save markdown files to:**
+**Save markdown files to appropriate `docs/` subdirectories:**
 - Bug analysis → `docs/manual/`
 - Implementation guides → `docs/manual/`
 - Implementation summaries → `docs/implementation-summaries/`
 - Changelog updates → **APPEND to `docs/CHANGELOG.md`**
 
-**DO NOT** save to root (except README.md).
+**DO NOT** save markdown files to root directory (except README.md).
 
 ---
 
@@ -530,8 +804,9 @@ browser.storage.sync.set({ data }).catch(error => {
 **When in doubt:**
 1. Prioritize security over convenience
 2. Add error handling rather than assuming success
-3. Write tests before marking done
+3. Write tests before marking as done
 4. Document decisions in code comments
-5. **ALWAYS commit memory files before finishing** 🧠
+5. Ask for human review on security-critical changes
+6. **ALWAYS commit memory files before finishing** 🧠
 
 **This extension handles user data and browsing history. Security and privacy are paramount.**
