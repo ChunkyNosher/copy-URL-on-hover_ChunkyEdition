@@ -71,8 +71,35 @@ If you think: "This workaround is easier" → ❌ Implement properly
 
 Check that `.agentic-tools/` appears in your commit. If missing, ADD IT NOW.
 
-### CRITICAL: Memory Tool Names: DO NOT USE "store_memory" TOOL CALL TO STORE A MEMORY, IT DOES NOT EXIST. 
-Use either agentic-tools MCP to properly store a memory.
+### Memory Storage Tool Usage
+
+**For Agent Memories (Learnings, Context, Decisions):**
+
+✅ Use `create_memory` tool from agentic-tools MCP
+
+**Required Parameters:**
+- `workingDirectory`: Absolute path to project (e.g., `/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition`)
+- `title`: Short descriptive title (max 50 characters, used for filename)
+- `content`: Detailed memory content (no limit)
+
+**Optional Parameters:**
+- `category`: Categorization string (e.g., "preferences", "technical", "context")
+- `metadata`: Flexible metadata object for additional context
+
+**Example Usage:**
+```javascript
+await createMemory({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  title: "Container Isolation Architecture Pattern",
+  content: "This extension uses cookieStoreId for complete Firefox container isolation. Key implementation: Always query tabs with cookieStoreId filter to maintain separation between containers. State manager tracks per-container data.",
+  category: "architecture",
+  metadata: {
+    component: "state-manager.js",
+    importance: "critical",
+    relatedFiles: ["background.js", "content.js"]
+  }
+});
+```
 
 **This is NON-NEGOTIABLE for memory persistence across tasks.**
 
