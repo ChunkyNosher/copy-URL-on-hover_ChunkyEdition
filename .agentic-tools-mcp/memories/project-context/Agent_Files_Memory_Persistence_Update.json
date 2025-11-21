@@ -1,0 +1,8 @@
+{
+  "id": "659287e6-94ab-45f6-841e-fdc4ad7858f6",
+  "title": "Agent Files Memory Persistence Update",
+  "details": "Updated all 12 Copilot agent files in .github/agents/ to use the correct agentic-tools-mcp memory persistence instructions.\n\n**Changes Made:**\n1. Replaced outdated \"3-Tier Memory System\" (In-Memoria, Agentic-Tools, Persistent-Memory) with single \"Agentic-Tools MCP\" system\n2. Updated all file paths from `.agentic-tools/` to `.agentic-tools-mcp/`\n3. Removed references to `.in-memoria/` and `.mcp-data/` directories (not configured)\n4. Added Memory Search workflow section to all agent files with example code\n5. Updated MCP integration sections to reference Agentic-Tools MCP for memory operations\n6. Updated workflow steps to include memory search as first step\n7. Updated commit checklists to reference correct memory directory\n\n**Files Updated:**\n- bug-architect.md\n- bug-fixer.md\n- feature-builder.md\n- feature-optimizer.md\n- master-orchestrator.md\n- quicktabs-cross-tab-agent.md\n- quicktabs-manager-agent.md\n- quicktabs-single-tab-agent.md\n- quicktabs-unified-agent.md\n- refactor-specialist.md\n- ui-ux-settings-agent.md\n- url-detection-agent.md\n\n**Memory Persistence Section Now Includes:**\n- Location: `.agentic-tools-mcp/` directory\n- Mandatory commit instructions\n- Memory search workflow with code example\n- List of available memory tools (create, search, get, update, list)\n\n**Impact:**\nAll custom Copilot agents will now correctly use the agentic-tools-mcp server and persist memories to the right location, enabling knowledge retention across agent sessions.",
+  "category": "project-context",
+  "dateCreated": "2025-11-21T21:06:46.454Z",
+  "dateUpdated": "2025-11-21T21:06:46.454Z"
+}

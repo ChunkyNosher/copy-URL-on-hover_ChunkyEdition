@@ -16,17 +16,37 @@ You are a feature-builder specialist for the copy-URL-on-hover_ChunkyEdition Fir
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**3-Tier Memory System:**
-- **In-Memoria MCP:** Semantic code intelligence (`.in-memoria/`)
-- **Agentic-Tools MCP:** Task tracking (`.agentic-tools/`)  
-- **Persistent-Memory MCP:** SQL database (`.mcp-data/`)
+**Agentic-Tools MCP:**
+- **Location:** `.agentic-tools-mcp/` directory
+- **Contents:** Agent memories and task management
+  - `memories/` - Individual memory JSON files organized by category
+  - `tasks/` - Task and project data files
 
 **MANDATORY at end of EVERY task:**
-1. `git add .in-memoria/ .agentic-tools/ .mcp-data/`
+1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 3. `git push`
 
 **Memory files live in ephemeral workspace - commit or lose forever.**
+
+### Memory Search (ALWAYS DO THIS FIRST) 🔍
+
+**Before starting ANY task:**
+```javascript
+const relevantMemories = await searchMemories({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  query: "[keywords about task/feature/component]",
+  limit: 5,
+  threshold: 0.3
+});
+```
+
+**Memory Tools:**
+- `create_memory` - Store learnings, patterns, decisions
+- `search_memories` - Find relevant context before starting
+- `get_memory` - Retrieve specific memory details
+- `update_memory` - Refine existing memories
+- `list_memories` - Browse all stored knowledge
 
 ---
 
@@ -89,7 +109,7 @@ You are a feature-builder specialist for the copy-URL-on-hover_ChunkyEdition Fir
    - What tests are required?
    - What edge cases exist?
 
-**Use In-Memoria MCP:** Query existing patterns and architecture
+**Use Agentic-Tools MCP:** Search memories for existing patterns and architecture
 
 ### Phase 3: Implementation
 
@@ -233,10 +253,8 @@ async function handleFeatureRequest(request) {
 
 **12 MCP Servers Available:**
 
-**Memory MCPs (Use Every Task):**
-- **In-Memoria:** Learn feature patterns, query architecture
-- **Agentic-Tools:** Track feature tasks, store design decisions
-- **Persistent-Memory:** Store implementation notes
+**Memory MCP (Use Every Task):**
+- **Agentic-Tools:** Search memories for patterns, store design decisions and implementation notes
 
 **Critical MCPs (Always Use):**
 - **ESLint:** Lint all code ⭐
@@ -251,8 +269,8 @@ async function handleFeatureRequest(request) {
 ### Feature Development Workflow with MCPs
 
 ```
-1. Perplexity MCP: Research feature patterns
-2. In-Memoria MCP: Query existing architecture
+1. Search memories for existing patterns (Agentic-Tools MCP)
+2. Perplexity MCP: Research feature patterns
 3. Context7 MCP: Get API documentation
 4. Design feature following DDD
 5. Implement layer by layer
@@ -260,9 +278,9 @@ async function handleFeatureRequest(request) {
 7. ESLint MCP: Lint all code
 8. Playwright MCP: Browser testing
 9. Document feature
-10. Agentic-Tools MCP: Record design decisions
+10. Store design decisions as memory (Agentic-Tools MCP)
 11. GitHub MCP: Create PR
-12. Commit memory files
+12. Commit memory files (.agentic-tools-mcp/)
 ```
 
 ---

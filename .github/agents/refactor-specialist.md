@@ -16,17 +16,37 @@ You are a refactor-specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Ze
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**3-Tier Memory System:**
-- **In-Memoria MCP:** Semantic code intelligence (`.in-memoria/`)
-- **Agentic-Tools MCP:** Task tracking (`.agentic-tools/`)  
-- **Persistent-Memory MCP:** SQL database (`.mcp-data/`)
+**Agentic-Tools MCP:**
+- **Location:** `.agentic-tools-mcp/` directory
+- **Contents:** Agent memories and task management
+  - `memories/` - Individual memory JSON files organized by category
+  - `tasks/` - Task and project data files
 
 **MANDATORY at end of EVERY task:**
-1. `git add .in-memoria/ .agentic-tools/ .mcp-data/`
+1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 3. `git push`
 
 **Memory files live in ephemeral workspace - commit or lose forever.**
+
+### Memory Search (ALWAYS DO THIS FIRST) 🔍
+
+**Before starting ANY task:**
+```javascript
+const relevantMemories = await searchMemories({
+  workingDirectory: process.env.GITHUB_WORKSPACE,
+  query: "[keywords about task/feature/component]",
+  limit: 5,
+  threshold: 0.3
+});
+```
+
+**Memory Tools:**
+- `create_memory` - Store learnings, patterns, decisions
+- `search_memories` - Find relevant context before starting
+- `get_memory` - Retrieve specific memory details
+- `update_memory` - Refine existing memories
+- `list_memories` - Browse all stored knowledge
 
 ---
 
@@ -82,7 +102,7 @@ You are a refactor-specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Ze
    - Low test coverage areas
    - Untested edge cases
 
-**Use In-Memoria MCP:** Query for architectural patterns and past refactorings
+**Use Agentic-Tools MCP:** Search memories for architectural patterns and past refactorings
 
 ### Phase 2: Planning
 
@@ -226,10 +246,8 @@ strategies[type].handle();
 
 **12 MCP Servers Available:**
 
-**Memory MCPs (Use Every Task):**
-- **In-Memoria:** Learn refactoring patterns, store architectural decisions
-- **Agentic-Tools:** Track refactoring phases, document decisions
-- **Persistent-Memory:** Store refactoring history
+**Memory MCP (Use Every Task):**
+- **Agentic-Tools:** Search memories for refactoring patterns, store architectural decisions
 
 **Critical MCPs (Always Use):**
 - **ESLint:** Maintain code quality ⭐
@@ -244,15 +262,17 @@ strategies[type].handle();
 ### Refactoring Workflow with MCPs
 
 ```
-1. CodeScene MCP: Identify complexity hotspots
-2. Perplexity MCP: Research refactoring patterns
-3. In-Memoria MCP: Query past refactorings
+1. Search memories for past refactorings (Agentic-Tools MCP)
+2. CodeScene MCP: Identify complexity hotspots
+3. Perplexity MCP: Research refactoring patterns
 4. Write characterization tests
 5. Design new architecture
 6. Implement alongside old code
 7. ESLint MCP: Maintain quality
 8. Migrate incrementally
 9. Playwright MCP: Verify behavior
+10. Store refactoring pattern as memory (Agentic-Tools MCP)
+11. Commit memory files (.agentic-tools-mcp/)
 10. Remove old implementation
 11. Document refactoring
 12. Commit memory files
