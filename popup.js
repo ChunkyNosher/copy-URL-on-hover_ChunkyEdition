@@ -242,7 +242,11 @@ function extractCategoryFromLogEntry(logEntry) {
   }
 
   const displayName = match[1];
-  const normalized = displayName.trim().toLowerCase().replace(/[^\w\s-]/g, '').trim();
+  const normalized = displayName
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .trim();
 
   // Category mapping
   const mapping = {
