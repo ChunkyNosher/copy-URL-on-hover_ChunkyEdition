@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test';
+
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
  * Note: This extension is primarily designed for Firefox, but we test
  * Chrome compatibility where applicable.
  */
-export default defineConfig({
+export default {
   testDir: './tests/extension',
   testMatch: '**/*.spec.js',
 
@@ -50,7 +50,6 @@ export default defineConfig({
     {
       name: 'chromium-extension',
       use: {
-        ...devices['Desktop Chrome'],
         // Chrome-specific launch options for loading extension
         launchOptions: {
           args: [
@@ -66,4 +65,4 @@ export default defineConfig({
 
   /* Folder for test artifacts such as screenshots, videos, traces, etc. */
   outputDir: 'test-results/chrome'
-});
+};

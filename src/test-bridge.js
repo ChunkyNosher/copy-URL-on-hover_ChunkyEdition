@@ -284,6 +284,382 @@ const TestBridge = {
         console.error('[Test Bridge] clearAllQuickTabs error:', error);
         throw error;
       }
+    },
+
+    // ==================== SOLO/MUTE METHODS ====================
+
+    /**
+     * Toggle solo mode for a Quick Tab on a specific tab
+     * @param {string} id - Quick Tab ID
+     * @param {number} tabId - Tab ID to solo on
+     * @returns {Promise<Object>} Operation result with solo state
+     */
+    async toggleSolo(id, tabId) {
+      console.log('[Test Bridge] toggleSolo:', id, 'tabId:', tabId);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_TOGGLE_SOLO',
+          data: { id, tabId }
+        });
+        
+        console.log('[Test Bridge] toggleSolo response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] toggleSolo error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Toggle mute mode for a Quick Tab on a specific tab
+     * @param {string} id - Quick Tab ID
+     * @param {number} tabId - Tab ID to mute on
+     * @returns {Promise<Object>} Operation result with mute state
+     */
+    async toggleMute(id, tabId) {
+      console.log('[Test Bridge] toggleMute:', id, 'tabId:', tabId);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_TOGGLE_MUTE',
+          data: { id, tabId }
+        });
+        
+        console.log('[Test Bridge] toggleMute response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] toggleMute error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Get visibility state for current tab
+     * @param {number} tabId - Tab ID to get visibility for
+     * @returns {Promise<Object>} Visibility state (visible/hidden QTs, solo/mute status)
+     */
+    async getVisibilityState(tabId) {
+      console.log('[Test Bridge] getVisibilityState:', tabId);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_GET_VISIBILITY_STATE',
+          data: { tabId }
+        });
+        
+        console.log('[Test Bridge] getVisibilityState response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] getVisibilityState error:', error);
+        throw error;
+      }
+    },
+
+    // ==================== MANAGER PANEL METHODS ====================
+
+    /**
+     * Get manager panel state
+     * @returns {Promise<Object>} Panel state (visible, position, size, minimized tabs)
+     */
+    async getManagerState() {
+      console.log('[Test Bridge] getManagerState');
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_GET_MANAGER_STATE',
+          data: {}
+        });
+        
+        console.log('[Test Bridge] getManagerState response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] getManagerState error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Set manager panel position (for testing)
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @returns {Promise<Object>} Operation result
+     */
+    async setManagerPosition(x, y) {
+      console.log('[Test Bridge] setManagerPosition:', x, y);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_SET_MANAGER_POSITION',
+          data: { x, y }
+        });
+        
+        console.log('[Test Bridge] setManagerPosition response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] setManagerPosition error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Set manager panel size (for testing)
+     * @param {number} width - Panel width
+     * @param {number} height - Panel height
+     * @returns {Promise<Object>} Operation result
+     */
+    async setManagerSize(width, height) {
+      console.log('[Test Bridge] setManagerSize:', width, height);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_SET_MANAGER_SIZE',
+          data: { width, height }
+        });
+        
+        console.log('[Test Bridge] setManagerSize response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] setManagerSize error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Close all minimized Quick Tabs
+     * @returns {Promise<Object>} Operation result with count
+     */
+    async closeAllMinimized() {
+      console.log('[Test Bridge] closeAllMinimized');
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_CLOSE_ALL_MINIMIZED',
+          data: {}
+        });
+        
+        console.log('[Test Bridge] closeAllMinimized response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] closeAllMinimized error:', error);
+        throw error;
+      }
+    },
+
+    // ==================== CONTAINER ISOLATION METHODS ====================
+
+    /**
+     * Get all Quick Tabs grouped by container
+     * @returns {Promise<Object>} Container info with grouped Quick Tabs
+     */
+    async getContainerInfo() {
+      console.log('[Test Bridge] getContainerInfo');
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_GET_CONTAINER_INFO',
+          data: {}
+        });
+        
+        console.log('[Test Bridge] getContainerInfo response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] getContainerInfo error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Create Quick Tab in specific container
+     * @param {string} url - URL to load
+     * @param {string} cookieStoreId - Container cookie store ID
+     * @returns {Promise<Object>} Created Quick Tab data
+     */
+    async createQuickTabInContainer(url, cookieStoreId) {
+      console.log('[Test Bridge] createQuickTabInContainer:', url, cookieStoreId);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_CREATE_QUICK_TAB_IN_CONTAINER',
+          data: { url, cookieStoreId }
+        });
+        
+        console.log('[Test Bridge] createQuickTabInContainer response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] createQuickTabInContainer error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Verify two Quick Tabs are in different containers
+     * @param {string} id1 - First Quick Tab ID
+     * @param {string} id2 - Second Quick Tab ID
+     * @returns {Promise<Object>} Verification result with container info
+     */
+    async verifyContainerIsolation(id1, id2) {
+      console.log('[Test Bridge] verifyContainerIsolation:', id1, id2);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_VERIFY_CONTAINER_ISOLATION',
+          data: { id1, id2 }
+        });
+        
+        console.log('[Test Bridge] verifyContainerIsolation response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] verifyContainerIsolation error:', error);
+        throw error;
+      }
+    },
+
+    // ==================== DEBUG MODE METHODS ====================
+
+    /**
+     * Get slot numbering information for debug mode
+     * @returns {Promise<Object>} Slot numbering info
+     */
+    async getSlotNumbering() {
+      console.log('[Test Bridge] getSlotNumbering');
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_GET_SLOT_NUMBERING',
+          data: {}
+        });
+        
+        console.log('[Test Bridge] getSlotNumbering response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] getSlotNumbering error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Set debug mode on/off
+     * @param {boolean} enabled - Enable or disable debug mode
+     * @returns {Promise<Object>} Operation result
+     */
+    async setDebugMode(enabled) {
+      console.log('[Test Bridge] setDebugMode:', enabled);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_SET_DEBUG_MODE',
+          data: { enabled }
+        });
+        
+        console.log('[Test Bridge] setDebugMode response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] setDebugMode error:', error);
+        throw error;
+      }
+    },
+
+    // ==================== GEOMETRY/Z-INDEX METHODS ====================
+
+    /**
+     * Get Quick Tab geometry (position, size, z-index)
+     * @param {string} id - Quick Tab ID
+     * @returns {Promise<Object>} Geometry data
+     */
+    async getQuickTabGeometry(id) {
+      console.log('[Test Bridge] getQuickTabGeometry:', id);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_GET_QUICK_TAB_GEOMETRY',
+          data: { id }
+        });
+        
+        console.log('[Test Bridge] getQuickTabGeometry response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] getQuickTabGeometry error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Verify z-index stacking order
+     * @param {Array<string>} ids - Quick Tab IDs in expected order (front to back)
+     * @returns {Promise<Object>} Verification result
+     */
+    async verifyZIndexOrder(ids) {
+      console.log('[Test Bridge] verifyZIndexOrder:', ids);
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) {
+          throw new Error('No active tab found');
+        }
+        
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'TEST_VERIFY_ZINDEX_ORDER',
+          data: { ids }
+        });
+        
+        console.log('[Test Bridge] verifyZIndexOrder response:', response);
+        return response;
+      } catch (error) {
+        console.error('[Test Bridge] verifyZIndexOrder error:', error);
+        throw error;
+      }
     }
 };
 

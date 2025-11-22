@@ -1,4 +1,3 @@
-import { defineConfig, devices } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -11,7 +10,7 @@ const __dirname = path.dirname(__filename);
  * This config loads the extension from the dist/ directory and runs tests
  * in a real Firefox browser with the extension installed.
  */
-export default defineConfig({
+export default {
   testDir: './tests/extension',
   testMatch: '**/*.spec.js',
 
@@ -47,7 +46,6 @@ export default defineConfig({
     {
       name: 'firefox-extension',
       use: {
-        ...devices['Desktop Firefox'],
         // Firefox-specific launch options for loading extension
         launchOptions: {
           firefoxUserPrefs: {
@@ -69,4 +67,4 @@ export default defineConfig({
 
   /* Folder for test artifacts such as screenshots, videos, traces, etc. */
   outputDir: 'test-results/firefox'
-});
+};

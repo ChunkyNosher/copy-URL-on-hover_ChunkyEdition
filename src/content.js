@@ -1214,6 +1214,643 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       }
       return true;
     }
+
+    // ==================== SOLO/MUTE HANDLERS ====================
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_TOGGLE_SOLO') {
+      console.log('[Test Bridge Handler] TEST_TOGGLE_SOLO:', message.data);
+      (async () => {
+        try {
+          if (!quickTabsManager) {
+            throw new Error('QuickTabsManager not initialized');
+          }
+          
+          const { id, tabId } = message.data;
+          const tab = quickTabsManager.tabs.get(id);
+          
+          if (!tab) {
+            throw new Error(`Quick Tab not found: ${id}`);
+          }
+          
+          // Get the domain model
+          const domainTab = tab.domainTab;
+          if (!domainTab) {
+            throw new Error(`Domain model not found for Quick Tab: ${id}`);
+          }
+          
+          // Toggle solo on the domain model
+          const isNowSoloed = domainTab.toggleSolo(tabId);
+          
+          // Update in storage
+          await quickTabsManager.storage.saveQuickTab(domainTab);
+          
+          // Broadcast to other tabs
+          if (quickTabsManager.broadcast) {
+            quickTabsManager.broadcast.broadcastMessage('SOLO_CHANGED', {
+              id,
+              tabId,
+              isNowSoloed,
+              soloedOnTabs: domainTab.visibility.soloedOnTabs
+            });
+          }
+          
+          sendResponse({
+            success: true,
+            message: isNowSoloed ? 'Solo enabled' : 'Solo disabled',
+            data: {
+              id,
+              tabId,
+              isNowSoloed,
+              soloedOnTabs: domainTab.visibility.soloedOnTabs,
+              mutedOnTabs: domainTab.visibility.mutedOnTabs
+            }
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_TOGGLE_SOLO error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_TOGGLE_MUTE') {
+      console.log('[Test Bridge Handler] TEST_TOGGLE_MUTE:', message.data);
+      (async () => {
+        try {
+          if (!quickTabsManager) {
+            throw new Error('QuickTabsManager not initialized');
+          }
+          
+          const { id, tabId } = message.data;
+          const tab = quickTabsManager.tabs.get(id);
+          
+          if (!tab) {
+            throw new Error(`Quick Tab not found: ${id}`);
+          }
+          
+          // Get the domain model
+          const domainTab = tab.domainTab;
+          if (!domainTab) {
+            throw new Error(`Domain model not found for Quick Tab: ${id}`);
+          }
+          
+          // Toggle mute on the domain model
+          const isNowMuted = domainTab.toggleMute(tabId);
+          
+          // Update in storage
+          await quickTabsManager.storage.saveQuickTab(domainTab);
+          
+          // Broadcast to other tabs
+          if (quickTabsManager.broadcast) {
+            quickTabsManager.broadcast.broadcastMessage('MUTE_CHANGED', {
+              id,
+              tabId,
+              isNowMuted,
+              mutedOnTabs: domainTab.visibility.mutedOnTabs
+            });
+          }
+          
+          sendResponse({
+            success: true,
+            message: isNowMuted ? 'Mute enabled' : 'Mute disabled',
+            data: {
+              id,
+              tabId,
+              isNowMuted,
+              soloedOnTabs: domainTab.visibility.soloedOnTabs,
+              mutedOnTabs: domainTab.visibility.mutedOnTabs
+            }
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_TOGGLE_MUTE error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_GET_VISIBILITY_STATE') {
+      console.log('[Test Bridge Handler] TEST_GET_VISIBILITY_STATE:', message.data);
+      (async () => {
+        try {
+          if (!quickTabsManager) {
+            throw new Error('QuickTabsManager not initialized');
+          }
+          
+          const { tabId } = message.data;
+          const visibilityState = {
+            tabId,
+            visible: [],
+            hidden: [],
+            quickTabs: {}
+          };
+          
+          // Check each Quick Tab
+          for (const [id, tab] of quickTabsManager.tabs) {
+            const domainTab = tab.domainTab;
+            if (!domainTab) continue;
+            
+            const shouldBeVisible = domainTab.shouldBeVisible(tabId);
+            const isSoloed = domainTab.visibility.soloedOnTabs.includes(tabId);
+            const isMuted = domainTab.visibility.mutedOnTabs.includes(tabId);
+            
+            visibilityState.quickTabs[id] = {
+              id,
+              url: domainTab.url,
+              title: domainTab.title,
+              shouldBeVisible,
+              isSoloed,
+              isMuted,
+              soloedOnTabs: domainTab.visibility.soloedOnTabs,
+              mutedOnTabs: domainTab.visibility.mutedOnTabs
+            };
+            
+            if (shouldBeVisible) {
+              visibilityState.visible.push(id);
+            } else {
+              visibilityState.hidden.push(id);
+            }
+          }
+          
+          sendResponse({
+            success: true,
+            data: visibilityState
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_GET_VISIBILITY_STATE error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // ==================== MANAGER PANEL HANDLERS ====================
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_GET_MANAGER_STATE') {
+      console.log('[Test Bridge Handler] TEST_GET_MANAGER_STATE');
+      try {
+        if (!quickTabsManager || !quickTabsManager.panelManager) {
+          throw new Error('QuickTabsManager or PanelManager not initialized');
+        }
+        
+        const panelManager = quickTabsManager.panelManager;
+        const stateManager = panelManager.stateManager;
+        
+        // Get current panel state
+        const panelState = stateManager ? stateManager.panelState : null;
+        const isVisible = panelManager.panel ? (panelManager.panel.style.display !== 'none') : false;
+        
+        // Get minimized tabs
+        const minimizedTabs = Array.from(quickTabsManager.tabs.values())
+          .filter(tab => tab.domainTab && tab.domainTab.isMinimized)
+          .map(tab => ({
+            id: tab.id,
+            url: tab.domainTab.url,
+            title: tab.domainTab.title
+          }));
+        
+        sendResponse({
+          success: true,
+          data: {
+            visible: isVisible,
+            position: panelState ? { left: panelState.left, top: panelState.top } : null,
+            size: panelState ? { width: panelState.width, height: panelState.height } : null,
+            minimizedTabs,
+            minimizedCount: minimizedTabs.length
+          }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_GET_MANAGER_STATE error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_SET_MANAGER_POSITION') {
+      console.log('[Test Bridge Handler] TEST_SET_MANAGER_POSITION:', message.data);
+      try {
+        if (!quickTabsManager || !quickTabsManager.panelManager) {
+          throw new Error('QuickTabsManager or PanelManager not initialized');
+        }
+        
+        const { x, y } = message.data;
+        const panelManager = quickTabsManager.panelManager;
+        
+        // Update panel position
+        if (panelManager.panel) {
+          panelManager.panel.style.left = `${x}px`;
+          panelManager.panel.style.top = `${y}px`;
+          
+          // Update state
+          if (panelManager.stateManager) {
+            panelManager.stateManager.panelState.left = x;
+            panelManager.stateManager.panelState.top = y;
+          }
+        }
+        
+        sendResponse({
+          success: true,
+          message: 'Manager position updated',
+          data: { x, y }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_SET_MANAGER_POSITION error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_SET_MANAGER_SIZE') {
+      console.log('[Test Bridge Handler] TEST_SET_MANAGER_SIZE:', message.data);
+      try {
+        if (!quickTabsManager || !quickTabsManager.panelManager) {
+          throw new Error('QuickTabsManager or PanelManager not initialized');
+        }
+        
+        const { width, height } = message.data;
+        const panelManager = quickTabsManager.panelManager;
+        
+        // Update panel size
+        if (panelManager.panel) {
+          panelManager.panel.style.width = `${width}px`;
+          panelManager.panel.style.height = `${height}px`;
+          
+          // Update state
+          if (panelManager.stateManager) {
+            panelManager.stateManager.panelState.width = width;
+            panelManager.stateManager.panelState.height = height;
+          }
+        }
+        
+        sendResponse({
+          success: true,
+          message: 'Manager size updated',
+          data: { width, height }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_SET_MANAGER_SIZE error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_CLOSE_ALL_MINIMIZED') {
+      console.log('[Test Bridge Handler] TEST_CLOSE_ALL_MINIMIZED');
+      try {
+        if (!quickTabsManager) {
+          throw new Error('QuickTabsManager not initialized');
+        }
+        
+        // Find all minimized tabs
+        const minimizedIds = Array.from(quickTabsManager.tabs.values())
+          .filter(tab => tab.domainTab && tab.domainTab.isMinimized)
+          .map(tab => tab.id);
+        
+        // Close each minimized tab
+        for (const id of minimizedIds) {
+          quickTabsManager.closeQuickTab(id);
+        }
+        
+        sendResponse({
+          success: true,
+          message: 'All minimized Quick Tabs closed',
+          data: { count: minimizedIds.length, closedIds: minimizedIds }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_CLOSE_ALL_MINIMIZED error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
+    // ==================== CONTAINER ISOLATION HANDLERS ====================
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_GET_CONTAINER_INFO') {
+      console.log('[Test Bridge Handler] TEST_GET_CONTAINER_INFO');
+      (async () => {
+        try {
+          if (!quickTabsManager) {
+            throw new Error('QuickTabsManager not initialized');
+          }
+          
+          const containerInfo = {
+            currentContainer: quickTabsManager.cookieStoreId || 'firefox-default',
+            containers: {}
+          };
+          
+          // Group Quick Tabs by container
+          for (const [id, tab] of quickTabsManager.tabs) {
+            const domainTab = tab.domainTab;
+            if (!domainTab) continue;
+            
+            const containerId = domainTab.cookieStoreId || 'firefox-default';
+            
+            if (!containerInfo.containers[containerId]) {
+              containerInfo.containers[containerId] = {
+                id: containerId,
+                quickTabs: []
+              };
+            }
+            
+            containerInfo.containers[containerId].quickTabs.push({
+              id,
+              url: domainTab.url,
+              title: domainTab.title,
+              cookieStoreId: domainTab.cookieStoreId
+            });
+          }
+          
+          sendResponse({
+            success: true,
+            data: containerInfo
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_GET_CONTAINER_INFO error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_CREATE_QUICK_TAB_IN_CONTAINER') {
+      console.log('[Test Bridge Handler] TEST_CREATE_QUICK_TAB_IN_CONTAINER:', message.data);
+      (async () => {
+        try {
+          if (!quickTabsManager) {
+            throw new Error('QuickTabsManager not initialized');
+          }
+          
+          const { url, cookieStoreId } = message.data;
+          
+          // Create Quick Tab with explicit container
+          quickTabsManager.createQuickTab({
+            url,
+            title: 'Test Quick Tab',
+            cookieStoreId
+          });
+          
+          sendResponse({
+            success: true,
+            message: 'Quick Tab created in container',
+            data: { url, cookieStoreId }
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_CREATE_QUICK_TAB_IN_CONTAINER error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_VERIFY_CONTAINER_ISOLATION') {
+      console.log('[Test Bridge Handler] TEST_VERIFY_CONTAINER_ISOLATION:', message.data);
+      (async () => {
+        try {
+          if (!quickTabsManager) {
+            throw new Error('QuickTabsManager not initialized');
+          }
+          
+          const { id1, id2 } = message.data;
+          const tab1 = quickTabsManager.tabs.get(id1);
+          const tab2 = quickTabsManager.tabs.get(id2);
+          
+          if (!tab1 || !tab1.domainTab) {
+            throw new Error(`Quick Tab not found: ${id1}`);
+          }
+          if (!tab2 || !tab2.domainTab) {
+            throw new Error(`Quick Tab not found: ${id2}`);
+          }
+          
+          const container1 = tab1.domainTab.cookieStoreId || 'firefox-default';
+          const container2 = tab2.domainTab.cookieStoreId || 'firefox-default';
+          const isIsolated = container1 !== container2;
+          
+          sendResponse({
+            success: true,
+            data: {
+              id1,
+              id2,
+              container1,
+              container2,
+              isIsolated
+            }
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_VERIFY_CONTAINER_ISOLATION error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // ==================== DEBUG MODE HANDLERS ====================
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_GET_SLOT_NUMBERING') {
+      console.log('[Test Bridge Handler] TEST_GET_SLOT_NUMBERING');
+      (async () => {
+        try {
+          if (!quickTabsManager) {
+            throw new Error('QuickTabsManager not initialized');
+          }
+          
+          // Get slot numbering info from minimized manager
+          const slotInfo = {
+            slots: []
+          };
+          
+          if (quickTabsManager.minimizedManager) {
+            const slots = quickTabsManager.minimizedManager.slots || [];
+            slotInfo.slots = slots.map((slot, index) => ({
+              slotNumber: index + 1,
+              isOccupied: slot !== null,
+              quickTabId: slot ? slot.id : null
+            }));
+          }
+          
+          sendResponse({
+            success: true,
+            data: slotInfo
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_GET_SLOT_NUMBERING error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_SET_DEBUG_MODE') {
+      console.log('[Test Bridge Handler] TEST_SET_DEBUG_MODE:', message.data);
+      (async () => {
+        try {
+          const { enabled } = message.data;
+          
+          // Update debug mode in storage
+          await browser.storage.local.set({ debugMode: enabled });
+          
+          sendResponse({
+            success: true,
+            message: enabled ? 'Debug mode enabled' : 'Debug mode disabled',
+            data: { enabled }
+          });
+        } catch (error) {
+          console.error('[Test Bridge Handler] TEST_SET_DEBUG_MODE error:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    }
+
+    // ==================== GEOMETRY/Z-INDEX HANDLERS ====================
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_GET_QUICK_TAB_GEOMETRY') {
+      console.log('[Test Bridge Handler] TEST_GET_QUICK_TAB_GEOMETRY:', message.data);
+      try {
+        if (!quickTabsManager) {
+          throw new Error('QuickTabsManager not initialized');
+        }
+        
+        const { id } = message.data;
+        const tab = quickTabsManager.tabs.get(id);
+        
+        if (!tab) {
+          throw new Error(`Quick Tab not found: ${id}`);
+        }
+        
+        // Get geometry from DOM element
+        const element = tab.element;
+        if (!element) {
+          throw new Error(`DOM element not found for Quick Tab: ${id}`);
+        }
+        
+        const rect = element.getBoundingClientRect();
+        const computedStyle = window.getComputedStyle(element);
+        
+        sendResponse({
+          success: true,
+          data: {
+            id,
+            position: {
+              left: parseFloat(element.style.left) || rect.left,
+              top: parseFloat(element.style.top) || rect.top
+            },
+            size: {
+              width: parseFloat(element.style.width) || rect.width,
+              height: parseFloat(element.style.height) || rect.height
+            },
+            zIndex: parseInt(computedStyle.zIndex, 10) || 0
+          }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_GET_QUICK_TAB_GEOMETRY error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
+    // eslint-disable-next-line max-depth
+    if (message.type === 'TEST_VERIFY_ZINDEX_ORDER') {
+      console.log('[Test Bridge Handler] TEST_VERIFY_ZINDEX_ORDER:', message.data);
+      try {
+        if (!quickTabsManager) {
+          throw new Error('QuickTabsManager not initialized');
+        }
+        
+        const { ids } = message.data;
+        const zIndexData = [];
+        
+        // Get z-index for each Quick Tab
+        for (const id of ids) {
+          const tab = quickTabsManager.tabs.get(id);
+          if (!tab || !tab.element) {
+            throw new Error(`Quick Tab or element not found: ${id}`);
+          }
+          
+          const computedStyle = window.getComputedStyle(tab.element);
+          const zIndex = parseInt(computedStyle.zIndex, 10) || 0;
+          
+          zIndexData.push({ id, zIndex });
+        }
+        
+        // Verify order (higher z-index = front)
+        let isCorrectOrder = true;
+        for (let i = 0; i < zIndexData.length - 1; i++) {
+          if (zIndexData[i].zIndex <= zIndexData[i + 1].zIndex) {
+            isCorrectOrder = false;
+            break;
+          }
+        }
+        
+        sendResponse({
+          success: true,
+          data: {
+            ids,
+            zIndexData,
+            isCorrectOrder
+          }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_VERIFY_ZINDEX_ORDER error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+      return true;
+    }
+
     // ==================== END TEST BRIDGE MESSAGE HANDLERS ====================
   });
 }

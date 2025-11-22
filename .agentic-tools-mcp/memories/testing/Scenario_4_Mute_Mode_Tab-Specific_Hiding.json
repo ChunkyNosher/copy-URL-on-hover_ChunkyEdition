@@ -1,0 +1,8 @@
+{
+  "id": "38043e7a-436d-435f-9f9e-726aa02849b9",
+  "title": "Scenario 4: Mute Mode Tab-Specific Hiding",
+  "details": "Issue #47 Scenario 4: Mute Mode (Hide on Specific Tab)\n\n**Purpose:** Verify Mute mode functionality where a Quick Tab is hidden only on designated browser tab(s) but visible everywhere else.\n\n**Test Location:** tests/extension/issue-47-scenarios.spec.js\n\n**Key Test Steps:**\n1. Create Quick Tab in global mode\n2. Toggle Mute mode on specific tab\n3. Verify Quick Tab hidden only on that tab\n4. Switch to other tabs - verify Quick Tab visible\n5. Unmute - verify Quick Tab visible on all tabs\n\n**Test Bridge Methods Used:**\n- createQuickTab(url)\n- getQuickTabs()\n- toggleMute(id, tabId) - NEW METHOD\n- getVisibilityState(tabId) - NEW METHOD\n\n**Expected Behavior:**\n- Mute mode hides Quick Tab only on specific tab\n- Quick Tab visible on all other tabs\n- Unmute restores visibility on muted tab\n- Mute button state indicator changes (🔇 when active)\n\n**Implementation Status:** ✅ Implemented with new test bridge methods\n\n**Test Pattern:**\n```javascript\nawait helper1.createQuickTab('https://github.com');\nconst tabs = await helper1.getQuickTabs();\n\nawait helper1.toggleMute(tabs[0].id);\nconst visState = await helper1.getVisibilityState();\nexpect(visState.success).toBe(true);\n\n// On second tab, Quick Tab should still appear\nconst tabs2 = await helper2.getQuickTabs();\nexpect(tabs2).toContain(tabs[0].id);\n```\n\n**Dependencies:** Solo/mute state manager, visibility controller",
+  "category": "testing",
+  "dateCreated": "2025-11-22T09:07:00.402Z",
+  "dateUpdated": "2025-11-22T09:07:00.402Z"
+}

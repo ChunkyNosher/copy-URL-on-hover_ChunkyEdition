@@ -197,6 +197,262 @@ export class ExtensionTestHelper {
     });
   }
 
+  // ==================== NEW TEST BRIDGE METHODS ====================
+  // Added for Issue #47 autonomous testing
+
+  /**
+   * Toggle solo mode for a Quick Tab
+   * @param {string} id - Quick Tab ID
+   * @param {number} tabId - Browser tab ID (optional)
+   * @returns {Promise<Object>} Operation result
+   */
+  async toggleSolo(id, tabId) {
+    return this.page.evaluate(
+      async ({ id, tabId }) => {
+        return window.__COPILOT_TEST_BRIDGE__.toggleSolo(id, tabId);
+      },
+      { id, tabId }
+    );
+  }
+
+  /**
+   * Toggle mute mode for a Quick Tab
+   * @param {string} id - Quick Tab ID
+   * @param {number} tabId - Browser tab ID (optional)
+   * @returns {Promise<Object>} Operation result
+   */
+  async toggleMute(id, tabId) {
+    return this.page.evaluate(
+      async ({ id, tabId }) => {
+        return window.__COPILOT_TEST_BRIDGE__.toggleMute(id, tabId);
+      },
+      { id, tabId }
+    );
+  }
+
+  /**
+   * Get visibility state for all Quick Tabs on a specific tab
+   * @param {number} tabId - Browser tab ID (optional)
+   * @returns {Promise<Object>} Visibility state
+   */
+  async getVisibilityState(tabId) {
+    return this.page.evaluate(
+      async ({ tabId }) => {
+        return window.__COPILOT_TEST_BRIDGE__.getVisibilityState(tabId);
+      },
+      { tabId }
+    );
+  }
+
+  /**
+   * Get Manager Panel state
+   * @returns {Promise<Object>} Manager state
+   */
+  async getManagerState() {
+    return this.page.evaluate(async () => {
+      return window.__COPILOT_TEST_BRIDGE__.getManagerState();
+    });
+  }
+
+  /**
+   * Set Manager Panel position
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   * @returns {Promise<Object>} Operation result
+   */
+  async setManagerPosition(x, y) {
+    return this.page.evaluate(
+      async ({ x, y }) => {
+        return window.__COPILOT_TEST_BRIDGE__.setManagerPosition(x, y);
+      },
+      { x, y }
+    );
+  }
+
+  /**
+   * Set Manager Panel size
+   * @param {number} width - Width in pixels
+   * @param {number} height - Height in pixels
+   * @returns {Promise<Object>} Operation result
+   */
+  async setManagerSize(width, height) {
+    return this.page.evaluate(
+      async ({ width, height }) => {
+        return window.__COPILOT_TEST_BRIDGE__.setManagerSize(width, height);
+      },
+      { width, height }
+    );
+  }
+
+  /**
+   * Close all minimized Quick Tabs via Manager
+   * @returns {Promise<Object>} Operation result
+   */
+  async closeAllMinimized() {
+    return this.page.evaluate(async () => {
+      return window.__COPILOT_TEST_BRIDGE__.closeAllMinimized();
+    });
+  }
+
+  /**
+   * Get container information for all Quick Tabs
+   * @returns {Promise<Object>} Container info
+   */
+  async getContainerInfo() {
+    return this.page.evaluate(async () => {
+      return window.__COPILOT_TEST_BRIDGE__.getContainerInfo();
+    });
+  }
+
+  /**
+   * Create Quick Tab in specific container
+   * @param {string} url - URL to load
+   * @param {string} cookieStoreId - Firefox container ID
+   * @returns {Promise<Object>} Operation result
+   */
+  async createQuickTabInContainer(url, cookieStoreId) {
+    return this.page.evaluate(
+      async ({ url, cookieStoreId }) => {
+        return window.__COPILOT_TEST_BRIDGE__.createQuickTabInContainer(url, cookieStoreId);
+      },
+      { url, cookieStoreId }
+    );
+  }
+
+  /**
+   * Verify container isolation between two Quick Tabs
+   * @param {string} id1 - First Quick Tab ID
+   * @param {string} id2 - Second Quick Tab ID
+   * @returns {Promise<Object>} Isolation result
+   */
+  async verifyContainerIsolation(id1, id2) {
+    return this.page.evaluate(
+      async ({ id1, id2 }) => {
+        return window.__COPILOT_TEST_BRIDGE__.verifyContainerIsolation(id1, id2);
+      },
+      { id1, id2 }
+    );
+  }
+
+  /**
+   * Get slot numbering information (debug mode)
+   * @returns {Promise<Object>} Slot numbering data
+   */
+  async getSlotNumbering() {
+    return this.page.evaluate(async () => {
+      return window.__COPILOT_TEST_BRIDGE__.getSlotNumbering();
+    });
+  }
+
+  /**
+   * Enable/disable debug mode
+   * @param {boolean} enabled - Debug mode state
+   * @returns {Promise<Object>} Operation result
+   */
+  async setDebugMode(enabled) {
+    return this.page.evaluate(
+      async ({ enabled }) => {
+        return window.__COPILOT_TEST_BRIDGE__.setDebugMode(enabled);
+      },
+      { enabled }
+    );
+  }
+
+  /**
+   * Get Quick Tab position, size, and z-index
+   * @param {string} id - Quick Tab ID
+   * @returns {Promise<Object>} Geometry data
+   */
+  async getQuickTabGeometry(id) {
+    return this.page.evaluate(
+      async ({ id }) => {
+        return window.__COPILOT_TEST_BRIDGE__.getQuickTabGeometry(id);
+      },
+      { id }
+    );
+  }
+
+  /**
+   * Verify z-index order for focus management
+   * @param {string[]} ids - Array of Quick Tab IDs in expected order
+   * @returns {Promise<Object>} Verification result
+   */
+  async verifyZIndexOrder(ids) {
+    return this.page.evaluate(
+      async ({ ids }) => {
+        return window.__COPILOT_TEST_BRIDGE__.verifyZIndexOrder(ids);
+      },
+      { ids }
+    );
+  }
+
+  // ==================== ENHANCED SYNC UTILITIES ====================
+  // Added for robust cross-tab synchronization testing
+
+  /**
+   * Wait for specific Quick Tab to appear across all pages in context
+   * @param {string} id - Quick Tab ID to wait for
+   * @param {number} timeout - Max wait time in ms (default: 5000)
+   * @returns {Promise<boolean>} True if found, false if timeout
+   */
+  async waitForQuickTabSync(id, timeout = 5000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      const tabs = await this.getQuickTabs();
+      if (tabs.some(t => t.id === id)) {
+        return true;
+      }
+      await this.page.waitForTimeout(100);
+    }
+    throw new Error(`Quick Tab ${id} did not sync within ${timeout}ms`);
+  }
+
+  /**
+   * Wait for Quick Tab state to match expected state
+   * @param {string} id - Quick Tab ID
+   * @param {Object} expectedState - Expected state properties
+   * @param {number} timeout - Max wait time (default: 5000)
+   * @returns {Promise<Object>} The matched tab object
+   */
+  async waitForQuickTabState(id, expectedState, timeout = 5000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      const tab = await this.getQuickTabById(id);
+      if (tab && this.stateMatches(tab, expectedState)) {
+        return tab;
+      }
+      await this.page.waitForTimeout(100);
+    }
+    throw new Error(`Quick Tab ${id} did not reach expected state within ${timeout}ms`);
+  }
+
+  /**
+   * Helper to check if state matches expected properties
+   * @param {Object} actual - Actual state object
+   * @param {Object} expected - Expected properties
+   * @returns {boolean} True if matches
+   */
+  stateMatches(actual, expected) {
+    return Object.keys(expected).every(key => actual[key] === expected[key]);
+  }
+
+  /**
+   * Wait for BroadcastChannel message propagation
+   * Uses exponential backoff for reliability
+   * @param {number} timeout - Max wait time (default: 3000)
+   * @returns {Promise<void>}
+   */
+  async waitForBroadcastSync(timeout = 3000) {
+    let delay = 50;
+    const maxDelay = 500;
+    const endTime = Date.now() + timeout;
+    
+    while (Date.now() < endTime) {
+      await this.page.waitForTimeout(delay);
+      delay = Math.min(delay * 1.5, maxDelay);
+    }
+  }
+
   /**
    * Take a screenshot of the current page
    * @param {string} name - Screenshot filename (without extension)

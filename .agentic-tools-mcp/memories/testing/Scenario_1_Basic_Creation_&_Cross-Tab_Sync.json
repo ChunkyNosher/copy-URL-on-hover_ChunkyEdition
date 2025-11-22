@@ -1,0 +1,8 @@
+{
+  "id": "ae843732-578f-4f3f-b93d-36a187b1c26a",
+  "title": "Scenario 1: Basic Creation & Cross-Tab Sync",
+  "details": "Issue #47 Scenario 1: Basic Quick Tab Creation and Cross-Tab State Persistence\n\n**Purpose:** Verify that Quick Tabs are created correctly, persist across different browser tabs, and maintain consistent position/size state globally.\n\n**Test Location:** tests/extension/issue-47-scenarios.spec.js\n\n**Key Test Steps:**\n1. Create Quick Tab on first page\n2. Verify Quick Tab appears on first page\n3. Open second browser tab\n4. Verify Quick Tab automatically appears on second tab with same ID\n5. Verify position/size syncs across tabs\n\n**Test Bridge Methods Used:**\n- createQuickTab(url, options)\n- getQuickTabs()\n- waitForQuickTabCount(expectedCount, timeout)\n- clearAllQuickTabs()\n\n**Expected Behavior:**\n- Quick Tab created with unique ID\n- Cross-tab sync latency < 100ms via BroadcastChannel\n- Same Quick Tab ID and URL in both tabs\n- Position and size maintained globally\n\n**Implementation Status:** ✅ Implemented and tested\n\n**Test Pattern:**\n```javascript\nconst helper1 = new ExtensionTestHelper(page1);\nawait helper1.createQuickTab('https://github.com');\nconst tabs1 = await helper1.getQuickTabs();\nconst quickTabId = tabs1[0].id;\n\nconst helper2 = new ExtensionTestHelper(page2);\nawait helper2.waitForQuickTabCount(1, 5000);\nconst tabs2 = await helper2.getQuickTabs();\nexpect(tabs2[0].id).toBe(quickTabId);\n```\n\n**Dependencies:** BroadcastChannel API, browser.storage.local",
+  "category": "testing",
+  "dateCreated": "2025-11-22T09:07:29.654Z",
+  "dateUpdated": "2025-11-22T09:07:29.654Z"
+}

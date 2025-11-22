@@ -8,6 +8,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+
 import { ExtensionTestHelper } from './helpers/extension-test-utils.js';
 
 /**
