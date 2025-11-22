@@ -1,0 +1,208 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.1
+Export Date: 2025-11-22T03:30:53.689Z
+Export Date (Local): 11/21/2025, 10:30:53 PM
+Total Logs: 94
+
+================================================================================
+[2025-11-22T03:30:24.634Z] [LOG  ] [DEBUG] Log buffer cleared
+[2025-11-22T03:30:28.035Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763782228023-ix5o4g9sn Container: firefox-default
+[2025-11-22T03:30:28.036Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:28.053Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:28.054Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:28.054Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:28.054Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:28.055Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:28.454Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-22T03:30:28.454Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-22T03:30:29.278Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763782228023-ix5o4g9sn",
+  "zIndex": 1000003,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763782229278
+}
+[2025-11-22T03:30:29.278Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:29.278Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763782228023-ix5o4g9sn",
+  "zIndex": 1000004,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763782229278
+}
+[2025-11-22T03:30:29.279Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:29.281Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:29.281Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:29.281Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:29.281Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:29.282Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:29.296Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:29.296Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:29.296Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:29.297Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:29.298Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:30.055Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:30.056Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:30.057Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:30.058Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:30.058Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:30.058Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:30.059Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:30.059Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:30.060Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:30.060Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:30.060Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:30.060Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:30.061Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:30.123Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:30.123Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:30.123Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:30.124Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:30.135Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:31.729Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Livestreaming ID: qt-1763782231714-de52avlsz Container: firefox-default
+[2025-11-22T03:30:31.729Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:31.734Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:31.734Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:31.734Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:31.736Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:31.736Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:32.186Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-22T03:30:32.186Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Livestreaming
+[2025-11-22T03:30:33.227Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763782231714-de52avlsz",
+  "zIndex": 1000007,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763782233227
+}
+[2025-11-22T03:30:33.228Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:33.228Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763782231714-de52avlsz",
+  "zIndex": 1000008,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763782233228
+}
+[2025-11-22T03:30:33.228Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:33.231Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:33.231Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:33.231Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:33.232Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:33.240Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:33.241Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:33.241Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:33.241Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:33.242Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:33.242Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:34.481Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:34.483Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:34.483Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:34.484Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:34.484Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:34.484Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:34.485Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:34.485Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:34.509Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:34.509Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:34.509Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:34.510Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:34.511Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:34.511Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:34.511Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:30:34.511Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:30:34.512Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:30:34.512Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:30:38.842Z] [DEBUG] [Background] Tab activated: 307
+[2025-11-22T03:30:38.893Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:45.610Z] [LOG  ] [EventManager] Tab visible - triggering state refresh
+[2025-11-22T03:30:45.610Z] [LOG  ] [SyncCoordinator] Tab became visible - refreshing state from background
+[2025-11-22T03:30:45.692Z] [DEBUG] [Background] Tab activated: 306
+[2025-11-22T03:30:45.723Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:30:45.753Z] [ERROR] [SessionStorageAdapter] Load failed: {
+  "message": "can't access property \"get\", e.storage.session is undefined",
+  "name": "TypeError",
+  "stack": "_loadRawState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2378:19\nload@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2350:28\nloadAll@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2557:43\nasync*handleTabVisible@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:776:45\nsetupListeners/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:765:14\nr.prototype.emit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:690:23\nsetupEmergencySaveHandlers/this.boundHandlers.visibilityChange@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2023:105\nEventListener.handleEvent*setupEmergencySaveHandlers@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2036:19\n_setupComponents@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3621:97\n_initStep6_Setup@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3579:86\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3543:85\nasync*qe/Pe<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4704:97\nqe/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4706:10\nqe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4708:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4760:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4850:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:5316:2\n",
+  "error": {}
+}
+[2025-11-22T03:30:45.754Z] [LOG  ] [StorageManager] No data found for container firefox-container-9
+[2025-11-22T03:30:45.754Z] [LOG  ] [StateManager] Hydrated 0 Quick Tabs
+[2025-11-22T03:30:45.754Z] [LOG  ] [SyncCoordinator] Refreshed 0 Quick Tabs on tab visible
+[2025-11-22T03:30:53.684Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
