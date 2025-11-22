@@ -138,6 +138,8 @@ export class StateManager {
 
   /**
    * Hydrate state from array of QuickTab entities
+   * v1.6.1 - CRITICAL FIX: Track additions, updates, and deletions to emit proper events
+   * This ensures UI coordinator knows about deletions and removes Quick Tabs that no longer exist
    * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
    */
   hydrate(quickTabs) {
@@ -145,18 +147,43 @@ export class StateManager {
       throw new Error('StateManager.hydrate() requires array of QuickTab instances');
     }
 
-    this.quickTabs.clear();
+    // Track existing IDs to detect deletions
+    const existingIds = new Set(this.quickTabs.keys());
+    const incomingIds = new Set();
 
+    // Process incoming Quick Tabs (adds and updates)
     for (const qt of quickTabs) {
-      if (qt instanceof QuickTab) {
-        this.quickTabs.set(qt.id, qt);
-      } else {
+      if (!(qt instanceof QuickTab)) {
         console.warn('[StateManager] Skipping non-QuickTab instance during hydration');
+        continue;
+      }
+
+      incomingIds.add(qt.id);
+
+      if (existingIds.has(qt.id)) {
+        // Existing Quick Tab - update it
+        this.quickTabs.set(qt.id, qt);
+        this.eventBus?.emit('state:updated', { quickTab: qt });
+      } else {
+        // New Quick Tab - add it
+        this.quickTabs.set(qt.id, qt);
+        this.eventBus?.emit('state:added', { quickTab: qt });
+      }
+    }
+
+    // Detect deletions (existed before but not in incoming data)
+    for (const existingId of existingIds) {
+      if (!incomingIds.has(existingId)) {
+        // Quick Tab was deleted
+        const deletedQuickTab = this.quickTabs.get(existingId);
+        this.quickTabs.delete(existingId);
+        this.eventBus?.emit('state:deleted', { id: existingId, quickTab: deletedQuickTab });
+        console.log(`[StateManager] Detected deleted Quick Tab: ${existingId}`);
       }
     }
 
     this.eventBus?.emit('state:hydrated', { count: quickTabs.length });
-    console.log(`[StateManager] Hydrated ${quickTabs.length} Quick Tabs`);
+    console.log(`[StateManager] Hydrated ${quickTabs.length} Quick Tabs (${incomingIds.size - existingIds.size} added, ${existingIds.size - incomingIds.size} deleted)`);
   }
 
   /**

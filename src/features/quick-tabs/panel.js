@@ -59,6 +59,7 @@ export class PanelManager {
    * v1.5.9.12 - Container integration: Detect container context
    * v1.6.0.3 - Fixed initialization order: Create panel BEFORE loading state
    * v1.6.0.3 - Added document.body safety check to prevent null reference error
+   * v1.6.1 - CRITICAL FIX: Initialize contentManager BEFORE applying state with isOpen=true
    */
   async init() {
     debug('[PanelManager] Initializing...');
@@ -89,7 +90,11 @@ export class PanelManager {
     }
     document.body.appendChild(this.panel);
 
-    // Initialize state manager (callbacks can now safely access this.panel)
+    // v1.6.1 - FIX: Initialize controllers BEFORE loading state
+    // This ensures contentManager exists when _applyState calls open()
+    this._initializeControllers();
+
+    // Initialize state manager (callbacks can now safely access this.panel AND contentManager)
     this.stateManager = new PanelStateManager({
       onStateLoaded: state => this._applyState(state),
       onBroadcastReceived: (type, data) => this._handleBroadcast(type, data)
@@ -97,11 +102,9 @@ export class PanelManager {
     await this.stateManager.init();
 
     // Apply loaded state to panel (if different from default)
+    // v1.6.1 - This now safely calls contentManager methods if isOpen=true
     const savedState = this.stateManager.getState();
     this._applyState(savedState);
-
-    // Initialize controllers
-    this._initializeControllers();
 
     // Set up message listener for toggle command
     this.setupMessageListener();
