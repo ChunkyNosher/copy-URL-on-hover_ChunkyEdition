@@ -1,0 +1,379 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.1
+Export Date: 2025-11-22T04:11:19.389Z
+Export Date (Local): 11/21/2025, 11:11:19 PM
+Total Logs: 135
+
+================================================================================
+[2025-11-22T04:10:54.663Z] [LOG  ] [DEBUG] Log buffer cleared
+[2025-11-22T04:10:59.193Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CREATE",
+  "data": {
+    "id": "qt-1763784659189-qweq9yqou",
+    "url": "https://en.wikipedia.org/wiki/Arina_Tanemura",
+    "left": 873,
+    "top": 738,
+    "width": 960,
+    "height": 540,
+    "title": "Arina Tanemura",
+    "cookieStoreId": "firefox-default",
+    "minimized": false,
+    "soloedOnTabs": [],
+    "mutedOnTabs": []
+  }
+}
+[2025-11-22T04:10:59.193Z] [LOG  ] [SyncCoordinator] Received broadcast: CREATE
+[2025-11-22T04:10:59.193Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-1763784659189-qweq9yqou",
+  "url": "https://en.wikipedia.org/wiki/Arina_Tanemura",
+  "left": 873,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Arina Tanemura",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-22T04:10:59.197Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763784659189-qweq9yqou
+[2025-11-22T04:10:59.198Z] [LOG  ] [BroadcastManager] Broadcasted CREATE: {
+  "id": "qt-1763784659189-qweq9yqou",
+  "url": "https://en.wikipedia.org/wiki/Arina_Tanemura",
+  "left": 873,
+  "top": 738,
+  "width": 960,
+  "height": 540,
+  "title": "Arina Tanemura",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-22T04:10:59.198Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-1763784659189-qweq9yqou
+[2025-11-22T04:10:59.199Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763784659189-qweq9yqou Container: firefox-default
+[2025-11-22T04:10:59.199Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:10:59.219Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CREATE",
+  "data": {
+    "id": "qt-1763784659189-qweq9yqou",
+    "url": "https://en.wikipedia.org/wiki/Arina_Tanemura",
+    "left": 873,
+    "top": 738,
+    "width": 960,
+    "height": 540,
+    "title": "Arina Tanemura",
+    "cookieStoreId": "firefox-default",
+    "minimized": false,
+    "soloedOnTabs": [],
+    "mutedOnTabs": []
+  }
+}
+[2025-11-22T04:10:59.219Z] [LOG  ] [BroadcastManager] Ignoring duplicate broadcast (debounced): CREATE qt-1763784659189-qweq9yqou
+[2025-11-22T04:10:59.230Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:10:59.230Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:10:59.230Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:10:59.232Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:10:59.239Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:10:59.547Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-22T04:10:59.547Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-22T04:10:59.547Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-22T04:11:01.741Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CREATE",
+  "data": {
+    "id": "qt-1763784661739-bobkfuomm",
+    "url": "https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem",
+    "left": 1037,
+    "top": 533,
+    "width": 960,
+    "height": 540,
+    "title": "Shukusei!! Loli Kami Requiem",
+    "cookieStoreId": "firefox-default",
+    "minimized": false,
+    "soloedOnTabs": [],
+    "mutedOnTabs": []
+  }
+}
+[2025-11-22T04:11:01.742Z] [LOG  ] [SyncCoordinator] Received broadcast: CREATE
+[2025-11-22T04:11:01.742Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-1763784661739-bobkfuomm",
+  "url": "https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem",
+  "left": 1037,
+  "top": 533,
+  "width": 960,
+  "height": 540,
+  "title": "Shukusei!! Loli Kami Requiem",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-22T04:11:01.747Z] [LOG  ] [QuickTabWindow] Rendered: qt-1763784661739-bobkfuomm
+[2025-11-22T04:11:01.747Z] [LOG  ] [BroadcastManager] Broadcasted CREATE: {
+  "id": "qt-1763784661739-bobkfuomm",
+  "url": "https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem",
+  "left": 1037,
+  "top": 533,
+  "width": 960,
+  "height": 540,
+  "title": "Shukusei!! Loli Kami Requiem",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "soloedOnTabs": [],
+  "mutedOnTabs": []
+}
+[2025-11-22T04:11:01.747Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-1763784661739-bobkfuomm
+[2025-11-22T04:11:01.764Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CREATE",
+  "data": {
+    "id": "qt-1763784661739-bobkfuomm",
+    "url": "https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem",
+    "left": 1037,
+    "top": 533,
+    "width": 960,
+    "height": 540,
+    "title": "Shukusei!! Loli Kami Requiem",
+    "cookieStoreId": "firefox-default",
+    "minimized": false,
+    "soloedOnTabs": [],
+    "mutedOnTabs": []
+  }
+}
+[2025-11-22T04:11:01.764Z] [LOG  ] [BroadcastManager] Ignoring duplicate broadcast (debounced): CREATE qt-1763784661739-bobkfuomm
+[2025-11-22T04:11:01.886Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763784661739-bobkfuomm Container: firefox-default
+[2025-11-22T04:11:01.886Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:01.922Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:01.922Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:01.922Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:01.924Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:01.931Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:02.168Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-22T04:11:02.168Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-22T04:11:02.168Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem
+[2025-11-22T04:11:08.115Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763784661739-bobkfuomm",
+  "zIndex": 1000039,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763784668115
+}
+[2025-11-22T04:11:08.115Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:08.127Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:08.127Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:08.127Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:08.129Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:08.130Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:08.213Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CLOSE",
+  "data": {
+    "id": "qt-1763784661739-bobkfuomm"
+  }
+}
+[2025-11-22T04:11:08.214Z] [LOG  ] [SyncCoordinator] Received broadcast: CLOSE
+[2025-11-22T04:11:08.214Z] [LOG  ] [DestroyHandler] Handling destroy for: qt-1763784661739-bobkfuomm
+[2025-11-22T04:11:08.214Z] [LOG  ] [MinimizedManager] Removed minimized tab: qt-1763784661739-bobkfuomm
+[2025-11-22T04:11:08.214Z] [LOG  ] [BroadcastManager] Broadcasted CLOSE: {
+  "id": "qt-1763784661739-bobkfuomm"
+}
+[2025-11-22T04:11:08.216Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CLOSE",
+  "data": {
+    "id": "qt-1763784661739-bobkfuomm"
+  }
+}
+[2025-11-22T04:11:08.216Z] [LOG  ] [BroadcastManager] Ignoring duplicate broadcast (debounced): CLOSE qt-1763784661739-bobkfuomm
+[2025-11-22T04:11:08.219Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CLOSE",
+  "data": {
+    "id": "qt-1763784661739-bobkfuomm"
+  }
+}
+[2025-11-22T04:11:08.219Z] [LOG  ] [BroadcastManager] Ignoring duplicate broadcast (debounced): CLOSE qt-1763784661739-bobkfuomm
+[2025-11-22T04:11:08.225Z] [DEBUG] [QuickTabHandler] Close: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763784661739-bobkfuomm Container: firefox-default
+[2025-11-22T04:11:08.225Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:08.227Z] [DEBUG] [QuickTabHandler] Close: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763784661739-bobkfuomm Container: firefox-default
+[2025-11-22T04:11:08.227Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:08.228Z] [DEBUG] [QuickTabHandler] Close: https://en.wikipedia.org/wiki/Shukusei!!_Loli_Kami_Requiem ID: qt-1763784661739-bobkfuomm Container: firefox-default
+[2025-11-22T04:11:08.228Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:08.235Z] [DEBUG] [QuickTabHandler] Close: null ID: qt-1763784661739-bobkfuomm Container: firefox-default
+[2025-11-22T04:11:08.235Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:08.245Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:08.245Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:08.245Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:08.247Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:08.247Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:08.248Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:08.248Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:08.248Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:08.248Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:08.255Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:08.256Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:08.256Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:08.256Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:08.256Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:08.257Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:08.258Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:08.258Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:08.258Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:08.259Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:08.259Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.390Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763784659189-qweq9yqou",
+  "zIndex": 1000040,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763784669390
+}
+[2025-11-22T04:11:09.390Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:09.400Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.400Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:09.400Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:09.401Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.407Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:09.477Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CLOSE",
+  "data": {
+    "id": "qt-1763784659189-qweq9yqou"
+  }
+}
+[2025-11-22T04:11:09.477Z] [LOG  ] [SyncCoordinator] Received broadcast: CLOSE
+[2025-11-22T04:11:09.477Z] [LOG  ] [DestroyHandler] Handling destroy for: qt-1763784659189-qweq9yqou
+[2025-11-22T04:11:09.477Z] [LOG  ] [MinimizedManager] Removed minimized tab: qt-1763784659189-qweq9yqou
+[2025-11-22T04:11:09.477Z] [LOG  ] [BroadcastManager] Broadcasted CLOSE: {
+  "id": "qt-1763784659189-qweq9yqou"
+}
+[2025-11-22T04:11:09.477Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CLOSE",
+  "data": {
+    "id": "qt-1763784659189-qweq9yqou"
+  }
+}
+[2025-11-22T04:11:09.478Z] [LOG  ] [BroadcastManager] Ignoring duplicate broadcast (debounced): CLOSE qt-1763784659189-qweq9yqou
+[2025-11-22T04:11:09.480Z] [LOG  ] [BroadcastManager] Message received: {
+  "type": "CLOSE",
+  "data": {
+    "id": "qt-1763784659189-qweq9yqou"
+  }
+}
+[2025-11-22T04:11:09.480Z] [LOG  ] [BroadcastManager] Ignoring duplicate broadcast (debounced): CLOSE qt-1763784659189-qweq9yqou
+[2025-11-22T04:11:09.531Z] [DEBUG] [QuickTabHandler] Close: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763784659189-qweq9yqou Container: firefox-default
+[2025-11-22T04:11:09.531Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:09.531Z] [DEBUG] [QuickTabHandler] Close: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763784659189-qweq9yqou Container: firefox-default
+[2025-11-22T04:11:09.531Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:09.531Z] [DEBUG] [QuickTabHandler] Close: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763784659189-qweq9yqou Container: firefox-default
+[2025-11-22T04:11:09.531Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:09.532Z] [DEBUG] [QuickTabHandler] Close: null ID: qt-1763784659189-qweq9yqou Container: firefox-default
+[2025-11-22T04:11:09.532Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:09.534Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.534Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:09.534Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:09.536Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:09.536Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.537Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.537Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:09.537Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:09.537Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.538Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:09.553Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.553Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:09.553Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:09.555Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:09.555Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.573Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.573Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T04:11:09.573Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T04:11:09.574Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T04:11:09.574Z] [LOG  ] [StorageManager] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T04:11:09.628Z] [LOG  ] [DestroyHandler] All tabs closed, reset z-index
+[2025-11-22T04:11:10.497Z] [LOG  ] [EventManager] Tab visible - triggering state refresh
+[2025-11-22T04:11:10.497Z] [LOG  ] [SyncCoordinator] Tab became visible - refreshing state from background
+[2025-11-22T04:11:10.500Z] [DEBUG] [Background] Tab activated: 307
+[2025-11-22T04:11:10.802Z] [DEBUG] [Background] State already initialized
+[2025-11-22T04:11:11.034Z] [ERROR] [SessionStorageAdapter] Load failed: {
+  "message": "can't access property \"get\", e.storage.session is undefined",
+  "name": "TypeError",
+  "stack": "_loadRawState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2378:19\nload@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2350:28\nloadAll@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2557:43\nasync*handleTabVisible@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:776:45\nsetupListeners/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:765:14\nr.prototype.emit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:690:23\nsetupEmergencySaveHandlers/this.boundHandlers.visibilityChange@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2023:105\nEventListener.handleEvent*setupEmergencySaveHandlers@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:2036:19\n_setupComponents@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3621:97\n_initStep6_Setup@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3579:86\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3543:85\nasync*qe/Pe<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4704:97\nqe/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4706:10\nqe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4708:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4760:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4850:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:5316:2\n",
+  "error": {}
+}
+[2025-11-22T04:11:11.035Z] [LOG  ] [StorageManager] No data found for container firefox-container-9
+[2025-11-22T04:11:11.035Z] [LOG  ] [StateManager] Hydrated 0 Quick Tabs
+[2025-11-22T04:11:11.035Z] [LOG  ] [SyncCoordinator] Refreshed 0 Quick Tabs on tab visible
+[2025-11-22T04:11:19.386Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================

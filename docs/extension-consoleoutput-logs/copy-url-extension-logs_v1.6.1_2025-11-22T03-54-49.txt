@@ -1,0 +1,302 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.1
+Export Date: 2025-11-22T03:54:49.489Z
+Export Date (Local): 11/21/2025, 10:54:49 PM
+Total Logs: 152
+
+================================================================================
+[2025-11-22T03:53:52.503Z] [DEBUG] [Background] Tab activated: 308
+[2025-11-22T03:53:56.113Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:07.549Z] [DEBUG] [QuickTabsManager] Toggle command sent to tab 308
+[2025-11-22T03:54:07.564Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_panel_state"
+]
+[2025-11-22T03:54:10.488Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Arina_Tanemura ID: qt-1763783650473-ts4tk7hjg Container: firefox-default
+[2025-11-22T03:54:10.489Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:10.498Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:10.499Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:10.500Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:10.500Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:10.614Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-22T03:54:10.631Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Arina_Tanemura
+[2025-11-22T03:54:12.017Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763783650473-ts4tk7hjg",
+  "zIndex": 1000002,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763783652017
+}
+[2025-11-22T03:54:12.018Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:12.024Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763783650473-ts4tk7hjg",
+  "zIndex": 1000003,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763783652024
+}
+[2025-11-22T03:54:12.024Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:12.035Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:12.035Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:12.035Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:12.043Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:12.044Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:12.044Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:12.045Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:12.045Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:12.588Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:12.590Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:12.591Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:12.591Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:12.599Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:15.505Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763783650473-ts4tk7hjg",
+  "zIndex": 1000004,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763783655505
+}
+[2025-11-22T03:54:15.506Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:15.522Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:15.523Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:15.523Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:15.524Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:15.617Z] [DEBUG] [QuickTabHandler] Minimize Update: {
+  "action": "UPDATE_QUICK_TAB_MINIMIZE",
+  "quickTabId": "qt-1763783650473-ts4tk7hjg",
+  "minimized": true,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763783655617
+}
+[2025-11-22T03:54:15.617Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:15.619Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:15.619Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:15.619Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:15.628Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:17.948Z] [DEBUG] [QuickTabHandler] Create: https://en.wikipedia.org/wiki/Cocoa_Fujiwara ID: qt-1763783657941-jrunkyja6 Container: firefox-default
+[2025-11-22T03:54:17.948Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:17.956Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:17.956Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:17.957Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:17.958Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:18.060Z] [DEBUG] [Quick Tabs] Processing iframe: https://en.wikipedia.org/wiki/Cocoa_Fujiwara
+[2025-11-22T03:54:18.954Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763783657941-jrunkyja6",
+  "zIndex": 1000006,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763783658954
+}
+[2025-11-22T03:54:18.954Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:18.955Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763783657941-jrunkyja6",
+  "zIndex": 1000007,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763783658955
+}
+[2025-11-22T03:54:18.956Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:18.962Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:18.963Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:18.963Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:18.964Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:18.965Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:18.965Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:18.965Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:18.972Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:19.726Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:19.899Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:19.899Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:19.899Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:19.901Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:20.548Z] [DEBUG] [QuickTabHandler] Z-Index Update: {
+  "action": "UPDATE_QUICK_TAB_ZINDEX",
+  "quickTabId": "qt-1763783657941-jrunkyja6",
+  "zIndex": 1000008,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763783660548
+}
+[2025-11-22T03:54:20.549Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:20.557Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:20.557Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:20.557Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:20.558Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:20.650Z] [DEBUG] [QuickTabHandler] Minimize Update: {
+  "action": "UPDATE_QUICK_TAB_MINIMIZE",
+  "quickTabId": "qt-1763783657941-jrunkyja6",
+  "minimized": true,
+  "cookieStoreId": "firefox-default",
+  "timestamp": 1763783660650
+}
+[2025-11-22T03:54:20.651Z] [DEBUG] [Background] State already initialized
+[2025-11-22T03:54:20.658Z] [DEBUG] [Background] Storage changed: local [
+  "quick_tabs_state_v2"
+]
+[2025-11-22T03:54:20.658Z] [DEBUG] [Background] Quick Tab state changed, broadcasting to all tabs
+[2025-11-22T03:54:20.658Z] [DEBUG] [Background] Updated global state from storage (container-aware): 1 containers
+[2025-11-22T03:54:20.667Z] [DEBUG] [Background] Storage changed: session [
+  "quick_tabs_session"
+]
+[2025-11-22T03:54:25.469Z] [DEBUG] [Background] Tab activated: 306
+[2025-11-22T03:54:31.086Z] [LOG  ] [Copy-URL-on-Hover] Script loaded! @ 2025-11-22T03:54:31.086Z
+[2025-11-22T03:54:31.086Z] [LOG  ] [Copy-URL-on-Hover] Debug marker set successfully
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] Global error handlers installed
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] Starting module imports...
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] All module imports completed successfully
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] Initializing core systems...
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] ConfigManager initialized
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] StateManager initialized
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] EventBus initialized
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] URLHandlerRegistry initialized
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting extension initialization...
+[2025-11-22T03:54:31.087Z] [LOG  ] [Copy-URL-on-Hover] STEP: Loading user configuration...
+[2025-11-22T03:54:31.087Z] [LOG  ] [ConfigManager] Starting configuration load...
+[2025-11-22T03:54:31.087Z] [LOG  ] [ConfigManager] Calling browser.storage.local.get...
+[2025-11-22T03:54:31.872Z] [LOG  ] [ConfigManager] Storage get completed, processing result...
+[2025-11-22T03:54:31.872Z] [LOG  ] [ConfigManager] Configuration loaded successfully
+[2025-11-22T03:54:31.872Z] [LOG  ] [ConfigManager] Config summary: {
+  "debugMode": true,
+  "totalKeys": 42
+}
+[2025-11-22T03:54:31.872Z] [LOG  ] [Copy-URL-on-Hover] ✓ Configuration loaded successfully
+[2025-11-22T03:54:31.872Z] [LOG  ] [Copy-URL-on-Hover] Config values: {
+  "debugMode": true,
+  "hasDefaultConfig": true
+}
+[2025-11-22T03:54:31.873Z] [LOG  ] [Copy-URL-on-Hover] STEP: Enabling debug mode...
+[2025-11-22T03:54:31.873Z] [LOG  ] [DEBUG] Debug mode enabled
+[2025-11-22T03:54:31.873Z] [LOG  ] [Copy-URL-on-Hover] ✓ Debug mode activated
+[2025-11-22T03:54:31.873Z] [DEBUG] Debug mode enabled
+[2025-11-22T03:54:31.874Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing state...
+[2025-11-22T03:54:31.874Z] [LOG  ] [Copy-URL-on-Hover] ✓ State initialized
+[2025-11-22T03:54:31.874Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing feature modules...
+[2025-11-22T03:54:31.874Z] [LOG  ] [Copy-URL-on-Hover] About to initialize Quick Tabs...
+[2025-11-22T03:54:31.874Z] [LOG  ] [QuickTabs] Initializing Quick Tabs feature module...
+[2025-11-22T03:54:31.874Z] [LOG  ] [QuickTabsManager] Initializing facade...
+[2025-11-22T03:54:31.874Z] [LOG  ] [QuickTabsManager] STEP 1: Detecting container context...
+[2025-11-22T03:54:31.941Z] [LOG  ] [QuickTabsManager] Detected container: firefox-container-9
+[2025-11-22T03:54:31.941Z] [LOG  ] [QuickTabsManager] STEP 1: Detecting tab ID...
+[2025-11-22T03:54:31.952Z] [LOG  ] [QuickTabsManager] Detected current tab ID: 306
+[2025-11-22T03:54:31.952Z] [LOG  ] [QuickTabsManager] STEP 1 Complete
+[2025-11-22T03:54:31.952Z] [LOG  ] [QuickTabsManager] STEP 2: Initializing managers...
+[2025-11-22T03:54:31.952Z] [LOG  ] [QuickTabsManager] STEP 2 Complete
+[2025-11-22T03:54:31.952Z] [LOG  ] [QuickTabsManager] STEP 3: Initializing handlers...
+[2025-11-22T03:54:31.952Z] [LOG  ] [QuickTabsManager] STEP 3 Complete
+[2025-11-22T03:54:31.952Z] [LOG  ] [QuickTabsManager] STEP 4: Initializing panel manager...
+[2025-11-22T03:54:31.952Z] [LOG  ] [DEBUG] [PanelManager] Initializing...
+[2025-11-22T03:54:31.952Z] [DEBUG] [PanelManager] Initializing...
+[2025-11-22T03:54:31.966Z] [LOG  ] [DEBUG] [PanelManager] Container: firefox-container-9
+[2025-11-22T03:54:31.966Z] [DEBUG] [PanelManager] Container: firefox-container-9
+[2025-11-22T03:54:31.997Z] [LOG  ] [DEBUG] [PanelStateManager] Container detected: firefox-container-9
+[2025-11-22T03:54:31.997Z] [LOG  ] [DEBUG] [PanelStateManager] BroadcastChannel initialized
+[2025-11-22T03:54:31.997Z] [DEBUG] [PanelStateManager] Container detected: firefox-container-9
+[2025-11-22T03:54:31.997Z] [DEBUG] [PanelStateManager] BroadcastChannel initialized
+[2025-11-22T03:54:31.998Z] [LOG  ] [DEBUG] [PanelStateManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 254,
+  "height": 304,
+  "isOpen": true
+}
+[2025-11-22T03:54:31.998Z] [ERROR] [PanelStateManager] Error loading panel state: {
+  "type": "TypeError",
+  "message": "can't access property \"setIsOpen\", this.contentManager is null",
+  "stack": "open@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3473:46\n_applyState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3499:24\nonStateLoaded@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3417:34\nloadPanelState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3342:123\nasync*init@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3305:85\nasync*init@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3419:35\nasync*_initStep4_Panel@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3572:31\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3543:22\nasync*qe/Pe<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4704:97\nqe/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4706:10\nqe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4708:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4760:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4850:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:5316:2\n",
+  "fileName": "moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js",
+  "lineNumber": 3473,
+  "columnNumber": 46
+}
+[2025-11-22T03:54:31.998Z] [DEBUG] [PanelStateManager] Loaded panel state: {
+  "left": 0,
+  "top": 0,
+  "width": 254,
+  "height": 304,
+  "isOpen": true
+}
+[2025-11-22T03:54:31.999Z] [LOG  ] [DEBUG] [PanelStateManager] Initialized
+[2025-11-22T03:54:31.999Z] [ERROR] [QuickTabsManager] ❌❌❌ INITIALIZATION FAILED ❌❌❌
+[2025-11-22T03:54:31.999Z] [ERROR] [QuickTabsManager] Error details: {
+  "message": "can't access property \"setIsOpen\", this.contentManager is null",
+  "name": "TypeError",
+  "stack": "open@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3473:46\n_applyState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3499:24\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3421:12\nasync*_initStep4_Panel@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3572:31\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3543:22\nasync*qe/Pe<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4704:97\nqe/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4706:10\nqe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4708:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4760:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4850:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:5316:2\n",
+  "type": "object",
+  "error": {}
+}
+[2025-11-22T03:54:31.999Z] [ERROR] [Copy-URL-on-Hover] ❌ EXCEPTION during Quick Tabs initialization: {
+  "message": "can't access property \"setIsOpen\", this.contentManager is null",
+  "name": "TypeError",
+  "stack": "open@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3473:46\n_applyState@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3499:24\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3421:12\nasync*_initStep4_Panel@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3572:31\ninit@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:3543:22\nasync*qe/Pe<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4704:97\nqe/<@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4706:10\nqe@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4708:8\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4760:73\nasync*@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:4850:4\n@moz-extension://3f020ab4-0e42-4e98-9baf-374bebe9064b/content.js:5316:2\n",
+  "type": "object",
+  "stringified": "{}",
+  "keys": [],
+  "error": {}
+}
+[2025-11-22T03:54:31.999Z] [LOG  ] [Notifications] Initializing Notifications feature module...
+[2025-11-22T03:54:31.999Z] [LOG  ] [NotificationManager] Initializing...
+[2025-11-22T03:54:31.999Z] [LOG  ] [NotificationManager] Styles injected from CSS module
+[2025-11-22T03:54:31.999Z] [LOG  ] [NotificationManager] Initialized successfully
+[2025-11-22T03:54:31.999Z] [LOG  ] [Notifications] Notifications feature module initialized
+[2025-11-22T03:54:31.999Z] [LOG  ] [Copy-URL-on-Hover] ✓ Notifications feature initialized
+[2025-11-22T03:54:31.999Z] [DEBUG] [PanelStateManager] Initialized
+[2025-11-22T03:54:32.000Z] [LOG  ] [DEBUG] Extension initialized successfully
+[2025-11-22T03:54:32.000Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting main features...
+[2025-11-22T03:54:32.000Z] [LOG  ] [DEBUG] Loading main features...
+[2025-11-22T03:54:32.000Z] [LOG  ] [Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓
+[2025-11-22T03:54:32.000Z] [LOG  ] [Copy-URL-on-Hover] Extension is ready for use!
+[2025-11-22T03:54:32.000Z] [DEBUG] Extension initialized successfully
+[2025-11-22T03:54:32.000Z] [DEBUG] Loading main features...
+[2025-11-22T03:54:33.608Z] [DEBUG] [Quick Tabs] Processing iframe: https://accounts.youtube.com/RotateCookiesPage?origin=https://www.youtube.com&yt_pid=1
+[2025-11-22T03:54:33.608Z] [DEBUG] [Quick Tabs] ✓ Removed X-Frame-Options: ALLOW-FROM https://www.youtube.com from https://accounts.youtube.com/RotateCookiesPage?origin=https://www.youtube.com&yt_pid=1
+[2025-11-22T03:54:33.608Z] [DEBUG] [Quick Tabs] ✓ Modified CSP for https://accounts.youtube.com/RotateCookiesPage?origin=https://www.youtube.com&yt_pid=1
+[2025-11-22T03:54:33.608Z] [DEBUG] [Quick Tabs] ✓ Removed CORP: same-site from https://accounts.youtube.com/RotateCookiesPage?origin=https://www.youtube.com&yt_pid=1
+[2025-11-22T03:54:33.887Z] [DEBUG] [Quick Tabs] ✅ Successfully loaded iframe: https://accounts.youtube.com/RotateCookiesPage?origin=https://www.youtube.com&yt_pid=1
+[2025-11-22T03:54:49.477Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
