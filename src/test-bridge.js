@@ -11,15 +11,15 @@
  * @see docs/manual/v1.6.0/copilot-testing-implementation.md
  */
 
-// Guard condition - only load in test mode
-if (typeof process !== 'undefined' && process.env.TEST_MODE === 'true') {
-  console.log('[Test Bridge] Loading test bridge for autonomous testing...');
+// Guard condition - only included in test builds
+// This file is only injected during TEST_MODE builds, so if it's present, we load it
+console.log('[Test Bridge] Loading test bridge for autonomous testing...');
 
-  /**
-   * Test Bridge API
-   * Exposes extension functionality for programmatic testing
-   */
-  const TestBridge = {
+/**
+ * Test Bridge API
+ * Exposes extension functionality for programmatic testing
+ */
+const TestBridge = {
     /**
      * Create a Quick Tab programmatically (bypasses "Q" keyboard shortcut)
      * @param {string} url - URL to load in Quick Tab
@@ -287,9 +287,8 @@ if (typeof process !== 'undefined' && process.env.TEST_MODE === 'true') {
     }
   };
 
-  // Expose test bridge globally
-  window.__COPILOT_TEST_BRIDGE__ = TestBridge;
-  console.log('[Test Bridge] ✓ Test bridge exposed at window.__COPILOT_TEST_BRIDGE__');
-} else {
-  console.log('[Test Bridge] NOT loading (TEST_MODE not enabled)');
-}
+};
+
+// Expose test bridge globally
+window.__COPILOT_TEST_BRIDGE__ = TestBridge;
+console.log('[Test Bridge] ✓ Test bridge exposed at window.__COPILOT_TEST_BRIDGE__');

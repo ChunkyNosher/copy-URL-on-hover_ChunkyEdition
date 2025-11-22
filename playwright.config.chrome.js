@@ -15,7 +15,7 @@ const __dirname = path.dirname(__filename);
  * Chrome compatibility where applicable.
  */
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: './tests/extension',
   testMatch: '**/*.spec.js',
 
   /* Maximum time one test can run for */
