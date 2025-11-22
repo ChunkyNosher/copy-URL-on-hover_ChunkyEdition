@@ -29,6 +29,8 @@ popup_old.html
 .playwright-zen-profile/
 test-results/
 playwright-report/
+playwright-report-chrome/
+playwright-report-firefox/
 playwright/.cache/
 
 # Node
