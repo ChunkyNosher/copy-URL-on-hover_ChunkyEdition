@@ -133,6 +133,7 @@ export class UICoordinator {
 
   /**
    * Setup state event listeners
+   * v1.6.1 - CRITICAL FIX: Added state:refreshed listener to re-render when tab becomes visible
    */
   setupStateListeners() {
     console.log('[UICoordinator] Setting up state listeners');
@@ -149,6 +150,46 @@ export class UICoordinator {
     this.eventBus.on('state:deleted', ({ id }) => {
       this.destroy(id);
     });
+
+    // v1.6.1 - CRITICAL FIX: Listen to state:refreshed (fired when tab becomes visible)
+    // This ensures UI is updated with latest positions/sizes when switching tabs
+    this.eventBus.on('state:refreshed', () => {
+      console.log('[UICoordinator] State refreshed - re-rendering all visible tabs');
+      this._refreshAllRenderedTabs();
+    });
+  }
+
+  /**
+   * Refresh all rendered tabs with latest state
+   * v1.6.1 - CRITICAL FIX: Update UI for all rendered tabs when state is refreshed
+   * This is called when tab becomes visible to sync positions/sizes/visibility
+   * @private
+   */
+  _refreshAllRenderedTabs() {
+    // Get current visible Quick Tabs from state
+    const visibleTabs = this.stateManager.getVisible();
+    const visibleIds = new Set(visibleTabs.map(qt => qt.id));
+
+    // Destroy tabs that should no longer be visible
+    for (const [id, _tabWindow] of this.renderedTabs) {
+      if (!visibleIds.has(id)) {
+        console.log('[UICoordinator] Destroying no-longer-visible tab:', id);
+        this.destroy(id);
+      }
+    }
+
+    // Update or render visible tabs
+    for (const quickTab of visibleTabs) {
+      if (this.renderedTabs.has(quickTab.id)) {
+        // Update existing rendered tab with latest state
+        console.log('[UICoordinator] Updating rendered tab:', quickTab.id);
+        this.update(quickTab);
+      } else {
+        // Render new tab
+        console.log('[UICoordinator] Rendering new visible tab:', quickTab.id);
+        this.render(quickTab);
+      }
+    }
   }
 
   /**

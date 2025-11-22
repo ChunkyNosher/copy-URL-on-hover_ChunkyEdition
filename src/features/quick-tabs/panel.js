@@ -59,6 +59,7 @@ export class PanelManager {
    * v1.5.9.12 - Container integration: Detect container context
    * v1.6.0.3 - Fixed initialization order: Create panel BEFORE loading state
    * v1.6.0.3 - Added document.body safety check to prevent null reference error
+   * v1.6.1 - CRITICAL FIX: Initialize in correct order to prevent null reference errors
    */
   async init() {
     debug('[PanelManager] Initializing...');
@@ -89,19 +90,22 @@ export class PanelManager {
     }
     document.body.appendChild(this.panel);
 
-    // Initialize state manager (callbacks can now safely access this.panel)
+    // Initialize state manager FIRST (needed by controllers)
+    // v1.6.1 - State will be loaded and callback will be called during init()
     this.stateManager = new PanelStateManager({
       onStateLoaded: state => this._applyState(state),
       onBroadcastReceived: (type, data) => this._handleBroadcast(type, data)
     });
     await this.stateManager.init();
 
-    // Apply loaded state to panel (if different from default)
+    // Now initialize controllers (they need stateManager to exist)
+    // v1.6.1 - contentManager needs stateManager in its options
+    this._initializeControllers();
+
+    // Apply loaded state to panel AGAIN after all components are ready
+    // v1.6.1 - This ensures isOpen state is applied after contentManager exists
     const savedState = this.stateManager.getState();
     this._applyState(savedState);
-
-    // Initialize controllers
-    this._initializeControllers();
 
     // Set up message listener for toggle command
     this.setupMessageListener();
@@ -319,6 +323,7 @@ export class PanelManager {
 
   /**
    * Apply loaded state to panel
+   * v1.6.1 - CRITICAL FIX: Check if contentManager exists before calling open()
    * @param {Object} state - State object with position/size/isOpen
    * @private
    */
@@ -331,8 +336,9 @@ export class PanelManager {
     this.panel.style.width = `${state.width}px`;
     this.panel.style.height = `${state.height}px`;
 
-    // Apply open state
-    if (state.isOpen) {
+    // Apply open state - but only if contentManager is initialized
+    // v1.6.1 - Prevents null reference error during initialization
+    if (state.isOpen && this.contentManager) {
       this.open();
     }
   }
