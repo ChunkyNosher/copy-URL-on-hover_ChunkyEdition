@@ -1247,7 +1247,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
           
           // Broadcast to other tabs
           if (quickTabsManager.broadcast) {
-            quickTabsManager.broadcast.broadcastMessage('SOLO_CHANGED', {
+            quickTabsManager.broadcast.broadcastMessage('SOLO', {
               id,
               tabId,
               isNowSoloed,
@@ -1307,7 +1307,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
           
           // Broadcast to other tabs
           if (quickTabsManager.broadcast) {
-            quickTabsManager.broadcast.broadcastMessage('MUTE_CHANGED', {
+            quickTabsManager.broadcast.broadcastMessage('MUTE', {
               id,
               tabId,
               isNowMuted,

@@ -392,6 +392,32 @@ export class PanelManager {
   }
 
   /**
+   * Minimize a Quick Tab by ID
+   * Delegates to contentManager which calls quickTabsManager.minimizeById
+   * @param {string} id - Quick Tab ID
+   */
+  minimizeTab(id) {
+    if (this.contentManager) {
+      this.contentManager.handleMinimizeTab(id);
+    } else {
+      console.warn('[PanelManager] Cannot minimize tab - contentManager not initialized');
+    }
+  }
+
+  /**
+   * Restore a minimized Quick Tab by ID
+   * Delegates to contentManager which calls quickTabsManager.restoreById
+   * @param {string} id - Quick Tab ID
+   */
+  restoreTab(id) {
+    if (this.contentManager) {
+      this.contentManager.handleRestoreTab(id);
+    } else {
+      console.warn('[PanelManager] Cannot restore tab - contentManager not initialized');
+    }
+  }
+
+  /**
    * Destroy panel and cleanup
    */
   destroy() {
