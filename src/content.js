@@ -68,6 +68,8 @@ import { getLinkText } from './features/url-handlers/generic.js';
 import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
+// Import filter settings initialization promise
+import { settingsReady } from './utils/filter-settings.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -225,9 +227,19 @@ function reportInitializationError(err) {
 
 /**
  * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 10 to <9
+ * v1.6.1 - Added explicit filter settings initialization before logging starts
  */
 (async function initExtension() {
   try {
+    // v1.6.1: Wait for filter settings to load from storage BEFORE starting extension logs
+    // This ensures user's filter preferences are active from the very first log
+    const settingsResult = await settingsReady;
+    if (settingsResult.success) {
+      console.log(`[Copy-URL-on-Hover] ✓ Filter settings loaded (source: ${settingsResult.source})`);
+    } else {
+      console.warn(`[Copy-URL-on-Hover] ⚠ Using default filter settings (${settingsResult.source})`);
+    }
+    
     console.log('[Copy-URL-on-Hover] STEP: Starting extension initialization...');
 
     // Load configuration
