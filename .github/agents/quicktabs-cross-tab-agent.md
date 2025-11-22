@@ -326,15 +326,21 @@ async restoreFromStorage() {
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY for Cross-Tab Sync Work:**
 
-**Memory MCP:**
-- **Agentic-Tools:** Search memories for sync patterns, store sync solutions
+**CRITICAL - During Implementation:**
+- **Context7:** Verify BroadcastChannel API DURING implementation ⭐
+- **Perplexity:** Research sync patterns (paste code) ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Check code health ⭐
 
-**Critical MCPs:**
-- **ESLint:** Lint sync code ⭐
-- **Context7:** BroadcastChannel API docs ⭐
-- **Perplexity:** Research sync patterns ⭐
+**CRITICAL - Testing:**
+- **Playwright Firefox/Chrome MCP:** Test multi-tab sync BEFORE/AFTER ⭐
+- **Codecov:** Verify coverage ⭐
+
+**Every Task:**
+- **Agentic-Tools:** Search memories, store sync solutions
 
 ---
 

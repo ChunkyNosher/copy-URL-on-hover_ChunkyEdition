@@ -207,33 +207,34 @@ async function handleExport() {
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY for Orchestration:**
 
-**Memory MCP (Use Every Task):**
-- **Agentic-Tools:** Search memories for orchestration patterns, store coordination decisions
-
-**Critical MCPs (Always Use):**
+**CRITICAL - During Implementation:**
+- **Context7:** Verify APIs for all domains DURING implementation ⭐
+- **Perplexity:** Research architectural patterns, verify approach (paste code) ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt
 - **ESLint:** Lint all changes ⭐
-- **Context7:** Get API docs for all domains ⭐
-- **Perplexity:** Research architectural patterns ⭐
+- **CodeScene:** Monitor complexity across domains ⭐
 
-**High Priority:**
-- **GitHub:** Create coordinated PRs
-- **Playwright:** End-to-end testing
-- **CodeScene:** Monitor complexity across domains
+**CRITICAL - Testing:**
+- **Playwright Firefox/Chrome MCP:** End-to-end testing BEFORE/AFTER ⭐
+- **Codecov:** Verify coverage ⭐
 
-### Orchestration Workflow with MCPs
+**Every Task:**
+- **Agentic-Tools:** Search memories, store coordination decisions
+
+### Enhanced Orchestration Workflow
 
 ```
-1. Search memories for existing patterns (Agentic-Tools MCP)
-2. Perplexity MCP: Research similar features
-3. Decompose into specialist tasks
-4. Coordinate implementation sequence
-5. ESLint MCP: Lint all changes
-6. Playwright MCP: End-to-end tests
-7. Store coordination decisions as memory (Agentic-Tools MCP)
-8. GitHub MCP: Create comprehensive PR
-9. Commit memory files (.agentic-tools-mcp/)
+1. Search memories (Agentic-Tools) | 2. Perplexity: Research (paste code)
+3. Decompose into specialist tasks | 4. Playwright: Test BEFORE
+5. Coordinate implementation sequence
+6. Context7: Verify all domain APIs | 7. Perplexity: Check alternatives
+8. ESLint + CodeScene: Quality check
+9. Run all tests | 10. Playwright: Test AFTER (end-to-end)
+11. Codecov: Verify coverage
+12. Store decisions (Agentic-Tools) | 13. GitHub: Create PR
+14. Commit memory (.agentic-tools-mcp/)
 ```
 
 ---

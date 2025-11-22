@@ -375,19 +375,21 @@ async function extractUrlFromHoveredLink() {
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY for URL Detection Work:**
 
-**Memory MCP:**
-- **Agentic-Tools:** Search memories for site patterns, store handler solutions
+**CRITICAL - During Implementation:**
+- **Context7:** Verify URL APIs DURING implementation ⭐
+- **Perplexity:** Research site-specific patterns (paste code) ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Check code health ⭐
 
-**Critical MCPs:**
-- **ESLint:** Lint URL detection code ⭐
-- **Context7:** URL API documentation ⭐
-- **Perplexity:** Research site-specific patterns ⭐
+**CRITICAL - Testing:**
+- **Playwright Firefox/Chrome MCP:** Test URL extraction BEFORE/AFTER ⭐
+- **Codecov:** Verify coverage ⭐
 
-**High Priority:**
-- **Playwright:** Test URL extraction
-- **GitHub:** Add new site handlers
+**Every Task:**
+- **Agentic-Tools:** Search memories, store handler solutions
 
 ---
 

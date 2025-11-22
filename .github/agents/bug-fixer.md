@@ -227,36 +227,41 @@ const state = await getStateForContainer(container);
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY MCP Usage During Bug Fixes:**
 
-**Memory MCP (Use Every Task):**
-- **Agentic-Tools:** Search memories for similar bugs, store fix patterns and notes
-
-**Critical MCPs (Always Use):**
+**CRITICAL - Use During Implementation:**
+- **Context7:** Verify API usage against current docs DURING implementation ⭐
+- **Perplexity:** Double-check solution approach, verify no better alternatives ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
 - **ESLint:** Lint all changes ⭐
-- **Context7:** Get API docs for proper usage ⭐
-- **Perplexity:** Research bug patterns and solutions ⭐
+- **CodeScene:** Check code health alongside ESLint ⭐
 
-**High Priority:**
-- **GitHub:** Update issues, create PRs
-- **Playwright:** Test fixes in browser
-- **CodeScene:** Check code health impact
+**CRITICAL - Testing (BEFORE and AFTER):**
+- **Playwright Firefox MCP:** Test extension BEFORE changes (baseline) ⭐
+- **Playwright Chrome MCP:** Test extension BEFORE changes (baseline) ⭐
+- **Playwright Firefox MCP:** Test extension AFTER changes (verify fix) ⭐
+- **Playwright Chrome MCP:** Test extension AFTER changes (verify fix) ⭐
+- **Codecov:** Verify test coverage at end ⭐
 
-### Bug Fix Workflow with MCPs
+**Every Task:**
+- **Agentic-Tools:** Search memories before starting, store patterns after
+
+### Enhanced Bug Fix Workflow
 
 ```
-1. Search memories for similar past bugs (Agentic-Tools MCP)
-2. Reproduce bug
-3. Perplexity MCP: Research bug pattern if unfamiliar
-4. Context7 MCP: Get current API docs
-5. Diagnose root cause
-6. Implement fix
-7. Write tests (regression + verification)
-8. ESLint MCP: Lint changes
-9. Playwright MCP: Test in browser
-10. Store bug fix pattern as memory (Agentic-Tools MCP)
-11. GitHub MCP: Update issue
-12. Commit memory files (.agentic-tools-mcp/)
+1. Search memories (Agentic-Tools) | 2. Reproduce bug
+3. Playwright Firefox/Chrome: Test BEFORE (baseline)
+4. Perplexity: Research bug pattern + verify approach (paste code)
+5. Context7: Get current API docs | 6. Diagnose root cause
+7. Implement fix
+8. Context7: Double-check implementation vs docs
+9. Perplexity: Verify no better solution exists (paste relevant code)
+10. ESLint: Lint | 11. CodeScene: Check health
+12. Write tests | 13. Run all tests (npm run test, test:extension)
+14. Playwright Firefox/Chrome: Test AFTER (verify fix)
+15. Codecov: Verify coverage
+16. Store pattern (Agentic-Tools) | 17. GitHub: Update issue
+18. Commit memory (.agentic-tools-mcp/)
 ```
 
 ---
@@ -375,16 +380,37 @@ test('edge case #123: empty container string', ...);
 
 ## Before Every Commit Checklist
 
+**Pre-Implementation:**
+- [ ] Searched memories for similar bugs 🧠
+- [ ] Playwright Firefox/Chrome: Tested BEFORE changes ⭐
+
+**Implementation:**
 - [ ] Bug reproduced and verified
 - [ ] Root cause identified
+- [ ] Context7: Verified API usage ⭐
+- [ ] Perplexity: Verified solution approach (pasted code) ⭐
 - [ ] Fix implemented with minimal changes
-- [ ] ESLint passed ⭐
+- [ ] Context7: Double-checked implementation ⭐
+- [ ] Perplexity: Verified no better alternative ⭐
+
+**Code Quality:**
+- [ ] ESLint: Linted all changes ⭐
+- [ ] CodeScene: Checked code health ⭐
+
+**Testing:**
 - [ ] Regression test added (100% coverage)
 - [ ] Fix verification test added
 - [ ] Edge cases tested
-- [ ] All existing tests pass
+- [ ] All tests pass (npm run test, test:extension) ⭐
+- [ ] Playwright Firefox/Chrome: Tested AFTER changes ⭐
+- [ ] Codecov: Verified coverage ⭐
+
+**Documentation:**
 - [ ] Code comments added
 - [ ] GitHub issue updated
+- [ ] Documentation under 20KB 📏
+- [ ] No docs in docs/manual/ 📏
+- [ ] Agent file under 25KB 📏
 - [ ] Memory files committed 🧠
 
 ---

@@ -223,37 +223,41 @@ for (const item of items) {
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY MCP Usage During Optimization:**
 
-**Memory MCP (Use Every Task):**
-- **Agentic-Tools:** Search memories for optimization patterns, store performance insights
+**CRITICAL - Use During Implementation:**
+- **Context7:** Verify API usage for efficient patterns DURING implementation ⭐
+- **Perplexity:** Research optimization techniques, verify approach ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Identify complexity hotspots alongside ESLint ⭐
 
-**Critical MCPs (Always Use):**
-- **ESLint:** Lint optimized code ⭐
-- **Context7:** Get API docs for efficient patterns ⭐
-- **Perplexity:** Research optimization techniques ⭐
+**CRITICAL - Testing (BEFORE and AFTER):**
+- **Playwright Firefox MCP:** Test performance BEFORE changes (baseline) ⭐
+- **Playwright Chrome MCP:** Test performance BEFORE changes (baseline) ⭐
+- **Playwright Firefox MCP:** Test performance AFTER changes (verify improvement) ⭐
+- **Playwright Chrome MCP:** Test performance AFTER changes (verify improvement) ⭐
+- **Codecov:** Verify test coverage at end ⭐
 
-**High Priority:**
-- **CodeScene:** Identify complexity hotspots
-- **Playwright:** Performance testing
-- **GitHub:** Create optimization PRs
+**Every Task:**
+- **Agentic-Tools:** Search memories for patterns, store performance insights
 
-### Optimization Workflow with MCPs
+### Enhanced Optimization Workflow
 
 ```
-1. Search memories for similar optimizations (Agentic-Tools MCP)
-2. CodeScene MCP: Identify complexity hotspots
-3. Perplexity MCP: Research optimization patterns
-4. Profile current performance (metrics)
-5. Implement optimization
-6. Measure performance improvement
-7. ESLint MCP: Lint changes
-8. Playwright MCP: Test performance
-9. Verify no behavior changes
-10. Document optimization
-11. Store optimization pattern as memory (Agentic-Tools MCP)
-12. Commit memory files (.agentic-tools-mcp/)
-11. Commit memory files
+1. Search memories (Agentic-Tools) | 2. CodeScene: Identify hotspots
+3. Playwright Firefox/Chrome: Profile BEFORE (baseline metrics)
+4. Perplexity: Research optimization patterns (paste code)
+5. Context7: Get API docs for efficient patterns
+6. Implement optimization
+7. Context7: Verify implementation vs docs
+8. Perplexity: Check for better approaches (paste code)
+9. Measure performance improvement
+10. ESLint: Lint | 11. CodeScene: Check health
+12. Run all tests | 13. Playwright Firefox/Chrome: Test AFTER (verify)
+14. Verify no behavior changes | 15. Codecov: Verify coverage
+16. Document optimization (under 20KB, not docs/manual/)
+17. Store pattern (Agentic-Tools) | 18. Commit memory (.agentic-tools-mcp/)
 ```
 
 ---

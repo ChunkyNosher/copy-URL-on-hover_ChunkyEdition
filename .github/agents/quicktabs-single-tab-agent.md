@@ -349,19 +349,21 @@ updateNavigationState() {
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY for Single Quick Tab Work:**
 
-**Memory MCP (Use Every Task):**
-- **Agentic-Tools:** Search memories for Quick Tab patterns, store UI solutions
+**CRITICAL - During Implementation:**
+- **Context7:** Verify WebExtensions APIs DURING implementation ⭐
+- **Perplexity:** Research drag/resize patterns (paste code) ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Check code health ⭐
 
-**Critical MCPs (Always Use):**
-- **ESLint:** Lint Quick Tab code ⭐
-- **Context7:** Get WebExtensions API docs ⭐
-- **Perplexity:** Research drag/resize patterns ⭐
+**CRITICAL - Testing:**
+- **Playwright Firefox/Chrome MCP:** Test BEFORE/AFTER changes ⭐
+- **Codecov:** Verify coverage ⭐
 
-**High Priority:**
-- **Playwright:** Test Quick Tab interactions
-- **GitHub:** Create Quick Tab PRs
+**Every Task:**
+- **Agentic-Tools:** Search memories, store UI solutions
 
 ---
 
