@@ -1,0 +1,8 @@
+{
+  "id": "bc8af1d9-6567-462a-9a4c-98fcbac45c2d",
+  "title": "Issue 47 Scenario 4 Expected Behavior",
+  "details": "SCENARIO 4: Quick Tab Minimization, Restoration, and Manager\n\nEXPECTED BEHAVIOR:\n- Minimize button reduces Quick Tab to minimized manager panel\n- Minimized tabs persist across tab switches\n- Restore button brings Quick Tab back to viewport\n- Minimized state syncs across all tabs\n- Manager panel (Ctrl+Alt+Z) shows all minimized tabs\n\nTEST IMPLEMENTATION:\n- Create Quick Tab and minimize\n- Verify minimized:true in state\n- Test restore functionality\n- Test cross-tab minimized state synchronization\n- Verify state persists across tab switches\n\nCRITICAL REQUIREMENTS:\n- Minimized state must be boolean field in Quick Tab object\n- Minimize/restore must sync across all tabs immediately\n- No visual glitches during minimize/restore transitions",
+  "category": "technical",
+  "dateCreated": "2025-11-22T07:55:37.166Z",
+  "dateUpdated": "2025-11-22T07:55:37.166Z"
+}

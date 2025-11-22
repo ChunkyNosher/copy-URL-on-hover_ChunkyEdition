@@ -1,0 +1,8 @@
+{
+  "id": "3c88612e-412c-4d40-b199-5fc1eda104f5",
+  "title": "Issue 47 Scenario 2 Expected Behavior",
+  "details": "SCENARIO 2: Multiple Quick Tabs and Global Synchronization\n\nEXPECTED BEHAVIOR:\n- Multiple Quick Tabs can be created up to configured limit\n- All Quick Tabs sync position, size, and state across tabs\n- Closing a Quick Tab in one tab closes it in all tabs\n- Global synchronization applies to all operations (create, update, delete)\n\nTEST IMPLEMENTATION:\n- Create 3 Quick Tabs on page 1\n- Verify all 3 appear on page 2\n- Close one Quick Tab from page 2\n- Verify it's removed from page 1\n- Tests bidirectional synchronization\n\nCRITICAL REQUIREMENTS:\n- All Quick Tabs must sync globally\n- Delete operations must propagate immediately\n- No orphaned Quick Tabs after cross-tab deletion",
+  "category": "technical",
+  "dateCreated": "2025-11-22T07:55:37.151Z",
+  "dateUpdated": "2025-11-22T07:55:37.151Z"
+}

@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
  * in a real Firefox browser with the extension installed.
  */
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: './tests/extension',
   testMatch: '**/*.spec.js',
 
   /* Maximum time one test can run for */
