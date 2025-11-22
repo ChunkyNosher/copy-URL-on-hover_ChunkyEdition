@@ -285,8 +285,6 @@ const TestBridge = {
         throw error;
       }
     }
-  };
-
 };
 
 // Expose test bridge globally
