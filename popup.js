@@ -1086,6 +1086,71 @@ function getDefaultExportSettings() {
 }
 
 /**
+ * v1.6.0.12 - Update the live counter for a filter group
+ * @param {HTMLElement} groupElement - The filter group container
+ */
+function updateGroupCounter(groupElement) {
+  // Get filter type from button (more reliable than checkbox)
+  const btn = groupElement.querySelector('.group-btn');
+  if (!btn) return;
+  
+  const filter = btn.dataset.filter;
+  const checkboxes = groupElement.querySelectorAll(`.category-checkbox[data-filter="${filter}"]`);
+  const counter = groupElement.querySelector('.group-counter');
+  
+  if (!counter) return;
+  
+  const total = checkboxes.length;
+  const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
+  
+  counter.textContent = `${checked}/${total}`;
+}
+
+/**
+ * v1.6.0.12 - Update button colors based on checkbox states
+ * @param {HTMLElement} groupElement - The filter group container
+ */
+function updateButtonColors(groupElement) {
+  // Get filter type from button (more reliable than checkbox)
+  const btn = groupElement.querySelector('.group-btn');
+  if (!btn) return;
+  
+  const filter = btn.dataset.filter;
+  const checkboxes = groupElement.querySelectorAll(`.category-checkbox[data-filter="${filter}"]`);
+  const selectAllBtn = groupElement.querySelector('[data-action="select-all"]');
+  const deselectAllBtn = groupElement.querySelector('[data-action="deselect-all"]');
+  
+  if (!selectAllBtn || !deselectAllBtn) return;
+  
+  const total = checkboxes.length;
+  const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
+  
+  // Update Select All button - green when all selected
+  if (checked === total) {
+    selectAllBtn.classList.add('all-selected');
+  } else {
+    selectAllBtn.classList.remove('all-selected');
+  }
+  
+  // Update Deselect All button - red when none selected
+  if (checked === 0) {
+    deselectAllBtn.classList.add('all-deselected');
+  } else {
+    deselectAllBtn.classList.remove('all-deselected');
+  }
+}
+
+/**
+ * v1.6.0.12 - Update all group counters and button colors
+ */
+function updateAllGroupStates() {
+  document.querySelectorAll('.filter-group').forEach(group => {
+    updateGroupCounter(group);
+    updateButtonColors(group);
+  });
+}
+
+/**
  * Initialize collapsible groups functionality
  */
 function initCollapsibleGroups() {
@@ -1109,6 +1174,19 @@ function initCollapsibleGroups() {
       } else if (action === 'deselect-all') {
         checkboxes.forEach(cb => (cb.checked = false));
       }
+      
+      // v1.6.0.12 - Update counter and button colors immediately
+      updateGroupCounter(groupElement);
+      updateButtonColors(groupElement);
+    });
+  });
+  
+  // v1.6.0.12 - Add change listeners to all checkboxes for live updates
+  document.querySelectorAll('.category-checkbox').forEach(checkbox => {
+    checkbox.addEventListener('change', () => {
+      const groupElement = checkbox.closest('.filter-group');
+      updateGroupCounter(groupElement);
+      updateButtonColors(groupElement);
     });
   });
 }
@@ -1137,6 +1215,9 @@ async function loadFilterSettings() {
       const category = cb.dataset.category;
       cb.checked = exportSettings[category] === true;
     });
+    
+    // v1.6.0.12 - Update all counters and button colors after loading
+    updateAllGroupStates();
   } catch (error) {
     console.error('[Popup] Failed to load filter settings:', error);
   }
