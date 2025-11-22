@@ -19,6 +19,7 @@ jobs:
       NODE_ENV: development
       DEBUG: 'jest:*'
       BABEL_ENV: test
+      MCP_CLIENT_TIMEOUT_MS: 120000 
 
     steps:
       # ====================================================================
@@ -50,6 +51,85 @@ jobs:
         run: npm ci
         env:
           NODE_ENV: development
+
+      # ====================================================================
+      # NEW STEP: Pre-Install Playwright MCP Package
+      # ====================================================================
+      - name: Pre-install Playwright MCP package
+        run: |
+          echo "=========================================="
+          echo "Pre-installing Playwright MCP Package"
+          echo "=========================================="
+          
+          # Install @playwright/mcp globally to cache it
+          npm install -g @playwright/mcp@latest
+          
+          # Verify installation
+          if npm list -g @playwright/mcp --depth=0 > /dev/null 2>&1; then
+            VERSION=$(npm list -g @playwright/mcp --depth=0 | grep @playwright/mcp@ | sed 's/.*@playwright\/mcp@//' | cut -d' ' -f1)
+            echo "✓ @playwright/mcp@$VERSION installed globally"
+          else
+            echo "✗ Failed to install @playwright/mcp"
+            exit 1
+          fi
+          
+          # Verify npx can find the package instantly
+          if npx @playwright/mcp --version > /dev/null 2>&1; then
+            echo "✓ npx can execute @playwright/mcp instantly (cached)"
+          else
+            echo "⚠ npx execution verification failed (non-critical)"
+          fi
+          
+          echo "=========================================="
+          echo "✓ Playwright MCP pre-installed and cached"
+          echo "=========================================="
+
+      # ====================================================================
+      # NEW STEP: Verify npm Cache State
+      # ====================================================================
+      - name: Verify npm cache and Playwright MCP
+        run: |
+          echo "=========================================="
+          echo "npm Cache Verification"
+          echo "=========================================="
+          
+          # Display cache location
+          NPM_CACHE_DIR=$(npm config get cache)
+          echo "npm cache directory: $NPM_CACHE_DIR"
+          
+          # Check cache size
+          if [ -d "$NPM_CACHE_DIR" ]; then
+            CACHE_SIZE=$(du -sh "$NPM_CACHE_DIR" 2>/dev/null | cut -f1)
+            echo "Cache size: $CACHE_SIZE"
+          fi
+          
+          # Check if @playwright/mcp is cached
+          if npm list -g @playwright/mcp --depth=0 > /dev/null 2>&1; then
+            echo "✓ @playwright/mcp found in global packages"
+            
+            # Show where npx will find it
+            NPX_PATH=$(which npx)
+            echo "npx location: $NPX_PATH"
+            
+            # Test instant execution
+            TIME_START=$(date +%s%N)
+            npx @playwright/mcp --version > /dev/null 2>&1 || true
+            TIME_END=$(date +%s%N)
+            TIME_DIFF=$(( (TIME_END - TIME_START) / 1000000 ))  # Convert to milliseconds
+            
+            echo "npx execution time: ${TIME_DIFF}ms"
+            
+            if [ $TIME_DIFF -lt 5000 ]; then
+              echo "✓ npx executes instantly (<5 seconds) - cache working"
+            else
+              echo "⚠ npx execution slow (${TIME_DIFF}ms) - cache may not be effective"
+            fi
+          else
+            echo "✗ @playwright/mcp NOT found in cache"
+            exit 1
+          fi
+          
+          echo "=========================================="
 
       - name: Install Xvfb virtual display server
         run: sudo apt-get update && sudo apt-get install -y xvfb
