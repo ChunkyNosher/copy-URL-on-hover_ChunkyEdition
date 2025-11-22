@@ -1,0 +1,8 @@
+{
+  "id": "60dc0a41-95c6-4adf-9a81-93ac4156d8a1",
+  "title": "Issue 47 Scenario 1 Expected Behavior",
+  "details": "SCENARIO 1: Basic Quick Tab Creation and Cross-Tab State Persistence\n\nEXPECTED BEHAVIOR:\n- Quick Tabs persist position and size across tabs\n- Changes in one tab are reflected in all other tabs\n- Quick Tab created in one tab appears automatically in newly opened tabs\n- Quick Tab maintains same ID across all tabs\n- State synchronization happens via BroadcastChannel and browser.storage\n\nTEST IMPLEMENTATION:\n- Create Quick Tab on page 1\n- Open page 2 in new tab within same context\n- Verify Quick Tab appears on page 2 with same ID and URL\n- Uses waitForQuickTabCount for synchronization polling\n\nCRITICAL REQUIREMENTS:\n- Cross-tab state must be immediate (within 1-2 seconds)\n- Quick Tab ID must remain consistent\n- No data loss during synchronization",
+  "category": "technical",
+  "dateCreated": "2025-11-22T07:55:37.148Z",
+  "dateUpdated": "2025-11-22T07:55:37.148Z"
+}
