@@ -349,8 +349,8 @@
       /* Group Header (clickable) */
       .group-header {
         display: flex;
-        align-items: baseline; /* v1.6.0.11 - Align buttons with title text */
-        padding: 10px 12px;
+        align-items: center; /* v1.6.0.12 - Changed to center for better alignment with inline buttons */
+        padding: 8px 12px; /* v1.6.0.12 - Reduced from 10px to 8px for more compact layout */
         background-color: #2a2a2a;
         cursor: pointer;
         user-select: none;
@@ -377,15 +377,22 @@
 
       .group-title {
         font-weight: 600;
-        flex: 1;
         font-size: 12px;
-        margin-right: 12px;
+        margin-right: 8px; /* v1.6.0.12 - Reduced spacing for inline layout */
       }
 
-      .group-count {
+      /* v1.6.0.12 - Live counter indicator showing active/total filters */
+      .group-counter {
         font-size: 11px;
-        color: #888;
-        margin-right: 41px; /* v1.6.0.11 - 25px extra spacing from title to buttons */
+        color: #4caf50;
+        font-weight: 600;
+        margin-right: 8px;
+        flex-shrink: 0;
+      }
+
+      /* v1.6.0.12 - Spacer to push buttons to the right */
+      .group-spacer {
+        flex: 1;
       }
 
       .group-actions {
@@ -404,12 +411,34 @@
         font-size: 11px;
         font-weight: 500;
         cursor: pointer;
-        transition: background-color 0.2s;
+        transition: all 0.2s;
         white-space: nowrap;
       }
 
       .group-btn:hover {
         background-color: #3a3a3a;
+      }
+
+      /* v1.6.0.12 - Green state when all filters are selected */
+      .group-btn.all-selected {
+        background-color: #4caf50;
+        border-color: #45a049;
+        color: #ffffff;
+      }
+
+      .group-btn.all-selected:hover {
+        background-color: #45a049;
+      }
+
+      /* v1.6.0.12 - Red state when all filters are deselected */
+      .group-btn.all-deselected {
+        background-color: #f44336;
+        border-color: #da190b;
+        color: #ffffff;
+      }
+
+      .group-btn.all-deselected:hover {
+        background-color: #da190b;
       }
 
       /* Group Content (collapsible) */
@@ -838,7 +867,8 @@
               <label for="live-group-user-actions" class="group-header">
                 <span class="group-icon">▶</span>
                 <span class="group-title">User Actions</span>
-                <span class="group-count">(6 categories)</span>
+                <span class="group-counter" data-counter="live-user-actions">6/6</span>
+                <span class="group-spacer"></span>
                 <div class="group-actions">
                   <button
                     type="button"
@@ -932,7 +962,8 @@
               <label for="live-group-system-ops" class="group-header">
                 <span class="group-icon">▶</span>
                 <span class="group-title">System Operations</span>
-                <span class="group-count">(7 categories)</span>
+                <span class="group-counter" data-counter="live-system-ops">7/7</span>
+                <span class="group-spacer"></span>
                 <div class="group-actions">
                   <button
                     type="button"
@@ -1036,7 +1067,8 @@
               <label for="live-group-diagnostics" class="group-header">
                 <span class="group-icon">▶</span>
                 <span class="group-title">Diagnostics</span>
-                <span class="group-count">(3 categories)</span>
+                <span class="group-counter" data-counter="live-diagnostics">3/3</span>
+                <span class="group-spacer"></span>
                 <div class="group-actions">
                   <button
                     type="button"
@@ -1110,7 +1142,8 @@
               <label for="export-group-user-actions" class="group-header">
                 <span class="group-icon">▶</span>
                 <span class="group-title">User Actions</span>
-                <span class="group-count">(6 categories)</span>
+                <span class="group-counter" data-counter="export-user-actions">6/6</span>
+                <span class="group-spacer"></span>
                 <div class="group-actions">
                   <button
                     type="button"
@@ -1204,7 +1237,8 @@
               <label for="export-group-system-ops" class="group-header">
                 <span class="group-icon">▶</span>
                 <span class="group-title">System Operations</span>
-                <span class="group-count">(7 categories)</span>
+                <span class="group-counter" data-counter="export-system-ops">7/7</span>
+                <span class="group-spacer"></span>
                 <div class="group-actions">
                   <button
                     type="button"
@@ -1308,7 +1342,8 @@
               <label for="export-group-diagnostics" class="group-header">
                 <span class="group-icon">▶</span>
                 <span class="group-title">Diagnostics</span>
-                <span class="group-count">(3 categories)</span>
+                <span class="group-counter" data-counter="export-diagnostics">3/3</span>
+                <span class="group-spacer"></span>
                 <div class="group-actions">
                   <button
                     type="button"
