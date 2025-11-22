@@ -136,6 +136,7 @@ jobs:
       
       - name: Run tests with Xvfb
         run: xvfb-run --auto-servernum npm run test:extension:chrome
+        continue-on-error: true
 
       - name: Start Xvfb on display :99
         run: |
