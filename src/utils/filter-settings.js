@@ -10,24 +10,25 @@
 
 /**
  * Get default live console filter settings
- * Noisy categories (hover, url-detection) disabled by default
+ * v1.6.1 - Changed to all-enabled by default for better UX
+ * Users can disable noisy categories after seeing them
  */
 export function getDefaultLiveConsoleSettings() {
   return {
-    'url-detection': false, // Noisy - disabled by default
-    hover: false, // Noisy - disabled by default
+    'url-detection': true, // Enabled by default (was disabled)
+    hover: true, // Enabled by default (was disabled)
     clipboard: true,
     keyboard: true,
     'quick-tabs': true,
     'quick-tab-manager': true,
-    'event-bus': false,
+    'event-bus': true, // Enabled by default (was disabled)
     config: true,
-    state: false,
+    state: true, // Enabled by default (was disabled)
     storage: true,
-    messaging: false,
+    messaging: true, // Enabled by default (was disabled)
     webrequest: true,
     tabs: true,
-    performance: false,
+    performance: true, // Enabled by default (was disabled)
     errors: true,
     initialization: true
   };
@@ -60,60 +61,75 @@ export function getDefaultExportSettings() {
 
 // ==================== SETTINGS CACHE ====================
 
-let liveConsoleSettingsCache = null;
-let exportLogSettingsCache = null;
+// Initialize with safe defaults immediately (no race condition)
+let liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
+let exportLogSettingsCache = getDefaultExportSettings();
 let settingsInitialized = false;
 
 /**
- * Initialize filter settings - called once at module load
- * Preload settings synchronously to avoid async issues in logging functions
+ * Exported initialization promise - consumers can await if needed
+ * v1.6.1 - Promise Export Pattern with IIFE for proper async control
+ * Starts with safe defaults, updates from storage with timeout protection
+ * Always resolves (never rejects) to ensure extension functions with defaults
  */
-export async function initializeFilterSettings() {
+export const settingsReady = (async () => {
   if (settingsInitialized) {
-    return;
+    return { success: true, source: 'cached' };
   }
 
   try {
     if (typeof browser !== 'undefined' && browser.storage) {
-      const result = await browser.storage.local.get([
+      // Add 5-second timeout to prevent hanging on storage I/O
+      const storagePromise = browser.storage.local.get([
         'liveConsoleCategoriesEnabled',
         'exportLogCategoriesEnabled'
       ]);
+      
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Storage timeout after 5s')), 5000)
+      );
 
-      liveConsoleSettingsCache =
-        result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
-      exportLogSettingsCache = result.exportLogCategoriesEnabled || getDefaultExportSettings();
+      const result = await Promise.race([storagePromise, timeoutPromise]);
+
+      // Atomic batch update to prevent partial reads
+      const newLiveSettings = result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
+      const newExportSettings = result.exportLogCategoriesEnabled || getDefaultExportSettings();
+      
+      liveConsoleSettingsCache = newLiveSettings;
+      exportLogSettingsCache = newExportSettings;
+      
+      settingsInitialized = true;
+      return { success: true, source: 'storage' };
     } else {
+      // Browser storage API not available (non-browser context)
       liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
       exportLogSettingsCache = getDefaultExportSettings();
+      settingsInitialized = true;
+      return { success: true, source: 'defaults-no-api' };
     }
-
-    settingsInitialized = true;
   } catch (error) {
-    console.error('[FilterSettings] Initialization failed:', error);
+    // On any error (timeout, storage unavailable, etc.), use safe defaults
+    console.error('[FilterSettings] Initialization failed, using defaults:', error);
     liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
     exportLogSettingsCache = getDefaultExportSettings();
     settingsInitialized = true;
+    return { success: false, source: 'defaults-error', error: error.message };
   }
-}
+})();
 
 /**
- * Get live console filter settings (synchronous - uses preloaded cache)
+ * Get live console filter settings (synchronous - uses cache with safe defaults)
+ * v1.6.1 - Cache initialized with defaults at module load (never null)
  */
 export function getLiveConsoleSettings() {
-  if (!settingsInitialized || liveConsoleSettingsCache === null) {
-    return getDefaultLiveConsoleSettings();
-  }
   return liveConsoleSettingsCache;
 }
 
 /**
- * Get export filter settings (synchronous - uses preloaded cache)
+ * Get export filter settings (synchronous - uses cache with safe defaults)
+ * v1.6.1 - Cache initialized with defaults at module load (never null)
  */
 export function getExportSettings() {
-  if (!settingsInitialized || exportLogSettingsCache === null) {
-    return getDefaultExportSettings();
-  }
   return exportLogSettingsCache;
 }
 
@@ -226,6 +242,3 @@ export function getCategoryIdFromDisplayName(displayName) {
 
   return mapping[normalized] || 'uncategorized';
 }
-
-// Initialize settings immediately when module loads
-initializeFilterSettings();

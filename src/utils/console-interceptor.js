@@ -9,7 +9,11 @@
  */
 
 // ==================== IMPORTS ====================
-import { isCategoryEnabledForLiveConsole, getCategoryIdFromDisplayName } from './filter-settings.js';
+import {
+  isCategoryEnabledForLiveConsole,
+  getCategoryIdFromDisplayName,
+  settingsReady
+} from './filter-settings.js';
 
 // ==================== LOG BUFFER CONFIGURATION ====================
 const MAX_BUFFER_SIZE = 5000;
@@ -336,3 +340,18 @@ export function restoreConsole() {
 originalConsole.log('[Console Interceptor] ✓ Console methods overridden successfully');
 originalConsole.log('[Console Interceptor] Buffer size:', MAX_BUFFER_SIZE);
 originalConsole.log('[Console Interceptor] Context:', getExecutionContext());
+
+// ==================== ASYNC INITIALIZATION ====================
+// Wait for filter settings to load from storage in background
+// This doesn't block console interception (already active with defaults)
+// but ensures settings are synced as soon as possible
+settingsReady.then(result => {
+  if (result.success) {
+    originalConsole.log(`[Console Interceptor] ✓ Filter settings loaded (source: ${result.source})`);
+  } else {
+    originalConsole.warn(`[Console Interceptor] ⚠ Using default filters (${result.source}):`, result.error);
+  }
+}).catch(error => {
+  // This should never happen since settingsReady always resolves
+  originalConsole.error('[Console Interceptor] Unexpected promise rejection:', error);
+});
