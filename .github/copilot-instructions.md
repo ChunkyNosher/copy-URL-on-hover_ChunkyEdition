@@ -45,6 +45,33 @@ If you think: "This workaround is easier" → ❌ Implement properly
 
 ---
 
+## 📏 File Size and Documentation Limits
+
+### Size Limits (ENFORCED)
+
+**Copilot Agent Files:**
+- `.github/copilot-instructions.md` - **MAXIMUM 25KB (25,600 bytes)**
+- `.github/agents/*.md` - **MAXIMUM 25KB (25,600 bytes) each**
+
+**Documentation Files:**
+- Any documentation written by Copilot - **MAXIMUM 20KB (20,480 bytes)**
+- Check file size before committing: `wc -c filename.md`
+
+### Documentation Location Rules
+
+**PROHIBITED:**
+- ❌ DO NOT write documentation to `docs/manual/` directory
+- ❌ DO NOT create new markdown files in root directory (except README.md)
+
+**ALLOWED:**
+- ✅ `docs/implementation-summaries/` - Implementation summaries
+- ✅ `docs/CHANGELOG.md` - Append changelog entries only
+- ✅ In-code comments and JSDoc documentation
+
+**Why:** The `docs/manual/` directory is reserved for user-facing documentation maintained separately.
+
+---
+
 ## 🧠 Memory Persistence Instructions (Agentic-Tools MCP)
 
 ### CRITICAL: At the end of EVERY task, you MUST:
@@ -468,13 +495,15 @@ await createMemory({
 - **Purpose:** Real-time web search with reasoning
 - **Model:** sonar-reasoning-pro (with citations)
 - **Use For:** Current information, best practices, recent solutions
+- **CRITICAL LIMITATION:** Perplexity CANNOT directly read repository files. You MUST paste file contents into your Perplexity prompt if you need it to analyze code/documents.
 
 ### High Priority MCPs (Use Frequently)
 
 **GitHub MCP** - Create/update issues & PRs, add comments, trigger workflows  
-**Playwright (Firefox & Chrome) MCPs** - Testing extension functionality, UI verification  
-**CodeScene MCP** - Code health analysis, technical debt detection  
-**Codecov MCP** - Test coverage analysis  
+**Playwright Firefox MCP** ⭐ - Test extension functionality in Firefox BEFORE and AFTER changes  
+**Playwright Chrome MCP** ⭐ - Test extension functionality in Chrome BEFORE and AFTER changes  
+**CodeScene MCP** ⭐ - Code health analysis alongside ESLint, detect technical debt hotspots  
+**Codecov MCP** ⭐ - Test coverage verification at end of tasks  
 **GitHub Actions MCP** - CI/CD workflow management
 
 ---
@@ -606,29 +635,20 @@ try {
 
 ### Bug Fix Workflow
 ```
-1. Search memories for similar bugs 🧠🔍
-2. Context7 MCP: Get API docs ⭐
-3. Write fix
-4. ESLint MCP: Lint and fix ⭐
-5. Playwright MCP: Test fix 🎭
-6. Create memory with fix details 🧠
-7. Commit memory files 🧠
+1. Search memories 🧠 | 2. Playwright: Test BEFORE 🎭
+3. Context7: Get docs ⭐ | 4. Perplexity: Research + verify solution ⭐
+5. Write fix | 6. Context7: Double-check ⭐ | 7. Perplexity: Check alternatives ⭐
+8. ESLint + CodeScene ⭐ | 9. Playwright: Test AFTER 🎭
+10. Run all tests + Codecov ⭐ | 11. Create memory 🧠 | 12. Commit 🧠
 ```
 
-### New Feature Workflow (With Task Management)
+### Feature Workflow
 ```
-1. Search memories for related features 🧠🔍
-2. Create project and tasks 📋
-3. Get task recommendation 📋
-4. Perplexity MCP: Research ⭐
-5. Context7 MCP: Get API docs ⭐
-6. Update task to in-progress 📋
-7. Write feature code
-8. ESLint MCP: Lint and fix ⭐
-9. Playwright MCP: Create tests 🎭
-10. Mark task as done 📋
-11. Create architectural memory 🧠
-12. Commit memory + task files 🧠📋
+1. Search memories 🧠 | 2. Create tasks 📋 | 3. Playwright: Baseline 🎭
+4. Perplexity: Research ⭐ | 5. Context7: Get docs ⭐ | 6. Update task 📋
+7. Write code | 8. Context7: Verify ⭐ | 9. Perplexity: Alternatives ⭐
+10. ESLint + CodeScene ⭐ | 11. Playwright: Test feature 🎭
+12. Run all tests + Codecov ⭐ | 13. Mark done 📋 | 14. Memory 🧠 | 15. Commit 🧠📋
 ```
 
 ---
@@ -759,14 +779,30 @@ When user reports bugs or requests features:
 
 ## Before Every Commit Checklist
 
+### Pre-Implementation
 - [ ] **Searched memories before starting work** 🧠🔍
 - [ ] **Referenced relevant memories in implementation** 🧠
-- [ ] ESLint MCP used on all modified JS files ⭐
+- [ ] **Playwright Firefox/Chrome MCP: Tested baseline behavior BEFORE changes** 🎭
+
+### During Implementation
+- [ ] **Context7 MCP: Verified API usage with current docs** ⭐
+- [ ] **Perplexity MCP: Double-checked solution approach (paste code if analyzing files)** ⭐
+- [ ] **Perplexity MCP: Verified no better alternative exists** ⭐
+
+### Code Quality
+- [ ] **ESLint MCP: Linted all modified JS files** ⭐
+- [ ] **CodeScene MCP: Checked code health and technical debt** ⭐
 - [ ] Zero ESLint errors remaining ⭐
-- [ ] Context7 used for API implementations ⭐
-- [ ] Run all testing suites ⭐
-- [ ] **Playwright MCP tests run for extension changes** 🎭
+
+### Testing
+- [ ] **Playwright Firefox MCP: Tested extension functionality AFTER changes** 🎭
+- [ ] **Playwright Chrome MCP: Tested extension functionality AFTER changes** 🎭
 - [ ] **Test Bridge verified for Quick Tab features** 🎭
+- [ ] Run all test suites: `npm run test` ⭐
+- [ ] Run extension tests: `npm run test:extension` ⭐
+- [ ] **Codecov MCP: Verified test coverage is adequate** ⭐
+
+### Task & Memory Management
 - [ ] **Tasks created for multi-step features** 📋
 - [ ] **Task status updated to reflect progress** 📋
 - [ ] **Completed tasks marked as "done"** 📋
@@ -774,14 +810,25 @@ When user reports bugs or requests features:
 - [ ] **Memory files committed** (`.agentic-tools-mcp/`) 🧠
 - [ ] Verified `.agentic-tools-mcp/memories/` contains individual JSON files 🧠
 
+### Documentation & Size Limits
+- [ ] **Copilot instruction files under 25KB** 📏
+- [ ] **Documentation files under 20KB** 📏
+- [ ] **No documentation in docs/manual/** 📏
+
 ---
 
 ## Before Every PR Checklist
 
-- [ ] All commits linted with ESLint ⭐
-- [ ] **Playwright MCP test suite passes** 🎭
+- [ ] **All commits linted with ESLint MCP** ⭐
+- [ ] **CodeScene MCP verified code health** ⭐
+- [ ] **Playwright Firefox MCP test suite passes** 🎭
+- [ ] **Playwright Chrome MCP test suite passes** 🎭
 - [ ] **Extension tests cover new Quick Tab features** 🎭
+- [ ] **All test suites pass (npm run test, test:extension)** ⭐
+- [ ] **Codecov MCP verified adequate test coverage** ⭐
 - [ ] Documentation updated (README, agent files if applicable)
+- [ ] **Documentation files under 20KB** 📏
+- [ ] **No documentation written to docs/manual/** 📏
 - [ ] **Memory files included in PR** 🧠
 - [ ] GitHub MCP used to create PR
 
@@ -789,13 +836,15 @@ When user reports bugs or requests features:
 
 ## Documentation Organization
 
-**Save markdown files to appropriate `docs/` subdirectories:**
-- Bug analysis → `docs/manual/`
-- Implementation guides → `docs/manual/`
-- Implementation summaries → `docs/implementation-summaries/`
+**ALLOWED locations for Copilot-written documentation:**
+- Implementation summaries → `docs/implementation-summaries/` (max 20KB each)
 - Changelog updates → **APPEND to `docs/CHANGELOG.md`**
+- In-code comments and JSDoc documentation
 
-**DO NOT** save markdown files to root directory (except README.md).
+**PROHIBITED:**
+- ❌ DO NOT write to `docs/manual/` (reserved for user-facing docs)
+- ❌ DO NOT create new markdown files in root directory (except README.md)
+- ❌ DO NOT create documentation larger than 20KB
 
 ---
 

@@ -251,36 +251,41 @@ async function handleFeatureRequest(request) {
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY MCP Usage During Feature Development:**
 
-**Memory MCP (Use Every Task):**
-- **Agentic-Tools:** Search memories for patterns, store design decisions and implementation notes
-
-**Critical MCPs (Always Use):**
+**CRITICAL - Use During Implementation:**
+- **Context7:** Verify API usage against current docs DURING implementation ⭐
+- **Perplexity:** Double-check design approach, verify best practices ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
 - **ESLint:** Lint all code ⭐
-- **Context7:** Get API docs ⭐
-- **Perplexity:** Research best practices ⭐
+- **CodeScene:** Check code health alongside ESLint ⭐
 
-**High Priority:**
-- **GitHub:** Create feature PRs
-- **Playwright:** Test in browser
-- **CodeScene:** Monitor code health
+**CRITICAL - Testing (BEFORE and AFTER):**
+- **Playwright Firefox MCP:** Test extension BEFORE changes (baseline) ⭐
+- **Playwright Chrome MCP:** Test extension BEFORE changes (baseline) ⭐
+- **Playwright Firefox MCP:** Test extension AFTER changes (verify feature) ⭐
+- **Playwright Chrome MCP:** Test extension AFTER changes (verify feature) ⭐
+- **Codecov:** Verify test coverage at end ⭐
 
-### Feature Development Workflow with MCPs
+**Every Task:**
+- **Agentic-Tools:** Search memories before starting, store decisions after
+
+### Enhanced Feature Workflow
 
 ```
-1. Search memories for existing patterns (Agentic-Tools MCP)
-2. Perplexity MCP: Research feature patterns
-3. Context7 MCP: Get API documentation
-4. Design feature following DDD
-5. Implement layer by layer
-6. Write comprehensive tests
-7. ESLint MCP: Lint all code
-8. Playwright MCP: Browser testing
-9. Document feature
-10. Store design decisions as memory (Agentic-Tools MCP)
-11. GitHub MCP: Create PR
-12. Commit memory files (.agentic-tools-mcp/)
+1. Search memories (Agentic-Tools) | 2. Playwright Firefox/Chrome: Test BEFORE
+3. Perplexity: Research patterns (paste examples) | 4. Context7: Get docs
+5. Design feature following DDD
+6. Implement layer by layer
+7. Context7: Verify implementation vs docs
+8. Perplexity: Check for better approaches (paste code)
+9. ESLint: Lint | 10. CodeScene: Check health
+11. Write comprehensive tests | 12. Run all tests
+13. Playwright Firefox/Chrome: Test AFTER (verify feature)
+14. Codecov: Verify coverage
+15. Document feature (under 20KB, not in docs/manual/)
+16. Store decisions (Agentic-Tools) | 17. GitHub: Create PR
+18. Commit memory (.agentic-tools-mcp/)
 ```
 
 ---
@@ -432,15 +437,36 @@ tests/
 
 ## Before Every Commit Checklist
 
+**Pre-Implementation:**
+- [ ] Searched memories for patterns 🧠
+- [ ] Playwright Firefox/Chrome: Tested BEFORE changes ⭐
+
+**Implementation:**
+- [ ] Context7: Verified API usage ⭐
+- [ ] Perplexity: Verified approach (pasted code) ⭐
 - [ ] Feature implemented following DDD
-- [ ] ESLint passed ⭐
+- [ ] Context7: Double-checked implementation ⭐
+- [ ] Perplexity: Verified best practice ⭐
+- [ ] Architecture boundaries respected
+
+**Code Quality:**
+- [ ] ESLint: Linted all changes ⭐
+- [ ] CodeScene: Checked code health ⭐
+
+**Testing:**
 - [ ] Unit tests written (80%+ coverage)
 - [ ] Integration tests written
 - [ ] End-to-end tests written (if applicable)
-- [ ] All tests passing
+- [ ] All tests passing (npm run test, test:extension) ⭐
+- [ ] Playwright Firefox/Chrome: Tested AFTER changes ⭐
+- [ ] Codecov: Verified coverage ⭐
+
+**Documentation:**
 - [ ] Code documented
 - [ ] README updated (if user-facing)
-- [ ] Architecture boundaries respected
+- [ ] Documentation under 20KB 📏
+- [ ] No docs in docs/manual/ 📏
+- [ ] Agent file under 25KB 📏
 - [ ] Memory files committed 🧠
 
 ---

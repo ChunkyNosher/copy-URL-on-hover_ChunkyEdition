@@ -399,19 +399,21 @@ function showValidationErrors(errors) {
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY for UI/UX Work:**
 
-**Memory MCP:**
-- **Agentic-Tools:** Search memories for UI patterns, store UX solutions
+**CRITICAL - During Implementation:**
+- **Context7:** Verify WebExtensions APIs DURING implementation ⭐
+- **Perplexity:** Research UI/UX patterns (paste code) ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Check code health ⭐
 
-**Critical MCPs:**
-- **ESLint:** Lint UI code ⭐
-- **Context7:** WebExtensions API docs ⭐
-- **Perplexity:** Research UI/UX patterns ⭐
+**CRITICAL - Testing:**
+- **Playwright Firefox/Chrome MCP:** Test UI BEFORE/AFTER changes ⭐
+- **Codecov:** Verify coverage ⭐
 
-**High Priority:**
-- **Playwright:** Test settings page
-- **GitHub:** Create UI PRs
+**Every Task:**
+- **Agentic-Tools:** Search memories, store UX solutions
 
 ---
 

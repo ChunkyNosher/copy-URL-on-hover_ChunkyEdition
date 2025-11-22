@@ -153,35 +153,40 @@ Only if:
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY MCP Usage During Architectural Work:**
 
-**Memory MCP (Use Every Task):**
-- **Agentic-Tools:** Search memories for context, store architectural decisions and patterns
+**CRITICAL - Use During Implementation:**
+- **Context7:** Verify API usage against current docs DURING implementation ⭐
+- **Perplexity:** Double-check architectural approach, verify best practices ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Identify architectural hotspots alongside ESLint ⭐
 
-**Critical MCPs (Always Use):**
-- **ESLint:** Lint all changes before committing ⭐
-- **Context7:** Get current API docs for proper usage ⭐
-- **Perplexity:** Research best practices and patterns ⭐
+**CRITICAL - Testing (BEFORE and AFTER):**
+- **Playwright Firefox MCP:** Test extension BEFORE changes (baseline) ⭐
+- **Playwright Chrome MCP:** Test extension BEFORE changes (baseline) ⭐
+- **Playwright Firefox MCP:** Test extension AFTER changes (verify fix) ⭐
+- **Playwright Chrome MCP:** Test extension AFTER changes (verify fix) ⭐
+- **Codecov:** Verify test coverage at end ⭐
 
-**High Priority:**
-- **GitHub:** Create issues, update PR status
-- **Playwright:** Test bug fixes
-- **CodeScene:** Identify architectural hotspots
+**Every Task:**
+- **Agentic-Tools:** Search memories before starting, store architectural decisions after
 
-### Bug Fix Workflow with MCPs
+### Enhanced Architectural Workflow
 
 ```
-1. Search memories for similar past bugs (Agentic-Tools MCP)
-2. Perplexity MCP: Research bug class and best practices
-3. Context7 MCP: Get current API documentation
-4. Analyze root cause (architectural level)
-5. Design architectural solution
-6. Implement fix with tests
-7. ESLint MCP: Lint all changes
-8. Playwright MCP: Verify fix with tests
-9. Store architectural decision as memory (Agentic-Tools MCP)
-10. GitHub MCP: Update issue with analysis
-11. Commit memory files (.agentic-tools-mcp/)
+1. Search memories (Agentic-Tools) | 2. Playwright Firefox/Chrome: Test BEFORE
+3. Perplexity: Research bug class + best practices (paste code)
+4. Context7: Get current API docs | 5. Analyze root cause (architectural)
+6. Design architectural solution
+7. Context7: Verify implementation vs docs
+8. Perplexity: Check for better approaches (paste relevant code)
+9. Implement fix with tests
+10. ESLint: Lint | 11. CodeScene: Identify hotspots
+12. Run all tests | 13. Playwright Firefox/Chrome: Test AFTER (verify)
+14. Codecov: Verify coverage
+15. Store decision (Agentic-Tools) | 16. GitHub: Update issue
+17. Commit memory (.agentic-tools-mcp/)
 ```
 
 ---

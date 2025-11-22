@@ -360,15 +360,22 @@ function shouldQuickTabBeVisible(quickTab, browserTab) {
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY MCP Usage for Quick Tab Work:**
 
-**Memory MCP:**
-- **Agentic-Tools:** Search memories for Quick Tab patterns, store complete solutions
+**CRITICAL - During Implementation:**
+- **Context7:** Verify WebExtensions APIs DURING implementation ⭐
+- **Perplexity:** Research patterns, verify approach (paste code) ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Check code health ⭐
 
-**Critical MCPs:**
-- **ESLint:** Lint all Quick Tab code ⭐
-- **Context7:** WebExtensions APIs ⭐
-- **Perplexity:** Research patterns ⭐
+**CRITICAL - Testing (BEFORE and AFTER):**
+- **Playwright Firefox MCP:** Test Quick Tab functionality BEFORE/AFTER ⭐
+- **Playwright Chrome MCP:** Test Quick Tab functionality BEFORE/AFTER ⭐
+- **Codecov:** Verify coverage ⭐
+
+**Every Task:**
+- **Agentic-Tools:** Search memories, store solutions
 
 ---
 
@@ -376,13 +383,19 @@ function shouldQuickTabBeVisible(quickTab, browserTab) {
 
 **End-to-End Tests:**
 
+- [ ] Context7/Perplexity verified implementation ⭐
+- [ ] Playwright Firefox/Chrome tested BEFORE/AFTER ⭐
 - [ ] Quick Tab creation works
 - [ ] Solo/Mute mutually exclusive
 - [ ] Container isolation enforced
 - [ ] Cross-tab sync <10ms
 - [ ] Manager displays correctly
 - [ ] Drag/resize functional
-- [ ] ESLint passes ⭐
+- [ ] All tests pass (npm run test, test:extension) ⭐
+- [ ] ESLint + CodeScene passed ⭐
+- [ ] Codecov verified coverage ⭐
+- [ ] Documentation under 20KB, not in docs/manual/ 📏
+- [ ] Agent file under 25KB 📏
 - [ ] Memory files committed 🧠
 
 ---

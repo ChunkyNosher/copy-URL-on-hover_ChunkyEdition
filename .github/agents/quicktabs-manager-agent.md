@@ -277,19 +277,21 @@ setupEventListeners() {
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY for Manager Work:**
 
-**Memory MCP (Use Every Task):**
-- **Agentic-Tools:** Search memories for manager patterns, store UI solutions
+**CRITICAL - During Implementation:**
+- **Context7:** Verify WebExtensions APIs DURING implementation ⭐
+- **Perplexity:** Research UI patterns (paste code) ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Check code health ⭐
 
-**Critical MCPs (Always Use):**
-- **ESLint:** Lint manager code ⭐
-- **Context7:** Get WebExtensions API docs ⭐
-- **Perplexity:** Research UI patterns ⭐
+**CRITICAL - Testing:**
+- **Playwright Firefox/Chrome MCP:** Test manager BEFORE/AFTER changes ⭐
+- **Codecov:** Verify coverage ⭐
 
-**High Priority:**
-- **Playwright:** Test manager interactions
-- **GitHub:** Create manager PRs
+**Every Task:**
+- **Agentic-Tools:** Search memories, store UI solutions
 
 ---
 

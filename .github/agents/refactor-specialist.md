@@ -244,38 +244,42 @@ strategies[type].handle();
 
 ## MCP Server Integration
 
-**12 MCP Servers Available:**
+**MANDATORY MCP Usage During Refactoring:**
 
-**Memory MCP (Use Every Task):**
-- **Agentic-Tools:** Search memories for refactoring patterns, store architectural decisions
-
-**Critical MCPs (Always Use):**
+**CRITICAL - Use During Implementation:**
+- **Context7:** Verify API usage for proper patterns DURING implementation ⭐
+- **Perplexity:** Research refactoring techniques, verify approach ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
 - **ESLint:** Maintain code quality ⭐
-- **Context7:** Get API docs for proper patterns ⭐
-- **Perplexity:** Research refactoring techniques ⭐
+- **CodeScene:** Identify refactoring targets and track improvement ⭐
 
-**High Priority:**
-- **CodeScene:** Identify refactoring targets
-- **Playwright:** Verify no behavior changes
-- **GitHub:** Create refactoring PRs
+**CRITICAL - Testing (BEFORE and AFTER):**
+- **Playwright Firefox MCP:** Test behavior BEFORE changes (baseline) ⭐
+- **Playwright Chrome MCP:** Test behavior BEFORE changes (baseline) ⭐
+- **Playwright Firefox MCP:** Test behavior AFTER changes (verify no regression) ⭐
+- **Playwright Chrome MCP:** Test behavior AFTER changes (verify no regression) ⭐
+- **Codecov:** Verify test coverage at end ⭐
 
-### Refactoring Workflow with MCPs
+**Every Task:**
+- **Agentic-Tools:** Search memories for patterns, store architectural decisions
+
+### Enhanced Refactoring Workflow
 
 ```
-1. Search memories for past refactorings (Agentic-Tools MCP)
-2. CodeScene MCP: Identify complexity hotspots
-3. Perplexity MCP: Research refactoring patterns
-4. Write characterization tests
-5. Design new architecture
-6. Implement alongside old code
-7. ESLint MCP: Maintain quality
-8. Migrate incrementally
-9. Playwright MCP: Verify behavior
-10. Store refactoring pattern as memory (Agentic-Tools MCP)
-11. Commit memory files (.agentic-tools-mcp/)
-10. Remove old implementation
-11. Document refactoring
-12. Commit memory files
+1. Search memories (Agentic-Tools) | 2. CodeScene: Identify hotspots
+3. Playwright Firefox/Chrome: Test BEFORE (baseline behavior)
+4. Perplexity: Research refactoring patterns (paste code)
+5. Context7: Get API docs | 6. Write characterization tests
+7. Design new architecture
+8. Context7: Verify implementation vs docs
+9. Perplexity: Check for better approaches (paste code)
+10. Implement alongside old code
+11. ESLint: Lint | 12. CodeScene: Track improvement
+13. Migrate incrementally | 14. Run all tests
+15. Playwright Firefox/Chrome: Test AFTER (verify behavior)
+16. Codecov: Verify coverage | 17. Remove old implementation
+18. Document (under 20KB, not docs/manual/)
+19. Store pattern (Agentic-Tools) | 20. Commit memory (.agentic-tools-mcp/)
 ```
 
 ---
