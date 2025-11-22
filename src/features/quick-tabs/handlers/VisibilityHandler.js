@@ -169,6 +169,71 @@ export class VisibilityHandler {
   }
 
   /**
+   * Handle restore of minimized Quick Tab
+   * @param {string} id - Quick Tab ID
+   */
+  async handleRestore(id) {
+    console.log('[VisibilityHandler] Handling restore for:', id);
+
+    // Restore from minimized manager
+    const restored = this.minimizedManager.restore(id);
+    if (!restored) {
+      console.warn('[VisibilityHandler] Tab not found in minimized manager:', id);
+      return;
+    }
+
+    // Broadcast restore to other tabs
+    this.broadcastManager.notifyRestore(id);
+
+    // Emit restore event
+    if (this.eventBus && this.Events) {
+      this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id });
+    }
+
+    // Update storage to reflect restored state
+    const saveId = this.generateSaveId();
+    this.trackPendingSave(saveId);
+
+    const tabWindow = this.quickTabsMap.get(id);
+    const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
+
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      try {
+        await browser.runtime.sendMessage({
+          action: 'UPDATE_QUICK_TAB_MINIMIZE',
+          id: id,
+          minimized: false,
+          cookieStoreId: cookieStoreId,
+          saveId: saveId,
+          timestamp: Date.now()
+        });
+        this.releasePendingSave(saveId);
+      } catch (err) {
+        console.error('[VisibilityHandler] Error updating restore state:', err);
+        this.releasePendingSave(saveId);
+      }
+    } else {
+      this.releasePendingSave(saveId);
+    }
+  }
+
+  /**
+   * Restore Quick Tab from minimized state (alias for handleRestore)
+   * @param {string} id - Quick Tab ID
+   */
+  restoreQuickTab(id) {
+    return this.handleRestore(id);
+  }
+
+  /**
+   * Restore Quick Tab by ID (backward compat alias)
+   * @param {string} id - Quick Tab ID
+   */
+  restoreById(id) {
+    return this.handleRestore(id);
+  }
+
+  /**
    * Handle Quick Tab focus (bring to front)
    * v1.6.0.12 - FIX: Save z-index to background for proper sync across tabs
    *

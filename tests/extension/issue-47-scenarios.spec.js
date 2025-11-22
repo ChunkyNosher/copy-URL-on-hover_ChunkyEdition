@@ -9,8 +9,7 @@
  * @see .github/COPILOT-TESTING-GUIDE.md
  */
 
-import { test, expect } from '@playwright/test';
-
+import { test, expect } from './fixtures.js';
 import { ExtensionTestHelper } from './helpers/extension-test-utils.js';
 
 /**
