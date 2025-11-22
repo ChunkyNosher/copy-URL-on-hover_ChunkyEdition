@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 /**
  * Extension testing fixture
- * Loads Chrome with extension pre-installed
+ * Loads Chrome with extension pre-installed in headless mode
  */
 export const test = base.extend({
   // eslint-disable-next-line no-empty-pattern
@@ -18,7 +18,8 @@ export const test = base.extend({
     const pathToExtension = path.join(__dirname, '../../dist');
 
     const context = await chromium.launchPersistentContext('', {
-      headless: false,
+      channel: 'chromium', // Required for headless extension support
+      headless: true,
       args: [
         `--disable-extensions-except=${pathToExtension}`,
         `--load-extension=${pathToExtension}`,
