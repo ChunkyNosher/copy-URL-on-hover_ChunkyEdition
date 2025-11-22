@@ -50,7 +50,6 @@ export default {
     {
       name: 'chromium-extension',
       use: {
-        ...devices['Desktop Chrome'],
         // Chrome-specific launch options for loading extension
         launchOptions: {
           args: [
