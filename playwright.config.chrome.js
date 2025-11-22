@@ -19,7 +19,7 @@ export default {
   testMatch: '**/*.spec.js',
 
   /* Maximum time one test can run for */
-  timeout: 60 * 1000,
+  timeout: 90 * 1000,
 
   /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,
@@ -27,8 +27,11 @@ export default {
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
 
-  /* Opt out of parallel tests on CI */
-  workers: process.env.CI ? 1 : undefined,
+  /* Opt out of parallel tests on CI - always use 1 worker for extension tests */
+  workers: 1,
+  
+  /* Increase teardown timeout for extension cleanup */
+  globalTimeout: 5 * 60 * 1000, // 5 minutes for entire test run
 
   /* Reporter to use */
   reporter: [

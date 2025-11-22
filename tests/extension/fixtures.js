@@ -53,7 +53,10 @@ export const test = base.extend({
       
     } else {
       // Chromium extension loading
-      context = await chromium.launchPersistentContext('', {
+      // Use unique temp directory for each test to avoid conflicts
+      const tmpDir = fs.mkdtempSync(path.join('/tmp', 'playwright-chrome-'));
+      
+      context = await chromium.launchPersistentContext(tmpDir, {
         channel: 'chromium', // Required for headless extension support
         headless: false, // Changed to false for consistency
         args: [
@@ -67,7 +70,20 @@ export const test = base.extend({
     }
 
     await use(context);
-    await context.close();
+    
+    // Ensure proper cleanup with timeout handling
+    try {
+      await context.close();
+      console.log('[Fixture] Context closed successfully');
+    } catch (error) {
+      console.error('[Fixture] Error closing context:', error);
+      // Force close if regular close fails
+      try {
+        await context.close({ runBeforeUnload: false });
+      } catch (e) {
+        console.error('[Fixture] Force close also failed:', e);
+      }
+    }
   },
 
   extensionId: async ({ context, browserName }, use) => {
