@@ -1,13 +1,18 @@
 // tests/extension/fixtures.js
-// eslint-disable-next-line no-unused-vars
-const { test: base, chromium } = require('@playwright/test');
-const path = require('path');
+import path from 'path';
+import playwright from 'playwright/test';
+import { fileURLToPath } from 'url';
+
+const { test: base, chromium, expect: baseExpect } = playwright;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Extension testing fixture
  * Loads Chrome with extension pre-installed
  */
-exports.test = base.extend({
+export const test = base.extend({
   // eslint-disable-next-line no-empty-pattern
   context: async ({}, use) => {
     const pathToExtension = path.join(__dirname, '../../dist');
@@ -35,4 +40,4 @@ exports.test = base.extend({
   }
 });
 
-exports.expect = base.expect;
+export const expect = baseExpect;
