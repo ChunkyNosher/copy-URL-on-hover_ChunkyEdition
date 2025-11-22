@@ -118,4 +118,9 @@
   // Expose test bridge on window
   window.__COPILOT_TEST_BRIDGE__ = TestBridgeProxy;
   console.log('[Test Bridge Page Proxy] ✓ Exposed at window.__COPILOT_TEST_BRIDGE__');
+  
+  // Dispatch event to signal bridge is ready (helps with timing)
+  window.dispatchEvent(new CustomEvent('copilot-bridge-ready', {
+    detail: { timestamp: Date.now() }
+  }));
 })();

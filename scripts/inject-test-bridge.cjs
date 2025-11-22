@@ -113,15 +113,28 @@ try {
     console.log('⏭️  Test bridge already injected in content.js');
   } else {
     // Create injection script that runs in page context
+    // Use DOM readiness checks as recommended by Perplexity research
     const injectionScript = `
 // === TEST BRIDGE PAGE INJECTION ===
 // Inject test bridge proxy into page context so tests can access it
-(function() {
-  const script = document.createElement('script');
-  script.textContent = ${JSON.stringify(pageProxyContent)};
-  (document.head || document.documentElement).appendChild(script);
-  script.remove();
-  console.log('[Content Script] Test bridge page proxy injected');
+// Uses DOM readiness check to ensure proper timing (document_end + readiness check)
+(function injectTestBridge() {
+  function doInject() {
+    const script = document.createElement('script');
+    script.textContent = ${JSON.stringify(pageProxyContent)};
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+    console.log('[Content Script] ✓ Test bridge page proxy injected at', document.readyState);
+  }
+  
+  // Inject immediately if DOM is ready (document_end should guarantee this)
+  if (document.readyState === 'loading') {
+    // Fallback if somehow content script runs before DOM is ready
+    document.addEventListener('DOMContentLoaded', doInject);
+  } else {
+    // DOM is already ready (interactive or complete)
+    doInject();
+  }
 })();
 
 // === TEST BRIDGE CONTENT HANDLER ===
