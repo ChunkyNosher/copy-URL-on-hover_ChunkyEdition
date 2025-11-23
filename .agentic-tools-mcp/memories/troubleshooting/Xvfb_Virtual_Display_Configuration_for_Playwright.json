@@ -1,0 +1,8 @@
+{
+  "id": "f63e964c-4767-4a79-86f6-1211e6be0b59",
+  "title": "Xvfb Virtual Display Configuration for Playwright",
+  "details": "## Xvfb Configuration for GitHub Actions Playwright Tests\n\n### Critical Findings from Perplexity Research\n- Industry standard wait time: 3+ seconds (not 2 seconds)\n- Must use health check with `xdpyinfo` instead of blind `sleep`\n- Critical flag: `--disable-dev-shm-usage` prevents shared memory exhaustion\n\n### Implemented Solution\n1. **X11 Dependencies**: xvfb, x11-utils, x11-xserver-utils, fonts packages\n2. **Xvfb Flags**: `-ac -nolisten tcp -dpi 96 +extension RANDR`\n3. **Health Check**: Poll `xdpyinfo -display :99` for up to 30 seconds\n4. **Verification**: Check display socket exists at `/tmp/.X11-unix/X99`\n5. **Pre-flight Test**: Verify display dimensions are 1920x1080\n\n### Chromium Launch Flags for Xvfb\nEssential flags discovered through Perplexity research:\n- `--use-gl=swiftshader` - Software renderer (bypasses GPU)\n- `--disable-accelerated-2d-canvas` - Disable 2D acceleration\n- `--disable-accelerated-video-decode` - Disable video acceleration\n- `--disable-gl-drawing-for-tests` - Prevent OpenGL initialization\n- `--disable-dev-shm-usage` - **CRITICAL** prevents /dev/shm exhaustion\n- `--window-size=1920,1080` - Match Xvfb screen size\n\n### Browser Launch Timeout\n- Increased from 60s to 90s to match test timeout\n- Industry research shows virtual displays need more time",
+  "category": "troubleshooting",
+  "dateCreated": "2025-11-23T04:00:56.442Z",
+  "dateUpdated": "2025-11-23T04:00:56.442Z"
+}

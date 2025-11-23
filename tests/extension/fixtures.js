@@ -1,8 +1,8 @@
 // tests/extension/fixtures.js
-import path from 'path';
-import playwright from 'playwright/test';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import playwright from 'playwright/test';
 
 const { test: base, chromium, firefox, expect: baseExpect } = playwright;
 
@@ -142,12 +142,12 @@ export const test = base.extend({
     } else {
       // Chromium extension ID extraction from service worker
       try {
-        let [background] = context.serviceWorkers();
+        let background = context.serviceWorkers()[0];
         if (!background) {
           // Wait for service worker with timeout
           background = await Promise.race([
             context.waitForEvent('serviceworker'),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker timeout')), 10000))
+            new Promise((_resolve, reject) => setTimeout(() => reject(new Error('Service worker timeout')), 10000))
           ]);
         }
 
