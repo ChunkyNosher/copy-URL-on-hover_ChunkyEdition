@@ -1,0 +1,8 @@
+{
+  "id": "4a2e91f0-bd1c-4cbb-ab87-6122dab7e7ab",
+  "title": "Playwright Test Fixes Implementation Summary",
+  "details": "## Playwright Testing Issues - Complete Fix Attempt\n\n### Two Critical Issues Addressed\n1. **Xvfb Browser Launch Timeout** - 90s hang in CI\n2. **Test Bridge Not Exposing** - CSP blocking injection\n\n### Implementation Summary\n\n**Xvfb Fixes**:\n- Added X11 dependencies (11 packages)\n- Implemented health check with xdpyinfo (30s timeout)\n- Enhanced Xvfb flags: -ac, -nolisten tcp, -dpi 96, +extension RANDR\n- Pre-flight display testing\n- Critical Chromium flags: --use-gl=swiftshader, --disable-dev-shm-usage\n- Increased browser launch timeout: 60s → 90s\n\n**Test Bridge Fixes**:\n- Replaced script.textContent with Blob URL (CSP bypass)\n- Added content script marker for verification\n- Defensive polling with retry logic (500ms max)\n- Enhanced logging for diagnostics\n- manifest.json all_frames: false → true\n\n### Research Validation\n- Perplexity confirmed Xvfb 3s+ wait standard\n- Perplexity verified Blob URLs bypass CSP\n- All solutions Manifest V2 compatible\n\n### Current Status\n- ✅ Fixes implemented and committed\n- ✅ Extension builds successfully\n- ❌ Tests hang locally (unable to verify)\n- ❓ Need CI environment testing\n\n### Detailed Documentation\nSee: `docs/implementation-summaries/PLAYWRIGHT-TEST-FIXES-ATTEMPT-SUMMARY.md`\n\n### Next Actions Required\n1. Run tests in GitHub Actions CI\n2. Manual browser console verification\n3. Add more diagnostic logging if still failing\n4. Consider fallback: extension URL or postMessage",
+  "category": "project-context",
+  "dateCreated": "2025-11-23T04:02:50.501Z",
+  "dateUpdated": "2025-11-23T04:02:50.501Z"
+}
