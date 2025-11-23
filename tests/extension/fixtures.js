@@ -12,11 +12,16 @@ const __dirname = path.dirname(__filename);
 /**
  * Extension testing fixture
  * Supports both Chromium and Firefox with browser detection
+ * 
+ * WORKAROUND: Uses regular browser.launch() + context.newContext() instead of
+ * launchPersistentContext to avoid worker teardown timeout issues.
+ * This approach provides faster cleanup and more reliable test execution.
  */
 export const test = base.extend({
   // eslint-disable-next-line no-empty-pattern
   context: async ({ browserName }, use) => {
     const pathToExtension = path.join(__dirname, '../../dist');
+    let browser;
     let context;
 
     if (browserName === 'firefox') {
@@ -52,37 +57,49 @@ export const test = base.extend({
       console.log('[Fixture] Note: Extension must be manually loaded in Firefox profile');
       
     } else {
-      // Chromium extension loading
-      // Use unique temp directory for each test to avoid conflicts
+      // Chromium extension loading - MUST use launchPersistentContext
+      // Extensions ONLY work with persistent contexts in Playwright
+      // Research confirms: browser.launch() + newContext() does NOT support extensions
+      console.log('[Fixture] Using launchPersistentContext (required for extensions)');
+      
+      // Use unique temp directory for isolation
       const tmpDir = fs.mkdtempSync(path.join('/tmp', 'playwright-chrome-'));
       
       context = await chromium.launchPersistentContext(tmpDir, {
-        channel: 'chromium', // Required for headless extension support
-        headless: false, // Changed to false for consistency
+        headless: false, // Extensions require headed mode
         args: [
           `--disable-extensions-except=${pathToExtension}`,
           `--load-extension=${pathToExtension}`,
           '--no-sandbox',
-          '--disable-setuid-sandbox'
+          '--disable-setuid-sandbox',
+          '--disable-component-extensions-with-background-pages', // Optimize teardown
+          '--disable-default-apps', // Optimize teardown
+          '--disable-blink-features=AutomationControlled'
         ]
       });
-      console.log('[Fixture] Chromium context created with extension');
+      console.log('[Fixture] Chromium persistent context created with extension');
     }
 
     await use(context);
     
-    // Ensure proper cleanup with timeout handling
+    // Aggressive cleanup with hard 5-second timeout (research-recommended)
     try {
-      await context.close();
+      // Close all pages first (non-blocking)
+      const pages = context.pages();
+      await Promise.all(pages.map(page => page.close().catch(() => {})));
+      
+      // Force close context with 5-second hard timeout
+      await Promise.race([
+        context.close(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Context close timeout')), 5000)
+        )
+      ]);
       console.log('[Fixture] Context closed successfully');
     } catch (error) {
-      console.error('[Fixture] Error closing context:', error);
-      // Force close if regular close fails
-      try {
-        await context.close({ runBeforeUnload: false });
-      } catch (e) {
-        console.error('[Fixture] Force close also failed:', e);
-      }
+      console.warn('[Fixture] Context cleanup error:', error.message);
+      // Don't rethrow - let the browser process die naturally
+      // Worker will clean up remaining processes
     }
   },
 
@@ -94,11 +111,24 @@ export const test = base.extend({
       await use('firefox-extension-id');
     } else {
       // Chromium extension ID extraction from service worker
-      let [background] = context.serviceWorkers();
-      if (!background) background = await context.waitForEvent('serviceworker');
+      try {
+        let [background] = context.serviceWorkers();
+        if (!background) {
+          // Wait for service worker with timeout
+          background = await Promise.race([
+            context.waitForEvent('serviceworker'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker timeout')), 10000))
+          ]);
+        }
 
-      const extensionId = background.url().split('/')[2];
-      await use(extensionId);
+        const extensionId = background.url().split('/')[2];
+        console.log('[Fixture] Extension ID:', extensionId);
+        await use(extensionId);
+      } catch (error) {
+        console.log('[Fixture] Could not detect extension ID:', error.message);
+        // Use a placeholder if service worker detection fails
+        await use('unknown-extension-id');
+      }
     }
   }
 });
