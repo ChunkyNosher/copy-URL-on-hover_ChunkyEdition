@@ -166,6 +166,12 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
         forceNew: true  // Create new instance for testing
       });
 
+      console.log('[TEST] managerA:', managerA);
+      console.log('[TEST] managerA.initialized:', managerA?.initialized);
+      console.log('[TEST] managerA.createHandler:', managerA?.createHandler);
+      console.log('[TEST] managerA.windowFactory:', managerA?.windowFactory);
+      console.log('[TEST] mockWindowFactory:', mockWindowFactory);
+
       expect(managerA).toBeDefined();
       expect(typeof managerA.createQuickTab).toBe('function');
 
@@ -179,8 +185,15 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
         cookieStoreId: 'firefox-default'
       };
 
+      console.log('[TEST] Calling createQuickTab with options:', qtOptions);
       const tabWindow = await managerA.createQuickTab(qtOptions);
+      console.log('[TEST] createQuickTab returned:', tabWindow);
+      console.log('[TEST] mockWindowFactory.mock.calls:', mockWindowFactory.mock.calls);
+      console.log('[TEST] mockWindowFactory was called:', mockWindowFactory.mock.calls.length, 'times');
 
+      // Verify mock was called
+      expect(mockWindowFactory).toHaveBeenCalled();
+      
       // Verify Quick Tab was created
       expect(tabWindow).toBeDefined();
       expect(tabWindow.id).toBeDefined();
