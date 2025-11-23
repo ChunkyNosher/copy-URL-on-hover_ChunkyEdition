@@ -69,7 +69,9 @@ export const test = base.extend({
       console.log('[Fixture] Temp directory:', tmpDir);
       
       context = await chromium.launchPersistentContext(tmpDir, {
-        headless: false, // Extensions require headed mode
+        // Use new Chrome headless mode which supports extensions
+        // CI-compatible: Works with xvfb-run or direct headless
+        headless: true, // New headless mode (Chrome 109+) supports extensions
         timeout: 60000, // Increased launch timeout for CI
         slowMo: 100, // Slow down operations slightly for CI stability
         args: [
