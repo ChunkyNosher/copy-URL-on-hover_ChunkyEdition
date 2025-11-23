@@ -163,10 +163,10 @@ Only if:
 - **CodeScene:** Identify architectural hotspots alongside ESLint ⭐
 
 **CRITICAL - Testing (BEFORE and AFTER):**
-- **Playwright Firefox MCP:** Test extension BEFORE changes (baseline) ⭐
-- **Playwright Chrome MCP:** Test extension BEFORE changes (baseline) ⭐
-- **Playwright Firefox MCP:** Test extension AFTER changes (verify fix) ⭐
-- **Playwright Chrome MCP:** Test extension AFTER changes (verify fix) ⭐
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify fix) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify fix) ⭐
 - **Codecov:** Verify test coverage at end ⭐
 
 **Every Task:**

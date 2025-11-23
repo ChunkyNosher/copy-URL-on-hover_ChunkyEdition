@@ -221,7 +221,7 @@ async function handleFeatureRequest(request) {
 
 **Coverage Target:** 80% minimum, 90%+ for critical paths
 
-**Use Playwright MCP:** Test browser-specific functionality
+**Use Jest unit tests:** Test browser-specific functionality
 
 ### Phase 5: Documentation
 
@@ -261,10 +261,10 @@ async function handleFeatureRequest(request) {
 - **CodeScene:** Check code health alongside ESLint ⭐
 
 **CRITICAL - Testing (BEFORE and AFTER):**
-- **Playwright Firefox MCP:** Test extension BEFORE changes (baseline) ⭐
-- **Playwright Chrome MCP:** Test extension BEFORE changes (baseline) ⭐
-- **Playwright Firefox MCP:** Test extension AFTER changes (verify feature) ⭐
-- **Playwright Chrome MCP:** Test extension AFTER changes (verify feature) ⭐
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify feature) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify feature) ⭐
 - **Codecov:** Verify test coverage at end ⭐
 
 **Every Task:**

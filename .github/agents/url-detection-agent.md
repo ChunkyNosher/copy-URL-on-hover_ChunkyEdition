@@ -473,7 +473,7 @@ function processUrl(urlString) {
    ```
 
 4. **Test with real URLs**
-   - Use Playwright MCP for testing
+   - Use Jest unit tests for testing
 
 5. **Document in supported-sites.md**
 

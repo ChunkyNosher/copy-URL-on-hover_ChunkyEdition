@@ -238,7 +238,7 @@ strategies[type].handle();
 - [ ] Architecture boundaries respected
 - [ ] Complexity metrics improved
 
-**Use Playwright MCP:** End-to-end verification
+**Use Jest unit tests:** End-to-end verification
 
 ---
 
@@ -254,10 +254,10 @@ strategies[type].handle();
 - **CodeScene:** Identify refactoring targets and track improvement ⭐
 
 **CRITICAL - Testing (BEFORE and AFTER):**
-- **Playwright Firefox MCP:** Test behavior BEFORE changes (baseline) ⭐
-- **Playwright Chrome MCP:** Test behavior BEFORE changes (baseline) ⭐
-- **Playwright Firefox MCP:** Test behavior AFTER changes (verify no regression) ⭐
-- **Playwright Chrome MCP:** Test behavior AFTER changes (verify no regression) ⭐
+- **Jest unit tests:** Test behavior BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test behavior BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test behavior AFTER changes (verify no regression) ⭐
+- **Jest unit tests:** Test behavior AFTER changes (verify no regression) ⭐
 - **Codecov:** Verify test coverage at end ⭐
 
 **Every Task:**
