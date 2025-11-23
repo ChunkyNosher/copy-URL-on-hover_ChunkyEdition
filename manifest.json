@@ -10,7 +10,6 @@
     "webRequest",
     "webRequestBlocking",
     "<all_urls>",
-    "contextualIdentities",
     "cookies",
     "downloads"
   ],
@@ -32,18 +31,23 @@
 
   "options_ui": {
     "page": "options_page.html",
-    "browser_style": true
+    "open_in_tab": true
   },
 
   "background": {
-    "scripts": ["dist/background.js"],
-    "persistent": true
+    "scripts": [
+      "dist/browser-polyfill.min.js",
+      "dist/background.js"
+    ]
   },
 
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["dist/content.js"],
+      "js": [
+        "dist/browser-polyfill.min.js",
+        "dist/content.js"
+      ],
       "run_at": "document_end",
       "all_frames": true
     }

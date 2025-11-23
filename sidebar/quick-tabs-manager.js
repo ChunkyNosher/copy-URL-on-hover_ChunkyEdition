@@ -44,12 +44,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 /**
  * Load Firefox Container Tab information
  * Uses contextualIdentities API to get container names, icons, colors
+ * Cross-browser: Falls back gracefully if containers not supported (Chrome)
  */
 async function loadContainerInfo() {
   try {
-    // Check if contextualIdentities API is available
+    // Cross-browser: Check if contextualIdentities API is available
+    // Firefox: Native container support
+    // Chrome: No container support, use default
     if (typeof browser.contextualIdentities === 'undefined') {
-      console.warn('Contextual Identities API not available');
+      console.warn('[Cross-browser] Contextual Identities API not available (Chrome/Edge)');
       // Fallback: Only show default container
       containersData['firefox-default'] = {
         name: 'Default',

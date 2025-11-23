@@ -14,6 +14,7 @@
  */
 
 import { PanelUIBuilder } from './PanelUIBuilder.js';
+import { getContainerAPI } from '../../../shims/container-shim.js';
 import { debug } from '../../../utils/debug.js';
 
 /**
@@ -38,6 +39,8 @@ export class PanelContentManager {
     this.currentContainerId = dependencies.currentContainerId;
     this.eventListeners = [];
     this.isOpen = false;
+    // Cross-browser container API (native Firefox, shimmed Chrome)
+    this.containerAPI = getContainerAPI();
   }
 
   /**
@@ -112,14 +115,12 @@ export class PanelContentManager {
     };
 
     try {
-      if (
-        this.currentContainerId === 'firefox-default' ||
-        typeof browser.contextualIdentities === 'undefined'
-      ) {
+      // Cross-browser: Check if containers are supported
+      if (this.currentContainerId === 'firefox-default' || !this.containerAPI.isSupported()) {
         return defaultInfo;
       }
 
-      const containers = await browser.contextualIdentities.query({});
+      const containers = await this.containerAPI.query({});
       const container = containers.find(c => c.cookieStoreId === this.currentContainerId);
 
       if (!container) return defaultInfo;
