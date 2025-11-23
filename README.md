@@ -1,6 +1,8 @@
-# Firefox Extension: Copy URL on Hover
+# Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.0.11** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and Persistent Floating Panel Manager.
+**Version 1.6.1.1** - A feature-rich **Firefox/Chrome/Chromium** extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **Firefox Container isolation**, and Persistent Floating Panel Manager.
+
+**🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave, Opera, and other Chromium-based browsers using Manifest v2 with webextension-polyfill.
 
 **🔧 v1.6.0 Status:** Architecture refactoring Phase 1 COMPLETE ✅ (Domain + Storage layers with 96% coverage)
 
@@ -150,10 +152,41 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 
 ### Manual Installation (Development)
 
+**Firefox:**
 1. Navigate to `about:debugging` in Firefox
 2. Click "This Firefox" → "Load Temporary Add-on"
 3. Select `manifest.json` from the extension folder
 4. Extension loaded (removed on browser restart)
+
+**Chrome/Chromium:**
+1. Navigate to `chrome://extensions/` 
+2. Enable "Developer mode" (top-right toggle)
+3. Click "Load unpacked"
+4. Select the extension's `dist/` directory
+
+## 🌐 Browser Compatibility
+
+### Fully Supported
+✅ **Firefox** - All features including Firefox Container isolation  
+✅ **Zen Browser** - Full Firefox-based feature set  
+✅ **Chrome/Chromium** - Core features (containers degrade to single default container)  
+✅ **Edge** - Chrome-compatible, all core features work  
+✅ **Brave** - Chrome-compatible, all core features work  
+✅ **Opera** - Chrome-compatible, all core features work
+
+### Feature Matrix
+
+| Feature | Firefox/Zen | Chrome/Edge/Brave/Opera |
+|---------|-------------|------------------------|
+| Copy URL (Y key) | ✅ | ✅ |
+| Copy Text (X key) | ✅ | ✅ |
+| Quick Tabs | ✅ | ✅ |
+| Solo/Mute | ✅ | ✅ (global only) |
+| Container Isolation | ✅ | ⚠️ Single default container |
+| Quick Tabs Manager | ✅ | ✅ |
+| Settings Persistence | ✅ | ✅ |
+
+**Note:** Firefox Containers are a Firefox-exclusive feature. On Chrome/Chromium browsers, all tabs are treated as a single "default" container, and Solo/Mute works globally rather than per-container.
 
 ## 📖 Usage
 
