@@ -52,6 +52,60 @@ jobs:
         env:
           NODE_ENV: development
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: |
+            ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-browsers-${{ runner.os }}-
+
+      # ====================================================================
+      # NEW STEP 4.5: Install Playwright Browsers (CRITICAL)
+      # ====================================================================
+      - name: Install Playwright browsers
+        run: |
+          echo "=========================================="
+          echo "Installing Playwright Browsers"
+          echo "=========================================="
+          
+          # Install Chromium (required for Chrome tests)
+          npx playwright install chromium --with-deps
+
+          # IMPORTANT: Verify browsers are available to MCP
+            if [ -d "$HOME/.cache/ms-playwright/chromium-"* ]; then
+              echo "✓ Chromium available for Playwright MCP"
+            else
+              echo "✗ ERROR: Chromium not found - browsers must be installed first!"
+              exit 1
+            fi
+          
+          # Install Firefox (required for Firefox tests)
+          npx playwright install firefox --with-deps
+          
+          # Verify installations
+          if [ -d "$HOME/.cache/ms-playwright/chromium-"* ]; then
+            CHROMIUM_VERSION=$(ls -d $HOME/.cache/ms-playwright/chromium-* | head -1 | sed 's/.*chromium-//')
+            echo "✓ Chromium $CHROMIUM_VERSION installed"
+          else
+            echo "✗ Chromium installation failed"
+            exit 1
+          fi
+          
+          if [ -d "$HOME/.cache/ms-playwright/firefox-"* ]; then
+            FIREFOX_VERSION=$(ls -d $HOME/.cache/ms-playwright/firefox-* | head -1 | sed 's/.*firefox-//')
+            echo "✓ Firefox $FIREFOX_VERSION installed"
+          else
+            echo "✗ Firefox installation failed"
+            exit 1
+          fi
+          
+          echo "=========================================="
+          echo "✓ All browsers installed successfully!"
+          echo "=========================================="
+
       # ====================================================================
       # NEW STEP: Pre-Install Playwright MCP Package
       # ====================================================================
@@ -133,10 +187,6 @@ jobs:
 
       - name: Install Xvfb
         run: sudo apt-get install -y xvfb
-      
-      - name: Run tests with Xvfb
-        run: xvfb-run --auto-servernum npm run test:extension:chrome
-        continue-on-error: true
 
       - name: Start Xvfb on display :99
         run: |
@@ -547,6 +597,45 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
+      - name: Verify Playwright browsers before tests
+        run: |
+          echo "=========================================="
+          echo "Verifying Playwright Browser Availability"
+          echo "=========================================="
+          
+          # Check Chromium
+          CHROMIUM_PATH="$HOME/.cache/ms-playwright/chromium-*/chrome-linux/chrome"
+          if ls $CHROMIUM_PATH 1> /dev/null 2>&1; then
+            echo "✓ Chromium executable found"
+            ls -lh $CHROMIUM_PATH | head -1
+          else
+            echo "✗ Chromium executable NOT found"
+            echo "Expected location: $CHROMIUM_PATH"
+            exit 1
+          fi
+          
+          # Check Firefox
+          FIREFOX_PATH="$HOME/.cache/ms-playwright/firefox-*/firefox/firefox"
+          if ls $FIREFOX_PATH 1> /dev/null 2>&1; then
+            echo "✓ Firefox executable found"
+            ls -lh $FIREFOX_PATH | head -1
+          else
+            echo "✗ Firefox executable NOT found"
+            echo "Expected location: $FIREFOX_PATH"
+            exit 1
+          fi
+          
+          # Test Playwright can detect browsers
+          if npx playwright install --dry-run 2>&1 | grep -q "is already installed"; then
+            echo "✓ Playwright recognizes installed browsers"
+          else
+            echo "⚠ Playwright may need to re-download browsers"
+          fi
+          
+          echo "=========================================="
+          echo "✓ All browsers verified and ready!"
+          echo "=========================================="
+
       # ====================================================================
       # STEP 9: Run Tests
       # ====================================================================
@@ -675,6 +764,10 @@ jobs:
           echo "=========================================="
           echo "✓✓✓ Test Bridge Injection Complete ✓✓✓"
           echo "=========================================="
+
+      - name: Run tests with Xvfb
+        run: xvfb-run --auto-servernum npm run test:extension:chrome
+        continue-on-error: true
 
       # ====================================================================
       # NEW STEP: Create Firefox Profile with Extension Pre-installed
