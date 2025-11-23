@@ -19,7 +19,7 @@ export default {
   testMatch: '**/*.spec.js',
 
   /* Maximum time one test can run for */
-  timeout: 180 * 1000, // Increased to 180s (3 minutes) for CI
+  timeout: 90 * 1000, // 90 seconds per test
 
   /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,

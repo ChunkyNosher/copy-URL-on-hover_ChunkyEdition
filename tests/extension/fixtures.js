@@ -24,6 +24,18 @@ export const test = base.extend({
     let browser;
     let context;
 
+    // Validate extension exists before attempting to load
+    console.log('[Fixture] Extension path:', pathToExtension);
+    if (!fs.existsSync(pathToExtension)) {
+      throw new Error(`Extension path does not exist: ${pathToExtension}`);
+    }
+    const manifestPath = path.join(pathToExtension, 'manifest.json');
+    if (!fs.existsSync(manifestPath)) {
+      throw new Error(`manifest.json not found in: ${pathToExtension}`);
+    }
+    console.log('[Fixture] ✓ Extension validated');
+    console.log('[Fixture] Extension files:', fs.readdirSync(pathToExtension).slice(0, 10).join(', '));
+
     if (browserName === 'firefox') {
       // Firefox extension loading requires different approach
       // Using persistent context with Firefox profile
@@ -65,13 +77,31 @@ export const test = base.extend({
       // Use unique temp directory for isolation
       const tmpDir = fs.mkdtempSync(path.join('/tmp', 'playwright-chrome-'));
       
-      console.log('[Fixture] Extension path:', pathToExtension);
       console.log('[Fixture] Temp directory:', tmpDir);
+      
+      // Clean any existing session state that might cause hangs
+      try {
+        const sessionFiles = [
+          path.join(tmpDir, 'sessionstore-backups'),
+          path.join(tmpDir, 'sessionCheckpoints.json'),
+          path.join(tmpDir, 'sessionstore.jsonlz4')
+        ];
+        for (const file of sessionFiles) {
+          if (fs.existsSync(file)) {
+            fs.rmSync(file, { recursive: true, force: true });
+          }
+        }
+        console.log('[Fixture] Cleaned session state files');
+      } catch (error) {
+        console.log('[Fixture] No session files to clean (fresh start)');
+      }
+      
+      console.log('[Fixture] Launching Chromium persistent context...');
       
       context = await chromium.launchPersistentContext(tmpDir, {
         headless: false, // Extensions require headed mode
-        timeout: 180000, // Increased to 180s (3 minutes) for CI environment
-        slowMo: 50, // Reduced from 100 for faster execution
+        timeout: 60000, // Reduced to 60s - should be sufficient per research
+        slowMo: 0, // No slowdown for CI
         args: [
           // Extension loading (REQUIRED - must be first)
           `--disable-extensions-except=${pathToExtension}`,
@@ -86,16 +116,21 @@ export const test = base.extend({
           '--disable-gpu',
           '--use-gl=swiftshader',
           
+          // Component optimization (prevents background page hangs)
+          '--disable-component-extensions-with-background-pages',
+          
           // Basic CI optimizations
-          '--disable-features=TranslateUI,DevToolsDebuggingRestrictions',
+          '--disable-features=TranslateUI',
           '--disable-blink-features=AutomationControlled',
           
           // Display
           '--window-size=1920,1080'
         ]
       }).catch((error) => {
-        console.error('[Fixture] Browser launch failed:', error.message);
-        console.error('[Fixture] Full error:', error);
+        console.error('[Fixture] ✗ Browser launch failed:', error.message);
+        console.error('[Fixture] Extension path was:', pathToExtension);
+        console.error('[Fixture] Temp directory was:', tmpDir);
+        console.error('[Fixture] Full error:', error.stack);
         throw error;
       });
       console.log('[Fixture] Chromium persistent context created with extension');
