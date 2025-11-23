@@ -13,7 +13,12 @@
 
 // Inject test bridge proxy into page context
 (() => {
-  console.log('[Test Bridge Page Proxy] Initializing...');
+  'use strict';
+  
+  console.log('[TEST BRIDGE PAGE PROXY] Starting execution');
+  console.log('[TEST BRIDGE PAGE PROXY] typeof window:', typeof window);
+  console.log('[TEST BRIDGE PAGE PROXY] document.readyState:', document.readyState);
+  console.log('[TEST BRIDGE PAGE PROXY] location.href:', window.location.href);
   
   /**
    * Test Bridge Page Proxy
@@ -117,10 +122,17 @@
   
   // Expose test bridge on window
   window.__COPILOT_TEST_BRIDGE__ = TestBridgeProxy;
-  console.log('[Test Bridge Page Proxy] ✓ Exposed at window.__COPILOT_TEST_BRIDGE__');
+  
+  console.log('[TEST BRIDGE PAGE PROXY] ✓ Bridge exposed to window');
+  console.log('[TEST BRIDGE PAGE PROXY] typeof window.__COPILOT_TEST_BRIDGE__:', 
+              typeof window.__COPILOT_TEST_BRIDGE__);
+  console.log('[TEST BRIDGE PAGE PROXY] Bridge methods:', 
+              Object.keys(window.__COPILOT_TEST_BRIDGE__));
   
   // Dispatch event to signal bridge is ready (helps with timing)
   window.dispatchEvent(new CustomEvent('copilot-bridge-ready', {
     detail: { timestamp: Date.now() }
   }));
+  
+  console.log('[TEST BRIDGE PAGE PROXY] ✓ Initialization complete');
 })();

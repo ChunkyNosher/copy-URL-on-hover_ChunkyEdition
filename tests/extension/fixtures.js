@@ -1,8 +1,8 @@
 // tests/extension/fixtures.js
-import path from 'path';
-import playwright from 'playwright/test';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import playwright from 'playwright/test';
 
 const { test: base, chromium, firefox, expect: baseExpect } = playwright;
 
@@ -70,21 +70,37 @@ export const test = base.extend({
       
       context = await chromium.launchPersistentContext(tmpDir, {
         headless: false, // Extensions require headed mode
-        timeout: 60000, // Increased launch timeout for CI
+        timeout: 90000, // Increased to 90s to match test timeout (critical for Xvfb)
         slowMo: 100, // Slow down operations slightly for CI stability
         args: [
+          // Extension loading
           `--disable-extensions-except=${pathToExtension}`,
           `--load-extension=${pathToExtension}`,
+          
+          // Security/sandboxing (required for CI)
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-gpu', // Required for Xvfb/virtual display
-          '--disable-features=DevToolsDebuggingRestrictions', // Required for Chromium 136+
-          '--disable-dev-shm-usage', // Prevent shared memory issues in CI
-          '--disable-dbus', // Disable DBus to prevent connection errors in CI
+          
+          // Xvfb compatibility (CRITICAL for virtual display)
+          '--disable-gpu', // Disable GPU acceleration
+          '--use-gl=swiftshader', // Software renderer (bypasses GPU issues)
+          '--disable-accelerated-2d-canvas', // Disable 2D acceleration
+          '--disable-accelerated-video-decode', // Disable video decode acceleration
+          '--disable-gl-drawing-for-tests', // Prevent OpenGL initialization
           '--disable-software-rasterizer', // Disable software rasterizer
+          
+          // CI environment optimizations
+          '--disable-dev-shm-usage', // CRITICAL: Prevents /dev/shm exhaustion
+          '--disable-dbus', // Disable DBus to prevent connection errors in CI
+          '--disable-features=DevToolsDebuggingRestrictions', // Required for Chromium 136+
           '--disable-component-extensions-with-background-pages', // Optimize teardown
           '--disable-default-apps', // Optimize teardown
-          '--disable-blink-features=AutomationControlled'
+          '--disable-blink-features=AutomationControlled',
+          
+          // Display configuration
+          '--window-size=1920,1080', // Match Xvfb screen size
+          '--disable-web-security', // Helps with extension CSP issues
+          '--allow-insecure-localhost'
         ]
       }).catch((error) => {
         console.error('[Fixture] Browser launch failed:', error.message);
@@ -126,12 +142,12 @@ export const test = base.extend({
     } else {
       // Chromium extension ID extraction from service worker
       try {
-        let [background] = context.serviceWorkers();
+        let background = context.serviceWorkers()[0];
         if (!background) {
           // Wait for service worker with timeout
           background = await Promise.race([
             context.waitForEvent('serviceworker'),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker timeout')), 10000))
+            new Promise((_resolve, reject) => setTimeout(() => reject(new Error('Service worker timeout')), 10000))
           ]);
         }
 
