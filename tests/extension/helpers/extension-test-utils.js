@@ -26,29 +26,53 @@ export class ExtensionTestHelper {
 
   /**
    * Wait for test bridge to be available in the page
+   * Uses improved polling with Playwright's auto-waiting capability
    * @param {number} timeoutMs - Timeout in milliseconds (default: 10000)
-   * @returns {Promise<boolean>} True if available, false if timeout
+   * @returns {Promise<boolean>} True if available, throws error if timeout
    */
   async waitForTestBridge(timeoutMs = 10000) {
-    const startTime = Date.now();
+    console.log('[ExtensionTestHelper] Waiting for test bridge...');
     
-    while (Date.now() - startTime < timeoutMs) {
-      // eslint-disable-next-line max-depth
-      const bridgeFound = await this._checkBridgeAvailability();
-      if (bridgeFound) {
-        console.log('[ExtensionTestHelper] Test bridge available');
-        return true;
-      }
+    try {
+      // Use Playwright's evaluate with Promise-based polling (recommended approach)
+      await this.page.evaluate(async (timeout) => {
+        const startTime = Date.now();
+        
+        while (Date.now() - startTime < timeout) {
+          if (typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined') {
+            console.log('[Page Context] Test bridge found!');
+            return true;
+          }
+          
+          // Poll every 50ms for faster detection
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+        throw new Error(`Test bridge not available after ${timeout}ms`);
+      }, timeoutMs);
       
-      await this.page.waitForTimeout(100);
+      console.log('[ExtensionTestHelper] ✓ Test bridge available');
+      return true;
+    } catch (error) {
+      console.error('[ExtensionTestHelper] ✗ Test bridge not available:', error.message);
+      
+      // Log diagnostic information
+      const diagnostics = await this.page.evaluate(() => {
+        return {
+          windowKeys: Object.keys(window).filter(k => k.includes('COPILOT') || k.includes('TEST')),
+          hasDocument: typeof document !== 'undefined',
+          documentReady: document.readyState,
+          url: window.location.href
+        };
+      }).catch(() => ({}));
+      
+      console.error('[ExtensionTestHelper] Diagnostics:', diagnostics);
+      throw error;
     }
-    
-    console.error('[ExtensionTestHelper] Test bridge not available after timeout');
-    return false;
   }
 
   /**
-   * Helper to check if test bridge is available
+   * Helper to check if test bridge is available (synchronous check)
    * @private
    * @returns {Promise<boolean>}
    */

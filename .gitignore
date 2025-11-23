@@ -29,6 +29,8 @@ popup_old.html
 .playwright-zen-profile/
 test-results/
 playwright-report/
+playwright-report-chrome/
+playwright-report-firefox/
 playwright/.cache/
 
 # Node
@@ -41,3 +43,38 @@ Thumbs.db
 
 content-legacy.js
 chrome-profile/
+firefox-test-profile/
+
+# Firefox profile runtime files (keep base profile but ignore runtime data)
+firefox-profile/.parentlock
+firefox-profile/.startup-incomplete
+firefox-profile/lock
+firefox-profile/*-wal
+firefox-profile/*-journal
+firefox-profile/activity-stream.discovery_stream.json
+firefox-profile/addonStartup.json.lz4
+firefox-profile/bounce-tracking-protection.sqlite
+firefox-profile/broadcast-listeners.json
+firefox-profile/cert9.db
+firefox-profile/compatibility.ini
+firefox-profile/containers.json
+firefox-profile/content-prefs.sqlite
+firefox-profile/cookies.sqlite
+firefox-profile/datareporting/
+firefox-profile/domain_to_categories.sqlite
+firefox-profile/extension-preferences.json
+firefox-profile/extensions.json
+firefox-profile/favicons.sqlite
+firefox-profile/handlers.json
+firefox-profile/key4.db
+firefox-profile/logins.db
+firefox-profile/permissions.sqlite
+firefox-profile/pkcs11.txt
+firefox-profile/places.sqlite
+firefox-profile/prefs.js
+firefox-profile/search.json.mozlz4
+firefox-profile/sessionCheckpoints.json
+firefox-profile/sessionstore-backups/
+firefox-profile/shield-preference-experiments.json
+firefox-profile/startupCache/
+firefox-profile/storage/
