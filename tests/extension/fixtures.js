@@ -70,37 +70,28 @@ export const test = base.extend({
       
       context = await chromium.launchPersistentContext(tmpDir, {
         headless: false, // Extensions require headed mode
-        timeout: 90000, // Increased to 90s to match test timeout (critical for Xvfb)
-        slowMo: 100, // Slow down operations slightly for CI stability
+        timeout: 180000, // Increased to 180s (3 minutes) for CI environment
+        slowMo: 50, // Reduced from 100 for faster execution
         args: [
-          // Extension loading
+          // Extension loading (REQUIRED - must be first)
           `--disable-extensions-except=${pathToExtension}`,
           `--load-extension=${pathToExtension}`,
           
-          // Security/sandboxing (required for CI)
+          // Security/sandboxing (CRITICAL for CI)
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          
-          // Xvfb compatibility (CRITICAL for virtual display)
-          '--disable-gpu', // Disable GPU acceleration
-          '--use-gl=swiftshader', // Software renderer (bypasses GPU issues)
-          '--disable-accelerated-2d-canvas', // Disable 2D acceleration
-          '--disable-accelerated-video-decode', // Disable video decode acceleration
-          '--disable-gl-drawing-for-tests', // Prevent OpenGL initialization
-          '--disable-software-rasterizer', // Disable software rasterizer
-          
-          // CI environment optimizations
           '--disable-dev-shm-usage', // CRITICAL: Prevents /dev/shm exhaustion
-          '--disable-dbus', // Disable DBus to prevent connection errors in CI
-          '--disable-features=DevToolsDebuggingRestrictions', // Required for Chromium 136+
-          '--disable-component-extensions-with-background-pages', // Optimize teardown
-          '--disable-default-apps', // Optimize teardown
+          
+          // Xvfb compatibility (simplified for faster startup)
+          '--disable-gpu',
+          '--use-gl=swiftshader',
+          
+          // Basic CI optimizations
+          '--disable-features=TranslateUI,DevToolsDebuggingRestrictions',
           '--disable-blink-features=AutomationControlled',
           
-          // Display configuration
-          '--window-size=1920,1080', // Match Xvfb screen size
-          '--disable-web-security', // Helps with extension CSP issues
-          '--allow-insecure-localhost'
+          // Display
+          '--window-size=1920,1080'
         ]
       }).catch((error) => {
         console.error('[Fixture] Browser launch failed:', error.message);
