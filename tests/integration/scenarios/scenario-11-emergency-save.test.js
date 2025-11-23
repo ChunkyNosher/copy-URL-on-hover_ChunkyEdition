@@ -13,9 +13,9 @@
 
 import { EventEmitter } from 'eventemitter3';
 
+import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
 import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
-import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
 import { wait } from '../../helpers/quick-tabs-test-utils.js';
 

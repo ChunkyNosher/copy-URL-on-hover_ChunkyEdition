@@ -13,8 +13,8 @@
 
 import { EventEmitter } from 'eventemitter3';
 
-import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { QuickTab } from '../../../src/domain/QuickTab.js';
+import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
 
 describe('Scenario 10: Quick Tab Limit Enforcement', () => {

@@ -12,8 +12,8 @@
  */
 
 import { QuickTab } from '../../../src/domain/QuickTab.js';
-import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
+import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { wait } from '../../helpers/async-helpers.js';
 
 describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
