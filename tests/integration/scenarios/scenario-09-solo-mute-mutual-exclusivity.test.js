@@ -393,7 +393,11 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
 
       stateManagers.forEach(sm => sm.add(new QuickTab(quickTab)));
 
-      // Deactivate solo (clear soloedOnTabs)
+      // Deactivate solo (clear soloedOnTabs) - apply locally first
+      let qt = stateManagers[0].get('qt-renable-1');
+      qt.visibility.soloedOnTabs = [];
+      stateManagers[0].update(qt);
+      
       await broadcastManagers[0].broadcast('UPDATE_SOLO', {
         id: 'qt-renable-1',
         soloedOnTabs: []
@@ -403,7 +407,12 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       // Verify solo is cleared
       expect(stateManagers[0].get('qt-renable-1').visibility.soloedOnTabs).toEqual([]);
 
-      // Now activate mute (should succeed)
+      // Now activate mute (should succeed) - apply locally first
+      qt = stateManagers[0].get('qt-renable-1');
+      qt.visibility.mutedOnTabs = [tabs[1].tabId];
+      qt.visibility.soloedOnTabs = [];
+      stateManagers[0].update(qt);
+      
       await broadcastManagers[0].broadcast('UPDATE_MUTE', {
         id: 'qt-renable-1',
         mutedOnTabs: [tabs[1].tabId]

@@ -164,7 +164,9 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         expect(sm.count()).toBe(5);
       });
 
-      // Broadcast CLOSE_ALL from tab A
+      // Close all on tab A - apply locally first, then broadcast
+      stateManagers[0].quickTabs.clear();
+      
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -181,7 +183,9 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         expect(sm.count()).toBe(0);
       });
 
-      // Broadcast CLOSE_ALL
+      // Close all on tab A - apply locally first (already empty)
+      stateManagers[0].quickTabs.clear();
+      
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -209,7 +213,9 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         quickTabs.forEach(qt => sm.add(new QuickTab(qt)));
       });
 
-      // Broadcast CLOSE_ALL
+      // Close all on tab A - apply locally first, then broadcast
+      stateManagers[0].quickTabs.clear();
+      
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -253,7 +259,9 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         expect(sm.count()).toBe(2);
       });
 
-      // CLOSE_ALL from tab B
+      // CLOSE_ALL from tab B - apply locally first, then broadcast
+      stateManagers[1].quickTabs.clear();
+      
       await broadcastManagers[1].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -279,15 +287,18 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         quickTabs.forEach(qt => sm.add(new QuickTab(qt)));
       });
 
-      // First CLOSE_ALL
+      // First CLOSE_ALL - apply locally first
+      stateManagers[0].quickTabs.clear();
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
       await wait(100);
 
-      // Second CLOSE_ALL (should not cause errors)
+      // Second CLOSE_ALL (should not cause errors) - apply locally first
+      stateManagers[1].quickTabs.clear();
       await broadcastManagers[1].broadcast('CLOSE_ALL', {});
       await wait(100);
 
-      // Third CLOSE_ALL
+      // Third CLOSE_ALL - apply locally first
+      stateManagers[2].quickTabs.clear();
       await broadcastManagers[2].broadcast('CLOSE_ALL', {});
       await wait(100);
 
@@ -319,7 +330,9 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         quickTabs.forEach(qt => sm.add(new QuickTab(qt)));
       });
 
-      // Broadcast CLOSE_ALL
+      // Close all on tab A - apply locally first, then broadcast
+      stateManagers[0].quickTabs.clear();
+      
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -362,7 +375,9 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         quickTabs.forEach(qt => sm.add(new QuickTab(qt)));
       });
 
-      // Broadcast CLOSE_ALL
+      // Close all on tab A - apply locally first, then broadcast
+      stateManagers[0].quickTabs.clear();
+      
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -385,7 +400,9 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
       stateManagers.forEach(sm => sm.add(new QuickTab(qt1)));
 
-      // Close all
+      // Close all - apply locally first, then broadcast
+      stateManagers[0].quickTabs.clear();
+      
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
       await wait(150);
 
@@ -437,7 +454,9 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
       const startTime = Date.now();
 
-      // Broadcast CLOSE_ALL
+      // Close all on tab A - apply locally first, then broadcast
+      stateManagers[0].quickTabs.clear();
+      
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
