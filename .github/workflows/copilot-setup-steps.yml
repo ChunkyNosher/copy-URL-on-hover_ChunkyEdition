@@ -185,15 +185,131 @@ jobs:
           
           echo "=========================================="
 
-      - name: Install Xvfb
-        run: sudo apt-get install -y xvfb
+      - name: Install Xvfb and X11 utilities
+        run: |
+          echo "=========================================="
+          echo "Installing Xvfb and X11 Tools"
+          echo "=========================================="
+          
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            xvfb \
+            x11-utils \
+            x11-xserver-utils \
+            xfonts-base \
+            xfonts-100dpi \
+            xfonts-75dpi \
+            xfonts-scalable \
+            fonts-liberation \
+            libxrandr2 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxext6
+          
+          # Verify installations
+          echo ""
+          echo "Installed versions:"
+          dpkg -l | grep -E "xvfb|x11-utils"
+          
+          echo "=========================================="
+          echo "✓ Xvfb and dependencies installed"
+          echo "=========================================="
 
       - name: Start Xvfb on display :99
         run: |
-          export DISPLAY=:99
-          Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 &
+          echo "=========================================="
+          echo "Starting Xvfb Virtual Display"
+          echo "=========================================="
+          
+          # Start Xvfb in background with enhanced flags
+          Xvfb :99 -screen 0 1920x1080x24 -ac -nolisten tcp -dpi 96 +extension RANDR > /tmp/xvfb.log 2>&1 &
+          XVFB_PID=$!
+          echo "Xvfb started with PID: $XVFB_PID"
+          
+          # Set DISPLAY for all subsequent steps
           echo "DISPLAY=:99" >> $GITHUB_ENV
-          sleep 2
+          export DISPLAY=:99
+          
+          # Wait for Xvfb to be ready with health check (not just blind sleep)
+          echo "Waiting for Xvfb to initialize..."
+          for i in {1..30}; do
+            if xdpyinfo -display :99 >/dev/null 2>&1; then
+              echo "✓ Xvfb is ready after ${i} seconds"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "✗ Xvfb failed to start after 30 seconds"
+              cat /tmp/xvfb.log
+              exit 1
+            fi
+            sleep 1
+          done
+          
+          # Verify display socket exists
+          if [ -e /tmp/.X11-unix/X99 ]; then
+            echo "✓ Display socket /tmp/.X11-unix/X99 exists"
+            ls -la /tmp/.X11-unix/X99
+          else
+            echo "✗ Display socket /tmp/.X11-unix/X99 NOT found"
+            exit 1
+          fi
+          
+          # Verify Xvfb process is running
+          if ps -p $XVFB_PID > /dev/null; then
+            echo "✓ Xvfb process (PID $XVFB_PID) is running"
+          else
+            echo "✗ Xvfb process died"
+            exit 1
+          fi
+          
+          # Display configuration info
+          echo ""
+          echo "Display configuration:"
+          xdpyinfo -display :99 | head -20
+          echo ""
+          echo "=========================================="
+          echo "✓ Xvfb ready for browser testing"
+          echo "=========================================="
+
+      # ====================================================================
+      # NEW STEP: Pre-Flight Display Test
+      # ====================================================================
+      - name: Verify Xvfb display functionality
+        run: |
+          echo "=========================================="
+          echo "Testing X11 Display Functionality"
+          echo "=========================================="
+          
+          # Test 1: Can we query display info?
+          echo "Test 1: Display info query"
+          xdpyinfo -display :99 > /dev/null
+          echo "✓ xdpyinfo succeeded"
+          
+          # Test 2: Display dimensions correct?
+          echo "Test 2: Display dimensions"
+          DIMENSIONS=$(xdpyinfo -display :99 | grep dimensions | awk '{print $2}')
+          if [ "$DIMENSIONS" = "1920x1080" ]; then
+            echo "✓ Display dimensions correct: $DIMENSIONS"
+          else
+            echo "✗ Display dimensions wrong: $DIMENSIONS (expected 1920x1080)"
+            exit 1
+          fi
+          
+          # Test 3: Can we run a simple X11 app? (xeyes as test)
+          echo "Test 3: Simple X11 app (xeyes)"
+          timeout 2 xeyes -display :99 &
+          XEYES_PID=$!
+          sleep 1
+          if ps -p $XEYES_PID > /dev/null 2>&1; then
+            echo "✓ xeyes launched successfully"
+            kill $XEYES_PID 2>/dev/null || true
+          else
+            echo "⚠ xeyes test skipped (may not be installed)"
+          fi
+          
+          echo "=========================================="
+          echo "✓ X11 display fully functional"
+          echo "=========================================="
 
       # ====================================================================
       # NEW STEP: Restore Memory from Previous Runs
