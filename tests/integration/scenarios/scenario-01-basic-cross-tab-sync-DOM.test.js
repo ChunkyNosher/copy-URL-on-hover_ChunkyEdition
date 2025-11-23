@@ -160,33 +160,29 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
   describe('Step 1-3: Create Quick Tab in Tab A', () => {
     test('should create Quick Tab with default position in Tab A', async () => {
-      try {
-        // Initialize QuickTabsManager in Tab A
-        console.log('[TEST] Initializing manager...');
-        managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
-        console.log('[TEST] Manager initialized:', !!managerA);
-        console.log('[TEST] Manager has createQuickTab:', typeof managerA.createQuickTab);
+      // Initialize QuickTabsManager in Tab A
+      managerA = await initQuickTabs(new EventEmitter(), Events, { 
+        windowFactory: mockWindowFactory,
+        forceNew: true  // Create new instance for testing
+      });
 
-        // Create Quick Tab in Tab A
-        const qtOptions = {
-          url: 'https://example.com',
-          left: 100,
-          top: 100,
-          width: 800,
-          height: 600,
-          cookieStoreId: 'firefox-default'
-        };
+      expect(managerA).toBeDefined();
+      expect(typeof managerA.createQuickTab).toBe('function');
 
-        console.log('[TEST] Calling createQuickTab...');
-        const tabWindow = await managerA.createQuickTab(qtOptions);
-        console.log('[TEST] tabWindow returned:', tabWindow);
+      // Create Quick Tab in Tab A
+      const qtOptions = {
+        url: 'https://example.com',
+        left: 100,
+        top: 100,
+        width: 800,
+        height: 600,
+        cookieStoreId: 'firefox-default'
+      };
 
-        // Verify Quick Tab was created
-        expect(tabWindow).toBeDefined();
-      } catch (error) {
-        console.error('[TEST] Error:', error);
-        throw error;
-      }
+      const tabWindow = await managerA.createQuickTab(qtOptions);
+
+      // Verify Quick Tab was created
+      expect(tabWindow).toBeDefined();
       expect(tabWindow.id).toBeDefined();
 
       // Verify Quick Tab is in the manager's map
@@ -202,7 +198,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
     test('should broadcast CREATE message when Quick Tab is created', async () => {
       // Initialize QuickTabsManager in Tab A
-      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerA = await initQuickTabs(new EventEmitter(), Events, { 
+        windowFactory: mockWindowFactory,
+        forceNew: true
+      });
 
       // Spy on broadcast channel
       const postMessageSpy = jest.spyOn(tabs[0].broadcastChannel, 'postMessage');
@@ -240,7 +239,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   describe('Step 4-5: Cross-Tab Sync to Tab B', () => {
     test('should sync Quick Tab to Tab B with same position/size', async () => {
       // Initialize managers for both tabs
-      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
       
       // Setup Tab B with its own context
       global.browser = {
@@ -272,7 +271,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       global.window = tabs[1].window;
       global.BroadcastChannel = jest.fn(() => tabs[1].broadcastChannel);
 
-      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
 
       // Create Quick Tab in Tab A
       const tabWindow = await managerA.createQuickTab({
@@ -323,7 +322,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
     test('should complete sync within 100ms', async () => {
       // Initialize both managers
-      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
       
       // Setup Tab B
       global.browser = {
@@ -343,7 +342,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       global.window = tabs[1].window;
       global.BroadcastChannel = jest.fn(() => tabs[1].broadcastChannel);
 
-      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
 
       // Measure sync time
       const startTime = Date.now();
@@ -395,7 +394,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   describe('Step 6-7: Position/Size Updates Sync Across Tabs', () => {
     test('should sync position changes from Tab B to Tab A', async () => {
       // Initialize both managers
-      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
       
       // Setup Tab B
       global.browser = {
@@ -415,7 +414,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       global.window = tabs[1].window;
       global.BroadcastChannel = jest.fn(() => tabs[1].broadcastChannel);
 
-      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
 
       // Create Quick Tab in Tab A with initial position
       const tabWindowA = await managerA.createQuickTab({
@@ -477,7 +476,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
     test('should sync size changes from Tab B to Tab A', async () => {
       // Initialize both managers
-      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
       
       // Setup Tab B
       global.browser = {
@@ -497,7 +496,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       global.window = tabs[1].window;
       global.BroadcastChannel = jest.fn(() => tabs[1].broadcastChannel);
 
-      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
 
       // Create Quick Tab in Tab A
       const tabWindow = await managerA.createQuickTab({
@@ -561,7 +560,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   describe('Edge Cases', () => {
     test('should handle concurrent creation in multiple tabs', async () => {
       // Initialize both managers
-      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
       
       // Setup Tab B
       global.browser = {
@@ -581,7 +580,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       global.window = tabs[1].window;
       global.BroadcastChannel = jest.fn(() => tabs[1].broadcastChannel);
 
-      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
 
       // Create Quick Tabs in both tabs simultaneously
       const [qtA, qtB] = await Promise.all([
@@ -615,7 +614,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
     test('should handle tab closed during sync', async () => {
       // Initialize both managers
-      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
       
       // Setup Tab B
       global.browser = {
@@ -635,7 +634,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       global.window = tabs[1].window;
       global.BroadcastChannel = jest.fn(() => tabs[1].broadcastChannel);
 
-      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory });
+      managerB = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
 
       // Create Quick Tab in Tab A
       const tabWindow = await managerA.createQuickTab({

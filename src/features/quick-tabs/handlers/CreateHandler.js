@@ -108,11 +108,14 @@ export class CreateHandler {
     const tabOptions = this._buildTabOptions(id, cookieStoreId, options, defaults);
     
     console.log('[CreateHandler] Creating window with factory:', typeof this.createWindow);
+    console.log('[CreateHandler] Factory is mock?:', this.createWindow.name === 'mockConstructor' || this.createWindow.toString().includes('jest'));
     console.log('[CreateHandler] Tab options:', tabOptions);
     
     const tabWindow = this.createWindow(tabOptions);
     
     console.log('[CreateHandler] Window created:', tabWindow);
+    console.log('[CreateHandler] Window type:', typeof tabWindow);
+    console.log('[CreateHandler] Window has id?:', tabWindow && 'id' in tabWindow);
 
     this.quickTabsMap.set(id, tabWindow);
     this._broadcastCreation(id, cookieStoreId, options, defaults);

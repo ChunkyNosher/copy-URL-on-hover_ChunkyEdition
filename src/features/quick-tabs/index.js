@@ -419,6 +419,17 @@ class QuickTabsManager {
     console.log('[QuickTabsManager] Calling createHandler.create...');
     const result = this.createHandler.create(optionsWithCallbacks);
     console.log('[QuickTabsManager] Result:', result);
+    console.log('[QuickTabsManager] Result type:', typeof result);
+    console.log('[QuickTabsManager] Result has tabWindow?:', result && 'tabWindow' in result);
+    
+    if (!result) {
+      throw new Error('[QuickTabsManager] createHandler.create() returned undefined');
+    }
+    
+    if (!result.tabWindow) {
+      console.error('[QuickTabsManager] result.tabWindow is undefined!');
+      console.error('[QuickTabsManager] Full result object:', JSON.stringify(result, null, 2));
+    }
     
     this.currentZIndex.value = result.newZIndex;
     const returnValue = result.tabWindow;
@@ -618,30 +629,38 @@ class QuickTabsManager {
 // MODULE INITIALIZATION
 // ============================================================================
 
-const quickTabsManager = new QuickTabsManager();
+let quickTabsManagerInstance = null;
 
 /**
  * Initialize Quick Tabs feature module
  * v1.6.0 - Facade pattern, delegates to extracted components
  * v1.6.1.2 - Added options parameter for dependency injection (testing support)
+ * v1.6.1.3 - Fixed singleton pattern to support testing with different factories
  *
  * @param {EventEmitter} eventBus - External event bus from content.js
  * @param {Object} Events - Event constants
  * @param {Object} options - Optional configuration (for testing)
  * @param {Function} options.windowFactory - Optional window factory for testing
+ * @param {boolean} options.forceNew - Force creation of new instance (for testing)
  * @returns {QuickTabsManager} Initialized manager instance
  */
 export async function initQuickTabs(eventBus, Events, options = {}) {
   console.log('[QuickTabs] Initializing Quick Tabs feature module...');
   
-  // v1.6.1.2 - Allow dependency injection for testing
-  if (options.windowFactory) {
-    quickTabsManager.windowFactory = options.windowFactory;
+  // v1.6.1.3 - Allow creating new instance for testing (avoids singleton issues in tests)
+  if (options.forceNew || !quickTabsManagerInstance) {
+    console.log('[QuickTabs] Creating new QuickTabsManager instance');
+    quickTabsManagerInstance = new QuickTabsManager(options);
   }
   
-  await quickTabsManager.init(eventBus, Events);
+  // v1.6.1.2 - Allow dependency injection for testing
+  if (options.windowFactory) {
+    quickTabsManagerInstance.windowFactory = options.windowFactory;
+  }
+  
+  await quickTabsManagerInstance.init(eventBus, Events);
   console.log('[QuickTabs] Quick Tabs feature module initialized');
-  return quickTabsManager;
+  return quickTabsManagerInstance;
 }
 
 export { QuickTabsManager };
