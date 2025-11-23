@@ -11,35 +11,86 @@
  * - Cross-tab cleanup synchronization
  */
 
+import { EventEmitter } from 'eventemitter3';
+
 import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
 import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
-import { wait } from '../../helpers/async-helpers.js';
+import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
+import { wait } from '../../helpers/quick-tabs-test-utils.js';
 
 describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
+  let tabs;
   let stateManagers;
   let broadcastManagers;
+  let eventBuses;
+  let channels;
 
-  beforeEach(() => {
-    // Simulate 3 tabs with independent state/broadcast managers
-    stateManagers = [
-      new StateManager('firefox-default'),
-      new StateManager('firefox-default'),
-      new StateManager('firefox-default')
-    ];
+  beforeEach(async () => {
+    jest.clearAllMocks();
 
-    broadcastManagers = [
-      new BroadcastManager('firefox-default'),
-      new BroadcastManager('firefox-default'),
-      new BroadcastManager('firefox-default')
-    ];
+    // Create 3 simulated tabs
+    tabs = await createMultiTabScenario([
+      { url: 'https://wikipedia.org', containerId: 'firefox-default' },
+      { url: 'https://github.com', containerId: 'firefox-default' },
+      { url: 'https://youtube.com', containerId: 'firefox-default' }
+    ]);
 
-    // Wire up broadcast handlers for each tab
-    broadcastManagers.forEach((bm, index) => {
-      bm.on('DESTROY', async message => {
-        const qt = stateManagers[index].get(message.id);
-        if (qt) {
-          stateManagers[index].remove(message.id);
+    // Create event buses for each tab
+    eventBuses = tabs.map(() => new EventEmitter());
+
+    // Create broadcast channels for cross-tab communication
+    channels = tabs.map(() => ({
+      postMessage: jest.fn(),
+      close: jest.fn(),
+      onmessage: null
+    }));
+
+    // Mock BroadcastChannel to connect tabs
+    let channelIndex = 0;
+    global.BroadcastChannel = jest.fn(() => {
+      const channel = channels[channelIndex];
+      channelIndex++;
+      return channel;
+    });
+
+    // Create managers for each tab
+    broadcastManagers = tabs.map((tab, index) => {
+      const manager = new BroadcastManager(eventBuses[index], tab.containerId);
+      manager.setupBroadcastChannel();
+      return manager;
+    });
+
+    stateManagers = tabs.map((tab, index) => {
+      return new StateManager(eventBuses[index], tab.tabId);
+    });
+
+    // Connect channels to simulate cross-tab delivery
+    channels.forEach((sourceChannel, sourceIndex) => {
+      const originalPostMessage = sourceChannel.postMessage;
+      sourceChannel.postMessage = jest.fn((message) => {
+        if (originalPostMessage && originalPostMessage.mock) {
+          originalPostMessage(message);
+        }
+        
+        setTimeout(() => {
+          channels.forEach((targetChannel, targetIndex) => {
+            if (sourceIndex !== targetIndex && targetChannel.onmessage) {
+              targetChannel.onmessage({ data: message });
+            }
+          });
+        }, 10);
+      });
+    });
+
+    // Wire up broadcast handlers for DESTROY messages
+    eventBuses.forEach((bus, index) => {
+      bus.on('broadcast:received', (message) => {
+        if (message.type === 'DESTROY') {
+          const qt = stateManagers[index].get(message.data.id);
+          if (qt) {
+            stateManagers[index].delete(message.data.id);
+          }
         }
       });
     });
@@ -48,7 +99,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
   afterEach(() => {
     // Cleanup
     broadcastManagers.forEach(bm => bm.close());
-    stateManagers.forEach(sm => sm.quickTabs.clear());
+    delete global.BroadcastChannel;
   });
 
   describe('Basic Tab Closure', () => {
@@ -70,7 +121,8 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       expect(stateManagers[1].get(qt.id)).toBeDefined();
       expect(stateManagers[2].get(qt.id)).toBeDefined();
 
-      // Destroy from Tab A
+      // Destroy from Tab A - delete locally first, then broadcast
+      stateManagers[0].delete(qt.id);
       await broadcastManagers[0].broadcast('DESTROY', {
         id: qt.id,
         container: qt.container
@@ -146,9 +198,9 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       });
 
       // Verify count
-      expect(stateManagers[0].getCount()).toBe(3);
-      expect(stateManagers[1].getCount()).toBe(3);
-      expect(stateManagers[2].getCount()).toBe(3);
+      expect(stateManagers[0].count()).toBe(3);
+      expect(stateManagers[1].count()).toBe(3);
+      expect(stateManagers[2].count()).toBe(3);
 
       // Close QT 2
       await broadcastManagers[0].broadcast('DESTROY', {
@@ -159,9 +211,9 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       await wait(100);
 
       // Verify count updated
-      expect(stateManagers[0].getCount()).toBe(2);
-      expect(stateManagers[1].getCount()).toBe(2);
-      expect(stateManagers[2].getCount()).toBe(2);
+      expect(stateManagers[0].count()).toBe(2);
+      expect(stateManagers[1].count()).toBe(2);
+      expect(stateManagers[2].count()).toBe(2);
 
       // Verify correct QTs remain
       expect(stateManagers[0].get(qts[0].id)).toBeDefined();
@@ -183,7 +235,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       // Verify at limit (if limit is 1)
       const limit = 5; // Assume default limit
       const wouldExceed = stateManagers[0].wouldExceedLimit();
-      const countBeforeClose = stateManagers[0].getCount();
+      const countBeforeClose = stateManagers[0].count();
 
       // Close Quick Tab
       await broadcastManagers[0].broadcast('DESTROY', {
@@ -194,7 +246,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       await wait(100);
 
       // Verify count decreased
-      expect(stateManagers[0].getCount()).toBe(countBeforeClose - 1);
+      expect(stateManagers[0].count()).toBe(countBeforeClose - 1);
 
       // Verify slot available
       if (wouldExceed) {
@@ -218,11 +270,11 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
 
       // Wire up handlers
       container1Managers[1].on('DESTROY', message => {
-        container1Managers[0].remove(message.id);
+        container1Managers[0].delete(message.id);
       });
 
       container2Managers[1].on('DESTROY', message => {
-        container2Managers[0].remove(message.id);
+        container2Managers[0].delete(message.id);
       });
 
       // Create QTs in each container
@@ -298,9 +350,9 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       expect(stateManagers[0].get(qts[4].id)).toBeUndefined();
 
       // Verify count
-      expect(stateManagers[0].getCount()).toBe(2);
-      expect(stateManagers[1].getCount()).toBe(2);
-      expect(stateManagers[2].getCount()).toBe(2);
+      expect(stateManagers[0].count()).toBe(2);
+      expect(stateManagers[1].count()).toBe(2);
+      expect(stateManagers[2].count()).toBe(2);
     });
   });
 
@@ -317,7 +369,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       await wait(50);
 
       // Verify state unchanged
-      expect(stateManagers[0].getCount()).toBe(0);
+      expect(stateManagers[0].count()).toBe(0);
     });
 
     test('closing same Quick Tab multiple times is idempotent', async () => {
@@ -341,7 +393,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
 
       // Verify removed once
       expect(stateManagers[0].get(qt.id)).toBeUndefined();
-      expect(stateManagers[0].getCount()).toBe(0);
+      expect(stateManagers[0].count()).toBe(0);
     });
   });
 });

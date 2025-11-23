@@ -54,48 +54,63 @@ describe('Scenario 7: Position/Size Persistence Protocol', () => {
     });
 
     // Mock storage with persistence simulation
+    // CRITICAL FIX: SyncStorageAdapter imports 'browser' from 'webextension-polyfill', not global.browser
+    // We need to mock the webextension-polyfill module, not global.browser
     mockStorage = {};
-    global.browser = {
-      storage: {
-        sync: {
-          get: jest.fn().mockImplementation(() => Promise.resolve(mockStorage)),
-          set: jest.fn().mockImplementation((data) => {
-            Object.assign(mockStorage, data);
-            return Promise.resolve();
-          }),
-          remove: jest.fn().mockImplementation((keys) => {
-            if (Array.isArray(keys)) {
-              keys.forEach(key => delete mockStorage[key]);
-            } else {
-              delete mockStorage[keys];
-            }
-            return Promise.resolve();
-          })
-        },
-        local: {
-          get: jest.fn().mockImplementation(() => Promise.resolve(mockStorage)),
-          set: jest.fn().mockImplementation((data) => {
-            Object.assign(mockStorage, data);
-            return Promise.resolve();
-          }),
-          remove: jest.fn().mockImplementation((keys) => {
-            if (Array.isArray(keys)) {
-              keys.forEach(key => delete mockStorage[key]);
-            } else {
-              delete mockStorage[keys];
-            }
-            return Promise.resolve();
-          })
-        },
-        onChanged: {
-          addListener: jest.fn(),
-          removeListener: jest.fn()
-        }
-      },
-      runtime: {
-        sendMessage: jest.fn().mockResolvedValue({ success: false }) // Force fallback to storage adapters
+    
+    // Import the mocked browser object and override its storage methods
+    const browserModule = await import('webextension-polyfill');
+    const browser = browserModule.default;
+    
+    // Override storage.local methods with our mock
+    browser.storage.local.get = jest.fn().mockImplementation((key) => {
+      if (typeof key === 'string') {
+        return Promise.resolve({ [key]: mockStorage[key] });
       }
-    };
+      return Promise.resolve(mockStorage);
+    });
+    
+    browser.storage.local.set = jest.fn().mockImplementation((data) => {
+      Object.assign(mockStorage, data);
+      return Promise.resolve();
+    });
+    
+    browser.storage.local.remove = jest.fn().mockImplementation((keys) => {
+      if (Array.isArray(keys)) {
+        keys.forEach(key => delete mockStorage[key]);
+      } else {
+        delete mockStorage[keys];
+      }
+      return Promise.resolve();
+    });
+    
+    // Override storage.sync methods with our mock
+    browser.storage.sync.get = jest.fn().mockImplementation((key) => {
+      if (typeof key === 'string') {
+        return Promise.resolve({ [key]: mockStorage[key] });
+      }
+      return Promise.resolve(mockStorage);
+    });
+    
+    browser.storage.sync.set = jest.fn().mockImplementation((data) => {
+      Object.assign(mockStorage, data);
+      return Promise.resolve();
+    });
+    
+    browser.storage.sync.remove = jest.fn().mockImplementation((keys) => {
+      if (Array.isArray(keys)) {
+        keys.forEach(key => delete mockStorage[key]);
+      } else {
+        delete mockStorage[keys];
+      }
+      return Promise.resolve();
+    });
+    
+    // Override runtime.sendMessage to force fallback to storage
+    browser.runtime.sendMessage = jest.fn().mockResolvedValue({ success: false });
+    
+    // Also set global.browser for StorageManager.loadAll() which uses global browser
+    global.browser = browser;
 
     broadcastManagers = tabs.map((tab, index) => {
       const manager = new BroadcastManager(eventBuses[index], tab.containerId);
@@ -213,6 +228,10 @@ describe('Scenario 7: Position/Size Persistence Protocol', () => {
 
       // Save updated state
       await storageManagers[0].save([qt]);
+
+      // Verify mockStorage has the data
+      expect(mockStorage['quick_tabs_state_v2']).toBeDefined();
+      expect(mockStorage['quick_tabs_state_v2'].containers['firefox-default']).toBeDefined();
 
       // Load from storage
       const loadedQuickTabs = await storageManagers[0].loadAll();
@@ -429,7 +448,10 @@ describe('Scenario 7: Position/Size Persistence Protocol', () => {
       const updates = [];
 
       eventBuses[1].on('broadcast:received', (message) => {
-        updates.push(message.type);
+        updates.push({
+          type: message.type,
+          data: message.data
+        });
         const qtInB = stateManagers[1].get(message.data.id);
         if (!qtInB) return;
 
@@ -444,31 +466,37 @@ describe('Scenario 7: Position/Size Persistence Protocol', () => {
         }
       });
 
-      // Send rapid updates
-      await Promise.all([
-        broadcastManagers[0].broadcast('UPDATE_POSITION', {
-          id: qt.id,
-          left: 200,
-          top: 200
-        }),
-        broadcastManagers[0].broadcast('UPDATE_SIZE', {
-          id: qt.id,
-          width: 700,
-          height: 500
-        }),
-        broadcastManagers[0].broadcast('UPDATE_POSITION', {
-          id: qt.id,
-          left: 300,
-          top: 300
-        })
-      ]);
+      // Send rapid updates with spacing to avoid debouncing
+      // BroadcastManager debounces duplicate message types within 50ms (see shouldDebounce)
+      await broadcastManagers[0].broadcast('UPDATE_POSITION', {
+        id: qt.id,
+        left: 200,
+        top: 200
+      });
+      
+      await wait(60); // Wait >50ms to avoid debouncing
+      
+      await broadcastManagers[0].broadcast('UPDATE_SIZE', {
+        id: qt.id,
+        width: 700,
+        height: 500
+      });
+      
+      await wait(60); // Wait >50ms to avoid debouncing
+      
+      await broadcastManagers[0].broadcast('UPDATE_POSITION', {
+        id: qt.id,
+        left: 300,
+        top: 300
+      });
 
-      await wait(150);
+      await wait(100);
 
-      // Verify all updates received
+      // Verify all updates received (debouncing prevents duplicate types within 50ms)
       expect(updates.length).toBe(3);
-      expect(updates).toContain('UPDATE_POSITION');
-      expect(updates).toContain('UPDATE_SIZE');
+      const updateTypes = updates.map(u => u.type);
+      expect(updateTypes).toContain('UPDATE_POSITION');
+      expect(updateTypes).toContain('UPDATE_SIZE');
 
       // Verify final state (last update wins)
       const qtInB = stateManagers[1].get(qt.id);
