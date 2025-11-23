@@ -115,7 +115,7 @@ Before starting ANY task, search memories for relevant context.
 
 ```javascript
 const relevantMemories = await searchMemories({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   query: "keywords about task/feature/component",
   limit: 5,
   threshold: 0.3,
@@ -155,7 +155,7 @@ const relevantMemories = await searchMemories({
 **Example:**
 ```javascript
 await createMemory({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   title: "Container Isolation Architecture Pattern",
   content: "This extension uses cookieStoreId for complete Firefox container isolation. Key implementation: Always query tabs with cookieStoreId filter to maintain separation between containers. State manager tracks per-container data.",
   category: "architecture",
@@ -247,7 +247,7 @@ metadata: {
 **1. Start with project creation:**
 ```javascript
 await createProject({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   name: "Feature Name",
   description: "High-level overview of feature goals"
 });
@@ -256,7 +256,7 @@ await createProject({
 **2. Break down into tasks:**
 ```javascript
 await createTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   projectId: "[project-id]",
   name: "Task name",
   details: "Detailed task description",
@@ -271,7 +271,7 @@ await createTask({
 **3. Create subtasks for task breakdown (unlimited nesting):**
 ```javascript
 await createTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   projectId: "[project-id]",
   parentId: "[parent-task-id]",  // Creates subtask
   name: "Subtask name",
@@ -283,7 +283,7 @@ await createTask({
 
 // Create sub-subtasks (infinite depth!)
 await createTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   projectId: "[project-id]",
   parentId: "[subtask-id]",  // Creates sub-subtask
   name: "Sub-subtask name"
@@ -295,7 +295,7 @@ await createTask({
 ```javascript
 // Update task status as you work
 await updateTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   id: "[task-id]",
   status: "in-progress",
   actualHours: 3
@@ -303,7 +303,7 @@ await updateTask({
 
 // Mark complete
 await updateTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   id: "[task-id]",
   status: "done",
   completed: true,
@@ -314,7 +314,7 @@ await updateTask({
 **Task Dependencies:**
 ```javascript
 await createTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   projectId: "[project-id]",
   name: "Write integration tests",
   dependsOn: ["[implementation-task-id]"],  // Can't start until implementation done
@@ -339,7 +339,7 @@ Get AI-powered task prioritization based on dependencies, priority, and complexi
 
 ```javascript
 const recommendation = await getNextTaskRecommendation({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   projectId: "[project-id]"
 });
 // Returns optimal next task to work on
@@ -359,7 +359,7 @@ Identify overly complex tasks and get automatic breakdown suggestions:
 
 ```javascript
 const analysis = await analyzeTaskComplexity({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   taskId: "[task-id]",
   complexityThreshold: 7
 });
@@ -395,7 +395,7 @@ const prdContent = `
 `;
 
 await parsePRD({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   projectId: "[project-id]",
   prdContent: prdContent
 });
@@ -421,7 +421,7 @@ Analyze codebase to detect task completion from code evidence:
 
 ```javascript
 const progress = await inferTaskProgress({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   projectId: "[project-id]",
   autoUpdateTasks: false,
   confidenceThreshold: 0.7
@@ -444,7 +444,7 @@ Perform comprehensive web research with automatic memory storage:
 ```javascript
 // 1. Generate intelligent research queries
 const queries = await generateResearchQueries({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   taskId: "[task-id]",
   queryTypes: ["implementation", "best_practices", "examples"]
 });
@@ -459,7 +459,7 @@ const results = await perplexity_reason({
 
 // 3. Store findings as memories
 await createMemory({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
+  workingDirectory: process.env.GITHUB_WORKSPACE/.agentic-tools-mcp,
   title: "Research: Topic",
   content: results.content,
   category: "research",
