@@ -140,15 +140,30 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 
 ## 🚀 Installation
 
-### Easy Installation (Recommended)
+### Firefox/Zen Browser (Recommended)
 
 1. Go to [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
-2. Download latest `copy-url-hover-extension.xpi`
+2. Download latest `firefox-extension-vX.X.X.xpi` file
 3. Open Firefox/Zen Browser → `about:addons`
 4. Click gear icon (⚙️) → "Install Add-on From File..."
 5. Select the `.xpi` file and confirm
 
-**Auto-updates enabled** - Notifications for new versions.
+**Auto-updates enabled** - Extension will notify you of new versions automatically.
+
+### Chrome/Edge/Brave/Opera
+
+1. Go to [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+2. Download latest `chrome-extension-vX.X.X.zip` file
+3. Extract the ZIP file to a permanent folder (don't delete after installation!)
+4. Open browser extensions page:
+   - Chrome: `chrome://extensions/`
+   - Edge: `edge://extensions/`
+   - Brave: `brave://extensions/`
+   - Opera: `opera://extensions/`
+5. Enable "Developer mode" (toggle in top-right corner)
+6. Click "Load unpacked" and select the extracted folder
+
+**Note:** Chrome/Chromium-based browsers don't support auto-updates for manually installed extensions. Check the [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases) page for updates.
 
 ### Manual Installation (Development)
 
