@@ -500,134 +500,49 @@ await createMemory({
 ### High Priority MCPs (Use Frequently)
 
 **GitHub MCP** - Create/update issues & PRs, add comments, trigger workflows  
-**Playwright Firefox MCP** ⭐ - Test extension functionality in Firefox BEFORE and AFTER changes  
-**Playwright Chrome MCP** ⭐ - Test extension functionality in Chrome BEFORE and AFTER changes  
 **CodeScene MCP** ⭐ - Code health analysis alongside ESLint, detect technical debt hotspots  
 **Codecov MCP** ⭐ - Test coverage verification at end of tasks  
 **GitHub Actions MCP** - CI/CD workflow management
 
+**Note:** Playwright testing infrastructure is currently broken. Use Jest unit tests for validation.
+
 ---
 
-## 🎭 Playwright MCP Autonomous Testing
+## ⚠️ Playwright Testing - Currently Broken
 
-### Overview
+The Playwright MCP testing infrastructure is currently non-functional and should NOT be used.
 
-The extension includes a **Test Bridge Pattern** for autonomous testing with Playwright MCP, enabling ~80% test coverage without manual intervention.
-
-**Key Documents:**
-- **Testing Guide**: `.github/COPILOT-TESTING-GUIDE.md`
-- **Test Utilities**: `tests/extension/helpers/extension-test-utils.js`
-
-### What You CAN Test Autonomously
-
-✅ **Quick Tab Operations** (via Test Bridge - bypasses keyboard shortcuts):
-- Create Quick Tabs programmatically
-- Minimize/restore
-- Pin/unpin behavior
-- Close and cleanup
-
-✅ **State Management**:
-- Storage verification (browser.storage.local)
-- Cross-tab synchronization (BroadcastChannel)
-- Container isolation (cookieStoreId)
-
-✅ **UI Interactions**:
-- Click, hover, drag, resize
-- Form inputs, screenshots
-- Multi-tab testing
-
-### What You CANNOT Test
-
-❌ **Keyboard Shortcuts**: `manifest.json` commands ("Q" key, "Ctrl+Alt+Z") - browser API limitation  
-❌ **Extension Icon**: Toolbar icon clicks  
-❌ **OS-Level Events**: System notifications, some clipboard ops
-
-**These require manual testing.**
-
-### Quick Start
-
-**Basic Test Pattern:**
-```javascript
-import { ExtensionTestHelper } from './tests/extension/helpers/extension-test-utils.js';
-
-test('create Quick Tab', async ({ page }) => {
-  const helper = new ExtensionTestHelper(page);
-  await page.goto('https://example.com');
-  
-  // Wait for test bridge
-  const ready = await helper.waitForTestBridge();
-  expect(ready).toBe(true);
-  
-  // Create Quick Tab (bypasses "Q" key!)
-  await helper.createQuickTab('https://github.com');
-  
-  // Verify
-  const tabs = await helper.getQuickTabs();
-  expect(tabs).toHaveLength(1);
-});
-```
+**Use Instead: Jest Unit Tests**
 
 **Run Tests:**
 ```bash
-npm run test:extension        # All extension tests
-npm run test:extension:ui     # With UI
-npm run test:extension:debug  # Debug mode
+npm test                    # All unit tests
+npm run test:unit           # Unit tests only
+npm run test:integration    # Integration tests only
+npm run test:coverage       # With coverage report
 ```
 
-### Test Bridge API
+**Testing Infrastructure:**
+- **Unit Tests**: `tests/unit/` - Component-level tests with mocks
+- **Integration Tests**: `tests/integration/` - Cross-component integration tests  
+- **Test Helpers**: `tests/helpers/` - Cross-tab simulator and utilities
+  - `cross-tab-simulator.js` - Simulates multiple browser tabs
+  - `quick-tabs-test-utils.js` - Common test utilities
+- **Test Fixtures**: `tests/fixtures/` - Reusable test data
 
-**Core Methods:**
-- `waitForTestBridge()` - Wait for bridge availability
-- `createQuickTab(url, options)` - Create Quick Tab
-- `getQuickTabs()` - Get all Quick Tabs
-- `getQuickTabById(id)` - Get specific Quick Tab
-- `minimizeQuickTab(id)` - Minimize
-- `restoreQuickTab(id)` - Restore
-- `pinQuickTab(id)` - Pin to tab
-- `unpinQuickTab(id)` - Unpin
-- `closeQuickTab(id)` - Close
-- `clearAllQuickTabs()` - Cleanup
-- `waitForQuickTabCount(n)` - Wait for sync
-- `takeScreenshot(name)` - Capture screenshot
-- `verifyQuickTabBehavior(scenario)` - Verify scenarios
+**What Unit Tests Cover:**
+✅ Cross-tab synchronization via BroadcastChannel  
+✅ State persistence via browser.storage  
+✅ Container isolation enforcement  
+✅ Solo/Mute visibility logic  
+✅ Position/size update propagation  
+✅ Error handling and edge cases
 
-### Testing Best Practices
-
-**1. Always wait for test bridge:**
-```javascript
-await helper.waitForTestBridge();
-```
-
-**2. Clean up before and after tests:**
-```javascript
-test.beforeEach(async ({ page }) => {
-  helper = new ExtensionTestHelper(page);
-  await page.goto('https://example.com');
-  await helper.waitForTestBridge();
-  await helper.clearAllQuickTabs();
-});
-
-test.afterEach(async () => {
-  await helper.clearAllQuickTabs();
-});
-```
-
-**3. Use polling for async operations:**
-```javascript
-await helper.waitForQuickTabCount(1, 5000);
-```
-
-**4. Take screenshots on failures:**
-```javascript
-try {
-  // Test code
-} catch (error) {
-  await helper.takeScreenshot('test-failure');
-  throw error;
-}
-```
-
-**See `.github/COPILOT-TESTING-GUIDE.md` for complete documentation.**
+**What Requires Manual Testing:**
+❌ Keyboard shortcuts ("Q" key, "Ctrl+Alt+Z")  
+❌ Extension toolbar icon clicks  
+❌ Actual browser tab interactions  
+❌ Real Firefox container switching
 
 ---
 
@@ -635,19 +550,19 @@ try {
 
 ### Bug Fix Workflow
 ```
-1. Search memories 🧠 | 2. Playwright: Test BEFORE 🎭
+1. Search memories 🧠 | 2. Run unit tests BEFORE (npm test) ✅
 3. Context7: Get docs ⭐ | 4. Perplexity: Research + verify solution ⭐
 5. Write fix | 6. Context7: Double-check ⭐ | 7. Perplexity: Check alternatives ⭐
-8. ESLint + CodeScene ⭐ | 9. Playwright: Test AFTER 🎭
+8. ESLint + CodeScene ⭐ | 9. Run unit tests AFTER ✅
 10. Run all tests + Codecov ⭐ | 11. Create memory 🧠 | 12. Commit 🧠
 ```
 
 ### Feature Workflow
 ```
-1. Search memories 🧠 | 2. Create tasks 📋 | 3. Playwright: Baseline 🎭
+1. Search memories 🧠 | 2. Create tasks 📋 | 3. Run unit tests baseline ✅
 4. Perplexity: Research ⭐ | 5. Context7: Get docs ⭐ | 6. Update task 📋
 7. Write code | 8. Context7: Verify ⭐ | 9. Perplexity: Alternatives ⭐
-10. ESLint + CodeScene ⭐ | 11. Playwright: Test feature 🎭
+10. ESLint + CodeScene ⭐ | 11. Run unit tests for feature ✅
 12. Run all tests + Codecov ⭐ | 13. Mark done 📋 | 14. Memory 🧠 | 15. Commit 🧠📋
 ```
 
@@ -782,7 +697,7 @@ When user reports bugs or requests features:
 ### Pre-Implementation
 - [ ] **Searched memories before starting work** 🧠🔍
 - [ ] **Referenced relevant memories in implementation** 🧠
-- [ ] **Playwright Firefox/Chrome MCP: Tested baseline behavior BEFORE changes** 🎭
+- [ ] **Run unit tests to establish baseline BEFORE changes** ✅
 
 ### During Implementation
 - [ ] **Context7 MCP: Verified API usage with current docs** ⭐
@@ -795,12 +710,10 @@ When user reports bugs or requests features:
 - [ ] Zero ESLint errors remaining ⭐
 
 ### Testing
-- [ ] **Playwright Firefox MCP: Tested extension functionality AFTER changes** 🎭
-- [ ] **Playwright Chrome MCP: Tested extension functionality AFTER changes** 🎭
-- [ ] **Test Bridge verified for Quick Tab features** 🎭
-- [ ] Run all test suites: `npm run test` ⭐
-- [ ] Run extension tests: `npm run test:extension` ⭐
+- [ ] **Run all unit tests: `npm test`** ✅
+- [ ] **Run tests with coverage: `npm run test:coverage`** ✅
 - [ ] **Codecov MCP: Verified test coverage is adequate** ⭐
+- [ ] **All tests passing (no failures)** ✅
 
 ### Task & Memory Management
 - [ ] **Tasks created for multi-step features** 📋
@@ -821,10 +734,9 @@ When user reports bugs or requests features:
 
 - [ ] **All commits linted with ESLint MCP** ⭐
 - [ ] **CodeScene MCP verified code health** ⭐
-- [ ] **Playwright Firefox MCP test suite passes** 🎭
-- [ ] **Playwright Chrome MCP test suite passes** 🎭
-- [ ] **Extension tests cover new Quick Tab features** 🎭
-- [ ] **All test suites pass (npm run test, test:extension)** ⭐
+- [ ] **All unit tests pass (`npm test`)** ✅
+- [ ] **Unit tests cover new features** ✅
+- [ ] **Test coverage adequate (`npm run test:coverage`)** ⭐
 - [ ] **Codecov MCP verified adequate test coverage** ⭐
 - [ ] Documentation updated (README, agent files if applicable)
 - [ ] **Documentation files under 20KB** 📏

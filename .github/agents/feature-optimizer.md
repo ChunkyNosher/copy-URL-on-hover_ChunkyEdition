@@ -217,7 +217,7 @@ for (const item of items) {
    - `npm run build:check-size`
    - Verify size reduction or stability
 
-**Use Playwright MCP:** Test real-world performance
+**Use Jest unit tests:** Test real-world performance
 
 ---
 
@@ -233,10 +233,10 @@ for (const item of items) {
 - **CodeScene:** Identify complexity hotspots alongside ESLint ⭐
 
 **CRITICAL - Testing (BEFORE and AFTER):**
-- **Playwright Firefox MCP:** Test performance BEFORE changes (baseline) ⭐
-- **Playwright Chrome MCP:** Test performance BEFORE changes (baseline) ⭐
-- **Playwright Firefox MCP:** Test performance AFTER changes (verify improvement) ⭐
-- **Playwright Chrome MCP:** Test performance AFTER changes (verify improvement) ⭐
+- **Jest unit tests:** Test performance BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test performance BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test performance AFTER changes (verify improvement) ⭐
+- **Jest unit tests:** Test performance AFTER changes (verify improvement) ⭐
 - **Codecov:** Verify test coverage at end ⭐
 
 **Every Task:**

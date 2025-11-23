@@ -370,8 +370,8 @@ function shouldQuickTabBeVisible(quickTab, browserTab) {
 - **CodeScene:** Check code health ⭐
 
 **CRITICAL - Testing (BEFORE and AFTER):**
-- **Playwright Firefox MCP:** Test Quick Tab functionality BEFORE/AFTER ⭐
-- **Playwright Chrome MCP:** Test Quick Tab functionality BEFORE/AFTER ⭐
+- **Jest unit tests:** Test Quick Tab functionality BEFORE/AFTER ⭐
+- **Jest unit tests:** Test Quick Tab functionality BEFORE/AFTER ⭐
 - **Codecov:** Verify coverage ⭐
 
 **Every Task:**
