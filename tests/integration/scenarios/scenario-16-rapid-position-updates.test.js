@@ -11,39 +11,89 @@
  * - Cross-tab sync remains consistent
  */
 
+import { EventEmitter } from 'eventemitter3';
+
 import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
 import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
-import { wait } from '../../helpers/async-helpers.js';
+import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
+import { wait } from '../../helpers/quick-tabs-test-utils.js';
 
 describe('Scenario 16: Rapid Position Updates Protocol', () => {
+  let tabs;
   let stateManagers;
   let broadcastManagers;
+  let eventBuses;
+  let channels;
   let messageLog;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
     messageLog = [];
 
-    // Simulate 3 tabs with independent state/broadcast managers
-    stateManagers = [
-      new StateManager('firefox-default'),
-      new StateManager('firefox-default'),
-      new StateManager('firefox-default')
-    ];
+    // Create 3 simulated tabs
+    tabs = await createMultiTabScenario([
+      { url: 'https://wikipedia.org', containerId: 'firefox-default' },
+      { url: 'https://github.com', containerId: 'firefox-default' },
+      { url: 'https://youtube.com', containerId: 'firefox-default' }
+    ]);
 
-    broadcastManagers = [
-      new BroadcastManager('firefox-default'),
-      new BroadcastManager('firefox-default'),
-      new BroadcastManager('firefox-default')
-    ];
+    // Create event buses for each tab
+    eventBuses = tabs.map(() => new EventEmitter());
+
+    // Create broadcast channels for cross-tab communication
+    channels = tabs.map(() => ({
+      postMessage: jest.fn(),
+      close: jest.fn(),
+      onmessage: null
+    }));
+
+    // Mock BroadcastChannel to connect tabs
+    let channelIndex = 0;
+    global.BroadcastChannel = jest.fn(() => {
+      const channel = channels[channelIndex];
+      channelIndex++;
+      return channel;
+    });
+
+    // Create managers for each tab
+    broadcastManagers = tabs.map((tab, index) => {
+      const manager = new BroadcastManager(eventBuses[index], tab.containerId);
+      manager.setupBroadcastChannel();
+      return manager;
+    });
+
+    stateManagers = tabs.map((tab, index) => {
+      return new StateManager(eventBuses[index], tab.tabId);
+    });
+
+    // Connect channels to simulate cross-tab delivery
+    channels.forEach((sourceChannel, sourceIndex) => {
+      const originalPostMessage = sourceChannel.postMessage;
+      sourceChannel.postMessage = jest.fn((message) => {
+        if (originalPostMessage && originalPostMessage.mock) {
+          originalPostMessage(message);
+        }
+        
+        setTimeout(() => {
+          channels.forEach((targetChannel, targetIndex) => {
+            if (sourceIndex !== targetIndex && targetChannel.onmessage) {
+              targetChannel.onmessage({ data: message });
+            }
+          });
+        }, 10);
+      });
+    });
 
     // Wire up broadcast handlers for each tab
-    broadcastManagers.forEach((bm, tabIndex) => {
-      bm.on('UPDATE_POSITION', async message => {
-        messageLog.push({ tabIndex, type: 'UPDATE_POSITION', timestamp: Date.now() });
-        const qt = stateManagers[tabIndex].get(message.id);
-        if (qt) {
-          qt.updatePosition(message.position.left, message.position.top);
+    eventBuses.forEach((bus, tabIndex) => {
+      bus.on('broadcast:received', (message) => {
+        if (message.type === 'UPDATE_POSITION') {
+          messageLog.push({ tabIndex, type: 'UPDATE_POSITION', timestamp: Date.now() });
+          const qt = stateManagers[tabIndex].get(message.data.id);
+          if (qt) {
+            qt.updatePosition(message.data.position.left, message.data.position.top);
+          }
         }
       });
     });
@@ -54,6 +104,7 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
     broadcastManagers.forEach(bm => bm.close());
     stateManagers.forEach(sm => sm.quickTabs.clear());
     messageLog = [];
+    delete global.BroadcastChannel;
   });
 
   describe('Rapid Updates', () => {

@@ -160,7 +160,8 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
         sm.add(qt2);
       });
 
-      // Close QT1
+      // Close QT1 - delete locally first, then broadcast
+      stateManagers[0].delete(qt1.id);
       await broadcastManagers[0].broadcast('DESTROY', {
         id: qt1.id,
         container: qt1.container
@@ -202,7 +203,8 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       expect(stateManagers[1].count()).toBe(3);
       expect(stateManagers[2].count()).toBe(3);
 
-      // Close QT 2
+      // Close QT 2 - delete locally first, then broadcast
+      stateManagers[0].delete(qts[1].id);
       await broadcastManagers[0].broadcast('DESTROY', {
         id: qts[1].id,
         container: qts[1].container
@@ -232,12 +234,12 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
 
       stateManagers.forEach(sm => sm.add(qt));
 
-      // Verify at limit (if limit is 1)
-      const limit = 5; // Assume default limit
-      const wouldExceed = stateManagers[0].wouldExceedLimit();
+      // Record count before close
       const countBeforeClose = stateManagers[0].count();
+      expect(countBeforeClose).toBe(1);
 
-      // Close Quick Tab
+      // Close Quick Tab - delete locally first, then broadcast
+      stateManagers[0].delete(qt.id);
       await broadcastManagers[0].broadcast('DESTROY', {
         id: qt.id,
         container: qt.container
@@ -245,36 +247,45 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
 
       await wait(100);
 
-      // Verify count decreased
-      expect(stateManagers[0].count()).toBe(countBeforeClose - 1);
-
-      // Verify slot available
-      if (wouldExceed) {
-        expect(stateManagers[0].wouldExceedLimit()).toBe(false);
-      }
+      // Verify count decreased (slot now available)
+      expect(stateManagers[0].count()).toBe(0);
+      expect(stateManagers[1].count()).toBe(0);
+      expect(stateManagers[2].count()).toBe(0);
     });
   });
 
   describe('Container-Specific Cleanup', () => {
     test('closing Quick Tab in one container does not affect other containers', async () => {
+      // Create event buses
+      const eventBus1 = new EventEmitter();
+      const eventBus2 = new EventEmitter();
+      
       // Create managers for different containers
       const container1Managers = [
-        new StateManager('firefox-default'),
-        new BroadcastManager('firefox-default')
+        new StateManager(eventBus1, 1001),
+        new BroadcastManager(eventBus1, 'firefox-default')
       ];
 
       const container2Managers = [
-        new StateManager('firefox-container-1'),
-        new BroadcastManager('firefox-container-1')
+        new StateManager(eventBus2, 1002),
+        new BroadcastManager(eventBus2, 'firefox-container-1')
       ];
-
+      
+      // Setup broadcast channels
+      container1Managers[1].setupBroadcastChannel();
+      container2Managers[1].setupBroadcastChannel();
+      
       // Wire up handlers
-      container1Managers[1].on('DESTROY', message => {
-        container1Managers[0].delete(message.id);
+      eventBus1.on('broadcast:received', (message) => {
+        if (message.type === 'DESTROY') {
+          container1Managers[0].delete(message.data.id);
+        }
       });
 
-      container2Managers[1].on('DESTROY', message => {
-        container2Managers[0].delete(message.id);
+      eventBus2.on('broadcast:received', (message) => {
+        if (message.type === 'DESTROY') {
+          container2Managers[0].delete(message.data.id);
+        }
       });
 
       // Create QTs in each container
@@ -297,7 +308,8 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       container1Managers[0].add(qt1);
       container2Managers[0].add(qt2);
 
-      // Close QT1 in container 1
+      // Close QT1 in container 1 - delete locally first, then broadcast
+      container1Managers[0].delete(qt1.id);
       await container1Managers[1].broadcast('DESTROY', {
         id: qt1.id,
         container: qt1.container
@@ -309,9 +321,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       expect(container1Managers[0].get(qt1.id)).toBeUndefined();
       expect(container2Managers[0].get(qt2.id)).toBeDefined();
 
-      // Cleanup
-      container1Managers[1].close();
-      container2Managers[1].close();
+      // Cleanup - close() is handled in afterEach
     });
   });
 
@@ -333,7 +343,11 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
         stateManagers.forEach(sm => sm.add(qt));
       });
 
-      // Close QTs 1, 3, 5 simultaneously
+      // Close QTs 1, 3, 5 simultaneously - delete locally first
+      stateManagers[0].delete(qts[0].id);
+      stateManagers[0].delete(qts[2].id);
+      stateManagers[0].delete(qts[4].id);
+      
       await Promise.all([
         broadcastManagers[0].broadcast('DESTROY', { id: qts[0].id, container: qts[0].container }),
         broadcastManagers[0].broadcast('DESTROY', { id: qts[2].id, container: qts[2].container }),
@@ -358,13 +372,12 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
 
   describe('Edge Cases', () => {
     test('closing non-existent Quick Tab does not cause error', async () => {
-      // Try to close non-existent QT
-      await expect(
-        broadcastManagers[0].broadcast('DESTROY', {
-          id: 'qt-nonexistent',
-          container: 'firefox-default'
-        })
-      ).resolves.not.toThrow();
+      // Try to close non-existent QT - should not throw
+      // broadcast() doesn't return a promise, so we just call it
+      broadcastManagers[0].broadcast('DESTROY', {
+        id: 'qt-nonexistent',
+        container: 'firefox-default'
+      });
 
       await wait(50);
 
@@ -383,12 +396,13 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
 
       stateManagers.forEach(sm => sm.add(qt));
 
-      // Close multiple times
-      await broadcastManagers[0].broadcast('DESTROY', { id: qt.id, container: qt.container });
+      // Close multiple times - delete locally first
+      stateManagers[0].delete(qt.id);
+      broadcastManagers[0].broadcast('DESTROY', { id: qt.id, container: qt.container });
       await wait(50);
-      await broadcastManagers[0].broadcast('DESTROY', { id: qt.id, container: qt.container });
+      broadcastManagers[0].broadcast('DESTROY', { id: qt.id, container: qt.container });
       await wait(50);
-      await broadcastManagers[0].broadcast('DESTROY', { id: qt.id, container: qt.container });
+      broadcastManagers[0].broadcast('DESTROY', { id: qt.id, container: qt.container });
       await wait(50);
 
       // Verify removed once

@@ -11,60 +11,105 @@
  * - No data loss during concurrent operations
  */
 
+import { EventEmitter } from 'eventemitter3';
+
 import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
 import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
-import { wait } from '../../helpers/async-helpers.js';
+import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
+import { wait } from '../../helpers/quick-tabs-test-utils.js';
 
 describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
+  let tabs;
   let stateManagers;
   let broadcastManagers;
+  let eventBuses;
+  let channels;
 
-  beforeEach(() => {
-    // Simulate 5 tabs with independent state/broadcast managers
-    stateManagers = [
-      new StateManager('firefox-default'),
-      new StateManager('firefox-default'),
-      new StateManager('firefox-default'),
-      new StateManager('firefox-default'),
-      new StateManager('firefox-default')
-    ];
+  beforeEach(async () => {
+    jest.clearAllMocks();
 
-    broadcastManagers = [
-      new BroadcastManager('firefox-default'),
-      new BroadcastManager('firefox-default'),
-      new BroadcastManager('firefox-default'),
-      new BroadcastManager('firefox-default'),
-      new BroadcastManager('firefox-default')
-    ];
+    // Create 5 simulated tabs
+    tabs = await createMultiTabScenario([
+      { url: 'https://wikipedia.org', containerId: 'firefox-default' },
+      { url: 'https://github.com', containerId: 'firefox-default' },
+      { url: 'https://youtube.com', containerId: 'firefox-default' },
+      { url: 'https://twitter.com', containerId: 'firefox-default' },
+      { url: 'https://reddit.com', containerId: 'firefox-default' }
+    ]);
+
+    // Create event buses for each tab
+    eventBuses = tabs.map(() => new EventEmitter());
+
+    // Create broadcast channels for cross-tab communication
+    channels = tabs.map(() => ({
+      postMessage: jest.fn(),
+      close: jest.fn(),
+      onmessage: null
+    }));
+
+    // Mock BroadcastChannel to connect tabs
+    let channelIndex = 0;
+    global.BroadcastChannel = jest.fn(() => {
+      const channel = channels[channelIndex];
+      channelIndex++;
+      return channel;
+    });
+
+    // Create managers for each tab
+    broadcastManagers = tabs.map((tab, index) => {
+      const manager = new BroadcastManager(eventBuses[index], tab.containerId);
+      manager.setupBroadcastChannel();
+      return manager;
+    });
+
+    stateManagers = tabs.map((tab, index) => {
+      return new StateManager(eventBuses[index], tab.tabId);
+    });
+
+    // Connect channels to simulate cross-tab delivery
+    channels.forEach((sourceChannel, sourceIndex) => {
+      const originalPostMessage = sourceChannel.postMessage;
+      sourceChannel.postMessage = jest.fn((message) => {
+        if (originalPostMessage && originalPostMessage.mock) {
+          originalPostMessage(message);
+        }
+        
+        setTimeout(() => {
+          channels.forEach((targetChannel, targetIndex) => {
+            if (sourceIndex !== targetIndex && targetChannel.onmessage) {
+              targetChannel.onmessage({ data: message });
+            }
+          });
+        }, 10);
+      });
+    });
 
     // Wire up broadcast handlers for each tab
-    broadcastManagers.forEach((bm, tabIndex) => {
-      bm.on('UPDATE_POSITION', async message => {
-        const qt = stateManagers[tabIndex].get(message.id);
-        if (qt) {
-          qt.updatePosition(message.position.left, message.position.top);
-        }
-      });
-
-      bm.on('UPDATE_SIZE', async message => {
-        const qt = stateManagers[tabIndex].get(message.id);
-        if (qt) {
-          qt.updateSize(message.size.width, message.size.height);
-        }
-      });
-
-      bm.on('CREATE', async message => {
-        const existingQt = stateManagers[tabIndex].get(message.id);
-        if (!existingQt) {
-          const qt = new QuickTab({
-            id: message.id,
-            url: message.url,
-            position: message.position,
-            size: message.size,
-            container: message.container
-          });
-          stateManagers[tabIndex].add(qt);
+    eventBuses.forEach((bus, tabIndex) => {
+      bus.on('broadcast:received', (message) => {
+        if (message.type === 'UPDATE_POSITION') {
+          const qt = stateManagers[tabIndex].get(message.data.id);
+          if (qt) {
+            qt.updatePosition(message.data.position.left, message.data.position.top);
+          }
+        } else if (message.type === 'UPDATE_SIZE') {
+          const qt = stateManagers[tabIndex].get(message.data.id);
+          if (qt) {
+            qt.updateSize(message.data.size.width, message.data.size.height);
+          }
+        } else if (message.type === 'CREATE') {
+          const existingQt = stateManagers[tabIndex].get(message.data.id);
+          if (!existingQt) {
+            const qt = new QuickTab({
+              id: message.data.id,
+              url: message.data.url,
+              position: message.data.position,
+              size: message.data.size,
+              container: message.data.container
+            });
+            stateManagers[tabIndex].add(qt);
+          }
         }
       });
     });
@@ -74,6 +119,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
     // Cleanup
     broadcastManagers.forEach(bm => bm.close());
     stateManagers.forEach(sm => sm.quickTabs.clear());
+    delete global.BroadcastChannel;
   });
 
   describe('Concurrent Position Updates', () => {
@@ -329,7 +375,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
 
       // Verify all Quick Tabs created in all tabs
       stateManagers.forEach(sm => {
-        expect(sm.getCount()).toBe(5);
+        expect(sm.count()).toBe(5);
         for (let i = 1; i <= 5; i++) {
           expect(sm.get(`qt-create-${i}`)).toBeDefined();
         }
@@ -355,7 +401,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
 
       // Verify Quick Tab exists once in each tab
       stateManagers.forEach(sm => {
-        expect(sm.getCount()).toBe(1);
+        expect(sm.count()).toBe(1);
         expect(sm.get(qtData.id)).toBeDefined();
       });
     });
@@ -402,7 +448,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
 
       // Verify all Quick Tabs still exist
       stateManagers.forEach(sm => {
-        expect(sm.getCount()).toBe(10);
+        expect(sm.count()).toBe(10);
         qts.forEach(qt => {
           expect(sm.get(qt.id)).toBeDefined();
         });
@@ -461,7 +507,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
 
       // Verify no duplicate Quick Tabs created
       stateManagers.forEach(sm => {
-        expect(sm.getCount()).toBe(1);
+        expect(sm.count()).toBe(1);
         expect(sm.get(qt.id)).toBeDefined();
       });
     });
@@ -514,7 +560,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
 
       // Valid Quick Tab should still exist
       expect(stateManagers[0].get(qt.id)).toBeDefined();
-      expect(stateManagers[0].getCount()).toBe(1);
+      expect(stateManagers[0].count()).toBe(1);
     });
   });
 });

@@ -147,19 +147,17 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
         }
       });
 
-      // Send update for non-existent Quick Tab
-      await expect(
-        broadcastManagers[0].broadcast('UPDATE_POSITION', {
-          id: 'qt-nonexistent',
-          left: 500,
-          top: 500
-        })
-      ).resolves.not.toThrow();
+      // Send update for non-existent Quick Tab - should not throw
+      broadcastManagers[0].broadcast('UPDATE_POSITION', {
+        id: 'qt-nonexistent',
+        left: 500,
+        top: 500
+      });
 
       await wait(100);
 
       // Should not crash or create invalid state
-      expect(stateManagers[1].getCount()).toBe(0);
+      expect(stateManagers[1].count()).toBe(0);
     });
   });
 
@@ -300,7 +298,7 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
       expect(qtInB.position.top).toBe(200);
 
       // State count should be correct
-      expect(stateManagers[1].getCount()).toBe(1);
+      expect(stateManagers[1].count()).toBe(1);
     });
   });
 
@@ -359,13 +357,12 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
         }
       });
 
-      await expect(
-        broadcastManagers[0].broadcast('CREATE', {})
-      ).resolves.not.toThrow();
+      // broadcast() doesn't return a promise, so we just call it
+      broadcastManagers[0].broadcast('CREATE', {});
 
       await wait(100);
 
-      expect(stateManagers[1].getCount()).toBe(0);
+      expect(stateManagers[1].count()).toBe(0);
     });
 
     test('null/undefined values in message handled gracefully', async () => {
