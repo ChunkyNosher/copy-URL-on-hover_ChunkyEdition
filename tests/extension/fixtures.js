@@ -65,17 +65,31 @@ export const test = base.extend({
       // Use unique temp directory for isolation
       const tmpDir = fs.mkdtempSync(path.join('/tmp', 'playwright-chrome-'));
       
+      console.log('[Fixture] Extension path:', pathToExtension);
+      console.log('[Fixture] Temp directory:', tmpDir);
+      
       context = await chromium.launchPersistentContext(tmpDir, {
         headless: false, // Extensions require headed mode
+        timeout: 60000, // Increased launch timeout for CI
+        slowMo: 100, // Slow down operations slightly for CI stability
         args: [
           `--disable-extensions-except=${pathToExtension}`,
           `--load-extension=${pathToExtension}`,
           '--no-sandbox',
           '--disable-setuid-sandbox',
+          '--disable-gpu', // Required for Xvfb/virtual display
+          '--disable-features=DevToolsDebuggingRestrictions', // Required for Chromium 136+
+          '--disable-dev-shm-usage', // Prevent shared memory issues in CI
+          '--disable-dbus', // Disable DBus to prevent connection errors in CI
+          '--disable-software-rasterizer', // Disable software rasterizer
           '--disable-component-extensions-with-background-pages', // Optimize teardown
           '--disable-default-apps', // Optimize teardown
           '--disable-blink-features=AutomationControlled'
         ]
+      }).catch((error) => {
+        console.error('[Fixture] Browser launch failed:', error.message);
+        console.error('[Fixture] Full error:', error);
+        throw error;
       });
       console.log('[Fixture] Chromium persistent context created with extension');
     }
