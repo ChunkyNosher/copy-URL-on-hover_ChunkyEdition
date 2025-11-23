@@ -72,14 +72,14 @@ describe('Manifest Validation', () => {
   /**
    * TEST: Required permissions
    * WHY: Extension won't work without these
+   * NOTE: contextualIdentities removed for Chrome compatibility (Firefox-only feature)
    */
   test('should have all required permissions', () => {
     const requiredPermissions = [
       'storage',
       'tabs',
       'webRequest',
-      'webRequestBlocking',
-      'contextualIdentities'
+      'webRequestBlocking'
     ];
 
     requiredPermissions.forEach(permission => {
