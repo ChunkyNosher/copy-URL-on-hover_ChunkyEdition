@@ -85,6 +85,14 @@ if (typeof global.PointerEvent === 'undefined') {
   };
 }
 
+// Add TextEncoder and TextDecoder polyfills for JSDOM
+// Required for cross-tab simulator tests that use JSDOM
+if (typeof global.TextEncoder === 'undefined') {
+  const { TextEncoder, TextDecoder } = require('util');
+  global.TextEncoder = TextEncoder;
+  global.TextDecoder = TextDecoder;
+}
+
 // Add custom matchers if needed
 expect.extend({
   toBeValidURL(received) {

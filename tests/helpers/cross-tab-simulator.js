@@ -7,9 +7,9 @@
  * Related Documentation:
  * - docs/manual/comprehensive-unit-testing-strategy.md (Section 7.2)
  * - docs/issue-47-revised-scenarios.md
+ * 
+ * Note: Uses pure mocks instead of JSDOM to avoid dependency issues
  */
-
-import { JSDOM } from 'jsdom';
 
 /**
  * Creates a simulated browser tab context with isolated storage and broadcast channel
@@ -21,12 +21,26 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
   // Generate unique tab ID
   const tabId = Math.floor(Math.random() * 1000000);
 
-  // Create isolated JSDOM instance for this tab
-  const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
-    url,
-    runScripts: 'dangerously',
-    resources: 'usable'
-  });
+  // Create mock DOM for this tab
+  const mockDocument = {
+    hidden: false,
+    visibilityState: 'visible',
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn()
+  };
+
+  const mockWindow = {
+    document: mockDocument,
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+    Event: class Event {
+      constructor(type) {
+        this.type = type;
+      }
+    }
+  };
 
   // Create isolated storage mock
   const storage = new Map();
@@ -157,9 +171,8 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
     tabId,
     containerId,
     url,
-    dom,
-    window: dom.window,
-    document: dom.window.document,
+    window: mockWindow,
+    document: mockDocument,
     storage: storageAPI,
     broadcastChannel,
     tabs: tabsAPI,
@@ -176,20 +189,44 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
 export async function switchToTab(fromTab, toTab) {
   if (fromTab) {
     // Trigger visibilitychange on previous tab
-    const event = new fromTab.window.Event('visibilitychange');
-    Object.defineProperty(fromTab.document, 'hidden', { value: true, configurable: true });
-    Object.defineProperty(fromTab.document, 'visibilityState', { value: 'hidden', configurable: true });
-    fromTab.document.dispatchEvent(event);
+    fromTab.document.hidden = true;
+    fromTab.document.visibilityState = 'hidden';
+    
+    // Call all visibility change listeners
+    if (fromTab.document.addEventListener.mock) {
+      const calls = fromTab.document.addEventListener.mock.calls;
+      calls.forEach(call => {
+        if (call[0] === 'visibilitychange') {
+          call[1]({ type: 'visibilitychange' });
+        }
+      });
+    }
   }
 
   if (toTab) {
     // Trigger focus events on new tab
-    const visibilityEvent = new toTab.window.Event('visibilitychange');
-    const focusEvent = new toTab.window.Event('focus');
-    Object.defineProperty(toTab.document, 'hidden', { value: false, configurable: true });
-    Object.defineProperty(toTab.document, 'visibilityState', { value: 'visible', configurable: true });
-    toTab.document.dispatchEvent(visibilityEvent);
-    toTab.window.dispatchEvent(focusEvent);
+    toTab.document.hidden = false;
+    toTab.document.visibilityState = 'visible';
+    
+    // Call all visibility change listeners
+    if (toTab.document.addEventListener.mock) {
+      const calls = toTab.document.addEventListener.mock.calls;
+      calls.forEach(call => {
+        if (call[0] === 'visibilitychange') {
+          call[1]({ type: 'visibilitychange' });
+        }
+      });
+    }
+    
+    // Call all focus listeners
+    if (toTab.window.addEventListener.mock) {
+      const calls = toTab.window.addEventListener.mock.calls;
+      calls.forEach(call => {
+        if (call[0] === 'focus') {
+          call[1]({ type: 'focus' });
+        }
+      });
+    }
   }
 
   // Allow event handlers to process
