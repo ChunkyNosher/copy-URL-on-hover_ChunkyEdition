@@ -11,9 +11,25 @@
  * Covers Issues: #35, #47, #51
  */
 
-// v1.6.1.2 - Mock window factory for testing (injected via dependency injection)
+// Mock utils
+jest.mock('../../../src/utils/debug.js', () => ({
+  log: jest.fn(),
+  error: jest.fn(),
+  warn: jest.fn(),
+  info: jest.fn(),
+  debug: jest.fn(),
+  isDebugMode: jest.fn().mockReturnValue(false)
+}));
+
+import { EventEmitter } from 'eventemitter3';
+import { createMultiTabScenario, propagateBroadcast } from '../../helpers/cross-tab-simulator.js';
+import { waitForCondition } from '../../helpers/async-helpers.js';
+import { initQuickTabs } from '../../../src/features/quick-tabs/index.js';
+import { Events } from '../../../src/core/events.js';
+
+// Helper function for creating mock windows (v1.6.1.2)
 const mockQuickTabWindows = new Map();
-const mockWindowFactory = jest.fn((config) => {
+function createMockWindow(config) {
   const mockWindow = {
     id: config.id,
     position: { left: config.left, top: config.top },
@@ -59,28 +75,43 @@ const mockWindowFactory = jest.fn((config) => {
   };
   mockQuickTabWindows.set(config.id, mockWindow);
   return mockWindow;
-});
-
-// Mock utils
-jest.mock('../../../src/utils/debug.js', () => ({
-  log: jest.fn(),
-  error: jest.fn(),
-  warn: jest.fn(),
-  info: jest.fn(),
-  debug: jest.fn(),
-  isDebugMode: jest.fn().mockReturnValue(false)
-}));
-
-import { EventEmitter } from 'eventemitter3';
-import { createMultiTabScenario, propagateBroadcast } from '../../helpers/cross-tab-simulator.js';
-import { waitForCondition } from '../../helpers/async-helpers.js';
-import { initQuickTabs } from '../../../src/features/quick-tabs/index.js';
-import { Events } from '../../../src/core/events.js';
+}
 
 describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   let tabs;
   let managerA;
   let managerB;
+  let mockWindowFactory;
+
+  beforeAll(() => {
+    // v1.6.1.2 - Just use the function directly (no Jest mocking for now)
+    mockWindowFactory = createMockWindow;
+  });
+
+  // DEBUG TEST: Verify mock factory works
+  test('mock factory should create mock window', () => {
+    // Test 1: Check if mockWindowFactory is defined
+    expect(mockWindowFactory).toBeDefined();
+    expect(typeof mockWindowFactory).toBe('function');
+    
+    // Test 2: Try calling our factory
+    const result = mockWindowFactory({
+      id: 'test-123',
+      left: 10,
+      top: 20,
+      width: 100,
+      height: 200,
+      url: 'https://test.com',
+      cookieStoreId: 'test-container'
+    });
+    
+    expect(result).toBeDefined();
+    expect(result.id).toBe('test-123');
+    expect(result.position.left).toBe(10);
+    expect(result.position.top).toBe(20);
+    expect(result.size.width).toBe(100);
+    expect(result.size.height).toBe(200);
+  });
 
   beforeEach(async () => {
     // Create two simulated tabs (Wikipedia and YouTube)
@@ -154,26 +185,29 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       }
     }
     mockQuickTabWindows.clear();
-    mockWindowFactory.mockClear();
+    // mockWindowFactory.mockClear(); // Not using Jest mock - using regular function
     jest.clearAllMocks();
   });
 
   describe('Step 1-3: Create Quick Tab in Tab A', () => {
     test('should create Quick Tab with default position in Tab A', async () => {
       // Initialize QuickTabsManager in Tab A
-      managerA = await initQuickTabs(new EventEmitter(), Events, { 
-        windowFactory: mockWindowFactory,
-        forceNew: true  // Create new instance for testing
-      });
-
-      console.log('[TEST] managerA:', managerA);
-      console.log('[TEST] managerA.initialized:', managerA?.initialized);
-      console.log('[TEST] managerA.createHandler:', managerA?.createHandler);
-      console.log('[TEST] managerA.windowFactory:', managerA?.windowFactory);
-      console.log('[TEST] mockWindowFactory:', mockWindowFactory);
+      let managerAResult;
+      try {
+        managerAResult = await initQuickTabs(new EventEmitter(), Events, { 
+          windowFactory: mockWindowFactory,
+          forceNew: true  // Create new instance for testing
+        });
+        managerA = managerAResult;
+      } catch (err) {
+        throw new Error(`Failed to initialize QuickTabsManager: ${err.message}\nStack: ${err.stack}`);
+      }
 
       expect(managerA).toBeDefined();
+      expect(managerA.initialized).toBe(true);
       expect(typeof managerA.createQuickTab).toBe('function');
+      expect(managerA.createHandler).toBeDefined();
+      expect(managerA.windowFactory).toBe(mockWindowFactory);
 
       // Create Quick Tab in Tab A
       const qtOptions = {
@@ -185,14 +219,16 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
         cookieStoreId: 'firefox-default'
       };
 
-      console.log('[TEST] Calling createQuickTab with options:', qtOptions);
-      const tabWindow = await managerA.createQuickTab(qtOptions);
-      console.log('[TEST] createQuickTab returned:', tabWindow);
-      console.log('[TEST] mockWindowFactory.mock.calls:', mockWindowFactory.mock.calls);
-      console.log('[TEST] mockWindowFactory was called:', mockWindowFactory.mock.calls.length, 'times');
+      let tabWindow;
+      try {
+        tabWindow = await managerA.createQuickTab(qtOptions);
+      } catch (err) {
+        throw new Error(`Failed to create Quick Tab: ${err.message}\nStack: ${err.stack}\nFactory: ${mockWindowFactory}\nFactory called: ${mockWindowFactory.mock.calls.length}`);
+      }
 
       // Verify mock was called
       expect(mockWindowFactory).toHaveBeenCalled();
+      expect(mockWindowFactory.mock.calls.length).toBeGreaterThan(0);
       
       // Verify Quick Tab was created
       expect(tabWindow).toBeDefined();

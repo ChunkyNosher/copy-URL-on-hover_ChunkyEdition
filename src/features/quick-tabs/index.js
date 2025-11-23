@@ -649,12 +649,11 @@ export async function initQuickTabs(eventBus, Events, options = {}) {
   
   // v1.6.1.3 - Allow creating new instance for testing (avoids singleton issues in tests)
   if (options.forceNew || !quickTabsManagerInstance) {
-    console.log('[QuickTabs] Creating new QuickTabsManager instance');
+    console.log('[QuickTabs] Creating new QuickTabsManager instance with options:', options);
     quickTabsManagerInstance = new QuickTabsManager(options);
-  }
-  
-  // v1.6.1.2 - Allow dependency injection for testing
-  if (options.windowFactory) {
+  } else if (options.windowFactory) {
+    // If reusing instance but windowFactory provided, update it BEFORE init
+    console.log('[QuickTabs] Updating windowFactory on existing instance');
     quickTabsManagerInstance.windowFactory = options.windowFactory;
   }
   
