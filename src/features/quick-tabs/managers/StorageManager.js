@@ -52,11 +52,9 @@ export class StorageManager {
     }
 
     try {
-      // Serialize QuickTab domain entities to storage format
-      const serializedTabs = quickTabs.map(qt => qt.serialize());
-
-      // Save using SyncStorageAdapter (handles quota, fallback, etc.)
-      const saveId = await this.syncAdapter.save(this.cookieStoreId, serializedTabs);
+      // Save using SyncStorageAdapter (handles quota, fallback, serialization, etc.)
+      // Note: SyncStorageAdapter.save() expects QuickTab instances and handles serialization
+      const saveId = await this.syncAdapter.save(this.cookieStoreId, quickTabs);
 
       // Track saveId to prevent race conditions
       this.trackPendingSave(saveId);
