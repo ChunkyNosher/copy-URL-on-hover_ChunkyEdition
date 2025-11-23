@@ -22,8 +22,7 @@ jest.mock('../../../src/utils/debug.js', () => ({
 }));
 
 import { EventEmitter } from 'eventemitter3';
-import { createMultiTabScenario, propagateBroadcast } from '../../helpers/cross-tab-simulator.js';
-import { waitForCondition } from '../../helpers/async-helpers.js';
+import { createMultiTabScenario, propagateBroadcast, waitForCondition } from '../../helpers/cross-tab-simulator.js';
 import { initQuickTabs } from '../../../src/features/quick-tabs/index.js';
 import { Events } from '../../../src/core/events.js';
 

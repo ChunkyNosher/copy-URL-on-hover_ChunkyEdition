@@ -360,15 +360,23 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
   describe('Concurrent Creation', () => {
     test('multiple tabs creating Quick Tabs simultaneously', async () => {
       // Each tab creates a different Quick Tab
-      const creations = [1, 2, 3, 4, 5].map(i =>
-        broadcastManagers[i - 1].broadcast('CREATE', {
+      // First add to local state, then broadcast
+      const creations = [1, 2, 3, 4, 5].map((i, index) => {
+        const qtData = {
           id: `qt-create-${i}`,
           url: `https://example${i}.com`,
           position: { left: i * 100, top: i * 100 },
           size: { width: 800, height: 600 },
           container: 'firefox-default'
-        })
-      );
+        };
+        
+        // Add to creating tab's state first
+        const qt = new QuickTab(qtData);
+        stateManagers[index].add(qt);
+        
+        // Then broadcast to other tabs
+        return broadcastManagers[index].broadcast('CREATE', qtData);
+      });
 
       await Promise.all(creations);
       await wait(200);
