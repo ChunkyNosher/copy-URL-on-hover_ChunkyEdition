@@ -229,11 +229,16 @@ describe('Scenario 14: Browser Restart Persistence Protocol', () => {
       // Restore storage
       restoreStorageAfterRestart(tabs, persistedStorage);
 
-      // Hydrate state from storage
+      // Hydrate state from storage with container awareness
       await Promise.all(
         stateManagers.map(async (sm, index) => {
           const stored = await storageManagers[index].loadAll();
-          stored.forEach(qt => sm.add(qt));
+          stored.forEach(qt => {
+            // Only add if container matches
+            if (qt.container === tabs[index].containerId) {
+              sm.add(qt);
+            }
+          });
         })
       );
 
