@@ -13,19 +13,17 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
+
+import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
 import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
-import { StorageManager } from '../../../src/features/quick-tabs/managers/StorageManager.js';
-import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
 import { wait } from '../../helpers/quick-tabs-test-utils.js';
 
 describe('Scenario 1: Cross-Tab Synchronization Protocol', () => {
   let tabs;
-  let managers;
   let broadcastManagers;
   let stateManagers;
-  let storageManagers;
   let eventBuses;
   let channels;
 
@@ -88,11 +86,6 @@ describe('Scenario 1: Cross-Tab Synchronization Protocol', () => {
 
     stateManagers = tabs.map((tab, index) => {
       return new StateManager(eventBuses[index], tab.tabId);
-    });
-
-    storageManagers = tabs.map((tab, index) => {
-      const quickTabsMap = new Map();
-      return new StorageManager(quickTabsMap, tab.containerId);
     });
 
     // Connect channels to simulate cross-tab delivery
@@ -445,7 +438,7 @@ describe('Scenario 1: Cross-Tab Synchronization Protocol', () => {
       });
 
       // Setup both tabs to handle CREATE messages
-      eventBuses.forEach((bus, index) => {
+      eventBuses.forEach((bus, idx) => {
         bus.on('broadcast:received', (message) => {
           if (message.type === 'CREATE') {
             // Create QuickTab instance from broadcast data
@@ -456,7 +449,7 @@ describe('Scenario 1: Cross-Tab Synchronization Protocol', () => {
               size: { width: message.data.width, height: message.data.height },
               container: message.data.cookieStoreId
             });
-            stateManagers[index].add(qt);
+            stateManagers[idx].add(qt);
           }
         });
       });
