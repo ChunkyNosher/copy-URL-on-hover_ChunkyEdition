@@ -151,15 +151,17 @@ export async function createTab(options) {
 }
 
 /**
- * Get container information (Firefox only)
+ * Get container information
+ * Cross-browser: Firefox returns container info, Chrome returns null (no container support)
  * @param {number} containerId - Container ID
- * @returns {Promise<object|null>} Container information
+ * @returns {Promise<object|null>} Container information or null if not supported
  */
 export async function getContainer(containerId) {
   try {
     if (browser.contextualIdentities && browser.contextualIdentities.get) {
       return await browser.contextualIdentities.get(`firefox-container-${containerId}`);
     }
+    // Chrome/Edge: No container support, return null
     return null;
   } catch (err) {
     console.error('[Browser API] Failed to get container:', err);
