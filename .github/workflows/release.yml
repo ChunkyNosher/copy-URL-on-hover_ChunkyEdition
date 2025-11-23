@@ -70,15 +70,22 @@ jobs:
         id: get_version
         run: |
           VERSION=$(grep -oP '(?<="version": ")[^"]*' dist/manifest.json)
+          if [ -z "$VERSION" ]; then
+            echo "❌ Failed to extract version from manifest"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extension version: $VERSION"
 
       - name: Package Firefox Extension (.xpi)
         run: |
+          set -e
           echo "📦 Packaging Firefox extension..."
+          [ -d "dist" ] || { echo "❌ dist directory not found"; exit 1; }
           cd dist
-          zip -r -1 -FS ../firefox-extension-v${{ steps.get_version.outputs.version }}.xpi * -x '*.DS_Store' -x '*.map'
+          zip -r -1 -FS ../firefox-extension-v${{ steps.get_version.outputs.version }}.xpi . -x '*.DS_Store' -x '*.map'
           cd ..
+          [ -f "firefox-extension-v${{ steps.get_version.outputs.version }}.xpi" ] || { echo "❌ Firefox package failed"; exit 1; }
           echo "✓ Firefox package created"
 
       - name: Verify Firefox Package
@@ -103,6 +110,8 @@ jobs:
 
       - name: Package Chrome Extension (.zip)
         run: |
+          set -e
+          [ -f "manifest.chrome.json" ] || { echo "❌ manifest.chrome.json not found"; exit 1; }
           echo "📦 Packaging Chrome extension..."
           
           # Create dist-chrome directory
@@ -115,26 +124,32 @@ jobs:
           # Copy and process Chrome-specific manifest
           node -e "
           const fs = require('fs');
-          const chromeManifest = JSON.parse(fs.readFileSync('manifest.chrome.json', 'utf8'));
-          
-          // Fix paths
-          if (chromeManifest.background && chromeManifest.background.scripts) {
-            chromeManifest.background.scripts = chromeManifest.background.scripts.map(s => s.replace(/^dist\//, ''));
+          try {
+            const chromeManifest = JSON.parse(fs.readFileSync('manifest.chrome.json', 'utf8'));
+            
+            // Fix paths
+            if (chromeManifest.background?.scripts) {
+              chromeManifest.background.scripts = chromeManifest.background.scripts.map(s => s.replace(/^dist\//, ''));
+            }
+            if (chromeManifest.content_scripts?.length) {
+              chromeManifest.content_scripts.forEach(cs => {
+                if (cs.js?.length) cs.js = cs.js.map(s => s.replace(/^dist\//, ''));
+              });
+            }
+            
+            fs.writeFileSync('dist-chrome/manifest.json', JSON.stringify(chromeManifest, null, 2) + '\n');
+            console.log('✓ Chrome manifest processed');
+          } catch (e) {
+            console.error('❌ Manifest processing failed:', e.message);
+            process.exit(1);
           }
-          if (chromeManifest.content_scripts) {
-            chromeManifest.content_scripts.forEach(cs => {
-              if (cs.js) cs.js = cs.js.map(s => s.replace(/^dist\//, ''));
-            });
-          }
-          
-          fs.writeFileSync('dist-chrome/manifest.json', JSON.stringify(chromeManifest, null, 2) + '\n');
-          console.log('✓ Chrome manifest processed');
           "
           
           # Package Chrome extension
           cd dist-chrome
-          zip -r -1 -FS ../chrome-extension-v${{ steps.get_version.outputs.version }}.zip * -x '*.DS_Store' -x '*.map'
+          zip -r -1 -FS ../chrome-extension-v${{ steps.get_version.outputs.version }}.zip . -x '*.DS_Store' -x '*.map'
           cd ..
+          [ -f "chrome-extension-v${{ steps.get_version.outputs.version }}.zip" ] || { echo "❌ Chrome package failed"; exit 1; }
           echo "✓ Chrome package created"
 
       - name: Verify Chrome Package
