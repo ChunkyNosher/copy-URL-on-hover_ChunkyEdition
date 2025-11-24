@@ -149,12 +149,16 @@ describe('StorageManager', () => {
   describe('loadAll()', () => {
     beforeEach(() => {
       // Mock browser.runtime.sendMessage for loadAll tests
+      // Also mocks browser.storage.session so sessionAdapter fallback is tested
       global.browser = {
         runtime: {
           sendMessage: jest.fn().mockResolvedValue({
             success: false,
             tabs: []
           })
+        },
+        storage: {
+          session: {}  // Mock session storage API availability
         }
       };
     });
@@ -235,6 +239,48 @@ describe('StorageManager', () => {
         operation: 'load',
         error
       });
+    });
+
+    test('should skip session storage when browser.storage.session unavailable (content script context)', async () => {
+      // Mock browser without storage.session (simulates content script context)
+      global.browser = {
+        runtime: {
+          sendMessage: jest.fn().mockResolvedValue({
+            success: false,
+            tabs: []
+          })
+        },
+        storage: {
+          // NOTE: No 'session' property - simulates content script context
+          local: {}
+        }
+      };
+
+      const tabData = {
+        tabs: [
+          {
+            id: 'qt-sync-123',
+            url: 'https://sync-storage.com',
+            position: { left: 100, top: 100 },
+            size: { width: 400, height: 300 },
+            cookieStoreId: 'firefox-default'
+          }
+        ],
+        lastUpdate: Date.now()
+      };
+
+      mockSyncAdapter.load.mockResolvedValue(tabData);
+
+      const quickTabs = await manager.loadAll();
+
+      // Session adapter should NOT be called because browser.storage.session is undefined
+      expect(mockSessionAdapter.load).not.toHaveBeenCalled();
+      // Sync adapter should be called as fallback
+      expect(mockSyncAdapter.load).toHaveBeenCalledWith('firefox-default');
+      expect(quickTabs).toHaveLength(1);
+      expect(quickTabs[0].id).toBe('qt-sync-123');
+
+      delete global.browser;
     });
   });
 
@@ -823,6 +869,19 @@ describe('StorageManager', () => {
     });
 
     test('should handle storage corruption during load', async () => {
+      // Mock browser.storage.session so sessionAdapter fallback is tested
+      global.browser = {
+        runtime: {
+          sendMessage: jest.fn().mockResolvedValue({
+            success: false,
+            tabs: []
+          })
+        },
+        storage: {
+          session: {}
+        }
+      };
+
       const corruptionError = new Error('Data corruption detected');
       mockSessionAdapter.load.mockRejectedValue(corruptionError);
 
@@ -836,6 +895,8 @@ describe('StorageManager', () => {
         operation: 'load',
         error: corruptionError
       });
+
+      delete global.browser;
     });
 
     test('should handle delete when Quick Tab does not exist', async () => {
