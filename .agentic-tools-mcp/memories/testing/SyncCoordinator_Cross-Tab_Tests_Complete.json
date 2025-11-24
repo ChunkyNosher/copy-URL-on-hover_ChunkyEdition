@@ -1,9 +1,8 @@
 {
   "id": "1697bcb5-6efc-4281-8ff7-40889b382f0d",
   "title": "SyncCoordinator Cross-Tab Tests Complete",
-  "content": "Phase 2 SyncCoordinator cross-tab tests complete with 19 new tests validating:\n- Position/Size sync lifecycle across tabs\n- Cross-tab propagation of position and size updates\n- Tab visibility state refresh when tabs switch\n- Container-specific Quick Tab loading\n- Rapid position updates maintaining consistency\n- Concurrent updates from different tabs\n- SaveId-based storage change filtering\n- Message routing (CREATE, SOLO, MUTE, MINIMIZE, RESTORE, CLOSE)\n\nAll 1846 tests passing. Key insights from Perplexity research:\n- Mock BroadcastChannel with controllable delivery timing\n- Test message ordering, duplication, and loss scenarios\n- Test coordinator election and leadership patterns\n- Test tab lifecycle (open/close mid-sync)\n- Test storage consistency before message handlers fire",
-  "metadata": {},
-  "createdAt": "2025-11-23T08:52:00.862Z",
-  "updatedAt": "2025-11-23T08:52:00.862Z",
-  "category": "testing"
+  "details": "Phase 2 SyncCoordinator cross-tab tests complete with 19 new tests validating:\n- Position/Size sync lifecycle across tabs\n- Cross-tab propagation of position and size updates\n- Tab visibility state refresh when tabs switch\n- Container-specific Quick Tab loading\n- Rapid position updates maintaining consistency\n- Concurrent updates from different tabs\n- SaveId-based storage change filtering\n- Message routing (CREATE, SOLO, MUTE, MINIMIZE, RESTORE, CLOSE)\n\nAll 1846 tests passing. Key insights from Perplexity research:\n- Mock BroadcastChannel with controllable delivery timing\n- Test message ordering, duplication, and loss scenarios\n- Test coordinator election and leadership patterns\n- Test tab lifecycle (open/close mid-sync)\n- Test storage consistency before message handlers fire",
+  "category": "testing",
+  "dateCreated": "2025-11-23T08:52:00.862Z",
+  "dateUpdated": "2025-11-23T08:52:00.862Z"
 }

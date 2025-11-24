@@ -1,9 +1,8 @@
 {
   "id": "64997223-f745-405f-aa05-f6e4058224fc",
   "title": "v1.6.0.12 Storage and Async Test Fixes",
-  "content": "### v1.6.0.12 introduced architectural changes that broke 14 tests\n\n**SyncStorageAdapter Changes:**\n- Changed from `browser.storage.sync.set()` to `browser.storage.local.set()` by default\n- Local storage has no 100KB quota limit\n- Tests needed to expect `local.set()` calls instead of `sync.set()`\n- Missing `browser.storage.local.remove` mock was added\n\n**VisibilityHandler Changes:**\n- `handleFocus()` method became async in v1.6.0.12\n- Tests calling this method needed to use `await` and make test function `async`\n\n**PanelManager Changes:**\n- `setupMessageListener()` was gutted in v1.6.0.12 to fix double-toggle bug\n- Message listener moved to content.js (no longer in PanelManager)\n- Tests expecting listener registration needed to be updated\n\n**All 14 failing tests are now fixed and passing (1814 tests total)**",
-  "metadata": {},
-  "createdAt": "2025-11-21T17:09:53.260Z",
-  "updatedAt": "2025-11-21T17:09:53.260Z",
-  "category": "test_fixes"
+  "details": "### v1.6.0.12 introduced architectural changes that broke 14 tests\n\n**SyncStorageAdapter Changes:**\n- Changed from `browser.storage.sync.set()` to `browser.storage.local.set()` by default\n- Local storage has no 100KB quota limit\n- Tests needed to expect `local.set()` calls instead of `sync.set()`\n- Missing `browser.storage.local.remove` mock was added\n\n**VisibilityHandler Changes:**\n- `handleFocus()` method became async in v1.6.0.12\n- Tests calling this method needed to use `await` and make test function `async`\n\n**PanelManager Changes:**\n- `setupMessageListener()` was gutted in v1.6.0.12 to fix double-toggle bug\n- Message listener moved to content.js (no longer in PanelManager)\n- Tests expecting listener registration needed to be updated\n\n**All 14 failing tests are now fixed and passing (1814 tests total)**",
+  "category": "test_fixes",
+  "dateCreated": "2025-11-21T17:09:53.260Z",
+  "dateUpdated": "2025-11-21T17:09:53.260Z"
 }

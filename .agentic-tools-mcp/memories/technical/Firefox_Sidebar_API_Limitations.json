@@ -1,9 +1,8 @@
 {
   "id": "dab1035c-e1ee-42ed-a39d-ecf0ecf9985c",
   "title": "Firefox Sidebar API Limitations",
-  "content": "Firefox only allows ONE sidebar_action per extension in manifest.json. This is a fundamental architectural limitation, not a configuration issue.\n\n**Constraints:**\n- Cannot declare multiple sidebar_action entries\n- sidebar_action.setPanel() can change content but not create multiple sidebar entries\n- Only one sidebar entry appears per extension in Firefox's sidebar menu\n- Chrome's sidePanel API is different and supports multiple panels\n\n**Workarounds Considered:**\n- Method 1 (Multiple Separate Sidebars): NOT POSSIBLE - Firefox API limitation\n- Method 2 (Two-Layer Tab System): FULLY POSSIBLE - Implemented solution\n- Alternative: userChrome.js (NOT RECOMMENDED - requires Firefox customization, breaks updates)\n\n**Why Two-Layer Tabs Work:**\n- Respects single sidebar_action limitation\n- Achieves logical separation at UI level\n- All content within one sidebar panel\n- Keyboard shortcut provides direct access to Manager\n- Clear visual hierarchy prevents confusion\n\n**References:**\n- MDN: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/user_interface/Sidebars\n- Implementation Guide: docs/manual/v1.6.0/dual-sidebar-implementation-guide.md",
-  "metadata": {},
-  "createdAt": "2025-11-24T05:50:41.603Z",
-  "updatedAt": "2025-11-24T05:50:41.603Z",
-  "category": "technical"
+  "details": "Firefox only allows ONE sidebar_action per extension in manifest.json. This is a fundamental architectural limitation, not a configuration issue.\n\n**Constraints:**\n- Cannot declare multiple sidebar_action entries\n- sidebar_action.setPanel() can change content but not create multiple sidebar entries\n- Only one sidebar entry appears per extension in Firefox's sidebar menu\n- Chrome's sidePanel API is different and supports multiple panels\n\n**Workarounds Considered:**\n- Method 1 (Multiple Separate Sidebars): NOT POSSIBLE - Firefox API limitation\n- Method 2 (Two-Layer Tab System): FULLY POSSIBLE - Implemented solution\n- Alternative: userChrome.js (NOT RECOMMENDED - requires Firefox customization, breaks updates)\n\n**Why Two-Layer Tabs Work:**\n- Respects single sidebar_action limitation\n- Achieves logical separation at UI level\n- All content within one sidebar panel\n- Keyboard shortcut provides direct access to Manager\n- Clear visual hierarchy prevents confusion\n\n**References:**\n- MDN: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/user_interface/Sidebars\n- Implementation Guide: docs/manual/v1.6.0/dual-sidebar-implementation-guide.md",
+  "category": "technical",
+  "dateCreated": "2025-11-24T05:50:41.603Z",
+  "dateUpdated": "2025-11-24T05:50:41.603Z"
 }

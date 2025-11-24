@@ -1,9 +1,8 @@
 {
   "id": "e6e45fc8-0cfb-42b1-8dfa-9a2f2b77a4c5",
   "title": "Issue 47 Scenarios 6-9 Expected Behavior",
-  "content": "SCENARIO 6: Tab Closure, Browser Restart, and State Restoration\n- Quick Tabs saved to browser.storage.local\n- State persists after browser restart\n- Position, size, minimized state, and pin status restored\n- Restoration happens automatically on page load\n\nSCENARIO 7: Sequential Quick Tab Workflow for Research Task\n- Multiple workflows supported (create, minimize, restore, switch tabs)\n- Quick Tabs persist across all operations\n- State remains consistent regardless of tab closures\n- Supports complex research workflows with multiple Quick Tabs\n\nSCENARIO 8: Quick Tab Limits and Error Handling\n- Maximum Quick Tab limit is enforced\n- User-friendly notification when limit reached\n- No errors when attempting to create beyond limit\n- Graceful degradation\n\nSCENARIO 9: Contextual Privacy With Pinning\n- Pinned Quick Tabs provide page-specific privacy\n- Pinned tabs don't leak to other pages\n- Unpin makes Quick Tab globally visible again\n- Privacy through isolation\n\nTEST IMPLEMENTATION:\nAll scenarios have dedicated tests verifying expected behavior programmatically via test bridge.",
-  "metadata": {},
-  "createdAt": "2025-11-22T07:55:37.167Z",
-  "updatedAt": "2025-11-22T07:55:37.167Z",
-  "category": "technical"
+  "details": "SCENARIO 6: Tab Closure, Browser Restart, and State Restoration\n- Quick Tabs saved to browser.storage.local\n- State persists after browser restart\n- Position, size, minimized state, and pin status restored\n- Restoration happens automatically on page load\n\nSCENARIO 7: Sequential Quick Tab Workflow for Research Task\n- Multiple workflows supported (create, minimize, restore, switch tabs)\n- Quick Tabs persist across all operations\n- State remains consistent regardless of tab closures\n- Supports complex research workflows with multiple Quick Tabs\n\nSCENARIO 8: Quick Tab Limits and Error Handling\n- Maximum Quick Tab limit is enforced\n- User-friendly notification when limit reached\n- No errors when attempting to create beyond limit\n- Graceful degradation\n\nSCENARIO 9: Contextual Privacy With Pinning\n- Pinned Quick Tabs provide page-specific privacy\n- Pinned tabs don't leak to other pages\n- Unpin makes Quick Tab globally visible again\n- Privacy through isolation\n\nTEST IMPLEMENTATION:\nAll scenarios have dedicated tests verifying expected behavior programmatically via test bridge.",
+  "category": "technical",
+  "dateCreated": "2025-11-22T07:55:37.167Z",
+  "dateUpdated": "2025-11-22T07:55:37.167Z"
 }

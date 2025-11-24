@@ -1,9 +1,8 @@
 {
   "id": "ec759d09-e9ef-42e7-9477-92c41539a4d9",
   "title": "Testing Firefox Sidebar Locally",
-  "content": "Local Testing Commands for Firefox Sidebar:\n\n1. Build extension: npm run build\n2. Test in Firefox: npx web-ext run --source-dir=dist/\n3. Alternative: about:debugging → Load Temporary Add-on → select manifest.json\n\nTesting Checklist:\n- Toolbar button should open sidebar (not popup)\n- Ctrl+Shift+S keyboard shortcut should toggle sidebar\n- Sidebar should have two tabs: \"Settings\" and \"Quick Tabs\"\n- Settings tab should show all Quick Tabs configuration options\n- Quick Tabs tab should embed quick-tabs-manager.html in iframe\n- All settings should save to browser.storage.sync\n- Changes should sync across all tabs in real-time\n\nKnown Issues:\n- web-ext in CI environment shows network errors (expected, no internet access)\n- Extension installs successfully despite network warnings\n- All functionality works locally\n\nChrome Testing:\n- Chrome manifest keeps default_popup: \"popup.html\" (unchanged)\n- Toolbar button shows traditional popup in Chrome\n- No sidebar support in Chrome/Chromium browsers",
-  "metadata": {},
-  "createdAt": "2025-11-24T03:09:47.081Z",
-  "updatedAt": "2025-11-24T03:09:47.081Z",
-  "category": "project-context"
+  "details": "Local Testing Commands for Firefox Sidebar:\n\n1. Build extension: npm run build\n2. Test in Firefox: npx web-ext run --source-dir=dist/\n3. Alternative: about:debugging → Load Temporary Add-on → select manifest.json\n\nTesting Checklist:\n- Toolbar button should open sidebar (not popup)\n- Ctrl+Shift+S keyboard shortcut should toggle sidebar\n- Sidebar should have two tabs: \"Settings\" and \"Quick Tabs\"\n- Settings tab should show all Quick Tabs configuration options\n- Quick Tabs tab should embed quick-tabs-manager.html in iframe\n- All settings should save to browser.storage.sync\n- Changes should sync across all tabs in real-time\n\nKnown Issues:\n- web-ext in CI environment shows network errors (expected, no internet access)\n- Extension installs successfully despite network warnings\n- All functionality works locally\n\nChrome Testing:\n- Chrome manifest keeps default_popup: \"popup.html\" (unchanged)\n- Toolbar button shows traditional popup in Chrome\n- No sidebar support in Chrome/Chromium browsers",
+  "category": "project-context",
+  "dateCreated": "2025-11-24T03:09:47.081Z",
+  "dateUpdated": "2025-11-24T03:09:47.081Z"
 }

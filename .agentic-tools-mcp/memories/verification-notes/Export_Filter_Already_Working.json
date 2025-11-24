@@ -1,9 +1,8 @@
 {
   "id": "eb281334-4f43-4fe7-a44a-8b491320c197",
   "title": "Export Filter Already Working",
-  "content": "VERIFICATION: Export Filter Application Already Implemented\n\nThe analysis document inferred export filters might not be working, but code review confirmed they ARE fully implemented:\n\nARCHITECTURE:\n1. popup.js: filterLogsByExportSettings() function (lines 323-335)\n   - Filters logs by checking category against export settings\n   - Fail-safe for uncategorized logs (always included)\n\n2. popup.js: exportAllLogs() function (lines 369-380)\n   - Gets export filter settings from storage\n   - Applies filter to all collected logs\n   - Logs before/after counts and percentage\n\n3. Integration: Called in export workflow before generating file\n\nPATTERN: Synchronous filtering with fail-safe defaults\nSTATUS: ✅ Already working correctly\nNO FIX NEEDED: Just verification\n\nBoth live console AND export filters were already properly implemented despite user concerns. The actual issue was keyboard logging noise making debugging difficult to verify the filters were working.",
-  "metadata": {},
-  "createdAt": "2025-11-21T04:58:31.316Z",
-  "updatedAt": "2025-11-21T04:58:31.316Z",
-  "category": "verification-notes"
+  "details": "VERIFICATION: Export Filter Application Already Implemented\n\nThe analysis document inferred export filters might not be working, but code review confirmed they ARE fully implemented:\n\nARCHITECTURE:\n1. popup.js: filterLogsByExportSettings() function (lines 323-335)\n   - Filters logs by checking category against export settings\n   - Fail-safe for uncategorized logs (always included)\n\n2. popup.js: exportAllLogs() function (lines 369-380)\n   - Gets export filter settings from storage\n   - Applies filter to all collected logs\n   - Logs before/after counts and percentage\n\n3. Integration: Called in export workflow before generating file\n\nPATTERN: Synchronous filtering with fail-safe defaults\nSTATUS: ✅ Already working correctly\nNO FIX NEEDED: Just verification\n\nBoth live console AND export filters were already properly implemented despite user concerns. The actual issue was keyboard logging noise making debugging difficult to verify the filters were working.",
+  "category": "verification-notes",
+  "dateCreated": "2025-11-21T04:58:31.316Z",
+  "dateUpdated": "2025-11-21T04:58:31.316Z"
 }

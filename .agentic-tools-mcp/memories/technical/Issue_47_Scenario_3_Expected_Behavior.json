@@ -1,9 +1,8 @@
 {
   "id": "c17a9d25-da41-4103-b847-81e1c75d7821",
   "title": "Issue 47 Scenario 3 Expected Behavior",
-  "content": "SCENARIO 3: Pinning Quick Tabs to a Tab\n\nEXPECTED BEHAVIOR:\n- Pin button toggles between pinned and unpinned states\n- Pinned Quick Tabs only appear on their designated page\n- Unpinned Quick Tabs appear globally across all tabs\n- Pin/unpin actions are broadcast to all tabs\n- pinnedToUrl field stores the URL pattern where Quick Tab is pinned\n\nTEST IMPLEMENTATION:\n- Create Quick Tab and pin to page 1\n- Verify pinnedToUrl field is set\n- Open page 2 and verify pinned tab behavior\n- Unpin and verify global visibility restored\n- Tests page-specific vs global visibility\n\nCRITICAL REQUIREMENTS:\n- Pinned tabs must not leak to other pages\n- pinnedToUrl must accurately reflect pinning state\n- Unpin must restore global visibility immediately",
-  "metadata": {},
-  "createdAt": "2025-11-22T07:55:37.151Z",
-  "updatedAt": "2025-11-22T07:55:37.151Z",
-  "category": "technical"
+  "details": "SCENARIO 3: Pinning Quick Tabs to a Tab\n\nEXPECTED BEHAVIOR:\n- Pin button toggles between pinned and unpinned states\n- Pinned Quick Tabs only appear on their designated page\n- Unpinned Quick Tabs appear globally across all tabs\n- Pin/unpin actions are broadcast to all tabs\n- pinnedToUrl field stores the URL pattern where Quick Tab is pinned\n\nTEST IMPLEMENTATION:\n- Create Quick Tab and pin to page 1\n- Verify pinnedToUrl field is set\n- Open page 2 and verify pinned tab behavior\n- Unpin and verify global visibility restored\n- Tests page-specific vs global visibility\n\nCRITICAL REQUIREMENTS:\n- Pinned tabs must not leak to other pages\n- pinnedToUrl must accurately reflect pinning state\n- Unpin must restore global visibility immediately",
+  "category": "technical",
+  "dateCreated": "2025-11-22T07:55:37.151Z",
+  "dateUpdated": "2025-11-22T07:55:37.151Z"
 }
