@@ -1,0 +1,8 @@
+{
+  "id": "efff9363-91f5-4f2e-8ab4-04393e6c8dee",
+  "title": "Dual-Sidebar Two-Layer Tab Architecture",
+  "details": "The extension implements a two-layer tab system within the single Firefox sidebar panel due to Firefox API limitations (only one sidebar_action per extension).\n\n**Architecture:**\n- Primary Tabs (Layer 1): Settings, Quick Tab Manager\n- Secondary Tabs (Layer 2): Copy URL, Quick Tabs, Appearance, Advanced (only visible under Settings)\n\n**State Management:**\n- Primary tab selection stored in localStorage as 'sidebarActivePrimaryTab'\n- Secondary tab selection stored in localStorage as 'sidebarActiveSecondaryTab'\n- State restored on sidebar initialization\n\n**Visual Hierarchy:**\n- Primary tabs: 16px font, 600 weight, 14px padding, more prominent\n- Secondary tabs: 13px font, 500 weight, 10px padding, nested appearance with 16px left margin\n- Manager tab content shown as full-width iframe when active\n\n**Keyboard Shortcut Integration:**\n- Alt+Shift+Z: Opens sidebar (if closed) and switches to Quick Tab Manager\n- Command: 'open-quick-tabs-manager' (renamed from 'toggle-quick-tabs-manager')\n- Uses browser.sidebarAction.isOpen() to check state\n- Uses browser.sidebarAction.open() to open sidebar\n- Sends 'SWITCH_TO_MANAGER_TAB' message to sidebar script\n- Implements 100ms initialization delay + 200ms retry for reliability\n\n**Key Files:**\n- sidebar/settings.html: Two-layer tab structure\n- sidebar/settings.js: Tab switching logic and message listener\n- background.js: Command handler with sidebar API integration\n- manifest.json: Updated command configuration",
+  "category": "architecture",
+  "dateCreated": "2025-11-24T05:50:41.601Z",
+  "dateUpdated": "2025-11-24T05:50:41.601Z"
+}
