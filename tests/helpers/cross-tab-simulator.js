@@ -130,7 +130,26 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
         broadcastListeners.splice(index, 1);
       }
     }),
-    close: jest.fn()
+    close: jest.fn(),
+    // Support .onmessage setter (used by BroadcastManager)
+    _onmessageHandler: null,
+    set onmessage(handler) {
+      // Remove old handler if exists
+      if (this._onmessageHandler) {
+        const index = broadcastListeners.indexOf(this._onmessageHandler);
+        if (index > -1) {
+          broadcastListeners.splice(index, 1);
+        }
+      }
+      // Add new handler
+      this._onmessageHandler = handler;
+      if (handler) {
+        broadcastListeners.push(handler);
+      }
+    },
+    get onmessage() {
+      return this._onmessageHandler;
+    }
   };
 
   // Mock browser.tabs API

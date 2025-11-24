@@ -36,22 +36,32 @@ const mockQuickTabWindows = new Map();
  */
 function createMockWindow(config) {
   const mockWindow = {
+    // Direct properties matching QuickTabWindow structure
     id: config.id,
-    position: { left: config.left, top: config.top },
-    size: { width: config.width, height: config.height },
     url: config.url,
     cookieStoreId: config.cookieStoreId,
+    left: config.left,
+    top: config.top,
+    width: config.width,
+    height: config.height,
     soloedOnTabs: config.soloedOnTabs || [],
     mutedOnTabs: config.mutedOnTabs || [],
     minimized: config.minimized || false,
     zIndex: config.zIndex || 10000,
-    render: jest.fn(),
+    rendered: false,
+    
+    // Methods
+    render: jest.fn(() => {
+      mockWindow.rendered = true;
+    }),
     destroy: jest.fn(),
     setPosition: jest.fn((left, top) => {
-      mockWindow.position = { left, top };
+      mockWindow.left = left;
+      mockWindow.top = top;
     }),
     setSize: jest.fn((width, height) => {
-      mockWindow.size = { width, height };
+      mockWindow.width = width;
+      mockWindow.height = height;
     }),
     updateZIndex: jest.fn((zIndex) => {
       mockWindow.zIndex = zIndex;
@@ -62,11 +72,13 @@ function createMockWindow(config) {
     restore: jest.fn(() => {
       mockWindow.minimized = false;
     }),
-    isRendered: jest.fn(() => true),
+    isRendered: jest.fn(() => mockWindow.rendered),
     getState: jest.fn(() => ({
       id: mockWindow.id,
-      position: mockWindow.position,
-      size: mockWindow.size,
+      left: mockWindow.left,
+      top: mockWindow.top,
+      width: mockWindow.width,
+      height: mockWindow.height,
       url: mockWindow.url,
       cookieStoreId: mockWindow.cookieStoreId,
       soloedOnTabs: mockWindow.soloedOnTabs,
@@ -76,7 +88,13 @@ function createMockWindow(config) {
     })),
     container: {
       style: {}
-    }
+    },
+    
+    // Add callbacks that might be called
+    onPositionChange: config.onPositionChange || jest.fn(),
+    onPositionChangeEnd: config.onPositionChangeEnd || jest.fn(),
+    onSizeChange: config.onSizeChange || jest.fn(),
+    onSizeChangeEnd: config.onSizeChangeEnd || jest.fn()
   };
   
   mockQuickTabWindows.set(config.id, mockWindow);
@@ -113,10 +131,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
     
     expect(result).toBeDefined();
     expect(result.id).toBe('test-123');
-    expect(result.position.left).toBe(10);
-    expect(result.position.top).toBe(20);
-    expect(result.size.width).toBe(100);
-    expect(result.size.height).toBe(200);
+    expect(result.left).toBe(10);
+    expect(result.top).toBe(20);
+    expect(result.width).toBe(100);
+    expect(result.height).toBe(200);
   });
 
   beforeEach(async () => {
@@ -256,10 +274,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       expect(qt).toBeDefined();
 
       // Verify position and size
-      expect(qt.position.left).toBe(100);
-      expect(qt.position.top).toBe(100);
-      expect(qt.size.width).toBe(800);
-      expect(qt.size.height).toBe(600);
+      expect(qt.left).toBe(100);
+      expect(qt.top).toBe(100);
+      expect(qt.width).toBe(800);
+      expect(qt.height).toBe(600);
     });
 
     test('should broadcast CREATE message when Quick Tab is created', async () => {
@@ -290,15 +308,16 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       // Verify CREATE message was broadcast
       expect(postMessageSpy).toHaveBeenCalled();
       const broadcastCalls = postMessageSpy.mock.calls;
-      const createMessage = broadcastCalls.find(call => call[0]?.action === 'CREATE');
+      // BroadcastManager sends { type, data } not { action, payload }
+      const createMessage = broadcastCalls.find(call => call[0]?.type === 'CREATE');
       
       expect(createMessage).toBeDefined();
-      expect(createMessage[0].action).toBe('CREATE');
-      expect(createMessage[0].payload).toBeDefined();
-      expect(createMessage[0].payload.left).toBe(100);
-      expect(createMessage[0].payload.top).toBe(100);
-      expect(createMessage[0].payload.width).toBe(800);
-      expect(createMessage[0].payload.height).toBe(600);
+      expect(createMessage[0].type).toBe('CREATE');
+      expect(createMessage[0].data).toBeDefined();
+      expect(createMessage[0].data.left).toBe(100);
+      expect(createMessage[0].data.top).toBe(100);
+      expect(createMessage[0].data.width).toBe(800);
+      expect(createMessage[0].data.height).toBe(600);
     });
   });
 
@@ -351,10 +370,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
       const qtId = tabWindow.id;
 
-      // Simulate broadcast propagation from Tab A to Tab B
+      // Simulate broadcast propagation from Tab A to Tab B using correct format
       await propagateBroadcast(tabs[0], {
-        action: 'CREATE',
-        payload: {
+        type: 'CREATE',
+        data: {
           id: qtId,
           url: 'https://example.com',
           left: 150,
@@ -380,10 +399,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       expect(qtInTabB).toBeDefined();
 
       // Verify position/size matches
-      expect(qtInTabB.position.left).toBe(150);
-      expect(qtInTabB.position.top).toBe(200);
-      expect(qtInTabB.size.width).toBe(700);
-      expect(qtInTabB.size.height).toBe(500);
+      expect(qtInTabB.left).toBe(150);
+      expect(qtInTabB.top).toBe(200);
+      expect(qtInTabB.width).toBe(700);
+      expect(qtInTabB.height).toBe(500);
     });
 
     test('should complete sync within 100ms', async () => {
@@ -425,10 +444,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
       const qtId = tabWindow.id;
 
-      // Simulate broadcast propagation
+      // Simulate broadcast propagation using correct format
       await propagateBroadcast(tabs[0], {
-        action: 'CREATE',
-        payload: {
+        type: 'CREATE',
+        data: {
           id: qtId,
           url: 'https://example.com',
           left: 100,
@@ -494,10 +513,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
       const qtId = tabWindowA.id;
 
-      // Sync to Tab B
+      // Sync to Tab B using correct BroadcastManager format { type, data }
       await propagateBroadcast(tabs[0], {
-        action: 'CREATE',
-        payload: {
+        type: 'CREATE',
+        data: {
           id: qtId,
           url: 'https://example.com',
           left: 100,
@@ -518,26 +537,26 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       );
 
       // Move Quick Tab in Tab B to bottom-right corner
+      // This will trigger a broadcast via the manager's broadcast system
       await managerB.handlePositionChangeEnd(qtId, 500, 400);
 
-      // Simulate broadcast from Tab B to Tab A
-      await propagateBroadcast(tabs[1], {
-        action: 'UPDATE_POSITION',
-        payload: {
-          id: qtId,
-          left: 500,
-          top: 400
-        }
-      }, [tabs[0]]);
-
-      // Wait for Tab A to receive update
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait for the broadcast to propagate through the mock system
+      // The handlePositionChangeEnd already broadcasts, so we just need to wait
+      await new Promise(resolve => setTimeout(resolve, 150));
 
       // Verify position updated in Tab A
       const qtInTabA = managerA.tabs.get(qtId);
       expect(qtInTabA).toBeDefined();
-      expect(qtInTabA.position.left).toBe(500);
-      expect(qtInTabA.position.top).toBe(400);
+      
+      // Debug: Check if the Quick Tab exists in both managers
+      const qtInTabB = managerB.tabs.get(qtId);
+      expect(qtInTabB).toBeDefined();
+      expect(qtInTabB.left).toBe(500); // Should be updated in Tab B
+      expect(qtInTabB.top).toBe(400);
+      
+      // The position should sync to Tab A via broadcast
+      expect(qtInTabA.left).toBe(500);
+      expect(qtInTabA.top).toBe(400);
     });
 
     test('should sync size changes from Tab B to Tab A', async () => {
@@ -576,10 +595,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
       const qtId = tabWindow.id;
 
-      // Sync to Tab B
+      // Sync to Tab B using correct BroadcastManager format
       await propagateBroadcast(tabs[0], {
-        action: 'CREATE',
-        payload: {
+        type: 'CREATE',
+        data: {
           id: qtId,
           url: 'https://example.com',
           left: 100,
@@ -602,10 +621,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       // Resize Quick Tab in Tab B
       await managerB.handleSizeChangeEnd(qtId, 500, 400);
 
-      // Simulate broadcast from Tab B to Tab A
+      // Simulate broadcast from Tab B to Tab A using correct format
       await propagateBroadcast(tabs[1], {
-        action: 'UPDATE_SIZE',
-        payload: {
+        type: 'UPDATE_SIZE',
+        data: {
           id: qtId,
           width: 500,
           height: 400
@@ -618,8 +637,8 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       // Verify size updated in Tab A
       const qtInTabA = managerA.tabs.get(qtId);
       expect(qtInTabA).toBeDefined();
-      expect(qtInTabA.size.width).toBe(500);
-      expect(qtInTabA.size.height).toBe(400);
+      expect(qtInTabA.width).toBe(500);
+      expect(qtInTabA.height).toBe(400);
     });
   });
 
@@ -717,10 +736,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       // Close Quick Tab in Tab A immediately
       await managerA.closeById(qtId);
 
-      // Try to sync to Tab B (should handle gracefully)
+      // Try to sync to Tab B (should handle gracefully) using correct format
       await propagateBroadcast(tabs[0], {
-        action: 'CREATE',
-        payload: {
+        type: 'CREATE',
+        data: {
           id: qtId,
           url: 'https://example.com',
           left: 100,
