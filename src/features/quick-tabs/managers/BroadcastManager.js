@@ -18,12 +18,18 @@
 
 import { v4 as uuidv4 } from 'uuid';
 
+import { createLogger, LogLevel } from '../../../utils/Logger.js';
 import { validateMessage } from '../schemas/BroadcastMessageSchema.js';
 
 export class BroadcastManager {
   constructor(eventBus, cookieStoreId = 'firefox-default') {
     this.eventBus = eventBus;
     this.cookieStoreId = cookieStoreId;
+
+    // Gap 7: Structured logging
+    this.logger = createLogger('BroadcastManager', {
+      level: LogLevel.WARN // Default to WARN in production
+    });
 
     // Broadcast channel
     this.broadcastChannel = null;
@@ -84,7 +90,9 @@ export class BroadcastManager {
    */
   setupBroadcastChannel() {
     if (typeof BroadcastChannel === 'undefined') {
-      console.warn('[BroadcastManager] BroadcastChannel not available, activating storage fallback');
+      this.logger.warn('BroadcastChannel not available, activating storage fallback', {
+        cookieStoreId: this.cookieStoreId
+      });
       this._activateStorageFallback();
       return;
     }
@@ -95,7 +103,9 @@ export class BroadcastManager {
 
       // Close existing channel if present
       if (this.broadcastChannel) {
-        console.log(`[BroadcastManager] Closing old channel: ${this.currentChannelName}`);
+        this.logger.info('Closing old channel', {
+          channelName: this.currentChannelName
+        });
         this.broadcastChannel.close();
       }
 
@@ -104,16 +114,25 @@ export class BroadcastManager {
       this.useBroadcastChannel = true;
       this.useStorageFallback = false;
 
-      console.log(`[BroadcastManager] BroadcastChannel created: ${channelName}`);
+      this.logger.info('BroadcastChannel created', {
+        channelName,
+        cookieStoreId: this.cookieStoreId,
+        senderId: this.senderId
+      });
 
       // Setup message handler
       this.broadcastChannel.onmessage = event => {
         this.handleBroadcastMessage(event.data);
       };
 
-      console.log(`[BroadcastManager] Initialized for container: ${this.cookieStoreId}`);
+      this.logger.info('Initialized for container', {
+        cookieStoreId: this.cookieStoreId
+      });
     } catch (err) {
-      console.error('[BroadcastManager] Failed to setup BroadcastChannel:', err);
+      this.logger.error('Failed to setup BroadcastChannel', {
+        error: err.message,
+        cookieStoreId: this.cookieStoreId
+      });
       this._activateStorageFallback();
     }
   }
@@ -213,7 +232,10 @@ export class BroadcastManager {
 
     // Check debounce
     if (this.shouldDebounce(type, sanitizedData)) {
-      console.log('[BroadcastManager] Debounced:', type, sanitizedData.id);
+      this.logger.debug('Message debounced', {
+        type,
+        id: sanitizedData.id
+      });
       return false;
     }
 
@@ -225,14 +247,24 @@ export class BroadcastManager {
    * @param {Object} message - Message data with type and data
    */
   handleBroadcastMessage(message) {
-    console.log('[BroadcastManager] Message received:', message);
+    // Gap 7: Performance timing
+    this.logger.startTimer('handleMessage');
+    
+    this.logger.debug('Message received', {
+      type: message.type,
+      hasData: !!message.data
+    });
 
     // Gap 3: Validate message structure and data
     const validationResult = validateMessage(message);
     
     if (!validationResult.isValid()) {
       this.invalidMessageCount++;
-      console.error('[BroadcastManager] Invalid message:', validationResult.errors);
+      this.logger.error('Invalid message', {
+        errors: validationResult.errors,
+        messageType: message.type,
+        count: this.invalidMessageCount
+      });
       this.eventBus?.emit('broadcast:invalid', {
         errors: validationResult.errors,
         message,
@@ -242,7 +274,10 @@ export class BroadcastManager {
     }
 
     if (validationResult.warnings.length > 0) {
-      console.warn('[BroadcastManager] Validation warnings:', validationResult.warnings);
+      this.logger.warn('Validation warnings', {
+        warnings: validationResult.warnings,
+        messageType: message.type
+      });
     }
 
     const { type } = message;
@@ -250,11 +285,15 @@ export class BroadcastManager {
 
     // Apply all filters (Gap 5, Gap 6)
     if (!this._shouldProcessMessage(type, sanitizedData)) {
+      this.logger.endTimer('handleMessage', 'Message filtered');
       return;
     }
 
     // Emit event for handlers to process
     this.eventBus?.emit('broadcast:received', { type, data: sanitizedData });
+    
+    // Gap 7: End performance timing
+    this.logger.endTimer('handleMessage', 'Message processed');
   }
 
   /**
@@ -333,20 +372,34 @@ export class BroadcastManager {
     }
 
     if (!this.broadcastChannel) {
-      console.warn('[BroadcastManager] No broadcast channel available');
+      this.logger.warn('No broadcast channel available', {
+        type,
+        useStorageFallback: this.useStorageFallback
+      });
       this._handleBroadcastFailure(type, new Error('Channel not available'));
       return false;
     }
 
     try {
+      this.logger.startTimer(`broadcast-${type}`);
       this.broadcastChannel.postMessage({ type, data: messageData });
-      console.log(`[BroadcastManager] Broadcasted ${type}:`, messageData);
+      
+      this.logger.debug(`Broadcasted ${type}`, {
+        id: messageData.id,
+        senderId: this.senderId,
+        sequence: this.messageSequence
+      });
       
       // Gap 2: Track successful send
       this._handleBroadcastSuccess();
+      this.logger.endTimer(`broadcast-${type}`, `${type} broadcast completed`);
       return true;
     } catch (err) {
-      console.error('[BroadcastManager] Failed to broadcast:', err);
+      this.logger.error('Failed to broadcast', {
+        type,
+        error: err.message,
+        consecutiveFailures: this.consecutiveFailures + 1
+      });
       
       // Gap 2: Handle broadcast failure
       this._handleBroadcastFailure(type, err);
@@ -433,7 +486,10 @@ export class BroadcastManager {
       return; // No change
     }
 
-    console.log(`[BroadcastManager] Updating container: ${this.cookieStoreId} → ${cookieStoreId}`);
+    this.logger.info('Updating container', {
+      oldContainer: this.cookieStoreId,
+      newContainer: cookieStoreId
+    });
     this.cookieStoreId = cookieStoreId;
     this.setupBroadcastChannel(); // Re-create channel for new container
   }
