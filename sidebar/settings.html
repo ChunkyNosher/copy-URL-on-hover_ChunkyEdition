@@ -50,12 +50,12 @@
         background: #2a2a2a;
         border-bottom: 2px solid #4caf50;
         flex-shrink: 0;
-        padding: 8px 0;
+        padding: 3px 0; /* Reduced from 8px to 3px for height optimization */
       }
 
       .primary-tab-button {
         flex: 1;
-        padding: 14px 20px;
+        padding: 9px 20px; /* Reduced from 14px to 9px for height optimization */
         background: transparent;
         border: none;
         color: #888;
@@ -85,7 +85,7 @@
         background: #252525;
         border-bottom: 1px solid #3a3a3a;
         flex-shrink: 0;
-        margin-left: 16px;
+        /* margin-left: 16px; */ /* Removed for full-width display */
         padding: 4px 0;
       }
 
@@ -132,6 +132,11 @@
 
       .tab-content.active {
         display: block;
+      }
+
+      /* Remove padding for Manager tab to allow full sidebar display */
+      .tab-content#manager {
+        padding: 0;
       }
 
       .setting-group {
@@ -297,7 +302,7 @@
         text-align: center;
         font-size: 11px;
         color: #888;
-        padding-top: 8px;
+        padding-top: 0; /* Reduced from 8px to 0 for tighter footer spacing */
         border-top: 1px solid #3a3a3a;
       }
 
