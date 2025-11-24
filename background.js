@@ -93,6 +93,47 @@ const globalQuickTabState = {
 // Flag to track initialization status
 let isInitialized = false;
 
+// v1.6.1.6 - Memory leak fix: State hash for deduplication
+// Prevents redundant broadcasts when state hasn't actually changed
+let lastBroadcastedStateHash = 0;
+
+// v1.6.1.6 - Memory leak fix: Window for ignoring self-triggered storage events (ms)
+const WRITE_IGNORE_WINDOW_MS = 100;
+
+/**
+ * Compute a simple hash of the Quick Tab state for deduplication
+ * v1.6.1.6 - Memory leak fix: Used to skip redundant broadcasts
+ * @param {Object} state - Quick Tab state object
+ * @returns {number} 32-bit hash of the state
+ */
+function computeStateHash(state) {
+  if (!state) return 0;
+  // Note: Intentionally excluding timestamp from hash to detect actual state changes
+  const stateStr = JSON.stringify({
+    containers: Object.keys(state.containers || {}),
+    // Include full tab data for accurate change detection
+    tabData: Object.entries(state.containers || {}).map(([key, c]) => ({
+      container: key,
+      tabs: (c.tabs || []).map(t => ({
+        id: t.id,
+        url: t.url,
+        left: t.left,
+        top: t.top,
+        width: t.width,
+        height: t.height,
+        minimized: t.minimized,
+        pinnedToUrl: t.pinnedToUrl
+      }))
+    }))
+  });
+  let hash = 0;
+  for (let i = 0; i < stateStr.length; i++) {
+    hash = ((hash << 5) - hash) + stateStr.charCodeAt(i);
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash;
+}
+
 // v1.6.0 - PHASE 3.2: Initialize format detection and migration strategies
 const formatDetector = new StorageFormatDetector();
 const migrators = {
@@ -1156,13 +1197,36 @@ async function _broadcastToAllTabs(action, data) {
 /**
  * Helper: Handle Quick Tab state changes
  * v1.6.0 - PHASE 4.3: Extracted to reduce complexity (cc=11 → cc<9)
+ * v1.6.1.6 - FIX: Add self-write detection and state deduplication (memory leak fix)
  *
  * @param {Object} changes - Storage changes object
  */
 async function _handleQuickTabStateChange(changes) {
+  const newValue = changes.quick_tabs_state_v2.newValue;
+
+  // v1.6.1.6 - FIX: Check if this is our own write (prevents feedback loop)
+  if (newValue && newValue.writeSourceId) {
+    const lastWrite = quickTabHandler.getLastWriteTimestamp();
+    if (
+      lastWrite &&
+      lastWrite.writeSourceId === newValue.writeSourceId &&
+      Date.now() - lastWrite.timestamp < WRITE_IGNORE_WINDOW_MS
+    ) {
+      console.log('[Background] Ignoring self-write:', newValue.writeSourceId);
+      return; // BREAKS THE LOOP
+    }
+  }
+
+  // v1.6.1.6 - FIX: Check if state actually changed (prevents redundant broadcasts)
+  const newHash = computeStateHash(newValue);
+  if (newHash === lastBroadcastedStateHash) {
+    console.log('[Background] State unchanged, skipping broadcast');
+    return;
+  }
+
+  lastBroadcastedStateHash = newHash;
   console.log('[Background] Quick Tab state changed, broadcasting to all tabs');
 
-  const newValue = changes.quick_tabs_state_v2.newValue;
   _updateGlobalStateFromStorage(newValue);
 
   await _broadcastToAllTabs('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', {
