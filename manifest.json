@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Copy URL on Hover Custom",
-  "version": "1.6.1.2",
+  "version": "1.6.2.0",
   "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with solo/mute visibility control, navigation, minimize, and persistent panel manager.",
 
   "permissions": [
@@ -17,13 +17,13 @@
   "commands": {
     "toggle-quick-tabs-manager": {
       "suggested_key": {
-        "default": "Ctrl+Alt+Z"
+        "default": "Alt+Shift+Z"
       },
       "description": "Toggle Quick Tabs Manager panel"
     },
     "_execute_sidebar_action": {
       "suggested_key": {
-        "default": "Ctrl+Shift+S"
+        "default": "Alt+Shift+S"
       },
       "description": "Toggle settings sidebar"
     }
@@ -31,8 +31,7 @@
 
   "browser_action": {
     "default_title": "Copy URL on Hover Settings",
-    "default_icon": "icons/icon.png",
-    "default_popup": "popup.html"
+    "default_icon": "icons/icon.png"
   },
 
   "sidebar_action": {
