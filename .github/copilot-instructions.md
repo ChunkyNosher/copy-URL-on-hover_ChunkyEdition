@@ -137,11 +137,15 @@ const relevantMemories = await searchMemories({
 - Related research findings
 - Relevant patterns or best practices
 
-**Search Query Tips:**
-- Use specific component names ("state-manager", "container", "quick-tabs")
-- Include action words ("isolation", "tracking", "persistence")
-- Try multiple queries with different keywords
-- Use category filter when relevant
+**Search Query Tips (CRITICAL - search uses simple text matching, NOT semantic):**
+- **⚠️ KEEP QUERIES SHORT (1-3 keywords max)** - Long queries return NO results
+- **❌ BAD:** "Quick Tabs cross-tab synchronization BroadcastChannel architecture"
+- **✅ GOOD:** "cross-tab", "BroadcastChannel", "Quick Tab"
+- Run multiple short queries instead of one long query
+- Use category filter to narrow results (e.g., `category: "architecture"`)
+- Exact token matching required (use "cross-tab" not "cross tab")
+
+**Multi-Query Pattern:** Search "sync", "BroadcastChannel", "Quick Tab" separately, combine results.
 
 ---
 

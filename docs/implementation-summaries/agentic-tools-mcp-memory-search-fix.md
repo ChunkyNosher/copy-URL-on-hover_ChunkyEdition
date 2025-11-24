@@ -167,3 +167,47 @@ Updated Copilot instructions to clarify:
 - GitHub Issue: https://github.com/modelcontextprotocol/servers/issues/2044
 - Agentic-Tools MCP: https://github.com/Pimzino/agentic-tools-mcp
 - PR Branch: copilot/fix-agentic-tools-setup-again
+
+---
+
+## Addendum: Query Length Limitation (November 24, 2025)
+
+### Additional Issue Discovered
+
+After fixing the schema bug, a secondary limitation was identified: **long search queries return NO results**.
+
+### Root Cause
+
+The agentic-tools-mcp search uses simple text matching with AND token logic, NOT semantic/vector search. The algorithm requires ALL query tokens to match memory content, causing longer queries to fail the 0.3 relevance threshold.
+
+### Evidence
+
+| Query | Results | Max Relevance |
+|-------|---------|---------------|
+| "Quick Tabs cross-tab synchronization BroadcastChannel" | 0 | N/A |
+| "sync" | 5 | 100% |
+| "cross-tab" | 3 | 93% |
+| "BroadcastChannel" | 3 | 34% |
+
+### Best Practices Added to Copilot Instructions
+
+1. **Keep queries to 1-3 keywords maximum**
+2. Run multiple short queries instead of one comprehensive query
+3. Use category filter to narrow results
+4. Ensure exact token matching
+
+### Multi-Query Pattern
+
+```
+Instead of: "Quick Tabs cross-tab synchronization architecture"
+Use separately:
+  - "cross-tab" (category: architecture)
+  - "BroadcastChannel"
+  - "Quick Tab"
+Then combine results.
+```
+
+### Files Updated
+
+- `.github/copilot-instructions.md` - Added query length limitation guidance
+- `.agentic-tools-mcp/memories/best-practices/Memory_Search_Query_Length_Limitation.json` - New best practice memory
