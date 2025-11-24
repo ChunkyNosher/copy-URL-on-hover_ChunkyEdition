@@ -24,12 +24,18 @@ export class StateManager {
     // In-memory state: Map<id, QuickTab>
     this.quickTabs = new Map();
 
+    // v1.6.1.5 - Pending updates queue for Quick Tabs that don't exist yet
+    // Map<id, Array<{type, data, timestamp}>>
+    this.pendingUpdates = new Map();
+
     // Z-index management
     this.currentZIndex = 10000; // Base z-index from CONSTANTS
   }
 
   /**
    * Add Quick Tab to state
+   * v1.6.1.5 - Apply pending updates after adding
+   * 
    * @param {QuickTab} quickTab - QuickTab domain entity
    */
   add(quickTab) {
@@ -38,6 +44,10 @@ export class StateManager {
     }
 
     this.quickTabs.set(quickTab.id, quickTab);
+    
+    // v1.6.1.5 - Apply any pending updates for this Quick Tab
+    this._applyPendingUpdates(quickTab.id);
+    
     this.eventBus?.emit('state:added', quickTab);
 
     console.log(`[StateManager] Added Quick Tab: ${quickTab.id}`);
@@ -275,6 +285,160 @@ export class StateManager {
     if (cleaned > 0) {
       console.log(`[StateManager] Cleaned dead tabs from ${cleaned} Quick Tabs`);
       this.eventBus?.emit('state:cleaned', { count: cleaned });
+    }
+  }
+
+  /**
+   * Queue update for Quick Tab that doesn't exist yet
+   * v1.6.1.5 - Critical fix for position/size update race conditions
+   * 
+   * When updates arrive before CREATE (due to async timing), queue them
+   * and apply when Quick Tab is created
+   * 
+   * @param {string} id - Quick Tab ID
+   * @param {Object} update - Update data {type, data}
+   */
+  queuePendingUpdate(id, update) {
+    if (!this.pendingUpdates.has(id)) {
+      this.pendingUpdates.set(id, []);
+    }
+
+    this.pendingUpdates.get(id).push({
+      ...update,
+      timestamp: Date.now()
+    });
+
+    console.log(`[StateManager] Queued pending update for ${id}:`, update.type);
+    this.eventBus?.emit('state:update-queued', { id, update });
+  }
+
+  /**
+   * Apply pending updates to Quick Tab
+   * v1.6.1.5 - Apply queued updates in chronological order
+   * 
+   * @private
+   * @param {string} id - Quick Tab ID
+   */
+  _applyPendingUpdates(id) {
+    const updates = this.pendingUpdates.get(id);
+    if (!updates || updates.length === 0) {
+      return;
+    }
+
+    // Sort by timestamp (should already be in order, but ensure it)
+    updates.sort((a, b) => a.timestamp - b.timestamp);
+
+    const quickTab = this.quickTabs.get(id);
+    if (!quickTab) {
+      console.warn(`[StateManager] Cannot apply pending updates - Quick Tab ${id} not found`);
+      return;
+    }
+
+    // Apply all updates in order
+    for (const update of updates) {
+      try {
+        this._applyUpdate(quickTab, update);
+      } catch (err) {
+        console.error('[StateManager] Error applying pending update:', err, update);
+      }
+    }
+
+    // Clear pending updates
+    this.pendingUpdates.delete(id);
+
+    console.log(`[StateManager] Applied ${updates.length} pending updates to ${id}`);
+    this.eventBus?.emit('state:pending-applied', { id, count: updates.length });
+  }
+
+  /**
+   * Apply single update to Quick Tab
+   * v1.6.1.5 - Helper to apply update based on type (using lookup pattern)
+   * 
+   * @private
+   * @param {QuickTab} quickTab - Quick Tab to update
+   * @param {Object} update - Update {type, data}
+   */
+  _applyUpdate(quickTab, update) {
+    const { type, data } = update;
+
+    // Lookup table pattern to reduce complexity
+    const updateHandlers = {
+      position: () => this._applyPositionUpdate(quickTab, data),
+      size: () => this._applySizeUpdate(quickTab, data),
+      minimize: () => this._applyMinimizeUpdate(quickTab, data),
+      solo: () => this._applySoloUpdate(quickTab, data),
+      mute: () => this._applyMuteUpdate(quickTab, data)
+    };
+
+    const handler = updateHandlers[type];
+    if (handler) {
+      handler();
+    } else {
+      console.warn(`[StateManager] Unknown update type: ${type}`);
+    }
+  }
+
+  /** @private */
+  _applyPositionUpdate(quickTab, data) {
+    if (data.left !== undefined && data.top !== undefined) {
+      quickTab.updatePosition(data.left, data.top);
+    }
+  }
+
+  /** @private */
+  _applySizeUpdate(quickTab, data) {
+    if (data.width !== undefined && data.height !== undefined) {
+      quickTab.updateSize(data.width, data.height);
+    }
+  }
+
+  /** @private */
+  _applyMinimizeUpdate(quickTab, data) {
+    if (data.minimized !== undefined) {
+      quickTab.setMinimized(data.minimized);
+    }
+  }
+
+  /** @private */
+  _applySoloUpdate(quickTab, data) {
+    if (data.soloedOnTabs !== undefined) {
+      quickTab.visibility.soloedOnTabs = [...data.soloedOnTabs];
+      quickTab.lastModified = Date.now();
+    }
+  }
+
+  /** @private */
+  _applyMuteUpdate(quickTab, data) {
+    if (data.mutedOnTabs !== undefined) {
+      quickTab.visibility.mutedOnTabs = [...data.mutedOnTabs];
+      quickTab.lastModified = Date.now();
+    }
+  }
+
+  /**
+   * Update Quick Tab with pending queue support
+   * v1.6.1.5 - Queue update if Quick Tab doesn't exist
+   * 
+   * @param {string} id - Quick Tab ID
+   * @param {string} type - Update type (position, size, minimize, etc.)
+   * @param {Object} data - Update data
+   */
+  updateWithQueue(id, type, data) {
+    const quickTab = this.quickTabs.get(id);
+
+    if (!quickTab) {
+      // Quick Tab doesn't exist yet - queue the update
+      this.queuePendingUpdate(id, { type, data });
+      return;
+    }
+
+    // Quick Tab exists - apply update immediately
+    try {
+      this._applyUpdate(quickTab, { type, data });
+      this.quickTabs.set(id, quickTab);
+      this.eventBus?.emit('state:updated', { quickTab });
+    } catch (err) {
+      console.error('[StateManager] Error applying update:', err);
     }
   }
 }

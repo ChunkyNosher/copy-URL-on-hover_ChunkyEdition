@@ -60,6 +60,7 @@ export class QuickTab {
    * @param {number} [params.createdAt] - Creation timestamp
    * @param {string} [params.title] - Tab title
    * @param {number} [params.zIndex] - Z-index for stacking
+   * @param {number} [params.lastModified] - Last modification timestamp (v1.6.1.5)
    */
   constructor({
     id,
@@ -70,7 +71,8 @@ export class QuickTab {
     container,
     createdAt = Date.now(),
     title = 'Quick Tab',
-    zIndex = 1000
+    zIndex = 1000,
+    lastModified = Date.now()
   }) {
     // Validation
     _validateParams({ id, url, position, size });
@@ -86,6 +88,9 @@ export class QuickTab {
     this.position = { ...position }; // Clone to prevent external mutation
     this.size = { ...size };
     this.zIndex = zIndex;
+
+    // v1.6.1.5 - Track last modification time for conflict resolution
+    this.lastModified = lastModified;
 
     // Visibility state (v1.5.9.13 - Solo/Mute feature)
     this.visibility = {
@@ -240,25 +245,30 @@ export class QuickTab {
 
   /**
    * Toggle minimized state
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @returns {boolean} - New minimized state
    */
   toggleMinimized() {
     this.visibility.minimized = !this.visibility.minimized;
+    this.lastModified = Date.now(); // v1.6.1.5
     return this.visibility.minimized;
   }
 
   /**
    * Set minimized state
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {boolean} minimized - New minimized state
    */
   setMinimized(minimized) {
     this.visibility.minimized = minimized;
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
    * Update position
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {number} left - New left position
    * @param {number} top - New top position
@@ -268,10 +278,12 @@ export class QuickTab {
       throw new Error('Position must be numeric {left, top}');
     }
     this.position = { left, top };
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
    * Update size
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {number} width - New width
    * @param {number} height - New height
@@ -284,10 +296,12 @@ export class QuickTab {
       throw new Error('Size must be positive');
     }
     this.size = { width, height };
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
    * Update z-index for stacking order
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {number} zIndex - New z-index
    */
@@ -296,10 +310,12 @@ export class QuickTab {
       throw new Error('zIndex must be a number');
     }
     this.zIndex = zIndex;
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
    * Update title
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {string} title - New title
    */
@@ -308,6 +324,7 @@ export class QuickTab {
       throw new Error('Title must be a string');
     }
     this.title = title;
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
@@ -337,6 +354,7 @@ export class QuickTab {
   /**
    * Serialize to storage format
    * Converts domain entity to plain object for storage
+   * v1.6.1.5 - Include lastModified timestamp
    *
    * @returns {Object} - Plain object suitable for storage
    */
@@ -354,33 +372,54 @@ export class QuickTab {
       },
       container: this.container,
       zIndex: this.zIndex,
-      createdAt: this.createdAt
+      createdAt: this.createdAt,
+      lastModified: this.lastModified // v1.6.1.5
     };
   }
 
   /**
    * Create QuickTab from storage format
    * Static factory method to hydrate from plain object
+   * v1.6.1.5 - Include lastModified timestamp
    *
    * @param {Object} data - Plain object from storage
    * @returns {QuickTab} - QuickTab domain entity
    */
   static fromStorage(data) {
-    return new QuickTab({
+    const params = QuickTab._normalizeStorageData(data);
+    return new QuickTab(params);
+  }
+
+  /**
+   * Normalize storage data with defaults
+   * v1.6.1.5 - Extract to reduce complexity
+   * 
+   * @private
+   * @param {Object} data - Raw storage data
+   * @returns {Object} - Normalized parameters
+   */
+  static _normalizeStorageData(data) {
+    const now = Date.now();
+    const defaults = {
+      title: 'Quick Tab',
+      position: { left: 100, top: 100 },
+      size: { width: 800, height: 600 },
+      visibility: { minimized: false, soloedOnTabs: [], mutedOnTabs: [] },
+      zIndex: 1000
+    };
+
+    return {
       id: data.id,
       url: data.url,
-      title: data.title || 'Quick Tab',
-      position: data.position || { left: 100, top: 100 },
-      size: data.size || { width: 800, height: 600 },
-      visibility: data.visibility || {
-        minimized: false,
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      },
-      container: data.container || data.cookieStoreId || 'firefox-default',
-      zIndex: data.zIndex || 1000,
-      createdAt: data.createdAt || Date.now()
-    });
+      title: data.title ?? defaults.title,
+      position: data.position ?? defaults.position,
+      size: data.size ?? defaults.size,
+      visibility: data.visibility ?? defaults.visibility,
+      container: data.container ?? data.cookieStoreId ?? 'firefox-default',
+      zIndex: data.zIndex ?? defaults.zIndex,
+      createdAt: data.createdAt ?? now,
+      lastModified: data.lastModified ?? data.createdAt ?? now
+    };
   }
 
   /**

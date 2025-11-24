@@ -80,23 +80,97 @@ export class SyncCoordinator {
 
   /**
    * Handle tab becoming visible - refresh state from background
-   * CRITICAL FIX for Issue #35 and #51: Load latest state when switching to this tab
+   * v1.6.1.5 - CRITICAL FIX: Merge instead of replace to preserve broadcast-populated state
+   * 
+   * Previously: hydrate() replaced entire state, wiping out Quick Tabs received via broadcasts
+   * Now: Merge storage state with in-memory state using timestamp-based conflict resolution
    */
   async handleTabVisible() {
     console.log('[SyncCoordinator] Tab became visible - refreshing state from background');
 
     try {
-      // Re-hydrate state from storage (which will call background first)
-      const quickTabs = await this.storageManager.loadAll();
-      this.stateManager.hydrate(quickTabs);
+      // Get current in-memory state (may contain Quick Tabs from broadcasts)
+      const currentState = this.stateManager.getAll();
+      
+      // Load state from storage
+      const storageState = await this.storageManager.loadAll();
+      
+      // v1.6.1.5 - MERGE instead of REPLACE
+      // This preserves Quick Tabs received via broadcasts while still loading from storage
+      const mergedState = this._mergeQuickTabStates(currentState, storageState);
+      
+      // Hydrate with merged state
+      this.stateManager.hydrate(mergedState);
 
       // Notify UI coordinator to re-render
-      this.eventBus.emit('state:refreshed', { quickTabs });
+      this.eventBus.emit('state:refreshed', { quickTabs: mergedState });
 
-      console.log(`[SyncCoordinator] Refreshed ${quickTabs.length} Quick Tabs on tab visible`);
+      console.log(`[SyncCoordinator] Refreshed with ${mergedState.length} Quick Tabs (${currentState.length} in-memory, ${storageState.length} from storage)`);
     } catch (err) {
       console.error('[SyncCoordinator] Error refreshing state on tab visible:', err);
     }
+  }
+
+  /**
+   * Merge Quick Tab states with timestamp-based conflict resolution
+   * v1.6.1.5 - Critical fix for cross-domain sync issues
+   * 
+   * Strategy:
+   * - If Quick Tab exists only in memory → Keep it (from recent broadcast)
+   * - If Quick Tab exists only in storage → Add it (was created before this tab loaded)
+   * - If Quick Tab exists in both → Use the version with newer lastModified timestamp
+   * 
+   * @private
+   * @param {Array<QuickTab>} currentState - In-memory Quick Tabs
+   * @param {Array<QuickTab>} storageState - Quick Tabs from storage
+   * @returns {Array<QuickTab>} - Merged Quick Tabs
+   */
+  _mergeQuickTabStates(currentState, storageState) {
+    const merged = new Map();
+    
+    // Add all current (in-memory) Quick Tabs to merge map
+    for (const qt of currentState) {
+      merged.set(qt.id, qt);
+    }
+    
+    // Merge storage Quick Tabs
+    for (const storageQt of storageState) {
+      const memoryQt = merged.get(storageQt.id);
+      
+      // Early return: Quick Tab only in storage
+      if (!memoryQt) {
+        merged.set(storageQt.id, storageQt);
+        continue;
+      }
+      
+      // Quick Tab in both → Compare timestamps
+      const winner = this._selectNewerQuickTab(memoryQt, storageQt);
+      merged.set(storageQt.id, winner);
+    }
+    
+    return Array.from(merged.values());
+  }
+
+  /**
+   * Select newer Quick Tab based on lastModified timestamp
+   * v1.6.1.5 - Helper to reduce complexity
+   * 
+   * @private
+   * @param {QuickTab} memoryQt - In-memory Quick Tab
+   * @param {QuickTab} storageQt - Storage Quick Tab
+   * @returns {QuickTab} - The newer Quick Tab
+   */
+  _selectNewerQuickTab(memoryQt, storageQt) {
+    const memoryModified = memoryQt.lastModified || memoryQt.createdAt || 0;
+    const storageModified = storageQt.lastModified || storageQt.createdAt || 0;
+    
+    if (storageModified > memoryModified) {
+      console.log(`[SyncCoordinator] Merge: Using storage version of ${storageQt.id} (newer by ${storageModified - memoryModified}ms)`);
+      return storageQt;
+    }
+    
+    console.log(`[SyncCoordinator] Merge: Keeping in-memory version of ${memoryQt.id} (newer by ${memoryModified - storageModified}ms)`);
+    return memoryQt;
   }
 
   /**

@@ -513,7 +513,8 @@ describe('QuickTab Domain Entity', () => {
         },
         container: 'firefox-container-1',
         zIndex: 2000,
-        createdAt: 1234567890
+        createdAt: 1234567890,
+        lastModified: expect.any(Number) // v1.6.1.5 - Added timestamp tracking
       });
     });
 
