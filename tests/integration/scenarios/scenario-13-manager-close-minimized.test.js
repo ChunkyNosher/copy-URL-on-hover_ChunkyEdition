@@ -148,7 +148,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://active1.com',
           position: { left: 100, top: 100 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -160,7 +159,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://minimized1.com',
           position: { left: 200, top: 200 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -172,7 +170,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://active2.com',
           position: { left: 300, top: 300 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -184,7 +181,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://minimized2.com',
           position: { left: 400, top: 400 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -230,7 +226,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: `https://active${i + 1}.com`,
           position: { left: (i + 1) * 50, top: (i + 1) * 50 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -269,7 +264,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: `https://minimized${i + 1}.com`,
           position: { left: (i + 1) * 50, top: (i + 1) * 50 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -306,7 +300,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://active.com',
           position: { left: 100, top: 100 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -318,7 +311,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://minimized.com',
           position: { left: 200, top: 200 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -355,7 +347,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://active.com',
           position: { left: 100, top: 100 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -367,7 +358,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://minimized.com',
           position: { left: 200, top: 200 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -415,8 +405,7 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
         id: 'qt-minimized-solo',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default',
+          size: { width: 800, height: 600 },
         visibility: {
           soloedOnTabs: [tabs[0].tabId],
           mutedOnTabs: [],
@@ -445,8 +434,7 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
         id: 'qt-minimized-mute',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default',
+          size: { width: 800, height: 600 },
         visibility: {
           soloedOnTabs: [],
           mutedOnTabs: [tabs[1].tabId],
@@ -477,7 +465,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://solo.com',
           position: { left: 100, top: 100 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [tabs[0].tabId],
             mutedOnTabs: [],
@@ -489,7 +476,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://mute.com',
           position: { left: 200, top: 200 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [tabs[1].tabId],
@@ -501,7 +487,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: 'https://minimized.com',
           position: { left: 300, top: 300 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -541,7 +526,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: `https://example${i + 1}.com`,
           position: { left: (i + 1) * 50, top: (i + 1) * 50 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -595,7 +579,6 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
           url: `https://example${i + 1}.com`,
           position: { left: (i % 10) * 50, top: Math.floor(i / 10) * 50 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],

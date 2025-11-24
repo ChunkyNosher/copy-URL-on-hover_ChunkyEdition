@@ -109,8 +109,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
         id: 'qt-close-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       // Add to all tabs
@@ -142,16 +141,14 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
         id: 'qt-multi-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       const qt2 = new QuickTab({
         id: 'qt-multi-2',
         url: 'https://test.com',
         position: { left: 200, top: 200 },
-        size: { width: 700, height: 500 },
-        container: 'firefox-default'
+        size: { width: 700, height: 500 }
       });
 
       // Add both to all tabs
@@ -188,8 +185,8 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
           id: `qt-count-${i}`,
           url: `https://example${i}.com`,
           position: { left: i * 100, top: i * 100 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
+          width: 800,
+          height: 600 
         })
       );
 
@@ -228,8 +225,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
         id: 'qt-slot-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));
@@ -293,16 +289,14 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
         id: 'qt-cont1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       const qt2 = new QuickTab({
         id: 'qt-cont2',
         url: 'https://test.com',
         position: { left: 200, top: 200 },
-        size: { width: 700, height: 500 },
-        container: 'firefox-container-1'
+        size: { width: 700, height: 500 }
       });
 
       container1Managers[0].add(qt1);
@@ -333,8 +327,8 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
           id: `qt-concurrent-${i}`,
           url: `https://example${i}.com`,
           position: { left: i * 100, top: i * 100 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
+          width: 800,
+          height: 600 
         })
       );
 
@@ -390,8 +384,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
         id: 'qt-idempotent',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));

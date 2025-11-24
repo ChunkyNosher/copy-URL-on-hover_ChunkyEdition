@@ -94,9 +94,9 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
             const qt = new QuickTab({
               id: message.data.id,
               url: message.data.url,
-              position: message.data.position,
-              size: message.data.size,
-              container: message.data.container
+              position: { left: message.data.left, top: message.data.top },
+              size: { width: message.data.width, height: message.data.height },
+              container: message.data.container || message.data.cookieStoreId || 'firefox-default'
             });
             stateManagers[tabIndex].add(qt);
           }
@@ -104,12 +104,12 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
           messageLog.push({ tabIndex, type: 'UPDATE_POSITION', timestamp: Date.now() });
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
-            qt.updatePosition(message.data.position.left, message.data.position.top);
+            qt.updatePosition(message.data.left, message.data.top);
           }
         } else if (message.type === 'UPDATE_SIZE') {
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
-            qt.updateSize(message.data.size.width, message.data.size.height);
+            qt.updateSize(message.data.width, message.data.height);
           }
         }
       });
@@ -140,9 +140,10 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       await broadcastManagers[0].broadcast('CREATE', {
         id: qt.id,
         url: qt.url,
-        position: qt.position,
-        size: qt.size,
-        container: qt.container
+        left: qt.position.left,
+        top: qt.position.top,
+        width: qt.size.width,
+        height: qt.size.height
       });
 
       await wait(150); // Wait for cross-tab sync
@@ -159,8 +160,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         // Broadcast to other tabs
         broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left, top },
-          container: qt.container
+          left: left,
+          top: top
         });
         
         // Small delay between updates to avoid overwhelming debounce
@@ -197,9 +198,10 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       await broadcastManagers[0].broadcast('CREATE', {
         id: qt.id,
         url: qt.url,
-        position: qt.position,
-        size: qt.size,
-        container: qt.container
+        left: qt.position.left,
+        top: qt.position.top,
+        width: qt.size.width,
+        height: qt.size.height
       });
       
       await wait(150); // Wait for cross-tab sync
@@ -212,8 +214,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         qtInA.updatePosition(i * 5, i * 5);
         broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: i * 5, top: i * 5 },
-          container: qt.container
+          left: i * 5,
+          top: i * 5
         });
         await wait(60); // Respect debounce timing
       }
@@ -247,9 +249,10 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       await broadcastManagers[0].broadcast('CREATE', {
         id: qt.id,
         url: qt.url,
-        position: qt.position,
-        size: qt.size,
-        container: qt.container
+        left: qt.position.left,
+        top: qt.position.top,
+        width: qt.size.width,
+        height: qt.size.height
       });
       
       await wait(150); // Wait for cross-tab sync
@@ -268,8 +271,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         qtInA.updatePosition(pos.left, pos.top);
         broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: pos,
-          container: qt.container
+          left: pos.left,
+          top: pos.top
         });
         await wait(60); // Respect debounce
       }
@@ -298,9 +301,10 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       await broadcastManagers[0].broadcast('CREATE', {
         id: qt.id,
         url: qt.url,
-        position: qt.position,
-        size: qt.size,
-        container: qt.container
+        left: qt.position.left,
+        top: qt.position.top,
+        width: qt.size.width,
+        height: qt.size.height
       });
       
       await wait(150); // Wait for cross-tab sync
@@ -310,8 +314,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       qtInA.updatePosition(200, 200);
       broadcastManagers[0].broadcast('UPDATE_POSITION', {
         id: qt.id,
-        position: { left: 200, top: 200 },
-        container: qt.container
+        left: 200,
+        top: 200
       });
 
       await wait(80);
@@ -321,8 +325,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       qtInTabB.updatePosition(300, 300);
       broadcastManagers[1].broadcast('UPDATE_POSITION', {
         id: qt.id,
-        position: { left: 300, top: 300 },
-        container: qt.container
+        left: 300,
+        top: 300
       });
 
       await wait(80);
@@ -332,8 +336,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       qtInTabC.updatePosition(400, 400);
       broadcastManagers[2].broadcast('UPDATE_POSITION', {
         id: qt.id,
-        position: { left: 400, top: 400 },
-        container: qt.container
+        left: 400,
+        top: 400
       });
 
       await wait(150);
@@ -366,8 +370,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       qt.updatePosition(200, 200);
       await broadcastManagers[0].broadcast('UPDATE_POSITION', {
         id: qt.id,
-        position: { left: 200, top: 200 },
-        container: qt.container
+        left: 200,
+        top: 200
       });
 
       await wait(100);
@@ -402,8 +406,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         qt.updatePosition(100, 100);
         await broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: 100, top: 100 },
-          container: qt.container
+          left: 100,
+          top: 100
         });
       }
 
@@ -434,9 +438,10 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       await broadcastManagers[0].broadcast('CREATE', {
         id: qt.id,
         url: qt.url,
-        position: qt.position,
-        size: qt.size,
-        container: qt.container
+        left: qt.position.left,
+        top: qt.position.top,
+        width: qt.size.width,
+        height: qt.size.height
       });
       
       await wait(150); // Wait for cross-tab sync
@@ -448,8 +453,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       qtInA.updatePosition(200, 200);
       broadcastManagers[0].broadcast('UPDATE_POSITION', {
         id: qt.id,
-        position: { left: 200, top: 200 },
-        container: qt.container
+        left: 200,
+        top: 200
       });
 
       await wait(60);
@@ -457,8 +462,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       qtInA.updateSize(900, 700);
       broadcastManagers[0].broadcast('UPDATE_SIZE', {
         id: qt.id,
-        size: { width: 900, height: 700 },
-        container: qt.container
+        width: 900,
+        height: 700
       });
 
       await wait(60);
@@ -466,8 +471,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       qtInA.updatePosition(300, 300);
       broadcastManagers[0].broadcast('UPDATE_POSITION', {
         id: qt.id,
-        position: { left: 300, top: 300 },
-        container: qt.container
+        left: 300,
+        top: 300
       });
 
       await wait(150);
@@ -486,8 +491,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       // Try to update non-existent QT - should not throw
       broadcastManagers[0].broadcast('UPDATE_POSITION', {
         id: 'qt-nonexistent',
-        position: { left: 100, top: 100 },
-        container: 'firefox-default'
+        left: 100,
+        top: 100
       });
 
       await wait(50);
@@ -512,9 +517,10 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       await broadcastManagers[0].broadcast('CREATE', {
         id: qt.id,
         url: qt.url,
-        position: qt.position,
-        size: qt.size,
-        container: qt.container
+        left: qt.position.left,
+        top: qt.position.top,
+        width: qt.size.width,
+        height: qt.size.height
       });
       
       await wait(150); // Wait for cross-tab sync
@@ -525,8 +531,8 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         qtInA.updatePosition(i * 2, i * 2);
         broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: i * 2, top: i * 2 },
-          container: qt.container
+          left: i * 2,
+          top: i * 2
         });
         await wait(60); // Respect debounce
       }

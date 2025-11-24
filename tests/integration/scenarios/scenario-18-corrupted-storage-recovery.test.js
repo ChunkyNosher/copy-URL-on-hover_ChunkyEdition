@@ -169,8 +169,8 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
           const qt = new QuickTab({
             id: message.data.id,
             url: message.data.url,
-            position: message.data.position,
-            size: message.data.size,
+            position: { left: message.data.left, top: message.data.top },
+              size: { width: message.data.width, height: message.data.height },
             container: message.data.container,
             // visibility not provided - should use defaults
           });
@@ -182,8 +182,7 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
         id: 'qt-partial-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers[0].add(qt);
@@ -227,8 +226,8 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
         id: 'qt-invalid-pos-1',
         url: 'https://example.com',
         position: { left: NaN, top: Infinity }, // Invalid values
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        width: 800,
+          height: 600 
       });
 
       await wait(100);
@@ -247,8 +246,7 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
         id: 'qt-valid-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers[0].add(qt1);
@@ -333,8 +331,8 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
         id: 'qt-after-invalid',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        width: 800,
+          height: 600 
       });
 
       await wait(100);
@@ -381,8 +379,7 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
         id: 'qt-null-test-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers[0].add(qt);

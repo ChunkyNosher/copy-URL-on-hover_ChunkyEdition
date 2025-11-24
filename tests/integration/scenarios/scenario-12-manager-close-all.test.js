@@ -123,8 +123,8 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
             const qt = new QuickTab({
               id: message.data.id,
               url: message.data.url,
-              position: message.data.position,
-              size: message.data.size,
+              position: { left: message.data.left, top: message.data.top },
+              size: { width: message.data.width, height: message.data.height },
               container: message.data.container
             });
             stateManagers[tabIndex].add(qt);
@@ -150,7 +150,6 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
           url: `https://example${i + 1}.com`,
           position: { left: (i + 1) * 50, top: (i + 1) * 50 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default'
         })
       );
 
@@ -205,7 +204,6 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
           url: `https://example${i + 1}.com`,
           position: { left: 100, top: 100 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default'
         })
       );
 
@@ -237,16 +235,14 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         id: 'qt-cross-1',
         url: 'https://example1.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+          size: { width: 800, height: 600 },
       });
 
       const qt2 = new QuickTab({
         id: 'qt-cross-2',
         url: 'https://example2.com',
         position: { left: 200, top: 200 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+          size: { width: 800, height: 600 },
       });
 
       stateManagers.forEach(sm => {
@@ -279,7 +275,6 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
           url: `https://example${i + 1}.com`,
           position: { left: 100, top: 100 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default'
         })
       );
 
@@ -317,7 +312,6 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
           url: `https://example${i + 1}.com`,
           position: { left: 100, top: 100 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [],
@@ -350,7 +344,6 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
           url: 'https://solo.com',
           position: { left: 100, top: 100 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [tabs[0].tabId],
             mutedOnTabs: [],
@@ -362,7 +355,6 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
           url: 'https://mute.com',
           position: { left: 200, top: 200 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default',
           visibility: {
             soloedOnTabs: [],
             mutedOnTabs: [tabs[1].tabId],
@@ -394,8 +386,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         id: 'qt-before',
         url: 'https://before.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+          size: { width: 800, height: 600 },
       });
 
       stateManagers.forEach(sm => sm.add(new QuickTab(qt1)));
@@ -411,8 +402,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         id: 'qt-after',
         url: 'https://after.com',
         position: { left: 200, top: 200 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+          size: { width: 800, height: 600 },
       });
 
       stateManagers[0].add(qt2);
@@ -444,7 +434,6 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
           url: `https://example${i + 1}.com`,
           position: { left: (i % 10) * 50, top: Math.floor(i / 10) * 50 },
           size: { width: 800, height: 600 },
-          container: 'firefox-default'
         })
       );
 
