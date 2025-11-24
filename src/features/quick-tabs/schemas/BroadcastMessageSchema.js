@@ -21,7 +21,12 @@ export const MESSAGE_TYPES = {
   RESTORE: 'RESTORE',
   CLOSE: 'CLOSE',
   SOLO: 'SOLO',
-  MUTE: 'MUTE'
+  MUTE: 'MUTE',
+  DELETE: 'DELETE',                     // Remove Quick Tab (used in tests)
+  CLOSE_ALL: 'CLOSE_ALL',               // Close all Quick Tabs
+  CLOSE_MINIMIZED: 'CLOSE_MINIMIZED',   // Close only minimized Quick Tabs
+  UPDATE_MUTE: 'UPDATE_MUTE',           // Update mute state (used in scenario-04)
+  DESTROY: 'DESTROY'                    // Destroy Quick Tab (used in scenario-15)
 };
 
 /**
@@ -180,6 +185,48 @@ export const MESSAGE_SCHEMAS = {
     required: {
       id: validators.string,
       mutedOnTabs: (v, f) => validators.array(v, f)
+    },
+    optional: {
+      ...commonOptionalFields
+    }
+  },
+
+  [MESSAGE_TYPES.DELETE]: {
+    required: {
+      id: validators.string
+    },
+    optional: {
+      ...commonOptionalFields
+    }
+  },
+
+  [MESSAGE_TYPES.CLOSE_ALL]: {
+    required: {},
+    optional: {
+      ...commonOptionalFields
+    }
+  },
+
+  [MESSAGE_TYPES.CLOSE_MINIMIZED]: {
+    required: {},
+    optional: {
+      ...commonOptionalFields
+    }
+  },
+
+  [MESSAGE_TYPES.UPDATE_MUTE]: {
+    required: {
+      id: validators.string,
+      mutedOnTabs: (v, f) => validators.array(v, f)
+    },
+    optional: {
+      ...commonOptionalFields
+    }
+  },
+
+  [MESSAGE_TYPES.DESTROY]: {
+    required: {
+      id: validators.string
     },
     optional: {
       ...commonOptionalFields
