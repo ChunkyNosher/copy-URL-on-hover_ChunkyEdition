@@ -166,14 +166,12 @@ export class StorageManager {
       for (const [key, value] of Object.entries(changes)) {
         // Filter broadcast history keys (e.g., quicktabs-broadcast-history-firefox-default)
         if (key.startsWith('quicktabs-broadcast-history-')) {
-          console.log('[StorageManager] Ignoring broadcast history change:', key);
           filteredCount++;
           continue;
         }
         
         // Filter sync message keys (e.g., quick-tabs-sync-firefox-default-1234567890)
         if (key.startsWith('quick-tabs-sync-')) {
-          console.log('[StorageManager] Ignoring sync message change:', key);
           filteredCount++;
           continue;
         }
@@ -184,9 +182,7 @@ export class StorageManager {
       
       // If all keys were filtered out, return early
       if (Object.keys(filteredChanges).length === 0) {
-        if (filteredCount > 0) {
-          console.log('[StorageManager] All storage changes filtered out, skipping');
-        }
+        // NOTE: No logging to avoid potential log spam during high-frequency storage changes
         return;
       }
 

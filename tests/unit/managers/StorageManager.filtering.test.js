@@ -60,7 +60,7 @@ describe('StorageManager - Storage Listener Filtering', () => {
   });
 
   describe('Storage Change Filtering', () => {
-    it('should filter out broadcast history keys', () => {
+    it('should filter out broadcast history keys (silently)', () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       
       const changes = {
@@ -71,16 +71,20 @@ describe('StorageManager - Storage Listener Filtering', () => {
       
       capturedListener(changes, 'local');
       
-      // Should log filtering message
-      expect(consoleSpy).toHaveBeenCalledWith(
+      // Should NOT log individual filtering messages (to prevent log spam)
+      // The function returns silently when all keys are filtered
+      expect(consoleSpy).not.toHaveBeenCalledWith(
         '[StorageManager] Ignoring broadcast history change:',
-        'quicktabs-broadcast-history-firefox-default'
+        expect.any(String)
       );
+      
+      // handleStorageChange should NOT be called
+      expect(mockEventBus.emit).not.toHaveBeenCalled();
       
       consoleSpy.mockRestore();
     });
 
-    it('should filter out sync message keys', () => {
+    it('should filter out sync message keys (silently)', () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       
       const changes = {
@@ -91,16 +95,19 @@ describe('StorageManager - Storage Listener Filtering', () => {
       
       capturedListener(changes, 'local');
       
-      // Should log filtering message
-      expect(consoleSpy).toHaveBeenCalledWith(
+      // Should NOT log individual filtering messages (to prevent log spam)
+      expect(consoleSpy).not.toHaveBeenCalledWith(
         '[StorageManager] Ignoring sync message change:',
-        'quick-tabs-sync-firefox-default-1234567890'
+        expect.any(String)
       );
+      
+      // handleStorageChange should NOT be called
+      expect(mockEventBus.emit).not.toHaveBeenCalled();
       
       consoleSpy.mockRestore();
     });
 
-    it('should skip processing when all keys filtered', () => {
+    it('should skip processing when all keys filtered (silently)', () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       
       const changes = {
@@ -110,8 +117,8 @@ describe('StorageManager - Storage Listener Filtering', () => {
       
       capturedListener(changes, 'local');
       
-      // Should log that all changes were filtered
-      expect(consoleSpy).toHaveBeenCalledWith(
+      // Should NOT log that all changes were filtered (to prevent log spam)
+      expect(consoleSpy).not.toHaveBeenCalledWith(
         '[StorageManager] All storage changes filtered out, skipping'
       );
       
@@ -163,10 +170,10 @@ describe('StorageManager - Storage Listener Filtering', () => {
       
       capturedListener(changes, 'local');
       
-      // Should filter broadcast history
-      expect(consoleSpy).toHaveBeenCalledWith(
+      // Should NOT log individual filtering (silent operation)
+      expect(consoleSpy).not.toHaveBeenCalledWith(
         '[StorageManager] Ignoring broadcast history change:',
-        'quicktabs-broadcast-history-firefox-default'
+        expect.any(String)
       );
       
       // Should still process the remaining key
@@ -179,7 +186,7 @@ describe('StorageManager - Storage Listener Filtering', () => {
       consoleSpy.mockRestore();
     });
 
-    it('should filter keys from different containers', () => {
+    it('should filter keys from different containers (silently)', () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       
       const changes = {
@@ -190,10 +197,13 @@ describe('StorageManager - Storage Listener Filtering', () => {
       
       capturedListener(changes, 'local');
       
-      // All should be filtered
-      expect(consoleSpy).toHaveBeenCalledWith(
+      // All should be filtered silently (no log spam)
+      expect(consoleSpy).not.toHaveBeenCalledWith(
         '[StorageManager] All storage changes filtered out, skipping'
       );
+      
+      // handleStorageChange should NOT be called
+      expect(mockEventBus.emit).not.toHaveBeenCalled();
       
       consoleSpy.mockRestore();
     });

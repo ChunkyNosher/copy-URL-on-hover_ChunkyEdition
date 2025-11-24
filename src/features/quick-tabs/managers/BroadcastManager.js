@@ -830,7 +830,7 @@ export class BroadcastManager {
     // This was causing ~900MB/second memory consumption and browser freeze.
     // TEMPORARILY DISABLED until proper write batching is implemented.
     // See git history for original implementation.
-    console.log('[BroadcastManager] Broadcast history persistence disabled (memory leak fix)');
+    // NOTE: No logging here to avoid log spam during high-frequency drag operations
     return;
   }
 
@@ -908,7 +908,8 @@ export class BroadcastManager {
     // ❌ DISABLED: Broadcast history replay disabled due to memory leak
     // The broadcast history persistence was causing an infinite feedback loop.
     // See git history for original implementation.
-    console.log('[BroadcastManager] Broadcast history replay disabled');
+    // NOTE: No logging here - this is called once during initialization, not high-frequency
+    this.logger.info('Broadcast history replay disabled (memory leak fix)');
     return 0;
   }
 
@@ -934,7 +935,8 @@ export class BroadcastManager {
     // The snapshot broadcasting could trigger storage writes that feed into
     // the same infinite loop as broadcast history persistence.
     // See git history for original implementation.
-    console.log('[BroadcastManager] Periodic snapshot broadcasting disabled');
+    // NOTE: No logging here - this is called once during initialization, not high-frequency
+    this.logger.info('Periodic snapshot broadcasting disabled (memory leak fix)');
     return;
   }
 
