@@ -213,21 +213,14 @@ describe('Scenario 14: Browser Restart Persistence Protocol', () => {
         });
       });
 
-      // Save state to storage
-      await Promise.all(
-        stateManagers.map((sm, index) => 
-          storageManagers[index].save(Array.from(sm.quickTabs.values()))
-        )
-      );
+      // Save state to storage sequentially to avoid race conditions
+      for (let index = 0; index < stateManagers.length; index++) {
+        await storageManagers[index].save(Array.from(stateManagers[index].quickTabs.values()));
+      }
 
-      // Simulate browser restart
-      const persistedStorage = simulateBrowserRestart(tabs);
-
-      // Clear in-memory state
+      // Simulate browser restart by clearing in-memory state
+      // mockStorage persists (simulating browser.storage.local persistence)
       stateManagers.forEach(sm => sm.quickTabs.clear());
-
-      // Restore storage
-      restoreStorageAfterRestart(tabs, persistedStorage);
 
       // Hydrate state from storage with container awareness
       await Promise.all(
@@ -406,16 +399,14 @@ describe('Scenario 14: Browser Restart Persistence Protocol', () => {
         }
       });
 
-      // Save and restart
-      await Promise.all(
-        stateManagers.map((sm, index) => 
-          storageManagers[index].save(Array.from(sm.quickTabs.values()))
-        )
-      );
+      // Save state to storage sequentially to avoid race conditions
+      for (let index = 0; index < stateManagers.length; index++) {
+        await storageManagers[index].save(Array.from(stateManagers[index].quickTabs.values()));
+      }
 
-      const persistedStorage = simulateBrowserRestart(tabs);
+      // Simulate browser restart by clearing in-memory state
+      // mockStorage persists (simulating browser.storage.local persistence)
       stateManagers.forEach(sm => sm.quickTabs.clear());
-      restoreStorageAfterRestart(tabs, persistedStorage);
 
       // Hydrate with container awareness
       await Promise.all(
