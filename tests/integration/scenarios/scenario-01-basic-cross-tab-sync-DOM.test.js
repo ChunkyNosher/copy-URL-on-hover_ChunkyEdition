@@ -28,6 +28,12 @@ import { Events } from '../../../src/core/events.js';
 
 // Helper function for creating mock windows (v1.6.1.2)
 const mockQuickTabWindows = new Map();
+
+/**
+ * Create mock window that mimics QuickTabWindow behavior
+ * IMPORTANT: Must be defined as a regular function (not arrow function)
+ * so Jest can properly mock it
+ */
 function createMockWindow(config) {
   const mockWindow = {
     id: config.id,
@@ -72,6 +78,7 @@ function createMockWindow(config) {
       style: {}
     }
   };
+  
   mockQuickTabWindows.set(config.id, mockWindow);
   return mockWindow;
 }
@@ -83,17 +90,17 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   let mockWindowFactory;
 
   beforeAll(() => {
-    // Create a Jest mock that wraps createMockWindow
-    mockWindowFactory = jest.fn().mockImplementation(createMockWindow);
+    // NOTE: Don't create the mock here - Jest config has resetMocks:true
+    // which will reset it before each test. Create it in beforeEach instead.
   });
 
   // DEBUG TEST: Verify mock factory works
   test('mock factory should create mock window', () => {
-    // Test 1: Check if mockWindowFactory is defined
+    // Test if mockWindowFactory is defined and works
     expect(mockWindowFactory).toBeDefined();
     expect(typeof mockWindowFactory).toBe('function');
     
-    // Test 2: Try calling our factory
+    // Try calling our factory
     const result = mockWindowFactory({
       id: 'test-123',
       left: 10,
@@ -113,6 +120,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   });
 
   beforeEach(async () => {
+    // CRITICAL: Jest config has resetMocks:true which resets mocks between tests
+    // We must re-create the mock implementation in beforeEach, NOT beforeAll
+    mockWindowFactory = jest.fn().mockImplementation(createMockWindow);
+    
     // Create two simulated tabs (Wikipedia and YouTube)
     tabs = await createMultiTabScenario([
       { url: 'https://wikipedia.org', containerId: 'firefox-default' },
@@ -184,8 +195,15 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       }
     }
     mockQuickTabWindows.clear();
-    mockWindowFactory.mockClear();
-    jest.clearAllMocks();
+    // Don't clear mockWindowFactory - it removes the implementation!
+    // mockWindowFactory.mockClear();
+    // Don't clearAllMocks - it can affect our window factory
+    // jest.clearAllMocks();
+    // Instead, just clear call history if needed
+    if (mockWindowFactory && mockWindowFactory.mockClear) {
+      mockWindowFactory.mock.calls.length = 0;
+      mockWindowFactory.mock.results.length = 0;
+    }
   });
 
   describe('Step 1-3: Create Quick Tab in Tab A', () => {
@@ -396,7 +414,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       const startTime = Date.now();
 
       // Create Quick Tab in Tab A
-      const qtResult = await managerA.createQuickTab({
+      const tabWindow = await managerA.createQuickTab({
         url: 'https://example.com',
         left: 100,
         top: 100,
@@ -405,7 +423,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
         cookieStoreId: 'firefox-default'
       });
 
-      const qtId = qtResult.tabWindow.id;
+      const qtId = tabWindow.id;
 
       // Simulate broadcast propagation
       await propagateBroadcast(tabs[0], {
