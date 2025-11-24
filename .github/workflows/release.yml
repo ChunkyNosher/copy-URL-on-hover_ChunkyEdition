@@ -164,11 +164,11 @@ jobs:
           fi
           
           # Verify Chrome manifest does NOT have browser_specific_settings
-          unzip -p chrome-extension-v${{ steps.get_version.outputs.version }}.zip manifest.json | grep -q "browser_specific_settings"
-          if [ $? -ne 0 ]; then
-            echo "✓ Chrome manifest correctly excludes browser_specific_settings"
-          else
+          # grep -q returns 0 if pattern IS found, 1 if NOT found
+          if unzip -p chrome-extension-v${{ steps.get_version.outputs.version }}.zip manifest.json | grep -q "browser_specific_settings"; then
             echo "WARNING: Chrome manifest contains browser_specific_settings (Chrome will ignore it)"
+          else
+            echo "✓ Chrome manifest correctly excludes browser_specific_settings"
           fi
 
       - name: Create Release
