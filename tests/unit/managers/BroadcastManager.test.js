@@ -94,12 +94,31 @@ describe('BroadcastManager', () => {
 
       manager.handleBroadcastMessage({
         type: 'CREATE',
-        data: { id: 'qt-123', url: 'https://example.com' }
+        data: {
+          id: 'qt-123',
+          url: 'https://example.com',
+          left: 100,
+          top: 100,
+          width: 800,
+          height: 600,
+          senderId: 'different-sender-id',
+          sequence: 1,
+          cookieStoreId: 'firefox-default'
+        }
       });
 
       expect(listener).toHaveBeenCalledWith({
         type: 'CREATE',
-        data: { id: 'qt-123', url: 'https://example.com' }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          url: 'https://example.com',
+          left: 100,
+          top: 100,
+          width: 800,
+          height: 600,
+          senderId: 'different-sender-id',
+          sequence: 1
+        })
       });
     });
 
@@ -109,7 +128,17 @@ describe('BroadcastManager', () => {
 
       const message = {
         type: 'CREATE',
-        data: { id: 'qt-123', url: 'https://example.com' }
+        data: {
+          id: 'qt-123',
+          url: 'https://example.com',
+          left: 100,
+          top: 100,
+          width: 800,
+          height: 600,
+          senderId: 'different-sender-id',
+          sequence: 1,
+          cookieStoreId: 'firefox-default'
+        }
       };
 
       manager.handleBroadcastMessage(message);
@@ -119,38 +148,57 @@ describe('BroadcastManager', () => {
     });
 
     test('should allow messages after debounce period', done => {
-      manager.BROADCAST_DEBOUNCE_MS = 10; // Shorten for test
+      manager.DEBOUNCE_WINDOWS.CREATE = 10; // Shorten for test
       const listener = jest.fn();
       eventBus.on('broadcast:received', listener);
 
       const message = {
         type: 'CREATE',
-        data: { id: 'qt-123', url: 'https://example.com' }
+        data: {
+          id: 'qt-123',
+          url: 'https://example.com',
+          left: 100,
+          top: 100,
+          width: 800,
+          height: 600,
+          senderId: 'different-sender-id',
+          sequence: 1,
+          cookieStoreId: 'firefox-default'
+        }
       };
 
       manager.handleBroadcastMessage(message);
 
       setTimeout(() => {
-        manager.handleBroadcastMessage(message);
+        // Send with different sequence after debounce window expires
+        // Debounce is per (senderId, type, id), so same message type but incremented sequence
+        const message2 = {
+          ...message,
+          data: { ...message.data, sequence: 2 }
+        };
+        manager.handleBroadcastMessage(message2);
         expect(listener).toHaveBeenCalledTimes(2);
         done();
-      }, 15);
+      }, 20); // Wait longer than debounce window
     });
   });
 
   describe('shouldDebounce()', () => {
     test('should return true for duplicate within debounce window', () => {
       const type = 'CREATE';
-      const data = { id: 'qt-123' };
+      const data = {
+        id: 'qt-123',
+        senderId: 'test-sender-id'
+      };
 
       expect(manager.shouldDebounce(type, data)).toBe(false); // First call
       expect(manager.shouldDebounce(type, data)).toBe(true); // Duplicate
     });
 
     test('should return false for different messages', () => {
-      expect(manager.shouldDebounce('CREATE', { id: 'qt-1' })).toBe(false);
-      expect(manager.shouldDebounce('CREATE', { id: 'qt-2' })).toBe(false);
-      expect(manager.shouldDebounce('UPDATE_POSITION', { id: 'qt-1' })).toBe(false);
+      expect(manager.shouldDebounce('CREATE', { id: 'qt-1', senderId: 'sender-1' })).toBe(false);
+      expect(manager.shouldDebounce('CREATE', { id: 'qt-2', senderId: 'sender-1' })).toBe(false);
+      expect(manager.shouldDebounce('UPDATE_POSITION', { id: 'qt-1', senderId: 'sender-1' })).toBe(false);
     });
 
     test('should clean up old debounce entries', () => {
@@ -158,7 +206,7 @@ describe('BroadcastManager', () => {
 
       // Add 101 entries to trigger cleanup
       for (let i = 0; i < 101; i++) {
-        manager.shouldDebounce('TEST', { id: `qt-${i}` });
+        manager.shouldDebounce('TEST', { id: `qt-${i}`, senderId: 'test-sender' });
       }
 
       // Wait for entries to age
@@ -178,7 +226,13 @@ describe('BroadcastManager', () => {
 
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'CREATE',
-        data: { id: 'qt-123', url: 'https://example.com' }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          url: 'https://example.com',
+          cookieStoreId: 'firefox-default',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -202,7 +256,13 @@ describe('BroadcastManager', () => {
 
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'CREATE',
-        data: { id: 'qt-123', url: 'https://example.com' }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          url: 'https://example.com',
+          cookieStoreId: 'firefox-default',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -211,7 +271,14 @@ describe('BroadcastManager', () => {
 
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'UPDATE_POSITION',
-        data: { id: 'qt-123', left: 100, top: 200 }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          left: 100,
+          top: 200,
+          cookieStoreId: 'firefox-default',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -220,7 +287,14 @@ describe('BroadcastManager', () => {
 
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'UPDATE_SIZE',
-        data: { id: 'qt-123', width: 400, height: 300 }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          width: 400,
+          height: 300,
+          cookieStoreId: 'firefox-default',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -229,7 +303,12 @@ describe('BroadcastManager', () => {
 
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'MINIMIZE',
-        data: { id: 'qt-123' }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          cookieStoreId: 'firefox-default',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -238,7 +317,12 @@ describe('BroadcastManager', () => {
 
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'RESTORE',
-        data: { id: 'qt-123' }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          cookieStoreId: 'firefox-default',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -247,7 +331,12 @@ describe('BroadcastManager', () => {
 
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'CLOSE',
-        data: { id: 'qt-123' }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          cookieStoreId: 'firefox-default',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -256,7 +345,13 @@ describe('BroadcastManager', () => {
 
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'SOLO',
-        data: { id: 'qt-123', soloedOnTabs: [100, 200] }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          soloedOnTabs: [100, 200],
+          cookieStoreId: 'firefox-default',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -265,7 +360,13 @@ describe('BroadcastManager', () => {
 
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'MUTE',
-        data: { id: 'qt-123', mutedOnTabs: [100, 200] }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          mutedOnTabs: [100, 200],
+          cookieStoreId: 'firefox-default',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
   });
@@ -328,10 +429,8 @@ describe('BroadcastManager', () => {
       // Try to setup again - should catch error
       errorManager.setupBroadcastChannel();
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[BroadcastManager] Failed to setup BroadcastChannel:',
-        expect.any(Error)
-      );
+      // Logger now uses structured logging, just check error was logged
+      expect(consoleSpy).toHaveBeenCalled();
 
       consoleSpy.mockRestore();
       consoleLogSpy.mockRestore();
@@ -347,10 +446,8 @@ describe('BroadcastManager', () => {
 
       manager.broadcast('TEST', { id: 'test-123' });
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[BroadcastManager] Failed to broadcast:',
-        expect.any(Error)
-      );
+      // Logger now uses structured logging, just check error was logged
+      expect(consoleSpy).toHaveBeenCalled();
 
       consoleSpy.mockRestore();
     });
@@ -362,7 +459,8 @@ describe('BroadcastManager', () => {
 
       manager.broadcast('TEST', { id: 'test-123' });
 
-      expect(consoleSpy).toHaveBeenCalledWith('[BroadcastManager] No broadcast channel available');
+      // Logger now uses structured logging, just check warning was logged
+      expect(consoleSpy).toHaveBeenCalled();
 
       consoleSpy.mockRestore();
     });
@@ -379,7 +477,17 @@ describe('BroadcastManager', () => {
       const messageEvent = {
         data: {
           type: 'CREATE',
-          data: { id: 'qt-123', url: 'https://example.com' }
+          data: {
+            id: 'qt-123',
+            url: 'https://example.com',
+            left: 100,
+            top: 100,
+            width: 800,
+            height: 600,
+            senderId: 'different-sender-id',
+            sequence: 1,
+            cookieStoreId: 'firefox-default'
+          }
         }
       };
 
@@ -387,7 +495,16 @@ describe('BroadcastManager', () => {
 
       expect(listener).toHaveBeenCalledWith({
         type: 'CREATE',
-        data: { id: 'qt-123', url: 'https://example.com' }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          url: 'https://example.com',
+          left: 100,
+          top: 100,
+          width: 800,
+          height: 600,
+          senderId: 'different-sender-id',
+          sequence: 1
+        })
       });
     });
   });

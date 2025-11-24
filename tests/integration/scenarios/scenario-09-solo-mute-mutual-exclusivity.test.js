@@ -116,7 +116,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
     // Wire up visibility update handlers
     eventBuses.forEach((bus, tabIndex) => {
       bus.on('broadcast:received', (message) => {
-        if (message.type === 'UPDATE_SOLO') {
+        if (message.type === 'SOLO') {
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
             qt.visibility.soloedOnTabs = message.data.soloedOnTabs;
@@ -126,7 +126,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
             }
             stateManagers[tabIndex].update(qt);
           }
-        } else if (message.type === 'UPDATE_MUTE') {
+        } else if (message.type === 'MUTE') {
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
             qt.visibility.mutedOnTabs = message.data.mutedOnTabs;
@@ -176,7 +176,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtInTabB.visibility.mutedOnTabs = []; // Clear mute (mutual exclusivity)
       stateManagers[1].update(qtInTabB);
 
-      await broadcastManagers[1].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[1].broadcast('SOLO', {
         id: 'qt-exclusivity-1',
         soloedOnTabs: [tabs[1].tabId]
       });
@@ -213,7 +213,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtInTabA.visibility.mutedOnTabs = []; // Clear mute (mutual exclusivity)
       stateManagers[0].update(qtInTabA);
 
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-exclusivity-2',
         soloedOnTabs: [tabs[0].tabId, tabs[2].tabId]
       });
@@ -256,7 +256,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtInTabB.visibility.soloedOnTabs = []; // Clear solo (mutual exclusivity)
       stateManagers[1].update(qtInTabB);
 
-      await broadcastManagers[1].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[1].broadcast('MUTE', {
         id: 'qt-exclusivity-3',
         mutedOnTabs: [tabs[1].tabId]
       });
@@ -293,7 +293,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtInTabA2.visibility.soloedOnTabs = []; // Clear solo (mutual exclusivity)
       stateManagers[0].update(qtInTabA2);
 
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: 'qt-exclusivity-4',
         mutedOnTabs: [tabs[0].tabId, tabs[2].tabId]
       });
@@ -332,7 +332,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qt.visibility.mutedOnTabs = [];
       stateManagers[0].update(qt);
       
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-toggle-1',
         soloedOnTabs: [tabs[0].tabId]
       });
@@ -348,7 +348,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qt.visibility.soloedOnTabs = [];
       stateManagers[0].update(qt);
       
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: 'qt-toggle-1',
         mutedOnTabs: [tabs[1].tabId]
       });
@@ -364,7 +364,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qt.visibility.mutedOnTabs = [];
       stateManagers[0].update(qt);
       
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-toggle-1',
         soloedOnTabs: [tabs[2].tabId]
       });
@@ -398,7 +398,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qt.visibility.soloedOnTabs = [];
       stateManagers[0].update(qt);
       
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-renable-1',
         soloedOnTabs: []
       });
@@ -413,7 +413,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qt.visibility.soloedOnTabs = [];
       stateManagers[0].update(qt);
       
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: 'qt-renable-1',
         mutedOnTabs: [tabs[1].tabId]
       });
@@ -444,7 +444,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qt.visibility.mutedOnTabs = [];
       stateManagers[0].update(qt);
       
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: 'qt-renable-2',
         mutedOnTabs: []
       });
@@ -459,7 +459,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qt.visibility.mutedOnTabs = [];
       stateManagers[0].update(qt);
       
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-renable-2',
         soloedOnTabs: [tabs[1].tabId]
       });
@@ -493,7 +493,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtA.visibility.mutedOnTabs = [];
       stateManagers[0].update(qtA);
       
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-cross-tab-1',
         soloedOnTabs: [tabs[0].tabId]
       });
@@ -510,7 +510,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtB.visibility.soloedOnTabs = [];
       stateManagers[1].update(qtB);
       
-      await broadcastManagers[1].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[1].broadcast('MUTE', {
         id: 'qt-cross-tab-1',
         mutedOnTabs: [tabs[1].tabId]
       });
@@ -551,12 +551,12 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtConcB.visibility.soloedOnTabs = [];
       stateManagers[1].update(qtConcB);
       
-      const soloPromise = broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      const soloPromise = broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-concurrent-1',
         soloedOnTabs: [tabs[0].tabId]
       });
 
-      const mutePromise = broadcastManagers[1].broadcast('UPDATE_MUTE', {
+      const mutePromise = broadcastManagers[1].broadcast('MUTE', {
         id: 'qt-concurrent-1',
         mutedOnTabs: [tabs[1].tabId]
       });
@@ -596,7 +596,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtEmpty.visibility.soloedOnTabs = [];
       stateManagers[0].update(qtEmpty);
       
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-empty-1',
         soloedOnTabs: []
       });
@@ -608,7 +608,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtEmpty.visibility.soloedOnTabs = [];
       stateManagers[0].update(qtEmpty);
       
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: 'qt-empty-1',
         mutedOnTabs: [tabs[1].tabId]
       });
@@ -640,7 +640,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtRapid.visibility.mutedOnTabs = [];
       stateManagers[0].update(qtRapid);
       
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-rapid-1',
         soloedOnTabs: [tabs[0].tabId]
       });
@@ -650,7 +650,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtRapid.visibility.soloedOnTabs = [];
       stateManagers[0].update(qtRapid);
       
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: 'qt-rapid-1',
         mutedOnTabs: [tabs[1].tabId]
       });
@@ -660,7 +660,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       qtRapid.visibility.mutedOnTabs = [];
       stateManagers[0].update(qtRapid);
       
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-rapid-1',
         soloedOnTabs: [tabs[2].tabId]
       });

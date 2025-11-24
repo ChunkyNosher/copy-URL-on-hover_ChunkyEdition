@@ -91,12 +91,12 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         if (message.type === 'UPDATE_POSITION') {
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
-            qt.updatePosition(message.data.position.left, message.data.position.top);
+            qt.updatePosition(message.data.left, message.data.top);
           }
         } else if (message.type === 'UPDATE_SIZE') {
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
-            qt.updateSize(message.data.size.width, message.data.size.height);
+            qt.updateSize(message.data.width, message.data.height);
           }
         } else if (message.type === 'CREATE') {
           const existingQt = stateManagers[tabIndex].get(message.data.id);
@@ -104,9 +104,9 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
             const qt = new QuickTab({
               id: message.data.id,
               url: message.data.url,
-              position: message.data.position,
-              size: message.data.size,
-              container: message.data.container
+              position: { left: message.data.left, top: message.data.top },
+              size: { width: message.data.width, height: message.data.height },
+              container: message.data.container || message.data.cookieStoreId || 'firefox-default'
             });
             stateManagers[tabIndex].add(qt);
           }
@@ -128,8 +128,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         id: 'qt-concurrent-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       // Add to all tabs
@@ -143,8 +142,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         qtInTab.updatePosition(newLeft, newTop);
         return broadcastManagers[index].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: newLeft, top: newTop },
-          container: qt.container
+          left: newLeft,
+          top: newTop 
         });
       });
 
@@ -173,8 +172,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
           id: `qt-multi-${i}`,
           url: `https://example${i}.com`,
           position: { left: i * 50, top: i * 50 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
+          size: { width: 800, height: 600 }
         })
       );
 
@@ -189,8 +187,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         qtInTab.updatePosition(1000 + index * 100, 1000 + index * 100);
         return broadcastManagers[index].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: 1000 + index * 100, top: 1000 + index * 100 },
-          container: qt.container
+          left: 1000 + index * 100,
+          top: 1000 + index * 100 
         });
       });
 
@@ -217,8 +215,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         id: 'qt-resize-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));
@@ -231,8 +228,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         qtInTab.updateSize(newWidth, newHeight);
         return broadcastManagers[index].broadcast('UPDATE_SIZE', {
           id: qt.id,
-          size: { width: newWidth, height: newHeight },
-          container: qt.container
+          width: newWidth,
+          height: newHeight 
         });
       });
 
@@ -261,8 +258,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         id: 'qt-mixed-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));
@@ -277,8 +273,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       updates.push(
         broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: 200, top: 200 },
-          container: qt.container
+          left: 200,
+          top: 200 
         })
       );
 
@@ -287,8 +283,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       updates.push(
         broadcastManagers[1].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: 300, top: 300 },
-          container: qt.container
+          left: 300,
+          top: 300 
         })
       );
 
@@ -297,8 +293,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       updates.push(
         broadcastManagers[2].broadcast('UPDATE_SIZE', {
           id: qt.id,
-          size: { width: 900, height: 700 },
-          container: qt.container
+          width: 900,
+          height: 700 
         })
       );
 
@@ -307,8 +303,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       updates.push(
         broadcastManagers[3].broadcast('UPDATE_SIZE', {
           id: qt.id,
-          size: { width: 1000, height: 800 },
-          container: qt.container
+          width: 1000,
+          height: 800 
         })
       );
 
@@ -318,15 +314,15 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       updates.push(
         broadcastManagers[4].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: 400, top: 400 },
-          container: qt.container
+          left: 400,
+          top: 400 
         })
       );
       updates.push(
         broadcastManagers[4].broadcast('UPDATE_SIZE', {
           id: qt.id,
-          size: { width: 1100, height: 900 },
-          container: qt.container
+          width: 1100,
+          height: 900 
         })
       );
 
@@ -366,16 +362,22 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
           id: `qt-create-${i}`,
           url: `https://example${i}.com`,
           position: { left: i * 100, top: i * 100 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
+          size: { width: 800, height: 600 }
         };
         
         // Add to creating tab's state first
         const qt = new QuickTab(qtData);
         stateManagers[index].add(qt);
         
-        // Then broadcast to other tabs
-        return broadcastManagers[index].broadcast('CREATE', qtData);
+        // Then broadcast to other tabs (use flat schema)
+        return broadcastManagers[index].broadcast('CREATE', {
+          id: qtData.id,
+          url: qtData.url,
+          left: qtData.position.left,
+          top: qtData.position.top,
+          width: qtData.size.width,
+          height: qtData.size.height
+        });
       });
 
       await Promise.all(creations);
@@ -394,9 +396,10 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       const qtData = {
         id: 'qt-idempotent-1',
         url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        left: 100,
+        top: 100,
+        width: 800,
+        height: 600 
       };
 
       // All tabs try to create the same Quick Tab
@@ -423,8 +426,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
           id: `qt-load-${i}`,
           url: `https://example${i}.com`,
           position: { left: i * 50, top: i * 50 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
+          size: { width: 800, height: 600 }
         })
       );
 
@@ -444,8 +446,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
           updates.push(
             broadcastManagers[tabIndex].broadcast('UPDATE_POSITION', {
               id: qt.id,
-              position: { left: newLeft, top: newTop },
-              container: qt.container
+              left: newLeft,
+          top: newTop 
             })
           );
         });
@@ -481,8 +483,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         id: 'qt-dup-test-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       // Add to first tab only
@@ -492,9 +493,10 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       await broadcastManagers[0].broadcast('CREATE', {
         id: qt.id,
         url: qt.url,
-        position: qt.position,
-        size: qt.size,
-        container: qt.container
+        left: qt.position.left,
+        top: qt.position.top,
+        width: qt.size.width,
+        height: qt.size.height
       });
 
       // Before propagation completes, multiple tabs try to update
@@ -505,8 +507,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         }
         return broadcastManagers[index].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: 200 + index * 50, top: 200 + index * 50 },
-          container: qt.container
+          left: 200 + index * 50,
+          top: 200 + index * 50 
         });
       });
 
@@ -525,8 +527,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         id: 'qt-error-test-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));
@@ -538,8 +539,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       operations.push(
         broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
-          position: { left: 200, top: 200 },
-          container: qt.container
+          left: 200,
+          top: 200 
         })
       );
 
@@ -547,8 +548,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       operations.push(
         broadcastManagers[1].broadcast('UPDATE_POSITION', {
           id: 'qt-nonexistent',
-          position: { left: 300, top: 300 },
-          container: qt.container
+          left: 300,
+          top: 300 
         })
       );
 
@@ -556,8 +557,8 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
       operations.push(
         broadcastManagers[2].broadcast('UPDATE_SIZE', {
           id: qt.id,
-          size: { width: 900, height: 700 },
-          container: qt.container
+          width: 900,
+          height: 700 
         })
       );
 

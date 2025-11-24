@@ -138,13 +138,13 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
             qt.visibility.minimized = message.data.minimized;
             stateManagers[tabIndex].update(qt);
           }
-        } else if (message.type === 'UPDATE_SOLO') {
+        } else if (message.type === 'SOLO') {
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
             qt.visibility.soloedOnTabs = message.data.soloedOnTabs;
             stateManagers[tabIndex].update(qt);
           }
-        } else if (message.type === 'UPDATE_MUTE') {
+        } else if (message.type === 'MUTE') {
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
             qt.visibility.mutedOnTabs = message.data.mutedOnTabs;
@@ -169,8 +169,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-manager-sync-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       // Add to all tabs
@@ -212,8 +211,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-manager-restore-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
       qt.visibility.minimized = true;
 
@@ -254,8 +252,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-close-sync-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));
@@ -287,22 +284,19 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
           id: 'qt-closeall-1',
           url: 'https://example1.com',
           position: { left: 100, top: 100 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
+          size: { width: 800, height: 600 }
         }),
         new QuickTab({
           id: 'qt-closeall-2',
           url: 'https://example2.com',
           position: { left: 200, top: 200 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
+          size: { width: 800, height: 600 }
         }),
         new QuickTab({
           id: 'qt-closeall-3',
           url: 'https://example3.com',
           position: { left: 300, top: 300 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
+          size: { width: 800, height: 600 }
         })
       ];
 
@@ -339,8 +333,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-closeminimized-1',
         url: 'https://example1.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
       qt1.visibility.minimized = true;
 
@@ -348,8 +341,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-closeminimized-2',
         url: 'https://example2.com',
         position: { left: 200, top: 200 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
       // qt2 is NOT minimized
 
@@ -357,8 +349,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-closeminimized-3',
         url: 'https://example3.com',
         position: { left: 300, top: 300 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
       qt3.visibility.minimized = true;
 
@@ -397,8 +388,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-manager-solo-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));
@@ -414,7 +404,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
       smA.update(qtA);
 
       // Broadcast UPDATE_SOLO
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: 'qt-manager-solo-1',
         soloedOnTabs: [tabs[0].tabId]
       });
@@ -434,8 +424,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-manager-mute-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));
@@ -451,7 +440,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
       smB.update(qtB);
 
       // Broadcast UPDATE_MUTE
-      await broadcastManagers[1].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[1].broadcast('MUTE', {
         id: 'qt-manager-mute-1',
         mutedOnTabs: [tabs[1].tabId]
       });
@@ -474,8 +463,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-consistency-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));
@@ -500,7 +488,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
       qtB.visibility.soloedOnTabs = [tabs[1].tabId];
       qtB.visibility.mutedOnTabs = [];
       smB.update(qtB);
-      await broadcastManagers[1].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[1].broadcast('SOLO', {
         id: 'qt-consistency-1',
         soloedOnTabs: [tabs[1].tabId]
       });
@@ -534,8 +522,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-rapid-manager-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));
@@ -561,7 +548,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
           qt.visibility.soloedOnTabs = [tabs[1].tabId];
           qt.visibility.mutedOnTabs = [];
           sm.update(qt);
-          await broadcastManagers[1].broadcast('UPDATE_SOLO', {
+          await broadcastManagers[1].broadcast('SOLO', {
             id: 'qt-rapid-manager-1',
             soloedOnTabs: [tabs[1].tabId]
           });
@@ -617,8 +604,7 @@ describe('Scenario 6: Cross-Tab Manager Panel Sync Protocol', () => {
         id: 'qt-closed-then-op',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(qt));

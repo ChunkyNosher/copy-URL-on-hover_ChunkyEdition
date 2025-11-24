@@ -141,7 +141,7 @@ describe('Scenario 3: Solo Mode Protocol', () => {
       // Setup tabs to handle solo updates
       eventBuses.forEach((bus, index) => {
         bus.on('broadcast:received', (message) => {
-          if (message.type === 'UPDATE_SOLO') {
+          if (message.type === 'SOLO') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
               qt.visibility.soloedOnTabs = message.data.soloedOnTabs;
@@ -157,7 +157,7 @@ describe('Scenario 3: Solo Mode Protocol', () => {
       stateManagers[0].update(tabAQt);
 
       // Broadcast solo update
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: quickTab.id,
         soloedOnTabs: [tabs[0].tabId]
       });
@@ -199,7 +199,7 @@ describe('Scenario 3: Solo Mode Protocol', () => {
 
       eventBuses.forEach((bus, index) => {
         bus.on('broadcast:received', (message) => {
-          if (message.type === 'UPDATE_SOLO') {
+          if (message.type === 'SOLO') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
               qt.visibility.soloedOnTabs = message.data.soloedOnTabs;
@@ -214,7 +214,7 @@ describe('Scenario 3: Solo Mode Protocol', () => {
       qtInTabA.visibility.soloedOnTabs = [tabs[0].tabId, tabs[1].tabId];
       stateManagers[0].update(qtInTabA);
 
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: quickTab.id,
         soloedOnTabs: [tabs[0].tabId, tabs[1].tabId]
       });
@@ -250,14 +250,14 @@ describe('Scenario 3: Solo Mode Protocol', () => {
 
       let messageReceived = false;
       eventBuses[1].on('broadcast:received', (message) => {
-        if (message.type === 'UPDATE_SOLO') {
+        if (message.type === 'SOLO') {
           messageReceived = true;
         }
       });
 
       const startTime = Date.now();
 
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: quickTab.id,
         soloedOnTabs: [tabs[0].tabId]
       });
@@ -298,7 +298,7 @@ describe('Scenario 3: Solo Mode Protocol', () => {
 
       eventBuses.forEach((bus, index) => {
         bus.on('broadcast:received', (message) => {
-          if (message.type === 'UPDATE_SOLO') {
+          if (message.type === 'SOLO') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
               qt.visibility.soloedOnTabs = message.data.soloedOnTabs;
@@ -313,7 +313,7 @@ describe('Scenario 3: Solo Mode Protocol', () => {
       qtInTabA.visibility.soloedOnTabs = [];
       stateManagers[0].update(qtInTabA);
 
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: quickTab.id,
         soloedOnTabs: []
       });
@@ -347,7 +347,7 @@ describe('Scenario 3: Solo Mode Protocol', () => {
       quickTab.visibility.soloedOnTabs = [nonExistentTabId];
       stateManagers[0].update(quickTab);
 
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: quickTab.id,
         soloedOnTabs: [nonExistentTabId]
       });
@@ -378,7 +378,7 @@ describe('Scenario 3: Solo Mode Protocol', () => {
 
       eventBuses.forEach((bus, index) => {
         bus.on('broadcast:received', (message) => {
-          if (message.type === 'UPDATE_SOLO') {
+          if (message.type === 'SOLO') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
               qt.visibility.soloedOnTabs = message.data.soloedOnTabs;
@@ -390,11 +390,11 @@ describe('Scenario 3: Solo Mode Protocol', () => {
 
       // Both tabs try to solo simultaneously (last one wins)
       await Promise.all([
-        broadcastManagers[0].broadcast('UPDATE_SOLO', {
+        broadcastManagers[0].broadcast('SOLO', {
           id: quickTab.id,
           soloedOnTabs: [tabs[0].tabId]
         }),
-        broadcastManagers[1].broadcast('UPDATE_SOLO', {
+        broadcastManagers[1].broadcast('SOLO', {
           id: quickTab.id,
           soloedOnTabs: [tabs[1].tabId]
         })

@@ -137,7 +137,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
 
       eventBuses.forEach((bus, index) => {
         bus.on('broadcast:received', (message) => {
-          if (message.type === 'UPDATE_MUTE') {
+          if (message.type === 'MUTE') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
               qt.visibility.mutedOnTabs = message.data.mutedOnTabs;
@@ -152,7 +152,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
       tabAQt.visibility.mutedOnTabs = [tabs[0].tabId];
       stateManagers[0].update(tabAQt);
 
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: quickTab.id,
         mutedOnTabs: [tabs[0].tabId]
       });
@@ -194,7 +194,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
 
       eventBuses.forEach((bus, index) => {
         bus.on('broadcast:received', (message) => {
-          if (message.type === 'UPDATE_MUTE') {
+          if (message.type === 'MUTE') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
               qt.visibility.mutedOnTabs = message.data.mutedOnTabs;
@@ -209,7 +209,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
       qtInTabA.visibility.mutedOnTabs = [tabs[0].tabId, tabs[2].tabId];
       stateManagers[0].update(qtInTabA);
 
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: quickTab.id,
         mutedOnTabs: [tabs[0].tabId, tabs[2].tabId]
       });
@@ -244,14 +244,14 @@ describe('Scenario 4: Mute Mode Protocol', () => {
 
       let messageReceived = false;
       eventBuses[1].on('broadcast:received', (message) => {
-        if (message.type === 'UPDATE_MUTE') {
+        if (message.type === 'MUTE') {
           messageReceived = true;
         }
       });
 
       const startTime = Date.now();
 
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: quickTab.id,
         mutedOnTabs: [tabs[0].tabId]
       });
@@ -292,7 +292,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
 
       eventBuses.forEach((bus, index) => {
         bus.on('broadcast:received', (message) => {
-          if (message.type === 'UPDATE_MUTE') {
+          if (message.type === 'MUTE') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
               qt.visibility.mutedOnTabs = message.data.mutedOnTabs;
@@ -307,7 +307,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
       qtInTabA.visibility.mutedOnTabs = [];
       stateManagers[0].update(qtInTabA);
 
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: quickTab.id,
         mutedOnTabs: []
       });
@@ -344,7 +344,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
       stateManagers[0].add(quickTab);
 
       eventBuses[0].on('broadcast:received', (message) => {
-        if (message.type === 'UPDATE_MUTE') {
+        if (message.type === 'MUTE') {
           const qt = stateManagers[0].get(message.data.id);
           if (qt) {
             // Muting clears solo
@@ -361,7 +361,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
       qt.visibility.mutedOnTabs = [tabs[1].tabId];
       stateManagers[0].update(qt);
 
-      await broadcastManagers[0].broadcast('UPDATE_MUTE', {
+      await broadcastManagers[0].broadcast('MUTE', {
         id: quickTab.id,
         mutedOnTabs: [tabs[1].tabId]
       });
@@ -391,7 +391,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
       stateManagers[0].add(quickTab);
 
       eventBuses[0].on('broadcast:received', (message) => {
-        if (message.type === 'UPDATE_SOLO') {
+        if (message.type === 'SOLO') {
           const qt = stateManagers[0].get(message.data.id);
           if (qt) {
             // Soloing clears mute
@@ -408,7 +408,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
       qt.visibility.soloedOnTabs = [tabs[1].tabId];
       stateManagers[0].update(qt);
 
-      await broadcastManagers[0].broadcast('UPDATE_SOLO', {
+      await broadcastManagers[0].broadcast('SOLO', {
         id: quickTab.id,
         soloedOnTabs: [tabs[1].tabId]
       });
