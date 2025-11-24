@@ -24,7 +24,7 @@ module.exports = {
 
   // Transform ES modules
   transformIgnorePatterns: [
-    'node_modules/(?!(webextension-polyfill|eventemitter3|webext-storage-cache|webext-options-sync|lodash-es)/)'
+    'node_modules/(?!(webextension-polyfill|eventemitter3|webext-storage-cache|webext-options-sync|lodash-es|uuid)/)'
   ],
 
   // Coverage configuration
