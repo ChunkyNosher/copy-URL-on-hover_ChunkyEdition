@@ -117,7 +117,7 @@ export class StorageManager {
       // NOTE: browser.storage.session is ONLY available in background scripts, NOT content scripts
       // Check availability before attempting to use it to avoid "storage.session is undefined" errors
       let containerData = null;
-      
+
       if (browserAPI?.storage?.session) {
         containerData = await this.sessionAdapter.load(this.cookieStoreId);
       }

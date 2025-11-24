@@ -149,7 +149,7 @@ describe('StorageManager', () => {
   describe('loadAll()', () => {
     beforeEach(() => {
       // Mock browser.runtime.sendMessage for loadAll tests
-      // Also mock browser.storage.session so sessionAdapter fallback is tested
+      // Also mocks browser.storage.session so sessionAdapter fallback is tested
       global.browser = {
         runtime: {
           sendMessage: jest.fn().mockResolvedValue({
