@@ -314,16 +314,6 @@ jobs:
       # ====================================================================
       # NEW STEP: Restore Memory from Previous Runs
       # ====================================================================
-      - name: Restore Agent Memory Cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            .agentic-tools-mcp/
-          key: copilot-memory-${{ github.repository }}-${{ github.run_number }}
-          restore-keys: |
-            copilot-memory-${{ github.repository }}-
-            copilot-memory-
-        continue-on-error: true
 
       - name: Display Memory Status
         run: |
