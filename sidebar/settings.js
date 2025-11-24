@@ -851,68 +851,294 @@ document.getElementById('quickTabPosition').addEventListener('change', function 
   toggleCustomPosition(this.value);
 });
 
+// ==================== TWO-LAYER TAB SYSTEM ====================
+
 /**
- * Handle tab button click to switch active tab
- * @param {Event} event - Click event
+ * Handle primary tab switching (Settings vs Manager)
+ * @param {string} primaryTab - The primary tab identifier ('settings' or 'manager')
  */
-function handleTabSwitch(event) {
-  const tab = event.currentTarget;
+function handlePrimaryTabSwitch(primaryTab) {
+  // Update primary tab active state
+  document.querySelectorAll('.primary-tab-button').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  document.querySelector(`[data-primary-tab="${primaryTab}"]`)?.classList.add('active');
 
-  // Remove active class from all tabs and contents
-  // eslint-disable-next-line max-nested-callbacks
-  document.querySelectorAll('.tab-button').forEach(t => t.classList.remove('active'));
-  // eslint-disable-next-line max-nested-callbacks
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-  // Add active class to clicked tab
-  tab.classList.add('active');
-
-  // Show corresponding content
-  const tabName = tab.dataset.tab;
-  const content = document.getElementById(tabName);
-  if (content) {
-    content.classList.add('active');
+  const secondaryTabsContainer = document.getElementById('settings-subtabs');
+  const managerContent = document.getElementById('manager');
+  
+  if (primaryTab === 'settings') {
+    // Show secondary tabs
+    if (secondaryTabsContainer) {
+      secondaryTabsContainer.style.display = 'flex';
+    }
+    
+    // Hide manager content
+    if (managerContent) {
+      managerContent.classList.remove('active');
+    }
+    
+    // Restore last active secondary tab or default to copy-url
+    const lastSecondaryTab = getStoredSecondaryTab() || 'copy-url';
+    showSecondaryTab(lastSecondaryTab);
+  } else if (primaryTab === 'manager') {
+    // Hide secondary tabs
+    if (secondaryTabsContainer) {
+      secondaryTabsContainer.style.display = 'none';
+    }
+    
+    // Hide all secondary tab content
+    document.querySelectorAll('.tab-content').forEach(content => {
+      if (content.id !== 'manager') {
+        content.classList.remove('active');
+      }
+    });
+    
+    // Show manager content
+    if (managerContent) {
+      managerContent.classList.add('active');
+    }
   }
+  
+  // Store primary tab selection
+  storePrimaryTab(primaryTab);
+}
+
+/**
+ * Handle secondary tab switching (only when Settings is active)
+ * @param {string} secondaryTab - The secondary tab identifier
+ */
+function showSecondaryTab(secondaryTab) {
+  // Update secondary tab active state
+  document.querySelectorAll('.secondary-tab-button').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  document.querySelector(`[data-tab="${secondaryTab}"]`)?.classList.add('active');
+  
+  // Show corresponding content
+  document.querySelectorAll('.tab-content').forEach(content => {
+    if (content.id === secondaryTab) {
+      content.classList.add('active');
+    } else if (content.id !== 'manager') {
+      content.classList.remove('active');
+    }
+  });
+  
+  // Store secondary tab selection
+  storeSecondaryTab(secondaryTab);
+}
+
+/**
+ * Get stored primary tab selection
+ * @returns {string} Primary tab identifier
+ */
+function getStoredPrimaryTab() {
+  try {
+    return localStorage.getItem('sidebarActivePrimaryTab') || 'settings';
+  } catch (error) {
+    console.error('[Settings] Failed to get stored primary tab:', error);
+    return 'settings';
+  }
+}
+
+/**
+ * Get stored secondary tab selection
+ * @returns {string} Secondary tab identifier
+ */
+function getStoredSecondaryTab() {
+  try {
+    return localStorage.getItem('sidebarActiveSecondaryTab') || 'copy-url';
+  } catch (error) {
+    console.error('[Settings] Failed to get stored secondary tab:', error);
+    return 'copy-url';
+  }
+}
+
+/**
+ * Store primary tab selection
+ * @param {string} primaryTab - Primary tab identifier
+ */
+function storePrimaryTab(primaryTab) {
+  try {
+    localStorage.setItem('sidebarActivePrimaryTab', primaryTab);
+  } catch (error) {
+    console.error('[Settings] Failed to store primary tab:', error);
+  }
+}
+
+/**
+ * Store secondary tab selection
+ * @param {string} secondaryTab - Secondary tab identifier
+ */
+function storeSecondaryTab(secondaryTab) {
+  try {
+    localStorage.setItem('sidebarActiveSecondaryTab', secondaryTab);
+  } catch (error) {
+    console.error('[Settings] Failed to store secondary tab:', error);
+  }
+}
+
+// ==================== END TWO-LAYER TAB SYSTEM ====================
+
+/**
+ * Setup two-way sync between color text input and color picker
+ * v1.6.1.4 - Moved outside DOMContentLoaded to reduce function size
+ * @param {HTMLInputElement} textInput - Text input element
+ * @param {HTMLInputElement} pickerInput - Color picker element
+ */
+function setupColorInputSync(textInput, pickerInput) {
+  // When text input changes, update picker
+  textInput.addEventListener('input', () => {
+    const color = validateHexColor(textInput.value);
+    textInput.value = color;
+    pickerInput.value = color;
+  });
+
+  textInput.addEventListener('blur', () => {
+    const color = validateHexColor(textInput.value);
+    textInput.value = color;
+    pickerInput.value = color;
+  });
+
+  // When picker changes, update text input
+  pickerInput.addEventListener('input', () => {
+    const color = pickerInput.value.toUpperCase();
+    textInput.value = color;
+  });
+}
+
+/**
+ * Handle export logs button click
+ * v1.6.1.4 - Extracted from DOMContentLoaded
+ */
+async function handleExportAllLogs() {
+  const manifest = browserAPI.runtime.getManifest();
+  await exportAllLogs(manifest.version);
+}
+
+/**
+ * Handle clear logs button click
+ * v1.6.1.4 - Extracted from DOMContentLoaded
+ */
+async function handleClearLogHistory() {
+  const response = await browserAPI.runtime.sendMessage({
+    action: 'CLEAR_CONSOLE_LOGS'
+  });
+
+  const clearedTabs = response?.clearedTabs || 0;
+  const backgroundEntries = response?.clearedBackgroundEntries || 0;
+
+  const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
+  showStatus(
+    `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
+    true
+  );
+}
+
+/**
+ * Setup button with async handler that shows loading/success/error states
+ * v1.6.1.4 - Extracted from DOMContentLoaded
+ * @param {string} buttonId - Button element ID
+ * @param {Function} handler - Async handler function
+ * @param {Object} options - Configuration options
+ */
+function setupButtonHandler(buttonId, handler, options = {}) {
+  const button = document.getElementById(buttonId);
+  if (!button) return;
+
+  const {
+    loadingText = '⏳ Loading...',
+    successText = '✓ Success!',
+    errorText = '✗ Failed',
+    successDuration = 2000,
+    errorDuration = 3000
+  } = options;
+
+  button.addEventListener('click', async () => {
+    const originalText = button.textContent;
+    const originalBg = button.style.backgroundColor;
+
+    try {
+      // Show loading state
+      button.disabled = true;
+      button.textContent = loadingText;
+
+      // Execute handler
+      await handler();
+
+      // Show success state
+      button.textContent = successText;
+      button.classList.add('success');
+
+      // Reset after duration
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.backgroundColor = originalBg;
+        button.classList.remove('success');
+        button.disabled = false;
+      }, successDuration);
+    } catch (error) {
+      // Show error state
+      button.textContent = errorText;
+      button.classList.add('error');
+
+      // Show error message in status
+      showStatus(`${originalText} failed: ${error.message}`, false);
+
+      // Reset after duration
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.backgroundColor = originalBg;
+        button.classList.remove('error');
+        button.disabled = false;
+      }, errorDuration);
+    }
+  });
+}
+
+/**
+ * Initialize tab switching event handlers
+ * v1.6.1.4 - Extracted to fix max-lines-per-function eslint warning
+ */
+function initializeTabSwitching() {
+  // Primary tab switching
+  document.querySelectorAll('.primary-tab-button').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      const primaryTab = event.currentTarget.dataset.primaryTab;
+      handlePrimaryTabSwitch(primaryTab);
+    });
+  });
+  
+  // Secondary tab switching
+  document.querySelectorAll('.secondary-tab-button').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      const secondaryTab = event.currentTarget.dataset.tab;
+      showSecondaryTab(secondaryTab);
+    });
+  });
+  
+  // Restore tab state on load
+  const storedPrimaryTab = getStoredPrimaryTab();
+  handlePrimaryTabSwitch(storedPrimaryTab);
+  
+  // Listen for messages from background script to switch tabs
+  browserAPI.runtime.onMessage.addListener((message) => {
+    if (message.type === 'SWITCH_TO_MANAGER_TAB') {
+      handlePrimaryTabSwitch('manager');
+    }
+  });
 }
 
 // Tab switching logic
 document.addEventListener('DOMContentLoaded', () => {
-  // Settings tab switching
-  document.querySelectorAll('.tab-button').forEach(tab => {
-    tab.addEventListener('click', handleTabSwitch);
-  });
+  // Initialize two-layer tab system
+  initializeTabSwitching();
 
   // Set footer version dynamically
   const manifest = browserAPI.runtime.getManifest();
   const footerElement = document.getElementById('footerVersion');
   if (footerElement) {
     footerElement.textContent = `${manifest.name} v${manifest.version}`;
-  }
-
-  /**
-   * Setup two-way sync between color text input and color picker
-   * @param {HTMLInputElement} textInput - Text input element
-   * @param {HTMLInputElement} pickerInput - Color picker element
-   */
-  function setupColorInputSync(textInput, pickerInput) {
-    // When text input changes, update picker
-    textInput.addEventListener('input', () => {
-      const color = validateHexColor(textInput.value);
-      textInput.value = color;
-      pickerInput.value = color;
-    });
-
-    textInput.addEventListener('blur', () => {
-      const color = validateHexColor(textInput.value);
-      textInput.value = color;
-      pickerInput.value = color;
-    });
-
-    // When picker changes, update text input
-    pickerInput.addEventListener('input', () => {
-      const color = pickerInput.value.toUpperCase();
-      textInput.value = color;
-    });
   }
 
   // Add color input event listeners to sync text and picker inputs
@@ -926,92 +1152,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==================== EXPORT LOGS BUTTON ====================
-  /**
-   * Handle export logs button click
-   */
-  async function handleExportAllLogs() {
-    const manifest = browserAPI.runtime.getManifest();
-    await exportAllLogs(manifest.version);
-  }
-
-  /**
-   * Handle clear logs button click
-   */
-  async function handleClearLogHistory() {
-    const response = await browserAPI.runtime.sendMessage({
-      action: 'CLEAR_CONSOLE_LOGS'
-    });
-
-    const clearedTabs = response?.clearedTabs || 0;
-    const backgroundEntries = response?.clearedBackgroundEntries || 0;
-
-    const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
-    showStatus(
-      `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
-      true
-    );
-  }
-
-  /**
-   * Setup button with async handler that shows loading/success/error states
-   * @param {string} buttonId - Button element ID
-   * @param {Function} handler - Async handler function
-   * @param {Object} options - Configuration options
-   */
-  function setupButtonHandler(buttonId, handler, options = {}) {
-    const button = document.getElementById(buttonId);
-    if (!button) return;
-
-    const {
-      loadingText = '⏳ Loading...',
-      successText = '✓ Success!',
-      errorText = '✗ Failed',
-      successDuration = 2000,
-      errorDuration = 3000
-    } = options;
-
-    button.addEventListener('click', async () => {
-      const originalText = button.textContent;
-      const originalBg = button.style.backgroundColor;
-
-      try {
-        // Show loading state
-        button.disabled = true;
-        button.textContent = loadingText;
-
-        // Execute handler
-        await handler();
-
-        // Show success state
-        button.textContent = successText;
-        button.classList.add('success');
-
-        // Reset after duration
-        setTimeout(() => {
-          button.textContent = originalText;
-          button.style.backgroundColor = originalBg;
-          button.classList.remove('success');
-          button.disabled = false;
-        }, successDuration);
-      } catch (error) {
-        // Show error state
-        button.textContent = errorText;
-        button.classList.add('error');
-
-        // Show error message in status
-        showStatus(`${originalText} failed: ${error.message}`, false);
-
-        // Reset after duration
-        setTimeout(() => {
-          button.textContent = originalText;
-          button.style.backgroundColor = originalBg;
-          button.classList.remove('error');
-          button.disabled = false;
-        }, errorDuration);
-      }
-    });
-  }
-
   // Export logs button event listener
   setupButtonHandler('exportLogsBtn', handleExportAllLogs, {
     loadingText: '⏳ Exporting...',

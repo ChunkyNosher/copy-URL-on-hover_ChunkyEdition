@@ -15,17 +15,17 @@
   ],
 
   "commands": {
-    "toggle-quick-tabs-manager": {
+    "open-quick-tabs-manager": {
       "suggested_key": {
         "default": "Alt+Shift+Z"
       },
-      "description": "Toggle Quick Tabs Manager panel"
+      "description": "Open Quick Tabs Manager in sidebar"
     },
     "_execute_sidebar_action": {
       "suggested_key": {
         "default": "Alt+Shift+S"
       },
-      "description": "Toggle settings sidebar"
+      "description": "Toggle sidebar (Settings/Manager)"
     }
   },
 

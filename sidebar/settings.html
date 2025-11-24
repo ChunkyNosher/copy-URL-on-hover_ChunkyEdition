@@ -43,17 +43,59 @@
         font-weight: 600;
       }
 
-      .tabs {
+      /* Primary Tabs (Layer 1) - More prominent */
+      .primary-tabs {
+        display: flex;
+        gap: 0;
+        background: #2a2a2a;
+        border-bottom: 2px solid #4caf50;
+        flex-shrink: 0;
+        padding: 8px 0;
+      }
+
+      .primary-tab-button {
+        flex: 1;
+        padding: 14px 20px;
+        background: transparent;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 600;
+        border-bottom: 3px solid transparent;
+        transition: all 0.3s ease;
+        margin-bottom: -2px;
+      }
+
+      .primary-tab-button:hover {
+        color: #e0e0e0;
+        background: rgba(76, 175, 80, 0.1);
+      }
+
+      .primary-tab-button.active {
+        color: #4caf50;
+        border-bottom-color: #4caf50;
+        background: #1e1e1e;
+      }
+
+      /* Secondary Tabs (Layer 2) - Nested appearance */
+      .secondary-tabs {
         display: flex;
         gap: 0;
         background: #252525;
         border-bottom: 1px solid #3a3a3a;
         flex-shrink: 0;
+        margin-left: 16px;
+        padding: 4px 0;
       }
 
-      .tab-button {
+      .secondary-tabs.hidden {
+        display: none;
+      }
+
+      .secondary-tab-button {
         flex: 1;
-        padding: 12px 16px;
+        padding: 10px 16px;
         background: transparent;
         border: none;
         color: #888;
@@ -64,12 +106,12 @@
         transition: all 0.3s ease;
       }
 
-      .tab-button:hover {
+      .secondary-tab-button:hover {
         color: #e0e0e0;
         background: #2a2a2a;
       }
 
-      .tab-button.active {
+      .secondary-tab-button.active {
         color: #4caf50;
         border-bottom-color: #4caf50;
       }
@@ -482,13 +524,18 @@
         <h1>⚙️ Copy URL on Hover</h1>
       </div>
 
-      <!-- Tabs -->
-      <div class="tabs">
-        <button class="tab-button active" data-tab="copy-url">Copy URL</button>
-        <button class="tab-button" data-tab="quick-tabs">Quick Tabs</button>
-        <button class="tab-button" data-tab="appearance">Appearance</button>
-        <button class="tab-button" data-tab="advanced">Advanced</button>
-        <button class="tab-button" data-tab="manager">Manager</button>
+      <!-- Primary Tabs (Layer 1) -->
+      <div class="primary-tabs">
+        <button class="primary-tab-button active" data-primary-tab="settings">Settings</button>
+        <button class="primary-tab-button" data-primary-tab="manager">Quick Tab Manager</button>
+      </div>
+
+      <!-- Secondary Tabs (Layer 2) - Only visible when Settings is active -->
+      <div class="secondary-tabs" id="settings-subtabs">
+        <button class="secondary-tab-button active" data-tab="copy-url">Copy URL</button>
+        <button class="secondary-tab-button" data-tab="quick-tabs">Quick Tabs</button>
+        <button class="secondary-tab-button" data-tab="appearance">Appearance</button>
+        <button class="secondary-tab-button" data-tab="advanced">Advanced</button>
       </div>
 
       <!-- Scrollable Content Area -->
