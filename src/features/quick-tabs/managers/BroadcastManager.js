@@ -16,6 +16,8 @@
  * - BroadcastMessageSchema for message validation
  */
 
+import { v4 as uuidv4 } from 'uuid';
+
 import { validateMessage } from '../schemas/BroadcastMessageSchema.js';
 
 export class BroadcastManager {
@@ -27,15 +29,36 @@ export class BroadcastManager {
     this.broadcastChannel = null;
     this.currentChannelName = null;
 
+    // Gap 5: Sender identification and sequence tracking
+    this.senderId = uuidv4(); // Unique ID for this tab
+    this.messageSequence = 0; // Incrementing sequence number
+    this.receivedSequences = new Map(); // senderId -> last sequence number
+
+    // Gap 5: Configurable debounce windows per message type
+    this.DEBOUNCE_WINDOWS = {
+      UPDATE_POSITION: 50,  // Rapid updates expected
+      UPDATE_SIZE: 50,      // Rapid updates expected
+      CREATE: 200,          // Should be infrequent
+      CLOSE: 200,           // Should be infrequent
+      MINIMIZE: 100,        // Moderate frequency
+      RESTORE: 100,         // Moderate frequency
+      SOLO: 100,            // Moderate frequency
+      MUTE: 100             // Moderate frequency
+    };
+
     // Debounce to prevent message loops
     this.broadcastDebounce = new Map(); // key -> timestamp
-    this.BROADCAST_DEBOUNCE_MS = 50; // Ignore duplicate broadcasts within 50ms
+    this.BROADCAST_DEBOUNCE_MS = 50; // Default (overridden by DEBOUNCE_WINDOWS)
 
     // Message validation metrics (Gap 3)
     this.invalidMessageCount = 0;
 
     // Container boundary validation metrics (Gap 6)
     this.containerViolationCount = 0;
+
+    // Gap 5: Loop detection metrics
+    this.selfMessageCount = 0; // Messages from self (should be filtered)
+    this.sequenceAnomalyCount = 0; // Out-of-order or duplicate sequences
   }
 
   /**
@@ -74,6 +97,108 @@ export class BroadcastManager {
   }
 
   /**
+   * Validate sequence number for duplicate/replay detection (Gap 5)
+   * @private
+   */
+  _validateSequence(senderId, sequence, messageType) {
+    const lastSequence = this.receivedSequences.get(senderId);
+    
+    if (lastSequence === undefined) {
+      this.receivedSequences.set(senderId, sequence);
+      return true;
+    }
+    
+    if (sequence <= lastSequence) {
+      this.sequenceAnomalyCount++;
+      console.warn(
+        '[BroadcastManager] Sequence anomaly:',
+        `Sender: ${senderId}, Last: ${lastSequence}, Current: ${sequence}`
+      );
+      
+      this.eventBus?.emit('broadcast:sequence-anomaly', {
+        senderId,
+        lastSequence,
+        currentSequence: sequence,
+        messageType,
+        count: this.sequenceAnomalyCount
+      });
+      
+      return false;
+    }
+    
+    this.receivedSequences.set(senderId, sequence);
+    return true;
+  }
+
+  /**
+   * Check if message is from self (Gap 5)
+   * @private
+   */
+  _isSelfMessage(senderId, messageType) {
+    if (senderId === this.senderId) {
+      this.selfMessageCount++;
+      console.log('[BroadcastManager] Ignoring self message:', messageType);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Validate container boundary (Gap 6)
+   * @private
+   */
+  _validateContainer(containerID, messageType) {
+    if (!containerID || containerID === this.cookieStoreId) {
+      return true;
+    }
+    
+    this.containerViolationCount++;
+    console.warn(
+      '[BroadcastManager] Container violation:',
+      `Expected: ${this.cookieStoreId}, Got: ${containerID}`
+    );
+    
+    this.eventBus?.emit('broadcast:container-violation', {
+      expectedContainer: this.cookieStoreId,
+      actualContainer: containerID,
+      messageType,
+      count: this.containerViolationCount
+    });
+    
+    return false;
+  }
+
+  /**
+   * Process validated message through filters (Gap 5, Gap 6)
+   * @private
+   */
+  _shouldProcessMessage(type, sanitizedData) {
+    // Check for self-message
+    if (sanitizedData.senderId && this._isSelfMessage(sanitizedData.senderId, type)) {
+      return false;
+    }
+
+    // Validate sequence number
+    const hasSequence = sanitizedData.senderId && sanitizedData.sequence !== undefined;
+    if (hasSequence && !this._validateSequence(sanitizedData.senderId, sanitizedData.sequence, type)) {
+      return false;
+    }
+
+    // Validate container boundary
+    if (!this._validateContainer(sanitizedData.cookieStoreId, type)) {
+      return false;
+    }
+
+    // Check debounce
+    if (this.shouldDebounce(type, sanitizedData)) {
+      console.log('[BroadcastManager] Debounced:', type, sanitizedData.id);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Handle incoming broadcast message
    * @param {Object} message - Message data with type and data
    */
@@ -85,63 +210,34 @@ export class BroadcastManager {
     
     if (!validationResult.isValid()) {
       this.invalidMessageCount++;
-      console.error(
-        '[BroadcastManager] Invalid message received:',
-        validationResult.errors,
-        'Raw message:',
-        message
-      );
-      
-      // Emit validation failure event for monitoring
+      console.error('[BroadcastManager] Invalid message:', validationResult.errors);
       this.eventBus?.emit('broadcast:invalid', {
         errors: validationResult.errors,
-        message: message,
+        message,
         count: this.invalidMessageCount
       });
-      
-      return; // Drop invalid message
+      return;
     }
 
-    // Log warnings if any
     if (validationResult.warnings.length > 0) {
-      console.warn('[BroadcastManager] Message validation warnings:', validationResult.warnings);
+      console.warn('[BroadcastManager] Validation warnings:', validationResult.warnings);
     }
 
     const { type } = message;
     const sanitizedData = validationResult.sanitizedData;
 
-    // Gap 6: Validate container boundary
-    if (sanitizedData.cookieStoreId && sanitizedData.cookieStoreId !== this.cookieStoreId) {
-      this.containerViolationCount++;
-      console.warn(
-        '[BroadcastManager] Container boundary violation detected:',
-        `Expected: ${this.cookieStoreId}, Got: ${sanitizedData.cookieStoreId}`,
-        'Message type:', type
-      );
-      
-      // Emit container violation event for monitoring
-      this.eventBus?.emit('broadcast:container-violation', {
-        expectedContainer: this.cookieStoreId,
-        actualContainer: sanitizedData.cookieStoreId,
-        messageType: type,
-        count: this.containerViolationCount
-      });
-      
-      return; // Drop cross-container message
-    }
-
-    // Debounce rapid messages to prevent loops
-    if (this.shouldDebounce(type, sanitizedData)) {
-      console.log('[BroadcastManager] Ignoring duplicate broadcast (debounced):', type, sanitizedData.id);
+    // Apply all filters (Gap 5, Gap 6)
+    if (!this._shouldProcessMessage(type, sanitizedData)) {
       return;
     }
 
-    // Emit event for handlers to process with sanitized data
+    // Emit event for handlers to process
     this.eventBus?.emit('broadcast:received', { type, data: sanitizedData });
   }
 
   /**
    * Check if message should be debounced
+   * Gap 5: Enhanced with sender ID and configurable windows
    * @param {string} type - Message type
    * @param {Object} data - Message data
    * @returns {boolean} - True if should skip
@@ -151,11 +247,16 @@ export class BroadcastManager {
       return false;
     }
 
-    const debounceKey = `${type}-${data.id}`;
+    // Gap 5: Include sender ID in debounce key to allow simultaneous updates from different tabs
+    const senderId = data.senderId || 'unknown';
+    const debounceKey = `${senderId}-${type}-${data.id}`;
     const now = Date.now();
     const lastProcessed = this.broadcastDebounce.get(debounceKey);
 
-    if (lastProcessed && now - lastProcessed < this.BROADCAST_DEBOUNCE_MS) {
+    // Gap 5: Use configurable debounce window per message type
+    const debounceWindow = this.DEBOUNCE_WINDOWS[type] || this.BROADCAST_DEBOUNCE_MS;
+
+    if (lastProcessed && now - lastProcessed < debounceWindow) {
       return true;
     }
 
@@ -197,10 +298,16 @@ export class BroadcastManager {
     }
 
     try {
-      // Gap 6: Include container ID in all broadcast messages
+      // Gap 5: Increment sequence number
+      this.messageSequence++;
+
+      // Gap 6: Include container ID
+      // Gap 5: Include sender ID and sequence number
       const messageData = {
         ...data,
-        cookieStoreId: this.cookieStoreId
+        cookieStoreId: this.cookieStoreId,
+        senderId: this.senderId,
+        sequence: this.messageSequence
       };
       
       this.broadcastChannel.postMessage({ type, data: messageData });

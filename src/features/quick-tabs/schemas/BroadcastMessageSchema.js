@@ -88,10 +88,12 @@ const validators = {
 };
 
 /**
- * Common optional fields for all message types (Gap 6)
+ * Common optional fields for all message types (Gap 6, Gap 5)
  */
 const commonOptionalFields = {
-  cookieStoreId: validators.string  // Gap 6: Container boundary validation
+  cookieStoreId: validators.string,  // Gap 6: Container boundary validation
+  senderId: validators.string,       // Gap 5: Loop prevention
+  sequence: validators.number        // Gap 5: Sequence tracking
 };
 
 /**
