@@ -9,12 +9,16 @@
  * - Facade orchestrates 4 managers, 4 handlers, 2 coordinators
  * - Maintains backward compatibility with legacy API
  * - Delegates all business logic to specialized components
+ * 
+ * v1.6.0.x - MEMORY LEAK FIX: Added MemoryGuard integration
+ * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
  */
 
 import { EventEmitter } from 'eventemitter3';
 
 import { SyncCoordinator } from './coordinators/SyncCoordinator.js';
 import { UICoordinator } from './coordinators/UICoordinator.js';
+import { MemoryGuard } from './guards/MemoryGuard.js';
 import { CreateHandler } from './handlers/CreateHandler.js';
 import { DestroyHandler } from './handlers/DestroyHandler.js';
 import { UpdateHandler } from './handlers/UpdateHandler.js';
@@ -71,6 +75,10 @@ class QuickTabsManager {
     
     // v1.6.1.2 - Dependency injection for testing
     this.windowFactory = options.windowFactory || null;
+
+    // MEMORY LEAK FIX: MemoryGuard for emergency shutdown
+    // See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+    this.memoryGuard = null;
   }
 
   /**
@@ -214,6 +222,52 @@ class QuickTabsManager {
     this.broadcast = new BroadcastManager(this.internalEventBus, this.cookieStoreId);
     this.state = new StateManager(this.internalEventBus, this.currentTabId);
     this.events = new EventManager(this.internalEventBus, this.tabs);
+
+    // MEMORY LEAK FIX: Initialize MemoryGuard for emergency shutdown
+    this.memoryGuard = new MemoryGuard({
+      eventBus: this.internalEventBus,
+      extensionThresholdMB: 1000,
+      browserThresholdMB: 20000,
+      checkIntervalMs: 1000
+    });
+
+    // Configure emergency shutdown callback
+    this.memoryGuard.onEmergencyShutdown = (reason, memoryMB) => {
+      console.error('[QuickTabsManager] MemoryGuard triggered emergency shutdown:', reason, memoryMB);
+      this._handleEmergencyShutdown(reason, memoryMB);
+    };
+  }
+
+  /**
+   * Handle emergency shutdown triggered by MemoryGuard
+   * @private
+   * @param {string} reason - Shutdown reason
+   * @param {number} memoryMB - Memory usage at shutdown
+   */
+  _handleEmergencyShutdown(reason, memoryMB) {
+    console.error('[QuickTabsManager] ⚠️ EMERGENCY SHUTDOWN ⚠️', { reason, memoryMB });
+    
+    try {
+      // Stop broadcast history operations (already disabled but ensure stopped)
+      if (this.broadcast) {
+        this.broadcast.stopPeriodicSnapshots();
+      }
+      
+      // Clear any pending storage operations
+      if (this.storage) {
+        // Force circuit breaker open
+        this.storage.circuitState = 'OPEN';
+      }
+      
+      // Emit event for external handlers
+      this.eventBus?.emit('quick-tabs:emergency-shutdown', {
+        reason,
+        memoryMB,
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      console.error('[QuickTabsManager] Error during emergency shutdown:', error);
+    }
   }
 
   /**
@@ -304,6 +358,12 @@ class QuickTabsManager {
     this.events.setupEmergencySaveHandlers();
     this.syncCoordinator.setupListeners();
     await this.uiCoordinator.init();
+
+    // MEMORY LEAK FIX: Start memory monitoring
+    if (this.memoryGuard) {
+      this.memoryGuard.startMonitoring();
+      console.log('[QuickTabsManager] MemoryGuard monitoring started');
+    }
   }
 
   /**

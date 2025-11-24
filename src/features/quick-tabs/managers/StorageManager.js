@@ -38,6 +38,17 @@ export class StorageManager {
     this.latestStorageSnapshot = null;
     this.storageSyncTimer = null;
     this.STORAGE_SYNC_DELAY_MS = 100;
+
+    // MEMORY LEAK FIX: Circuit breaker to prevent storage operation storms
+    // See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+    this.circuitState = 'CLOSED'; // CLOSED = normal, OPEN = blocking, HALF_OPEN = testing
+    this.failureCount = 0;
+    this.successCount = 0;
+    this.failureThreshold = 5; // Open circuit after 5 failures
+    this.successThreshold = 2; // Close circuit after 2 successes in half-open
+    this.resetTimeoutMs = 10000; // Try again after 10 seconds
+    this.lastFailureTime = 0;
+    this.circuitResetTimer = null;
   }
 
   /**
@@ -132,6 +143,10 @@ export class StorageManager {
   /**
    * Setup storage change listeners
    * v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
+   * 
+   * MEMORY LEAK FIX: Added filtering to ignore broadcast history and sync message keys
+   * These keys cause feedback loops when written by BroadcastManager.
+   * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
    */
   setupStorageListeners() {
     if (typeof browser === 'undefined' || !browser.storage) {
@@ -140,21 +155,56 @@ export class StorageManager {
     }
 
     browser.storage.onChanged.addListener((changes, areaName) => {
-      console.log('[StorageManager] Storage changed:', areaName, Object.keys(changes));
+      // MEMORY LEAK FIX: Filter out broadcast history and sync message keys
+      // These keys cause infinite feedback loops when written by BroadcastManager:
+      // _persistBroadcastMessage() → storage write → storage.onChanged → more processing → LOOP
+      
+      // Build filtered object directly (more efficient than delete operations)
+      const filteredChanges = {};
+      let filteredCount = 0;
+      
+      for (const [key, value] of Object.entries(changes)) {
+        // Filter broadcast history keys (e.g., quicktabs-broadcast-history-firefox-default)
+        if (key.startsWith('quicktabs-broadcast-history-')) {
+          console.log('[StorageManager] Ignoring broadcast history change:', key);
+          filteredCount++;
+          continue;
+        }
+        
+        // Filter sync message keys (e.g., quick-tabs-sync-firefox-default-1234567890)
+        if (key.startsWith('quick-tabs-sync-')) {
+          console.log('[StorageManager] Ignoring sync message change:', key);
+          filteredCount++;
+          continue;
+        }
+        
+        // Keep non-filtered keys
+        filteredChanges[key] = value;
+      }
+      
+      // If all keys were filtered out, return early
+      if (Object.keys(filteredChanges).length === 0) {
+        if (filteredCount > 0) {
+          console.log('[StorageManager] All storage changes filtered out, skipping');
+        }
+        return;
+      }
+
+      console.log('[StorageManager] Storage changed:', areaName, Object.keys(filteredChanges));
 
       // v1.6.0.12 - FIX: Handle local storage changes (primary storage)
-      if (areaName === 'local' && changes.quick_tabs_state_v2) {
-        this.handleStorageChange(changes.quick_tabs_state_v2.newValue);
+      if (areaName === 'local' && filteredChanges.quick_tabs_state_v2) {
+        this.handleStorageChange(filteredChanges.quick_tabs_state_v2.newValue);
       }
 
       // Handle sync storage changes (for backward compatibility)
-      if (areaName === 'sync' && changes.quick_tabs_state_v2) {
-        this.handleStorageChange(changes.quick_tabs_state_v2.newValue);
+      if (areaName === 'sync' && filteredChanges.quick_tabs_state_v2) {
+        this.handleStorageChange(filteredChanges.quick_tabs_state_v2.newValue);
       }
 
       // Handle session storage changes
-      if (areaName === 'session' && changes.quick_tabs_session) {
-        this.handleStorageChange(changes.quick_tabs_session.newValue);
+      if (areaName === 'session' && filteredChanges.quick_tabs_session) {
+        this.handleStorageChange(filteredChanges.quick_tabs_session.newValue);
       }
     });
 
@@ -364,5 +414,150 @@ export class StorageManager {
       this.eventBus?.emit('storage:error', { operation, error });
       throw error;
     }
+  }
+
+  // ============================================================================
+  // MEMORY LEAK FIX: Circuit Breaker Methods
+  // See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+  // ============================================================================
+
+  /**
+   * Check if circuit breaker allows operation
+   * @returns {boolean} True if operation is allowed
+   */
+  isCircuitAllowed() {
+    if (this.circuitState === 'CLOSED') {
+      return true;
+    }
+    
+    if (this.circuitState === 'OPEN') {
+      // Check if enough time has passed to try again
+      if (Date.now() - this.lastFailureTime >= this.resetTimeoutMs) {
+        this._attemptCircuitReset();
+        return this.circuitState === 'HALF_OPEN';
+      }
+      return false;
+    }
+    
+    // HALF_OPEN state - allow limited operations to test
+    return true;
+  }
+
+  /**
+   * Record a circuit breaker failure
+   * @private
+   */
+  _recordCircuitFailure() {
+    this.failureCount++;
+    this.successCount = 0;
+    this.lastFailureTime = Date.now();
+    
+    console.warn('[StorageManager] Circuit breaker failure recorded', {
+      failureCount: this.failureCount,
+      threshold: this.failureThreshold,
+      state: this.circuitState
+    });
+    
+    if (this.failureCount >= this.failureThreshold) {
+      this._openCircuit();
+    }
+  }
+
+  /**
+   * Open the circuit breaker (block operations)
+   * @private
+   */
+  _openCircuit() {
+    this.circuitState = 'OPEN';
+    this.failureCount = 0;
+    
+    console.error('[StorageManager] ⚠️ Circuit breaker OPENED - storage operations blocked', {
+      resetTimeoutMs: this.resetTimeoutMs
+    });
+    
+    this.eventBus?.emit('storage:circuit-opened', {
+      resetTimeoutMs: this.resetTimeoutMs,
+      timestamp: Date.now()
+    });
+    
+    // Schedule automatic reset attempt
+    if (this.circuitResetTimer) {
+      clearTimeout(this.circuitResetTimer);
+    }
+    
+    this.circuitResetTimer = setTimeout(() => {
+      this._attemptCircuitReset();
+    }, this.resetTimeoutMs);
+  }
+
+  /**
+   * Attempt to reset circuit to half-open state
+   * @private
+   */
+  _attemptCircuitReset() {
+    if (this.circuitState !== 'OPEN') {
+      return;
+    }
+    
+    console.log('[StorageManager] Circuit breaker attempting reset (HALF_OPEN)');
+    this.circuitState = 'HALF_OPEN';
+    this.successCount = 0;
+    
+    this.eventBus?.emit('storage:circuit-half-open', {
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Record a circuit breaker success
+   * @private
+   */
+  _recordCircuitSuccess() {
+    if (this.circuitState === 'HALF_OPEN') {
+      this.successCount++;
+      
+      if (this.successCount >= this.successThreshold) {
+        this._closeCircuit();
+      }
+    } else if (this.circuitState === 'CLOSED') {
+      // Reset failure count on success in closed state
+      this.failureCount = 0;
+    }
+  }
+
+  /**
+   * Close the circuit breaker (allow normal operations)
+   * @private
+   */
+  _closeCircuit() {
+    console.log('[StorageManager] ✓ Circuit breaker CLOSED - storage operations restored');
+    this.circuitState = 'CLOSED';
+    this.failureCount = 0;
+    this.successCount = 0;
+    
+    if (this.circuitResetTimer) {
+      clearTimeout(this.circuitResetTimer);
+      this.circuitResetTimer = null;
+    }
+    
+    this.eventBus?.emit('storage:circuit-closed', {
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Get circuit breaker statistics
+   * @returns {Object} Circuit breaker stats
+   */
+  getCircuitBreakerStats() {
+    return {
+      state: this.circuitState,
+      failureCount: this.failureCount,
+      successCount: this.successCount,
+      failureThreshold: this.failureThreshold,
+      successThreshold: this.successThreshold,
+      lastFailureTime: this.lastFailureTime,
+      resetTimeoutMs: this.resetTimeoutMs
+    };
   }
 }

@@ -92,6 +92,14 @@ export class BroadcastManager {
     this.snapshotInterval = null; // Timer for periodic snapshots
     this.SNAPSHOT_INTERVAL_MS = 5000; // Broadcast snapshot every 5 seconds
     this.stateManager = null; // Will be set via setStateManager()
+
+    // MEMORY LEAK FIX: Write rate limiter to prevent storage write storms
+    // See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+    this.maxWritesPerSecond = 10;
+    this.writeRateWindow = 1000; // 1 second window
+    this.writeCountInWindow = 0;
+    this.windowStartTime = Date.now();
+    this.blockedWriteCount = 0;
   }
 
   /**
@@ -804,64 +812,26 @@ export class BroadcastManager {
    * Phase 3: Persist broadcast message to storage for late-joining tabs
    * Stores last 50 messages with 30-second TTL for replay
    * 
+   * ❌ DISABLED: Broadcast history persistence causes memory leak
+   * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+   * 
+   * Original implementation available in git history before this fix.
+   * To re-enable: implement proper write batching to prevent feedback loops.
+   * 
    * @private
-   * @param {string} type - Message type
-   * @param {Object} data - Message data
+   * @param {string} _type - Message type (unused - function disabled)
+   * @param {Object} _data - Message data (unused - function disabled)
    */
-  async _persistBroadcastMessage(type, data) {
-    if (!this._hasStorageAPI()) {
-      return;
-    }
-
-    // Skip persistence when in storage fallback mode (different mechanism)
-    if (this.useStorageFallback) {
-      return;
-    }
-
-    try {
-      const historyKey = `quicktabs-broadcast-history-${this.cookieStoreId}`;
-      
-      // Load existing history
-      const result = await globalThis.browser.storage.local.get(historyKey);
-      const history = result[historyKey] || { messages: [], lastCleanup: Date.now() };
-
-      // Add new message
-      history.messages.push({
-        type,
-        data,
-        timestamp: Date.now(),
-        senderId: this.senderId
-      });
-
-      // Cleanup old messages and limit size
-      const now = Date.now();
-      const needsCleanup = now - history.lastCleanup > 5000;
-      
-      if (needsCleanup) {
-        // Remove messages older than TTL
-        history.messages = history.messages.filter(
-          msg => now - msg.timestamp < this.BROADCAST_HISTORY_TTL_MS
-        );
-        
-        // Keep only last N messages (extract to reduce nesting)
-        this._limitHistorySize(history);
-        
-        history.lastCleanup = now;
-      }
-
-      // Save updated history
-      await globalThis.browser.storage.local.set({ [historyKey]: history });
-      
-      this.logger.debug('Message persisted to history', {
-        type,
-        historySize: history.messages.length
-      });
-    } catch (err) {
-      this.logger.error('Failed to persist broadcast message', {
-        type,
-        error: err.message
-      });
-    }
+  async _persistBroadcastMessage(_type, _data) {
+    // ❌ DISABLED: Broadcast history persistence causes memory leak
+    // Every position update (50-100/sec during drag) triggers:
+    // _persistBroadcastMessage() → storage write → storage.onChanged → more writes → LOOP
+    // 
+    // This was causing ~900MB/second memory consumption and browser freeze.
+    // TEMPORARILY DISABLED until proper write batching is implemented.
+    // See git history for original implementation.
+    console.log('[BroadcastManager] Broadcast history persistence disabled (memory leak fix)');
+    return;
   }
 
   /**
@@ -876,55 +846,70 @@ export class BroadcastManager {
   }
 
   /**
+   * MEMORY LEAK FIX: Check if write rate limit is exceeded
+   * Prevents storage write storms from causing infinite feedback loops
+   * 
+   * @private
+   * @returns {boolean} True if write is allowed, false if rate limit exceeded
+   */
+  _checkWriteRateLimit() {
+    const now = Date.now();
+    
+    // Reset window if expired
+    if (now - this.windowStartTime >= this.writeRateWindow) {
+      this.writeCountInWindow = 0;
+      this.windowStartTime = now;
+    }
+    
+    // Check if limit exceeded
+    if (this.writeCountInWindow >= this.maxWritesPerSecond) {
+      this.blockedWriteCount++;
+      
+      // Log warning every 100 blocked writes to avoid log spam
+      if (this.blockedWriteCount % 100 === 0) {
+        console.warn('[BroadcastManager] Write rate limit exceeded', {
+          blockedWriteCount: this.blockedWriteCount,
+          maxWritesPerSecond: this.maxWritesPerSecond,
+          writeCountInWindow: this.writeCountInWindow
+        });
+      }
+      
+      return false;
+    }
+    
+    this.writeCountInWindow++;
+    return true;
+  }
+
+  /**
+   * Get write rate limiter statistics
+   * @returns {Object} Write rate limiter stats
+   */
+  getWriteRateLimiterStats() {
+    return {
+      maxWritesPerSecond: this.maxWritesPerSecond,
+      writeCountInWindow: this.writeCountInWindow,
+      blockedWriteCount: this.blockedWriteCount,
+      windowStartTime: this.windowStartTime
+    };
+  }
+
+  /**
    * Phase 3: Replay broadcast history for late-joining tabs
    * Loads and replays messages from last 30 seconds
    * 
-   * @returns {Promise<number>} - Number of messages replayed
+   * ❌ DISABLED: Broadcast history replay disabled due to memory leak
+   * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+   * Original implementation available in git history.
+   * 
+   * @returns {Promise<number>} - Number of messages replayed (always 0 while disabled)
    */
   async replayBroadcastHistory() {
-    if (!this._hasStorageAPI()) {
-      return 0;
-    }
-
-    try {
-      const historyKey = `quicktabs-broadcast-history-${this.cookieStoreId}`;
-      const result = await globalThis.browser.storage.local.get(historyKey);
-      const history = result[historyKey];
-
-      if (!history || !history.messages || history.messages.length === 0) {
-        this.logger.info('No broadcast history to replay');
-        return 0;
-      }
-
-      // Filter to messages within TTL window and not from self
-      const now = Date.now();
-      const replayableMessages = history.messages.filter(msg => {
-        const withinTTL = now - msg.timestamp < this.BROADCAST_HISTORY_TTL_MS;
-        const notFromSelf = msg.senderId !== this.senderId;
-        return withinTTL && notFromSelf;
-      });
-
-      this.logger.info('Replaying broadcast history', {
-        totalMessages: history.messages.length,
-        replayableMessages: replayableMessages.length
-      });
-
-      // Replay messages in chronological order
-      for (const msg of replayableMessages) {
-        // Emit as if received via broadcast channel
-        this.eventBus?.emit('broadcast:received', {
-          type: msg.type,
-          data: msg.data
-        });
-      }
-
-      return replayableMessages.length;
-    } catch (err) {
-      this.logger.error('Failed to replay broadcast history', {
-        error: err.message
-      });
-      return 0;
-    }
+    // ❌ DISABLED: Broadcast history replay disabled due to memory leak
+    // The broadcast history persistence was causing an infinite feedback loop.
+    // See git history for original implementation.
+    console.log('[BroadcastManager] Broadcast history replay disabled');
+    return 0;
   }
 
   /**
@@ -939,20 +924,18 @@ export class BroadcastManager {
   /**
    * Phase 4: Start periodic state snapshot broadcasting
    * Broadcasts full state every 5 seconds for self-healing
+   * 
+   * ❌ DISABLED: Snapshot broadcasting disabled due to memory leak concerns
+   * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+   * Original implementation available in git history.
    */
   startPeriodicSnapshots() {
-    if (this.snapshotInterval) {
-      this.logger.warn('Snapshot broadcasting already started');
-      return;
-    }
-
-    this.logger.info('Starting periodic state snapshot broadcasting', {
-      intervalMs: this.SNAPSHOT_INTERVAL_MS
-    });
-
-    this.snapshotInterval = setInterval(() => {
-      this._broadcastStateSnapshot();
-    }, this.SNAPSHOT_INTERVAL_MS);
+    // ❌ DISABLED: Snapshot broadcasting disabled due to memory leak concerns
+    // The snapshot broadcasting could trigger storage writes that feed into
+    // the same infinite loop as broadcast history persistence.
+    // See git history for original implementation.
+    console.log('[BroadcastManager] Periodic snapshot broadcasting disabled');
+    return;
   }
 
   /**
