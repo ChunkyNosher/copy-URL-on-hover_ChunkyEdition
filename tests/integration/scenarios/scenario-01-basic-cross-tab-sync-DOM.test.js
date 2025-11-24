@@ -83,8 +83,8 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   let mockWindowFactory;
 
   beforeAll(() => {
-    // v1.6.1.2 - Just use the function directly (no Jest mocking for now)
-    mockWindowFactory = createMockWindow;
+    // Create a Jest mock that wraps createMockWindow
+    mockWindowFactory = jest.fn().mockImplementation(createMockWindow);
   });
 
   // DEBUG TEST: Verify mock factory works
@@ -184,7 +184,7 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       }
     }
     mockQuickTabWindows.clear();
-    // mockWindowFactory.mockClear(); // Not using Jest mock - using regular function
+    mockWindowFactory.mockClear();
     jest.clearAllMocks();
   });
 
