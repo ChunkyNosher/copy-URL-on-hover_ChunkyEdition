@@ -1,8 +1,9 @@
 {
   "id": "fa7f80f7-a6ea-4028-93ae-692271b10938",
   "title": "v1.6.0.10 Keyboard Logging Architectural Fix",
-  "details": "ARCHITECTURAL FIX: Keyboard Logging Noise Elimination\n\nROOT CAUSE: The handleKeyboardShortcut() function was calling logKeyboardEvent() unconditionally on every keystroke, flooding the console with noise.\n\nSOLUTION: Removed unconditional logging and implemented architectural change:\n1. Deleted logKeyboardEvent() function entirely\n2. Simplified handleKeyboardShortcut() to silently ignore non-shortcuts\n3. Enhanced executeShortcutHandler() to log only matched shortcuts with full context\n4. Updated function signature to pass event for contextual logging\n\nIMPACT:\n- 95-99% reduction in keyboard-related console logs\n- Only matched shortcuts create logs (meaningful events)\n- Clean, actionable debug output\n- Better performance (no overhead for normal keypresses)\n\nFILE: src/content.js\nLINES DELETED: 14 (logKeyboardEvent function)\nLINES SIMPLIFIED: 21 (handleKeyboardShortcut simplified from 35 to 21 lines)\n\nPATTERN: Silent by default for non-events, contextual logging only for meaningful actions\n\nCODE HEALTH: 8.82/10.0 (CodeScene verified)\nTEST RESULTS: All 1815 tests pass",
-  "category": "architectural-decisions",
-  "dateCreated": "2025-11-21T04:58:31.298Z",
-  "dateUpdated": "2025-11-21T04:58:31.298Z"
+  "content": "ARCHITECTURAL FIX: Keyboard Logging Noise Elimination\n\nROOT CAUSE: The handleKeyboardShortcut() function was calling logKeyboardEvent() unconditionally on every keystroke, flooding the console with noise.\n\nSOLUTION: Removed unconditional logging and implemented architectural change:\n1. Deleted logKeyboardEvent() function entirely\n2. Simplified handleKeyboardShortcut() to silently ignore non-shortcuts\n3. Enhanced executeShortcutHandler() to log only matched shortcuts with full context\n4. Updated function signature to pass event for contextual logging\n\nIMPACT:\n- 95-99% reduction in keyboard-related console logs\n- Only matched shortcuts create logs (meaningful events)\n- Clean, actionable debug output\n- Better performance (no overhead for normal keypresses)\n\nFILE: src/content.js\nLINES DELETED: 14 (logKeyboardEvent function)\nLINES SIMPLIFIED: 21 (handleKeyboardShortcut simplified from 35 to 21 lines)\n\nPATTERN: Silent by default for non-events, contextual logging only for meaningful actions\n\nCODE HEALTH: 8.82/10.0 (CodeScene verified)\nTEST RESULTS: All 1815 tests pass",
+  "metadata": {},
+  "createdAt": "2025-11-21T04:58:31.298Z",
+  "updatedAt": "2025-11-21T04:58:31.298Z",
+  "category": "architectural-decisions"
 }

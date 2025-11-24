@@ -1,8 +1,9 @@
 {
   "id": "605a4db6-3fdc-403d-87a1-9575c602b9c0",
   "title": "Collapsible UI Pattern for Filter Groups",
-  "details": "Space-efficient accordion UI implementation:\n- Hidden checkbox input controls expand/collapse state via CSS :checked selector\n- Group header is <label> for the checkbox (clickable to toggle)\n- Group content uses max-height transition (0 when collapsed, 500px when expanded)\n- Icon rotation on expand using CSS transform (90deg when checked)\n- Group action buttons (Select All/Deselect All) use event.stopPropagation() to prevent toggle\n- Data attributes (data-filter, data-action, data-category) for JavaScript event delegation\n- Benefit: No JavaScript needed for expand/collapse animation, pure CSS solution\n- Accessibility: Native checkbox semantics, keyboard navigable",
-  "category": "ui-patterns",
-  "dateCreated": "2025-11-21T01:41:11.137Z",
-  "dateUpdated": "2025-11-21T01:41:11.137Z"
+  "content": "Space-efficient accordion UI implementation:\n- Hidden checkbox input controls expand/collapse state via CSS :checked selector\n- Group header is <label> for the checkbox (clickable to toggle)\n- Group content uses max-height transition (0 when collapsed, 500px when expanded)\n- Icon rotation on expand using CSS transform (90deg when checked)\n- Group action buttons (Select All/Deselect All) use event.stopPropagation() to prevent toggle\n- Data attributes (data-filter, data-action, data-category) for JavaScript event delegation\n- Benefit: No JavaScript needed for expand/collapse animation, pure CSS solution\n- Accessibility: Native checkbox semantics, keyboard navigable",
+  "metadata": {},
+  "createdAt": "2025-11-21T01:41:11.137Z",
+  "updatedAt": "2025-11-21T01:41:11.137Z",
+  "category": "ui-patterns"
 }

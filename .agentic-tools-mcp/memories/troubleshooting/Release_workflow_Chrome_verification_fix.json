@@ -1,8 +1,9 @@
 {
   "id": "ce360886-bf8c-4c56-93f0-fe3f0e4cdf68",
   "title": "Release workflow Chrome verification fix",
-  "details": "Fixed the release.yml workflow Chrome package verification logic. The issue was incorrect handling of grep exit codes:\n\nPROBLEM:\n- grep -q returns exit code 0 when pattern IS found, 1 when NOT found\n- The old code used: `grep -q \"browser_specific_settings\"; if [ $? -ne 0 ]; then echo SUCCESS`\n- This logic was inverted: non-zero exit code (pattern not found) was treated as failure\n\nSOLUTION:\n- Changed to: `if grep -q \"browser_specific_settings\"; then echo WARNING; else echo SUCCESS; fi`\n- Now correctly handles: exit code 0 (found) = warning, exit code 1 (not found) = success\n\nVERIFICATION:\n- Tested locally with both Firefox and Chrome manifests\n- Triggered workflow via workflow_dispatch - Chrome verification step passed ✓\n- Firefox manifest correctly contains browser_specific_settings (found)\n- Chrome manifest correctly excludes browser_specific_settings (not found)\n\nFILE: .github/workflows/release.yml, lines 166-172",
-  "category": "troubleshooting",
-  "dateCreated": "2025-11-24T04:25:02.528Z",
-  "dateUpdated": "2025-11-24T04:25:02.528Z"
+  "content": "Fixed the release.yml workflow Chrome package verification logic. The issue was incorrect handling of grep exit codes:\n\nPROBLEM:\n- grep -q returns exit code 0 when pattern IS found, 1 when NOT found\n- The old code used: `grep -q \"browser_specific_settings\"; if [ $? -ne 0 ]; then echo SUCCESS`\n- This logic was inverted: non-zero exit code (pattern not found) was treated as failure\n\nSOLUTION:\n- Changed to: `if grep -q \"browser_specific_settings\"; then echo WARNING; else echo SUCCESS; fi`\n- Now correctly handles: exit code 0 (found) = warning, exit code 1 (not found) = success\n\nVERIFICATION:\n- Tested locally with both Firefox and Chrome manifests\n- Triggered workflow via workflow_dispatch - Chrome verification step passed ✓\n- Firefox manifest correctly contains browser_specific_settings (found)\n- Chrome manifest correctly excludes browser_specific_settings (not found)\n\nFILE: .github/workflows/release.yml, lines 166-172",
+  "metadata": {},
+  "createdAt": "2025-11-24T04:25:02.528Z",
+  "updatedAt": "2025-11-24T04:25:02.528Z",
+  "category": "troubleshooting"
 }

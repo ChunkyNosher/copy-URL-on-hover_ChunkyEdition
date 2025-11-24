@@ -1,8 +1,9 @@
 {
   "id": "b6d2d5a0-6ca9-4306-84ba-4ef266a17253",
   "title": "v1.6.0.10 UI Improvements",
-  "details": "UI LAYOUT AND USABILITY FIXES\n\nCHANGES IMPLEMENTED:\n1. Button Alignment: Changed from 'center' to 'baseline' in .group-header\n   - Aligns buttons with title text baseline instead of geometric center\n   - Better visual hierarchy\n\n2. Spacing Adjustments:\n   - Increased gap between count and buttons from 16px to 41px (+25px)\n   - Reduced category label padding from 6px to 1px (-10px vertical)\n   - More breathing room, less cramped appearance\n\n3. Button Labels: Replaced emoji with text (12 buttons total)\n   - Changed ↑ to \"Select All\"\n   - Changed ↓ to \"Deselect All\"\n   - Better accessibility and clarity\n\n4. Triangle Rotation: Added !important to CSS selector\n   - Ensures triangle rotates 90° when group expands (▶ → ▼)\n   - Prevents specificity conflicts\n\nFILE: popup.html\nAFFECTED SECTIONS: Live Console Filters (3 groups) + Export Log Filters (3 groups)\nTOTAL BUTTONS UPDATED: 12\n\nRESULT: More professional appearance, clearer functionality, better UX",
-  "category": "ui-improvements",
-  "dateCreated": "2025-11-21T04:58:31.302Z",
-  "dateUpdated": "2025-11-21T04:58:31.302Z"
+  "content": "UI LAYOUT AND USABILITY FIXES\n\nCHANGES IMPLEMENTED:\n1. Button Alignment: Changed from 'center' to 'baseline' in .group-header\n   - Aligns buttons with title text baseline instead of geometric center\n   - Better visual hierarchy\n\n2. Spacing Adjustments:\n   - Increased gap between count and buttons from 16px to 41px (+25px)\n   - Reduced category label padding from 6px to 1px (-10px vertical)\n   - More breathing room, less cramped appearance\n\n3. Button Labels: Replaced emoji with text (12 buttons total)\n   - Changed ↑ to \"Select All\"\n   - Changed ↓ to \"Deselect All\"\n   - Better accessibility and clarity\n\n4. Triangle Rotation: Added !important to CSS selector\n   - Ensures triangle rotates 90° when group expands (▶ → ▼)\n   - Prevents specificity conflicts\n\nFILE: popup.html\nAFFECTED SECTIONS: Live Console Filters (3 groups) + Export Log Filters (3 groups)\nTOTAL BUTTONS UPDATED: 12\n\nRESULT: More professional appearance, clearer functionality, better UX",
+  "metadata": {},
+  "createdAt": "2025-11-21T04:58:31.302Z",
+  "updatedAt": "2025-11-21T04:58:31.302Z",
+  "category": "ui-improvements"
 }
