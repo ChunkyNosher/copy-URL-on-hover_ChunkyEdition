@@ -23,6 +23,30 @@ export class QuickTabHandler {
     this.browserAPI = browserAPI;
     this.initializeFn = initializeFn;
     this.isInitialized = false;
+
+    // v1.6.1.6 - Memory leak fix: Track last write to detect self-triggered storage events
+    this.lastWriteTimestamp = null;
+    this.WRITE_IGNORE_WINDOW_MS = 100;
+  }
+
+  /**
+   * Get last write timestamp for self-write detection
+   * v1.6.1.6 - Memory leak fix
+   * @returns {Object|null} Last write info with writeSourceId and timestamp
+   */
+  getLastWriteTimestamp() {
+    return this.lastWriteTimestamp;
+  }
+
+  /**
+   * Generate a unique write source ID and update tracking
+   * v1.6.1.6 - Memory leak fix: Extracted to reduce code duplication
+   * @returns {string} Unique write source ID
+   */
+  _generateWriteSourceId() {
+    const writeSourceId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    this.lastWriteTimestamp = { writeSourceId, timestamp: Date.now() };
+    return writeSourceId;
   }
 
   setInitialized(value) {
@@ -399,26 +423,27 @@ export class QuickTabHandler {
   /**
    * Save state to storage
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
+   * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    */
   async saveState(saveId, cookieStoreId, message) {
     const generatedSaveId = saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // v1.6.1.6 - Generate unique write source ID to detect self-writes
+    const writeSourceId = this._generateWriteSourceId();
+
     const stateToSave = {
       containers: this.globalState.containers,
       saveId: generatedSaveId,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
 
     try {
       // v1.6.0.12 - FIX: Use local storage to avoid quota errors
+      // v1.6.1.6 - FIX: Only write to local storage (removed session storage to prevent double events)
       await this.browserAPI.storage.local.set({
         quick_tabs_state_v2: stateToSave
       });
-
-      if (typeof this.browserAPI.storage.session !== 'undefined') {
-        await this.browserAPI.storage.session.set({
-          quick_tabs_session: stateToSave
-        });
-      }
 
       // Broadcast to tabs in same container
       await this.broadcastToContainer(cookieStoreId, {
@@ -448,24 +473,24 @@ export class QuickTabHandler {
   /**
    * Save state to storage (simplified)
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
+   * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    */
   async saveStateToStorage() {
+    // v1.6.1.6 - Generate unique write source ID to detect self-writes
+    const writeSourceId = this._generateWriteSourceId();
+
     const stateToSave = {
       containers: this.globalState.containers,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
 
     try {
       // v1.6.0.12 - FIX: Use local storage to avoid quota errors
+      // v1.6.1.6 - FIX: Only write to local storage (removed session storage to prevent double events)
       await this.browserAPI.storage.local.set({
         quick_tabs_state_v2: stateToSave
       });
-
-      if (typeof this.browserAPI.storage.session !== 'undefined') {
-        await this.browserAPI.storage.session.set({
-          quick_tabs_session: stateToSave
-        });
-      }
     } catch (err) {
       // DOMException and browser-native errors don't serialize properly
       // Extract properties explicitly for proper logging
