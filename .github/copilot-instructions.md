@@ -14,6 +14,14 @@
 - Floating Quick Tabs Manager with persistent panel
 - Cross-tab sync via BroadcastChannel + browser.storage
 - Direct local creation pattern (content renders first, background persists)
+- Two-layer sidebar tab system (Settings + Quick Tab Manager)
+
+**Sidebar Architecture (v1.6.1.4+):**
+- **Two-Layer Tab System:** Primary tabs (Settings, Quick Tab Manager) + Secondary tabs (Copy URL, Quick Tabs, Appearance, Advanced)
+- **Firefox API Limitation:** Only ONE sidebar_action per extension (cannot create separate sidebars)
+- **State Persistence:** Tab selections stored in localStorage (sidebarActivePrimaryTab, sidebarActiveSecondaryTab)
+- **Keyboard Shortcut:** Alt+Shift+Z opens sidebar and switches to Manager tab
+- **Files:** sidebar/settings.html, sidebar/settings.js, background.js, manifest.json
 
 ---
 

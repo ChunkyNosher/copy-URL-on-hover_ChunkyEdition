@@ -1250,17 +1250,71 @@ async function _toggleQuickTabsPanel() {
   }
 }
 
+/**
+ * Open sidebar and switch to Manager tab
+ * v1.6.1.4 - Extracted to fix max-depth eslint error
+ */
+async function _openSidebarAndSwitchToManager() {
+  try {
+    // Check if sidebar is already open
+    const isOpen = await browser.sidebarAction.isOpen({});
+    
+    if (!isOpen) {
+      // Open sidebar if closed
+      await browser.sidebarAction.open();
+      // Wait for sidebar to initialize
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    // Send message to sidebar to switch to Manager tab
+    await _sendManagerTabMessage();
+    
+    console.log('[Sidebar] Opened sidebar and switched to Manager tab');
+  } catch (error) {
+    console.error('[Sidebar] Error opening sidebar:', error);
+  }
+}
+
+/**
+ * Send message to sidebar to switch to Manager tab
+ * v1.6.1.4 - Extracted to reduce nesting
+ */
+async function _sendManagerTabMessage() {
+  try {
+    await browser.runtime.sendMessage({
+      type: 'SWITCH_TO_MANAGER_TAB'
+    });
+  } catch (error) {
+    // Sidebar might not be ready yet, retry once
+    setTimeout(() => {
+      browser.runtime.sendMessage({
+        type: 'SWITCH_TO_MANAGER_TAB'
+      }).catch(() => {
+        console.warn('[Background] Could not send message to sidebar');
+      });
+    }, 200);
+  }
+}
+
 // ==================== KEYBOARD COMMANDS ====================
-// Listen for keyboard commands to toggle floating panel
+// Listen for keyboard commands
 // v1.6.0 - PHASE 4.3: Extracted toggle logic to fix max-depth
+// v1.6.1.4 - Updated for dual-sidebar implementation
 browser.commands.onCommand.addListener(async command => {
+  // Handle Quick Tabs Manager panel (floating panel, not sidebar)
   if (command === 'toggle-quick-tabs-manager') {
     await _toggleQuickTabsPanel();
   }
+  
+  // Handle opening sidebar and switching to Manager tab
+  if (command === 'open-quick-tabs-manager') {
+    await _openSidebarAndSwitchToManager();
+  }
+  
   // _execute_sidebar_action is handled automatically by Firefox
   // Just log for debugging
   if (command === '_execute_sidebar_action') {
-    console.log('[Sidebar] Keyboard shortcut triggered (Ctrl+Shift+S)');
+    console.log('[Sidebar] Keyboard shortcut triggered (Alt+Shift+S)');
   }
 });
 // ==================== END KEYBOARD COMMANDS ====================
