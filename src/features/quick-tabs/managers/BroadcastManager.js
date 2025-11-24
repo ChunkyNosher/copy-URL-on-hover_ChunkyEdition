@@ -31,8 +31,11 @@ export class BroadcastManager {
     this.broadcastDebounce = new Map(); // key -> timestamp
     this.BROADCAST_DEBOUNCE_MS = 50; // Ignore duplicate broadcasts within 50ms
 
-    // Message validation metrics
+    // Message validation metrics (Gap 3)
     this.invalidMessageCount = 0;
+
+    // Container boundary validation metrics (Gap 6)
+    this.containerViolationCount = 0;
   }
 
   /**
@@ -107,6 +110,26 @@ export class BroadcastManager {
     const { type } = message;
     const sanitizedData = validationResult.sanitizedData;
 
+    // Gap 6: Validate container boundary
+    if (sanitizedData.cookieStoreId && sanitizedData.cookieStoreId !== this.cookieStoreId) {
+      this.containerViolationCount++;
+      console.warn(
+        '[BroadcastManager] Container boundary violation detected:',
+        `Expected: ${this.cookieStoreId}, Got: ${sanitizedData.cookieStoreId}`,
+        'Message type:', type
+      );
+      
+      // Emit container violation event for monitoring
+      this.eventBus?.emit('broadcast:container-violation', {
+        expectedContainer: this.cookieStoreId,
+        actualContainer: sanitizedData.cookieStoreId,
+        messageType: type,
+        count: this.containerViolationCount
+      });
+      
+      return; // Drop cross-container message
+    }
+
     // Debounce rapid messages to prevent loops
     if (this.shouldDebounce(type, sanitizedData)) {
       console.log('[BroadcastManager] Ignoring duplicate broadcast (debounced):', type, sanitizedData.id);
@@ -174,8 +197,14 @@ export class BroadcastManager {
     }
 
     try {
-      this.broadcastChannel.postMessage({ type, data });
-      console.log(`[BroadcastManager] Broadcasted ${type}:`, data);
+      // Gap 6: Include container ID in all broadcast messages
+      const messageData = {
+        ...data,
+        cookieStoreId: this.cookieStoreId
+      };
+      
+      this.broadcastChannel.postMessage({ type, data: messageData });
+      console.log(`[BroadcastManager] Broadcasted ${type}:`, messageData);
     } catch (err) {
       console.error('[BroadcastManager] Failed to broadcast:', err);
     }

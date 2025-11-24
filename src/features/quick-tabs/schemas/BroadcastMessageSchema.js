@@ -88,6 +88,13 @@ const validators = {
 };
 
 /**
+ * Common optional fields for all message types (Gap 6)
+ */
+const commonOptionalFields = {
+  cookieStoreId: validators.string  // Gap 6: Container boundary validation
+};
+
+/**
  * Message schemas defining required and optional fields
  */
 export const MESSAGE_SCHEMAS = {
@@ -101,6 +108,7 @@ export const MESSAGE_SCHEMAS = {
       height: (v, f) => validators.positiveNumber(v, f)
     },
     optional: {
+      ...commonOptionalFields,
       isMinimized: (v) => ({ valid: true, value: Boolean(v) }),
       soloedOnTabs: (v, f) => validators.array(v, f),
       mutedOnTabs: (v, f) => validators.array(v, f)
@@ -113,7 +121,9 @@ export const MESSAGE_SCHEMAS = {
       left: validators.number,
       top: validators.number
     },
-    optional: {}
+    optional: {
+      ...commonOptionalFields
+    }
   },
 
   [MESSAGE_TYPES.UPDATE_SIZE]: {
@@ -122,28 +132,36 @@ export const MESSAGE_SCHEMAS = {
       width: (v, f) => validators.positiveNumber(v, f),
       height: (v, f) => validators.positiveNumber(v, f)
     },
-    optional: {}
+    optional: {
+      ...commonOptionalFields
+    }
   },
 
   [MESSAGE_TYPES.MINIMIZE]: {
     required: {
       id: validators.string
     },
-    optional: {}
+    optional: {
+      ...commonOptionalFields
+    }
   },
 
   [MESSAGE_TYPES.RESTORE]: {
     required: {
       id: validators.string
     },
-    optional: {}
+    optional: {
+      ...commonOptionalFields
+    }
   },
 
   [MESSAGE_TYPES.CLOSE]: {
     required: {
       id: validators.string
     },
-    optional: {}
+    optional: {
+      ...commonOptionalFields
+    }
   },
 
   [MESSAGE_TYPES.SOLO]: {
@@ -151,7 +169,9 @@ export const MESSAGE_SCHEMAS = {
       id: validators.string,
       soloedOnTabs: (v, f) => validators.array(v, f)
     },
-    optional: {}
+    optional: {
+      ...commonOptionalFields
+    }
   },
 
   [MESSAGE_TYPES.MUTE]: {
@@ -159,7 +179,9 @@ export const MESSAGE_SCHEMAS = {
       id: validators.string,
       mutedOnTabs: (v, f) => validators.array(v, f)
     },
-    optional: {}
+    optional: {
+      ...commonOptionalFields
+    }
   }
 };
 
