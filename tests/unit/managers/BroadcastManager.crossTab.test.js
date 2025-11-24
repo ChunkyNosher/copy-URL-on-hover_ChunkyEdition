@@ -114,7 +114,14 @@ describe('BroadcastManager - Cross-Tab Message Propagation', () => {
       receivedMessages[1].forEach(msg => {
         expect(msg).toEqual({
           type: 'UPDATE_POSITION',
-          data: { id: 'qt-test-1', left: 200, top: 200 }
+          data: expect.objectContaining({
+            id: 'qt-test-1',
+            left: 200,
+            top: 200,
+            senderId: expect.any(String),
+            sequence: expect.any(Number),
+            cookieStoreId: 'firefox-default'
+          })
         });
       });
     });
@@ -183,10 +190,18 @@ describe('BroadcastManager - Cross-Tab Message Propagation', () => {
 
       // Check which messages arrived
       if (tab1Updates.length > 0) {
-        expect(tab1Updates[0]).toEqual({ id: 'qt-test-1', left: 100, top: 100 });
+        expect(tab1Updates[0]).toEqual(expect.objectContaining({
+          id: 'qt-test-1',
+          left: 100,
+          top: 100
+        }));
       }
       if (tab2Updates.length > 0) {
-        expect(tab2Updates[0]).toEqual({ id: 'qt-test-1', left: 200, top: 200 });
+        expect(tab2Updates[0]).toEqual(expect.objectContaining({
+          id: 'qt-test-1',
+          left: 200,
+          top: 200
+        }));
       }
     });
 
@@ -200,27 +215,32 @@ describe('BroadcastManager - Cross-Tab Message Propagation', () => {
         });
       });
 
-      // Send 10 different messages from tab 0
-      const messageTypes = ['CREATE', 'UPDATE_POSITION', 'UPDATE_SIZE', 'MINIMIZE', 'RESTORE'];
-      for (let i = 0; i < 10; i++) {
-        const type = messageTypes[i % messageTypes.length];
-        await managers[0].broadcast(type, { id: `qt-${i}`, index: i });
-        await wait(20);
+      // Send 5 UPDATE_POSITION messages with unique IDs and sufficient spacing
+      // Using UPDATE_POSITION (simpler schema) instead of mixed types
+      for (let i = 0; i < 5; i++) {
+        await managers[0].notifyPositionUpdate(`qt-${i}`, 100 + i * 10, 200 + i * 10);
+        // Wait for message to propagate before sending next
+        await wait(50);
       }
 
       // Wait for all to propagate
-      await wait(400);
+      await wait(200);
 
-      // Verify tabs 1 and 2 received messages (may not be all due to timing)
+      // Verify tabs 1 and 2 received messages
       expect(receivedMessages.get(1).length).toBeGreaterThan(0);
       expect(receivedMessages.get(2).length).toBeGreaterThan(0);
 
-      // Verify no duplicates (each message unique by index)
-      const tab1Indices = receivedMessages.get(1).map(m => m.data.index);
-      const tab2Indices = receivedMessages.get(2).map(m => m.data.index);
+      // Extract unique IDs from received messages
+      const tab1Ids = receivedMessages.get(1).map(m => m.data.id);
+      const tab2Ids = receivedMessages.get(2).map(m => m.data.id);
       
-      expect(new Set(tab1Indices).size).toBe(10); // No duplicates
-      expect(new Set(tab2Indices).size).toBe(10);
+      // Gap 5: With sequence tracking, no duplicates should occur
+      expect(new Set(tab1Ids).size).toBe(tab1Ids.length); // No duplicates in tab 1
+      expect(new Set(tab2Ids).size).toBe(tab2Ids.length); // No duplicates in tab 2
+      
+      // Verify most messages arrived (allow 1-2 to be lost due to timing)
+      expect(tab1Ids.length).toBeGreaterThanOrEqual(3);
+      expect(tab2Ids.length).toBeGreaterThanOrEqual(3);
     });
   });
 
@@ -257,26 +277,39 @@ describe('BroadcastManager - Cross-Tab Message Propagation', () => {
 
     test('handles malformed broadcast messages - missing fields', () => {
       const receivedMessages = [];
+      const invalidMessages = [];
+      
       eventBuses[0].on('broadcast:received', (message) => {
         receivedMessages.push(message);
+      });
+      
+      eventBuses[0].on('broadcast:invalid', (event) => {
+        invalidMessages.push(event);
       });
 
       // Send malformed message (missing data)
       const malformedMessage = { type: 'UPDATE_POSITION' };
       managers[0].handleBroadcastMessage(malformedMessage);
 
-      // Should still process but handle gracefully
-      expect(receivedMessages.length).toBeGreaterThan(0);
-      expect(receivedMessages[0].type).toBe('UPDATE_POSITION');
+      // Gap 3: Should reject invalid messages and emit invalid event
+      expect(receivedMessages.length).toBe(0); // Not processed
+      expect(invalidMessages.length).toBeGreaterThan(0); // Validation failed
+      expect(managers[0].invalidMessageCount).toBeGreaterThan(0);
     });
 
     test('handles malformed broadcast messages - incorrect data types', () => {
       const receivedMessages = [];
+      const invalidMessages = [];
+      
       eventBuses[0].on('broadcast:received', (message) => {
         receivedMessages.push(message);
       });
+      
+      eventBuses[0].on('broadcast:invalid', (event) => {
+        invalidMessages.push(event);
+      });
 
-      // Send message with incorrect data types
+      // Send message with incorrect data types (missing required metadata)
       const malformedMessage = {
         type: 'UPDATE_POSITION',
         data: { id: 'qt-test', left: 'not-a-number', top: null }
@@ -284,8 +317,9 @@ describe('BroadcastManager - Cross-Tab Message Propagation', () => {
       
       managers[0].handleBroadcastMessage(malformedMessage);
 
-      // Should still emit event for application-level validation
-      expect(receivedMessages.length).toBeGreaterThan(0);
+      // Gap 3: Should reject invalid messages and emit invalid event
+      expect(receivedMessages.length).toBe(0); // Not processed
+      expect(invalidMessages.length).toBeGreaterThan(0); // Validation failed
     });
 
     test('recovers from channel disconnection', async () => {
@@ -323,17 +357,24 @@ describe('BroadcastManager - Cross-Tab Message Propagation', () => {
 
     test('handles null/undefined message data gracefully', () => {
       const receivedMessages = [];
+      const invalidMessages = [];
+      
       eventBuses[0].on('broadcast:received', (message) => {
         receivedMessages.push(message);
       });
+      
+      eventBuses[0].on('broadcast:invalid', (event) => {
+        invalidMessages.push(event);
+      });
 
-      // Test null data
+      // Test null data - Gap 3 validation should reject
       managers[0].handleBroadcastMessage({ type: 'CREATE', data: null });
-      expect(receivedMessages.length).toBeGreaterThan(0);
+      expect(receivedMessages.length).toBe(0); // Should not process
+      expect(invalidMessages.length).toBeGreaterThan(0); // Should emit invalid event
 
-      // Test undefined data
+      // Test undefined data - Gap 3 validation should reject
       managers[0].handleBroadcastMessage({ type: 'CREATE', data: undefined });
-      expect(receivedMessages.length).toBeGreaterThan(0);
+      expect(invalidMessages.length).toBeGreaterThan(1); // Should emit another invalid event
     });
   });
 

@@ -36,10 +36,12 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'CLOSE',
-        data: {
+        data: expect.objectContaining({
           id: 'qt-123',
-          cookieStoreId: 'firefox-container-1'
-        }
+          cookieStoreId: 'firefox-container-1',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -56,10 +58,12 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'CLOSE',
-        data: {
+        data: expect.objectContaining({
           id: 'qt-456',
-          cookieStoreId: 'firefox-container-2'
-        }
+          cookieStoreId: 'firefox-container-2',
+          senderId: expect.any(String),
+          sequence: expect.any(Number)
+        })
       });
     });
 
@@ -87,7 +91,9 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
         type: 'CLOSE',
         data: {
           id: 'qt-123',
-          cookieStoreId: 'firefox-container-1'
+          cookieStoreId: 'firefox-container-1',
+          senderId: 'different-sender-id', // Different from manager's senderId
+          sequence: 1
         }
       };
       
@@ -95,10 +101,12 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       
       expect(listener).toHaveBeenCalledWith({
         type: 'CLOSE',
-        data: {
+        data: expect.objectContaining({
           id: 'qt-123',
-          cookieStoreId: 'firefox-container-1'
-        }
+          cookieStoreId: 'firefox-container-1',
+          senderId: 'different-sender-id',
+          sequence: 1
+        })
       });
     });
 
@@ -113,7 +121,9 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
         type: 'CLOSE',
         data: {
           id: 'qt-123',
-          cookieStoreId: 'firefox-container-2'  // Different container
+          cookieStoreId: 'firefox-container-2',  // Different container
+          senderId: 'different-sender-id', // Different from manager's senderId
+          sequence: 1
         }
       };
       
@@ -138,7 +148,9 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       const message = {
         type: 'CLOSE',
         data: {
-          id: 'qt-123'
+          id: 'qt-123',
+          senderId: 'different-sender-id', // Different from manager's senderId
+          sequence: 1
           // No cookieStoreId field
         }
       };
@@ -148,9 +160,11 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       // Should accept message for backward compatibility
       expect(listener).toHaveBeenCalledWith({
         type: 'CLOSE',
-        data: {
-          id: 'qt-123'
-        }
+        data: expect.objectContaining({
+          id: 'qt-123',
+          senderId: 'different-sender-id',
+          sequence: 1
+        })
       });
     });
 
@@ -159,7 +173,9 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
         type: 'CLOSE',
         data: {
           id: 'qt-1',
-          cookieStoreId: 'firefox-container-2'
+          cookieStoreId: 'firefox-container-2',
+          senderId: 'different-sender-id-1',
+          sequence: 1
         }
       };
       
@@ -167,7 +183,9 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
         type: 'CLOSE',
         data: {
           id: 'qt-2',
-          cookieStoreId: 'firefox-container-3'
+          cookieStoreId: 'firefox-container-3',
+          senderId: 'different-sender-id-2',
+          sequence: 1
         }
       };
       
