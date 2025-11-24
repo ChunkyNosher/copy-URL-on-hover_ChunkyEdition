@@ -8,11 +8,15 @@
  * - Receive and route broadcast messages
  * - Debounce rapid broadcasts to prevent loops
  * - Container-aware channel management
+ * - Validate incoming messages (Gap 3)
  *
  * Uses:
  * - BroadcastChannel API for <10ms cross-tab sync
  * - EventBus for decoupled message handling
+ * - BroadcastMessageSchema for message validation
  */
+
+import { validateMessage } from '../schemas/BroadcastMessageSchema.js';
 
 export class BroadcastManager {
   constructor(eventBus, cookieStoreId = 'firefox-default') {
@@ -26,6 +30,9 @@ export class BroadcastManager {
     // Debounce to prevent message loops
     this.broadcastDebounce = new Map(); // key -> timestamp
     this.BROADCAST_DEBOUNCE_MS = 50; // Ignore duplicate broadcasts within 50ms
+
+    // Message validation metrics
+    this.invalidMessageCount = 0;
   }
 
   /**
@@ -70,16 +77,44 @@ export class BroadcastManager {
   handleBroadcastMessage(message) {
     console.log('[BroadcastManager] Message received:', message);
 
-    const { type, data } = message;
+    // Gap 3: Validate message structure and data
+    const validationResult = validateMessage(message);
+    
+    if (!validationResult.isValid()) {
+      this.invalidMessageCount++;
+      console.error(
+        '[BroadcastManager] Invalid message received:',
+        validationResult.errors,
+        'Raw message:',
+        message
+      );
+      
+      // Emit validation failure event for monitoring
+      this.eventBus?.emit('broadcast:invalid', {
+        errors: validationResult.errors,
+        message: message,
+        count: this.invalidMessageCount
+      });
+      
+      return; // Drop invalid message
+    }
+
+    // Log warnings if any
+    if (validationResult.warnings.length > 0) {
+      console.warn('[BroadcastManager] Message validation warnings:', validationResult.warnings);
+    }
+
+    const { type } = message;
+    const sanitizedData = validationResult.sanitizedData;
 
     // Debounce rapid messages to prevent loops
-    if (this.shouldDebounce(type, data)) {
-      console.log('[BroadcastManager] Ignoring duplicate broadcast (debounced):', type, data.id);
+    if (this.shouldDebounce(type, sanitizedData)) {
+      console.log('[BroadcastManager] Ignoring duplicate broadcast (debounced):', type, sanitizedData.id);
       return;
     }
 
-    // Emit event for handlers to process
-    this.eventBus?.emit('broadcast:received', { type, data });
+    // Emit event for handlers to process with sanitized data
+    this.eventBus?.emit('broadcast:received', { type, data: sanitizedData });
   }
 
   /**
