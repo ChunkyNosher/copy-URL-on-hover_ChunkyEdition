@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Copy URL Settings & Quick Tabs</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <!-- Navigation Tabs -->
+    <nav class="sidebar-nav">
+      <button class="tab-button active" data-tab="settings">Settings</button>
+      <button class="tab-button" data-tab="quick-tabs">Quick Tabs</button>
+    </nav>
+
+    <!-- Settings Tab Content -->
+    <div id="settings-tab" class="tab-content active">
+      <div class="sidebar-container">
+        <h2>Quick Tabs Settings</h2>
+
+        <!-- Settings Form -->
+        <form id="settings-form">
+          <!-- Quick Tabs Settings Section -->
+          <div class="sidebar-section">
+            <div class="setting-group">
+              <div class="setting">
+                <label>
+                  <input type="checkbox" id="enableQuickTabs" />
+                  Enable Quick Tabs
+                </label>
+                <div class="description">Allow creating floating Quick Tab windows</div>
+              </div>
+
+              <div class="setting">
+                <label>
+                  Maximum Quick Tabs:
+                  <input type="number" id="maxQuickTabs" min="1" max="20" value="5" />
+                </label>
+                <div class="description">Maximum number of Quick Tabs that can be open at once</div>
+              </div>
+
+              <div class="setting">
+                <label>
+                  Default Width (px):
+                  <input type="number" id="defaultWidth" min="200" max="2000" value="600" />
+                </label>
+                <div class="description">Default width for new Quick Tabs</div>
+              </div>
+
+              <div class="setting">
+                <label>
+                  Default Height (px):
+                  <input type="number" id="defaultHeight" min="200" max="2000" value="400" />
+                </label>
+                <div class="description">Default height for new Quick Tabs</div>
+              </div>
+
+              <div class="setting">
+                <label>
+                  <input type="checkbox" id="syncAcrossTabs" />
+                  Sync Quick Tabs across all tabs
+                </label>
+                <div class="description">
+                  Keep Quick Tab positions and sizes synchronized across all browser tabs
+                </div>
+              </div>
+
+              <div class="setting">
+                <label>
+                  <input type="checkbox" id="persistAcrossSessions" />
+                  Persist Quick Tabs across browser restarts
+                </label>
+                <div class="description">Restore Quick Tabs when reopening the browser</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Storage Information Section -->
+          <div class="sidebar-section">
+            <h3>Storage Information</h3>
+            <div class="info-box">
+              <strong>Storage Layer:</strong> browser.storage.sync + browser.storage.session<br />
+              <strong>Session Storage Available:</strong>
+              <span id="sessionStorageStatus">Checking...</span><br />
+              <strong>Current Quick Tabs:</strong> <span id="currentTabCount">0</span><br />
+              <strong>Last Updated:</strong> <span id="lastUpdated">Never</span>
+            </div>
+
+            <div class="button-group">
+              <button type="button" id="refreshInfo" class="btn-secondary">Refresh Info</button>
+              <button type="button" id="clearStorage" class="btn-danger">Clear All</button>
+            </div>
+          </div>
+
+          <!-- Debug Information Section -->
+          <div class="sidebar-section">
+            <h3>Debug Information</h3>
+
+            <div class="setting">
+              <label>
+                <input type="checkbox" id="enableDebugLogging" />
+                Enable debug logging
+              </label>
+              <div class="description">Show detailed logs in the browser console</div>
+            </div>
+
+            <div class="button-group">
+              <button type="button" id="showCurrentState" class="btn-secondary">
+                Show Current State
+              </button>
+              <button type="button" id="exportState" class="btn-secondary">Export JSON</button>
+            </div>
+
+            <div id="debugOutput" class="debug-section" style="display: none">
+              <pre id="debugContent"></pre>
+            </div>
+          </div>
+        </form>
+
+        <!-- Save/Reset Actions -->
+        <div class="actions">
+          <button id="saveSettings" class="btn-primary">Save Settings</button>
+          <div id="status-message"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Tabs Tab Content -->
+    <div id="quick-tabs-tab" class="tab-content">
+      <iframe src="quick-tabs-manager.html" class="quick-tabs-iframe"></iframe>
+    </div>
+
+    <script src="settings.js"></script>
+  </body>
+</html>
