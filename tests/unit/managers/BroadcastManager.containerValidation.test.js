@@ -24,7 +24,7 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
   });
 
   describe('Outgoing Messages', () => {
-    test('broadcast() includes cookieStoreId in message data', () => {
+    test('broadcast() includes cookieStoreId in message data', async () => {
       const mockChannel = {
         postMessage: jest.fn(),
         close: jest.fn()
@@ -32,7 +32,7 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       
       manager.broadcastChannel = mockChannel;
       
-      manager.broadcast('CLOSE', { id: 'qt-123' });
+      await manager.broadcast('CLOSE', { id: 'qt-123' });
       
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'CLOSE',
@@ -45,7 +45,7 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       });
     });
 
-    test('broadcast() uses current container ID', () => {
+    test('broadcast() uses current container ID', async () => {
       const mockChannel = {
         postMessage: jest.fn(),
         close: jest.fn()
@@ -54,7 +54,7 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       manager.broadcastChannel = mockChannel;
       manager.cookieStoreId = 'firefox-container-2';
       
-      manager.broadcast('CLOSE', { id: 'qt-456' });
+      await manager.broadcast('CLOSE', { id: 'qt-456' });
       
       expect(mockChannel.postMessage).toHaveBeenCalledWith({
         type: 'CLOSE',
@@ -67,7 +67,7 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       });
     });
 
-    test('all notification methods include cookieStoreId', () => {
+    test('all notification methods include cookieStoreId', async () => {
       const mockChannel = {
         postMessage: jest.fn(),
         close: jest.fn()
@@ -75,7 +75,7 @@ describe('BroadcastManager - Container Boundary Validation (Gap 6)', () => {
       
       manager.broadcastChannel = mockChannel;
       
-      manager.notifyClose('qt-789');
+      await manager.notifyClose('qt-789');
       
       const calls = mockChannel.postMessage.mock.calls;
       expect(calls[0][0].data.cookieStoreId).toBe('firefox-container-1');

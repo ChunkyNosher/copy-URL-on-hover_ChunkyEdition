@@ -44,7 +44,7 @@ describe('BroadcastManager - Loop Prevention (Gap 5)', () => {
       manager2.close();
     });
 
-    test('broadcast includes sender ID in message', () => {
+    test('broadcast includes sender ID in message', async () => {
       const mockChannel = {
         postMessage: jest.fn(),
         close: jest.fn()
@@ -52,13 +52,13 @@ describe('BroadcastManager - Loop Prevention (Gap 5)', () => {
       
       manager.broadcastChannel = mockChannel;
       
-      manager.broadcast('CLOSE', { id: 'qt-123' });
+      await manager.broadcast('CLOSE', { id: 'qt-123' });
       
       const call = mockChannel.postMessage.mock.calls[0][0];
       expect(call.data.senderId).toBe(manager.senderId);
     });
 
-    test('broadcast includes incrementing sequence numbers', () => {
+    test('broadcast includes incrementing sequence numbers', async () => {
       const mockChannel = {
         postMessage: jest.fn(),
         close: jest.fn()
@@ -66,9 +66,9 @@ describe('BroadcastManager - Loop Prevention (Gap 5)', () => {
       
       manager.broadcastChannel = mockChannel;
       
-      manager.broadcast('CLOSE', { id: 'qt-1' });
-      manager.broadcast('CLOSE', { id: 'qt-2' });
-      manager.broadcast('CLOSE', { id: 'qt-3' });
+      await manager.broadcast('CLOSE', { id: 'qt-1' });
+      await manager.broadcast('CLOSE', { id: 'qt-2' });
+      await manager.broadcast('CLOSE', { id: 'qt-3' });
       
       const calls = mockChannel.postMessage.mock.calls;
       expect(calls[0][0].data.sequence).toBe(1);

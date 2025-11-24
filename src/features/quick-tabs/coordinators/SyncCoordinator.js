@@ -194,47 +194,66 @@ export class SyncCoordinator {
 
   /**
    * Route message to appropriate handler
+   * v1.6.1.5 - Reduced complexity with lookup table pattern
    * @private
    *
    * @param {string} type - Message type
    * @param {Object} data - Message data
    */
   _routeMessage(type, data) {
-    switch (type) {
-      case 'CREATE':
-        this.handlers.create.create(data);
-        break;
+    // Lookup table pattern to reduce complexity
+    const routes = {
+      CREATE: () => this.handlers.create.create(data),
+      UPDATE_POSITION: () => this.handlers.update.handlePositionChangeEnd(data.id, data.left, data.top),
+      UPDATE_SIZE: () => this.handlers.update.handleSizeChangeEnd(data.id, data.width, data.height),
+      SOLO: () => this.handlers.visibility.handleSoloToggle(data.id, data.soloedOnTabs),
+      MUTE: () => this.handlers.visibility.handleMuteToggle(data.id, data.mutedOnTabs),
+      MINIMIZE: () => this.handlers.visibility.handleMinimize(data.id),
+      RESTORE: () => this.handlers.visibility.handleRestore(data.id),
+      CLOSE: () => this.handlers.destroy.handleDestroy(data.id),
+      SNAPSHOT: () => this._handleStateSnapshot(data) // Phase 4: Self-healing
+    };
 
-      case 'UPDATE_POSITION':
-        this.handlers.update.handlePositionChangeEnd(data.id, data.left, data.top);
-        break;
-
-      case 'UPDATE_SIZE':
-        this.handlers.update.handleSizeChangeEnd(data.id, data.width, data.height);
-        break;
-
-      case 'SOLO':
-        this.handlers.visibility.handleSoloToggle(data.id, data.soloedOnTabs);
-        break;
-
-      case 'MUTE':
-        this.handlers.visibility.handleMuteToggle(data.id, data.mutedOnTabs);
-        break;
-
-      case 'MINIMIZE':
-        this.handlers.visibility.handleMinimize(data.id);
-        break;
-
-      case 'RESTORE':
-        this.handlers.visibility.handleRestore(data.id);
-        break;
-
-      case 'CLOSE':
-        this.handlers.destroy.handleDestroy(data.id);
-        break;
-
-      default:
-        console.warn('[SyncCoordinator] Unknown broadcast type:', type);
+    const handler = routes[type];
+    if (handler) {
+      handler();
+    } else {
+      console.warn('[SyncCoordinator] Unknown broadcast type:', type);
     }
+  }
+
+  /**
+   * Handle state snapshot broadcast for self-healing
+   * Phase 4: Merge snapshot with local state
+   * 
+   * @private
+   * @param {Object} data - Snapshot data with quickTabs array
+   */
+  _handleStateSnapshot(data) {
+    if (!data.quickTabs || !Array.isArray(data.quickTabs)) {
+      console.warn('[SyncCoordinator] Invalid snapshot data');
+      return;
+    }
+
+    console.log(`[SyncCoordinator] Received state snapshot with ${data.quickTabs.length} Quick Tabs`);
+
+    // Get current state
+    const currentState = this.stateManager.getAll();
+    
+    // Import QuickTab class for deserialization
+    import('@domain/QuickTab.js').then(({ QuickTab }) => {
+      // Deserialize snapshot Quick Tabs
+      const snapshotQuickTabs = data.quickTabs.map(qtData => QuickTab.fromStorage(qtData));
+      
+      // Merge with current state using timestamp-based resolution
+      const mergedState = this._mergeQuickTabStates(currentState, snapshotQuickTabs);
+      
+      // Hydrate with merged state
+      this.stateManager.hydrate(mergedState);
+      
+      console.log(`[SyncCoordinator] Merged snapshot: ${currentState.length} local + ${snapshotQuickTabs.length} snapshot = ${mergedState.length} total`);
+    }).catch(err => {
+      console.error('[SyncCoordinator] Failed to process snapshot:', err);
+    });
   }
 }
