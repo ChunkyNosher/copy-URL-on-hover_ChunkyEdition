@@ -180,6 +180,37 @@ await createMemory({
 
 ---
 
+### Memory Schema Validation
+
+**CRITICAL: Memory files MUST follow this exact schema to prevent search errors:**
+
+All memory JSON files require these fields:
+- `id` (string) - Unique identifier
+- `title` (string) - Short descriptive title
+- `details` (string) - **NOT** `content` - Full memory content
+- `category` (string) - Category classification
+- `dateCreated` (ISO date string) - Creation timestamp
+- `dateUpdated` (ISO date string) - Last update timestamp
+- `metadata` (object, optional) - Additional context
+
+**Common Error:** Using `content` field instead of `details` causes search_memories to fail with:
+```
+Error: Cannot read properties of undefined (reading 'toLowerCase')
+```
+
+**Validation Commands:**
+```bash
+# Check for missing required fields
+find .agentic-tools-mcp/memories -name "*.json" -exec sh -c 'jq -e ".title and .details and .category" "$1" > /dev/null || echo "Missing fields: $1"' _ {} \;
+
+# Check for incorrect 'content' field (should be 'details')
+find .agentic-tools-mcp/memories -name "*.json" -exec sh -c 'jq -e ".content" "$1" > /dev/null 2>&1 && echo "Wrong schema: $1"' _ {} \;
+```
+
+**Note:** The agentic-tools MCP `create_memory` tool uses the parameter name `content` but stores it as `details` in the JSON file. This is correct behavior - do not manually create memory files with `content` field.
+
+---
+
 ### Memory Categorization Standards
 
 **Use consistent categories for efficient retrieval:**
