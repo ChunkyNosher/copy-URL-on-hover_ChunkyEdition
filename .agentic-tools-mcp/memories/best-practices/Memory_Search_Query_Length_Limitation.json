@@ -1,0 +1,8 @@
+{
+  "id": "5a23dded-cccb-41f4-823f-d3edfe7d8aa6",
+  "title": "Memory Search Query Length Limitation",
+  "details": "## Agentic-Tools MCP Memory Search - Query Length Limitation\n\n**Issue:** Long search queries return NO results due to AND token matching algorithm.\n\n**Root Cause:** The agentic-tools-mcp search uses simple text matching (NOT semantic/vector search). The algorithm requires ALL query tokens to match, causing longer queries to fail the relevance threshold.\n\n**Evidence:**\n- Query \"Quick Tabs cross-tab synchronization BroadcastChannel browser.storage architecture\" → NO RESULTS\n- Query \"sync\" → 5 results with 95-100% relevance\n- Query \"cross-tab\" → 3 results with 83-93% relevance\n- Query \"BroadcastChannel\" → 3 results with 29-34% relevance\n\n**Best Practices:**\n1. **Keep queries to 1-3 keywords maximum**\n2. Run multiple short queries instead of one comprehensive query\n3. Use category filter to narrow results\n4. Ensure exact token matching (e.g., \"cross-tab\" not \"cross tab\")\n5. If no results, try shorter/different keywords\n\n**Multi-Query Pattern:**\nInstead of: \"Quick Tabs cross-tab synchronization architecture\"\nUse:\n- Search 1: \"cross-tab\" (category: architecture)\n- Search 2: \"BroadcastChannel\"\n- Search 3: \"Quick Tab\"\nThen combine results for comprehensive context.\n\n**Why This Works:** Shorter queries have higher probability of matching stored memory content, easily passing the 0.3 default threshold.",
+  "category": "best-practices",
+  "dateCreated": "2025-11-24T20:17:15.004Z",
+  "dateUpdated": "2025-11-24T20:17:15.004Z"
+}

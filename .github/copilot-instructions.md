@@ -137,11 +137,15 @@ const relevantMemories = await searchMemories({
 - Related research findings
 - Relevant patterns or best practices
 
-**Search Query Tips:**
-- Use specific component names ("state-manager", "container", "quick-tabs")
-- Include action words ("isolation", "tracking", "persistence")
-- Try multiple queries with different keywords
-- Use category filter when relevant
+**Search Query Tips (CRITICAL - search uses simple text matching, NOT semantic):**
+- **⚠️ KEEP QUERIES SHORT (1-3 keywords max)** - Long queries return NO results
+- **❌ BAD:** "Quick Tabs cross-tab synchronization BroadcastChannel architecture"
+- **✅ GOOD:** "cross-tab", "BroadcastChannel", "Quick Tab"
+- Run multiple short queries instead of one long query
+- Use category filter to narrow results (e.g., `category: "architecture"`)
+- Exact token matching required (use "cross-tab" not "cross tab")
+
+**Multi-Query Pattern:** Search "sync", "BroadcastChannel", "Quick Tab" separately, combine results.
 
 ---
 
@@ -177,6 +181,37 @@ await createMemory({
   }
 });
 ```
+
+---
+
+### Memory Schema Validation
+
+**CRITICAL: Memory files MUST follow this exact schema to prevent search errors:**
+
+All memory JSON files require these fields:
+- `id` (string) - Unique identifier
+- `title` (string) - Short descriptive title
+- `details` (string) - **NOT** `content` - Full memory content
+- `category` (string) - Category classification
+- `dateCreated` (ISO date string) - Creation timestamp
+- `dateUpdated` (ISO date string) - Last update timestamp
+- `metadata` (object, optional) - Additional context
+
+**Common Error:** Using `content` field instead of `details` causes search_memories to fail with:
+```
+Error: Cannot read properties of undefined (reading 'toLowerCase')
+```
+
+**Validation Commands:**
+```bash
+# Check for missing required fields
+find .agentic-tools-mcp/memories -name "*.json" -exec sh -c 'jq -e ".title and .details and .category" "$1" > /dev/null || echo "Missing fields: $1"' _ {} \;
+
+# Check for incorrect 'content' field (should be 'details')
+find .agentic-tools-mcp/memories -name "*.json" -exec sh -c 'jq -e ".content" "$1" > /dev/null 2>&1 && echo "Wrong schema: $1"' _ {} \;
+```
+
+**Note:** The agentic-tools MCP `create_memory` tool uses the parameter name `content` but stores it as `details` in the JSON file. This is correct behavior - do not manually create memory files with `content` field.
 
 ---
 
