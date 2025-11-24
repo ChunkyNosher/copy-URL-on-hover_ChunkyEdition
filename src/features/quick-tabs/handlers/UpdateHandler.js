@@ -84,9 +84,6 @@ export class UpdateHandler {
     const roundedLeft = Math.round(left);
     const roundedTop = Math.round(top);
 
-    // v1.5.8.13 - Final position broadcast
-    this.broadcastManager.notifyPositionUpdate(id, roundedLeft, roundedTop);
-
     // v1.5.8.14 - Generate save ID for transaction tracking
     const saveId = this.generateSaveId();
 
@@ -94,7 +91,8 @@ export class UpdateHandler {
     const tabWindow = this.quickTabsMap.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
 
-    // Send final position to background
+    // Phase 3: AWAIT storage write BEFORE broadcasting
+    // Ensures storage is updated when other tabs receive the broadcast
     if (typeof browser !== 'undefined' && browser.runtime) {
       try {
         await browser.runtime.sendMessage({
@@ -109,10 +107,14 @@ export class UpdateHandler {
       } catch (err) {
         console.error('[UpdateHandler] Final position save error:', err);
         this.releasePendingSave(saveId);
+        return; // Don't broadcast if storage failed
       }
-    } else {
-      this.releasePendingSave(saveId);
     }
+
+    // Phase 3: NOW broadcast AFTER storage write completes
+    this.broadcastManager.notifyPositionUpdate(id, roundedLeft, roundedTop);
+    
+    this.releasePendingSave(saveId);
 
     // Emit event for coordinators
     this.eventBus?.emit('tab:position-updated', {
@@ -159,9 +161,6 @@ export class UpdateHandler {
     const roundedWidth = Math.round(width);
     const roundedHeight = Math.round(height);
 
-    // v1.5.8.13 - Final size broadcast
-    this.broadcastManager.notifySizeUpdate(id, roundedWidth, roundedHeight);
-
     // v1.5.8.14 - Generate save ID for transaction tracking
     const saveId = this.generateSaveId();
 
@@ -169,7 +168,8 @@ export class UpdateHandler {
     const tabWindow = this.quickTabsMap.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
 
-    // Send final size to background
+    // Phase 3: AWAIT storage write BEFORE broadcasting
+    // Ensures storage is updated when other tabs receive the broadcast
     if (typeof browser !== 'undefined' && browser.runtime) {
       try {
         await browser.runtime.sendMessage({
@@ -184,10 +184,14 @@ export class UpdateHandler {
       } catch (err) {
         console.error('[UpdateHandler] Final size save error:', err);
         this.releasePendingSave(saveId);
+        return; // Don't broadcast if storage failed
       }
-    } else {
-      this.releasePendingSave(saveId);
     }
+
+    // Phase 3: NOW broadcast AFTER storage write completes
+    this.broadcastManager.notifySizeUpdate(id, roundedWidth, roundedHeight);
+    
+    this.releasePendingSave(saveId);
 
     // Emit event for coordinators
     this.eventBus?.emit('tab:size-updated', {

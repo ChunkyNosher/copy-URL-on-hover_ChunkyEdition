@@ -82,6 +82,16 @@ export class BroadcastManager {
     this.FAILURE_THRESHOLD = 3; // Trigger reconnection after 3 failures
     this.MAX_RECONNECTION_ATTEMPTS = 5; // Switch to fallback after 5 attempts
     this.BACKOFF_INTERVALS = [100, 500, 2000, 5000, 5000]; // Exponential backoff
+
+    // Phase 3: Broadcast message persistence for late-joining tabs
+    this.BROADCAST_HISTORY_MAX_MESSAGES = 50; // Keep last 50 messages
+    this.BROADCAST_HISTORY_TTL_MS = 30000; // 30 seconds replay window
+    this.lastHistoryCleanup = 0; // Track last cleanup time
+
+    // Phase 4: Periodic state snapshot broadcasting
+    this.snapshotInterval = null; // Timer for periodic snapshots
+    this.SNAPSHOT_INTERVAL_MS = 5000; // Broadcast snapshot every 5 seconds
+    this.stateManager = null; // Will be set via setStateManager()
   }
 
   /**
@@ -365,6 +375,9 @@ export class BroadcastManager {
       senderId: this.senderId,
       sequence: this.messageSequence
     };
+
+    // Phase 3: Persist message to history for late-joining tabs
+    await this._persistBroadcastMessage(type, messageData);
 
     // Gap 1: Use storage fallback if BC unavailable
     if (this.useStorageFallback) {
@@ -778,6 +791,215 @@ export class BroadcastManager {
       globalThis.browser.storage.local.onChanged.removeListener(this.storageListener);
       this.storageListener = null;
       console.log('[BroadcastManager] Storage listener removed');
+    }
+
+    // Phase 4: Clear snapshot interval
+    if (this.snapshotInterval) {
+      clearInterval(this.snapshotInterval);
+      this.snapshotInterval = null;
+    }
+  }
+
+  /**
+   * Phase 3: Persist broadcast message to storage for late-joining tabs
+   * Stores last 50 messages with 30-second TTL for replay
+   * 
+   * @private
+   * @param {string} type - Message type
+   * @param {Object} data - Message data
+   */
+  async _persistBroadcastMessage(type, data) {
+    if (!this._hasStorageAPI()) {
+      return;
+    }
+
+    // Skip persistence when in storage fallback mode (different mechanism)
+    if (this.useStorageFallback) {
+      return;
+    }
+
+    try {
+      const historyKey = `quicktabs-broadcast-history-${this.cookieStoreId}`;
+      
+      // Load existing history
+      const result = await globalThis.browser.storage.local.get(historyKey);
+      const history = result[historyKey] || { messages: [], lastCleanup: Date.now() };
+
+      // Add new message
+      history.messages.push({
+        type,
+        data,
+        timestamp: Date.now(),
+        senderId: this.senderId
+      });
+
+      // Cleanup old messages and limit size
+      const now = Date.now();
+      const needsCleanup = now - history.lastCleanup > 5000;
+      
+      if (needsCleanup) {
+        // Remove messages older than TTL
+        history.messages = history.messages.filter(
+          msg => now - msg.timestamp < this.BROADCAST_HISTORY_TTL_MS
+        );
+        
+        // Keep only last N messages (extract to reduce nesting)
+        this._limitHistorySize(history);
+        
+        history.lastCleanup = now;
+      }
+
+      // Save updated history
+      await globalThis.browser.storage.local.set({ [historyKey]: history });
+      
+      this.logger.debug('Message persisted to history', {
+        type,
+        historySize: history.messages.length
+      });
+    } catch (err) {
+      this.logger.error('Failed to persist broadcast message', {
+        type,
+        error: err.message
+      });
+    }
+  }
+
+  /**
+   * Limit broadcast history size
+   * @private
+   * @param {Object} history - History object with messages array
+   */
+  _limitHistorySize(history) {
+    if (history.messages.length > this.BROADCAST_HISTORY_MAX_MESSAGES) {
+      history.messages = history.messages.slice(-this.BROADCAST_HISTORY_MAX_MESSAGES);
+    }
+  }
+
+  /**
+   * Phase 3: Replay broadcast history for late-joining tabs
+   * Loads and replays messages from last 30 seconds
+   * 
+   * @returns {Promise<number>} - Number of messages replayed
+   */
+  async replayBroadcastHistory() {
+    if (!this._hasStorageAPI()) {
+      return 0;
+    }
+
+    try {
+      const historyKey = `quicktabs-broadcast-history-${this.cookieStoreId}`;
+      const result = await globalThis.browser.storage.local.get(historyKey);
+      const history = result[historyKey];
+
+      if (!history || !history.messages || history.messages.length === 0) {
+        this.logger.info('No broadcast history to replay');
+        return 0;
+      }
+
+      // Filter to messages within TTL window and not from self
+      const now = Date.now();
+      const replayableMessages = history.messages.filter(msg => {
+        const withinTTL = now - msg.timestamp < this.BROADCAST_HISTORY_TTL_MS;
+        const notFromSelf = msg.senderId !== this.senderId;
+        return withinTTL && notFromSelf;
+      });
+
+      this.logger.info('Replaying broadcast history', {
+        totalMessages: history.messages.length,
+        replayableMessages: replayableMessages.length
+      });
+
+      // Replay messages in chronological order
+      for (const msg of replayableMessages) {
+        // Emit as if received via broadcast channel
+        this.eventBus?.emit('broadcast:received', {
+          type: msg.type,
+          data: msg.data
+        });
+      }
+
+      return replayableMessages.length;
+    } catch (err) {
+      this.logger.error('Failed to replay broadcast history', {
+        error: err.message
+      });
+      return 0;
+    }
+  }
+
+  /**
+   * Phase 4: Set state manager reference for snapshot broadcasting
+   * 
+   * @param {StateManager} stateManager - State manager instance
+   */
+  setStateManager(stateManager) {
+    this.stateManager = stateManager;
+  }
+
+  /**
+   * Phase 4: Start periodic state snapshot broadcasting
+   * Broadcasts full state every 5 seconds for self-healing
+   */
+  startPeriodicSnapshots() {
+    if (this.snapshotInterval) {
+      this.logger.warn('Snapshot broadcasting already started');
+      return;
+    }
+
+    this.logger.info('Starting periodic state snapshot broadcasting', {
+      intervalMs: this.SNAPSHOT_INTERVAL_MS
+    });
+
+    this.snapshotInterval = setInterval(() => {
+      this._broadcastStateSnapshot();
+    }, this.SNAPSHOT_INTERVAL_MS);
+  }
+
+  /**
+   * Phase 4: Stop periodic state snapshot broadcasting
+   */
+  stopPeriodicSnapshots() {
+    if (this.snapshotInterval) {
+      clearInterval(this.snapshotInterval);
+      this.snapshotInterval = null;
+      this.logger.info('Stopped periodic state snapshot broadcasting');
+    }
+  }
+
+  /**
+   * Phase 4: Broadcast complete state snapshot
+   * @private
+   */
+  async _broadcastStateSnapshot() {
+    if (!this.stateManager) {
+      this.logger.debug('No state manager available for snapshot');
+      return;
+    }
+
+    try {
+      const allQuickTabs = this.stateManager.getAll();
+      
+      if (allQuickTabs.length === 0) {
+        this.logger.debug('No Quick Tabs to snapshot');
+        return;
+      }
+
+      // Serialize Quick Tabs for broadcast
+      const serializedQuickTabs = allQuickTabs.map(qt => qt.serialize());
+
+      await this.broadcast('SNAPSHOT', {
+        quickTabs: serializedQuickTabs,
+        timestamp: Date.now(),
+        count: serializedQuickTabs.length
+      });
+
+      this.logger.debug('State snapshot broadcasted', {
+        count: serializedQuickTabs.length
+      });
+    } catch (err) {
+      this.logger.error('Failed to broadcast state snapshot', {
+        error: err.message
+      });
     }
   }
 }

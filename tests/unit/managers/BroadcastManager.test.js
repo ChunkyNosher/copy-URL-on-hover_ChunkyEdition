@@ -436,7 +436,7 @@ describe('BroadcastManager', () => {
       consoleLogSpy.mockRestore();
     });
 
-    test('should handle broadcast postMessage failure', () => {
+    test('should handle broadcast postMessage failure', async () => {
       manager.setupBroadcastChannel();
       mockChannel.postMessage.mockImplementation(() => {
         throw new Error('Failed to post message');
@@ -444,7 +444,7 @@ describe('BroadcastManager', () => {
 
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
-      manager.broadcast('TEST', { id: 'test-123' });
+      await manager.broadcast('TEST', { id: 'test-123' });
 
       // Logger now uses structured logging, just check error was logged
       expect(consoleSpy).toHaveBeenCalled();
@@ -452,12 +452,12 @@ describe('BroadcastManager', () => {
       consoleSpy.mockRestore();
     });
 
-    test('should handle message without channel', () => {
+    test('should handle message without channel', async () => {
       manager.broadcastChannel = null;
 
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
-      manager.broadcast('TEST', { id: 'test-123' });
+      await manager.broadcast('TEST', { id: 'test-123' });
 
       // Logger now uses structured logging, just check warning was logged
       expect(consoleSpy).toHaveBeenCalled();

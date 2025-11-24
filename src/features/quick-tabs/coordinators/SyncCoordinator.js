@@ -80,23 +80,97 @@ export class SyncCoordinator {
 
   /**
    * Handle tab becoming visible - refresh state from background
-   * CRITICAL FIX for Issue #35 and #51: Load latest state when switching to this tab
+   * v1.6.1.5 - CRITICAL FIX: Merge instead of replace to preserve broadcast-populated state
+   * 
+   * Previously: hydrate() replaced entire state, wiping out Quick Tabs received via broadcasts
+   * Now: Merge storage state with in-memory state using timestamp-based conflict resolution
    */
   async handleTabVisible() {
     console.log('[SyncCoordinator] Tab became visible - refreshing state from background');
 
     try {
-      // Re-hydrate state from storage (which will call background first)
-      const quickTabs = await this.storageManager.loadAll();
-      this.stateManager.hydrate(quickTabs);
+      // Get current in-memory state (may contain Quick Tabs from broadcasts)
+      const currentState = this.stateManager.getAll();
+      
+      // Load state from storage
+      const storageState = await this.storageManager.loadAll();
+      
+      // v1.6.1.5 - MERGE instead of REPLACE
+      // This preserves Quick Tabs received via broadcasts while still loading from storage
+      const mergedState = this._mergeQuickTabStates(currentState, storageState);
+      
+      // Hydrate with merged state
+      this.stateManager.hydrate(mergedState);
 
       // Notify UI coordinator to re-render
-      this.eventBus.emit('state:refreshed', { quickTabs });
+      this.eventBus.emit('state:refreshed', { quickTabs: mergedState });
 
-      console.log(`[SyncCoordinator] Refreshed ${quickTabs.length} Quick Tabs on tab visible`);
+      console.log(`[SyncCoordinator] Refreshed with ${mergedState.length} Quick Tabs (${currentState.length} in-memory, ${storageState.length} from storage)`);
     } catch (err) {
       console.error('[SyncCoordinator] Error refreshing state on tab visible:', err);
     }
+  }
+
+  /**
+   * Merge Quick Tab states with timestamp-based conflict resolution
+   * v1.6.1.5 - Critical fix for cross-domain sync issues
+   * 
+   * Strategy:
+   * - If Quick Tab exists only in memory → Keep it (from recent broadcast)
+   * - If Quick Tab exists only in storage → Add it (was created before this tab loaded)
+   * - If Quick Tab exists in both → Use the version with newer lastModified timestamp
+   * 
+   * @private
+   * @param {Array<QuickTab>} currentState - In-memory Quick Tabs
+   * @param {Array<QuickTab>} storageState - Quick Tabs from storage
+   * @returns {Array<QuickTab>} - Merged Quick Tabs
+   */
+  _mergeQuickTabStates(currentState, storageState) {
+    const merged = new Map();
+    
+    // Add all current (in-memory) Quick Tabs to merge map
+    for (const qt of currentState) {
+      merged.set(qt.id, qt);
+    }
+    
+    // Merge storage Quick Tabs
+    for (const storageQt of storageState) {
+      const memoryQt = merged.get(storageQt.id);
+      
+      // Early return: Quick Tab only in storage
+      if (!memoryQt) {
+        merged.set(storageQt.id, storageQt);
+        continue;
+      }
+      
+      // Quick Tab in both → Compare timestamps
+      const winner = this._selectNewerQuickTab(memoryQt, storageQt);
+      merged.set(storageQt.id, winner);
+    }
+    
+    return Array.from(merged.values());
+  }
+
+  /**
+   * Select newer Quick Tab based on lastModified timestamp
+   * v1.6.1.5 - Helper to reduce complexity
+   * 
+   * @private
+   * @param {QuickTab} memoryQt - In-memory Quick Tab
+   * @param {QuickTab} storageQt - Storage Quick Tab
+   * @returns {QuickTab} - The newer Quick Tab
+   */
+  _selectNewerQuickTab(memoryQt, storageQt) {
+    const memoryModified = memoryQt.lastModified || memoryQt.createdAt || 0;
+    const storageModified = storageQt.lastModified || storageQt.createdAt || 0;
+    
+    if (storageModified > memoryModified) {
+      console.log(`[SyncCoordinator] Merge: Using storage version of ${storageQt.id} (newer by ${storageModified - memoryModified}ms)`);
+      return storageQt;
+    }
+    
+    console.log(`[SyncCoordinator] Merge: Keeping in-memory version of ${memoryQt.id} (newer by ${memoryModified - storageModified}ms)`);
+    return memoryQt;
   }
 
   /**
@@ -120,47 +194,66 @@ export class SyncCoordinator {
 
   /**
    * Route message to appropriate handler
+   * v1.6.1.5 - Reduced complexity with lookup table pattern
    * @private
    *
    * @param {string} type - Message type
    * @param {Object} data - Message data
    */
   _routeMessage(type, data) {
-    switch (type) {
-      case 'CREATE':
-        this.handlers.create.create(data);
-        break;
+    // Lookup table pattern to reduce complexity
+    const routes = {
+      CREATE: () => this.handlers.create.create(data),
+      UPDATE_POSITION: () => this.handlers.update.handlePositionChangeEnd(data.id, data.left, data.top),
+      UPDATE_SIZE: () => this.handlers.update.handleSizeChangeEnd(data.id, data.width, data.height),
+      SOLO: () => this.handlers.visibility.handleSoloToggle(data.id, data.soloedOnTabs),
+      MUTE: () => this.handlers.visibility.handleMuteToggle(data.id, data.mutedOnTabs),
+      MINIMIZE: () => this.handlers.visibility.handleMinimize(data.id),
+      RESTORE: () => this.handlers.visibility.handleRestore(data.id),
+      CLOSE: () => this.handlers.destroy.handleDestroy(data.id),
+      SNAPSHOT: () => this._handleStateSnapshot(data) // Phase 4: Self-healing
+    };
 
-      case 'UPDATE_POSITION':
-        this.handlers.update.handlePositionChangeEnd(data.id, data.left, data.top);
-        break;
-
-      case 'UPDATE_SIZE':
-        this.handlers.update.handleSizeChangeEnd(data.id, data.width, data.height);
-        break;
-
-      case 'SOLO':
-        this.handlers.visibility.handleSoloToggle(data.id, data.soloedOnTabs);
-        break;
-
-      case 'MUTE':
-        this.handlers.visibility.handleMuteToggle(data.id, data.mutedOnTabs);
-        break;
-
-      case 'MINIMIZE':
-        this.handlers.visibility.handleMinimize(data.id);
-        break;
-
-      case 'RESTORE':
-        this.handlers.visibility.handleRestore(data.id);
-        break;
-
-      case 'CLOSE':
-        this.handlers.destroy.handleDestroy(data.id);
-        break;
-
-      default:
-        console.warn('[SyncCoordinator] Unknown broadcast type:', type);
+    const handler = routes[type];
+    if (handler) {
+      handler();
+    } else {
+      console.warn('[SyncCoordinator] Unknown broadcast type:', type);
     }
+  }
+
+  /**
+   * Handle state snapshot broadcast for self-healing
+   * Phase 4: Merge snapshot with local state
+   * 
+   * @private
+   * @param {Object} data - Snapshot data with quickTabs array
+   */
+  _handleStateSnapshot(data) {
+    if (!data.quickTabs || !Array.isArray(data.quickTabs)) {
+      console.warn('[SyncCoordinator] Invalid snapshot data');
+      return;
+    }
+
+    console.log(`[SyncCoordinator] Received state snapshot with ${data.quickTabs.length} Quick Tabs`);
+
+    // Get current state
+    const currentState = this.stateManager.getAll();
+    
+    // Import QuickTab class for deserialization
+    import('@domain/QuickTab.js').then(({ QuickTab }) => {
+      // Deserialize snapshot Quick Tabs
+      const snapshotQuickTabs = data.quickTabs.map(qtData => QuickTab.fromStorage(qtData));
+      
+      // Merge with current state using timestamp-based resolution
+      const mergedState = this._mergeQuickTabStates(currentState, snapshotQuickTabs);
+      
+      // Hydrate with merged state
+      this.stateManager.hydrate(mergedState);
+      
+      console.log(`[SyncCoordinator] Merged snapshot: ${currentState.length} local + ${snapshotQuickTabs.length} snapshot = ${mergedState.length} total`);
+    }).catch(err => {
+      console.error('[SyncCoordinator] Failed to process snapshot:', err);
+    });
   }
 }

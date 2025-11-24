@@ -385,6 +385,16 @@ class QuickTabsManager {
       const quickTabs = await this.storage.loadAll();
       this.state.hydrate(quickTabs);
       console.log(`[QuickTabsManager] Hydrated ${quickTabs.length} Quick Tabs`);
+
+      // Phase 3: Replay broadcast history for late-joining tabs
+      console.log('[QuickTabsManager] Replaying broadcast history...');
+      const replayedCount = await this.broadcast.replayBroadcastHistory();
+      console.log(`[QuickTabsManager] Replayed ${replayedCount} broadcast messages`);
+
+      // Phase 4: Set state manager reference and start periodic snapshots
+      this.broadcast.setStateManager(this.state);
+      this.broadcast.startPeriodicSnapshots();
+      console.log('[QuickTabsManager] Started periodic state snapshot broadcasting');
     } catch (err) {
       console.error('[QuickTabsManager] Failed to hydrate state:', err);
     }

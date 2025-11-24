@@ -101,6 +101,33 @@ export class QuickTabWindow {
   }
 
   /**
+   * Process URL to disable autoplay for YouTube videos
+   * v1.6.1.5 - Fix for YouTube autoplay issue
+   * 
+   * @param {string} url - Original URL
+   * @returns {string} - Modified URL with autoplay disabled
+   */
+  _processUrlForAutoplay(url) {
+    try {
+      // Check if URL is a YouTube URL (youtube.com or youtu.be)
+      if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+        return url; // Not a YouTube URL, return as-is
+      }
+
+      const urlObj = new URL(url);
+
+      // Set or update autoplay parameter to 0
+      urlObj.searchParams.set('autoplay', '0');
+
+      console.log(`[QuickTabWindow] Processed YouTube URL for autoplay prevention: ${urlObj.toString()}`);
+      return urlObj.toString();
+    } catch (err) {
+      console.error('[QuickTabWindow] Error processing URL for autoplay:', err);
+      return url; // Return original URL on error
+    }
+  }
+
+  /**
    * Create and render the Quick Tab window
    */
   render() {
@@ -174,8 +201,11 @@ export class QuickTabWindow {
     this.muteButton = this.titlebarBuilder.muteButton;
 
     // Create iframe content area
+    // v1.6.1.5 - Process URL to prevent autoplay and add 'allow' attribute
+    const processedUrl = this._processUrlForAutoplay(this.url);
+    
     this.iframe = createElement('iframe', {
-      src: this.url,
+      src: processedUrl,
       style: {
         flex: '1',
         border: 'none',
@@ -183,7 +213,9 @@ export class QuickTabWindow {
         height: 'calc(100% - 40px)'
       },
       sandbox:
-        'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
+        'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox',
+      // v1.6.1.5 - Add 'allow' attribute without autoplay permission to prevent autoplay
+      allow: 'picture-in-picture; fullscreen'
     });
 
     this.container.appendChild(this.iframe);
