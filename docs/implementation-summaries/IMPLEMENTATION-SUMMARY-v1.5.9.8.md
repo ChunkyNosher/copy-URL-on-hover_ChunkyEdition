@@ -132,10 +132,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
     debug('Clearing content script logs');
 
     // Clear console interceptor buffer
-    if (
-      window.consoleInterceptor &&
-      typeof window.consoleInterceptor.clear === 'function'
-    ) {
+    if (window.consoleInterceptor && typeof window.consoleInterceptor.clear === 'function') {
       window.consoleInterceptor.clear();
     }
 
