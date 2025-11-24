@@ -26,6 +26,7 @@ export const MESSAGE_TYPES = {
   CLOSE_ALL: 'CLOSE_ALL',               // Close all Quick Tabs
   CLOSE_MINIMIZED: 'CLOSE_MINIMIZED',   // Close only minimized Quick Tabs
   UPDATE_MUTE: 'UPDATE_MUTE',           // Update mute state (used in scenario-04)
+  UPDATE_MINIMIZE: 'UPDATE_MINIMIZE',   // Update minimize state (used in scenario-13)
   DESTROY: 'DESTROY'                    // Destroy Quick Tab (used in scenario-15)
 };
 
@@ -227,6 +228,17 @@ export const MESSAGE_SCHEMAS = {
   [MESSAGE_TYPES.DESTROY]: {
     required: {
       id: validators.string
+    },
+    optional: {
+      ...commonOptionalFields,
+      container: validators.string
+    }
+  },
+
+  [MESSAGE_TYPES.UPDATE_MINIMIZE]: {
+    required: {
+      id: validators.string,
+      minimized: (v) => ({ valid: true, value: Boolean(v) })
     },
     optional: {
       ...commonOptionalFields

@@ -409,8 +409,10 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
       await broadcastManagers[0].broadcast('CREATE', {
         id: qt2.id,
         url: qt2.url,
-        position: qt2.position,
-        size: qt2.size,
+        left: qt2.position.left,
+        top: qt2.position.top,
+        width: qt2.size.width,
+        height: qt2.size.height,
         container: qt2.container
       });
 

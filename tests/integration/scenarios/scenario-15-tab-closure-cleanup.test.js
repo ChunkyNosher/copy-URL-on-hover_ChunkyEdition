@@ -185,8 +185,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
           id: `qt-count-${i}`,
           url: `https://example${i}.com`,
           position: { left: i * 100, top: i * 100 },
-          width: 800,
-          height: 600 
+          size: { width: 800, height: 600 }
         })
       );
 
@@ -327,8 +326,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
           id: `qt-concurrent-${i}`,
           url: `https://example${i}.com`,
           position: { left: i * 100, top: i * 100 },
-          width: 800,
-          height: 600 
+          size: { width: 800, height: 600 }
         })
       );
 

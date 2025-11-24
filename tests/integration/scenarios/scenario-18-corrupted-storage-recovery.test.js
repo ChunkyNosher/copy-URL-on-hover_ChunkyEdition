@@ -219,21 +219,24 @@ describe('Scenario 18: Corrupted Storage Recovery Protocol', () => {
             id: message.data.id,
             url: message.data.url,
             position: {
-              left: Number.isFinite(message.data.position?.left) ? message.data.position.left : 100,
-              top: Number.isFinite(message.data.position?.top) ? message.data.position.top : 100
+              left: Number.isFinite(message.data.left) ? message.data.left : 100,
+              top: Number.isFinite(message.data.top) ? message.data.top : 100
             },
-            size: message.data.size,
-            container: message.data.container
+            size: {
+              width: message.data.width || 800,
+              height: message.data.height || 600
+            },
+            container: message.data.cookieStoreId || 'firefox-default'
           });
           stateManagers[1].add(qt);
         }
       });
 
-      // Gap 3: Schema validation converts NaN/Infinity to valid numbers
+      // Gap 3: Schema validation ensures valid numbers
       await broadcastManagers[0].broadcast('CREATE', {
         id: 'qt-invalid-pos-1',
         url: 'https://example.com',
-        left: 0,  // Use valid defaults since NaN/Infinity will be validated
+        left: 0,  // Use valid defaults
         top: 0,
         width: 800,
         height: 600 
