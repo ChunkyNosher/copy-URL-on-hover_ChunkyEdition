@@ -66,6 +66,16 @@ export class BroadcastManager {
     this.storageListener = null; // Storage change listener
     this.STORAGE_TTL_MS = 5000; // Clean up messages older than 5 seconds
     this.lastCleanupTime = 0; // Track last cleanup
+
+    // Gap 2: Channel health tracking and error recovery
+    this.lastSuccessfulSend = 0; // Timestamp of last successful send
+    this.consecutiveFailures = 0; // Count of consecutive send failures
+    this.isChannelHealthy = true; // Current health status
+    this.reconnectionAttempts = 0; // Count of reconnection attempts
+    this.reconnectionTimer = null; // Timer for scheduled reconnections
+    this.FAILURE_THRESHOLD = 3; // Trigger reconnection after 3 failures
+    this.MAX_RECONNECTION_ATTEMPTS = 5; // Switch to fallback after 5 attempts
+    this.BACKOFF_INTERVALS = [100, 500, 2000, 5000, 5000]; // Exponential backoff
   }
 
   /**
@@ -324,15 +334,22 @@ export class BroadcastManager {
 
     if (!this.broadcastChannel) {
       console.warn('[BroadcastManager] No broadcast channel available');
+      this._handleBroadcastFailure(type, new Error('Channel not available'));
       return false;
     }
 
     try {
       this.broadcastChannel.postMessage({ type, data: messageData });
       console.log(`[BroadcastManager] Broadcasted ${type}:`, messageData);
+      
+      // Gap 2: Track successful send
+      this._handleBroadcastSuccess();
       return true;
     } catch (err) {
       console.error('[BroadcastManager] Failed to broadcast:', err);
+      
+      // Gap 2: Handle broadcast failure
+      this._handleBroadcastFailure(type, err);
       return false;
     }
   }
@@ -573,9 +590,126 @@ export class BroadcastManager {
   }
 
   /**
+   * Handle successful broadcast (Gap 2)
+   * @private
+   */
+  _handleBroadcastSuccess() {
+    this.lastSuccessfulSend = Date.now();
+    this.consecutiveFailures = 0;
+    this.reconnectionAttempts = 0;
+    this.isChannelHealthy = true;
+  }
+
+  /**
+   * Handle broadcast failure (Gap 2)
+   * @private
+   */
+  _handleBroadcastFailure(messageType, error) {
+    this.consecutiveFailures++;
+    this.isChannelHealthy = false;
+
+    // Emit error event
+    this.eventBus?.emit('broadcast:error', {
+      messageType,
+      error: error.message,
+      consecutiveFailures: this.consecutiveFailures,
+      timestamp: Date.now()
+    });
+
+    // Trigger reconnection if threshold reached
+    if (this.consecutiveFailures >= this.FAILURE_THRESHOLD) {
+      this._scheduleReconnection();
+    }
+  }
+
+  /**
+   * Schedule channel reconnection (Gap 2)
+   * @private
+   */
+  _scheduleReconnection() {
+    // Don't schedule if already scheduled
+    if (this.reconnectionTimer) {
+      return;
+    }
+
+    // Switch to fallback if max attempts reached
+    if (this.reconnectionAttempts >= this.MAX_RECONNECTION_ATTEMPTS) {
+      console.warn('[BroadcastManager] Max reconnection attempts reached, switching to storage fallback');
+      this._activateStorageFallback();
+      return;
+    }
+
+    const backoffIndex = Math.min(this.reconnectionAttempts, this.BACKOFF_INTERVALS.length - 1);
+    const delay = this.BACKOFF_INTERVALS[backoffIndex];
+
+    console.log(`[BroadcastManager] Scheduling reconnection attempt ${this.reconnectionAttempts + 1} in ${delay}ms`);
+
+    this.reconnectionTimer = setTimeout(() => {
+      this._attemptReconnection();
+    }, delay);
+  }
+
+  /**
+   * Attempt to reconnect channel (Gap 2)
+   * @private
+   */
+  _attemptReconnection() {
+    this.reconnectionTimer = null;
+    this.reconnectionAttempts++;
+
+    console.log(`[BroadcastManager] Reconnection attempt ${this.reconnectionAttempts}/${this.MAX_RECONNECTION_ATTEMPTS}`);
+
+    try {
+      // Close existing channel
+      if (this.broadcastChannel) {
+        this.broadcastChannel.close();
+        this.broadcastChannel = null;
+      }
+
+      // Recreate channel
+      this.setupBroadcastChannel();
+
+      // Test the channel
+      this._testChannelHealth();
+    } catch (err) {
+      console.error('[BroadcastManager] Reconnection failed:', err);
+      this._scheduleReconnection();
+    }
+  }
+
+  /**
+   * Test channel health (Gap 2)
+   * @private
+   */
+  _testChannelHealth() {
+    if (!this.broadcastChannel) {
+      this.isChannelHealthy = false;
+      return;
+    }
+
+    try {
+      // Send empty ping message to test channel
+      this.broadcastChannel.postMessage({ type: '__PING__', data: {} });
+      this.isChannelHealthy = true;
+      this.consecutiveFailures = 0;
+      console.log('[BroadcastManager] Channel health test passed');
+    } catch (err) {
+      console.error('[BroadcastManager] Channel health test failed:', err);
+      this.isChannelHealthy = false;
+      this._scheduleReconnection();
+    }
+  }
+
+  /**
    * Close broadcast channel
    */
   close() {
+    // Gap 2: Clear reconnection timer
+    if (this.reconnectionTimer) {
+      clearTimeout(this.reconnectionTimer);
+      this.reconnectionTimer = null;
+    }
+
     if (this.broadcastChannel) {
       console.log(`[BroadcastManager] Closing channel: ${this.currentChannelName}`);
       this.broadcastChannel.close();
