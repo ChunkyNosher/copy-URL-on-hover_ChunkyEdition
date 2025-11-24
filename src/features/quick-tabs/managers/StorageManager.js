@@ -114,9 +114,15 @@ export class StorageManager {
       }
 
       // STEP 2: Fallback - Try session storage (faster, temporary)
-      let containerData = await this.sessionAdapter.load(this.cookieStoreId);
+      // NOTE: browser.storage.session is ONLY available in background scripts, NOT content scripts
+      // Check availability before attempting to use it to avoid "storage.session is undefined" errors
+      let containerData = null;
+      
+      if (browserAPI?.storage?.session) {
+        containerData = await this.sessionAdapter.load(this.cookieStoreId);
+      }
 
-      // STEP 3: Fallback - Try sync storage
+      // STEP 3: Fallback - Try sync storage (local storage in Firefox)
       if (!containerData) {
         containerData = await this.syncAdapter.load(this.cookieStoreId);
       }
