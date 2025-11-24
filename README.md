@@ -38,6 +38,32 @@ Major improvements to filter workflow and UI consistency based on user feedback:
 
 ---
 
+## 🎯 Firefox Sidebar Integration (v1.6.2) - NEW!
+
+**Unified Settings Sidebar for Firefox** - Access settings and Quick Tabs Manager in one place!
+
+### Firefox Users (Native Sidebar Experience)
+- **🔧 Settings Sidebar** - Click the toolbar button OR press `Ctrl+Shift+S` to open
+- **📑 Tab Navigation** - Switch between "Settings" and "Quick Tabs" tabs
+- **🔄 Real-time Sync** - Settings changes sync across all tabs instantly
+- **💾 All Settings Features** - Full Quick Tabs configuration, storage info, debug tools
+
+### Chrome/Edge/Brave Users (Popup Compatibility)
+- **📦 Traditional Popup** - Toolbar button opens the standard Quick Tabs popup
+- **⚙️ Settings Page** - Access via Extensions page → Extension Options
+- **✅ Full Feature Parity** - All features work identically to Firefox
+
+### Keyboard Shortcuts
+- **Firefox Sidebar:** `Ctrl+Shift+S` - Toggle settings sidebar
+- **Quick Tabs Manager (All Browsers):** `Ctrl+Alt+Z` - Toggle floating panel manager
+
+### Why This Matters
+Firefox's sidebar API provides a persistent, always-accessible interface for settings without leaving your current page. Chrome/Chromium browsers don't support sidebars, so they continue using the traditional popup approach.
+
+**Cross-Browser Note:** This extension intelligently detects browser capabilities and provides the best user experience for each platform. Firefox users get native sidebar integration, while Chrome users keep the familiar popup interface.
+
+---
+
 **Previous Release: v1.6.0.8 - Live Console Output & Export Filtering (November 21, 2025)**
 
 Granular control over console log output to reduce noise and improve debugging experience:
@@ -200,6 +226,8 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 | Container Isolation | ✅ | ⚠️ Single default container |
 | Quick Tabs Manager | ✅ | ✅ |
 | Settings Persistence | ✅ | ✅ |
+| **Sidebar Settings UI** | ✅ Native sidebar | ⚠️ Traditional popup |
+| **Keyboard Shortcut** | ✅ Ctrl+Shift+S | ⚠️ Via extensions menu |
 
 **Note:** Firefox Containers are a Firefox-exclusive feature. On Chrome/Chromium browsers, all tabs are treated as a single "default" container, and Solo/Mute works globally rather than per-container.
 

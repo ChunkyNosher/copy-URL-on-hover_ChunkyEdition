@@ -1257,5 +1257,33 @@ browser.commands.onCommand.addListener(async command => {
   if (command === 'toggle-quick-tabs-manager') {
     await _toggleQuickTabsPanel();
   }
+  // _execute_sidebar_action is handled automatically by Firefox
+  // Just log for debugging
+  if (command === '_execute_sidebar_action') {
+    console.log('[Sidebar] Keyboard shortcut triggered (Ctrl+Shift+S)');
+  }
 });
 // ==================== END KEYBOARD COMMANDS ====================
+
+// ==================== BROWSER ACTION HANDLER ====================
+// Open sidebar when toolbar button is clicked (Firefox only)
+// Chrome will continue using popup.html since it doesn't support sidebar_action
+if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAction) {
+  browser.browserAction.onClicked.addListener(async () => {
+    try {
+      // Check if sidebar API is available
+      if (browser.sidebarAction && browser.sidebarAction.open) {
+        await browser.sidebarAction.open();
+        console.log('[Sidebar] Opened via toolbar button');
+      }
+    } catch (err) {
+      console.error('[Sidebar] Error opening sidebar:', err);
+      // If sidebar fails, user can still access settings via options page
+    }
+  });
+  console.log('[Sidebar] Browser action handler registered for Firefox');
+} else {
+  // Chrome doesn't support sidebarAction, so toolbar button will show popup.html
+  console.log('[Sidebar] Browser action uses popup (Chrome compatibility)');
+}
+// ==================== END BROWSER ACTION HANDLER ====================
