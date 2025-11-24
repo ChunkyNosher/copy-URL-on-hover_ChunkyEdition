@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.1.1** - A feature-rich **Firefox/Chrome/Chromium** extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **Firefox Container isolation**, and Persistent Floating Panel Manager.
+**Version 1.6.2.0** - A feature-rich **Firefox/Chrome/Chromium** extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **Firefox Container isolation**, and Persistent Floating Panel Manager.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave, Opera, and other Chromium-based browsers using Manifest v2 with webextension-polyfill.
 
@@ -38,29 +38,30 @@ Major improvements to filter workflow and UI consistency based on user feedback:
 
 ---
 
-## 🎯 Firefox Sidebar Integration (v1.6.2) - NEW!
+## 🎯 Firefox Sidebar Integration (v1.6.2) - UPDATED!
 
-**Unified Settings Sidebar for Firefox** - Access settings and Quick Tabs Manager in one place!
+**Unified Settings Sidebar for Firefox** - All settings and Quick Tabs Manager now in the sidebar!
 
 ### Firefox Users (Native Sidebar Experience)
-- **🔧 Settings Sidebar** - Click the toolbar button OR press `Ctrl+Shift+S` to open
-- **📑 Tab Navigation** - Switch between "Settings" and "Quick Tabs" tabs
+- **🔧 Complete Settings in Sidebar** - Click the toolbar button OR press `Alt+Shift+S` to open
+- **📑 5 Tabs** - Copy URL, Quick Tabs, Appearance, Advanced, and Manager tabs
+- **🪟 Integrated Quick Tabs Manager** - View all active Quick Tabs in the Manager tab
 - **🔄 Real-time Sync** - Settings changes sync across all tabs instantly
-- **💾 All Settings Features** - Full Quick Tabs configuration, storage info, debug tools
+- **💾 All Settings Features** - Full Quick Tabs configuration, console log filtering, debug tools
 
 ### Chrome/Edge/Brave Users (Popup Compatibility)
-- **📦 Traditional Popup** - Toolbar button opens the standard Quick Tabs popup
+- **📦 Traditional Popup** - Toolbar button opens the standard settings popup (unchanged)
 - **⚙️ Settings Page** - Access via Extensions page → Extension Options
 - **✅ Full Feature Parity** - All features work identically to Firefox
 
 ### Keyboard Shortcuts
-- **Firefox Sidebar:** `Ctrl+Shift+S` - Toggle settings sidebar
-- **Quick Tabs Manager (All Browsers):** `Ctrl+Alt+Z` - Toggle floating panel manager
+- **Firefox Sidebar Settings:** `Alt+Shift+S` - Toggle complete settings sidebar (NEW!)
+- **Quick Tabs Manager:** `Alt+Shift+Z` - Toggle floating Quick Tabs Manager panel (UPDATED!)
 
 ### Why This Matters
-Firefox's sidebar API provides a persistent, always-accessible interface for settings without leaving your current page. Chrome/Chromium browsers don't support sidebars, so they continue using the traditional popup approach.
+Firefox's sidebar API provides a persistent, always-accessible interface for ALL settings without leaving your current page. The complete popup UI has been migrated to the sidebar, including all 4 settings tabs PLUS the Quick Tabs Manager. Chrome/Chromium browsers don't support sidebars, so they continue using the traditional popup approach.
 
-**Cross-Browser Note:** This extension intelligently detects browser capabilities and provides the best user experience for each platform. Firefox users get native sidebar integration, while Chrome users keep the familiar popup interface.
+**Cross-Browser Note:** This extension intelligently detects browser capabilities and provides the best user experience for each platform. Firefox users get the complete settings experience in a native sidebar, while Chrome users keep the familiar popup interface.
 
 ---
 
