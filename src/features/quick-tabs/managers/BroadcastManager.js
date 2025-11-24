@@ -59,14 +59,23 @@ export class BroadcastManager {
     // Gap 5: Loop detection metrics
     this.selfMessageCount = 0; // Messages from self (should be filtered)
     this.sequenceAnomalyCount = 0; // Out-of-order or duplicate sequences
+
+    // Gap 1: Storage-based fallback
+    this.useBroadcastChannel = true; // Use BC by default
+    this.useStorageFallback = false; // Fallback when BC unavailable
+    this.storageListener = null; // Storage change listener
+    this.STORAGE_TTL_MS = 5000; // Clean up messages older than 5 seconds
+    this.lastCleanupTime = 0; // Track last cleanup
   }
 
   /**
    * Setup BroadcastChannel for cross-tab messaging
+   * Gap 1: Falls back to storage if BC unavailable
    */
   setupBroadcastChannel() {
     if (typeof BroadcastChannel === 'undefined') {
-      console.warn('[BroadcastManager] BroadcastChannel not available, using storage-only sync');
+      console.warn('[BroadcastManager] BroadcastChannel not available, activating storage fallback');
+      this._activateStorageFallback();
       return;
     }
 
@@ -82,6 +91,8 @@ export class BroadcastManager {
 
       this.broadcastChannel = new BroadcastChannel(channelName);
       this.currentChannelName = channelName;
+      this.useBroadcastChannel = true;
+      this.useStorageFallback = false;
 
       console.log(`[BroadcastManager] BroadcastChannel created: ${channelName}`);
 
@@ -93,6 +104,7 @@ export class BroadcastManager {
       console.log(`[BroadcastManager] Initialized for container: ${this.cookieStoreId}`);
     } catch (err) {
       console.error('[BroadcastManager] Failed to setup BroadcastChannel:', err);
+      this._activateStorageFallback();
     }
   }
 
@@ -288,32 +300,40 @@ export class BroadcastManager {
 
   /**
    * Broadcast message to other tabs
+   * Gap 1: Uses storage fallback if BC unavailable
    * @param {string} type - Message type (CREATE, UPDATE_POSITION, etc.)
    * @param {Object} data - Message payload
    */
-  broadcast(type, data) {
+  async broadcast(type, data) {
+    // Gap 5: Increment sequence number
+    this.messageSequence++;
+
+    // Gap 6: Include container ID
+    // Gap 5: Include sender ID and sequence number
+    const messageData = {
+      ...data,
+      cookieStoreId: this.cookieStoreId,
+      senderId: this.senderId,
+      sequence: this.messageSequence
+    };
+
+    // Gap 1: Use storage fallback if BC unavailable
+    if (this.useStorageFallback) {
+      return this._broadcastViaStorage(type, messageData);
+    }
+
     if (!this.broadcastChannel) {
       console.warn('[BroadcastManager] No broadcast channel available');
-      return;
+      return false;
     }
 
     try {
-      // Gap 5: Increment sequence number
-      this.messageSequence++;
-
-      // Gap 6: Include container ID
-      // Gap 5: Include sender ID and sequence number
-      const messageData = {
-        ...data,
-        cookieStoreId: this.cookieStoreId,
-        senderId: this.senderId,
-        sequence: this.messageSequence
-      };
-      
       this.broadcastChannel.postMessage({ type, data: messageData });
       console.log(`[BroadcastManager] Broadcasted ${type}:`, messageData);
+      return true;
     } catch (err) {
       console.error('[BroadcastManager] Failed to broadcast:', err);
+      return false;
     }
   }
 
@@ -402,6 +422,157 @@ export class BroadcastManager {
   }
 
   /**
+   * Activate storage-based fallback (Gap 1)
+   * @private
+   */
+  _activateStorageFallback() {
+    console.log('[BroadcastManager] Activating storage-based fallback');
+    
+    this.useBroadcastChannel = false;
+    this.useStorageFallback = true;
+
+    // Setup storage.onChanged listener
+    if (this._hasStorageAPI()) {
+      this.storageListener = this._handleStorageChange.bind(this);
+      globalThis.browser.storage.local.onChanged.addListener(this.storageListener);
+      console.log('[BroadcastManager] Storage listener registered');
+    } else {
+      console.error('[BroadcastManager] browser.storage.onChanged not available');
+    }
+  }
+
+  /**
+   * Check if storage API is available (Gap 1)
+   * @private
+   */
+  _hasStorageAPI() {
+    return typeof globalThis.browser !== 'undefined' && 
+           globalThis.browser.storage && 
+           globalThis.browser.storage.onChanged;
+  }
+
+  /**
+   * Handle storage change events (Gap 1)
+   * @private
+   */
+  _handleStorageChange(changes, areaName) {
+    if (areaName !== 'local') {
+      return;
+    }
+
+    // Look for sync message keys: quick-tabs-sync-{containerId}-{timestamp}
+    const syncKeyPrefix = `quick-tabs-sync-${this.cookieStoreId}-`;
+    
+    for (const key of Object.keys(changes)) {
+      if (!key.startsWith(syncKeyPrefix)) {
+        continue;
+      }
+
+      const change = changes[key];
+      
+      // Only process new values (messages being written)
+      if (!change.newValue) {
+        continue;
+      }
+
+      const message = change.newValue;
+      console.log('[BroadcastManager] Storage sync message received:', message);
+      
+      // Process as if it came from BroadcastChannel
+      this.handleBroadcastMessage(message);
+      
+      // Clean up old messages
+      this._cleanupStorageMessages();
+    }
+  }
+
+  /**
+   * Send message via storage fallback (Gap 1)
+   * @private
+   */
+  async _broadcastViaStorage(type, data) {
+    if (!this._hasStorageAPI()) {
+      console.error('[BroadcastManager] Storage API not available');
+      return false;
+    }
+
+    try {
+      const timestamp = Date.now();
+      const key = `quick-tabs-sync-${this.cookieStoreId}-${timestamp}`;
+      
+      const message = { type, data };
+      
+      await globalThis.browser.storage.local.set({ [key]: message });
+      console.log(`[BroadcastManager] Broadcasted via storage: ${type}`);
+      
+      // Clean up old messages after write
+      this._cleanupStorageMessages();
+      
+      return true;
+    } catch (err) {
+      console.error('[BroadcastManager] Storage broadcast failed:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Clean up old storage sync messages (Gap 1)
+   * @private
+   */
+  async _cleanupStorageMessages() {
+    if (!this._hasStorageAPI()) {
+      return;
+    }
+
+    const now = Date.now();
+    
+    // Only run cleanup every 5 seconds
+    if (now - this.lastCleanupTime < this.STORAGE_TTL_MS) {
+      return;
+    }
+    
+    this.lastCleanupTime = now;
+    
+    try {
+      const allStorage = await globalThis.browser.storage.local.get(null);
+      const keysToRemove = this._findExpiredStorageKeys(allStorage, now);
+      
+      if (keysToRemove.length > 0) {
+        await globalThis.browser.storage.local.remove(keysToRemove);
+        console.log(`[BroadcastManager] Cleaned up ${keysToRemove.length} old storage messages`);
+      }
+    } catch (err) {
+      console.error('[BroadcastManager] Storage cleanup failed:', err);
+    }
+  }
+
+  /**
+   * Find expired storage keys (Gap 1)
+   * @private
+   */
+  _findExpiredStorageKeys(allStorage, now) {
+    const keysToRemove = [];
+    const syncKeyPrefix = `quick-tabs-sync-${this.cookieStoreId}-`;
+    
+    for (const key of Object.keys(allStorage)) {
+      if (!key.startsWith(syncKeyPrefix)) {
+        continue;
+      }
+
+      // Extract timestamp from key
+      const timestampStr = key.substring(syncKeyPrefix.length);
+      const timestamp = parseInt(timestampStr, 10);
+      
+      // Remove if older than TTL
+      if (!isNaN(timestamp) && (now - timestamp > this.STORAGE_TTL_MS)) {
+        keysToRemove.push(key);
+      }
+    }
+    
+    return keysToRemove;
+  }
+
+  /**
    * Close broadcast channel
    */
   close() {
@@ -410,6 +581,13 @@ export class BroadcastManager {
       this.broadcastChannel.close();
       this.broadcastChannel = null;
       this.currentChannelName = null;
+    }
+
+    // Gap 1: Remove storage listener if active
+    if (this.storageListener && this._hasStorageAPI()) {
+      globalThis.browser.storage.local.onChanged.removeListener(this.storageListener);
+      this.storageListener = null;
+      console.log('[BroadcastManager] Storage listener removed');
     }
   }
 }
