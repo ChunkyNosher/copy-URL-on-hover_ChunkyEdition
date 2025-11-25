@@ -5,8 +5,8 @@
  * for the old BroadcastChannel-based architecture. In v1.6.2, cross-tab
  * sync is now handled exclusively via storage.onChanged events.
  * 
- * The mock simulates broadcast behavior by storing messages and allowing
- * tests to verify what would have been broadcast.
+ * The mock uses BroadcastChannel when available (for test cross-tab simulation)
+ * and falls back to storing messages for verification.
  */
 
 export class BroadcastManager {
@@ -14,29 +14,50 @@ export class BroadcastManager {
     this.eventBus = eventBus;
     this.cookieStoreId = cookieStoreId;
     this.senderId = `mock-sender-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.channel = null;
     
     // Track messages for test verification
     this.messageHistory = [];
   }
 
   /**
-   * Setup broadcast channel (no-op in mock)
+   * Setup broadcast channel - uses global.BroadcastChannel if available (for tests)
    */
   setupBroadcastChannel() {
-    // No-op: BroadcastChannel no longer used in v1.6.2
+    if (typeof global !== 'undefined' && global.BroadcastChannel) {
+      try {
+        this.channel = new global.BroadcastChannel(`quick-tabs-sync-${this.cookieStoreId}`);
+        this.channel.onmessage = (event) => {
+          const message = event.data;
+          // Emit to event bus so tests can handle
+          this.eventBus?.emit('broadcast:received', message);
+        };
+      } catch {
+        // BroadcastChannel not available, continue without it
+        this.channel = null;
+      }
+    }
   }
 
   /**
-   * Broadcast message (stores for test verification)
+   * Broadcast message - uses channel if available, stores for verification
    * @param {string} type - Message type
    * @param {Object} data - Message data
+   * @returns {Promise} - Always returns a Promise for consistency
    */
-  broadcast(type, data) {
-    const message = { type, data, timestamp: Date.now() };
+  async broadcast(type, data) {
+    const message = { type, data, timestamp: Date.now(), senderId: this.senderId };
     this.messageHistory.push(message);
     
     // Emit event for any listeners (simulates cross-tab behavior)
     this.eventBus?.emit('broadcast:sent', message);
+    
+    // Post to channel if available (for cross-tab delivery in tests)
+    if (this.channel && typeof this.channel.postMessage === 'function') {
+      this.channel.postMessage(message);
+    }
+    
+    return Promise.resolve();
   }
 
   /**
@@ -132,10 +153,13 @@ export class BroadcastManager {
   }
 
   /**
-   * Close the broadcast channel (no-op in mock)
+   * Close the broadcast channel
    */
   close() {
-    // No-op: BroadcastChannel no longer used in v1.6.2
+    if (this.channel) {
+      this.channel.close();
+      this.channel = null;
+    }
     this.messageHistory = [];
   }
 

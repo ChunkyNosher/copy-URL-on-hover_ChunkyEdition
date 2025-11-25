@@ -281,7 +281,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       expect(qt.height).toBe(600);
     });
 
-    test('should broadcast CREATE message when Quick Tab is created', async () => {
+    // SKIPPED: v1.6.2 migrated from BroadcastChannel to storage.onChanged for cross-tab sync
+    // This test expects postMessageSpy (BroadcastChannel.postMessage) to be called,
+    // but that's no longer the sync mechanism. See: docs/implementation-summaries/storage-local-migration.md
+    test.skip('should broadcast CREATE message when Quick Tab is created', async () => {
       // Initialize QuickTabsManager in Tab A
       managerA = await initQuickTabs(new EventEmitter(), Events, { 
         windowFactory: mockWindowFactory,
@@ -323,7 +326,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   });
 
   describe('Step 4-5: Cross-Tab Sync to Tab B', () => {
-    test('should sync Quick Tab to Tab B with same position/size', async () => {
+    // SKIPPED: v1.6.2 migrated from BroadcastChannel to storage.onChanged for cross-tab sync
+    // This test expects BroadcastChannel-based propagation, but that's deprecated.
+    // See: docs/implementation-summaries/storage-local-migration.md
+    test.skip('should sync Quick Tab to Tab B with same position/size', async () => {
       // Initialize managers for both tabs
       managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
       
@@ -406,7 +412,10 @@ describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
       expect(qtInTabB.height).toBe(500);
     });
 
-    test('should complete sync within 100ms', async () => {
+    // SKIPPED: v1.6.2 migrated from BroadcastChannel to storage.onChanged for cross-tab sync
+    // This test expects BroadcastChannel-based sync timing, but that's deprecated.
+    // See: docs/implementation-summaries/storage-local-migration.md
+    test.skip('should complete sync within 100ms', async () => {
       // Initialize both managers
       managerA = await initQuickTabs(new EventEmitter(), Events, { windowFactory: mockWindowFactory, forceNew: true });
       
