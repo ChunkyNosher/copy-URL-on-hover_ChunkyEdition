@@ -92,6 +92,12 @@ export class SyncCoordinator {
     // Extract Quick Tabs from container-aware storage format
     const quickTabData = this._extractQuickTabsFromStorage(newValue);
 
+    // Debug logging to track the sync pipeline
+    console.log('[SyncCoordinator] Processing storage change:', {
+      quickTabCount: quickTabData.length,
+      quickTabIds: quickTabData.map(qt => qt.id)
+    });
+
     if (quickTabData.length > 0) {
       // v1.6.2 - Convert raw storage data to QuickTab domain entities
       // StateManager.hydrate() expects QuickTab instances, not raw objects
