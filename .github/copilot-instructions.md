@@ -170,6 +170,9 @@ npm run test:coverage      # With coverage
 - Search memories: `searchMemories({ query: "keywords", limit: 5 })`
 - Keep queries SHORT (1-3 keywords max)
 
+## For storing memories, **DO NOT USE THE "store_memory" TOOL CALL, IT DOES NOT EXIST
+Use the agentic-tools MCP to create memories instead.
+
 ---
 
 ## ✅ Before Every Commit
