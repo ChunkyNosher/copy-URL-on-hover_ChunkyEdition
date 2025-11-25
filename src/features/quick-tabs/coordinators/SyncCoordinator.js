@@ -48,12 +48,24 @@ export class SyncCoordinator {
   /**
    * Setup event listeners for storage events
    * v1.6.2 - MIGRATION: Removed broadcast:received listener
+   * v1.6.2.1 - ISSUE #35 FIX: Added context-aware logging
    */
   setupListeners() {
-    console.log('[SyncCoordinator] Setting up listeners (storage.onChanged only)');
+    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
+    
+    console.log('[SyncCoordinator] Setting up listeners (storage.onChanged only)', {
+      context,
+      tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A'
+    });
 
     // Listen to storage changes (from StorageManager)
     this.eventBus.on('storage:changed', ({ state }) => {
+      console.log('[SyncCoordinator] Received storage:changed event', {
+        context: typeof window !== 'undefined' ? 'content-script' : 'background',
+        tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
+        hasState: !!state,
+        timestamp: Date.now()
+      });
       this.handleStorageChange(state);
     });
 
@@ -62,12 +74,13 @@ export class SyncCoordinator {
       this.handleTabVisible();
     });
 
-    console.log('[SyncCoordinator] Listeners setup complete');
+    console.log('[SyncCoordinator] ✓ Listeners setup complete', { context });
   }
 
   /**
    * Handle storage change events from other tabs
    * v1.6.2 - MIGRATION: Primary cross-tab sync mechanism
+   * v1.6.2.1 - ISSUE #35 FIX: Enhanced context-aware logging
    * 
    * Called when storage.onChanged fires (from another tab's write)
    * Note: This does NOT fire in the tab that made the change
@@ -75,25 +88,34 @@ export class SyncCoordinator {
    * @param {Object} newValue - New storage value with containers data
    */
   handleStorageChange(newValue) {
+    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
+    const tabUrl = typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A';
+    
     // Handle null/undefined
     if (!newValue) {
-      console.log('[SyncCoordinator] Ignoring null storage change');
+      console.log('[SyncCoordinator] Ignoring null storage change', { context, tabUrl });
       return;
     }
 
     // Check for duplicate message (prevents processing same change multiple times)
     if (this._isDuplicateMessage(newValue)) {
-      console.log('[SyncCoordinator] Ignoring duplicate storage change');
+      console.log('[SyncCoordinator] Ignoring duplicate storage change', { context, tabUrl });
       return;
     }
 
-    console.log('[SyncCoordinator] Storage changed from another tab, syncing state');
+    console.log('[SyncCoordinator] *** PROCESSING STORAGE CHANGE ***', {
+      context,
+      tabUrl,
+      timestamp: Date.now()
+    });
 
     // Extract Quick Tabs from container-aware storage format
     const quickTabData = this._extractQuickTabsFromStorage(newValue);
 
     // Debug logging to track the sync pipeline
-    console.log('[SyncCoordinator] Processing storage change:', {
+    console.log('[SyncCoordinator] Extracted Quick Tabs from storage:', {
+      context,
+      tabUrl,
       quickTabCount: quickTabData.length,
       quickTabIds: quickTabData.map(qt => qt.id)
     });
@@ -103,9 +125,17 @@ export class SyncCoordinator {
       // StateManager.hydrate() expects QuickTab instances, not raw objects
       const quickTabs = quickTabData.map(data => QuickTab.fromStorage(data));
       
+      console.log('[SyncCoordinator] Calling StateManager.hydrate()', {
+        context,
+        tabUrl,
+        quickTabCount: quickTabs.length
+      });
+      
       // Sync state from storage
       // This will trigger state:added, state:updated, state:deleted events
       this.stateManager.hydrate(quickTabs);
+      
+      console.log('[SyncCoordinator] ✓ State hydration complete', { context, tabUrl });
     }
 
     // Record that we processed this message

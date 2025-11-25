@@ -493,7 +493,11 @@ describe('StorageManager', () => {
 
       manager.setupStorageListeners();
 
-      expect(consoleSpy).toHaveBeenCalledWith('[StorageManager] Storage API not available');
+      // v1.6.2.1 - Updated log format includes context
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[StorageManager] Storage API not available in context:',
+        'content-script'
+      );
       consoleSpy.mockRestore();
     });
 
@@ -503,7 +507,11 @@ describe('StorageManager', () => {
 
       manager.setupStorageListeners();
 
-      expect(consoleSpy).toHaveBeenCalledWith('[StorageManager] Storage API not available');
+      // v1.6.2.1 - Updated log format includes context
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[StorageManager] Storage API not available in context:',
+        'content-script'
+      );
       consoleSpy.mockRestore();
     });
   });

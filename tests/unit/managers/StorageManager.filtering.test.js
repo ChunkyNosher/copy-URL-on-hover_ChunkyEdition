@@ -147,11 +147,14 @@ describe('StorageManager - Storage Listener Filtering', () => {
       
       capturedListener(changes, 'local');
       
-      // Should log that storage changed
+      // Should log that storage changed (v1.6.2.1 - Updated format with context object)
       expect(consoleSpy).toHaveBeenCalledWith(
         '[StorageManager] Storage changed:',
-        'local',
-        ['quick_tabs_state_v2']
+        expect.objectContaining({
+          context: 'content-script',
+          areaName: 'local',
+          changedKeys: ['quick_tabs_state_v2']
+        })
       );
       
       consoleSpy.mockRestore();
@@ -176,11 +179,14 @@ describe('StorageManager - Storage Listener Filtering', () => {
         expect.any(String)
       );
       
-      // Should still process the remaining key
+      // Should still process the remaining key (v1.6.2.1 - Updated format with context object)
       expect(consoleSpy).toHaveBeenCalledWith(
         '[StorageManager] Storage changed:',
-        'local',
-        ['quick_tabs_state_v2']
+        expect.objectContaining({
+          context: 'content-script',
+          areaName: 'local',
+          changedKeys: ['quick_tabs_state_v2']
+        })
       );
       
       consoleSpy.mockRestore();

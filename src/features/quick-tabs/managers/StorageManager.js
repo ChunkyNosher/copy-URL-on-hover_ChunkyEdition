@@ -232,31 +232,65 @@ export class StorageManager {
   /**
    * Setup storage change listeners
    * v1.6.2 - MIGRATION: Listen ONLY for storage.local changes
+   * v1.6.2.1 - ISSUE #35 FIX: Enhanced logging to track listener context
+   * 
+   * CRITICAL: This listener MUST be registered in EACH content script context.
+   * Mozilla docs: "storage.onChanged fires in all contexts where the storage API is available"
+   * Each tab's content script must have its own listener - they are NOT shared!
    * 
    * Cross-tab sync is now handled exclusively via storage.onChanged events.
    * When any tab writes to storage.local, all OTHER tabs receive the change.
    * Note: The tab that made the change does NOT receive the event.
    */
   setupStorageListeners() {
+    // Detect execution context for debugging
+    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
+    const tabUrl = typeof window !== 'undefined' ? window.location?.href : 'N/A';
+    
+    console.log('[StorageManager] Setting up storage.onChanged listener', {
+      context,
+      tabUrl: tabUrl?.substring(0, 50),
+      cookieStoreId: this.cookieStoreId,
+      timestamp: Date.now()
+    });
+
     if (typeof browser === 'undefined' || !browser.storage) {
-      console.warn('[StorageManager] Storage API not available');
+      console.warn('[StorageManager] Storage API not available in context:', context);
       return;
     }
 
+    // CRITICAL: Register listener - this MUST run in each content script
     browser.storage.onChanged.addListener((changes, areaName) => {
+      // Issue #35 Fix: Log EVERY time listener fires to confirm it's working
+      console.log('[StorageManager] *** LISTENER FIRED ***', {
+        context: typeof window !== 'undefined' ? 'content-script' : 'background',
+        tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
+        areaName,
+        changedKeys: Object.keys(changes),
+        timestamp: Date.now()
+      });
+      
       this._onStorageChanged(changes, areaName);
     });
 
-    console.log('[StorageManager] Storage listeners attached (storage.local only)');
+    console.log('[StorageManager] ✓ Storage listeners attached successfully', {
+      context,
+      tabUrl: tabUrl?.substring(0, 50),
+      cookieStoreId: this.cookieStoreId
+    });
   }
 
   /**
    * Handle raw storage changes and filter out internal keys
+   * v1.6.2.1 - ISSUE #35 FIX: Added context-aware debug logging
    * @private
    * @param {Object} changes - Storage changes object
    * @param {string} areaName - Storage area name
    */
   _onStorageChanged(changes, areaName) {
+    // Detect execution context
+    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
+    
     // Filter out broadcast history and sync message keys to prevent feedback loops
     const filteredChanges = this._filterStorageChanges(changes);
     
@@ -265,7 +299,12 @@ export class StorageManager {
       return;
     }
 
-    console.log('[StorageManager] Storage changed:', areaName, Object.keys(filteredChanges));
+    console.log('[StorageManager] Storage changed:', {
+      context,
+      areaName,
+      changedKeys: Object.keys(filteredChanges),
+      tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A'
+    });
 
     // Route changes to appropriate handlers based on area
     this._routeStorageChange(filteredChanges, areaName);
@@ -337,24 +376,34 @@ export class StorageManager {
   /**
    * Handle storage change event
    * v1.6.2 - Added debug logging to track sync pipeline
+   * v1.6.2.1 - ISSUE #35 FIX: Enhanced context-aware logging
    * @param {Object} newValue - New storage value
    */
   handleStorageChange(newValue) {
+    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
     const willSkip = !newValue || this._shouldSkipStorageChange(newValue);
     
     // Debug logging to track the sync pipeline
-    console.log('[StorageManager] Storage change detected:', {
+    console.log('[StorageManager] Processing storage change:', {
+      context,
+      tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
       saveId: newValue?.saveId,
       containerCount: Object.keys(newValue?.containers || {}).length,
-      willScheduleSync: !willSkip
+      willScheduleSync: !willSkip,
+      timestamp: Date.now()
     });
     
     if (willSkip) {
+      console.log('[StorageManager] Skipping storage change (own save or pending)', {
+        context,
+        saveId: newValue?.saveId
+      });
       return;
     }
 
     const stateToSync = this._extractSyncState(newValue);
     if (stateToSync) {
+      console.log('[StorageManager] Scheduling sync...', { context });
       this.scheduleStorageSync(stateToSync);
     }
   }
@@ -435,6 +484,7 @@ export class StorageManager {
 
   /**
    * Schedule debounced storage sync
+   * v1.6.2.1 - ISSUE #35 FIX: Added debug logging for event emission
    * @param {Object} stateSnapshot - Storage state snapshot
    */
   scheduleStorageSync(stateSnapshot) {
@@ -444,11 +494,22 @@ export class StorageManager {
       clearTimeout(this.storageSyncTimer);
     }
 
+    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
+
     // eslint-disable-next-line require-await
     this.storageSyncTimer = setTimeout(async () => {
       const snapshot = this.latestStorageSnapshot;
       this.latestStorageSnapshot = null;
       this.storageSyncTimer = null;
+
+      // Issue #35 Fix: Log when emitting storage:changed event
+      console.log('[StorageManager] Emitting storage:changed event', {
+        context,
+        tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
+        containerFilter: this.cookieStoreId,
+        hasEventBus: !!this.eventBus,
+        timestamp: Date.now()
+      });
 
       // Emit event for coordinator to handle sync
       this.eventBus?.emit('storage:changed', {
