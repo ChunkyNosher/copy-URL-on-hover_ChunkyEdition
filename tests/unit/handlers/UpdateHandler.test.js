@@ -1,5 +1,6 @@
 /**
  * @fileoverview Unit tests for UpdateHandler
+ * v1.6.2 - MIGRATION: Removed BroadcastManager
  * @jest-environment jsdom
  */
 
@@ -17,7 +18,6 @@ global.browser = {
 describe('UpdateHandler', () => {
   let updateHandler;
   let mockQuickTabsMap;
-  let mockBroadcastManager;
   let mockStorageManager;
   let mockEventBus;
   let mockTab;
@@ -47,12 +47,6 @@ describe('UpdateHandler', () => {
     // Create mock Map
     mockQuickTabsMap = new Map([['qt-123', mockTab]]);
 
-    // Create mock broadcast manager
-    mockBroadcastManager = {
-      notifyPositionUpdate: jest.fn(),
-      notifySizeUpdate: jest.fn()
-    };
-
     // Create mock storage manager
     mockStorageManager = {
       save: jest.fn(async () => {})
@@ -65,10 +59,9 @@ describe('UpdateHandler', () => {
     mockGenerateSaveId = jest.fn(() => '1234567890-abc123');
     mockReleasePendingSave = jest.fn();
 
-    // Create handler
+    // Create handler (v1.6.2 - no broadcastManager)
     updateHandler = new UpdateHandler(
       mockQuickTabsMap,
-      mockBroadcastManager,
       mockStorageManager,
       mockEventBus,
       mockGenerateSaveId,
@@ -79,7 +72,7 @@ describe('UpdateHandler', () => {
   describe('Constructor', () => {
     test('should initialize with required dependencies', () => {
       expect(updateHandler.quickTabsMap).toBe(mockQuickTabsMap);
-      expect(updateHandler.broadcastManager).toBe(mockBroadcastManager);
+      expect(updateHandler.quickTabsMap).toBe(mockQuickTabsMap);
       expect(updateHandler.storageManager).toBe(mockStorageManager);
       expect(updateHandler.eventBus).toBe(mockEventBus);
     });
@@ -91,11 +84,10 @@ describe('UpdateHandler', () => {
   });
 
   describe('handlePositionChange()', () => {
-    test('should update tab position immediately (no broadcast/save)', () => {
+    test('should update tab position immediately (no save)', () => {
       updateHandler.handlePositionChange('qt-123', 200, 150);
 
-      // No broadcasts or saves during drag
-      expect(mockBroadcastManager.notifyPositionUpdate).not.toHaveBeenCalled();
+      // No saves during drag (v1.6.2 - no broadcast)
       expect(mockStorageManager.save).not.toHaveBeenCalled();
       expect(browser.runtime.sendMessage).not.toHaveBeenCalled();
     });
@@ -108,13 +100,7 @@ describe('UpdateHandler', () => {
   });
 
   describe('handlePositionChangeEnd()', () => {
-    test('should broadcast position update', async () => {
-      await updateHandler.handlePositionChangeEnd('qt-123', 250, 175);
-
-      expect(mockBroadcastManager.notifyPositionUpdate).toHaveBeenCalledWith('qt-123', 250, 175);
-    });
-
-    test('should send message to background with saveId', async () => {
+    test('should send message to background (triggers storage.onChanged in other tabs)', async () => {
       await updateHandler.handlePositionChangeEnd('qt-123', 250, 175);
 
       expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
@@ -194,11 +180,10 @@ describe('UpdateHandler', () => {
   });
 
   describe('handleSizeChange()', () => {
-    test('should update tab size immediately (no broadcast/save)', () => {
+    test('should update tab size immediately (no save)', () => {
       updateHandler.handleSizeChange('qt-123', 500, 400);
 
-      // No broadcasts or saves during resize
-      expect(mockBroadcastManager.notifySizeUpdate).not.toHaveBeenCalled();
+      // No saves during resize (v1.6.2 - no broadcast)
       expect(mockStorageManager.save).not.toHaveBeenCalled();
       expect(browser.runtime.sendMessage).not.toHaveBeenCalled();
     });
@@ -211,10 +196,11 @@ describe('UpdateHandler', () => {
   });
 
   describe('handleSizeChangeEnd()', () => {
-    test('should broadcast size update', async () => {
+    test('should send message to background (triggers storage.onChanged in other tabs)', async () => {
       await updateHandler.handleSizeChangeEnd('qt-123', 500, 400);
 
-      expect(mockBroadcastManager.notifySizeUpdate).toHaveBeenCalledWith('qt-123', 500, 400);
+      // v1.6.2 - No broadcast, only storage via background
+      expect(browser.runtime.sendMessage).toHaveBeenCalled();
     });
 
     test('should send message to background with saveId', async () => {
@@ -234,7 +220,13 @@ describe('UpdateHandler', () => {
     test('should round size values', async () => {
       await updateHandler.handleSizeChangeEnd('qt-123', 500.7, 400.3);
 
-      expect(mockBroadcastManager.notifySizeUpdate).toHaveBeenCalledWith('qt-123', 501, 400);
+      // v1.6.2 - No broadcast, verify rounded values in sendMessage
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          width: 501,
+          height: 400
+        })
+      );
     });
 
     test('should emit tab:size-updated event', async () => {

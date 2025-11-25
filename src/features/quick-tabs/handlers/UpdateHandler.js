@@ -1,41 +1,44 @@
 /**
  * @fileoverview UpdateHandler - Handles Quick Tab position and size updates
  * Extracted from QuickTabsManager Phase 2.1 refactoring
+ * v1.6.2 - MIGRATION: Removed BroadcastManager, uses storage.onChanged for cross-tab sync
  *
  * Responsibilities:
- * - Handle position updates during drag (no broadcast/save)
- * - Handle position updates at drag end (broadcast + save)
- * - Handle size updates during resize (no broadcast/save)
- * - Handle size updates at resize end (broadcast + save)
+ * - Handle position updates during drag (no save)
+ * - Handle position updates at drag end (save to storage)
+ * - Handle size updates during resize (no save)
+ * - Handle size updates at resize end (save to storage)
  * - Emit update events for coordinators
  *
- * @version 1.6.0
+ * Migration Notes (v1.6.2):
+ * - Removed BroadcastManager dependency
+ * - Writing to storage via background triggers storage.onChanged in other tabs
+ * - Local UI updates happen immediately (no storage event for self)
+ *
+ * @version 1.6.2
  * @author refactor-specialist
  */
 
 /**
  * UpdateHandler class
- * Manages Quick Tab position and size updates with throttling and broadcast coordination
+ * Manages Quick Tab position and size updates with storage-based cross-tab sync
  */
 export class UpdateHandler {
   /**
    * @param {Map} quickTabsMap - Map of Quick Tab instances
-   * @param {BroadcastManager} broadcastManager - Broadcast manager for cross-tab sync
-   * @param {StorageManager} storageManager - Storage manager (currently unused, kept for future use)
+   * @param {StorageManager} storageManager - Storage manager for persistence
    * @param {EventEmitter} eventBus - Event bus for internal communication
    * @param {Function} generateSaveId - Function to generate saveId for transaction tracking
    * @param {Function} releasePendingSave - Function to release pending saveId
    */
   constructor(
     quickTabsMap,
-    broadcastManager,
     storageManager,
     eventBus,
     generateSaveId,
     releasePendingSave
   ) {
     this.quickTabsMap = quickTabsMap;
-    this.broadcastManager = broadcastManager;
     this.storageManager = storageManager;
     this.eventBus = eventBus;
     this.generateSaveId = generateSaveId;
@@ -48,8 +51,8 @@ export class UpdateHandler {
 
   /**
    * Handle position change during drag
-   * v1.5.8.15 - No longer broadcasts or syncs during drag
-   * This prevents excessive BroadcastChannel messages and storage writes
+   * v1.5.8.15 - No longer saves during drag
+   * This prevents excessive storage writes
    * Position syncs only on drag end via handlePositionChangeEnd
    *
    * @param {string} id - Quick Tab ID
@@ -57,17 +60,15 @@ export class UpdateHandler {
    * @param {number} top - New top position
    */
   handlePositionChange(_id, _left, _top) {
-    // v1.5.8.15 - No longer broadcasts or syncs during drag
-    // This prevents excessive BroadcastChannel messages and storage writes
+    // v1.5.8.15 - No storage writes during drag
+    // This prevents excessive storage writes
     // Position syncs only on drag end via handlePositionChangeEnd
     // Local UI update happens automatically via pointer events
   }
 
   /**
-   * Handle position change end (drag end) - broadcast and save
-   * v1.5.8.13 - Enhanced with BroadcastChannel sync
-   * v1.5.8.14 - Added transaction ID for race condition prevention
-   * v1.5.9.12 - Container integration: Include container context
+   * Handle position change end (drag end) - save to storage
+   * v1.6.2 - MIGRATION: Writes to storage (triggers storage.onChanged in other tabs)
    *
    * @param {string} id - Quick Tab ID
    * @param {number} left - Final left position
@@ -84,15 +85,14 @@ export class UpdateHandler {
     const roundedLeft = Math.round(left);
     const roundedTop = Math.round(top);
 
-    // v1.5.8.14 - Generate save ID for transaction tracking
+    // Generate save ID for transaction tracking
     const saveId = this.generateSaveId();
 
-    // v1.5.9.12 - Get cookieStoreId from tab
+    // Get cookieStoreId from tab
     const tabWindow = this.quickTabsMap.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
 
-    // Phase 3: AWAIT storage write BEFORE broadcasting
-    // Ensures storage is updated when other tabs receive the broadcast
+    // v1.6.2 - Save to storage (triggers storage.onChanged in other tabs)
     if (typeof browser !== 'undefined' && browser.runtime) {
       try {
         await browser.runtime.sendMessage({
@@ -100,20 +100,17 @@ export class UpdateHandler {
           id: id,
           left: roundedLeft,
           top: roundedTop,
-          cookieStoreId: cookieStoreId, // v1.5.9.12 - Include container context
-          saveId: saveId, // v1.5.8.14 - Include save ID
+          cookieStoreId: cookieStoreId,
+          saveId: saveId,
           timestamp: Date.now()
         });
       } catch (err) {
         console.error('[UpdateHandler] Final position save error:', err);
         this.releasePendingSave(saveId);
-        return; // Don't broadcast if storage failed
+        return;
       }
     }
 
-    // Phase 3: NOW broadcast AFTER storage write completes
-    this.broadcastManager.notifyPositionUpdate(id, roundedLeft, roundedTop);
-    
     this.releasePendingSave(saveId);
 
     // Emit event for coordinators
@@ -126,7 +123,7 @@ export class UpdateHandler {
 
   /**
    * Handle size change during resize
-   * v1.5.8.15 - REMOVED broadcast/sync during resize to prevent performance issues
+   * v1.5.8.15 - REMOVED save during resize to prevent performance issues
    * Size only syncs on resize end for optimal performance
    *
    * @param {string} id - Quick Tab ID
@@ -134,17 +131,15 @@ export class UpdateHandler {
    * @param {number} height - New height
    */
   handleSizeChange(_id, _width, _height) {
-    // v1.5.8.15 - No longer broadcasts or syncs during resize
-    // This prevents excessive BroadcastChannel messages and storage writes
+    // v1.5.8.15 - No storage writes during resize
+    // This prevents excessive storage writes
     // Size syncs only on resize end via handleSizeChangeEnd
     // Local UI update happens automatically via pointer events
   }
 
   /**
-   * Handle size change end (resize end) - broadcast and save
-   * v1.5.8.13 - Enhanced with BroadcastChannel sync
-   * v1.5.8.14 - Added transaction ID for race condition prevention
-   * v1.5.9.12 - Container integration: Include container context
+   * Handle size change end (resize end) - save to storage
+   * v1.6.2 - MIGRATION: Writes to storage (triggers storage.onChanged in other tabs)
    *
    * @param {string} id - Quick Tab ID
    * @param {number} width - Final width
@@ -161,15 +156,14 @@ export class UpdateHandler {
     const roundedWidth = Math.round(width);
     const roundedHeight = Math.round(height);
 
-    // v1.5.8.14 - Generate save ID for transaction tracking
+    // Generate save ID for transaction tracking
     const saveId = this.generateSaveId();
 
-    // v1.5.9.12 - Get cookieStoreId from tab
+    // Get cookieStoreId from tab
     const tabWindow = this.quickTabsMap.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
 
-    // Phase 3: AWAIT storage write BEFORE broadcasting
-    // Ensures storage is updated when other tabs receive the broadcast
+    // v1.6.2 - Save to storage (triggers storage.onChanged in other tabs)
     if (typeof browser !== 'undefined' && browser.runtime) {
       try {
         await browser.runtime.sendMessage({
@@ -177,20 +171,17 @@ export class UpdateHandler {
           id: id,
           width: roundedWidth,
           height: roundedHeight,
-          cookieStoreId: cookieStoreId, // v1.5.9.12 - Include container context
-          saveId: saveId, // v1.5.8.14 - Include save ID
+          cookieStoreId: cookieStoreId,
+          saveId: saveId,
           timestamp: Date.now()
         });
       } catch (err) {
         console.error('[UpdateHandler] Final size save error:', err);
         this.releasePendingSave(saveId);
-        return; // Don't broadcast if storage failed
+        return;
       }
     }
 
-    // Phase 3: NOW broadcast AFTER storage write completes
-    this.broadcastManager.notifySizeUpdate(id, roundedWidth, roundedHeight);
-    
     this.releasePendingSave(saveId);
 
     // Emit event for coordinators

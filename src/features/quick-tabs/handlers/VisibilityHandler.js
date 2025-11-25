@@ -1,6 +1,7 @@
 /**
  * @fileoverview VisibilityHandler - Handles Quick Tab visibility operations
  * Extracted from QuickTabsManager Phase 2.1 refactoring
+ * v1.6.2 - MIGRATION: Removed BroadcastManager, uses storage.onChanged for cross-tab sync
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -10,20 +11,24 @@
  * - Update button appearances
  * - Emit events for coordinators
  *
- * @version 1.6.0
+ * Migration Notes (v1.6.2):
+ * - Removed BroadcastManager dependency
+ * - Writing to storage via background triggers storage.onChanged in other tabs
+ * - Local UI updates happen immediately (no storage event for self)
+ *
+ * @version 1.6.2
  * @author refactor-specialist
  */
 
 /**
  * VisibilityHandler class
- * Manages Quick Tab visibility states (solo, mute, minimize, focus)
+ * Manages Quick Tab visibility states (solo, mute, minimize, focus) with storage-based cross-tab sync
  */
 export class VisibilityHandler {
   /**
    * @param {Object} options - Configuration options
    * @param {Map} options.quickTabsMap - Map of Quick Tab instances
-   * @param {BroadcastManager} options.broadcastManager - Broadcast manager for cross-tab sync
-   * @param {StorageManager} options.storageManager - Storage manager (currently unused, kept for future use)
+   * @param {StorageManager} options.storageManager - Storage manager for persistence
    * @param {MinimizedManager} options.minimizedManager - Manager for minimized Quick Tabs
    * @param {EventEmitter} options.eventBus - Event bus for internal communication
    * @param {Object} options.currentZIndex - Reference object with value property for z-index
@@ -35,7 +40,6 @@ export class VisibilityHandler {
    */
   constructor(options) {
     this.quickTabsMap = options.quickTabsMap;
-    this.broadcastManager = options.broadcastManager;
     this.storageManager = options.storageManager;
     this.minimizedManager = options.minimizedManager;
     this.eventBus = options.eventBus;
@@ -49,7 +53,7 @@ export class VisibilityHandler {
 
   /**
    * Handle solo toggle from Quick Tab window or panel
-   * v1.5.9.13 - Solo feature: show Quick Tab ONLY on specific tabs
+   * v1.6.2 - MIGRATION: Uses storage for cross-tab sync
    *
    * @param {string} quickTabId - Quick Tab ID
    * @param {number[]} newSoloedTabs - Array of tab IDs where Quick Tab should be visible
@@ -61,14 +65,13 @@ export class VisibilityHandler {
       newTabs: newSoloedTabs,
       tabsProperty: 'soloedOnTabs',
       clearProperty: 'mutedOnTabs',
-      updateButton: this._updateSoloButton.bind(this),
-      broadcastNotify: tabs => this.broadcastManager.notifySolo(quickTabId, tabs)
+      updateButton: this._updateSoloButton.bind(this)
     });
   }
 
   /**
    * Handle mute toggle from Quick Tab window or panel
-   * v1.5.9.13 - Mute feature: hide Quick Tab ONLY on specific tabs
+   * v1.6.2 - MIGRATION: Uses storage for cross-tab sync
    *
    * @param {string} quickTabId - Quick Tab ID
    * @param {number[]} newMutedTabs - Array of tab IDs where Quick Tab should be hidden
@@ -80,21 +83,20 @@ export class VisibilityHandler {
       newTabs: newMutedTabs,
       tabsProperty: 'mutedOnTabs',
       clearProperty: 'soloedOnTabs',
-      updateButton: this._updateMuteButton.bind(this),
-      broadcastNotify: tabs => this.broadcastManager.notifyMute(quickTabId, tabs)
+      updateButton: this._updateMuteButton.bind(this)
     });
   }
 
   /**
    * Common handler for solo/mute visibility toggles
-   * Extracts shared logic to reduce duplication
+   * v1.6.2 - MIGRATION: Removed BroadcastManager calls
    * @private
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} config - Configuration for toggle operation
    * @returns {Promise<void>}
    */
   async _handleVisibilityToggle(quickTabId, config) {
-    const { mode, newTabs, tabsProperty, clearProperty, updateButton, broadcastNotify } = config;
+    const { mode, newTabs, tabsProperty, clearProperty, updateButton } = config;
 
     console.log(`[VisibilityHandler] Toggling ${mode.toLowerCase()} for ${quickTabId}:`, newTabs);
 
@@ -108,18 +110,14 @@ export class VisibilityHandler {
     // Update button states if tab has them
     updateButton(tab, newTabs);
 
-    // Broadcast to other tabs
-    broadcastNotify(newTabs);
-
-    // Save to background
+    // v1.6.2 - Save to background (triggers storage.onChanged in other tabs)
     const data = { [tabsProperty]: newTabs };
     await this._sendToBackground(quickTabId, tab, mode, data);
   }
 
   /**
    * Handle Quick Tab minimize
-   * v1.5.8.13 - Broadcast minimize to other tabs
-   * v1.5.9.8 - Update storage immediately to reflect minimized state
+   * v1.6.2 - MIGRATION: Uses storage for cross-tab sync
    *
    * @param {string} id - Quick Tab ID
    * @returns {Promise<void>}
@@ -133,19 +131,15 @@ export class VisibilityHandler {
     // Add to minimized manager
     this.minimizedManager.add(id, tabWindow);
 
-    // v1.5.8.13 - Broadcast minimize to other tabs
-    this.broadcastManager.notifyMinimize(id);
-
     // Emit minimize event
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_MINIMIZED, { id });
     }
 
-    // v1.5.9.8 - FIX: Update storage immediately to reflect minimized state
+    // Update storage (triggers storage.onChanged in other tabs)
     const saveId = this.generateSaveId();
     this.trackPendingSave(saveId);
 
-    // v1.5.9.12 - Get cookieStoreId from tab
     const cookieStoreId = tabWindow.cookieStoreId || 'firefox-default';
 
     if (typeof browser !== 'undefined' && browser.runtime) {
@@ -154,7 +148,7 @@ export class VisibilityHandler {
           action: 'UPDATE_QUICK_TAB_MINIMIZE',
           id: id,
           minimized: true,
-          cookieStoreId: cookieStoreId, // v1.5.9.12 - Include container context
+          cookieStoreId: cookieStoreId,
           saveId: saveId,
           timestamp: Date.now()
         });
@@ -170,6 +164,7 @@ export class VisibilityHandler {
 
   /**
    * Handle restore of minimized Quick Tab
+   * v1.6.2 - MIGRATION: Uses storage for cross-tab sync
    * @param {string} id - Quick Tab ID
    */
   async handleRestore(id) {
@@ -182,15 +177,12 @@ export class VisibilityHandler {
       return;
     }
 
-    // Broadcast restore to other tabs
-    this.broadcastManager.notifyRestore(id);
-
     // Emit restore event
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id });
     }
 
-    // Update storage to reflect restored state
+    // Update storage (triggers storage.onChanged in other tabs)
     const saveId = this.generateSaveId();
     this.trackPendingSave(saveId);
 
@@ -235,7 +227,7 @@ export class VisibilityHandler {
 
   /**
    * Handle Quick Tab focus (bring to front)
-   * v1.6.0.12 - FIX: Save z-index to background for proper sync across tabs
+   * v1.6.2 - MIGRATION: Uses storage for cross-tab sync
    *
    * @param {string} id - Quick Tab ID
    */
@@ -250,7 +242,7 @@ export class VisibilityHandler {
     const newZIndex = this.currentZIndex.value;
     tabWindow.updateZIndex(newZIndex);
 
-    // v1.6.0.12 - FIX: Save z-index to background for cross-tab sync
+    // Save z-index to background for cross-tab sync
     const cookieStoreId = tabWindow.cookieStoreId || 'firefox-default';
     if (typeof browser !== 'undefined' && browser.runtime) {
       try {
@@ -304,6 +296,7 @@ export class VisibilityHandler {
 
   /**
    * Send message to background for persistence
+   * v1.6.2 - Triggers storage.onChanged in other tabs
    * @private
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} tab - Quick Tab instance

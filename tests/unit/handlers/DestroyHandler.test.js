@@ -1,5 +1,6 @@
 /**
  * @fileoverview Unit tests for DestroyHandler
+ * v1.6.2 - MIGRATION: Removed BroadcastManager from tests
  * @jest-environment jsdom
  */
 
@@ -17,7 +18,6 @@ global.browser = {
 describe('DestroyHandler', () => {
   let destroyHandler;
   let mockQuickTabsMap;
-  let mockBroadcastManager;
   let mockMinimizedManager;
   let mockEventBus;
   let mockCurrentZIndex;
@@ -45,11 +45,6 @@ describe('DestroyHandler', () => {
       ['qt-456', { id: 'qt-456', destroy: jest.fn() }]
     ]);
 
-    // Create mock broadcast manager
-    mockBroadcastManager = {
-      notifyClose: jest.fn()
-    };
-
     // Create mock minimized manager
     mockMinimizedManager = {
       remove: jest.fn(),
@@ -72,10 +67,9 @@ describe('DestroyHandler', () => {
       QUICK_TAB_CLOSED: 'quick-tab:closed'
     };
 
-    // Create handler
+    // Create handler (v1.6.2 - no broadcastManager)
     destroyHandler = new DestroyHandler(
       mockQuickTabsMap,
-      mockBroadcastManager,
       mockMinimizedManager,
       mockEventBus,
       mockCurrentZIndex,
@@ -89,7 +83,6 @@ describe('DestroyHandler', () => {
   describe('Constructor', () => {
     test('should initialize with required dependencies', () => {
       expect(destroyHandler.quickTabsMap).toBe(mockQuickTabsMap);
-      expect(destroyHandler.broadcastManager).toBe(mockBroadcastManager);
       expect(destroyHandler.minimizedManager).toBe(mockMinimizedManager);
       expect(destroyHandler.eventBus).toBe(mockEventBus);
     });
@@ -108,13 +101,7 @@ describe('DestroyHandler', () => {
       expect(mockMinimizedManager.remove).toHaveBeenCalledWith('qt-123');
     });
 
-    test('should broadcast close message', () => {
-      destroyHandler.handleDestroy('qt-123');
-
-      expect(mockBroadcastManager.notifyClose).toHaveBeenCalledWith('qt-123');
-    });
-
-    test('should send message to background', async () => {
+    test('should send message to background (triggers storage.onChanged in other tabs)', async () => {
       await destroyHandler.handleDestroy('qt-123');
 
       expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
@@ -282,7 +269,7 @@ describe('DestroyHandler', () => {
 
       expect(mockQuickTabsMap.has('qt-123')).toBe(false);
       expect(mockMinimizedManager.remove).toHaveBeenCalled();
-      expect(mockBroadcastManager.notifyClose).toHaveBeenCalled();
+      // v1.6.2 - No broadcast, only storage via background
       expect(browser.runtime.sendMessage).toHaveBeenCalled();
       expect(eventSpy).toHaveBeenCalled();
     });

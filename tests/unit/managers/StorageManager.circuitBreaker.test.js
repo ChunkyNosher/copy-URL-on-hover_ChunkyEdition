@@ -235,14 +235,15 @@ describe('StorageManager - Circuit Breaker', () => {
       
       const stats = storageManager.getCircuitBreakerStats();
       
+      // v1.6.2 - Updated thresholds for storage.local reliability
       expect(stats).toEqual({
         state: 'CLOSED',
         failureCount: 3,
         successCount: 1,
-        failureThreshold: 5,
+        failureThreshold: 10, // v1.6.2: increased for storage.local
         successThreshold: 2,
         lastFailureTime: 1234567890,
-        resetTimeoutMs: 10000
+        resetTimeoutMs: 5000 // v1.6.2: reduced for faster recovery
       });
     });
   });

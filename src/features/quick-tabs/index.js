@@ -6,12 +6,12 @@
  * Reduces complexity from 1453 lines to ~400 lines by delegating to extracted components
  *
  * Architecture:
- * - Facade orchestrates 4 managers, 4 handlers, 2 coordinators
+ * - Facade orchestrates 3 managers, 4 handlers, 2 coordinators
  * - Maintains backward compatibility with legacy API
  * - Delegates all business logic to specialized components
  * 
- * v1.6.0.x - MEMORY LEAK FIX: Added MemoryGuard integration
- * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+ * v1.6.2 - MIGRATION: Removed BroadcastManager, uses storage.onChanged for cross-tab sync
+ * See: docs/implementation-summaries/storage-local-migration.md
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -23,7 +23,6 @@ import { CreateHandler } from './handlers/CreateHandler.js';
 import { DestroyHandler } from './handlers/DestroyHandler.js';
 import { UpdateHandler } from './handlers/UpdateHandler.js';
 import { VisibilityHandler } from './handlers/VisibilityHandler.js';
-import { BroadcastManager } from './managers/BroadcastManager.js';
 import { EventManager } from './managers/EventManager.js';
 import { StateManager } from './managers/StateManager.js';
 import { StorageManager } from './managers/StorageManager.js';
@@ -34,6 +33,7 @@ import { CONSTANTS } from '../../core/config.js';
 /**
  * QuickTabsManager - Facade for Quick Tab management
  * v1.6.0 - Simplified to orchestration layer, delegates to specialized components
+ * v1.6.2 - Removed BroadcastManager, uses storage.onChanged for cross-tab sync
  */
 class QuickTabsManager {
   constructor(options = {}) {
@@ -50,7 +50,6 @@ class QuickTabsManager {
 
     // Managers (initialized in init())
     this.storage = null;
-    this.broadcast = null;
     this.state = null;
     this.events = null;
 
@@ -71,13 +70,11 @@ class QuickTabsManager {
     // Legacy fields for backward compatibility (KEEP - required by old code)
     this.eventBus = null; // External event bus from content.js
     this.Events = null; // Event constants
-    this.broadcastChannel = null; // Legacy field (now handled by BroadcastManager)
     
     // v1.6.1.2 - Dependency injection for testing
     this.windowFactory = options.windowFactory || null;
 
-    // MEMORY LEAK FIX: MemoryGuard for emergency shutdown
-    // See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+    // MemoryGuard for emergency shutdown
     this.memoryGuard = null;
   }
 
@@ -215,15 +212,15 @@ class QuickTabsManager {
 
   /**
    * Initialize manager components
+   * v1.6.2 - MIGRATION: Removed BroadcastManager
    * @private
    */
   _initializeManagers() {
     this.storage = new StorageManager(this.internalEventBus, this.cookieStoreId);
-    this.broadcast = new BroadcastManager(this.internalEventBus, this.cookieStoreId);
     this.state = new StateManager(this.internalEventBus, this.currentTabId);
     this.events = new EventManager(this.internalEventBus, this.tabs);
 
-    // MEMORY LEAK FIX: Initialize MemoryGuard for emergency shutdown
+    // Initialize MemoryGuard for emergency shutdown
     this.memoryGuard = new MemoryGuard({
       eventBus: this.internalEventBus,
       extensionThresholdMB: 1000,
@@ -248,11 +245,6 @@ class QuickTabsManager {
     console.error('[QuickTabsManager] ⚠️ EMERGENCY SHUTDOWN ⚠️', { reason, memoryMB });
     
     try {
-      // Stop broadcast history operations (already disabled but ensure stopped)
-      if (this.broadcast) {
-        this.broadcast.stopPeriodicSnapshots();
-      }
-      
       // Clear any pending storage operations
       if (this.storage) {
         // Force circuit breaker open
@@ -272,6 +264,7 @@ class QuickTabsManager {
 
   /**
    * Initialize handler components
+   * v1.6.2 - MIGRATION: Removed BroadcastManager from handlers
    * @private
    */
   _initializeHandlers() {
@@ -279,7 +272,6 @@ class QuickTabsManager {
       this.tabs,
       this.currentZIndex,
       this.cookieStoreId,
-      this.broadcast,
       this.eventBus,
       this.Events,
       this.generateId.bind(this),
@@ -288,7 +280,6 @@ class QuickTabsManager {
 
     this.updateHandler = new UpdateHandler(
       this.tabs,
-      this.broadcast,
       this.storage,
       this.internalEventBus,
       this.generateSaveId.bind(this),
@@ -297,7 +288,6 @@ class QuickTabsManager {
 
     this.visibilityHandler = new VisibilityHandler({
       quickTabsMap: this.tabs,
-      broadcastManager: this.broadcast,
       storageManager: this.storage,
       minimizedManager: this.minimizedManager,
       eventBus: this.internalEventBus,
@@ -311,7 +301,6 @@ class QuickTabsManager {
 
     this.destroyHandler = new DestroyHandler(
       this.tabs,
-      this.broadcast,
       this.minimizedManager,
       this.eventBus,
       this.currentZIndex,
@@ -324,6 +313,7 @@ class QuickTabsManager {
 
   /**
    * Initialize coordinator components
+   * v1.6.2 - MIGRATION: Removed BroadcastManager from SyncCoordinator
    * @private
    */
   _initializeCoordinators() {
@@ -337,7 +327,6 @@ class QuickTabsManager {
     this.syncCoordinator = new SyncCoordinator(
       this.state,
       this.storage,
-      this.broadcast,
       {
         create: this.createHandler,
         update: this.updateHandler,
@@ -350,16 +339,16 @@ class QuickTabsManager {
 
   /**
    * Setup component listeners and event flows
+   * v1.6.2 - MIGRATION: Removed BroadcastManager setup
    * @private
    */
   async _setupComponents() {
     this.storage.setupStorageListeners();
-    this.broadcast.setupBroadcastChannel();
     this.events.setupEmergencySaveHandlers();
     this.syncCoordinator.setupListeners();
     await this.uiCoordinator.init();
 
-    // MEMORY LEAK FIX: Start memory monitoring
+    // Start memory monitoring
     if (this.memoryGuard) {
       this.memoryGuard.startMonitoring();
       console.log('[QuickTabsManager] MemoryGuard monitoring started');
@@ -437,6 +426,7 @@ class QuickTabsManager {
 
   /**
    * Hydrate state from storage
+   * v1.6.2 - MIGRATION: Simplified - no broadcast replay needed
    * @private
    */
   async _hydrateState() {
@@ -444,17 +434,7 @@ class QuickTabsManager {
     try {
       const quickTabs = await this.storage.loadAll();
       this.state.hydrate(quickTabs);
-      console.log(`[QuickTabsManager] Hydrated ${quickTabs.length} Quick Tabs`);
-
-      // Phase 3: Replay broadcast history for late-joining tabs
-      console.log('[QuickTabsManager] Replaying broadcast history...');
-      const replayedCount = await this.broadcast.replayBroadcastHistory();
-      console.log(`[QuickTabsManager] Replayed ${replayedCount} broadcast messages`);
-
-      // Phase 4: Set state manager reference and start periodic snapshots
-      this.broadcast.setStateManager(this.state);
-      this.broadcast.startPeriodicSnapshots();
-      console.log('[QuickTabsManager] Started periodic state snapshot broadcasting');
+      console.log(`[QuickTabsManager] Hydrated ${quickTabs.length} Quick Tabs from storage`);
     } catch (err) {
       console.error('[QuickTabsManager] Failed to hydrate state:', err);
     }

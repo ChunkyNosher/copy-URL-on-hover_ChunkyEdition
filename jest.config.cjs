@@ -19,7 +19,9 @@ module.exports = {
     '^@utils/(.*)$': '<rootDir>/src/utils/$1',
     '^@core/(.*)$': '<rootDir>/src/core/$1',
     '^@ui/(.*)$': '<rootDir>/src/ui/$1',
-    '^webextension-polyfill$': '<rootDir>/tests/__mocks__/webextension-polyfill.js'
+    '^webextension-polyfill$': '<rootDir>/tests/__mocks__/webextension-polyfill.js',
+    // v1.6.2 - BroadcastManager removed, use mock for backward compatibility
+    '.*/managers/BroadcastManager.js$': '<rootDir>/tests/mocks/BroadcastManagerMock.js'
   },
 
   // Transform ES modules
