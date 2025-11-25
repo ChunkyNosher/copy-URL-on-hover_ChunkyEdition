@@ -36,7 +36,6 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 | Single Quick Tab | `quicktabs-single-tab-agent` | Drag, resize, Solo/Mute UI |
 | Settings/UI | `ui-ux-settings-agent` | Settings page, appearance |
 | URL detection | `url-detection-agent` | Link detection, site handlers |
-| Complex multi-domain | `master-orchestrator` | Spans 3+ domains |
 | Copilot Docs Updater | `copilot-docs-updater` | Updating Copilot instructions and agent files |
 
 ### Agent Selection Criteria
