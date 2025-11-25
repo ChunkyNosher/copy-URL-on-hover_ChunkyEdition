@@ -66,9 +66,14 @@ describe('PanelContentManager', () => {
     };
 
     // Mock browser APIs
+    // v1.6.2+ - MIGRATION: PanelContentManager uses storage.local
     mockBrowser = {
       storage: {
         sync: {
+          get: jest.fn().mockResolvedValue({}),
+          set: jest.fn().mockResolvedValue()
+        },
+        local: {
           get: jest.fn().mockResolvedValue({}),
           set: jest.fn().mockResolvedValue()
         },
@@ -132,7 +137,8 @@ describe('PanelContentManager', () => {
     it('should not update when panel closed', async () => {
       contentManager.setIsOpen(false);
       await contentManager.updateContent();
-      expect(mockBrowser.storage.sync.get).not.toHaveBeenCalled();
+      // v1.6.2+ - MIGRATION: fallback uses storage.local
+      expect(mockBrowser.storage.local.get).not.toHaveBeenCalled();
     });
 
     it('should fetch and render Quick Tabs', async () => {
@@ -143,13 +149,14 @@ describe('PanelContentManager', () => {
         }
       };
 
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      // v1.6.2+ - MIGRATION: fallback uses storage.local
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: { containers: mockState }
       });
 
       await contentManager.updateContent();
 
-      expect(mockBrowser.storage.sync.get).toHaveBeenCalledWith('quick_tabs_state_v2');
+      expect(mockBrowser.storage.local.get).toHaveBeenCalledWith('quick_tabs_state_v2');
       // v1.6.0.3 - Check static method instead
       expect(PanelUIBuilder.renderContainerSection).toHaveBeenCalled();
     });
@@ -164,7 +171,8 @@ describe('PanelContentManager', () => {
         }
       };
 
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      // v1.6.2+ - MIGRATION: fallback uses storage.local
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: mockState
       });
 
@@ -182,7 +190,8 @@ describe('PanelContentManager', () => {
         }
       };
 
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      // v1.6.2+ - MIGRATION: fallback uses storage.local
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: { containers: mockState }
       });
 
@@ -196,7 +205,8 @@ describe('PanelContentManager', () => {
     });
 
     it('should handle storage errors gracefully', async () => {
-      mockBrowser.storage.sync.get.mockRejectedValue(new Error('Storage error'));
+      // v1.6.2+ - MIGRATION: fallback uses storage.local
+      mockBrowser.storage.local.get.mockRejectedValue(new Error('Storage error'));
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       await contentManager.updateContent();
@@ -214,7 +224,8 @@ describe('PanelContentManager', () => {
         }
       };
 
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      // v1.6.2+ - MIGRATION: fallback uses storage.local
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: { containers: mockState }
       });
 
@@ -234,7 +245,8 @@ describe('PanelContentManager', () => {
         }
       };
 
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      // v1.6.2+ - MIGRATION: fallback uses storage.local
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: { containers: mockState }
       });
 
@@ -250,11 +262,15 @@ describe('PanelContentManager', () => {
       await contentManager.updateContent();
 
       expect(mockBrowser.contextualIdentities.query).toHaveBeenCalled();
-      // v1.6.0.3 - Check static method instead
+      // v1.6.2.3 - Check static method with expected container format
+      // Note: _renderContainerSectionFromData creates a new containerState with tabs array
       expect(PanelUIBuilder.renderContainerSection).toHaveBeenCalledWith(
         'firefox-container-1',
         expect.objectContaining({ name: 'Personal' }),
-        mockState['firefox-container-1']
+        expect.objectContaining({
+          tabs: expect.arrayContaining([expect.objectContaining({ id: '1' })]),
+          lastUpdate: expect.any(Number)
+        })
       );
     });
   });
@@ -347,14 +363,15 @@ describe('PanelContentManager', () => {
         }
       };
 
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      // v1.6.2+ - MIGRATION: Use storage.local
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: mockState
       });
 
       await contentManager.handleCloseMinimized();
 
-      expect(mockBrowser.storage.sync.set).toHaveBeenCalled();
-      const savedState = mockBrowser.storage.sync.set.mock.calls[0][0];
+      expect(mockBrowser.storage.local.set).toHaveBeenCalled();
+      const savedState = mockBrowser.storage.local.set.mock.calls[0][0];
       expect(savedState.quick_tabs_state_v2.containers['firefox-default'].tabs).toHaveLength(1);
     });
 
@@ -368,17 +385,19 @@ describe('PanelContentManager', () => {
         }
       };
 
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      // v1.6.2+ - MIGRATION: Use storage.local
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: mockState
       });
 
       await contentManager.handleCloseMinimized();
 
-      expect(mockBrowser.storage.sync.set).not.toHaveBeenCalled();
+      expect(mockBrowser.storage.local.set).not.toHaveBeenCalled();
     });
 
     it('should handle errors gracefully', async () => {
-      mockBrowser.storage.sync.get.mockRejectedValue(new Error('Storage error'));
+      // v1.6.2+ - MIGRATION: Use storage.local
+      mockBrowser.storage.local.get.mockRejectedValue(new Error('Storage error'));
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       await contentManager.handleCloseMinimized();
@@ -392,16 +411,19 @@ describe('PanelContentManager', () => {
     it('should clear all tabs', async () => {
       await contentManager.handleCloseAll();
 
-      expect(mockBrowser.storage.sync.set).toHaveBeenCalled();
-      const savedState = mockBrowser.storage.sync.set.mock.calls[0][0];
+      // v1.6.2+ - MIGRATION: Use storage.local
+      expect(mockBrowser.storage.local.set).toHaveBeenCalled();
+      const savedState = mockBrowser.storage.local.set.mock.calls[0][0];
       expect(savedState.quick_tabs_state_v2.containers).toBeDefined();
       expect(savedState.quick_tabs_state_v2.containers['firefox-default'].tabs).toEqual([]);
     });
 
-    it('should send message to background', async () => {
+    it('should NOT send message to background (v1.6.2+ uses storage.onChanged)', async () => {
+      // v1.6.2+ - Cross-tab sync happens via storage.onChanged, not message passing
       await contentManager.handleCloseAll();
 
-      expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({
+      // The CLEAR_ALL_QUICK_TABS message is no longer sent
+      expect(mockBrowser.runtime.sendMessage).not.toHaveBeenCalledWith({
         action: 'CLEAR_ALL_QUICK_TABS'
       });
     });
@@ -413,7 +435,8 @@ describe('PanelContentManager', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      mockBrowser.storage.sync.set.mockRejectedValue(new Error('Storage error'));
+      // v1.6.2+ - MIGRATION: Use storage.local
+      mockBrowser.storage.local.set.mockRejectedValue(new Error('Storage error'));
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       await contentManager.handleCloseAll();
@@ -539,7 +562,8 @@ describe('PanelContentManager', () => {
         }
       };
 
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      // v1.6.2+ - MIGRATION: fallback uses storage.local
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: mockState
       });
 

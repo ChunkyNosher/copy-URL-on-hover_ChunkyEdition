@@ -554,25 +554,26 @@ describe('PanelManager Integration', () => {
       await panelManager.init();
     });
 
+    // v1.6.2.3 - Interval changed from 2000ms to 10000ms for real-time event-based updates
     test('should call updateContent on interval', () => {
       panelManager.open();
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(10000);
 
       expect(panelManager.contentManager.updateContent).toHaveBeenCalledTimes(2); // Once on open, once on interval
     });
 
     test('should continue calling updateContent', () => {
       panelManager.open();
-      jest.advanceTimersByTime(6000);
+      jest.advanceTimersByTime(30000);
 
       expect(panelManager.contentManager.updateContent).toHaveBeenCalledTimes(4); // Once on open, 3 on intervals
     });
 
     test('should stop calling after close', () => {
       panelManager.open();
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(10000);
       panelManager.close();
-      jest.advanceTimersByTime(4000);
+      jest.advanceTimersByTime(20000);
 
       expect(panelManager.contentManager.updateContent).toHaveBeenCalledTimes(2); // Once on open, once before close
     });

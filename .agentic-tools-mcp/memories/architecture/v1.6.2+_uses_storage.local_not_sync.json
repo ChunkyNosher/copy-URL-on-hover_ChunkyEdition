@@ -1,0 +1,8 @@
+{
+  "id": "376090c5-c77e-4a65-876a-616f16ddabcd",
+  "title": "v1.6.2+ uses storage.local not sync",
+  "details": "As of v1.6.2+, the extension uses browser.storage.local exclusively instead of browser.storage.sync for Quick Tabs state. This change was made to avoid quota issues (storage.sync has 100KB limit vs storage.local 10MB+). \n\nPanelContentManager.js was updated in this fix to use storage.local for:\n- _fetchQuickTabsFromStorage() - fallback when liveStateManager unavailable\n- handleCloseMinimized() - reads and writes minimized tab state\n- handleCloseAll() - writes empty state to close all tabs\n\nCross-tab sync works via storage.onChanged event listener which fires when any tab writes to storage.local. The CLEAR_ALL_QUICK_TABS message to background was removed as it was never handled - sync happens through storage.onChanged automatically.",
+  "category": "architecture",
+  "dateCreated": "2025-11-25T19:37:52.391Z",
+  "dateUpdated": "2025-11-25T19:37:52.391Z"
+}

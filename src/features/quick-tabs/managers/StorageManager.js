@@ -484,7 +484,8 @@ export class StorageManager {
 
   /**
    * Schedule debounced storage sync
-   * v1.6.2.1 - ISSUE #35 FIX: Added debug logging for event emission
+   * v1.6.2.1 - ISSUE #35 FIX: Enhanced debug logging and EventBus verification
+   * v1.6.2.2 - ISSUE #35 FIX: Added listenerCount logging to verify listeners exist
    * @param {Object} stateSnapshot - Storage state snapshot
    */
   scheduleStorageSync(stateSnapshot) {
@@ -496,26 +497,37 @@ export class StorageManager {
 
     const context = typeof window !== 'undefined' ? 'content-script' : 'background';
 
-    // eslint-disable-next-line require-await
-    this.storageSyncTimer = setTimeout(async () => {
+    this.storageSyncTimer = setTimeout(() => {
       const snapshot = this.latestStorageSnapshot;
       this.latestStorageSnapshot = null;
       this.storageSyncTimer = null;
 
-      // Issue #35 Fix: Log when emitting storage:changed event
+      // Issue #35 Fix: Comprehensive logging to verify EventBus connection
+      const listenerCount = this.eventBus?.listenerCount?.('storage:changed') ?? 'unknown';
       console.log('[StorageManager] Emitting storage:changed event', {
         context,
         tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
         containerFilter: this.cookieStoreId,
         hasEventBus: !!this.eventBus,
+        eventBusType: this.eventBus?.constructor?.name || 'none',
+        listenerCount,
+        hasSnapshot: !!snapshot,
         timestamp: Date.now()
       });
 
+      // Issue #35 Critical: Verify EventBus exists before emit
+      if (!this.eventBus) {
+        console.error('[StorageManager] ❌ EventBus is null/undefined! Cannot emit storage:changed event');
+        return;
+      }
+
       // Emit event for coordinator to handle sync
-      this.eventBus?.emit('storage:changed', {
+      this.eventBus.emit('storage:changed', {
         containerFilter: this.cookieStoreId,
         state: snapshot
       });
+
+      console.log('[StorageManager] ✓ storage:changed event emitted successfully');
     }, this.STORAGE_SYNC_DELAY_MS);
   }
 
