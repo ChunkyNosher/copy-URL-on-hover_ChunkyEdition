@@ -60,11 +60,6 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 - State not syncing between tabs
 - BroadcastChannel issues (legacy)
 
-**Use `master-orchestrator`** when:
-- Task spans 3+ specialist domains
-- Requires coordination between agents
-- Architectural decisions needed
-
 ### Delegation Template
 
 ```
@@ -143,7 +138,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ### Mandatory MCPs (ALWAYS use)
 
-**ESLint MCP** - Lint EVERY code change before commit  
+**CodeScene MCP** - Check the code health at the end of every change and make sure there are no technical debt hotspots
 **Context7 MCP** - Verify API usage with current docs  
 **Perplexity MCP** - Research best practices (paste code, can't read files)
 
