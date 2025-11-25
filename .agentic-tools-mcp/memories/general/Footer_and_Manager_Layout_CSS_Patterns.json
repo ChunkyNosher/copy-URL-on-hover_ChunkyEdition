@@ -1,0 +1,8 @@
+{
+  "id": "834c46b9-2376-4c99-9b6e-fd40251ac3cf",
+  "title": "Footer and Manager Layout CSS Patterns",
+  "details": "When fixing footer notification spacing issues in settings.html:\n\n1. **Status message hidden state:** Use `display: none; height: 0; padding: 0; margin: 0; overflow: hidden;` instead of just `opacity: 0` to ensure it takes no vertical space when hidden.\n\n2. **Status message visible state:** Use `.success` or `.error` class with `display: block; height: auto; padding: 6px;` to show with proper sizing.\n\n3. **Footer version text:** Use equal `padding: 8px 0;` (top and bottom) for centered appearance relative to divider line.\n\n4. **Quick Tab Manager full height:** The manager tab iframe needs:\n   - Parent `.tab-content#manager.active` with `display: flex; flex-direction: column; height: 100%;`\n   - iframe with `flex: 1;` instead of `height: 100%;`\n   - In quick-tabs-manager.css: `html, body { height: 100%; }` and `body { display: flex; flex-direction: column; }`\n   - Empty state with `flex: 1;` to fill remaining space",
+  "category": "general",
+  "dateCreated": "2025-11-25T18:12:06.293Z",
+  "dateUpdated": "2025-11-25T18:12:06.293Z"
+}

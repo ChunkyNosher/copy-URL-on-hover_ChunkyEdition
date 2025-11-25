@@ -340,9 +340,22 @@ class QuickTabsManager {
   /**
    * Setup component listeners and event flows
    * v1.6.2 - MIGRATION: Removed BroadcastManager setup
+   * v1.6.2.1 - ISSUE #35 FIX: Added context detection logging
    * @private
    */
   async _setupComponents() {
+    // Issue #35 Fix: Verify we're in content script context
+    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
+    const tabUrl = typeof window !== 'undefined' ? window.location?.href : 'N/A';
+    
+    console.log('[QuickTabsManager] _setupComponents starting...', {
+      context,
+      tabUrl: tabUrl?.substring(0, 50),
+      hasStorageManager: !!this.storage,
+      timestamp: Date.now()
+    });
+    
+    // CRITICAL: This MUST call setupStorageListeners in content script context
     this.storage.setupStorageListeners();
     this.events.setupEmergencySaveHandlers();
     this.syncCoordinator.setupListeners();
@@ -353,6 +366,8 @@ class QuickTabsManager {
       this.memoryGuard.startMonitoring();
       console.log('[QuickTabsManager] MemoryGuard monitoring started');
     }
+    
+    console.log('[QuickTabsManager] ✓ _setupComponents complete', { context });
   }
 
   /**

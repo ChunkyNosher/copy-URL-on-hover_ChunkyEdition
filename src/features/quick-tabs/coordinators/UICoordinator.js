@@ -134,29 +134,52 @@ export class UICoordinator {
   /**
    * Setup state event listeners
    * v1.6.1 - CRITICAL FIX: Added state:refreshed listener to re-render when tab becomes visible
+   * v1.6.2.1 - ISSUE #35 FIX: Added context-aware logging for debugging cross-tab sync
    */
   setupStateListeners() {
-    console.log('[UICoordinator] Setting up state listeners');
+    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
+    const tabUrl = typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A';
+    
+    console.log('[UICoordinator] Setting up state listeners', { context, tabUrl });
 
     // Listen to state changes and trigger UI updates
     this.eventBus.on('state:added', ({ quickTab }) => {
+      console.log('[UICoordinator] Received state:added event', {
+        context: typeof window !== 'undefined' ? 'content-script' : 'background',
+        tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
+        quickTabId: quickTab.id,
+        timestamp: Date.now()
+      });
       this.render(quickTab);
     });
 
     this.eventBus.on('state:updated', ({ quickTab }) => {
+      console.log('[UICoordinator] Received state:updated event', {
+        context: typeof window !== 'undefined' ? 'content-script' : 'background',
+        quickTabId: quickTab.id
+      });
       this.update(quickTab);
     });
 
     this.eventBus.on('state:deleted', ({ id }) => {
+      console.log('[UICoordinator] Received state:deleted event', {
+        context: typeof window !== 'undefined' ? 'content-script' : 'background',
+        quickTabId: id
+      });
       this.destroy(id);
     });
 
     // v1.6.1 - CRITICAL FIX: Listen to state:refreshed (fired when tab becomes visible)
     // This ensures UI is updated with latest positions/sizes when switching tabs
     this.eventBus.on('state:refreshed', () => {
-      console.log('[UICoordinator] State refreshed - re-rendering all visible tabs');
+      console.log('[UICoordinator] State refreshed - re-rendering all visible tabs', {
+        context: typeof window !== 'undefined' ? 'content-script' : 'background',
+        tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A'
+      });
       this._refreshAllRenderedTabs();
     });
+    
+    console.log('[UICoordinator] ✓ State listeners setup complete', { context });
   }
 
   /**
