@@ -182,15 +182,16 @@ describe('PanelManager Additional Coverage', () => {
         expect(panelManager.updateInterval).toBe(firstInterval);
       });
 
-      test('should update interval content every 2 seconds', () => {
+      // v1.6.2.3 - Interval changed from 2000ms to 10000ms for real-time event-based updates
+      test('should update interval content every 10 seconds', () => {
         panelManager.openSilent();
 
-        // Fast-forward 2 seconds
-        jest.advanceTimersByTime(2000);
+        // Fast-forward 10 seconds
+        jest.advanceTimersByTime(10000);
         expect(mockContentManager.updateContent).toHaveBeenCalledTimes(2); // initial + 1 interval
 
-        // Fast-forward another 2 seconds
-        jest.advanceTimersByTime(2000);
+        // Fast-forward another 10 seconds
+        jest.advanceTimersByTime(10000);
         expect(mockContentManager.updateContent).toHaveBeenCalledTimes(3); // initial + 2 intervals
       });
 

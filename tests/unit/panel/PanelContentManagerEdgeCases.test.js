@@ -202,7 +202,8 @@ describe('PanelContentManager - Edge Cases', () => {
   });
 
   describe('Statistics Display - Edge Cases', () => {
-    test('should handle timestamp = 0 case', async () => {
+    // v1.6.2.3 - Statistics display updated to show real-time timestamp instead of "Last sync: Never"
+    test('should handle timestamp = 0 case (shows current time)', async () => {
       // Setup: Storage with timestamp = 0
       mockBrowser.storage.sync.get.mockResolvedValue({
         quick_tabs_state_v2: {
@@ -218,9 +219,9 @@ describe('PanelContentManager - Edge Cases', () => {
       // Execute
       await contentManager.updateContent();
 
-      // Verify: Should show "Never" for zero timestamp
+      // Verify: Should show real-time "Updated:" text since v1.6.2.3
       const lastSyncEl = panelElement.querySelector('#panel-lastSync');
-      expect(lastSyncEl.textContent).toBe('Last sync: Never');
+      expect(lastSyncEl.textContent).toMatch(/^Updated:/);
     });
 
     test('should handle missing timestamp element', async () => {

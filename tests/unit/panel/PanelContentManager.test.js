@@ -250,11 +250,15 @@ describe('PanelContentManager', () => {
       await contentManager.updateContent();
 
       expect(mockBrowser.contextualIdentities.query).toHaveBeenCalled();
-      // v1.6.0.3 - Check static method instead
+      // v1.6.2.3 - Check static method with expected container format
+      // Note: _renderContainerSectionFromData creates a new containerState with tabs array
       expect(PanelUIBuilder.renderContainerSection).toHaveBeenCalledWith(
         'firefox-container-1',
         expect.objectContaining({ name: 'Personal' }),
-        mockState['firefox-container-1']
+        expect.objectContaining({
+          tabs: expect.arrayContaining([expect.objectContaining({ id: '1' })]),
+          lastUpdate: expect.any(Number)
+        })
       );
     });
   });

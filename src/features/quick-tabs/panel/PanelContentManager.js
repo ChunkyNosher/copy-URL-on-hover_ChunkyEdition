@@ -11,6 +11,7 @@
  * - Setup event listeners with event delegation
  *
  * v1.6.0 - Phase 2.10: Extracted content management logic
+ * v1.6.2.3 - Added real-time event listeners for state:added, state:updated, state:deleted
  */
 
 import { PanelUIBuilder } from './PanelUIBuilder.js';
@@ -30,6 +31,9 @@ export class PanelContentManager {
    * @param {Object} dependencies.stateManager - PanelStateManager instance
    * @param {Object} dependencies.quickTabsManager - QuickTabsManager instance
    * @param {string} dependencies.currentContainerId - Current container ID
+   * @param {Object} [dependencies.eventBus] - EventEmitter for state events (v1.6.2.3)
+   * @param {Object} [dependencies.liveStateManager] - StateManager for live Quick Tab state (v1.6.2.3)
+   * @param {Object} [dependencies.minimizedManager] - MinimizedManager for minimized tab count (v1.6.2.3)
    */
   constructor(panelElement, dependencies) {
     this.panel = panelElement;
@@ -37,6 +41,12 @@ export class PanelContentManager {
     this.stateManager = dependencies.stateManager;
     this.quickTabsManager = dependencies.quickTabsManager;
     this.currentContainerId = dependencies.currentContainerId;
+    
+    // v1.6.2.3 - New dependencies for real-time updates
+    this.eventBus = dependencies.eventBus;
+    this.liveStateManager = dependencies.liveStateManager;
+    this.minimizedManager = dependencies.minimizedManager;
+    
     this.eventListeners = [];
     this.isOpen = false;
     // Cross-browser container API (native Firefox, shimmed Chrome)
@@ -54,21 +64,42 @@ export class PanelContentManager {
   /**
    * Update panel content with current Quick Tabs state
    * v1.5.9.12 - Container integration: Filter by current container
+   * v1.6.2.3 - Query live state from StateManager instead of storage for real-time updates
    */
   async updateContent() {
     if (!this.panel || !this.isOpen) return;
 
-    // Fetch Quick Tabs from storage
-    const quickTabsState = await this._fetchQuickTabsFromStorage();
-    if (!quickTabsState) return;
+    let currentContainerTabs = [];
+    let minimizedCount = 0;
 
-    // Get current container's tabs
-    const currentContainerState = quickTabsState[this.currentContainerId];
-    const currentContainerTabs = currentContainerState?.tabs || [];
-    const latestTimestamp = currentContainerState?.lastUpdate || 0;
+    // v1.6.2.3 - Prefer live state for instant updates, fallback to storage
+    if (this.liveStateManager) {
+      // Query live state (instant, no I/O)
+      const allQuickTabs = this.liveStateManager.getAll();
+      currentContainerTabs = allQuickTabs.filter(qt => 
+        qt.container === this.currentContainerId || 
+        qt.cookieStoreId === this.currentContainerId
+      );
+      
+      // Get minimized count from MinimizedManager if available
+      if (this.minimizedManager) {
+        minimizedCount = this.minimizedManager.getCount();
+      }
+      
+      debug(`[PanelContentManager] Live state: ${currentContainerTabs.length} tabs, ${minimizedCount} minimized`);
+    } else {
+      // Fallback to storage (slower, for backward compatibility)
+      const quickTabsState = await this._fetchQuickTabsFromStorage();
+      if (!quickTabsState) return;
 
-    // Update statistics
-    this._updateStatistics(currentContainerTabs.length, latestTimestamp);
+      const currentContainerState = quickTabsState[this.currentContainerId];
+      currentContainerTabs = currentContainerState?.tabs || [];
+      minimizedCount = currentContainerTabs.filter(t => t.minimized).length;
+    }
+
+    // Update statistics with active count
+    const activeCount = currentContainerTabs.length - minimizedCount;
+    this._updateStatistics(currentContainerTabs.length, activeCount, minimizedCount);
 
     // Show/hide empty state
     if (currentContainerTabs.length === 0) {
@@ -80,7 +111,7 @@ export class PanelContentManager {
     const containerInfo = await this._fetchContainerInfo();
 
     // Render container section
-    this._renderContainerSection(currentContainerState, containerInfo);
+    this._renderContainerSectionFromData(currentContainerTabs, containerInfo);
   }
 
   /**
@@ -139,25 +170,29 @@ export class PanelContentManager {
 
   /**
    * Update statistics display
-   * @param {number} tabCount - Number of tabs
-   * @param {number} timestamp - Last update timestamp
+   * v1.6.2.3 - Updated to show active/minimized counts for better UX
+   * @param {number} totalCount - Total number of tabs
+   * @param {number} activeCount - Number of active tabs
+   * @param {number} minimizedCount - Number of minimized tabs
    * @private
    */
-  _updateStatistics(tabCount, timestamp) {
+  _updateStatistics(totalCount, activeCount, minimizedCount) {
     const totalTabsEl = this.panel.querySelector('#panel-totalTabs');
     const lastSyncEl = this.panel.querySelector('#panel-lastSync');
 
     if (totalTabsEl) {
-      totalTabsEl.textContent = `${tabCount} Quick Tab${tabCount !== 1 ? 's' : ''}`;
+      // Show detailed breakdown if there are minimized tabs
+      if (minimizedCount > 0) {
+        totalTabsEl.textContent = `${activeCount} active, ${minimizedCount} minimized`;
+      } else {
+        totalTabsEl.textContent = `${totalCount} Quick Tab${totalCount !== 1 ? 's' : ''}`;
+      }
     }
 
     if (lastSyncEl) {
-      if (timestamp > 0) {
-        const date = new Date(timestamp);
-        lastSyncEl.textContent = `Last sync: ${date.toLocaleTimeString()}`;
-      } else {
-        lastSyncEl.textContent = 'Last sync: Never';
-      }
+      // Show real-time update indicator
+      const now = new Date();
+      lastSyncEl.textContent = `Updated: ${now.toLocaleTimeString()}`;
     }
   }
 
@@ -195,6 +230,58 @@ export class PanelContentManager {
       containersList.innerHTML = '';
 
       // v1.6.0.3 - FIX: renderContainerSection() is a static method that returns an element
+      const section = PanelUIBuilder.renderContainerSection(
+        this.currentContainerId,
+        containerInfo,
+        containerState
+      );
+      containersList.appendChild(section);
+    }
+  }
+
+  /**
+   * Render container section from QuickTab entities or storage data
+   * v1.6.2.3 - Supports both live QuickTab entities and storage format
+   * @param {Array} quickTabs - Array of QuickTab entities or storage tab objects
+   * @param {Object} containerInfo - Container info (name, icon, color)
+   * @private
+   */
+  _renderContainerSectionFromData(quickTabs, containerInfo) {
+    const containersList = this.panel.querySelector('#panel-containersList');
+    const emptyState = this.panel.querySelector('#panel-emptyState');
+
+    if (emptyState) {
+      emptyState.style.display = 'none';
+    }
+    if (containersList) {
+      containersList.style.display = 'block';
+      containersList.innerHTML = '';
+
+      // Convert QuickTab entities to storage-like format for rendering
+      const containerState = {
+        tabs: quickTabs.map(qt => {
+          // Handle both QuickTab domain entities and storage format
+          if (qt.visibility) {
+            // QuickTab domain entity
+            return {
+              id: qt.id,
+              url: qt.url,
+              title: qt.title,
+              activeTabId: qt.sourceTabId,
+              minimized: qt.visibility?.minimized ?? false,
+              width: qt.size?.width ?? 400,
+              height: qt.size?.height ?? 300,
+              left: qt.position?.left ?? 100,
+              top: qt.position?.top ?? 100
+            };
+          } else {
+            // Already in storage format
+            return qt;
+          }
+        }),
+        lastUpdate: Date.now()
+      };
+
       const section = PanelUIBuilder.renderContainerSection(
         this.currentContainerId,
         containerInfo,
@@ -277,7 +364,86 @@ export class PanelContentManager {
       handler: actionHandler
     });
 
+    // v1.6.2.3 - Setup state event listeners for real-time updates
+    this.setupStateListeners();
+
     debug('[PanelContentManager] Event listeners setup');
+  }
+
+  /**
+   * Setup listeners for Quick Tab state events
+   * v1.6.2.3 - Called when panel opens, enables real-time updates
+   */
+  setupStateListeners() {
+    if (!this.eventBus) {
+      debug('[PanelContentManager] No eventBus available - skipping state listeners');
+      return;
+    }
+
+    // Listen for Quick Tab created
+    const addedHandler = (data) => {
+      try {
+        const quickTab = data?.quickTab || data;
+        debug(`[PanelContentManager] state:added received for ${quickTab?.id}`);
+        if (this.isOpen) {
+          this.updateContent();
+        }
+      } catch (err) {
+        console.error('[PanelContentManager] Error handling state:added:', err);
+      }
+    };
+    this.eventBus.on('state:added', addedHandler);
+
+    // Listen for Quick Tab updated (minimize/restore/position change)
+    const updatedHandler = (data) => {
+      try {
+        const quickTab = data?.quickTab || data;
+        debug(`[PanelContentManager] state:updated received for ${quickTab?.id}`);
+        if (this.isOpen) {
+          this.updateContent();
+        }
+      } catch (err) {
+        console.error('[PanelContentManager] Error handling state:updated:', err);
+      }
+    };
+    this.eventBus.on('state:updated', updatedHandler);
+
+    // Listen for Quick Tab deleted (closed)
+    const deletedHandler = (data) => {
+      try {
+        const id = data?.id || data?.quickTab?.id;
+        debug(`[PanelContentManager] state:deleted received for ${id}`);
+        if (this.isOpen) {
+          this.updateContent();
+        }
+      } catch (err) {
+        console.error('[PanelContentManager] Error handling state:deleted:', err);
+      }
+    };
+    this.eventBus.on('state:deleted', deletedHandler);
+
+    // Listen for state hydration (cross-tab sync)
+    const hydratedHandler = (data) => {
+      try {
+        debug(`[PanelContentManager] state:hydrated received, ${data?.count} tabs`);
+        if (this.isOpen) {
+          this.updateContent();
+        }
+      } catch (err) {
+        console.error('[PanelContentManager] Error handling state:hydrated:', err);
+      }
+    };
+    this.eventBus.on('state:hydrated', hydratedHandler);
+
+    // Store handlers for cleanup
+    this._stateHandlers = {
+      added: addedHandler,
+      updated: updatedHandler,
+      deleted: deletedHandler,
+      hydrated: hydratedHandler
+    };
+
+    debug('[PanelContentManager] State event listeners setup');
   }
 
   /**
@@ -305,7 +471,8 @@ export class PanelContentManager {
         console.warn(`[PanelContentManager] Unknown action: ${action}`);
     }
 
-    // Update panel after action
+    // v1.6.2.3 - Note: With event listeners, this is now redundant as state:added/updated/deleted
+    // events will trigger updateContent(). Keeping as fallback for edge cases where events might not fire.
     setTimeout(() => this.updateContent(), 100);
   }
 
@@ -486,9 +653,10 @@ export class PanelContentManager {
 
   /**
    * Cleanup event listeners and references
+   * v1.6.2.3 - Also cleanup state event listeners
    */
   destroy() {
-    // Remove all event listeners
+    // Remove all DOM event listeners
     this.eventListeners.forEach(({ element, type, handler }) => {
       if (element) {
         element.removeEventListener(type, handler);
@@ -496,12 +664,24 @@ export class PanelContentManager {
     });
     this.eventListeners = [];
 
+    // v1.6.2.3 - Remove state event listeners
+    if (this.eventBus && this._stateHandlers) {
+      this.eventBus.off('state:added', this._stateHandlers.added);
+      this.eventBus.off('state:updated', this._stateHandlers.updated);
+      this.eventBus.off('state:deleted', this._stateHandlers.deleted);
+      this.eventBus.off('state:hydrated', this._stateHandlers.hydrated);
+      this._stateHandlers = null;
+    }
+
     // Clear references
     this.panel = null;
     this.uiBuilder = null;
     this.stateManager = null;
     this.quickTabsManager = null;
     this.onClose = null;
+    this.eventBus = null;
+    this.liveStateManager = null;
+    this.minimizedManager = null;
 
     debug('[PanelContentManager] Destroyed');
   }

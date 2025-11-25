@@ -181,11 +181,16 @@ export class PanelManager {
     });
 
     // Content manager
+    // v1.6.2.3 - FIX: Pass EventBus and live state managers for real-time updates
     this.contentManager = new PanelContentManager(this.panel, {
       uiBuilder: this.uiBuilder,
       stateManager: this.stateManager,
       quickTabsManager: this.quickTabsManager,
-      currentContainerId: this.currentContainerId
+      currentContainerId: this.currentContainerId,
+      // NEW: Add these for real-time updates (fixes panel not updating issue)
+      eventBus: this.quickTabsManager.internalEventBus,
+      liveStateManager: this.quickTabsManager.state,
+      minimizedManager: this.quickTabsManager.minimizedManager
     });
     this.contentManager.setOnClose(() => this.close());
     this.contentManager.setupEventListeners();
@@ -237,11 +242,12 @@ export class PanelManager {
     this.contentManager.setIsOpen(true);
     this.contentManager.updateContent();
 
-    // Start auto-refresh
+    // Start auto-refresh (backup mechanism - reduced interval since events handle real-time updates)
+    // v1.6.2.3 - Reduced from 2000ms to 10000ms since event listeners now handle real-time updates
     if (!this.updateInterval) {
       this.updateInterval = setInterval(() => {
         this.contentManager.updateContent();
-      }, 2000);
+      }, 10000);
     }
 
     // Save state and broadcast
@@ -290,11 +296,12 @@ export class PanelManager {
     // Update content
     this.contentManager.updateContent();
 
-    // Start auto-refresh
+    // Start auto-refresh (backup mechanism)
+    // v1.6.2.3 - Reduced from 2000ms to 10000ms since event listeners now handle real-time updates
     if (!this.updateInterval) {
       this.updateInterval = setInterval(() => {
         this.contentManager.updateContent();
-      }, 2000);
+      }, 10000);
     }
 
     debug('[PanelManager] Panel opened (silent)');
