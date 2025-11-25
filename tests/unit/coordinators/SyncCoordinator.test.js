@@ -142,7 +142,8 @@ describe('SyncCoordinator', () => {
       // v1.6.2 - storage:changed now passes { state: newValue }
       mockEventBus.emit('storage:changed', { state: newValue });
 
-      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab]);
+      // v1.6.2.x - hydrate now called with detectChanges: true for position/size sync
+      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab], { detectChanges: true });
     });
 
     test('should ignore own storage changes', () => {

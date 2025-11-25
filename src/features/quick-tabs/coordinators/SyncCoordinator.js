@@ -150,7 +150,8 @@ export class SyncCoordinator {
       
       // Sync state from storage
       // This will trigger state:added, state:updated, state:deleted events
-      this.stateManager.hydrate(quickTabs);
+      // v1.6.2.x - ISSUE #51 FIX: Enable change detection for position/size/zIndex sync
+      this.stateManager.hydrate(quickTabs, { detectChanges: true });
       
       console.log('[SyncCoordinator] ✓ State hydration complete', { context, tabUrl });
     }
