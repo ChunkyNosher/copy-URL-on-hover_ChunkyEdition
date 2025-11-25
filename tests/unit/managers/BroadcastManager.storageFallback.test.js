@@ -108,8 +108,11 @@ describe('BroadcastManager - Storage Fallback (Gap 1)', () => {
     test('broadcasts message via storage when in fallback mode', async () => {
       await manager.broadcast('CLOSE', { id: 'qt-123' });
       
-      expect(mockStorage.storage.local.set).toHaveBeenCalled();
-      const setCall = mockStorage.storage.local.set.mock.calls[0][0];
+      // Two storage writes happen: _persistBroadcastMessage (history) and _broadcastViaStorage (fallback)
+      expect(mockStorage.storage.local.set).toHaveBeenCalledTimes(2);
+      
+      // The second call is _broadcastViaStorage with quick-tabs-sync-* key
+      const setCall = mockStorage.storage.local.set.mock.calls[1][0];
       const key = Object.keys(setCall)[0];
       
       // Key should match pattern: quick-tabs-sync-{containerId}-{timestamp}
@@ -123,7 +126,8 @@ describe('BroadcastManager - Storage Fallback (Gap 1)', () => {
     test('includes container ID, sender ID, and sequence in storage message', async () => {
       await manager.broadcast('CLOSE', { id: 'qt-456' });
       
-      const setCall = mockStorage.storage.local.set.mock.calls[0][0];
+      // Get the storage fallback message (second call)
+      const setCall = mockStorage.storage.local.set.mock.calls[1][0];
       const key = Object.keys(setCall)[0];
       const message = setCall[key];
       

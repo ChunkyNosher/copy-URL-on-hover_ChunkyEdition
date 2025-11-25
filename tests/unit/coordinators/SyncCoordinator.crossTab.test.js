@@ -329,15 +329,22 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
       tabs[0]._storage.set('qt_firefox-default_qt-restore-solo', qtWithSolo);
       tabs[0]._storage.set('qt_firefox-default_qt-restore-mute', qtWithMute);
 
-      // Trigger hydration via storage change
+      // Trigger hydration via storage change with distinct timestamps for deduplication
       eventBuses[0].emit('storage:changed', {
         key: 'qt_firefox-default_qt-restore-solo',
-        newValue: qtWithSolo
+        newValue: qtWithSolo,
+        quickTabs: [qtWithSolo],
+        timestamp: Date.now()
       });
+
+      // Small delay to ensure different timestamp
+      await wait(10);
 
       eventBuses[0].emit('storage:changed', {
         key: 'qt_firefox-default_qt-restore-mute',
-        newValue: qtWithMute
+        newValue: qtWithMute,
+        quickTabs: [qtWithMute],
+        timestamp: Date.now()
       });
 
       await wait(50);

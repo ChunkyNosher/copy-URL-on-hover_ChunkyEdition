@@ -85,47 +85,153 @@ export class StorageManager {
   }
 
   /**
-   * Load all Quick Tabs for current container
-   * CRITICAL FIX for Issue #35 and #51: Load from background script's authoritative state
-   * Background script maintains the single source of truth across all tabs
+   * Load all Quick Tabs globally from ALL containers
+   * ✅ ENHANCED for cross-domain sync (Scenarios 1 & 2)
+   * 
+   * CRITICAL FIX for Issue #35, #51, and #47:
+   * - First tries to get state from background script (authoritative source)
+   * - If background fails, falls back to loading from ALL containers in storage
+   * - Quick Tabs should be visible globally unless Solo/Mute rules apply
    *
-   * @returns {Promise<Array<QuickTab>>} - Array of QuickTab domain entities
+   * See: docs/manual/v1.6.0/quick-tab-sync-restoration-guide.md
+   *
+   * @returns {Promise<Array<QuickTab>>} - Array of QuickTab domain entities from ALL containers
    */
   async loadAll() {
     try {
-      // STEP 1: Request state from background script (authoritative source)
-      // This ensures tabs always load the latest state, even when switching tabs
-      // Use global browser object (not imported) for test compatibility
+      const browserAPI = this._getBrowserAPI();
+
+      // STEP 1: Try background script (authoritative source)
+      const backgroundResult = await this._tryLoadFromBackground(browserAPI);
+      if (backgroundResult) return backgroundResult;
+
+      // STEP 2: Try loading from ALL containers for global visibility
+      const globalResult = await this._tryLoadFromAllContainers(browserAPI);
+      if (globalResult) return globalResult;
+
+      // STEP 3: Fallback to session/sync storage
+      return await this._tryLoadFromFallbackStorage(browserAPI);
+    } catch (error) {
+      console.error('[StorageManager] Load error:', error);
+      this.eventBus?.emit('storage:error', { operation: 'load', error });
+      return [];
+    }
+  }
+
+  /**
+   * Get browser API reference
+   * @private
+   * @returns {Object} Browser API
+   */
+  _getBrowserAPI() {
+    return (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome);
+  }
+
+  /**
+   * Try to load Quick Tabs from background script
+   * @private
+   * @param {Object} browserAPI - Browser API reference
+   * @returns {Promise<Array<QuickTab>|null>} Quick Tabs or null if not available
+   */
+  async _tryLoadFromBackground(browserAPI) {
+    const response = await browserAPI.runtime.sendMessage({
+      action: 'GET_QUICK_TABS_STATE',
+      cookieStoreId: this.cookieStoreId
+    });
+
+    if (response?.success && response.tabs?.length > 0) {
+      const quickTabs = response.tabs.map(tabData => QuickTab.fromStorage(tabData));
+      console.log(
+        `[StorageManager] Loaded ${quickTabs.length} Quick Tabs from background for container ${this.cookieStoreId}`
+      );
+      return quickTabs;
+    }
+    return null;
+  }
+
+  /**
+   * Try to load Quick Tabs from ALL containers in storage
+   * @private
+   * @param {Object} browserAPI - Browser API reference
+   * @returns {Promise<Array<QuickTab>|null>} Quick Tabs or null if not available
+   */
+  async _tryLoadFromAllContainers(browserAPI) {
+    console.log('[StorageManager] Loading Quick Tabs from ALL containers');
+    
+    const data = await browserAPI.storage.local.get('quick_tabs_state_v2');
+    const containers = data?.quick_tabs_state_v2?.containers || {};
+    
+    const allQuickTabs = this._flattenContainers(containers);
+    
+    console.log(`[StorageManager] Total Quick Tabs loaded globally: ${allQuickTabs.length}`);
+    
+    return allQuickTabs.length > 0 ? allQuickTabs : null;
+  }
+
+  /**
+   * Flatten all containers into a single Quick Tab array
+   * @private
+   * @param {Object} containers - Container data object
+   * @returns {Array<QuickTab>} Flattened Quick Tab array
+   */
+  _flattenContainers(containers) {
+    const allQuickTabs = [];
+    
+    for (const containerKey of Object.keys(containers)) {
+      const tabs = containers[containerKey]?.tabs || [];
+      if (tabs.length === 0) continue;
+      
+      console.log(`[StorageManager] Loaded ${tabs.length} Quick Tabs from container: ${containerKey}`);
+      const quickTabs = tabs.map(tabData => QuickTab.fromStorage(tabData));
+      allQuickTabs.push(...quickTabs);
+    }
+    
+    return allQuickTabs;
+  }
+
+  /**
+   * Try to load from fallback storage (session/sync)
+   * @private
+   * @param {Object} browserAPI - Browser API reference
+   * @returns {Promise<Array<QuickTab>>} Quick Tabs (empty array if not found)
+   */
+  async _tryLoadFromFallbackStorage(browserAPI) {
+    // Try session storage if available
+    let containerData = null;
+    if (browserAPI?.storage?.session) {
+      containerData = await this.sessionAdapter.load(this.cookieStoreId);
+    }
+
+    // Try sync storage
+    if (!containerData) {
+      containerData = await this.syncAdapter.load(this.cookieStoreId);
+    }
+
+    if (!containerData?.tabs) {
+      console.log(`[StorageManager] No data found for container ${this.cookieStoreId}`);
+      return [];
+    }
+
+    const quickTabs = containerData.tabs.map(tabData => QuickTab.fromStorage(tabData));
+    console.log(
+      `[StorageManager] Loaded ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`
+    );
+    return quickTabs;
+  }
+
+  /**
+   * Load Quick Tabs ONLY from current container
+   * Use this when container isolation is explicitly needed
+   *
+   * @returns {Promise<Array<QuickTab>>} - Quick Tabs from current container only
+   */
+  async loadFromCurrentContainer() {
+    try {
       const browserAPI =
         (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome);
 
-      const response = await browserAPI.runtime.sendMessage({
-        action: 'GET_QUICK_TABS_STATE',
-        cookieStoreId: this.cookieStoreId
-      });
-
-      if (response && response.success && response.tabs && response.tabs.length > 0) {
-        // Deserialize to QuickTab domain entities
-        const quickTabs = response.tabs.map(tabData => QuickTab.fromStorage(tabData));
-        console.log(
-          `[StorageManager] Loaded ${quickTabs.length} Quick Tabs from background for container ${this.cookieStoreId}`
-        );
-        return quickTabs;
-      }
-
-      // STEP 2: Fallback - Try session storage (faster, temporary)
-      // NOTE: browser.storage.session is ONLY available in background scripts, NOT content scripts
-      // Check availability before attempting to use it to avoid "storage.session is undefined" errors
-      let containerData = null;
-
-      if (browserAPI?.storage?.session) {
-        containerData = await this.sessionAdapter.load(this.cookieStoreId);
-      }
-
-      // STEP 3: Fallback - Try sync storage (local storage in Firefox)
-      if (!containerData) {
-        containerData = await this.syncAdapter.load(this.cookieStoreId);
-      }
+      const data = await browserAPI.storage.local.get('quick_tabs_state_v2');
+      const containerData = data?.quick_tabs_state_v2?.containers?.[this.cookieStoreId];
 
       if (!containerData || !containerData.tabs) {
         console.log(`[StorageManager] No data found for container ${this.cookieStoreId}`);
@@ -136,12 +242,11 @@ export class StorageManager {
       const quickTabs = containerData.tabs.map(tabData => QuickTab.fromStorage(tabData));
 
       console.log(
-        `[StorageManager] Loaded ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`
+        `[StorageManager] Loaded ${quickTabs.length} Quick Tabs from current container ${this.cookieStoreId}`
       );
       return quickTabs;
     } catch (error) {
-      console.error('[StorageManager] Load error:', error);
-      this.eventBus?.emit('storage:error', { operation: 'load', error });
+      console.error('[StorageManager] loadFromCurrentContainer error:', error);
       return [];
     }
   }
@@ -161,56 +266,101 @@ export class StorageManager {
     }
 
     browser.storage.onChanged.addListener((changes, areaName) => {
-      // MEMORY LEAK FIX: Filter out broadcast history and sync message keys
-      // These keys cause infinite feedback loops when written by BroadcastManager:
-      // _persistBroadcastMessage() → storage write → storage.onChanged → more processing → LOOP
-      
-      // Build filtered object directly (more efficient than delete operations)
-      const filteredChanges = {};
-      let filteredCount = 0;
-      
-      for (const [key, value] of Object.entries(changes)) {
-        // Filter broadcast history keys (e.g., quicktabs-broadcast-history-firefox-default)
-        if (key.startsWith('quicktabs-broadcast-history-')) {
-          filteredCount++;
-          continue;
-        }
-        
-        // Filter sync message keys (e.g., quick-tabs-sync-firefox-default-1234567890)
-        if (key.startsWith('quick-tabs-sync-')) {
-          filteredCount++;
-          continue;
-        }
-        
-        // Keep non-filtered keys
-        filteredChanges[key] = value;
-      }
-      
-      // If all keys were filtered out, return early
-      if (Object.keys(filteredChanges).length === 0) {
-        // NOTE: No logging to avoid potential log spam during high-frequency storage changes
-        return;
-      }
-
-      console.log('[StorageManager] Storage changed:', areaName, Object.keys(filteredChanges));
-
-      // v1.6.0.12 - FIX: Handle local storage changes (primary storage)
-      if (areaName === 'local' && filteredChanges.quick_tabs_state_v2) {
-        this.handleStorageChange(filteredChanges.quick_tabs_state_v2.newValue);
-      }
-
-      // Handle sync storage changes (for backward compatibility)
-      if (areaName === 'sync' && filteredChanges.quick_tabs_state_v2) {
-        this.handleStorageChange(filteredChanges.quick_tabs_state_v2.newValue);
-      }
-
-      // Handle session storage changes
-      if (areaName === 'session' && filteredChanges.quick_tabs_session) {
-        this.handleStorageChange(filteredChanges.quick_tabs_session.newValue);
-      }
+      this._onStorageChanged(changes, areaName);
     });
 
     console.log('[StorageManager] Storage listeners attached');
+  }
+
+  /**
+   * Handle raw storage changes and filter out internal keys
+   * @private
+   * @param {Object} changes - Storage changes object
+   * @param {string} areaName - Storage area name
+   */
+  _onStorageChanged(changes, areaName) {
+    // Filter out broadcast history and sync message keys to prevent feedback loops
+    const filteredChanges = this._filterStorageChanges(changes);
+    
+    // If all keys were filtered out, return early
+    if (Object.keys(filteredChanges).length === 0) {
+      return;
+    }
+
+    console.log('[StorageManager] Storage changed:', areaName, Object.keys(filteredChanges));
+
+    // Route changes to appropriate handlers based on area
+    this._routeStorageChange(filteredChanges, areaName);
+  }
+
+  /**
+   * Filter storage changes to exclude internal keys
+   * @private
+   * @param {Object} changes - Storage changes object
+   * @returns {Object} Filtered changes object
+   */
+  _filterStorageChanges(changes) {
+    const filteredChanges = {};
+    
+    for (const [key, value] of Object.entries(changes)) {
+      if (this._isInternalStorageKey(key)) {
+        continue;
+      }
+      filteredChanges[key] = value;
+    }
+    
+    return filteredChanges;
+  }
+
+  /**
+   * Check if storage key is internal and should be filtered
+   * 
+   * NOTE: Two broadcast history key prefixes are used for backward compatibility:
+   * - 'quicktabs-broadcast-history-' (legacy, from storage fallback path)
+   * - 'quick_tabs_broadcast_history_' (current, from _persistBroadcastMessage)
+   * Both must be filtered to prevent storage change feedback loops.
+   * 
+   * @private
+   * @param {string} key - Storage key
+   * @returns {boolean} True if internal key
+   */
+  _isInternalStorageKey(key) {
+    // Filter broadcast history keys (both legacy and current variants)
+    if (key.startsWith('quicktabs-broadcast-history-') || key.startsWith('quick_tabs_broadcast_history_')) {
+      return true;
+    }
+    
+    // Filter sync message keys (storage fallback path)
+    if (key.startsWith('quick-tabs-sync-')) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Route storage changes to appropriate handlers
+   * @private
+   * @param {Object} filteredChanges - Filtered changes object
+   * @param {string} areaName - Storage area name
+   */
+  _routeStorageChange(filteredChanges, areaName) {
+    // Handle local storage changes (primary storage)
+    if (areaName === 'local' && filteredChanges.quick_tabs_state_v2) {
+      this.handleStorageChange(filteredChanges.quick_tabs_state_v2.newValue);
+      return;
+    }
+
+    // Handle sync storage changes (backward compatibility)
+    if (areaName === 'sync' && filteredChanges.quick_tabs_state_v2) {
+      this.handleStorageChange(filteredChanges.quick_tabs_state_v2.newValue);
+      return;
+    }
+
+    // Handle session storage changes
+    if (areaName === 'session' && filteredChanges.quick_tabs_session) {
+      this.handleStorageChange(filteredChanges.quick_tabs_session.newValue);
+    }
   }
 
   /**
