@@ -15,7 +15,7 @@ import { DestroyHandler } from '../../../src/features/quick-tabs/handlers/Destro
 import { UpdateHandler } from '../../../src/features/quick-tabs/handlers/UpdateHandler.js';
 import { VisibilityHandler } from '../../../src/features/quick-tabs/handlers/VisibilityHandler.js';
 import { initQuickTabs } from '../../../src/features/quick-tabs/index.js';
-import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
+// v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
 import { EventManager } from '../../../src/features/quick-tabs/managers/EventManager.js';
 import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { StorageManager } from '../../../src/features/quick-tabs/managers/StorageManager.js';
@@ -23,7 +23,7 @@ import { MinimizedManager } from '../../../src/features/quick-tabs/minimized-man
 import { PanelManager } from '../../../src/features/quick-tabs/panel.js';
 
 // Mock all components
-jest.mock('../../../src/features/quick-tabs/managers/BroadcastManager.js');
+// v1.6.2 - BroadcastManager removed
 jest.mock('../../../src/features/quick-tabs/managers/EventManager.js');
 jest.mock('../../../src/features/quick-tabs/managers/StateManager.js');
 jest.mock('../../../src/features/quick-tabs/managers/StorageManager.js');
@@ -94,11 +94,7 @@ describe('QuickTabsManager Integration', () => {
     };
     StorageManager.mockImplementation(() => mockStorageManager);
 
-    const mockBroadcastManager = {
-      setupBroadcastChannel: jest.fn(),
-      broadcast: jest.fn()
-    };
-    BroadcastManager.mockImplementation(() => mockBroadcastManager);
+    // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
 
     const mockStateManager = {
       hydrate: jest.fn(),
@@ -209,7 +205,7 @@ describe('QuickTabsManager Integration', () => {
 
       // Verify all managers exist after initialization
       expect(result.storage).toBeDefined();
-      expect(result.broadcast).toBeDefined();
+      // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
       expect(result.state).toBeDefined();
       expect(result.events).toBeDefined();
     });
@@ -245,7 +241,7 @@ describe('QuickTabsManager Integration', () => {
 
       // Verify components were set up (these are called during init)
       expect(result.storage).toBeDefined();
-      expect(result.broadcast).toBeDefined();
+      // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
       expect(result.events).toBeDefined();
       expect(result.syncCoordinator).toBeDefined();
       expect(result.uiCoordinator).toBeDefined();

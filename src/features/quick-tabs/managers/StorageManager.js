@@ -1,23 +1,29 @@
 /**
  * StorageManager - Handles persistent storage for Quick Tabs
  * Phase 2.1: Extracted from QuickTabsManager
+ * v1.6.2 - MIGRATION: Uses storage.local + storage.onChanged exclusively
  *
  * Responsibilities:
- * - Save Quick Tabs to browser.storage
- * - Load Quick Tabs from browser.storage
- * - Listen for storage changes
+ * - Save Quick Tabs to browser.storage.local
+ * - Load Quick Tabs from browser.storage.local
+ * - Listen for storage.onChanged events for cross-tab sync
  * - Track pending saves to prevent race conditions
  * - Container-aware storage operations
  *
+ * Migration Notes (v1.6.2):
+ * - Removed browser.storage.session fallback (storage.local has 10MB+ limit)
+ * - Removed browser.storage.sync (quota concerns, replaced by local)
+ * - Uses storage.onChanged for cross-tab synchronization
+ * - Simplified circuit breaker (no quota concerns with storage.local)
+ *
  * Uses:
- * - SyncStorageAdapter from @storage layer
+ * - SyncStorageAdapter from @storage layer (now uses storage.local internally)
  * - QuickTab from @domain layer
  */
 
 import { Container as _Container } from '@domain/Container.js';
 import { QuickTab } from '@domain/QuickTab.js';
 
-import { SessionStorageAdapter } from '@storage/SessionStorageAdapter.js';
 import { SyncStorageAdapter } from '@storage/SyncStorageAdapter.js';
 
 export class StorageManager {
@@ -25,9 +31,8 @@ export class StorageManager {
     this.eventBus = eventBus;
     this.cookieStoreId = cookieStoreId;
 
-    // Storage adapters
+    // Storage adapter (uses storage.local exclusively as of v1.6.2)
     this.syncAdapter = new SyncStorageAdapter();
-    this.sessionAdapter = new SessionStorageAdapter();
 
     // Transaction tracking to prevent race conditions
     this.pendingSaveIds = new Set();
@@ -39,14 +44,18 @@ export class StorageManager {
     this.storageSyncTimer = null;
     this.STORAGE_SYNC_DELAY_MS = 100;
 
-    // MEMORY LEAK FIX: Circuit breaker to prevent storage operation storms
-    // See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+    // Simplified circuit breaker (v1.6.2 - no quota concerns with storage.local)
+    // Circuit breaker now only protects against rapid error storms
     this.circuitState = 'CLOSED'; // CLOSED = normal, OPEN = blocking, HALF_OPEN = testing
     this.failureCount = 0;
     this.successCount = 0;
-    this.failureThreshold = 5; // Open circuit after 5 failures
+    // v1.6.2 - MIGRATION: Updated thresholds for storage.local reliability
+    // storage.local has 10MB+ quota (vs 100KB for sync), so quota errors are rare
+    // Higher failure threshold allows for transient errors without circuit opening
+    this.failureThreshold = 10; // Increased from 5 (sync had frequent quota issues)
     this.successThreshold = 2; // Close circuit after 2 successes in half-open
-    this.resetTimeoutMs = 10000; // Try again after 10 seconds
+    // Shorter reset timeout for faster recovery since failures are less common with storage.local
+    this.resetTimeoutMs = 5000; // Reduced from 10000ms (faster recovery)
     this.lastFailureTime = 0;
     this.circuitResetTimer = null;
   }
@@ -86,14 +95,12 @@ export class StorageManager {
 
   /**
    * Load all Quick Tabs globally from ALL containers
-   * ✅ ENHANCED for cross-domain sync (Scenarios 1 & 2)
+   * v1.6.2 - MIGRATION: Simplified to use storage.local exclusively
    * 
    * CRITICAL FIX for Issue #35, #51, and #47:
    * - First tries to get state from background script (authoritative source)
-   * - If background fails, falls back to loading from ALL containers in storage
+   * - If background fails, falls back to loading from ALL containers in storage.local
    * - Quick Tabs should be visible globally unless Solo/Mute rules apply
-   *
-   * See: docs/manual/v1.6.0/quick-tab-sync-restoration-guide.md
    *
    * @returns {Promise<Array<QuickTab>>} - Array of QuickTab domain entities from ALL containers
    */
@@ -105,12 +112,13 @@ export class StorageManager {
       const backgroundResult = await this._tryLoadFromBackground(browserAPI);
       if (backgroundResult) return backgroundResult;
 
-      // STEP 2: Try loading from ALL containers for global visibility
-      const globalResult = await this._tryLoadFromAllContainers(browserAPI);
-      if (globalResult) return globalResult;
+      // STEP 2: Load from storage.local (all containers for global visibility)
+      const localResult = await this._tryLoadFromAllContainers(browserAPI);
+      if (localResult) return localResult;
 
-      // STEP 3: Fallback to session/sync storage
-      return await this._tryLoadFromFallbackStorage(browserAPI);
+      // STEP 3: Empty state
+      console.log(`[StorageManager] No data found for container ${this.cookieStoreId}`);
+      return [];
     } catch (error) {
       console.error('[StorageManager] Load error:', error);
       this.eventBus?.emit('storage:error', { operation: 'load', error });
@@ -190,36 +198,6 @@ export class StorageManager {
   }
 
   /**
-   * Try to load from fallback storage (session/sync)
-   * @private
-   * @param {Object} browserAPI - Browser API reference
-   * @returns {Promise<Array<QuickTab>>} Quick Tabs (empty array if not found)
-   */
-  async _tryLoadFromFallbackStorage(browserAPI) {
-    // Try session storage if available
-    let containerData = null;
-    if (browserAPI?.storage?.session) {
-      containerData = await this.sessionAdapter.load(this.cookieStoreId);
-    }
-
-    // Try sync storage
-    if (!containerData) {
-      containerData = await this.syncAdapter.load(this.cookieStoreId);
-    }
-
-    if (!containerData?.tabs) {
-      console.log(`[StorageManager] No data found for container ${this.cookieStoreId}`);
-      return [];
-    }
-
-    const quickTabs = containerData.tabs.map(tabData => QuickTab.fromStorage(tabData));
-    console.log(
-      `[StorageManager] Loaded ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`
-    );
-    return quickTabs;
-  }
-
-  /**
    * Load Quick Tabs ONLY from current container
    * Use this when container isolation is explicitly needed
    *
@@ -253,11 +231,11 @@ export class StorageManager {
 
   /**
    * Setup storage change listeners
-   * v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
+   * v1.6.2 - MIGRATION: Listen ONLY for storage.local changes
    * 
-   * MEMORY LEAK FIX: Added filtering to ignore broadcast history and sync message keys
-   * These keys cause feedback loops when written by BroadcastManager.
-   * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+   * Cross-tab sync is now handled exclusively via storage.onChanged events.
+   * When any tab writes to storage.local, all OTHER tabs receive the change.
+   * Note: The tab that made the change does NOT receive the event.
    */
   setupStorageListeners() {
     if (typeof browser === 'undefined' || !browser.storage) {
@@ -269,7 +247,7 @@ export class StorageManager {
       this._onStorageChanged(changes, areaName);
     });
 
-    console.log('[StorageManager] Storage listeners attached');
+    console.log('[StorageManager] Storage listeners attached (storage.local only)');
   }
 
   /**
@@ -314,24 +292,22 @@ export class StorageManager {
 
   /**
    * Check if storage key is internal and should be filtered
-   * 
-   * NOTE: Two broadcast history key prefixes are used for backward compatibility:
-   * - 'quicktabs-broadcast-history-' (legacy, from storage fallback path)
-   * - 'quick_tabs_broadcast_history_' (current, from _persistBroadcastMessage)
-   * Both must be filtered to prevent storage change feedback loops.
+   * v1.6.2 - MIGRATION: Simplified after BroadcastManager removal
+   * Note: Still filters legacy broadcast history keys for backward compatibility
    * 
    * @private
    * @param {string} key - Storage key
    * @returns {boolean} True if internal key
    */
   _isInternalStorageKey(key) {
-    // Filter broadcast history keys (both legacy and current variants)
-    if (key.startsWith('quicktabs-broadcast-history-') || key.startsWith('quick_tabs_broadcast_history_')) {
+    // Filter internal sync/tracking keys
+    if (key.startsWith('quicktabs-internal-') || key.startsWith('quick-tabs-sync-')) {
       return true;
     }
     
-    // Filter sync message keys (storage fallback path)
-    if (key.startsWith('quick-tabs-sync-')) {
+    // Filter legacy broadcast history keys (for backward compatibility)
+    // Note: These are no longer generated as of v1.6.2 but may exist in storage
+    if (key.startsWith('quicktabs-broadcast-history-') || key.startsWith('quick_tabs_broadcast_history_')) {
       return true;
     }
     
@@ -340,26 +316,21 @@ export class StorageManager {
 
   /**
    * Route storage changes to appropriate handlers
+   * v1.6.2 - MIGRATION: Only handles storage.local changes
+   * 
    * @private
    * @param {Object} filteredChanges - Filtered changes object
    * @param {string} areaName - Storage area name
    */
   _routeStorageChange(filteredChanges, areaName) {
-    // Handle local storage changes (primary storage)
-    if (areaName === 'local' && filteredChanges.quick_tabs_state_v2) {
-      this.handleStorageChange(filteredChanges.quick_tabs_state_v2.newValue);
+    // Only handle local storage changes (primary and only storage as of v1.6.2)
+    if (areaName !== 'local') {
       return;
     }
 
-    // Handle sync storage changes (backward compatibility)
-    if (areaName === 'sync' && filteredChanges.quick_tabs_state_v2) {
+    // Handle Quick Tabs state changes
+    if (filteredChanges.quick_tabs_state_v2) {
       this.handleStorageChange(filteredChanges.quick_tabs_state_v2.newValue);
-      return;
-    }
-
-    // Handle session storage changes
-    if (areaName === 'session' && filteredChanges.quick_tabs_session) {
-      this.handleStorageChange(filteredChanges.quick_tabs_session.newValue);
     }
   }
 
@@ -569,8 +540,9 @@ export class StorageManager {
   }
 
   // ============================================================================
-  // MEMORY LEAK FIX: Circuit Breaker Methods
-  // See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+  // Circuit Breaker Methods
+  // v1.6.2 - Simplified: No quota concerns with storage.local
+  // Protects against rapid error storms from storage failures
   // ============================================================================
 
   /**

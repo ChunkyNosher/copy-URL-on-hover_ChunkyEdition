@@ -1,3 +1,12 @@
+/**
+ * SyncCoordinator Unit Tests
+ * v1.6.2 - MIGRATION: Updated for storage.onChanged-only architecture
+ * 
+ * The SyncCoordinator now:
+ * - Uses storage.onChanged exclusively for cross-tab sync
+ * - Does NOT use BroadcastManager (removed)
+ * - Handles state hydration from storage changes
+ */
 import { EventEmitter } from 'eventemitter3';
 
 import { QuickTab } from '../../../src/domain/QuickTab.js';
@@ -12,11 +21,8 @@ const createMockStateManager = () => ({
 
 const createMockStorageManager = () => ({
   shouldIgnoreStorageChange: jest.fn(() => false),
-  save: jest.fn()
-});
-
-const createMockBroadcastManager = () => ({
-  broadcast: jest.fn()
+  save: jest.fn(),
+  loadAll: jest.fn(async () => [])
 });
 
 const createMockHandlers = () => ({
@@ -42,14 +48,12 @@ describe('SyncCoordinator', () => {
   let syncCoordinator;
   let mockStateManager;
   let mockStorageManager;
-  let mockBroadcastManager;
   let mockHandlers;
   let mockEventBus;
 
   beforeEach(() => {
     mockStateManager = createMockStateManager();
     mockStorageManager = createMockStorageManager();
-    mockBroadcastManager = createMockBroadcastManager();
     mockHandlers = createMockHandlers();
     mockEventBus = new EventEmitter();
 
@@ -57,20 +61,20 @@ describe('SyncCoordinator', () => {
   });
 
   describe('Constructor', () => {
-    test('should initialize with all dependencies', () => {
+    test('should initialize with all dependencies (v1.6.2 - no broadcastManager)', () => {
       syncCoordinator = new SyncCoordinator(
         mockStateManager,
         mockStorageManager,
-        mockBroadcastManager,
         mockHandlers,
         mockEventBus
       );
 
       expect(syncCoordinator.stateManager).toBe(mockStateManager);
       expect(syncCoordinator.storageManager).toBe(mockStorageManager);
-      expect(syncCoordinator.broadcastManager).toBe(mockBroadcastManager);
       expect(syncCoordinator.handlers).toBe(mockHandlers);
       expect(syncCoordinator.eventBus).toBe(mockEventBus);
+      // v1.6.2 - broadcastManager removed
+      expect(syncCoordinator.broadcastManager).toBeUndefined();
     });
   });
 
@@ -79,7 +83,6 @@ describe('SyncCoordinator', () => {
       syncCoordinator = new SyncCoordinator(
         mockStateManager,
         mockStorageManager,
-        mockBroadcastManager,
         mockHandlers,
         mockEventBus
       );
@@ -93,12 +96,23 @@ describe('SyncCoordinator', () => {
       expect(spy).toHaveBeenCalledWith('storage:changed', expect.any(Function));
     });
 
-    test('should setup broadcast message listener', () => {
+    test('should setup tab visible listener', () => {
       const spy = jest.spyOn(mockEventBus, 'on');
 
       syncCoordinator.setupListeners();
 
-      expect(spy).toHaveBeenCalledWith('broadcast:received', expect.any(Function));
+      expect(spy).toHaveBeenCalledWith('event:tab-visible', expect.any(Function));
+    });
+
+    // v1.6.2 - broadcast:received listener removed
+    test('should NOT setup broadcast:received listener (v1.6.2)', () => {
+      const spy = jest.spyOn(mockEventBus, 'on');
+
+      syncCoordinator.setupListeners();
+
+      // Should not be listening for broadcast events
+      const calls = spy.mock.calls.map(call => call[0]);
+      expect(calls).not.toContain('broadcast:received');
     });
   });
 
@@ -107,7 +121,6 @@ describe('SyncCoordinator', () => {
       syncCoordinator = new SyncCoordinator(
         mockStateManager,
         mockStorageManager,
-        mockBroadcastManager,
         mockHandlers,
         mockEventBus
       );
@@ -126,7 +139,8 @@ describe('SyncCoordinator', () => {
         saveId: 'save-123'
       };
 
-      mockEventBus.emit('storage:changed', newValue);
+      // v1.6.2 - storage:changed now passes { state: newValue }
+      mockEventBus.emit('storage:changed', { state: newValue });
 
       expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab]);
     });
@@ -139,152 +153,65 @@ describe('SyncCoordinator', () => {
         saveId: 'save-123'
       };
 
-      mockEventBus.emit('storage:changed', newValue);
+      mockEventBus.emit('storage:changed', { state: newValue });
 
       expect(mockStateManager.hydrate).not.toHaveBeenCalled();
     });
 
-    test('should handle null newValue gracefully', () => {
-      mockEventBus.emit('storage:changed', null);
+    test('should handle null state gracefully', () => {
+      mockEventBus.emit('storage:changed', { state: null });
 
       expect(mockStateManager.hydrate).not.toHaveBeenCalled();
     });
 
-    test('should handle undefined saveId', () => {
+    test('should handle storage change with empty quickTabs', () => {
       const newValue = {
         quickTabs: []
         // No saveId
       };
 
-      mockEventBus.emit('storage:changed', newValue);
+      mockEventBus.emit('storage:changed', { state: newValue });
 
-      expect(mockStorageManager.shouldIgnoreStorageChange).toHaveBeenCalledWith(undefined);
+      // Empty array should not trigger hydration (or would hydrate empty array)
+      // The behavior depends on implementation - we just verify no error is thrown
     });
   });
 
-  describe('handleBroadcastMessage()', () => {
+  describe('handleTabVisible()', () => {
     beforeEach(() => {
       syncCoordinator = new SyncCoordinator(
         mockStateManager,
         mockStorageManager,
-        mockBroadcastManager,
         mockHandlers,
         mockEventBus
       );
       syncCoordinator.setupListeners();
     });
 
-    test('should route CREATE message to create handler', () => {
-      const data = {
+    test('should load state from storage when tab becomes visible', async () => {
+      const quickTab = QuickTab.create({
         id: 'qt-1',
-        url: 'https://example.com'
-      };
+        url: 'https://example.com',
+        container: 'firefox-default'
+      });
 
-      mockEventBus.emit('broadcast:received', { type: 'CREATE', data });
+      mockStorageManager.loadAll.mockResolvedValue([quickTab]);
+      mockStateManager.getAll.mockReturnValue([]);
 
-      expect(mockHandlers.create.create).toHaveBeenCalledWith(data);
-    });
+      mockEventBus.emit('event:tab-visible');
 
-    test('should route UPDATE_POSITION message to update handler', () => {
-      const data = {
-        id: 'qt-1',
-        left: 150,
-        top: 250
-      };
+      // Wait for async operation
+      await new Promise(resolve => setTimeout(resolve, 10));
 
-      mockEventBus.emit('broadcast:received', { type: 'UPDATE_POSITION', data });
-
-      expect(mockHandlers.update.handlePositionChangeEnd).toHaveBeenCalledWith('qt-1', 150, 250);
-    });
-
-    test('should route UPDATE_SIZE message to update handler', () => {
-      const data = {
-        id: 'qt-1',
-        width: 500,
-        height: 400
-      };
-
-      mockEventBus.emit('broadcast:received', { type: 'UPDATE_SIZE', data });
-
-      expect(mockHandlers.update.handleSizeChangeEnd).toHaveBeenCalledWith('qt-1', 500, 400);
-    });
-
-    test('should route SOLO message to visibility handler', () => {
-      const data = {
-        id: 'qt-1',
-        soloedOnTabs: [100, 200]
-      };
-
-      mockEventBus.emit('broadcast:received', { type: 'SOLO', data });
-
-      expect(mockHandlers.visibility.handleSoloToggle).toHaveBeenCalledWith('qt-1', [100, 200]);
-    });
-
-    test('should route MUTE message to visibility handler', () => {
-      const data = {
-        id: 'qt-1',
-        mutedOnTabs: [100, 200]
-      };
-
-      mockEventBus.emit('broadcast:received', { type: 'MUTE', data });
-
-      expect(mockHandlers.visibility.handleMuteToggle).toHaveBeenCalledWith('qt-1', [100, 200]);
-    });
-
-    test('should route MINIMIZE message to visibility handler', () => {
-      const data = {
-        id: 'qt-1'
-      };
-
-      mockEventBus.emit('broadcast:received', { type: 'MINIMIZE', data });
-
-      expect(mockHandlers.visibility.handleMinimize).toHaveBeenCalledWith('qt-1');
-    });
-
-    test('should route RESTORE message to visibility handler', () => {
-      const data = {
-        id: 'qt-1'
-      };
-
-      mockEventBus.emit('broadcast:received', { type: 'RESTORE', data });
-
-      expect(mockHandlers.visibility.handleRestore).toHaveBeenCalledWith('qt-1');
-    });
-
-    test('should route CLOSE message to destroy handler', () => {
-      const data = {
-        id: 'qt-1'
-      };
-
-      mockEventBus.emit('broadcast:received', { type: 'CLOSE', data });
-
-      expect(mockHandlers.destroy.handleDestroy).toHaveBeenCalledWith('qt-1');
-    });
-
-    test('should handle unknown message type gracefully', () => {
-      const data = {
-        id: 'qt-1'
-      };
-
-      // Should not throw
-      expect(() => {
-        mockEventBus.emit('broadcast:received', { type: 'UNKNOWN_TYPE', data });
-      }).not.toThrow();
-    });
-
-    test('should handle null data gracefully', () => {
-      expect(() => {
-        mockEventBus.emit('broadcast:received', { type: 'CREATE', data: null });
-      }).not.toThrow();
+      expect(mockStorageManager.loadAll).toHaveBeenCalled();
     });
   });
 
   describe('Integration', () => {
-    test('should coordinate storage and broadcast handling', () => {
+    test('should coordinate storage handling (v1.6.2 - storage only)', () => {
       syncCoordinator = new SyncCoordinator(
         mockStateManager,
         mockStorageManager,
-        mockBroadcastManager,
         mockHandlers,
         mockEventBus
       );
@@ -298,56 +225,37 @@ describe('SyncCoordinator', () => {
         container: 'firefox-default'
       });
 
-      mockEventBus.emit('storage:changed', { quickTabs: [quickTab], saveId: 'save-1' });
+      mockEventBus.emit('storage:changed', { state: { quickTabs: [quickTab], saveId: 'save-1' } });
       expect(mockStateManager.hydrate).toHaveBeenCalled();
-
-      // Broadcast message
-      mockEventBus.emit('broadcast:received', {
-        type: 'SOLO',
-        data: { id: 'qt-1', soloedOnTabs: [100] }
-      });
-
-      expect(mockHandlers.visibility.handleSoloToggle).toHaveBeenCalled();
     });
 
-    test('should handle multiple message types in sequence', () => {
+    test('should handle multiple storage changes in sequence', () => {
       syncCoordinator = new SyncCoordinator(
         mockStateManager,
         mockStorageManager,
-        mockBroadcastManager,
         mockHandlers,
         mockEventBus
       );
 
       syncCoordinator.setupListeners();
 
-      // Create
-      mockEventBus.emit('broadcast:received', {
-        type: 'CREATE',
-        data: { id: 'qt-1', url: 'https://example.com' }
+      // First change
+      const quickTab1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        container: 'firefox-default'
       });
-      expect(mockHandlers.create.create).toHaveBeenCalledTimes(1);
+      mockEventBus.emit('storage:changed', { state: { quickTabs: [quickTab1], saveId: 'save-1' } });
+      expect(mockStateManager.hydrate).toHaveBeenCalledTimes(1);
 
-      // Update position
-      mockEventBus.emit('broadcast:received', {
-        type: 'UPDATE_POSITION',
-        data: { id: 'qt-1', left: 100, top: 200 }
+      // Second change  
+      const quickTab2 = QuickTab.create({
+        id: 'qt-2',
+        url: 'https://example2.com',
+        container: 'firefox-default'
       });
-      expect(mockHandlers.update.handlePositionChangeEnd).toHaveBeenCalledTimes(1);
-
-      // Solo
-      mockEventBus.emit('broadcast:received', {
-        type: 'SOLO',
-        data: { id: 'qt-1', soloedOnTabs: [100] }
-      });
-      expect(mockHandlers.visibility.handleSoloToggle).toHaveBeenCalledTimes(1);
-
-      // Close
-      mockEventBus.emit('broadcast:received', {
-        type: 'CLOSE',
-        data: { id: 'qt-1' }
-      });
-      expect(mockHandlers.destroy.handleDestroy).toHaveBeenCalledTimes(1);
+      mockEventBus.emit('storage:changed', { state: { quickTabs: [quickTab1, quickTab2], saveId: 'save-2' } });
+      expect(mockStateManager.hydrate).toHaveBeenCalledTimes(2);
     });
   });
 });

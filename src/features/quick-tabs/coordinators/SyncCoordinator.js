@@ -1,11 +1,22 @@
 /**
- * SyncCoordinator - Coordinates storage and broadcast synchronization
+ * SyncCoordinator - Coordinates storage-based cross-tab synchronization
+ * v1.6.2 - MIGRATION: Uses storage.onChanged exclusively (BroadcastChannel removed)
  *
  * Responsibilities:
- * - Route broadcast messages to appropriate handlers
+ * - Handle storage.onChanged events for cross-tab sync
  * - Coordinate storage ↔ state sync
  * - Ignore own storage changes to prevent loops
- * - Handle cross-tab communication
+ * - Handle cross-tab communication via storage events
+ *
+ * Migration Notes (v1.6.2):
+ * - Removed BroadcastManager dependency
+ * - Cross-tab sync now handled exclusively via storage.onChanged
+ * - storage.onChanged fires in ALL OTHER tabs (not the tab that made the change)
+ * - Handlers now write directly to storage, which triggers sync to other tabs
+ *
+ * Architecture:
+ * Tab A writes to storage.local → storage.onChanged fires in Tab B, C, D
+ * Tab A updates local UI immediately (no storage event for self)
  *
  * Complexity: cc ≤ 3 per method
  */
@@ -18,33 +29,30 @@ export class SyncCoordinator {
   /**
    * @param {StateManager} stateManager - State manager instance
    * @param {StorageManager} storageManager - Storage manager instance
-   * @param {BroadcastManager} broadcastManager - Broadcast manager instance
    * @param {Object} handlers - Handler instances {create, update, visibility, destroy}
    * @param {EventEmitter} eventBus - Internal event bus
    */
-  constructor(stateManager, storageManager, broadcastManager, handlers, eventBus) {
+  constructor(stateManager, storageManager, handlers, eventBus) {
     this.stateManager = stateManager;
     this.storageManager = storageManager;
-    this.broadcastManager = broadcastManager;
     this.handlers = handlers;
     this.eventBus = eventBus;
+
+    // Deduplication tracking
+    this.processedMessages = new Map();  // messageHash -> timestamp
+    this.lastCleanup = Date.now();
   }
 
   /**
-   * Setup event listeners for storage and broadcast events
-   * CRITICAL FIX for Issue #35 and #51: Also listen for tab visibility changes
+   * Setup event listeners for storage events
+   * v1.6.2 - MIGRATION: Removed broadcast:received listener
    */
   setupListeners() {
-    console.log('[SyncCoordinator] Setting up listeners');
+    console.log('[SyncCoordinator] Setting up listeners (storage.onChanged only)');
 
-    // Listen to storage changes
-    this.eventBus.on('storage:changed', newValue => {
-      this.handleStorageChange(newValue);
-    });
-
-    // Listen to broadcast messages
-    this.eventBus.on('broadcast:received', ({ type, data }) => {
-      this.handleBroadcastMessage(type, data);
+    // Listen to storage changes (from StorageManager)
+    this.eventBus.on('storage:changed', ({ state }) => {
+      this.handleStorageChange(state);
     });
 
     // Listen to tab visibility changes (fixes Issue #35 and #51)
@@ -56,15 +64,13 @@ export class SyncCoordinator {
   }
 
   /**
-   * Handle storage change events
+   * Handle storage change events from other tabs
+   * v1.6.2 - MIGRATION: Primary cross-tab sync mechanism
    * 
-   * ✅ ENHANCED with LAYER 2 & 3 memory leak protection:
-   * - Layer 2: Ignore messages from self (write source tracking)
-   * - Layer 3: Deduplicate messages (hash-based)
-   * 
-   * See: docs/manual/v1.6.0/quick-tab-sync-restoration-guide.md
+   * Called when storage.onChanged fires (from another tab's write)
+   * Note: This does NOT fire in the tab that made the change
    *
-   * @param {Object} newValue - New storage value
+   * @param {Object} newValue - New storage value with containers data
    */
   handleStorageChange(newValue) {
     // Handle null/undefined
@@ -73,70 +79,83 @@ export class SyncCoordinator {
       return;
     }
 
-    // LAYER 2: Check if this write came from ourselves
-    if (this._isOwnWrite(newValue)) {
-      console.log('[SyncCoordinator] Ignoring own storage write');
-      return;
-    }
-
-    // LAYER 3: Check if we've already processed this message
+    // Check for duplicate message (prevents processing same change multiple times)
     if (this._isDuplicateMessage(newValue)) {
-      console.log('[SyncCoordinator] Ignoring duplicate message');
+      console.log('[SyncCoordinator] Ignoring duplicate storage change');
       return;
     }
 
-    console.log('[SyncCoordinator] Storage changed, syncing state');
+    console.log('[SyncCoordinator] Storage changed from another tab, syncing state');
 
-    // Sync state from storage
-    // This will trigger state:added, state:updated, state:deleted events
-    this.stateManager.hydrate(newValue.quickTabs || []);
-    
+    // Extract Quick Tabs from container-aware storage format
+    const quickTabs = this._extractQuickTabsFromStorage(newValue);
+
+    if (quickTabs.length > 0) {
+      // Sync state from storage
+      // This will trigger state:added, state:updated, state:deleted events
+      this.stateManager.hydrate(quickTabs);
+    }
+
     // Record that we processed this message
     this._recordProcessedMessage(newValue);
   }
 
   /**
-   * LAYER 2: Check if storage write originated from this tab
+   * Extract Quick Tabs from container-aware storage format
+   * v1.6.2 - Helper for storage change handling
+   * 
    * @private
-   * @param {Object} storageValue - Storage value to check
-   * @returns {boolean} True if this is our own write
+   * @param {Object} storageValue - Storage value with containers
+   * @returns {Array} Array of Quick Tab data
    */
-  _isOwnWrite(storageValue) {
-    // Check write source tracking
-    if (storageValue.writeSource && storageValue.writeSource === this.broadcastManager.senderId) {
-      return true;
+  _extractQuickTabsFromStorage(storageValue) {
+    // Handle direct quickTabs array (legacy format)
+    if (storageValue.quickTabs && Array.isArray(storageValue.quickTabs)) {
+      return storageValue.quickTabs;
     }
-    
-    // Fallback to existing saveId check
-    if (this.storageManager.shouldIgnoreStorageChange(storageValue.saveId)) {
-      return true;
+
+    // Handle container-aware format
+    if (storageValue.containers) {
+      return this._extractFromContainers(storageValue.containers);
     }
-    
-    return false;
+
+    return [];
   }
 
   /**
-   * LAYER 3: Check if message has been processed before
+   * Extract Quick Tabs from containers object
+   * @private
+   * @param {Object} containers - Containers object
+   * @returns {Array} Array of Quick Tab data
+   */
+  _extractFromContainers(containers) {
+    const allQuickTabs = [];
+    for (const containerData of Object.values(containers)) {
+      const tabs = containerData?.tabs;
+      if (tabs && Array.isArray(tabs)) {
+        allQuickTabs.push(...tabs);
+      }
+    }
+    return allQuickTabs;
+  }
+
+  /**
+   * Check if message has been processed before
    * Uses hash-based deduplication with TTL
    * @private
    * @param {Object} storageValue - Storage value to check
    * @returns {boolean} True if this is a duplicate message
    */
   _isDuplicateMessage(storageValue) {
-    if (!this.processedMessages) {
-      this.processedMessages = new Map();  // messageHash -> timestamp
-      this.lastCleanup = Date.now();
-    }
-    
     // Clean up old entries periodically
     const now = Date.now();
     if (now - this.lastCleanup > SyncCoordinator.DEDUP_CLEANUP_INTERVAL_MS) {
       this._cleanupOldProcessedMessages(now);
     }
-    
+
     // Generate hash of relevant message data
     const messageHash = this._hashMessage(storageValue);
-    
+
     // Check if already processed
     return this.processedMessages.has(messageHash);
   }
@@ -162,10 +181,6 @@ export class SyncCoordinator {
    * @param {Object} storageValue - Storage value to record
    */
   _recordProcessedMessage(storageValue) {
-    if (!this.processedMessages) {
-      this.processedMessages = new Map();
-    }
-    
     const messageHash = this._hashMessage(storageValue);
     this.processedMessages.set(messageHash, Date.now());
   }
@@ -177,42 +192,38 @@ export class SyncCoordinator {
    * @returns {string} Hash string
    */
   _hashMessage(storageValue) {
-    // Hash based on timestamp and quick tab IDs
-    const quickTabIds = (storageValue.quickTabs || [])
+    // Extract Quick Tab IDs for hashing
+    const quickTabs = this._extractQuickTabsFromStorage(storageValue);
+    const quickTabIds = quickTabs
       .map(qt => qt.id)
       .sort()
       .join(',');
-    
+
     // Use timestamp if available, otherwise use saveId or current time
-    // This ensures we always have a unique hash component
     const timeComponent = storageValue.timestamp || storageValue.saveId || Date.now();
-    
+
     return `${timeComponent}-${quickTabIds}`;
   }
 
   /**
-   * Handle tab becoming visible - refresh state from background
-   * v1.6.1.5 - CRITICAL FIX: Merge instead of replace to preserve broadcast-populated state
-   * 
-   * Previously: hydrate() replaced entire state, wiping out Quick Tabs received via broadcasts
-   * Now: Merge storage state with in-memory state using timestamp-based conflict resolution
+   * Handle tab becoming visible - refresh state from storage
+   * v1.6.2 - MIGRATION: Only uses storage, no broadcast replay
    */
   async handleTabVisible() {
-    console.log('[SyncCoordinator] Tab became visible - refreshing state from background');
+    console.log('[SyncCoordinator] Tab became visible - refreshing state from storage');
 
     try {
-      // Get current in-memory state (may contain Quick Tabs from broadcasts)
+      // Get current in-memory state
       const currentState = this.stateManager.getAll();
-      
-      // ✅ Now loads from ALL containers globally
+
+      // Load from storage (all containers globally)
       const storageState = await this.storageManager.loadAll();
-      
+
       console.log(`[SyncCoordinator] Loaded ${storageState.length} Quick Tabs globally from storage`);
-      
-      // v1.6.1.5 - MERGE instead of REPLACE
-      // This preserves Quick Tabs received via broadcasts while still loading from storage
+
+      // Merge storage state with in-memory state using timestamp-based conflict resolution
       const mergedState = this._mergeQuickTabStates(currentState, storageState);
-      
+
       // Hydrate with merged state
       this.stateManager.hydrate(mergedState);
 
@@ -227,10 +238,9 @@ export class SyncCoordinator {
 
   /**
    * Merge Quick Tab states with timestamp-based conflict resolution
-   * v1.6.1.5 - Critical fix for cross-domain sync issues
    * 
    * Strategy:
-   * - If Quick Tab exists only in memory → Keep it (from recent broadcast)
+   * - If Quick Tab exists only in memory → Keep it (from recent update)
    * - If Quick Tab exists only in storage → Add it (was created before this tab loaded)
    * - If Quick Tab exists in both → Use the version with newer lastModified timestamp
    * 
@@ -241,33 +251,32 @@ export class SyncCoordinator {
    */
   _mergeQuickTabStates(currentState, storageState) {
     const merged = new Map();
-    
+
     // Add all current (in-memory) Quick Tabs to merge map
     for (const qt of currentState) {
       merged.set(qt.id, qt);
     }
-    
+
     // Merge storage Quick Tabs
     for (const storageQt of storageState) {
       const memoryQt = merged.get(storageQt.id);
-      
-      // Early return: Quick Tab only in storage
+
+      // Quick Tab only in storage
       if (!memoryQt) {
         merged.set(storageQt.id, storageQt);
         continue;
       }
-      
+
       // Quick Tab in both → Compare timestamps
       const winner = this._selectNewerQuickTab(memoryQt, storageQt);
       merged.set(storageQt.id, winner);
     }
-    
+
     return Array.from(merged.values());
   }
 
   /**
    * Select newer Quick Tab based on lastModified timestamp
-   * v1.6.1.5 - Helper to reduce complexity
    * 
    * @private
    * @param {QuickTab} memoryQt - In-memory Quick Tab
@@ -277,97 +286,21 @@ export class SyncCoordinator {
   _selectNewerQuickTab(memoryQt, storageQt) {
     const memoryModified = memoryQt.lastModified || memoryQt.createdAt || 0;
     const storageModified = storageQt.lastModified || storageQt.createdAt || 0;
-    
+
     if (storageModified > memoryModified) {
       console.log(`[SyncCoordinator] Merge: Using storage version of ${storageQt.id} (newer by ${storageModified - memoryModified}ms)`);
       return storageQt;
     }
-    
+
     console.log(`[SyncCoordinator] Merge: Keeping in-memory version of ${memoryQt.id} (newer by ${memoryModified - storageModified}ms)`);
     return memoryQt;
   }
 
   /**
-   * Handle broadcast messages and route to appropriate handlers
-   *
-   * @param {string} type - Message type
-   * @param {Object} data - Message data
+   * Get this tab's unique ID (for tracking purposes)
+   * @returns {string} Tab ID
    */
-  handleBroadcastMessage(type, data) {
-    // Handle null/undefined data
-    if (!data) {
-      console.warn('[SyncCoordinator] Received broadcast with null data, ignoring');
-      return;
-    }
-
-    console.log('[SyncCoordinator] Received broadcast:', type);
-
-    // Route to appropriate handler based on message type
-    this._routeMessage(type, data);
-  }
-
-  /**
-   * Route message to appropriate handler
-   * v1.6.1.5 - Reduced complexity with lookup table pattern
-   * @private
-   *
-   * @param {string} type - Message type
-   * @param {Object} data - Message data
-   */
-  _routeMessage(type, data) {
-    // Lookup table pattern to reduce complexity
-    const routes = {
-      CREATE: () => this.handlers.create.create(data),
-      UPDATE_POSITION: () => this.handlers.update.handlePositionChangeEnd(data.id, data.left, data.top),
-      UPDATE_SIZE: () => this.handlers.update.handleSizeChangeEnd(data.id, data.width, data.height),
-      SOLO: () => this.handlers.visibility.handleSoloToggle(data.id, data.soloedOnTabs),
-      MUTE: () => this.handlers.visibility.handleMuteToggle(data.id, data.mutedOnTabs),
-      MINIMIZE: () => this.handlers.visibility.handleMinimize(data.id),
-      RESTORE: () => this.handlers.visibility.handleRestore(data.id),
-      CLOSE: () => this.handlers.destroy.handleDestroy(data.id),
-      SNAPSHOT: () => this._handleStateSnapshot(data) // Phase 4: Self-healing
-    };
-
-    const handler = routes[type];
-    if (handler) {
-      handler();
-    } else {
-      console.warn('[SyncCoordinator] Unknown broadcast type:', type);
-    }
-  }
-
-  /**
-   * Handle state snapshot broadcast for self-healing
-   * Phase 4: Merge snapshot with local state
-   * 
-   * @private
-   * @param {Object} data - Snapshot data with quickTabs array
-   */
-  _handleStateSnapshot(data) {
-    if (!data.quickTabs || !Array.isArray(data.quickTabs)) {
-      console.warn('[SyncCoordinator] Invalid snapshot data');
-      return;
-    }
-
-    console.log(`[SyncCoordinator] Received state snapshot with ${data.quickTabs.length} Quick Tabs`);
-
-    // Get current state
-    const currentState = this.stateManager.getAll();
-    
-    // Import QuickTab class for deserialization
-    import('@domain/QuickTab.js').then(({ QuickTab }) => {
-      // Deserialize snapshot Quick Tabs
-      const snapshotQuickTabs = data.quickTabs.map(qtData => QuickTab.fromStorage(qtData));
-      
-      // Merge with current state using timestamp-based resolution
-      const mergedState = this._mergeQuickTabStates(currentState, snapshotQuickTabs);
-      
-      // Hydrate with merged state
-      this.stateManager.hydrate(mergedState);
-      
-      console.log(`[SyncCoordinator] Merged snapshot: ${currentState.length} local + ${snapshotQuickTabs.length} snapshot = ${mergedState.length} total`);
-    }).catch(err => {
-      console.error('[SyncCoordinator] Failed to process snapshot:', err);
-    });
+  getTabId() {
+    return this.tabId;
   }
 }

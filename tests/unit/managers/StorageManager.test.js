@@ -1,23 +1,21 @@
 /**
  * StorageManager Unit Tests
  * Phase 2.1: Tests for extracted storage management logic
+ * v1.6.2 - MIGRATION: Removed SessionStorageAdapter (storage.local only)
  */
 
 import { EventEmitter } from 'eventemitter3';
 
 import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { StorageManager } from '../../../src/features/quick-tabs/managers/StorageManager.js';
-import { SessionStorageAdapter } from '../../../src/storage/SessionStorageAdapter.js';
 import { SyncStorageAdapter } from '../../../src/storage/SyncStorageAdapter.js';
 
 // Mock the storage adapters
 jest.mock('../../../src/storage/SyncStorageAdapter.js');
-jest.mock('../../../src/storage/SessionStorageAdapter.js');
 
 describe('StorageManager', () => {
   let manager;
   let mockSyncAdapter;
-  let mockSessionAdapter;
   let eventBus;
 
   beforeEach(() => {
@@ -29,14 +27,12 @@ describe('StorageManager', () => {
 
     // Create mock adapters
     mockSyncAdapter = new SyncStorageAdapter();
-    mockSessionAdapter = new SessionStorageAdapter();
 
     // Create manager
     manager = new StorageManager(eventBus, 'firefox-default');
 
-    // Replace adapters with mocks
+    // Replace adapter with mock
     manager.syncAdapter = mockSyncAdapter;
-    manager.sessionAdapter = mockSessionAdapter;
   });
 
   describe('Constructor', () => {
@@ -148,9 +144,8 @@ describe('StorageManager', () => {
 
   describe('loadAll()', () => {
     beforeEach(() => {
-      // Mock browser.runtime.sendMessage for loadAll tests
-      // Also mocks browser.storage.session so sessionAdapter fallback is tested
-      // Also mocks browser.storage.local.get for ALL containers loading
+      // v1.6.2 - Mock browser.runtime.sendMessage for loadAll tests
+      // Only storage.local is used now
       global.browser = {
         runtime: {
           sendMessage: jest.fn().mockResolvedValue({
@@ -159,7 +154,6 @@ describe('StorageManager', () => {
           })
         },
         storage: {
-          session: {},  // Mock session storage API availability
           local: {
             get: jest.fn().mockResolvedValue({}) // Empty storage - no containers
           }
@@ -171,31 +165,35 @@ describe('StorageManager', () => {
       delete global.browser;
     });
 
-    test('should load Quick Tabs from session storage first', async () => {
-      const tabData = {
-        tabs: [
-          {
-            id: 'qt-123',
-            url: 'https://example.com',
-            position: { left: 100, top: 100 },
-            size: { width: 400, height: 300 },
-            cookieStoreId: 'firefox-default'
-          }
-        ],
-        lastUpdate: Date.now()
-      };
+    test('should load Quick Tabs from background script (authoritative source)', async () => {
+      const tabData = [
+        {
+          id: 'qt-123',
+          url: 'https://example.com',
+          position: { left: 100, top: 100 },
+          size: { width: 400, height: 300 },
+          cookieStoreId: 'firefox-default'
+        }
+      ];
 
-      mockSessionAdapter.load.mockResolvedValue(tabData);
+      // Background returns success with tabs
+      global.browser.runtime.sendMessage.mockResolvedValue({
+        success: true,
+        tabs: tabData
+      });
 
       const quickTabs = await manager.loadAll();
 
-      expect(mockSessionAdapter.load).toHaveBeenCalledWith('firefox-default');
+      expect(global.browser.runtime.sendMessage).toHaveBeenCalledWith({
+        action: 'GET_QUICK_TABS_STATE',
+        cookieStoreId: 'firefox-default'
+      });
       expect(quickTabs).toHaveLength(1);
       expect(quickTabs[0]).toBeInstanceOf(QuickTab);
       expect(quickTabs[0].id).toBe('qt-123');
     });
 
-    test('should fall back to sync storage if session is empty', async () => {
+    test('should load from storage when background fails', async () => {
       const tabData = {
         tabs: [
           {
@@ -209,20 +207,34 @@ describe('StorageManager', () => {
         lastUpdate: Date.now()
       };
 
-      mockSessionAdapter.load.mockResolvedValue(null);
-      mockSyncAdapter.load.mockResolvedValue(tabData);
+      // Background fails
+      global.browser.runtime.sendMessage.mockResolvedValue({
+        success: false
+      });
+
+      // Storage.local has data
+      global.browser.storage.local.get.mockResolvedValue({
+        quick_tabs_state_v2: {
+          containers: {
+            'firefox-default': tabData
+          }
+        }
+      });
 
       const quickTabs = await manager.loadAll();
 
-      expect(mockSessionAdapter.load).toHaveBeenCalled();
-      expect(mockSyncAdapter.load).toHaveBeenCalledWith('firefox-default');
       expect(quickTabs).toHaveLength(1);
       expect(quickTabs[0].id).toBe('qt-456');
     });
 
     test('should return empty array when no data found', async () => {
-      mockSessionAdapter.load.mockResolvedValue(null);
-      mockSyncAdapter.load.mockResolvedValue(null);
+      // Background fails
+      global.browser.runtime.sendMessage.mockResolvedValue({
+        success: false
+      });
+
+      // Storage is empty
+      global.browser.storage.local.get.mockResolvedValue({});
 
       const quickTabs = await manager.loadAll();
 
@@ -231,7 +243,9 @@ describe('StorageManager', () => {
 
     test('should handle load errors gracefully', async () => {
       const error = new Error('Storage access denied');
-      mockSessionAdapter.load.mockRejectedValue(error);
+
+      // Background throws error
+      global.browser.runtime.sendMessage.mockRejectedValue(error);
 
       const errorListener = jest.fn();
       eventBus.on('storage:error', errorListener);
@@ -245,49 +259,50 @@ describe('StorageManager', () => {
       });
     });
 
-    test('should skip session storage when browser.storage.session unavailable (content script context)', async () => {
-      // Mock browser without storage.session (simulates content script context)
-      // Also mock storage.local.get to return empty containers (no data in ALL containers step)
-      global.browser = {
-        runtime: {
-          sendMessage: jest.fn().mockResolvedValue({
-            success: false,
-            tabs: []
-          })
-        },
-        storage: {
-          // NOTE: No 'session' property - simulates content script context
-          local: {
-            get: jest.fn().mockResolvedValue({}) // Empty storage
+    test('should load all Quick Tabs from all containers globally', async () => {
+      // Background fails
+      global.browser.runtime.sendMessage.mockResolvedValue({
+        success: false
+      });
+
+      // Storage.local has multiple containers
+      global.browser.storage.local.get.mockResolvedValue({
+        quick_tabs_state_v2: {
+          containers: {
+            'firefox-default': {
+              tabs: [
+                {
+                  id: 'qt-default-1',
+                  url: 'https://default.com',
+                  position: { left: 100, top: 100 },
+                  size: { width: 400, height: 300 },
+                  cookieStoreId: 'firefox-default'
+                }
+              ],
+              lastUpdate: Date.now()
+            },
+            'firefox-container-1': {
+              tabs: [
+                {
+                  id: 'qt-container-1',
+                  url: 'https://container1.com',
+                  position: { left: 200, top: 200 },
+                  size: { width: 400, height: 300 },
+                  cookieStoreId: 'firefox-container-1'
+                }
+              ],
+              lastUpdate: Date.now()
+            }
           }
         }
-      };
-
-      const tabData = {
-        tabs: [
-          {
-            id: 'qt-sync-123',
-            url: 'https://sync-storage.com',
-            position: { left: 100, top: 100 },
-            size: { width: 400, height: 300 },
-            cookieStoreId: 'firefox-default'
-          }
-        ],
-        lastUpdate: Date.now()
-      };
-
-      mockSyncAdapter.load.mockResolvedValue(tabData);
+      });
 
       const quickTabs = await manager.loadAll();
 
-      // Session adapter should NOT be called because browser.storage.session is undefined
-      expect(mockSessionAdapter.load).not.toHaveBeenCalled();
-      // Sync adapter should be called as fallback
-      expect(mockSyncAdapter.load).toHaveBeenCalledWith('firefox-default');
-      expect(quickTabs).toHaveLength(1);
-      expect(quickTabs[0].id).toBe('qt-sync-123');
-
-      delete global.browser;
+      // v1.6.2 - Should load from all containers
+      expect(quickTabs).toHaveLength(2);
+      expect(quickTabs.map(qt => qt.id)).toContain('qt-default-1');
+      expect(quickTabs.map(qt => qt.id)).toContain('qt-container-1');
     });
   });
 
@@ -623,7 +638,7 @@ describe('StorageManager', () => {
       delete global.browser;
     });
 
-    test('should handle sync storage changes', done => {
+    test('should handle local storage changes', done => {
       manager.setupStorageListeners();
       manager.STORAGE_SYNC_DELAY_MS = 50;
 
@@ -640,7 +655,7 @@ describe('StorageManager', () => {
         }
       };
 
-      storageListener(changes, 'sync');
+      storageListener(changes, 'local');
 
       setTimeout(() => {
         expect(listener).toHaveBeenCalled();
@@ -648,9 +663,30 @@ describe('StorageManager', () => {
       }, 60);
     });
 
-    test('should handle session storage changes', done => {
+    test('should ignore sync storage changes (v1.6.2 migration)', () => {
       manager.setupStorageListeners();
-      manager.STORAGE_SYNC_DELAY_MS = 50;
+
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      const changes = {
+        quick_tabs_state_v2: {
+          newValue: {
+            containers: {
+              'firefox-default': { tabs: [{ id: 'qt-1' }] }
+            }
+          }
+        }
+      };
+
+      storageListener(changes, 'sync');
+
+      // v1.6.2 migration - sync storage is now ignored
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('should ignore session storage changes (v1.6.2 migration)', () => {
+      manager.setupStorageListeners();
 
       const listener = jest.fn();
       eventBus.on('storage:changed', listener);
@@ -667,10 +703,8 @@ describe('StorageManager', () => {
 
       storageListener(changes, 'session');
 
-      setTimeout(() => {
-        expect(listener).toHaveBeenCalled();
-        done();
-      }, 60);
+      // v1.6.2 migration - session storage is now ignored
+      expect(listener).not.toHaveBeenCalled();
     });
 
     test('should ignore irrelevant storage areas', () => {
@@ -875,35 +909,50 @@ describe('StorageManager', () => {
       });
     });
 
-    test('should handle storage corruption during load', async () => {
-      // Mock browser.storage.session so sessionAdapter fallback is tested
+    test('should handle storage corruption during load (v1.6.2 - storage.local only)', async () => {
+      // v1.6.2 migration - only storage.local is used
+      // Simulate background script failure and storage failure
       global.browser = {
         runtime: {
-          sendMessage: jest.fn().mockResolvedValue({
-            success: false,
-            tabs: []
-          })
+          sendMessage: jest.fn().mockRejectedValue(new Error('Background unavailable'))
         },
         storage: {
-          session: {},
           local: {
-            get: jest.fn().mockResolvedValue({}) // Empty storage
+            get: jest.fn().mockResolvedValue({}) // Empty storage returns empty array gracefully
           }
         }
       };
 
-      const corruptionError = new Error('Data corruption detected');
-      mockSessionAdapter.load.mockRejectedValue(corruptionError);
+      const result = await manager.loadAll();
+
+      // Empty storage returns empty array (graceful handling)
+      expect(result).toEqual([]);
+
+      delete global.browser;
+    });
+
+    test('should emit error event on load failure when background throws', async () => {
+      // Mock sync adapter to throw an error
+      const loadError = new Error('Storage access denied');
+      mockSyncAdapter.loadAll.mockRejectedValue(loadError);
+
+      // Background script also fails
+      global.browser = {
+        runtime: {
+          sendMessage: jest.fn().mockRejectedValue(new Error('Background unavailable'))
+        }
+      };
 
       const errorListener = jest.fn();
       eventBus.on('storage:error', errorListener);
 
       const result = await manager.loadAll();
 
+      // Should return empty array and emit error
       expect(result).toEqual([]);
       expect(errorListener).toHaveBeenCalledWith({
         operation: 'load',
-        error: corruptionError
+        error: expect.any(Error)
       });
 
       delete global.browser;

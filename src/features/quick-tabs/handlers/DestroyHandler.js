@@ -1,6 +1,7 @@
 /**
  * @fileoverview DestroyHandler - Handles Quick Tab destruction and cleanup
  * Extracted from QuickTabsManager Phase 2.1 refactoring
+ * v1.6.2 - MIGRATION: Removed BroadcastManager, uses storage.onChanged for cross-tab sync
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -10,18 +11,22 @@
  * - Reset z-index when all tabs closed
  * - Emit destruction events
  *
- * @version 1.6.0
+ * Migration Notes (v1.6.2):
+ * - Removed BroadcastManager dependency
+ * - Writing to storage via background triggers storage.onChanged in other tabs
+ * - Local UI updates happen immediately (no storage event for self)
+ *
+ * @version 1.6.2
  * @author refactor-specialist
  */
 
 /**
  * DestroyHandler class
- * Manages Quick Tab destruction and cleanup operations
+ * Manages Quick Tab destruction and cleanup operations with storage-based cross-tab sync
  */
 export class DestroyHandler {
   /**
    * @param {Map} quickTabsMap - Map of Quick Tab instances
-   * @param {BroadcastManager} broadcastManager - Broadcast manager for cross-tab sync
    * @param {MinimizedManager} minimizedManager - Manager for minimized Quick Tabs
    * @param {EventEmitter} eventBus - Event bus for internal communication
    * @param {Object} currentZIndex - Reference object with value property for z-index
@@ -32,7 +37,6 @@ export class DestroyHandler {
    */
   constructor(
     quickTabsMap,
-    broadcastManager,
     minimizedManager,
     eventBus,
     currentZIndex,
@@ -42,7 +46,6 @@ export class DestroyHandler {
     baseZIndex
   ) {
     this.quickTabsMap = quickTabsMap;
-    this.broadcastManager = broadcastManager;
     this.minimizedManager = minimizedManager;
     this.eventBus = eventBus;
     this.currentZIndex = currentZIndex;
@@ -54,8 +57,7 @@ export class DestroyHandler {
 
   /**
    * Handle Quick Tab destruction
-   * v1.5.8.13 - Broadcast close to other tabs
-   * v1.5.8.16 - Send to background to update storage and notify all tabs
+   * v1.6.2 - MIGRATION: Uses storage for cross-tab sync (removed BroadcastManager)
    *
    * @param {string} id - Quick Tab ID
    * @returns {Promise<void>}
@@ -69,8 +71,7 @@ export class DestroyHandler {
     // Generate save ID for transaction tracking
     const saveId = this.generateSaveId();
 
-    // Broadcast and persist
-    this.broadcastManager.notifyClose(id);
+    // v1.6.2 - Save to storage (triggers storage.onChanged in other tabs)
     await this._sendCloseToBackground(id, tabInfo, saveId);
 
     // Emit destruction event
@@ -102,6 +103,7 @@ export class DestroyHandler {
 
   /**
    * Send close message to background
+   * v1.6.2 - Triggers storage.onChanged in other tabs
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabInfo - Tab info with url and cookieStoreId

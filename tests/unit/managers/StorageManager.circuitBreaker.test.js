@@ -33,9 +33,10 @@ describe('StorageManager - Circuit Breaker', () => {
       expect(storageManager.circuitState).toBe('CLOSED');
       expect(storageManager.failureCount).toBe(0);
       expect(storageManager.successCount).toBe(0);
-      expect(storageManager.failureThreshold).toBe(5);
+      // v1.6.2 - MIGRATION: Updated thresholds for storage.local reliability
+      expect(storageManager.failureThreshold).toBe(10); // Increased from 5
       expect(storageManager.successThreshold).toBe(2);
-      expect(storageManager.resetTimeoutMs).toBe(10000);
+      expect(storageManager.resetTimeoutMs).toBe(5000); // Reduced from 10000ms
     });
   });
 
@@ -235,14 +236,15 @@ describe('StorageManager - Circuit Breaker', () => {
       
       const stats = storageManager.getCircuitBreakerStats();
       
+      // v1.6.2 - Updated thresholds for storage.local reliability
       expect(stats).toEqual({
         state: 'CLOSED',
         failureCount: 3,
         successCount: 1,
-        failureThreshold: 5,
+        failureThreshold: 10, // v1.6.2: increased for storage.local
         successThreshold: 2,
         lastFailureTime: 1234567890,
-        resetTimeoutMs: 10000
+        resetTimeoutMs: 5000 // v1.6.2: reduced for faster recovery
       });
     });
   });
