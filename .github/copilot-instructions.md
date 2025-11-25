@@ -37,6 +37,7 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 | Settings/UI | `ui-ux-settings-agent` | Settings page, appearance |
 | URL detection | `url-detection-agent` | Link detection, site handlers |
 | Complex multi-domain | `master-orchestrator` | Spans 3+ domains |
+| Copilot Docs Updater | `copilot-docs-updater` | Updating Copilot instructions and agent files |
 
 ### Agent Selection Criteria
 
@@ -59,6 +60,11 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 - storage.onChanged not firing
 - State not syncing between tabs
 - BroadcastChannel issues (legacy)
+
+**Use `copilot-docs-updater`** when:
+- Updating the Copilot instructions and agent files to have the most up-to-date information
+- Shortening the Copilot instructions and agent files to be under 15KB
+- Editing out or deleting old/legacy/out-of-date information from the Copilot instructions and agent files
 
 ### Delegation Template
 
