@@ -341,6 +341,7 @@ class QuickTabsManager {
    * Setup component listeners and event flows
    * v1.6.2 - MIGRATION: Removed BroadcastManager setup
    * v1.6.2.1 - ISSUE #35 FIX: Added context detection logging
+   * v1.6.2.2 - ISSUE #35 FIX: Added EventBus instance verification across components
    * @private
    */
   async _setupComponents() {
@@ -352,8 +353,34 @@ class QuickTabsManager {
       context,
       tabUrl: tabUrl?.substring(0, 50),
       hasStorageManager: !!this.storage,
+      hasSyncCoordinator: !!this.syncCoordinator,
+      hasInternalEventBus: !!this.internalEventBus,
       timestamp: Date.now()
     });
+    
+    // Issue #35 Critical Fix: Verify all components share the same EventBus instance
+    const storageEventBus = this.storage?.eventBus;
+    const syncEventBus = this.syncCoordinator?.eventBus;
+    const storageMatchesInternal = storageEventBus === this.internalEventBus;
+    const syncMatchesInternal = syncEventBus === this.internalEventBus;
+    const allEventBusesMatch = storageMatchesInternal && syncMatchesInternal;
+    
+    console.log('[QuickTabsManager] EventBus instance verification:', {
+      internalEventBusId: this.internalEventBus?.constructor?.name,
+      storageEventBusMatch: storageMatchesInternal,
+      syncEventBusMatch: syncMatchesInternal,
+      allMatch: allEventBusesMatch
+    });
+    
+    if (!allEventBusesMatch) {
+      console.error('[QuickTabsManager] ❌ CRITICAL: EventBus instances DO NOT MATCH!', {
+        hasInternalEventBus: !!this.internalEventBus,
+        hasStorageEventBus: !!storageEventBus,
+        hasSyncEventBus: !!syncEventBus,
+        storageMatch: storageMatchesInternal,
+        syncMatch: syncMatchesInternal
+      });
+    }
     
     // CRITICAL: This MUST call setupStorageListeners in content script context
     this.storage.setupStorageListeners();
@@ -367,7 +394,15 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] MemoryGuard monitoring started');
     }
     
-    console.log('[QuickTabsManager] ✓ _setupComponents complete', { context });
+    // Issue #35 Fix: Log listener counts after setup to verify event flow
+    const storageChangedListeners = this.internalEventBus?.listenerCount?.('storage:changed') ?? 'unknown';
+    const stateAddedListeners = this.internalEventBus?.listenerCount?.('state:added') ?? 'unknown';
+    
+    console.log('[QuickTabsManager] ✓ _setupComponents complete', { 
+      context,
+      storageChangedListeners,
+      stateAddedListeners
+    });
   }
 
   /**

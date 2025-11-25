@@ -149,6 +149,7 @@ export class StateManager {
   /**
    * Hydrate state from array of QuickTab entities
    * v1.6.1 - CRITICAL FIX: Track additions, updates, and deletions to emit proper events
+   * v1.6.2.2 - ISSUE #35 FIX: Enhanced logging for cross-tab sync debugging
    * This ensures UI coordinator knows about deletions and removes Quick Tabs that no longer exist
    * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
    */
@@ -157,9 +158,23 @@ export class StateManager {
       throw new Error('StateManager.hydrate() requires array of QuickTab instances');
     }
 
+    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
+    const tabUrl = typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A';
+
+    console.log('[StateManager] Hydrate called', {
+      context,
+      tabUrl,
+      incomingCount: quickTabs.length,
+      existingCount: this.quickTabs.size,
+      timestamp: Date.now()
+    });
+
     // Track existing IDs to detect deletions
     const existingIds = new Set(this.quickTabs.keys());
     const incomingIds = new Set();
+    
+    let addedCount = 0;
+    let updatedCount = 0;
 
     // Process incoming Quick Tabs (adds and updates)
     for (const qt of quickTabs) {
@@ -174,14 +189,21 @@ export class StateManager {
         // Existing Quick Tab - update it
         this.quickTabs.set(qt.id, qt);
         this.eventBus?.emit('state:updated', { quickTab: qt });
+        updatedCount++;
       } else {
         // New Quick Tab - add it
         this.quickTabs.set(qt.id, qt);
+        console.log('[StateManager] Hydrate: emitting state:added', {
+          quickTabId: qt.id,
+          context: typeof window !== 'undefined' ? 'content-script' : 'background'
+        });
         this.eventBus?.emit('state:added', { quickTab: qt });
+        addedCount++;
       }
     }
 
     // Detect deletions (existed before but not in incoming data)
+    let deletedCount = 0;
     for (const existingId of existingIds) {
       if (!incomingIds.has(existingId)) {
         // Quick Tab was deleted
@@ -189,11 +211,20 @@ export class StateManager {
         this.quickTabs.delete(existingId);
         this.eventBus?.emit('state:deleted', { id: existingId, quickTab: deletedQuickTab });
         console.log(`[StateManager] Detected deleted Quick Tab: ${existingId}`);
+        deletedCount++;
       }
     }
 
     this.eventBus?.emit('state:hydrated', { count: quickTabs.length });
-    console.log(`[StateManager] Hydrated ${quickTabs.length} Quick Tabs (${incomingIds.size - existingIds.size} added, ${existingIds.size - incomingIds.size} deleted)`);
+    
+    console.log('[StateManager] ✓ Hydrate complete', {
+      context,
+      tabUrl,
+      added: addedCount,
+      updated: updatedCount,
+      deleted: deletedCount,
+      totalNow: this.quickTabs.size
+    });
   }
 
   /**

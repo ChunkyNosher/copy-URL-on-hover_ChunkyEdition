@@ -49,18 +49,27 @@ export class SyncCoordinator {
    * Setup event listeners for storage events
    * v1.6.2 - MIGRATION: Removed broadcast:received listener
    * v1.6.2.1 - ISSUE #35 FIX: Added context-aware logging
+   * v1.6.2.2 - ISSUE #35 FIX: Added listener count verification to diagnose EventBus disconnect
    */
   setupListeners() {
     const context = typeof window !== 'undefined' ? 'content-script' : 'background';
     
     console.log('[SyncCoordinator] Setting up listeners (storage.onChanged only)', {
       context,
-      tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A'
+      tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
+      hasEventBus: !!this.eventBus,
+      eventBusType: this.eventBus?.constructor?.name || 'none'
     });
+
+    // Issue #35 Fix: Verify EventBus exists
+    if (!this.eventBus) {
+      console.error('[SyncCoordinator] ❌ EventBus is null/undefined! Cannot setup listeners');
+      return;
+    }
 
     // Listen to storage changes (from StorageManager)
     this.eventBus.on('storage:changed', ({ state }) => {
-      console.log('[SyncCoordinator] Received storage:changed event', {
+      console.log('[SyncCoordinator] *** RECEIVED storage:changed EVENT ***', {
         context: typeof window !== 'undefined' ? 'content-script' : 'background',
         tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
         hasState: !!state,
@@ -74,7 +83,15 @@ export class SyncCoordinator {
       this.handleTabVisible();
     });
 
-    console.log('[SyncCoordinator] ✓ Listeners setup complete', { context });
+    // Issue #35 Fix: Log listener count after registration to verify listeners are attached
+    const storageChangedListenerCount = this.eventBus.listenerCount?.('storage:changed') ?? 'unknown';
+    const tabVisibleListenerCount = this.eventBus.listenerCount?.('event:tab-visible') ?? 'unknown';
+    
+    console.log('[SyncCoordinator] ✓ Listeners setup complete', { 
+      context,
+      storageChangedListeners: storageChangedListenerCount,
+      tabVisibleListeners: tabVisibleListenerCount
+    });
   }
 
   /**
