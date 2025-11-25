@@ -69,9 +69,14 @@ describe('PanelContentManager - Edge Cases', () => {
     };
 
     // Mock browser APIs
+    // v1.6.2+ - MIGRATION: PanelContentManager uses storage.local
     mockBrowser = {
       storage: {
         sync: {
+          get: jest.fn().mockResolvedValue({}),
+          set: jest.fn().mockResolvedValue()
+        },
+        local: {
           get: jest.fn().mockResolvedValue({}),
           set: jest.fn().mockResolvedValue()
         },
@@ -114,7 +119,7 @@ describe('PanelContentManager - Edge Cases', () => {
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       // Setup storage with non-default container
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-container-1': {
@@ -164,7 +169,7 @@ describe('PanelContentManager - Edge Cases', () => {
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       // Setup storage
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-container-2': {
@@ -205,7 +210,7 @@ describe('PanelContentManager - Edge Cases', () => {
     // v1.6.2.3 - Statistics display updated to show real-time timestamp instead of "Last sync: Never"
     test('should handle timestamp = 0 case (shows current time)', async () => {
       // Setup: Storage with timestamp = 0
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -230,7 +235,7 @@ describe('PanelContentManager - Edge Cases', () => {
       lastSyncEl.remove();
 
       // Setup storage
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -257,7 +262,7 @@ describe('PanelContentManager - Edge Cases', () => {
       totalTabsEl.remove();
 
       // Setup storage
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -324,7 +329,7 @@ describe('PanelContentManager - Edge Cases', () => {
 
     test('should handle restore action with valid ID', async () => {
       // Setup storage
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -344,7 +349,7 @@ describe('PanelContentManager - Edge Cases', () => {
 
     test('should handle goToTab action with valid tab ID', async () => {
       // Setup storage
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -372,7 +377,7 @@ describe('PanelContentManager - Edge Cases', () => {
   describe('Data Corruption - handleCloseMinimized()', () => {
     test('should handle corrupted container state with null tabs array', async () => {
       // Setup: Corrupted state
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -387,12 +392,12 @@ describe('PanelContentManager - Edge Cases', () => {
       await expect(contentManager.handleCloseMinimized()).resolves.not.toThrow();
 
       // Verify: No changes made to storage
-      expect(mockBrowser.storage.sync.set).not.toHaveBeenCalled();
+      expect(mockBrowser.storage.local.set).not.toHaveBeenCalled();
     });
 
     test('should handle container state with undefined tabs', async () => {
       // Setup: Missing tabs property
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -407,12 +412,12 @@ describe('PanelContentManager - Edge Cases', () => {
       await expect(contentManager.handleCloseMinimized()).resolves.not.toThrow();
 
       // Verify: No changes
-      expect(mockBrowser.storage.sync.set).not.toHaveBeenCalled();
+      expect(mockBrowser.storage.local.set).not.toHaveBeenCalled();
     });
 
     test('should handle container state with non-array tabs', async () => {
       // Setup: tabs is object instead of array
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -427,12 +432,12 @@ describe('PanelContentManager - Edge Cases', () => {
       await expect(contentManager.handleCloseMinimized()).resolves.not.toThrow();
 
       // Verify: No changes
-      expect(mockBrowser.storage.sync.set).not.toHaveBeenCalled();
+      expect(mockBrowser.storage.local.set).not.toHaveBeenCalled();
     });
 
     test('should skip saveId and timestamp keys when iterating containers', async () => {
       // Setup: Storage with metadata keys
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             saveId: 'some-uuid-12345', // Should be skipped
@@ -455,10 +460,10 @@ describe('PanelContentManager - Edge Cases', () => {
       await contentManager.handleCloseMinimized();
 
       // Verify: Storage saved (container was processed, minimized tab removed)
-      expect(mockBrowser.storage.sync.set).toHaveBeenCalled();
+      expect(mockBrowser.storage.local.set).toHaveBeenCalled();
 
       // Check that the saved state doesn't have the minimized tab
-      const savedState = mockBrowser.storage.sync.set.mock.calls[0][0].quick_tabs_state_v2;
+      const savedState = mockBrowser.storage.local.set.mock.calls[0][0].quick_tabs_state_v2;
       const defaultContainerTabs = savedState.containers['firefox-default'].tabs;
 
       // Tab should be filtered out
@@ -478,7 +483,7 @@ describe('PanelContentManager - Edge Cases', () => {
     });
 
     test('should handle invalid tab ID in goToTab', async () => {
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -506,7 +511,7 @@ describe('PanelContentManager - Edge Cases', () => {
     });
 
     test('should handle concurrent action calls', async () => {
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -531,7 +536,7 @@ describe('PanelContentManager - Edge Cases', () => {
     });
 
     test('should handle action with special characters in ID', async () => {
-      mockBrowser.storage.sync.get.mockResolvedValue({
+      mockBrowser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {

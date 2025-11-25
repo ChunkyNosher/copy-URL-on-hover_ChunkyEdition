@@ -116,12 +116,13 @@ export class PanelContentManager {
 
   /**
    * Fetch Quick Tabs state from browser storage
+   * v1.6.2+ - MIGRATION: Use storage.local instead of storage.sync
    * @returns {Object|null} Quick Tabs state by container
    * @private
    */
   async _fetchQuickTabsFromStorage() {
     try {
-      const result = await browser.storage.sync.get('quick_tabs_state_v2');
+      const result = await browser.storage.local.get('quick_tabs_state_v2');
       if (!result || !result.quick_tabs_state_v2) return null;
 
       const state = result.quick_tabs_state_v2;
@@ -479,10 +480,11 @@ export class PanelContentManager {
   /**
    * Close all minimized Quick Tabs
    * v1.5.8.15 - Fixed to handle wrapped container format
+   * v1.6.2+ - MIGRATION: Use storage.local instead of storage.sync
    */
   async handleCloseMinimized() {
     try {
-      const result = await browser.storage.sync.get('quick_tabs_state_v2');
+      const result = await browser.storage.local.get('quick_tabs_state_v2');
       if (!result || !result.quick_tabs_state_v2) return;
 
       const state = result.quick_tabs_state_v2;
@@ -494,7 +496,7 @@ export class PanelContentManager {
       // Iterate through containers
       Object.keys(containers).forEach(key => {
         // Skip metadata keys
-        if (key === 'saveId' || key === 'timestamp') return;
+        if (key === 'saveId' || key === 'timestamp' || key === 'writeSourceId') return;
 
         const containerState = containers[key];
         if (!containerState?.tabs || !Array.isArray(containerState.tabs)) {
@@ -520,7 +522,7 @@ export class PanelContentManager {
           timestamp: Date.now()
         };
 
-        await browser.storage.sync.set({ quick_tabs_state_v2: stateToSave });
+        await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
 
         // Update session storage
         await this._updateSessionStorage(stateToSave);
@@ -547,6 +549,7 @@ export class PanelContentManager {
   /**
    * Close all Quick Tabs
    * v1.5.8.15 - Fixed to use proper wrapped format
+   * v1.6.2+ - MIGRATION: Use storage.local instead of storage.sync
    */
   async handleCloseAll() {
     try {
@@ -559,19 +562,14 @@ export class PanelContentManager {
         timestamp: Date.now()
       };
 
-      await browser.storage.sync.set({ quick_tabs_state_v2: emptyState });
+      await browser.storage.local.set({ quick_tabs_state_v2: emptyState });
 
       // Clear session storage
       await this._updateSessionStorage(emptyState);
 
-      // Notify all tabs via background
-      browser.runtime
-        .sendMessage({
-          action: 'CLEAR_ALL_QUICK_TABS'
-        })
-        .catch(() => {
-          // Ignore errors when background script is not available
-        });
+      // Note: CLEAR_ALL_QUICK_TABS message is not handled by background.
+      // Cross-tab sync happens via storage.onChanged which fires when we write to storage.local above.
+      // Other tabs will receive the change and update their UI accordingly.
 
       debug('[PanelContentManager] Closed all Quick Tabs');
       await this.updateContent();
