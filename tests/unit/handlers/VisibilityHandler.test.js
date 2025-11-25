@@ -17,7 +17,6 @@ global.browser = {
 describe('VisibilityHandler', () => {
   let visibilityHandler;
   let mockQuickTabsMap;
-  let mockBroadcastManager;
   let mockStorageManager;
   let mockMinimizedManager;
   let mockEventBus;
@@ -55,12 +54,7 @@ describe('VisibilityHandler', () => {
     // Create mock Map
     mockQuickTabsMap = new Map([['qt-123', mockTab]]);
 
-    // Create mock broadcast manager
-    mockBroadcastManager = {
-      notifySolo: jest.fn(),
-      notifyMute: jest.fn(),
-      notifyMinimize: jest.fn()
-    };
+    // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
 
     // Create mock storage manager
     mockStorageManager = {
@@ -93,10 +87,9 @@ describe('VisibilityHandler', () => {
       QUICK_TAB_FOCUSED: 'quick-tab:focused'
     };
 
-    // Create handler
+    // Create handler (v1.6.2 - no broadcastManager)
     visibilityHandler = new VisibilityHandler({
       quickTabsMap: mockQuickTabsMap,
-      broadcastManager: mockBroadcastManager,
       storageManager: mockStorageManager,
       minimizedManager: mockMinimizedManager,
       eventBus: mockEventBus,
@@ -112,7 +105,7 @@ describe('VisibilityHandler', () => {
   describe('Constructor', () => {
     test('should initialize with required dependencies', () => {
       expect(visibilityHandler.quickTabsMap).toBe(mockQuickTabsMap);
-      expect(visibilityHandler.broadcastManager).toBe(mockBroadcastManager);
+      // v1.6.2 - broadcastManager removed
       expect(visibilityHandler.storageManager).toBe(mockStorageManager);
       expect(visibilityHandler.minimizedManager).toBe(mockMinimizedManager);
       expect(visibilityHandler.eventBus).toBe(mockEventBus);
@@ -150,10 +143,15 @@ describe('VisibilityHandler', () => {
       expect(mockTab.soloButton.style.background).toBe('transparent');
     });
 
-    test('should broadcast solo message', () => {
-      visibilityHandler.handleSoloToggle('qt-123', [100, 200]);
+    // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
+    test('should save solo state via browser.runtime.sendMessage', async () => {
+      await visibilityHandler.handleSoloToggle('qt-123', [100, 200]);
 
-      expect(mockBroadcastManager.notifySolo).toHaveBeenCalledWith('qt-123', [100, 200]);
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'UPDATE_QUICK_TAB_SOLO',
+        id: 'qt-123',
+        soloedOnTabs: [100, 200]
+      }));
     });
 
     test('should send message to background with saveId', async () => {
@@ -244,10 +242,15 @@ describe('VisibilityHandler', () => {
       expect(mockTab.muteButton.style.background).toBe('transparent');
     });
 
-    test('should broadcast mute message', () => {
-      visibilityHandler.handleMuteToggle('qt-123', [100, 200]);
+    // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
+    test('should save mute state via browser.runtime.sendMessage', async () => {
+      await visibilityHandler.handleMuteToggle('qt-123', [100, 200]);
 
-      expect(mockBroadcastManager.notifyMute).toHaveBeenCalledWith('qt-123', [100, 200]);
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'UPDATE_QUICK_TAB_MUTE',
+        id: 'qt-123',
+        mutedOnTabs: [100, 200]
+      }));
     });
 
     test('should send message to background with saveId', async () => {
@@ -314,10 +317,15 @@ describe('VisibilityHandler', () => {
       expect(mockMinimizedManager.add).toHaveBeenCalledWith('qt-123', mockTab);
     });
 
-    test('should broadcast minimize message', () => {
-      visibilityHandler.handleMinimize('qt-123');
+    // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
+    test('should save minimize state via browser.runtime.sendMessage', async () => {
+      await visibilityHandler.handleMinimize('qt-123');
 
-      expect(mockBroadcastManager.notifyMinimize).toHaveBeenCalledWith('qt-123');
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'UPDATE_QUICK_TAB_MINIMIZE',
+        id: 'qt-123',
+        minimized: true
+      }));
     });
 
     test('should emit minimize event', () => {
@@ -421,7 +429,7 @@ describe('VisibilityHandler', () => {
 
       expect(mockTab.soloedOnTabs).toEqual([100, 200]);
       expect(mockTab.mutedOnTabs).toEqual([]);
-      expect(mockBroadcastManager.notifySolo).toHaveBeenCalled();
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
       expect(browser.runtime.sendMessage).toHaveBeenCalled();
     });
 
@@ -433,7 +441,7 @@ describe('VisibilityHandler', () => {
 
       expect(mockTab.mutedOnTabs).toEqual([100, 200]);
       expect(mockTab.soloedOnTabs).toEqual([]);
-      expect(mockBroadcastManager.notifyMute).toHaveBeenCalled();
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
       expect(browser.runtime.sendMessage).toHaveBeenCalled();
     });
 
@@ -444,7 +452,7 @@ describe('VisibilityHandler', () => {
       await visibilityHandler.handleMinimize('qt-123');
 
       expect(mockMinimizedManager.add).toHaveBeenCalled();
-      expect(mockBroadcastManager.notifyMinimize).toHaveBeenCalled();
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
       expect(browser.runtime.sendMessage).toHaveBeenCalled();
       expect(eventSpy).toHaveBeenCalled();
     });

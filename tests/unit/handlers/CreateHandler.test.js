@@ -18,7 +18,6 @@ describe('CreateHandler', () => {
   let quickTabsMap;
   let currentZIndex;
   let cookieStoreId;
-  let broadcastManager;
   let eventBus;
   let Events;
   let generateId;
@@ -27,20 +26,18 @@ describe('CreateHandler', () => {
     quickTabsMap = new Map();
     currentZIndex = { value: 10000 };
     cookieStoreId = 'firefox-default';
-    broadcastManager = {
-      broadcast: jest.fn()
-    };
+    // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
     eventBus = new EventEmitter();
     Events = {
       QUICK_TAB_CREATED: 'QUICK_TAB_CREATED'
     };
     generateId = jest.fn(() => 'generated-id-123');
 
+    // v1.6.2 - CreateHandler constructor: (quickTabsMap, currentZIndex, cookieStoreId, eventBus, Events, generateId, windowFactory)
     handler = new CreateHandler(
       quickTabsMap,
       currentZIndex,
       cookieStoreId,
-      broadcastManager,
       eventBus,
       Events,
       generateId
@@ -54,7 +51,7 @@ describe('CreateHandler', () => {
       expect(handler.quickTabsMap).toBe(quickTabsMap);
       expect(handler.currentZIndex).toBe(currentZIndex);
       expect(handler.cookieStoreId).toBe(cookieStoreId);
-      expect(handler.broadcastManager).toBe(broadcastManager);
+      // v1.6.2 - broadcastManager removed
       expect(handler.eventBus).toBe(eventBus);
       expect(handler.Events).toBe(Events);
       expect(handler.generateId).toBe(generateId);
@@ -135,7 +132,14 @@ describe('CreateHandler', () => {
       expect(quickTabsMap.get('tab-1')).toBe(mockTabWindow);
     });
 
-    test('should broadcast CREATE message', () => {
+    test('should save Quick Tab to storage via browser.runtime.sendMessage', async () => {
+      // Setup browser mock
+      global.browser = {
+        runtime: {
+          sendMessage: jest.fn().mockResolvedValue({})
+        }
+      };
+
       const options = {
         id: 'tab-1',
         url: 'https://example.com',
@@ -150,7 +154,12 @@ describe('CreateHandler', () => {
 
       handler.create(options);
 
-      expect(broadcastManager.broadcast).toHaveBeenCalledWith('CREATE', {
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
+      // Wait for async _saveToStorage call
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'CREATE_QUICK_TAB',
         id: 'tab-1',
         url: 'https://example.com',
         left: 200,
@@ -162,7 +171,9 @@ describe('CreateHandler', () => {
         minimized: false,
         soloedOnTabs: [],
         mutedOnTabs: []
-      });
+      }));
+
+      delete global.browser;
     });
 
     test('should emit QUICK_TAB_CREATED event', done => {
@@ -234,7 +245,14 @@ describe('CreateHandler', () => {
       );
     });
 
-    test('should include solo/mute arrays in broadcast', () => {
+    test('should include solo/mute arrays in storage save', async () => {
+      // Setup browser mock
+      global.browser = {
+        runtime: {
+          sendMessage: jest.fn().mockResolvedValue({})
+        }
+      };
+
       const options = {
         id: 'tab-1',
         url: 'https://example.com',
@@ -246,13 +264,19 @@ describe('CreateHandler', () => {
 
       handler.create(options);
 
-      expect(broadcastManager.broadcast).toHaveBeenCalledWith(
-        'CREATE',
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
+      // Wait for async _saveToStorage call
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          action: 'CREATE_QUICK_TAB',
           soloedOnTabs: [1, 2, 3],
           mutedOnTabs: [4, 5, 6]
         })
       );
+
+      delete global.browser;
     });
 
     test('should create QuickTabWindow with all callbacks', () => {

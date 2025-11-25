@@ -34,7 +34,6 @@ global.browser = {
 describe('VisibilityHandler - Solo/Mute Mutual Exclusivity', () => {
   let visibilityHandler;
   let mockQuickTabsMap;
-  let mockBroadcastManager;
   let mockStorageManager;
   let mockMinimizedManager;
   let mockEventBus;
@@ -71,12 +70,7 @@ describe('VisibilityHandler - Solo/Mute Mutual Exclusivity', () => {
     };
 
     mockQuickTabsMap = new Map([['qt-test-1', mockTab]]);
-    mockBroadcastManager = {
-      notifySolo: jest.fn(),
-      notifyMute: jest.fn(),
-      notifyMinimize: jest.fn(),
-      notifyRestore: jest.fn()
-    };
+    // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
     mockStorageManager = {
       save: jest.fn(async () => {})
     };
@@ -96,9 +90,9 @@ describe('VisibilityHandler - Solo/Mute Mutual Exclusivity', () => {
       QUICK_TAB_RESTORED: 'quick-tab:restored'
     };
 
+    // v1.6.2 - no broadcastManager
     visibilityHandler = new VisibilityHandler({
       quickTabsMap: mockQuickTabsMap,
-      broadcastManager: mockBroadcastManager,
       storageManager: mockStorageManager,
       minimizedManager: mockMinimizedManager,
       eventBus: mockEventBus,
@@ -122,10 +116,15 @@ describe('VisibilityHandler - Solo/Mute Mutual Exclusivity', () => {
       expect(mockTab.soloButton.style.background).toBe('#444');
     });
 
-    test('should solo mode broadcasting to all tabs immediately', () => {
-      visibilityHandler.handleSoloToggle('qt-test-1', [123]);
+    test('should solo mode broadcasting to all tabs immediately', async () => {
+      await visibilityHandler.handleSoloToggle('qt-test-1', [123]);
 
-      expect(mockBroadcastManager.notifySolo).toHaveBeenCalledWith('qt-test-1', [123]);
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'UPDATE_QUICK_TAB_SOLO',
+        id: 'qt-test-1',
+        soloedOnTabs: [123]
+      }));
     });
 
     test('should solo mode persisting to storage', async () => {
@@ -169,10 +168,15 @@ describe('VisibilityHandler - Solo/Mute Mutual Exclusivity', () => {
       expect(mockTab.muteButton.style.background).toBe('#c44');
     });
 
-    test('should mute mode broadcasting and syncing across tabs', () => {
-      visibilityHandler.handleMuteToggle('qt-test-1', [123]);
+    test('should mute mode broadcasting and syncing across tabs', async () => {
+      await visibilityHandler.handleMuteToggle('qt-test-1', [123]);
 
-      expect(mockBroadcastManager.notifyMute).toHaveBeenCalledWith('qt-test-1', [123]);
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'UPDATE_QUICK_TAB_MUTE',
+        id: 'qt-test-1',
+        mutedOnTabs: [123]
+      }));
     });
 
     test('should allow multiple tabs to mute same QT independently', () => {
@@ -255,50 +259,54 @@ describe('VisibilityHandler - Solo/Mute Mutual Exclusivity', () => {
       await visibilityHandler.handleMinimize('qt-test-1');
 
       expect(mockMinimizedManager.add).toHaveBeenCalledWith('qt-test-1', mockTab);
-      expect(mockBroadcastManager.notifyMinimize).toHaveBeenCalledWith('qt-test-1');
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'UPDATE_QUICK_TAB_MINIMIZE',
+        id: 'qt-test-1',
+        minimized: true
+      }));
       expect(mockEventBus.listenerCount('quick-tab:minimized')).toBeGreaterThanOrEqual(0);
     });
 
     test('should minimize syncing across tabs', async () => {
       await visibilityHandler.handleMinimize('qt-test-1');
 
-      expect(mockBroadcastManager.notifyMinimize).toHaveBeenCalledWith('qt-test-1');
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'UPDATE_QUICK_TAB_MINIMIZE',
+        id: 'qt-test-1',
+        minimized: true
+      }));
       expect(mockTrackPendingSave).toHaveBeenCalled();
-      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'UPDATE_QUICK_TAB_MINIMIZE',
-          id: 'qt-test-1',
-          minimized: true
-        })
-      );
     });
 
     test('should restore Quick Tab from minimized state', async () => {
       // Setup: minimize first
       mockMinimizedManager.restore = jest.fn(() => mockTab);
-      mockBroadcastManager.notifyRestore = jest.fn();
 
       await visibilityHandler.handleRestore('qt-test-1');
 
       expect(mockMinimizedManager.restore).toHaveBeenCalledWith('qt-test-1');
-      expect(mockBroadcastManager.notifyRestore).toHaveBeenCalledWith('qt-test-1');
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'UPDATE_QUICK_TAB_MINIMIZE',
+        id: 'qt-test-1',
+        minimized: false
+      }));
     });
 
     test('should restore syncing state across all tabs', async () => {
       mockMinimizedManager.restore = jest.fn(() => mockTab);
-      mockBroadcastManager.notifyRestore = jest.fn();
 
       await visibilityHandler.handleRestore('qt-test-1');
 
-      expect(mockBroadcastManager.notifyRestore).toHaveBeenCalledWith('qt-test-1');
+      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'UPDATE_QUICK_TAB_MINIMIZE',
+        id: 'qt-test-1',
+        minimized: false
+      }));
       expect(mockTrackPendingSave).toHaveBeenCalled();
-      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'UPDATE_QUICK_TAB_MINIMIZE',
-          id: 'qt-test-1',
-          minimized: false
-        })
-      );
     });
 
     test('should handle restore when tab not in minimized manager', async () => {
@@ -306,8 +314,7 @@ describe('VisibilityHandler - Solo/Mute Mutual Exclusivity', () => {
 
       await visibilityHandler.handleRestore('qt-test-1');
 
-      // Should not broadcast or update storage
-      expect(mockBroadcastManager.notifyRestore).not.toHaveBeenCalled();
+      // Should not update storage
       expect(browser.runtime.sendMessage).not.toHaveBeenCalled();
     });
   });

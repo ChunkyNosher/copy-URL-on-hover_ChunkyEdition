@@ -117,7 +117,13 @@ describe('UpdateHandler', () => {
     test('should round position values', async () => {
       await updateHandler.handlePositionChangeEnd('qt-123', 250.7, 175.3);
 
-      expect(mockBroadcastManager.notifyPositionUpdate).toHaveBeenCalledWith('qt-123', 251, 175);
+      // v1.6.2 - No broadcast, verify rounded values in sendMessage
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          left: 251,
+          top: 175
+        })
+      );
     });
 
     test('should emit tab:position-updated event', async () => {
@@ -294,10 +300,10 @@ describe('UpdateHandler', () => {
       // Drag (no broadcast/save)
       updateHandler.handlePositionChange('qt-123', 200, 150);
 
-      // Drag end (broadcast + save)
+      // Drag end (save to storage)
       await updateHandler.handlePositionChangeEnd('qt-123', 200, 150);
 
-      expect(mockBroadcastManager.notifyPositionUpdate).toHaveBeenCalledTimes(1);
+      // v1.6.2 - No broadcast, cross-tab sync via storage.onChanged
       expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
       expect(eventSpy).toHaveBeenCalledTimes(1);
     });
@@ -309,10 +315,10 @@ describe('UpdateHandler', () => {
       // Resize (no broadcast/save)
       updateHandler.handleSizeChange('qt-123', 500, 400);
 
-      // Resize end (broadcast + save)
+      // Resize end (save to storage)
       await updateHandler.handleSizeChangeEnd('qt-123', 500, 400);
 
-      expect(mockBroadcastManager.notifySizeUpdate).toHaveBeenCalledTimes(1);
+      // v1.6.2 - No broadcast, cross-tab sync via storage.onChanged
       expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
       expect(eventSpy).toHaveBeenCalledTimes(1);
     });

@@ -33,9 +33,10 @@ describe('StorageManager - Circuit Breaker', () => {
       expect(storageManager.circuitState).toBe('CLOSED');
       expect(storageManager.failureCount).toBe(0);
       expect(storageManager.successCount).toBe(0);
-      expect(storageManager.failureThreshold).toBe(5);
+      // v1.6.2 - MIGRATION: Updated thresholds for storage.local reliability
+      expect(storageManager.failureThreshold).toBe(10); // Increased from 5
       expect(storageManager.successThreshold).toBe(2);
-      expect(storageManager.resetTimeoutMs).toBe(10000);
+      expect(storageManager.resetTimeoutMs).toBe(5000); // Reduced from 10000ms
     });
   });
 

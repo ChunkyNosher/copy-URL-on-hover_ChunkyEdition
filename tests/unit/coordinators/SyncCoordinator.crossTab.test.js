@@ -1,6 +1,8 @@
 /**
  * SyncCoordinator Cross-Tab Synchronization Tests
  * 
+ * v1.6.2 - MIGRATION: Uses storage.onChanged exclusively (BroadcastChannel removed)
+ * 
  * Enhanced tests for position/size sync lifecycle, cross-tab propagation,
  * emergency save, and state hydration as specified in comprehensive-unit-testing-strategy.md
  * 
@@ -23,7 +25,6 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
   let coordinators;
   let mockStateManagers;
   let mockStorageManagers;
-  let mockBroadcastManagers;
   let mockHandlers;
   let eventBuses;
 
@@ -54,13 +55,11 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
       shouldIgnoreStorageChange: jest.fn(() => false),
       save: jest.fn(),
       load: jest.fn(),
+      loadAll: jest.fn().mockResolvedValue([]),
       emergencySave: jest.fn()
     }));
 
-    mockBroadcastManagers = tabs.map(() => ({
-      broadcast: jest.fn(),
-      setupBroadcastChannel: jest.fn()
-    }));
+    // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
 
     mockHandlers = tabs.map(() => ({
       create: { create: jest.fn() },
@@ -78,11 +77,11 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
     }));
 
     // Create coordinators for each tab
+    // v1.6.2 - SyncCoordinator takes 4 params (removed broadcastManager)
     coordinators = tabs.map((tab, index) => {
       const coordinator = new SyncCoordinator(
         mockStateManagers[index],
         mockStorageManagers[index],
-        mockBroadcastManagers[index],
         mockHandlers[index],
         eventBuses[index]
       );
@@ -92,15 +91,19 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
   });
 
   describe('Position/Size Sync Lifecycle', () => {
-    test('position change triggers broadcast and storage update', async () => {
+    test('position change triggers storage update and state hydration', async () => {
       const qt = createQuickTabWithDefaults({ id: 'qt-1', position: { left: 100, top: 100 } });
       mockStateManagers[0].get.mockReturnValue(qt);
 
-      // Simulate position update in tab 0
+      // v1.6.2 - Simulate storage.onChanged event (from another tab's write)
       eventBuses[0].emit('storage:changed', {
-        key: 'qt_firefox-default_qt-1',
-        newValue: { ...qt, position: { left: 200, top: 200 } },
-        oldValue: qt
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [{ ...qt, position: { left: 200, top: 200 } }]
+            }
+          }
+        }
       });
 
       await wait(50);
@@ -109,79 +112,61 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
       expect(mockStateManagers[0].hydrate).toHaveBeenCalled();
     });
 
-    test('position change in tab A reflects in tab B via broadcast', async () => {
+    test('position change in tab A reflects in tab B via storage.onChanged', async () => {
       const qt = createQuickTabWithDefaults({ id: 'qt-sync-1', position: { left: 100, top: 100 } });
       
       // Tab A has the Quick Tab
       mockStateManagers[0].get.mockReturnValue(qt);
-      mockHandlers[0].update.handlePositionChangeEnd.mockImplementation(async (id, position) => {
-        // Simulate successful update
-        qt.position = position;
-      });
 
-      // Tab B listens for updates
-      const tab2Updates = [];
-      mockHandlers[1].update.handlePositionChangeEnd.mockImplementation(async (id, left, top) => {
-        tab2Updates.push({ id, position: { left, top } });
-      });
-
-      // Simulate broadcast from tab A
-      eventBuses[0].emit('storage:changed', {
-        key: 'qt_firefox-default_qt-sync-1',
-        newValue: { ...qt, position: { left: 250, top: 250 } }
-      });
-
-      // Trigger broadcast message reception in tab B
-      eventBuses[1].emit('broadcast:received', {
-        type: 'UPDATE_POSITION',
-        data: { id: 'qt-sync-1', left: 250, top: 250 }
+      // v1.6.2 - Simulate storage.onChanged event in Tab B (triggered by Tab A's write)
+      eventBuses[1].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [{ ...qt, position: { left: 250, top: 250 } }]
+            }
+          }
+        }
       });
 
       await wait(50);
 
-      // Verify tab B received update
-      expect(tab2Updates.length).toBeGreaterThan(0);
-      expect(tab2Updates[0]).toMatchObject({
-        id: 'qt-sync-1',
-        position: { left: 250, top: 250 }
-      });
+      // Verify tab B received update via state hydration
+      expect(mockStateManagers[1].hydrate).toHaveBeenCalled();
     });
 
-    test('size change in tab A propagates to all other tabs', async () => {
+    test('size change in tab A propagates to all other tabs via storage.onChanged', async () => {
       const qt = createQuickTabWithDefaults({ id: 'qt-size-1', size: { width: 800, height: 600 } });
       
       // Setup state in all tabs
       mockStateManagers.forEach(sm => sm.get.mockReturnValue(qt));
 
-      const tab2SizeUpdates = [];
-      const tab3SizeUpdates = [];
-
-      mockHandlers[1].update.handleSizeChangeEnd.mockImplementation(async (id, width, height) => {
-        tab2SizeUpdates.push({ id, size: { width, height } });
+      // v1.6.2 - Simulate storage.onChanged in tabs 1 and 2 (from tab 0's write)
+      eventBuses[1].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [{ ...qt, size: { width: 900, height: 700 } }]
+            }
+          }
+        }
       });
 
-      mockHandlers[2].update.handleSizeChangeEnd.mockImplementation(async (id, width, height) => {
-        tab3SizeUpdates.push({ id, size: { width, height } });
-      });
-
-      // Broadcast size update from tab 0
-      eventBuses[1].emit('broadcast:received', {
-        type: 'UPDATE_SIZE',
-        data: { id: 'qt-size-1', width: 900, height: 700 }
-      });
-
-      eventBuses[2].emit('broadcast:received', {
-        type: 'UPDATE_SIZE',
-        data: { id: 'qt-size-1', width: 900, height: 700 }
+      eventBuses[2].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [{ ...qt, size: { width: 900, height: 700 } }]
+            }
+          }
+        }
       });
 
       await wait(50);
 
-      // Verify propagation to tabs 2 and 3
-      expect(tab2SizeUpdates.length).toBeGreaterThan(0);
-      expect(tab3SizeUpdates.length).toBeGreaterThan(0);
-      expect(tab2SizeUpdates[0].size).toEqual({ width: 900, height: 700 });
-      expect(tab3SizeUpdates[0].size).toEqual({ width: 900, height: 700 });
+      // Verify propagation to tabs 1 and 2 via state hydration
+      expect(mockStateManagers[1].hydrate).toHaveBeenCalled();
+      expect(mockStateManagers[2].hydrate).toHaveBeenCalled();
     });
   });
 
@@ -255,10 +240,15 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
       tabs[0]._storage.set('qt_firefox-default_qt-load-2', qt2);
       tabs[0]._storage.set('qt_firefox-default_qt-load-3', qt3);
 
-      // Simulate storage change event to trigger hydration
+      // v1.6.2 - Simulate storage.onChanged event to trigger hydration
       eventBuses[0].emit('storage:changed', {
-        key: 'qt_firefox-default_qt-load-1',
-        newValue: qt1
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qt1, qt2, qt3]
+            }
+          }
+        }
       });
 
       await wait(50);
@@ -329,22 +319,30 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
       tabs[0]._storage.set('qt_firefox-default_qt-restore-solo', qtWithSolo);
       tabs[0]._storage.set('qt_firefox-default_qt-restore-mute', qtWithMute);
 
-      // Trigger hydration via storage change with distinct timestamps for deduplication
+      // v1.6.2 - Trigger hydration via storage.onChanged with distinct timestamps for deduplication
       eventBuses[0].emit('storage:changed', {
-        key: 'qt_firefox-default_qt-restore-solo',
-        newValue: qtWithSolo,
-        quickTabs: [qtWithSolo],
-        timestamp: Date.now()
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qtWithSolo]
+            }
+          },
+          timestamp: Date.now()
+        }
       });
 
       // Small delay to ensure different timestamp
       await wait(10);
 
       eventBuses[0].emit('storage:changed', {
-        key: 'qt_firefox-default_qt-restore-mute',
-        newValue: qtWithMute,
-        quickTabs: [qtWithMute],
-        timestamp: Date.now()
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qtWithMute]
+            }
+          },
+          timestamp: Date.now() + 1
+        }
       });
 
       await wait(50);
@@ -367,158 +365,271 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
         { left: 150, top: 150 }
       ];
 
-      // Send rapid updates from tab 0
+      // v1.6.2 - Send rapid storage updates
       for (const position of updates) {
-        eventBuses[1].emit('broadcast:received', {
-          type: 'UPDATE_POSITION',
-          data: { id: 'qt-rapid-1', ...position }
+        eventBuses[1].emit('storage:changed', {
+          state: {
+            containers: {
+              'firefox-default': {
+                tabs: [{ ...qt, position, timestamp: Date.now() }]
+              }
+            }
+          }
         });
         await wait(10);
       }
 
       await wait(100);
 
-      // Verify all updates were processed
-      expect(mockHandlers[1].update.handlePositionChangeEnd).toHaveBeenCalled();
+      // Verify all updates were processed via state hydration
+      expect(mockStateManagers[1].hydrate).toHaveBeenCalled();
     });
 
     test('concurrent updates from different tabs are handled gracefully', async () => {
       const qt = createQuickTabWithDefaults({ id: 'qt-concurrent-1' });
       mockStateManagers.forEach(sm => sm.get.mockReturnValue(qt));
 
-      // Tab 0 and Tab 1 update simultaneously
-      eventBuses[2].emit('broadcast:received', {
-        type: 'UPDATE_POSITION',
-        data: { id: 'qt-concurrent-1', left: 100, top: 100 }
+      // v1.6.2 - Tab 0 and Tab 1 update simultaneously via storage.onChanged
+      eventBuses[2].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [{ ...qt, position: { left: 100, top: 100 }, timestamp: Date.now() }]
+            }
+          }
+        }
       });
 
-      eventBuses[2].emit('broadcast:received', {
-        type: 'UPDATE_POSITION',
-        data: { id: 'qt-concurrent-1', left: 200, top: 200 }
+      eventBuses[2].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [{ ...qt, position: { left: 200, top: 200 }, timestamp: Date.now() + 1 }]
+            }
+          }
+        }
       });
 
       await wait(100);
 
-      // Verify handler was called (last-write-wins at application level)
-      expect(mockHandlers[2].update.handlePositionChangeEnd).toHaveBeenCalled();
+      // Verify updates were processed (last-write-wins at application level)
+      expect(mockStateManagers[2].hydrate).toHaveBeenCalled();
     });
 
     test('storage changes ignored during pending saveId window', async () => {
       const qt = createQuickTabWithDefaults({ id: 'qt-saveid-1' });
       
-      // Simulate own storage change with saveId
-      mockStorageManagers[0].shouldIgnoreStorageChange.mockReturnValue(true);
-
+      // Simulate own storage change - coordinator should use deduplication
+      // v1.6.2 - SyncCoordinator uses _isDuplicateMessage to skip processed messages
+      // Deduplication is based on a hash of Quick Tab IDs and timestamp
+      
+      // First storage change with unique timestamp
       eventBuses[0].emit('storage:changed', {
-        key: 'qt_firefox-default_qt-saveid-1',
-        newValue: qt,
-        saveId: 'test-save-id-123'
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qt]
+            }
+          },
+          timestamp: 12345
+        }
+      });
+
+      await wait(10);
+
+      // Emit same storage change again with SAME timestamp (should be deduplicated)
+      eventBuses[0].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qt]
+            }
+          },
+          timestamp: 12345
+        }
       });
 
       await wait(50);
 
-      // Verify hydration was NOT called (own change ignored)
-      expect(mockStateManagers[0].hydrate).not.toHaveBeenCalled();
+      // Verify only one hydrate call (second identical message was deduplicated)
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalledTimes(1);
     });
 
     test('storage changes processed after saveId released', async () => {
       const qt = createQuickTabWithDefaults({ id: 'qt-saveid-2' });
       
-      // First call: ignore (own change)
-      // Second call: process (saveId released)
-      mockStorageManagers[0].shouldIgnoreStorageChange
-        .mockReturnValueOnce(true)
-        .mockReturnValueOnce(false);
-
-      // First change (ignored)
+      // First change
       eventBuses[0].emit('storage:changed', {
-        key: 'qt_firefox-default_qt-saveid-2',
-        newValue: qt,
-        saveId: 'test-save-id-456'
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qt]
+            }
+          },
+          timestamp: 1000
+        }
       });
 
       await wait(50);
-      expect(mockStateManagers[0].hydrate).not.toHaveBeenCalled();
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalledTimes(1);
 
-      // Second change (processed)
+      // Second change with different content (should be processed)
       eventBuses[0].emit('storage:changed', {
-        key: 'qt_firefox-default_qt-saveid-2',
-        newValue: { ...qt, position: { left: 300, top: 300 } }
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [{ ...qt, position: { left: 300, top: 300 } }]
+            }
+          },
+          timestamp: 2000
+        }
       });
 
       await wait(50);
-      expect(mockStateManagers[0].hydrate).toHaveBeenCalled();
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalledTimes(2);
     });
   });
 
-  describe('Message Routing', () => {
-    test('CREATE message routes to create handler', async () => {
-      eventBuses[0].emit('broadcast:received', {
-        type: 'CREATE',
-        data: { id: 'qt-new-1', url: 'https://example.com' }
+  describe('Storage-Based State Sync', () => {
+    // v1.6.2 - BroadcastChannel removed. Cross-tab sync now works via storage.onChanged only.
+    // These tests verify that storage changes properly hydrate state in receiving tabs.
+
+    test('storage change with new Quick Tab triggers state hydration', async () => {
+      const newQt = createQuickTabWithDefaults({ id: 'qt-new-1', url: 'https://example.com' });
+
+      // Simulate storage.onChanged from another tab's CREATE action
+      eventBuses[0].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [newQt]
+            }
+          }
+        }
       });
 
       await wait(50);
 
-      expect(mockHandlers[0].create.create).toHaveBeenCalledWith({
-        id: 'qt-new-1',
-        url: 'https://example.com'
-      });
+      // Verify state was hydrated with the new Quick Tab
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalled();
+      const hydrateCall = mockStateManagers[0].hydrate.mock.calls[0][0];
+      expect(hydrateCall).toContainEqual(expect.objectContaining({ id: 'qt-new-1' }));
     });
 
-    test('SOLO message routes to visibility handler', async () => {
-      eventBuses[0].emit('broadcast:received', {
-        type: 'SOLO',
-        data: { id: 'qt-solo-1', soloTabId: 123 }
+    test('storage change with solo state triggers state hydration', async () => {
+      const qtWithSolo = createQuickTabWithDefaults({ 
+        id: 'qt-solo-1', 
+        soloedOnTabs: [123] 
+      });
+
+      // Simulate storage.onChanged from another tab's SOLO action
+      eventBuses[0].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qtWithSolo]
+            }
+          }
+        }
       });
 
       await wait(50);
 
-      expect(mockHandlers[0].visibility.handleSoloToggle).toHaveBeenCalled();
+      // Verify state was hydrated
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalled();
     });
 
-    test('MUTE message routes to visibility handler', async () => {
-      eventBuses[0].emit('broadcast:received', {
-        type: 'MUTE',
-        data: { id: 'qt-mute-1', tabId: 456 }
+    test('storage change with mute state triggers state hydration', async () => {
+      const qtWithMute = createQuickTabWithDefaults({ 
+        id: 'qt-mute-1', 
+        mutedOnTabs: [456, 789] 
+      });
+
+      // Simulate storage.onChanged from another tab's MUTE action
+      eventBuses[0].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qtWithMute]
+            }
+          }
+        }
       });
 
       await wait(50);
 
-      expect(mockHandlers[0].visibility.handleMuteToggle).toHaveBeenCalled();
+      // Verify state was hydrated
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalled();
     });
 
-    test('MINIMIZE message routes to visibility handler', async () => {
-      eventBuses[0].emit('broadcast:received', {
-        type: 'MINIMIZE',
-        data: { id: 'qt-min-1' }
+    test('storage change with minimize state triggers state hydration', async () => {
+      const qtMinimized = createQuickTabWithDefaults({ 
+        id: 'qt-min-1', 
+        minimized: true 
+      });
+
+      // Simulate storage.onChanged from another tab's MINIMIZE action
+      eventBuses[0].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qtMinimized]
+            }
+          }
+        }
       });
 
       await wait(50);
 
-      expect(mockHandlers[0].visibility.handleMinimize).toHaveBeenCalled();
+      // Verify state was hydrated
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalled();
     });
 
-    test('RESTORE message routes to visibility handler', async () => {
-      eventBuses[0].emit('broadcast:received', {
-        type: 'RESTORE',
-        data: { id: 'qt-restore-1' }
+    test('storage change with restore state triggers state hydration', async () => {
+      const qtRestored = createQuickTabWithDefaults({ 
+        id: 'qt-restore-1', 
+        minimized: false 
+      });
+
+      // Simulate storage.onChanged from another tab's RESTORE action
+      eventBuses[0].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qtRestored]
+            }
+          }
+        }
       });
 
       await wait(50);
 
-      expect(mockHandlers[0].visibility.handleRestore).toHaveBeenCalled();
+      // Verify state was hydrated
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalled();
     });
 
-    test('CLOSE message routes to destroy handler', async () => {
-      eventBuses[0].emit('broadcast:received', {
-        type: 'CLOSE',
-        data: { id: 'qt-close-1' }
+    test('storage change with deleted Quick Tab triggers state hydration', async () => {
+      // Initially have 2 Quick Tabs
+      const qt1 = createQuickTabWithDefaults({ id: 'qt-keep-1' });
+      const qt2 = createQuickTabWithDefaults({ id: 'qt-close-1' });
+
+      mockStateManagers[0].getAll.mockReturnValue([qt1, qt2]);
+
+      // Simulate storage.onChanged from another tab's CLOSE action (qt2 removed)
+      eventBuses[0].emit('storage:changed', {
+        state: {
+          containers: {
+            'firefox-default': {
+              tabs: [qt1] // qt2 no longer in storage
+            }
+          }
+        }
       });
 
       await wait(50);
 
-      expect(mockHandlers[0].destroy.handleDestroy).toHaveBeenCalled();
+      // Verify state was hydrated with updated list
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalled();
     });
   });
 });
