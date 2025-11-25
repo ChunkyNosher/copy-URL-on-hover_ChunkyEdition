@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.2.x - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -60,7 +60,7 @@ const relevantMemories = await searchMemories({
 - Solo/Mute tab-specific visibility control (NOT "Pin to Page")
 - Firefox Container complete isolation
 - Floating Quick Tabs Manager (Ctrl+Alt+Z)
-- Cross-tab sync via BroadcastChannel
+- Cross-tab sync via storage.onChanged (v1.6.2+)
 - Direct local creation pattern
 
 ---

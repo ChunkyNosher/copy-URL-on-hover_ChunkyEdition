@@ -1,0 +1,8 @@
+{
+  "id": "320e4ae6-e47e-4d1a-9452-c5dc229b6b87",
+  "title": "storage.onChanged Migration v1.6.2",
+  "details": "## storage.onChanged Migration for Cross-Tab Sync (v1.6.2)\n\n### Key Change\nRemoved legacy `_broadcastToAllTabs` call from `background.js` `_handleQuickTabStateChange` function.\n\n### Why This Works\n- `storage.onChanged` automatically fires in ALL OTHER tabs (not the tab that made the change)\n- Each tab's `StorageManager` has its own `storage.onChanged` listener via `setupStorageListeners()`\n- No need for background script to rebroadcast - it's redundant with browser's built-in behavior\n\n### New Sync Architecture\n```\nTab A writes to storage.local \n  → storage.onChanged fires in Tab B, C, D (automatic by browser)\n  → StorageManager.handleStorageChange() (each tab)\n  → SyncCoordinator.handleStorageChange()\n  → StateManager.hydrate()\n  → EventBus emits state:added/updated/deleted\n  → UICoordinator renders/updates UI\n```\n\n### Background Script Role After Migration\n- Still listens for storage changes to update its own cache (`globalQuickTabs`)\n- Handles `GET_QUICK_TABS_STATE` message for initial state loads\n- Does NOT broadcast Quick Tab state changes to tabs\n\n### Files Changed\n- `background.js`: Removed `_broadcastToAllTabs` call, function no longer async\n- `StorageManager.js`: Added debug logging\n- `SyncCoordinator.js`: Added debug logging\n\n### Important Notes\n- The tab that writes to storage does NOT receive `storage.onChanged` event\n- Tab A updates its own UI directly, other tabs update via storage.onChanged",
+  "category": "architecture",
+  "dateCreated": "2025-11-25T15:57:44.027Z",
+  "dateUpdated": "2025-11-25T15:57:44.027Z"
+}

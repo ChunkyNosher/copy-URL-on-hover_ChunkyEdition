@@ -336,10 +336,20 @@ export class StorageManager {
 
   /**
    * Handle storage change event
+   * v1.6.2 - Added debug logging to track sync pipeline
    * @param {Object} newValue - New storage value
    */
   handleStorageChange(newValue) {
-    if (!newValue || this._shouldSkipStorageChange(newValue)) {
+    const willSkip = !newValue || this._shouldSkipStorageChange(newValue);
+    
+    // Debug logging to track the sync pipeline
+    console.log('[StorageManager] Storage change detected:', {
+      saveId: newValue?.saveId,
+      containerCount: Object.keys(newValue?.containers || {}).length,
+      willScheduleSync: !willSkip
+    });
+    
+    if (willSkip) {
       return;
     }
 

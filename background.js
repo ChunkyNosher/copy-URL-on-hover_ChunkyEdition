@@ -1195,13 +1195,17 @@ async function _broadcastToAllTabs(action, data) {
 }
 
 /**
- * Helper: Handle Quick Tab state changes
- * v1.6.0 - PHASE 4.3: Extracted to reduce complexity (cc=11 → cc<9)
- * v1.6.1.6 - FIX: Add self-write detection and state deduplication (memory leak fix)
- *
+ * Handle Quick Tab state changes from storage
+ * v1.6.2 - MIGRATION: Removed legacy _broadcastToAllTabs call
+ * 
+ * Cross-tab sync is now handled exclusively via storage.onChanged:
+ * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
+ * - Each tab's StorageManager listens for storage.onChanged events
+ * - Background script only needs to keep its own cache (globalQuickTabState) updated
+ * 
  * @param {Object} changes - Storage changes object
  */
-async function _handleQuickTabStateChange(changes) {
+function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
 
   // v1.6.1.6 - FIX: Check if this is our own write (prevents feedback loop)
@@ -1217,21 +1221,20 @@ async function _handleQuickTabStateChange(changes) {
     }
   }
 
-  // v1.6.1.6 - FIX: Check if state actually changed (prevents redundant broadcasts)
+  // v1.6.1.6 - FIX: Check if state actually changed (prevents redundant cache updates)
   const newHash = computeStateHash(newValue);
   if (newHash === lastBroadcastedStateHash) {
-    console.log('[Background] State unchanged, skipping broadcast');
+    console.log('[Background] State unchanged, skipping cache update');
     return;
   }
 
   lastBroadcastedStateHash = newHash;
-  console.log('[Background] Quick Tab state changed, broadcasting to all tabs');
-
+  
+  // v1.6.2 - MIGRATION: Only update background's cache, no broadcast needed
+  // storage.onChanged automatically fires in all OTHER tabs (not this one)
+  // Each tab's StorageManager handles its own sync via storage.onChanged listener
+  console.log('[Background] Quick Tab state changed, updating cache (cross-tab sync via storage.onChanged)');
   _updateGlobalStateFromStorage(newValue);
-
-  await _broadcastToAllTabs('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', {
-    state: newValue
-  });
 }
 
 /**
