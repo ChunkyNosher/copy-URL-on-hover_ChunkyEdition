@@ -4,7 +4,7 @@
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave, Opera, and other Chromium-based browsers using Manifest v2 with webextension-polyfill.
 
-**🔧 v1.6.0 Status:** Architecture refactoring Phase 1 COMPLETE ✅ (Domain + Storage layers with 96% coverage)
+**🔧 v1.6.2 Status:** Cross-tab sync now uses storage.onChanged exclusively ✅ (BroadcastChannel removed)
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
@@ -138,7 +138,7 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 ✓ **Solo/Mute Visibility Control** - Tab-specific Quick Tab visibility (v1.5.9.13)  
 ✓ **Firefox Container Isolation** - Complete container boundary respect (v1.5.9.12)  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
-✓ Cross-Tab Sync via BroadcastChannel + browser.storage  
+✓ **Cross-Tab Sync via storage.onChanged (v1.6.2+)**  
 ✓ Z-Index Management - Smart layering based on interaction  
 ✓ Auto-Updates via GitHub releases  
 ✓ 100+ Site-Specific Handlers  

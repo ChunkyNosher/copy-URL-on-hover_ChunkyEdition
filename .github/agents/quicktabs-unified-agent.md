@@ -51,13 +51,15 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.2.x - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Panel** - Container-grouped list, Ctrl+Alt+Z
-- **Cross-Tab Sync** - BroadcastChannel + browser.storage
+- **Cross-Tab Sync** - **storage.onChanged exclusively (v1.6.2+)**
 - **Container Isolation** - Firefox Container boundaries
+
+**IMPORTANT:** v1.6.2 removed BroadcastChannel. All sync is via storage.onChanged.
 
 ---
 
@@ -81,11 +83,11 @@ const relevantMemories = await searchMemories({
 - Manager ↔ Quick Tab communication
 - Real-time updates
 
-### 4. Cross-Tab Synchronization
-- BroadcastChannel messaging
+### 4. Cross-Tab Synchronization (v1.6.2+)
+- **storage.onChanged events** - Primary sync mechanism
 - Container-aware filtering
 - State consistency across tabs
-- Storage backup/restore
+- Event-driven architecture (coordinators emit events, UI renders)
 
 ### 5. Container Isolation
 - cookieStoreId boundaries
