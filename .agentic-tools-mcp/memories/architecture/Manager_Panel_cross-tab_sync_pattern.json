@@ -1,0 +1,8 @@
+{
+  "id": "f4e0c2d7-bb74-4ab3-ab7f-53849632f2c9",
+  "title": "Manager Panel cross-tab sync pattern",
+  "details": "PanelContentManager.js needs storage.onChanged listener for cross-tab sync. The panel should:\n1. Track state changes while closed using stateChangedWhileClosed flag\n2. Update content on open if state changed while closed\n3. Listen to storage.onChanged for changes from other tabs\n4. Clean up the storage listener in destroy()\nKey storage key: quick_tabs_state_v2",
+  "category": "architecture",
+  "dateCreated": "2025-11-25T20:58:59.804Z",
+  "dateUpdated": "2025-11-25T20:58:59.804Z"
+}
