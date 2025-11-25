@@ -150,6 +150,7 @@ describe('StorageManager', () => {
     beforeEach(() => {
       // Mock browser.runtime.sendMessage for loadAll tests
       // Also mocks browser.storage.session so sessionAdapter fallback is tested
+      // Also mocks browser.storage.local.get for ALL containers loading
       global.browser = {
         runtime: {
           sendMessage: jest.fn().mockResolvedValue({
@@ -158,7 +159,10 @@ describe('StorageManager', () => {
           })
         },
         storage: {
-          session: {}  // Mock session storage API availability
+          session: {},  // Mock session storage API availability
+          local: {
+            get: jest.fn().mockResolvedValue({}) // Empty storage - no containers
+          }
         }
       };
     });
@@ -243,6 +247,7 @@ describe('StorageManager', () => {
 
     test('should skip session storage when browser.storage.session unavailable (content script context)', async () => {
       // Mock browser without storage.session (simulates content script context)
+      // Also mock storage.local.get to return empty containers (no data in ALL containers step)
       global.browser = {
         runtime: {
           sendMessage: jest.fn().mockResolvedValue({
@@ -252,7 +257,9 @@ describe('StorageManager', () => {
         },
         storage: {
           // NOTE: No 'session' property - simulates content script context
-          local: {}
+          local: {
+            get: jest.fn().mockResolvedValue({}) // Empty storage
+          }
         }
       };
 
@@ -878,7 +885,10 @@ describe('StorageManager', () => {
           })
         },
         storage: {
-          session: {}
+          session: {},
+          local: {
+            get: jest.fn().mockResolvedValue({}) // Empty storage
+          }
         }
       };
 

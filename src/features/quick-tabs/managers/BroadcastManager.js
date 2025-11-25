@@ -812,26 +812,73 @@ export class BroadcastManager {
    * Phase 3: Persist broadcast message to storage for late-joining tabs
    * Stores last 50 messages with 30-second TTL for replay
    * 
-   * ❌ DISABLED: Broadcast history persistence causes memory leak
-   * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
+   * ✅ RE-ENABLED with MEMORY LEAK PROTECTION:
+   * - Layer 1: Rate limiting (max 10 writes/sec) - prevents storage write storms
+   * - Layer 2: Write source tracking (writeSource: senderId) - prevents echo loops
+   * - Layer 4: Implicit debouncing (rate limiter batches rapid updates)
    * 
-   * Original implementation available in git history before this fix.
-   * To re-enable: implement proper write batching to prevent feedback loops.
+   * See: docs/manual/v1.6.0/quick-tab-sync-restoration-guide.md
    * 
    * @private
-   * @param {string} _type - Message type (unused - function disabled)
-   * @param {Object} _data - Message data (unused - function disabled)
+   * @param {string} type - Message type
+   * @param {Object} data - Message data
    */
-  async _persistBroadcastMessage(_type, _data) {
-    // ❌ DISABLED: Broadcast history persistence causes memory leak
-    // Every position update (50-100/sec during drag) triggers:
-    // _persistBroadcastMessage() → storage write → storage.onChanged → more writes → LOOP
-    // 
-    // This was causing ~900MB/second memory consumption and browser freeze.
-    // TEMPORARILY DISABLED until proper write batching is implemented.
-    // See git history for original implementation.
-    // NOTE: No logging here to avoid log spam during high-frequency drag operations
-    return;
+  async _persistBroadcastMessage(type, data) {
+    // LAYER 1: Check rate limit FIRST
+    // During drag, this automatically batches to 10/sec
+    if (!this._checkWriteRateLimit()) {
+      this.logger.debug('Storage write rate limited', { type, id: data.id });
+      return;
+    }
+    
+    // LAYER 2: Add write source tracking
+    const messageData = {
+      type,
+      data: {
+        ...data,
+        writeSource: this.senderId,  // Track who initiated this write
+        writeTimestamp: Date.now()
+      }
+    };
+    
+    try {
+      const historyKey = `quick_tabs_broadcast_history_${this.cookieStoreId}`;
+      
+      // Load existing history
+      const result = await globalThis.browser.storage.local.get(historyKey);
+      const history = result[historyKey] || { messages: [], lastCleanup: 0 };
+      
+      // Add new message
+      history.messages.push(messageData);
+      
+      // Limit history size (prevent unbounded growth)
+      this._limitHistorySize(history);
+      
+      // Clean up old messages periodically
+      const now = Date.now();
+      if (now - history.lastCleanup > 5000) {  // Every 5 seconds
+        history.messages = history.messages.filter(msg => {
+          return (now - msg.data.writeTimestamp) < this.BROADCAST_HISTORY_TTL_MS;
+        });
+        history.lastCleanup = now;
+      }
+      
+      // Write to storage
+      // This triggers storage.onChanged in ALL tabs (cross-origin)
+      await globalThis.browser.storage.local.set({ [historyKey]: history });
+      
+      this.logger.debug('Broadcast message persisted', {
+        type,
+        historySize: history.messages.length,
+        writeSource: this.senderId
+      });
+      
+    } catch (err) {
+      this.logger.error('Failed to persist broadcast message', {
+        type,
+        error: err.message
+      });
+    }
   }
 
   /**
@@ -898,19 +945,45 @@ export class BroadcastManager {
    * Phase 3: Replay broadcast history for late-joining tabs
    * Loads and replays messages from last 30 seconds
    * 
-   * ❌ DISABLED: Broadcast history replay disabled due to memory leak
-   * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
-   * Original implementation available in git history.
+   * ✅ RE-ENABLED with LAYER 3 deduplication protection
+   * See: docs/manual/v1.6.0/quick-tab-sync-restoration-guide.md
    * 
-   * @returns {Promise<number>} - Number of messages replayed (always 0 while disabled)
+   * @returns {Promise<number>} - Number of messages replayed
    */
   async replayBroadcastHistory() {
-    // ❌ DISABLED: Broadcast history replay disabled due to memory leak
-    // The broadcast history persistence was causing an infinite feedback loop.
-    // See git history for original implementation.
-    // NOTE: No logging here - this is called once during initialization, not high-frequency
-    this.logger.info('Broadcast history replay disabled (memory leak fix)');
-    return 0;
+    this.logger.info('Replaying broadcast history for late-joining tab');
+    
+    try {
+      const historyKey = `quick_tabs_broadcast_history_${this.cookieStoreId}`;
+      const result = await globalThis.browser.storage.local.get(historyKey);
+      const history = result[historyKey];
+      
+      if (!history || !history.messages || history.messages.length === 0) {
+        this.logger.info('No broadcast history to replay');
+        return 0;
+      }
+      
+      const now = Date.now();
+      
+      // Filter and replay recent messages (within TTL window)
+      const recentMessages = history.messages.filter(msg => {
+        const age = now - msg.data.writeTimestamp;
+        return age <= this.BROADCAST_HISTORY_TTL_MS;
+      });
+      
+      // Process each message through normal handler
+      // LAYER 3 deduplication will prevent processing duplicates
+      recentMessages.forEach(message => this.handleBroadcastMessage(message));
+      
+      this.logger.info(`Replayed ${recentMessages.length} messages from broadcast history`);
+      return recentMessages.length;
+      
+    } catch (err) {
+      this.logger.error('Failed to replay broadcast history', {
+        error: err.message
+      });
+      return 0;
+    }
   }
 
   /**
