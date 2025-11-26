@@ -1,4 +1,16 @@
-name: 'Playwright Extension Testing with Copilot'
+# DEPRECATED: This workflow is replaced by e2e-extension-tests.yml
+# Kept for reference only. Do not use.
+#
+# Issues with this workflow:
+# - Attempts to load Firefox extension in Chrome (incompatible)
+# - Uses unnecessary Xvfb overhead
+# - Tests hang and timeout
+# - No proper error handling
+#
+# The new e2e-extension-tests.yml uses playwright-webextext for TRUE headless
+# Firefox extension testing without Xvfb.
+
+name: 'DEPRECATED - Playwright Extension Testing with Copilot'
 
 # When to run this workflow
 on:
@@ -17,13 +29,14 @@ on:
           - chrome
           - firefox
           - both
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - '*.js'
-      - 'manifest.json'
+  # DISABLED: This workflow should not run automatically
+  # pull_request:
+  #   branches: [main, develop]
+  #   paths:
+  #     - 'src/**'
+  #     - 'tests/**'
+  #     - '*.js'
+  #     - 'manifest.json'
 
 jobs:
   # ================================================================

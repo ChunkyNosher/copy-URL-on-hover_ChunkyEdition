@@ -1,3 +1,65 @@
+// =============================================================================
+// CRITICAL: Quick Tab Iframe Recursion Guard (Bug #2 Fix)
+// =============================================================================
+// This guard MUST be at the very top of the file to prevent browser crashes
+// from infinite iframe nesting when content script runs inside Quick Tab iframes.
+// =============================================================================
+
+/**
+ * Check if parent frame is a Quick Tab window (helper to reduce nesting)
+ * @param {Element} parentFrame - The parent frame element
+ * @returns {boolean} - True if parent is a Quick Tab window
+ */
+function _isQuickTabParentFrame(parentFrame) {
+  if (!parentFrame) return false;
+  const quickTabSelectors = '.quick-tab-window, [data-quick-tab-id], [id^="quick-tab-"]';
+  return parentFrame.closest(quickTabSelectors) !== null;
+}
+
+/**
+ * Check if we should skip initialization (inside Quick Tab iframe)
+ * @returns {boolean} - True if initialization should be skipped
+ */
+function _checkShouldSkipInitialization() {
+  // Not in iframe - proceed normally
+  if (window.self === window.top) {
+    return false;
+  }
+
+  // In iframe - check if parent is Quick Tab
+  try {
+    const parentFrame = window.frameElement;
+    if (_isQuickTabParentFrame(parentFrame)) {
+      console.log('[Content] Skipping initialization - inside Quick Tab iframe');
+      window.CUO_skipped = true;
+      window.CUO_skip_reason = 'quick-tab-iframe';
+      return true;
+    }
+    return false;
+  } catch (_e) {
+    // Cross-origin error - err on side of caution
+    console.log('[Content] Skipping initialization - cross-origin iframe (safety measure)');
+    window.CUO_skipped = true;
+    window.CUO_skip_reason = 'cross-origin-iframe';
+    return true;
+  }
+}
+
+// GUARD: Do not run extension in Quick Tab iframes or nested frames
+const _shouldSkipInitialization = _checkShouldSkipInitialization();
+
+// If inside Quick Tab iframe, stop all execution here
+if (_shouldSkipInitialization) {
+  // Export minimal marker for debugging and stop
+  window.CUO_debug_marker = 'CUO_QUICK_TAB_IFRAME_SKIPPED';
+  // Throw to prevent further module loading (caught by module loader)
+  throw new Error('[Content] Intentional halt - inside Quick Tab iframe');
+}
+
+// =============================================================================
+// End of Iframe Recursion Guard - Normal extension initialization below
+// =============================================================================
+
 /**
  * Copy URL on Hover - Enhanced with Quick Tabs
  * Main Content Script Entry Point (Hybrid Architecture v1.5.9.3)
@@ -18,6 +80,10 @@
  * - Renamed quick-tab-window.js to window.js following architecture guidelines
  * - Enhanced EventBus integration for all features
  * - Follows hybrid-architecture-implementation.md
+ *
+ * v1.6.2.3 Changes:
+ * - Added critical iframe recursion guard at top of file (Bug #2 fix)
+ * - Prevents browser crashes from infinite Quick Tab nesting
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -27,41 +93,6 @@ import { getConsoleLogs, getBufferStats, clearConsoleLogs } from './utils/consol
 
 // CRITICAL: Early detection marker - must execute first
 console.log('[Copy-URL-on-Hover] Script loaded! @', new Date().toISOString());
-
-// v1.6.2.x - ISSUE FIX: Detect if we're inside a Quick Tab Window iframe and skip initialization
-// Quick Tab Window iframes should not run the full extension to prevent recursive nesting
-
-// Quick Tab Window CSS selectors - used to detect if we're inside a Quick Tab iframe
-const QUICK_TAB_WINDOW_SELECTORS = '.quick-tab-window, [data-quick-tab-id], [id^="quick-tab-"]';
-
-const isInsideQuickTabWindow = (() => {
-  try {
-    // Check if we're in an iframe
-    if (window.self === window.top) {
-      return false; // We're the top window, not an iframe
-    }
-    
-    // Check if parent document has Quick Tab Window elements
-    // We can't access parent document cross-origin, so check for markers
-    const parentFrame = window.frameElement;
-    if (parentFrame && parentFrame.closest(QUICK_TAB_WINDOW_SELECTORS)) {
-      console.log('[Copy-URL-on-Hover] Detected Quick Tab Window iframe - skipping full initialization');
-      return true;
-    }
-    
-    return false;
-  } catch (e) {
-    // Cross-origin iframe - can't determine, assume not a Quick Tab
-    return false;
-  }
-})();
-
-// Skip full initialization if inside Quick Tab Window
-if (isInsideQuickTabWindow) {
-  console.log('[Copy-URL-on-Hover] Inside Quick Tab Window - will skip Quick Tab initialization');
-  window.CUO_debug_marker = 'CUO_QUICK_TAB_IFRAME_SKIPPED';
-  // Note: Basic error handlers still set up, but initExtension() will return early
-}
 
 try {
   window.CUO_debug_marker = 'JS executed to top of file!';
@@ -264,18 +295,10 @@ function reportInitializationError(err) {
 /**
  * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 10 to <9
  * v1.6.1 - Added explicit filter settings initialization before logging starts
- * v1.6.2.x - ISSUE FIX: Skip Quick Tabs initialization if inside Quick Tab Window iframe
+ * v1.6.2.3 - Iframe guard moved to top of file (halts execution before reaching here)
  */
 (async function initExtension() {
   try {
-    // v1.6.2.x - Skip Quick Tabs initialization if inside Quick Tab Window iframe
-    if (isInsideQuickTabWindow) {
-      console.log('[Copy-URL-on-Hover] Skipping full initialization - inside Quick Tab Window iframe');
-      window.CUO_initialized = false;
-      window.CUO_skipped_reason = 'Quick Tab Window iframe';
-      return;
-    }
-    
     // v1.6.1: Wait for filter settings to load from storage BEFORE starting extension logs
     // This ensures user's filter preferences are active from the very first log
     const settingsResult = await settingsReady;

@@ -535,10 +535,12 @@ class QuickTabsManager {
    * Hydrate state from storage
    * v1.6.2 - MIGRATION: Simplified - no broadcast replay needed
    * v1.6.2.2 - ISSUE FIX: Removed container filtering for global visibility
+   * v1.6.2.3 - Bug #1 Fix: Use hydrateSilent to prevent automatic rendering on page reload
+   *            Quick Tabs are loaded into memory but NOT rendered until user action.
    * @private
    */
   async _hydrateState() {
-    console.log('[QuickTabsManager] Hydrating state from storage...');
+    console.log('[QuickTabsManager] Hydrating state from storage (lazy load - no automatic rendering)...');
     try {
       // Load all Quick Tabs from storage
       const allQuickTabs = await this.storage.loadAll();
@@ -547,10 +549,12 @@ class QuickTabsManager {
       // All Quick Tabs are visible across tabs unless Solo/Mute rules apply
       console.log(`[QuickTabsManager] Loaded ${allQuickTabs.length} Quick Tabs for global visibility`);
       
-      // Hydrate with all Quick Tabs
-      this.state.hydrate(allQuickTabs);
+      // v1.6.2.3 - Bug #1 Fix: Use hydrateSilent to load into memory WITHOUT rendering
+      // Quick Tabs will only render when explicitly requested by user action
+      // (keyboard shortcut, context menu, or Quick Tab Manager panel)
+      this.state.hydrateSilent(allQuickTabs);
       
-      console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs from storage`);
+      console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs (lazy loaded, not rendered)`);
     } catch (err) {
       console.error('[QuickTabsManager] Failed to hydrate state:', err);
     }

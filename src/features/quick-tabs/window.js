@@ -98,6 +98,9 @@ export class QuickTabWindow {
     // v1.6.0 Phase 2.9 - Controllers for drag and resize
     this.dragController = null;
     this.resizeController = null;
+    // v1.6.2.3 - Track update timestamps for cross-tab sync
+    this.lastPositionUpdate = null;
+    this.lastSizeUpdate = null;
   }
 
   /**
@@ -635,6 +638,38 @@ export class QuickTabWindow {
       this.container.style.width = `${width}px`;
       this.container.style.height = `${height}px`;
     }
+  }
+
+  /**
+   * Update position of Quick Tab window (Bug #3 Fix - UICoordinator compatibility)
+   * v1.6.2.3 - Added for cross-tab sync via UICoordinator.update()
+   * 
+   * Note: This wraps setPosition() and adds timestamp tracking for sync.
+   * The difference from setPosition() is the timestamp which helps with
+   * conflict resolution in cross-tab synchronization.
+   * 
+   * @param {number} left - X position in pixels
+   * @param {number} top - Y position in pixels
+   */
+  updatePosition(left, top) {
+    this.setPosition(left, top);
+    this.lastPositionUpdate = Date.now();
+  }
+
+  /**
+   * Update size of Quick Tab window (Bug #3 Fix - UICoordinator compatibility)
+   * v1.6.2.3 - Added for cross-tab sync via UICoordinator.update()
+   * 
+   * Note: This wraps setSize() and adds timestamp tracking for sync.
+   * The difference from setSize() is the timestamp which helps with
+   * conflict resolution in cross-tab synchronization.
+   * 
+   * @param {number} width - Width in pixels
+   * @param {number} height - Height in pixels
+   */
+  updateSize(width, height) {
+    this.setSize(width, height);
+    this.lastSizeUpdate = Date.now();
   }
 
   /**

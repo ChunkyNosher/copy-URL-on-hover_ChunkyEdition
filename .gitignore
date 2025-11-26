@@ -17,6 +17,11 @@ screenshots/
 test.html
 popup_old.html
 
+# Backup files
+*.backup
+*.backup-*
+*.bak
+
 # Environment variables
 .env
 .env.local
