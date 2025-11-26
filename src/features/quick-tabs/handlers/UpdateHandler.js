@@ -65,6 +65,11 @@ export class UpdateHandler {
     this.broadcastThrottle = 16; // 60fps = 16.67ms
     this.lastBroadcastTime = new Map(); // id -> timestamp
 
+    // v1.6.2.3 - Bug #3 Fix: Pending updates queue for Quick Tabs not yet rendered
+    // When updates arrive before Quick Tab is rendered (lazy loading), queue them
+    // Map<quickTabId, { position?: {left, top}, size?: {width, height}, timestamp }>
+    this.pendingUpdates = new Map();
+
     // Initialize BroadcastSync if we have required params
     if (cookieStoreId && tabId) {
       this._initializeBroadcastSync();
@@ -125,13 +130,16 @@ export class UpdateHandler {
 
   /**
    * Handle remote position update from another tab
+   * v1.6.2.3 - Bug #3 Fix: Queue update if Quick Tab not yet rendered
    * @private
    * @param {Object} payload - { id, left, top }
    */
   _handleRemotePositionUpdate({ id, left, top }) {
     const tabWindow = this.quickTabsMap.get(id);
     if (!tabWindow) {
-      console.debug(`[UpdateHandler] Remote position update: Quick Tab ${id} not found`);
+      // v1.6.2.3 - Bug #3 Fix: Queue update for when Quick Tab is created
+      this._queuePendingUpdate(id, 'position', { left, top });
+      console.debug(`[UpdateHandler] Remote position update queued: Quick Tab ${id} not yet rendered`);
       return;
     }
 
@@ -149,13 +157,16 @@ export class UpdateHandler {
 
   /**
    * Handle remote size update from another tab
+   * v1.6.2.3 - Bug #3 Fix: Queue update if Quick Tab not yet rendered
    * @private
    * @param {Object} payload - { id, width, height }
    */
   _handleRemoteSizeUpdate({ id, width, height }) {
     const tabWindow = this.quickTabsMap.get(id);
     if (!tabWindow) {
-      console.debug(`[UpdateHandler] Remote size update: Quick Tab ${id} not found`);
+      // v1.6.2.3 - Bug #3 Fix: Queue update for when Quick Tab is created
+      this._queuePendingUpdate(id, 'size', { width, height });
+      console.debug(`[UpdateHandler] Remote size update queued: Quick Tab ${id} not yet rendered`);
       return;
     }
 
@@ -169,6 +180,88 @@ export class UpdateHandler {
     }
 
     console.log(`[UpdateHandler] Remote size update: ${id} → (${width}x${height})`);
+  }
+
+  /**
+   * Queue a pending update for a Quick Tab that doesn't exist yet
+   * v1.6.2.3 - Bug #3 Fix: Store updates for lazy-loaded Quick Tabs
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} type - Update type ('position' or 'size')
+   * @param {Object} data - Update data
+   */
+  _queuePendingUpdate(id, type, data) {
+    let pending = this.pendingUpdates.get(id);
+    if (!pending) {
+      pending = { timestamp: Date.now() };
+      this.pendingUpdates.set(id, pending);
+    }
+
+    // Update the appropriate field (latest wins)
+    pending[type] = data;
+    pending.timestamp = Date.now();
+
+    console.log(`[UpdateHandler] Queued pending ${type} update for ${id}:`, data);
+  }
+
+  /**
+   * Apply pending updates to a Quick Tab when it becomes available
+   * v1.6.2.3 - Bug #3 Fix: Called when Quick Tab is created/rendered
+   * @param {string} id - Quick Tab ID
+   */
+  applyPendingUpdates(id) {
+    const pending = this.pendingUpdates.get(id);
+    if (!pending) {
+      return; // No pending updates
+    }
+
+    const tabWindow = this.quickTabsMap.get(id);
+    if (!tabWindow) {
+      console.warn(`[UpdateHandler] Cannot apply pending updates - Quick Tab ${id} still not available`);
+      return;
+    }
+
+    // Apply position update if queued
+    if (pending.position) {
+      const { left, top } = pending.position;
+      if (typeof tabWindow.updatePosition === 'function') {
+        tabWindow.updatePosition(left, top);
+      }
+      console.log(`[UpdateHandler] Applied pending position update: ${id} → (${left}, ${top})`);
+    }
+
+    // Apply size update if queued
+    if (pending.size) {
+      const { width, height } = pending.size;
+      if (typeof tabWindow.updateSize === 'function') {
+        tabWindow.updateSize(width, height);
+      }
+      console.log(`[UpdateHandler] Applied pending size update: ${id} → (${width}x${height})`);
+    }
+
+    // Clear pending updates for this Quick Tab
+    this.pendingUpdates.delete(id);
+    console.log(`[UpdateHandler] Cleared pending updates for ${id}`);
+  }
+
+  /**
+   * Check if a Quick Tab has pending updates
+   * v1.6.2.3 - Bug #3 Fix: Helper to check pending state
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if there are pending updates
+   */
+  hasPendingUpdates(id) {
+    return this.pendingUpdates.has(id);
+  }
+
+  /**
+   * Get pending updates for a Quick Tab
+   * v1.6.2.3 - Bug #3 Fix: Helper to retrieve pending updates
+   * @param {string} id - Quick Tab ID
+   * @returns {Object|null} Pending updates or null
+   */
+  getPendingUpdates(id) {
+    return this.pendingUpdates.get(id) || null;
   }
 
   /**
@@ -358,12 +451,16 @@ export class UpdateHandler {
   /**
    * Destroy handler and cleanup resources
    * v1.6.2.1 - Close BroadcastSync channel
+   * v1.6.2.3 - Clear pending updates queue
    */
   destroy() {
     // Clear throttle maps
     this.positionChangeThrottle.clear();
     this.sizeChangeThrottle.clear();
     this.lastBroadcastTime.clear();
+
+    // v1.6.2.3 - Clear pending updates queue
+    this.pendingUpdates.clear();
 
     // Close BroadcastSync channel for this container
     if (this.broadcastSync && this.cookieStoreId) {

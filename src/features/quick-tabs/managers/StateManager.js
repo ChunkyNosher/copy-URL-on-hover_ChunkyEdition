@@ -56,6 +56,30 @@ export class StateManager {
   }
 
   /**
+   * Add Quick Tab to state WITHOUT emitting events (Bug #1 Fix - Lazy Rendering)
+   * v1.6.2.3 - Added to support lazy rendering pattern
+   * 
+   * Use this when hydrating state from storage to prevent automatic rendering.
+   * Quick Tabs added silently are stored in memory but not rendered until
+   * explicitly requested via user action (keyboard shortcut, context menu, manager panel).
+   * 
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   */
+  addSilent(quickTab) {
+    if (!(quickTab instanceof QuickTab)) {
+      throw new Error('StateManager.addSilent() requires QuickTab instance');
+    }
+
+    this.quickTabs.set(quickTab.id, quickTab);
+    
+    // v1.6.2.3 - Still apply pending updates for consistency
+    this._applyPendingUpdates(quickTab.id);
+    
+    // NO event emission - this is the key difference from add()
+    console.log(`[StateManager] Added Quick Tab silently (no render): ${quickTab.id}`);
+  }
+
+  /**
    * Get Quick Tab by ID
    * @param {string} id - Quick Tab ID
    * @returns {QuickTab|undefined} - Quick Tab instance or undefined
@@ -188,6 +212,53 @@ export class StateManager {
       updated: result.updatedCount,
       deleted: deletedCount,
       changesDetected: result.changes.length,
+      totalNow: this.quickTabs.size
+    });
+  }
+
+  /**
+   * Hydrate state from array of QuickTab entities WITHOUT emitting events (Bug #1 Fix)
+   * v1.6.2.3 - Added to support lazy rendering pattern
+   * 
+   * Use this for initial page load to prevent automatic rendering of ALL Quick Tabs.
+   * Quick Tabs are loaded into memory but NOT rendered until explicitly requested
+   * via user action (keyboard shortcut, context menu, or Quick Tab Manager panel).
+   * 
+   * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
+   */
+  hydrateSilent(quickTabs) {
+    if (!Array.isArray(quickTabs)) {
+      throw new Error('StateManager.hydrateSilent() requires array of QuickTab instances');
+    }
+
+    const context = this._getContext();
+    let addedCount = 0;
+
+    console.log('[StateManager] HydrateSilent called (lazy load - no rendering)', {
+      context: context.type,
+      tabUrl: context.url,
+      incomingCount: quickTabs.length,
+      existingCount: this.quickTabs.size,
+      timestamp: Date.now()
+    });
+
+    for (const qt of quickTabs) {
+      if (!(qt instanceof QuickTab)) {
+        console.warn('[StateManager] Skipping non-QuickTab instance during silent hydration');
+        continue;
+      }
+
+      // Only add if doesn't exist already (don't overwrite)
+      if (!this.quickTabs.has(qt.id)) {
+        this.addSilent(qt);
+        addedCount++;
+      }
+    }
+
+    console.log('[StateManager] ✓ HydrateSilent complete (no Quick Tabs rendered)', {
+      context: context.type,
+      tabUrl: context.url,
+      added: addedCount,
       totalNow: this.quickTabs.size
     });
   }

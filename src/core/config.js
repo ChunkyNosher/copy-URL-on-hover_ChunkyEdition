@@ -31,11 +31,7 @@ export const DEFAULT_CONFIG = {
   quickTabDefaultWidth: 800,
   quickTabDefaultHeight: 600,
   quickTabPosition: 'follow-cursor',
-  quickTabCustomX: 100,
-  quickTabCustomY: 100,
-  quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
-  quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
 
   showNotification: true,
   notifDisplayMode: 'tooltip',
