@@ -161,24 +161,52 @@ export class SyncCoordinator {
   }
 
   /**
-   * Extract Quick Tabs from container-aware storage format
-   * v1.6.2 - Helper for storage change handling
+   * Extract Quick Tabs from storage value
+   * v1.6.2.2 - FIX: Added support for unified storage format
+   * 
+   * Supports three formats (checked in order):
+   * 1. Unified format (v1.6.2.2+): { tabs: [...], saveId, timestamp }
+   * 2. Legacy quickTabs format (v1.6.1.x): { quickTabs: [...] }
+   * 3. Container-aware format (v1.6.2.1-): { containers: { ... } }
    * 
    * @private
-   * @param {Object} storageValue - Storage value with containers
+   * @param {Object} storageValue - Storage value with Quick Tabs data
    * @returns {Array} Array of Quick Tab data
    */
   _extractQuickTabsFromStorage(storageValue) {
-    // Handle direct quickTabs array (legacy format)
+    // CHECK NEW UNIFIED FORMAT FIRST (v1.6.2.2+)
+    if (storageValue.tabs && Array.isArray(storageValue.tabs)) {
+      console.log('[SyncCoordinator] Extracted Quick Tabs from unified format', {
+        tabCount: storageValue.tabs.length,
+        tabIds: storageValue.tabs.map(qt => qt.id)
+      });
+      return storageValue.tabs;
+    }
+
+    // LEGACY FORMAT 1: Direct quickTabs array (v1.6.1.x)
     if (storageValue.quickTabs && Array.isArray(storageValue.quickTabs)) {
+      console.log('[SyncCoordinator] Extracted Quick Tabs from legacy quickTabs format', {
+        tabCount: storageValue.quickTabs.length
+      });
       return storageValue.quickTabs;
     }
 
-    // Handle container-aware format
+    // LEGACY FORMAT 2: Container-aware format (v1.6.2.1 and earlier)
     if (storageValue.containers) {
-      return this._extractFromContainers(storageValue.containers);
+      const extracted = this._extractFromContainers(storageValue.containers);
+      console.log('[SyncCoordinator] Extracted Quick Tabs from container format', {
+        tabCount: extracted.length
+      });
+      return extracted;
     }
 
+    console.warn('[SyncCoordinator] No Quick Tabs found in storage value', {
+      hasTabsKey: 'tabs' in storageValue,
+      hasQuickTabsKey: 'quickTabs' in storageValue,
+      hasContainersKey: 'containers' in storageValue,
+      storageKeys: Object.keys(storageValue)
+    });
+    
     return [];
   }
 

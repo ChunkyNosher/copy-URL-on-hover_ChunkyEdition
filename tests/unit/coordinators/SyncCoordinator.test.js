@@ -176,6 +176,172 @@ describe('SyncCoordinator', () => {
       // Empty array should not trigger hydration (or would hydrate empty array)
       // The behavior depends on implementation - we just verify no error is thrown
     });
+
+    test('should sync state when storage changes with unified format (v1.6.2.2+)', () => {
+      const quickTab = QuickTab.create({
+        id: 'qt-unified-1',
+        url: 'https://example.com',
+        container: 'firefox-default',
+        position: { left: 500, top: 300 }
+      });
+
+      const newValue = {
+        tabs: [quickTab],
+        saveId: 'unified-save-123',
+        timestamp: Date.now()
+      };
+
+      mockEventBus.emit('storage:changed', { state: newValue });
+
+      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab], { detectChanges: true });
+    });
+
+    test('should sync multiple Quick Tabs with unified format', () => {
+      const quickTab1 = QuickTab.create({
+        id: 'qt-multi-1',
+        url: 'https://example1.com',
+        container: 'firefox-default'
+      });
+      
+      const quickTab2 = QuickTab.create({
+        id: 'qt-multi-2',
+        url: 'https://example2.com',
+        container: 'firefox-default'
+      });
+
+      const newValue = {
+        tabs: [quickTab1, quickTab2],
+        saveId: 'multi-save-123',
+        timestamp: Date.now()
+      };
+
+      mockEventBus.emit('storage:changed', { state: newValue });
+
+      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab1, quickTab2], { detectChanges: true });
+    });
+  });
+
+  describe('_extractQuickTabsFromStorage()', () => {
+    beforeEach(() => {
+      syncCoordinator = new SyncCoordinator(
+        mockStateManager,
+        mockStorageManager,
+        mockHandlers,
+        mockEventBus
+      );
+    });
+
+    test('should extract Quick Tabs from unified format (v1.6.2.2+)', () => {
+      const storageValue = {
+        tabs: [
+          { id: 'qt-123', url: 'https://example.com', position: { left: 100, top: 100 } },
+          { id: 'qt-456', url: 'https://test.com', position: { left: 200, top: 200 } }
+        ],
+        timestamp: Date.now(),
+        saveId: 'abc-123'
+      };
+
+      const extracted = syncCoordinator._extractQuickTabsFromStorage(storageValue);
+      
+      expect(extracted).toHaveLength(2);
+      expect(extracted[0].id).toBe('qt-123');
+      expect(extracted[1].id).toBe('qt-456');
+    });
+
+    test('should extract Quick Tabs from legacy quickTabs format (v1.6.1.x)', () => {
+      const storageValue = {
+        quickTabs: [
+          { id: 'qt-789', url: 'https://legacy.com' }
+        ]
+      };
+
+      const extracted = syncCoordinator._extractQuickTabsFromStorage(storageValue);
+      
+      expect(extracted).toHaveLength(1);
+      expect(extracted[0].id).toBe('qt-789');
+    });
+
+    test('should extract Quick Tabs from container format (v1.6.2.1-)', () => {
+      const storageValue = {
+        containers: {
+          'firefox-default': {
+            tabs: [
+              { id: 'qt-container-1', url: 'https://container1.com' }
+            ]
+          },
+          'firefox-personal': {
+            tabs: [
+              { id: 'qt-container-2', url: 'https://container2.com' }
+            ]
+          }
+        }
+      };
+
+      const extracted = syncCoordinator._extractQuickTabsFromStorage(storageValue);
+      
+      expect(extracted).toHaveLength(2);
+      expect(extracted.map(qt => qt.id)).toContain('qt-container-1');
+      expect(extracted.map(qt => qt.id)).toContain('qt-container-2');
+    });
+
+    test('should return empty array for empty storage', () => {
+      const extracted = syncCoordinator._extractQuickTabsFromStorage({});
+      
+      expect(extracted).toEqual([]);
+    });
+
+    test('should return empty array when tabs array is empty', () => {
+      const storageValue = {
+        tabs: [],
+        timestamp: Date.now(),
+        saveId: 'empty-123'
+      };
+
+      const extracted = syncCoordinator._extractQuickTabsFromStorage(storageValue);
+      
+      expect(extracted).toEqual([]);
+    });
+
+    test('should prioritize unified format over legacy formats', () => {
+      // Storage with both formats - unified should take precedence
+      const storageValue = {
+        tabs: [{ id: 'qt-unified', url: 'https://unified.com' }],
+        quickTabs: [{ id: 'qt-legacy', url: 'https://legacy.com' }],
+        timestamp: Date.now(),
+        saveId: 'mixed-123'
+      };
+
+      const extracted = syncCoordinator._extractQuickTabsFromStorage(storageValue);
+      
+      expect(extracted).toHaveLength(1);
+      expect(extracted[0].id).toBe('qt-unified');
+    });
+
+    test('should handle container format with empty tabs arrays', () => {
+      const storageValue = {
+        containers: {
+          'firefox-default': {
+            tabs: []
+          }
+        }
+      };
+
+      const extracted = syncCoordinator._extractQuickTabsFromStorage(storageValue);
+      
+      expect(extracted).toEqual([]);
+    });
+
+    test('should handle container format with missing tabs property', () => {
+      const storageValue = {
+        containers: {
+          'firefox-default': {}
+        }
+      };
+
+      const extracted = syncCoordinator._extractQuickTabsFromStorage(storageValue);
+      
+      expect(extracted).toEqual([]);
+    });
   });
 
   describe('handleTabVisible()', () => {
