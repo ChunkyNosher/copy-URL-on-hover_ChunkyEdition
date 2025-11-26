@@ -150,33 +150,79 @@ export class StateManager {
    * Hydrate state from array of QuickTab entities
    * v1.6.1 - CRITICAL FIX: Track additions, updates, and deletions to emit proper events
    * v1.6.2.2 - ISSUE #35 FIX: Enhanced logging for cross-tab sync debugging
+   * v1.6.2.x - ISSUE #51 FIX: Detect and emit position/size/zIndex changes for cross-tab sync
    * This ensures UI coordinator knows about deletions and removes Quick Tabs that no longer exist
    * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
+   * @param {Object} options - Hydration options
+   * @param {boolean} [options.detectChanges=false] - Whether to detect and emit position/size/zIndex changes
    */
-  hydrate(quickTabs) {
+  hydrate(quickTabs, options = {}) {
     if (!Array.isArray(quickTabs)) {
       throw new Error('StateManager.hydrate() requires array of QuickTab instances');
     }
 
-    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
-    const tabUrl = typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A';
+    const { detectChanges = false } = options;
+    const context = this._getContext();
 
     console.log('[StateManager] Hydrate called', {
-      context,
-      tabUrl,
+      context: context.type,
+      tabUrl: context.url,
       incomingCount: quickTabs.length,
       existingCount: this.quickTabs.size,
+      detectChanges,
       timestamp: Date.now()
     });
 
-    // Track existing IDs to detect deletions
+    // Process adds and updates
     const existingIds = new Set(this.quickTabs.keys());
-    const incomingIds = new Set();
+    const result = this._processIncomingQuickTabs(quickTabs, existingIds, detectChanges);
+
+    // Detect and emit deletions
+    const deletedCount = this._processDeletedQuickTabs(existingIds, result.incomingIds);
+
+    // v1.6.2.x - ISSUE #51 FIX: Emit change events for position/size/zIndex updates
+    this._emitQuickTabChanges(result.changes, context.type);
+
+    this.eventBus?.emit('state:hydrated', { count: quickTabs.length });
     
+    console.log('[StateManager] ✓ Hydrate complete', {
+      context: context.type,
+      tabUrl: context.url,
+      added: result.addedCount,
+      updated: result.updatedCount,
+      deleted: deletedCount,
+      changesDetected: result.changes.length,
+      totalNow: this.quickTabs.size
+    });
+  }
+
+  /**
+   * Get context info for logging
+   * @private
+   * @returns {Object} Context info
+   */
+  _getContext() {
+    return {
+      type: typeof window !== 'undefined' ? 'content-script' : 'background',
+      url: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A'
+    };
+  }
+
+  /**
+   * Process incoming Quick Tabs for adds and updates
+   * v1.6.2.x - Extracted to reduce hydrate() complexity
+   * @private
+   * @param {Array<QuickTab>} quickTabs - Incoming Quick Tabs
+   * @param {Set} existingIds - Set of existing Quick Tab IDs
+   * @param {boolean} detectChanges - Whether to detect changes
+   * @returns {Object} Processing result with counts and changes
+   */
+  _processIncomingQuickTabs(quickTabs, existingIds, detectChanges) {
+    const incomingIds = new Set();
+    const changes = [];
     let addedCount = 0;
     let updatedCount = 0;
 
-    // Process incoming Quick Tabs (adds and updates)
     for (const qt of quickTabs) {
       if (!(qt instanceof QuickTab)) {
         console.warn('[StateManager] Skipping non-QuickTab instance during hydration');
@@ -186,27 +232,67 @@ export class StateManager {
       incomingIds.add(qt.id);
 
       if (existingIds.has(qt.id)) {
-        // Existing Quick Tab - update it
-        this.quickTabs.set(qt.id, qt);
-        this.eventBus?.emit('state:updated', { quickTab: qt });
+        const changeInfo = this._processExistingQuickTab(qt, detectChanges);
+        if (changeInfo) {
+          changes.push(changeInfo);
+        }
         updatedCount++;
       } else {
-        // New Quick Tab - add it
-        this.quickTabs.set(qt.id, qt);
-        console.log('[StateManager] Hydrate: emitting state:added', {
-          quickTabId: qt.id,
-          context: typeof window !== 'undefined' ? 'content-script' : 'background'
-        });
-        this.eventBus?.emit('state:added', { quickTab: qt });
+        this._processNewQuickTab(qt);
         addedCount++;
       }
     }
 
-    // Detect deletions (existed before but not in incoming data)
+    return { incomingIds, changes, addedCount, updatedCount };
+  }
+
+  /**
+   * Process an existing Quick Tab (update)
+   * @private
+   * @param {QuickTab} qt - Quick Tab to process
+   * @param {boolean} detectChanges - Whether to detect changes
+   * @returns {Object|null} Change info or null
+   */
+  _processExistingQuickTab(qt, detectChanges) {
+    const previous = this.quickTabs.get(qt.id);
+    let changeInfo = null;
+
+    if (detectChanges && previous) {
+      changeInfo = this._detectQuickTabChanges(previous, qt);
+    }
+
+    this.quickTabs.set(qt.id, qt);
+    this.eventBus?.emit('state:updated', { quickTab: qt });
+
+    return changeInfo;
+  }
+
+  /**
+   * Process a new Quick Tab (add)
+   * @private
+   * @param {QuickTab} qt - Quick Tab to add
+   */
+  _processNewQuickTab(qt) {
+    this.quickTabs.set(qt.id, qt);
+    console.log('[StateManager] Hydrate: emitting state:added', {
+      quickTabId: qt.id,
+      context: typeof window !== 'undefined' ? 'content-script' : 'background'
+    });
+    this.eventBus?.emit('state:added', { quickTab: qt });
+  }
+
+  /**
+   * Process deleted Quick Tabs
+   * @private
+   * @param {Set} existingIds - Set of existing Quick Tab IDs
+   * @param {Set} incomingIds - Set of incoming Quick Tab IDs
+   * @returns {number} Number of deleted Quick Tabs
+   */
+  _processDeletedQuickTabs(existingIds, incomingIds) {
     let deletedCount = 0;
+
     for (const existingId of existingIds) {
       if (!incomingIds.has(existingId)) {
-        // Quick Tab was deleted
         const deletedQuickTab = this.quickTabs.get(existingId);
         this.quickTabs.delete(existingId);
         this.eventBus?.emit('state:deleted', { id: existingId, quickTab: deletedQuickTab });
@@ -215,16 +301,62 @@ export class StateManager {
       }
     }
 
-    this.eventBus?.emit('state:hydrated', { count: quickTabs.length });
+    return deletedCount;
+  }
+
+  /**
+   * Emit change events for Quick Tab position/size/zIndex updates
+   * v1.6.2.x - ISSUE #51 FIX: Extracted to reduce hydrate() complexity
+   * @private
+   * @param {Array} changes - Array of change info objects
+   * @param {string} context - Context type for logging
+   */
+  _emitQuickTabChanges(changes, context) {
+    for (const change of changes) {
+      console.log('[StateManager] Emitting state:quicktab:changed', {
+        quickTabId: change.quickTab.id,
+        changes: change.changes,
+        context
+      });
+      this.eventBus?.emit('state:quicktab:changed', {
+        quickTab: change.quickTab,
+        changes: change.changes
+      });
+    }
+  }
+
+  /**
+   * Detect position/size/zIndex changes between two Quick Tab instances
+   * v1.6.2.x - ISSUE #51 FIX: Helper for cross-tab sync change detection
+   * 
+   * @private
+   * @param {QuickTab} previous - Previous Quick Tab state
+   * @param {QuickTab} current - Current Quick Tab state
+   * @returns {Object|null} Change info or null if no changes
+   */
+  _detectQuickTabChanges(previous, current) {
+    const positionChanged = 
+      previous.position.left !== current.position.left ||
+      previous.position.top !== current.position.top;
     
-    console.log('[StateManager] ✓ Hydrate complete', {
-      context,
-      tabUrl,
-      added: addedCount,
-      updated: updatedCount,
-      deleted: deletedCount,
-      totalNow: this.quickTabs.size
-    });
+    const sizeChanged = 
+      previous.size.width !== current.size.width ||
+      previous.size.height !== current.size.height;
+    
+    const zIndexChanged = previous.zIndex !== current.zIndex;
+    
+    if (positionChanged || sizeChanged || zIndexChanged) {
+      return {
+        quickTab: current,
+        changes: {
+          position: positionChanged,
+          size: sizeChanged,
+          zIndex: zIndexChanged
+        }
+      };
+    }
+    
+    return null;
   }
 
   /**

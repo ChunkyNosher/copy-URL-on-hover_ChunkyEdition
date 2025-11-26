@@ -3,8 +3,6 @@ import { EventEmitter } from 'eventemitter3';
 import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { UICoordinator } from '../../../src/features/quick-tabs/coordinators/UICoordinator.js';
 
-/* global createQuickTabWindow */
-
 // Mock dependencies
 const createMockStateManager = () => ({
   getVisible: jest.fn(() => []),
@@ -32,8 +30,13 @@ const createMockQuickTabWindow = () => ({
   isRendered: jest.fn(() => true)
 });
 
-// Mock the window creation function
-global.createQuickTabWindow = jest.fn(() => createMockQuickTabWindow());
+// Mock the createQuickTabWindow function from the window.js module
+jest.mock('../../../src/features/quick-tabs/window.js', () => ({
+  createQuickTabWindow: jest.fn()
+}));
+
+// Import the mocked function for assertions
+import { createQuickTabWindow } from '../../../src/features/quick-tabs/window.js';
 
 describe('UICoordinator', () => {
   let uiCoordinator;
@@ -51,8 +54,8 @@ describe('UICoordinator', () => {
     // Clear mocks but preserve implementation
     jest.clearAllMocks();
 
-    // Re-mock the global function after clearing
-    global.createQuickTabWindow = jest.fn(() => createMockQuickTabWindow());
+    // Re-setup the mock implementation after clearing
+    createQuickTabWindow.mockImplementation(() => createMockQuickTabWindow());
   });
 
   describe('Constructor', () => {
@@ -463,6 +466,58 @@ describe('UICoordinator', () => {
       mockEventBus.emit('state:deleted', { id: 'qt-123' });
 
       expect(spy).toHaveBeenCalledWith('qt-123');
+    });
+
+    test('should listen to state:quicktab:changed events and update rendered tab', () => {
+      uiCoordinator.setupStateListeners();
+
+      // First render a tab so it's in renderedTabs
+      const quickTab = QuickTab.create({
+        id: 'qt-123',
+        url: 'https://example.com',
+        container: 'firefox-default'
+      });
+      uiCoordinator.render(quickTab);
+
+      const spy = jest.spyOn(uiCoordinator, 'update');
+
+      // Create updated version with position change
+      const updatedTab = QuickTab.create({
+        id: 'qt-123',
+        url: 'https://example.com',
+        left: 200,
+        top: 300,
+        container: 'firefox-default'
+      });
+
+      // Emit the state:quicktab:changed event
+      mockEventBus.emit('state:quicktab:changed', {
+        quickTab: updatedTab,
+        changes: { position: true, size: false, zIndex: false }
+      });
+
+      expect(spy).toHaveBeenCalledWith(updatedTab);
+    });
+
+    test('should NOT update non-rendered tab on state:quicktab:changed', () => {
+      uiCoordinator.setupStateListeners();
+      const spy = jest.spyOn(uiCoordinator, 'update');
+
+      // Don't render the tab first - it won't be in renderedTabs
+
+      const quickTab = QuickTab.create({
+        id: 'qt-nonexistent',
+        url: 'https://example.com',
+        container: 'firefox-default'
+      });
+
+      // Emit the state:quicktab:changed event for non-rendered tab
+      mockEventBus.emit('state:quicktab:changed', {
+        quickTab,
+        changes: { position: true, size: false, zIndex: false }
+      });
+
+      expect(spy).not.toHaveBeenCalled();
     });
   });
 

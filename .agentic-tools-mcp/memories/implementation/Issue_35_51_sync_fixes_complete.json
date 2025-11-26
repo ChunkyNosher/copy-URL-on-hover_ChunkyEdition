@@ -1,0 +1,8 @@
+{
+  "id": "0ce475f4-7ebc-4903-8d54-8e604d4a841a",
+  "title": "Issue 35/51 sync fixes complete",
+  "details": "Fixed three critical issues from diagnostic documents:\n\n1. Issue #35: Missing createQuickTabWindow import in UICoordinator.js - Added ES module import replacing misleading /* global */ comment\n\n2. Issue #51: Position/size sync across tabs - Enhanced StateManager.hydrate() with change detection, added state:quicktab:changed event, UICoordinator listens for this event to update already-rendered tabs\n\n3. Manager Panel sync issues - Added stateChangedWhileClosed tracking, storage.onChanged listener for cross-tab sync, defensive checks for button handlers, removed setTimeout race condition\n\nKey patterns used:\n- EventBus events for cross-component communication\n- storage.onChanged for cross-tab synchronization\n- Change detection in hydrate() to emit granular events\n- Defensive programming with method existence checks",
+  "category": "implementation",
+  "dateCreated": "2025-11-25T21:04:36.549Z",
+  "dateUpdated": "2025-11-25T21:04:36.549Z"
+}

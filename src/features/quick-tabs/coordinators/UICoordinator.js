@@ -10,7 +10,7 @@
  * Complexity: cc ≤ 3 per method
  */
 
-/* global createQuickTabWindow */
+import { createQuickTabWindow } from '../window.js';
 
 export class UICoordinator {
   /**
@@ -135,6 +135,7 @@ export class UICoordinator {
    * Setup state event listeners
    * v1.6.1 - CRITICAL FIX: Added state:refreshed listener to re-render when tab becomes visible
    * v1.6.2.1 - ISSUE #35 FIX: Added context-aware logging for debugging cross-tab sync
+   * v1.6.2.x - ISSUE #51 FIX: Added state:quicktab:changed listener for position/size/zIndex sync
    */
   setupStateListeners() {
     const context = typeof window !== 'undefined' ? 'content-script' : 'background';
@@ -177,6 +178,25 @@ export class UICoordinator {
         tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A'
       });
       this._refreshAllRenderedTabs();
+    });
+
+    // v1.6.2.x - ISSUE #51 FIX: Listen for position/size/zIndex changes from storage sync
+    // This event is emitted when another tab changes a Quick Tab's position, size, or zIndex
+    // and we need to update our already-rendered UI to reflect those changes
+    this.eventBus.on('state:quicktab:changed', ({ quickTab, changes }) => {
+      console.log('[UICoordinator] Received state:quicktab:changed event (external update)', {
+        context: typeof window !== 'undefined' ? 'content-script' : 'background',
+        quickTabId: quickTab.id,
+        changes,
+        timestamp: Date.now()
+      });
+      
+      // Only update if already rendered in this tab
+      if (this.renderedTabs.has(quickTab.id)) {
+        this.update(quickTab);
+      } else {
+        console.log('[UICoordinator] Tab not rendered, skipping external update:', quickTab.id);
+      }
     });
     
     console.log('[UICoordinator] ✓ State listeners setup complete', { context });
@@ -223,8 +243,7 @@ export class UICoordinator {
    * @returns {QuickTabWindow} Created window
    */
   _createWindow(quickTab) {
-    // Use global createQuickTabWindow function
-    // (This function is defined in window.js and attached to global scope)
+    // Create QuickTabWindow using imported factory function from window.js
     return createQuickTabWindow({
       id: quickTab.id,
       url: quickTab.url,

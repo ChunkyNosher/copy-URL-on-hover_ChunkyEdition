@@ -49,6 +49,8 @@ export class PanelContentManager {
     
     this.eventListeners = [];
     this.isOpen = false;
+    // v1.6.2.x - Track state changes while panel is closed
+    this.stateChangedWhileClosed = false;
     // Cross-browser container API (native Firefox, shimmed Chrome)
     this.containerAPI = getContainerAPI();
   }
@@ -58,7 +60,15 @@ export class PanelContentManager {
    * @param {boolean} isOpen - Whether panel is open
    */
   setIsOpen(isOpen) {
+    const wasOpen = this.isOpen;
     this.isOpen = isOpen;
+    
+    // v1.6.2.x - Update content if panel was just opened and state changed while closed
+    if (isOpen && !wasOpen && this.stateChangedWhileClosed) {
+      debug('[PanelContentManager] Panel opened after state changes - updating content');
+      this.stateChangedWhileClosed = false;
+      this.updateContent();
+    }
   }
 
   /**
@@ -294,6 +304,7 @@ export class PanelContentManager {
 
   /**
    * Setup event listeners for panel interactions
+   * v1.6.2.x - Added storage.onChanged listener for cross-tab sync
    */
   setupEventListeners() {
     // Close button
@@ -365,15 +376,36 @@ export class PanelContentManager {
       handler: actionHandler
     });
 
+    // v1.6.2.x - Listen for storage changes from other tabs (cross-tab sync)
+    const storageListener = (changes, areaName) => {
+      if (areaName !== 'local') return;
+      
+      // Check if quick_tabs_state_v2 changed
+      if (changes.quick_tabs_state_v2) {
+        debug('[PanelContentManager] Storage changed from another tab - updating content');
+        
+        if (this.isOpen) {
+          this.updateContent();
+        } else {
+          this.stateChangedWhileClosed = true;
+          debug('[PanelContentManager] Storage changed while panel closed - will update on open');
+        }
+      }
+    };
+    
+    browser.storage.onChanged.addListener(storageListener);
+    this._storageListener = storageListener;  // Store for cleanup
+
     // v1.6.2.3 - Setup state event listeners for real-time updates
     this.setupStateListeners();
 
-    debug('[PanelContentManager] Event listeners setup');
+    debug('[PanelContentManager] Event listeners setup (including storage.onChanged)');
   }
 
   /**
    * Setup listeners for Quick Tab state events
    * v1.6.2.3 - Called when panel opens, enables real-time updates
+   * v1.6.2.x - Track state changes when panel is closed
    */
   setupStateListeners() {
     if (!this.eventBus) {
@@ -386,8 +418,13 @@ export class PanelContentManager {
       try {
         const quickTab = data?.quickTab || data;
         debug(`[PanelContentManager] state:added received for ${quickTab?.id}`);
+        
         if (this.isOpen) {
           this.updateContent();
+        } else {
+          // v1.6.2.x - Mark that state changed while closed
+          this.stateChangedWhileClosed = true;
+          debug('[PanelContentManager] State changed while panel closed - will update on open');
         }
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:added:', err);
@@ -400,8 +437,13 @@ export class PanelContentManager {
       try {
         const quickTab = data?.quickTab || data;
         debug(`[PanelContentManager] state:updated received for ${quickTab?.id}`);
+        
         if (this.isOpen) {
           this.updateContent();
+        } else {
+          // v1.6.2.x - Mark that state changed while closed
+          this.stateChangedWhileClosed = true;
+          debug('[PanelContentManager] State changed while panel closed - will update on open');
         }
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:updated:', err);
@@ -414,8 +456,13 @@ export class PanelContentManager {
       try {
         const id = data?.id || data?.quickTab?.id;
         debug(`[PanelContentManager] state:deleted received for ${id}`);
+        
         if (this.isOpen) {
           this.updateContent();
+        } else {
+          // v1.6.2.x - Mark that state changed while closed
+          this.stateChangedWhileClosed = true;
+          debug('[PanelContentManager] State changed while panel closed - will update on open');
         }
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:deleted:', err);
@@ -427,8 +474,13 @@ export class PanelContentManager {
     const hydratedHandler = (data) => {
       try {
         debug(`[PanelContentManager] state:hydrated received, ${data?.count} tabs`);
+        
         if (this.isOpen) {
           this.updateContent();
+        } else {
+          // v1.6.2.x - Mark that state changed while closed
+          this.stateChangedWhileClosed = true;
+          debug('[PanelContentManager] State changed while panel closed - will update on open');
         }
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:hydrated:', err);
@@ -449,32 +501,37 @@ export class PanelContentManager {
 
   /**
    * Handle Quick Tab action button clicks
+   * v1.6.2.x - Removed setTimeout race condition, rely on event listeners
    * @param {string} action - Action type (goToTab, minimize, restore, close)
    * @param {string} quickTabId - Quick Tab ID
    * @param {string} tabId - Browser tab ID
    * @private
    */
   async _handleQuickTabAction(action, quickTabId, tabId) {
+    debug(`[PanelContentManager] Handling action: ${action} for ${quickTabId}`);
+    
     switch (action) {
       case 'goToTab':
         await this.handleGoToTab(parseInt(tabId, 10));
         break;
       case 'minimize':
-        await this.handleMinimizeTab(quickTabId);
+        this.handleMinimizeTab(quickTabId);
         break;
       case 'restore':
-        await this.handleRestoreTab(quickTabId);
+        this.handleRestoreTab(quickTabId);
         break;
       case 'close':
-        await this.handleCloseTab(quickTabId);
+        this.handleCloseTab(quickTabId);
         break;
       default:
         console.warn(`[PanelContentManager] Unknown action: ${action}`);
     }
 
-    // v1.6.2.3 - Note: With event listeners, this is now redundant as state:added/updated/deleted
-    // events will trigger updateContent(). Keeping as fallback for edge cases where events might not fire.
-    setTimeout(() => this.updateContent(), 100);
+    // v1.6.2.x - Removed setTimeout race condition
+    // State event listeners (state:added/updated/deleted) will trigger updateContent()
+    // No manual update needed - this prevents race conditions where setTimeout may fire
+    // before state has fully propagated
+    debug(`[PanelContentManager] Action ${action} completed, waiting for state event`);
   }
 
   /**
@@ -604,32 +661,62 @@ export class PanelContentManager {
 
   /**
    * Minimize Quick Tab
+   * v1.6.2.x - Added defensive checks
    * @param {string} quickTabId - Quick Tab ID
    */
   handleMinimizeTab(quickTabId) {
-    if (this.quickTabsManager?.minimizeById) {
-      this.quickTabsManager.minimizeById(quickTabId);
+    if (!this.quickTabsManager) {
+      console.error('[PanelContentManager] quickTabsManager not available');
+      return;
     }
+    
+    if (typeof this.quickTabsManager.minimizeById !== 'function') {
+      console.error('[PanelContentManager] minimizeById method not found on quickTabsManager');
+      return;
+    }
+    
+    debug(`[PanelContentManager] Calling minimizeById for ${quickTabId}`);
+    this.quickTabsManager.minimizeById(quickTabId);
   }
 
   /**
    * Restore Quick Tab
+   * v1.6.2.x - Added defensive checks
    * @param {string} quickTabId - Quick Tab ID
    */
   handleRestoreTab(quickTabId) {
-    if (this.quickTabsManager?.restoreById) {
-      this.quickTabsManager.restoreById(quickTabId);
+    if (!this.quickTabsManager) {
+      console.error('[PanelContentManager] quickTabsManager not available');
+      return;
     }
+    
+    if (typeof this.quickTabsManager.restoreById !== 'function') {
+      console.error('[PanelContentManager] restoreById method not found on quickTabsManager');
+      return;
+    }
+    
+    debug(`[PanelContentManager] Calling restoreById for ${quickTabId}`);
+    this.quickTabsManager.restoreById(quickTabId);
   }
 
   /**
    * Close Quick Tab
+   * v1.6.2.x - Added defensive checks
    * @param {string} quickTabId - Quick Tab ID
    */
   handleCloseTab(quickTabId) {
-    if (this.quickTabsManager?.closeById) {
-      this.quickTabsManager.closeById(quickTabId);
+    if (!this.quickTabsManager) {
+      console.error('[PanelContentManager] quickTabsManager not available');
+      return;
     }
+    
+    if (typeof this.quickTabsManager.closeById !== 'function') {
+      console.error('[PanelContentManager] closeById method not found on quickTabsManager');
+      return;
+    }
+    
+    debug(`[PanelContentManager] Calling closeById for ${quickTabId}`);
+    this.quickTabsManager.closeById(quickTabId);
   }
 
   /**
@@ -652,6 +739,7 @@ export class PanelContentManager {
   /**
    * Cleanup event listeners and references
    * v1.6.2.3 - Also cleanup state event listeners
+   * v1.6.2.x - Also cleanup storage.onChanged listener
    */
   destroy() {
     // Remove all DOM event listeners
@@ -661,6 +749,12 @@ export class PanelContentManager {
       }
     });
     this.eventListeners = [];
+
+    // v1.6.2.x - Remove storage change listener
+    if (this._storageListener) {
+      browser.storage.onChanged.removeListener(this._storageListener);
+      this._storageListener = null;
+    }
 
     // v1.6.2.3 - Remove state event listeners
     if (this.eventBus && this._stateHandlers) {

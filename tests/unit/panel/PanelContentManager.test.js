@@ -67,6 +67,7 @@ describe('PanelContentManager', () => {
 
     // Mock browser APIs
     // v1.6.2+ - MIGRATION: PanelContentManager uses storage.local
+    // v1.6.2.x - Added onChanged mock for cross-tab sync
     mockBrowser = {
       storage: {
         sync: {
@@ -79,6 +80,10 @@ describe('PanelContentManager', () => {
         },
         session: {
           set: jest.fn().mockResolvedValue()
+        },
+        onChanged: {
+          addListener: jest.fn(),
+          removeListener: jest.fn()
         }
       },
       tabs: {
@@ -126,6 +131,37 @@ describe('PanelContentManager', () => {
 
       contentManager.setIsOpen(false);
       expect(contentManager.isOpen).toBe(false);
+    });
+
+    it('should update content when opening if state changed while closed', async () => {
+      // Simulate state changed while closed
+      contentManager.stateChangedWhileClosed = true;
+      contentManager.isOpen = false;
+      
+      // Spy on updateContent
+      const updateContentSpy = jest.spyOn(contentManager, 'updateContent').mockResolvedValue();
+      
+      // Open the panel
+      contentManager.setIsOpen(true);
+      
+      // Verify updateContent was called
+      expect(updateContentSpy).toHaveBeenCalled();
+      expect(contentManager.stateChangedWhileClosed).toBe(false);
+      
+      updateContentSpy.mockRestore();
+    });
+
+    it('should not update content when opening if no state changes', () => {
+      contentManager.stateChangedWhileClosed = false;
+      contentManager.isOpen = false;
+      
+      const updateContentSpy = jest.spyOn(contentManager, 'updateContent').mockResolvedValue();
+      
+      contentManager.setIsOpen(true);
+      
+      expect(updateContentSpy).not.toHaveBeenCalled();
+      
+      updateContentSpy.mockRestore();
     });
   });
 
@@ -346,6 +382,76 @@ describe('PanelContentManager', () => {
 
       expect(mockQuickTabsManager.minimizeById).toHaveBeenCalledWith('123');
     });
+
+    it('should setup storage change listener for cross-tab sync', () => {
+      contentManager.setupEventListeners();
+
+      expect(mockBrowser.storage.onChanged.addListener).toHaveBeenCalled();
+      expect(contentManager._storageListener).toBeDefined();
+      expect(typeof contentManager._storageListener).toBe('function');
+    });
+
+    it('should update content when storage changes and panel is open', () => {
+      contentManager.setupEventListeners();
+      contentManager.isOpen = true;
+      
+      const updateContentSpy = jest.spyOn(contentManager, 'updateContent').mockResolvedValue();
+      
+      // Get the storage listener and call it
+      const storageListener = contentManager._storageListener;
+      storageListener({ quick_tabs_state_v2: { newValue: {} } }, 'local');
+      
+      expect(updateContentSpy).toHaveBeenCalled();
+      
+      updateContentSpy.mockRestore();
+    });
+
+    it('should track state changes when storage changes and panel is closed', () => {
+      contentManager.setupEventListeners();
+      contentManager.isOpen = false;
+      contentManager.stateChangedWhileClosed = false;
+      
+      const updateContentSpy = jest.spyOn(contentManager, 'updateContent').mockResolvedValue();
+      
+      // Get the storage listener and call it
+      const storageListener = contentManager._storageListener;
+      storageListener({ quick_tabs_state_v2: { newValue: {} } }, 'local');
+      
+      expect(updateContentSpy).not.toHaveBeenCalled();
+      expect(contentManager.stateChangedWhileClosed).toBe(true);
+      
+      updateContentSpy.mockRestore();
+    });
+
+    it('should ignore non-local storage changes', () => {
+      contentManager.setupEventListeners();
+      contentManager.isOpen = true;
+      
+      const updateContentSpy = jest.spyOn(contentManager, 'updateContent').mockResolvedValue();
+      
+      // Get the storage listener and call it with 'sync' area
+      const storageListener = contentManager._storageListener;
+      storageListener({ quick_tabs_state_v2: { newValue: {} } }, 'sync');
+      
+      expect(updateContentSpy).not.toHaveBeenCalled();
+      
+      updateContentSpy.mockRestore();
+    });
+
+    it('should ignore storage changes for other keys', () => {
+      contentManager.setupEventListeners();
+      contentManager.isOpen = true;
+      
+      const updateContentSpy = jest.spyOn(contentManager, 'updateContent').mockResolvedValue();
+      
+      // Get the storage listener and call it with a different key
+      const storageListener = contentManager._storageListener;
+      storageListener({ some_other_key: { newValue: {} } }, 'local');
+      
+      expect(updateContentSpy).not.toHaveBeenCalled();
+      
+      updateContentSpy.mockRestore();
+    });
   });
 
   describe('handleCloseMinimized()', () => {
@@ -541,6 +647,22 @@ describe('PanelContentManager', () => {
 
       // Should not throw
       expect(contentManager.eventListeners).toEqual([]);
+    });
+
+    it('should remove storage change listener on destroy', () => {
+      contentManager.setupEventListeners();
+      
+      // Verify listener was added
+      expect(mockBrowser.storage.onChanged.addListener).toHaveBeenCalled();
+      expect(contentManager._storageListener).toBeDefined();
+      
+      const storageListener = contentManager._storageListener;
+      
+      contentManager.destroy();
+      
+      // Verify listener was removed
+      expect(mockBrowser.storage.onChanged.removeListener).toHaveBeenCalledWith(storageListener);
+      expect(contentManager._storageListener).toBeNull();
     });
   });
 

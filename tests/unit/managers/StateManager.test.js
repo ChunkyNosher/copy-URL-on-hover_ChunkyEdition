@@ -411,6 +411,131 @@ describe('StateManager', () => {
       expect(manager.has('qt-1')).toBe(false);
       expect(manager.has('qt-2')).toBe(true);
     });
+
+    test('should emit state:quicktab:changed when position changes with detectChanges: true', () => {
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        left: 100,
+        top: 100,
+        width: 400,
+        height: 300
+      });
+      manager.add(qt1);
+
+      const listener = jest.fn();
+      eventBus.on('state:quicktab:changed', listener);
+
+      // Create updated version with different position
+      const qt1Updated = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        left: 200, // Changed
+        top: 300,  // Changed
+        width: 400,
+        height: 300
+      });
+
+      manager.hydrate([qt1Updated], { detectChanges: true });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith({
+        quickTab: expect.objectContaining({ id: 'qt-1' }),
+        changes: { position: true, size: false, zIndex: false }
+      });
+    });
+
+    test('should emit state:quicktab:changed when size changes with detectChanges: true', () => {
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        left: 100,
+        top: 100,
+        width: 400,
+        height: 300
+      });
+      manager.add(qt1);
+
+      const listener = jest.fn();
+      eventBus.on('state:quicktab:changed', listener);
+
+      // Create updated version with different size
+      const qt1Updated = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        left: 100,
+        top: 100,
+        width: 500,  // Changed
+        height: 400  // Changed
+      });
+
+      manager.hydrate([qt1Updated], { detectChanges: true });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith({
+        quickTab: expect.objectContaining({ id: 'qt-1' }),
+        changes: { position: false, size: true, zIndex: false }
+      });
+    });
+
+    test('should NOT emit state:quicktab:changed when detectChanges is false', () => {
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        left: 100,
+        top: 100,
+        width: 400,
+        height: 300
+      });
+      manager.add(qt1);
+
+      const listener = jest.fn();
+      eventBus.on('state:quicktab:changed', listener);
+
+      // Create updated version with different position
+      const qt1Updated = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        left: 200,
+        top: 300,
+        width: 400,
+        height: 300
+      });
+
+      // detectChanges defaults to false
+      manager.hydrate([qt1Updated]);
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('should NOT emit state:quicktab:changed when nothing changes', () => {
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        left: 100,
+        top: 100,
+        width: 400,
+        height: 300
+      });
+      manager.add(qt1);
+
+      const listener = jest.fn();
+      eventBus.on('state:quicktab:changed', listener);
+
+      // Create same Quick Tab (no changes)
+      const qt1Same = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        left: 100,
+        top: 100,
+        width: 400,
+        height: 300
+      });
+
+      manager.hydrate([qt1Same], { detectChanges: true });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
   });
 
   describe('clear()', () => {
