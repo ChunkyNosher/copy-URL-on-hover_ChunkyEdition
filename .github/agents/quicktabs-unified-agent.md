@@ -2,8 +2,8 @@
 name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
-  lifecycle, manager integration, cross-tab sync, Solo/Mute, container isolation,
-  and end-to-end Quick Tab functionality
+  lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
+  Quick Tab functionality (v1.6.2.2+ global visibility)
 tools: ["*"]
 ---
 
@@ -11,7 +11,7 @@ tools: ["*"]
 
 > **🎯 Robust Solutions Philosophy:** You see the complete Quick Tab system. Fix issues at the right layer - domain, manager, sync, or UI. See `.github/copilot-instructions.md`.
 
-You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You handle complete Quick Tab functionality across all domains - individual tabs, manager, cross-tab sync, and container isolation.
+You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You handle complete Quick Tab functionality across all domains - individual tabs, manager, cross-tab sync, and global visibility (v1.6.2.2+).
 
 ## 🧠 Memory Persistence (CRITICAL)
 
@@ -51,15 +51,22 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.x - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
-- **Manager Panel** - Container-grouped list, Ctrl+Alt+Z
+- **Manager Panel** - Global list, Ctrl+Alt+Z, Solo/Mute indicators
 - **Cross-Tab Sync** - **storage.onChanged exclusively (v1.6.2+)**
-- **Container Isolation** - Firefox Container boundaries
+- **Global Visibility** - All Quick Tabs visible across all tabs (v1.6.2.2+)
 
-**IMPORTANT:** v1.6.2 removed BroadcastChannel. All sync is via storage.onChanged.
+**IMPORTANT:** 
+- v1.6.2 removed BroadcastChannel. All sync is via storage.onChanged.
+- v1.6.2.2 removed Container isolation. Quick Tabs are globally visible.
+
+**Storage Format (v1.6.2.2+):**
+```javascript
+{ tabs: [...], saveId: '...', timestamp: ... }
+```
 
 ---
 
@@ -73,37 +80,31 @@ const relevantMemories = await searchMemories({
 
 ### 2. Solo/Mute System
 - Mutual exclusivity enforcement
-- Per-browser-tab visibility control
+- Per-browser-tab visibility control (`soloedOnTabs`, `mutedOnTabs` arrays)
 - Real-time cross-tab sync
-- UI indicator updates
+- UI indicator updates (🎯 Solo, 🔇 Muted)
 
 ### 3. Manager Integration
-- Container-grouped display
+- Global Quick Tabs display (no container grouping in v1.6.2.2+)
 - Minimize/restore functionality
 - Manager ↔ Quick Tab communication
-- Real-time updates
+- Real-time updates with Solo/Mute indicators
 
 ### 4. Cross-Tab Synchronization (v1.6.2+)
 - **storage.onChanged events** - Primary sync mechanism
-- Container-aware filtering
+- Unified storage format with tabs array
 - State consistency across tabs
 - Event-driven architecture (coordinators emit events, UI renders)
-
-### 5. Container Isolation
-- cookieStoreId boundaries
-- Container-specific state
-- Cross-container prevention
 
 ---
 
 ## Complete Quick Tab Architecture
 
-**Full System Diagram:**
+**Full System Diagram (v1.6.2.2+ - Global Visibility):**
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                  Browser Tab 1                      │
-│  Container: firefox-default                         │
 ├─────────────────────────────────────────────────────┤
 │                                                     │
 │  ┌──────────────────┐  ┌──────────────────┐       │
@@ -114,19 +115,17 @@ const relevantMemories = await searchMemories({
 │                                                     │
 │  ┌────────────────────────────────────┐           │
 │  │  Quick Tabs Manager (Ctrl+Alt+Z)   │           │
+│  │  🎯 Solo on 1 tabs | 🔇 Muted on 0 │           │
 │  │  ┌──────────────────────────────┐  │           │
-│  │  │  Default Container           │  │           │
 │  │  │  • Quick Tab A 🎯           │  │           │
 │  │  │  • Quick Tab B 🔇           │  │           │
 │  │  └──────────────────────────────┘  │           │
 │  └────────────────────────────────────┘           │
 └─────────────────────────────────────────────────────┘
-           ↕ BroadcastChannel
+           ↕ storage.onChanged (NOT BroadcastChannel)
 ┌─────────────────────────────────────────────────────┐
 │                  Browser Tab 2                      │
-│  Container: firefox-default                         │
 ├─────────────────────────────────────────────────────┤
-│                                                     │
 │  ┌──────────────────┐  ┌──────────────────┐       │
 │  │  Quick Tab A     │  │  Quick Tab B     │       │
 │  │  Solo: Tab 1     │  │  Mute: Tab 1     │       │
@@ -144,158 +143,77 @@ const relevantMemories = await searchMemories({
 ### 1. Quick Tab Creation (Link Hover + Q)
 
 ```javascript
-// content.js
+// content.js - v1.6.2.2+ (no container data)
 document.addEventListener('keydown', async (e) => {
   if (e.key === 'q' && hoveredLink) {
     e.preventDefault();
     
-    // Get current tab info
-    const currentTab = await browser.tabs.getCurrent();
-    const containerData = {
-      cookieStoreId: currentTab.cookieStoreId || 'firefox-default',
-      name: await getContainerName(currentTab.cookieStoreId),
-      color: await getContainerColor(currentTab.cookieStoreId)
-    };
-    
     // Create Quick Tab locally
-    const quickTab = createQuickTabElement(hoveredLink, containerData);
+    const quickTab = createQuickTabElement(hoveredLink);
     
     // Send to background for persistence
     browser.runtime.sendMessage({
       type: 'CREATE_QUICK_TAB',
       data: {
         url: hoveredLink.href,
-        title: hoveredLink.textContent,
-        containerData
+        title: hoveredLink.textContent
       }
     });
     
-    // Sync to other tabs
-    broadcastChannel.postMessage({
-      type: 'QUICK_TAB_CREATED',
-      data: { quickTab, containerData }
-    });
+    // storage.onChanged will sync to other tabs
   }
 });
 ```
 
-### 2. Solo/Mute Toggle
+### 2. Solo/Mute Toggle (v1.6.2.2+)
 
 ```javascript
-// Quick Tab UI
+// Quick Tab UI - uses arrays for multi-tab Solo/Mute
 soloButton.addEventListener('click', async () => {
   const currentTabId = await getCurrentTabId();
   const quickTab = getQuickTab(this.id);
   
-  // Toggle Solo (disable Mute)
-  const wasSolo = quickTab.soloTab === currentTabId;
-  quickTab.soloTab = wasSolo ? null : currentTabId;
-  quickTab.mutedTabs.delete(currentTabId);
+  // Toggle Solo (stored in soloedOnTabs array)
+  const isSolo = quickTab.soloedOnTabs.includes(currentTabId);
   
-  // Update UI
-  updateSoloUI(!wasSolo);
-  updateMuteUI(false);
+  if (isSolo) {
+    // Remove from soloedOnTabs
+    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== currentTabId);
+  } else {
+    // Add to soloedOnTabs, remove from mutedOnTabs
+    quickTab.soloedOnTabs.push(currentTabId);
+    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== currentTabId);
+  }
   
-  // Save state
+  // Save state - storage.onChanged syncs to other tabs
   await saveQuickTabState(quickTab);
-  
-  // Sync to other tabs
-  broadcastChannel.postMessage({
-    type: 'SOLO_CHANGED',
-    data: { quickTabId: this.id, tabId: currentTabId, enabled: !wasSolo }
-  });
-  
-  // Update manager
-  eventBus.emit('SOLO_CHANGED', {
-    quickTabId: this.id,
-    tabId: currentTabId,
-    enabled: !wasSolo
-  });
 });
 ```
 
-### 3. Cross-Tab Visibility Update
+### 3. Manager Display (v1.6.2.2+ - No Container Groups)
 
 ```javascript
-// Other browser tab receives message
-broadcastChannel.onmessage = async (e) => {
-  if (e.data.type === 'SOLO_CHANGED') {
-    const { quickTabId, tabId, enabled } = e.data.data;
-    const quickTab = getQuickTab(quickTabId);
-    const currentTabId = await getCurrentTabId();
-    
-    // Update state
-    quickTab.soloTab = enabled ? tabId : null;
-    
-    // Check visibility for THIS tab
-    const shouldShow = quickTab.shouldBeVisible(currentTabId);
-    const isVisible = quickTab.isRendered();
-    
-    if (shouldShow && !isVisible) {
-      renderQuickTab(quickTabId);
-    } else if (!shouldShow && isVisible) {
-      hideQuickTab(quickTabId);
-    }
-    
-    // Update manager
-    updateManagerIndicators(quickTabId);
-  }
-};
-```
-
-### 4. Manager Display
-
-```javascript
-// Manager shows all Quick Tabs grouped by container
+// Manager shows all Quick Tabs globally (no container grouping)
 function updateManagerDisplay() {
-  const tabs = getAllQuickTabs();
+  const tabs = getAllQuickTabs();  // From globalState.tabs array
   const currentTabId = getCurrentTabId();
   
-  // Group by container
-  const grouped = tabs.reduce((acc, tab) => {
-    const container = tab.cookieStoreId || 'firefox-default';
-    if (!acc[container]) acc[container] = [];
-    acc[container].push(tab);
-    return acc;
-  }, {});
-  
-  // Render groups
-  managerContent.innerHTML = '';
-  for (const [containerId, containerTabs] of Object.entries(grouped)) {
-    const group = createContainerGroup(containerId, containerTabs, currentTabId);
-    managerContent.appendChild(group);
-  }
-}
-
-function createContainerGroup(containerId, tabs, currentTabId) {
-  // Container header
-  const group = document.createElement('div');
-  group.innerHTML = `
-    <div class="container-header">${getContainerName(containerId)}</div>
-  `;
-  
-  // Add tab items with indicators
+  // Calculate Solo/Mute counts for header
+  let soloCount = 0, muteCount = 0;
   tabs.forEach(tab => {
-    const isSolo = tab.soloTab === currentTabId;
-    const isMute = tab.mutedTabs.has(currentTabId);
-    
-    const item = document.createElement('div');
-    item.innerHTML = `
-      <div class="quick-tab-item">
-        <img src="${tab.favicon}">
-        <span>${tab.title}</span>
-        <span class="indicators">
-          ${isSolo ? '🎯' : ''}
-          ${isMute ? '🔇' : ''}
-        </span>
-        <button class="minimize">−</button>
-        <button class="close">✕</button>
-      </div>
-    `;
-    group.appendChild(item);
+    if (tab.soloedOnTabs?.length > 0) soloCount++;
+    if (tab.mutedOnTabs?.length > 0) muteCount++;
   });
   
-  return group;
+  // Update header indicators
+  headerElement.innerHTML = `🎯 Solo on ${soloCount} tabs | 🔇 Muted on ${muteCount} tabs`;
+  
+  // Render all tabs
+  managerContent.innerHTML = '';
+  tabs.forEach(tab => {
+    const item = createQuickTabItem(tab, currentTabId);
+    managerContent.appendChild(item);
+  });
 }
 ```
 
@@ -305,52 +223,44 @@ function createContainerGroup(containerId, tabs, currentTabId) {
 
 ### Issue: Quick Tab Created But Not Synced
 
-**Root Cause:** Missing BroadcastChannel message or container mismatch
+**Root Cause:** Storage write failed or storage.onChanged not firing
 
-**Fix:**
+**Fix (v1.6.2.2+):**
 ```javascript
-// ✅ Ensure both local creation AND sync
-async function createQuickTab(url, title, containerData) {
+// ✅ Ensure storage write succeeds, then local UI updates
+async function createQuickTab(url, title) {
   // 1. Create locally (fast)
-  const quickTab = renderQuickTabLocally(url, title, containerData);
+  const quickTab = renderQuickTabLocally(url, title);
   
-  // 2. Persist to background
-  await browser.runtime.sendMessage({
-    type: 'CREATE_QUICK_TAB',
-    data: { quickTab }
+  // 2. Persist to storage (triggers storage.onChanged in other tabs)
+  await browser.storage.local.set({
+    quick_tabs_state_v2: {
+      tabs: [...existingTabs, quickTab],
+      saveId: generateId(),
+      timestamp: Date.now()
+    }
   });
   
-  // 3. Sync to other tabs
-  broadcastChannel.postMessage({
-    type: 'QUICK_TAB_CREATED',
-    data: { quickTab, containerData }
-  });
-  
-  // 4. Update manager
+  // 3. Update manager
   eventBus.emit('QUICK_TAB_CREATED', { quickTab });
 }
 ```
 
-### Issue: Solo/Mute Not Respecting Container
+### Issue: Solo/Mute Not Working Correctly
 
-**Root Cause:** Missing container check in visibility logic
+**Root Cause:** Using old single-value soloTab instead of soloedOnTabs array
 
-**Fix:**
+**Fix (v1.6.2.2+):**
 ```javascript
-// ✅ Check container first, then Solo/Mute
-function shouldQuickTabBeVisible(quickTab, browserTab) {
-  // Container isolation check
-  if (quickTab.cookieStoreId !== (browserTab.cookieStoreId || 'firefox-default')) {
-    return false; // Wrong container
-  }
-  
-  // Solo check
-  if (quickTab.soloTab !== null) {
-    return quickTab.soloTab === browserTab.id;
+// ✅ Check arrays for Solo/Mute state
+function shouldQuickTabBeVisible(quickTab, browserTabId) {
+  // Solo check - if ANY tabs are soloed, only show on those tabs
+  if (quickTab.soloedOnTabs?.length > 0) {
+    return quickTab.soloedOnTabs.includes(browserTabId);
   }
   
   // Mute check
-  if (quickTab.mutedTabs.has(browserTab.id)) {
+  if (quickTab.mutedOnTabs?.includes(browserTabId)) {
     return false;
   }
   
@@ -386,18 +296,14 @@ function shouldQuickTabBeVisible(quickTab, browserTab) {
 **End-to-End Tests:**
 
 - [ ] Context7/Perplexity verified implementation ⭐
-- [ ] Playwright Firefox/Chrome tested BEFORE/AFTER ⭐
 - [ ] Quick Tab creation works
-- [ ] Solo/Mute mutually exclusive
-- [ ] Container isolation enforced
-- [ ] Cross-tab sync <10ms
-- [ ] Manager displays correctly
+- [ ] Solo/Mute mutually exclusive (soloedOnTabs/mutedOnTabs arrays)
+- [ ] Global visibility (no container filtering in v1.6.2.2+)
+- [ ] Cross-tab sync via storage.onChanged (<100ms)
+- [ ] Manager displays all Quick Tabs with Solo/Mute indicators
 - [ ] Drag/resize functional
-- [ ] All tests pass (npm run test, test:extension) ⭐
-- [ ] ESLint + CodeScene passed ⭐
-- [ ] Codecov verified coverage ⭐
-- [ ] Documentation under 20KB, not in docs/manual/ 📏
-- [ ] Agent file under 25KB 📏
+- [ ] All tests pass (npm run test, npm run lint) ⭐
+- [ ] Documentation under 15KB 📏
 - [ ] Memory files committed 🧠
 
 ---

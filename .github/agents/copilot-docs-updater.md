@@ -99,11 +99,12 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release
+- [ ] Version numbers match current release (1.6.2.2)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
-- [ ] Container isolation documented
+- [ ] Global visibility documented (Container isolation REMOVED)
+- [ ] Unified storage format documented (tabs array, NOT containers)
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -111,14 +112,15 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.2.x
+- **Current Version:** 1.6.2.2
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
-  - Solo/Mute tab-specific visibility
-  - Firefox Container isolation
+  - Solo/Mute tab-specific visibility (soloedOnTabs/mutedOnTabs arrays)
+  - Global Quick Tab visibility (Container isolation REMOVED)
   - Floating Quick Tabs Manager (Ctrl+Alt+Z)
   - Direct local creation pattern
+- **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
 - **Agent Delegation Table:** When to use which agent
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -178,10 +180,12 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.2.x)
+- Version numbers (1.6.2.2)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
+- Storage format (unified tabs array, NOT containers)
+- Global visibility (Container isolation REMOVED)
 - MCP tool lists
 - File size limits (15KB)
 - Testing commands
@@ -311,7 +315,7 @@ git commit -m "docs: update Copilot instructions and agents for v1.6.2"
 
 ---
 
-## Current Extension State (v1.6.2.0)
+## Current Extension State (v1.6.2.2)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -319,16 +323,27 @@ git commit -m "docs: update Copilot instructions and agents for v1.6.2"
 - **Layers:** Domain + Storage (96% coverage)
 
 ### Features
-- **Solo/Mute:** Tab-specific visibility control (mutual exclusivity)
-- **Container Isolation:** Complete Firefox Container boundaries
-- **Quick Tabs Manager:** Persistent panel (Ctrl+Alt+Z)
+- **Solo/Mute:** Tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
+- **Global Visibility:** All Quick Tabs visible everywhere (Container isolation REMOVED)
+- **Quick Tabs Manager:** Persistent panel (Ctrl+Alt+Z), Solo/Mute indicators
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
 - **Direct Local Creation:** Content renders first, background persists
+
+### Storage Format (v1.6.2.2+)
+```javascript
+{
+  tabs: [...],           // Array of Quick Tab objects
+  saveId: 'unique-id',   // Deduplication ID
+  timestamp: Date.now()  // Last update timestamp
+}
+```
 
 ### Deprecated/Removed
 - ❌ "Pin to Page" terminology → Solo/Mute
 - ❌ BroadcastChannel → storage.onChanged
-- ❌ Old sync patterns → Event-driven coordinators
+- ❌ Container isolation → Global visibility
+- ❌ containers storage format → unified tabs array
+- ❌ cookieStoreId filtering → removed
 
 ### Current Keyboard Shortcuts
 - **Q:** Create Quick Tab
@@ -410,17 +425,22 @@ See `.github/copilot-instructions.md` § MCP Tools
 **Error:** Using "Pin to Page" instead of "Solo/Mute"
 **Fix:** Global find/replace "Pin to Page" → "Solo/Mute"
 
-### 3. Old Sync Mechanism
+### 3. Old Sync Mechanism / Storage Format
 
-**Error:** Referencing BroadcastChannel for cross-tab sync
-**Fix:** Update to storage.onChanged (v1.6.2+)
+**Error:** Referencing BroadcastChannel or container-based storage
+**Fix:** Update to storage.onChanged (v1.6.2+) and unified format (v1.6.2.2+)
 
-### 4. Size Violations
+### 4. Container References
+
+**Error:** Referencing container isolation or cookieStoreId filtering
+**Fix:** Remove all container references - Quick Tabs are globally visible
+
+### 5. Size Violations
 
 **Error:** Agent files exceeding 15KB
 **Fix:** Apply compression techniques, use cross-references
 
-### 5. Inconsistent MCP Lists
+### 6. Inconsistent MCP Lists
 
 **Error:** Different agent files list different MCP tools
 **Fix:** Standardize MCP tool lists across all agents
@@ -465,10 +485,13 @@ See `.github/copilot-instructions.md` § MCP Tools
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.2.x
+- [ ] Version numbers updated to 1.6.2.2
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
+- [ ] No container/cookieStoreId references (except removal notes)
 - [ ] storage.onChanged documented as primary sync
+- [ ] Unified storage format documented (tabs array)
+- [ ] Global visibility documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z)
 - [ ] No docs in prohibited locations

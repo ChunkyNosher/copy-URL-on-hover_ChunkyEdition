@@ -44,8 +44,8 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 **Example Prompts:**
 ```
 "Learn the Quick Tabs architecture patterns from the codebase"
-"Query In-Memoria for container isolation patterns"
-"What patterns have you learned about state management?"
+"Query In-Memoria for state management patterns"
+"What patterns have you learned about storage sync?"
 "Generate documentation from learned Quick Tabs patterns"
 ```
 
@@ -89,7 +89,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 **Example Prompts:**
 ```
 "Create task to fix Quick Tab rendering issue"
-"Store memory that container isolation uses BroadcastChannel"
+"Store memory that cross-tab sync uses storage.onChanged (v1.6.2+)"
 "Search memories for previous Quick Tabs decisions"
 "Update task #5 to completed status"
 "Get all active tasks for this project"
@@ -128,8 +128,8 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 **Example Prompts:**
 ```
 "Store in SQLite memory: Quick Tab architecture uses isRendered() tracking"
-"Query SQLite memory for all container isolation decisions"
-"Execute SQL to find patterns related to BroadcastChannel"
+"Query SQLite memory for all state management decisions"
+"Execute SQL to find patterns related to storage.onChanged"
 ```
 
 **Memory Persistence Workflow:**

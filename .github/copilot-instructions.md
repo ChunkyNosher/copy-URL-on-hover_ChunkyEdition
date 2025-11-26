@@ -3,15 +3,15 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.2.x  
+**Version:** 1.6.2.2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
-**Purpose:** URL management with Solo/Mute visibility control, Firefox Container isolation, and persistent floating panel manager
+**Purpose:** URL management with Solo/Mute visibility control and persistent floating panel manager
 
 **Key Features:**
 - Solo/Mute tab-specific visibility control
-- Firefox Container complete isolation
-- Floating Quick Tabs Manager with persistent panel
+- **Global Quick Tab visibility** (v1.6.2.2 - Container isolation REMOVED)
+- Floating Quick Tabs Manager with persistent panel (Ctrl+Alt+Z)
 - **Cross-tab sync via storage.onChanged exclusively (v1.6.2+)**
 - Direct local creation pattern (content renders first, background persists)
 
@@ -53,7 +53,7 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 **Use `quicktabs-unified-agent`** when:
 - Complete Quick Tab lifecycle involved
 - Crosses single-tab, manager, and sync domains
-- Container isolation issues
+- Global visibility issues
 
 **Use `quicktabs-cross-tab-agent`** when:
 - storage.onChanged not firing
@@ -196,11 +196,31 @@ Use the agentic-tools MCP to create memories instead.
 - `src/features/quick-tabs/managers/StateManager.js` - State management
 - `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering
 
-### Storage Key
-All operations use: `quick_tabs_state_v2`
+### Storage Key & Format
 
-### Container Isolation
-Always use `cookieStoreId` for container-aware operations.
+**Storage Key:** `quick_tabs_state_v2`
+
+**Unified Format (v1.6.2.2+):**
+```javascript
+{
+  tabs: [...],           // Array of Quick Tab objects
+  saveId: 'unique-id',   // Deduplication ID
+  timestamp: Date.now()  // Last update timestamp
+}
+```
+
+**Quick Tab Object:**
+```javascript
+{
+  id: 'qt-xxx',
+  url: 'https://...',
+  title: 'Page Title',
+  soloedOnTabs: [tabId1, tabId2],  // Show ONLY on these tabs
+  mutedOnTabs: [tabId3],           // Hide on these tabs
+  position: { x, y },
+  size: { width, height }
+}
+```
 
 ---
 

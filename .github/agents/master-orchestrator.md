@@ -51,10 +51,15 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.x - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
-**v1.6.2 Update:** Cross-tab sync now uses storage.onChanged exclusively (BroadcastChannel removed)
+**v1.6.2.2 Update:** Container isolation removed, unified storage format
+
+**Storage Format (v1.6.2.2+):**
+```javascript
+{ tabs: [...], saveId: '...', timestamp: ... }
+```
 
 ---
 
@@ -156,21 +161,20 @@ Breakdown:
 **Cross-Domain Contracts:**
 - API boundaries clearly defined
 - Event names standardized
-- State format agreed upon
+- Unified storage format (tabs array)
 - Error handling consistent
 
 **Example Coordination:**
 ```javascript
-// Domain layer defines contract
+// Domain layer defines contract (v1.6.2.2+)
 class QuickTab {
   export() {
     return {
       version: 2,
       id: this.id,
       url: this.url,
-      cookieStoreId: this.cookieStoreId,
-      soloTab: this.soloTab,
-      mutedTabs: Array.from(this.mutedTabs)
+      soloedOnTabs: this.soloedOnTabs,
+      mutedOnTabs: this.mutedOnTabs
     };
   }
   
@@ -183,16 +187,21 @@ class QuickTab {
   }
 }
 
-// Storage layer uses contract
+// Storage layer uses unified format (v1.6.2.2+)
 class QuickTabStorage {
   async exportAll() {
-    const tabs = await this.loadAll();
-    return tabs.map(tab => tab.export());
+    const state = await browser.storage.local.get('quick_tabs_state_v2');
+    return state.quick_tabs_state_v2?.tabs || [];
   }
   
-  async importAll(data) {
-    const tabs = data.map(d => QuickTab.import(d));
-    await this.saveAll(tabs);
+  async importAll(tabs) {
+    await browser.storage.local.set({
+      quick_tabs_state_v2: {
+        tabs: tabs,
+        saveId: generateId(),
+        timestamp: Date.now()
+      }
+    });
   }
 }
 
