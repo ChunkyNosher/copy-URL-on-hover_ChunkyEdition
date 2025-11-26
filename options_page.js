@@ -94,9 +94,9 @@ async function saveSettings() {
  */
 async function updateStorageInfo() {
   try {
-    // Try to load state from sync storage
-    const syncResult = await browser.storage.sync.get(STATE_KEY);
-    const state = syncResult[STATE_KEY];
+    // Query from LOCAL storage (where Quick Tabs are actually stored)
+    const localResult = await browser.storage.local.get(STATE_KEY);
+    const state = localResult[STATE_KEY];
 
     if (!state || !state.tabs) {
       document.getElementById('currentTabCount').textContent = '0';
@@ -139,12 +139,20 @@ function checkSessionStorageAvailability() {
  * Clear all Quick Tabs from storage
  */
 async function clearStorage() {
-  if (!confirm('Are you sure you want to clear all Quick Tabs? This action cannot be undone.')) {
+  if (
+    !confirm(
+      'Are you sure you want to clear all Quick Tabs? This will close all Quick Tab windows but preserve your settings and keyboard shortcuts. This action cannot be undone.'
+    )
+  ) {
     return;
   }
 
   try {
-    // Clear from sync storage
+    // Clear Quick Tabs state from LOCAL storage (where Quick Tabs are stored)
+    // This preserves settings (in sync storage) and console logs
+    await browser.storage.local.remove(STATE_KEY);
+
+    // Also clear from sync storage for backward compatibility
     await browser.storage.sync.remove(STATE_KEY);
 
     // Clear from session storage if available
@@ -152,7 +160,7 @@ async function clearStorage() {
       await browser.storage.session.remove(SESSION_KEY);
     }
 
-    showStatus('All Quick Tabs cleared successfully!', 'success');
+    showStatus('All Quick Tabs cleared! Your settings and keyboard shortcuts are preserved.', 'success');
     await updateStorageInfo();
 
     // Notify all tabs to close Quick Tabs
@@ -177,8 +185,9 @@ async function clearStorage() {
  */
 async function showCurrentState() {
   try {
-    const syncResult = await browser.storage.sync.get(STATE_KEY);
-    const state = syncResult[STATE_KEY];
+    // Query from LOCAL storage (where Quick Tabs are actually stored)
+    const localResult = await browser.storage.local.get(STATE_KEY);
+    const state = localResult[STATE_KEY];
 
     const debugOutput = document.getElementById('debugOutput');
     const debugContent = document.getElementById('debugContent');
@@ -196,8 +205,9 @@ async function showCurrentState() {
  */
 async function exportState() {
   try {
-    const syncResult = await browser.storage.sync.get(STATE_KEY);
-    const state = syncResult[STATE_KEY];
+    // Query from LOCAL storage (where Quick Tabs are actually stored)
+    const localResult = await browser.storage.local.get(STATE_KEY);
+    const state = localResult[STATE_KEY];
 
     const dataStr = JSON.stringify(state, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });

@@ -10,6 +10,7 @@
  * Complexity: cc ≤ 3 per method
  */
 
+import { CONSTANTS } from '../../../core/config.js';
 import { createQuickTabWindow } from '../window.js';
 
 export class UICoordinator {
@@ -59,6 +60,7 @@ export class UICoordinator {
 
   /**
    * Render a single QuickTabWindow from QuickTab entity
+   * v1.6.2.x - ISSUE FIX: Added container safety check before rendering
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Rendered tab window
@@ -68,6 +70,20 @@ export class UICoordinator {
     if (this.renderedTabs.has(quickTab.id)) {
       console.log('[UICoordinator] Tab already rendered:', quickTab.id);
       return this.renderedTabs.get(quickTab.id);
+    }
+
+    // Safety check - don't render if wrong container
+    const currentContainer = this.stateManager?.currentContainer;
+    if (currentContainer) {
+      const quickTabContainer = quickTab.container || quickTab.cookieStoreId || CONSTANTS.DEFAULT_CONTAINER;
+      if (quickTabContainer !== currentContainer) {
+        console.warn('[UICoordinator] Refusing to render Quick Tab from wrong container', {
+          quickTabId: quickTab.id,
+          quickTabContainer,
+          currentContainer
+        });
+        return null;
+      }
     }
 
     console.log('[UICoordinator] Rendering tab:', quickTab.id);
