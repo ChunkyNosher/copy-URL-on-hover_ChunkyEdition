@@ -768,4 +768,158 @@ describe('StateManager', () => {
       expect(manager.count()).toBe(1);
     });
   });
+
+  describe('Global Slot Assignment (v1.6.3)', () => {
+    test('assignGlobalSlot() should return 1 for empty state', () => {
+      const slot = manager.assignGlobalSlot();
+      expect(slot).toBe(1);
+    });
+
+    test('assignGlobalSlot() should return next available slot', () => {
+      // Add Quick Tabs with slots 1, 2, 3
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        slot: 1
+      });
+      const qt2 = QuickTab.create({
+        id: 'qt-2',
+        url: 'https://test.com',
+        slot: 2
+      });
+      const qt3 = QuickTab.create({
+        id: 'qt-3',
+        url: 'https://another.com',
+        slot: 3
+      });
+
+      manager.quickTabs.set(qt1.id, qt1);
+      manager.quickTabs.set(qt2.id, qt2);
+      manager.quickTabs.set(qt3.id, qt3);
+
+      const nextSlot = manager.assignGlobalSlot();
+      expect(nextSlot).toBe(4);
+    });
+
+    test('assignGlobalSlot() should reuse lowest available slot after deletion', () => {
+      // Add Quick Tabs with slots 1, 2, 3
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        slot: 1
+      });
+      const qt2 = QuickTab.create({
+        id: 'qt-2',
+        url: 'https://test.com',
+        slot: 2
+      });
+      const qt3 = QuickTab.create({
+        id: 'qt-3',
+        url: 'https://another.com',
+        slot: 3
+      });
+
+      manager.quickTabs.set(qt1.id, qt1);
+      manager.quickTabs.set(qt2.id, qt2);
+      manager.quickTabs.set(qt3.id, qt3);
+
+      // Delete Quick Tab with slot 2
+      manager.quickTabs.delete(qt2.id);
+
+      // Next slot should be 2 (the gap)
+      const nextSlot = manager.assignGlobalSlot();
+      expect(nextSlot).toBe(2);
+    });
+
+    test('add() should assign slot if not provided', () => {
+      const quickTab = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com'
+      });
+
+      expect(quickTab.slot).toBeNull();
+
+      manager.add(quickTab);
+
+      expect(quickTab.slot).toBe(1);
+    });
+
+    test('add() should preserve existing slot', () => {
+      const quickTab = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        slot: 5
+      });
+
+      manager.add(quickTab);
+
+      expect(quickTab.slot).toBe(5);
+    });
+
+    test('addSilent() should assign slot if not provided', () => {
+      const quickTab = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com'
+      });
+
+      expect(quickTab.slot).toBeNull();
+
+      manager.addSilent(quickTab);
+
+      expect(quickTab.slot).toBe(1);
+    });
+
+    test('getBySlot() should find Quick Tab by slot number', () => {
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        slot: 1
+      });
+      const qt2 = QuickTab.create({
+        id: 'qt-2',
+        url: 'https://test.com',
+        slot: 2
+      });
+
+      manager.quickTabs.set(qt1.id, qt1);
+      manager.quickTabs.set(qt2.id, qt2);
+
+      const found = manager.getBySlot(2);
+      expect(found).toBe(qt2);
+    });
+
+    test('getBySlot() should return undefined for non-existent slot', () => {
+      const found = manager.getBySlot(999);
+      expect(found).toBeUndefined();
+    });
+
+    test('static assignGlobalSlotFromTabs() should work with array', () => {
+      const tabs = [
+        { id: 'qt-1', slot: 1 },
+        { id: 'qt-2', slot: 3 },
+        { id: 'qt-3', slot: 5 }
+      ];
+
+      const nextSlot = StateManager.assignGlobalSlotFromTabs(tabs);
+      // Should be 2 (first gap)
+      expect(nextSlot).toBe(2);
+    });
+
+    test('static assignGlobalSlotFromTabs() should return 1 for empty array', () => {
+      const nextSlot = StateManager.assignGlobalSlotFromTabs([]);
+      expect(nextSlot).toBe(1);
+    });
+
+    test('static assignGlobalSlotFromTabs() should handle tabs without slots', () => {
+      const tabs = [
+        { id: 'qt-1', slot: null },
+        { id: 'qt-2' }, // No slot property
+        { id: 'qt-3', slot: 2 }
+      ];
+
+      const nextSlot = StateManager.assignGlobalSlotFromTabs(tabs);
+      // Only slot 2 is occupied, so next is 1
+      expect(nextSlot).toBe(1);
+    });
+  });
 });

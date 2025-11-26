@@ -484,8 +484,24 @@ describe('QuickTab Domain Entity', () => {
         },
         zIndex: 2000,
         createdAt: 1234567890,
-        lastModified: expect.any(Number) // v1.6.1.5 - Added timestamp tracking
+        lastModified: expect.any(Number), // v1.6.1.5 - Added timestamp tracking
+        slot: null // v1.6.3 - Global slot number
       });
+    });
+
+    test('serialize should include slot when set', () => {
+      const quickTab = new QuickTab({
+        id: 'qt-123',
+        url: 'https://example.com',
+        position: { left: 100, top: 200 },
+        size: { width: 800, height: 600 },
+        visibility: {},
+        slot: 5
+      });
+
+      const serialized = quickTab.serialize();
+
+      expect(serialized.slot).toBe(5);
     });
 
     test('serialize should clone arrays and objects', () => {
@@ -587,6 +603,25 @@ describe('QuickTab Domain Entity', () => {
         expect(quickTab.title).toBe('Custom Title');
       });
 
+      test('should accept slot parameter', () => {
+        const quickTab = QuickTab.create({
+          id: 'qt-456',
+          url: 'https://test.com',
+          slot: 3
+        });
+
+        expect(quickTab.slot).toBe(3);
+      });
+
+      test('should default slot to null if not provided', () => {
+        const quickTab = QuickTab.create({
+          id: 'qt-456',
+          url: 'https://test.com'
+        });
+
+        expect(quickTab.slot).toBeNull();
+      });
+
       test('should throw error if id is missing', () => {
         expect(() => {
           QuickTab.create({ url: 'https://test.com' });
@@ -598,6 +633,46 @@ describe('QuickTab Domain Entity', () => {
           QuickTab.create({ id: 'qt-456' });
         }).toThrow('QuickTab.create requires url');
       });
+    });
+  });
+
+  describe('Slot Operations', () => {
+    test('should preserve slot from storage data', () => {
+      const data = {
+        id: 'qt-123',
+        url: 'https://example.com',
+        slot: 2
+      };
+
+      const quickTab = QuickTab.fromStorage(data);
+
+      expect(quickTab.slot).toBe(2);
+    });
+
+    test('should default slot to null when not in storage', () => {
+      const data = {
+        id: 'qt-123',
+        url: 'https://example.com'
+      };
+
+      const quickTab = QuickTab.fromStorage(data);
+
+      expect(quickTab.slot).toBeNull();
+    });
+
+    test('should include slot in serialization', () => {
+      const quickTab = new QuickTab({
+        id: 'qt-123',
+        url: 'https://example.com',
+        position: { left: 100, top: 200 },
+        size: { width: 800, height: 600 },
+        visibility: {},
+        slot: 5
+      });
+
+      const serialized = quickTab.serialize();
+
+      expect(serialized.slot).toBe(5);
     });
   });
 });

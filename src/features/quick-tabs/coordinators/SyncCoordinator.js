@@ -365,23 +365,46 @@ export class SyncCoordinator {
 
   /**
    * Select newer Quick Tab based on lastModified timestamp
+   * v1.6.3 - Ensure slot is preserved across syncs
    * 
    * @private
    * @param {QuickTab} memoryQt - In-memory Quick Tab
    * @param {QuickTab} storageQt - Storage Quick Tab
-   * @returns {QuickTab} - The newer Quick Tab
+   * @returns {QuickTab} - The newer Quick Tab with slot preserved
    */
   _selectNewerQuickTab(memoryQt, storageQt) {
     const memoryModified = memoryQt.lastModified || memoryQt.createdAt || 0;
     const storageModified = storageQt.lastModified || storageQt.createdAt || 0;
 
-    if (storageModified > memoryModified) {
-      console.log(`[SyncCoordinator] Merge: Using storage version of ${storageQt.id} (newer by ${storageModified - memoryModified}ms)`);
-      return storageQt;
-    }
+    const useStorage = storageModified > memoryModified;
+    const winner = useStorage ? storageQt : memoryQt;
+    const loser = useStorage ? memoryQt : storageQt;
+    const diff = Math.abs(storageModified - memoryModified);
 
-    console.log(`[SyncCoordinator] Merge: Keeping in-memory version of ${memoryQt.id} (newer by ${memoryModified - storageModified}ms)`);
-    return memoryQt;
+    console.log(`[SyncCoordinator] Merge: Using ${useStorage ? 'storage' : 'in-memory'} version of ${winner.id} (newer by ${diff}ms)`);
+
+    // v1.6.3 - Ensure slot is preserved (prefer existing slot over null)
+    this._preserveSlot(winner, loser);
+
+    return winner;
+  }
+
+  /**
+   * Preserve slot from loser if winner has no slot
+   * v1.6.3 - Helper to reduce complexity
+   * 
+   * @private
+   * @param {QuickTab} winner - Winner Quick Tab (may be modified)
+   * @param {QuickTab} loser - Loser Quick Tab (source of slot)
+   */
+  _preserveSlot(winner, loser) {
+    const winnerHasSlot = winner.slot !== null && winner.slot !== undefined;
+    const loserHasSlot = loser.slot !== null && loser.slot !== undefined;
+
+    if (!winnerHasSlot && loserHasSlot) {
+      winner.slot = loser.slot;
+      console.log(`[SyncCoordinator] Preserved slot ${winner.slot} for ${winner.id}`);
+    }
   }
 
   /**

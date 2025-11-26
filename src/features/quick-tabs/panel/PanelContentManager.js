@@ -518,12 +518,33 @@ export class PanelContentManager {
     };
     this.eventBus.on('state:hydrated', hydratedHandler);
 
+    // v1.6.3 - Listen for state cleared (from Clear Storage button)
+    const clearedHandler = (data) => {
+      try {
+        debug(`[PanelContentManager] state:cleared received, ${data?.count ?? 0} tabs cleared`);
+        
+        // Always update content when state is cleared, even if panel is closed
+        // This ensures the panel shows empty state when opened after clear
+        this.stateChangedWhileClosed = true;
+        
+        if (this.isOpen) {
+          this.updateContent();
+        }
+        
+        debug('[PanelContentManager] State cleared - panel will show empty state');
+      } catch (err) {
+        console.error('[PanelContentManager] Error handling state:cleared:', err);
+      }
+    };
+    this.eventBus.on('state:cleared', clearedHandler);
+
     // Store handlers for cleanup
     this._stateHandlers = {
       added: addedHandler,
       updated: updatedHandler,
       deleted: deletedHandler,
-      hydrated: hydratedHandler
+      hydrated: hydratedHandler,
+      cleared: clearedHandler  // v1.6.3
     };
 
     debug('[PanelContentManager] State event listeners setup');
@@ -662,9 +683,16 @@ export class PanelContentManager {
    *            storage.onChanged does NOT fire in the tab that made the change,
    *            so we must explicitly destroy DOM elements in the current tab.
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.3 - Clear in-memory state and emit state:cleared event
    */
   async handleCloseAll() {
     try {
+      // Get count before clearing for logging
+      let clearedCount = 0;
+      if (this.liveStateManager) {
+        clearedCount = this.liveStateManager.count();
+      }
+
       // v1.6.2.4 - FIX: Destroy all Quick Tab DOM elements in current tab FIRST
       // storage.onChanged will handle cleanup in OTHER tabs automatically
       if (this.quickTabsManager?.closeAll) {
@@ -672,6 +700,12 @@ export class PanelContentManager {
         this.quickTabsManager.closeAll();
       } else {
         console.warn('[PanelContentManager] quickTabsManager.closeAll not available');
+      }
+
+      // v1.6.3 - Clear in-memory state manager if available
+      if (this.liveStateManager?.clear) {
+        console.log('[PanelContentManager] Clearing in-memory state...');
+        this.liveStateManager.clear();
       }
 
       // v1.6.2.2 - Use unified format
@@ -686,6 +720,12 @@ export class PanelContentManager {
       // Clear session storage
       await this._updateSessionStorage(emptyState);
 
+      // v1.6.3 - Emit state:cleared event for other listeners
+      if (this.eventBus) {
+        this.eventBus.emit('state:cleared', { count: clearedCount });
+        debug(`[PanelContentManager] Emitted state:cleared event (${clearedCount} tabs closed)`);
+      }
+
       // Note: Cross-tab sync happens via storage.onChanged which fires when we write to storage.local above.
       // Other tabs will receive the change and update their UI accordingly.
 
@@ -699,6 +739,7 @@ export class PanelContentManager {
   /**
    * Clear all Quick Tab storage
    * v1.6.2.2 - Debug/testing utility
+   * v1.6.3 - Emit state:cleared event to update panel and other listeners
    * CRITICAL: Destroy DOM elements BEFORE clearing storage
    */
   async handleClearStorage() {
@@ -713,10 +754,22 @@ export class PanelContentManager {
       
       if (!confirmed) return;
       
+      // Get count before clearing for logging
+      let clearedCount = 0;
+      if (this.liveStateManager) {
+        clearedCount = this.liveStateManager.count();
+      }
+      
       // Destroy all Quick Tab DOM elements in current tab FIRST
       if (this.quickTabsManager?.closeAll) {
         console.log('[PanelContentManager] Destroying all Quick Tab DOM elements...');
         this.quickTabsManager.closeAll();
+      }
+
+      // v1.6.3 - Clear in-memory state manager if available
+      if (this.liveStateManager?.clear) {
+        console.log('[PanelContentManager] Clearing in-memory state...');
+        this.liveStateManager.clear();
       }
 
       // Clear storage (unified format)
@@ -731,6 +784,12 @@ export class PanelContentManager {
       // Clear session storage if available
       if (typeof browser.storage.session !== 'undefined') {
         await browser.storage.session.set({ quick_tabs_session: emptyState });
+      }
+
+      // v1.6.3 - Emit state:cleared event for other listeners (e.g., background script)
+      if (this.eventBus) {
+        this.eventBus.emit('state:cleared', { count: clearedCount });
+        debug(`[PanelContentManager] Emitted state:cleared event (${clearedCount} tabs cleared)`);
       }
 
       console.log('[PanelContentManager] ✓ Cleared all Quick Tab storage');
@@ -867,6 +926,10 @@ export class PanelContentManager {
       this.eventBus.off('state:updated', this._stateHandlers.updated);
       this.eventBus.off('state:deleted', this._stateHandlers.deleted);
       this.eventBus.off('state:hydrated', this._stateHandlers.hydrated);
+      // v1.6.3 - Also remove cleared handler
+      if (this._stateHandlers.cleared) {
+        this.eventBus.off('state:cleared', this._stateHandlers.cleared);
+      }
       this._stateHandlers = null;
     }
 
