@@ -607,9 +607,21 @@ export class PanelContentManager {
    * Close all Quick Tabs
    * v1.5.8.15 - Fixed to use proper wrapped format
    * v1.6.2+ - MIGRATION: Use storage.local instead of storage.sync
+   * v1.6.2.4 - FIX Issue #3: Destroy DOM elements BEFORE clearing storage
+   *            storage.onChanged does NOT fire in the tab that made the change,
+   *            so we must explicitly destroy DOM elements in the current tab.
    */
   async handleCloseAll() {
     try {
+      // v1.6.2.4 - FIX: Destroy all Quick Tab DOM elements in current tab FIRST
+      // storage.onChanged will handle cleanup in OTHER tabs automatically
+      if (this.quickTabsManager?.closeAll) {
+        console.log('[PanelContentManager] Destroying all Quick Tab DOM elements in current tab...');
+        this.quickTabsManager.closeAll();
+      } else {
+        console.warn('[PanelContentManager] quickTabsManager.closeAll not available');
+      }
+
       // Use wrapped container format
       const emptyState = {
         containers: {
@@ -624,8 +636,7 @@ export class PanelContentManager {
       // Clear session storage
       await this._updateSessionStorage(emptyState);
 
-      // Note: CLEAR_ALL_QUICK_TABS message is not handled by background.
-      // Cross-tab sync happens via storage.onChanged which fires when we write to storage.local above.
+      // Note: Cross-tab sync happens via storage.onChanged which fires when we write to storage.local above.
       // Other tabs will receive the change and update their UI accordingly.
 
       debug('[PanelContentManager] Closed all Quick Tabs');
