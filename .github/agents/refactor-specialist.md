@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.x - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
@@ -62,6 +62,11 @@ const relevantMemories = await searchMemories({
 - Improve testability
 - Enforce architecture boundaries
 - Reduce complexity
+
+**Storage Format (v1.6.2.2+):**
+```javascript
+{ tabs: [...], saveId: '...', timestamp: ... }
+```
 
 ---
 
@@ -287,14 +292,16 @@ strategies[type].handle();
 ## Phase 1 Refactoring Example (Completed)
 
 **What Was Refactored:**
-- Domain layer (QuickTab, Container entities)
+- Domain layer (QuickTab entity)
 - Storage layer (SyncStorage, SessionStorage adapters)
+- Container isolation removed in v1.6.2.2
 
 **Results:**
 - ✅ 96% test coverage
 - ✅ Pure business logic extracted
 - ✅ Storage abstraction with fallback
 - ✅ Architecture boundaries enforced
+- ✅ Unified storage format (tabs array)
 
 **Next Phase (2.1): QuickTabsManager Decomposition**
 
@@ -304,7 +311,7 @@ QuickTabsManager (monolith)
     ↓
 QuickTabFactory (creation)
 QuickTabStorage (persistence)
-QuickTabSyncManager (cross-tab)
+QuickTabSyncManager (cross-tab via storage.onChanged)
 QuickTabLifecycle (state management)
 QuickTabsOrchestrator (coordination)
 ```

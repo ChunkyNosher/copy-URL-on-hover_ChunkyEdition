@@ -32,6 +32,9 @@ const PANEL_HTML = `
     <button id="panel-closeAll" class="panel-btn-danger" title="Close all Quick Tabs">
       Close All
     </button>
+    <button id="panel-clearStorage" class="panel-btn-danger" title="Clear Quick Tab Storage (Debug)">
+      Clear Storage
+    </button>
   </div>
   
   <div class="panel-stats">
@@ -563,6 +566,17 @@ export class PanelUIBuilder {
     const metaParts = [];
     if (minimized) metaParts.push('Minimized');
     if (tab.activeTabId) metaParts.push(`Tab ${tab.activeTabId}`);
+    
+    // v1.6.2.2 - Solo/Mute visibility indicators
+    if (tab.soloedOnTabs && tab.soloedOnTabs.length > 0) {
+      const soloCount = tab.soloedOnTabs.length;
+      metaParts.push(`🎯 Solo on ${soloCount} tab${soloCount !== 1 ? 's' : ''}`);
+    }
+    if (tab.mutedOnTabs && tab.mutedOnTabs.length > 0) {
+      const muteCount = tab.mutedOnTabs.length;
+      metaParts.push(`🔇 Muted on ${muteCount} tab${muteCount !== 1 ? 's' : ''}`);
+    }
+    
     if (tab.width && tab.height) {
       metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
     }

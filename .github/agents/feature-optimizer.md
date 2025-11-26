@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.x - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -60,7 +60,7 @@ const relevantMemories = await searchMemories({
 - Bundle size: content.js <500KB, background.js <300KB
 - Test execution: <2 seconds for full suite
 - Quick Tab rendering: <100ms
-- Cross-tab sync: <10ms latency
+- Cross-tab sync via storage.onChanged: <100ms latency
 
 ---
 
@@ -279,53 +279,63 @@ quickTabs.forEach(tab => {
 container.appendChild(fragment); // Single reflow
 ```
 
-### Container State Lookup Optimization
+### State Lookup Optimization (v1.6.2.2+)
 
-**Problem:** Repeated container ID lookups
+**Problem:** Repeated storage lookups
 
 **Solution:**
 ```javascript
-// Cache container IDs
-class ContainerCache {
+// Cache state locally
+class StateCache {
   constructor() {
-    this.cache = new Map();
+    this.cache = null;
   }
   
-  async getContainerId(tabId) {
-    if (this.cache.has(tabId)) {
-      return this.cache.get(tabId);
-    }
-    const tab = await browser.tabs.get(tabId);
-    const containerId = tab.cookieStoreId || 'firefox-default';
-    this.cache.set(tabId, containerId);
-    return containerId;
+  async getState() {
+    if (this.cache) return this.cache;
+    
+    const data = await browser.storage.local.get('quick_tabs_state_v2');
+    this.cache = data.quick_tabs_state_v2 || { tabs: [] };
+    return this.cache;
+  }
+  
+  invalidate() {
+    this.cache = null;
   }
 }
 ```
 
-### BroadcastChannel Message Optimization
+### Storage Sync Optimization (v1.6.2+)
 
-**Problem:** Excessive message traffic
+**Problem:** Excessive storage writes
 
 **Solution:**
 ```javascript
-// Batch state updates
-class BatchedSync {
+// Debounce storage updates
+class DebouncedStorage {
   constructor() {
-    this.pending = [];
+    this.pending = null;
     this.timer = null;
   }
   
-  queueUpdate(update) {
-    this.pending.push(update);
+  queueUpdate(state) {
+    this.pending = state;
     if (!this.timer) {
-      this.timer = setTimeout(() => this.flush(), 50);
+      this.timer = setTimeout(() => this.flush(), 100);
     }
   }
   
-  flush() {
-    this.channel.postMessage({ type: 'batch', updates: this.pending });
-    this.pending = [];
+  async flush() {
+    if (this.pending) {
+      await browser.storage.local.set({
+        quick_tabs_state_v2: {
+          tabs: this.pending.tabs,
+          saveId: generateId(),
+          timestamp: Date.now()
+        }
+      });
+      this.pending = null;
+    }
     this.timer = null;
   }
 }

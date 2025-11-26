@@ -53,14 +53,14 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.x - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
 
 **Key Features:**
-- Solo/Mute tab-specific visibility control
-- Firefox Container complete isolation
+- Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
+- Global Quick Tab visibility (v1.6.2.2 - Container isolation REMOVED)
 - Floating Quick Tabs Manager (Ctrl+Alt+Z)
 - Cross-tab sync via storage.onChanged (v1.6.2+)
 - Direct local creation pattern
@@ -193,27 +193,25 @@ Only if:
 
 ## Critical Areas Requiring Architectural Awareness
 
-### Container Isolation Bugs
+### Global Visibility (v1.6.2.2+)
 
 **Common Root Causes:**
-- Missing `cookieStoreId` checks
-- State sharing across containers
-- BroadcastChannel not container-filtered
+- Using old container-based storage format
+- Incorrect storage key or structure
 
 **Architectural Solution:**
-- Enforce container boundary at storage layer
-- Add container validation to all state operations
-- Use ContainerFilter abstraction
+- Use unified storage format with tabs array
+- All Quick Tabs globally visible by default
 
-### Solo/Mute State Bugs
+### Solo/Mute State Bugs (v1.6.2.2+)
 
 **Common Root Causes:**
-- Race conditions in state updates
+- Not using soloedOnTabs/mutedOnTabs arrays
 - Mutual exclusivity not enforced
-- Cross-tab sync delays
+- Cross-tab sync via storage.onChanged issues
 
 **Architectural Solution:**
-- Use state machine for Solo/Mute transitions
+- Use arrays for Solo/Mute state per tab
 - Enforce invariants at domain layer
 - Centralize state transition logic
 

@@ -1,6 +1,7 @@
 /**
  * StateManager - Manages local in-memory Quick Tab state
  * Phase 2.1: Extracted from QuickTabsManager
+ * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container filtering for global visibility
  *
  * Responsibilities:
  * - Maintain Map of QuickTab instances
@@ -17,10 +18,10 @@
 import { QuickTab } from '@domain/QuickTab.js';
 
 export class StateManager {
-  constructor(eventBus, currentTabId = null, currentContainer = null) {
+  constructor(eventBus, currentTabId = null) {
     this.eventBus = eventBus;
     this.currentTabId = currentTabId;
-    this.currentContainer = currentContainer; // v1.6.2.x - Store current container for filtering
+    // v1.6.2.2 - REMOVED: currentContainer for global visibility (Issue #35, #51, #47)
 
     // In-memory state: Map<id, QuickTab>
     this.quickTabs = new Map();
@@ -138,14 +139,8 @@ export class StateManager {
     return this.getAll().filter(qt => qt.visibility.minimized);
   }
 
-  /**
-   * Get Quick Tabs for specific container
-   * @param {string} cookieStoreId - Container ID
-   * @returns {Array<QuickTab>} - Array of Quick Tabs for container
-   */
-  getByContainer(cookieStoreId) {
-    return this.getAll().filter(qt => qt.belongsToContainer(cookieStoreId));
-  }
+  // v1.6.2.2 - REMOVED: getByContainer() method
+  // Container filtering removed for global visibility (Issue #35, #51, #47)
 
   /**
    * Hydrate state from array of QuickTab entities

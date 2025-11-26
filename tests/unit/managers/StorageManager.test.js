@@ -2,6 +2,7 @@
  * StorageManager Unit Tests
  * Phase 2.1: Tests for extracted storage management logic
  * v1.6.2 - MIGRATION: Removed SessionStorageAdapter (storage.local only)
+ * v1.6.2.2 - Updated for unified format (container field removed)
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -28,23 +29,17 @@ describe('StorageManager', () => {
     // Create mock adapters
     mockSyncAdapter = new SyncStorageAdapter();
 
-    // Create manager
-    manager = new StorageManager(eventBus, 'firefox-default');
+    // Create manager (v1.6.2.2 - no cookieStoreId parameter)
+    manager = new StorageManager(eventBus);
 
     // Replace adapter with mock
     manager.syncAdapter = mockSyncAdapter;
   });
 
   describe('Constructor', () => {
-    test('should initialize with default container', () => {
+    test('should initialize with event bus', () => {
       const mgr = new StorageManager(eventBus);
-      expect(mgr.cookieStoreId).toBe('firefox-default');
       expect(mgr.eventBus).toBe(eventBus);
-    });
-
-    test('should initialize with custom container', () => {
-      const mgr = new StorageManager(eventBus, 'firefox-container-1');
-      expect(mgr.cookieStoreId).toBe('firefox-container-1');
     });
 
     test('should initialize pending save tracking', () => {
@@ -66,8 +61,8 @@ describe('StorageManager', () => {
 
       const saveId = await manager.save([quickTab]);
 
+      // v1.6.2.2 - Unified format (no container parameter)
       expect(mockSyncAdapter.save).toHaveBeenCalledWith(
-        'firefox-default',
         expect.arrayContaining([
           expect.objectContaining({
             id: 'qt-123',
@@ -108,8 +103,8 @@ describe('StorageManager', () => {
 
       await manager.save([quickTab]);
 
+      // v1.6.2.2 - Unified format
       expect(listener).toHaveBeenCalledWith({
-        cookieStoreId: 'firefox-default',
         saveId: 'save-id-789'
       });
     });
@@ -171,8 +166,7 @@ describe('StorageManager', () => {
           id: 'qt-123',
           url: 'https://example.com',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          cookieStoreId: 'firefox-default'
+          size: { width: 400, height: 300 }
         }
       ];
 
@@ -184,9 +178,9 @@ describe('StorageManager', () => {
 
       const quickTabs = await manager.loadAll();
 
+      // v1.6.2.2 - Unified format (no cookieStoreId parameter)
       expect(global.browser.runtime.sendMessage).toHaveBeenCalledWith({
-        action: 'GET_QUICK_TABS_STATE',
-        cookieStoreId: 'firefox-default'
+        action: 'GET_QUICK_TABS_STATE'
       });
       expect(quickTabs).toHaveLength(1);
       expect(quickTabs[0]).toBeInstanceOf(QuickTab);
@@ -194,30 +188,25 @@ describe('StorageManager', () => {
     });
 
     test('should load from storage when background fails', async () => {
-      const tabData = {
-        tabs: [
-          {
-            id: 'qt-456',
-            url: 'https://test.com',
-            position: { left: 200, top: 200 },
-            size: { width: 500, height: 400 },
-            cookieStoreId: 'firefox-default'
-          }
-        ],
-        lastUpdate: Date.now()
-      };
+      const tabData = [
+        {
+          id: 'qt-456',
+          url: 'https://test.com',
+          position: { left: 200, top: 200 },
+          size: { width: 500, height: 400 }
+        }
+      ];
 
       // Background fails
       global.browser.runtime.sendMessage.mockResolvedValue({
         success: false
       });
 
-      // Storage.local has data
+      // Storage.local has data (v1.6.2.2 - unified format)
       global.browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
-          containers: {
-            'firefox-default': tabData
-          }
+          tabs: tabData,
+          timestamp: Date.now()
         }
       });
 
@@ -364,7 +353,8 @@ describe('StorageManager', () => {
 
       await manager.delete('qt-123');
 
-      expect(mockSyncAdapter.delete).toHaveBeenCalledWith('firefox-default', 'qt-123');
+      // v1.6.2.2 - Unified format (no container parameter)
+      expect(mockSyncAdapter.delete).toHaveBeenCalledWith('qt-123');
     });
 
     test('should emit storage:deleted event', async () => {
@@ -375,8 +365,8 @@ describe('StorageManager', () => {
 
       await manager.delete('qt-123');
 
+      // v1.6.2.2 - Unified format
       expect(listener).toHaveBeenCalledWith({
-        cookieStoreId: 'firefox-default',
         quickTabId: 'qt-123'
       });
     });
@@ -397,30 +387,28 @@ describe('StorageManager', () => {
   });
 
   describe('clear()', () => {
-    test('should clear container using sync adapter', async () => {
-      mockSyncAdapter.deleteContainer.mockResolvedValue();
+    test('should clear using sync adapter', async () => {
+      mockSyncAdapter.clear.mockResolvedValue();
 
       await manager.clear();
 
-      expect(mockSyncAdapter.deleteContainer).toHaveBeenCalledWith('firefox-default');
+      expect(mockSyncAdapter.clear).toHaveBeenCalled();
     });
 
     test('should emit storage:cleared event', async () => {
-      mockSyncAdapter.deleteContainer.mockResolvedValue();
+      mockSyncAdapter.clear.mockResolvedValue();
 
       const listener = jest.fn();
       eventBus.on('storage:cleared', listener);
 
       await manager.clear();
 
-      expect(listener).toHaveBeenCalledWith({
-        cookieStoreId: 'firefox-default'
-      });
+      expect(listener).toHaveBeenCalledWith({});
     });
 
     test('should handle clear errors', async () => {
       const error = new Error('Clear failed');
-      mockSyncAdapter.deleteContainer.mockRejectedValue(error);
+      mockSyncAdapter.clear.mockRejectedValue(error);
 
       const errorListener = jest.fn();
       eventBus.on('storage:error', errorListener);
@@ -440,9 +428,10 @@ describe('StorageManager', () => {
       const listener = jest.fn();
       eventBus.on('storage:changed', listener);
 
-      const state1 = { containers: { 'firefox-default': { tabs: [] } } };
-      const state2 = { containers: { 'firefox-default': { tabs: [{ id: 'qt-1' }] } } };
-      const state3 = { containers: { 'firefox-default': { tabs: [{ id: 'qt-2' }] } } };
+      // v1.6.2.2 - Unified format
+      const state1 = { tabs: [] };
+      const state2 = { tabs: [{ id: 'qt-1' }] };
+      const state3 = { tabs: [{ id: 'qt-2' }] };
 
       manager.scheduleStorageSync(state1);
       manager.scheduleStorageSync(state2);
@@ -452,7 +441,6 @@ describe('StorageManager', () => {
       setTimeout(() => {
         expect(listener).toHaveBeenCalledTimes(1);
         expect(listener).toHaveBeenCalledWith({
-          containerFilter: 'firefox-default',
           state: state3
         });
         done();
@@ -532,11 +520,10 @@ describe('StorageManager', () => {
       const listener = jest.fn();
       eventBus.on('storage:changed', listener);
 
+      // v1.6.2.2 - Unified format
       const newValue = {
         saveId: 'save-id-123',
-        containers: {
-          'firefox-default': { tabs: [] }
-        }
+        tabs: [{ id: 'qt-1' }]
       };
 
       manager.handleStorageChange(newValue);
@@ -549,79 +536,38 @@ describe('StorageManager', () => {
       const listener = jest.fn();
       eventBus.on('storage:changed', listener);
 
+      // v1.6.2.2 - Unified format
       const newValue = {
-        containers: {
-          'firefox-default': { tabs: [] }
-        }
-      };
-
-      manager.handleStorageChange(newValue);
-
-      expect(listener).not.toHaveBeenCalled();
-    });
-
-    test('should process container-specific changes', done => {
-      manager.STORAGE_SYNC_DELAY_MS = 50;
-      const listener = jest.fn();
-      eventBus.on('storage:changed', listener);
-
-      const newValue = {
-        containers: {
-          'firefox-default': { tabs: [{ id: 'qt-1' }] },
-          'firefox-container-1': { tabs: [{ id: 'qt-2' }] }
-        }
-      };
-
-      manager.handleStorageChange(newValue);
-
-      setTimeout(() => {
-        expect(listener).toHaveBeenCalledWith({
-          containerFilter: 'firefox-default',
-          state: {
-            containers: {
-              'firefox-default': { tabs: [{ id: 'qt-1' }] }
-            }
-          }
-        });
-        done();
-      }, 60);
-    });
-
-    test('should handle legacy format', done => {
-      manager.STORAGE_SYNC_DELAY_MS = 50;
-      const listener = jest.fn();
-      eventBus.on('storage:changed', listener);
-
-      const legacyValue = {
         tabs: [{ id: 'qt-1' }]
       };
 
-      manager.handleStorageChange(legacyValue);
+      manager.handleStorageChange(newValue);
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('should process unified format changes', done => {
+      manager.STORAGE_SYNC_DELAY_MS = 50;
+      const listener = jest.fn();
+      eventBus.on('storage:changed', listener);
+
+      // v1.6.2.2 - Unified format
+      const newValue = {
+        tabs: [{ id: 'qt-1' }, { id: 'qt-2' }],
+        timestamp: Date.now()
+      };
+
+      manager.handleStorageChange(newValue);
 
       setTimeout(() => {
         expect(listener).toHaveBeenCalledWith({
-          containerFilter: 'firefox-default',
-          state: legacyValue
+          state: newValue
         });
         done();
       }, 60);
     });
 
-    test('should handle missing container gracefully', () => {
-      const listener = jest.fn();
-      eventBus.on('storage:changed', listener);
-
-      const newValue = {
-        containers: {
-          'firefox-container-1': { tabs: [] }
-        }
-      };
-
-      manager.handleStorageChange(newValue);
-
-      // Should not schedule sync for missing container
-      expect(listener).not.toHaveBeenCalled();
-    });
+    // v1.6.2.2 - Container tests removed (unified format)
   });
 
   describe('Storage Event Integration', () => {

@@ -2,13 +2,13 @@
  * StorageManager - Handles persistent storage for Quick Tabs
  * Phase 2.1: Extracted from QuickTabsManager
  * v1.6.2 - MIGRATION: Uses storage.local + storage.onChanged exclusively
+ * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container isolation for global visibility
  *
  * Responsibilities:
  * - Save Quick Tabs to browser.storage.local
  * - Load Quick Tabs from browser.storage.local
  * - Listen for storage.onChanged events for cross-tab sync
  * - Track pending saves to prevent race conditions
- * - Container-aware storage operations
  *
  * Migration Notes (v1.6.2):
  * - Removed browser.storage.session fallback (storage.local has 10MB+ limit)
@@ -16,20 +16,24 @@
  * - Uses storage.onChanged for cross-tab synchronization
  * - Simplified circuit breaker (no quota concerns with storage.local)
  *
+ * Migration Notes (v1.6.2.2):
+ * - Removed container-aware storage operations for global visibility
+ * - All Quick Tabs stored in unified format (tabs array, not containers object)
+ * - Backward compatible migration from container format
+ *
  * Uses:
  * - SyncStorageAdapter from @storage layer (now uses storage.local internally)
  * - QuickTab from @domain layer
  */
 
-import { Container as _Container } from '@domain/Container.js';
 import { QuickTab } from '@domain/QuickTab.js';
 
 import { SyncStorageAdapter } from '@storage/SyncStorageAdapter.js';
 
 export class StorageManager {
-  constructor(eventBus, cookieStoreId = 'firefox-default') {
+  constructor(eventBus) {
     this.eventBus = eventBus;
-    this.cookieStoreId = cookieStoreId;
+    // v1.6.2.2 - REMOVED: cookieStoreId for global visibility (Issue #35, #51, #47)
 
     // Storage adapter (uses storage.local exclusively as of v1.6.2)
     this.syncAdapter = new SyncStorageAdapter();
@@ -62,6 +66,7 @@ export class StorageManager {
 
   /**
    * Save Quick Tabs to persistent storage
+   * v1.6.2.2 - Changed to unified storage format (no container separation)
    * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
    * @returns {Promise<string>} - Save ID for tracking
    */
@@ -72,19 +77,17 @@ export class StorageManager {
     }
 
     try {
-      // Save using SyncStorageAdapter (handles quota, fallback, serialization, etc.)
-      // Note: SyncStorageAdapter.save() expects QuickTab instances and handles serialization
-      const saveId = await this.syncAdapter.save(this.cookieStoreId, quickTabs);
+      // Save using SyncStorageAdapter (handles serialization, migration, etc.)
+      // v1.6.2.2 - Uses unified format without container separation
+      const saveId = await this.syncAdapter.save(quickTabs);
 
       // Track saveId to prevent race conditions
       this.trackPendingSave(saveId);
 
       // Emit event
-      this.eventBus?.emit('storage:saved', { cookieStoreId: this.cookieStoreId, saveId });
+      this.eventBus?.emit('storage:saved', { saveId });
 
-      console.log(
-        `[StorageManager] Saved ${quickTabs.length} Quick Tabs for container ${this.cookieStoreId}`
-      );
+      console.log(`[StorageManager] Saved ${quickTabs.length} Quick Tabs (unified format)`);
       return saveId;
     } catch (error) {
       console.error('[StorageManager] Save error:', error);
@@ -94,15 +97,16 @@ export class StorageManager {
   }
 
   /**
-   * Load all Quick Tabs globally from ALL containers
+   * Load all Quick Tabs globally
    * v1.6.2 - MIGRATION: Simplified to use storage.local exclusively
+   * v1.6.2.2 - ISSUE #35/#51 FIX: Unified format, no container separation
    * 
    * CRITICAL FIX for Issue #35, #51, and #47:
    * - First tries to get state from background script (authoritative source)
-   * - If background fails, falls back to loading from ALL containers in storage.local
+   * - If background fails, falls back to loading from storage.local
    * - Quick Tabs should be visible globally unless Solo/Mute rules apply
    *
-   * @returns {Promise<Array<QuickTab>>} - Array of QuickTab domain entities from ALL containers
+   * @returns {Promise<Array<QuickTab>>} - Array of QuickTab domain entities
    */
   async loadAll() {
     try {
@@ -112,12 +116,12 @@ export class StorageManager {
       const backgroundResult = await this._tryLoadFromBackground(browserAPI);
       if (backgroundResult) return backgroundResult;
 
-      // STEP 2: Load from storage.local (all containers for global visibility)
-      const localResult = await this._tryLoadFromAllContainers(browserAPI);
+      // STEP 2: Load from storage.local (unified format)
+      const localResult = await this._tryLoadFromGlobalStorage(browserAPI);
       if (localResult) return localResult;
 
       // STEP 3: Empty state
-      console.log(`[StorageManager] No data found for container ${this.cookieStoreId}`);
+      console.log('[StorageManager] No Quick Tab data found');
       return [];
     } catch (error) {
       console.error('[StorageManager] Load error:', error);
@@ -137,59 +141,74 @@ export class StorageManager {
 
   /**
    * Try to load Quick Tabs from background script
+   * v1.6.2.2 - Simplified for unified format
    * @private
    * @param {Object} browserAPI - Browser API reference
    * @returns {Promise<Array<QuickTab>|null>} Quick Tabs or null if not available
    */
   async _tryLoadFromBackground(browserAPI) {
     const response = await browserAPI.runtime.sendMessage({
-      action: 'GET_QUICK_TABS_STATE',
-      cookieStoreId: this.cookieStoreId
+      action: 'GET_QUICK_TABS_STATE'
     });
 
     if (response?.success && response.tabs?.length > 0) {
       const quickTabs = response.tabs.map(tabData => QuickTab.fromStorage(tabData));
-      console.log(
-        `[StorageManager] Loaded ${quickTabs.length} Quick Tabs from background for container ${this.cookieStoreId}`
-      );
+      console.log(`[StorageManager] Loaded ${quickTabs.length} Quick Tabs from background`);
       return quickTabs;
     }
     return null;
   }
 
   /**
-   * Try to load Quick Tabs from ALL containers in storage
+   * Try to load Quick Tabs from global storage (unified format)
+   * v1.6.2.2 - ISSUE #35/#51 FIX: Unified format with backward compatibility
    * @private
    * @param {Object} browserAPI - Browser API reference
    * @returns {Promise<Array<QuickTab>|null>} Quick Tabs or null if not available
    */
-  async _tryLoadFromAllContainers(browserAPI) {
-    console.log('[StorageManager] Loading Quick Tabs from ALL containers');
+  async _tryLoadFromGlobalStorage(browserAPI) {
+    console.log('[StorageManager] Loading Quick Tabs from global storage');
     
     const data = await browserAPI.storage.local.get('quick_tabs_state_v2');
-    const containers = data?.quick_tabs_state_v2?.containers || {};
+    const state = data?.quick_tabs_state_v2;
     
-    const allQuickTabs = this._flattenContainers(containers);
+    if (!state) {
+      return null;
+    }
     
-    console.log(`[StorageManager] Total Quick Tabs loaded globally: ${allQuickTabs.length}`);
+    // v1.6.2.2 - New unified format: { tabs: [...], timestamp, saveId }
+    if (state.tabs && Array.isArray(state.tabs)) {
+      const quickTabs = state.tabs.map(tabData => QuickTab.fromStorage(tabData));
+      console.log(`[StorageManager] Loaded ${quickTabs.length} Quick Tabs (unified format)`);
+      return quickTabs.length > 0 ? quickTabs : null;
+    }
     
-    return allQuickTabs.length > 0 ? allQuickTabs : null;
+    // v1.6.2.1 and earlier - Container format: { containers: {...} }
+    // Backward compatible migration
+    if (state.containers) {
+      const allQuickTabs = this._migrateFromContainerFormat(state.containers);
+      console.log(`[StorageManager] Migrated ${allQuickTabs.length} Quick Tabs from container format`);
+      return allQuickTabs.length > 0 ? allQuickTabs : null;
+    }
+    
+    return null;
   }
 
   /**
-   * Flatten all containers into a single Quick Tab array
+   * Migrate from container format to unified format
+   * v1.6.2.2 - Backward compatibility helper
    * @private
    * @param {Object} containers - Container data object
    * @returns {Array<QuickTab>} Flattened Quick Tab array
    */
-  _flattenContainers(containers) {
+  _migrateFromContainerFormat(containers) {
     const allQuickTabs = [];
     
     for (const containerKey of Object.keys(containers)) {
       const tabs = containers[containerKey]?.tabs || [];
       if (tabs.length === 0) continue;
       
-      console.log(`[StorageManager] Loaded ${tabs.length} Quick Tabs from container: ${containerKey}`);
+      console.log(`[StorageManager] Migrating ${tabs.length} Quick Tabs from container: ${containerKey}`);
       const quickTabs = tabs.map(tabData => QuickTab.fromStorage(tabData));
       allQuickTabs.push(...quickTabs);
     }
@@ -197,37 +216,8 @@ export class StorageManager {
     return allQuickTabs;
   }
 
-  /**
-   * Load Quick Tabs ONLY from current container
-   * Use this when container isolation is explicitly needed
-   *
-   * @returns {Promise<Array<QuickTab>>} - Quick Tabs from current container only
-   */
-  async loadFromCurrentContainer() {
-    try {
-      const browserAPI =
-        (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome);
-
-      const data = await browserAPI.storage.local.get('quick_tabs_state_v2');
-      const containerData = data?.quick_tabs_state_v2?.containers?.[this.cookieStoreId];
-
-      if (!containerData || !containerData.tabs) {
-        console.log(`[StorageManager] No data found for container ${this.cookieStoreId}`);
-        return [];
-      }
-
-      // Deserialize to QuickTab domain entities
-      const quickTabs = containerData.tabs.map(tabData => QuickTab.fromStorage(tabData));
-
-      console.log(
-        `[StorageManager] Loaded ${quickTabs.length} Quick Tabs from current container ${this.cookieStoreId}`
-      );
-      return quickTabs;
-    } catch (error) {
-      console.error('[StorageManager] loadFromCurrentContainer error:', error);
-      return [];
-    }
-  }
+  // v1.6.2.2 - REMOVED: loadFromCurrentContainer() method
+  // Container isolation removed for global visibility (Issue #35, #51, #47)
 
   /**
    * Setup storage change listeners
@@ -250,7 +240,6 @@ export class StorageManager {
     console.log('[StorageManager] Setting up storage.onChanged listener', {
       context,
       tabUrl: tabUrl?.substring(0, 50),
-      cookieStoreId: this.cookieStoreId,
       timestamp: Date.now()
     });
 
@@ -377,6 +366,7 @@ export class StorageManager {
    * Handle storage change event
    * v1.6.2 - Added debug logging to track sync pipeline
    * v1.6.2.1 - ISSUE #35 FIX: Enhanced context-aware logging
+   * v1.6.2.2 - Updated for unified format
    * @param {Object} newValue - New storage value
    */
   handleStorageChange(newValue) {
@@ -388,7 +378,7 @@ export class StorageManager {
       context,
       tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
       saveId: newValue?.saveId,
-      containerCount: Object.keys(newValue?.containers || {}).length,
+      tabCount: newValue?.tabs?.length ?? 0,
       willScheduleSync: !willSkip,
       timestamp: Date.now()
     });
@@ -401,11 +391,9 @@ export class StorageManager {
       return;
     }
 
-    const stateToSync = this._extractSyncState(newValue);
-    if (stateToSync) {
-      console.log('[StorageManager] Scheduling sync...', { context });
-      this.scheduleStorageSync(stateToSync);
-    }
+    // v1.6.2.2 - Simplified: pass the new value directly (unified format)
+    console.log('[StorageManager] Scheduling sync...', { context });
+    this.scheduleStorageSync(newValue);
   }
 
   /**
@@ -432,42 +420,8 @@ export class StorageManager {
     return false;
   }
 
-  /**
-   * Extract state to sync from storage change
-   * @private
-   * @param {Object} newValue - New storage value
-   * @returns {Object|null} State to sync, or null if none
-   */
-  _extractSyncState(newValue) {
-    // Modern container-aware format
-    if (newValue.containers && this.cookieStoreId) {
-      return this._extractContainerState(newValue);
-    }
-
-    // Legacy format - process as-is
-    console.log('[StorageManager] Scheduling sync (legacy format)');
-    return newValue;
-  }
-
-  /**
-   * Extract container-specific state
-   * @private
-   * @param {Object} newValue - Storage value with containers
-   * @returns {Object|null} Filtered state or null
-   */
-  _extractContainerState(newValue) {
-    const containerState = newValue.containers[this.cookieStoreId];
-    if (!containerState) {
-      return null;
-    }
-
-    console.log(`[StorageManager] Scheduling sync for container ${this.cookieStoreId}`);
-    return {
-      containers: {
-        [this.cookieStoreId]: containerState
-      }
-    };
-  }
+  // v1.6.2.2 - REMOVED: _extractSyncState() and _extractContainerState() methods
+  // Container filtering removed for global visibility (Issue #35, #51, #47)
 
   /**
    * Check if storage change should be ignored
@@ -507,7 +461,6 @@ export class StorageManager {
       console.log('[StorageManager] Emitting storage:changed event', {
         context,
         tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
-        containerFilter: this.cookieStoreId,
         hasEventBus: !!this.eventBus,
         eventBusType: this.eventBus?.constructor?.name || 'none',
         listenerCount,
@@ -522,8 +475,8 @@ export class StorageManager {
       }
 
       // Emit event for coordinator to handle sync
+      // v1.6.2.2 - Simplified: no container filter for global visibility
       this.eventBus.emit('storage:changed', {
-        containerFilter: this.cookieStoreId,
         state: snapshot
       });
 
@@ -577,24 +530,26 @@ export class StorageManager {
 
   /**
    * Delete specific Quick Tab from storage
+   * v1.6.2.2 - Updated for unified format
    * @param {string} quickTabId - Quick Tab ID to delete
    */
   async delete(quickTabId) {
     await this._executeStorageOperation(
       'delete',
-      () => this.syncAdapter.delete(this.cookieStoreId, quickTabId),
-      { cookieStoreId: this.cookieStoreId, quickTabId }
+      () => this.syncAdapter.delete(quickTabId),
+      { quickTabId }
     );
   }
 
   /**
-   * Clear all Quick Tabs for current container
+   * Clear all Quick Tabs
+   * v1.6.2.2 - Updated for unified format
    */
   async clear() {
     await this._executeStorageOperation(
       'clear',
-      () => this.syncAdapter.deleteContainer(this.cookieStoreId),
-      { cookieStoreId: this.cookieStoreId }
+      () => this.syncAdapter.clear(),
+      {}
     );
   }
 

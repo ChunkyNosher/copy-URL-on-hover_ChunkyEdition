@@ -80,14 +80,13 @@ const quickTabStates = new Map();
 
 // ==================== REAL-TIME STATE COORDINATOR ====================
 // Global state hub for real-time Quick Tab synchronization across all tabs
-// Container-aware since v1.5.7: State keyed by cookieStoreId for Firefox Container isolation
+// v1.6.2.2 - ISSUE #35/#51 FIX: Unified format (no container separation)
 // This provides instant cross-origin sync (< 50ms latency)
 // v1.5.8.13 - Enhanced with eager loading for Issue #35 and #51
 const globalQuickTabState = {
-  // Keyed by cookieStoreId (e.g., "firefox-default", "firefox-container-1")
-  containers: {
-    'firefox-default': { tabs: [], lastUpdate: 0 }
-  }
+  // v1.6.2.2 - Unified format: single tabs array for global visibility
+  tabs: [],
+  lastUpdate: 0
 };
 
 // Flag to track initialization status
@@ -103,27 +102,23 @@ const WRITE_IGNORE_WINDOW_MS = 100;
 /**
  * Compute a simple hash of the Quick Tab state for deduplication
  * v1.6.1.6 - Memory leak fix: Used to skip redundant broadcasts
+ * v1.6.2.2 - Updated for unified format
  * @param {Object} state - Quick Tab state object
  * @returns {number} 32-bit hash of the state
  */
 function computeStateHash(state) {
   if (!state) return 0;
   // Note: Intentionally excluding timestamp from hash to detect actual state changes
+  // v1.6.2.2 - Unified format: single tabs array
   const stateStr = JSON.stringify({
-    containers: Object.keys(state.containers || {}),
-    // Include full tab data for accurate change detection
-    tabData: Object.entries(state.containers || {}).map(([key, c]) => ({
-      container: key,
-      tabs: (c.tabs || []).map(t => ({
-        id: t.id,
-        url: t.url,
-        left: t.left,
-        top: t.top,
-        width: t.width,
-        height: t.height,
-        minimized: t.minimized,
-        pinnedToUrl: t.pinnedToUrl
-      }))
+    tabData: (state.tabs || []).map(t => ({
+      id: t.id,
+      url: t.url,
+      left: t.left || t.position?.left,
+      top: t.top || t.position?.top,
+      width: t.width || t.size?.width,
+      height: t.height || t.size?.height,
+      minimized: t.minimized || t.visibility?.minimized
     }))
   });
   let hash = 0;
@@ -134,22 +129,11 @@ function computeStateHash(state) {
   return hash;
 }
 
-// v1.6.0 - PHASE 3.2: Initialize format detection and migration strategies
-const formatDetector = new StorageFormatDetector();
-const migrators = {
-  'v1.5.8.15': new V1_5_8_15_Migrator(),
-  'v1.5.8.14': new V1_5_8_14_Migrator(),
-  legacy: new LegacyMigrator()
-};
+// v1.6.2.2 - Format detection and migrators removed (unified format)
 
 /**
  * v1.5.8.13 - EAGER LOADING: Initialize global state from storage on extension startup
- * v1.6.0 - PHASE 3.2: Refactored to use strategy pattern (cc=20 → cc<5)
- *
- * Reduces complexity by:
- * - Extracting format detection to StorageFormatDetector
- * - Extracting migration logic to format-specific migrator classes
- * - Using early returns to flatten nested blocks
+ * v1.6.2.2 - Simplified for unified format
  */
 async function initializeGlobalState() {
   // Guard: Already initialized
@@ -189,13 +173,23 @@ async function tryLoadFromSessionStorage() {
     return false;
   }
 
-  // Detect format and migrate
-  const format = formatDetector.detect(result.quick_tabs_session);
-  const migrator = migrators[format];
-
-  if (migrator) {
-    migrators[format].migrate(result.quick_tabs_session, globalQuickTabState);
-    logSuccessfulLoad('session storage', migrator.getFormatName());
+  // v1.6.2.2 - Load unified format directly
+  const sessionState = result.quick_tabs_session;
+  
+  // v1.6.2.2 - Unified format
+  if (sessionState.tabs && Array.isArray(sessionState.tabs)) {
+    globalQuickTabState.tabs = sessionState.tabs;
+    globalQuickTabState.lastUpdate = sessionState.timestamp || Date.now();
+    logSuccessfulLoad('session storage', 'v1.6.2.2 unified');
+    isInitialized = true;
+    return true;
+  }
+  
+  // Backward compatibility: container format migration
+  if (sessionState.containers) {
+    globalQuickTabState.tabs = migrateContainersToUnifiedFormat(sessionState.containers);
+    globalQuickTabState.lastUpdate = sessionState.timestamp || Date.now();
+    logSuccessfulLoad('session storage', 'migrated from container format');
     isInitialized = true;
     return true;
   }
@@ -204,62 +198,105 @@ async function tryLoadFromSessionStorage() {
 }
 
 /**
+ * Migrate container format to unified format
+ * v1.6.2.2 - Backward compatibility helper
+ * 
+ * @param {Object} containers - Container data object
+ * @returns {Array} Unified tabs array (deduplicated)
+ */
+function migrateContainersToUnifiedFormat(containers) {
+  const allTabs = [];
+  const seenIds = new Set();
+  
+  for (const containerKey of Object.keys(containers)) {
+    const tabs = containers[containerKey]?.tabs || [];
+    if (tabs.length === 0) continue;
+    
+    console.log(`[Background] Migrating ${tabs.length} tabs from container: ${containerKey}`);
+    
+    for (const tab of tabs) {
+      // Skip duplicate tab IDs
+      if (seenIds.has(tab.id)) {
+        console.warn(`[Background] Skipping duplicate tab ID during migration: ${tab.id}`);
+        continue;
+      }
+      seenIds.add(tab.id);
+      allTabs.push(tab);
+    }
+  }
+  
+  return allTabs;
+}
+
+/**
+ * Helper: Get storage state from local or sync storage
+ * @private
+ * @returns {Promise<Object|null>} Storage state or null
+ */
+async function _getStorageState() {
+  let result = await browser.storage.local.get('quick_tabs_state_v2');
+  if (result?.quick_tabs_state_v2) {
+    return result.quick_tabs_state_v2;
+  }
+  result = await browser.storage.sync.get('quick_tabs_state_v2');
+  return result?.quick_tabs_state_v2 || null;
+}
+
+/**
  * Helper: Try loading from local/sync storage
  * v1.6.0.12 - FIX: Prioritize local storage to match save behavior
+ * v1.6.2.2 - Updated for unified format
  *
  * @returns {Promise<void>}
  */
 async function tryLoadFromSyncStorage() {
-  // v1.6.0.12 - FIX: Try local storage first (where we now save)
-  let result = await browser.storage.local.get('quick_tabs_state_v2');
+  const state = await _getStorageState();
 
-  // Fallback to sync storage for backward compatibility
-  if (!result || !result.quick_tabs_state_v2) {
-    result = await browser.storage.sync.get('quick_tabs_state_v2');
-  }
-
-  // Guard: No data in either storage
-  if (!result || !result.quick_tabs_state_v2) {
+  // Guard: No data
+  if (!state) {
     console.log('[Background] ✓ EAGER LOAD: No saved state found, starting with empty state');
     isInitialized = true;
     return;
   }
 
-  // Detect format and migrate
-  const format = formatDetector.detect(result.quick_tabs_state_v2);
-  const migrator = migrators[format];
-
-  if (migrator) {
-    migrators[format].migrate(result.quick_tabs_state_v2, globalQuickTabState);
-    logSuccessfulLoad('storage', migrator.getFormatName());
-
-    // Save migrated legacy format with proper wrapper
-    if (format === 'legacy') {
-      await saveMigratedLegacyFormat();
-    }
+  // v1.6.2.2 - Unified format
+  if (state.tabs && Array.isArray(state.tabs)) {
+    globalQuickTabState.tabs = state.tabs;
+    globalQuickTabState.lastUpdate = state.timestamp || Date.now();
+    logSuccessfulLoad('storage', 'v1.6.2.2 unified');
+    isInitialized = true;
+    return;
+  }
+  
+  // Backward compatibility: container format migration
+  if (state.containers) {
+    globalQuickTabState.tabs = migrateContainersToUnifiedFormat(state.containers);
+    globalQuickTabState.lastUpdate = state.timestamp || Date.now();
+    logSuccessfulLoad('storage', 'migrated from container format');
+    await saveMigratedToUnifiedFormat();
   }
 
   isInitialized = true;
 }
 
 /**
- * Helper: Save migrated legacy format to local storage
- * v1.6.0.12 - FIX: Use local storage to avoid quota errors
+ * Helper: Save migrated state to unified format
+ * v1.6.2.2 - Save in new unified format
  *
  * @returns {Promise<void>}
  */
-async function saveMigratedLegacyFormat() {
+async function saveMigratedToUnifiedFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
     await browser.storage.local.set({
       quick_tabs_state_v2: {
-        containers: globalQuickTabState.containers,
+        tabs: globalQuickTabState.tabs,
         saveId: saveId,
         timestamp: Date.now()
       }
     });
-    console.log('[Background] ✓ Migrated legacy format to v1.5.8.15');
+    console.log('[Background] ✓ Migrated to v1.6.2.2 unified format');
   } catch (err) {
     console.error('[Background] Error saving migrated state:', err);
   }
@@ -267,22 +304,18 @@ async function saveMigratedLegacyFormat() {
 
 /**
  * Helper: Log successful state load
+ * v1.6.2.2 - Updated for unified format
  *
  * @param {string} source - Storage source (session/sync)
  * @param {string} format - Format name
  */
 function logSuccessfulLoad(source, format) {
-  const totalTabs = Object.values(globalQuickTabState.containers).reduce(
-    (sum, c) => sum + (c.tabs?.length || 0),
-    0
-  );
+  const totalTabs = globalQuickTabState.tabs?.length || 0;
 
   console.log(
     `[Background] ✓ EAGER LOAD: Initialized from ${source} (${format}):`,
     totalTabs,
-    'tabs across',
-    Object.keys(globalQuickTabState.containers).length,
-    'containers'
+    'tabs'
   );
 }
 
@@ -290,27 +323,8 @@ function logSuccessfulLoad(source, format) {
 initializeGlobalState();
 
 /**
- * Helper: Process migration for a single container's tabs
- *
- * @param {Array} containerTabs - Array of Quick Tab objects in container
- * @returns {boolean} True if any tab was migrated
- */
-function _processContainerMigration(containerTabs) {
-  let migrated = false;
-
-  for (const quickTab of containerTabs) {
-    if (migrateTabFromPinToSoloMute(quickTab)) {
-      migrated = true;
-    }
-  }
-
-  return migrated;
-}
-
-/**
  * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
- * v1.6.0 - PHASE 3.2: Refactored to extract nested loop logic (cc=10 → cc<6)
- * v1.6.0 - PHASE 4.3: Extracted _processContainerMigration to fix max-depth (line 262)
+ * v1.6.2.2 - Updated for unified format
  */
 async function migrateQuickTabState() {
   // Guard: State not initialized
@@ -321,10 +335,9 @@ async function migrateQuickTabState() {
 
   let migrated = false;
 
-  // Process each container
-  for (const containerId in globalQuickTabState.containers) {
-    const containerTabs = globalQuickTabState.containers[containerId].tabs || [];
-    if (_processContainerMigration(containerTabs)) {
+  // v1.6.2.2 - Process tabs array directly (unified format)
+  for (const quickTab of (globalQuickTabState.tabs || [])) {
+    if (migrateTabFromPinToSoloMute(quickTab)) {
       migrated = true;
     }
   }
@@ -365,6 +378,7 @@ function migrateTabFromPinToSoloMute(quickTab) {
 
 /**
  * Helper: Save migrated Quick Tab state to storage
+ * v1.6.2.2 - Updated for unified format
  *
  * @returns {Promise<void>}
  */
@@ -372,7 +386,7 @@ async function saveMigratedQuickTabState() {
   console.log('[Background Migration] Saving migrated Quick Tab state');
 
   const stateToSave = {
-    containers: globalQuickTabState.containers,
+    tabs: globalQuickTabState.tabs,
     saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     timestamp: Date.now()
   };
@@ -852,7 +866,8 @@ console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
 
 // ==================== END X-FRAME-OPTIONS BYPASS ====================
 
-// Listen for tab switches to restore Quick Tabs (container-aware)
+// Listen for tab switches to restore Quick Tabs
+// v1.6.2.2 - Updated for unified format (no container filtering)
 chrome.tabs.onActivated.addListener(async activeInfo => {
   console.log('[Background] Tab activated:', activeInfo.tabId);
 
@@ -867,31 +882,23 @@ chrome.tabs.onActivated.addListener(async activeInfo => {
       console.log('[Background] Could not message tab (content script not ready)');
     });
 
-  // Get the tab's cookieStoreId to send only relevant state
+  // v1.6.2.2 - Send global state for immediate sync (no container filtering)
   try {
-    const tab = await browser.tabs.get(activeInfo.tabId);
-    const cookieStoreId = tab.cookieStoreId || 'firefox-default';
-
-    // Send container-specific state for immediate sync
-    if (
-      globalQuickTabState.containers[cookieStoreId] &&
-      globalQuickTabState.containers[cookieStoreId].tabs.length > 0
-    ) {
+    if (globalQuickTabState.tabs && globalQuickTabState.tabs.length > 0) {
       chrome.tabs
         .sendMessage(activeInfo.tabId, {
           action: 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND',
           state: {
-            tabs: globalQuickTabState.containers[cookieStoreId].tabs,
-            lastUpdate: globalQuickTabState.containers[cookieStoreId].lastUpdate
-          },
-          cookieStoreId: cookieStoreId
+            tabs: globalQuickTabState.tabs,
+            lastUpdate: globalQuickTabState.lastUpdate
+          }
         })
         .catch(() => {
           // Content script might not be ready yet, that's OK
         });
     }
   } catch (err) {
-    console.error('[Background] Error getting tab info:', err);
+    console.error('[Background] Error syncing tab state:', err);
   }
 });
 
@@ -951,28 +958,9 @@ function _removeTabFromQuickTab(quickTab, tabId) {
 }
 
 /**
- * Helper: Process cleanup for all Quick Tabs in a container
- * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (line 914)
- *
- * @param {Array} containerTabs - Array of Quick Tab objects
- * @param {number} tabId - Tab ID to remove
- * @returns {boolean} True if any Quick Tab was changed
- */
-function _processContainerCleanup(containerTabs, tabId) {
-  let changed = false;
-
-  for (const quickTab of containerTabs) {
-    if (_removeTabFromQuickTab(quickTab, tabId)) {
-      changed = true;
-    }
-  }
-
-  return changed;
-}
-
-/**
  * Helper: Clean up Quick Tab state after tab closes
  * v1.6.0 - PHASE 4.3: Extracted to reduce complexity (cc=11 → cc<9)
+ * v1.6.2.2 - Updated for unified format
  *
  * @param {number} tabId - Tab ID that was closed
  * @returns {Promise<boolean>} True if state was changed and saved
@@ -985,10 +973,9 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
 
   let stateChanged = false;
 
-  // Iterate through all containers
-  for (const containerId in globalQuickTabState.containers) {
-    const containerTabs = globalQuickTabState.containers[containerId].tabs || [];
-    if (_processContainerCleanup(containerTabs, tabId)) {
+  // v1.6.2.2 - Process tabs array directly (unified format)
+  for (const quickTab of (globalQuickTabState.tabs || [])) {
+    if (_removeTabFromQuickTab(quickTab, tabId)) {
       stateChanged = true;
     }
   }
@@ -999,13 +986,12 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
   }
 
   const stateToSave = {
-    containers: globalQuickTabState.containers,
+    tabs: globalQuickTabState.tabs,
     saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     timestamp: Date.now()
   };
 
   try {
-    // v1.6.0.12 - FIX: Use local storage to avoid quota errors
     await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
     console.log('[Background] Cleaned up Quick Tab state after tab closure');
     return true;
@@ -1138,6 +1124,7 @@ if (chrome.sidePanel) {
 /**
  * Helper: Update global state from storage value
  * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (lines 1087, 1095)
+ * v1.6.2.2 - Updated for unified format
  *
  * @param {Object|null} newValue - New storage value
  */
@@ -1148,28 +1135,25 @@ function _updateGlobalStateFromStorage(newValue) {
     return;
   }
 
-  // Container-aware format
-  if (typeof newValue === 'object' && newValue.containers) {
-    globalQuickTabState.containers = newValue.containers;
+  // v1.6.2.2 - Unified format
+  if (newValue.tabs && Array.isArray(newValue.tabs)) {
+    globalQuickTabState.tabs = newValue.tabs;
+    globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
     console.log(
-      '[Background] Updated global state from storage (container-aware):',
-      Object.keys(newValue.containers).length,
-      'containers'
+      '[Background] Updated global state from storage (unified format):',
+      newValue.tabs.length,
+      'tabs'
     );
     return;
   }
 
-  // Legacy format - migrate
-  if (newValue.tabs && Array.isArray(newValue.tabs)) {
-    globalQuickTabState.containers = {
-      'firefox-default': {
-        tabs: newValue.tabs,
-        lastUpdate: newValue.timestamp || Date.now()
-      }
-    };
+  // Backward compatibility: container format migration
+  if (typeof newValue === 'object' && newValue.containers) {
+    globalQuickTabState.tabs = migrateContainersToUnifiedFormat(newValue.containers);
+    globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
     console.log(
-      '[Background] Updated global state from storage (legacy format):',
-      newValue.tabs.length,
+      '[Background] Updated global state from storage (migrated from container format):',
+      globalQuickTabState.tabs.length,
       'tabs'
     );
   }
@@ -1197,6 +1181,7 @@ async function _broadcastToAllTabs(action, data) {
 /**
  * Handle Quick Tab state changes from storage
  * v1.6.2 - MIGRATION: Removed legacy _broadcastToAllTabs call
+ * v1.6.2.2 - Updated for unified format
  * 
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change

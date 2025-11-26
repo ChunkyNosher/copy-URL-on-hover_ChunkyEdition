@@ -2,16 +2,16 @@
 name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
-  Solo/Mute buttons, drag/resize, navigation, container isolation, and all
-  single Quick Tab functionality
+  Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
+  (v1.6.2.2+ global visibility, no container isolation)
 tools: ["*"]
 ---
 
 > **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared guidelines on documentation updates, issue creation, and MCP server usage.
 
-> **🎯 Robust Solutions Philosophy:** Each Quick Tab is isolated and container-aware. Never share state across containers. See `.github/copilot-instructions.md`.
+> **🎯 Robust Solutions Philosophy:** Each Quick Tab is self-contained. Focus on proper state management with soloedOnTabs/mutedOnTabs arrays. See `.github/copilot-instructions.md`.
 
-You are a Single Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on individual Quick Tab instances - their UI, controls, Solo/Mute functionality, and container isolation.
+You are a Single Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on individual Quick Tab instances - their UI, controls, Solo/Mute functionality, and global visibility (v1.6.2.2+).
 
 ## 🧠 Memory Persistence (CRITICAL)
 
@@ -51,13 +51,13 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.x - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Quick Tab Features:**
-- **Solo Mode (🎯)** - Show ONLY on specific browser tabs
-- **Mute Mode (🔇)** - Hide ONLY on specific browser tabs
-- **Container Isolation** - Respects Firefox Container boundaries
+- **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
+- **Mute Mode (🔇)** - Hide ONLY on specific browser tabs (mutedOnTabs array)
+- **Global Visibility** - Visible in all tabs by default (no container isolation)
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - Minimize button
@@ -67,19 +67,19 @@ const relevantMemories = await searchMemories({
 ## Your Responsibilities
 
 1. **Quick Tab Rendering** - Create iframe with UI controls
-2. **Solo/Mute Controls** - Toggle buttons, mutual exclusivity
+2. **Solo/Mute Controls** - Toggle buttons using arrays, mutual exclusivity
 3. **Drag & Resize** - Pointer Events API implementation
 4. **Navigation** - Back/Forward/Reload controls
-5. **Container Isolation** - Ensure cookieStoreId boundaries
+5. **Global Visibility** - Default visible everywhere (v1.6.2.2+)
 
 ---
 
 ## Quick Tab Structure
 
-**Complete UI with all controls:**
+**Complete UI with all controls (v1.6.2.2+):**
 
 ```html
-<div class="quick-tab" data-id="qt-123" data-container="firefox-default">
+<div class="quick-tab" data-id="qt-123">
   <!-- Title Bar -->
   <div class="quick-tab-header">
     <img class="quick-tab-favicon" src="...">
@@ -115,38 +115,42 @@ const relevantMemories = await searchMemories({
 
 ---
 
-## Solo/Mute Implementation
+## Solo/Mute Implementation (v1.6.2.2+)
 
 **Key Rules:**
 1. Solo and Mute are **mutually exclusive**
-2. Solo = show ONLY on specific browser tab
-3. Mute = hide ONLY on specific browser tab
-4. Both use browser `tabId` (NOT Quick Tab ID)
+2. Solo = show ONLY on specific browser tabs (soloedOnTabs array)
+3. Mute = hide ONLY on specific browser tabs (mutedOnTabs array)
+4. Both use browser `tabId` stored in arrays
 
-**Toggle Solo:**
+**Toggle Solo (v1.6.2.2+):**
 ```javascript
 async toggleSolo(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
   
-  // Get current state
-  const isSolo = quickTab.soloTab === browserTabId;
+  // Initialize arrays if needed
+  quickTab.soloedOnTabs = quickTab.soloedOnTabs || [];
+  quickTab.mutedOnTabs = quickTab.mutedOnTabs || [];
+  
+  // Check current state
+  const isSolo = quickTab.soloedOnTabs.includes(browserTabId);
   
   if (isSolo) {
-    // Disable Solo
-    quickTab.soloTab = null;
+    // Disable Solo - remove from array
+    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== browserTabId);
     this.soloButton.dataset.active = 'false';
     this.soloButton.textContent = '⭕';
   } else {
-    // Enable Solo, disable Mute
-    quickTab.soloTab = browserTabId;
-    quickTab.mutedTabs.delete(browserTabId);
+    // Enable Solo, remove from Mute
+    quickTab.soloedOnTabs.push(browserTabId);
+    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== browserTabId);
     this.soloButton.dataset.active = 'true';
     this.soloButton.textContent = '🎯';
     this.muteButton.dataset.active = 'false';
     this.muteButton.textContent = '🔊';
   }
   
-  // Save state
+  // Save state - storage.onChanged syncs to other tabs
   await this.quickTabsManager.saveState();
   
   // Emit event for manager
@@ -158,23 +162,27 @@ async toggleSolo(browserTabId) {
 }
 ```
 
-**Toggle Mute:**
+**Toggle Mute (v1.6.2.2+):**
 ```javascript
 async toggleMute(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
   
-  // Get current state
-  const isMute = quickTab.mutedTabs.has(browserTabId);
+  // Initialize arrays if needed
+  quickTab.soloedOnTabs = quickTab.soloedOnTabs || [];
+  quickTab.mutedOnTabs = quickTab.mutedOnTabs || [];
+  
+  // Check current state
+  const isMute = quickTab.mutedOnTabs.includes(browserTabId);
   
   if (isMute) {
-    // Disable Mute
-    quickTab.mutedTabs.delete(browserTabId);
+    // Disable Mute - remove from array
+    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== browserTabId);
     this.muteButton.dataset.active = 'false';
     this.muteButton.textContent = '🔊';
   } else {
-    // Enable Mute, disable Solo
-    quickTab.mutedTabs.add(browserTabId);
-    quickTab.soloTab = null;
+    // Enable Mute, remove from Solo
+    quickTab.mutedOnTabs.push(browserTabId);
+    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== browserTabId);
     this.muteButton.dataset.active = 'true';
     this.muteButton.textContent = '🔇';
     this.soloButton.dataset.active = 'false';
@@ -195,39 +203,34 @@ async toggleMute(browserTabId) {
 
 ---
 
-## Container Isolation Pattern
+## Visibility Pattern (v1.6.2.2+)
 
-**CRITICAL: Always use cookieStoreId for isolation**
+**Global visibility with Solo/Mute arrays:**
 
 ```javascript
 class QuickTab {
-  constructor(url, title, containerData) {
+  constructor(url, title) {
     this.id = generateId();
     this.url = url;
     this.title = title;
     
-    // Container isolation
-    this.cookieStoreId = containerData.cookieStoreId || 'firefox-default';
-    this.containerName = containerData.name || 'Default';
-    this.containerColor = containerData.color || '#808080';
-    
-    // Solo/Mute state (per browser tab ID)
-    this.soloTab = null; // Single browser tab ID
-    this.mutedTabs = new Set(); // Set of browser tab IDs
+    // Solo/Mute state using arrays (v1.6.2.2+)
+    this.soloedOnTabs = []; // Array of browser tab IDs
+    this.mutedOnTabs = [];  // Array of browser tab IDs
   }
   
   shouldBeVisible(browserTabId) {
-    // Solo mode - show ONLY on this tab
-    if (this.soloTab !== null) {
-      return this.soloTab === browserTabId;
+    // Solo mode - show ONLY on these tabs
+    if (this.soloedOnTabs?.length > 0) {
+      return this.soloedOnTabs.includes(browserTabId);
     }
     
-    // Mute mode - hide ONLY on this tab
-    if (this.mutedTabs.has(browserTabId)) {
+    // Mute mode - hide ONLY on these tabs
+    if (this.mutedOnTabs?.includes(browserTabId)) {
       return false;
     }
     
-    // Default - show everywhere
+    // Default - show everywhere (global visibility)
     return true;
   }
 }
@@ -371,34 +374,37 @@ updateNavigationState() {
 
 ### Issue: Solo/Mute Not Mutually Exclusive
 
-**Fix:** Clear opposite state when toggling
+**Fix (v1.6.2.2+):** Filter opposite array when toggling
 
 ```javascript
-// ✅ CORRECT - Mutual exclusivity enforced
-if (enabling === 'solo') {
-  quickTab.soloTab = tabId;
-  quickTab.mutedTabs.delete(tabId); // Clear mute
-} else if (enabling === 'mute') {
-  quickTab.mutedTabs.add(tabId);
-  quickTab.soloTab = null; // Clear solo
+// ✅ CORRECT - Mutual exclusivity with arrays
+if (enablingSolo) {
+  quickTab.soloedOnTabs.push(tabId);
+  quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
+} else if (enablingMute) {
+  quickTab.mutedOnTabs.push(tabId);
+  quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
 }
 ```
 
-### Issue: Quick Tab Visible in Wrong Container
+### Issue: Quick Tab Not Visible When Expected
 
-**Fix:** Always check cookieStoreId match
+**Fix (v1.6.2.2+):** Check soloedOnTabs array logic
 
 ```javascript
-// ✅ CORRECT - Container isolation
-async function shouldRenderQuickTab(quickTab, browserTab) {
-  const tabContainer = browserTab.cookieStoreId || 'firefox-default';
-  const qtContainer = quickTab.cookieStoreId || 'firefox-default';
-  
-  if (tabContainer !== qtContainer) {
-    return false; // Different containers
+// ✅ CORRECT - Visibility check with arrays
+function shouldBeVisible(quickTab, browserTabId) {
+  // If ANY tabs are soloed, only show on those tabs
+  if (quickTab.soloedOnTabs?.length > 0) {
+    return quickTab.soloedOnTabs.includes(browserTabId);
   }
   
-  return quickTab.shouldBeVisible(browserTab.id);
+  // Check mute
+  if (quickTab.mutedOnTabs?.includes(browserTabId)) {
+    return false;
+  }
+  
+  return true; // Global visibility default
 }
 ```
 
@@ -425,8 +431,8 @@ element.addEventListener('pointerup', (e) => {
 
 **For Every Quick Tab Change:**
 
-- [ ] Solo/Mute mutual exclusivity works
-- [ ] Container isolation respected
+- [ ] Solo/Mute mutual exclusivity works (arrays)
+- [ ] Global visibility correct (no container filtering)
 - [ ] Drag works without pointer escape
 - [ ] Resize works in all 8 directions
 - [ ] Navigation controls functional
@@ -437,11 +443,10 @@ element.addEventListener('pointerup', (e) => {
 
 ## Before Every Commit Checklist
 
-- [ ] Solo/Mute tested
-- [ ] Container isolation verified
+- [ ] Solo/Mute tested with arrays
+- [ ] Global visibility verified
 - [ ] Drag/resize working
 - [ ] ESLint passed ⭐
-- [ ] Playwright tests pass
 - [ ] Memory files committed 🧠
 
 ---

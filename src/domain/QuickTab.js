@@ -50,13 +50,14 @@ function _validateParams({ id, url, position, size }) {
 export class QuickTab {
   /**
    * Create a new QuickTab instance
+   * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container parameter for global visibility
+   * 
    * @param {Object} params - QuickTab parameters
    * @param {string} params.id - Unique identifier
    * @param {string} params.url - URL of the Quick Tab
    * @param {Object} params.position - {left, top} position
    * @param {Object} params.size - {width, height} size
    * @param {Object} params.visibility - Visibility state
-   * @param {string} params.container - Firefox container ID (cookieStoreId)
    * @param {number} [params.createdAt] - Creation timestamp
    * @param {string} [params.title] - Tab title
    * @param {number} [params.zIndex] - Z-index for stacking
@@ -68,7 +69,6 @@ export class QuickTab {
     position,
     size,
     visibility,
-    container,
     createdAt = Date.now(),
     title = 'Quick Tab',
     zIndex = 1000,
@@ -80,7 +80,6 @@ export class QuickTab {
     // Immutable core properties
     this.id = id;
     this.url = url;
-    this.container = container || 'firefox-default';
     this.createdAt = createdAt;
 
     // Mutable properties
@@ -341,20 +340,14 @@ export class QuickTab {
     this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(id => activeSet.has(id));
   }
 
-  /**
-   * Check if this Quick Tab belongs to a specific container
-   *
-   * @param {string} containerIdOrCookieStoreId - Container ID or cookieStoreId to check
-   * @returns {boolean} - True if this Quick Tab belongs to the container
-   */
-  belongsToContainer(containerIdOrCookieStoreId) {
-    return this.container === containerIdOrCookieStoreId;
-  }
+  // v1.6.2.2 - REMOVED: belongsToContainer() method
+  // Container isolation removed for global visibility (Issue #35, #51, #47)
 
   /**
    * Serialize to storage format
    * Converts domain entity to plain object for storage
    * v1.6.1.5 - Include lastModified timestamp
+   * v1.6.2.2 - Removed container field for global visibility
    *
    * @returns {Object} - Plain object suitable for storage
    */
@@ -370,7 +363,6 @@ export class QuickTab {
         soloedOnTabs: [...this.visibility.soloedOnTabs],
         mutedOnTabs: [...this.visibility.mutedOnTabs]
       },
-      container: this.container,
       zIndex: this.zIndex,
       createdAt: this.createdAt,
       lastModified: this.lastModified // v1.6.1.5
@@ -393,6 +385,7 @@ export class QuickTab {
   /**
    * Normalize storage data with defaults
    * v1.6.1.5 - Extract to reduce complexity
+   * v1.6.2.2 - Removed container field for global visibility
    * 
    * @private
    * @param {Object} data - Raw storage data
@@ -415,7 +408,6 @@ export class QuickTab {
       position: data.position ?? defaults.position,
       size: data.size ?? defaults.size,
       visibility: data.visibility ?? defaults.visibility,
-      container: data.container ?? data.cookieStoreId ?? 'firefox-default',
       zIndex: data.zIndex ?? defaults.zIndex,
       createdAt: data.createdAt ?? now,
       lastModified: data.lastModified ?? data.createdAt ?? now
@@ -425,11 +417,12 @@ export class QuickTab {
   /**
    * Create QuickTab with defaults
    * Convenience factory method for creating new Quick Tabs
+   * v1.6.2.2 - Removed container parameter for global visibility
    *
    * @param {Object} params - Partial parameters
    * @returns {QuickTab} - QuickTab domain entity with defaults
    */
-  static create({ id, url, left = 100, top = 100, width = 800, height = 600, container, title }) {
+  static create({ id, url, left = 100, top = 100, width = 800, height = 600, title }) {
     if (!id) {
       throw new Error('QuickTab.create requires id');
     }
@@ -448,7 +441,6 @@ export class QuickTab {
         soloedOnTabs: [],
         mutedOnTabs: []
       },
-      container: container || 'firefox-default',
       zIndex: 1000,
       createdAt: Date.now()
     });

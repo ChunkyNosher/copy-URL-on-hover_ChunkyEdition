@@ -518,10 +518,11 @@ describe('PanelContentManager', () => {
       await contentManager.handleCloseAll();
 
       // v1.6.2+ - MIGRATION: Use storage.local
+      // v1.6.2.2 - Updated for unified format (tabs array instead of containers)
       expect(mockBrowser.storage.local.set).toHaveBeenCalled();
       const savedState = mockBrowser.storage.local.set.mock.calls[0][0];
-      expect(savedState.quick_tabs_state_v2.containers).toBeDefined();
-      expect(savedState.quick_tabs_state_v2.containers['firefox-default'].tabs).toEqual([]);
+      expect(savedState.quick_tabs_state_v2.tabs).toBeDefined();
+      expect(savedState.quick_tabs_state_v2.tabs).toEqual([]);
     });
 
     it('should NOT send message to background (v1.6.2+ uses storage.onChanged)', async () => {

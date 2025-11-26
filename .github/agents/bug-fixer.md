@@ -52,13 +52,13 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.x - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Features:**
-- Solo/Mute tab-specific visibility control (NOT "Pin to Page")
-- Firefox Container complete isolation
+- Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
+- Global Quick Tab visibility (v1.6.2.2 - Container isolation REMOVED)
 - Floating Quick Tabs Manager (Ctrl+Alt+Z)
 - Cross-tab sync via storage.onChanged (v1.6.2+)
 - Direct local creation pattern
@@ -148,17 +148,17 @@ async function updateState() {
 **Null/Undefined Access:**
 ```javascript
 // ✅ GOOD - Guard checks
-if (!tab || !tab.cookieStoreId) {
+if (!tab) {
   console.warn('Invalid tab data');
   return;
 }
 ```
 
-**Container Isolation:**
+**Global Visibility (v1.6.2.2+):**
 ```javascript
-// ✅ GOOD - Always use cookieStoreId
-const container = tab.cookieStoreId || 'firefox-default';
-const state = await getStateForContainer(container);
+// ✅ GOOD - Use unified storage format
+const state = await browser.storage.local.get('quick_tabs_state_v2');
+const tabs = state.quick_tabs_state_v2?.tabs || [];
 ```
 
 ### Step 5: Test Comprehensively
@@ -268,31 +268,36 @@ const state = await getStateForContainer(container);
 
 ## Common Bug Categories
 
-### Container Isolation Bugs
+### Global Visibility (v1.6.2.2+)
 
-**Symptoms:** State bleeding across containers
+**Symptoms:** State not shared correctly across tabs
 
-**Root Cause:** Missing `cookieStoreId` checks
+**Root Cause:** Using old container-based storage format
 
 **Standard Fix:**
 ```javascript
-const cookieStoreId = tab.cookieStoreId || 'firefox-default';
-const containerState = await getStateForContainer(cookieStoreId);
+// Use unified storage format
+const state = await browser.storage.local.get('quick_tabs_state_v2');
+const tabs = state.quick_tabs_state_v2?.tabs || [];
 ```
 
-### Solo/Mute State Bugs
+### Solo/Mute State Bugs (v1.6.2.2+)
 
 **Symptoms:** Incorrect visibility, state conflicts
 
-**Root Cause:** Race conditions in state updates
+**Root Cause:** Not using soloedOnTabs/mutedOnTabs arrays
 
 **Standard Fix:**
 ```javascript
-// Ensure atomic state transition
-await updateVisibilityState(tabId, {
-  isSolo: newSolo,
-  isMute: false // Mutual exclusivity
-});
+// Ensure atomic state transition with arrays
+function toggleSolo(quickTab, tabId) {
+  if (quickTab.soloedOnTabs.includes(tabId)) {
+    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
+  } else {
+    quickTab.soloedOnTabs.push(tabId);
+    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
+  }
+}
 ```
 
 ### Quick Tab Rendering Bugs
@@ -311,17 +316,20 @@ async function initializeQuickTab() {
 }
 ```
 
-### Cross-Tab Sync Bugs
+### Cross-Tab Sync Bugs (v1.6.2+)
 
 **Symptoms:** State inconsistencies across tabs
 
-**Root Cause:** BroadcastChannel message delays
+**Root Cause:** storage.onChanged not properly handled
 
 **Standard Fix:**
 ```javascript
-// Add confirmation mechanism
-channel.postMessage({ type: 'update', data, requestId });
-await waitForConfirmation(requestId, timeout);
+// Use storage.onChanged for sync
+browser.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.quick_tabs_state_v2) {
+    this.handleSync(changes.quick_tabs_state_v2.newValue);
+  }
+});
 ```
 
 ---
@@ -429,8 +437,8 @@ test('edge case #123: empty container string', ...);
 ❌ **Ignoring edge cases**
 → Edge cases are where bugs hide
 
-❌ **Not checking container isolation**
-→ Container bugs are subtle and common
+❌ **Not checking global visibility logic**
+→ Quick Tabs are visible everywhere in v1.6.2.2+ (no container isolation)
 
 ---
 
