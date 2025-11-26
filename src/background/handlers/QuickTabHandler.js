@@ -321,10 +321,33 @@ export class QuickTabHandler {
 
   /**
    * Get current tab ID
+   * v1.6.2.4 - FIX Issue #4: Add fallback when sender.tab is unavailable
+   * Content scripts during initialization may not have sender.tab populated
    */
-  handleGetCurrentTabId(_message, sender) {
-    const tabId = sender.tab?.id;
-    return { success: true, tabId };
+  async handleGetCurrentTabId(_message, sender) {
+    // Primary: Use sender.tab if available
+    if (sender.tab && typeof sender.tab.id === 'number') {
+      console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning ${sender.tab.id} from sender.tab`);
+      return { success: true, tabId: sender.tab.id };
+    }
+
+    // Fallback: Query active tab in current window
+    // This handles cases where sender.tab is not populated during initialization
+    console.log('[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available, querying active tab...');
+    
+    try {
+      const tabs = await this.browserAPI.tabs.query({ active: true, currentWindow: true });
+      if (tabs && tabs.length > 0 && typeof tabs[0].id === 'number') {
+        console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning ${tabs[0].id} from tabs.query`);
+        return { success: true, tabId: tabs[0].id };
+      }
+      
+      console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Could not determine tab ID - no active tab found');
+      return { success: false, tabId: null };
+    } catch (err) {
+      console.error('[QuickTabHandler] GET_CURRENT_TAB_ID: Error querying tabs:', err);
+      return { success: false, tabId: null, error: err.message };
+    }
   }
 
   /**

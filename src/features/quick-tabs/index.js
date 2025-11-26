@@ -199,13 +199,21 @@ class QuickTabsManager {
 
   /**
    * STEP 8: Expose manager globally
+   * v1.6.2.4 - FIX Issue #4: Expose as both window.quickTabsManager AND window.__quickTabsManager
+   *   - window.quickTabsManager is used by QuickTabWindow for solo/mute tab ID access
+   *   - window.__quickTabsManager is used for debugging/inspection
    * @private
    */
   _initStep8_Expose() {
     console.log('[QuickTabsManager] STEP 8: Exposing manager globally...');
     if (typeof window !== 'undefined') {
+      // v1.6.2.4 - CRITICAL: Expose as window.quickTabsManager for solo/mute functionality
+      // QuickTabWindow.js relies on window.quickTabsManager.currentTabId for solo/mute buttons
+      window.quickTabsManager = this;
+      // Keep legacy exposure for debugging purposes
       window.__quickTabsManager = this;
-      console.log('[QuickTabsManager] Manager exposed globally');
+      console.log('[QuickTabsManager] Manager exposed globally as window.quickTabsManager');
+      console.log('[QuickTabsManager] Current tab ID available:', this.currentTabId);
     }
     console.log('[QuickTabsManager] STEP 8 Complete');
   }
