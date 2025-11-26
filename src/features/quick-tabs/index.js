@@ -534,7 +534,7 @@ class QuickTabsManager {
   /**
    * Hydrate state from storage
    * v1.6.2 - MIGRATION: Simplified - no broadcast replay needed
-   * v1.6.2.x - ISSUE FIX: Added container filtering before hydration
+   * v1.6.2.2 - ISSUE FIX: Removed container filtering for global visibility
    * @private
    */
   async _hydrateState() {
@@ -543,23 +543,12 @@ class QuickTabsManager {
       // Load all Quick Tabs from storage
       const allQuickTabs = await this.storage.loadAll();
       
-      // Filter to only Quick Tabs for current container
-      const currentContainer = this.cookieStoreId || CONSTANTS.DEFAULT_CONTAINER;
-      const relevantQuickTabs = allQuickTabs.filter(qt => {
-        const qtContainer = qt.container || qt.cookieStoreId || CONSTANTS.DEFAULT_CONTAINER;
-        const matches = qtContainer === currentContainer;
-        
-        if (!matches) {
-          console.log(`[QuickTabsManager] Filtering out Quick Tab ${qt.id} from ${qtContainer} (current: ${currentContainer})`);
-        }
-        
-        return matches;
-      });
+      // v1.6.2.2 - No container filtering for global visibility
+      // All Quick Tabs are visible across tabs unless Solo/Mute rules apply
+      console.log(`[QuickTabsManager] Loaded ${allQuickTabs.length} Quick Tabs for global visibility`);
       
-      console.log(`[QuickTabsManager] Filtered ${relevantQuickTabs.length} relevant Quick Tabs from ${allQuickTabs.length} total for container ${currentContainer}`);
-      
-      // Hydrate with filtered Quick Tabs
-      this.state.hydrate(relevantQuickTabs);
+      // Hydrate with all Quick Tabs
+      this.state.hydrate(allQuickTabs);
       
       console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs from storage`);
     } catch (err) {

@@ -86,7 +86,8 @@ export class SyncStorageAdapter extends StorageAdapter {
     const state = await this._loadRawState();
 
     // v1.6.2.2 - New unified format
-    if (state.tabs && Array.isArray(state.tabs)) {
+    // Return null if tabs array is empty to maintain backward compatibility
+    if (state.tabs && Array.isArray(state.tabs) && state.tabs.length > 0) {
       return {
         tabs: state.tabs,
         timestamp: state.timestamp || Date.now()
@@ -96,6 +97,9 @@ export class SyncStorageAdapter extends StorageAdapter {
     // Backward compatibility: migrate from container format and save in new format
     if (state.containers) {
       const migratedTabs = this._migrateFromContainerFormat(state.containers);
+      if (migratedTabs.length === 0) {
+        return null;
+      }
       // Save migrated format to avoid repeated migration on future loads
       await this._saveRawState({
         tabs: migratedTabs,

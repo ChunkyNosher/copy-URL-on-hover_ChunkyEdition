@@ -75,44 +75,42 @@ export class PanelContentManager {
    * Update panel content with current Quick Tabs state
    * v1.5.9.12 - Container integration: Filter by current container
    * v1.6.2.3 - Query live state from StateManager instead of storage for real-time updates
+   * v1.6.2.2 - ISSUE FIX: Show all Quick Tabs globally (no container filtering)
    */
   async updateContent() {
     if (!this.panel || !this.isOpen) return;
 
-    let currentContainerTabs = [];
+    let allQuickTabs = [];
     let minimizedCount = 0;
 
     // v1.6.2.3 - Prefer live state for instant updates, fallback to storage
     if (this.liveStateManager) {
       // Query live state (instant, no I/O)
-      const allQuickTabs = this.liveStateManager.getAll();
-      currentContainerTabs = allQuickTabs.filter(qt => 
-        qt.container === this.currentContainerId || 
-        qt.cookieStoreId === this.currentContainerId
-      );
+      // v1.6.2.2 - Show all Quick Tabs globally for visibility
+      allQuickTabs = this.liveStateManager.getAll();
       
       // Get minimized count from MinimizedManager if available
       if (this.minimizedManager) {
         minimizedCount = this.minimizedManager.getCount();
       }
       
-      debug(`[PanelContentManager] Live state: ${currentContainerTabs.length} tabs, ${minimizedCount} minimized`);
+      debug(`[PanelContentManager] Live state: ${allQuickTabs.length} tabs, ${minimizedCount} minimized`);
     } else {
       // Fallback to storage (slower, for backward compatibility)
       const quickTabsState = await this._fetchQuickTabsFromStorage();
       if (!quickTabsState) return;
 
-      const currentContainerState = quickTabsState[this.currentContainerId];
-      currentContainerTabs = currentContainerState?.tabs || [];
-      minimizedCount = currentContainerTabs.filter(t => t.minimized).length;
+      // v1.6.2.2 - Unified format: quickTabsState is already an array of tabs
+      allQuickTabs = quickTabsState;
+      minimizedCount = allQuickTabs.filter(t => t.minimized).length;
     }
 
     // Update statistics with active count
-    const activeCount = currentContainerTabs.length - minimizedCount;
-    this._updateStatistics(currentContainerTabs.length, activeCount, minimizedCount);
+    const activeCount = allQuickTabs.length - minimizedCount;
+    this._updateStatistics(allQuickTabs.length, activeCount, minimizedCount);
 
     // Show/hide empty state
-    if (currentContainerTabs.length === 0) {
+    if (allQuickTabs.length === 0) {
       this._renderEmptyState();
       return;
     }
@@ -121,13 +119,14 @@ export class PanelContentManager {
     const containerInfo = await this._fetchContainerInfo();
 
     // Render container section
-    this._renderContainerSectionFromData(currentContainerTabs, containerInfo);
+    this._renderContainerSectionFromData(allQuickTabs, containerInfo);
   }
 
   /**
    * Fetch Quick Tabs state from browser storage
    * v1.6.2+ - MIGRATION: Use storage.local instead of storage.sync
-   * @returns {Object|null} Quick Tabs state by container
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * @returns {Array|null} Quick Tabs array
    * @private
    */
   async _fetchQuickTabsFromStorage() {
@@ -136,8 +135,24 @@ export class PanelContentManager {
       if (!result || !result.quick_tabs_state_v2) return null;
 
       const state = result.quick_tabs_state_v2;
-      // v1.5.8.15: Handle wrapped format
-      return state.containers || state;
+      
+      // v1.6.2.2 - New unified format: { tabs: [...], timestamp, saveId }
+      if (state.tabs && Array.isArray(state.tabs)) {
+        return state.tabs;
+      }
+      
+      // v1.6.2.1 and earlier - Container format: { containers: {...} }
+      // Backward compatible migration
+      if (state.containers) {
+        const allTabs = [];
+        for (const containerKey of Object.keys(state.containers)) {
+          const tabs = state.containers[containerKey]?.tabs || [];
+          allTabs.push(...tabs);
+        }
+        return allTabs;
+      }
+      
+      return null;
     } catch (err) {
       console.error('[PanelContentManager] Error loading Quick Tabs:', err);
       return null;
@@ -538,6 +553,7 @@ export class PanelContentManager {
    * Close all minimized Quick Tabs
    * v1.5.8.15 - Fixed to handle wrapped container format
    * v1.6.2+ - MIGRATION: Use storage.local instead of storage.sync
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    */
   async handleCloseMinimized() {
     try {
@@ -547,7 +563,27 @@ export class PanelContentManager {
       const state = result.quick_tabs_state_v2;
       let hasChanges = false;
 
-      // v1.5.8.15: Handle wrapped format
+      // v1.6.2.2 - New unified format: { tabs: [...], timestamp, saveId }
+      if (state.tabs && Array.isArray(state.tabs)) {
+        const originalLength = state.tabs.length;
+        state.tabs = state.tabs.filter(t => !t.minimized);
+        
+        if (state.tabs.length !== originalLength) {
+          hasChanges = true;
+          state.timestamp = Date.now();
+          state.saveId = this._generateSaveId();
+        }
+        
+        if (hasChanges) {
+          await browser.storage.local.set({ quick_tabs_state_v2: state });
+          debug('[PanelContentManager] Closed minimized Quick Tabs (unified format)');
+          await this.updateContent();
+        }
+        return;
+      }
+
+      // v1.6.2.1 and earlier - Container format: { containers: {...} }
+      // Backward compatible migration
       const containers = state.containers || state;
 
       // Iterate through containers
@@ -610,6 +646,7 @@ export class PanelContentManager {
    * v1.6.2.4 - FIX Issue #3: Destroy DOM elements BEFORE clearing storage
    *            storage.onChanged does NOT fire in the tab that made the change,
    *            so we must explicitly destroy DOM elements in the current tab.
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    */
   async handleCloseAll() {
     try {
@@ -622,11 +659,9 @@ export class PanelContentManager {
         console.warn('[PanelContentManager] quickTabsManager.closeAll not available');
       }
 
-      // Use wrapped container format
+      // v1.6.2.2 - Use unified format
       const emptyState = {
-        containers: {
-          'firefox-default': { tabs: [], lastUpdate: Date.now() }
-        },
+        tabs: [],
         saveId: this._generateSaveId(),
         timestamp: Date.now()
       };

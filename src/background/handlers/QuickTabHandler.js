@@ -56,7 +56,8 @@ export class QuickTabHandler {
   /**
    * Helper method to update Quick Tab properties
    * Reduces duplication across update handlers
-   * @param {Object} message - Message with id, cookieStoreId, and properties to update
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * @param {Object} message - Message with id and properties to update
    * @param {Function} updateFn - Function to update tab properties
    * @param {boolean} shouldSave - Whether to save to storage immediately
    * @returns {Object} Success response
@@ -66,20 +67,14 @@ export class QuickTabHandler {
       await this.initializeFn();
     }
 
-    const cookieStoreId = message.cookieStoreId || 'firefox-default';
-    const containerState = this.globalState.containers[cookieStoreId];
-
-    if (!containerState) {
-      return { success: true };
-    }
-
-    const tab = containerState.tabs.find(t => t.id === message.id);
+    // v1.6.2.2 - Use unified tabs array instead of container-based lookup
+    const tab = this.globalState.tabs.find(t => t.id === message.id);
     if (!tab) {
       return { success: true };
     }
 
     updateFn(tab, message);
-    containerState.lastUpdate = Date.now();
+    this.globalState.lastUpdate = Date.now();
 
     if (shouldSave) {
       await this.saveStateToStorage();
@@ -103,6 +98,7 @@ export class QuickTabHandler {
 
   /**
    * Handle Quick Tab creation
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    */
   async handleCreate(message, _sender) {
     console.log(
@@ -121,15 +117,8 @@ export class QuickTabHandler {
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
 
-    // Initialize container state if it doesn't exist
-    if (!this.globalState.containers[cookieStoreId]) {
-      this.globalState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
-    }
-
-    const containerState = this.globalState.containers[cookieStoreId];
-
-    // Check if tab already exists by ID
-    const existingIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    // v1.6.2.2 - Check if tab already exists by ID in unified tabs array
+    const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
 
     const tabData = {
       id: message.id,
@@ -140,16 +129,17 @@ export class QuickTabHandler {
       height: message.height,
       pinnedToUrl: message.pinnedToUrl || null,
       title: message.title || 'Quick Tab',
-      minimized: message.minimized || false
+      minimized: message.minimized || false,
+      cookieStoreId: cookieStoreId // v1.6.2.2 - Store container info on tab itself
     };
 
     if (existingIndex !== -1) {
-      containerState.tabs[existingIndex] = tabData;
+      this.globalState.tabs[existingIndex] = tabData;
     } else {
-      containerState.tabs.push(tabData);
+      this.globalState.tabs.push(tabData);
     }
 
-    containerState.lastUpdate = Date.now();
+    this.globalState.lastUpdate = Date.now();
 
     // Save state
     await this.saveState(message.saveId, cookieStoreId, message);
@@ -159,6 +149,7 @@ export class QuickTabHandler {
 
   /**
    * Handle Quick Tab close
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    */
   async handleClose(message, _sender) {
     console.log(
@@ -176,10 +167,12 @@ export class QuickTabHandler {
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
 
-    if (this.globalState.containers[cookieStoreId]) {
-      const containerState = this.globalState.containers[cookieStoreId];
-      containerState.tabs = containerState.tabs.filter(t => t.id !== message.id);
-      containerState.lastUpdate = Date.now();
+    // v1.6.2.2 - Filter from unified tabs array
+    const originalLength = this.globalState.tabs.length;
+    this.globalState.tabs = this.globalState.tabs.filter(t => t.id !== message.id);
+
+    if (this.globalState.tabs.length !== originalLength) {
+      this.globalState.lastUpdate = Date.now();
 
       // Save state
       await this.saveStateToStorage();
@@ -376,6 +369,7 @@ export class QuickTabHandler {
   /**
    * Get Quick Tabs state for a specific container
    * Critical for fixing Issue #35 and #51 - content scripts need to load from background's authoritative state
+   * v1.6.2.2 - Updated for unified format (returns all tabs for global visibility)
    */
   async handleGetQuickTabsState(message, _sender) {
     try {
@@ -384,21 +378,15 @@ export class QuickTabHandler {
       }
 
       const cookieStoreId = message.cookieStoreId || 'firefox-default';
-      const containerState = this.globalState.containers[cookieStoreId];
-
-      if (!containerState || !containerState.tabs) {
-        return {
-          success: true,
-          tabs: [],
-          cookieStoreId: cookieStoreId
-        };
-      }
+      
+      // v1.6.2.2 - Return all tabs from unified array for global visibility
+      const allTabs = this.globalState.tabs || [];
 
       return {
         success: true,
-        tabs: containerState.tabs,
+        tabs: allTabs,
         cookieStoreId: cookieStoreId,
-        lastUpdate: containerState.lastUpdate
+        lastUpdate: this.globalState.lastUpdate
       };
     } catch (err) {
       console.error('[QuickTabHandler] Error getting Quick Tabs state:', {
@@ -447,6 +435,7 @@ export class QuickTabHandler {
    * Save state to storage
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    */
   async saveState(saveId, cookieStoreId, message) {
     const generatedSaveId = saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -454,8 +443,9 @@ export class QuickTabHandler {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
     const writeSourceId = this._generateWriteSourceId();
 
+    // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
-      containers: this.globalState.containers,
+      tabs: this.globalState.tabs,
       saveId: generatedSaveId,
       timestamp: Date.now(),
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
@@ -497,13 +487,15 @@ export class QuickTabHandler {
    * Save state to storage (simplified)
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    */
   async saveStateToStorage() {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
     const writeSourceId = this._generateWriteSourceId();
 
+    // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
-      containers: this.globalState.containers,
+      tabs: this.globalState.tabs,
       timestamp: Date.now(),
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
