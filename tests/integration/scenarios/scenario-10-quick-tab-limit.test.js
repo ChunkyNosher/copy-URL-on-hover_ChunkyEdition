@@ -387,27 +387,15 @@ describe('Scenario 10: Quick Tab Limit Enforcement', () => {
         url: 'https://example2.com',
         position: { left: 200, top: 200 },
         size: { width: 800, height: 600 },
-        container: 'firefox-container-1' // Different container
       });
 
       stateManagers[0].add(qt1);
       stateManagers[0].add(qt2);
 
-      // Both should be added (different containers)
+      // v1.6.2.2 - Both should be added (container isolation removed)
       expect(stateManagers[0].get(qt1.id)).toBeDefined();
       expect(stateManagers[0].get(qt2.id)).toBeDefined();
       expect(stateManagers[0].getAll().length).toBe(2);
-
-      // Filter by container
-      const defaultContainerQTs = stateManagers[0].getAll().filter(
-        qt => qt.container === 'firefox-default'
-      );
-      const container1QTs = stateManagers[0].getAll().filter(
-        qt => qt.container === 'firefox-container-1'
-      );
-
-      expect(defaultContainerQTs.length).toBe(1);
-      expect(container1QTs.length).toBe(1);
     });
   });
 });

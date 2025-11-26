@@ -8,9 +8,12 @@
  * - Listen to state events and trigger UI updates
  *
  * Complexity: cc ≤ 3 per method
+ * 
+ * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container isolation to enable global Quick Tab visibility
+ *            Quick Tabs are now visible across ALL tabs regardless of Firefox Container.
+ *            This aligns with Issue #47 requirements for global visibility.
  */
 
-import { CONSTANTS } from '../../../core/config.js';
 import { createQuickTabWindow } from '../window.js';
 
 export class UICoordinator {
@@ -60,7 +63,9 @@ export class UICoordinator {
 
   /**
    * Render a single QuickTabWindow from QuickTab entity
-   * v1.6.2.x - ISSUE FIX: Added container safety check before rendering
+   * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container check to enable global visibility
+   *            Quick Tabs are now visible across ALL tabs regardless of Firefox Container.
+   *            This aligns with Issue #47 requirements for global visibility.
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Rendered tab window
@@ -72,19 +77,8 @@ export class UICoordinator {
       return this.renderedTabs.get(quickTab.id);
     }
 
-    // Safety check - don't render if wrong container
-    const currentContainer = this.stateManager?.currentContainer;
-    if (currentContainer) {
-      const quickTabContainer = quickTab.container || quickTab.cookieStoreId || CONSTANTS.DEFAULT_CONTAINER;
-      if (quickTabContainer !== currentContainer) {
-        console.warn('[UICoordinator] Refusing to render Quick Tab from wrong container', {
-          quickTabId: quickTab.id,
-          quickTabContainer,
-          currentContainer
-        });
-        return null;
-      }
-    }
+    // v1.6.2.2 - Container check REMOVED for global visibility (Issue #35, #51, #47)
+    // Quick Tabs are now visible across ALL tabs regardless of Firefox Container
 
     console.log('[UICoordinator] Rendering tab:', quickTab.id);
 

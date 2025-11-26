@@ -1,6 +1,10 @@
 /**
  * Scenario 8: Container-Aware Grouping in Manager Panel
  * 
+ * v1.6.2.2 - SKIPPED: Container isolation removed for global visibility (Issues #35, #51, #47)
+ * The container grouping feature has been removed in favor of unified Quick Tab visibility
+ * across all tabs regardless of Firefox Container.
+ * 
  * MEDIUM PRIORITY (2 days effort)
  * 
  * Tests that Manager Panel correctly groups Quick Tabs by container:
@@ -18,15 +22,8 @@
  * Covers Issues: #47 (Manager Panel container organization)
  */
 
-import { EventEmitter } from 'eventemitter3';
-
-import { QuickTab } from '../../../src/domain/QuickTab.js';
-import { BroadcastManager } from '../../../src/features/quick-tabs/managers/BroadcastManager.js';
-import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
-import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
-import { wait } from '../../helpers/quick-tabs-test-utils.js';
-
-describe('Scenario 8: Container-Aware Grouping Protocol', () => {
+// v1.6.2.2 - Skip all container-related tests
+describe.skip('Scenario 8: Container-Aware Grouping Protocol', () => {
   let tabs;
   let stateManagers;
   let broadcastManagers;

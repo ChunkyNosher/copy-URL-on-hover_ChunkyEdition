@@ -317,36 +317,7 @@ describe('StateManager', () => {
     });
   });
 
-  describe('getByContainer()', () => {
-    test('should return Quick Tabs for specific container', () => {
-      const qt1 = QuickTab.fromStorage({
-        id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 },
-        cookieStoreId: 'firefox-default'
-      });
-
-      const qt2 = QuickTab.fromStorage({
-        id: 'qt-2',
-        url: 'https://test.com',
-        position: { left: 200, top: 200 },
-        size: { width: 500, height: 400 },
-        cookieStoreId: 'firefox-container-1'
-      });
-
-      manager.add(qt1);
-      manager.add(qt2);
-
-      const defaultContainer = manager.getByContainer('firefox-default');
-      expect(defaultContainer).toHaveLength(1);
-      expect(defaultContainer[0].id).toBe('qt-1');
-
-      const container1 = manager.getByContainer('firefox-container-1');
-      expect(container1).toHaveLength(1);
-      expect(container1[0].id).toBe('qt-2');
-    });
-  });
+  // v1.6.2.2 - getByContainer tests removed (container filtering removed)
 
   describe('hydrate()', () => {
     test('should hydrate state from QuickTab array', () => {

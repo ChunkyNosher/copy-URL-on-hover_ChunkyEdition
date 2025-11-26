@@ -165,105 +165,71 @@ describe('Scenario 14: Browser Restart Persistence Protocol', () => {
 
   describe('Basic Persistence', () => {
     test('multiple Quick Tabs persist across browser restart', async () => {
-      // Create 5 Quick Tabs with different positions/sizes
+      // v1.6.2.2 - Container field removed, all Quick Tabs are global
       const quickTabs = [
         new QuickTab({
           id: 'qt-persist-1',
           url: 'https://example1.com',
           position: { left: 100, top: 100 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
+          size: { width: 800, height: 600 }
         }),
         new QuickTab({
           id: 'qt-persist-2',
           url: 'https://example2.com',
           position: { left: 200, top: 150 },
-          size: { width: 900, height: 650 },
-          container: 'firefox-default'
+          size: { width: 900, height: 650 }
         }),
         new QuickTab({
           id: 'qt-persist-3',
           url: 'https://example3.com',
           position: { left: 300, top: 200 },
-          size: { width: 1000, height: 700 },
-          container: 'firefox-container-1'
+          size: { width: 1000, height: 700 }
         }),
         new QuickTab({
           id: 'qt-persist-4',
           url: 'https://example4.com',
           position: { left: 400, top: 250 },
-          size: { width: 850, height: 625 },
-          container: 'firefox-default'
+          size: { width: 850, height: 625 }
         }),
         new QuickTab({
           id: 'qt-persist-5',
           url: 'https://example5.com',
           position: { left: 500, top: 300 },
-          size: { width: 950, height: 675 },
-          container: 'firefox-default'
+          size: { width: 950, height: 675 }
         })
       ];
 
-      // Add to appropriate state managers
+      // Add all Quick Tabs to first state manager (v1.6.2.2 - global)
       quickTabs.forEach(qt => {
-        stateManagers.forEach((sm, index) => {
-          if (tabs[index].containerId === qt.container) {
-            sm.add(new QuickTab(qt));
-          }
-        });
+        stateManagers[0].add(new QuickTab(qt));
       });
 
-      // Save state to storage sequentially to avoid race conditions
-      for (let index = 0; index < stateManagers.length; index++) {
-        await storageManagers[index].save(Array.from(stateManagers[index].quickTabs.values()));
-      }
+      // Save state to storage
+      await storageManagers[0].save(Array.from(stateManagers[0].quickTabs.values()));
 
       // Simulate browser restart by clearing in-memory state
-      // mockStorage persists (simulating browser.storage.local persistence)
       stateManagers.forEach(sm => sm.quickTabs.clear());
 
-      // Hydrate state from storage with container awareness
-      await Promise.all(
-        stateManagers.map(async (sm, index) => {
-          const stored = await storageManagers[index].loadAll();
-          stored.forEach(qt => {
-            // Only add if container matches
-            if (qt.container === tabs[index].containerId) {
-              sm.add(qt);
-            }
-          });
-        })
-      );
-
-      // Verify all Quick Tabs restored in correct containers
-      const defaultContainerTabs = stateManagers.filter((_, i) => 
-        tabs[i].containerId === 'firefox-default'
-      );
-      const container1Tabs = stateManagers.filter((_, i) => 
-        tabs[i].containerId === 'firefox-container-1'
-      );
-
-      // Default container should have 4 Quick Tabs
-      defaultContainerTabs.forEach(sm => {
-        expect(sm.count()).toBe(4);
-        expect(sm.get('qt-persist-1')).toBeDefined();
-        expect(sm.get('qt-persist-2')).toBeDefined();
-        expect(sm.get('qt-persist-4')).toBeDefined();
-        expect(sm.get('qt-persist-5')).toBeDefined();
+      // Hydrate state from storage (v1.6.2.2 - all tabs visible in all contexts)
+      const stored = await storageManagers[0].loadAll();
+      stored.forEach(qt => {
+        stateManagers[0].add(qt);
       });
 
-      // Container-1 should have 1 Quick Tab
-      container1Tabs.forEach(sm => {
-        expect(sm.count()).toBe(1);
-        expect(sm.get('qt-persist-3')).toBeDefined();
-      });
+      // Verify all 5 Quick Tabs restored (global visibility)
+      expect(stateManagers[0].count()).toBe(5);
+      expect(stateManagers[0].get('qt-persist-1')).toBeDefined();
+      expect(stateManagers[0].get('qt-persist-2')).toBeDefined();
+      expect(stateManagers[0].get('qt-persist-3')).toBeDefined();
+      expect(stateManagers[0].get('qt-persist-4')).toBeDefined();
+      expect(stateManagers[0].get('qt-persist-5')).toBeDefined();
 
       // Verify positions/sizes preserved
       const qt1 = stateManagers[0].get('qt-persist-1');
       expect(qt1.position).toEqual({ left: 100, top: 100 });
       expect(qt1.size).toEqual({ width: 800, height: 600 });
 
-      const qt3 = stateManagers[1].get('qt-persist-3');
+      const qt3 = stateManagers[0].get('qt-persist-3');
       expect(qt3.position).toEqual({ left: 300, top: 200 });
       expect(qt3.size).toEqual({ width: 1000, height: 700 });
     });
@@ -271,12 +237,12 @@ describe('Scenario 14: Browser Restart Persistence Protocol', () => {
 
   describe('Solo Mode Persistence', () => {
     test('solo state persists across browser restart', async () => {
+      // v1.6.2.2 - Container field removed
       const quickTab = new QuickTab({
         id: 'qt-solo-persist',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
         size: { width: 800, height: 600 },
-        container: 'firefox-default',
         visibility: {
           soloedOnTabs: [tabs[0].tabId, tabs[2].tabId],
           mutedOnTabs: [],
@@ -284,19 +250,11 @@ describe('Scenario 14: Browser Restart Persistence Protocol', () => {
         }
       });
 
-      // Add to state managers
-      stateManagers.forEach((sm, index) => {
-        if (tabs[index].containerId === 'firefox-default') {
-          sm.add(new QuickTab(quickTab));
-        }
-      });
+      // Add to first state manager (v1.6.2.2 - global)
+      stateManagers[0].add(new QuickTab(quickTab));
 
       // Save state
-      await Promise.all(
-        stateManagers.map((sm, index) => 
-          storageManagers[index].save(Array.from(sm.quickTabs.values()))
-        )
-      );
+      await storageManagers[0].save(Array.from(stateManagers[0].quickTabs.values()));
 
       // Simulate restart
       const persistedStorage = simulateBrowserRestart(tabs);
@@ -304,32 +262,25 @@ describe('Scenario 14: Browser Restart Persistence Protocol', () => {
       restoreStorageAfterRestart(tabs, persistedStorage);
 
       // Hydrate state
-      await Promise.all(
-        stateManagers.map(async (sm, index) => {
-          const stored = await storageManagers[index].loadAll();
-          stored.forEach(qt => sm.add(qt));
-        })
-      );
+      const stored = await storageManagers[0].loadAll();
+      stored.forEach(qt => stateManagers[0].add(qt));
 
       // Verify solo state preserved
-      const restoredQt0 = stateManagers[0].get('qt-solo-persist');
-      const restoredQt2 = stateManagers[2].get('qt-solo-persist');
+      const restoredQt = stateManagers[0].get('qt-solo-persist');
 
-      expect(restoredQt0).toBeDefined();
-      expect(restoredQt2).toBeDefined();
-      expect(restoredQt0.visibility.soloedOnTabs).toEqual([tabs[0].tabId, tabs[2].tabId]);
-      expect(restoredQt2.visibility.soloedOnTabs).toEqual([tabs[0].tabId, tabs[2].tabId]);
+      expect(restoredQt).toBeDefined();
+      expect(restoredQt.visibility.soloedOnTabs).toEqual([tabs[0].tabId, tabs[2].tabId]);
     });
   });
 
   describe('Mute Mode Persistence', () => {
     test('mute state persists across browser restart', async () => {
+      // v1.6.2.2 - Container field removed
       const quickTab = new QuickTab({
         id: 'qt-mute-persist',
         url: 'https://example.com',
         position: { left: 150, top: 150 },
         size: { width: 850, height: 650 },
-        container: 'firefox-default',
         visibility: {
           soloedOnTabs: [],
           mutedOnTabs: [tabs[0].tabId],
@@ -337,12 +288,8 @@ describe('Scenario 14: Browser Restart Persistence Protocol', () => {
         }
       });
 
-      // Add to state managers
-      stateManagers.forEach((sm, index) => {
-        if (tabs[index].containerId === 'firefox-default') {
-          sm.add(new QuickTab(quickTab));
-        }
-      });
+      // Add to first state manager (v1.6.2.2 - global)
+      stateManagers[0].add(new QuickTab(quickTab));
 
       // Save and restart
       await Promise.all(
@@ -370,94 +317,28 @@ describe('Scenario 14: Browser Restart Persistence Protocol', () => {
     });
   });
 
-  describe('Container Isolation After Restart', () => {
+  // v1.6.2.2 - Container isolation tests skipped (container isolation removed for global visibility)
+  describe.skip('Container Isolation After Restart', () => {
     test('container-specific Quick Tabs only load in correct container', async () => {
-      // Create Quick Tabs in different containers
-      const defaultQt = new QuickTab({
-        id: 'qt-default-container',
-        url: 'https://default.com',
-        position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
-      });
-
-      const container1Qt = new QuickTab({
-        id: 'qt-container-1',
-        url: 'https://container1.com',
-        position: { left: 200, top: 200 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-container-1'
-      });
-
-      // Add to appropriate state managers
-      stateManagers.forEach((sm, index) => {
-        if (tabs[index].containerId === 'firefox-default') {
-          sm.add(new QuickTab(defaultQt));
-        }
-        if (tabs[index].containerId === 'firefox-container-1') {
-          sm.add(new QuickTab(container1Qt));
-        }
-      });
-
-      // Save state to storage sequentially to avoid race conditions
-      for (let index = 0; index < stateManagers.length; index++) {
-        await storageManagers[index].save(Array.from(stateManagers[index].quickTabs.values()));
-      }
-
-      // Simulate browser restart by clearing in-memory state
-      // mockStorage persists (simulating browser.storage.local persistence)
-      stateManagers.forEach(sm => sm.quickTabs.clear());
-
-      // Hydrate with container awareness
-      await Promise.all(
-        stateManagers.map(async (sm, index) => {
-          const stored = await storageManagers[index].loadAll();
-          stored.forEach(qt => {
-            // Only add if container matches
-            if (qt.container === tabs[index].containerId) {
-              sm.add(qt);
-            }
-          });
-        })
-      );
-
-      // Verify container isolation
-      const defaultTabs = stateManagers.filter((_, i) => 
-        tabs[i].containerId === 'firefox-default'
-      );
-      const container1Tabs = stateManagers.filter((_, i) => 
-        tabs[i].containerId === 'firefox-container-1'
-      );
-
-      defaultTabs.forEach(sm => {
-        expect(sm.get('qt-default-container')).toBeDefined();
-        expect(sm.get('qt-container-1')).toBeUndefined();
-      });
-
-      container1Tabs.forEach(sm => {
-        expect(sm.get('qt-container-1')).toBeDefined();
-        expect(sm.get('qt-default-container')).toBeUndefined();
-      });
+      // This test is skipped because container isolation is removed in v1.6.2.2
     });
   });
 
   describe('Corrupted Storage Recovery', () => {
     test('corrupted entries skipped gracefully on restart', async () => {
-      // Create valid Quick Tabs
+      // v1.6.2.2 - Container field removed
       const validQt1 = new QuickTab({
         id: 'qt-valid-1',
         url: 'https://valid1.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       const validQt2 = new QuickTab({
         id: 'qt-valid-2',
         url: 'https://valid2.com',
         position: { left: 200, top: 200 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       // Add to state

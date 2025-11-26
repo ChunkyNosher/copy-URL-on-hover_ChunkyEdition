@@ -130,10 +130,10 @@ describe('UICoordinator', () => {
     });
 
     test('should create QuickTabWindow from QuickTab entity', () => {
+      // v1.6.2.2 - Container field removed
       const quickTab = QuickTab.create({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default',
         left: 100,
         top: 200,
         width: 400,
@@ -143,6 +143,7 @@ describe('UICoordinator', () => {
 
       const result = uiCoordinator.render(quickTab);
 
+      // v1.6.2.2 - cookieStoreId no longer expected
       expect(createQuickTabWindow).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'qt-123',
@@ -151,8 +152,7 @@ describe('UICoordinator', () => {
           top: 200,
           width: 400,
           height: 300,
-          title: 'Test Tab',
-          cookieStoreId: 'firefox-default'
+          title: 'Test Tab'
         })
       );
       expect(result).toBeDefined();
@@ -161,8 +161,7 @@ describe('UICoordinator', () => {
     test('should add tab to renderedTabs map', () => {
       const quickTab = QuickTab.create({
         id: 'qt-123',
-        url: 'https://example.com',
-        container: 'firefox-default'
+        url: 'https://example.com'
       });
 
       uiCoordinator.render(quickTab);
@@ -173,8 +172,7 @@ describe('UICoordinator', () => {
     test('should skip if already rendered', () => {
       const quickTab = QuickTab.create({
         id: 'qt-123',
-        url: 'https://example.com',
-        container: 'firefox-default'
+        url: 'https://example.com'
       });
 
       const firstResult = uiCoordinator.render(quickTab);

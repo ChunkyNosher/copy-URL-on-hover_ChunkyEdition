@@ -1,6 +1,7 @@
 /**
  * QuickTab Domain Entity Tests
  * v1.6.0 - Unit tests for pure business logic
+ * v1.6.2.2 - Updated for unified format (container field removed)
  *
  * Target: 100% coverage (branches, functions, lines, statements)
  */
@@ -19,15 +20,13 @@ describe('QuickTab Domain Entity', () => {
           minimized: false,
           soloedOnTabs: [],
           mutedOnTabs: []
-        },
-        container: 'firefox-container-1'
+        }
       });
 
       expect(quickTab.id).toBe('qt-123');
       expect(quickTab.url).toBe('https://example.com');
       expect(quickTab.position).toEqual({ left: 100, top: 200 });
       expect(quickTab.size).toEqual({ width: 800, height: 600 });
-      expect(quickTab.container).toBe('firefox-container-1');
       expect(quickTab.visibility.minimized).toBe(false);
     });
 
@@ -42,7 +41,6 @@ describe('QuickTab Domain Entity', () => {
 
       expect(quickTab.title).toBe('Quick Tab');
       expect(quickTab.zIndex).toBe(1000);
-      expect(quickTab.container).toBe('firefox-default');
       expect(quickTab.createdAt).toBeGreaterThan(0);
     });
 
@@ -452,33 +450,7 @@ describe('QuickTab Domain Entity', () => {
     });
   });
 
-  describe('Container Operations', () => {
-    test('belongsToContainer should return true for matching container', () => {
-      const quickTab = new QuickTab({
-        id: 'qt-123',
-        url: 'https://example.com',
-        position: { left: 100, top: 200 },
-        size: { width: 800, height: 600 },
-        visibility: {},
-        container: 'firefox-container-1'
-      });
-
-      expect(quickTab.belongsToContainer('firefox-container-1')).toBe(true);
-    });
-
-    test('belongsToContainer should return false for non-matching container', () => {
-      const quickTab = new QuickTab({
-        id: 'qt-123',
-        url: 'https://example.com',
-        position: { left: 100, top: 200 },
-        size: { width: 800, height: 600 },
-        visibility: {},
-        container: 'firefox-container-1'
-      });
-
-      expect(quickTab.belongsToContainer('firefox-container-2')).toBe(false);
-    });
-  });
+  // v1.6.2.2 - Container Operations removed (container field removed for global visibility)
 
   describe('Serialization', () => {
     test('serialize should create plain object', () => {
@@ -493,7 +465,6 @@ describe('QuickTab Domain Entity', () => {
           soloedOnTabs: [100],
           mutedOnTabs: [200]
         },
-        container: 'firefox-container-1',
         zIndex: 2000,
         createdAt: 1234567890
       });
@@ -511,7 +482,6 @@ describe('QuickTab Domain Entity', () => {
           soloedOnTabs: [100],
           mutedOnTabs: [200]
         },
-        container: 'firefox-container-1',
         zIndex: 2000,
         createdAt: 1234567890,
         lastModified: expect.any(Number) // v1.6.1.5 - Added timestamp tracking
@@ -555,7 +525,6 @@ describe('QuickTab Domain Entity', () => {
             soloedOnTabs: [100],
             mutedOnTabs: []
           },
-          container: 'firefox-container-2',
           zIndex: 1500,
           createdAt: 1234567890
         };
@@ -568,7 +537,6 @@ describe('QuickTab Domain Entity', () => {
         expect(quickTab.position).toEqual({ left: 150, top: 250 });
         expect(quickTab.size).toEqual({ width: 900, height: 700 });
         expect(quickTab.visibility.minimized).toBe(true);
-        expect(quickTab.container).toBe('firefox-container-2');
         expect(quickTab.zIndex).toBe(1500);
       });
 
@@ -583,21 +551,10 @@ describe('QuickTab Domain Entity', () => {
         expect(quickTab.title).toBe('Quick Tab');
         expect(quickTab.position).toEqual({ left: 100, top: 100 });
         expect(quickTab.size).toEqual({ width: 800, height: 600 });
-        expect(quickTab.container).toBe('firefox-default');
         expect(quickTab.zIndex).toBe(1000);
       });
 
-      test('should handle legacy cookieStoreId field', () => {
-        const data = {
-          id: 'qt-123',
-          url: 'https://example.com',
-          cookieStoreId: 'firefox-container-3'
-        };
-
-        const quickTab = QuickTab.fromStorage(data);
-
-        expect(quickTab.container).toBe('firefox-container-3');
-      });
+      // v1.6.2.2 - Container-related tests removed (container field removed)
     });
 
     describe('create', () => {
@@ -612,7 +569,6 @@ describe('QuickTab Domain Entity', () => {
         expect(quickTab.position).toEqual({ left: 100, top: 100 });
         expect(quickTab.size).toEqual({ width: 800, height: 600 });
         expect(quickTab.visibility.minimized).toBe(false);
-        expect(quickTab.container).toBe('firefox-default');
       });
 
       test('should accept custom position and size', () => {
@@ -623,13 +579,11 @@ describe('QuickTab Domain Entity', () => {
           top: 300,
           width: 1000,
           height: 800,
-          container: 'firefox-container-4',
           title: 'Custom Title'
         });
 
         expect(quickTab.position).toEqual({ left: 200, top: 300 });
         expect(quickTab.size).toEqual({ width: 1000, height: 800 });
-        expect(quickTab.container).toBe('firefox-container-4');
         expect(quickTab.title).toBe('Custom Title');
       });
 

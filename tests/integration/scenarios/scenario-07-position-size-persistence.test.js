@@ -229,9 +229,9 @@ describe('Scenario 7: Position/Size Persistence Protocol', () => {
       // Save updated state
       await storageManagers[0].save([qt]);
 
-      // Verify mockStorage has the data
+      // Verify mockStorage has the data - v1.6.2.2 unified format
       expect(mockStorage['quick_tabs_state_v2']).toBeDefined();
-      expect(mockStorage['quick_tabs_state_v2'].containers['firefox-default']).toBeDefined();
+      expect(mockStorage['quick_tabs_state_v2'].tabs).toBeDefined();
 
       // Load from storage
       const loadedQuickTabs = await storageManagers[0].loadAll();
@@ -249,8 +249,7 @@ describe('Scenario 7: Position/Size Persistence Protocol', () => {
         id: 'qt-speed-1',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-        size: { width: 800, height: 600 },
-        container: 'firefox-default'
+        size: { width: 800, height: 600 }
       });
 
       stateManagers[0].add(qt);
