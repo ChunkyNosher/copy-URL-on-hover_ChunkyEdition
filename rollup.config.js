@@ -4,6 +4,7 @@ import resolve from '@rollup/plugin-node-resolve';
 import terser from '@rollup/plugin-terser';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import replace from '@rollup/plugin-replace';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const production = process.env.BUILD === 'production';
