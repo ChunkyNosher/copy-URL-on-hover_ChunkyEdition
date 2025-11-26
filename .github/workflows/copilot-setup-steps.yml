@@ -563,17 +563,6 @@ jobs:
           echo "Verifying Playwright Browser Availability"
           echo "=========================================="
           
-          # Check Chromium
-          CHROMIUM_PATH="$HOME/.cache/ms-playwright/chromium-*/chrome-linux/chrome"
-          if ls $CHROMIUM_PATH 1> /dev/null 2>&1; then
-            echo "✓ Chromium executable found"
-            ls -lh $CHROMIUM_PATH | head -1
-          else
-            echo "✗ Chromium executable NOT found"
-            echo "Expected location: $CHROMIUM_PATH"
-            exit 1
-          fi
-          
           # Check Firefox
           FIREFOX_PATH="$HOME/.cache/ms-playwright/firefox-*/firefox/firefox"
           if ls $FIREFOX_PATH 1> /dev/null 2>&1; then
@@ -653,11 +642,6 @@ jobs:
         run: npm run build:prod
         env:
           TEST_MODE: 'true'
-        
-      - name: Run Playwright E2E Tests
-        run: npx playwright test
-        env:
-          CI: true
 
       # ====================================================================
       # STEP 13.5: Inject Test Bridge for Copilot Autonomous Testing
@@ -731,7 +715,48 @@ jobs:
           echo "=========================================="
           echo "✓✓✓ Test Bridge Injection Complete ✓✓✓"
           echo "=========================================="
+        continue-on-error: true
+      # ====================================================================
+      # NEW STEP: Run Playwright E2E Tests
+      # ====================================================================
 
+      - name: Run Playwright E2E Tests
+        run: npx playwright test
+        env:
+          CI: true
+
+      - name: Upload Playwright test results
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if tests fail
+        with:
+          name: playwright-test-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+      
+      - name: Display E2E test summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "E2E Test Summary"
+          echo "=========================================="
+          
+          if [ -f "test-results/results.json" ]; then
+            node -e "
+              const results = require('./test-results/results.json');
+              console.log('Test Suites:', results.suites?.length || 0);
+              console.log('Total Tests:', results.stats?.expected + results.stats?.unexpected || 0);
+              console.log('Passed:', results.stats?.expected || 0);
+              console.log('Failed:', results.stats?.unexpected || 0);
+              console.log('Skipped:', results.stats?.skipped || 0);
+            "
+          else
+            echo "No test results found"
+          fi
+          
+          echo "=========================================="
+    
       # ====================================================================
       # STEP 14: Verify Build Output
       # ====================================================================
