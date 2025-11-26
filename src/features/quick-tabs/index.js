@@ -11,6 +11,7 @@
  * - Delegates all business logic to specialized components
  * 
  * v1.6.2 - MIGRATION: Removed BroadcastManager, uses storage.onChanged for cross-tab sync
+ * v1.6.2.1 - Added BroadcastSync for real-time drag/resize sync
  * See: docs/implementation-summaries/storage-local-migration.md
  */
 
@@ -274,6 +275,7 @@ class QuickTabsManager {
   /**
    * Initialize handler components
    * v1.6.2 - MIGRATION: Removed BroadcastManager from handlers
+   * v1.6.2.1 - Added cookieStoreId and currentTabId to UpdateHandler for BroadcastSync
    * @private
    */
   _initializeHandlers() {
@@ -292,7 +294,9 @@ class QuickTabsManager {
       this.storage,
       this.internalEventBus,
       this.generateSaveId.bind(this),
-      this.releasePendingSave.bind(this)
+      this.releasePendingSave.bind(this),
+      this.cookieStoreId,
+      this.currentTabId
     );
 
     this.visibilityHandler = new VisibilityHandler({
@@ -402,6 +406,9 @@ class QuickTabsManager {
       this.memoryGuard.startMonitoring();
       console.log('[QuickTabsManager] MemoryGuard monitoring started');
     }
+
+    // v1.6.2.1 - Register cleanup on window beforeunload
+    this._setupCleanupHandlers();
     
     // Issue #35 Fix: Log listener counts after setup to verify event flow
     const storageChangedListeners = this.internalEventBus?.listenerCount?.('storage:changed') ?? 'unknown';
@@ -412,6 +419,47 @@ class QuickTabsManager {
       storageChangedListeners,
       stateAddedListeners
     });
+  }
+
+  /**
+   * Setup cleanup handlers for beforeunload
+   * v1.6.2.1 - Ensures BroadcastSync is properly closed on page unload
+   * @private
+   */
+  _setupCleanupHandlers() {
+    if (typeof window !== 'undefined') {
+      this._beforeUnloadHandler = () => {
+        this.cleanup();
+      };
+      window.addEventListener('beforeunload', this._beforeUnloadHandler);
+      console.log('[QuickTabsManager] Cleanup handlers registered');
+    }
+  }
+
+  /**
+   * Cleanup all resources
+   * v1.6.2.1 - Close BroadcastSync channels and cleanup handlers
+   */
+  cleanup() {
+    console.log('[QuickTabsManager] Cleanup starting...');
+
+    // Cleanup UpdateHandler (closes BroadcastSync)
+    if (this.updateHandler && typeof this.updateHandler.destroy === 'function') {
+      this.updateHandler.destroy();
+    }
+
+    // Stop memory guard monitoring
+    if (this.memoryGuard) {
+      this.memoryGuard.stopMonitoring();
+    }
+
+    // Remove beforeunload handler
+    if (typeof window !== 'undefined' && this._beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+      this._beforeUnloadHandler = null;
+    }
+
+    console.log('[QuickTabsManager] Cleanup complete');
   }
 
   /**
