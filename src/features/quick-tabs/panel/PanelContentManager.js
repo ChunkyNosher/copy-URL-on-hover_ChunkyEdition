@@ -370,6 +370,21 @@ export class PanelContentManager {
       handler: closeAllHandler
     });
 
+    // v1.6.2.2 - Clear Storage button
+    const clearStorageBtn = this.panel.querySelector('#panel-clearStorage');
+    if (clearStorageBtn) {
+      const clearStorageHandler = async e => {
+        e.stopPropagation();
+        await this.handleClearStorage();
+      };
+      clearStorageBtn.addEventListener('click', clearStorageHandler);
+      this.eventListeners.push({
+        element: clearStorageBtn,
+        type: 'click',
+        handler: clearStorageHandler
+      });
+    }
+
     // Delegated listener for Quick Tab item actions
     const containersList = this.panel.querySelector('#panel-containersList');
     const actionHandler = async e => {
@@ -678,6 +693,50 @@ export class PanelContentManager {
       await this.updateContent();
     } catch (err) {
       console.error('[PanelContentManager] Error closing all:', err);
+    }
+  }
+
+  /**
+   * Clear all Quick Tab storage
+   * v1.6.2.2 - Debug/testing utility
+   * CRITICAL: Destroy DOM elements BEFORE clearing storage
+   */
+  async handleClearStorage() {
+    try {
+      // Confirm with user
+      // eslint-disable-next-line no-alert
+      const confirmed = confirm(
+        'Clear ALL Quick Tab Storage?\n\n' +
+        'This will remove all Quick Tabs and their state.\n' +
+        'This action cannot be undone.'
+      );
+      
+      if (!confirmed) return;
+      
+      // Destroy all Quick Tab DOM elements in current tab FIRST
+      if (this.quickTabsManager?.closeAll) {
+        console.log('[PanelContentManager] Destroying all Quick Tab DOM elements...');
+        this.quickTabsManager.closeAll();
+      }
+
+      // Clear storage (unified format)
+      const emptyState = {
+        tabs: [],
+        saveId: this._generateSaveId(),
+        timestamp: Date.now()
+      };
+
+      await browser.storage.local.set({ quick_tabs_state_v2: emptyState });
+      
+      // Clear session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        await browser.storage.session.set({ quick_tabs_session: emptyState });
+      }
+
+      console.log('[PanelContentManager] ✓ Cleared all Quick Tab storage');
+      await this.updateContent();
+    } catch (err) {
+      console.error('[PanelContentManager] Error clearing storage:', err);
     }
   }
 
