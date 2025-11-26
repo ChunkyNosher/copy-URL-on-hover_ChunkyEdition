@@ -1,0 +1,8 @@
+{
+  "id": "699e17b8-0aaf-48ea-839b-05c0ff45b470",
+  "title": "Firefox sidebarAction.toggle() API",
+  "details": "Firefox provides a built-in `browser.sidebarAction.toggle()` method (added in Firefox 73) that directly toggles the sidebar open/close state. This is cleaner than checking `isOpen()` and then calling `open()` or `close()`. For older Firefox versions, fall back to `open()` only.\n\nWhen sending messages to a newly-opened sidebar, the sidebar needs time to initialize (DOM ready + scripts loaded). A delay of 300ms is recommended, with retry logic (3 attempts, 150ms apart) for reliable message delivery.",
+  "category": "browser_extensions",
+  "dateCreated": "2025-11-26T02:17:37.019Z",
+  "dateUpdated": "2025-11-26T02:17:37.019Z"
+}

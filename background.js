@@ -1320,6 +1320,7 @@ async function _toggleQuickTabsPanel() {
 /**
  * Open sidebar and switch to Manager tab
  * v1.6.1.4 - Extracted to fix max-depth eslint error
+ * v1.6.2.0 - Fixed: Improved timing and retry logic for sidebar message delivery
  */
 async function _openSidebarAndSwitchToManager() {
   try {
@@ -1329,11 +1330,11 @@ async function _openSidebarAndSwitchToManager() {
     if (!isOpen) {
       // Open sidebar if closed
       await browser.sidebarAction.open();
-      // Wait for sidebar to initialize
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait longer for sidebar to fully initialize (DOM ready + scripts loaded)
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
     
-    // Send message to sidebar to switch to Manager tab
+    // Send message to sidebar to switch to Manager tab with retry logic
     await _sendManagerTabMessage();
     
     console.log('[Sidebar] Opened sidebar and switched to Manager tab');
@@ -1345,21 +1346,37 @@ async function _openSidebarAndSwitchToManager() {
 /**
  * Send message to sidebar to switch to Manager tab
  * v1.6.1.4 - Extracted to reduce nesting
+ * v1.6.2.0 - Enhanced retry logic with multiple attempts
  */
 async function _sendManagerTabMessage() {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 150; // ms between retries
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const success = await _trySendManagerMessage();
+    if (success) {
+      return;
+    }
+    // Sidebar might not be ready yet, wait before retry
+    if (attempt < MAX_RETRIES) {
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    }
+  }
+  console.warn('[Background] Could not send message to sidebar after', MAX_RETRIES, 'attempts');
+}
+
+/**
+ * Attempt to send SWITCH_TO_MANAGER_TAB message
+ * @returns {Promise<boolean>} true if successful, false otherwise
+ */
+async function _trySendManagerMessage() {
   try {
     await browser.runtime.sendMessage({
       type: 'SWITCH_TO_MANAGER_TAB'
     });
+    return true;
   } catch (error) {
-    // Sidebar might not be ready yet, retry once
-    setTimeout(() => {
-      browser.runtime.sendMessage({
-        type: 'SWITCH_TO_MANAGER_TAB'
-      }).catch(() => {
-        console.warn('[Background] Could not send message to sidebar');
-      });
-    }, 200);
+    return false;
   }
 }
 
@@ -1387,18 +1404,23 @@ browser.commands.onCommand.addListener(async command => {
 // ==================== END KEYBOARD COMMANDS ====================
 
 // ==================== BROWSER ACTION HANDLER ====================
-// Open sidebar when toolbar button is clicked (Firefox only)
+// Toggle sidebar when toolbar button is clicked (Firefox only)
 // Chrome will continue using popup.html since it doesn't support sidebar_action
+// v1.6.2.0 - Fixed: Now toggles sidebar open/close instead of only opening
 if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAction) {
   browser.browserAction.onClicked.addListener(async () => {
     try {
-      // Check if sidebar API is available
-      if (browser.sidebarAction && browser.sidebarAction.open) {
+      // Use toggle() API for clean open/close behavior
+      if (browser.sidebarAction && browser.sidebarAction.toggle) {
+        await browser.sidebarAction.toggle();
+        console.log('[Sidebar] Toggled via toolbar button');
+      } else if (browser.sidebarAction && browser.sidebarAction.open) {
+        // Fallback for older Firefox versions without toggle()
         await browser.sidebarAction.open();
-        console.log('[Sidebar] Opened via toolbar button');
+        console.log('[Sidebar] Opened via toolbar button (fallback)');
       }
     } catch (err) {
-      console.error('[Sidebar] Error opening sidebar:', err);
+      console.error('[Sidebar] Error toggling sidebar:', err);
       // If sidebar fails, user can still access settings via options page
     }
   });
