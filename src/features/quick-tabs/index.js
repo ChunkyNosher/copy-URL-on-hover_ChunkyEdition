@@ -213,11 +213,12 @@ class QuickTabsManager {
   /**
    * Initialize manager components
    * v1.6.2 - MIGRATION: Removed BroadcastManager
+   * v1.6.2.x - ISSUE: Pass currentContainer to StateManager for container filtering
    * @private
    */
   _initializeManagers() {
     this.storage = new StorageManager(this.internalEventBus, this.cookieStoreId);
-    this.state = new StateManager(this.internalEventBus, this.currentTabId);
+    this.state = new StateManager(this.internalEventBus, this.currentTabId, this.cookieStoreId);
     this.events = new EventManager(this.internalEventBus, this.tabs);
 
     // Initialize MemoryGuard for emergency shutdown
@@ -477,14 +478,34 @@ class QuickTabsManager {
   /**
    * Hydrate state from storage
    * v1.6.2 - MIGRATION: Simplified - no broadcast replay needed
+   * v1.6.2.x - ISSUE FIX: Added container filtering before hydration
    * @private
    */
   async _hydrateState() {
     console.log('[QuickTabsManager] Hydrating state from storage...');
     try {
-      const quickTabs = await this.storage.loadAll();
-      this.state.hydrate(quickTabs);
-      console.log(`[QuickTabsManager] Hydrated ${quickTabs.length} Quick Tabs from storage`);
+      // Load all Quick Tabs from storage
+      const allQuickTabs = await this.storage.loadAll();
+      
+      // Filter to only Quick Tabs for current container
+      const currentContainer = this.cookieStoreId || CONSTANTS.DEFAULT_CONTAINER;
+      const relevantQuickTabs = allQuickTabs.filter(qt => {
+        const qtContainer = qt.container || qt.cookieStoreId || CONSTANTS.DEFAULT_CONTAINER;
+        const matches = qtContainer === currentContainer;
+        
+        if (!matches) {
+          console.log(`[QuickTabsManager] Filtering out Quick Tab ${qt.id} from ${qtContainer} (current: ${currentContainer})`);
+        }
+        
+        return matches;
+      });
+      
+      console.log(`[QuickTabsManager] Filtered ${relevantQuickTabs.length} relevant Quick Tabs from ${allQuickTabs.length} total for container ${currentContainer}`);
+      
+      // Hydrate with filtered Quick Tabs
+      this.state.hydrate(relevantQuickTabs);
+      
+      console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs from storage`);
     } catch (err) {
       console.error('[QuickTabsManager] Failed to hydrate state:', err);
     }

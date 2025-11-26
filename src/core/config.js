@@ -65,7 +65,9 @@ export const CONSTANTS = {
   TOOLTIP_OFFSET_Y: 10,
   TOOLTIP_DURATION_MS: 1500,
   TOOLTIP_FADE_OUT_MS: 200,
-  QUICK_TAB_BASE_Z_INDEX: 1000000
+  QUICK_TAB_BASE_Z_INDEX: 1000000,
+  // v1.6.2.x - Default container for Firefox container isolation
+  DEFAULT_CONTAINER: 'firefox-default'
 };
 
 export class ConfigManager {

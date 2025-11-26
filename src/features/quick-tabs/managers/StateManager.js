@@ -17,9 +17,10 @@
 import { QuickTab } from '@domain/QuickTab.js';
 
 export class StateManager {
-  constructor(eventBus, currentTabId = null) {
+  constructor(eventBus, currentTabId = null, currentContainer = null) {
     this.eventBus = eventBus;
     this.currentTabId = currentTabId;
+    this.currentContainer = currentContainer; // v1.6.2.x - Store current container for filtering
 
     // In-memory state: Map<id, QuickTab>
     this.quickTabs = new Map();
