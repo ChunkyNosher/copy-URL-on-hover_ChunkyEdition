@@ -184,13 +184,19 @@ export class QuickTabWindow {
         onMinimize: () => this.minimize(),
         onSolo: btn => this.toggleSolo(btn),
         onMute: btn => this.toggleMute(btn),
-        onOpenInTab: () => {
+        onOpenInTab: async () => {
           const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
-          browser.runtime.sendMessage({
+          await browser.runtime.sendMessage({
             action: 'openTab',
             url: currentSrc,
             switchFocus: true
           });
+          
+          // Check setting and close if enabled
+          const settings = await browser.storage.local.get({ quickTabCloseOnOpen: false });
+          if (settings.quickTabCloseOnOpen) {
+            this.destroy();
+          }
         }
       }
     );

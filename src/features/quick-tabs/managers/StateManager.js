@@ -262,17 +262,24 @@ export class StateManager {
    * v1.6.1 - CRITICAL FIX: Track additions, updates, and deletions to emit proper events
    * v1.6.2.2 - ISSUE #35 FIX: Enhanced logging for cross-tab sync debugging
    * v1.6.2.x - ISSUE #51 FIX: Detect and emit position/size/zIndex changes for cross-tab sync
-   * This ensures UI coordinator knows about deletions and removes Quick Tabs that no longer exist
+   * v1.6.2.4 - BUG FIX Issues 1 & 5: Made hydration additive by default (skipDeletions=true)
+   *            Quick Tabs are only deleted on explicit close events, NOT during sync.
+   *            This fixes "ghost" Quick Tab syndrome and old Quick Tab deletion during hydration.
+   * 
    * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
    * @param {Object} options - Hydration options
    * @param {boolean} [options.detectChanges=false] - Whether to detect and emit position/size/zIndex changes
+   * @param {boolean} [options.skipDeletions=true] - Whether to skip deletion detection during hydration.
+   *        When true (default), hydration is additive - only adds/updates, never deletes.
+   *        Set to false only for explicit "replace all" operations like CLOSE_ALL.
    */
   hydrate(quickTabs, options = {}) {
     if (!Array.isArray(quickTabs)) {
       throw new Error('StateManager.hydrate() requires array of QuickTab instances');
     }
 
-    const { detectChanges = false } = options;
+    // v1.6.2.4 - Default to additive hydration (skipDeletions=true) to fix Issues 1 & 5
+    const { detectChanges = false, skipDeletions = true } = options;
     const context = this._getContext();
 
     console.log('[StateManager] Hydrate called', {
@@ -281,6 +288,7 @@ export class StateManager {
       incomingCount: quickTabs.length,
       existingCount: this.quickTabs.size,
       detectChanges,
+      skipDeletions,
       timestamp: Date.now()
     });
 
@@ -288,8 +296,12 @@ export class StateManager {
     const existingIds = new Set(this.quickTabs.keys());
     const result = this._processIncomingQuickTabs(quickTabs, existingIds, detectChanges);
 
-    // Detect and emit deletions
-    const deletedCount = this._processDeletedQuickTabs(existingIds, result.incomingIds);
+    // v1.6.2.4 - Only process deletions if explicitly requested (skipDeletions=false)
+    // By default, hydration is additive to prevent "ghost" Quick Tab issues
+    let deletedCount = 0;
+    if (!skipDeletions) {
+      deletedCount = this._processDeletedQuickTabs(existingIds, result.incomingIds);
+    }
 
     // v1.6.2.x - ISSUE #51 FIX: Emit change events for position/size/zIndex updates
     this._emitQuickTabChanges(result.changes, context.type);
@@ -302,6 +314,7 @@ export class StateManager {
       added: result.addedCount,
       updated: result.updatedCount,
       deleted: deletedCount,
+      skippedDeletions: skipDeletions,
       changesDetected: result.changes.length,
       totalNow: this.quickTabs.size
     });

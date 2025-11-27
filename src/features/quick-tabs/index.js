@@ -327,6 +327,7 @@ class QuickTabsManager {
   /**
    * Initialize coordinator components
    * v1.6.2 - MIGRATION: Removed BroadcastManager from SyncCoordinator
+   * v1.6.2.4 - BUG FIX Issues 2 & 6: Pass updateHandler to UICoordinator for pending updates
    * @private
    */
   _initializeCoordinators() {
@@ -334,7 +335,8 @@ class QuickTabsManager {
       this.state,
       this.minimizedManager,
       this.panelManager,
-      this.internalEventBus
+      this.internalEventBus,
+      this.updateHandler // v1.6.2.4 - For applying pending updates after render
     );
 
     this.syncCoordinator = new SyncCoordinator(

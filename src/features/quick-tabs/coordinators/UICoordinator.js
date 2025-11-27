@@ -22,13 +22,24 @@ export class UICoordinator {
    * @param {MinimizedManager} minimizedManager - Minimized manager instance
    * @param {PanelManager} panelManager - Panel manager instance
    * @param {EventEmitter} eventBus - Internal event bus
+   * @param {UpdateHandler} updateHandler - Update handler for pending updates (optional)
    */
-  constructor(stateManager, minimizedManager, panelManager, eventBus) {
+  constructor(stateManager, minimizedManager, panelManager, eventBus, updateHandler = null) {
     this.stateManager = stateManager;
     this.minimizedManager = minimizedManager;
     this.panelManager = panelManager;
     this.eventBus = eventBus;
+    this.updateHandler = updateHandler; // v1.6.2.4 - For applying pending updates after render
     this.renderedTabs = new Map(); // id -> QuickTabWindow
+  }
+
+  /**
+   * Set the update handler (alternative to constructor injection)
+   * v1.6.2.4 - BUG FIX Issues 2 & 6: Allow setting updateHandler after construction
+   * @param {UpdateHandler} updateHandler - Update handler instance
+   */
+  setUpdateHandler(updateHandler) {
+    this.updateHandler = updateHandler;
   }
 
   /**
@@ -66,6 +77,7 @@ export class UICoordinator {
    * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container check to enable global visibility
    *            Quick Tabs are now visible across ALL tabs regardless of Firefox Container.
    *            This aligns with Issue #47 requirements for global visibility.
+   * v1.6.2.4 - BUG FIX Issues 2 & 6: Apply pending updates after creation
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Rendered tab window
@@ -88,8 +100,33 @@ export class UICoordinator {
     // Store in map
     this.renderedTabs.set(quickTab.id, tabWindow);
 
+    // v1.6.2.4 - BUG FIX Issues 2 & 6: Apply any pending position/size updates
+    // Updates may have arrived via BroadcastChannel before storage.onChanged created the tab
+    this._applyPendingUpdatesForTab(quickTab.id);
+
     console.log('[UICoordinator] Tab rendered:', quickTab.id);
     return tabWindow;
+  }
+
+  /**
+   * Apply pending updates for a newly rendered Quick Tab
+   * v1.6.2.4 - BUG FIX Issues 2 & 6: Called after render to apply queued updates
+   * 
+   * @private
+   * @param {string} quickTabId - Quick Tab ID
+   */
+  _applyPendingUpdatesForTab(quickTabId) {
+    // Early return if no updateHandler
+    if (!this.updateHandler) {
+      return;
+    }
+
+    // Apply pending updates if they exist
+    // hasPendingUpdates() is a standard method on UpdateHandler
+    if (this.updateHandler.hasPendingUpdates(quickTabId)) {
+      console.log('[UICoordinator] Applying pending updates for newly rendered tab:', quickTabId);
+      this.updateHandler.applyPendingUpdates(quickTabId);
+    }
   }
 
   /**

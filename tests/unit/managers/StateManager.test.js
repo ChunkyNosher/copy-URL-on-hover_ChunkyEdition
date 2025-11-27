@@ -358,7 +358,9 @@ describe('StateManager', () => {
       expect(listener).toHaveBeenCalledWith({ count: 1 });
     });
 
-    test('should clear existing state before hydrating', () => {
+    test('should NOT clear existing state when hydrating (additive by default, v1.6.2.4)', () => {
+      // v1.6.2.4 - Hydration is now additive by default (skipDeletions=true)
+      // This prevents "ghost" Quick Tab syndrome (Issues 1 & 5)
       const qt1 = QuickTab.create({
         id: 'qt-1',
         url: 'https://example.com',
@@ -376,7 +378,35 @@ describe('StateManager', () => {
         size: { width: 500, height: 400 }
       });
 
+      // Default hydration is additive - should add qt2 without removing qt1
       manager.hydrate([qt2]);
+
+      expect(manager.count()).toBe(2);
+      expect(manager.has('qt-1')).toBe(true); // Still exists (not deleted)
+      expect(manager.has('qt-2')).toBe(true); // Also exists (added)
+    });
+
+    test('should clear existing state when hydrating with skipDeletions=false', () => {
+      // Explicit skipDeletions=false restores old replacive behavior
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      manager.add(qt1);
+      expect(manager.count()).toBe(1);
+
+      const qt2 = QuickTab.create({
+        id: 'qt-2',
+        url: 'https://test.com',
+        position: { left: 200, top: 200 },
+        size: { width: 500, height: 400 }
+      });
+
+      // Explicit skipDeletions=false enables deletion of missing Quick Tabs
+      manager.hydrate([qt2], { skipDeletions: false });
 
       expect(manager.count()).toBe(1);
       expect(manager.has('qt-1')).toBe(false);
