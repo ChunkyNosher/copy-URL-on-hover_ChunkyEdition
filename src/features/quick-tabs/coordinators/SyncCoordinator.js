@@ -151,7 +151,10 @@ export class SyncCoordinator {
       // Sync state from storage
       // This will trigger state:added, state:updated, state:deleted events
       // v1.6.2.x - ISSUE #51 FIX: Enable change detection for position/size/zIndex sync
-      this.stateManager.hydrate(quickTabs, { detectChanges: true });
+      // v1.6.2.5 - ISSUE #1,4,5 FIX: Pass skipDeletions: false to trust storage as single source of truth
+      //            When storage.onChanged fires, storage is authoritative. If a Quick Tab is not in
+      //            storage, it was deleted in another tab and should be deleted here too.
+      this.stateManager.hydrate(quickTabs, { detectChanges: true, skipDeletions: false });
       
       console.log('[SyncCoordinator] ✓ State hydration complete', { context, tabUrl });
     }
@@ -296,29 +299,28 @@ export class SyncCoordinator {
   /**
    * Handle tab becoming visible - refresh state from storage
    * v1.6.2 - MIGRATION: Only uses storage, no broadcast replay
+   * v1.6.2.5 - ISSUE #6 FIX: Trust storage unconditionally when tab becomes visible.
+   *            Skip merge logic - when tab was hidden, it missed storage.onChanged events.
+   *            Storage is more up-to-date than stale in-memory state.
    */
   async handleTabVisible() {
-    console.log('[SyncCoordinator] Tab became visible - refreshing state from storage');
+    console.log('[SyncCoordinator] Tab became visible - refreshing state from storage (trusting storage unconditionally)');
 
     try {
-      // Get current in-memory state
-      const currentState = this.stateManager.getAll();
-
-      // Load from storage (all containers globally)
+      // Load from storage (all containers globally) - this is the ground truth
       const storageState = await this.storageManager.loadAll();
 
-      console.log(`[SyncCoordinator] Loaded ${storageState.length} Quick Tabs globally from storage`);
+      console.log(`[SyncCoordinator] Loaded ${storageState.length} Quick Tabs from storage (skipping merge, trusting storage)`);
 
-      // Merge storage state with in-memory state using timestamp-based conflict resolution
-      const mergedState = this._mergeQuickTabStates(currentState, storageState);
-
-      // Hydrate with merged state
-      this.stateManager.hydrate(mergedState);
+      // v1.6.2.5 - ISSUE #6 FIX: Skip merge logic entirely, trust storage unconditionally
+      // Pass skipDeletions: false to delete anything not in storage
+      // Keep detectChanges: true for UI sync
+      this.stateManager.hydrate(storageState, { detectChanges: true, skipDeletions: false });
 
       // Notify UI coordinator to re-render
-      this.eventBus.emit('state:refreshed', { quickTabs: mergedState });
+      this.eventBus.emit('state:refreshed', { quickTabs: storageState });
 
-      console.log(`[SyncCoordinator] Refreshed with ${mergedState.length} Quick Tabs (${currentState.length} in-memory, ${storageState.length} from storage)`);
+      console.log(`[SyncCoordinator] Refreshed with ${storageState.length} Quick Tabs from storage (merge skipped)`);
     } catch (err) {
       console.error('[SyncCoordinator] Error refreshing state on tab visible:', err);
     }

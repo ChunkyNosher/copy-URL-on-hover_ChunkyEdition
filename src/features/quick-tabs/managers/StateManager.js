@@ -265,13 +265,24 @@ export class StateManager {
    * v1.6.2.4 - BUG FIX Issues 1 & 5: Made hydration additive by default (skipDeletions=true)
    *            Quick Tabs are only deleted on explicit close events, NOT during sync.
    *            This fixes "ghost" Quick Tab syndrome and old Quick Tab deletion during hydration.
+   * v1.6.2.5 - ISSUE #1,4,5,6 FIX: Clarified skipDeletions usage:
+   *            - skipDeletions: false for: storage.onChanged events, tab visibility refresh, CLOSE_ALL
+   *              (Trust storage as the single source of truth)
+   *            - skipDeletions: true for: initial page load, BroadcastChannel message replay
+   *              (Preserve local changes that may not be synced yet)
    * 
    * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
    * @param {Object} options - Hydration options
    * @param {boolean} [options.detectChanges=false] - Whether to detect and emit position/size/zIndex changes
    * @param {boolean} [options.skipDeletions=true] - Whether to skip deletion detection during hydration.
    *        When true (default), hydration is additive - only adds/updates, never deletes.
-   *        Set to false only for explicit "replace all" operations like CLOSE_ALL.
+   *        Set to false for:
+   *          - storage.onChanged events (trust storage as source of truth)
+   *          - Tab visibility refresh (storage is more up-to-date than stale memory)
+   *          - Explicit "replace all" operations like CLOSE_ALL
+   *        Keep true for:
+   *          - Initial page load hydration from cache (preserve local changes)
+   *          - BroadcastChannel message replay (additive sync)
    */
   hydrate(quickTabs, options = {}) {
     if (!Array.isArray(quickTabs)) {
@@ -308,6 +319,7 @@ export class StateManager {
 
     this.eventBus?.emit('state:hydrated', { count: quickTabs.length });
     
+    // v1.6.2.5 - ISSUE #7 FIX: Add detailed logging of what changes were detected
     console.log('[StateManager] ✓ Hydrate complete', {
       context: context.type,
       tabUrl: context.url,
@@ -316,6 +328,12 @@ export class StateManager {
       deleted: deletedCount,
       skippedDeletions: skipDeletions,
       changesDetected: result.changes.length,
+      changeDetails: result.changes.map(c => ({
+        id: c.quickTab.id,
+        positionChanged: c.changes.position,
+        sizeChanged: c.changes.size,
+        zIndexChanged: c.changes.zIndex
+      })),
       totalNow: this.quickTabs.size
     });
   }
