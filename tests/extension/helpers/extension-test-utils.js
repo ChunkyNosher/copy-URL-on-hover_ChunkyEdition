@@ -461,12 +461,12 @@ export class ExtensionTestHelper {
   }
 
   /**
-   * Wait for BroadcastChannel message propagation
-   * Uses exponential backoff for reliability
+   * @deprecated v1.6.2 - BroadcastChannel removed, replaced by storage.onChanged
+   * Wait for storage synchronization (kept for backwards compatibility)
    * @param {number} timeout - Max wait time (default: 3000)
    * @returns {Promise<void>}
    */
-  async waitForBroadcastSync(timeout = 3000) {
+  async _waitForStorageSync(timeout = 3000) {
     let delay = 50;
     const maxDelay = 500;
     const endTime = Date.now() + timeout;

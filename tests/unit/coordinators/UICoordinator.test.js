@@ -465,58 +465,6 @@ describe('UICoordinator', () => {
 
       expect(spy).toHaveBeenCalledWith('qt-123');
     });
-
-    test('should listen to state:quicktab:changed events and update rendered tab', () => {
-      uiCoordinator.setupStateListeners();
-
-      // First render a tab so it's in renderedTabs
-      const quickTab = QuickTab.create({
-        id: 'qt-123',
-        url: 'https://example.com',
-        container: 'firefox-default'
-      });
-      uiCoordinator.render(quickTab);
-
-      const spy = jest.spyOn(uiCoordinator, 'update');
-
-      // Create updated version with position change
-      const updatedTab = QuickTab.create({
-        id: 'qt-123',
-        url: 'https://example.com',
-        left: 200,
-        top: 300,
-        container: 'firefox-default'
-      });
-
-      // Emit the state:quicktab:changed event
-      mockEventBus.emit('state:quicktab:changed', {
-        quickTab: updatedTab,
-        changes: { position: true, size: false, zIndex: false }
-      });
-
-      expect(spy).toHaveBeenCalledWith(updatedTab);
-    });
-
-    test('should NOT update non-rendered tab on state:quicktab:changed', () => {
-      uiCoordinator.setupStateListeners();
-      const spy = jest.spyOn(uiCoordinator, 'update');
-
-      // Don't render the tab first - it won't be in renderedTabs
-
-      const quickTab = QuickTab.create({
-        id: 'qt-nonexistent',
-        url: 'https://example.com',
-        container: 'firefox-default'
-      });
-
-      // Emit the state:quicktab:changed event for non-rendered tab
-      mockEventBus.emit('state:quicktab:changed', {
-        quickTab,
-        changes: { position: true, size: false, zIndex: false }
-      });
-
-      expect(spy).not.toHaveBeenCalled();
-    });
   });
 
   describe('Integration', () => {

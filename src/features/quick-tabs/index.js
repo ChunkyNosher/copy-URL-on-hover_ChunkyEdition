@@ -3,21 +3,16 @@
  * Main entrypoint for Quick Tabs functionality
  *
  * v1.6.0 - PHASE 2.2: Facade pattern implementation
- * Reduces complexity from 1453 lines to ~400 lines by delegating to extracted components
+ * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  *
  * Architecture:
- * - Facade orchestrates 3 managers, 4 handlers, 2 coordinators
+ * - Facade orchestrates managers, handlers, and coordinators
  * - Maintains backward compatibility with legacy API
  * - Delegates all business logic to specialized components
- * 
- * v1.6.2 - MIGRATION: Removed BroadcastManager, uses storage.onChanged for cross-tab sync
- * v1.6.2.1 - Added BroadcastSync for real-time drag/resize sync
- * See: docs/implementation-summaries/storage-local-migration.md
  */
 
 import { EventEmitter } from 'eventemitter3';
 
-import { SyncCoordinator } from './coordinators/SyncCoordinator.js';
 import { UICoordinator } from './coordinators/UICoordinator.js';
 import { MemoryGuard } from './guards/MemoryGuard.js';
 import { CreateHandler } from './handlers/CreateHandler.js';
@@ -26,15 +21,13 @@ import { UpdateHandler } from './handlers/UpdateHandler.js';
 import { VisibilityHandler } from './handlers/VisibilityHandler.js';
 import { EventManager } from './managers/EventManager.js';
 import { StateManager } from './managers/StateManager.js';
-import { StorageManager } from './managers/StorageManager.js';
 import { MinimizedManager } from './minimized-manager.js';
 import { PanelManager } from './panel.js';
 import { CONSTANTS } from '../../core/config.js';
 
 /**
  * QuickTabsManager - Facade for Quick Tab management
- * v1.6.0 - Simplified to orchestration layer, delegates to specialized components
- * v1.6.2 - Removed BroadcastManager, uses storage.onChanged for cross-tab sync
+ * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync or storage persistence)
  */
 class QuickTabsManager {
   constructor(options = {}) {
@@ -44,13 +37,11 @@ class QuickTabsManager {
     this.initialized = false;
     this.cookieStoreId = null;
     this.currentTabId = null;
-    this.pendingSaveIds = new Set(); // For saveId tracking (backward compat)
 
-    // Internal event bus for component communication (NEW in v1.6.0)
+    // Internal event bus for component communication
     this.internalEventBus = new EventEmitter();
 
     // Managers (initialized in init())
-    this.storage = null;
     this.state = null;
     this.events = null;
 
@@ -62,7 +53,6 @@ class QuickTabsManager {
 
     // Coordinators (initialized in init())
     this.uiCoordinator = null;
-    this.syncCoordinator = null;
 
     // Legacy UI managers (KEEP - used by other modules)
     this.minimizedManager = new MinimizedManager();
@@ -72,7 +62,7 @@ class QuickTabsManager {
     this.eventBus = null; // External event bus from content.js
     this.Events = null; // Event constants
     
-    // v1.6.1.2 - Dependency injection for testing
+    // Dependency injection for testing
     this.windowFactory = options.windowFactory || null;
 
     // MemoryGuard for emergency shutdown
@@ -81,8 +71,7 @@ class QuickTabsManager {
 
   /**
    * Initialize the Quick Tabs manager
-   * v1.6.0 - Refactored to wire together extracted components
-   * v1.6.0.3 - Added comprehensive error logging to debug initialization failures
+   * v1.6.3 - Simplified (no storage/sync components)
    *
    * @param {EventEmitter} eventBus - External event bus from content.js
    * @param {Object} Events - Event constants
@@ -104,7 +93,7 @@ class QuickTabsManager {
       await this._initStep4_Panel();
       this._initStep5_Coordinators();
       await this._initStep6_Setup();
-      await this._initStep7_Hydrate();
+      this._initStep7_Log();
       this._initStep8_Expose();
 
       this.initialized = true;
@@ -189,29 +178,21 @@ class QuickTabsManager {
   }
 
   /**
-   * STEP 7: Hydrate state from storage
+   * STEP 7: Log initialization (no hydration in v1.6.3)
    * @private
    */
-  async _initStep7_Hydrate() {
-    console.log('[QuickTabsManager] STEP 7: Hydrating state...');
-    await this._hydrateState();
-    console.log('[QuickTabsManager] STEP 7 Complete');
+  _initStep7_Log() {
+    console.log('[QuickTabsManager] STEP 7: State initialized empty (no persistence in v1.6.3)');
   }
 
   /**
    * STEP 8: Expose manager globally
-   * v1.6.2.4 - FIX Issue #4: Expose as both window.quickTabsManager AND window.__quickTabsManager
-   *   - window.quickTabsManager is used by QuickTabWindow for solo/mute tab ID access
-   *   - window.__quickTabsManager is used for debugging/inspection
    * @private
    */
   _initStep8_Expose() {
     console.log('[QuickTabsManager] STEP 8: Exposing manager globally...');
     if (typeof window !== 'undefined') {
-      // v1.6.2.4 - CRITICAL: Expose as window.quickTabsManager for solo/mute functionality
-      // QuickTabWindow.js relies on window.quickTabsManager.currentTabId for solo/mute buttons
       window.quickTabsManager = this;
-      // Keep legacy exposure for debugging purposes
       window.__quickTabsManager = this;
       console.log('[QuickTabsManager] Manager exposed globally as window.quickTabsManager');
       console.log('[QuickTabsManager] Current tab ID available:', this.currentTabId);
@@ -221,13 +202,11 @@ class QuickTabsManager {
 
   /**
    * Initialize manager components
-   * v1.6.2 - MIGRATION: Removed BroadcastManager
-   * v1.6.2.x - ISSUE: Pass currentContainer to StateManager for container filtering
+   * v1.6.3 - Removed StorageManager (no persistence)
    * @private
    */
   _initializeManagers() {
-    this.storage = new StorageManager(this.internalEventBus, this.cookieStoreId);
-    this.state = new StateManager(this.internalEventBus, this.currentTabId, this.cookieStoreId);
+    this.state = new StateManager(this.internalEventBus, this.currentTabId);
     this.events = new EventManager(this.internalEventBus, this.tabs);
 
     // Initialize MemoryGuard for emergency shutdown
@@ -255,12 +234,6 @@ class QuickTabsManager {
     console.error('[QuickTabsManager] ⚠️ EMERGENCY SHUTDOWN ⚠️', { reason, memoryMB });
     
     try {
-      // Clear any pending storage operations
-      if (this.storage) {
-        // Force circuit breaker open
-        this.storage.circuitState = 'OPEN';
-      }
-      
       // Emit event for external handlers
       this.eventBus?.emit('quick-tabs:emergency-shutdown', {
         reason,
@@ -274,8 +247,7 @@ class QuickTabsManager {
 
   /**
    * Initialize handler components
-   * v1.6.2 - MIGRATION: Removed BroadcastManager from handlers
-   * v1.6.2.1 - Added cookieStoreId and currentTabId to UpdateHandler for BroadcastSync
+   * v1.6.3 - Simplified handlers (no storage/sync)
    * @private
    */
   _initializeHandlers() {
@@ -291,23 +263,14 @@ class QuickTabsManager {
 
     this.updateHandler = new UpdateHandler(
       this.tabs,
-      this.storage,
-      this.internalEventBus,
-      this.generateSaveId.bind(this),
-      this.releasePendingSave.bind(this),
-      this.cookieStoreId,
-      this.currentTabId
+      this.internalEventBus
     );
 
     this.visibilityHandler = new VisibilityHandler({
       quickTabsMap: this.tabs,
-      storageManager: this.storage,
       minimizedManager: this.minimizedManager,
       eventBus: this.internalEventBus,
       currentZIndex: this.currentZIndex,
-      generateSaveId: this.generateSaveId.bind(this),
-      trackPendingSave: this.trackPendingSave.bind(this),
-      releasePendingSave: this.releasePendingSave.bind(this),
       currentTabId: this.currentTabId,
       Events: this.Events
     });
@@ -317,8 +280,6 @@ class QuickTabsManager {
       this.minimizedManager,
       this.eventBus,
       this.currentZIndex,
-      this.generateSaveId.bind(this),
-      this.releasePendingSave.bind(this),
       this.Events,
       CONSTANTS.QUICK_TAB_BASE_Z_INDEX
     );
@@ -326,8 +287,7 @@ class QuickTabsManager {
 
   /**
    * Initialize coordinator components
-   * v1.6.2 - MIGRATION: Removed BroadcastManager from SyncCoordinator
-   * v1.6.2.4 - BUG FIX Issues 2 & 6: Pass updateHandler to UICoordinator for pending updates
+   * v1.6.3 - Removed SyncCoordinator
    * @private
    */
   _initializeCoordinators() {
@@ -335,72 +295,19 @@ class QuickTabsManager {
       this.state,
       this.minimizedManager,
       this.panelManager,
-      this.internalEventBus,
-      this.updateHandler // v1.6.2.4 - For applying pending updates after render
-    );
-
-    this.syncCoordinator = new SyncCoordinator(
-      this.state,
-      this.storage,
-      {
-        create: this.createHandler,
-        update: this.updateHandler,
-        visibility: this.visibilityHandler,
-        destroy: this.destroyHandler
-      },
       this.internalEventBus
     );
   }
 
   /**
    * Setup component listeners and event flows
-   * v1.6.2 - MIGRATION: Removed BroadcastManager setup
-   * v1.6.2.1 - ISSUE #35 FIX: Added context detection logging
-   * v1.6.2.2 - ISSUE #35 FIX: Added EventBus instance verification across components
+   * v1.6.3 - Simplified (no storage/sync setup)
    * @private
    */
   async _setupComponents() {
-    // Issue #35 Fix: Verify we're in content script context
-    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
-    const tabUrl = typeof window !== 'undefined' ? window.location?.href : 'N/A';
+    console.log('[QuickTabsManager] _setupComponents starting...');
     
-    console.log('[QuickTabsManager] _setupComponents starting...', {
-      context,
-      tabUrl: tabUrl?.substring(0, 50),
-      hasStorageManager: !!this.storage,
-      hasSyncCoordinator: !!this.syncCoordinator,
-      hasInternalEventBus: !!this.internalEventBus,
-      timestamp: Date.now()
-    });
-    
-    // Issue #35 Critical Fix: Verify all components share the same EventBus instance
-    const storageEventBus = this.storage?.eventBus;
-    const syncEventBus = this.syncCoordinator?.eventBus;
-    const storageMatchesInternal = storageEventBus === this.internalEventBus;
-    const syncMatchesInternal = syncEventBus === this.internalEventBus;
-    const allEventBusesMatch = storageMatchesInternal && syncMatchesInternal;
-    
-    console.log('[QuickTabsManager] EventBus instance verification:', {
-      internalEventBusId: this.internalEventBus?.constructor?.name,
-      storageEventBusMatch: storageMatchesInternal,
-      syncEventBusMatch: syncMatchesInternal,
-      allMatch: allEventBusesMatch
-    });
-    
-    if (!allEventBusesMatch) {
-      console.error('[QuickTabsManager] ❌ CRITICAL: EventBus instances DO NOT MATCH!', {
-        hasInternalEventBus: !!this.internalEventBus,
-        hasStorageEventBus: !!storageEventBus,
-        hasSyncEventBus: !!syncEventBus,
-        storageMatch: storageMatchesInternal,
-        syncMatch: syncMatchesInternal
-      });
-    }
-    
-    // CRITICAL: This MUST call setupStorageListeners in content script context
-    this.storage.setupStorageListeners();
     this.events.setupEmergencySaveHandlers();
-    this.syncCoordinator.setupListeners();
     await this.uiCoordinator.init();
 
     // Start memory monitoring
@@ -408,71 +315,15 @@ class QuickTabsManager {
       this.memoryGuard.startMonitoring();
       console.log('[QuickTabsManager] MemoryGuard monitoring started');
     }
-
-    // v1.6.2.1 - Register cleanup on window beforeunload
-    this._setupCleanupHandlers();
     
-    // Issue #35 Fix: Log listener counts after setup to verify event flow
-    const storageChangedListeners = this.internalEventBus?.listenerCount?.('storage:changed') ?? 'unknown';
-    const stateAddedListeners = this.internalEventBus?.listenerCount?.('state:added') ?? 'unknown';
-    
-    console.log('[QuickTabsManager] ✓ _setupComponents complete', { 
-      context,
-      storageChangedListeners,
-      stateAddedListeners
-    });
-  }
-
-  /**
-   * Setup cleanup handlers for beforeunload
-   * v1.6.2.1 - Ensures BroadcastSync is properly closed on page unload
-   * @private
-   */
-  _setupCleanupHandlers() {
-    if (typeof window !== 'undefined') {
-      this._beforeUnloadHandler = () => {
-        this.cleanup();
-      };
-      window.addEventListener('beforeunload', this._beforeUnloadHandler);
-      console.log('[QuickTabsManager] Cleanup handlers registered');
-    }
-  }
-
-  /**
-   * Cleanup all resources
-   * v1.6.2.1 - Close BroadcastSync channels and cleanup handlers
-   */
-  cleanup() {
-    console.log('[QuickTabsManager] Cleanup starting...');
-
-    // Cleanup UpdateHandler (closes BroadcastSync)
-    if (this.updateHandler && typeof this.updateHandler.destroy === 'function') {
-      this.updateHandler.destroy();
-    }
-
-    // Stop memory guard monitoring
-    if (this.memoryGuard) {
-      this.memoryGuard.stopMonitoring();
-    }
-
-    // Remove beforeunload handler
-    if (typeof window !== 'undefined' && this._beforeUnloadHandler) {
-      window.removeEventListener('beforeunload', this._beforeUnloadHandler);
-      this._beforeUnloadHandler = null;
-    }
-
-    console.log('[QuickTabsManager] Cleanup complete');
+    console.log('[QuickTabsManager] ✓ _setupComponents complete');
   }
 
   /**
    * Detect Firefox container context
-   * v1.5.9.12 - Container integration
-   * v1.6.0.1 - Fixed to use message passing (browser.tabs not available in content scripts)
    */
   async detectContainerContext() {
     try {
-      // Content scripts cannot access browser.tabs API
-      // Must request container info from background script
       const response = await browser.runtime.sendMessage({
         action: 'GET_CONTAINER_CONTEXT'
       });
@@ -480,29 +331,27 @@ class QuickTabsManager {
       if (response && response.success && response.cookieStoreId) {
         this.cookieStoreId = response.cookieStoreId;
         console.log('[QuickTabsManager] Detected container:', this.cookieStoreId);
-        return true; // Success
+        return true;
       } else {
         console.error(
           '[QuickTabsManager] Failed to get container from background:',
           response?.error
         );
         this.cookieStoreId = 'firefox-default';
-        return false; // Failure
+        return false;
       }
     } catch (err) {
       console.error('[QuickTabsManager] Failed to detect container:', err);
       this.cookieStoreId = 'firefox-default';
-      return false; // Failure
+      return false;
     }
   }
 
   /**
    * Get current container context (backward compat)
-   * v1.6.0.1 - Fixed to use message passing instead of direct browser.tabs access
    */
   async getCurrentContainer() {
     try {
-      // Content scripts cannot access browser.tabs API
       const response = await browser.runtime.sendMessage({
         action: 'GET_CONTAINER_CONTEXT'
       });
@@ -519,7 +368,6 @@ class QuickTabsManager {
 
   /**
    * Detect current Firefox tab ID
-   * v1.5.9.13 - Solo/Mute functionality
    */
   async detectCurrentTabId() {
     try {
@@ -533,35 +381,6 @@ class QuickTabsManager {
     }
   }
 
-  /**
-   * Hydrate state from storage
-   * v1.6.2 - MIGRATION: Simplified - no broadcast replay needed
-   * v1.6.2.2 - ISSUE FIX: Removed container filtering for global visibility
-   * v1.6.2.3 - Bug #1 Fix: Use hydrateSilent to prevent automatic rendering on page reload
-   *            Quick Tabs are loaded into memory but NOT rendered until user action.
-   * @private
-   */
-  async _hydrateState() {
-    console.log('[QuickTabsManager] Hydrating state from storage (lazy load - no automatic rendering)...');
-    try {
-      // Load all Quick Tabs from storage
-      const allQuickTabs = await this.storage.loadAll();
-      
-      // v1.6.2.2 - No container filtering for global visibility
-      // All Quick Tabs are visible across tabs unless Solo/Mute rules apply
-      console.log(`[QuickTabsManager] Loaded ${allQuickTabs.length} Quick Tabs for global visibility`);
-      
-      // v1.6.2.3 - Bug #1 Fix: Use hydrateSilent to load into memory WITHOUT rendering
-      // Quick Tabs will only render when explicitly requested by user action
-      // (keyboard shortcut, context menu, or Quick Tab Manager panel)
-      this.state.hydrateSilent(allQuickTabs);
-      
-      console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs (lazy loaded, not rendered)`);
-    } catch (err) {
-      console.error('[QuickTabsManager] Failed to hydrate state:', err);
-    }
-  }
-
   // ============================================================================
   // PUBLIC API - Delegate to handlers and coordinators
   // ============================================================================
@@ -572,7 +391,6 @@ class QuickTabsManager {
    */
   createQuickTab(options) {
     console.log('[QuickTabsManager] createQuickTab called with:', options);
-    console.log('[QuickTabsManager] createHandler exists:', !!this.createHandler);
     
     // Add callbacks to options (required by QuickTabWindow)
     const optionsWithCallbacks = {
@@ -588,30 +406,18 @@ class QuickTabsManager {
       onMute: (tabId, mutedOnTabs) => this.handleMuteToggle(tabId, mutedOnTabs)
     };
 
-    console.log('[QuickTabsManager] Calling createHandler.create...');
     const result = this.createHandler.create(optionsWithCallbacks);
-    console.log('[QuickTabsManager] Result:', result);
-    console.log('[QuickTabsManager] Result type:', typeof result);
-    console.log('[QuickTabsManager] Result has tabWindow?:', result && 'tabWindow' in result);
     
     if (!result) {
       throw new Error('[QuickTabsManager] createHandler.create() returned undefined');
     }
     
-    if (!result.tabWindow) {
-      console.error('[QuickTabsManager] result.tabWindow is undefined!');
-      console.error('[QuickTabsManager] Full result object:', JSON.stringify(result, null, 2));
-    }
-    
     this.currentZIndex.value = result.newZIndex;
-    const returnValue = result.tabWindow;
-    console.log('[QuickTabsManager] Returning:', returnValue);
-    return returnValue;
+    return result.tabWindow;
   }
 
   /**
    * Handle Quick Tab destruction
-   * Delegates to DestroyHandler
    */
   handleDestroy(id) {
     return this.destroyHandler.handleDestroy(id);
@@ -619,7 +425,6 @@ class QuickTabsManager {
 
   /**
    * Handle Quick Tab minimize
-   * Delegates to VisibilityHandler
    */
   handleMinimize(id) {
     return this.visibilityHandler.handleMinimize(id);
@@ -627,7 +432,6 @@ class QuickTabsManager {
 
   /**
    * Handle Quick Tab focus
-   * Delegates to VisibilityHandler
    */
   handleFocus(id) {
     return this.visibilityHandler.handleFocus(id);
@@ -635,7 +439,6 @@ class QuickTabsManager {
 
   /**
    * Handle position change (during drag)
-   * Delegates to UpdateHandler
    */
   handlePositionChange(id, left, top) {
     return this.updateHandler.handlePositionChange(id, left, top);
@@ -643,7 +446,6 @@ class QuickTabsManager {
 
   /**
    * Handle position change end (drag complete)
-   * Delegates to UpdateHandler
    */
   handlePositionChangeEnd(id, left, top) {
     return this.updateHandler.handlePositionChangeEnd(id, left, top);
@@ -651,7 +453,6 @@ class QuickTabsManager {
 
   /**
    * Handle size change (during resize)
-   * Delegates to UpdateHandler
    */
   handleSizeChange(id, width, height) {
     return this.updateHandler.handleSizeChange(id, width, height);
@@ -659,7 +460,6 @@ class QuickTabsManager {
 
   /**
    * Handle size change end (resize complete)
-   * Delegates to UpdateHandler
    */
   handleSizeChangeEnd(id, width, height) {
     return this.updateHandler.handleSizeChangeEnd(id, width, height);
@@ -667,7 +467,6 @@ class QuickTabsManager {
 
   /**
    * Handle solo toggle
-   * Delegates to VisibilityHandler
    */
   handleSoloToggle(quickTabId, newSoloedTabs) {
     return this.visibilityHandler.handleSoloToggle(quickTabId, newSoloedTabs);
@@ -675,7 +474,6 @@ class QuickTabsManager {
 
   /**
    * Handle mute toggle
-   * Delegates to VisibilityHandler
    */
   handleMuteToggle(quickTabId, newMutedTabs) {
     return this.visibilityHandler.handleMuteToggle(quickTabId, newMutedTabs);
@@ -683,7 +481,6 @@ class QuickTabsManager {
 
   /**
    * Close Quick Tab by ID
-   * Delegates to DestroyHandler
    */
   closeById(id) {
     return this.destroyHandler.closeById(id);
@@ -691,7 +488,6 @@ class QuickTabsManager {
 
   /**
    * Close all Quick Tabs
-   * Delegates to DestroyHandler
    */
   closeAll() {
     return this.destroyHandler.closeAll();
@@ -699,7 +495,6 @@ class QuickTabsManager {
 
   /**
    * Restore Quick Tab from minimized state
-   * Delegates to VisibilityHandler
    */
   restoreQuickTab(id) {
     return this.visibilityHandler.restoreQuickTab(id);
@@ -707,7 +502,6 @@ class QuickTabsManager {
 
   /**
    * Minimize Quick Tab by ID (backward compat)
-   * Delegates to VisibilityHandler
    */
   minimizeById(id) {
     return this.handleMinimize(id);
@@ -715,7 +509,6 @@ class QuickTabsManager {
 
   /**
    * Restore Quick Tab by ID (backward compat)
-   * Delegates to VisibilityHandler
    */
   restoreById(id) {
     return this.visibilityHandler.restoreById(id);
@@ -743,7 +536,7 @@ class QuickTabsManager {
   }
 
   // ============================================================================
-  // UTILITY METHODS (KEEP - core functionality)
+  // UTILITY METHODS
   // ============================================================================
 
   /**
@@ -753,35 +546,12 @@ class QuickTabsManager {
     return `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  /**
-   * Generate unique save ID for transaction tracking
-   */
-  generateSaveId() {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * Track pending save to prevent race conditions
-   */
-  trackPendingSave(saveId) {
-    this.pendingSaveIds.add(saveId);
-    console.log('[QuickTabsManager] Tracking pending save:', saveId);
-  }
-
-  /**
-   * Release pending save
-   */
-  releasePendingSave(saveId) {
-    this.pendingSaveIds.delete(saveId);
-    console.log('[QuickTabsManager] Released pending save:', saveId);
-  }
-
   // ============================================================================
-  // LEGACY METHODS (kept for backward compatibility, delegate to new components)
+  // LEGACY METHODS (kept for backward compatibility)
   // ============================================================================
 
   /**
-   * Update Quick Tab position (legacy - backward compat)
+   * Update Quick Tab position (legacy)
    * @deprecated Use handlePositionChange instead
    */
   updateQuickTabPosition(id, left, top) {
@@ -789,7 +559,7 @@ class QuickTabsManager {
   }
 
   /**
-   * Update Quick Tab size (legacy - backward compat)
+   * Update Quick Tab size (legacy)
    * @deprecated Use handleSizeChange instead
    */
   updateQuickTabSize(id, width, height) {
@@ -805,26 +575,19 @@ let quickTabsManagerInstance = null;
 
 /**
  * Initialize Quick Tabs feature module
- * v1.6.0 - Facade pattern, delegates to extracted components
- * v1.6.1.2 - Added options parameter for dependency injection (testing support)
- * v1.6.1.3 - Fixed singleton pattern to support testing with different factories
  *
  * @param {EventEmitter} eventBus - External event bus from content.js
  * @param {Object} Events - Event constants
  * @param {Object} options - Optional configuration (for testing)
- * @param {Function} options.windowFactory - Optional window factory for testing
- * @param {boolean} options.forceNew - Force creation of new instance (for testing)
  * @returns {QuickTabsManager} Initialized manager instance
  */
 export async function initQuickTabs(eventBus, Events, options = {}) {
   console.log('[QuickTabs] Initializing Quick Tabs feature module...');
   
-  // v1.6.1.3 - Allow creating new instance for testing (avoids singleton issues in tests)
   if (options.forceNew || !quickTabsManagerInstance) {
     console.log('[QuickTabs] Creating new QuickTabsManager instance with options:', options);
     quickTabsManagerInstance = new QuickTabsManager(options);
   } else if (options.windowFactory) {
-    // If reusing instance but windowFactory provided, update it BEFORE init
     console.log('[QuickTabs] Updating windowFactory on existing instance');
     quickTabsManagerInstance.windowFactory = options.windowFactory;
   }

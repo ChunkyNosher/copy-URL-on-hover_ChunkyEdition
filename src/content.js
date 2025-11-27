@@ -1052,55 +1052,6 @@ function _handleQuickTabsPanelToggle(sendResponse) {
   }
 }
 
-/**
- * v1.6.2 - Handle storage.onChanged sync from background script
- * This is the critical handler for cross-tab Quick Tabs synchronization.
- * 
- * Flow:
- * 1. Background script detects storage.onChanged (from another tab's write)
- * 2. Background broadcasts SYNC_QUICK_TAB_STATE_FROM_BACKGROUND to all tabs
- * 3. This handler receives the message and routes to SyncCoordinator
- * 4. SyncCoordinator calls StateManager.hydrate() which emits state events
- * 5. UICoordinator listens to state events and renders/updates/destroys UI
- *
- * @param {Object} message - Message with state property
- * @param {Function} sendResponse - Response callback from message listener
- */
-function _handleQuickTabStorageSync(message, sendResponse) {
-  console.log('[Content] Received SYNC_QUICK_TAB_STATE_FROM_BACKGROUND');
-
-  try {
-    // Guard: Quick Tabs manager not initialized
-    if (!quickTabsManager) {
-      console.warn('[Content] Quick Tabs manager not initialized, ignoring sync');
-      sendResponse({ success: false, error: 'Quick Tabs manager not initialized' });
-      return;
-    }
-
-    // Guard: SyncCoordinator not available
-    if (!quickTabsManager.syncCoordinator) {
-      console.warn('[Content] SyncCoordinator not available, ignoring sync');
-      sendResponse({ success: false, error: 'SyncCoordinator not available' });
-      return;
-    }
-
-    // Route to SyncCoordinator which will hydrate state and emit events
-    // The UICoordinator listens to state events and handles rendering
-    const state = message.state;
-    if (state) {
-      console.log('[Content] Routing storage sync to SyncCoordinator');
-      quickTabsManager.syncCoordinator.handleStorageChange(state);
-      sendResponse({ success: true });
-    } else {
-      console.warn('[Content] No state in sync message');
-      sendResponse({ success: false, error: 'No state in message' });
-    }
-  } catch (error) {
-    console.error('[Content] Error handling Quick Tab storage sync:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
 // ==================== LOG EXPORT MESSAGE HANDLER ====================
 // Listen for log export requests from popup
 if (typeof browser !== 'undefined' && browser.runtime) {
@@ -1178,16 +1129,6 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       return true; // Keep message channel open for async response
     }
     // ==================== END QUICK TABS PANEL TOGGLE HANDLER ====================
-
-    // ==================== QUICK TABS CROSS-TAB SYNC HANDLER ====================
-    // v1.6.2 - Handle storage.onChanged events broadcasted from background script
-    // This is the critical bridge for cross-tab Quick Tabs synchronization
-    // Background writes to storage → storage.onChanged fires → background broadcasts → content handles here
-    if (message.action === 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND') {
-      _handleQuickTabStorageSync(message, sendResponse);
-      return true;
-    }
-    // ==================== END QUICK TABS CROSS-TAB SYNC HANDLER ====================
 
     // ==================== TEST BRIDGE MESSAGE HANDLERS ====================
     // v1.6.0.13 - Added for autonomous testing with Playwright MCP
