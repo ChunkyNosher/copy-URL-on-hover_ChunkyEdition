@@ -1,6 +1,7 @@
 /**
  * QuickTab Domain Entity
  * v1.6.0 - Pure business logic, no browser APIs or UI dependencies
+ * v1.6.3 - Added slot property for global ID persistence
  *
  * Represents a Quick Tab with its state and behavior.
  * Extracted from QuickTabsManager to separate domain logic from infrastructure.
@@ -51,6 +52,7 @@ export class QuickTab {
   /**
    * Create a new QuickTab instance
    * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container parameter for global visibility
+   * v1.6.3 - Added slot property for global ID persistence
    * 
    * @param {Object} params - QuickTab parameters
    * @param {string} params.id - Unique identifier
@@ -62,6 +64,7 @@ export class QuickTab {
    * @param {string} [params.title] - Tab title
    * @param {number} [params.zIndex] - Z-index for stacking
    * @param {number} [params.lastModified] - Last modification timestamp (v1.6.1.5)
+   * @param {number} [params.slot] - Global slot number for consistent labeling (v1.6.3)
    */
   constructor({
     id,
@@ -72,7 +75,8 @@ export class QuickTab {
     createdAt = Date.now(),
     title = 'Quick Tab',
     zIndex = 1000,
-    lastModified = Date.now()
+    lastModified = Date.now(),
+    slot = null
   }) {
     // Validation
     _validateParams({ id, url, position, size });
@@ -90,6 +94,11 @@ export class QuickTab {
 
     // v1.6.1.5 - Track last modification time for conflict resolution
     this.lastModified = lastModified;
+
+    // v1.6.3 - Global slot number for consistent labeling across all tabs
+    // Slot is a positive integer (1, 2, 3, ...) that uniquely identifies this Quick Tab
+    // "Quick Tab 1" always refers to the Quick Tab with slot=1
+    this.slot = slot;
 
     // Visibility state (v1.5.9.13 - Solo/Mute feature)
     this.visibility = {
@@ -348,6 +357,7 @@ export class QuickTab {
    * Converts domain entity to plain object for storage
    * v1.6.1.5 - Include lastModified timestamp
    * v1.6.2.2 - Removed container field for global visibility
+   * v1.6.3 - Include slot for global ID persistence
    *
    * @returns {Object} - Plain object suitable for storage
    */
@@ -365,7 +375,8 @@ export class QuickTab {
       },
       zIndex: this.zIndex,
       createdAt: this.createdAt,
-      lastModified: this.lastModified // v1.6.1.5
+      lastModified: this.lastModified, // v1.6.1.5
+      slot: this.slot // v1.6.3 - Global slot number
     };
   }
 
@@ -386,6 +397,7 @@ export class QuickTab {
    * Normalize storage data with defaults
    * v1.6.1.5 - Extract to reduce complexity
    * v1.6.2.2 - Removed container field for global visibility
+   * v1.6.3 - Include slot for global ID persistence
    * 
    * @private
    * @param {Object} data - Raw storage data
@@ -393,24 +405,22 @@ export class QuickTab {
    */
   static _normalizeStorageData(data) {
     const now = Date.now();
-    const defaults = {
-      title: 'Quick Tab',
-      position: { left: 100, top: 100 },
-      size: { width: 800, height: 600 },
-      visibility: { minimized: false, soloedOnTabs: [], mutedOnTabs: [] },
-      zIndex: 1000
-    };
+    
+    // Extract timestamp values with fallbacks
+    const createdAt = data.createdAt ?? now;
+    const lastModified = data.lastModified ?? createdAt;
 
     return {
       id: data.id,
       url: data.url,
-      title: data.title ?? defaults.title,
-      position: data.position ?? defaults.position,
-      size: data.size ?? defaults.size,
-      visibility: data.visibility ?? defaults.visibility,
-      zIndex: data.zIndex ?? defaults.zIndex,
-      createdAt: data.createdAt ?? now,
-      lastModified: data.lastModified ?? data.createdAt ?? now
+      title: data.title ?? 'Quick Tab',
+      position: data.position ?? { left: 100, top: 100 },
+      size: data.size ?? { width: 800, height: 600 },
+      visibility: data.visibility ?? { minimized: false, soloedOnTabs: [], mutedOnTabs: [] },
+      zIndex: data.zIndex ?? 1000,
+      createdAt,
+      lastModified,
+      slot: data.slot ?? null
     };
   }
 
@@ -418,11 +428,13 @@ export class QuickTab {
    * Create QuickTab with defaults
    * Convenience factory method for creating new Quick Tabs
    * v1.6.2.2 - Removed container parameter for global visibility
+   * v1.6.3 - Added slot parameter for global ID persistence
    *
    * @param {Object} params - Partial parameters
+   * @param {number} [params.slot] - Global slot number (should be assigned by StateManager)
    * @returns {QuickTab} - QuickTab domain entity with defaults
    */
-  static create({ id, url, left = 100, top = 100, width = 800, height = 600, title }) {
+  static create({ id, url, left = 100, top = 100, width = 800, height = 600, title, slot = null }) {
     if (!id) {
       throw new Error('QuickTab.create requires id');
     }
@@ -442,7 +454,8 @@ export class QuickTab {
         mutedOnTabs: []
       },
       zIndex: 1000,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      slot
     });
   }
 }

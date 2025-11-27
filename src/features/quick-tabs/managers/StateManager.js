@@ -2,6 +2,7 @@
  * StateManager - Manages local in-memory Quick Tab state
  * Phase 2.1: Extracted from QuickTabsManager
  * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container filtering for global visibility
+ * v1.6.3 - Added global slot assignment for persistent Quick Tab labeling
  *
  * Responsibilities:
  * - Maintain Map of QuickTab instances
@@ -9,6 +10,7 @@
  * - Query Quick Tabs by ID or criteria
  * - Hydrate state from storage
  * - Track current tab ID for visibility filtering
+ * - Assign global slots to Quick Tabs (v1.6.3)
  *
  * Uses:
  * - QuickTab domain entities (not QuickTabWindow UI components)
@@ -37,12 +39,19 @@ export class StateManager {
   /**
    * Add Quick Tab to state
    * v1.6.1.5 - Apply pending updates after adding
+   * v1.6.3 - Assign global slot if not already assigned
    * 
    * @param {QuickTab} quickTab - QuickTab domain entity
    */
   add(quickTab) {
     if (!(quickTab instanceof QuickTab)) {
       throw new Error('StateManager.add() requires QuickTab instance');
+    }
+
+    // v1.6.3 - Assign global slot if not already assigned
+    if (quickTab.slot === null || quickTab.slot === undefined) {
+      quickTab.slot = this.assignGlobalSlot();
+      console.log(`[StateManager] Assigned slot ${quickTab.slot} to Quick Tab: ${quickTab.id}`);
     }
 
     this.quickTabs.set(quickTab.id, quickTab);
@@ -52,12 +61,13 @@ export class StateManager {
     
     this.eventBus?.emit('state:added', quickTab);
 
-    console.log(`[StateManager] Added Quick Tab: ${quickTab.id}`);
+    console.log(`[StateManager] Added Quick Tab: ${quickTab.id} (slot: ${quickTab.slot})`);
   }
 
   /**
    * Add Quick Tab to state WITHOUT emitting events (Bug #1 Fix - Lazy Rendering)
    * v1.6.2.3 - Added to support lazy rendering pattern
+   * v1.6.3 - Assign global slot if not already assigned
    * 
    * Use this when hydrating state from storage to prevent automatic rendering.
    * Quick Tabs added silently are stored in memory but not rendered until
@@ -68,6 +78,12 @@ export class StateManager {
   addSilent(quickTab) {
     if (!(quickTab instanceof QuickTab)) {
       throw new Error('StateManager.addSilent() requires QuickTab instance');
+    }
+
+    // v1.6.3 - Assign global slot if not already assigned
+    if (quickTab.slot === null || quickTab.slot === undefined) {
+      quickTab.slot = this.assignGlobalSlot();
+      console.log(`[StateManager] Assigned slot ${quickTab.slot} to Quick Tab (silent): ${quickTab.id}`);
     }
 
     this.quickTabs.set(quickTab.id, quickTab);
@@ -165,6 +181,81 @@ export class StateManager {
 
   // v1.6.2.2 - REMOVED: getByContainer() method
   // Container filtering removed for global visibility (Issue #35, #51, #47)
+
+  /**
+   * Get Quick Tab by slot number
+   * v1.6.3 - Added for global slot-based lookup
+   * 
+   * @param {number} slot - Slot number to find
+   * @returns {QuickTab|undefined} - Quick Tab with matching slot or undefined
+   */
+  getBySlot(slot) {
+    for (const qt of this.quickTabs.values()) {
+      if (qt.slot === slot) {
+        return qt;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Assign global slot to a new Quick Tab
+   * v1.6.3 - Global slot assignment for persistent labeling
+   * 
+   * Scans all existing Quick Tabs and returns the lowest available slot number.
+   * Slot numbers start at 1 and are never reused until the Quick Tab is deleted.
+   * "Quick Tab 1" always refers to the Quick Tab with slot=1.
+   * 
+   * @returns {number} - Next available slot number (1, 2, 3, ...)
+   */
+  assignGlobalSlot() {
+    const occupiedSlots = new Set();
+    
+    // Collect all occupied slots
+    for (const qt of this.quickTabs.values()) {
+      if (qt.slot !== null && qt.slot !== undefined) {
+        occupiedSlots.add(qt.slot);
+      }
+    }
+    
+    // Find first available slot (starting from 1)
+    let slot = 1;
+    while (occupiedSlots.has(slot)) {
+      slot++;
+    }
+    
+    console.log(`[StateManager] Assigned global slot: ${slot} (occupied: ${Array.from(occupiedSlots).sort((a, b) => a - b).join(', ')})`);
+    return slot;
+  }
+
+  /**
+   * Assign global slot from an array of Quick Tab data
+   * v1.6.3 - Static version for use when tabs array is known
+   * 
+   * This is useful when creating a Quick Tab before adding it to state,
+   * when we need to check existing slots from storage data.
+   * 
+   * @param {Array} tabs - Array of Quick Tab data (with slot property)
+   * @returns {number} - Next available slot number (1, 2, 3, ...)
+   */
+  static assignGlobalSlotFromTabs(tabs) {
+    const occupiedSlots = new Set();
+    
+    // Collect all occupied slots from tabs array
+    for (const tab of tabs) {
+      if (tab.slot !== null && tab.slot !== undefined) {
+        occupiedSlots.add(tab.slot);
+      }
+    }
+    
+    // Find first available slot (starting from 1)
+    let slot = 1;
+    while (occupiedSlots.has(slot)) {
+      slot++;
+    }
+    
+    return slot;
+  }
 
   /**
    * Hydrate state from array of QuickTab entities

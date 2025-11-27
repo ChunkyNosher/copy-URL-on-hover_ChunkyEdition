@@ -1,0 +1,8 @@
+{
+  "id": "bfcca905-1c4c-4f52-8681-7b8cd0818fe4",
+  "title": "Quick Tab slot for global ID",
+  "details": "v1.6.3 introduces a `slot` property to QuickTab domain entity for global ID persistence. The slot is a positive integer (1, 2, 3, ...) that uniquely identifies a Quick Tab across all browser tabs.\n\nKey implementation details:\n- `slot` property added to QuickTab constructor, serialize(), fromStorage(), and create() methods\n- StateManager.assignGlobalSlot() scans all existing slots and returns first available (reuses gaps)\n- StateManager.getBySlot(slot) for slot-based lookup\n- StateManager.add() and addSilent() auto-assign slots if not provided\n- SyncCoordinator._preserveSlot() ensures slot is preserved during cross-tab sync\n- Static method StateManager.assignGlobalSlotFromTabs(tabs) for pre-state assignment\n\nThis ensures \"Quick Tab 1\" always refers to the same Quick Tab ID across all browser tabs.",
+  "category": "quick-tabs-architecture",
+  "dateCreated": "2025-11-26T23:51:18.384Z",
+  "dateUpdated": "2025-11-26T23:51:18.384Z"
+}
