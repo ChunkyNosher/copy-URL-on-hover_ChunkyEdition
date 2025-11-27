@@ -1,0 +1,8 @@
+{
+  "id": "2c2ccb83-2e03-4909-b18f-cb53bf23c39f",
+  "title": "Quick Tab Sync skipDeletions Pattern",
+  "details": "When hydrating Quick Tabs state from storage.onChanged events or tab visibility refresh, ALWAYS pass `skipDeletions: false` to trust storage as the single source of truth. This ensures:\n1. Deleted Quick Tabs are properly removed across all tabs\n2. Storage and memory state stay synchronized\n3. Ghost Quick Tabs from old sessions are eliminated\n\nUse `skipDeletions: true` (default) only for:\n- Initial page load from cache (preserve local changes)\n- BroadcastChannel message replay (additive sync)\n\nFiles affected:\n- SyncCoordinator.handleStorageChange() - must use skipDeletions: false\n- SyncCoordinator.handleTabVisible() - must use skipDeletions: false",
+  "category": "architecture",
+  "dateCreated": "2025-11-27T04:28:25.940Z",
+  "dateUpdated": "2025-11-27T04:28:25.940Z"
+}
