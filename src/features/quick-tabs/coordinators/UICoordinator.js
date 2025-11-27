@@ -10,8 +10,7 @@
  * Complexity: cc ≤ 3 per method
  * 
  * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container isolation to enable global Quick Tab visibility
- *            Quick Tabs are now visible across ALL tabs regardless of Firefox Container.
- *            This aligns with Issue #47 requirements for global visibility.
+ * v1.6.3 - Removed cross-tab sync infrastructure (single-tab Quick Tabs only)
  */
 
 import { createQuickTabWindow } from '../window.js';
@@ -22,24 +21,13 @@ export class UICoordinator {
    * @param {MinimizedManager} minimizedManager - Minimized manager instance
    * @param {PanelManager} panelManager - Panel manager instance
    * @param {EventEmitter} eventBus - Internal event bus
-   * @param {UpdateHandler} updateHandler - Update handler for pending updates (optional)
    */
-  constructor(stateManager, minimizedManager, panelManager, eventBus, updateHandler = null) {
+  constructor(stateManager, minimizedManager, panelManager, eventBus) {
     this.stateManager = stateManager;
     this.minimizedManager = minimizedManager;
     this.panelManager = panelManager;
     this.eventBus = eventBus;
-    this.updateHandler = updateHandler; // v1.6.2.4 - For applying pending updates after render
     this.renderedTabs = new Map(); // id -> QuickTabWindow
-  }
-
-  /**
-   * Set the update handler (alternative to constructor injection)
-   * v1.6.2.4 - BUG FIX Issues 2 & 6: Allow setting updateHandler after construction
-   * @param {UpdateHandler} updateHandler - Update handler instance
-   */
-  setUpdateHandler(updateHandler) {
-    this.updateHandler = updateHandler;
   }
 
   /**
@@ -74,10 +62,8 @@ export class UICoordinator {
 
   /**
    * Render a single QuickTabWindow from QuickTab entity
-   * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container check to enable global visibility
-   *            Quick Tabs are now visible across ALL tabs regardless of Firefox Container.
-   *            This aligns with Issue #47 requirements for global visibility.
-   * v1.6.2.4 - BUG FIX Issues 2 & 6: Apply pending updates after creation
+   * v1.6.2.2 - Removed container check for global visibility
+   * v1.6.3 - Removed pending updates (no cross-tab sync)
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Rendered tab window
@@ -89,9 +75,6 @@ export class UICoordinator {
       return this.renderedTabs.get(quickTab.id);
     }
 
-    // v1.6.2.2 - Container check REMOVED for global visibility (Issue #35, #51, #47)
-    // Quick Tabs are now visible across ALL tabs regardless of Firefox Container
-
     console.log('[UICoordinator] Rendering tab:', quickTab.id);
 
     // Create QuickTabWindow from QuickTab entity
@@ -100,33 +83,8 @@ export class UICoordinator {
     // Store in map
     this.renderedTabs.set(quickTab.id, tabWindow);
 
-    // v1.6.2.4 - BUG FIX Issues 2 & 6: Apply any pending position/size updates
-    // Updates may have arrived via BroadcastChannel before storage.onChanged created the tab
-    this._applyPendingUpdatesForTab(quickTab.id);
-
     console.log('[UICoordinator] Tab rendered:', quickTab.id);
     return tabWindow;
-  }
-
-  /**
-   * Apply pending updates for a newly rendered Quick Tab
-   * v1.6.2.4 - BUG FIX Issues 2 & 6: Called after render to apply queued updates
-   * 
-   * @private
-   * @param {string} quickTabId - Quick Tab ID
-   */
-  _applyPendingUpdatesForTab(quickTabId) {
-    // Early return if no updateHandler
-    if (!this.updateHandler) {
-      return;
-    }
-
-    // Apply pending updates if they exist
-    // hasPendingUpdates() is a standard method on UpdateHandler
-    if (this.updateHandler.hasPendingUpdates(quickTabId)) {
-      console.log('[UICoordinator] Applying pending updates for newly rendered tab:', quickTabId);
-      this.updateHandler.applyPendingUpdates(quickTabId);
-    }
   }
 
   /**
@@ -180,79 +138,32 @@ export class UICoordinator {
 
   /**
    * Setup state event listeners
-   * v1.6.1 - CRITICAL FIX: Added state:refreshed listener to re-render when tab becomes visible
-   * v1.6.2.1 - ISSUE #35 FIX: Added context-aware logging for debugging cross-tab sync
-   * v1.6.2.x - ISSUE #51 FIX: Added state:quicktab:changed listener for position/size/zIndex sync
+   * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
    */
   setupStateListeners() {
-    const context = typeof window !== 'undefined' ? 'content-script' : 'background';
-    const tabUrl = typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A';
-    
-    console.log('[UICoordinator] Setting up state listeners', { context, tabUrl });
+    console.log('[UICoordinator] Setting up state listeners');
 
     // Listen to state changes and trigger UI updates
     this.eventBus.on('state:added', ({ quickTab }) => {
-      console.log('[UICoordinator] Received state:added event', {
-        context: typeof window !== 'undefined' ? 'content-script' : 'background',
-        tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
-        quickTabId: quickTab.id,
-        timestamp: Date.now()
-      });
+      console.log('[UICoordinator] Received state:added event', { quickTabId: quickTab.id });
       this.render(quickTab);
     });
 
     this.eventBus.on('state:updated', ({ quickTab }) => {
-      console.log('[UICoordinator] Received state:updated event', {
-        context: typeof window !== 'undefined' ? 'content-script' : 'background',
-        quickTabId: quickTab.id
-      });
+      console.log('[UICoordinator] Received state:updated event', { quickTabId: quickTab.id });
       this.update(quickTab);
     });
 
     this.eventBus.on('state:deleted', ({ id }) => {
-      console.log('[UICoordinator] Received state:deleted event', {
-        context: typeof window !== 'undefined' ? 'content-script' : 'background',
-        quickTabId: id
-      });
+      console.log('[UICoordinator] Received state:deleted event', { quickTabId: id });
       this.destroy(id);
     });
 
-    // v1.6.1 - CRITICAL FIX: Listen to state:refreshed (fired when tab becomes visible)
-    // This ensures UI is updated with latest positions/sizes when switching tabs
-    this.eventBus.on('state:refreshed', () => {
-      console.log('[UICoordinator] State refreshed - re-rendering all visible tabs', {
-        context: typeof window !== 'undefined' ? 'content-script' : 'background',
-        tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A'
-      });
-      this._refreshAllRenderedTabs();
-    });
-
-    // v1.6.2.x - ISSUE #51 FIX: Listen for position/size/zIndex changes from storage sync
-    // This event is emitted when another tab changes a Quick Tab's position, size, or zIndex
-    // and we need to update our already-rendered UI to reflect those changes
-    this.eventBus.on('state:quicktab:changed', ({ quickTab, changes }) => {
-      console.log('[UICoordinator] Received state:quicktab:changed event (external update)', {
-        context: typeof window !== 'undefined' ? 'content-script' : 'background',
-        quickTabId: quickTab.id,
-        changes,
-        timestamp: Date.now()
-      });
-      
-      // Only update if already rendered in this tab
-      if (this.renderedTabs.has(quickTab.id)) {
-        this.update(quickTab);
-      } else {
-        console.log('[UICoordinator] Tab not rendered, skipping external update:', quickTab.id);
-      }
-    });
-    
-    console.log('[UICoordinator] ✓ State listeners setup complete', { context });
+    console.log('[UICoordinator] ✓ State listeners setup complete');
   }
 
   /**
    * Refresh all rendered tabs with latest state
-   * v1.6.1 - CRITICAL FIX: Update UI for all rendered tabs when state is refreshed
-   * This is called when tab becomes visible to sync positions/sizes/visibility
    * @private
    */
   _refreshAllRenderedTabs() {
@@ -261,7 +172,7 @@ export class UICoordinator {
     const visibleIds = new Set(visibleTabs.map(qt => qt.id));
 
     // Destroy tabs that should no longer be visible
-    for (const [id, _tabWindow] of this.renderedTabs) {
+    for (const [id] of this.renderedTabs) {
       if (!visibleIds.has(id)) {
         console.log('[UICoordinator] Destroying no-longer-visible tab:', id);
         this.destroy(id);

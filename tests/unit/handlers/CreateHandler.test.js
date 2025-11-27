@@ -1,6 +1,6 @@
 /**
  * CreateHandler Unit Tests
- * Tests for Quick Tab creation logic extracted from QuickTabsManager
+ * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -26,14 +26,12 @@ describe('CreateHandler', () => {
     quickTabsMap = new Map();
     currentZIndex = { value: 10000 };
     cookieStoreId = 'firefox-default';
-    // v1.6.2 - BroadcastManager removed, cross-tab sync via storage.onChanged
     eventBus = new EventEmitter();
     Events = {
       QUICK_TAB_CREATED: 'QUICK_TAB_CREATED'
     };
     generateId = jest.fn(() => 'generated-id-123');
 
-    // v1.6.2 - CreateHandler constructor: (quickTabsMap, currentZIndex, cookieStoreId, eventBus, Events, generateId, windowFactory)
     handler = new CreateHandler(
       quickTabsMap,
       currentZIndex,
@@ -51,7 +49,6 @@ describe('CreateHandler', () => {
       expect(handler.quickTabsMap).toBe(quickTabsMap);
       expect(handler.currentZIndex).toBe(currentZIndex);
       expect(handler.cookieStoreId).toBe(cookieStoreId);
-      // v1.6.2 - broadcastManager removed
       expect(handler.eventBus).toBe(eventBus);
       expect(handler.Events).toBe(Events);
       expect(handler.generateId).toBe(generateId);
@@ -132,50 +129,6 @@ describe('CreateHandler', () => {
       expect(quickTabsMap.get('tab-1')).toBe(mockTabWindow);
     });
 
-    test('should save Quick Tab to storage via browser.runtime.sendMessage', async () => {
-      // Setup browser mock
-      global.browser = {
-        runtime: {
-          sendMessage: jest.fn().mockResolvedValue({})
-        }
-      };
-
-      const options = {
-        id: 'tab-1',
-        url: 'https://example.com',
-        left: 200,
-        top: 150,
-        width: 900,
-        height: 700,
-        title: 'Test Tab'
-      };
-      const mockTabWindow = { id: 'tab-1', render: jest.fn(), isRendered: () => true };
-      mockCreateQuickTabWindow.mockReturnValue(mockTabWindow);
-
-      handler.create(options);
-
-      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
-      // Wait for async _saveToStorage call
-      await new Promise(resolve => setTimeout(resolve, 10));
-
-      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-        action: 'CREATE_QUICK_TAB',
-        id: 'tab-1',
-        url: 'https://example.com',
-        left: 200,
-        top: 150,
-        width: 900,
-        height: 700,
-        title: 'Test Tab',
-        cookieStoreId: 'firefox-default',
-        minimized: false,
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      }));
-
-      delete global.browser;
-    });
-
     test('should emit QUICK_TAB_CREATED event', done => {
       const options = { id: 'tab-1', url: 'https://example.com' };
       const mockTabWindow = { id: 'tab-1', render: jest.fn(), isRendered: () => true };
@@ -243,40 +196,6 @@ describe('CreateHandler', () => {
           mutedOnTabs: []
         })
       );
-    });
-
-    test('should include solo/mute arrays in storage save', async () => {
-      // Setup browser mock
-      global.browser = {
-        runtime: {
-          sendMessage: jest.fn().mockResolvedValue({})
-        }
-      };
-
-      const options = {
-        id: 'tab-1',
-        url: 'https://example.com',
-        soloedOnTabs: [1, 2, 3],
-        mutedOnTabs: [4, 5, 6]
-      };
-      const mockTabWindow = { id: 'tab-1', render: jest.fn(), isRendered: () => true };
-      mockCreateQuickTabWindow.mockReturnValue(mockTabWindow);
-
-      handler.create(options);
-
-      // v1.6.2 - Cross-tab sync via storage.onChanged, not BroadcastManager
-      // Wait for async _saveToStorage call
-      await new Promise(resolve => setTimeout(resolve, 10));
-
-      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'CREATE_QUICK_TAB',
-          soloedOnTabs: [1, 2, 3],
-          mutedOnTabs: [4, 5, 6]
-        })
-      );
-
-      delete global.browser;
     });
 
     test('should create QuickTabWindow with all callbacks', () => {

@@ -1,19 +1,12 @@
 /**
  * @fileoverview Unit tests for DestroyHandler
- * v1.6.2 - MIGRATION: Removed BroadcastManager from tests
+ * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
  * @jest-environment jsdom
  */
 
 import { EventEmitter } from 'eventemitter3';
 
 import { DestroyHandler } from '@features/quick-tabs/handlers/DestroyHandler.js';
-
-// Mock browser API
-global.browser = {
-  runtime: {
-    sendMessage: jest.fn(() => Promise.resolve())
-  }
-};
 
 describe('DestroyHandler', () => {
   let destroyHandler;
@@ -22,8 +15,6 @@ describe('DestroyHandler', () => {
   let mockEventBus;
   let mockCurrentZIndex;
   let mockTab;
-  let mockGenerateSaveId;
-  let mockReleasePendingSave;
   let mockEvents;
   let mockBaseZIndex;
 
@@ -35,7 +26,6 @@ describe('DestroyHandler', () => {
     mockTab = {
       id: 'qt-123',
       url: 'https://example.com',
-      cookieStoreId: 'firefox-container-1',
       destroy: jest.fn()
     };
 
@@ -58,23 +48,17 @@ describe('DestroyHandler', () => {
     mockBaseZIndex = 10000;
     mockCurrentZIndex = { value: 10005 };
 
-    // Create mock utility functions
-    mockGenerateSaveId = jest.fn(() => '1234567890-abc123');
-    mockReleasePendingSave = jest.fn();
-
     // Mock Events object
     mockEvents = {
       QUICK_TAB_CLOSED: 'quick-tab:closed'
     };
 
-    // Create handler (v1.6.2 - no broadcastManager)
+    // Create handler
     destroyHandler = new DestroyHandler(
       mockQuickTabsMap,
       mockMinimizedManager,
       mockEventBus,
       mockCurrentZIndex,
-      mockGenerateSaveId,
-      mockReleasePendingSave,
       mockEvents,
       mockBaseZIndex
     );
@@ -101,32 +85,20 @@ describe('DestroyHandler', () => {
       expect(mockMinimizedManager.remove).toHaveBeenCalledWith('qt-123');
     });
 
-    test('should send message to background (triggers storage.onChanged in other tabs)', async () => {
-      await destroyHandler.handleDestroy('qt-123');
-
-      expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
-        action: 'CLOSE_QUICK_TAB',
-        id: 'qt-123',
-        url: 'https://example.com',
-        cookieStoreId: 'firefox-container-1',
-        saveId: '1234567890-abc123'
-      });
-    });
-
-    test('should emit destruction event', async () => {
+    test('should emit destruction event', () => {
       const eventSpy = jest.fn();
       mockEventBus.on('quick-tab:closed', eventSpy);
 
-      await destroyHandler.handleDestroy('qt-123');
+      destroyHandler.handleDestroy('qt-123');
 
       expect(eventSpy).toHaveBeenCalledWith({ id: 'qt-123' });
     });
 
-    test('should reset z-index when all tabs closed', async () => {
+    test('should reset z-index when all tabs closed', () => {
       mockQuickTabsMap.clear();
       mockQuickTabsMap.set('qt-123', mockTab);
 
-      await destroyHandler.handleDestroy('qt-123');
+      destroyHandler.handleDestroy('qt-123');
 
       expect(mockCurrentZIndex.value).toBe(mockBaseZIndex);
     });
@@ -144,49 +116,6 @@ describe('DestroyHandler', () => {
       expect(() => {
         destroyHandler.handleDestroy('qt-999');
       }).not.toThrow();
-    });
-
-    test('should use default cookieStoreId if tab has none', async () => {
-      mockTab.cookieStoreId = undefined;
-
-      await destroyHandler.handleDestroy('qt-123');
-
-      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cookieStoreId: 'firefox-default'
-        })
-      );
-    });
-
-    test('should handle null URL gracefully', async () => {
-      mockTab.url = undefined;
-
-      await destroyHandler.handleDestroy('qt-123');
-
-      expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: null
-        })
-      );
-    });
-
-    test('should release saveId on background error', async () => {
-      browser.runtime.sendMessage.mockRejectedValueOnce(new Error('Background error'));
-
-      await destroyHandler.handleDestroy('qt-123');
-
-      expect(mockReleasePendingSave).toHaveBeenCalledWith('1234567890-abc123');
-    });
-
-    test('should release saveId if browser API unavailable', async () => {
-      const originalBrowser = global.browser;
-      global.browser = undefined;
-
-      await destroyHandler.handleDestroy('qt-123');
-
-      expect(mockReleasePendingSave).toHaveBeenCalledWith('1234567890-abc123');
-
-      global.browser = originalBrowser;
     });
   });
 
@@ -261,16 +190,14 @@ describe('DestroyHandler', () => {
   });
 
   describe('Integration', () => {
-    test('should handle complete destroy flow', async () => {
+    test('should handle complete destroy flow', () => {
       const eventSpy = jest.fn();
       mockEventBus.on('quick-tab:closed', eventSpy);
 
-      await destroyHandler.handleDestroy('qt-123');
+      destroyHandler.handleDestroy('qt-123');
 
       expect(mockQuickTabsMap.has('qt-123')).toBe(false);
       expect(mockMinimizedManager.remove).toHaveBeenCalled();
-      // v1.6.2 - No broadcast, only storage via background
-      expect(browser.runtime.sendMessage).toHaveBeenCalled();
       expect(eventSpy).toHaveBeenCalled();
     });
 

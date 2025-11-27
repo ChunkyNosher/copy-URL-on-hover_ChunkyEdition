@@ -1,7 +1,7 @@
 /**
  * CreateHandler
  * Handles Quick Tab creation logic
- * v1.6.2 - MIGRATION: Removed BroadcastManager, uses storage.onChanged for cross-tab sync
+ * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  *
  * Extracted from QuickTabsManager to reduce complexity
  * Lines 903-992 from original index.js
@@ -11,15 +11,13 @@ import { createQuickTabWindow } from '../window.js';
 
 /**
  * CreateHandler - Responsible for creating new Quick Tabs
- * v1.6.2 - MIGRATION: Cross-tab sync now handled via storage.onChanged
+ * v1.6.3 - Single-tab Quick Tabs (no storage persistence or cross-tab sync)
  *
  * Responsibilities:
  * - Generate ID if not provided
- * - Auto-assign container if not provided
  * - Handle existing tabs (render if not rendered)
  * - Create QuickTabWindow instance
  * - Store in tabs Map
- * - Save to storage (triggers storage.onChanged in other tabs)
  * - Emit QUICK_TAB_CREATED event
  */
 export class CreateHandler {
@@ -79,7 +77,7 @@ export class CreateHandler {
   _handleExistingTab(id) {
     const existingTab = this.quickTabsMap.get(id);
 
-    // v1.5.9.10 - Ensure tab is rendered
+    // Ensure tab is rendered
     if (!existingTab.isRendered || !existingTab.isRendered()) {
       console.log('[CreateHandler] Tab exists but not rendered, rendering now:', id);
       existingTab.render();
@@ -98,7 +96,7 @@ export class CreateHandler {
 
   /**
    * Create and store new tab
-   * v1.6.2 - MIGRATION: Saves to storage (triggers storage.onChanged in other tabs)
+   * v1.6.3 - Local only (no storage persistence)
    * @private
    */
   _createNewTab(id, cookieStoreId, options) {
@@ -108,19 +106,13 @@ export class CreateHandler {
     const tabOptions = this._buildTabOptions(id, cookieStoreId, options, defaults);
 
     console.log('[CreateHandler] Creating window with factory:', typeof this.createWindow);
-    console.log('[CreateHandler] Factory is mock?:', this.createWindow.name === 'mockConstructor' || this.createWindow.toString().includes('jest'));
     console.log('[CreateHandler] Tab options:', tabOptions);
 
     const tabWindow = this.createWindow(tabOptions);
 
     console.log('[CreateHandler] Window created:', tabWindow);
-    console.log('[CreateHandler] Window type:', typeof tabWindow);
-    console.log('[CreateHandler] Window has id?:', tabWindow && 'id' in tabWindow);
 
     this.quickTabsMap.set(id, tabWindow);
-    
-    // v1.6.2 - Save to storage (triggers storage.onChanged in other tabs)
-    this._saveToStorage(id, cookieStoreId, options, defaults);
     
     this._emitCreationEvent(id, options.url);
 
@@ -177,39 +169,6 @@ export class CreateHandler {
       onSolo: options.onSolo,
       onMute: options.onMute
     };
-  }
-
-  /**
-   * Save Quick Tab to storage (triggers storage.onChanged in other tabs)
-   * v1.6.2 - MIGRATION: Replaces broadcastManager.broadcast()
-   * @private
-   */
-  async _saveToStorage(id, cookieStoreId, options, defaults) {
-    if (typeof browser === 'undefined' || !browser.runtime) {
-      console.warn('[CreateHandler] browser.runtime not available - Quick Tab will NOT sync across tabs. This is expected in test environments but indicates a problem in production.');
-      return;
-    }
-
-    try {
-      await browser.runtime.sendMessage({
-        action: 'CREATE_QUICK_TAB',
-        id,
-        url: options.url,
-        left: options.left ?? defaults.left,
-        top: options.top ?? defaults.top,
-        width: options.width ?? defaults.width,
-        height: options.height ?? defaults.height,
-        title: options.title ?? defaults.title,
-        cookieStoreId,
-        minimized: options.minimized ?? defaults.minimized,
-        soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
-        mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs,
-        timestamp: Date.now()
-      });
-      console.log('[CreateHandler] Quick Tab saved to storage:', id);
-    } catch (err) {
-      console.error('[CreateHandler] Error saving Quick Tab to storage:', err);
-    }
   }
 
   /**
