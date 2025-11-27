@@ -1009,6 +1009,45 @@ function showNotification(message, type = 'info') {
 }
 
 /**
+ * v1.6.3 - Helper function to handle clearing all Quick Tabs
+ * Extracted to meet max-depth=2 ESLint requirement
+ * Called from popup.js when user clicks "Clear Quick Tab Storage" button
+ *
+ * @param {Function} sendResponse - Response callback from message listener
+ */
+function _handleClearAllQuickTabs(sendResponse) {
+  console.log('[Content] Received CLEAR_ALL_QUICK_TABS request');
+
+  try {
+    // Guard: Quick Tabs manager not initialized
+    if (!quickTabsManager) {
+      console.warn('[Content] QuickTabsManager not initialized, nothing to clear');
+      sendResponse({ success: true, message: 'No Quick Tabs to clear', count: 0 });
+      return;
+    }
+
+    // Close all Quick Tabs using the manager
+    const tabIds = Array.from(quickTabsManager.tabs.keys());
+    console.log(`[Content] Clearing ${tabIds.length} Quick Tabs`);
+    for (const id of tabIds) {
+      quickTabsManager.closeQuickTab(id);
+    }
+
+    sendResponse({
+      success: true,
+      message: 'All Quick Tabs cleared',
+      count: tabIds.length
+    });
+  } catch (error) {
+    console.error('[Content] Error clearing Quick Tabs:', error);
+    sendResponse({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+/**
  * v1.6.0 - Helper function to handle Quick Tabs panel toggle
  * Extracted to meet max-depth=2 ESLint requirement
  *
@@ -1129,6 +1168,16 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       return true; // Keep message channel open for async response
     }
     // ==================== END QUICK TABS PANEL TOGGLE HANDLER ====================
+
+    // ==================== CLEAR ALL QUICK TABS HANDLER ====================
+    // v1.6.3 - FIX: Added non-test handler for clearing all Quick Tabs
+    // Called from popup.js when user clicks "Clear Quick Tab Storage" button
+    // Refactored with helper function to meet max-depth=2 requirement
+    if (message.action === 'CLEAR_ALL_QUICK_TABS') {
+      _handleClearAllQuickTabs(sendResponse);
+      return true; // Keep message channel open for async response
+    }
+    // ==================== END CLEAR ALL QUICK TABS HANDLER ====================
 
     // ==================== TEST BRIDGE MESSAGE HANDLERS ====================
     // v1.6.0.13 - Added for autonomous testing with Playwright MCP
