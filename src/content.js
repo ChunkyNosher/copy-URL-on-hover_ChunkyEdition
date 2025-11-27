@@ -6,14 +6,82 @@
 // =============================================================================
 
 /**
+ * Check if iframe src indicates it's a Quick Tab iframe
+ * v1.6.2.5 - Helper to reduce complexity in _isQuickTabParentFrame
+ * 
+ * @private
+ * @param {Element} parentFrame - The parent frame element
+ * @returns {boolean} - True if iframe src indicates Quick Tab
+ */
+function _hasQuickTabSrc(parentFrame) {
+  try {
+    const iframeSrc = parentFrame.src || '';
+    // Blob URLs are commonly used by Quick Tabs
+    return iframeSrc.startsWith('blob:');
+  } catch (_e) {
+    // Cross-origin access may throw
+    return false;
+  }
+}
+
+/**
+ * Check parent element structure for Quick Tab patterns
+ * v1.6.2.5 - Helper to reduce complexity in _isQuickTabParentFrame
+ * 
+ * @private
+ * @param {Element} parentFrame - The parent frame element
+ * @returns {boolean} - True if parent structure indicates Quick Tab
+ */
+function _hasQuickTabParentStructure(parentFrame) {
+  try {
+    const parent = parentFrame.parentElement;
+    if (!parent) return false;
+    
+    // Check if parent has quick-tab related attributes or classes
+    if (parent.hasAttribute('data-quick-tab-id') || 
+        parent.classList.contains('quick-tab-content') ||
+        parent.classList.contains('quick-tab-body')) {
+      return true;
+    }
+    
+    // Check grandparent for Quick Tab container
+    const grandparent = parent.parentElement;
+    if (grandparent && 
+        (grandparent.hasAttribute('data-quick-tab-id') ||
+         grandparent.classList.contains('quick-tab-window'))) {
+      return true;
+    }
+  } catch (_e) {
+    // DOM access may throw in edge cases - err on side of caution
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Check if parent frame is a Quick Tab window (helper to reduce nesting)
+ * v1.6.2.5 - ISSUE #3 FIX: Added multiple independent checks for defense-in-depth
+ * 
  * @param {Element} parentFrame - The parent frame element
  * @returns {boolean} - True if parent is a Quick Tab window
  */
 function _isQuickTabParentFrame(parentFrame) {
   if (!parentFrame) return false;
+  
+  // Check 1: CSS selectors (existing, may fail if classes not applied yet)
   const quickTabSelectors = '.quick-tab-window, [data-quick-tab-id], [id^="quick-tab-"]';
-  return parentFrame.closest(quickTabSelectors) !== null;
+  if (parentFrame.closest(quickTabSelectors) !== null) {
+    return true;
+  }
+  
+  // Check 2: iframe.src URL pattern check
+  if (_hasQuickTabSrc(parentFrame)) {
+    return true;
+  }
+  
+  // Check 3: Parent element structure check
+  return _hasQuickTabParentStructure(parentFrame);
 }
 
 /**

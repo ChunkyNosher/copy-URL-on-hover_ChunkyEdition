@@ -186,7 +186,8 @@ describe('SyncCoordinator - Cross-Tab Synchronization', () => {
       expect(mockStorageManagers[0].loadAll).toHaveBeenCalled();
       
       // Verify hydrate was called to update local state
-      expect(mockStateManagers[0].hydrate).toHaveBeenCalledWith([qt]);
+      // v1.6.2.5 - skipDeletions: false to trust storage, detectChanges: true for UI sync
+      expect(mockStateManagers[0].hydrate).toHaveBeenCalledWith([qt], { detectChanges: true, skipDeletions: false });
     });
 
     test('state refresh emits state:refreshed event', async () => {

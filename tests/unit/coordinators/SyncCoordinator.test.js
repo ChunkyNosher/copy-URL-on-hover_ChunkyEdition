@@ -143,7 +143,8 @@ describe('SyncCoordinator', () => {
       mockEventBus.emit('storage:changed', { state: newValue });
 
       // v1.6.2.x - hydrate now called with detectChanges: true for position/size sync
-      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab], { detectChanges: true });
+      // v1.6.2.5 - skipDeletions: false to trust storage as single source of truth
+      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab], { detectChanges: true, skipDeletions: false });
     });
 
     test('should ignore own storage changes', () => {
@@ -193,7 +194,8 @@ describe('SyncCoordinator', () => {
 
       mockEventBus.emit('storage:changed', { state: newValue });
 
-      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab], { detectChanges: true });
+      // v1.6.2.5 - skipDeletions: false to trust storage as single source of truth
+      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab], { detectChanges: true, skipDeletions: false });
     });
 
     test('should sync multiple Quick Tabs with unified format', () => {
@@ -217,7 +219,8 @@ describe('SyncCoordinator', () => {
 
       mockEventBus.emit('storage:changed', { state: newValue });
 
-      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab1, quickTab2], { detectChanges: true });
+      // v1.6.2.5 - skipDeletions: false to trust storage as single source of truth
+      expect(mockStateManager.hydrate).toHaveBeenCalledWith([quickTab1, quickTab2], { detectChanges: true, skipDeletions: false });
     });
   });
 
