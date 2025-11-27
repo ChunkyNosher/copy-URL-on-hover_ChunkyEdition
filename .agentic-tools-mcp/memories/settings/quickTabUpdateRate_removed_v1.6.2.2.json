@@ -1,0 +1,8 @@
+{
+  "id": "a92b3889-834f-4f32-b1c2-33ecb399ea60",
+  "title": "quickTabUpdateRate removed v1.6.2.2",
+  "details": "The quickTabUpdateRate setting was removed in v1.6.2.2 because the PointerEvents API now handles update rate automatically. The setting was removed from:\n- popup.html (setting-group div)\n- sidebar/settings.html (setting-group div)\n- popup.js (defaults, load, save)\n- sidebar/settings.js (defaults, load, save)\n\nThe setting allowed users to configure position updates per second (Hz) for dragging, but it is no longer needed.",
+  "category": "settings",
+  "dateCreated": "2025-11-27T02:43:36.425Z",
+  "dateUpdated": "2025-11-27T02:43:36.425Z"
+}

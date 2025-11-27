@@ -53,6 +53,38 @@ export class PanelContentManager {
     this.stateChangedWhileClosed = false;
     // Cross-browser container API (native Firefox, shimmed Chrome)
     this.containerAPI = getContainerAPI();
+    
+    // v1.6.2.4 - Debug logging for issue tracking
+    debug('[PanelContentManager] Constructor called, instance created');
+  }
+  
+  /**
+   * Get the authoritative isOpen state
+   * v1.6.2.4 - FIX Issue #1: Query PanelStateManager for authoritative state
+   * This prevents stale cached state from blocking content updates
+   * @returns {boolean} Whether panel is open
+   * @private
+   */
+  _getIsOpen() {
+    // Query PanelStateManager for authoritative state if available
+    const stateManagerAvailable = this.stateManager && typeof this.stateManager.getState === 'function';
+    if (!stateManagerAvailable) {
+      // Fallback to local cached state
+      return this.isOpen;
+    }
+    
+    const state = this.stateManager.getState();
+    const hasAuthoritativeState = typeof state.isOpen === 'boolean';
+    if (!hasAuthoritativeState) {
+      return this.isOpen;
+    }
+    
+    // Sync local state if it differs (for logging purposes)
+    if (this.isOpen !== state.isOpen) {
+      debug(`[PanelContentManager] Syncing isOpen: local=${this.isOpen}, stateManager=${state.isOpen}`);
+      this.isOpen = state.isOpen;
+    }
+    return state.isOpen;
   }
 
   /**
@@ -76,9 +108,15 @@ export class PanelContentManager {
    * v1.5.9.12 - Container integration: Filter by current container
    * v1.6.2.3 - Query live state from StateManager instead of storage for real-time updates
    * v1.6.2.2 - ISSUE FIX: Show all Quick Tabs globally (no container filtering)
+   * v1.6.2.4 - FIX Issue #1: Use _getIsOpen() for authoritative state check
    */
   async updateContent() {
-    if (!this.panel || !this.isOpen) return;
+    // v1.6.2.4 - Use _getIsOpen() which queries PanelStateManager for authoritative state
+    const isCurrentlyOpen = this._getIsOpen();
+    if (!this.panel || !isCurrentlyOpen) {
+      debug(`[PanelContentManager] updateContent skipped: panel=${!!this.panel}, isOpen=${isCurrentlyOpen}`);
+      return;
+    }
 
     let allQuickTabs = [];
     let minimizedCount = 0;
@@ -320,62 +358,94 @@ export class PanelContentManager {
   /**
    * Setup event listeners for panel interactions
    * v1.6.2.x - Added storage.onChanged listener for cross-tab sync
+   * v1.6.2.4 - FIX Issue #2 & #3: Added null checks and debug logging for button setup
    */
   setupEventListeners() {
+    debug('[PanelContentManager] Setting up event listeners...');
+    
     // Close button
     const closeBtn = this.panel.querySelector('.panel-close');
-    const closeBtnHandler = e => {
-      e.stopPropagation();
-      if (this.onClose) this.onClose();
-    };
-    closeBtn.addEventListener('click', closeBtnHandler);
-    this.eventListeners.push({ element: closeBtn, type: 'click', handler: closeBtnHandler });
+    if (closeBtn) {
+      const closeBtnHandler = e => {
+        e.stopPropagation();
+        if (this.onClose) this.onClose();
+      };
+      closeBtn.addEventListener('click', closeBtnHandler);
+      this.eventListeners.push({ element: closeBtn, type: 'click', handler: closeBtnHandler });
+      debug('[PanelContentManager] ✓ Close button listener attached');
+    } else {
+      console.warn('[PanelContentManager] Close button (.panel-close) not found in panel');
+    }
 
     // Minimize button (same as close)
     const minimizeBtn = this.panel.querySelector('.panel-minimize');
-    const minimizeBtnHandler = e => {
-      e.stopPropagation();
-      if (this.onClose) this.onClose();
-    };
-    minimizeBtn.addEventListener('click', minimizeBtnHandler);
-    this.eventListeners.push({
-      element: minimizeBtn,
-      type: 'click',
-      handler: minimizeBtnHandler
-    });
+    if (minimizeBtn) {
+      const minimizeBtnHandler = e => {
+        e.stopPropagation();
+        if (this.onClose) this.onClose();
+      };
+      minimizeBtn.addEventListener('click', minimizeBtnHandler);
+      this.eventListeners.push({
+        element: minimizeBtn,
+        type: 'click',
+        handler: minimizeBtnHandler
+      });
+      debug('[PanelContentManager] ✓ Minimize button listener attached');
+    } else {
+      console.warn('[PanelContentManager] Minimize button (.panel-minimize) not found in panel');
+    }
 
     // Close Minimized button
     const closeMinimizedBtn = this.panel.querySelector('#panel-closeMinimized');
-    const closeMinimizedHandler = async e => {
-      e.stopPropagation();
-      await this.handleCloseMinimized();
-    };
-    closeMinimizedBtn.addEventListener('click', closeMinimizedHandler);
-    this.eventListeners.push({
-      element: closeMinimizedBtn,
-      type: 'click',
-      handler: closeMinimizedHandler
-    });
+    if (closeMinimizedBtn) {
+      const closeMinimizedHandler = async e => {
+        e.stopPropagation();
+        debug('[PanelContentManager] Close Minimized button clicked');
+        await this.handleCloseMinimized();
+      };
+      closeMinimizedBtn.addEventListener('click', closeMinimizedHandler);
+      this.eventListeners.push({
+        element: closeMinimizedBtn,
+        type: 'click',
+        handler: closeMinimizedHandler
+      });
+      debug('[PanelContentManager] ✓ Close Minimized button listener attached');
+    } else {
+      console.warn('[PanelContentManager] Close Minimized button (#panel-closeMinimized) not found in panel');
+    }
 
     // Close All button
+    // v1.6.2.4 - FIX Issue #2: Added null check and debug logging
     const closeAllBtn = this.panel.querySelector('#panel-closeAll');
-    const closeAllHandler = async e => {
-      e.stopPropagation();
-      await this.handleCloseAll();
-    };
-    closeAllBtn.addEventListener('click', closeAllHandler);
-    this.eventListeners.push({
-      element: closeAllBtn,
-      type: 'click',
-      handler: closeAllHandler
-    });
+    if (closeAllBtn) {
+      const closeAllHandler = async e => {
+        e.stopPropagation();
+        debug('[PanelContentManager] Close All button clicked');
+        debug('[PanelContentManager] handleCloseAll starting...');
+        await this.handleCloseAll();
+        debug('[PanelContentManager] handleCloseAll completed');
+      };
+      closeAllBtn.addEventListener('click', closeAllHandler);
+      this.eventListeners.push({
+        element: closeAllBtn,
+        type: 'click',
+        handler: closeAllHandler
+      });
+      debug('[PanelContentManager] ✓ Close All button listener attached');
+    } else {
+      console.warn('[PanelContentManager] Close All button (#panel-closeAll) not found in panel');
+    }
 
     // v1.6.2.2 - Clear Storage button
+    // v1.6.2.4 - FIX Issue #3: Added debug logging
     const clearStorageBtn = this.panel.querySelector('#panel-clearStorage');
     if (clearStorageBtn) {
       const clearStorageHandler = async e => {
         e.stopPropagation();
+        debug('[PanelContentManager] Clear Storage button clicked');
+        debug('[PanelContentManager] handleClearStorage starting...');
         await this.handleClearStorage();
+        debug('[PanelContentManager] handleClearStorage completed');
       };
       clearStorageBtn.addEventListener('click', clearStorageHandler);
       this.eventListeners.push({
@@ -383,6 +453,9 @@ export class PanelContentManager {
         type: 'click',
         handler: clearStorageHandler
       });
+      debug('[PanelContentManager] ✓ Clear Storage button listener attached');
+    } else {
+      console.warn('[PanelContentManager] Clear Storage button (#panel-clearStorage) not found in panel');
     }
 
     // Delegated listener for Quick Tab item actions
@@ -414,7 +487,8 @@ export class PanelContentManager {
       if (changes.quick_tabs_state_v2) {
         debug('[PanelContentManager] Storage changed from another tab - updating content');
         
-        if (this.isOpen) {
+        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
+        if (this._getIsOpen()) {
           this.updateContent();
         } else {
           this.stateChangedWhileClosed = true;
@@ -449,7 +523,8 @@ export class PanelContentManager {
         const quickTab = data?.quickTab || data;
         debug(`[PanelContentManager] state:added received for ${quickTab?.id}`);
         
-        if (this.isOpen) {
+        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
+        if (this._getIsOpen()) {
           this.updateContent();
         } else {
           // v1.6.2.x - Mark that state changed while closed
@@ -468,7 +543,8 @@ export class PanelContentManager {
         const quickTab = data?.quickTab || data;
         debug(`[PanelContentManager] state:updated received for ${quickTab?.id}`);
         
-        if (this.isOpen) {
+        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
+        if (this._getIsOpen()) {
           this.updateContent();
         } else {
           // v1.6.2.x - Mark that state changed while closed
@@ -487,7 +563,8 @@ export class PanelContentManager {
         const id = data?.id || data?.quickTab?.id;
         debug(`[PanelContentManager] state:deleted received for ${id}`);
         
-        if (this.isOpen) {
+        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
+        if (this._getIsOpen()) {
           this.updateContent();
         } else {
           // v1.6.2.x - Mark that state changed while closed
@@ -505,7 +582,8 @@ export class PanelContentManager {
       try {
         debug(`[PanelContentManager] state:hydrated received, ${data?.count} tabs`);
         
-        if (this.isOpen) {
+        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
+        if (this._getIsOpen()) {
           this.updateContent();
         } else {
           // v1.6.2.x - Mark that state changed while closed
@@ -527,7 +605,8 @@ export class PanelContentManager {
         // This ensures the panel shows empty state when opened after clear
         this.stateChangedWhileClosed = true;
         
-        if (this.isOpen) {
+        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
+        if (this._getIsOpen()) {
           this.updateContent();
         }
         

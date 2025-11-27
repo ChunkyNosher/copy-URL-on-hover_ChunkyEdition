@@ -471,7 +471,6 @@ const DEFAULT_SETTINGS = {
   quickTabCustomY: 100,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
-  quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
 
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -572,7 +571,6 @@ function loadSettings() {
     document.getElementById('quickTabCustomY').value = items.quickTabCustomY;
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
-    document.getElementById('quickTabUpdateRate').value = items.quickTabUpdateRate || 360;
     toggleCustomPosition(items.quickTabPosition);
 
     document.getElementById('showNotification').checked = items.showNotification;
@@ -683,7 +681,6 @@ function gatherSettingsFromForm() {
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
-    quickTabUpdateRate: safeParseInt(document.getElementById('quickTabUpdateRate').value, 360),
 
     showNotification: document.getElementById('showNotification').checked,
     notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',

@@ -17,6 +17,15 @@
  */
 
 export class QuickTabHandler {
+  // v1.6.2.4 - Message deduplication constants for Issue 4 fix
+  // 100ms: Typical double-fire interval for keyboard/context menu events is <10ms
+  // Using 100ms provides safety margin while not blocking legitimate rapid operations
+  static DEDUP_WINDOW_MS = 100;
+  // 5000ms: Cleanup interval balances memory usage vs CPU overhead
+  static DEDUP_CLEANUP_INTERVAL_MS = 5000;
+  // 10000ms: TTL keeps entries long enough for debugging but prevents memory bloat
+  static DEDUP_TTL_MS = 10000;
+
   constructor(globalState, stateCoordinator, browserAPI, initializeFn) {
     this.globalState = globalState;
     this.stateCoordinator = stateCoordinator;
@@ -27,6 +36,63 @@ export class QuickTabHandler {
     // v1.6.1.6 - Memory leak fix: Track last write to detect self-triggered storage events
     this.lastWriteTimestamp = null;
     this.WRITE_IGNORE_WINDOW_MS = 100;
+
+    // v1.6.2.4 - BUG FIX Issue 4: Message deduplication tracking
+    // Prevents duplicate CREATE_QUICK_TAB messages sent within 100ms
+    this.processedMessages = new Map(); // messageKey -> timestamp
+    this.lastCleanup = Date.now();
+  }
+
+  /**
+   * Check if message is a duplicate (same action + id within dedup window)
+   * v1.6.2.4 - BUG FIX Issue 4: Prevents double-creation of Quick Tabs
+   * @param {Object} message - Message to check
+   * @returns {boolean} True if this is a duplicate message
+   */
+  _isDuplicateMessage(message) {
+    // Only deduplicate creation messages
+    if (message.action !== 'CREATE_QUICK_TAB') {
+      return false;
+    }
+
+    // Clean up old entries periodically
+    const now = Date.now();
+    if (now - this.lastCleanup > QuickTabHandler.DEDUP_CLEANUP_INTERVAL_MS) {
+      this._cleanupOldProcessedMessages(now);
+    }
+
+    // Generate unique key for this message
+    const messageKey = `${message.action}-${message.id}`;
+    const lastProcessed = this.processedMessages.get(messageKey);
+
+    // Check if recently processed
+    if (lastProcessed && (now - lastProcessed) < QuickTabHandler.DEDUP_WINDOW_MS) {
+      console.log('[QuickTabHandler] Ignoring duplicate message:', {
+        action: message.action,
+        id: message.id,
+        timeSinceLastMs: now - lastProcessed
+      });
+      return true;
+    }
+
+    // Record this message
+    this.processedMessages.set(messageKey, now);
+    return false;
+  }
+
+  /**
+   * Clean up old processed message entries
+   * @private
+   * @param {number} now - Current timestamp
+   */
+  _cleanupOldProcessedMessages(now) {
+    const cutoff = now - QuickTabHandler.DEDUP_TTL_MS;
+    for (const [key, timestamp] of this.processedMessages.entries()) {
+      if (timestamp < cutoff) {
+        this.processedMessages.delete(key);
+      }
+    }
+    this.lastCleanup = now;
   }
 
   /**
@@ -99,8 +165,15 @@ export class QuickTabHandler {
   /**
    * Handle Quick Tab creation
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.2.4 - BUG FIX Issue 4: Added message deduplication to prevent double-creation
    */
   async handleCreate(message, _sender) {
+    // v1.6.2.4 - BUG FIX Issue 4: Check for duplicate CREATE messages
+    if (this._isDuplicateMessage(message)) {
+      console.log('[QuickTabHandler] Skipping duplicate Create:', message.id);
+      return { success: true, duplicate: true };
+    }
+
     console.log(
       '[QuickTabHandler] Create:',
       message.url,
