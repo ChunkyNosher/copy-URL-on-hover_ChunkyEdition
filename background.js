@@ -1113,7 +1113,7 @@ messageRouter.register('RESET_GLOBAL_QUICK_TAB_STATE', () => {
   return { success: true, message: 'Global Quick Tab state cache reset' };
 });
 
-console.log('[Background] MessageRouter initialized with 26 registered handlers');
+console.log(`[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`);
 
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
