@@ -89,13 +89,24 @@ export class UICoordinator {
 
   /**
    * Update an existing QuickTabWindow
+   * v1.6.3.4 - FIX Bug #6: Check for minimized state before rendering
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
+   * @returns {QuickTabWindow|undefined} Updated or newly rendered tab window, or undefined if skipped
    */
   update(quickTab) {
     const tabWindow = this.renderedTabs.get(quickTab.id);
 
+    // v1.6.3.4 - FIX Bug #6: Check if tab is minimized before attempting to render
+    // If minimized, the tab should NOT be visible, so don't try to render it
+    const isMinimized = Boolean(quickTab.visibility?.minimized);
+    
     if (!tabWindow) {
+      // v1.6.3.4 - FIX Bug #6: Don't render minimized tabs
+      if (isMinimized) {
+        console.log('[UICoordinator] Tab is minimized, skipping render:', quickTab.id);
+        return;
+      }
       console.warn('[UICoordinator] Tab not rendered, rendering now:', quickTab.id);
       return this.render(quickTab);
     }
@@ -108,6 +119,7 @@ export class UICoordinator {
     tabWindow.updateZIndex(quickTab.zIndex);
 
     console.log('[UICoordinator] Tab updated:', quickTab.id);
+    return tabWindow;
   }
 
   /**

@@ -328,7 +328,9 @@ class QuickTabsManager {
 
   /**
    * Bridge internal events to external event bus
-   * v1.6.3.3 - FIX Bug #5: Internal events need to reach PanelContentManager which listens on external bus
+   * v1.6.3.3 - FIX Bug #5: Bridge internal events for components that may listen on external bus
+   * v1.6.3.4 - NOTE: PanelContentManager now uses internalEventBus directly, but we maintain
+   *            this bridge for backward compatibility and any other components using external bus
    * @private
    */
   _setupEventBridge() {
@@ -359,6 +361,18 @@ class QuickTabsManager {
     this.internalEventBus.on('state:added', (data) => {
       this.eventBus.emit('state:added', data);
       console.log('[QuickTabsManager] Bridged state:added to external bus');
+    });
+
+    // v1.6.3.4 - Bridge internal state:hydrated events to external bus (cross-tab sync)
+    this.internalEventBus.on('state:hydrated', (data) => {
+      this.eventBus.emit('state:hydrated', data);
+      console.log('[QuickTabsManager] Bridged state:hydrated to external bus');
+    });
+
+    // v1.6.3.4 - Bridge internal state:cleared events to external bus (Clear Storage button)
+    this.internalEventBus.on('state:cleared', (data) => {
+      this.eventBus.emit('state:cleared', data);
+      console.log('[QuickTabsManager] Bridged state:cleared to external bus');
     });
 
     console.log('[QuickTabsManager] ✓ Event bridge setup complete');
