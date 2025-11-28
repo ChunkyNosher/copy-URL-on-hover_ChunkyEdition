@@ -873,6 +873,7 @@ export class PanelContentManager {
    *            so we must explicitly destroy DOM elements in the current tab.
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.3 - Clear in-memory state and emit state:cleared event, use forceRefresh
+   * v1.6.3.1 - FIX Close All bug: Send message to background to clear cached state
    */
   async handleCloseAll() {
     try {
@@ -909,6 +910,20 @@ export class PanelContentManager {
       // Clear session storage
       await this._updateSessionStorage(emptyState);
 
+      // v1.6.3.1 - FIX Close All bug: Notify background script to clear its cached state
+      // storage.onChanged does NOT fire in the tab that made the change, so the
+      // background script's globalQuickTabState cache would remain stale and
+      // resurrect old Quick Tabs when new ones are created
+      try {
+        await browser.runtime.sendMessage({
+          action: 'RESET_GLOBAL_QUICK_TAB_STATE',
+          timestamp: Date.now()
+        });
+        console.log('[PanelContentManager] Notified background to reset cached state');
+      } catch (bgErr) {
+        console.warn('[PanelContentManager] Failed to notify background:', bgErr);
+      }
+
       // v1.6.3 - Emit state:cleared event for other listeners
       if (this.eventBus) {
         this.eventBus.emit('state:cleared', { count: clearedCount });
@@ -933,6 +948,7 @@ export class PanelContentManager {
    * v1.6.3 - Emit state:cleared event to update panel and other listeners
    * v1.6.3 - FIX Issue #6: Force liveStateManager.clear() before emitting event, use forceRefresh
    * CRITICAL: Destroy DOM elements BEFORE clearing storage
+   * v1.6.3.1 - FIX Close All bug: Send message to background to clear cached state
    */
   async handleClearStorage() {
     try {
@@ -976,6 +992,17 @@ export class PanelContentManager {
       // Clear session storage if available
       if (typeof browser.storage.session !== 'undefined') {
         await browser.storage.session.set({ quick_tabs_session: emptyState });
+      }
+
+      // v1.6.3.1 - FIX Close All bug: Notify background script to clear its cached state
+      try {
+        await browser.runtime.sendMessage({
+          action: 'RESET_GLOBAL_QUICK_TAB_STATE',
+          timestamp: Date.now()
+        });
+        console.log('[PanelContentManager] Notified background to reset cached state');
+      } catch (bgErr) {
+        console.warn('[PanelContentManager] Failed to notify background:', bgErr);
       }
 
       // v1.6.3 - Emit state:cleared event for other listeners (e.g., background script)
