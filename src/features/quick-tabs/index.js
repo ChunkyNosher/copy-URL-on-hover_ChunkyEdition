@@ -305,6 +305,7 @@ class QuickTabsManager {
   /**
    * Setup component listeners and event flows
    * v1.6.3 - Simplified (no storage/sync setup)
+   * v1.6.3.3 - FIX Bug #5: Setup event bridge after UI coordinator init
    * @private
    */
   async _setupComponents() {
@@ -312,6 +313,9 @@ class QuickTabsManager {
     
     this.events.setupEmergencySaveHandlers();
     await this.uiCoordinator.init();
+    
+    // v1.6.3.3 - FIX Bug #5: Bridge internal events to external bus
+    this._setupEventBridge();
 
     // Start memory monitoring
     if (this.memoryGuard) {
@@ -320,6 +324,44 @@ class QuickTabsManager {
     }
     
     console.log('[QuickTabsManager] ✓ _setupComponents complete');
+  }
+
+  /**
+   * Bridge internal events to external event bus
+   * v1.6.3.3 - FIX Bug #5: Internal events need to reach PanelContentManager which listens on external bus
+   * @private
+   */
+  _setupEventBridge() {
+    if (!this.internalEventBus || !this.eventBus) {
+      console.warn('[QuickTabsManager] Cannot setup event bridge - missing event bus(es)');
+      return;
+    }
+
+    // Bridge internal state:updated events to external bus
+    this.internalEventBus.on('state:updated', (data) => {
+      this.eventBus.emit('state:updated', data);
+      console.log('[QuickTabsManager] Bridged state:updated to external bus');
+    });
+    
+    // Bridge internal state:deleted events to external bus
+    this.internalEventBus.on('state:deleted', (data) => {
+      this.eventBus.emit('state:deleted', data);
+      console.log('[QuickTabsManager] Bridged state:deleted to external bus');
+    });
+    
+    // Bridge internal state:created events to external bus
+    this.internalEventBus.on('state:created', (data) => {
+      this.eventBus.emit('state:created', data);
+      console.log('[QuickTabsManager] Bridged state:created to external bus');
+    });
+    
+    // Bridge internal state:added events to external bus (for panel updates)
+    this.internalEventBus.on('state:added', (data) => {
+      this.eventBus.emit('state:added', data);
+      console.log('[QuickTabsManager] Bridged state:added to external bus');
+    });
+
+    console.log('[QuickTabsManager] ✓ Event bridge setup complete');
   }
 
   /**

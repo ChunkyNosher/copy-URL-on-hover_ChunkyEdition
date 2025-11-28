@@ -84,3 +84,4 @@ firefox-profile/sessionstore-backups/
 firefox-profile/shield-preference-experiments.json
 firefox-profile/startupCache/
 firefox-profile/storage/
+.eslintcache

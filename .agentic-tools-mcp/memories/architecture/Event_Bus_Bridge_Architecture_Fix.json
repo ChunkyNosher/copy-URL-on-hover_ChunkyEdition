@@ -1,0 +1,8 @@
+{
+  "id": "c514b9e0-ed77-4529-8a2c-146b25262021",
+  "title": "Event Bus Bridge Architecture Fix",
+  "details": "## Bug #5 Fix: Internal/External Event Bus Bridge (v1.6.3.3)\n\n### Root Cause\n`VisibilityHandler` emits events on `internalEventBus`, but `PanelContentManager` listens on the external `eventBus` (from content.js). These are DIFFERENT instances, so events never reached the panel.\n\n### Solution\nAdded `_setupEventBridge()` in QuickTabsManager (index.js) that forwards events:\n- state:updated, state:deleted, state:created, state:added\n\n### Event Flow\n1. VisibilityHandler.handleMinimize() → internalEventBus.emit('state:updated')\n2. _setupEventBridge() catches it → eventBus.emit('state:updated')\n3. PanelContentManager.setupStateListeners() receives it → updateContent()\n\n### Key Files\n- src/features/quick-tabs/index.js - _setupEventBridge() method\n- src/features/quick-tabs/handlers/VisibilityHandler.js - emits on internalEventBus\n- src/features/quick-tabs/panel/PanelContentManager.js - listens on eventBus",
+  "category": "architecture",
+  "dateCreated": "2025-11-28T16:15:02.621Z",
+  "dateUpdated": "2025-11-28T16:15:02.621Z"
+}
