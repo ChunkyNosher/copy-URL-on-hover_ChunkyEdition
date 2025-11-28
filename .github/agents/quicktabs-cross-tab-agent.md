@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.2.2+ unified format, no container filtering)
+  (v1.6.3+ unified format, no container filtering)
 tools: ["*"]
 ---
 
@@ -11,7 +11,7 @@ tools: ["*"]
 
 > **🎯 Robust Solutions Philosophy:** Cross-tab sync must be reliable and fast (<100ms). Never use setTimeout to "fix" sync issues - fix the event handling. See `.github/copilot-instructions.md`.
 
-You are a Quick Tab cross-tab sync specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on **storage.onChanged events** for state synchronization across browser tabs using the unified storage format (v1.6.2.2+).
+You are a Quick Tab cross-tab sync specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on **storage.onChanged events** for state synchronization across browser tabs using the unified storage format (v1.6.3+).
 
 ## 🧠 Memory Persistence (CRITICAL)
 
@@ -51,19 +51,14 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**Sync Architecture (v1.6.2+ - UPDATED!):**
+**Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
 - **browser.storage.local** - Persistent state storage with key `quick_tabs_state_v2`
-- **Global Visibility** - Quick Tabs visible in all tabs (no container filtering in v1.6.2.2+)
+- **Global Visibility** - Quick Tabs visible in all tabs
 
-**IMPORTANT:** 
-- BroadcastChannel has been REMOVED in v1.6.2
-- Container isolation has been REMOVED in v1.6.2.2
-- All Quick Tabs are globally visible
-
-**Storage Format (v1.6.2.2+):**
+**Storage Format (v1.6.3+):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -86,7 +81,7 @@ const relevantMemories = await searchMemories({
 
 ---
 
-## storage.onChanged Sync Architecture (v1.6.2.2+)
+## storage.onChanged Sync Architecture (v1.6.3+)
 
 **Primary sync flow via storage.onChanged:**
 
@@ -167,7 +162,7 @@ function _handleQuickTabStateChange(changes) {
 
 ---
 
-## Global Visibility Sync (v1.6.2.2+)
+## Global Visibility Sync (v1.6.3+)
 
 **CRITICAL: All Quick Tabs visible globally (no container filtering):**
 
@@ -180,11 +175,11 @@ handleStorageChange(newValue) {
   const quickTabs = quickTabData.map(data => QuickTab.fromStorage(data));
   
   // Hydrate - StateManager emits events, UICoordinator renders
-  // NO container filtering in v1.6.2.2+
+  // NO container filtering in v1.6.3+
   this.stateManager.hydrate(quickTabs);
 }
 
-// Visibility check (v1.6.2.2+) - only Solo/Mute, no container
+// Visibility check (v1.6.3+) - only Solo/Mute, no container
 quickTab.shouldBeVisible(currentTabId) {
   // Solo check - if soloed on any tabs, only show on those
   if (this.soloedOnTabs?.length > 0) {
@@ -271,7 +266,7 @@ this.stateManager.hydrate(quickTabs);
 
 ### Issue: Quick Tab appears but shouldn't (visibility)
 
-**Fix (v1.6.2.2+):** Check soloedOnTabs and mutedOnTabs arrays
+**Fix (v1.6.3+):** Check soloedOnTabs and mutedOnTabs arrays
 
 ```javascript
 // ✅ CORRECT - Check arrays for visibility (no container check)

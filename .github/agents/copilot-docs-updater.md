@@ -99,7 +99,7 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.2.2)
+- [ ] Version numbers match current release (1.6.3)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
@@ -112,7 +112,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.2.2
+- **Current Version:** 1.6.3
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -180,7 +180,7 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.2.2)
+- Version numbers (1.6.3)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
@@ -310,12 +310,12 @@ done
 
 # Commit
 git add .github/copilot-instructions.md .github/agents/*.md .agentic-tools-mcp/
-git commit -m "docs: update Copilot instructions and agents for v1.6.2"
+git commit -m "docs: update Copilot instructions and agents for v1.6.3"
 ```
 
 ---
 
-## Current Extension State (v1.6.2.2)
+## Current Extension State (v1.6.3)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -329,7 +329,7 @@ git commit -m "docs: update Copilot instructions and agents for v1.6.2"
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
 - **Direct Local Creation:** Content renders first, background persists
 
-### Storage Format (v1.6.2.2+)
+### Storage Format (v1.6.3+)
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -418,7 +418,7 @@ See `.github/copilot-instructions.md` § MCP Tools
 ### 1. Outdated Version References
 
 **Error:** Documentation references v1.5.9 features
-**Fix:** Update all version refs to 1.6.2.x
+**Fix:** Update all version refs to 1.6.3
 
 ### 2. Deprecated Terminology
 
@@ -428,7 +428,7 @@ See `.github/copilot-instructions.md` § MCP Tools
 ### 3. Old Sync Mechanism / Storage Format
 
 **Error:** Referencing BroadcastChannel or container-based storage
-**Fix:** Update to storage.onChanged (v1.6.2+) and unified format (v1.6.2.2+)
+**Fix:** Update to storage.onChanged (v1.6.2+) and unified format (v1.6.3+)
 
 ### 4. Container References
 
@@ -485,7 +485,7 @@ See `.github/copilot-instructions.md` § MCP Tools
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.2.2
+- [ ] Version numbers updated to 1.6.3
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] No container/cookieStoreId references (except removal notes)

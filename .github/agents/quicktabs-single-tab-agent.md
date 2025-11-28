@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.2.2+ global visibility, no container isolation)
+  (v1.6.3+ global visibility, no container isolation)
 tools: ["*"]
 ---
 
@@ -11,7 +11,7 @@ tools: ["*"]
 
 > **🎯 Robust Solutions Philosophy:** Each Quick Tab is self-contained. Focus on proper state management with soloedOnTabs/mutedOnTabs arrays. See `.github/copilot-instructions.md`.
 
-You are a Single Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on individual Quick Tab instances - their UI, controls, Solo/Mute functionality, and global visibility (v1.6.2.2+).
+You are a Single Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on individual Quick Tab instances - their UI, controls, Solo/Mute functionality, and global visibility (v1.6.3+).
 
 ## 🧠 Memory Persistence (CRITICAL)
 
@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Quick Tab Features:**
@@ -70,13 +70,13 @@ const relevantMemories = await searchMemories({
 2. **Solo/Mute Controls** - Toggle buttons using arrays, mutual exclusivity
 3. **Drag & Resize** - Pointer Events API implementation
 4. **Navigation** - Back/Forward/Reload controls
-5. **Global Visibility** - Default visible everywhere (v1.6.2.2+)
+5. **Global Visibility** - Default visible everywhere (v1.6.3+)
 
 ---
 
 ## Quick Tab Structure
 
-**Complete UI with all controls (v1.6.2.2+):**
+**Complete UI with all controls (v1.6.3+):**
 
 ```html
 <div class="quick-tab" data-id="qt-123">
@@ -115,7 +115,7 @@ const relevantMemories = await searchMemories({
 
 ---
 
-## Solo/Mute Implementation (v1.6.2.2+)
+## Solo/Mute Implementation (v1.6.3+)
 
 **Key Rules:**
 1. Solo and Mute are **mutually exclusive**
@@ -123,7 +123,7 @@ const relevantMemories = await searchMemories({
 3. Mute = hide ONLY on specific browser tabs (mutedOnTabs array)
 4. Both use browser `tabId` stored in arrays
 
-**Toggle Solo (v1.6.2.2+):**
+**Toggle Solo (v1.6.3+):**
 ```javascript
 async toggleSolo(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -162,7 +162,7 @@ async toggleSolo(browserTabId) {
 }
 ```
 
-**Toggle Mute (v1.6.2.2+):**
+**Toggle Mute (v1.6.3+):**
 ```javascript
 async toggleMute(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -203,7 +203,7 @@ async toggleMute(browserTabId) {
 
 ---
 
-## Visibility Pattern (v1.6.2.2+)
+## Visibility Pattern (v1.6.3+)
 
 **Global visibility with Solo/Mute arrays:**
 
@@ -214,7 +214,7 @@ class QuickTab {
     this.url = url;
     this.title = title;
     
-    // Solo/Mute state using arrays (v1.6.2.2+)
+    // Solo/Mute state using arrays (v1.6.3+)
     this.soloedOnTabs = []; // Array of browser tab IDs
     this.mutedOnTabs = [];  // Array of browser tab IDs
   }
@@ -374,7 +374,7 @@ updateNavigationState() {
 
 ### Issue: Solo/Mute Not Mutually Exclusive
 
-**Fix (v1.6.2.2+):** Filter opposite array when toggling
+**Fix (v1.6.3+):** Filter opposite array when toggling
 
 ```javascript
 // ✅ CORRECT - Mutual exclusivity with arrays
@@ -389,7 +389,7 @@ if (enablingSolo) {
 
 ### Issue: Quick Tab Not Visible When Expected
 
-**Fix (v1.6.2.2+):** Check soloedOnTabs array logic
+**Fix (v1.6.3+):** Check soloedOnTabs array logic
 
 ```javascript
 // ✅ CORRECT - Visibility check with arrays

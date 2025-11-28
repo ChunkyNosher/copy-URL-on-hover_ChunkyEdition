@@ -473,12 +473,14 @@ export class PanelContentManager {
     }
 
     // Close Minimized button
+    // v1.6.3 - Changed debug() to console.log() for visibility
     const closeMinimizedBtn = this.panel.querySelector('#panel-closeMinimized');
     if (closeMinimizedBtn) {
       const closeMinimizedHandler = async e => {
         e.stopPropagation();
-        debug('[PanelContentManager] Close Minimized button clicked');
+        console.log('[PanelContentManager] Close Minimized button clicked');
         await this.handleCloseMinimized();
+        console.log('[PanelContentManager] Close Minimized completed');
       };
       closeMinimizedBtn.addEventListener('click', closeMinimizedHandler);
       this.eventListeners.push({
@@ -493,14 +495,15 @@ export class PanelContentManager {
 
     // Close All button
     // v1.6.2.4 - FIX Issue #2: Added null check and debug logging
+    // v1.6.3 - FIX Bug #4: Changed debug() to console.log() for visibility
     const closeAllBtn = this.panel.querySelector('#panel-closeAll');
     if (closeAllBtn) {
       const closeAllHandler = async e => {
         e.stopPropagation();
-        debug('[PanelContentManager] Close All button clicked');
-        debug('[PanelContentManager] handleCloseAll starting...');
+        console.log('[PanelContentManager] Close All button clicked');
+        console.log('[PanelContentManager] handleCloseAll starting...');
         await this.handleCloseAll();
-        debug('[PanelContentManager] handleCloseAll completed');
+        console.log('[PanelContentManager] handleCloseAll completed');
       };
       closeAllBtn.addEventListener('click', closeAllHandler);
       this.eventListeners.push({
@@ -515,14 +518,15 @@ export class PanelContentManager {
 
     // v1.6.2.2 - Clear Storage button
     // v1.6.2.4 - FIX Issue #3: Added debug logging
+    // v1.6.3 - Changed debug() to console.log() for visibility
     const clearStorageBtn = this.panel.querySelector('#panel-clearStorage');
     if (clearStorageBtn) {
       const clearStorageHandler = async e => {
         e.stopPropagation();
-        debug('[PanelContentManager] Clear Storage button clicked');
-        debug('[PanelContentManager] handleClearStorage starting...');
+        console.log('[PanelContentManager] Clear Storage button clicked');
+        console.log('[PanelContentManager] handleClearStorage starting...');
         await this.handleClearStorage();
-        debug('[PanelContentManager] handleClearStorage completed');
+        console.log('[PanelContentManager] handleClearStorage completed');
       };
       clearStorageBtn.addEventListener('click', clearStorageHandler);
       this.eventListeners.push({
@@ -536,25 +540,34 @@ export class PanelContentManager {
     }
 
     // Delegated listener for Quick Tab item actions
+    // v1.6.3 - FIX Bug #2 & #3: Added null check and extensive debug logging
     const containersList = this.panel.querySelector('#panel-containersList');
-    const actionHandler = async e => {
-      const button = e.target.closest('button[data-action]');
-      if (!button) return;
+    if (containersList) {
+      const actionHandler = async e => {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
 
-      e.stopPropagation();
+        e.stopPropagation();
 
-      const action = button.dataset.action;
-      const quickTabId = button.dataset.quickTabId;
-      const tabId = button.dataset.tabId;
+        const action = button.dataset.action;
+        const quickTabId = button.dataset.quickTabId;
+        const tabId = button.dataset.tabId;
+        
+        // v1.6.3 - FIX Bug #2 & #3: Log button click for debugging
+        console.log(`[PanelContentManager] Button clicked: action=${action}, quickTabId=${quickTabId}, tabId=${tabId}`);
 
-      await this._handleQuickTabAction(action, quickTabId, tabId);
-    };
-    containersList.addEventListener('click', actionHandler);
-    this.eventListeners.push({
-      element: containersList,
-      type: 'click',
-      handler: actionHandler
-    });
+        await this._handleQuickTabAction(action, quickTabId, tabId);
+      };
+      containersList.addEventListener('click', actionHandler);
+      this.eventListeners.push({
+        element: containersList,
+        type: 'click',
+        handler: actionHandler
+      });
+      console.log('[PanelContentManager] ✓ Delegated action listener attached to #panel-containersList');
+    } else {
+      console.error('[PanelContentManager] #panel-containersList not found - Quick Tab action buttons will not work!');
+    }
 
     // v1.6.2.x - Listen for storage changes from other tabs (cross-tab sync)
     const storageListener = (changes, areaName) => {
@@ -1007,11 +1020,14 @@ export class PanelContentManager {
   /**
    * Minimize Quick Tab
    * v1.6.2.x - Added defensive checks
+   * v1.6.3 - FIX Bug #3: Added console.log for debugging
    * @param {string} quickTabId - Quick Tab ID
    */
   handleMinimizeTab(quickTabId) {
+    console.log(`[PanelContentManager] handleMinimizeTab called for ${quickTabId}`);
+    
     if (!this.quickTabsManager) {
-      console.error('[PanelContentManager] quickTabsManager not available');
+      console.error('[PanelContentManager] quickTabsManager not available - cannot minimize');
       return;
     }
     
@@ -1020,18 +1036,22 @@ export class PanelContentManager {
       return;
     }
     
-    debug(`[PanelContentManager] Calling minimizeById for ${quickTabId}`);
+    console.log(`[PanelContentManager] Calling minimizeById for ${quickTabId}`);
     this.quickTabsManager.minimizeById(quickTabId);
+    console.log(`[PanelContentManager] ✓ minimizeById completed for ${quickTabId}`);
   }
 
   /**
    * Restore Quick Tab
    * v1.6.2.x - Added defensive checks
+   * v1.6.3 - Added console.log for debugging
    * @param {string} quickTabId - Quick Tab ID
    */
   handleRestoreTab(quickTabId) {
+    console.log(`[PanelContentManager] handleRestoreTab called for ${quickTabId}`);
+    
     if (!this.quickTabsManager) {
-      console.error('[PanelContentManager] quickTabsManager not available');
+      console.error('[PanelContentManager] quickTabsManager not available - cannot restore');
       return;
     }
     
@@ -1040,18 +1060,22 @@ export class PanelContentManager {
       return;
     }
     
-    debug(`[PanelContentManager] Calling restoreById for ${quickTabId}`);
+    console.log(`[PanelContentManager] Calling restoreById for ${quickTabId}`);
     this.quickTabsManager.restoreById(quickTabId);
+    console.log(`[PanelContentManager] ✓ restoreById completed for ${quickTabId}`);
   }
 
   /**
    * Close Quick Tab
    * v1.6.2.x - Added defensive checks
+   * v1.6.3 - FIX Bug #2: Added console.log for debugging
    * @param {string} quickTabId - Quick Tab ID
    */
   handleCloseTab(quickTabId) {
+    console.log(`[PanelContentManager] handleCloseTab called for ${quickTabId}`);
+    
     if (!this.quickTabsManager) {
-      console.error('[PanelContentManager] quickTabsManager not available');
+      console.error('[PanelContentManager] quickTabsManager not available - cannot close');
       return;
     }
     
@@ -1060,8 +1084,9 @@ export class PanelContentManager {
       return;
     }
     
-    debug(`[PanelContentManager] Calling closeById for ${quickTabId}`);
+    console.log(`[PanelContentManager] Calling closeById for ${quickTabId}`);
     this.quickTabsManager.closeById(quickTabId);
+    console.log(`[PanelContentManager] ✓ closeById completed for ${quickTabId}`);
   }
 
   /**

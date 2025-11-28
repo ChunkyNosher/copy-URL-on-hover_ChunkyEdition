@@ -3,17 +3,21 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.2.2  
+**Version:** 1.6.3  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and persistent floating panel manager
 
 **Key Features:**
 - Solo/Mute tab-specific visibility control
-- **Global Quick Tab visibility** (v1.6.2.2 - Container isolation REMOVED)
+- **Global Quick Tab visibility** (Container isolation REMOVED)
 - Floating Quick Tabs Manager with persistent panel (Ctrl+Alt+Z)
-- **Cross-tab sync via storage.onChanged exclusively (v1.6.2+)**
-- Direct local creation pattern (content renders first, background persists)
+- **Cross-tab sync via storage.onChanged exclusively**
+- Direct local creation pattern
+
+**Recent Fixes (v1.6.3):**
+- Manager panel buttons now properly wired up
+- Fixed API method references (`closeById`/`closeAll`)
 
 ---
 
@@ -58,7 +62,6 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 **Use `quicktabs-cross-tab-agent`** when:
 - storage.onChanged not firing
 - State not syncing between tabs
-- BroadcastChannel issues (legacy)
 
 **Use `copilot-docs-updater`** when:
 - Updating the Copilot instructions and agent files to have the most up-to-date information
@@ -79,11 +82,9 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 
 ---
 
-## 🔄 Cross-Tab Sync Architecture (v1.6.2+)
+## 🔄 Cross-Tab Sync Architecture
 
 ### CRITICAL: storage.onChanged is Primary Sync Mechanism
-
-**v1.6.2 Migration:** BroadcastChannel removed, storage.onChanged is exclusive sync method.
 
 **Event Flow:**
 ```
@@ -107,6 +108,21 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 - Tab A updates local UI immediately after write
 - Background script only updates its cache, does NOT broadcast to tabs
 - Each tab handles its own sync via storage.onChanged listener
+
+---
+
+## 🔧 QuickTabsManager API (v1.6.3)
+
+### Correct Methods
+
+| Method | Description |
+|--------|-------------|
+| `closeById(id)` | Close a single Quick Tab by ID |
+| `closeAll()` | Close all Quick Tabs |
+
+### Common Mistake
+
+❌ `closeQuickTab(id)` - **DOES NOT EXIST** (use `closeById(id)` instead)
 
 ---
 
@@ -200,7 +216,7 @@ Use the agentic-tools MCP to create memories instead.
 
 **Storage Key:** `quick_tabs_state_v2`
 
-**Unified Format (v1.6.2.2+):**
+**Unified Format (v1.6.3+):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects

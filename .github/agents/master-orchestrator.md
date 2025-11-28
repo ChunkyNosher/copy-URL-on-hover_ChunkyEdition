@@ -51,12 +51,12 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
-**v1.6.2.2 Update:** Container isolation removed, unified storage format
+**v1.6.3 Update:** Container isolation removed, unified storage format
 
-**Storage Format (v1.6.2.2+):**
+**Storage Format (v1.6.3+):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
@@ -166,7 +166,7 @@ Breakdown:
 
 **Example Coordination:**
 ```javascript
-// Domain layer defines contract (v1.6.2.2+)
+// Domain layer defines contract (v1.6.3+)
 class QuickTab {
   export() {
     return {
@@ -187,7 +187,7 @@ class QuickTab {
   }
 }
 
-// Storage layer uses unified format (v1.6.2.2+)
+// Storage layer uses unified format (v1.6.3+)
 class QuickTabStorage {
   async exportAll() {
     const state = await browser.storage.local.get('quick_tabs_state_v2');

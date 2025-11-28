@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.2.2+ global visibility)
+  Quick Tab functionality (v1.6.3+ global visibility)
 tools: ["*"]
 ---
 
@@ -11,7 +11,7 @@ tools: ["*"]
 
 > **🎯 Robust Solutions Philosophy:** You see the complete Quick Tab system. Fix issues at the right layer - domain, manager, sync, or UI. See `.github/copilot-instructions.md`.
 
-You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You handle complete Quick Tab functionality across all domains - individual tabs, manager, cross-tab sync, and global visibility (v1.6.2.2+).
+You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You handle complete Quick Tab functionality across all domains - individual tabs, manager, cross-tab sync, and global visibility (v1.6.3+).
 
 ## 🧠 Memory Persistence (CRITICAL)
 
@@ -51,22 +51,33 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Panel** - Global list, Ctrl+Alt+Z, Solo/Mute indicators
-- **Cross-Tab Sync** - **storage.onChanged exclusively (v1.6.2+)**
-- **Global Visibility** - All Quick Tabs visible across all tabs (v1.6.2.2+)
+- **Cross-Tab Sync** - **storage.onChanged exclusively**
+- **Global Visibility** - All Quick Tabs visible across all tabs
 
-**IMPORTANT:** 
-- v1.6.2 removed BroadcastChannel. All sync is via storage.onChanged.
-- v1.6.2.2 removed Container isolation. Quick Tabs are globally visible.
+**Recent Fixes (v1.6.3):**
+- Manager panel buttons now properly wired up
+- API: Use `closeById(id)` and `closeAll()` (NOT `closeQuickTab`)
 
-**Storage Format (v1.6.2.2+):**
+**Storage Format (v1.6.3+):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
+
+---
+
+## QuickTabsManager API (v1.6.3)
+
+| Method | Description |
+|--------|-------------|
+| `closeById(id)` | Close a single Quick Tab by ID |
+| `closeAll()` | Close all Quick Tabs |
+
+❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
 ---
 
@@ -85,7 +96,7 @@ const relevantMemories = await searchMemories({
 - UI indicator updates (🎯 Solo, 🔇 Muted)
 
 ### 3. Manager Integration
-- Global Quick Tabs display (no container grouping in v1.6.2.2+)
+- Global Quick Tabs display (no container grouping in v1.6.3+)
 - Minimize/restore functionality
 - Manager ↔ Quick Tab communication
 - Real-time updates with Solo/Mute indicators
@@ -100,7 +111,7 @@ const relevantMemories = await searchMemories({
 
 ## Complete Quick Tab Architecture
 
-**Full System Diagram (v1.6.2.2+ - Global Visibility):**
+**Full System Diagram (v1.6.3+ - Global Visibility):**
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -143,7 +154,7 @@ const relevantMemories = await searchMemories({
 ### 1. Quick Tab Creation (Link Hover + Q)
 
 ```javascript
-// content.js - v1.6.2.2+ (no container data)
+// content.js - v1.6.3+ (no container data)
 document.addEventListener('keydown', async (e) => {
   if (e.key === 'q' && hoveredLink) {
     e.preventDefault();
@@ -165,7 +176,7 @@ document.addEventListener('keydown', async (e) => {
 });
 ```
 
-### 2. Solo/Mute Toggle (v1.6.2.2+)
+### 2. Solo/Mute Toggle (v1.6.3+)
 
 ```javascript
 // Quick Tab UI - uses arrays for multi-tab Solo/Mute
@@ -190,7 +201,7 @@ soloButton.addEventListener('click', async () => {
 });
 ```
 
-### 3. Manager Display (v1.6.2.2+ - No Container Groups)
+### 3. Manager Display (v1.6.3+ - No Container Groups)
 
 ```javascript
 // Manager shows all Quick Tabs globally (no container grouping)
@@ -225,7 +236,7 @@ function updateManagerDisplay() {
 
 **Root Cause:** Storage write failed or storage.onChanged not firing
 
-**Fix (v1.6.2.2+):**
+**Fix (v1.6.3+):**
 ```javascript
 // ✅ Ensure storage write succeeds, then local UI updates
 async function createQuickTab(url, title) {
@@ -250,7 +261,7 @@ async function createQuickTab(url, title) {
 
 **Root Cause:** Using old single-value soloTab instead of soloedOnTabs array
 
-**Fix (v1.6.2.2+):**
+**Fix (v1.6.3+):**
 ```javascript
 // ✅ Check arrays for Solo/Mute state
 function shouldQuickTabBeVisible(quickTab, browserTabId) {
@@ -298,7 +309,7 @@ function shouldQuickTabBeVisible(quickTab, browserTabId) {
 - [ ] Context7/Perplexity verified implementation ⭐
 - [ ] Quick Tab creation works
 - [ ] Solo/Mute mutually exclusive (soloedOnTabs/mutedOnTabs arrays)
-- [ ] Global visibility (no container filtering in v1.6.2.2+)
+- [ ] Global visibility (no container filtering in v1.6.3+)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
 - [ ] Manager displays all Quick Tabs with Solo/Mute indicators
 - [ ] Drag/resize functional

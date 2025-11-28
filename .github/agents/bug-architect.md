@@ -53,17 +53,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
 
 **Key Features:**
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
-- Global Quick Tab visibility (v1.6.2.2 - Container isolation REMOVED)
+- Global Quick Tab visibility (Container isolation REMOVED)
 - Floating Quick Tabs Manager (Ctrl+Alt+Z)
-- Cross-tab sync via storage.onChanged (v1.6.2+)
+- Cross-tab sync via storage.onChanged
 - Direct local creation pattern
+
+**Recent Fixes (v1.6.3):**
+- Manager panel buttons now properly wired up
+- API: Use `closeById(id)` and `closeAll()` (NOT `closeQuickTab`)
 
 ---
 
@@ -193,7 +197,7 @@ Only if:
 
 ## Critical Areas Requiring Architectural Awareness
 
-### Global Visibility (v1.6.2.2+)
+### Global Visibility (v1.6.3+)
 
 **Common Root Causes:**
 - Using old container-based storage format
@@ -203,7 +207,7 @@ Only if:
 - Use unified storage format with tabs array
 - All Quick Tabs globally visible by default
 
-### Solo/Mute State Bugs (v1.6.2.2+)
+### Solo/Mute State Bugs (v1.6.3+)
 
 **Common Root Causes:**
 - Not using soloedOnTabs/mutedOnTabs arrays

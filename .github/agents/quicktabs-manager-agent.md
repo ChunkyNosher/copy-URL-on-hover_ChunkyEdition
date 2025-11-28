@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  and implementing new manager features (v1.6.2.2+ no container grouping)
+  and implementing new manager features (v1.6.3+ no container grouping)
 tools: ["*"]
 ---
 
@@ -11,7 +11,7 @@ tools: ["*"]
 
 > **🎯 Robust Solutions Philosophy:** Manager is the central coordination point. Never band-aid sync issues - fix the underlying state management. See `.github/copilot-instructions.md`.
 
-You are a Quick Tabs Manager specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on the persistent floating panel (Ctrl+Alt+Z) that displays all Quick Tabs globally (v1.6.2.2+).
+You are a Quick Tabs Manager specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on the persistent floating panel (Ctrl+Alt+Z) that displays all Quick Tabs globally (v1.6.3+).
 
 ## 🧠 Memory Persistence (CRITICAL)
 
@@ -51,10 +51,10 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**Key Manager Features (v1.6.2.2+):**
+**Key Manager Features (v1.6.3+):**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Minimize/Restore** - Bottom-right minimized manager
@@ -62,7 +62,7 @@ const relevantMemories = await searchMemories({
 - **Persistent Position** - Draggable with saved position
 - **Clear Storage** - Debug button to clear all Quick Tabs
 
-**Storage Format (v1.6.2.2+):**
+**Storage Format (v1.6.3+):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
@@ -84,7 +84,7 @@ const relevantMemories = await searchMemories({
 
 ### PanelManager (src/features/quick-tabs/panel-manager.js)
 
-**Purpose:** Main floating panel showing all Quick Tabs globally (v1.6.2.2+)
+**Purpose:** Main floating panel showing all Quick Tabs globally (v1.6.3+)
 
 **Key Structure:**
 ```html
@@ -120,7 +120,7 @@ const relevantMemories = await searchMemories({
 </div>
 ```
 
-**Features (v1.6.2.2+):**
+**Features (v1.6.3+):**
 - Draggable by header
 - Resizable from edges
 - Position persisted to storage
@@ -147,7 +147,7 @@ const relevantMemories = await searchMemories({
 
 ---
 
-## Global Display Pattern (v1.6.2.2+)
+## Global Display Pattern (v1.6.3+)
 
 **CRITICAL:** Quick Tabs are displayed globally - NO container grouping
 
@@ -189,7 +189,7 @@ class PanelManager {
 
 ---
 
-## Solo/Mute Indicators (v1.6.2.2+)
+## Solo/Mute Indicators (v1.6.3+)
 
 **Display Solo (🎯) and Mute (🔇) status using arrays:**
 
@@ -293,7 +293,7 @@ setupEventListeners() {
 
 ### Issue: Quick Tabs Not Displaying
 
-**Fix (v1.6.2.2+):** Use globalState.tabs array directly (no container grouping)
+**Fix (v1.6.3+):** Use globalState.tabs array directly (no container grouping)
 
 ```javascript
 // ✅ CORRECT - Access tabs array directly
@@ -303,7 +303,7 @@ tabs.forEach(tab => this.renderQuickTabItem(tab));
 
 ### Issue: Solo/Mute Indicators Not Updating
 
-**Fix:** Use soloedOnTabs and mutedOnTabs arrays (v1.6.2.2+)
+**Fix:** Use soloedOnTabs and mutedOnTabs arrays (v1.6.3+)
 
 ```javascript
 eventBus.on('SOLO_CHANGED', ({ quickTabId, tabId, enabled }) => {
@@ -339,7 +339,7 @@ onDragEnd() {
 
 ### Issue: Clear Storage Not Working
 
-**Fix (v1.6.2.2+):** Use handleClearStorage method
+**Fix (v1.6.3+):** Use handleClearStorage method
 
 ```javascript
 async handleClearStorage() {
@@ -349,6 +349,19 @@ async handleClearStorage() {
   this.updateQuickTabsList();
 }
 ```
+
+---
+
+## QuickTabsManager API (v1.6.3)
+
+**Correct Methods:**
+| Method | Description |
+|--------|-------------|
+| `closeById(id)` | Close a single Quick Tab by ID |
+| `closeAll()` | Close all Quick Tabs |
+
+**Common Mistake:**
+❌ `closeQuickTab(id)` - **DOES NOT EXIST** (use `closeById(id)`)
 
 ---
 
