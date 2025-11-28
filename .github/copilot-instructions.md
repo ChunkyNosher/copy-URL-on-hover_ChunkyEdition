@@ -3,21 +3,22 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3  
+**Version:** 1.6.4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
-**Purpose:** URL management with Solo/Mute visibility control and persistent floating panel manager
+**Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
 
 **Key Features:**
 - Solo/Mute tab-specific visibility control
 - **Global Quick Tab visibility** (Container isolation REMOVED)
-- Floating Quick Tabs Manager with persistent panel (Ctrl+Alt+Z)
+- Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 
-**Recent Fixes (v1.6.3):**
-- Manager panel buttons now properly wired up
-- Fixed API method references (`closeById`/`closeAll`)
+**Recent Changes (v1.6.4):**
+- Floating panel REMOVED (sidebar-only Quick Tabs Manager)
+- Ctrl+Alt+Z now opens sidebar instead of floating panel
+- Both keyboard shortcuts open sidebar Manager tab
 
 ---
 
@@ -36,7 +37,7 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 | Refactoring | `refactor-specialist` | Large code reorganization |
 | Quick Tab issues | `quicktabs-unified-agent` | Anything Quick Tab related |
 | Cross-tab sync | `quicktabs-cross-tab-agent` | Sync, storage.onChanged, state |
-| Manager panel | `quicktabs-manager-agent` | Ctrl+Alt+Z panel issues |
+| Manager sidebar | `quicktabs-manager-agent` | Sidebar Quick Tabs Manager issues |
 | Single Quick Tab | `quicktabs-single-tab-agent` | Drag, resize, Solo/Mute UI |
 | Settings/UI | `ui-ux-settings-agent` | Settings page, appearance |
 | URL detection | `url-detection-agent` | Link detection, site handlers |

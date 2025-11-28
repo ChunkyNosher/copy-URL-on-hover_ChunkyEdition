@@ -605,13 +605,12 @@ function matchesShortcut(event, shortcut, hoveredLink, hoveredElement) {
   const shiftConfig = `${shortcut.name}Shift`;
 
   if (
-    !checkShortcut(
-      event,
-      CONFIG[keyConfig],
-      CONFIG[ctrlConfig],
-      CONFIG[altConfig],
-      CONFIG[shiftConfig]
-    )
+    !checkShortcut(event, {
+      key: CONFIG[keyConfig],
+      ctrl: CONFIG[ctrlConfig],
+      alt: CONFIG[altConfig],
+      shift: CONFIG[shiftConfig]
+    })
   ) {
     return false;
   }
@@ -703,12 +702,24 @@ function setupKeyboardShortcuts() {
 /**
  * Check if keyboard shortcut matches configuration
  */
-function checkShortcut(event, key, needCtrl, needAlt, needShift) {
+/**
+ * Check if keyboard shortcut matches configuration
+ * @param {KeyboardEvent} event - The keyboard event
+ * @param {Object} config - Shortcut configuration
+ * @param {string} config.key - Required key
+ * @param {boolean} config.ctrl - Requires Ctrl modifier
+ * @param {boolean} config.alt - Requires Alt modifier
+ * @param {boolean} config.shift - Requires Shift modifier
+ * @returns {boolean} - True if shortcut matches
+ */
+function checkShortcut(event, config) {
+  if (!config) return false;
+  const { key, ctrl, alt, shift } = config;
   return (
     event.key.toLowerCase() === key.toLowerCase() &&
-    event.ctrlKey === needCtrl &&
-    event.altKey === needAlt &&
-    event.shiftKey === needShift
+    event.ctrlKey === ctrl &&
+    event.altKey === alt &&
+    event.shiftKey === shift
   );
 }
 
@@ -821,15 +832,28 @@ async function handleCopyText(element) {
  */
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab data structure
+ * v1.6.3 - Refactored to use options object pattern (4 args max)
+ * 
+ * @param {Object} options - Quick Tab configuration
+ * @param {string} options.url - URL to load in Quick Tab
+ * @param {string} options.id - Unique Quick Tab ID
+ * @param {Object} options.position - Position { left, top }
+ * @param {Object} options.size - Size { width, height }
+ * @param {string} options.title - Quick Tab title
+ * @returns {Object} - Quick Tab data object
  */
-function buildQuickTabData(url, quickTabId, position, width, height, title) {
+function buildQuickTabData(options) {
+  if (!options) {
+    throw new Error('buildQuickTabData: options object is required');
+  }
+  const { url, id, position = {}, size = {}, title } = options;
   return {
-    id: quickTabId,
+    id,
     url,
     left: position.left,
     top: position.top,
-    width,
-    height,
+    width: size.width,
+    height: size.height,
     title,
     cookieStoreId: 'firefox-default',
     minimized: false,
@@ -922,7 +946,13 @@ async function handleCreateQuickTab(url, targetElement = null) {
   const position = calculateQuickTabPosition(targetElement, width, height);
   const title = targetElement?.textContent?.trim() || 'Quick Tab';
   const { quickTabId, saveId, canUseManagerSaveId } = generateQuickTabIds();
-  const quickTabData = buildQuickTabData(url, quickTabId, position, width, height, title);
+  const quickTabData = buildQuickTabData({
+    url,
+    id: quickTabId,
+    position,
+    size: { width, height },
+    title
+  });
 
   // Execute creation with error handling
   try {
@@ -1045,50 +1075,6 @@ function _handleClearAllQuickTabs(sendResponse) {
   }
 }
 
-/**
- * v1.6.0 - Helper function to handle Quick Tabs panel toggle
- * Extracted to meet max-depth=2 ESLint requirement
- *
- * @param {Function} sendResponse - Response callback from message listener
- */
-function _handleQuickTabsPanelToggle(sendResponse) {
-  console.log('[Content] Received TOGGLE_QUICK_TABS_PANEL request');
-
-  try {
-    // Guard: Quick Tabs manager not initialized
-    if (!quickTabsManager) {
-      console.error('[Content] Quick Tabs manager not initialized');
-      sendResponse({
-        success: false,
-        error: 'Quick Tabs manager not initialized'
-      });
-      return;
-    }
-
-    // Guard: Panel manager not available
-    if (!quickTabsManager.panelManager) {
-      console.error('[Content] Quick Tabs panel manager not available');
-      sendResponse({
-        success: false,
-        error: 'Panel manager not available'
-      });
-      return;
-    }
-
-    // Toggle the panel
-    quickTabsManager.panelManager.toggle();
-    console.log('[Content] ✓ Quick Tabs panel toggled successfully');
-
-    sendResponse({ success: true });
-  } catch (error) {
-    console.error('[Content] Error toggling Quick Tabs panel:', error);
-    sendResponse({
-      success: false,
-      error: error.message
-    });
-  }
-}
-
 // ==================== LOG EXPORT MESSAGE HANDLER ====================
 // Listen for log export requests from popup
 if (typeof browser !== 'undefined' && browser.runtime) {
@@ -1158,15 +1144,6 @@ if (typeof browser !== 'undefined' && browser.runtime) {
     }
     // ==================== END LIVE CONSOLE FILTER REFRESH HANDLER ====================
 
-    // ==================== QUICK TABS PANEL TOGGLE HANDLER ====================
-    // v1.6.0 - Added to support keyboard shortcut (Ctrl+Alt+Z)
-    // Refactored with early returns to meet max-depth=2 requirement
-    if (message.action === 'TOGGLE_QUICK_TABS_PANEL') {
-      _handleQuickTabsPanelToggle(sendResponse);
-      return true; // Keep message channel open for async response
-    }
-    // ==================== END QUICK TABS PANEL TOGGLE HANDLER ====================
-
     // ==================== CLEAR ALL QUICK TABS HANDLER ====================
     // v1.6.3 - FIX: Added non-test handler for clearing all Quick Tabs
     // Called from popup.js when user clicks "Clear Quick Tab Storage" button
@@ -1218,12 +1195,12 @@ if (typeof browser !== 'undefined' && browser.runtime) {
     if (message.type === 'TEST_MINIMIZE_QUICK_TAB') {
       console.log('[Test Bridge Handler] TEST_MINIMIZE_QUICK_TAB:', message.data);
       try {
-        if (!quickTabsManager || !quickTabsManager.panelManager) {
-          throw new Error('QuickTabsManager or PanelManager not initialized');
+        if (!quickTabsManager) {
+          throw new Error('QuickTabsManager not initialized');
         }
         
         const { id } = message.data;
-        quickTabsManager.panelManager.minimizeTab(id);
+        quickTabsManager.minimizeById(id);
         
         sendResponse({
           success: true,
@@ -1244,12 +1221,12 @@ if (typeof browser !== 'undefined' && browser.runtime) {
     if (message.type === 'TEST_RESTORE_QUICK_TAB') {
       console.log('[Test Bridge Handler] TEST_RESTORE_QUICK_TAB:', message.data);
       try {
-        if (!quickTabsManager || !quickTabsManager.panelManager) {
-          throw new Error('QuickTabsManager or PanelManager not initialized');
+        if (!quickTabsManager) {
+          throw new Error('QuickTabsManager not initialized');
         }
         
         const { id } = message.data;
-        quickTabsManager.panelManager.restoreTab(id);
+        quickTabsManager.restoreById(id);
         
         sendResponse({
           success: true,
@@ -1577,40 +1554,34 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       return true;
     }
 
-    // ==================== MANAGER PANEL HANDLERS ====================
+    // ==================== MANAGER PANEL HANDLERS (DEPRECATED) ====================
+    // v1.6.4 - Floating panel removed. These handlers now return deprecation notice.
+    // Manager functionality is available via sidebar only.
 
     // eslint-disable-next-line max-depth
     if (message.type === 'TEST_GET_MANAGER_STATE') {
-      console.log('[Test Bridge Handler] TEST_GET_MANAGER_STATE');
+      console.log('[Test Bridge Handler] TEST_GET_MANAGER_STATE (deprecated - floating panel removed)');
       try {
-        if (!quickTabsManager || !quickTabsManager.panelManager) {
-          throw new Error('QuickTabsManager or PanelManager not initialized');
+        if (!quickTabsManager) {
+          throw new Error('QuickTabsManager not initialized');
         }
         
-        const panelManager = quickTabsManager.panelManager;
-        const stateManager = panelManager.stateManager;
-        
-        // Get current panel state
-        const panelState = stateManager ? stateManager.panelState : null;
-        const isVisible = panelManager.panel ? (panelManager.panel.style.display !== 'none') : false;
-        
-        // Get minimized tabs
-        const minimizedTabs = Array.from(quickTabsManager.tabs.values())
-          .filter(tab => tab.domainTab && tab.domainTab.isMinimized)
-          .map(tab => ({
-            id: tab.id,
-            url: tab.domainTab.url,
-            title: tab.domainTab.title
-          }));
+        // Get minimized tabs (still available via minimizedManager)
+        const minimizedTabs = quickTabsManager.minimizedManager?.getAll() || [];
         
         sendResponse({
           success: true,
           data: {
-            visible: isVisible,
-            position: panelState ? { left: panelState.left, top: panelState.top } : null,
-            size: panelState ? { width: panelState.width, height: panelState.height } : null,
-            minimizedTabs,
-            minimizedCount: minimizedTabs.length
+            visible: false, // Floating panel removed
+            position: null, // Floating panel removed
+            size: null, // Floating panel removed
+            minimizedTabs: minimizedTabs.map(tab => ({
+              id: tab.id,
+              url: tab.url,
+              title: tab.title
+            })),
+            minimizedCount: minimizedTabs.length,
+            deprecationNotice: 'Floating panel removed in v1.6.4. Use sidebar Quick Tabs Manager instead.'
           }
         });
       } catch (error) {
@@ -1625,77 +1596,21 @@ if (typeof browser !== 'undefined' && browser.runtime) {
 
     // eslint-disable-next-line max-depth
     if (message.type === 'TEST_SET_MANAGER_POSITION') {
-      console.log('[Test Bridge Handler] TEST_SET_MANAGER_POSITION:', message.data);
-      try {
-        if (!quickTabsManager || !quickTabsManager.panelManager) {
-          throw new Error('QuickTabsManager or PanelManager not initialized');
-        }
-        
-        const { x, y } = message.data;
-        const panelManager = quickTabsManager.panelManager;
-        
-        // Update panel position
-        if (panelManager.panel) {
-          panelManager.panel.style.left = `${x}px`;
-          panelManager.panel.style.top = `${y}px`;
-          
-          // Update state
-          if (panelManager.stateManager) {
-            panelManager.stateManager.panelState.left = x;
-            panelManager.stateManager.panelState.top = y;
-          }
-        }
-        
-        sendResponse({
-          success: true,
-          message: 'Manager position updated',
-          data: { x, y }
-        });
-      } catch (error) {
-        console.error('[Test Bridge Handler] TEST_SET_MANAGER_POSITION error:', error);
-        sendResponse({
-          success: false,
-          error: error.message
-        });
-      }
+      console.log('[Test Bridge Handler] TEST_SET_MANAGER_POSITION (deprecated - floating panel removed)');
+      sendResponse({
+        success: false,
+        error: 'Floating panel removed in v1.6.4. Use sidebar Quick Tabs Manager instead.'
+      });
       return true;
     }
 
     // eslint-disable-next-line max-depth
     if (message.type === 'TEST_SET_MANAGER_SIZE') {
-      console.log('[Test Bridge Handler] TEST_SET_MANAGER_SIZE:', message.data);
-      try {
-        if (!quickTabsManager || !quickTabsManager.panelManager) {
-          throw new Error('QuickTabsManager or PanelManager not initialized');
-        }
-        
-        const { width, height } = message.data;
-        const panelManager = quickTabsManager.panelManager;
-        
-        // Update panel size
-        if (panelManager.panel) {
-          panelManager.panel.style.width = `${width}px`;
-          panelManager.panel.style.height = `${height}px`;
-          
-          // Update state
-          if (panelManager.stateManager) {
-            panelManager.stateManager.panelState.width = width;
-            panelManager.stateManager.panelState.height = height;
-          }
-        }
-        
-        sendResponse({
-          success: true,
-          message: 'Manager size updated',
-          data: { width, height }
-        });
-      } catch (error) {
-        console.error('[Test Bridge Handler] TEST_SET_MANAGER_SIZE error:', error);
-        sendResponse({
-          success: false,
-          error: error.message
-        });
-      }
+      console.log('[Test Bridge Handler] TEST_SET_MANAGER_SIZE (deprecated - floating panel removed)');
+      sendResponse({
+        success: false,
+        error: 'Floating panel removed in v1.6.4. Use sidebar Quick Tabs Manager instead.'
+      });
       return true;
     }
 
@@ -1707,10 +1622,9 @@ if (typeof browser !== 'undefined' && browser.runtime) {
           throw new Error('QuickTabsManager not initialized');
         }
         
-        // Find all minimized tabs
-        const minimizedIds = Array.from(quickTabsManager.tabs.values())
-          .filter(tab => tab.domainTab && tab.domainTab.isMinimized)
-          .map(tab => tab.id);
+        // Get all minimized tabs from minimizedManager
+        const minimizedTabs = quickTabsManager.minimizedManager?.getAll() || [];
+        const minimizedIds = minimizedTabs.map(tab => tab.id);
         
         // Close each minimized tab
         for (const id of minimizedIds) {

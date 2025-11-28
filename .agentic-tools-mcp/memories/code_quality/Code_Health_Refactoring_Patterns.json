@@ -1,0 +1,8 @@
+{
+  "id": "814e6aac-d22c-40b3-9c9f-f763c95db563",
+  "title": "Code Health Refactoring Patterns",
+  "details": "## Code Health Improvement Patterns (v1.6.3)\n\n### 1. Function Decomposition Pattern\nWhen a function has cc>9 or \"Bumpy Road\" pattern:\n- Split into focused helper functions\n- Use format-specific handlers (e.g., extractFromUnifiedFormat, extractFromLegacyFormat)\n- Add format detection helpers (e.g., isUnifiedFormat)\n\n### 2. Options Object Pattern\nWhen function has >4 parameters, refactor to options object:\n```javascript\n// Before (6 args):\nbuildQuickTabData(url, quickTabId, position, width, height, title)\n\n// After (1 arg):\nbuildQuickTabData({ url, id, position, size, title })\n```\n\n### 3. Validation Best Practices\n- Always validate options object exists: `if (!options) throw new Error(...)`\n- Use default values for nested objects: `const { position = {} } = options`\n- Array checks: `Array.isArray(arr) ? arr : []`\n- Object checks: exclude arrays with `!Array.isArray(state)`\n\n### 4. Code Health Score Improvements Achieved\n- sidebar/quick-tabs-manager.js: 8.95 → 9.68 (+0.73)\n- src/content.js: 8.29 → 8.55 (+0.26)",
+  "category": "code_quality",
+  "dateCreated": "2025-11-28T21:15:45.823Z",
+  "dateUpdated": "2025-11-28T21:15:45.823Z"
+}
