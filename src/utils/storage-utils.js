@@ -39,6 +39,43 @@ export function getBrowserStorageAPI() {
 }
 
 /**
+ * Build current state from quickTabsMap for storage
+ * v1.6.4 - Extracted from handlers to reduce duplication
+ * Uses minimizedManager.isMinimized() for consistent minimized state
+ * 
+ * @param {Map} quickTabsMap - Map of Quick Tab instances
+ * @param {Object} minimizedManager - Manager for minimized Quick Tabs
+ * @returns {Object} - State object in unified format
+ */
+export function buildStateForStorage(quickTabsMap, minimizedManager) {
+  const tabs = [];
+  for (const tab of quickTabsMap.values()) {
+    // Use minimizedManager for consistent minimized state tracking
+    const isMinimized = minimizedManager?.isMinimized?.(tab.id) || false;
+    
+    // Serialize tab to storage format
+    const tabData = {
+      id: tab.id,
+      url: tab.url,
+      title: tab.title,
+      left: tab.left,
+      top: tab.top,
+      width: tab.width,
+      height: tab.height,
+      minimized: isMinimized,
+      soloedOnTabs: tab.soloedOnTabs || [],
+      mutedOnTabs: tab.mutedOnTabs || []
+    };
+    tabs.push(tabData);
+  }
+  return {
+    tabs: tabs,
+    timestamp: Date.now(),
+    saveId: generateSaveId()
+  };
+}
+
+/**
  * Persist Quick Tab state to storage.local
  * 
  * @param {Object} state - State object to persist

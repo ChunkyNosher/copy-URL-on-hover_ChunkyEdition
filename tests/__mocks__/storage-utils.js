@@ -14,6 +14,30 @@ export function getBrowserStorageAPI() {
   return null;
 }
 
+export function buildStateForStorage(quickTabsMap, minimizedManager) {
+  const tabs = [];
+  for (const tab of quickTabsMap.values()) {
+    const isMinimized = minimizedManager?.isMinimized?.(tab.id) || false;
+    tabs.push({
+      id: tab.id,
+      url: tab.url,
+      title: tab.title,
+      left: tab.left,
+      top: tab.top,
+      width: tab.width,
+      height: tab.height,
+      minimized: isMinimized,
+      soloedOnTabs: tab.soloedOnTabs || [],
+      mutedOnTabs: tab.mutedOnTabs || []
+    });
+  }
+  return {
+    tabs: tabs,
+    timestamp: Date.now(),
+    saveId: generateSaveId()
+  };
+}
+
 export function persistStateToStorage(_state, _logPrefix) {
   // No-op in tests
 }

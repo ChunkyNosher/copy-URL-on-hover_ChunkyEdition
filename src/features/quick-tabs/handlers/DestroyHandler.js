@@ -17,7 +17,7 @@
  * @version 1.6.4
  */
 
-import { STATE_KEY, generateSaveId, getBrowserStorageAPI } from '@utils/storage-utils.js';
+import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
 /**
  * DestroyHandler class
@@ -122,62 +122,14 @@ export class DestroyHandler {
   }
 
   /**
-   * Build current state from quickTabsMap for storage
-   * v1.6.4 - FIX Bug #5: Unified storage persistence helper
-   * Uses minimizedManager.isMinimized() for consistent minimized state
-   * @private
-   * @returns {Object} - State object in unified format
-   */
-  _buildStateForStorage() {
-    const tabs = [];
-    for (const tab of this.quickTabsMap.values()) {
-      // Use minimizedManager for consistent minimized state tracking
-      const isMinimized = this.minimizedManager?.isMinimized?.(tab.id) || false;
-      
-      // Serialize tab to storage format
-      const tabData = {
-        id: tab.id,
-        url: tab.url,
-        title: tab.title,
-        left: tab.left,
-        top: tab.top,
-        width: tab.width,
-        height: tab.height,
-        minimized: isMinimized,
-        soloedOnTabs: tab.soloedOnTabs || [],
-        mutedOnTabs: tab.mutedOnTabs || []
-      };
-      tabs.push(tabData);
-    }
-    return {
-      tabs: tabs,
-      timestamp: Date.now(),
-      saveId: generateSaveId()
-    };
-  }
-
-  /**
    * Persist current state to browser.storage.local
    * v1.6.4 - FIX Bug #1: Persist to storage after destroy
+   * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    */
   _persistToStorage() {
-    const browserAPI = getBrowserStorageAPI();
-    if (!browserAPI) {
-      console.log('[DestroyHandler] Storage API not available, skipping persist');
-      return;
-    }
-
-    const state = this._buildStateForStorage();
-    const remainingCount = state.tabs.length;
-    
-    browserAPI.storage.local.set({ [STATE_KEY]: state })
-      .then(() => {
-        console.log(`[DestroyHandler] Persisted state to storage (${remainingCount} tabs remaining)`);
-      })
-      .catch((err) => {
-        console.error('[DestroyHandler] Failed to persist to storage:', err);
-      });
+    const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
+    persistStateToStorage(state, '[DestroyHandler]');
   }
 
   /**
