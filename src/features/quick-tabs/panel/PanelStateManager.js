@@ -165,13 +165,13 @@ export class PanelStateManager {
 
     const rect = panel.getBoundingClientRect();
 
-    this.panelState = {
-      left: Math.round(rect.left),
-      top: Math.round(rect.top),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
-      isOpen: this.panelState.isOpen
-    };
+    // Update position/size properties directly on existing object
+    // Do NOT replace the object - this preserves isOpen set by setIsOpen()
+    this.panelState.left = Math.round(rect.left);
+    this.panelState.top = Math.round(rect.top);
+    this.panelState.width = Math.round(rect.width);
+    this.panelState.height = Math.round(rect.height);
+    // Note: isOpen is NOT touched here - only setIsOpen() should modify it
 
     try {
       await browser.storage.local.set({ quick_tabs_panel_state: this.panelState });
@@ -190,13 +190,13 @@ export class PanelStateManager {
 
     const rect = panel.getBoundingClientRect();
 
-    this.panelState = {
-      left: Math.round(rect.left),
-      top: Math.round(rect.top),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
-      isOpen: this.panelState.isOpen
-    };
+    // Update position/size properties directly on existing object
+    // Do NOT replace the object - this preserves isOpen set by setIsOpen()
+    this.panelState.left = Math.round(rect.left);
+    this.panelState.top = Math.round(rect.top);
+    this.panelState.width = Math.round(rect.width);
+    this.panelState.height = Math.round(rect.height);
+    // Note: isOpen is NOT touched here - only setIsOpen() should modify it
 
     debug('[PanelStateManager] Updated local state (no storage write)');
   }
