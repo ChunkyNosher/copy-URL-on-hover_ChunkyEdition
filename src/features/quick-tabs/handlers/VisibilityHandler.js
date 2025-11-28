@@ -106,8 +106,8 @@ export class VisibilityHandler {
    */
   _createQuickTabData(id, tabWindow, minimized) {
     return {
-      id: id,
-      minimized: minimized,
+      id,
+      minimized,
       url: tabWindow?.url,
       title: tabWindow?.title
     };

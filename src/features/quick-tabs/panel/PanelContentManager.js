@@ -88,6 +88,25 @@ export class PanelContentManager {
   }
 
   /**
+   * Notify background script to reset its cached Quick Tab state
+   * v1.6.3.1 - FIX Close All bug: storage.onChanged does NOT fire in the tab that made the change,
+   * so we must explicitly notify the background script to clear its cached state
+   * @private
+   * @returns {Promise<void>}
+   */
+  async _notifyBackgroundToResetState() {
+    try {
+      await browser.runtime.sendMessage({
+        action: 'RESET_GLOBAL_QUICK_TAB_STATE',
+        timestamp: Date.now()
+      });
+      console.log('[PanelContentManager] Notified background to reset cached state');
+    } catch (bgErr) {
+      console.warn('[PanelContentManager] Failed to notify background:', bgErr);
+    }
+  }
+
+  /**
    * Update panel open state
    * @param {boolean} isOpen - Whether panel is open
    */
@@ -911,18 +930,7 @@ export class PanelContentManager {
       await this._updateSessionStorage(emptyState);
 
       // v1.6.3.1 - FIX Close All bug: Notify background script to clear its cached state
-      // storage.onChanged does NOT fire in the tab that made the change, so the
-      // background script's globalQuickTabState cache would remain stale and
-      // resurrect old Quick Tabs when new ones are created
-      try {
-        await browser.runtime.sendMessage({
-          action: 'RESET_GLOBAL_QUICK_TAB_STATE',
-          timestamp: Date.now()
-        });
-        console.log('[PanelContentManager] Notified background to reset cached state');
-      } catch (bgErr) {
-        console.warn('[PanelContentManager] Failed to notify background:', bgErr);
-      }
+      await this._notifyBackgroundToResetState();
 
       // v1.6.3 - Emit state:cleared event for other listeners
       if (this.eventBus) {
@@ -995,15 +1003,7 @@ export class PanelContentManager {
       }
 
       // v1.6.3.1 - FIX Close All bug: Notify background script to clear its cached state
-      try {
-        await browser.runtime.sendMessage({
-          action: 'RESET_GLOBAL_QUICK_TAB_STATE',
-          timestamp: Date.now()
-        });
-        console.log('[PanelContentManager] Notified background to reset cached state');
-      } catch (bgErr) {
-        console.warn('[PanelContentManager] Failed to notify background:', bgErr);
-      }
+      await this._notifyBackgroundToResetState();
 
       // v1.6.3 - Emit state:cleared event for other listeners (e.g., background script)
       if (this.eventBus) {
