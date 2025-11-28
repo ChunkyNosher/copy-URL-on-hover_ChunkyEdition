@@ -187,7 +187,7 @@ export class PanelContentManager {
     
     // v1.6.3 - FIX Issue #1: If forceRefresh is true, skip isOpen check
     if (!options.forceRefresh && !isCurrentlyOpen) {
-      console.warn('[PanelContentManager] ► UPDATE SKIPPED: panel closed and forceRefresh=false');
+      debug('[PanelContentManager] ► UPDATE SKIPPED: panel closed and forceRefresh=false');
       // v1.6.3 - Mark state changed while closed for later update
       this.stateChangedWhileClosed = true;
       console.log('[PanelContentManager] ► stateChangedWhileClosed flag SET');
@@ -195,7 +195,7 @@ export class PanelContentManager {
     }
     
     if (!this.panel) {
-      console.error('[PanelContentManager] ► UPDATE FAILED: panel DOM element not initialized');
+      debug('[PanelContentManager] ► UPDATE SKIPPED: panel DOM element not initialized');
       return;
     }
     
