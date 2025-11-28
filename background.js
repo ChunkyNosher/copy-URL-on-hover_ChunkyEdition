@@ -1412,15 +1412,26 @@ async function _trySendManagerMessage() {
 // Listen for keyboard commands
 // v1.6.0 - PHASE 4.3: Extracted toggle logic to fix max-depth
 // v1.6.1.4 - Updated for dual-sidebar implementation
-browser.commands.onCommand.addListener(async command => {
+// v1.6.3.5 - FIX Bug #8: Use synchronous handler to preserve user input context
+//            browser.sidebarAction.open() requires synchronous call from user input
+browser.commands.onCommand.addListener(command => {
   // Handle Quick Tabs Manager panel (floating panel, not sidebar)
   if (command === 'toggle-quick-tabs-manager') {
-    await _toggleQuickTabsPanel();
+    // Use promise chain instead of await to avoid losing user input context
+    _toggleQuickTabsPanel().catch(err => {
+      console.error('[QuickTabsManager] Error toggling panel:', err);
+    });
   }
   
   // Handle opening sidebar and switching to Manager tab
+  // v1.6.3.5 - FIX Bug #8: Call sidebarAction.open() IMMEDIATELY (synchronously)
+  //            to preserve user input context, then chain async operations
   if (command === 'open-quick-tabs-manager') {
-    await _openSidebarAndSwitchToManager();
+    browser.sidebarAction.open()
+      .then(() => new Promise(resolve => setTimeout(resolve, 300)))
+      .then(() => _sendManagerTabMessage())
+      .then(() => console.log('[Sidebar] Opened sidebar and switched to Manager tab'))
+      .catch(err => console.error('[Sidebar] Error opening sidebar:', err));
   }
   
   // _execute_sidebar_action is handled automatically by Firefox

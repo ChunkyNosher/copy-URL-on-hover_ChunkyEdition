@@ -391,7 +391,10 @@ describe('PanelContentManager', () => {
       expect(typeof contentManager._storageListener).toBe('function');
     });
 
-    it('should update content when storage changes and panel is open', () => {
+    it('should update content when storage changes and panel is open', async () => {
+      // v1.6.3.5 - Use fake timers to handle debounced storage listener
+      jest.useFakeTimers();
+      
       contentManager.setupEventListeners();
       contentManager.isOpen = true;
       
@@ -401,12 +404,19 @@ describe('PanelContentManager', () => {
       const storageListener = contentManager._storageListener;
       storageListener({ quick_tabs_state_v2: { newValue: {} } }, 'local');
       
+      // v1.6.3.5 - Advance timers past debounce period (50ms)
+      jest.advanceTimersByTime(60);
+      
       expect(updateContentSpy).toHaveBeenCalled();
       
       updateContentSpy.mockRestore();
+      jest.useRealTimers();
     });
 
-    it('should track state changes when storage changes and panel is closed', () => {
+    it('should track state changes when storage changes and panel is closed', async () => {
+      // v1.6.3.5 - Use fake timers to handle debounced storage listener
+      jest.useFakeTimers();
+      
       contentManager.setupEventListeners();
       contentManager.isOpen = false;
       contentManager.stateChangedWhileClosed = false;
@@ -417,10 +427,14 @@ describe('PanelContentManager', () => {
       const storageListener = contentManager._storageListener;
       storageListener({ quick_tabs_state_v2: { newValue: {} } }, 'local');
       
+      // v1.6.3.5 - Advance timers past debounce period (50ms)
+      jest.advanceTimersByTime(60);
+      
       expect(updateContentSpy).not.toHaveBeenCalled();
       expect(contentManager.stateChangedWhileClosed).toBe(true);
       
       updateContentSpy.mockRestore();
+      jest.useRealTimers();
     });
 
     it('should ignore non-local storage changes', () => {

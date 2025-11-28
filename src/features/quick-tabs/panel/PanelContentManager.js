@@ -629,20 +629,30 @@ export class PanelContentManager {
     }
 
     // v1.6.2.x - Listen for storage changes from other tabs (cross-tab sync)
+    // v1.6.3.5 - FIX Bug #9: Add debouncing to prevent listener spam
+    //            Each iframe loads content script creating its own storage listener
+    //            One storage write can trigger many listener executions
+    this._storageChangeTimeout = null;  // v1.6.3.5 - Store timeout ref for cleanup
+    const STORAGE_DEBOUNCE_MS = 50;
+    
     const storageListener = (changes, areaName) => {
       if (areaName !== 'local') return;
       
       // Check if quick_tabs_state_v2 changed
       if (changes.quick_tabs_state_v2) {
-        debug('[PanelContentManager] Storage changed from another tab - updating content');
-        
-        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
-        if (this._getIsOpen()) {
-          this.updateContent();
-        } else {
-          this.stateChangedWhileClosed = true;
-          debug('[PanelContentManager] Storage changed while panel closed - will update on open');
-        }
+        // v1.6.3.5 - FIX Bug #9: Debounce rapid storage changes
+        clearTimeout(this._storageChangeTimeout);
+        this._storageChangeTimeout = setTimeout(() => {
+          debug('[PanelContentManager] Storage changed from another tab - updating content (debounced)');
+          
+          // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
+          if (this._getIsOpen()) {
+            this.updateContent();
+          } else {
+            this.stateChangedWhileClosed = true;
+            debug('[PanelContentManager] Storage changed while panel closed - will update on open');
+          }
+        }, STORAGE_DEBOUNCE_MS);
       }
     };
     
@@ -1192,6 +1202,7 @@ export class PanelContentManager {
    * Cleanup event listeners and references
    * v1.6.2.3 - Also cleanup state event listeners
    * v1.6.2.x - Also cleanup storage.onChanged listener
+   * v1.6.3.5 - Also cleanup storage change debounce timeout
    */
   destroy() {
     // Remove all DOM event listeners
@@ -1201,6 +1212,12 @@ export class PanelContentManager {
       }
     });
     this.eventListeners = [];
+
+    // v1.6.3.5 - Clear storage change debounce timeout
+    if (this._storageChangeTimeout) {
+      clearTimeout(this._storageChangeTimeout);
+      this._storageChangeTimeout = null;
+    }
 
     // v1.6.2.x - Remove storage change listener
     if (this._storageListener) {
