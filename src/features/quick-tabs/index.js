@@ -67,6 +67,9 @@ class QuickTabsManager {
 
     // MemoryGuard for emergency shutdown
     this.memoryGuard = null;
+    
+    // Track all generated IDs to prevent collisions within this session
+    this.generatedIds = new Set();
   }
 
   /**
@@ -540,10 +543,62 @@ class QuickTabsManager {
   // ============================================================================
 
   /**
-   * Generate unique ID for Quick Tab
+   * Generate cryptographically secure random string
+   * Uses crypto.getRandomValues() for better entropy than Math.random()
+   * Falls back to Math.random() if crypto is unavailable
+   * @private
+   * @returns {string} Random string (~13 characters)
    */
-  generateId() {
-    return `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  _generateSecureRandom() {
+    // Use Web Crypto API if available (preferred)
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const array = new Uint32Array(2); // 2 * 32 bits = 64 bits of entropy
+      crypto.getRandomValues(array);
+      return array[0].toString(36) + array[1].toString(36);
+    }
+    
+    // Fallback to Math.random() for older environments
+    console.warn('[QuickTabsManager] crypto.getRandomValues unavailable, using Math.random fallback');
+    return Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
+  }
+
+  /**
+   * Generate a candidate ID for Quick Tab
+   * Format: qt-{tabId}-{timestamp}-{secureRandom}
+   * @private
+   * @returns {string} Candidate ID
+   */
+  _generateIdCandidate() {
+    const tabId = this.currentTabId || 'unknown';
+    const timestamp = Date.now();
+    const random = this._generateSecureRandom();
+    return `qt-${tabId}-${timestamp}-${random}`;
+  }
+
+  /**
+   * Generate unique ID for Quick Tab with collision detection
+   * Uses cryptographically secure random and includes tab ID for cross-tab uniqueness
+   * @param {number} maxRetries - Maximum number of retry attempts (default: CONSTANTS.MAX_ID_GENERATION_RETRIES)
+   * @returns {string} Unique Quick Tab ID
+   */
+  generateId(maxRetries = CONSTANTS.MAX_ID_GENERATION_RETRIES) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const id = this._generateIdCandidate();
+      
+      // Check local tabs Map and generated IDs Set for collisions
+      if (!this.tabs.has(id) && !this.generatedIds.has(id)) {
+        this.generatedIds.add(id);
+        return id;
+      }
+      
+      console.warn(`[QuickTabsManager] ID collision detected: ${id}, retrying... (${attempt + 1}/${maxRetries})`);
+    }
+    
+    // Fallback: add extra entropy with collision marker
+    const fallbackId = `qt-${this.currentTabId || 'unknown'}-${Date.now()}-${this._generateSecureRandom()}-collision`;
+    console.error(`[QuickTabsManager] Failed to generate unique ID after ${maxRetries} attempts, using fallback: ${fallbackId}`);
+    this.generatedIds.add(fallbackId);
+    return fallbackId;
   }
 
   // ============================================================================
