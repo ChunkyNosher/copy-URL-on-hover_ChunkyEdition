@@ -96,8 +96,27 @@ export class VisibilityHandler {
   }
 
   /**
+   * Create minimal Quick Tab data object for state:updated events
+   * v1.6.3.1 - Helper to reduce code duplication
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Quick Tab window instance
+   * @param {boolean} minimized - Minimized state
+   * @returns {Object} Quick Tab data for event emission
+   */
+  _createQuickTabData(id, tabWindow, minimized) {
+    return {
+      id,
+      minimized,
+      url: tabWindow?.url,
+      title: tabWindow?.title
+    };
+  }
+
+  /**
    * Handle Quick Tab minimize
    * v1.6.3 - Local only (no cross-tab sync)
+   * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
    *
    * @param {string} id - Quick Tab ID
    */
@@ -110,19 +129,31 @@ export class VisibilityHandler {
     // Add to minimized manager
     this.minimizedManager.add(id, tabWindow);
 
-    // Emit minimize event
+    // Emit minimize event for legacy handlers
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_MINIMIZED, { id });
+    }
+
+    // v1.6.3.1 - FIX Bug #7: Emit state:updated for panel to refresh
+    // This allows PanelContentManager to update when Quick Tab is minimized from its window
+    if (this.eventBus) {
+      const quickTabData = this._createQuickTabData(id, tabWindow, true);
+      this.eventBus.emit('state:updated', { quickTab: quickTabData });
+      console.log('[VisibilityHandler] Emitted state:updated for minimize:', id);
     }
   }
 
   /**
    * Handle restore of minimized Quick Tab
    * v1.6.3 - Local only (no cross-tab sync)
+   * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
    * @param {string} id - Quick Tab ID
    */
   handleRestore(id) {
     console.log('[VisibilityHandler] Handling restore for:', id);
+
+    // Get tab info BEFORE restoring (needed for state:updated event)
+    const tabWindow = this.quickTabsMap.get(id);
 
     // Restore from minimized manager
     const restored = this.minimizedManager.restore(id);
@@ -131,9 +162,16 @@ export class VisibilityHandler {
       return;
     }
 
-    // Emit restore event
+    // Emit restore event for legacy handlers
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id });
+    }
+
+    // v1.6.3.1 - FIX Bug #7: Emit state:updated for panel to refresh
+    if (this.eventBus && tabWindow) {
+      const quickTabData = this._createQuickTabData(id, tabWindow, false);
+      this.eventBus.emit('state:updated', { quickTab: quickTabData });
+      console.log('[VisibilityHandler] Emitted state:updated for restore:', id);
     }
   }
 

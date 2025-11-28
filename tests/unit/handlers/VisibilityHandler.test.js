@@ -193,6 +193,20 @@ describe('VisibilityHandler', () => {
       expect(eventSpy).toHaveBeenCalledWith({ id: 'qt-123' });
     });
 
+    test('should emit state:updated event for panel sync', () => {
+      const stateUpdatedSpy = jest.fn();
+      mockEventBus.on('state:updated', stateUpdatedSpy);
+
+      visibilityHandler.handleMinimize('qt-123');
+
+      expect(stateUpdatedSpy).toHaveBeenCalledWith({
+        quickTab: expect.objectContaining({
+          id: 'qt-123',
+          minimized: true
+        })
+      });
+    });
+
     test('should handle non-existent tab gracefully', () => {
       expect(() => {
         visibilityHandler.handleMinimize('qt-999');
@@ -214,6 +228,20 @@ describe('VisibilityHandler', () => {
       visibilityHandler.handleRestore('qt-123');
 
       expect(eventSpy).toHaveBeenCalledWith({ id: 'qt-123' });
+    });
+
+    test('should emit state:updated event for panel sync on restore', () => {
+      const stateUpdatedSpy = jest.fn();
+      mockEventBus.on('state:updated', stateUpdatedSpy);
+
+      visibilityHandler.handleRestore('qt-123');
+
+      expect(stateUpdatedSpy).toHaveBeenCalledWith({
+        quickTab: expect.objectContaining({
+          id: 'qt-123',
+          minimized: false
+        })
+      });
     });
 
     test('should not emit event if tab not found in minimized manager', () => {

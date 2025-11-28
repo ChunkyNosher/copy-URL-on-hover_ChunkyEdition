@@ -1,0 +1,8 @@
+{
+  "id": "4bf0c268-c1c1-4de0-9d25-f721166a048d",
+  "title": "Bug #7 Panel Not Updating on Minimize",
+  "details": "**Bug #7 Fix (v1.6.3.1):** Manager Panel doesn't update when Quick Tabs are minimized from their window.\n\n**Root Cause:** VisibilityHandler.handleMinimize() and handleRestore() did not emit `state:updated` events on the internal EventBus.\n\n**Fix:** Added `state:updated` event emission in both methods:\n```javascript\nif (this.stateManager) {\n  this.stateManager.eventBus?.emit('state:updated', {\n    quickTab: this._createQuickTabData(id, tabWindow, true)\n  });\n}\n```\n\n**Files Changed:**\n- `src/features/quick-tabs/handlers/VisibilityHandler.js`\n\n**Test Verification:**\n- Added tests in `tests/unit/handlers/VisibilityHandler.test.js`",
+  "category": "bug_fixes",
+  "dateCreated": "2025-11-28T06:23:56.752Z",
+  "dateUpdated": "2025-11-28T06:23:56.752Z"
+}

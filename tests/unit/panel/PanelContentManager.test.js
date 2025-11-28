@@ -525,14 +525,16 @@ describe('PanelContentManager', () => {
       expect(savedState.quick_tabs_state_v2.tabs).toEqual([]);
     });
 
-    it('should NOT send message to background (v1.6.2+ uses storage.onChanged)', async () => {
-      // v1.6.2+ - Cross-tab sync happens via storage.onChanged, not message passing
+    it('should send RESET_GLOBAL_QUICK_TAB_STATE message to background', async () => {
+      // v1.6.3.1 - FIX Close All bug: Must notify background to clear its cached state
       await contentManager.handleCloseAll();
 
-      // The CLEAR_ALL_QUICK_TABS message is no longer sent
-      expect(mockBrowser.runtime.sendMessage).not.toHaveBeenCalledWith({
-        action: 'CLEAR_ALL_QUICK_TABS'
-      });
+      expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'RESET_GLOBAL_QUICK_TAB_STATE',
+          timestamp: expect.any(Number)
+        })
+      );
     });
 
     it('should handle session storage', async () => {

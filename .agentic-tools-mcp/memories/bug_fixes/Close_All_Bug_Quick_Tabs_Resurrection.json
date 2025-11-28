@@ -1,0 +1,8 @@
+{
+  "id": "4b85bee7-f66f-4b8b-b103-f9a79dbb9ff4",
+  "title": "Close All Bug Quick Tabs Resurrection",
+  "details": "**Close All Bug Fix (v1.6.3.1):** \"Close All\" brings back Quick Tabs when creating new ones.\n\n**Root Cause:** `browser.storage.onChanged` does NOT fire in the same tab that made the storage change. The background script cached state and when a new Quick Tab was created, it merged with stale cached state, resurrecting old tabs.\n\n**Fix:** PanelContentManager now sends `RESET_GLOBAL_QUICK_TAB_STATE` message to background script via `browser.runtime.sendMessage()` in:\n1. `handleCloseAll()` \n2. `handleClearStorage()`\n\nCreated helper method `_notifyBackgroundToResetState()` to reduce code duplication.\n\n**Files Changed:**\n- `src/features/quick-tabs/panel/PanelContentManager.js`\n\n**Key Lesson:** Cross-context state changes in WebExtensions require explicit message passing since storage.onChanged doesn't fire in the tab that made the change.",
+  "category": "bug_fixes",
+  "dateCreated": "2025-11-28T06:24:08.851Z",
+  "dateUpdated": "2025-11-28T06:24:08.851Z"
+}
