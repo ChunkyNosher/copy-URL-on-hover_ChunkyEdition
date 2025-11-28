@@ -99,12 +99,16 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3)
+- [ ] Version numbers match current release (1.6.4)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array, NOT containers)
+- [ ] Storage area correct (storage.local for Quick Tab state, NOT storage.sync)
+- [ ] Storage utilities documented (src/utils/storage-utils.js)
+- [ ] Manager action messages documented (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
+- [ ] saveId tracking documented (background.js)
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -112,15 +116,19 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3
+- **Current Version:** 1.6.4
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
   - Solo/Mute tab-specific visibility (soloedOnTabs/mutedOnTabs arrays)
   - Global Quick Tab visibility (Container isolation REMOVED)
-  - Floating Quick Tabs Manager (Ctrl+Alt+Z)
+  - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
   - Direct local creation pattern
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
+- **Storage Area:** storage.local for Quick Tab state (NOT storage.sync)
+- **Storage Utilities:** `src/utils/storage-utils.js` exports
+- **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
+- **saveId Tracking:** background.js tracks saveId for collision detection
 - **Agent Delegation Table:** When to use which agent
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -180,16 +188,19 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3)
+- Version numbers (1.6.4)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
 - Storage format (unified tabs array, NOT containers)
+- Storage area (storage.local for Quick Tab state, NOT storage.sync)
+- Storage utilities (src/utils/storage-utils.js)
+- Manager action messages (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
 - Global visibility (Container isolation REMOVED)
 - MCP tool lists
 - File size limits (15KB)
 - Testing commands
-- Keyboard shortcuts (Ctrl+Alt+Z for manager)
+- Keyboard shortcuts (Ctrl+Alt+Z or Alt+Shift+Z for manager)
 
 ---
 
@@ -315,7 +326,7 @@ git commit -m "docs: update Copilot instructions and agents for v1.6.3"
 
 ---
 
-## Current Extension State (v1.6.3)
+## Current Extension State (v1.6.4)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -325,18 +336,22 @@ git commit -m "docs: update Copilot instructions and agents for v1.6.3"
 ### Features
 - **Solo/Mute:** Tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - **Global Visibility:** All Quick Tabs visible everywhere (Container isolation REMOVED)
-- **Quick Tabs Manager:** Persistent panel (Ctrl+Alt+Z), Solo/Mute indicators
+- **Quick Tabs Manager:** Sidebar (Ctrl+Alt+Z or Alt+Shift+Z), Solo/Mute indicators
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
 - **Direct Local Creation:** Content renders first, background persists
+- **Storage Utilities:** Shared functions in `src/utils/storage-utils.js`
+- **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages to content script
 
-### Storage Format (v1.6.3+)
+### Storage Format (v1.6.4)
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
-  saveId: 'unique-id',   // Deduplication ID
+  saveId: 'unique-id',   // Deduplication ID (tracked by background.js)
   timestamp: Date.now()  // Last update timestamp
 }
 ```
+
+**CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
 ### Deprecated/Removed
 - ❌ "Pin to Page" terminology → Solo/Mute
@@ -344,10 +359,12 @@ git commit -m "docs: update Copilot instructions and agents for v1.6.3"
 - ❌ Container isolation → Global visibility
 - ❌ containers storage format → unified tabs array
 - ❌ cookieStoreId filtering → removed
+- ❌ Floating panel → Sidebar-only Manager (v1.6.4)
+- ❌ storage.sync for Quick Tab state → storage.local
 
 ### Current Keyboard Shortcuts
 - **Q:** Create Quick Tab
-- **Ctrl+Alt+Z:** Toggle Quick Tabs Manager panel
+- **Ctrl+Alt+Z or Alt+Shift+Z:** Toggle Quick Tabs Manager sidebar
 - **Esc:** Close all Quick Tabs
 - **Y:** Copy URL
 - **X:** Copy link text
@@ -418,7 +435,7 @@ See `.github/copilot-instructions.md` § MCP Tools
 ### 1. Outdated Version References
 
 **Error:** Documentation references v1.5.9 features
-**Fix:** Update all version refs to 1.6.3
+**Fix:** Update all version refs to 1.6.4
 
 ### 2. Deprecated Terminology
 
@@ -428,19 +445,24 @@ See `.github/copilot-instructions.md` § MCP Tools
 ### 3. Old Sync Mechanism / Storage Format
 
 **Error:** Referencing BroadcastChannel or container-based storage
-**Fix:** Update to storage.onChanged (v1.6.2+) and unified format (v1.6.3+)
+**Fix:** Update to storage.onChanged (v1.6.2+) and unified format (v1.6.4)
 
 ### 4. Container References
 
 **Error:** Referencing container isolation or cookieStoreId filtering
 **Fix:** Remove all container references - Quick Tabs are globally visible
 
-### 5. Size Violations
+### 5. Wrong Storage Area
+
+**Error:** Using storage.sync for Quick Tab state
+**Fix:** Use storage.local for Quick Tab state (storage.sync only for settings)
+
+### 6. Size Violations
 
 **Error:** Agent files exceeding 15KB
 **Fix:** Apply compression techniques, use cross-references
 
-### 6. Inconsistent MCP Lists
+### 7. Inconsistent MCP Lists
 
 **Error:** Different agent files list different MCP tools
 **Fix:** Standardize MCP tool lists across all agents
@@ -485,15 +507,18 @@ See `.github/copilot-instructions.md` § MCP Tools
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3
+- [ ] Version numbers updated to 1.6.4
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] No container/cookieStoreId references (except removal notes)
 - [ ] storage.onChanged documented as primary sync
+- [ ] storage.local documented for Quick Tab state (NOT storage.sync)
+- [ ] Storage utilities documented (src/utils/storage-utils.js)
 - [ ] Unified storage format documented (tabs array)
 - [ ] Global visibility documented
+- [ ] Manager action messages documented (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
 - [ ] MCP tool lists consistent
-- [ ] Keyboard shortcuts current (Ctrl+Alt+Z)
+- [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] No docs in prohibited locations
 - [ ] Cross-references valid
 - [ ] ESLint passed (if code examples)

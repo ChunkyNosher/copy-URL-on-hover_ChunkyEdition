@@ -51,26 +51,29 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
-- **Manager Panel** - Global list, Ctrl+Alt+Z, Solo/Mute indicators
+- **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z, Solo/Mute indicators
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
+- **Shared Storage Utilities** - `src/utils/storage-utils.js` for persistence
 
-**Recent Fixes (v1.6.3):**
-- Manager panel buttons now properly wired up
-- API: Use `closeById(id)` and `closeAll()` (NOT `closeQuickTab`)
+**Recent Fixes (v1.6.4):**
+- Handlers persist state via shared storage utilities
+- Manager action messages (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
+- Settings page uses storage.local (not storage.sync)
+- saveId tracking for collision detection
 
-**Storage Format (v1.6.3+):**
+**Storage Format (v1.6.4):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
 
 ---
 
-## QuickTabsManager API (v1.6.3)
+## QuickTabsManager API (v1.6.4)
 
 | Method | Description |
 |--------|-------------|
@@ -78,6 +81,18 @@ const relevantMemories = await searchMemories({
 | `closeAll()` | Close all Quick Tabs |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
+
+## Storage Utilities (v1.6.4)
+
+**Location:** `src/utils/storage-utils.js`
+
+```javascript
+import { STATE_KEY, generateSaveId, persistStateToStorage } from '../utils/storage-utils.js';
+
+// Persist state after changes
+const state = { tabs: [...], saveId: generateSaveId(), timestamp: Date.now() };
+persistStateToStorage(state, '[MyHandler]');
+```
 
 ---
 

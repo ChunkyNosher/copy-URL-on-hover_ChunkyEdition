@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Quick Tab Features:**
@@ -61,6 +61,7 @@ const relevantMemories = await searchMemories({
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - Minimize button
+- **State Persistence** - Handlers persist to storage.local via shared utilities
 
 ---
 
@@ -115,15 +116,16 @@ const relevantMemories = await searchMemories({
 
 ---
 
-## Solo/Mute Implementation (v1.6.3+)
+### Solo/Mute Implementation (v1.6.4)
 
 **Key Rules:**
 1. Solo and Mute are **mutually exclusive**
 2. Solo = show ONLY on specific browser tabs (soloedOnTabs array)
 3. Mute = hide ONLY on specific browser tabs (mutedOnTabs array)
 4. Both use browser `tabId` stored in arrays
+5. Persist changes to storage.local via shared utilities
 
-**Toggle Solo (v1.6.3+):**
+**Toggle Solo (v1.6.4):**
 ```javascript
 async toggleSolo(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -162,7 +164,7 @@ async toggleSolo(browserTabId) {
 }
 ```
 
-**Toggle Mute (v1.6.3+):**
+**Toggle Mute (v1.6.4):**
 ```javascript
 async toggleMute(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -203,7 +205,7 @@ async toggleMute(browserTabId) {
 
 ---
 
-## Visibility Pattern (v1.6.3+)
+## Visibility Pattern (v1.6.4)
 
 **Global visibility with Solo/Mute arrays:**
 
@@ -374,7 +376,7 @@ updateNavigationState() {
 
 ### Issue: Solo/Mute Not Mutually Exclusive
 
-**Fix (v1.6.3+):** Filter opposite array when toggling
+**Fix (v1.6.4):** Filter opposite array when toggling
 
 ```javascript
 // ✅ CORRECT - Mutual exclusivity with arrays
@@ -385,11 +387,12 @@ if (enablingSolo) {
   quickTab.mutedOnTabs.push(tabId);
   quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
 }
+// Persist via shared utilities
 ```
 
 ### Issue: Quick Tab Not Visible When Expected
 
-**Fix (v1.6.3+):** Check soloedOnTabs array logic
+**Fix (v1.6.4):** Check soloedOnTabs array logic
 
 ```javascript
 // ✅ CORRECT - Visibility check with arrays

@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
@@ -63,10 +63,14 @@ const relevantMemories = await searchMemories({
 - Enforce architecture boundaries
 - Reduce complexity
 
-**Storage Format (v1.6.3+):**
+**Storage Format (v1.6.4):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
+
+**Storage (v1.6.4):**
+- Use `storage.local` for Quick Tab state (NOT `storage.sync`)
+- Use shared utilities from `src/utils/storage-utils.js`
 
 ---
 

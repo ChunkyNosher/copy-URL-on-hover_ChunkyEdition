@@ -52,20 +52,23 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Features:**
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
-- Floating Quick Tabs Manager (Ctrl+Alt+Z)
+- Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
 
-**Recent Fixes (v1.6.3):**
-- Manager panel buttons now properly wired up
-- API: Use `closeById(id)` and `closeAll()` (NOT `closeQuickTab`)
+**Recent Fixes (v1.6.4):**
+- Storage persistence after destroy/minimize/restore via shared utilities
+- Settings page uses storage.local for Quick Tab state (not storage.sync)
+- Manager action message handlers in content script
+- saveId tracking in background.js for collision detection
+- New `src/utils/storage-utils.js` with shared persistence functions
 
 ---
 
@@ -272,20 +275,22 @@ const tabs = state.quick_tabs_state_v2?.tabs || [];
 
 ## Common Bug Categories
 
-### Global Visibility (v1.6.3+)
+### Global Visibility (v1.6.4)
 
 **Symptoms:** State not shared correctly across tabs
 
-**Root Cause:** Using old container-based storage format
+**Root Cause:** Using old container-based storage format or wrong storage area
 
 **Standard Fix:**
 ```javascript
-// Use unified storage format
-const state = await browser.storage.local.get('quick_tabs_state_v2');
-const tabs = state.quick_tabs_state_v2?.tabs || [];
+// Use unified storage format with storage.local (NOT storage.sync)
+import { STATE_KEY, persistStateToStorage } from '../utils/storage-utils.js';
+
+const state = await browser.storage.local.get(STATE_KEY);
+const tabs = state[STATE_KEY]?.tabs || [];
 ```
 
-### Solo/Mute State Bugs (v1.6.3+)
+### Solo/Mute State Bugs (v1.6.4)
 
 **Symptoms:** Incorrect visibility, state conflicts
 
@@ -302,6 +307,21 @@ function toggleSolo(quickTab, tabId) {
     quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
   }
 }
+```
+
+### Storage Persistence Bugs (v1.6.4)
+
+**Symptoms:** State lost after destroy/minimize/restore
+
+**Root Cause:** Handler not persisting to storage.local
+
+**Standard Fix:**
+```javascript
+import { persistStateToStorage, generateSaveId } from '../utils/storage-utils.js';
+
+// After state change, persist
+const state = { tabs: [...], saveId: generateSaveId(), timestamp: Date.now() };
+persistStateToStorage(state, '[MyHandler]');
 ```
 
 ### Quick Tab Rendering Bugs
@@ -442,7 +462,10 @@ test('edge case #123: empty container string', ...);
 → Edge cases are where bugs hide
 
 ❌ **Not checking global visibility logic**
-→ Quick Tabs are visible everywhere in v1.6.3+ (no container isolation)
+→ Quick Tabs are visible everywhere in v1.6.4 (no container isolation)
+
+❌ **Using storage.sync for Quick Tab state**
+→ Use storage.local for Quick Tab state, storage.sync only for settings
 
 ---
 
