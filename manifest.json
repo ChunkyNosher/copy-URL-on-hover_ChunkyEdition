@@ -15,6 +15,12 @@
   ],
 
   "commands": {
+    "toggle-quick-tabs-manager": {
+      "suggested_key": {
+        "default": "Ctrl+Alt+Z"
+      },
+      "description": "Toggle Quick Tabs floating panel"
+    },
     "open-quick-tabs-manager": {
       "suggested_key": {
         "default": "Alt+Shift+Z"
