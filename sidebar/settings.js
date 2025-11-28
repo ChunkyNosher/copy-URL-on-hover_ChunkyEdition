@@ -804,8 +804,8 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
     )
   ) {
     try {
-      // Only clear Quick Tab state, preserve all settings
-      await browserAPI.storage.sync.remove('quick_tabs_state_v2');
+      // v1.6.4 - FIX Bug #3: Clear from storage.local (not sync) to match Manager listener
+      await browserAPI.storage.local.remove('quick_tabs_state_v2');
 
       // Clear session storage if available
       // eslint-disable-next-line max-depth

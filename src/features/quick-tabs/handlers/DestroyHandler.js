@@ -3,6 +3,7 @@
  * Extracted from QuickTabsManager Phase 2.1 refactoring
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
+ * v1.6.4 - FIX Bug #1: Persist to storage after destroy
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -11,13 +12,17 @@
  * - Cleanup minimized manager references
  * - Reset z-index when all tabs closed
  * - Emit destruction events
+ * - Persist state to storage after destruction
  *
- * @version 1.6.3.2
+ * @version 1.6.4
  */
+
+import { STATE_KEY, generateSaveId, getBrowserStorageAPI } from '@utils/storage-utils.js';
 
 /**
  * DestroyHandler class
  * Manages Quick Tab destruction and cleanup operations (local only, no cross-tab sync)
+ * v1.6.4 - Now persists state to storage after destruction
  */
 export class DestroyHandler {
   /**
@@ -48,6 +53,7 @@ export class DestroyHandler {
    * Handle Quick Tab destruction
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
+   * v1.6.4 - FIX Bug #1: Persist to storage after destroy
    *
    * @param {string} id - Quick Tab ID
    */
@@ -69,6 +75,9 @@ export class DestroyHandler {
 
     // Reset z-index if all tabs are closed
     this._resetZIndexIfEmpty();
+
+    // v1.6.4 - FIX Bug #1: Persist to storage after destroy
+    this._persistToStorage();
   }
 
   /**
@@ -113,6 +122,65 @@ export class DestroyHandler {
   }
 
   /**
+   * Build current state from quickTabsMap for storage
+   * v1.6.4 - FIX Bug #5: Unified storage persistence helper
+   * Uses minimizedManager.isMinimized() for consistent minimized state
+   * @private
+   * @returns {Object} - State object in unified format
+   */
+  _buildStateForStorage() {
+    const tabs = [];
+    for (const tab of this.quickTabsMap.values()) {
+      // Use minimizedManager for consistent minimized state tracking
+      const isMinimized = this.minimizedManager?.isMinimized?.(tab.id) || false;
+      
+      // Serialize tab to storage format
+      const tabData = {
+        id: tab.id,
+        url: tab.url,
+        title: tab.title,
+        left: tab.left,
+        top: tab.top,
+        width: tab.width,
+        height: tab.height,
+        minimized: isMinimized,
+        soloedOnTabs: tab.soloedOnTabs || [],
+        mutedOnTabs: tab.mutedOnTabs || []
+      };
+      tabs.push(tabData);
+    }
+    return {
+      tabs: tabs,
+      timestamp: Date.now(),
+      saveId: generateSaveId()
+    };
+  }
+
+  /**
+   * Persist current state to browser.storage.local
+   * v1.6.4 - FIX Bug #1: Persist to storage after destroy
+   * @private
+   */
+  _persistToStorage() {
+    const browserAPI = getBrowserStorageAPI();
+    if (!browserAPI) {
+      console.log('[DestroyHandler] Storage API not available, skipping persist');
+      return;
+    }
+
+    const state = this._buildStateForStorage();
+    const remainingCount = state.tabs.length;
+    
+    browserAPI.storage.local.set({ [STATE_KEY]: state })
+      .then(() => {
+        console.log(`[DestroyHandler] Persisted state to storage (${remainingCount} tabs remaining)`);
+      })
+      .catch((err) => {
+        console.error('[DestroyHandler] Failed to persist to storage:', err);
+      });
+  }
+
+  /**
    * Close Quick Tab by ID (calls tab.destroy() method)
    *
    * @param {string} id - Quick Tab ID
@@ -126,6 +194,7 @@ export class DestroyHandler {
 
   /**
    * Close all Quick Tabs
+   * v1.6.4 - FIX Bug #1: Persist to storage after close all
    * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
    */
   closeAll() {
@@ -142,5 +211,8 @@ export class DestroyHandler {
     this.quickTabsMap.clear();
     this.minimizedManager.clear();
     this.currentZIndex.value = this.baseZIndex;
+
+    // v1.6.4 - FIX Bug #1: Persist to storage after close all
+    this._persistToStorage();
   }
 }

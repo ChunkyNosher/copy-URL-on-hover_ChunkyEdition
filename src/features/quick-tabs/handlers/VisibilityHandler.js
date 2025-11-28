@@ -2,6 +2,7 @@
  * @fileoverview VisibilityHandler - Handles Quick Tab visibility operations
  * Extracted from QuickTabsManager Phase 2.1 refactoring
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
+ * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -10,14 +11,18 @@
  * - Handle focus operation (bring to front)
  * - Update button appearances
  * - Emit events for coordinators
+ * - Persist state to storage after visibility changes
  *
- * @version 1.6.3
+ * @version 1.6.4
  */
+
+import { STATE_KEY, generateSaveId, getBrowserStorageAPI } from '@utils/storage-utils.js';
 
 /**
  * VisibilityHandler class
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
  * v1.6.3 - Local only (no cross-tab sync or storage persistence)
+ * v1.6.4 - Now persists state to storage after minimize/restore
  */
 export class VisibilityHandler {
   /**
@@ -117,6 +122,7 @@ export class VisibilityHandler {
    * Handle Quick Tab minimize
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
+   * v1.6.4 - FIX Bug #2: Persist to storage after minimize
    *
    * @param {string} id - Quick Tab ID
    */
@@ -141,12 +147,16 @@ export class VisibilityHandler {
       this.eventBus.emit('state:updated', { quickTab: quickTabData });
       console.log('[VisibilityHandler] Emitted state:updated for minimize:', id);
     }
+
+    // v1.6.4 - FIX Bug #2: Persist to storage after minimize
+    this._persistToStorage();
   }
 
   /**
    * Handle restore of minimized Quick Tab
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
+   * v1.6.4 - FIX Bug #2: Persist to storage after restore
    * @param {string} id - Quick Tab ID
    */
   handleRestore(id) {
@@ -173,6 +183,9 @@ export class VisibilityHandler {
       this.eventBus.emit('state:updated', { quickTab: quickTabData });
       console.log('[VisibilityHandler] Emitted state:updated for restore:', id);
     }
+
+    // v1.6.4 - FIX Bug #2: Persist to storage after restore
+    this._persistToStorage();
   }
 
   /**
@@ -242,5 +255,64 @@ export class VisibilityHandler {
     tab.muteButton.textContent = isMuted ? '🔇' : '🔊';
     tab.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
     tab.muteButton.style.background = isMuted ? '#c44' : 'transparent';
+  }
+
+  /**
+   * Build current state from quickTabsMap for storage
+   * v1.6.4 - FIX Bug #5: Unified storage persistence helper
+   * Uses minimizedManager.isMinimized() for consistent minimized state
+   * @private
+   * @returns {Object} - State object in unified format
+   */
+  _buildStateForStorage() {
+    const tabs = [];
+    for (const tab of this.quickTabsMap.values()) {
+      // Use minimizedManager for consistent minimized state tracking
+      const isMinimized = this.minimizedManager?.isMinimized?.(tab.id) || false;
+      
+      // Serialize tab to storage format
+      const tabData = {
+        id: tab.id,
+        url: tab.url,
+        title: tab.title,
+        left: tab.left,
+        top: tab.top,
+        width: tab.width,
+        height: tab.height,
+        minimized: isMinimized,
+        soloedOnTabs: tab.soloedOnTabs || [],
+        mutedOnTabs: tab.mutedOnTabs || []
+      };
+      tabs.push(tabData);
+    }
+    return {
+      tabs: tabs,
+      timestamp: Date.now(),
+      saveId: generateSaveId()
+    };
+  }
+
+  /**
+   * Persist current state to browser.storage.local
+   * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
+   * @private
+   */
+  _persistToStorage() {
+    const browserAPI = getBrowserStorageAPI();
+    if (!browserAPI) {
+      console.log('[VisibilityHandler] Storage API not available, skipping persist');
+      return;
+    }
+
+    const state = this._buildStateForStorage();
+    const tabCount = state.tabs.length;
+    
+    browserAPI.storage.local.set({ [STATE_KEY]: state })
+      .then(() => {
+        console.log(`[VisibilityHandler] Persisted state to storage (${tabCount} tabs)`);
+      })
+      .catch((err) => {
+        console.error('[VisibilityHandler] Failed to persist to storage:', err);
+      });
   }
 }
