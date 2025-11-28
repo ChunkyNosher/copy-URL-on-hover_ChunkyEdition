@@ -182,6 +182,17 @@ export class PanelManager {
 
     // Content manager
     // v1.6.2.3 - FIX: Pass EventBus and live state managers for real-time updates
+    // v1.6.3 - FIX Issue #4: Validate dependencies before passing to PanelContentManager
+    if (!this.quickTabsManager.internalEventBus) {
+      console.error('[PanelManager] quickTabsManager.internalEventBus is undefined - Manager will not receive real-time updates');
+    }
+    if (!this.quickTabsManager.state) {
+      console.error('[PanelManager] quickTabsManager.state is undefined - Manager may show stale data');
+    }
+    if (!this.quickTabsManager.minimizedManager) {
+      console.warn('[PanelManager] quickTabsManager.minimizedManager is undefined - Minimized count may be incorrect');
+    }
+    
     this.contentManager = new PanelContentManager(this.panel, {
       uiBuilder: this.uiBuilder,
       stateManager: this.stateManager,
@@ -459,5 +470,91 @@ export class PanelManager {
     }
 
     debug('[PanelManager] Destroyed');
+  }
+
+  /**
+   * Health check for debugging Manager issues
+   * Returns diagnostic information about Manager state
+   * v1.6.3 - Added for issue diagnosis
+   * @returns {Object} Health check results
+   */
+  healthCheck() {
+    const health = this._collectHealthData();
+    const problems = this._identifyProblems(health);
+    health.problems = problems;
+
+    // Log results
+    console.log('[PanelManager] Health Check:', health);
+    if (problems.length > 0) {
+      console.error('[PanelManager] Health check FAILED:', problems);
+    } else {
+      console.log('[PanelManager] Health check PASSED - Manager is functioning correctly');
+    }
+
+    return health;
+  }
+
+  /**
+   * Collect health check data
+   * @private
+   * @returns {Object} Health data object
+   */
+  _collectHealthData() {
+    // Get live state count using proper method check with error handling
+    let liveStateCount = 0;
+    const stateManager = this.quickTabsManager?.state;
+    if (stateManager && typeof stateManager.count === 'function') {
+      try {
+        liveStateCount = stateManager.count();
+      } catch (err) {
+        console.warn('[PanelManager] Error getting state count:', err);
+        liveStateCount = -1; // Indicate error
+      }
+    }
+    
+    // Get listeners count - use public method if available, fallback to property check
+    let listenersActive = 0;
+    if (this.contentManager) {
+      if (typeof this.contentManager.getListenerCount === 'function') {
+        listenersActive = this.contentManager.getListenerCount();
+      } else if (this.contentManager._stateHandlers) {
+        listenersActive = Object.keys(this.contentManager._stateHandlers).length;
+      }
+    }
+    
+    return {
+      panelInitialized: !!this.panel,
+      panelVisible: this.panel?.style.display === 'flex',
+      isOpenFlag: this.isOpen,
+      contentManagerExists: !!this.contentManager,
+      eventBusConnected: !!this.quickTabsManager?.internalEventBus,
+      stateManagerExists: !!this.stateManager,
+      liveStateManagerExists: !!stateManager,
+      minimizedManagerExists: !!this.quickTabsManager?.minimizedManager,
+      quickTabsCount: this.quickTabsManager?.tabs?.size || 0,
+      liveStateCount,
+      listenersActive,
+      lastUpdateTime: this.contentManager?.lastUpdateTimestamp || 0
+    };
+  }
+
+  /**
+   * Identify problems from health data
+   * @private
+   * @param {Object} health - Health data object
+   * @returns {Array<string>} Array of problem descriptions
+   */
+  _identifyProblems(health) {
+    const problems = [];
+    if (!health.eventBusConnected) {
+      problems.push('EventBus not connected - real-time updates will not work');
+    }
+    if (health.quickTabsCount !== health.liveStateCount) {
+      problems.push(`State mismatch: ${health.quickTabsCount} tabs in manager, ${health.liveStateCount} in state`);
+    }
+    if (health.listenersActive === 0 && health.eventBusConnected) {
+      problems.push('No state event listeners active - Manager will not receive updates');
+    }
+    return problems;
   }
 }
