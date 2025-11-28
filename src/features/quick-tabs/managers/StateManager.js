@@ -90,8 +90,8 @@ export class StateManager {
 
     console.log(`[StateManager] Added Quick Tab: ${quickTab.id} (slot: ${quickTab.slot})`);
 
-    // v1.6.3.1 - Persist to storage for sidebar/manager sync
-    this.persistToStorage();
+    // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
+    this.persistToStorage().catch(() => { /* errors logged in persistToStorage */ });
   }
 
   /**
@@ -133,8 +133,8 @@ export class StateManager {
 
     console.log(`[StateManager] Updated Quick Tab: ${quickTab.id}`);
 
-    // v1.6.3.1 - Persist to storage for sidebar/manager sync
-    this.persistToStorage();
+    // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
+    this.persistToStorage().catch(() => { /* errors logged in persistToStorage */ });
   }
 
   /**
@@ -152,8 +152,8 @@ export class StateManager {
       this.eventBus?.emit('state:deleted', { id, quickTab });
       console.log(`[StateManager] Deleted Quick Tab: ${id}`);
 
-      // v1.6.3.1 - Persist to storage for sidebar/manager sync
-      this.persistToStorage();
+      // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
+      this.persistToStorage().catch(() => { /* errors logged in persistToStorage */ });
     }
 
     return deleted;
@@ -243,8 +243,8 @@ export class StateManager {
     this.eventBus?.emit('state:cleared', { count });
     console.log(`[StateManager] Cleared ${count} Quick Tabs`);
 
-    // v1.6.3.1 - Persist to storage for sidebar/manager sync
-    this.persistToStorage();
+    // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
+    this.persistToStorage().catch(() => { /* errors logged in persistToStorage */ });
   }
 
   /**
