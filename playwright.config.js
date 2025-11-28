@@ -53,7 +53,7 @@ export default {
     {
       name: 'firefox-extension',
       use: {
-        // Desktop Firefox settings
+        // Firefox browser configuration
         browserName: 'firefox',
         // CRITICAL: Firefox extensions work in true headless mode
         headless: true,

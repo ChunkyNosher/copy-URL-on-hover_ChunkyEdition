@@ -19,8 +19,7 @@ export const test = base.extend({
    * Extension-enabled browser context
    * Automatically loads the extension before tests
    */
-  // eslint-disable-next-line no-empty-pattern
-  extensionContext: async ({}, use) => {
+  extensionContext: async ({ browserName: _browserName }, use) => {
     // Path to built extension
     const extPath = path.join(__dirname, '../../../dist');
 
