@@ -1029,9 +1029,7 @@ function _handleClearAllQuickTabs(sendResponse) {
     // Close all Quick Tabs using the manager
     const tabIds = Array.from(quickTabsManager.tabs.keys());
     console.log(`[Content] Clearing ${tabIds.length} Quick Tabs`);
-    for (const id of tabIds) {
-      quickTabsManager.closeQuickTab(id);
-    }
+    quickTabsManager.closeAll();
 
     sendResponse({
       success: true,
@@ -1354,7 +1352,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
         }
         
         const { id } = message.data;
-        quickTabsManager.closeQuickTab(id);
+        quickTabsManager.closeById(id);
         
         sendResponse({
           success: true,
@@ -1381,9 +1379,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
         
         // Close all Quick Tabs
         const tabIds = Array.from(quickTabsManager.tabs.keys());
-        for (const id of tabIds) {
-          quickTabsManager.closeQuickTab(id);
-        }
+        quickTabsManager.closeAll();
         
         sendResponse({
           success: true,
@@ -1718,7 +1714,7 @@ if (typeof browser !== 'undefined' && browser.runtime) {
         
         // Close each minimized tab
         for (const id of minimizedIds) {
-          quickTabsManager.closeQuickTab(id);
+          quickTabsManager.closeById(id);
         }
         
         sendResponse({

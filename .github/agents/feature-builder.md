@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,7 +62,7 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**Storage Format (v1.6.2.2+):**
+**Storage Format (v1.6.3+):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
@@ -297,7 +297,7 @@ async function handleFeatureRequest(request) {
 
 ## Architecture Patterns
 
-### Solo/Mute Feature Pattern (v1.6.2.2+)
+### Solo/Mute Feature Pattern (v1.6.3+)
 
 **Example of clean feature implementation:**
 

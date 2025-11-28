@@ -1,7 +1,7 @@
 # GitHub Copilot Autonomous Testing Guide
 
 **Extension**: Copy URL on Hover - ChunkyEdition  
-**Version**: 1.6.2.2  
+**Version**: 1.6.3  
 **Testing System**: Test Bridge Pattern with Playwright MCP  
 **Coverage**: ~80% autonomous testing capability
 
@@ -24,7 +24,7 @@
 ### ✅ State Verification
 - **Storage checks**: Verify Quick Tabs in browser.storage.local
 - **Cross-tab sync**: Verify storage.onChanged syncing (v1.6.2+)
-- **Global visibility**: All Quick Tabs visible everywhere (v1.6.2.2+)
+- **Global visibility**: All Quick Tabs visible everywhere (v1.6.3+)
 - **State persistence**: Verify data survives page reloads
 
 ### ✅ Cross-Tab Testing
@@ -203,10 +203,16 @@ Unpin a Quick Tab.
 - **id**: `string` - Quick Tab ID
 - **Returns**: `Promise<Object>` - Operation result
 
-##### `closeQuickTab(id)`
-Close a specific Quick Tab.
+##### `closeById(id)`
+Close a specific Quick Tab by ID.
 - **id**: `string` - Quick Tab ID
-- **Returns**: `Promise<Object>` - Operation result
+- **Returns**: `void` (synchronous operation)
+
+> **Note:** `closeQuickTab(id)` does NOT exist - use `closeById(id)` instead.
+
+##### `closeAll()`
+Close all Quick Tabs.
+- **Returns**: `void` (synchronous operation)
 
 ##### `waitForQuickTabCount(count, timeout = 5000)`
 Wait for Quick Tab count to reach expected value (polling utility).

@@ -52,16 +52,20 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.2.2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Features:**
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
-- Global Quick Tab visibility (v1.6.2.2 - Container isolation REMOVED)
+- Global Quick Tab visibility (Container isolation REMOVED)
 - Floating Quick Tabs Manager (Ctrl+Alt+Z)
-- Cross-tab sync via storage.onChanged (v1.6.2+)
+- Cross-tab sync via storage.onChanged
 - Direct local creation pattern
+
+**Recent Fixes (v1.6.3):**
+- Manager panel buttons now properly wired up
+- API: Use `closeById(id)` and `closeAll()` (NOT `closeQuickTab`)
 
 ---
 
@@ -154,7 +158,7 @@ if (!tab) {
 }
 ```
 
-**Global Visibility (v1.6.2.2+):**
+**Global Visibility (v1.6.3+):**
 ```javascript
 // ✅ GOOD - Use unified storage format
 const state = await browser.storage.local.get('quick_tabs_state_v2');
@@ -268,7 +272,7 @@ const tabs = state.quick_tabs_state_v2?.tabs || [];
 
 ## Common Bug Categories
 
-### Global Visibility (v1.6.2.2+)
+### Global Visibility (v1.6.3+)
 
 **Symptoms:** State not shared correctly across tabs
 
@@ -281,7 +285,7 @@ const state = await browser.storage.local.get('quick_tabs_state_v2');
 const tabs = state.quick_tabs_state_v2?.tabs || [];
 ```
 
-### Solo/Mute State Bugs (v1.6.2.2+)
+### Solo/Mute State Bugs (v1.6.3+)
 
 **Symptoms:** Incorrect visibility, state conflicts
 
@@ -438,7 +442,7 @@ test('edge case #123: empty container string', ...);
 → Edge cases are where bugs hide
 
 ❌ **Not checking global visibility logic**
-→ Quick Tabs are visible everywhere in v1.6.2.2+ (no container isolation)
+→ Quick Tabs are visible everywhere in v1.6.3+ (no container isolation)
 
 ---
 
