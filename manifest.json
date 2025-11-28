@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Copy URL on Hover Custom",
-  "version": "1.6.3",
-  "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with solo/mute visibility control, navigation, minimize, and persistent panel manager.",
+  "version": "1.6.4",
+  "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with solo/mute visibility control, navigation, minimize, and sidebar manager.",
 
   "permissions": [
     "storage",
@@ -19,7 +19,7 @@
       "suggested_key": {
         "default": "Ctrl+Alt+Z"
       },
-      "description": "Toggle Quick Tabs floating panel"
+      "description": "Open Quick Tabs Manager in sidebar"
     },
     "open-quick-tabs-manager": {
       "suggested_key": {

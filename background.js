@@ -1306,46 +1306,6 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
 /**
- * Helper: Toggle Quick Tabs panel in active tab
- * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (line 1205)
- *
- * @returns {Promise<void>}
- */
-async function _toggleQuickTabsPanel() {
-  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-
-  // Guard: No active tab
-  if (tabs.length === 0) {
-    console.error('[QuickTabsManager] No active tab found');
-    return;
-  }
-
-  const activeTab = tabs[0];
-
-  try {
-    // Send toggle message to content script
-    await browser.tabs.sendMessage(activeTab.id, {
-      action: 'TOGGLE_QUICK_TABS_PANEL'
-    });
-    console.log('[QuickTabsManager] Toggle command sent to tab', activeTab.id);
-  } catch (err) {
-    console.error('[QuickTabsManager] Error sending toggle message:', err);
-    // Content script may not be loaded yet - inject it
-    try {
-      await browser.tabs.executeScript(activeTab.id, {
-        file: 'content.js'
-      });
-      // Try again after injection
-      await browser.tabs.sendMessage(activeTab.id, {
-        action: 'TOGGLE_QUICK_TABS_PANEL'
-      });
-    } catch (injectErr) {
-      console.error('[QuickTabsManager] Error injecting content script:', injectErr);
-    }
-  }
-}
-
-/**
  * Open sidebar and switch to Manager tab
  * v1.6.1.4 - Extracted to fix max-depth eslint error
  * v1.6.2.0 - Fixed: Improved timing and retry logic for sidebar message delivery
@@ -1414,19 +1374,12 @@ async function _trySendManagerMessage() {
 // v1.6.1.4 - Updated for dual-sidebar implementation
 // v1.6.3.5 - FIX Bug #8: Use synchronous handler to preserve user input context
 //            browser.sidebarAction.open() requires synchronous call from user input
+// v1.6.4 - Removed floating panel. Both shortcuts now open sidebar.
 browser.commands.onCommand.addListener(command => {
-  // Handle Quick Tabs Manager panel (floating panel, not sidebar)
-  if (command === 'toggle-quick-tabs-manager') {
-    // Use promise chain instead of await to avoid losing user input context
-    _toggleQuickTabsPanel().catch(err => {
-      console.error('[QuickTabsManager] Error toggling panel:', err);
-    });
-  }
-  
-  // Handle opening sidebar and switching to Manager tab
-  // v1.6.3.5 - FIX Bug #8: Call sidebarAction.open() IMMEDIATELY (synchronously)
-  //            to preserve user input context, then chain async operations
-  if (command === 'open-quick-tabs-manager') {
+  // v1.6.4 - Both shortcuts now open sidebar and switch to Manager tab
+  // toggle-quick-tabs-manager (Ctrl+Alt+Z) - opens sidebar (floating panel removed)
+  // open-quick-tabs-manager (Alt+Shift+Z) - opens sidebar
+  if (command === 'toggle-quick-tabs-manager' || command === 'open-quick-tabs-manager') {
     browser.sidebarAction.open()
       .then(() => new Promise(resolve => setTimeout(resolve, 300)))
       .then(() => _sendManagerTabMessage())

@@ -22,7 +22,6 @@ import { VisibilityHandler } from './handlers/VisibilityHandler.js';
 import { EventManager } from './managers/EventManager.js';
 import { StateManager } from './managers/StateManager.js';
 import { MinimizedManager } from './minimized-manager.js';
-import { PanelManager } from './panel.js';
 import { CONSTANTS } from '../../core/config.js';
 
 /**
@@ -56,7 +55,6 @@ class QuickTabsManager {
 
     // Legacy UI managers (KEEP - used by other modules)
     this.minimizedManager = new MinimizedManager();
-    this.panelManager = null;
 
     // Legacy fields for backward compatibility (KEEP - required by old code)
     this.eventBus = null; // External event bus from content.js
@@ -93,11 +91,10 @@ class QuickTabsManager {
       await this._initStep1_Context();
       this._initStep2_Managers();
       this._initStep3_Handlers();
-      await this._initStep4_Panel();
-      this._initStep5_Coordinators();
-      await this._initStep6_Setup();
-      this._initStep7_Log();
-      this._initStep8_Expose();
+      this._initStep4_Coordinators();
+      await this._initStep5_Setup();
+      this._initStep6_Log();
+      this._initStep7_Expose();
 
       this.initialized = true;
       console.log('[QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓');
@@ -150,57 +147,46 @@ class QuickTabsManager {
   }
 
   /**
-   * STEP 4: Initialize panel manager
+   * STEP 4: Initialize coordinators
    * @private
    */
-  async _initStep4_Panel() {
-    console.log('[QuickTabsManager] STEP 4: Initializing panel manager...');
-    this.panelManager = new PanelManager(this);
-    await this.panelManager.init();
-    console.log('[QuickTabsManager] STEP 4 Complete - Panel manager initialized');
+  _initStep4_Coordinators() {
+    console.log('[QuickTabsManager] STEP 4: Initializing coordinators...');
+    this._initializeCoordinators();
+    console.log('[QuickTabsManager] STEP 4 Complete');
   }
 
   /**
-   * STEP 5: Initialize coordinators
+   * STEP 5: Setup managers (attach listeners)
    * @private
    */
-  _initStep5_Coordinators() {
-    console.log('[QuickTabsManager] STEP 5: Initializing coordinators...');
-    this._initializeCoordinators();
+  async _initStep5_Setup() {
+    console.log('[QuickTabsManager] STEP 5: Setting up components...');
+    await this._setupComponents();
     console.log('[QuickTabsManager] STEP 5 Complete');
   }
 
   /**
-   * STEP 6: Setup managers (attach listeners)
+   * STEP 6: Log initialization (no hydration in v1.6.3)
    * @private
    */
-  async _initStep6_Setup() {
-    console.log('[QuickTabsManager] STEP 6: Setting up components...');
-    await this._setupComponents();
-    console.log('[QuickTabsManager] STEP 6 Complete');
+  _initStep6_Log() {
+    console.log('[QuickTabsManager] STEP 6: State initialized empty (no persistence in v1.6.3)');
   }
 
   /**
-   * STEP 7: Log initialization (no hydration in v1.6.3)
+   * STEP 7: Expose manager globally
    * @private
    */
-  _initStep7_Log() {
-    console.log('[QuickTabsManager] STEP 7: State initialized empty (no persistence in v1.6.3)');
-  }
-
-  /**
-   * STEP 8: Expose manager globally
-   * @private
-   */
-  _initStep8_Expose() {
-    console.log('[QuickTabsManager] STEP 8: Exposing manager globally...');
+  _initStep7_Expose() {
+    console.log('[QuickTabsManager] STEP 7: Exposing manager globally...');
     if (typeof window !== 'undefined') {
       window.quickTabsManager = this;
       window.__quickTabsManager = this;
       console.log('[QuickTabsManager] Manager exposed globally as window.quickTabsManager');
       console.log('[QuickTabsManager] Current tab ID available:', this.currentTabId);
     }
-    console.log('[QuickTabsManager] STEP 8 Complete');
+    console.log('[QuickTabsManager] STEP 7 Complete');
   }
 
   /**
@@ -291,13 +277,14 @@ class QuickTabsManager {
   /**
    * Initialize coordinator components
    * v1.6.3 - Removed SyncCoordinator
+   * v1.6.4 - Removed PanelManager (floating panel removed, sidebar-only)
    * @private
    */
   _initializeCoordinators() {
     this.uiCoordinator = new UICoordinator(
       this.state,
       this.minimizedManager,
-      this.panelManager,
+      null, // panelManager removed in v1.6.4
       this.internalEventBus
     );
   }
