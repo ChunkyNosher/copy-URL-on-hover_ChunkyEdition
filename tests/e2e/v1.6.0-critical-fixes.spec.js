@@ -10,8 +10,8 @@
  * Related: docs/manual/v1.6.0/v1.6.0-critical-bugs-diagnosis.md
  */
 
-import { test, expect } from '@playwright/test';
 import path from 'path';
+import playwright from 'playwright/test';
 import { fileURLToPath } from 'url';
 
 import {
@@ -20,6 +20,9 @@ import {
   clearExtensionStorage,
   triggerShortcut
 } from './helpers/extension-loader.js';
+
+// Destructure from the default import to work around ESM resolution issues
+const { test, expect } = playwright;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

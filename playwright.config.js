@@ -1,12 +1,13 @@
-import { defineConfig, devices } from '@playwright/test';
-
 /**
  * Playwright configuration for Firefox extension testing
  * Uses playwright-webextext for native Firefox extension support
  *
  * This config is designed for TRUE HEADLESS testing - no Xvfb required!
+ *
+ * Note: We use a plain object export instead of defineConfig() to avoid
+ * ESM module resolution issues with the Playwright CLI.
  */
-export default defineConfig({
+export default {
   // Test directory
   testDir: './tests/e2e',
 
@@ -52,7 +53,8 @@ export default defineConfig({
     {
       name: 'firefox-extension',
       use: {
-        ...devices['Desktop Firefox'],
+        // Firefox browser configuration
+        browserName: 'firefox',
         // CRITICAL: Firefox extensions work in true headless mode
         headless: true,
       },
@@ -61,4 +63,4 @@ export default defineConfig({
 
   // Output directories
   outputDir: 'test-results',
-});
+};
