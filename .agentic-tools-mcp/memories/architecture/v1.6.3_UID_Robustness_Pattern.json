@@ -1,0 +1,8 @@
+{
+  "id": "67cc7c60-b275-4b77-bbc2-bb192234b6cb",
+  "title": "v1.6.3 UID Robustness Pattern",
+  "details": "Quick Tab ID generation uses multi-layer defense:\n1. crypto.getRandomValues() for 64-bit secure randomness\n2. Tab-specific component: qt-{tabId}-{timestamp}-{random}\n3. Collision detection with retry loop (MAX_ID_GENERATION_RETRIES=10)\n4. generatedIds Set tracks all IDs ever generated in session\n\nLocation: src/features/quick-tabs/index.js - generateId(), _generateSecureRandom(), _generateIdCandidate()",
+  "category": "architecture",
+  "dateCreated": "2025-11-28T08:39:44.981Z",
+  "dateUpdated": "2025-11-28T08:39:44.981Z"
+}

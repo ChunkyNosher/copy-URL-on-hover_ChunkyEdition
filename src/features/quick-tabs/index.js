@@ -67,6 +67,9 @@ class QuickTabsManager {
 
     // MemoryGuard for emergency shutdown
     this.memoryGuard = null;
+    
+    // Track all generated IDs to prevent collisions within this session
+    this.generatedIds = new Set();
   }
 
   /**
@@ -302,6 +305,7 @@ class QuickTabsManager {
   /**
    * Setup component listeners and event flows
    * v1.6.3 - Simplified (no storage/sync setup)
+   * v1.6.3.3 - FIX Bug #5: Setup event bridge after UI coordinator init
    * @private
    */
   async _setupComponents() {
@@ -309,6 +313,9 @@ class QuickTabsManager {
     
     this.events.setupEmergencySaveHandlers();
     await this.uiCoordinator.init();
+    
+    // v1.6.3.3 - FIX Bug #5: Bridge internal events to external bus
+    this._setupEventBridge();
 
     // Start memory monitoring
     if (this.memoryGuard) {
@@ -317,6 +324,44 @@ class QuickTabsManager {
     }
     
     console.log('[QuickTabsManager] ✓ _setupComponents complete');
+  }
+
+  /**
+   * Bridge internal events to external event bus
+   * v1.6.3.3 - FIX Bug #5: Internal events need to reach PanelContentManager which listens on external bus
+   * @private
+   */
+  _setupEventBridge() {
+    if (!this.internalEventBus || !this.eventBus) {
+      console.warn('[QuickTabsManager] Cannot setup event bridge - missing event bus(es)');
+      return;
+    }
+
+    // Bridge internal state:updated events to external bus
+    this.internalEventBus.on('state:updated', (data) => {
+      this.eventBus.emit('state:updated', data);
+      console.log('[QuickTabsManager] Bridged state:updated to external bus');
+    });
+    
+    // Bridge internal state:deleted events to external bus
+    this.internalEventBus.on('state:deleted', (data) => {
+      this.eventBus.emit('state:deleted', data);
+      console.log('[QuickTabsManager] Bridged state:deleted to external bus');
+    });
+    
+    // Bridge internal state:created events to external bus
+    this.internalEventBus.on('state:created', (data) => {
+      this.eventBus.emit('state:created', data);
+      console.log('[QuickTabsManager] Bridged state:created to external bus');
+    });
+    
+    // Bridge internal state:added events to external bus (for panel updates)
+    this.internalEventBus.on('state:added', (data) => {
+      this.eventBus.emit('state:added', data);
+      console.log('[QuickTabsManager] Bridged state:added to external bus');
+    });
+
+    console.log('[QuickTabsManager] ✓ Event bridge setup complete');
   }
 
   /**
@@ -540,10 +585,62 @@ class QuickTabsManager {
   // ============================================================================
 
   /**
-   * Generate unique ID for Quick Tab
+   * Generate cryptographically secure random string
+   * Uses crypto.getRandomValues() for better entropy than Math.random()
+   * Falls back to Math.random() if crypto is unavailable
+   * @private
+   * @returns {string} Random string (~13 characters)
    */
-  generateId() {
-    return `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  _generateSecureRandom() {
+    // Use Web Crypto API if available (preferred)
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const array = new Uint32Array(2); // 2 * 32 bits = 64 bits of entropy
+      crypto.getRandomValues(array);
+      return array[0].toString(36) + array[1].toString(36);
+    }
+    
+    // Fallback to Math.random() for older environments
+    console.warn('[QuickTabsManager] crypto.getRandomValues unavailable, using Math.random fallback');
+    return Math.random().toString(36).substring(2, 11) + Math.random().toString(36).substring(2, 11);
+  }
+
+  /**
+   * Generate a candidate ID for Quick Tab
+   * Format: qt-{tabId}-{timestamp}-{secureRandom}
+   * @private
+   * @returns {string} Candidate ID
+   */
+  _generateIdCandidate() {
+    const tabId = this.currentTabId || 'unknown';
+    const timestamp = Date.now();
+    const random = this._generateSecureRandom();
+    return `qt-${tabId}-${timestamp}-${random}`;
+  }
+
+  /**
+   * Generate unique ID for Quick Tab with collision detection
+   * Uses cryptographically secure random and includes tab ID for cross-tab uniqueness
+   * @param {number} maxRetries - Maximum number of retry attempts (default: CONSTANTS.MAX_ID_GENERATION_RETRIES)
+   * @returns {string} Unique Quick Tab ID
+   */
+  generateId(maxRetries = CONSTANTS.MAX_ID_GENERATION_RETRIES) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const id = this._generateIdCandidate();
+      
+      // Check local tabs Map and generated IDs Set for collisions
+      if (!this.tabs.has(id) && !this.generatedIds.has(id)) {
+        this.generatedIds.add(id);
+        return id;
+      }
+      
+      console.warn(`[QuickTabsManager] ID collision detected: ${id}, retrying... (${attempt + 1}/${maxRetries})`);
+    }
+    
+    // Fallback: add extra entropy with collision marker
+    const fallbackId = `qt-${this.currentTabId || 'unknown'}-${Date.now()}-${this._generateSecureRandom()}-collision`;
+    console.error(`[QuickTabsManager] Failed to generate unique ID after ${maxRetries} attempts, using fallback: ${fallbackId}`);
+    this.generatedIds.add(fallbackId);
+    return fallbackId;
   }
 
   // ============================================================================

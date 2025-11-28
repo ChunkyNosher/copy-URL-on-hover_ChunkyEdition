@@ -1,0 +1,8 @@
+{
+  "id": "28fac9b9-bbc0-4683-b346-d4d5894dba54",
+  "title": "Background cache hash deduplication fix",
+  "details": "BUG FIX v1.6.3.2: Background cache issues when Close All or Clear Storage buttons clicked.\n\nRoot cause: computeStateHash() didn't include saveId, causing hash collisions. When storage was cleared (empty tabs array), the hash was the same as before, so cache update was skipped.\n\nFix in background.js:\n1. Include saveId in computeStateHash() to detect unique writes\n2. ALWAYS update cache when tabs array is empty or missing (special case)\n3. Extracted helper functions _isSelfWrite() and _clearCacheForEmptyStorage() to reduce complexity\n\nRelated: DestroyHandler now emits state:deleted event for panel sync.",
+  "category": "bug_fixes",
+  "dateCreated": "2025-11-28T08:26:55.547Z",
+  "dateUpdated": "2025-11-28T08:26:55.547Z"
+}

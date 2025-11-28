@@ -103,14 +103,16 @@ const WRITE_IGNORE_WINDOW_MS = 100;
  * Compute a simple hash of the Quick Tab state for deduplication
  * v1.6.1.6 - Memory leak fix: Used to skip redundant broadcasts
  * v1.6.2.2 - Updated for unified format
+ * v1.6.3.2 - FIX Bug #2: Include saveId in hash to detect different writes with same content
  * @param {Object} state - Quick Tab state object
  * @returns {number} 32-bit hash of the state
  */
 function computeStateHash(state) {
   if (!state) return 0;
-  // Note: Intentionally excluding timestamp from hash to detect actual state changes
-  // v1.6.2.2 - Unified format: single tabs array
+  // v1.6.3.2 - FIX: Include saveId in hash calculation so different writes produce different hashes
+  // This prevents hash collisions when storage is cleared (empty tabs array produces same hash)
   const stateStr = JSON.stringify({
+    saveId: state.saveId,  // v1.6.3.2 - Include saveId to detect unique writes
     tabData: (state.tabs || []).map(t => ({
       id: t.id,
       url: t.url,
@@ -1190,9 +1192,40 @@ async function _broadcastToAllTabs(action, data) {
 }
 
 /**
+ * Helper: Check if this is our own write (prevents feedback loop)
+ * v1.6.3.2 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * @param {Object} newValue - New storage value
+ * @param {Object} handler - QuickTabHandler instance to check write timestamp
+ * @returns {boolean} True if this is a self-write that should be ignored
+ */
+function _isSelfWrite(newValue, handler) {
+  if (!newValue?.writeSourceId || !handler) return false;
+  
+  const lastWrite = handler.getLastWriteTimestamp();
+  const isSameSourceId = lastWrite?.writeSourceId === newValue.writeSourceId;
+  const isWithinWindow = Date.now() - (lastWrite?.timestamp || 0) < WRITE_IGNORE_WINDOW_MS;
+  
+  return isSameSourceId && isWithinWindow;
+}
+
+/**
+ * Helper: Clear cache when storage is empty
+ * v1.6.3.2 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * @param {Object} newValue - New storage value
+ */
+function _clearCacheForEmptyStorage(newValue) {
+  console.log('[Background] Storage cleared (empty/missing tabs), clearing cache immediately');
+  globalQuickTabState.tabs = [];
+  globalQuickTabState.lastUpdate = newValue?.timestamp || Date.now();
+  lastBroadcastedStateHash = computeStateHash(newValue);
+}
+
+/**
  * Handle Quick Tab state changes from storage
  * v1.6.2 - MIGRATION: Removed legacy _broadcastToAllTabs call
  * v1.6.2.2 - Updated for unified format
+ * v1.6.3.2 - FIX Bug #1, #6: ALWAYS update cache when tabs is empty or missing
+ *            Refactored to reduce complexity by extracting helpers
  * 
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
@@ -1205,30 +1238,29 @@ function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
 
   // v1.6.1.6 - FIX: Check if this is our own write (prevents feedback loop)
-  if (newValue && newValue.writeSourceId) {
-    const lastWrite = quickTabHandler.getLastWriteTimestamp();
-    if (
-      lastWrite &&
-      lastWrite.writeSourceId === newValue.writeSourceId &&
-      Date.now() - lastWrite.timestamp < WRITE_IGNORE_WINDOW_MS
-    ) {
-      console.log('[Background] Ignoring self-write:', newValue.writeSourceId);
-      return; // BREAKS THE LOOP
-    }
+  if (_isSelfWrite(newValue, quickTabHandler)) {
+    console.log('[Background] Ignoring self-write:', newValue.writeSourceId);
+    return;
+  }
+
+  // v1.6.3.2 - FIX Bug #1, #6: ALWAYS update cache if tabs is empty or missing
+  const isEmptyOrMissing = !newValue?.tabs || newValue.tabs.length === 0;
+  if (isEmptyOrMissing) {
+    _clearCacheForEmptyStorage(newValue);
+    return;
   }
 
   // v1.6.1.6 - FIX: Check if state actually changed (prevents redundant cache updates)
+  // v1.6.3.2 - FIX: computeStateHash now includes saveId for unique write detection
   const newHash = computeStateHash(newValue);
   if (newHash === lastBroadcastedStateHash) {
-    console.log('[Background] State unchanged, skipping cache update');
+    console.log('[Background] State unchanged (same hash), skipping cache update');
     return;
   }
 
   lastBroadcastedStateHash = newHash;
   
   // v1.6.2 - MIGRATION: Only update background's cache, no broadcast needed
-  // storage.onChanged automatically fires in all OTHER tabs (not this one)
-  // Each tab's StorageManager handles its own sync via storage.onChanged listener
   console.log('[Background] Quick Tab state changed, updating cache (cross-tab sync via storage.onChanged)');
   _updateGlobalStateFromStorage(newValue);
 }

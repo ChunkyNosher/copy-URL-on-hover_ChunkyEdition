@@ -2,6 +2,7 @@
  * @fileoverview DestroyHandler - Handles Quick Tab destruction and cleanup
  * Extracted from QuickTabsManager Phase 2.1 refactoring
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
+ * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -11,7 +12,7 @@
  * - Reset z-index when all tabs closed
  * - Emit destruction events
  *
- * @version 1.6.3
+ * @version 1.6.3.2
  */
 
 /**
@@ -46,25 +47,32 @@ export class DestroyHandler {
   /**
    * Handle Quick Tab destruction
    * v1.6.3 - Local only (no storage persistence)
+   * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
    *
    * @param {string} id - Quick Tab ID
    */
   handleDestroy(id) {
     console.log('[DestroyHandler] Handling destroy for:', id);
 
+    // Get tab info BEFORE deleting (needed for state:deleted event)
+    const tabWindow = this.quickTabsMap.get(id);
+
     // Delete from map and minimized manager
     this.quickTabsMap.delete(id);
     this.minimizedManager.remove(id);
 
-    // Emit destruction event
+    // Emit destruction event (legacy)
     this._emitDestructionEvent(id);
+
+    // v1.6.3.2 - FIX Bug #4: Emit state:deleted for PanelContentManager to update
+    this._emitStateDeletedEvent(id, tabWindow);
 
     // Reset z-index if all tabs are closed
     this._resetZIndexIfEmpty();
   }
 
   /**
-   * Emit destruction event
+   * Emit destruction event (legacy)
    * @private
    * @param {string} id - Quick Tab ID
    */
@@ -72,6 +80,25 @@ export class DestroyHandler {
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_CLOSED, { id });
     }
+  }
+
+  /**
+   * Emit state:deleted event for panel sync
+   * v1.6.3.2 - FIX Bug #4: Panel listens for this event to update its display
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Quick Tab window instance (may be undefined)
+   */
+  _emitStateDeletedEvent(id, tabWindow) {
+    if (!this.eventBus) return;
+
+    // Build quickTabData - only include url/title if tabWindow exists
+    const quickTabData = tabWindow
+      ? { id, url: tabWindow.url, title: tabWindow.title }
+      : { id };
+
+    this.eventBus.emit('state:deleted', { id, quickTab: quickTabData });
+    console.log('[DestroyHandler] Emitted state:deleted for:', id);
   }
 
   /**

@@ -63,7 +63,9 @@ export const CONSTANTS = {
   TOOLTIP_FADE_OUT_MS: 200,
   QUICK_TAB_BASE_Z_INDEX: 1000000,
   // v1.6.2.x - Default container for Firefox container isolation
-  DEFAULT_CONTAINER: 'firefox-default'
+  DEFAULT_CONTAINER: 'firefox-default',
+  // v1.6.3 - Maximum retry attempts for generating unique Quick Tab IDs
+  MAX_ID_GENERATION_RETRIES: 10
 };
 
 export class ConfigManager {
