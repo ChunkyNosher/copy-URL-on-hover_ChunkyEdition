@@ -92,10 +92,10 @@ export class DestroyHandler {
   _emitStateDeletedEvent(id, tabWindow) {
     if (!this.eventBus) return;
 
-    // Build quickTabData with explicit undefined handling for safety
+    // Build quickTabData - only include url/title if tabWindow exists
     const quickTabData = tabWindow
       ? { id, url: tabWindow.url, title: tabWindow.title }
-      : { id, url: undefined, title: undefined };
+      : { id };
 
     this.eventBus.emit('state:deleted', { id, quickTab: quickTabData });
     console.log('[DestroyHandler] Emitted state:deleted for:', id);

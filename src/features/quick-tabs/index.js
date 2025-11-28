@@ -559,7 +559,7 @@ class QuickTabsManager {
     
     // Fallback to Math.random() for older environments
     console.warn('[QuickTabsManager] crypto.getRandomValues unavailable, using Math.random fallback');
-    return Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
+    return Math.random().toString(36).substring(2, 11) + Math.random().toString(36).substring(2, 11);
   }
 
   /**

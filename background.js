@@ -1195,12 +1195,13 @@ async function _broadcastToAllTabs(action, data) {
  * Helper: Check if this is our own write (prevents feedback loop)
  * v1.6.3.2 - Extracted from _handleQuickTabStateChange to reduce complexity
  * @param {Object} newValue - New storage value
+ * @param {Object} handler - QuickTabHandler instance to check write timestamp
  * @returns {boolean} True if this is a self-write that should be ignored
  */
-function _isSelfWrite(newValue) {
-  if (!newValue?.writeSourceId) return false;
+function _isSelfWrite(newValue, handler) {
+  if (!newValue?.writeSourceId || !handler) return false;
   
-  const lastWrite = quickTabHandler.getLastWriteTimestamp();
+  const lastWrite = handler.getLastWriteTimestamp();
   const isSameSourceId = lastWrite?.writeSourceId === newValue.writeSourceId;
   const isWithinWindow = Date.now() - (lastWrite?.timestamp || 0) < WRITE_IGNORE_WINDOW_MS;
   
@@ -1237,7 +1238,7 @@ function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
 
   // v1.6.1.6 - FIX: Check if this is our own write (prevents feedback loop)
-  if (_isSelfWrite(newValue)) {
+  if (_isSelfWrite(newValue, quickTabHandler)) {
     console.log('[Background] Ignoring self-write:', newValue.writeSourceId);
     return;
   }
