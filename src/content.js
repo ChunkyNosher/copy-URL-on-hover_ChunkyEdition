@@ -605,13 +605,12 @@ function matchesShortcut(event, shortcut, hoveredLink, hoveredElement) {
   const shiftConfig = `${shortcut.name}Shift`;
 
   if (
-    !checkShortcut(
-      event,
-      CONFIG[keyConfig],
-      CONFIG[ctrlConfig],
-      CONFIG[altConfig],
-      CONFIG[shiftConfig]
-    )
+    !checkShortcut(event, {
+      key: CONFIG[keyConfig],
+      ctrl: CONFIG[ctrlConfig],
+      alt: CONFIG[altConfig],
+      shift: CONFIG[shiftConfig]
+    })
   ) {
     return false;
   }
@@ -703,12 +702,24 @@ function setupKeyboardShortcuts() {
 /**
  * Check if keyboard shortcut matches configuration
  */
-function checkShortcut(event, key, needCtrl, needAlt, needShift) {
+/**
+ * Check if keyboard shortcut matches configuration
+ * @param {KeyboardEvent} event - The keyboard event
+ * @param {Object} config - Shortcut configuration
+ * @param {string} config.key - Required key
+ * @param {boolean} config.ctrl - Requires Ctrl modifier
+ * @param {boolean} config.alt - Requires Alt modifier
+ * @param {boolean} config.shift - Requires Shift modifier
+ * @returns {boolean} - True if shortcut matches
+ */
+function checkShortcut(event, config) {
+  if (!config) return false;
+  const { key, ctrl, alt, shift } = config;
   return (
     event.key.toLowerCase() === key.toLowerCase() &&
-    event.ctrlKey === needCtrl &&
-    event.altKey === needAlt &&
-    event.shiftKey === needShift
+    event.ctrlKey === ctrl &&
+    event.altKey === alt &&
+    event.shiftKey === shift
   );
 }
 
@@ -821,15 +832,28 @@ async function handleCopyText(element) {
  */
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab data structure
+ * v1.6.3 - Refactored to use options object pattern (4 args max)
+ * 
+ * @param {Object} options - Quick Tab configuration
+ * @param {string} options.url - URL to load in Quick Tab
+ * @param {string} options.id - Unique Quick Tab ID
+ * @param {Object} options.position - Position { left, top }
+ * @param {Object} options.size - Size { width, height }
+ * @param {string} options.title - Quick Tab title
+ * @returns {Object} - Quick Tab data object
  */
-function buildQuickTabData(url, quickTabId, position, width, height, title) {
+function buildQuickTabData(options) {
+  if (!options) {
+    throw new Error('buildQuickTabData: options object is required');
+  }
+  const { url, id, position = {}, size = {}, title } = options;
   return {
-    id: quickTabId,
+    id,
     url,
     left: position.left,
     top: position.top,
-    width,
-    height,
+    width: size.width,
+    height: size.height,
     title,
     cookieStoreId: 'firefox-default',
     minimized: false,
@@ -922,7 +946,13 @@ async function handleCreateQuickTab(url, targetElement = null) {
   const position = calculateQuickTabPosition(targetElement, width, height);
   const title = targetElement?.textContent?.trim() || 'Quick Tab';
   const { quickTabId, saveId, canUseManagerSaveId } = generateQuickTabIds();
-  const quickTabData = buildQuickTabData(url, quickTabId, position, width, height, title);
+  const quickTabData = buildQuickTabData({
+    url,
+    id: quickTabId,
+    position,
+    size: { width, height },
+    title
+  });
 
   // Execute creation with error handling
   try {

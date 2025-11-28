@@ -137,35 +137,68 @@ async function loadQuickTabsState() {
 }
 
 /**
+ * Extract tabs from unified state format (v1.6.2.2+)
+ * @param {Object} state - Quick Tabs state in unified format
+ * @returns {{ allTabs: Array, latestTimestamp: number }} - Extracted tabs and timestamp
+ */
+function extractFromUnifiedFormat(state) {
+  const tabs = Array.isArray(state.tabs) ? state.tabs : [];
+  return {
+    allTabs: tabs,
+    latestTimestamp: state.timestamp || 0
+  };
+}
+
+/**
+ * Extract tabs from legacy container format (pre-v1.6.2.2)
+ * @param {Object} state - Quick Tabs state in legacy format
+ * @returns {{ allTabs: Array, latestTimestamp: number }} - Extracted tabs and timestamp
+ */
+function extractFromLegacyFormat(state) {
+  const allTabs = [];
+  let latestTimestamp = 0;
+
+  const containerKeys = Object.keys(state).filter(
+    key => key !== 'saveId' && key !== 'timestamp'
+  );
+
+  for (const cookieStoreId of containerKeys) {
+    const containerState = state[cookieStoreId];
+    const hasTabs = containerState?.tabs && Array.isArray(containerState.tabs);
+    
+    if (hasTabs) {
+      allTabs.push(...containerState.tabs);
+      latestTimestamp = Math.max(latestTimestamp, containerState.timestamp || 0);
+    }
+  }
+
+  return { allTabs, latestTimestamp };
+}
+
+/**
+ * Check if state is in unified format (v1.6.2.2+)
+ * @param {Object} state - Quick Tabs state
+ * @returns {boolean} - True if unified format
+ */
+function isUnifiedFormat(state) {
+  return state?.tabs && Array.isArray(state.tabs);
+}
+
+/**
  * Extract tabs from state (handles both unified and legacy formats)
  * @param {Object} state - Quick Tabs state
  * @returns {{ allTabs: Array, latestTimestamp: number }} - Extracted tabs and timestamp
  */
 function extractTabsFromState(state) {
-  let allTabs = [];
-  let latestTimestamp = 0;
-
-  if (state && state.tabs && Array.isArray(state.tabs)) {
-    // Unified format (v1.6.2.2+)
-    allTabs = state.tabs;
-    latestTimestamp = state.timestamp || 0;
-  } else if (state && typeof state === 'object') {
-    // Legacy container format (fallback for backward compatibility)
-    Object.keys(state).forEach(cookieStoreId => {
-      // Skip non-container properties like 'saveId', 'timestamp'
-      if (cookieStoreId === 'saveId' || cookieStoreId === 'timestamp') return;
-      
-      const containerState = state[cookieStoreId];
-      if (containerState && containerState.tabs && Array.isArray(containerState.tabs)) {
-        allTabs = allTabs.concat(containerState.tabs);
-        if (containerState.timestamp > latestTimestamp) {
-          latestTimestamp = containerState.timestamp;
-        }
-      }
-    });
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    return { allTabs: [], latestTimestamp: 0 };
   }
 
-  return { allTabs, latestTimestamp };
+  if (isUnifiedFormat(state)) {
+    return extractFromUnifiedFormat(state);
+  }
+
+  return extractFromLegacyFormat(state);
 }
 
 /**
