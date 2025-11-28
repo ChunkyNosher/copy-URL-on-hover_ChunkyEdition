@@ -1,8 +1,11 @@
-import { test as base, firefox } from '@playwright/test';
-import { withExtension } from 'playwright-webextext';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
+import path from 'path';
+import playwright from 'playwright/test';
+import { withExtension } from 'playwright-webextext';
+import { fileURLToPath } from 'url';
+
+// Destructure from the default import to work around ESM resolution issues
+const { test: base, firefox, expect } = playwright;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +19,7 @@ export const test = base.extend({
    * Extension-enabled browser context
    * Automatically loads the extension before tests
    */
+  // eslint-disable-next-line no-empty-pattern
   extensionContext: async ({}, use) => {
     // Path to built extension
     const extPath = path.join(__dirname, '../../../dist');
@@ -78,4 +82,4 @@ export const test = base.extend({
 });
 
 // Re-export expect
-export { expect } from '@playwright/test';
+export { expect };

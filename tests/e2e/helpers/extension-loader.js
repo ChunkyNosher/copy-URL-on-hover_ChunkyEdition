@@ -1,6 +1,9 @@
-import { firefox } from '@playwright/test';
 import path from 'path';
+import playwright from 'playwright/test';
 import { fileURLToPath } from 'url';
+
+// Destructure from the default import to work around ESM resolution issues
+const { firefox } = playwright;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
