@@ -151,7 +151,8 @@ describe('PanelContentManager', () => {
       updateContentSpy.mockRestore();
     });
 
-    it('should not update content when opening if no state changes', () => {
+    it('should always update content when opening (v1.6.3 Bug #20 fix)', () => {
+      // v1.6.3 - FIX Bug #20: Panel should ALWAYS update when opened to load current state
       contentManager.stateChangedWhileClosed = false;
       contentManager.isOpen = false;
       
@@ -159,7 +160,8 @@ describe('PanelContentManager', () => {
       
       contentManager.setIsOpen(true);
       
-      expect(updateContentSpy).not.toHaveBeenCalled();
+      // v1.6.3 - FIX Bug #20: ALWAYS update when panel opens
+      expect(updateContentSpy).toHaveBeenCalledWith({ forceRefresh: true });
       
       updateContentSpy.mockRestore();
     });
@@ -170,11 +172,24 @@ describe('PanelContentManager', () => {
       contentManager.setIsOpen(true);
     });
 
-    it('should not update when panel closed', async () => {
-      contentManager.setIsOpen(false);
-      await contentManager.updateContent();
+    it('should skip update when panel closed and forceRefresh is false', async () => {
+      // v1.6.3 - updateContent with forceRefresh: false should skip when panel is closed
+      contentManager.isOpen = false;
+      
+      // Clear any previous calls from beforeEach
+      mockBrowser.storage.local.get.mockClear();
+      
+      // Spy on console.warn to verify skip message
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      
+      await contentManager.updateContent({ forceRefresh: false });
+      
+      // Storage should not be called when skipped
       // v1.6.2+ - MIGRATION: fallback uses storage.local
       expect(mockBrowser.storage.local.get).not.toHaveBeenCalled();
+      expect(contentManager.stateChangedWhileClosed).toBe(true);
+      
+      consoleWarnSpy.mockRestore();
     });
 
     it('should fetch and render Quick Tabs', async () => {
@@ -413,8 +428,8 @@ describe('PanelContentManager', () => {
       jest.useRealTimers();
     });
 
-    it('should track state changes when storage changes and panel is closed', async () => {
-      // v1.6.3.5 - Use fake timers to handle debounced storage listener
+    it('should force update when storage changes (v1.6.3 Bug #15 fix)', async () => {
+      // v1.6.3 - FIX Bug #15: Storage changes should ALWAYS force update
       jest.useFakeTimers();
       
       contentManager.setupEventListeners();
@@ -430,8 +445,8 @@ describe('PanelContentManager', () => {
       // v1.6.3.5 - Advance timers past debounce period (50ms)
       jest.advanceTimersByTime(60);
       
-      expect(updateContentSpy).not.toHaveBeenCalled();
-      expect(contentManager.stateChangedWhileClosed).toBe(true);
+      // v1.6.3 - FIX Bug #15: Storage listener should ALWAYS force update
+      expect(updateContentSpy).toHaveBeenCalledWith({ forceRefresh: true });
       
       updateContentSpy.mockRestore();
       jest.useRealTimers();

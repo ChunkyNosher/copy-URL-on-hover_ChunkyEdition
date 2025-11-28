@@ -148,17 +148,20 @@ export class PanelContentManager {
 
   /**
    * Update panel open state
+   * v1.6.3 - FIX Bug #20: ALWAYS update when panel opens to load current state
    * @param {boolean} isOpen - Whether panel is open
    */
   setIsOpen(isOpen) {
     const wasOpen = this.isOpen;
     this.isOpen = isOpen;
     
-    // v1.6.2.x - Update content if panel was just opened and state changed while closed
-    if (isOpen && !wasOpen && this.stateChangedWhileClosed) {
-      debug('[PanelContentManager] Panel opened after state changes - updating content');
-      this.stateChangedWhileClosed = false;
-      this.updateContent();
+    // v1.6.3 - FIX Bug #20: ALWAYS update when panel opens to load current state
+    // Previous code only updated if stateChangedWhileClosed was true, which caused
+    // the panel to show stale/incorrect state when first opened
+    if (isOpen && !wasOpen) {
+      console.log('[PanelContentManager] Panel opened - loading current state');
+      this.stateChangedWhileClosed = false;  // Reset flag
+      this.updateContent({ forceRefresh: true });  // Force immediate update
     }
   }
 
@@ -169,25 +172,34 @@ export class PanelContentManager {
    * v1.6.2.2 - ISSUE FIX: Show all Quick Tabs globally (no container filtering)
    * v1.6.2.4 - FIX Issue #1: Use _getIsOpen() for authoritative state check
    * v1.6.3 - FIX Issue #1: Accept options.forceRefresh to bypass isOpen check
+   * v1.6.3 - FIX Bug #12: Enhanced logging for debugging
    * @param {Object} options - Update options
    * @param {boolean} [options.forceRefresh=false] - If true, bypass isOpen check and force update
    */
   async updateContent(options = { forceRefresh: false }) {
+    const callTimestamp = Date.now();
+    console.log(`[PanelContentManager] ► updateContent CALLED at ${callTimestamp}`);
+    console.log(`[PanelContentManager] ► Options: forceRefresh=${options.forceRefresh}`);
+    
     // v1.6.2.4 - Use _getIsOpen() which queries PanelStateManager for authoritative state
     const isCurrentlyOpen = this._getIsOpen();
+    console.log(`[PanelContentManager] ► Panel state: isOpen=${isCurrentlyOpen}, forceRefresh=${options.forceRefresh}`);
     
     // v1.6.3 - FIX Issue #1: If forceRefresh is true, skip isOpen check
     if (!options.forceRefresh && !isCurrentlyOpen) {
-      debug(`[PanelContentManager] updateContent skipped: panel=${!!this.panel}, isOpen=${isCurrentlyOpen}`);
+      console.warn('[PanelContentManager] ► UPDATE SKIPPED: panel closed and forceRefresh=false');
       // v1.6.3 - Mark state changed while closed for later update
       this.stateChangedWhileClosed = true;
+      console.log('[PanelContentManager] ► stateChangedWhileClosed flag SET');
       return;
     }
     
     if (!this.panel) {
-      debug('[PanelContentManager] updateContent skipped: panel not initialized');
+      console.error('[PanelContentManager] ► UPDATE FAILED: panel DOM element not initialized');
       return;
     }
+    
+    console.log('[PanelContentManager] ► UPDATE PROCEEDING...');
     
     // Track update timestamp for health checks
     this.lastUpdateTimestamp = Date.now();
@@ -206,7 +218,7 @@ export class PanelContentManager {
         minimizedCount = this.minimizedManager.getCount();
       }
       
-      debug(`[PanelContentManager] Live state: ${allQuickTabs.length} tabs, ${minimizedCount} minimized`);
+      console.log(`[PanelContentManager] ► Live state: ${allQuickTabs.length} tabs, ${minimizedCount} minimized`);
     } else {
       // Fallback to storage (slower, for backward compatibility)
       const quickTabsState = await this._fetchQuickTabsFromStorage();
@@ -224,6 +236,7 @@ export class PanelContentManager {
     // Show/hide empty state
     if (allQuickTabs.length === 0) {
       this._renderEmptyState();
+      console.log(`[PanelContentManager] ► UPDATE COMPLETED (empty state) in ${Date.now() - callTimestamp}ms`);
       return;
     }
 
@@ -232,6 +245,7 @@ export class PanelContentManager {
 
     // Render container section
     this._renderContainerSectionFromData(allQuickTabs, containerInfo);
+    console.log(`[PanelContentManager] ► UPDATE COMPLETED successfully in ${Date.now() - callTimestamp}ms`);
   }
 
   /**
@@ -643,15 +657,12 @@ export class PanelContentManager {
         // v1.6.3.5 - FIX Bug #9: Debounce rapid storage changes
         clearTimeout(this._storageChangeTimeout);
         this._storageChangeTimeout = setTimeout(() => {
-          debug('[PanelContentManager] Storage changed from another tab - updating content (debounced)');
+          console.log('[PanelContentManager] Storage changed from another tab - force updating content');
           
-          // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
-          if (this._getIsOpen()) {
-            this.updateContent();
-          } else {
-            this.stateChangedWhileClosed = true;
-            debug('[PanelContentManager] Storage changed while panel closed - will update on open');
-          }
+          // v1.6.3 - FIX Bug #15: Force update to ensure panel is current
+          // Previous code checked isOpen and deferred if closed, but this caused
+          // the panel to show stale state after Clear Storage and other operations
+          this.updateContent({ forceRefresh: true });
         }, STORAGE_DEBOUNCE_MS);
       }
     };
@@ -697,21 +708,15 @@ export class PanelContentManager {
     }
 
     // Listen for Quick Tab created
-    // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
-    // Note: Calling updateContent when closed is intentional - it checks isOpen internally
-    // and returns early with stateChangedWhileClosed flag set, avoiding DOM updates
+    // v1.6.3 - FIX Bug #12: Use forceRefresh: true to ensure panel updates immediately
     const addedHandler = (data) => {
+      debug('[PanelContentManager] ◆ state:added EVENT RECEIVED:', data);
       try {
         const quickTab = data?.quickTab || data;
         debug(`[PanelContentManager] state:added received for ${quickTab?.id}`);
         
-        // v1.6.3 - Only mark state changed if panel is closed
-        if (!this._getIsOpen()) {
-          this.stateChangedWhileClosed = true;
-        }
-        
-        // v1.6.3 - Try to update content - it will handle isOpen internally
-        this.updateContent({ forceRefresh: false });
+        // v1.6.3 - FIX Bug #12: Force refresh to update immediately when panel is open
+        this.updateContent({ forceRefresh: true });
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:added:', err);
       }
@@ -719,19 +724,15 @@ export class PanelContentManager {
     this.internalEventBus.on('state:added', addedHandler);
 
     // Listen for Quick Tab updated (minimize/restore/position change)
-    // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
+    // v1.6.3 - FIX Bug #12: Use forceRefresh: true to ensure panel updates immediately
     const updatedHandler = (data) => {
+      debug('[PanelContentManager] ◆ state:updated EVENT RECEIVED:', data);
       try {
         const quickTab = data?.quickTab || data;
         debug(`[PanelContentManager] state:updated received for ${quickTab?.id}`);
         
-        // v1.6.3 - Only mark state changed if panel is closed
-        if (!this._getIsOpen()) {
-          this.stateChangedWhileClosed = true;
-        }
-        
-        // v1.6.3 - Try to update content - it will handle isOpen internally
-        this.updateContent({ forceRefresh: false });
+        // v1.6.3 - FIX Bug #12: Force refresh to update immediately when panel is open
+        this.updateContent({ forceRefresh: true });
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:updated:', err);
       }
@@ -739,19 +740,15 @@ export class PanelContentManager {
     this.internalEventBus.on('state:updated', updatedHandler);
 
     // Listen for Quick Tab deleted (closed)
-    // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
+    // v1.6.3 - FIX Bug #12: Use forceRefresh: true to ensure panel updates immediately
     const deletedHandler = (data) => {
+      debug('[PanelContentManager] ◆ state:deleted EVENT RECEIVED:', data);
       try {
         const id = data?.id || data?.quickTab?.id;
         debug(`[PanelContentManager] state:deleted received for ${id}`);
         
-        // v1.6.3 - Only mark state changed if panel is closed
-        if (!this._getIsOpen()) {
-          this.stateChangedWhileClosed = true;
-        }
-        
-        // v1.6.3 - Try to update content - it will handle isOpen internally
-        this.updateContent({ forceRefresh: false });
+        // v1.6.3 - FIX Bug #12: Force refresh to update immediately when panel is open
+        this.updateContent({ forceRefresh: true });
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:deleted:', err);
       }
@@ -759,18 +756,14 @@ export class PanelContentManager {
     this.internalEventBus.on('state:deleted', deletedHandler);
 
     // Listen for state hydration (cross-tab sync)
-    // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
+    // v1.6.3 - FIX Bug #12: Use forceRefresh: true to ensure panel updates immediately
     const hydratedHandler = (data) => {
+      debug('[PanelContentManager] ◆ state:hydrated EVENT RECEIVED:', data);
       try {
         debug(`[PanelContentManager] state:hydrated received, ${data?.count} tabs`);
         
-        // v1.6.3 - Only mark state changed if panel is closed
-        if (!this._getIsOpen()) {
-          this.stateChangedWhileClosed = true;
-        }
-        
-        // v1.6.3 - Try to update content - it will handle isOpen internally
-        this.updateContent({ forceRefresh: false });
+        // v1.6.3 - FIX Bug #12: Force refresh to update immediately when panel is open
+        this.updateContent({ forceRefresh: true });
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:hydrated:', err);
       }
@@ -778,16 +771,13 @@ export class PanelContentManager {
     this.internalEventBus.on('state:hydrated', hydratedHandler);
 
     // v1.6.3 - Listen for state cleared (from Clear Storage button)
+    // v1.6.3 - FIX Bug #12: Use forceRefresh: true (already correct)
     const clearedHandler = (data) => {
+      debug('[PanelContentManager] ◆ state:cleared EVENT RECEIVED:', data);
       try {
         debug(`[PanelContentManager] state:cleared received, ${data?.count ?? 0} tabs cleared`);
         
-        // Mark state changed if panel is closed
-        if (!this._getIsOpen()) {
-          this.stateChangedWhileClosed = true;
-        }
-        
-        // v1.6.3 - FIX Issue #6: Force refresh to update immediately
+        // v1.6.3 - FIX Bug #12: Force refresh to update immediately
         this.updateContent({ forceRefresh: true });
         
         debug('[PanelContentManager] State cleared - panel updated');
