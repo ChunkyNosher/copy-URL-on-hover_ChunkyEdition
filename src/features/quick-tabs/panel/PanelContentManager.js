@@ -109,14 +109,29 @@ export class PanelContentManager {
    * v1.6.2.3 - Query live state from StateManager instead of storage for real-time updates
    * v1.6.2.2 - ISSUE FIX: Show all Quick Tabs globally (no container filtering)
    * v1.6.2.4 - FIX Issue #1: Use _getIsOpen() for authoritative state check
+   * v1.6.3 - FIX Issue #1: Accept options.forceRefresh to bypass isOpen check
+   * @param {Object} options - Update options
+   * @param {boolean} [options.forceRefresh=false] - If true, bypass isOpen check and force update
    */
-  async updateContent() {
+  async updateContent(options = { forceRefresh: false }) {
     // v1.6.2.4 - Use _getIsOpen() which queries PanelStateManager for authoritative state
     const isCurrentlyOpen = this._getIsOpen();
-    if (!this.panel || !isCurrentlyOpen) {
+    
+    // v1.6.3 - FIX Issue #1: If forceRefresh is true, skip isOpen check
+    if (!options.forceRefresh && !isCurrentlyOpen) {
       debug(`[PanelContentManager] updateContent skipped: panel=${!!this.panel}, isOpen=${isCurrentlyOpen}`);
+      // v1.6.3 - Mark state changed while closed for later update
+      this.stateChangedWhileClosed = true;
       return;
     }
+    
+    if (!this.panel) {
+      debug('[PanelContentManager] updateContent skipped: panel not initialized');
+      return;
+    }
+    
+    // Track update timestamp for health checks
+    this.lastUpdateTimestamp = Date.now();
 
     let allQuickTabs = [];
     let minimizedCount = 0;
@@ -164,37 +179,99 @@ export class PanelContentManager {
    * Fetch Quick Tabs state from browser storage
    * v1.6.2+ - MIGRATION: Use storage.local instead of storage.sync
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.3 - FIX Issue #5: Add fallback to recover tabs from malformed storage
    * @returns {Array|null} Quick Tabs array
    * @private
    */
   async _fetchQuickTabsFromStorage() {
     try {
       const result = await browser.storage.local.get('quick_tabs_state_v2');
-      if (!result || !result.quick_tabs_state_v2) return null;
+      if (!result?.quick_tabs_state_v2) {
+        debug('[PanelContentManager] No storage data found');
+        return null;
+      }
 
       const state = result.quick_tabs_state_v2;
       
       // v1.6.2.2 - New unified format: { tabs: [...], timestamp, saveId }
       if (state.tabs && Array.isArray(state.tabs)) {
+        debug(`[PanelContentManager] Found unified format: ${state.tabs.length} tabs`);
         return state.tabs;
       }
       
       // v1.6.2.1 and earlier - Container format: { containers: {...} }
-      // Backward compatible migration
       if (state.containers) {
-        const allTabs = [];
-        for (const containerKey of Object.keys(state.containers)) {
-          const tabs = state.containers[containerKey]?.tabs || [];
-          allTabs.push(...tabs);
-        }
-        return allTabs;
+        return this._extractTabsFromContainers(state.containers);
       }
       
-      return null;
+      // v1.6.3 - FIX Issue #5: Attempt to extract tabs from unknown format
+      return this._attemptStorageRecovery(state);
     } catch (err) {
       console.error('[PanelContentManager] Error loading Quick Tabs:', err);
       return null;
     }
+  }
+
+  /**
+   * Extract tabs from container format (v1.6.2.1 and earlier)
+   * @private
+   * @param {Object} containers - Containers object
+   * @returns {Array} Array of tabs
+   */
+  _extractTabsFromContainers(containers) {
+    const allTabs = [];
+    for (const containerKey of Object.keys(containers)) {
+      const tabs = containers[containerKey]?.tabs || [];
+      allTabs.push(...tabs);
+    }
+    debug(`[PanelContentManager] Migrated container format: ${allTabs.length} tabs`);
+    return allTabs;
+  }
+
+  /**
+   * Attempt to recover tabs from unknown/malformed storage format
+   * @private
+   * @param {Object} state - Storage state object
+   * @returns {Array|null} Recovered tabs or null
+   */
+  _attemptStorageRecovery(state) {
+    console.warn('[PanelContentManager] Unknown storage format detected, attempting recovery...');
+    
+    const possibleTabs = [];
+    const stateKeys = Object.keys(state);
+    // Limit keys to check to prevent performance issues with corrupted storage
+    const MAX_KEYS_TO_CHECK = 20;
+    const keysToCheck = stateKeys.slice(0, MAX_KEYS_TO_CHECK);
+    
+    for (const key of keysToCheck) {
+      const value = state[key];
+      // Check if value is an array with all items being tab-like objects (has id and url)
+      if (Array.isArray(value) && value.length > 0) {
+        // Validate ALL items have id (string/number) and url (string) to avoid malformed data
+        const allValid = value.every(item => {
+          const hasValidId = item?.id && (typeof item.id === 'string' || typeof item.id === 'number');
+          const hasValidUrl = item?.url && typeof item.url === 'string';
+          return hasValidId && hasValidUrl;
+        });
+        if (allValid) {
+          console.warn(`[PanelContentManager] Found valid tabs array at key: ${key}`);
+          possibleTabs.push(...value);
+        }
+      }
+    }
+    
+    if (stateKeys.length > MAX_KEYS_TO_CHECK) {
+      console.warn(`[PanelContentManager] Storage has ${stateKeys.length} keys, only checked first ${MAX_KEYS_TO_CHECK}`);
+    }
+    
+    if (possibleTabs.length > 0) {
+      console.warn(`[PanelContentManager] Recovered ${possibleTabs.length} tabs from malformed storage`);
+      return possibleTabs;
+    }
+    
+    console.error('[PanelContentManager] Storage format unrecognized and cannot be recovered');
+    console.error('[PanelContentManager] Storage contents:', JSON.stringify(state, null, 2));
+    return null;
   }
 
   /**
@@ -510,27 +587,48 @@ export class PanelContentManager {
    * Setup listeners for Quick Tab state events
    * v1.6.2.3 - Called when panel opens, enables real-time updates
    * v1.6.2.x - Track state changes when panel is closed
+   * v1.6.3 - FIX Issue #2: Add EventBus connection test
    */
   setupStateListeners() {
     if (!this.eventBus) {
-      debug('[PanelContentManager] No eventBus available - skipping state listeners');
+      console.warn('[PanelContentManager] No eventBus available - skipping state listeners. Real-time updates will not work.');
       return;
     }
 
+    // v1.6.3 - FIX Issue #2: Test EventBus connection by emitting and listening for test event
+    // Using synchronous pattern since EventEmitter3 is synchronous
+    let testReceived = false;
+    const testHandler = () => { testReceived = true; };
+    try {
+      this.eventBus.on('test:connection', testHandler);
+      this.eventBus.emit('test:connection');
+      this.eventBus.off('test:connection', testHandler);
+      
+      if (!testReceived) {
+        console.error('[PanelContentManager] EventBus connection test FAILED - events may not propagate correctly');
+      } else {
+        debug('[PanelContentManager] EventBus connection test PASSED');
+      }
+    } catch (err) {
+      console.error('[PanelContentManager] EventBus connection test threw error:', err);
+    }
+
     // Listen for Quick Tab created
+    // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
+    // Note: Calling updateContent when closed is intentional - it checks isOpen internally
+    // and returns early with stateChangedWhileClosed flag set, avoiding DOM updates
     const addedHandler = (data) => {
       try {
         const quickTab = data?.quickTab || data;
         debug(`[PanelContentManager] state:added received for ${quickTab?.id}`);
         
-        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
-        if (this._getIsOpen()) {
-          this.updateContent();
-        } else {
-          // v1.6.2.x - Mark that state changed while closed
+        // v1.6.3 - Only mark state changed if panel is closed
+        if (!this._getIsOpen()) {
           this.stateChangedWhileClosed = true;
-          debug('[PanelContentManager] State changed while panel closed - will update on open');
         }
+        
+        // v1.6.3 - Try to update content - it will handle isOpen internally
+        this.updateContent({ forceRefresh: false });
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:added:', err);
       }
@@ -538,19 +636,19 @@ export class PanelContentManager {
     this.eventBus.on('state:added', addedHandler);
 
     // Listen for Quick Tab updated (minimize/restore/position change)
+    // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
     const updatedHandler = (data) => {
       try {
         const quickTab = data?.quickTab || data;
         debug(`[PanelContentManager] state:updated received for ${quickTab?.id}`);
         
-        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
-        if (this._getIsOpen()) {
-          this.updateContent();
-        } else {
-          // v1.6.2.x - Mark that state changed while closed
+        // v1.6.3 - Only mark state changed if panel is closed
+        if (!this._getIsOpen()) {
           this.stateChangedWhileClosed = true;
-          debug('[PanelContentManager] State changed while panel closed - will update on open');
         }
+        
+        // v1.6.3 - Try to update content - it will handle isOpen internally
+        this.updateContent({ forceRefresh: false });
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:updated:', err);
       }
@@ -558,19 +656,19 @@ export class PanelContentManager {
     this.eventBus.on('state:updated', updatedHandler);
 
     // Listen for Quick Tab deleted (closed)
+    // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
     const deletedHandler = (data) => {
       try {
         const id = data?.id || data?.quickTab?.id;
         debug(`[PanelContentManager] state:deleted received for ${id}`);
         
-        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
-        if (this._getIsOpen()) {
-          this.updateContent();
-        } else {
-          // v1.6.2.x - Mark that state changed while closed
+        // v1.6.3 - Only mark state changed if panel is closed
+        if (!this._getIsOpen()) {
           this.stateChangedWhileClosed = true;
-          debug('[PanelContentManager] State changed while panel closed - will update on open');
         }
+        
+        // v1.6.3 - Try to update content - it will handle isOpen internally
+        this.updateContent({ forceRefresh: false });
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:deleted:', err);
       }
@@ -578,18 +676,18 @@ export class PanelContentManager {
     this.eventBus.on('state:deleted', deletedHandler);
 
     // Listen for state hydration (cross-tab sync)
+    // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
     const hydratedHandler = (data) => {
       try {
         debug(`[PanelContentManager] state:hydrated received, ${data?.count} tabs`);
         
-        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
-        if (this._getIsOpen()) {
-          this.updateContent();
-        } else {
-          // v1.6.2.x - Mark that state changed while closed
+        // v1.6.3 - Only mark state changed if panel is closed
+        if (!this._getIsOpen()) {
           this.stateChangedWhileClosed = true;
-          debug('[PanelContentManager] State changed while panel closed - will update on open');
         }
+        
+        // v1.6.3 - Try to update content - it will handle isOpen internally
+        this.updateContent({ forceRefresh: false });
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:hydrated:', err);
       }
@@ -601,16 +699,15 @@ export class PanelContentManager {
       try {
         debug(`[PanelContentManager] state:cleared received, ${data?.count ?? 0} tabs cleared`);
         
-        // Always update content when state is cleared, even if panel is closed
-        // This ensures the panel shows empty state when opened after clear
-        this.stateChangedWhileClosed = true;
-        
-        // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
-        if (this._getIsOpen()) {
-          this.updateContent();
+        // Mark state changed if panel is closed
+        if (!this._getIsOpen()) {
+          this.stateChangedWhileClosed = true;
         }
         
-        debug('[PanelContentManager] State cleared - panel will show empty state');
+        // v1.6.3 - FIX Issue #6: Force refresh to update immediately
+        this.updateContent({ forceRefresh: true });
+        
+        debug('[PanelContentManager] State cleared - panel updated');
       } catch (err) {
         console.error('[PanelContentManager] Error handling state:cleared:', err);
       }
@@ -762,7 +859,7 @@ export class PanelContentManager {
    *            storage.onChanged does NOT fire in the tab that made the change,
    *            so we must explicitly destroy DOM elements in the current tab.
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
-   * v1.6.3 - Clear in-memory state and emit state:cleared event
+   * v1.6.3 - Clear in-memory state and emit state:cleared event, use forceRefresh
    */
   async handleCloseAll() {
     try {
@@ -781,9 +878,9 @@ export class PanelContentManager {
         console.warn('[PanelContentManager] quickTabsManager.closeAll not available');
       }
 
-      // v1.6.3 - Clear in-memory state manager if available
+      // v1.6.3 - FIX Issue #6: Force clear in-memory state manager
       if (this.liveStateManager?.clear) {
-        console.log('[PanelContentManager] Clearing in-memory state...');
+        console.log('[PanelContentManager] Forcing in-memory state clear...');
         this.liveStateManager.clear();
       }
 
@@ -809,7 +906,9 @@ export class PanelContentManager {
       // Other tabs will receive the change and update their UI accordingly.
 
       debug('[PanelContentManager] Closed all Quick Tabs');
-      await this.updateContent();
+      
+      // v1.6.3 - FIX Issue #6: Force refresh to update immediately
+      await this.updateContent({ forceRefresh: true });
     } catch (err) {
       console.error('[PanelContentManager] Error closing all:', err);
     }
@@ -819,6 +918,7 @@ export class PanelContentManager {
    * Clear all Quick Tab storage
    * v1.6.2.2 - Debug/testing utility
    * v1.6.3 - Emit state:cleared event to update panel and other listeners
+   * v1.6.3 - FIX Issue #6: Force liveStateManager.clear() before emitting event, use forceRefresh
    * CRITICAL: Destroy DOM elements BEFORE clearing storage
    */
   async handleClearStorage() {
@@ -845,9 +945,9 @@ export class PanelContentManager {
         this.quickTabsManager.closeAll();
       }
 
-      // v1.6.3 - Clear in-memory state manager if available
+      // v1.6.3 - FIX Issue #6: Force clear in-memory state BEFORE emitting event
       if (this.liveStateManager?.clear) {
-        console.log('[PanelContentManager] Clearing in-memory state...');
+        console.log('[PanelContentManager] Forcing in-memory state clear...');
         this.liveStateManager.clear();
       }
 
@@ -872,7 +972,9 @@ export class PanelContentManager {
       }
 
       console.log('[PanelContentManager] ✓ Cleared all Quick Tab storage');
-      await this.updateContent();
+      
+      // v1.6.3 - FIX Issue #6: Force refresh to update immediately
+      await this.updateContent({ forceRefresh: true });
     } catch (err) {
       console.error('[PanelContentManager] Error clearing storage:', err);
     }
@@ -977,6 +1079,20 @@ export class PanelContentManager {
    */
   setOnClose(callback) {
     this.onClose = callback;
+  }
+
+  /**
+   * Get the count of active state event listeners
+   * v1.6.3 - Added for health check diagnostics
+   * Note: This counts locally tracked handlers. EventBus registration is verified during setupStateListeners.
+   * @returns {number} Number of tracked state listener handlers
+   */
+  getListenerCount() {
+    if (!this._stateHandlers) {
+      return 0;
+    }
+    // Count only non-null handlers that are actually functions
+    return Object.values(this._stateHandlers).filter(h => typeof h === 'function').length;
   }
 
   /**

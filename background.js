@@ -1102,7 +1102,18 @@ messageRouter.register('createQuickTab', (msg, sender) =>
   tabHandler.handleLegacyCreate(msg, sender)
 );
 
-console.log('[Background] MessageRouter initialized with 25 registered handlers');
+// v1.6.3 - FIX: Handler for resetting globalQuickTabState cache when storage is cleared from popup
+// This is called after popup.js clears storage to ensure background's cache is also reset
+messageRouter.register('RESET_GLOBAL_QUICK_TAB_STATE', () => {
+  console.log('[Background] Resetting globalQuickTabState cache (storage cleared from popup)');
+  globalQuickTabState.tabs = [];
+  globalQuickTabState.lastUpdate = Date.now();
+  // Reset the state hash to allow next storage write to proceed
+  lastBroadcastedStateHash = 0;
+  return { success: true, message: 'Global Quick Tab state cache reset' };
+});
+
+console.log(`[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`);
 
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
