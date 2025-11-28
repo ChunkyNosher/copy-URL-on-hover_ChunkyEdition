@@ -31,7 +31,7 @@ export class PanelContentManager {
    * @param {Object} dependencies.stateManager - PanelStateManager instance
    * @param {Object} dependencies.quickTabsManager - QuickTabsManager instance
    * @param {string} dependencies.currentContainerId - Current container ID
-   * @param {Object} [dependencies.eventBus] - EventEmitter for state events (v1.6.2.3)
+   * @param {Object} [dependencies.internalEventBus] - Internal EventEmitter for state events (v1.6.3.4 - renamed from eventBus)
    * @param {Object} [dependencies.liveStateManager] - StateManager for live Quick Tab state (v1.6.2.3)
    * @param {Object} [dependencies.minimizedManager] - MinimizedManager for minimized tab count (v1.6.2.3)
    */
@@ -42,8 +42,8 @@ export class PanelContentManager {
     this.quickTabsManager = dependencies.quickTabsManager;
     this.currentContainerId = dependencies.currentContainerId;
     
-    // v1.6.2.3 - New dependencies for real-time updates
-    this.eventBus = dependencies.eventBus;
+    // v1.6.3.4 - Renamed to internalEventBus for clarity (supports both old and new property names)
+    this.internalEventBus = dependencies.internalEventBus || dependencies.eventBus;
     this.liveStateManager = dependencies.liveStateManager;
     this.minimizedManager = dependencies.minimizedManager;
     
@@ -61,6 +61,7 @@ export class PanelContentManager {
   /**
    * Get the authoritative isOpen state
    * v1.6.2.4 - FIX Issue #1: Query PanelStateManager for authoritative state
+   * v1.6.3.4 - FIX Bug #1: Also check actual DOM visibility as fallback
    * This prevents stale cached state from blocking content updates
    * @returns {boolean} Whether panel is open
    * @private
@@ -84,7 +85,46 @@ export class PanelContentManager {
       debug(`[PanelContentManager] Syncing isOpen: local=${this.isOpen}, stateManager=${state.isOpen}`);
       this.isOpen = state.isOpen;
     }
+    
+    // v1.6.3.4 - FIX Bug #1: If stateManager says closed, but DOM shows panel is visible,
+    // trust the DOM visibility as panel.js open() may not have synced to stateManager yet
+    if (!state.isOpen && this.panel && this._isPanelVisibleInDOM()) {
+      debug('[PanelContentManager] State says closed but DOM shows visible - trusting DOM');
+      this.isOpen = true;
+      return true;
+    }
+    
     return state.isOpen;
+  }
+
+  /**
+   * Check if panel is actually visible in the DOM
+   * Uses getComputedStyle for accurate visibility detection
+   * v1.6.3.4 - Added for Bug #1 fix
+   * @returns {boolean} Whether panel is visible in DOM
+   * @private
+   */
+  _isPanelVisibleInDOM() {
+    if (!this.panel) {
+      return false;
+    }
+    
+    // Guard against SSR/testing environments where window may not exist
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    
+    try {
+      const style = window.getComputedStyle(this.panel);
+      // Panel uses 'display: flex' when open, 'display: none' when closed
+      // Check if display is 'flex' specifically to avoid false positives
+      return style.display === 'flex';
+    } catch (err) {
+      // If getComputedStyle fails, fall back to checking style.display directly
+      debug('[PanelContentManager] getComputedStyle failed, checking style.display:', err);
+      // Only consider visible if explicitly set to 'flex'
+      return this.panel.style.display === 'flex';
+    }
   }
 
   /**
@@ -620,10 +660,11 @@ export class PanelContentManager {
    * v1.6.2.3 - Called when panel opens, enables real-time updates
    * v1.6.2.x - Track state changes when panel is closed
    * v1.6.3 - FIX Issue #2: Add EventBus connection test
+   * v1.6.3.4 - Renamed eventBus to internalEventBus for clarity
    */
   setupStateListeners() {
-    if (!this.eventBus) {
-      console.warn('[PanelContentManager] No eventBus available - skipping state listeners. Real-time updates will not work.');
+    if (!this.internalEventBus) {
+      console.warn('[PanelContentManager] No internalEventBus available - skipping state listeners. Real-time updates will not work.');
       return;
     }
 
@@ -632,9 +673,9 @@ export class PanelContentManager {
     let testReceived = false;
     const testHandler = () => { testReceived = true; };
     try {
-      this.eventBus.on('test:connection', testHandler);
-      this.eventBus.emit('test:connection');
-      this.eventBus.off('test:connection', testHandler);
+      this.internalEventBus.on('test:connection', testHandler);
+      this.internalEventBus.emit('test:connection');
+      this.internalEventBus.off('test:connection', testHandler);
       
       if (!testReceived) {
         console.error('[PanelContentManager] EventBus connection test FAILED - events may not propagate correctly');
@@ -665,7 +706,7 @@ export class PanelContentManager {
         console.error('[PanelContentManager] Error handling state:added:', err);
       }
     };
-    this.eventBus.on('state:added', addedHandler);
+    this.internalEventBus.on('state:added', addedHandler);
 
     // Listen for Quick Tab updated (minimize/restore/position change)
     // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
@@ -685,7 +726,7 @@ export class PanelContentManager {
         console.error('[PanelContentManager] Error handling state:updated:', err);
       }
     };
-    this.eventBus.on('state:updated', updatedHandler);
+    this.internalEventBus.on('state:updated', updatedHandler);
 
     // Listen for Quick Tab deleted (closed)
     // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
@@ -705,7 +746,7 @@ export class PanelContentManager {
         console.error('[PanelContentManager] Error handling state:deleted:', err);
       }
     };
-    this.eventBus.on('state:deleted', deletedHandler);
+    this.internalEventBus.on('state:deleted', deletedHandler);
 
     // Listen for state hydration (cross-tab sync)
     // v1.6.3 - FIX Issue #1 & #3: Always mark stateChangedWhileClosed and call updateContent
@@ -724,7 +765,7 @@ export class PanelContentManager {
         console.error('[PanelContentManager] Error handling state:hydrated:', err);
       }
     };
-    this.eventBus.on('state:hydrated', hydratedHandler);
+    this.internalEventBus.on('state:hydrated', hydratedHandler);
 
     // v1.6.3 - Listen for state cleared (from Clear Storage button)
     const clearedHandler = (data) => {
@@ -744,7 +785,7 @@ export class PanelContentManager {
         console.error('[PanelContentManager] Error handling state:cleared:', err);
       }
     };
-    this.eventBus.on('state:cleared', clearedHandler);
+    this.internalEventBus.on('state:cleared', clearedHandler);
 
     // Store handlers for cleanup
     this._stateHandlers = {
@@ -933,8 +974,8 @@ export class PanelContentManager {
       await this._notifyBackgroundToResetState();
 
       // v1.6.3 - Emit state:cleared event for other listeners
-      if (this.eventBus) {
-        this.eventBus.emit('state:cleared', { count: clearedCount });
+      if (this.internalEventBus) {
+        this.internalEventBus.emit('state:cleared', { count: clearedCount });
         debug(`[PanelContentManager] Emitted state:cleared event (${clearedCount} tabs closed)`);
       }
 
@@ -1006,8 +1047,8 @@ export class PanelContentManager {
       await this._notifyBackgroundToResetState();
 
       // v1.6.3 - Emit state:cleared event for other listeners (e.g., background script)
-      if (this.eventBus) {
-        this.eventBus.emit('state:cleared', { count: clearedCount });
+      if (this.internalEventBus) {
+        this.internalEventBus.emit('state:cleared', { count: clearedCount });
         debug(`[PanelContentManager] Emitted state:cleared event (${clearedCount} tabs cleared)`);
       }
 
@@ -1168,14 +1209,14 @@ export class PanelContentManager {
     }
 
     // v1.6.2.3 - Remove state event listeners
-    if (this.eventBus && this._stateHandlers) {
-      this.eventBus.off('state:added', this._stateHandlers.added);
-      this.eventBus.off('state:updated', this._stateHandlers.updated);
-      this.eventBus.off('state:deleted', this._stateHandlers.deleted);
-      this.eventBus.off('state:hydrated', this._stateHandlers.hydrated);
+    if (this.internalEventBus && this._stateHandlers) {
+      this.internalEventBus.off('state:added', this._stateHandlers.added);
+      this.internalEventBus.off('state:updated', this._stateHandlers.updated);
+      this.internalEventBus.off('state:deleted', this._stateHandlers.deleted);
+      this.internalEventBus.off('state:hydrated', this._stateHandlers.hydrated);
       // v1.6.3 - Also remove cleared handler
       if (this._stateHandlers.cleared) {
-        this.eventBus.off('state:cleared', this._stateHandlers.cleared);
+        this.internalEventBus.off('state:cleared', this._stateHandlers.cleared);
       }
       this._stateHandlers = null;
     }
@@ -1186,7 +1227,7 @@ export class PanelContentManager {
     this.stateManager = null;
     this.quickTabsManager = null;
     this.onClose = null;
-    this.eventBus = null;
+    this.internalEventBus = null;
     this.liveStateManager = null;
     this.minimizedManager = null;
 

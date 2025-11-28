@@ -199,7 +199,8 @@ export class PanelManager {
       quickTabsManager: this.quickTabsManager,
       currentContainerId: this.currentContainerId,
       // NEW: Add these for real-time updates (fixes panel not updating issue)
-      eventBus: this.quickTabsManager.internalEventBus,
+      // v1.6.3.4 - Renamed to internalEventBus for clarity (matches index.js naming)
+      internalEventBus: this.quickTabsManager.internalEventBus,
       liveStateManager: this.quickTabsManager.state,
       minimizedManager: this.quickTabsManager.minimizedManager
     });
