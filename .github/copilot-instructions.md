@@ -16,9 +16,11 @@
 - Direct local creation pattern
 
 **Recent Changes (v1.6.4):**
-- Floating panel REMOVED (sidebar-only Quick Tabs Manager)
-- Ctrl+Alt+Z now opens sidebar instead of floating panel
-- Both keyboard shortcuts open sidebar Manager tab
+- **Storage Utilities:** New `src/utils/storage-utils.js` with shared persistence functions
+- **Storage Persistence:** DestroyHandler and VisibilityHandler now persist state to storage.local
+- **Manager Actions:** Content script handles CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
+- **Storage Area Fix:** Settings page clears from storage.local (not storage.sync)
+- **saveId Tracking:** background.js tracks saveId in globalQuickTabState for collision detection
 
 ---
 
@@ -112,7 +114,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 QuickTabsManager API (v1.6.3)
+## 🔧 QuickTabsManager API (v1.6.4)
 
 ### Correct Methods
 
@@ -124,6 +126,29 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 ### Common Mistake
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST** (use `closeById(id)` instead)
+
+---
+
+## 🔧 Storage Utilities (v1.6.4)
+
+**Location:** `src/utils/storage-utils.js`
+
+| Export | Description |
+|--------|-------------|
+| `STATE_KEY` | Storage key constant (`quick_tabs_state_v2`) |
+| `generateSaveId()` | Generate unique saveId for deduplication |
+| `getBrowserStorageAPI()` | Get browser/chrome storage API |
+| `persistStateToStorage(state, logPrefix)` | Persist state to storage.local |
+
+**Usage:**
+```javascript
+import { STATE_KEY, generateSaveId, persistStateToStorage } from '../utils/storage-utils.js';
+
+const state = { tabs: [...], saveId: generateSaveId(), timestamp: Date.now() };
+persistStateToStorage(state, '[MyHandler]');
+```
+
+**CRITICAL:** Always use `storage.local` for Quick Tab state, NOT `storage.sync`.
 
 ---
 
@@ -206,22 +231,27 @@ Use the agentic-tools MCP to create memories instead.
 ## 📋 Quick Reference
 
 ### Key Files
-- `background.js` - Background script, storage listeners
-- `src/content.js` - Content script, Quick Tab creation
+- `background.js` - Background script, storage listeners, saveId tracking
+- `src/content.js` - Content script, Quick Tab creation, Manager action handlers
+- `src/utils/storage-utils.js` - Shared storage utilities (v1.6.4)
 - `src/features/quick-tabs/coordinators/SyncCoordinator.js` - Cross-tab sync
 - `src/features/quick-tabs/managers/StorageManager.js` - Storage operations
 - `src/features/quick-tabs/managers/StateManager.js` - State management
 - `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering
+- `src/features/quick-tabs/handlers/DestroyHandler.js` - Destroy with persistence
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Visibility with persistence
 
 ### Storage Key & Format
 
 **Storage Key:** `quick_tabs_state_v2`
 
-**Unified Format (v1.6.3+):**
+**CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
+
+**Unified Format (v1.6.4):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
-  saveId: 'unique-id',   // Deduplication ID
+  saveId: 'unique-id',   // Deduplication ID (tracked by background.js)
   timestamp: Date.now()  // Last update timestamp
 }
 ```
@@ -238,6 +268,13 @@ Use the agentic-tools MCP to create memories instead.
   size: { width, height }
 }
 ```
+
+### Manager Action Messages (v1.6.4)
+
+Content script handles these messages from Manager:
+- `CLOSE_QUICK_TAB` - Close a specific Quick Tab
+- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab
+- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab
 
 ---
 

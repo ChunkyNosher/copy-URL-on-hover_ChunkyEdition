@@ -1075,6 +1075,87 @@ function _handleClearAllQuickTabs(sendResponse) {
   }
 }
 
+/**
+ * v1.6.4 - FIX Bug #4: Handle close Quick Tab request from Manager
+ * @param {string} quickTabId - ID of the Quick Tab to close
+ * @param {Function} sendResponse - Response callback from message listener
+ */
+function _handleCloseQuickTab(quickTabId, sendResponse) {
+  try {
+    if (!quickTabsManager) {
+      console.warn('[Content] QuickTabsManager not initialized');
+      sendResponse({ success: false, error: 'QuickTabsManager not initialized' });
+      return;
+    }
+
+    if (!quickTabId) {
+      sendResponse({ success: false, error: 'Missing quickTabId' });
+      return;
+    }
+
+    quickTabsManager.closeById(quickTabId);
+    console.log(`[Content] Closed Quick Tab: ${quickTabId}`);
+    sendResponse({ success: true, quickTabId });
+  } catch (error) {
+    console.error('[Content] Error closing Quick Tab:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
+ * v1.6.4 - FIX Bug #4: Handle minimize Quick Tab request from Manager
+ * @param {string} quickTabId - ID of the Quick Tab to minimize
+ * @param {Function} sendResponse - Response callback from message listener
+ */
+function _handleMinimizeQuickTab(quickTabId, sendResponse) {
+  try {
+    if (!quickTabsManager) {
+      console.warn('[Content] QuickTabsManager not initialized');
+      sendResponse({ success: false, error: 'QuickTabsManager not initialized' });
+      return;
+    }
+
+    if (!quickTabId) {
+      sendResponse({ success: false, error: 'Missing quickTabId' });
+      return;
+    }
+
+    quickTabsManager.minimizeById(quickTabId);
+    console.log(`[Content] Minimized Quick Tab: ${quickTabId}`);
+    sendResponse({ success: true, quickTabId });
+  } catch (error) {
+    console.error('[Content] Error minimizing Quick Tab:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
+ * v1.6.4 - FIX Bug #4: Handle restore Quick Tab request from Manager
+ * @param {string} quickTabId - ID of the Quick Tab to restore
+ * @param {Function} sendResponse - Response callback from message listener
+ */
+function _handleRestoreQuickTab(quickTabId, sendResponse) {
+  try {
+    if (!quickTabsManager) {
+      console.warn('[Content] QuickTabsManager not initialized');
+      sendResponse({ success: false, error: 'QuickTabsManager not initialized' });
+      return;
+    }
+
+    if (!quickTabId) {
+      sendResponse({ success: false, error: 'Missing quickTabId' });
+      return;
+    }
+
+    quickTabsManager.restoreById(quickTabId);
+    console.log(`[Content] Restored Quick Tab: ${quickTabId}`);
+    sendResponse({ success: true, quickTabId });
+  } catch (error) {
+    console.error('[Content] Error restoring Quick Tab:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
 // ==================== LOG EXPORT MESSAGE HANDLER ====================
 // Listen for log export requests from popup
 if (typeof browser !== 'undefined' && browser.runtime) {
@@ -1153,6 +1234,27 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       return true; // Keep message channel open for async response
     }
     // ==================== END CLEAR ALL QUICK TABS HANDLER ====================
+
+    // ==================== MANAGER ACTION HANDLERS ====================
+    // v1.6.4 - FIX Bug #4: Handle CLOSE/MINIMIZE/RESTORE actions from Quick Tab Manager
+    if (message.action === 'CLOSE_QUICK_TAB') {
+      console.log('[Content] Received CLOSE_QUICK_TAB request:', message.quickTabId);
+      _handleCloseQuickTab(message.quickTabId, sendResponse);
+      return true;
+    }
+
+    if (message.action === 'MINIMIZE_QUICK_TAB') {
+      console.log('[Content] Received MINIMIZE_QUICK_TAB request:', message.quickTabId);
+      _handleMinimizeQuickTab(message.quickTabId, sendResponse);
+      return true;
+    }
+
+    if (message.action === 'RESTORE_QUICK_TAB') {
+      console.log('[Content] Received RESTORE_QUICK_TAB request:', message.quickTabId);
+      _handleRestoreQuickTab(message.quickTabId, sendResponse);
+      return true;
+    }
+    // ==================== END MANAGER ACTION HANDLERS ====================
 
     // ==================== TEST BRIDGE MESSAGE HANDLERS ====================
     // v1.6.0.13 - Added for autonomous testing with Playwright MCP

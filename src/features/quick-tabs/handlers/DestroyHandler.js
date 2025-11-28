@@ -3,6 +3,7 @@
  * Extracted from QuickTabsManager Phase 2.1 refactoring
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
+ * v1.6.4 - FIX Bug #1: Persist to storage after destroy
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -11,13 +12,17 @@
  * - Cleanup minimized manager references
  * - Reset z-index when all tabs closed
  * - Emit destruction events
+ * - Persist state to storage after destruction
  *
- * @version 1.6.3.2
+ * @version 1.6.4
  */
+
+import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
 /**
  * DestroyHandler class
  * Manages Quick Tab destruction and cleanup operations (local only, no cross-tab sync)
+ * v1.6.4 - Now persists state to storage after destruction
  */
 export class DestroyHandler {
   /**
@@ -48,6 +53,7 @@ export class DestroyHandler {
    * Handle Quick Tab destruction
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
+   * v1.6.4 - FIX Bug #1: Persist to storage after destroy
    *
    * @param {string} id - Quick Tab ID
    */
@@ -69,6 +75,9 @@ export class DestroyHandler {
 
     // Reset z-index if all tabs are closed
     this._resetZIndexIfEmpty();
+
+    // v1.6.4 - FIX Bug #1: Persist to storage after destroy
+    this._persistToStorage();
   }
 
   /**
@@ -113,6 +122,17 @@ export class DestroyHandler {
   }
 
   /**
+   * Persist current state to browser.storage.local
+   * v1.6.4 - FIX Bug #1: Persist to storage after destroy
+   * Uses shared buildStateForStorage and persistStateToStorage utilities
+   * @private
+   */
+  _persistToStorage() {
+    const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
+    persistStateToStorage(state, '[DestroyHandler]');
+  }
+
+  /**
    * Close Quick Tab by ID (calls tab.destroy() method)
    *
    * @param {string} id - Quick Tab ID
@@ -126,6 +146,7 @@ export class DestroyHandler {
 
   /**
    * Close all Quick Tabs
+   * v1.6.4 - FIX Bug #1: Persist to storage after close all
    * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
    */
   closeAll() {
@@ -142,5 +163,8 @@ export class DestroyHandler {
     this.quickTabsMap.clear();
     this.minimizedManager.clear();
     this.currentZIndex.value = this.baseZIndex;
+
+    // v1.6.4 - FIX Bug #1: Persist to storage after close all
+    this._persistToStorage();
   }
 }

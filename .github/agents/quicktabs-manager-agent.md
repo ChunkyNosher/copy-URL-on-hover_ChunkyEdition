@@ -51,21 +51,24 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**Key Manager Features (v1.6.3+):**
+**Key Manager Features (v1.6.4):**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Minimize/Restore** - Bottom-right minimized manager
-- **Keyboard Shortcut** - Ctrl+Alt+Z to toggle panel
+- **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **Persistent Position** - Draggable with saved position
 - **Clear Storage** - Debug button to clear all Quick Tabs
+- **Manager Actions** - CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages to content script
 
-**Storage Format (v1.6.3+):**
+**Storage Format (v1.6.4):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
+
+**CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
 ---
 
@@ -339,10 +342,11 @@ onDragEnd() {
 
 ### Issue: Clear Storage Not Working
 
-**Fix (v1.6.3+):** Use handleClearStorage method
+**Fix (v1.6.4):** Use storage.local (NOT storage.sync)
 
 ```javascript
 async handleClearStorage() {
+  // v1.6.4 - Use storage.local, NOT storage.sync
   await browser.storage.local.set({
     quick_tabs_state_v2: { tabs: [], saveId: generateId(), timestamp: Date.now() }
   });
@@ -352,7 +356,7 @@ async handleClearStorage() {
 
 ---
 
-## QuickTabsManager API (v1.6.3)
+## QuickTabsManager API (v1.6.4)
 
 **Correct Methods:**
 | Method | Description |
@@ -362,6 +366,13 @@ async handleClearStorage() {
 
 **Common Mistake:**
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST** (use `closeById(id)`)
+
+## Manager Action Messages (v1.6.4)
+
+Manager sends these messages to content script:
+- `CLOSE_QUICK_TAB` - Close a specific Quick Tab
+- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab
+- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab
 
 ---
 

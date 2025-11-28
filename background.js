@@ -86,7 +86,9 @@ const quickTabStates = new Map();
 const globalQuickTabState = {
   // v1.6.2.2 - Unified format: single tabs array for global visibility
   tabs: [],
-  lastUpdate: 0
+  lastUpdate: 0,
+  // v1.6.4 - FIX Bug #7: Track saveId for hash collision detection
+  saveId: null
 };
 
 // Flag to track initialization status
@@ -1138,6 +1140,7 @@ if (chrome.sidePanel) {
  * Helper: Update global state from storage value
  * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (lines 1087, 1095)
  * v1.6.2.2 - Updated for unified format
+ * v1.6.4 - FIX Bug #7: Track saveId for hash collision detection
  *
  * @param {Object|null} newValue - New storage value
  */
@@ -1152,6 +1155,8 @@ function _updateGlobalStateFromStorage(newValue) {
   if (newValue.tabs && Array.isArray(newValue.tabs)) {
     globalQuickTabState.tabs = newValue.tabs;
     globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
+    // v1.6.4 - FIX Bug #7: Track saveId for hash collision detection
+    globalQuickTabState.saveId = newValue.saveId || null;
     console.log(
       '[Background] Updated global state from storage (unified format):',
       newValue.tabs.length,
@@ -1211,12 +1216,15 @@ function _isSelfWrite(newValue, handler) {
 /**
  * Helper: Clear cache when storage is empty
  * v1.6.3.2 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * v1.6.4 - FIX Bug #7: Reset saveId when cache is cleared
  * @param {Object} newValue - New storage value
  */
 function _clearCacheForEmptyStorage(newValue) {
   console.log('[Background] Storage cleared (empty/missing tabs), clearing cache immediately');
   globalQuickTabState.tabs = [];
   globalQuickTabState.lastUpdate = newValue?.timestamp || Date.now();
+  // v1.6.4 - FIX Bug #7: Reset saveId when cache is cleared
+  globalQuickTabState.saveId = newValue?.saveId || null;
   lastBroadcastedStateHash = computeStateHash(newValue);
 }
 
@@ -1226,6 +1234,7 @@ function _clearCacheForEmptyStorage(newValue) {
  * v1.6.2.2 - Updated for unified format
  * v1.6.3.2 - FIX Bug #1, #6: ALWAYS update cache when tabs is empty or missing
  *            Refactored to reduce complexity by extracting helpers
+ * v1.6.4 - FIX Bug #7: Check saveId before hash comparison
  * 
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
@@ -1250,11 +1259,17 @@ function _handleQuickTabStateChange(changes) {
     return;
   }
 
+  // v1.6.4 - FIX Bug #7: Check saveId directly before hash comparison
+  // If saveId changed but hash is the same (rare edge case), still update
+  const currentSaveId = globalQuickTabState.saveId;
+  const newSaveId = newValue?.saveId;
+  const saveIdChanged = newSaveId && newSaveId !== currentSaveId;
+
   // v1.6.1.6 - FIX: Check if state actually changed (prevents redundant cache updates)
   // v1.6.3.2 - FIX: computeStateHash now includes saveId for unique write detection
   const newHash = computeStateHash(newValue);
-  if (newHash === lastBroadcastedStateHash) {
-    console.log('[Background] State unchanged (same hash), skipping cache update');
+  if (newHash === lastBroadcastedStateHash && !saveIdChanged) {
+    console.log('[Background] State unchanged (same hash and saveId), skipping cache update');
     return;
   }
 

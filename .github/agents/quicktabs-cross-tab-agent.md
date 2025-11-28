@@ -51,23 +51,26 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
 - **browser.storage.local** - Persistent state storage with key `quick_tabs_state_v2`
 - **Global Visibility** - Quick Tabs visible in all tabs
+- **Shared Storage Utilities** - `src/utils/storage-utils.js` for persistence
 
-**Storage Format (v1.6.3+):**
+**Storage Format (v1.6.4):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
-  saveId: 'unique-id',   // Deduplication ID
+  saveId: 'unique-id',   // Deduplication ID (tracked by background.js)
   timestamp: Date.now()  // Last update timestamp
 }
 ```
 
 **Target Latency:** <100ms for cross-tab updates
+
+**CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
 ---
 
@@ -205,7 +208,8 @@ quickTab.shouldBeVisible(currentTabId) {
 | `src/features/quick-tabs/coordinators/SyncCoordinator.js` | Handle storage changes, call hydrate |
 | `src/features/quick-tabs/managers/StateManager.js` | Hydrate state, emit events |
 | `src/features/quick-tabs/coordinators/UICoordinator.js` | Listen events, render/update/destroy |
-| `background.js` | Cache update ONLY (no broadcast) |
+| `src/utils/storage-utils.js` | Shared persistence utilities (v1.6.4) |
+| `background.js` | Cache update ONLY (no broadcast), saveId tracking |
 
 ---
 
