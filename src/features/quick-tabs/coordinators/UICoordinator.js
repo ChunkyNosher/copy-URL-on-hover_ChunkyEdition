@@ -91,6 +91,7 @@ export class UICoordinator {
    * Update an existing QuickTabWindow
    * v1.6.3.4 - FIX Bug #6: Check for minimized state before rendering
    * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
+   * v1.6.4.3 - FIX Issue #2: Check BOTH top-level AND nested minimized properties
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
    * @returns {QuickTabWindow|undefined} Updated or newly rendered tab window, or undefined if skipped
@@ -98,9 +99,10 @@ export class UICoordinator {
   update(quickTab) {
     const tabWindow = this.renderedTabs.get(quickTab.id);
 
-    // v1.6.3.4 - FIX Bug #6: Check if tab is minimized before attempting to render
-    // If minimized, the tab should NOT be visible, so don't try to render it
-    const isMinimized = Boolean(quickTab.visibility?.minimized);
+    // v1.6.4.3 - FIX Issue #2: Check BOTH top-level `minimized` AND nested `visibility.minimized`
+    // Top-level property is the current format; visibility.minimized is legacy format
+    // Using OR logic ensures we handle both formats correctly
+    const isMinimized = Boolean(quickTab.minimized || quickTab.visibility?.minimized);
     
     if (!tabWindow) {
       // v1.6.3.4 - FIX Bug #6: Don't render minimized tabs
@@ -156,6 +158,7 @@ export class UICoordinator {
   /**
    * Setup state event listeners
    * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
+   * v1.6.4.3 - FIX Issue #3: Add state:cleared listener for reconciliation
    */
   setupStateListeners() {
     console.log('[UICoordinator] Setting up state listeners');
@@ -176,7 +179,45 @@ export class UICoordinator {
       this.destroy(id);
     });
 
+    // v1.6.4.3 - FIX Issue #3: Listen for state:cleared to remove orphaned windows
+    this.eventBus.on('state:cleared', () => {
+      console.log('[UICoordinator] Received state:cleared event');
+      this.reconcileRenderedTabs();
+    });
+
     console.log('[UICoordinator] ✓ State listeners setup complete');
+  }
+
+  /**
+   * Reconcile rendered tabs with StateManager
+   * v1.6.4.3 - FIX Issue #3: Destroy orphaned tabs that exist in renderedTabs but not in StateManager
+   * This handles the case where "Close All" removes tabs from storage but duplicates remain visible
+   */
+  reconcileRenderedTabs() {
+    console.log('[UICoordinator] Reconciling rendered tabs with StateManager');
+
+    // Get all tab IDs from StateManager
+    const stateTabIds = new Set(this.stateManager.getAll().map(qt => qt.id));
+
+    // Find and destroy orphaned tabs (in renderedTabs but not in StateManager)
+    const orphanedIds = [];
+    for (const [id] of this.renderedTabs) {
+      if (!stateTabIds.has(id)) {
+        orphanedIds.push(id);
+      }
+    }
+
+    // Destroy orphaned tabs
+    for (const id of orphanedIds) {
+      console.log('[UICoordinator] Destroying orphaned tab:', id);
+      this.destroy(id);
+    }
+
+    if (orphanedIds.length > 0) {
+      console.log(`[UICoordinator] Reconciled: destroyed ${orphanedIds.length} orphaned tab(s)`);
+    } else {
+      console.log('[UICoordinator] Reconciled: no orphaned tabs found');
+    }
   }
 
   /**

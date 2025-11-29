@@ -291,9 +291,10 @@ function renderUI() {
   const tabsList = document.createElement('div');
   tabsList.className = 'quick-tabs-list';
 
-  // Separate active and minimized tabs
-  const activeTabs = allTabs.filter(t => !t.minimized && !(t.visibility && t.visibility.minimized));
-  const minimizedTabs = allTabs.filter(t => t.minimized || (t.visibility && t.visibility.minimized));
+  // v1.6.4.3 - FIX Issue #5: Use module-level helper for consistent minimized state detection
+  // Separate active and minimized tabs using consistent helper
+  const activeTabs = allTabs.filter(t => !isTabMinimizedHelper(t));
+  const minimizedTabs = allTabs.filter(t => isTabMinimizedHelper(t));
 
   // Render active tabs first, then minimized tabs
   activeTabs.forEach(tab => {
@@ -584,7 +585,19 @@ async function closeMinimizedTabs() {
 }
 
 /**
+ * Check if a tab is minimized using consistent logic
+ * v1.6.4.3 - FIX Issue #5: Helper for consistent minimized state detection
+ * Prefers top-level `minimized` property as single source of truth
+ * @param {Object} tab - Quick Tab data
+ * @returns {boolean} - True if tab is minimized
+ */
+function isTabMinimizedHelper(tab) {
+  return tab.minimized ?? tab.visibility?.minimized ?? false;
+}
+
+/**
  * Filter minimized tabs from state object
+ * v1.6.4.3 - FIX Issue #5: Use consistent isTabMinimizedHelper
  * @param {Object} state - State object to modify in place
  * @returns {boolean} - True if changes were made
  */
@@ -594,11 +607,8 @@ function filterMinimizedFromState(state) {
   // Handle unified format (v1.6.2.2+)
   if (state.tabs && Array.isArray(state.tabs)) {
     const originalLength = state.tabs.length;
-    // Filter out minimized tabs (check both legacy and new format)
-    state.tabs = state.tabs.filter(t => {
-      const isMinimized = t.minimized || (t.visibility && t.visibility.minimized);
-      return !isMinimized;
-    });
+    // v1.6.4.3 - FIX Issue #5: Use consistent helper
+    state.tabs = state.tabs.filter(t => !isTabMinimizedHelper(t));
 
     if (state.tabs.length !== originalLength) {
       hasChanges = true;
@@ -615,6 +625,7 @@ function filterMinimizedFromState(state) {
 
 /**
  * Filter minimized tabs from legacy container format
+ * v1.6.4.3 - FIX Issue #5: Use consistent isTabMinimizedHelper
  * @param {Object} state - State object in container format
  * @returns {boolean} - True if changes were made
  */
@@ -626,7 +637,8 @@ function filterMinimizedFromContainerFormat(state) {
     
     if (state[cookieStoreId] && state[cookieStoreId].tabs) {
       const originalLength = state[cookieStoreId].tabs.length;
-      state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !t.minimized);
+      // v1.6.4.3 - FIX Issue #5: Use consistent helper
+      state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !isTabMinimizedHelper(t));
 
       if (state[cookieStoreId].tabs.length !== originalLength) {
         hasChanges = true;
