@@ -86,14 +86,40 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4 - Two-Layer Sidebar Tab System ✅
 
+<<<<<<< HEAD
 **Settings Page Structure:**
 
 - **Copy URL Tab** - Keyboard shortcuts (Y, X, O)
 - **Quick Tabs Tab** - Quick Tab settings, max windows, defaults
 - **Appearance Tab** - Dark mode, colors, borders, animations
 - **Advanced Tab** - Debug mode, storage management, logs
+=======
+**Settings Sidebar Structure (Two-Layer System):**
+- **PRIMARY TABS (Layer 1):**
+  - **Settings** - Shows secondary tabs for configuration
+  - **Quick Tab Manager** - Shows manager iframe (full-width)
+  
+- **SECONDARY TABS (Layer 2, only visible under Settings):**
+  - **Copy URL Tab** - Keyboard shortcuts (Y, X, O)
+  - **Quick Tabs Tab** - Quick Tab settings, max windows, defaults
+  - **Appearance Tab** - Dark mode, colors, borders, animations
+  - **Advanced Tab** - Debug mode, storage management, logs
+
+**Tab State Persistence:**
+- Primary tab: localStorage.getItem('sidebarActivePrimaryTab')
+- Secondary tab: localStorage.getItem('sidebarActiveSecondaryTab')
+
+**Keyboard Shortcuts:**
+- Ctrl+Alt+Z or Alt+Shift+Z: Opens sidebar and switches to Quick Tab Manager
+- Command: 'open-quick-tabs-manager' in manifest.json
+
+**Storage (v1.6.4):**
+- **Quick Tab state:** `storage.local` (NOT `storage.sync`)
+- **Extension settings:** `storage.sync` (user preferences)
+- **Clear storage:** Must use `storage.local` for Quick Tab state
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 
 ---
 

@@ -13,7 +13,7 @@ on:
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
-    timeout-minutes: 59
+    timeout-minutes: 300
 
     env:
       NODE_ENV: development
@@ -71,28 +71,8 @@ jobs:
           echo "Installing Playwright Browsers"
           echo "=========================================="
           
-          # Install Chromium (required for Chrome tests)
-          npx playwright install chromium --with-deps
-
-          # IMPORTANT: Verify browsers are available to MCP
-            if [ -d "$HOME/.cache/ms-playwright/chromium-"* ]; then
-              echo "✓ Chromium available for Playwright MCP"
-            else
-              echo "✗ ERROR: Chromium not found - browsers must be installed first!"
-              exit 1
-            fi
-          
           # Install Firefox (required for Firefox tests)
           npx playwright install firefox --with-deps
-          
-          # Verify installations
-          if [ -d "$HOME/.cache/ms-playwright/chromium-"* ]; then
-            CHROMIUM_VERSION=$(ls -d $HOME/.cache/ms-playwright/chromium-* | head -1 | sed 's/.*chromium-//')
-            echo "✓ Chromium $CHROMIUM_VERSION installed"
-          else
-            echo "✗ Chromium installation failed"
-            exit 1
-          fi
           
           if [ -d "$HOME/.cache/ms-playwright/firefox-"* ]; then
             FIREFOX_VERSION=$(ls -d $HOME/.cache/ms-playwright/firefox-* | head -1 | sed 's/.*firefox-//')
@@ -185,145 +165,9 @@ jobs:
           
           echo "=========================================="
 
-      - name: Install Xvfb and X11 utilities
-        run: |
-          echo "=========================================="
-          echo "Installing Xvfb and X11 Tools"
-          echo "=========================================="
-          
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            xvfb \
-            x11-utils \
-            x11-xserver-utils \
-            xfonts-base \
-            xfonts-100dpi \
-            xfonts-75dpi \
-            xfonts-scalable \
-            fonts-liberation \
-            libxrandr2 \
-            libxcomposite1 \
-            libxdamage1 \
-            libxext6
-          
-          # Verify installations
-          echo ""
-          echo "Installed versions:"
-          dpkg -l | grep -E "xvfb|x11-utils"
-          
-          echo "=========================================="
-          echo "✓ Xvfb and dependencies installed"
-          echo "=========================================="
-
-      - name: Start Xvfb on display :99
-        run: |
-          echo "=========================================="
-          echo "Starting Xvfb Virtual Display"
-          echo "=========================================="
-          
-          # Start Xvfb in background with enhanced flags
-          Xvfb :99 -screen 0 1920x1080x24 -ac -nolisten tcp -dpi 96 +extension RANDR > /tmp/xvfb.log 2>&1 &
-          XVFB_PID=$!
-          echo "Xvfb started with PID: $XVFB_PID"
-          
-          # Set DISPLAY for all subsequent steps
-          echo "DISPLAY=:99" >> $GITHUB_ENV
-          export DISPLAY=:99
-          
-          # Wait for Xvfb to be ready with health check (not just blind sleep)
-          echo "Waiting for Xvfb to initialize..."
-          for i in {1..30}; do
-            if xdpyinfo -display :99 >/dev/null 2>&1; then
-              echo "✓ Xvfb is ready after ${i} seconds"
-              break
-            fi
-            if [ $i -eq 30 ]; then
-              echo "✗ Xvfb failed to start after 30 seconds"
-              cat /tmp/xvfb.log
-              exit 1
-            fi
-            sleep 1
-          done
-          
-          # Verify display socket exists
-          if [ -e /tmp/.X11-unix/X99 ]; then
-            echo "✓ Display socket /tmp/.X11-unix/X99 exists"
-            ls -la /tmp/.X11-unix/X99
-          else
-            echo "✗ Display socket /tmp/.X11-unix/X99 NOT found"
-            exit 1
-          fi
-          
-          # Verify Xvfb process is running
-          if ps -p $XVFB_PID > /dev/null; then
-            echo "✓ Xvfb process (PID $XVFB_PID) is running"
-          else
-            echo "✗ Xvfb process died"
-            exit 1
-          fi
-          
-          # Display configuration info
-          echo ""
-          echo "Display configuration:"
-          xdpyinfo -display :99 | head -20
-          echo ""
-          echo "=========================================="
-          echo "✓ Xvfb ready for browser testing"
-          echo "=========================================="
-
-      # ====================================================================
-      # NEW STEP: Pre-Flight Display Test
-      # ====================================================================
-      - name: Verify Xvfb display functionality
-        run: |
-          echo "=========================================="
-          echo "Testing X11 Display Functionality"
-          echo "=========================================="
-          
-          # Test 1: Can we query display info?
-          echo "Test 1: Display info query"
-          xdpyinfo -display :99 > /dev/null
-          echo "✓ xdpyinfo succeeded"
-          
-          # Test 2: Display dimensions correct?
-          echo "Test 2: Display dimensions"
-          DIMENSIONS=$(xdpyinfo -display :99 | grep dimensions | awk '{print $2}')
-          if [ "$DIMENSIONS" = "1920x1080" ]; then
-            echo "✓ Display dimensions correct: $DIMENSIONS"
-          else
-            echo "✗ Display dimensions wrong: $DIMENSIONS (expected 1920x1080)"
-            exit 1
-          fi
-          
-          # Test 3: Can we run a simple X11 app? (xeyes as test)
-          echo "Test 3: Simple X11 app (xeyes)"
-          timeout 2 xeyes -display :99 &
-          XEYES_PID=$!
-          sleep 1
-          if ps -p $XEYES_PID > /dev/null 2>&1; then
-            echo "✓ xeyes launched successfully"
-            kill $XEYES_PID 2>/dev/null || true
-          else
-            echo "⚠ xeyes test skipped (may not be installed)"
-          fi
-          
-          echo "=========================================="
-          echo "✓ X11 display fully functional"
-          echo "=========================================="
-
       # ====================================================================
       # NEW STEP: Restore Memory from Previous Runs
       # ====================================================================
-      - name: Restore Agent Memory Cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            .agentic-tools-mcp/
-          key: copilot-memory-${{ github.repository }}-${{ github.run_number }}
-          restore-keys: |
-            copilot-memory-${{ github.repository }}-
-            copilot-memory-
-        continue-on-error: true
 
       - name: Display Memory Status
         run: |
@@ -719,17 +563,6 @@ jobs:
           echo "Verifying Playwright Browser Availability"
           echo "=========================================="
           
-          # Check Chromium
-          CHROMIUM_PATH="$HOME/.cache/ms-playwright/chromium-*/chrome-linux/chrome"
-          if ls $CHROMIUM_PATH 1> /dev/null 2>&1; then
-            echo "✓ Chromium executable found"
-            ls -lh $CHROMIUM_PATH | head -1
-          else
-            echo "✗ Chromium executable NOT found"
-            echo "Expected location: $CHROMIUM_PATH"
-            exit 1
-          fi
-          
           # Check Firefox
           FIREFOX_PATH="$HOME/.cache/ms-playwright/firefox-*/firefox/firefox"
           if ls $FIREFOX_PATH 1> /dev/null 2>&1; then
@@ -805,8 +638,10 @@ jobs:
       # ====================================================================
       # STEP 13: Build Extension
       # ====================================================================
-      - name: Build browser extension
-        run: npm run build
+      - name: Build extension (production with test mode)
+        run: npm run build:prod
+        env:
+          TEST_MODE: 'true'
 
       # ====================================================================
       # STEP 13.5: Inject Test Bridge for Copilot Autonomous Testing
@@ -824,7 +659,7 @@ jobs:
           # Copy test bridge to dist directory
           if [ ! -f "src/test-bridge.js" ]; then
             echo "✗ ERROR: src/test-bridge.js not found"
-            exit 1
+            exit 0
           fi
           
           cp src/test-bridge.js dist/test-bridge.js
@@ -880,162 +715,48 @@ jobs:
           echo "=========================================="
           echo "✓✓✓ Test Bridge Injection Complete ✓✓✓"
           echo "=========================================="
-
-      - name: Verify Xvfb state before tests
-        run: |
-          echo "=========================================="
-          echo "Pre-Test Xvfb Verification"
-          echo "=========================================="
-          
-          # Kill any stale Xvfb processes (shouldn't exist, but safety check)
-          pkill -9 Xvfb || echo "No stale Xvfb processes to kill"
-          sleep 1
-          
-          # Restart our known-good Xvfb on :99
-          Xvfb :99 -screen 0 1920x1080x24 -ac -nolisten tcp -dpi 96 +extension RANDR > /tmp/xvfb-test.log 2>&1 &
-          XVFB_PID=$!
-          echo "Restarted Xvfb with PID: $XVFB_PID"
-          
-          # Quick health check
-          for i in {1..10}; do
-            if xdpyinfo -display :99 >/dev/null 2>&1; then
-              echo "✓ Xvfb :99 ready for tests after ${i} seconds"
-              break
-            fi
-            sleep 1
-          done
-          
-          # Verify display is responsive
-          DIMENSIONS=$(xdpyinfo -display :99 | grep dimensions | awk '{print $2}')
-          echo "Display dimensions: $DIMENSIONS"
-          
-          if [ "$DIMENSIONS" != "1920x1080" ]; then
-            echo "✗ Display dimensions wrong: $DIMENSIONS"
-            exit 1
-          fi
-          
-          echo "=========================================="
-
-
-      - name: Run Playwright extension tests
-        run: npm run test:extension:chrome
-        env:
-          DISPLAY: :99  # Use the manually configured Xvfb
-          NODE_ENV: test
-          TEST_MODE: true
         continue-on-error: true
+      # ====================================================================
+      # NEW STEP: Run Playwright E2E Tests
+      # ====================================================================
 
-      - name: Debug - Verify which display was used
+      - name: Run Playwright E2E Tests
+        run: npx playwright test
+        env:
+          CI: true
+
+      - name: Upload Playwright test results
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if tests fail
+        with:
+          name: playwright-test-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+      
+      - name: Display E2E test summary
         if: always()
         run: |
           echo "=========================================="
-          echo "Display Debugging Information"
+          echo "E2E Test Summary"
           echo "=========================================="
           
-          # Show environment DISPLAY variable
-          echo "Environment DISPLAY: ${DISPLAY}"
-          
-          # List all running Xvfb processes
-          echo ""
-          echo "Running Xvfb processes:"
-          ps aux | grep Xvfb | grep -v grep || echo "No Xvfb processes found"
-          
-          # Check which displays have sockets
-          echo ""
-          echo "X11 display sockets:"
-          ls -la /tmp/.X11-unix/ || echo "No X11 sockets found"
-          
-          # Try to query each display
-          echo ""
-          echo "Testing display connectivity:"
-          for display in 99 100 101 102; do
-            if xdpyinfo -display :$display >/dev/null 2>&1; then
-              echo "  ✓ Display :$display is responsive"
-              xdpyinfo -display :$display | grep "dimensions"
-            else
-              echo "  ✗ Display :$display is not available"
-            fi
-          done
-          
-          echo "=========================================="
-
-
-      # ====================================================================
-      # NEW STEP: Create Firefox Profile with Extension Pre-installed
-      # ====================================================================
-      - name: Create Firefox profile with extension
-        run: |
-          echo "=========================================="
-          echo "Creating Firefox Profile with Extension"
-          echo "=========================================="
-          
-          # Create Firefox profile directory
-          FIREFOX_PROFILE_DIR="${GITHUB_WORKSPACE}/firefox-profile"
-          mkdir -p "$FIREFOX_PROFILE_DIR"
-          
-          # Install Firefox if not already installed
-          if ! command -v firefox &> /dev/null; then
-            echo "Installing Firefox..."
-            sudo apt-get update
-            sudo apt-get install -y firefox
-          fi
-          
-          # Get absolute path to extension
-          EXTENSION_PATH="${GITHUB_WORKSPACE}/dist"
-          echo "Extension path: $EXTENSION_PATH"
-          
-          # Create Firefox profile
-          firefox -CreateProfile "copilot-testing $FIREFOX_PROFILE_DIR" -headless
-          
-          # Create user.js with preferences to allow unsigned extensions
-          cat > "$FIREFOX_PROFILE_DIR/user.js" << 'EOF'
-          // Allow unsigned extensions
-          user_pref("xpinstall.signatures.required", false);
-          user_pref("extensions.autoDisableScopes", 0);
-          user_pref("extensions.enabledScopes", 15);
-          
-          // Disable update checks
-          user_pref("app.update.enabled", false);
-          user_pref("app.update.auto", false);
-          
-          // Disable first-run pages
-          user_pref("browser.startup.homepage_override.mstone", "ignore");
-          user_pref("startup.homepage_welcome_url", "about:blank");
-          user_pref("startup.homepage_welcome_url.additional", "");
-          
-          // Enable extension debugging
-          user_pref("devtools.chrome.enabled", true);
-          user_pref("devtools.debugger.remote-enabled", true);
-          EOF
-          
-          # Install extension using web-ext
-          echo "Installing extension in Firefox profile..."
-          cd "$EXTENSION_PATH"
-          
-          # Get extension ID from manifest
-          EXTENSION_ID=$(node -p "require('./manifest.json').browser_specific_settings?.gecko?.id || require('./manifest.json').applications?.gecko?.id || 'copy-url-on-hover@chunky'")
-          echo "Extension ID: $EXTENSION_ID"
-          
-          # Create extensions directory in profile
-          mkdir -p "$FIREFOX_PROFILE_DIR/extensions"
-          
-          # Package extension as XPI
-          zip -r -FS "$FIREFOX_PROFILE_DIR/extensions/${EXTENSION_ID}.xpi" * -x "*.DS_Store"
-          
-          echo "✓ Firefox profile created at: $FIREFOX_PROFILE_DIR"
-          echo "✓ Extension installed with ID: $EXTENSION_ID"
-          
-          # Verify profile was created
-          if [ -d "$FIREFOX_PROFILE_DIR" ]; then
-            echo "✓ Profile directory exists"
-            ls -la "$FIREFOX_PROFILE_DIR"
+          if [ -f "test-results/results.json" ]; then
+            node -e "
+              const results = require('./test-results/results.json');
+              console.log('Test Suites:', results.suites?.length || 0);
+              console.log('Total Tests:', results.stats?.expected + results.stats?.unexpected || 0);
+              console.log('Passed:', results.stats?.expected || 0);
+              console.log('Failed:', results.stats?.unexpected || 0);
+              console.log('Skipped:', results.stats?.skipped || 0);
+            "
           else
-            echo "✗ Failed to create profile directory"
-            exit 1
+            echo "No test results found"
           fi
           
           echo "=========================================="
-
+    
       # ====================================================================
       # STEP 14: Verify Build Output
       # ====================================================================

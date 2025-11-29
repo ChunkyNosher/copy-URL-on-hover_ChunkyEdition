@@ -1,0 +1,8 @@
+{
+  "id": "ce041d56-9693-48cf-8a46-3062fb7101dc",
+  "title": "Sidebar uses storage.local v1.6.3",
+  "details": "Since v1.6.0.12, Quick Tabs are stored in browser.storage.local (not storage.sync) to avoid quota limits. Since v1.6.2.2, the storage format is unified (single tabs array) not container-based. The sidebar/quick-tabs-manager.js was fixed in v1.6.3 to read from storage.local and parse the unified format. StateManager.js now calls persistToStorage() after add/update/delete/clear operations for cross-context sync via storage.onChanged events.",
+  "category": "project_context",
+  "dateCreated": "2025-11-28T04:16:39.047Z",
+  "dateUpdated": "2025-11-28T04:16:39.047Z"
+}

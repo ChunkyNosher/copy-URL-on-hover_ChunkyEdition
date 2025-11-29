@@ -1,0 +1,8 @@
+{
+  "id": "2595f32f-ef1e-4efe-84b5-4ed4bf248e9a",
+  "title": "Quick Tab Manager Display Fix Pattern",
+  "details": "Fixed 7 critical bugs in Quick Tab Manager display:\n\n1. Race condition: updateContent() accepts forceRefresh option to bypass isOpen check\n2. EventBus validation: Added connection test and logging when undefined\n3. State events: Always call updateContent(), let it handle isOpen internally\n4. Dependency validation: Log errors if eventBus/liveStateManager undefined in panel.js\n5. Storage recovery: Added _attemptStorageRecovery() for malformed data\n6. Force refresh: handleClearStorage and handleCloseAll use forceRefresh=true\n7. closeAll verified: QuickTabsManager delegates to DestroyHandler.closeAll()\n\nKey patterns:\n- forceRefresh option pattern for bypassing cached state checks\n- EventBus connection test with emit/receive pattern\n- Storage format recovery by validating ALL items in array have id+url\n- healthCheck() method for diagnostics with _collectHealthData() and _identifyProblems() helpers\n- getListenerCount() public method to avoid accessing private _stateHandlers",
+  "category": "technical_decisions",
+  "dateCreated": "2025-11-28T02:35:15.596Z",
+  "dateUpdated": "2025-11-28T02:35:15.596Z"
+}

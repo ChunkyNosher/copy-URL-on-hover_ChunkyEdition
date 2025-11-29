@@ -1,0 +1,8 @@
+{
+  "id": "d3f9e351-d983-4164-a4c2-f39de6b4b085",
+  "title": "Issue 47 container confusion troubleshooting",
+  "details": "**Issue 47 Scenarios - Container Isolation Behavior:**\n\nWhen testing Scenarios 1 & 2 (cross-tab sync), users may accidentally switch to tabs in different Firefox containers. This causes Quick Tabs to NOT appear, which is the CORRECT behavior per container isolation (Scenario 8).\n\n**How to identify this issue:**\n1. Console logs show `No data found for container firefox-container-X`\n2. Quick Tab was created in `firefox-default` but user switched to tabs in `firefox-container-N`\n\n**Root cause of confusion:**\n- Firefox containers are invisible to most users\n- Tabs can be in different containers without the user realizing it\n- Container tabs have colored top borders, but this is subtle\n\n**User guidance for proper testing:**\n1. For cross-tab sync (Scenarios 1-2): Ensure ALL tabs are in the SAME container (typically `firefox-default`)\n2. For container isolation (Scenario 8): Intentionally use different containers (Personal, Work, etc.)\n\n**Technical background:**\n- Each Firefox container has a unique `cookieStoreId` (e.g., `firefox-default`, `firefox-container-1`, etc.)\n- Quick Tabs are stored per-container in the background script's `globalQuickTabState`\n- Container isolation is enforced via `cookieStoreId` filtering in all state operations",
+  "category": "troubleshooting",
+  "dateCreated": "2025-11-24T23:04:58.182Z",
+  "dateUpdated": "2025-11-24T23:04:58.182Z"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "d967fc26-6995-4d0b-98a6-3a0fccdbf873",
+  "title": "Quick Tabs use storage.local not sync",
+  "details": "Quick Tabs state (`quick_tabs_state_v2`) is stored in `browser.storage.local`, NOT `browser.storage.sync`. User settings (`quick_tab_settings`) are stored in `browser.storage.sync`. When clearing Quick Tabs storage from the options page, always clear from `browser.storage.local` first, then optionally from `sync` for backward compatibility. This fix was applied in options_page.js to the clearStorage(), updateStorageInfo(), showCurrentState(), and exportState() functions.",
+  "category": "bugfix",
+  "dateCreated": "2025-11-26T00:52:06.919Z",
+  "dateUpdated": "2025-11-26T00:52:06.919Z"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "ccaf64cb-64ad-4774-8082-43192878b2bf",
+  "title": "Firefox sidebarAction.open() async issue",
+  "details": "Firefox's browser.sidebarAction.open() API must be called SYNCHRONOUSLY from a user input handler (keyboard command or click). Any await operation BEFORE the open() call will lose the \"user input handler\" context and Firefox will reject the call with \"sidebarAction.open may only be called from a user input handler\".\n\nWRONG (loses context):\n```javascript\nbrowser.commands.onCommand.addListener(async command => {\n  if (command === 'open-sidebar') {\n    const isOpen = await browser.sidebarAction.isOpen({});  // ← FIRST AWAIT - loses context\n    await browser.sidebarAction.open();  // ← ERROR: No longer in user input handler\n  }\n});\n```\n\nCORRECT (preserves context):\n```javascript\nbrowser.commands.onCommand.addListener(command => {  // ← Remove async\n  if (command === 'open-sidebar') {\n    browser.sidebarAction.open()  // ← Called IMMEDIATELY\n      .then(() => new Promise(resolve => setTimeout(resolve, 300)))\n      .then(() => doAsyncStuff())\n      .catch(err => console.error(err));\n  }\n});\n```\n\nFixed in v1.6.3.5 (Bug #8 in background.js lines 1428-1434).",
+  "category": "bug_patterns",
+  "dateCreated": "2025-11-28T19:34:36.620Z",
+  "dateUpdated": "2025-11-28T19:34:36.620Z"
+}

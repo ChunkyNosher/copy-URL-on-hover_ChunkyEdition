@@ -471,7 +471,6 @@ const DEFAULT_SETTINGS = {
   quickTabCustomY: 100,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
-  quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
 
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -572,7 +571,6 @@ function loadSettings() {
     document.getElementById('quickTabCustomY').value = items.quickTabCustomY;
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
-    document.getElementById('quickTabUpdateRate').value = items.quickTabUpdateRate || 360;
     toggleCustomPosition(items.quickTabPosition);
 
     document.getElementById('showNotification').checked = items.showNotification;
@@ -683,7 +681,6 @@ function gatherSettingsFromForm() {
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
-    quickTabUpdateRate: safeParseInt(document.getElementById('quickTabUpdateRate').value, 360),
 
     showNotification: document.getElementById('showNotification').checked,
     notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',
@@ -800,6 +797,8 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 });
 
 // Clear Quick Tab storage button
+// v1.6.3 - FIX: Clear from storage.local (primary storage since v1.6.0.12)
+// Also notify background to reset globalQuickTabState cache
 document.getElementById('clearStorageBtn').addEventListener('click', async () => {
   if (
     confirm(
@@ -807,7 +806,10 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
     )
   ) {
     try {
-      // Only clear Quick Tab state, preserve all settings
+      // v1.6.3 - FIX: Clear from local storage (where Quick Tabs are actually stored since v1.6.0.12)
+      await browserAPI.storage.local.remove('quick_tabs_state_v2');
+
+      // v1.6.3 - Backward compatibility: also clear from sync storage (legacy location)
       await browserAPI.storage.sync.remove('quick_tabs_state_v2');
 
       // Clear session storage if available
@@ -815,6 +817,9 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
       if (typeof browserAPI.storage.session !== 'undefined') {
         await browserAPI.storage.session.remove('quick_tabs_session');
       }
+
+      // v1.6.3 - FIX: Notify background to reset globalQuickTabState cache
+      await browserAPI.runtime.sendMessage({ action: 'RESET_GLOBAL_QUICK_TAB_STATE' });
 
       showStatus('✓ Quick Tab storage cleared! Settings preserved.');
 

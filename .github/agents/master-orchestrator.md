@@ -87,11 +87,23 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
+<<<<<<< HEAD
 **Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
+=======
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
-**Next Phase:** 2.1 (QuickTabsManager decomposition)
+**v1.6.4 Update:** Shared storage utilities, Manager action messages, saveId tracking
+
+**Storage Format (v1.6.4):**
+```javascript
+{ tabs: [...], saveId: '...', timestamp: ... }
+```
+
+**CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
 ---
 
@@ -202,22 +214,21 @@ Breakdown:
 
 - API boundaries clearly defined
 - Event names standardized
-- State format agreed upon
+- Unified storage format (tabs array)
 - Error handling consistent
 
 **Example Coordination:**
 
 ```javascript
-// Domain layer defines contract
+// Domain layer defines contract (v1.6.3+)
 class QuickTab {
   export() {
     return {
       version: 2,
       id: this.id,
       url: this.url,
-      cookieStoreId: this.cookieStoreId,
-      soloTab: this.soloTab,
-      mutedTabs: Array.from(this.mutedTabs)
+      soloedOnTabs: this.soloedOnTabs,
+      mutedOnTabs: this.mutedOnTabs
     };
   }
 
@@ -230,16 +241,28 @@ class QuickTab {
   }
 }
 
-// Storage layer uses contract
+// Storage layer uses unified format (v1.6.3+)
 class QuickTabStorage {
   async exportAll() {
-    const tabs = await this.loadAll();
-    return tabs.map(tab => tab.export());
+    const state = await browser.storage.local.get('quick_tabs_state_v2');
+    return state.quick_tabs_state_v2?.tabs || [];
   }
+<<<<<<< HEAD
 
   async importAll(data) {
     const tabs = data.map(d => QuickTab.import(d));
     await this.saveAll(tabs);
+=======
+  
+  async importAll(tabs) {
+    await browser.storage.local.set({
+      quick_tabs_state_v2: {
+        tabs: tabs,
+        saveId: generateId(),
+        timestamp: Date.now()
+      }
+    });
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
   }
 }
 

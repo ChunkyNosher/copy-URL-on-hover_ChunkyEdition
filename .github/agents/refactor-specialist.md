@@ -87,7 +87,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
@@ -98,6 +98,15 @@ const relevantMemories = await searchMemories({
 - Improve testability
 - Enforce architecture boundaries
 - Reduce complexity
+
+**Storage Format (v1.6.4):**
+```javascript
+{ tabs: [...], saveId: '...', timestamp: ... }
+```
+
+**Storage (v1.6.4):**
+- Use `storage.local` for Quick Tab state (NOT `storage.sync`)
+- Use shared utilities from `src/utils/storage-utils.js`
 
 ---
 
@@ -293,7 +302,7 @@ strategies[type].handle();
 - [ ] Architecture boundaries respected
 - [ ] Complexity metrics improved
 
-**Use Playwright MCP:** End-to-end verification
+**Use Jest unit tests:** End-to-end verification
 
 ---
 
@@ -310,6 +319,7 @@ strategies[type].handle();
 - **CodeScene:** Identify refactoring targets and track improvement ⭐
 
 **CRITICAL - Testing (BEFORE and AFTER):**
+<<<<<<< HEAD
 
 - **Playwright Firefox MCP:** Test behavior BEFORE changes (baseline) ⭐
 - **Playwright Chrome MCP:** Test behavior BEFORE changes (baseline) ⭐
@@ -317,6 +327,12 @@ strategies[type].handle();
   ⭐
 - **Playwright Chrome MCP:** Test behavior AFTER changes (verify no regression)
   ⭐
+=======
+- **Jest unit tests:** Test behavior BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test behavior BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test behavior AFTER changes (verify no regression) ⭐
+- **Jest unit tests:** Test behavior AFTER changes (verify no regression) ⭐
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 - **Codecov:** Verify test coverage at end ⭐
 
 **Every Task:**
@@ -347,9 +363,14 @@ strategies[type].handle();
 ## Phase 1 Refactoring Example (Completed)
 
 **What Was Refactored:**
+<<<<<<< HEAD
 
 - Domain layer (QuickTab, Container entities)
+=======
+- Domain layer (QuickTab entity)
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 - Storage layer (SyncStorage, SessionStorage adapters)
+- Container isolation removed in v1.6.3
 
 **Results:**
 
@@ -357,6 +378,7 @@ strategies[type].handle();
 - ✅ Pure business logic extracted
 - ✅ Storage abstraction with fallback
 - ✅ Architecture boundaries enforced
+- ✅ Unified storage format (tabs array)
 
 **Next Phase (2.1): QuickTabsManager Decomposition**
 
@@ -367,7 +389,7 @@ QuickTabsManager (monolith)
     ↓
 QuickTabFactory (creation)
 QuickTabStorage (persistence)
-QuickTabSyncManager (cross-tab)
+QuickTabSyncManager (cross-tab via storage.onChanged)
 QuickTabLifecycle (state management)
 QuickTabsOrchestrator (coordination)
 ```

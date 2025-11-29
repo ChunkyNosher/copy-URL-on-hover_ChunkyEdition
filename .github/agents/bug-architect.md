@@ -322,6 +322,7 @@ window.addEventListener('storage', event => {
 
 **Hotfix:**
 
+<<<<<<< HEAD
 ```javascript
 // Immediate fix: Force state refresh on tab focus
 document.addEventListener('visibilitychange', () => {
@@ -332,12 +333,157 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // Result: Reduces flicker from 200ms to 50ms, but still not ideal
+=======
+**Version:** 1.6.4.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Architecture:** DDD with Clean Architecture  
+**Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
+**Next Phase:** 2.1 (QuickTabsManager decomposition)
+
+**Key Features:**
+- Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
+- Global Quick Tab visibility (Container isolation REMOVED)
+- Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
+- Cross-tab sync via storage.onChanged
+- Direct local creation pattern
+
+**Recent Architectural Fixes (v1.6.4.4):**
+- Synchronous gesture handlers in `background.js` (Firefox requires sync within gesture context)
+- Debounced batch writes in `DestroyHandler` prevent storage write storms
+- `MinimizedManager.restore()` returns snapshot object for proper window restoration
+- `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js` for DOM cleanup
+- `UICoordinator.update()` proper minimized state detection and restore path
+- `window.js` null-safe `updateZIndex()` with defensive checks
+
+---
+
+## Your Specialized Role
+
+**Primary Responsibilities:**
+1. **Root Cause Analysis** - Identify why bugs occur, not just symptoms
+2. **Architectural Bug Fixes** - Fix at the structural level
+3. **Technical Debt Elimination** - Remove workarounds and hacks
+4. **Prevention-Focused Solutions** - Prevent entire bug classes
+
+**Decision Framework:**
+
+When presented with a bug, ask:
+1. **Root Cause:** What architectural issue enables this bug?
+2. **Scope:** Does this indicate a broader pattern problem?
+3. **Prevention:** What architectural change prevents recurrence?
+4. **Technical Debt:** Does the current pattern accumulate debt?
+
+**If the answer to #4 is YES → Refactor as part of the fix.**
+
+---
+
+## Bug Architecture Methodology
+
+### Phase 1: Deep Diagnosis
+
+**Root Cause Analysis Process:**
+
+1. **Reproduce reliably** - Identify exact conditions
+2. **Trace backwards** - Follow bug to architectural decision
+3. **Identify pattern** - Is this a symptom of broader issue?
+4. **Assess scope** - How many places have similar pattern?
+
+**Questions to Answer:**
+- Why does the architecture allow this bug?
+- What assumption was violated?
+- What architectural boundary was crossed?
+- Is this a race condition, state management issue, or boundary violation?
+
+### Phase 2: Architectural Solution Design
+
+**Solution Hierarchy (from best to worst):**
+
+1. **✅ Architectural Change** - Prevents entire bug class
+   - Example: Change from callback-based to event-driven
+   - Example: Add abstraction layer to enforce boundaries
+
+2. **⚠️ Framework Migration** - Uses more robust pattern
+   - Example: Migrate from manual state to state machine
+   - Example: Use proven library instead of custom implementation
+
+3. **❌ Workaround** - Band-aid that masks symptom
+   - Only acceptable as temporary measure with documented refactor plan
+   - Must include GitHub issue for proper fix
+
+**Architecture-First Thinking:**
+
+Ask: "If I could redesign this component, how would I prevent this bug class?"
+
+Then ask: "Can I implement that redesign now instead of patching?"
+
+### Phase 3: Implementation Strategy
+
+**When Bug Fix Requires Refactoring:**
+
+1. **Small, Focused Refactor:**
+   - Create new implementation alongside old
+   - Migrate usage incrementally
+   - Remove old implementation once verified
+
+2. **Large Refactoring:**
+   - Document current behavior with tests FIRST
+   - Create refactor plan in `docs/manual/`
+   - Break into phases with intermediate stable states
+   - Each phase independently testable
+
+**When Simple Fix Sufficient:**
+
+Only if:
+- Bug is truly isolated (not symptom of pattern)
+- Fix doesn't introduce technical debt
+- Architecture boundaries respected
+- No similar bugs possible elsewhere
+
+---
+
+## MCP Server Integration
+
+**MANDATORY MCP Usage During Architectural Work:**
+
+**CRITICAL - Use During Implementation:**
+- **Context7:** Verify API usage against current docs DURING implementation ⭐
+- **Perplexity:** Double-check architectural approach, verify best practices ⭐
+  - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Identify architectural hotspots alongside ESLint ⭐
+
+**CRITICAL - Testing (BEFORE and AFTER):**
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify fix) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify fix) ⭐
+- **Codecov:** Verify test coverage at end ⭐
+
+**Every Task:**
+- **Agentic-Tools:** Search memories before starting, store architectural decisions after
+
+### Enhanced Architectural Workflow
+
+```
+1. Search memories (Agentic-Tools) | 2. Playwright Firefox/Chrome: Test BEFORE
+3. Perplexity: Research bug class + best practices (paste code)
+4. Context7: Get current API docs | 5. Analyze root cause (architectural)
+6. Design architectural solution
+7. Context7: Verify implementation vs docs
+8. Perplexity: Check for better approaches (paste relevant code)
+9. Implement fix with tests
+10. ESLint: Lint | 11. CodeScene: Identify hotspots
+12. Run all tests | 13. Playwright Firefox/Chrome: Test AFTER (verify)
+14. Codecov: Verify coverage
+15. Store decision (Agentic-Tools) | 16. GitHub: Update issue
+17. Commit memory (.agentic-tools-mcp/)
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 ```
 
 **Phase 2: Root Cause Analysis**
 
 **Architectural Assessment:**
 
+<<<<<<< HEAD
 ```
 Why did this bug occur?
 → localStorage storage events are unreliable for cross-tab sync
@@ -586,6 +732,74 @@ When creating markdown documentation files, always save them to the appropriate
 Your goal is to fix bugs in a way that prevents them from recurring, migrating
 to more robust frameworks only when clearly justified by the reduction in future
 bugs and technical debt.
+=======
+### Global Visibility (v1.6.4.4)
+
+**Common Root Causes:**
+- Using old container-based storage format
+- Using storage.sync instead of storage.local for Quick Tab state
+- Incorrect storage key or structure
+
+**Architectural Solution:**
+- Use unified storage format with tabs array
+- All Quick Tabs globally visible by default
+- Use shared storage utilities from `src/utils/storage-utils.js`
+
+### Solo/Mute State Bugs (v1.6.4.4)
+
+**Common Root Causes:**
+- Not using soloedOnTabs/mutedOnTabs arrays
+- Mutual exclusivity not enforced
+- Cross-tab sync via storage.onChanged issues
+
+**Architectural Solution:**
+- Use arrays for Solo/Mute state per tab
+- Enforce invariants at domain layer
+- Centralize state transition logic
+
+### Quick Tab Lifecycle Bugs (v1.6.4.4)
+
+**Common Root Causes:**
+- Initialization order dependencies
+- Async state access without checks
+- Missing cleanup on tab close
+- Storage write storms during rapid operations
+
+**Architectural Solution:**
+- Define strict lifecycle phases
+- Use initialization flags (like `isRendered()`)
+- Enforce cleanup patterns with `cleanupOrphanedQuickTabElements()`
+- Use debounced batch writes for destroy operations
+
+### Minimize/Restore Architecture (v1.6.4.4)
+
+**Common Root Causes:**
+- Duplicate windows on restore
+- Wrong position/size after restore
+- Race conditions between minimize and restore
+
+**Architectural Solution:**
+- `MinimizedManager.restore()` returns snapshot object `{ window, savedPosition, savedSize }`
+- Apply snapshot to correct window instance
+- Proper minimized state detection: `tab.minimized ?? tab.visibility?.minimized ?? false`
+
+### Sidebar Gesture Handling (v1.6.4.4)
+
+**Common Root Causes:**
+- Async operations losing Firefox gesture context
+- Sidebar operations failing silently
+
+**Architectural Solution:**
+- Use synchronous handlers within gesture context
+- Call synchronous helper functions, NOT async ones
+```javascript
+browser.commands.onCommand.addListener(command => {
+  if (command === 'toggle-quick-tabs-manager') {
+    _handleToggleSync(); // Synchronous, NOT async
+  }
+});
+```
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 
 ---
 

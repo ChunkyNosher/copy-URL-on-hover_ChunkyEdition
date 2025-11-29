@@ -2,6 +2,7 @@
 name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
+<<<<<<< HEAD
   lifecycle, manager integration, cross-tab sync, Solo/Mute, container isolation,
   and end-to-end Quick Tab functionality
 tools:
@@ -32,6 +33,11 @@ tools:
     'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_planner',
     'todo'
   ]
+=======
+  lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
+  Quick Tab functionality (v1.6.4.5 debounce, restore snapshots, close minimized fix)
+tools: ["*"]
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 ---
 
 > **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
@@ -41,6 +47,7 @@ tools:
 > issues at the right layer - domain, manager, sync, or UI. See
 > `.github/copilot-instructions.md`.
 
+<<<<<<< HEAD
 You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition
 Firefox/Zen Browser extension. You handle complete Quick Tab functionality
 across all domains - individual tabs, manager, cross-tab sync, and container
@@ -55,19 +62,21 @@ isolation.
   - `memories/` - Individual memory JSON files organized by category
   - `tasks/` - Task and project data files
 
+=======
+You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You handle complete Quick Tab functionality across all domains - individual tabs, manager, cross-tab sync, and global visibility (v1.6.3+).
+
+## 🧠 Memory Persistence (CRITICAL)
+
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 **MANDATORY at end of EVERY task:**
 
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
-3. `git push`
-
-**Memory files live in ephemeral workspace - commit or lose forever.**
-
-### Memory Search (ALWAYS DO THIS FIRST) 🔍
 
 **Before starting ANY task:**
 
 ```javascript
+<<<<<<< HEAD
 const relevantMemories = await searchMemories({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   query: '[keywords about task/feature/component]',
@@ -84,22 +93,107 @@ const relevantMemories = await searchMemories({
 - `update_memory` - Refine existing memories
 - `list_memories` - Browse all stored knowledge
 
+=======
+await searchMemories({ query: "[keywords]", limit: 5 });
+```
+
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 ---
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.5 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
-- **Manager Panel** - Container-grouped list, Ctrl+Alt+Z
-- **Cross-Tab Sync** - BroadcastChannel + browser.storage
-- **Container Isolation** - Firefox Container boundaries
+- **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
+- **Cross-Tab Sync** - **storage.onChanged exclusively**
+- **Global Visibility** - All Quick Tabs visible across all tabs
+
+**Recent Fixes (v1.6.4.5):**
+- **VisibilityHandler Debounce:** Prevents 200+ duplicate minimize events with `_pendingMinimize`/`_pendingRestore` Sets
+- **UICoordinator Restore Fix:** `_applySnapshotForRestore()` applies position/size BEFORE rendering
+- **Close Minimized Fix:** `closeMinimizedTabs()` collects IDs BEFORE filtering, sends to all browser tabs
+- **Backwards Compat:** `CLOSE_MINIMIZED_QUICK_TABS` handler in content.js
+
+**Storage Format:**
+```javascript
+{ tabs: [...], saveId: '...', timestamp: ... }
+```
 
 ---
 
-## Your Comprehensive Responsibilities
+## QuickTabsManager API
+
+| Method | Description |
+|--------|-------------|
+| `closeById(id)` | Close a single Quick Tab by ID |
+| `closeAll()` | Close all Quick Tabs, emits `state:cleared` event |
+
+❌ `closeQuickTab(id)` - **DOES NOT EXIST**
+
+---
+
+## v1.6.4.5 Key Patterns
+
+### VisibilityHandler Debounce Pattern
+
+```javascript
+// Prevent 200+ duplicate minimize events per click
+this._pendingMinimize = new Set();
+this._pendingRestore = new Set();
+this._debounceTimers = new Map();
+
+handleMinimize(id) {
+  if (this._pendingMinimize.has(id)) return; // Skip duplicate
+  this._pendingMinimize.add(id);
+  // ... do work ...
+  this._scheduleDebounce(id, 'minimize', 150);
+}
+```
+
+### UICoordinator Restore Pattern
+
+```javascript
+// Apply snapshot BEFORE rendering to prevent duplicates at (100,100)
+_applySnapshotForRestore(quickTab) {
+  const snapshotData = this.minimizedManager.getSnapshot(quickTab.id);
+  if (snapshotData) {
+    quickTab.position = snapshotData.position;
+    quickTab.size = snapshotData.size;
+  }
+}
+```
+
+### closeMinimizedTabs Pattern
+
+```javascript
+// Collect IDs BEFORE filtering, then send destroy to ALL browser tabs
+closeMinimizedTabs() {
+  const minimizedIds = state.tabs.filter(t => isTabMinimizedHelper(t)).map(t => t.id);
+  // Filter state...
+  for (const id of minimizedIds) {
+    browser.tabs.query({}).then(tabs => {
+      tabs.forEach(tab => browser.tabs.sendMessage(tab.id, { type: 'CLOSE_QUICK_TAB', id }));
+    });
+  }
+}
+```
+
+### MinimizedManager.restore()
+
+```javascript
+const result = minimizedManager.restore(id);
+if (result) {
+  const { window: tabWindow, savedPosition, savedSize } = result;
+  tabWindow.setPosition(savedPosition.left, savedPosition.top);
+}
+```
+
+---
+
+## Your Responsibilities
 
 ### 1. Quick Tab Lifecycle
 
@@ -111,18 +205,22 @@ const relevantMemories = await searchMemories({
 ### 2. Solo/Mute System
 
 - Mutual exclusivity enforcement
-- Per-browser-tab visibility control
+- Per-browser-tab visibility (`soloedOnTabs`, `mutedOnTabs` arrays)
 - Real-time cross-tab sync
-- UI indicator updates
+- UI indicators (🎯 Solo, 🔇 Muted)
 
 ### 3. Manager Integration
+<<<<<<< HEAD
 
 - Container-grouped display
+=======
+- Global Quick Tabs display (no container grouping)
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 - Minimize/restore functionality
 - Manager ↔ Quick Tab communication
-- Real-time updates
 
 ### 4. Cross-Tab Synchronization
+<<<<<<< HEAD
 
 - BroadcastChannel messaging
 - Container-aware filtering
@@ -134,19 +232,20 @@ const relevantMemories = await searchMemories({
 - cookieStoreId boundaries
 - Container-specific state
 - Cross-container prevention
+=======
+- **storage.onChanged events** - Primary sync mechanism
+- Unified storage format with tabs array
+- State consistency across tabs
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 
 ---
 
 ## Complete Quick Tab Architecture
 
-**Full System Diagram:**
-
 ```
 ┌─────────────────────────────────────────────────────┐
 │                  Browser Tab 1                      │
-│  Container: firefox-default                         │
 ├─────────────────────────────────────────────────────┤
-│                                                     │
 │  ┌──────────────────┐  ┌──────────────────┐       │
 │  │  Quick Tab A     │  │  Quick Tab B     │       │
 │  │  Solo: Tab 1     │  │  Mute: Tab 1     │       │
@@ -155,22 +254,15 @@ const relevantMemories = await searchMemories({
 │                                                     │
 │  ┌────────────────────────────────────┐           │
 │  │  Quick Tabs Manager (Ctrl+Alt+Z)   │           │
-│  │  ┌──────────────────────────────┐  │           │
-│  │  │  Default Container           │  │           │
-│  │  │  • Quick Tab A 🎯           │  │           │
-│  │  │  • Quick Tab B 🔇           │  │           │
-│  │  └──────────────────────────────┘  │           │
+│  │  🎯 Solo on 1 tabs | 🔇 Muted on 0 │           │
 │  └────────────────────────────────────┘           │
 └─────────────────────────────────────────────────────┘
-           ↕ BroadcastChannel
+           ↕ storage.onChanged (NOT BroadcastChannel)
 ┌─────────────────────────────────────────────────────┐
 │                  Browser Tab 2                      │
-│  Container: firefox-default                         │
 ├─────────────────────────────────────────────────────┤
-│                                                     │
 │  ┌──────────────────┐  ┌──────────────────┐       │
 │  │  Quick Tab A     │  │  Quick Tab B     │       │
-│  │  Solo: Tab 1     │  │  Mute: Tab 1     │       │
 │  │  ❌ Hidden       │  │  ✅ Visible      │       │
 │  └──────────────────┘  └──────────────────┘       │
 └─────────────────────────────────────────────────────┘
@@ -178,6 +270,7 @@ const relevantMemories = await searchMemories({
 
 ---
 
+<<<<<<< HEAD
 ## End-to-End Quick Tab Flow
 
 **Complete creation → usage → deletion flow:**
@@ -346,15 +439,18 @@ function createContainerGroup(containerId, tabs, currentTabId) {
 
 ---
 
+=======
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 ## Common Cross-Domain Issues
 
 ### Issue: Quick Tab Created But Not Synced
 
-**Root Cause:** Missing BroadcastChannel message or container mismatch
+**Root Cause:** Storage write failed or storage.onChanged not firing
 
 **Fix:**
 
 ```javascript
+<<<<<<< HEAD
 // ✅ Ensure both local creation AND sync
 async function createQuickTab(url, title, containerData) {
   // 1. Create locally (fast)
@@ -374,16 +470,28 @@ async function createQuickTab(url, title, containerData) {
 
   // 4. Update manager
   eventBus.emit('QUICK_TAB_CREATED', { quickTab });
+=======
+async function createQuickTab(url, title) {
+  const quickTab = renderQuickTabLocally(url, title);
+  await browser.storage.local.set({
+    quick_tabs_state_v2: {
+      tabs: [...existingTabs, quickTab],
+      saveId: generateId(),
+      timestamp: Date.now()
+    }
+  });
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 }
 ```
 
-### Issue: Solo/Mute Not Respecting Container
+### Issue: Solo/Mute Not Working
 
-**Root Cause:** Missing container check in visibility logic
+**Root Cause:** Using old single-value soloTab instead of arrays
 
 **Fix:**
 
 ```javascript
+<<<<<<< HEAD
 // ✅ Check container first, then Solo/Mute
 function shouldQuickTabBeVisible(quickTab, browserTab) {
   // Container isolation check
@@ -404,6 +512,16 @@ function shouldQuickTabBeVisible(quickTab, browserTab) {
   }
 
   return true; // Default: visible
+=======
+function shouldQuickTabBeVisible(quickTab, browserTabId) {
+  if (quickTab.soloedOnTabs?.length > 0) {
+    return quickTab.soloedOnTabs.includes(browserTabId);
+  }
+  if (quickTab.mutedOnTabs?.includes(browserTabId)) {
+    return false;
+  }
+  return true;
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 }
 ```
 
@@ -411,8 +529,9 @@ function shouldQuickTabBeVisible(quickTab, browserTab) {
 
 ## MCP Server Integration
 
-**MANDATORY MCP Usage for Quick Tab Work:**
+**MANDATORY for Quick Tab Work:**
 
+<<<<<<< HEAD
 **CRITICAL - During Implementation:**
 
 - **Context7:** Verify WebExtensions APIs DURING implementation ⭐
@@ -429,27 +548,25 @@ function shouldQuickTabBeVisible(quickTab, browserTab) {
 
 **Every Task:**
 
+=======
+- **Context7:** Verify WebExtensions APIs ⭐
+- **Perplexity:** Research patterns (paste code) ⭐
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Check code health ⭐
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 - **Agentic-Tools:** Search memories, store solutions
 
 ---
 
 ## Testing Requirements
 
-**End-to-End Tests:**
-
-- [ ] Context7/Perplexity verified implementation ⭐
-- [ ] Playwright Firefox/Chrome tested BEFORE/AFTER ⭐
 - [ ] Quick Tab creation works
-- [ ] Solo/Mute mutually exclusive
-- [ ] Container isolation enforced
-- [ ] Cross-tab sync <10ms
-- [ ] Manager displays correctly
+- [ ] Solo/Mute mutually exclusive (arrays)
+- [ ] Global visibility (no container filtering)
+- [ ] Cross-tab sync via storage.onChanged (<100ms)
+- [ ] Manager displays with Solo/Mute indicators
 - [ ] Drag/resize functional
-- [ ] All tests pass (npm run test, test:extension) ⭐
-- [ ] ESLint + CodeScene passed ⭐
-- [ ] Codecov verified coverage ⭐
-- [ ] Documentation under 20KB, not in docs/manual/ 📏
-- [ ] Agent file under 25KB 📏
+- [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---

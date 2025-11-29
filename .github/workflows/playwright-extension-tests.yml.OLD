@@ -1,0 +1,400 @@
+# DEPRECATED: This workflow is replaced by e2e-extension-tests.yml
+# Kept for reference only. Do not use.
+#
+# Issues with this workflow:
+# - Attempts to load Firefox extension in Chrome (incompatible)
+# - Uses unnecessary Xvfb overhead
+# - Tests hang and timeout
+# - No proper error handling
+#
+# The new e2e-extension-tests.yml uses playwright-webextext for TRUE headless
+# Firefox extension testing without Xvfb.
+
+name: 'DEPRECATED - Playwright Extension Testing with Copilot'
+
+# When to run this workflow
+on:
+  workflow_dispatch:  # Manual trigger for Copilot testing
+    inputs:
+      test_scenario:
+        description: 'Description of test scenario to run'
+        required: true
+        type: string
+      browser:
+        description: 'Browser to test (chrome or firefox)'
+        required: false
+        default: 'chrome'
+        type: choice
+        options:
+          - chrome
+          - firefox
+          - both
+  # DISABLED: This workflow should not run automatically
+  # pull_request:
+  #   branches: [main, develop]
+  #   paths:
+  #     - 'src/**'
+  #     - 'tests/**'
+  #     - '*.js'
+  #     - 'manifest.json'
+
+jobs:
+  # ================================================================
+  # JOB 1: Build and Package Extension
+  # ================================================================
+  build-extension:
+    name: 'Build Extension for Testing'
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Get the code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Setup Node.js
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # Build production bundle
+      - name: Build extension (production)
+        run: npm run build:prod
+
+      # Validate build output (from your existing code-quality.yml)
+      - name: Validate build output
+        run: |
+          echo "Validating build output..."
+          if [ ! -f dist/content.js ]; then
+            echo "ERROR: dist/content.js not found!"
+            exit 1
+          fi
+          if [ ! -f dist/manifest.json ]; then
+            echo "ERROR: dist/manifest.json not found!"
+            exit 1
+          fi
+          if [ ! -f dist/background.js ]; then
+            echo "ERROR: dist/background.js not found!"
+            exit 1
+          fi
+          echo "✓ All required files present in dist/"
+
+      # Package extension for Chrome (.zip)
+      - name: Package Chrome extension
+        working-directory: ./dist
+        run: |
+          echo "Packaging Chrome extension..."
+          zip -r -1 -FS ../extension-chrome.zip * -x '*.DS_Store' -x '*.map'
+          echo "✓ Chrome package created"
+
+      # Verify package
+      - name: Verify Chrome package
+        run: |
+          echo "Verifying Chrome package contents..."
+          unzip -l extension-chrome.zip
+          ZIP_SIZE=$(wc -c < extension-chrome.zip)
+          echo "✓ Chrome package size: $ZIP_SIZE bytes"
+
+      # Upload extension as artifact for testing jobs
+      - name: Upload extension build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-dist
+          path: |
+            dist/
+            extension-chrome.zip
+          retention-days: 7
+
+  # ================================================================
+  # JOB 2: Test Extension in Chrome with Playwright
+  # ================================================================
+  test-chrome-extension:
+    name: 'Test Extension in Chrome'
+    runs-on: ubuntu-latest
+    needs: build-extension
+    if: ${{ github.event.inputs.browser == 'chrome' || github.event.inputs.browser == 'both' || github.event_name == 'pull_request' }}
+    
+    env:
+      COPILOT_MCP_PERPLEXITY_API_KEY: ${{ secrets.COPILOT_MCP_PERPLEXITY_API_KEY }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Download built extension
+      - name: Download extension artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-dist
+          path: ./
+
+      # Install Playwright with Chrome
+      - name: Install Playwright browsers
+        run: |
+          npm ci
+          npx playwright install chromium chrome
+          npx playwright install-deps
+
+      # Install web-ext for Firefox support
+      - name: Install web-ext
+        run: npm install -g web-ext
+
+            # Install Xvfb virtual display server
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      # Start Chrome with extension using Xvfb
+      - name: Launch Chrome with extension
+        run: |
+          echo "Starting Chrome with extension loaded via Xvfb..."
+          
+          # Kill any existing Chrome instances
+          pkill -f chrome || true
+          
+          # Get absolute path to extension
+          EXTENSION_PATH=$(pwd)/dist
+          echo "Extension path: $EXTENSION_PATH"
+          
+          # Start Xvfb on display :99
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 2
+          echo "✓ Xvfb started on display :99"
+          
+          # Start Chrome with extension loaded (backgrounded)
+          google-chrome \
+            --load-extension="$EXTENSION_PATH" \
+            --disable-extensions-except="$EXTENSION_PATH" \
+            --no-first-run \
+            --no-default-browser-check \
+            --no-sandbox \
+            --disable-dev-shm-usage \
+            --disable-gpu \
+            --remote-debugging-port=9222 \
+            --user-data-dir=$(mktemp -d) \
+            --display=:99 \
+            about:blank &
+          
+          # Wait for Chrome to start
+          sleep 5
+          
+          # Verify Chrome is running
+          if pgrep -f chrome > /dev/null; then
+            echo "✓ Chrome started successfully with extension"
+          else
+            echo "✗ Failed to start Chrome"
+            exit 1
+          fi
+          
+          # Wait for Chrome to start
+          sleep 5
+          
+          # Verify Chrome is running
+          if pgrep -f chrome > /dev/null; then
+            echo "✓ Chrome started successfully with extension"
+          else
+            echo "✗ Failed to start Chrome"
+            exit 1
+          fi
+
+      # Get extension ID from Chrome
+      - name: Get extension ID
+        id: get_extension_id
+        run: |
+          # Connect to Chrome DevTools Protocol to get extension ID
+          EXTENSION_ID=$(curl -s http://localhost:9222/json | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "extension_id=$EXTENSION_ID" >> $GITHUB_OUTPUT
+          echo "✓ Extension ID: $EXTENSION_ID"
+
+      # Run Playwright tests
+      - name: Run Playwright tests with extension
+        run: |
+          echo "Running Playwright tests..."
+          echo "Test scenario: ${{ github.event.inputs.test_scenario }}"
+          
+          # Create Playwright config for extension testing
+          cat > playwright.config.extension.js << 'EOF'
+          const { defineConfig, devices } = require('@playwright/test');
+          
+          module.exports = defineConfig({
+            testDir: './tests/extension',
+            fullyParallel: false,
+            forbidOnly: !!process.env.CI,
+            retries: process.env.CI ? 2 : 0,
+            workers: 1, // Single worker for extension testing
+            reporter: 'html',
+            use: {
+              baseURL: 'http://localhost:9222',
+              trace: 'on-first-retry',
+              screenshot: 'only-on-failure',
+              video: 'retain-on-failure',
+            },
+            projects: [
+              {
+                name: 'chromium-extension',
+                use: { 
+                  ...devices['Desktop Chrome'],
+                  // Connect to already-running Chrome with extension
+                  connectOptions: {
+                    wsEndpoint: 'ws://localhost:9222/devtools/browser'
+                  }
+                },
+              },
+            ],
+          });
+          EOF
+          
+          # Run tests
+          npx playwright test --config=playwright.config.extension.js || true
+
+      # Upload test results
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-chrome-report
+          path: playwright-report/
+          retention-days: 7
+
+      # Upload screenshots and videos
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: chrome-test-failures
+          path: |
+            test-results/
+            screenshots/
+            videos/
+          retention-days: 7
+
+  # ================================================================
+  # JOB 3: Test Extension in Firefox with Playwright
+  # ================================================================
+  test-firefox-extension:
+    name: 'Test Extension in Firefox'
+    runs-on: ubuntu-latest
+    needs: build-extension
+    if: ${{ github.event.inputs.browser == 'firefox' || github.event.inputs.browser == 'both' }}
+    
+    env:
+      COPILOT_MCP_PERPLEXITY_API_KEY: ${{ secrets.COPILOT_MCP_PERPLEXITY_API_KEY }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Download extension artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-dist
+          path: ./
+
+      - name: Install Playwright browsers
+        run: |
+          npm ci
+          npx playwright install firefox
+          npx playwright install-deps
+
+      - name: Install web-ext
+        run: npm install -g web-ext
+
+      # Start Firefox with extension pre-loaded
+      - name: Launch Firefox with extension
+        run: |
+          echo "Starting Firefox with extension loaded..."
+          
+          # Create Firefox profile directory
+          PROFILE_DIR=$(mktemp -d)
+          echo "Firefox profile: $PROFILE_DIR"
+          
+          # Start Firefox with extension loaded (backgrounded)
+          web-ext run \
+            --source-dir=./dist \
+            --firefox=firefox \
+            --firefox-profile="$PROFILE_DIR" \
+            --start-url="about:debugging#/runtime/this-firefox" \
+            --keep-profile-changes \
+            --no-reload &
+          
+          # Wait for Firefox to start
+          sleep 10
+          
+          # Verify Firefox is running
+          if pgrep -f firefox > /dev/null; then
+            echo "✓ Firefox started successfully with extension"
+          else
+            echo "✗ Failed to start Firefox"
+            exit 1
+          fi
+
+      - name: Run Playwright tests with extension
+        run: |
+          echo "Running Playwright tests in Firefox..."
+          echo "Test scenario: ${{ github.event.inputs.test_scenario }}"
+          
+          # Create Firefox-specific Playwright config
+          cat > playwright.config.firefox.js << 'EOF'
+          const { defineConfig, devices } = require('@playwright/test');
+          
+          module.exports = defineConfig({
+            testDir: './tests/extension',
+            fullyParallel: false,
+            retries: 2,
+            workers: 1,
+            reporter: 'html',
+            use: {
+              trace: 'on-first-retry',
+              screenshot: 'only-on-failure',
+              video: 'retain-on-failure',
+            },
+            projects: [
+              {
+                name: 'firefox-extension',
+                use: {
+                  ...devices['Desktop Firefox'],
+                },
+              },
+            ],
+          });
+          EOF
+          
+          npx playwright test --config=playwright.config.firefox.js || true
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-firefox-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: firefox-test-failures
+          path: |
+            test-results/
+            screenshots/
+            videos/
+          retention-days: 7

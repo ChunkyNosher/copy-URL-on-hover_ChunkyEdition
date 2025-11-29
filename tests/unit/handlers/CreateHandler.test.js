@@ -1,6 +1,6 @@
 /**
  * CreateHandler Unit Tests
- * Tests for Quick Tab creation logic extracted from QuickTabsManager
+ * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -18,7 +18,6 @@ describe('CreateHandler', () => {
   let quickTabsMap;
   let currentZIndex;
   let cookieStoreId;
-  let broadcastManager;
   let eventBus;
   let Events;
   let generateId;
@@ -27,9 +26,6 @@ describe('CreateHandler', () => {
     quickTabsMap = new Map();
     currentZIndex = { value: 10000 };
     cookieStoreId = 'firefox-default';
-    broadcastManager = {
-      broadcast: jest.fn()
-    };
     eventBus = new EventEmitter();
     Events = {
       QUICK_TAB_CREATED: 'QUICK_TAB_CREATED'
@@ -40,7 +36,6 @@ describe('CreateHandler', () => {
       quickTabsMap,
       currentZIndex,
       cookieStoreId,
-      broadcastManager,
       eventBus,
       Events,
       generateId
@@ -54,7 +49,6 @@ describe('CreateHandler', () => {
       expect(handler.quickTabsMap).toBe(quickTabsMap);
       expect(handler.currentZIndex).toBe(currentZIndex);
       expect(handler.cookieStoreId).toBe(cookieStoreId);
-      expect(handler.broadcastManager).toBe(broadcastManager);
       expect(handler.eventBus).toBe(eventBus);
       expect(handler.Events).toBe(Events);
       expect(handler.generateId).toBe(generateId);
@@ -135,36 +129,6 @@ describe('CreateHandler', () => {
       expect(quickTabsMap.get('tab-1')).toBe(mockTabWindow);
     });
 
-    test('should broadcast CREATE message', () => {
-      const options = {
-        id: 'tab-1',
-        url: 'https://example.com',
-        left: 200,
-        top: 150,
-        width: 900,
-        height: 700,
-        title: 'Test Tab'
-      };
-      const mockTabWindow = { id: 'tab-1', render: jest.fn(), isRendered: () => true };
-      mockCreateQuickTabWindow.mockReturnValue(mockTabWindow);
-
-      handler.create(options);
-
-      expect(broadcastManager.broadcast).toHaveBeenCalledWith('CREATE', {
-        id: 'tab-1',
-        url: 'https://example.com',
-        left: 200,
-        top: 150,
-        width: 900,
-        height: 700,
-        title: 'Test Tab',
-        cookieStoreId: 'firefox-default',
-        minimized: false,
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      });
-    });
-
     test('should emit QUICK_TAB_CREATED event', done => {
       const options = { id: 'tab-1', url: 'https://example.com' };
       const mockTabWindow = { id: 'tab-1', render: jest.fn(), isRendered: () => true };
@@ -230,27 +194,6 @@ describe('CreateHandler', () => {
           minimized: false,
           soloedOnTabs: [],
           mutedOnTabs: []
-        })
-      );
-    });
-
-    test('should include solo/mute arrays in broadcast', () => {
-      const options = {
-        id: 'tab-1',
-        url: 'https://example.com',
-        soloedOnTabs: [1, 2, 3],
-        mutedOnTabs: [4, 5, 6]
-      };
-      const mockTabWindow = { id: 'tab-1', render: jest.fn(), isRendered: () => true };
-      mockCreateQuickTabWindow.mockReturnValue(mockTabWindow);
-
-      handler.create(options);
-
-      expect(broadcastManager.broadcast).toHaveBeenCalledWith(
-        'CREATE',
-        expect.objectContaining({
-          soloedOnTabs: [1, 2, 3],
-          mutedOnTabs: [4, 5, 6]
         })
       );
     });

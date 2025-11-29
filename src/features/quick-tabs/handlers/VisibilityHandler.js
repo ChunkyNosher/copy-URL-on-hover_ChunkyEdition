@@ -1,6 +1,10 @@
 /**
  * @fileoverview VisibilityHandler - Handles Quick Tab visibility operations
  * Extracted from QuickTabsManager Phase 2.1 refactoring
+ * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
+ * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
+ * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
+ * v1.6.4.5 - FIX Issues #1, #2, #6: Debounce minimize/restore, prevent event storms
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -9,92 +13,91 @@
  * - Handle focus operation (bring to front)
  * - Update button appearances
  * - Emit events for coordinators
+ * - Persist state to storage after visibility changes
  *
- * @version 1.6.0
- * @author refactor-specialist
+ * @version 1.6.4.5
  */
+
+import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
+
+// v1.6.4.5 - FIX Issue #1: Debounce delay for minimize/restore operations
+const MINIMIZE_DEBOUNCE_MS = 150;
 
 /**
  * VisibilityHandler class
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
+ * v1.6.3 - Local only (no cross-tab sync or storage persistence)
+ * v1.6.4 - Now persists state to storage after minimize/restore
+ * v1.6.4.1 - Proper async handling with validation and timeout for storage
+ * v1.6.4.5 - Debouncing to prevent event storms and ensure atomic storage writes
  */
 export class VisibilityHandler {
   /**
    * @param {Object} options - Configuration options
    * @param {Map} options.quickTabsMap - Map of Quick Tab instances
-   * @param {BroadcastManager} options.broadcastManager - Broadcast manager for cross-tab sync
-   * @param {StorageManager} options.storageManager - Storage manager (currently unused, kept for future use)
    * @param {MinimizedManager} options.minimizedManager - Manager for minimized Quick Tabs
    * @param {EventEmitter} options.eventBus - Event bus for internal communication
    * @param {Object} options.currentZIndex - Reference object with value property for z-index
-   * @param {Function} options.generateSaveId - Function to generate saveId for transaction tracking
-   * @param {Function} options.trackPendingSave - Function to track pending saveId
-   * @param {Function} options.releasePendingSave - Function to release pending saveId
    * @param {number} options.currentTabId - Current browser tab ID
    * @param {Object} options.Events - Events constants object
    */
   constructor(options) {
     this.quickTabsMap = options.quickTabsMap;
-    this.broadcastManager = options.broadcastManager;
-    this.storageManager = options.storageManager;
     this.minimizedManager = options.minimizedManager;
     this.eventBus = options.eventBus;
     this.currentZIndex = options.currentZIndex;
-    this.generateSaveId = options.generateSaveId;
-    this.trackPendingSave = options.trackPendingSave;
-    this.releasePendingSave = options.releasePendingSave;
     this.currentTabId = options.currentTabId;
     this.Events = options.Events;
+    
+    // v1.6.4.5 - FIX Issues #1, #2: Track pending operations to prevent duplicates
+    this._pendingMinimize = new Set();
+    this._pendingRestore = new Set();
+    this._debounceTimers = new Map();
   }
 
   /**
    * Handle solo toggle from Quick Tab window or panel
-   * v1.5.9.13 - Solo feature: show Quick Tab ONLY on specific tabs
+   * v1.6.3 - Local only (no cross-tab sync)
    *
    * @param {string} quickTabId - Quick Tab ID
    * @param {number[]} newSoloedTabs - Array of tab IDs where Quick Tab should be visible
-   * @returns {Promise<void>}
    */
-  async handleSoloToggle(quickTabId, newSoloedTabs) {
-    await this._handleVisibilityToggle(quickTabId, {
+  handleSoloToggle(quickTabId, newSoloedTabs) {
+    this._handleVisibilityToggle(quickTabId, {
       mode: 'SOLO',
       newTabs: newSoloedTabs,
       tabsProperty: 'soloedOnTabs',
       clearProperty: 'mutedOnTabs',
-      updateButton: this._updateSoloButton.bind(this),
-      broadcastNotify: tabs => this.broadcastManager.notifySolo(quickTabId, tabs)
+      updateButton: this._updateSoloButton.bind(this)
     });
   }
 
   /**
    * Handle mute toggle from Quick Tab window or panel
-   * v1.5.9.13 - Mute feature: hide Quick Tab ONLY on specific tabs
+   * v1.6.3 - Local only (no cross-tab sync)
    *
    * @param {string} quickTabId - Quick Tab ID
    * @param {number[]} newMutedTabs - Array of tab IDs where Quick Tab should be hidden
-   * @returns {Promise<void>}
    */
-  async handleMuteToggle(quickTabId, newMutedTabs) {
-    await this._handleVisibilityToggle(quickTabId, {
+  handleMuteToggle(quickTabId, newMutedTabs) {
+    this._handleVisibilityToggle(quickTabId, {
       mode: 'MUTE',
       newTabs: newMutedTabs,
       tabsProperty: 'mutedOnTabs',
       clearProperty: 'soloedOnTabs',
-      updateButton: this._updateMuteButton.bind(this),
-      broadcastNotify: tabs => this.broadcastManager.notifyMute(quickTabId, tabs)
+      updateButton: this._updateMuteButton.bind(this)
     });
   }
 
   /**
    * Common handler for solo/mute visibility toggles
-   * Extracts shared logic to reduce duplication
+   * v1.6.3 - Local only (no storage writes)
    * @private
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} config - Configuration for toggle operation
-   * @returns {Promise<void>}
    */
-  async _handleVisibilityToggle(quickTabId, config) {
-    const { mode, newTabs, tabsProperty, clearProperty, updateButton, broadcastNotify } = config;
+  _handleVisibilityToggle(quickTabId, config) {
+    const { mode, newTabs, tabsProperty, clearProperty, updateButton } = config;
 
     console.log(`[VisibilityHandler] Toggling ${mode.toLowerCase()} for ${quickTabId}:`, newTabs);
 
@@ -107,114 +110,128 @@ export class VisibilityHandler {
 
     // Update button states if tab has them
     updateButton(tab, newTabs);
+  }
 
-    // Broadcast to other tabs
-    broadcastNotify(newTabs);
-
-    // Save to background
-    const data = { [tabsProperty]: newTabs };
-    await this._sendToBackground(quickTabId, tab, mode, data);
+  /**
+   * Create minimal Quick Tab data object for state:updated events
+   * v1.6.3.1 - Helper to reduce code duplication
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Quick Tab window instance
+   * @param {boolean} minimized - Minimized state
+   * @returns {Object} Quick Tab data for event emission
+   */
+  _createQuickTabData(id, tabWindow, minimized) {
+    return {
+      id,
+      minimized,
+      url: tabWindow?.url,
+      title: tabWindow?.title
+    };
   }
 
   /**
    * Handle Quick Tab minimize
-   * v1.5.8.13 - Broadcast minimize to other tabs
-   * v1.5.9.8 - Update storage immediately to reflect minimized state
+   * v1.6.3 - Local only (no cross-tab sync)
+   * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
+   * v1.6.4 - FIX Bug #2: Persist to storage after minimize
+   * v1.6.4.4 - FIX Bug #6: Call tabWindow.minimize() to actually hide the window
+   * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
    *
    * @param {string} id - Quick Tab ID
-   * @returns {Promise<void>}
    */
-  async handleMinimize(id) {
-    console.log('[VisibilityHandler] Handling minimize for:', id);
+  handleMinimize(id) {
+    // v1.6.4.5 - FIX Issue #1: Prevent duplicate minimize operations
+    if (this._pendingMinimize.has(id)) {
+      console.log('[VisibilityHandler] Ignoring duplicate minimize request for:', id);
+      return;
+    }
+    
+    // v1.6.4 - FIX Issue #1: Log at start to confirm button was clicked
+    console.log('[VisibilityHandler] Minimize button clicked for Quick Tab:', id);
 
     const tabWindow = this.quickTabsMap.get(id);
-    if (!tabWindow) return;
+    if (!tabWindow) {
+      console.warn('[VisibilityHandler] Tab not found for minimize:', id);
+      return;
+    }
+    
+    // v1.6.4.5 - FIX Issue #1: Mark as pending to prevent duplicate clicks
+    this._pendingMinimize.add(id);
 
-    // Add to minimized manager
+    // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
     this.minimizedManager.add(id, tabWindow);
 
-    // v1.5.8.13 - Broadcast minimize to other tabs
-    this.broadcastManager.notifyMinimize(id);
+    // v1.6.4.4 - FIX Bug #6: Actually minimize the window (hide it)
+    // The Manager sidebar was calling handleMinimize but the window wasn't being hidden
+    // because we weren't calling tabWindow.minimize()
+    if (tabWindow.minimize) {
+      tabWindow.minimize();
+      console.log('[VisibilityHandler] Called tabWindow.minimize() for:', id);
+    }
 
-    // Emit minimize event
+    // Emit minimize event for legacy handlers
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_MINIMIZED, { id });
     }
 
-    // v1.5.9.8 - FIX: Update storage immediately to reflect minimized state
-    const saveId = this.generateSaveId();
-    this.trackPendingSave(saveId);
-
-    // v1.5.9.12 - Get cookieStoreId from tab
-    const cookieStoreId = tabWindow.cookieStoreId || 'firefox-default';
-
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      try {
-        await browser.runtime.sendMessage({
-          action: 'UPDATE_QUICK_TAB_MINIMIZE',
-          id: id,
-          minimized: true,
-          cookieStoreId: cookieStoreId, // v1.5.9.12 - Include container context
-          saveId: saveId,
-          timestamp: Date.now()
-        });
-        this.releasePendingSave(saveId);
-      } catch (err) {
-        console.error('[VisibilityHandler] Error updating minimize state:', err);
-        this.releasePendingSave(saveId);
-      }
-    } else {
-      this.releasePendingSave(saveId);
+    // v1.6.3.1 - FIX Bug #7: Emit state:updated for panel to refresh
+    // This allows PanelContentManager to update when Quick Tab is minimized from its window
+    if (this.eventBus) {
+      const quickTabData = this._createQuickTabData(id, tabWindow, true);
+      this.eventBus.emit('state:updated', { quickTab: quickTabData });
+      console.log('[VisibilityHandler] Emitted state:updated for minimize:', id);
     }
+
+    // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
+    this._debouncedPersist(id, 'minimize');
   }
 
   /**
    * Handle restore of minimized Quick Tab
+   * v1.6.3 - Local only (no cross-tab sync)
+   * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
+   * v1.6.4 - FIX Bug #2: Persist to storage after restore
+   * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
    * @param {string} id - Quick Tab ID
    */
-  async handleRestore(id) {
+  handleRestore(id) {
+    // v1.6.4.5 - FIX Issue #2: Prevent duplicate restore operations
+    if (this._pendingRestore.has(id)) {
+      console.log('[VisibilityHandler] Ignoring duplicate restore request for:', id);
+      return;
+    }
+    
     console.log('[VisibilityHandler] Handling restore for:', id);
 
-    // Restore from minimized manager
+    // Get tab info BEFORE restoring (needed for state:updated event)
+    const tabWindow = this.quickTabsMap.get(id);
+    
+    // v1.6.4.5 - FIX Issue #2: Mark as pending to prevent duplicate operations
+    this._pendingRestore.add(id);
+
+    // Restore from minimized manager - returns snapshot with position/size
     const restored = this.minimizedManager.restore(id);
     if (!restored) {
       console.warn('[VisibilityHandler] Tab not found in minimized manager:', id);
+      this._pendingRestore.delete(id);
       return;
     }
 
-    // Broadcast restore to other tabs
-    this.broadcastManager.notifyRestore(id);
-
-    // Emit restore event
+    // Emit restore event for legacy handlers
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id });
     }
 
-    // Update storage to reflect restored state
-    const saveId = this.generateSaveId();
-    this.trackPendingSave(saveId);
-
-    const tabWindow = this.quickTabsMap.get(id);
-    const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
-
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      try {
-        await browser.runtime.sendMessage({
-          action: 'UPDATE_QUICK_TAB_MINIMIZE',
-          id: id,
-          minimized: false,
-          cookieStoreId: cookieStoreId,
-          saveId: saveId,
-          timestamp: Date.now()
-        });
-        this.releasePendingSave(saveId);
-      } catch (err) {
-        console.error('[VisibilityHandler] Error updating restore state:', err);
-        this.releasePendingSave(saveId);
-      }
-    } else {
-      this.releasePendingSave(saveId);
+    // v1.6.3.1 - FIX Bug #7: Emit state:updated for panel to refresh
+    if (this.eventBus && tabWindow) {
+      const quickTabData = this._createQuickTabData(id, tabWindow, false);
+      this.eventBus.emit('state:updated', { quickTab: quickTabData });
+      console.log('[VisibilityHandler] Emitted state:updated for restore:', id);
     }
+
+    // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
+    this._debouncedPersist(id, 'restore');
   }
 
   /**
@@ -235,11 +252,11 @@ export class VisibilityHandler {
 
   /**
    * Handle Quick Tab focus (bring to front)
-   * v1.6.0.12 - FIX: Save z-index to background for proper sync across tabs
+   * v1.6.3 - Local only (no cross-tab sync)
    *
    * @param {string} id - Quick Tab ID
    */
-  async handleFocus(id) {
+  handleFocus(id) {
     console.log('[VisibilityHandler] Bringing to front:', id);
 
     const tabWindow = this.quickTabsMap.get(id);
@@ -249,22 +266,6 @@ export class VisibilityHandler {
     this.currentZIndex.value++;
     const newZIndex = this.currentZIndex.value;
     tabWindow.updateZIndex(newZIndex);
-
-    // v1.6.0.12 - FIX: Save z-index to background for cross-tab sync
-    const cookieStoreId = tabWindow.cookieStoreId || 'firefox-default';
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      try {
-        await browser.runtime.sendMessage({
-          action: 'UPDATE_QUICK_TAB_ZINDEX',
-          id: id,
-          zIndex: newZIndex,
-          cookieStoreId: cookieStoreId
-        });
-        console.log(`[VisibilityHandler] Saved z-index ${newZIndex} to background for ${id}`);
-      } catch (err) {
-        console.error('[VisibilityHandler] Error saving z-index to background:', err);
-      }
-    }
 
     // Emit focus event
     if (this.eventBus && this.Events) {
@@ -303,34 +304,65 @@ export class VisibilityHandler {
   }
 
   /**
-   * Send message to background for persistence
+   * Debounced persist to storage - prevents write storms
+   * v1.6.4.5 - FIX Issues #1, #2, #6: Single atomic storage write after debounce
    * @private
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {Object} tab - Quick Tab instance
-   * @param {string} action - Action type ('SOLO' or 'MUTE')
-   * @param {Object} data - Additional data to send
+   * @param {string} id - Quick Tab ID that triggered the persist
+   * @param {string} operation - 'minimize' or 'restore'
+   */
+  _debouncedPersist(id, operation) {
+    // Clear any existing timer for this tab
+    const existingTimer = this._debounceTimers.get(id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    
+    // Set new debounce timer
+    const timer = setTimeout(async () => {
+      this._debounceTimers.delete(id);
+      
+      // Clear pending flags
+      this._pendingMinimize.delete(id);
+      this._pendingRestore.delete(id);
+      
+      // Perform atomic storage write
+      await this._persistToStorage();
+      
+      console.log(`[VisibilityHandler] Completed ${operation} for ${id} with storage persist`);
+    }, MINIMIZE_DEBOUNCE_MS);
+    
+    this._debounceTimers.set(id, timer);
+  }
+
+  /**
+   * Persist current state to browser.storage.local
+   * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
+   * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
+   * Uses shared buildStateForStorage and persistStateToStorage utilities
+   * @private
    * @returns {Promise<void>}
    */
-  async _sendToBackground(quickTabId, tab, action, data) {
-    const saveId = this.generateSaveId();
-    const cookieStoreId = tab?.cookieStoreId || 'firefox-default';
-
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      try {
-        await browser.runtime.sendMessage({
-          action: `UPDATE_QUICK_TAB_${action}`,
-          id: quickTabId,
-          ...data,
-          cookieStoreId: cookieStoreId,
-          saveId: saveId,
-          timestamp: Date.now()
-        });
-      } catch (err) {
-        console.error(`[VisibilityHandler] ${action} update error:`, err);
-        this.releasePendingSave(saveId);
-      }
-    } else {
-      this.releasePendingSave(saveId);
+  async _persistToStorage() {
+    // v1.6.4.1 - FIX Bug #1: Log position/size data when persisting
+    console.log('[VisibilityHandler] Building state for storage persist...');
+    
+    const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
+    
+    // v1.6.4.1 - FIX Bug #1: Handle null state from validation failure
+    if (!state) {
+      console.error('[VisibilityHandler] Failed to build state for storage');
+      return;
+    }
+    
+    // v1.6.4.1 - FIX Bug #1: Log tab count and minimized states
+    const minimizedCount = state.tabs.filter(t => t.minimized).length;
+    console.log(`[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`);
+    
+    // v1.6.4.1 - FIX Bug #1: Await the async persist and log result
+    const success = await persistStateToStorage(state, '[VisibilityHandler]');
+    if (!success) {
+      // v1.6.4.3 - FIX: More descriptive error message about potential causes
+      console.error('[VisibilityHandler] Storage persist failed: operation timed out, storage API unavailable, or quota exceeded');
     }
   }
 }

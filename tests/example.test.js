@@ -72,14 +72,14 @@ describe('Manifest Validation', () => {
   /**
    * TEST: Required permissions
    * WHY: Extension won't work without these
+   * NOTE: contextualIdentities removed for Chrome compatibility (Firefox-only feature)
    */
   test('should have all required permissions', () => {
     const requiredPermissions = [
       'storage',
       'tabs',
       'webRequest',
-      'webRequestBlocking',
-      'contextualIdentities'
+      'webRequestBlocking'
     ];
 
     requiredPermissions.forEach(permission => {
@@ -133,11 +133,15 @@ describe('Manifest Validation', () => {
 
   /**
    * TEST: Browser action
-   * WHY: Popup UI requires browser_action
+   * WHY: Browser action is required (Firefox opens sidebar, Chrome uses popup)
+   * NOTE: In v1.6.2.0, Firefox manifest has no default_popup (opens sidebar instead)
+   * Chrome manifest keeps default_popup for compatibility
    */
   test('should have browser action defined', () => {
     expect(manifest.browser_action).toBeDefined();
-    expect(manifest.browser_action.default_popup).toBe('popup.html');
+    expect(manifest.browser_action.default_icon).toBe('icons/icon.png');
+    // default_popup removed in v1.6.2.0 for Firefox (sidebar opens instead)
+    // Chrome manifest.chrome.json still has default_popup
   });
 });
 

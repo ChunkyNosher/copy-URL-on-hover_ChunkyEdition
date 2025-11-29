@@ -87,7 +87,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **URL Detection Features:**
 
@@ -529,7 +529,7 @@ function processUrl(urlString) {
    ```
 
 4. **Test with real URLs**
-   - Use Playwright MCP for testing
+   - Use Jest unit tests for testing
 
 5. **Document in supported-sites.md**
 

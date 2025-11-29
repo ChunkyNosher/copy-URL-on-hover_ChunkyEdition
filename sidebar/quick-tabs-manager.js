@@ -44,12 +44,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 /**
  * Load Firefox Container Tab information
  * Uses contextualIdentities API to get container names, icons, colors
+ * Cross-browser: Falls back gracefully if containers not supported (Chrome)
  */
 async function loadContainerInfo() {
   try {
-    // Check if contextualIdentities API is available
+    // Cross-browser: Check if contextualIdentities API is available
+    // Firefox: Native container support
+    // Chrome: No container support, use default
     if (typeof browser.contextualIdentities === 'undefined') {
-      console.warn('Contextual Identities API not available');
+      console.warn('[Cross-browser] Contextual Identities API not available (Chrome/Edge)');
       // Fallback: Only show default container
       containersData['firefox-default'] = {
         name: 'Default',
@@ -114,11 +117,12 @@ function getContainerIcon(icon) {
 }
 
 /**
- * Load Quick Tabs state from browser.storage.sync
+ * Load Quick Tabs state from browser.storage.local
+ * v1.6.3 - FIX: Changed from storage.sync to storage.local (storage location since v1.6.0.12)
  */
 async function loadQuickTabsState() {
   try {
-    const result = await browser.storage.sync.get(STATE_KEY);
+    const result = await browser.storage.local.get(STATE_KEY);
 
     if (result && result[STATE_KEY]) {
       quickTabsState = result[STATE_KEY];
@@ -133,24 +137,76 @@ async function loadQuickTabsState() {
 }
 
 /**
- * Render the entire UI based on current state
+ * Extract tabs from unified state format (v1.6.2.2+)
+ * @param {Object} state - Quick Tabs state in unified format
+ * @returns {{ allTabs: Array, latestTimestamp: number }} - Extracted tabs and timestamp
  */
-function renderUI() {
-  // Calculate total tabs
-  let totalTabs = 0;
+function extractFromUnifiedFormat(state) {
+  const tabs = Array.isArray(state.tabs) ? state.tabs : [];
+  return {
+    allTabs: tabs,
+    latestTimestamp: state.timestamp || 0
+  };
+}
+
+/**
+ * Extract tabs from legacy container format (pre-v1.6.2.2)
+ * @param {Object} state - Quick Tabs state in legacy format
+ * @returns {{ allTabs: Array, latestTimestamp: number }} - Extracted tabs and timestamp
+ */
+function extractFromLegacyFormat(state) {
+  const allTabs = [];
   let latestTimestamp = 0;
 
-  Object.keys(quickTabsState).forEach(cookieStoreId => {
-    const containerState = quickTabsState[cookieStoreId];
-    if (containerState && containerState.tabs) {
-      totalTabs += containerState.tabs.length;
-      if (containerState.timestamp > latestTimestamp) {
-        latestTimestamp = containerState.timestamp;
-      }
-    }
-  });
+  const containerKeys = Object.keys(state).filter(
+    key => key !== 'saveId' && key !== 'timestamp'
+  );
 
-  // Update stats
+  for (const cookieStoreId of containerKeys) {
+    const containerState = state[cookieStoreId];
+    const hasTabs = containerState?.tabs && Array.isArray(containerState.tabs);
+    
+    if (hasTabs) {
+      allTabs.push(...containerState.tabs);
+      latestTimestamp = Math.max(latestTimestamp, containerState.timestamp || 0);
+    }
+  }
+
+  return { allTabs, latestTimestamp };
+}
+
+/**
+ * Check if state is in unified format (v1.6.2.2+)
+ * @param {Object} state - Quick Tabs state
+ * @returns {boolean} - True if unified format
+ */
+function isUnifiedFormat(state) {
+  return state?.tabs && Array.isArray(state.tabs);
+}
+
+/**
+ * Extract tabs from state (handles both unified and legacy formats)
+ * @param {Object} state - Quick Tabs state
+ * @returns {{ allTabs: Array, latestTimestamp: number }} - Extracted tabs and timestamp
+ */
+function extractTabsFromState(state) {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    return { allTabs: [], latestTimestamp: 0 };
+  }
+
+  if (isUnifiedFormat(state)) {
+    return extractFromUnifiedFormat(state);
+  }
+
+  return extractFromLegacyFormat(state);
+}
+
+/**
+ * Update UI stats (total tabs and last sync time)
+ * @param {number} totalTabs - Number of Quick Tabs
+ * @param {number} latestTimestamp - Timestamp of last sync
+ */
+function updateUIStats(totalTabs, latestTimestamp) {
   totalTabsEl.textContent = `${totalTabs} Quick Tab${totalTabs !== 1 ? 's' : ''}`;
 
   if (latestTimestamp > 0) {
@@ -159,88 +215,93 @@ function renderUI() {
   } else {
     lastSyncEl.textContent = 'Last sync: Never';
   }
+}
+
+/**
+ * Create global section element for displaying all Quick Tabs
+ * @param {number} totalTabs - Number of Quick Tabs
+ * @returns {HTMLDivElement} - Section element
+ */
+function createGlobalSection(totalTabs) {
+  const section = document.createElement('div');
+  section.className = 'container-section';
+  section.dataset.containerId = 'global';
+
+  // Section header
+  const header = document.createElement('h2');
+  header.className = 'container-header';
+
+  const icon = document.createElement('span');
+  icon.className = 'container-icon';
+  icon.textContent = '📑';
+
+  const name = document.createElement('span');
+  name.className = 'container-name';
+  name.textContent = 'All Quick Tabs';
+
+  const count = document.createElement('span');
+  count.className = 'container-count';
+  count.textContent = `(${totalTabs} tab${totalTabs !== 1 ? 's' : ''})`;
+
+  header.appendChild(icon);
+  header.appendChild(name);
+  header.appendChild(count);
+  section.appendChild(header);
+
+  return section;
+}
+
+/**
+ * Render the entire UI based on current state
+ * v1.6.3 - FIX: Updated to handle unified format (v1.6.2.2+) instead of container-based format
+ * 
+ * Unified format:
+ * { tabs: [...], saveId: '...', timestamp: ... }
+ * 
+ * Each tab in tabs array has:
+ * - id, url, title
+ * - visibility: { minimized, soloedOnTabs, mutedOnTabs }
+ * - position, size
+ */
+function renderUI() {
+  // Extract tabs from state (handles both unified and legacy formats)
+  const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
+  const totalTabs = allTabs.length;
+
+  // Update stats
+  updateUIStats(totalTabs, latestTimestamp);
 
   // Show/hide empty state
   if (totalTabs === 0) {
     containersList.style.display = 'none';
     emptyState.style.display = 'flex';
     return;
-  } else {
-    containersList.style.display = 'block';
-    emptyState.style.display = 'none';
   }
 
-  // Clear containers list
+  containersList.style.display = 'block';
+  emptyState.style.display = 'none';
+
+  // Clear and populate containers list
   containersList.innerHTML = '';
 
-  // Render each container section
-  // Sort containers: Default first, then alphabetically
-  const sortedContainers = Object.keys(containersData).sort((a, b) => {
-    if (a === 'firefox-default') return -1;
-    if (b === 'firefox-default') return 1;
-    return containersData[a].name.localeCompare(containersData[b].name);
-  });
-
-  sortedContainers.forEach(cookieStoreId => {
-    const containerInfo = containersData[cookieStoreId];
-    const containerState = quickTabsState[cookieStoreId];
-
-    if (!containerState || !containerState.tabs || containerState.tabs.length === 0) {
-      // Skip containers with no Quick Tabs
-      return;
-    }
-
-    renderContainerSection(cookieStoreId, containerInfo, containerState);
-  });
-}
-
-/**
- * Render a single container section with its Quick Tabs
- */
-function renderContainerSection(cookieStoreId, containerInfo, containerState) {
-  const section = document.createElement('div');
-  section.className = 'container-section';
-  section.dataset.containerId = cookieStoreId;
-
-  // Container header
-  const header = document.createElement('h2');
-  header.className = 'container-header';
-
-  const icon = document.createElement('span');
-  icon.className = 'container-icon';
-  icon.textContent = containerInfo.icon;
-
-  const name = document.createElement('span');
-  name.className = 'container-name';
-  name.textContent = containerInfo.name;
-
-  const count = document.createElement('span');
-  count.className = 'container-count';
-  const tabCount = containerState.tabs.length;
-  count.textContent = `(${tabCount} tab${tabCount !== 1 ? 's' : ''})`;
-
-  header.appendChild(icon);
-  header.appendChild(name);
-  header.appendChild(count);
-
-  section.appendChild(header);
+  // v1.6.2.2+ - Render all Quick Tabs globally (no container grouping)
+  const section = createGlobalSection(totalTabs);
 
   // Quick Tabs list
   const tabsList = document.createElement('div');
   tabsList.className = 'quick-tabs-list';
 
-  // Separate active and minimized tabs
-  const activeTabs = containerState.tabs.filter(t => !t.minimized);
-  const minimizedTabs = containerState.tabs.filter(t => t.minimized);
+  // v1.6.4.3 - FIX Issue #5: Use module-level helper for consistent minimized state detection
+  // Separate active and minimized tabs using consistent helper
+  const activeTabs = allTabs.filter(t => !isTabMinimizedHelper(t));
+  const minimizedTabs = allTabs.filter(t => isTabMinimizedHelper(t));
 
-  // Render active tabs first
+  // Render active tabs first, then minimized tabs
   activeTabs.forEach(tab => {
-    tabsList.appendChild(renderQuickTabItem(tab, cookieStoreId, false));
+    tabsList.appendChild(renderQuickTabItem(tab, 'global', false));
   });
-
-  // Then minimized tabs
   minimizedTabs.forEach(tab => {
-    tabsList.appendChild(renderQuickTabItem(tab, cookieStoreId, true));
+    tabsList.appendChild(renderQuickTabItem(tab, 'global', true));
   });
 
   section.appendChild(tabsList);
@@ -271,7 +332,51 @@ function _createFavicon(url) {
 }
 
 /**
+ * v1.6.4.2 - Helper to get position value from flat or nested format
+ * @param {Object} tab - Quick Tab data
+ * @param {string} flatKey - Key for flat format (e.g., 'width')
+ * @param {string} nestedKey - Key for nested format (e.g., 'size')
+ * @param {string} prop - Property name (e.g., 'width')
+ * @returns {number|undefined} The value or undefined
+ */
+function _getValue(tab, flatKey, nestedKey, prop) {
+  return tab[flatKey] ?? tab[nestedKey]?.[prop];
+}
+
+/**
+ * v1.6.4 - Helper to format size and position string for tab metadata
+ * Extracted to reduce complexity in _createTabInfo
+ * FIX Issue #3: Only show position if both left and top are defined
+ * v1.6.4.2 - FIX TypeError: Handle both flat and nested position/size formats
+ * @param {Object} tab - Quick Tab data
+ * @returns {string|null} Formatted size/position string or null
+ */
+function _formatSizePosition(tab) {
+  // v1.6.4.2 - FIX TypeError: Handle both flat (width/height) and nested (size.width) formats
+  const width = _getValue(tab, 'width', 'size', 'width');
+  const height = _getValue(tab, 'height', 'size', 'height');
+  
+  if (!width || !height) {
+    return null;
+  }
+  
+  let sizeStr = `${Math.round(width)}×${Math.round(height)}`;
+  
+  // v1.6.4.2 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
+  const left = _getValue(tab, 'left', 'position', 'left');
+  const top = _getValue(tab, 'top', 'position', 'top');
+  
+  // v1.6.4 - FIX Issue #3: Only show position if both values exist
+  if (left != null && top != null) {
+    sizeStr += ` at (${Math.round(left)}, ${Math.round(top)})`;
+  }
+  
+  return sizeStr;
+}
+
+/**
  * Create tab info section (title + metadata)
+ * v1.6.4 - FIX Bug #6: Added position display (x, y) alongside size
  * @param {Object} tab - Quick Tab data
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {HTMLDivElement} Tab info element
@@ -299,8 +404,10 @@ function _createTabInfo(tab, isMinimized) {
     metaParts.push(`Tab ${tab.activeTabId}`);
   }
 
-  if (tab.width && tab.height) {
-    metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
+  // v1.6.4 - FIX Bug #6: Size with position display
+  const sizePosition = _formatSizePosition(tab);
+  if (sizePosition) {
+    metaParts.push(sizePosition);
   }
 
   if (tab.slotNumber) {
@@ -431,8 +538,9 @@ function setupEventListeners() {
   });
 
   // Listen for storage changes to auto-update
+  // v1.6.3 - FIX: Changed from 'sync' to 'local' (storage location since v1.6.0.12)
   browser.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'sync' && changes[STATE_KEY]) {
+    if (areaName === 'local' && changes[STATE_KEY]) {
       loadQuickTabsState().then(() => {
         renderUI();
       });
@@ -442,36 +550,53 @@ function setupEventListeners() {
 
 /**
  * Close all minimized Quick Tabs (NEW FEATURE #1)
+ * v1.6.3 - FIX: Changed from storage.sync to storage.local and updated for unified format
+ * v1.6.4.5 - FIX Issue #4: Send CLOSE_QUICK_TAB to content scripts BEFORE updating storage
  */
 async function closeMinimizedTabs() {
   try {
-    // Get current state
-    const result = await browser.storage.sync.get(STATE_KEY);
+    // Get current state from local storage (v1.6.3 fix)
+    const result = await browser.storage.local.get(STATE_KEY);
     if (!result || !result[STATE_KEY]) return;
 
     const state = result[STATE_KEY];
-    let hasChanges = false;
-
-    // Filter out minimized tabs from each container
-    Object.keys(state).forEach(cookieStoreId => {
-      if (state[cookieStoreId] && state[cookieStoreId].tabs) {
-        const originalLength = state[cookieStoreId].tabs.length;
-        state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !t.minimized);
-
-        if (state[cookieStoreId].tabs.length !== originalLength) {
-          hasChanges = true;
-          state[cookieStoreId].timestamp = Date.now();
+    
+    // v1.6.4.5 - FIX Issue #4: Collect minimized tab IDs BEFORE filtering
+    const minimizedTabIds = [];
+    if (state.tabs && Array.isArray(state.tabs)) {
+      state.tabs.forEach(tab => {
+        if (isTabMinimizedHelper(tab)) {
+          minimizedTabIds.push(tab.id);
         }
-      }
-    });
+      });
+    }
+    
+    console.log('[Manager] Closing minimized tabs:', minimizedTabIds);
+    
+    // v1.6.4.5 - FIX Issue #4: Send CLOSE_QUICK_TAB to ALL tabs for DOM cleanup FIRST
+    const browserTabs = await browser.tabs.query({});
+    for (const tabId of minimizedTabIds) {
+      browserTabs.forEach(tab => {
+        browser.tabs
+          .sendMessage(tab.id, {
+            action: 'CLOSE_QUICK_TAB',
+            quickTabId: tabId
+          })
+          .catch(() => {
+            // Ignore errors for tabs where content script isn't loaded
+          });
+      });
+    }
+    
+    // Now filter and update storage
+    const hasChanges = filterMinimizedFromState(state);
 
     if (hasChanges) {
-      // Save updated state
-      await browser.storage.sync.set({ [STATE_KEY]: state });
+      // Save updated state to local storage (v1.6.3 fix)
+      await browser.storage.local.set({ [STATE_KEY]: state });
 
-      // Notify all content scripts to update their local state
-      const tabs = await browser.tabs.query({});
-      tabs.forEach(tab => {
+      // Also send legacy CLOSE_MINIMIZED_QUICK_TABS for backwards compat
+      browserTabs.forEach(tab => {
         browser.tabs
           .sendMessage(tab.id, {
             action: 'CLOSE_MINIMIZED_QUICK_TABS'
@@ -489,12 +614,79 @@ async function closeMinimizedTabs() {
 }
 
 /**
+ * Check if a tab is minimized using consistent logic
+ * v1.6.4.3 - FIX Issue #5: Helper for consistent minimized state detection
+ * Prefers top-level `minimized` property as single source of truth
+ * @param {Object} tab - Quick Tab data
+ * @returns {boolean} - True if tab is minimized
+ */
+function isTabMinimizedHelper(tab) {
+  return tab.minimized ?? tab.visibility?.minimized ?? false;
+}
+
+/**
+ * Filter minimized tabs from state object
+ * v1.6.4.3 - FIX Issue #5: Use consistent isTabMinimizedHelper
+ * @param {Object} state - State object to modify in place
+ * @returns {boolean} - True if changes were made
+ */
+function filterMinimizedFromState(state) {
+  let hasChanges = false;
+
+  // Handle unified format (v1.6.2.2+)
+  if (state.tabs && Array.isArray(state.tabs)) {
+    const originalLength = state.tabs.length;
+    // v1.6.4.3 - FIX Issue #5: Use consistent helper
+    state.tabs = state.tabs.filter(t => !isTabMinimizedHelper(t));
+
+    if (state.tabs.length !== originalLength) {
+      hasChanges = true;
+      state.timestamp = Date.now();
+      state.saveId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    }
+  } else {
+    // Legacy container format (fallback)
+    hasChanges = filterMinimizedFromContainerFormat(state);
+  }
+
+  return hasChanges;
+}
+
+/**
+ * Filter minimized tabs from legacy container format
+ * v1.6.4.3 - FIX Issue #5: Use consistent isTabMinimizedHelper
+ * @param {Object} state - State object in container format
+ * @returns {boolean} - True if changes were made
+ */
+function filterMinimizedFromContainerFormat(state) {
+  let hasChanges = false;
+
+  Object.keys(state).forEach(cookieStoreId => {
+    if (cookieStoreId === 'saveId' || cookieStoreId === 'timestamp') return;
+    
+    if (state[cookieStoreId] && state[cookieStoreId].tabs) {
+      const originalLength = state[cookieStoreId].tabs.length;
+      // v1.6.4.3 - FIX Issue #5: Use consistent helper
+      state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !isTabMinimizedHelper(t));
+
+      if (state[cookieStoreId].tabs.length !== originalLength) {
+        hasChanges = true;
+        state[cookieStoreId].timestamp = Date.now();
+      }
+    }
+  });
+
+  return hasChanges;
+}
+
+/**
  * Close all Quick Tabs - both active and minimized (NEW FEATURE #2)
+ * v1.6.3 - FIX: Changed from storage.sync to storage.local
  */
 async function closeAllTabs() {
   try {
-    // Clear all Quick Tabs from storage
-    await browser.storage.sync.remove(STATE_KEY);
+    // Clear all Quick Tabs from local storage (v1.6.3 fix)
+    await browser.storage.local.remove(STATE_KEY);
 
     // Notify all content scripts to close Quick Tabs
     const tabs = await browser.tabs.query({});

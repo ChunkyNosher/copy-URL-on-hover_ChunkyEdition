@@ -1,0 +1,8 @@
+{
+  "id": "d790a794-dba2-4102-bd5d-31d1e56f8b76",
+  "title": "Playwright-webextext E2E Testing Migration",
+  "details": "Implemented Playwright testing migration from broken Xvfb+Chrome setup to playwright-webextext for Firefox extension testing.\n\n## Key Changes:\n1. Created new `playwright.config.js` using playwright-webextext for TRUE headless Firefox testing (no Xvfb needed)\n2. Created test infrastructure in `tests/e2e/`:\n   - `fixtures/extension.js` - Custom fixture with `withExtension()` from playwright-webextext\n   - `helpers/quick-tabs.js` - Helper utilities for Quick Tabs testing\n   - `scenarios/` directory for test scenario files\n3. Added new npm scripts: test:e2e, test:e2e:ui, test:e2e:headed, test:e2e:debug, test:all\n4. Created `.github/workflows/e2e-extension-tests.yml` - new workflow with proper permissions\n5. Archived old workflow as `.yml.OLD` with deprecation notice\n\n## Key Technical Details:\n- `playwright-webextext` package is already in devDependencies (v0.0.4)\n- Firefox extensions work in TRUE headless mode without Xvfb\n- Use `withExtension(firefox, extPath)` to load extension\n- Install Firefox: `npx playwright install firefox --with-deps`\n- Test Bridge API is optional - tests work without TEST_MODE=true",
+  "category": "testing",
+  "dateCreated": "2025-11-26T17:32:51.469Z",
+  "dateUpdated": "2025-11-26T17:32:51.469Z"
+}

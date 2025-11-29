@@ -31,11 +31,7 @@ export const DEFAULT_CONFIG = {
   quickTabDefaultWidth: 800,
   quickTabDefaultHeight: 600,
   quickTabPosition: 'follow-cursor',
-  quickTabCustomX: 100,
-  quickTabCustomY: 100,
-  quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
-  quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
 
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -65,7 +61,11 @@ export const CONSTANTS = {
   TOOLTIP_OFFSET_Y: 10,
   TOOLTIP_DURATION_MS: 1500,
   TOOLTIP_FADE_OUT_MS: 200,
-  QUICK_TAB_BASE_Z_INDEX: 1000000
+  QUICK_TAB_BASE_Z_INDEX: 1000000,
+  // v1.6.2.x - Default container for Firefox container isolation
+  DEFAULT_CONTAINER: 'firefox-default',
+  // v1.6.3 - Maximum retry attempts for generating unique Quick Tab IDs
+  MAX_ID_GENERATION_RETRIES: 10
 };
 
 export class ConfigManager {

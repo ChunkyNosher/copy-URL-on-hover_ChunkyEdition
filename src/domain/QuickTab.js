@@ -1,6 +1,7 @@
 /**
  * QuickTab Domain Entity
  * v1.6.0 - Pure business logic, no browser APIs or UI dependencies
+ * v1.6.3 - Added slot property for global ID persistence
  *
  * Represents a Quick Tab with its state and behavior.
  * Extracted from QuickTabsManager to separate domain logic from infrastructure.
@@ -50,16 +51,20 @@ function _validateParams({ id, url, position, size }) {
 export class QuickTab {
   /**
    * Create a new QuickTab instance
+   * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container parameter for global visibility
+   * v1.6.3 - Added slot property for global ID persistence
+   * 
    * @param {Object} params - QuickTab parameters
    * @param {string} params.id - Unique identifier
    * @param {string} params.url - URL of the Quick Tab
    * @param {Object} params.position - {left, top} position
    * @param {Object} params.size - {width, height} size
    * @param {Object} params.visibility - Visibility state
-   * @param {string} params.container - Firefox container ID (cookieStoreId)
    * @param {number} [params.createdAt] - Creation timestamp
    * @param {string} [params.title] - Tab title
    * @param {number} [params.zIndex] - Z-index for stacking
+   * @param {number} [params.lastModified] - Last modification timestamp (v1.6.1.5)
+   * @param {number} [params.slot] - Global slot number for consistent labeling (v1.6.3)
    */
   constructor({
     id,
@@ -67,10 +72,11 @@ export class QuickTab {
     position,
     size,
     visibility,
-    container,
     createdAt = Date.now(),
     title = 'Quick Tab',
-    zIndex = 1000
+    zIndex = 1000,
+    lastModified = Date.now(),
+    slot = null
   }) {
     // Validation
     _validateParams({ id, url, position, size });
@@ -78,7 +84,6 @@ export class QuickTab {
     // Immutable core properties
     this.id = id;
     this.url = url;
-    this.container = container || 'firefox-default';
     this.createdAt = createdAt;
 
     // Mutable properties
@@ -86,6 +91,14 @@ export class QuickTab {
     this.position = { ...position }; // Clone to prevent external mutation
     this.size = { ...size };
     this.zIndex = zIndex;
+
+    // v1.6.1.5 - Track last modification time for conflict resolution
+    this.lastModified = lastModified;
+
+    // v1.6.3 - Global slot number for consistent labeling across all tabs
+    // Slot is a positive integer (1, 2, 3, ...) that uniquely identifies this Quick Tab
+    // "Quick Tab 1" always refers to the Quick Tab with slot=1
+    this.slot = slot;
 
     // Visibility state (v1.5.9.13 - Solo/Mute feature)
     this.visibility = {
@@ -240,25 +253,30 @@ export class QuickTab {
 
   /**
    * Toggle minimized state
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @returns {boolean} - New minimized state
    */
   toggleMinimized() {
     this.visibility.minimized = !this.visibility.minimized;
+    this.lastModified = Date.now(); // v1.6.1.5
     return this.visibility.minimized;
   }
 
   /**
    * Set minimized state
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {boolean} minimized - New minimized state
    */
   setMinimized(minimized) {
     this.visibility.minimized = minimized;
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
    * Update position
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {number} left - New left position
    * @param {number} top - New top position
@@ -268,10 +286,12 @@ export class QuickTab {
       throw new Error('Position must be numeric {left, top}');
     }
     this.position = { left, top };
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
    * Update size
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {number} width - New width
    * @param {number} height - New height
@@ -284,10 +304,12 @@ export class QuickTab {
       throw new Error('Size must be positive');
     }
     this.size = { width, height };
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
    * Update z-index for stacking order
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {number} zIndex - New z-index
    */
@@ -296,10 +318,12 @@ export class QuickTab {
       throw new Error('zIndex must be a number');
     }
     this.zIndex = zIndex;
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
    * Update title
+   * v1.6.1.5 - Track lastModified timestamp
    *
    * @param {string} title - New title
    */
@@ -308,6 +332,7 @@ export class QuickTab {
       throw new Error('Title must be a string');
     }
     this.title = title;
+    this.lastModified = Date.now(); // v1.6.1.5
   }
 
   /**
@@ -324,19 +349,15 @@ export class QuickTab {
     this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(id => activeSet.has(id));
   }
 
-  /**
-   * Check if this Quick Tab belongs to a specific container
-   *
-   * @param {string} containerIdOrCookieStoreId - Container ID or cookieStoreId to check
-   * @returns {boolean} - True if this Quick Tab belongs to the container
-   */
-  belongsToContainer(containerIdOrCookieStoreId) {
-    return this.container === containerIdOrCookieStoreId;
-  }
+  // v1.6.2.2 - REMOVED: belongsToContainer() method
+  // Container isolation removed for global visibility (Issue #35, #51, #47)
 
   /**
    * Serialize to storage format
    * Converts domain entity to plain object for storage
+   * v1.6.1.5 - Include lastModified timestamp
+   * v1.6.2.2 - Removed container field for global visibility
+   * v1.6.3 - Include slot for global ID persistence
    *
    * @returns {Object} - Plain object suitable for storage
    */
@@ -352,45 +373,68 @@ export class QuickTab {
         soloedOnTabs: [...this.visibility.soloedOnTabs],
         mutedOnTabs: [...this.visibility.mutedOnTabs]
       },
-      container: this.container,
       zIndex: this.zIndex,
-      createdAt: this.createdAt
+      createdAt: this.createdAt,
+      lastModified: this.lastModified, // v1.6.1.5
+      slot: this.slot // v1.6.3 - Global slot number
     };
   }
 
   /**
    * Create QuickTab from storage format
    * Static factory method to hydrate from plain object
+   * v1.6.1.5 - Include lastModified timestamp
    *
    * @param {Object} data - Plain object from storage
    * @returns {QuickTab} - QuickTab domain entity
    */
   static fromStorage(data) {
-    return new QuickTab({
+    const params = QuickTab._normalizeStorageData(data);
+    return new QuickTab(params);
+  }
+
+  /**
+   * Normalize storage data with defaults
+   * v1.6.1.5 - Extract to reduce complexity
+   * v1.6.2.2 - Removed container field for global visibility
+   * v1.6.3 - Include slot for global ID persistence
+   * 
+   * @private
+   * @param {Object} data - Raw storage data
+   * @returns {Object} - Normalized parameters
+   */
+  static _normalizeStorageData(data) {
+    const now = Date.now();
+    
+    // Extract timestamp values with fallbacks
+    const createdAt = data.createdAt ?? now;
+    const lastModified = data.lastModified ?? createdAt;
+
+    return {
       id: data.id,
       url: data.url,
-      title: data.title || 'Quick Tab',
-      position: data.position || { left: 100, top: 100 },
-      size: data.size || { width: 800, height: 600 },
-      visibility: data.visibility || {
-        minimized: false,
-        soloedOnTabs: [],
-        mutedOnTabs: []
-      },
-      container: data.container || data.cookieStoreId || 'firefox-default',
-      zIndex: data.zIndex || 1000,
-      createdAt: data.createdAt || Date.now()
-    });
+      title: data.title ?? 'Quick Tab',
+      position: data.position ?? { left: 100, top: 100 },
+      size: data.size ?? { width: 800, height: 600 },
+      visibility: data.visibility ?? { minimized: false, soloedOnTabs: [], mutedOnTabs: [] },
+      zIndex: data.zIndex ?? 1000,
+      createdAt,
+      lastModified,
+      slot: data.slot ?? null
+    };
   }
 
   /**
    * Create QuickTab with defaults
    * Convenience factory method for creating new Quick Tabs
+   * v1.6.2.2 - Removed container parameter for global visibility
+   * v1.6.3 - Added slot parameter for global ID persistence
    *
    * @param {Object} params - Partial parameters
+   * @param {number} [params.slot] - Global slot number (should be assigned by StateManager)
    * @returns {QuickTab} - QuickTab domain entity with defaults
    */
-  static create({ id, url, left = 100, top = 100, width = 800, height = 600, container, title }) {
+  static create({ id, url, left = 100, top = 100, width = 800, height = 600, title, slot = null }) {
     if (!id) {
       throw new Error('QuickTab.create requires id');
     }
@@ -409,9 +453,9 @@ export class QuickTab {
         soloedOnTabs: [],
         mutedOnTabs: []
       },
-      container: container || 'firefox-default',
       zIndex: 1000,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      slot
     });
   }
 }

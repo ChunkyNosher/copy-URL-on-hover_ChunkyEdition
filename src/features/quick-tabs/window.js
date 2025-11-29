@@ -98,6 +98,36 @@ export class QuickTabWindow {
     // v1.6.0 Phase 2.9 - Controllers for drag and resize
     this.dragController = null;
     this.resizeController = null;
+    // v1.6.2.3 - Track update timestamps for cross-tab sync
+    this.lastPositionUpdate = null;
+    this.lastSizeUpdate = null;
+  }
+
+  /**
+   * Process URL to disable autoplay for YouTube videos
+   * v1.6.1.5 - Fix for YouTube autoplay issue
+   * 
+   * @param {string} url - Original URL
+   * @returns {string} - Modified URL with autoplay disabled
+   */
+  _processUrlForAutoplay(url) {
+    try {
+      // Check if URL is a YouTube URL (youtube.com or youtu.be)
+      if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+        return url; // Not a YouTube URL, return as-is
+      }
+
+      const urlObj = new URL(url);
+
+      // Set or update autoplay parameter to 0
+      urlObj.searchParams.set('autoplay', '0');
+
+      console.log(`[QuickTabWindow] Processed YouTube URL for autoplay prevention: ${urlObj.toString()}`);
+      return urlObj.toString();
+    } catch (err) {
+      console.error('[QuickTabWindow] Error processing URL for autoplay:', err);
+      return url; // Return original URL on error
+    }
   }
 
   /**
@@ -154,13 +184,19 @@ export class QuickTabWindow {
         onMinimize: () => this.minimize(),
         onSolo: btn => this.toggleSolo(btn),
         onMute: btn => this.toggleMute(btn),
-        onOpenInTab: () => {
+        onOpenInTab: async () => {
           const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
-          browser.runtime.sendMessage({
+          await browser.runtime.sendMessage({
             action: 'openTab',
             url: currentSrc,
             switchFocus: true
           });
+          
+          // Check setting and close if enabled
+          const settings = await browser.storage.local.get({ quickTabCloseOnOpen: false });
+          if (settings.quickTabCloseOnOpen) {
+            this.destroy();
+          }
         }
       }
     );
@@ -174,8 +210,11 @@ export class QuickTabWindow {
     this.muteButton = this.titlebarBuilder.muteButton;
 
     // Create iframe content area
+    // v1.6.1.5 - Process URL to prevent autoplay and add 'allow' attribute
+    const processedUrl = this._processUrlForAutoplay(this.url);
+    
     this.iframe = createElement('iframe', {
-      src: this.url,
+      src: processedUrl,
       style: {
         flex: '1',
         border: 'none',
@@ -183,7 +222,9 @@ export class QuickTabWindow {
         height: 'calc(100% - 40px)'
       },
       sandbox:
-        'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
+        'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox',
+      // v1.6.1.5 - Add 'allow' attribute without autoplay permission to prevent autoplay
+      allow: 'picture-in-picture; fullscreen'
     });
 
     this.container.appendChild(this.iframe);
@@ -343,8 +384,15 @@ export class QuickTabWindow {
 
   /**
    * Update z-index for stacking
+   * v1.6.4.4 - FIX Bug #4: Add null/undefined safety check for newZIndex
    */
   updateZIndex(newZIndex) {
+    // v1.6.4.4 - FIX Bug #4: Guard against null/undefined to prevent TypeError
+    if (newZIndex === undefined || newZIndex === null) {
+      console.warn('[QuickTabWindow] updateZIndex called with null/undefined, skipping');
+      return;
+    }
+    
     this.zIndex = newZIndex;
     if (this.container) {
       this.container.style.zIndex = newZIndex.toString();
@@ -603,6 +651,38 @@ export class QuickTabWindow {
       this.container.style.width = `${width}px`;
       this.container.style.height = `${height}px`;
     }
+  }
+
+  /**
+   * Update position of Quick Tab window (Bug #3 Fix - UICoordinator compatibility)
+   * v1.6.2.3 - Added for cross-tab sync via UICoordinator.update()
+   * 
+   * Note: This wraps setPosition() and adds timestamp tracking for sync.
+   * The difference from setPosition() is the timestamp which helps with
+   * conflict resolution in cross-tab synchronization.
+   * 
+   * @param {number} left - X position in pixels
+   * @param {number} top - Y position in pixels
+   */
+  updatePosition(left, top) {
+    this.setPosition(left, top);
+    this.lastPositionUpdate = Date.now();
+  }
+
+  /**
+   * Update size of Quick Tab window (Bug #3 Fix - UICoordinator compatibility)
+   * v1.6.2.3 - Added for cross-tab sync via UICoordinator.update()
+   * 
+   * Note: This wraps setSize() and adds timestamp tracking for sync.
+   * The difference from setSize() is the timestamp which helps with
+   * conflict resolution in cross-tab synchronization.
+   * 
+   * @param {number} width - Width in pixels
+   * @param {number} height - Height in pixels
+   */
+  updateSize(width, height) {
+    this.setSize(width, height);
+    this.lastSizeUpdate = Date.now();
   }
 
   /**

@@ -1,0 +1,8 @@
+{
+  "id": "c2889e3f-dafc-43da-8158-061199977cf0",
+  "title": "Unified storage format fix",
+  "details": "In v1.6.2.2, the storage format changed from container-aware format to unified format. The unified format uses `storageValue.tabs` array instead of `storageValue.containers` or `storageValue.quickTabs`. The SyncCoordinator._extractQuickTabsFromStorage() method must check for the unified format FIRST (storageValue.tabs) before checking legacy formats. This fix is critical for cross-tab sync to work correctly.",
+  "category": "storage_sync",
+  "dateCreated": "2025-11-26T19:49:06.094Z",
+  "dateUpdated": "2025-11-26T19:49:06.094Z"
+}

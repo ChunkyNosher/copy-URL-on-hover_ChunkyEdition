@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Copy URL on Hover Custom",
-  "version": "1.6.1.1",
-  "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with solo/mute visibility control, navigation, minimize, and persistent panel manager.",
+  "version": "1.6.3.1",
+  "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with solo/mute visibility control, navigation, minimize, and sidebar manager.",
 
   "permissions": [
     "storage",
@@ -10,7 +10,6 @@
     "webRequest",
     "webRequestBlocking",
     "<all_urls>",
-    "contextualIdentities",
     "cookies",
     "downloads"
   ],
@@ -20,32 +19,48 @@
       "suggested_key": {
         "default": "Ctrl+Alt+Z"
       },
-      "description": "Toggle Quick Tabs Manager panel"
+      "description": "Open Quick Tabs Manager in sidebar"
+    },
+    "_execute_sidebar_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "Toggle sidebar (Settings/Manager)"
     }
   },
 
   "browser_action": {
     "default_title": "Copy URL on Hover Settings",
-    "default_popup": "popup.html",
+    "default_icon": "icons/icon.png"
+  },
+
+  "sidebar_action": {
+    "default_panel": "sidebar/settings.html",
+    "default_title": "Copy URL Settings & Quick Tabs",
     "default_icon": "icons/icon.png"
   },
 
   "options_ui": {
     "page": "options_page.html",
-    "browser_style": true
+    "open_in_tab": true
   },
 
   "background": {
-    "scripts": ["dist/background.js"],
-    "persistent": true
+    "scripts": [
+      "dist/browser-polyfill.min.js",
+      "dist/background.js"
+    ]
   },
 
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["dist/content.js"],
+      "js": [
+        "dist/browser-polyfill.min.js",
+        "dist/content.js"
+      ],
       "run_at": "document_end",
-      "all_frames": true
+      "all_frames": false
     }
   ],
 

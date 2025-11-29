@@ -88,7 +88,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -97,7 +97,11 @@ const relevantMemories = await searchMemories({
 - Bundle size: content.js <500KB, background.js <300KB
 - Test execution: <2 seconds for full suite
 - Quick Tab rendering: <100ms
-- Cross-tab sync: <10ms latency
+- Cross-tab sync via storage.onChanged: <100ms latency
+
+**Storage (v1.6.4):**
+- Use `storage.local` for Quick Tab state (NOT `storage.sync`)
+- Use shared utilities from `src/utils/storage-utils.js`
 
 ---
 
@@ -270,7 +274,7 @@ for (const item of items) {
    - `npm run build:check-size`
    - Verify size reduction or stability
 
-**Use Playwright MCP:** Test real-world performance
+**Use Jest unit tests:** Test real-world performance
 
 ---
 
@@ -287,6 +291,7 @@ for (const item of items) {
 - **CodeScene:** Identify complexity hotspots alongside ESLint ⭐
 
 **CRITICAL - Testing (BEFORE and AFTER):**
+<<<<<<< HEAD
 
 - **Playwright Firefox MCP:** Test performance BEFORE changes (baseline) ⭐
 - **Playwright Chrome MCP:** Test performance BEFORE changes (baseline) ⭐
@@ -294,6 +299,12 @@ for (const item of items) {
   improvement) ⭐
 - **Playwright Chrome MCP:** Test performance AFTER changes (verify improvement)
   ⭐
+=======
+- **Jest unit tests:** Test performance BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test performance BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test performance AFTER changes (verify improvement) ⭐
+- **Jest unit tests:** Test performance AFTER changes (verify improvement) ⭐
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 - **Codecov:** Verify test coverage at end ⭐
 
 **Every Task:**
@@ -338,18 +349,19 @@ quickTabs.forEach(tab => {
 container.appendChild(fragment); // Single reflow
 ```
 
-### Container State Lookup Optimization
+### State Lookup Optimization (v1.6.3+)
 
-**Problem:** Repeated container ID lookups
+**Problem:** Repeated storage lookups
 
 **Solution:**
 
 ```javascript
-// Cache container IDs
-class ContainerCache {
+// Cache state locally
+class StateCache {
   constructor() {
-    this.cache = new Map();
+    this.cache = null;
   }
+<<<<<<< HEAD
 
   async getContainerId(tabId) {
     if (this.cache.has(tabId)) {
@@ -359,34 +371,68 @@ class ContainerCache {
     const containerId = tab.cookieStoreId || 'firefox-default';
     this.cache.set(tabId, containerId);
     return containerId;
+=======
+  
+  async getState() {
+    if (this.cache) return this.cache;
+    
+    const data = await browser.storage.local.get('quick_tabs_state_v2');
+    this.cache = data.quick_tabs_state_v2 || { tabs: [] };
+    return this.cache;
+  }
+  
+  invalidate() {
+    this.cache = null;
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
   }
 }
 ```
 
-### BroadcastChannel Message Optimization
+### Storage Sync Optimization (v1.6.2+)
 
-**Problem:** Excessive message traffic
+**Problem:** Excessive storage writes
 
 **Solution:**
 
 ```javascript
-// Batch state updates
-class BatchedSync {
+// Debounce storage updates
+class DebouncedStorage {
   constructor() {
-    this.pending = [];
+    this.pending = null;
     this.timer = null;
   }
+<<<<<<< HEAD
 
   queueUpdate(update) {
     this.pending.push(update);
+=======
+  
+  queueUpdate(state) {
+    this.pending = state;
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
     if (!this.timer) {
-      this.timer = setTimeout(() => this.flush(), 50);
+      this.timer = setTimeout(() => this.flush(), 100);
     }
   }
+<<<<<<< HEAD
 
   flush() {
     this.channel.postMessage({ type: 'batch', updates: this.pending });
     this.pending = [];
+=======
+  
+  async flush() {
+    if (this.pending) {
+      await browser.storage.local.set({
+        quick_tabs_state_v2: {
+          tabs: this.pending.tabs,
+          saveId: generateId(),
+          timestamp: Date.now()
+        }
+      });
+      this.pending = null;
+    }
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
     this.timer = null;
   }
 }

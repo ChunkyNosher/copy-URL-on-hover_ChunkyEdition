@@ -30,6 +30,13 @@ body {
   background: var(--primary-bg);
   color: var(--text-primary);
   overflow-y: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+html {
+  height: 100%;
 }
 
 .sidebar-header {
@@ -94,6 +101,7 @@ body {
 
 .containers-list {
   padding: 10px 0;
+  flex: 1;
 }
 
 .container-section {
@@ -217,14 +225,33 @@ body {
   background: var(--border-color);
 }
 
+/* v1.6.4 - UI Fix: Button colors */
+/* Restore button - green arrow */
+.btn-icon[data-action="restore"] {
+  color: #4caf50;
+}
+
+/* Close button - light gray */
+.btn-icon[data-action="close"] {
+  color: #999;
+}
+
+.btn-icon[data-action="close"]:hover {
+  color: #f44336;
+  background: rgba(244, 67, 54, 0.1);
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  /* Reduced from 60px for better space utilization in flex layout */
+  padding: 20px;
   text-align: center;
   color: var(--text-secondary);
+  flex: 1;
+  min-height: 0;
 }
 
 .empty-icon {

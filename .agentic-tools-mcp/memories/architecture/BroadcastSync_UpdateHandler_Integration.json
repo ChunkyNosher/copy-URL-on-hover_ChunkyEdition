@@ -1,0 +1,8 @@
+{
+  "id": "d9174686-1950-4ff7-89e9-10a4c1c2e8fb",
+  "title": "BroadcastSync UpdateHandler Integration",
+  "details": "Integrated BroadcastSync with UpdateHandler for v1.6.2.1:\n\n1. UpdateHandler now accepts cookieStoreId and tabId as constructor parameters\n2. Uses BroadcastChannelFactory.getChannel() to get BroadcastSync instance\n3. handlePositionChange() broadcasts position updates during drag (60fps throttled)\n4. handlePositionChangeEnd() broadcasts final position AND saves to storage\n5. handleSizeChange() broadcasts size updates during resize (60fps throttled)\n6. handleSizeChangeEnd() broadcasts final size AND saves to storage\n7. _handleRemotePositionUpdate() and _handleRemoteSizeUpdate() apply remote updates to DOM\n8. destroy() method closes BroadcastSync channel\n\nQuickTabsManager updated:\n- _initializeHandlers() passes cookieStoreId and currentTabId to UpdateHandler\n- cleanup() method added to destroy UpdateHandler\n- _setupCleanupHandlers() registers beforeunload handler\n\nArchitecture: BroadcastChannel for ephemeral updates (2-5ms latency), storage.local for final persistence.",
+  "category": "architecture",
+  "dateCreated": "2025-11-26T03:58:37.814Z",
+  "dateUpdated": "2025-11-26T03:58:37.814Z"
+}

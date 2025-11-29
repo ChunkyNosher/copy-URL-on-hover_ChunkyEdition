@@ -19,3 +19,9 @@ export {
   getDefaultLiveConsoleSettings,
   getDefaultExportSettings
 } from './logger.js';
+export {
+  STATE_KEY,
+  generateSaveId,
+  getBrowserStorageAPI,
+  persistStateToStorage
+} from './storage-utils.js';

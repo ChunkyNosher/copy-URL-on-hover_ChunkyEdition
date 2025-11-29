@@ -1,0 +1,8 @@
+{
+  "id": "fb820bcf-6000-4999-8bf9-ed62021a0bab",
+  "title": "Quick Tabs Sync Removal v1.6.3",
+  "details": "## Quick Tabs Cross-Tab Sync Removal (v1.6.3)\n\nOn November 27, 2025, all cross-tab synchronization infrastructure was removed from Quick Tabs, resulting in a simplified single-tab system.\n\n### Files Deleted:\n- `src/features/quick-tabs/sync/` directory (BroadcastSync.js, BroadcastChannelFactory.js, CircuitBreaker.js, MemoryMonitor.js)\n- `src/features/quick-tabs/coordinators/SyncCoordinator.js`\n- `src/features/quick-tabs/managers/StorageManager.js`\n- 28+ related test files\n\n### Files Modified:\n- `src/features/quick-tabs/index.js` - Removed sync/storage initialization\n- `src/features/quick-tabs/coordinators/UICoordinator.js` - Simplified\n- `src/features/quick-tabs/managers/StateManager.js` - Removed hydration\n- All handlers - Removed storage/background communication\n- `src/content.js` - Removed sync handler\n\n### Result:\n- Quick Tabs now work only within a single tab\n- No cross-tab visibility, no persistence\n- ~12,900+ lines removed\n- Simpler, faster, no race conditions\n- Foundation ready for future sync rebuild",
+  "category": "architecture",
+  "dateCreated": "2025-11-27T05:54:03.656Z",
+  "dateUpdated": "2025-11-27T05:54:03.656Z"
+}

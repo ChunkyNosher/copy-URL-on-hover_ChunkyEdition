@@ -16,7 +16,9 @@
  * script paths, making them correct for the packaged extension.
  *
  * USAGE:
- * node scripts/fix-manifest-paths.js
+ * node scripts/fix-manifest-paths.js [browser]
+ * 
+ * browser: optional, 'firefox' or 'chrome' (defaults to 'firefox')
  */
 
 import fs from 'fs';
@@ -25,9 +27,12 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
+
+// Get browser from command line argument (default to 'firefox')
+const browser = process.argv[2] || 'firefox';
 const manifestPath = path.join(projectRoot, 'dist', 'manifest.json');
 
-console.log('🔧 Fixing manifest.json paths for packaged extension...');
+console.log(`🔧 Fixing manifest.json paths for ${browser} packaged extension...`);
 
 try {
   // Read the manifest

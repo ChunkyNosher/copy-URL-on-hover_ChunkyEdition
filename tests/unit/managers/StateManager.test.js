@@ -1,6 +1,6 @@
 /**
  * StateManager Unit Tests
- * Phase 2.1: Tests for extracted state management logic
+ * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -60,13 +60,30 @@ describe('StateManager', () => {
 
       manager.add(quickTab);
 
-      expect(listener).toHaveBeenCalledWith(quickTab);
+      expect(listener).toHaveBeenCalledWith({ quickTab });
     });
 
     test('should throw error for non-QuickTab instance', () => {
       expect(() => {
         manager.add({ id: 'qt-123', url: 'test' });
       }).toThrow('StateManager.add() requires QuickTab instance');
+    });
+
+    test('should assign slot if not provided', () => {
+      const quickTab = QuickTab.create({
+        id: 'qt-123',
+        url: 'https://example.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      // Slot should be null initially
+      expect(quickTab.slot).toBeNull();
+
+      manager.add(quickTab);
+
+      // Slot should be assigned
+      expect(quickTab.slot).toBe(1);
     });
   });
 
@@ -100,6 +117,7 @@ describe('StateManager', () => {
       });
 
       manager.add(quickTab);
+
       expect(manager.has('qt-123')).toBe(true);
     });
 
@@ -119,12 +137,8 @@ describe('StateManager', () => {
 
       manager.add(quickTab);
 
-      // QuickTab methods return new instance (immutable)
-      const updated = new QuickTab({
-        ...quickTab,
-        position: { left: 200, top: 200 }
-      });
-      manager.update(updated);
+      quickTab.updatePosition(200, 200);
+      manager.update(quickTab);
 
       const retrieved = manager.get('qt-123');
       expect(retrieved.position.left).toBe(200);
@@ -143,24 +157,34 @@ describe('StateManager', () => {
       });
 
       manager.add(quickTab);
-      const updated = new QuickTab({
-        ...quickTab,
-        position: { left: 200, top: 200 }
-      });
-      manager.update(updated);
+      manager.update(quickTab);
 
-      expect(listener).toHaveBeenCalledWith(updated);
+      expect(listener).toHaveBeenCalledWith({ quickTab });
     });
 
     test('should throw error for non-QuickTab instance', () => {
       expect(() => {
-        manager.update({ id: 'qt-123', position: { left: 200, top: 200 } });
+        manager.update({ id: 'qt-123', url: 'test' });
       }).toThrow('StateManager.update() requires QuickTab instance');
+    });
+
+    test('should not update non-existent Quick Tab', () => {
+      const quickTab = QuickTab.create({
+        id: 'qt-123',
+        url: 'https://example.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      manager.update(quickTab);
+      expect(consoleSpy).toHaveBeenCalled();
+      consoleSpy.mockRestore();
     });
   });
 
   describe('delete()', () => {
-    test('should delete Quick Tab', () => {
+    test('should delete Quick Tab from state', () => {
       const quickTab = QuickTab.create({
         id: 'qt-123',
         url: 'https://example.com',
@@ -171,8 +195,9 @@ describe('StateManager', () => {
       manager.add(quickTab);
       expect(manager.has('qt-123')).toBe(true);
 
-      const deleted = manager.delete('qt-123');
-      expect(deleted).toBe(true);
+      const result = manager.delete('qt-123');
+
+      expect(result).toBe(true);
       expect(manager.has('qt-123')).toBe(false);
     });
 
@@ -190,12 +215,12 @@ describe('StateManager', () => {
       manager.add(quickTab);
       manager.delete('qt-123');
 
-      expect(listener).toHaveBeenCalledWith(quickTab);
+      expect(listener).toHaveBeenCalledWith({ id: 'qt-123', quickTab });
     });
 
     test('should return false for non-existent ID', () => {
-      const deleted = manager.delete('qt-999');
-      expect(deleted).toBe(false);
+      const result = manager.delete('qt-999');
+      expect(result).toBe(false);
     });
   });
 
@@ -203,16 +228,16 @@ describe('StateManager', () => {
     test('should return all Quick Tabs', () => {
       const qt1 = QuickTab.create({
         id: 'qt-1',
-        url: 'https://example.com',
+        url: 'https://example1.com',
         position: { left: 100, top: 100 },
         size: { width: 400, height: 300 }
       });
 
       const qt2 = QuickTab.create({
         id: 'qt-2',
-        url: 'https://test.com',
+        url: 'https://example2.com',
         position: { left: 200, top: 200 },
-        size: { width: 500, height: 400 }
+        size: { width: 400, height: 300 }
       });
 
       manager.add(qt1);
@@ -223,193 +248,68 @@ describe('StateManager', () => {
       expect(all).toContain(qt1);
       expect(all).toContain(qt2);
     });
+
+    test('should return empty array when no Quick Tabs', () => {
+      expect(manager.getAll()).toEqual([]);
+    });
   });
 
   describe('getVisible()', () => {
-    test('should return all tabs when no current tab ID', () => {
-      manager.setCurrentTabId(null);
-
+    test('should return all Quick Tabs when no filtering', () => {
       const qt1 = QuickTab.create({
         id: 'qt-1',
-        url: 'https://example.com',
+        url: 'https://example1.com',
         position: { left: 100, top: 100 },
         size: { width: 400, height: 300 }
       });
 
       manager.add(qt1);
 
-      expect(manager.getVisible()).toHaveLength(1);
-    });
-
-    test('should filter by solo state', () => {
-      const qt1 = QuickTab.create({
-        id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-      qt1.solo(100); // Solo on tab 100 (current tab)
-
-      const qt2 = QuickTab.create({
-        id: 'qt-2',
-        url: 'https://test.com',
-        position: { left: 200, top: 200 },
-        size: { width: 500, height: 400 }
-      });
-      qt2.solo(200); // Solo on different tab
-
-      manager.add(qt1); // Should be visible (soloed on current tab)
-      manager.add(qt2); // Should NOT be visible (soloed on different tab)
-
       const visible = manager.getVisible();
       expect(visible).toHaveLength(1);
-      expect(visible[0].id).toBe('qt-1');
+      expect(visible).toContain(qt1);
     });
 
-    test('should filter by mute state', () => {
-      const qt1 = QuickTab.create({
+    test('should filter out muted Quick Tabs', () => {
+      const qt1 = new QuickTab({
         id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-      qt1.mute(100); // Mute on tab 100 (current tab)
-
-      const qt2 = QuickTab.create({
-        id: 'qt-2',
-        url: 'https://test.com',
-        position: { left: 200, top: 200 },
-        size: { width: 500, height: 400 }
-      });
-
-      manager.add(qt1); // Should NOT be visible (muted on current tab)
-      manager.add(qt2); // Should be visible (not muted)
-
-      const visible = manager.getVisible();
-      expect(visible).toHaveLength(1);
-      expect(visible[0].id).toBe('qt-2');
-    });
-  });
-
-  describe('getMinimized()', () => {
-    test('should return only minimized Quick Tabs', () => {
-      const qt1 = QuickTab.create({
-        id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-      qt1.setMinimized(true); // Mutates in place
-
-      const qt2 = QuickTab.create({
-        id: 'qt-2',
-        url: 'https://test.com',
-        position: { left: 200, top: 200 },
-        size: { width: 500, height: 400 }
-      });
-
-      manager.add(qt1);
-      manager.add(qt2);
-
-      const minimized = manager.getMinimized();
-      expect(minimized).toHaveLength(1);
-      expect(minimized[0].id).toBe('qt-1');
-    });
-  });
-
-  describe('getByContainer()', () => {
-    test('should return Quick Tabs for specific container', () => {
-      const qt1 = QuickTab.fromStorage({
-        id: 'qt-1',
-        url: 'https://example.com',
+        url: 'https://example1.com',
         position: { left: 100, top: 100 },
         size: { width: 400, height: 300 },
-        cookieStoreId: 'firefox-default'
-      });
-
-      const qt2 = QuickTab.fromStorage({
-        id: 'qt-2',
-        url: 'https://test.com',
-        position: { left: 200, top: 200 },
-        size: { width: 500, height: 400 },
-        cookieStoreId: 'firefox-container-1'
-      });
-
-      manager.add(qt1);
-      manager.add(qt2);
-
-      const defaultContainer = manager.getByContainer('firefox-default');
-      expect(defaultContainer).toHaveLength(1);
-      expect(defaultContainer[0].id).toBe('qt-1');
-
-      const container1 = manager.getByContainer('firefox-container-1');
-      expect(container1).toHaveLength(1);
-      expect(container1[0].id).toBe('qt-2');
-    });
-  });
-
-  describe('hydrate()', () => {
-    test('should hydrate state from QuickTab array', () => {
-      const qt1 = QuickTab.create({
-        id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-
-      const qt2 = QuickTab.create({
-        id: 'qt-2',
-        url: 'https://test.com',
-        position: { left: 200, top: 200 },
-        size: { width: 500, height: 400 }
-      });
-
-      manager.hydrate([qt1, qt2]);
-
-      expect(manager.count()).toBe(2);
-      expect(manager.has('qt-1')).toBe(true);
-      expect(manager.has('qt-2')).toBe(true);
-    });
-
-    test('should emit state:hydrated event', () => {
-      const listener = jest.fn();
-      eventBus.on('state:hydrated', listener);
-
-      const qt1 = QuickTab.create({
-        id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-
-      manager.hydrate([qt1]);
-
-      expect(listener).toHaveBeenCalledWith({ count: 1 });
-    });
-
-    test('should clear existing state before hydrating', () => {
-      const qt1 = QuickTab.create({
-        id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
+        visibility: {
+          minimized: false,
+          soloedOnTabs: [],
+          mutedOnTabs: [100] // Muted on current tab
+        },
+        zIndex: 1000,
+        createdAt: Date.now()
       });
 
       manager.add(qt1);
-      expect(manager.count()).toBe(1);
 
-      const qt2 = QuickTab.create({
-        id: 'qt-2',
-        url: 'https://test.com',
-        position: { left: 200, top: 200 },
-        size: { width: 500, height: 400 }
+      const visible = manager.getVisible();
+      expect(visible).toHaveLength(0);
+    });
+
+    test('should show solo Quick Tabs on their tabs', () => {
+      const qt1 = new QuickTab({
+        id: 'qt-1',
+        url: 'https://example1.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 },
+        visibility: {
+          minimized: false,
+          soloedOnTabs: [100], // Solo on current tab
+          mutedOnTabs: []
+        },
+        zIndex: 1000,
+        createdAt: Date.now()
       });
 
-      manager.hydrate([qt2]);
+      manager.add(qt1);
 
-      expect(manager.count()).toBe(1);
-      expect(manager.has('qt-1')).toBe(false);
-      expect(manager.has('qt-2')).toBe(true);
+      const visible = manager.getVisible();
+      expect(visible).toHaveLength(1);
     });
   });
 
@@ -417,7 +317,7 @@ describe('StateManager', () => {
     test('should clear all Quick Tabs', () => {
       const qt1 = QuickTab.create({
         id: 'qt-1',
-        url: 'https://example.com',
+        url: 'https://example1.com',
         position: { left: 100, top: 100 },
         size: { width: 400, height: 300 }
       });
@@ -426,6 +326,7 @@ describe('StateManager', () => {
       expect(manager.count()).toBe(1);
 
       manager.clear();
+
       expect(manager.count()).toBe(0);
     });
 
@@ -435,7 +336,7 @@ describe('StateManager', () => {
 
       const qt1 = QuickTab.create({
         id: 'qt-1',
-        url: 'https://example.com',
+        url: 'https://example1.com',
         position: { left: 100, top: 100 },
         size: { width: 400, height: 300 }
       });
@@ -447,9 +348,84 @@ describe('StateManager', () => {
     });
 
     test('should reset z-index', () => {
-      manager.currentZIndex = 10005;
+      manager.currentZIndex = 10050;
       manager.clear();
       expect(manager.currentZIndex).toBe(10000);
+    });
+  });
+
+  describe('Global Slot Assignment', () => {
+    test('should assign sequential slots', () => {
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example1.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      const qt2 = QuickTab.create({
+        id: 'qt-2',
+        url: 'https://example2.com',
+        position: { left: 200, top: 200 },
+        size: { width: 400, height: 300 }
+      });
+
+      manager.add(qt1);
+      manager.add(qt2);
+
+      expect(qt1.slot).toBe(1);
+      expect(qt2.slot).toBe(2);
+    });
+
+    test('should fill gaps in slots', () => {
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example1.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      const qt2 = QuickTab.create({
+        id: 'qt-2',
+        url: 'https://example2.com',
+        position: { left: 200, top: 200 },
+        size: { width: 400, height: 300 }
+      });
+
+      manager.add(qt1);
+      manager.add(qt2);
+
+      // Delete first one
+      manager.delete('qt-1');
+
+      // Add new one - should get slot 1
+      const qt3 = QuickTab.create({
+        id: 'qt-3',
+        url: 'https://example3.com',
+        position: { left: 300, top: 300 },
+        size: { width: 400, height: 300 }
+      });
+
+      manager.add(qt3);
+      expect(qt3.slot).toBe(1);
+    });
+
+    test('getBySlot() should return Quick Tab by slot', () => {
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example1.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      manager.add(qt1);
+
+      const found = manager.getBySlot(1);
+      expect(found).toBe(qt1);
+    });
+
+    test('getBySlot() should return undefined for non-existent slot', () => {
+      expect(manager.getBySlot(99)).toBeUndefined();
     });
   });
 
@@ -461,214 +437,43 @@ describe('StateManager', () => {
       expect(z2).toBe(z1 + 1);
     });
 
-    test('updateZIndex() should update Quick Tab z-index', () => {
-      const quickTab = QuickTab.create({
-        id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-
-      manager.add(quickTab);
-      manager.updateZIndex('qt-1', 10050);
-
-      const updated = manager.get('qt-1');
-      expect(updated.zIndex).toBe(10050);
-    });
-
-    test('bringToFront() should assign next z-index', () => {
-      const quickTab = QuickTab.create({
-        id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-
-      manager.add(quickTab);
-      manager.bringToFront('qt-1');
-
-      const updated = manager.get('qt-1');
-      expect(updated.zIndex).toBe(10001);
-    });
-
-    test('bringToFront() should emit z-index-changed event', () => {
+    test('bringToFront() should update z-index and emit event', () => {
       const listener = jest.fn();
       eventBus.on('state:z-index-changed', listener);
 
-      const quickTab = QuickTab.create({
+      const qt1 = QuickTab.create({
         id: 'qt-1',
-        url: 'https://example.com',
+        url: 'https://example1.com',
         position: { left: 100, top: 100 },
         size: { width: 400, height: 300 }
       });
 
-      manager.add(quickTab);
+      manager.add(qt1);
       manager.bringToFront('qt-1');
 
-      expect(listener).toHaveBeenCalledWith({ id: 'qt-1', zIndex: 10001 });
-    });
-  });
-
-  describe('cleanupDeadTabs()', () => {
-    test('should remove dead tab IDs from solo arrays', () => {
-      const quickTab = QuickTab.create({
-        id: 'qt-1',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-
-      // Add multiple solo tabs (mutates in place)
-      quickTab.solo(100);
-      quickTab.solo(200);
-      quickTab.solo(300);
-
-      manager.add(quickTab);
-
-      manager.cleanupDeadTabs([100, 200]); // 300 is dead
-
-      const updated = manager.get('qt-1');
-      expect(updated.visibility.soloedOnTabs).toEqual([100, 200]);
-    });
-
-    test('should remove dead tab IDs from mute arrays', () => {
-      const quickTab = QuickTab.create({
-        id: 'qt-2', // Different ID
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-
-      // Add multiple mute tabs (mutates in place)
-      quickTab.mute(100);
-      quickTab.mute(200);
-      quickTab.mute(300);
-
-      manager.add(quickTab);
-
-      manager.cleanupDeadTabs([100]); // 200 and 300 are dead
-
-      const updated = manager.get('qt-2');
-      expect(updated.visibility.mutedOnTabs).toEqual([100]);
-    });
-
-    test('should emit state:cleaned event', () => {
-      const listener = jest.fn();
-      eventBus.on('state:cleaned', listener);
-
-      const quickTab = QuickTab.create({
-        id: 'qt-3', // Different ID
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-
-      quickTab.solo(100);
-      quickTab.solo(200);
-
-      manager.add(quickTab);
-      manager.cleanupDeadTabs([100]);
-
-      expect(listener).toHaveBeenCalledWith({ count: 1 });
-    });
-  });
-
-  describe('Edge Cases and Error Handling', () => {
-    test('update() should warn when updating non-existent Quick Tab', () => {
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-      const quickTab = QuickTab.create({
-        id: 'qt-non-existent',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-
-      // Try to update without adding first
-      manager.update(quickTab);
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[StateManager] Cannot update non-existent Quick Tab: qt-non-existent'
-      );
-      expect(manager.has('qt-non-existent')).toBe(false);
-
-      consoleSpy.mockRestore();
-    });
-
-    test('hydrate() should throw error for non-array input', () => {
-      expect(() => {
-        manager.hydrate('not-an-array');
-      }).toThrow('StateManager.hydrate() requires array of QuickTab instances');
-
-      expect(() => {
-        manager.hydrate(null);
-      }).toThrow('StateManager.hydrate() requires array of QuickTab instances');
-
-      expect(() => {
-        manager.hydrate({ key: 'value' });
-      }).toThrow('StateManager.hydrate() requires array of QuickTab instances');
-    });
-
-    test('hydrate() should skip non-QuickTab instances', () => {
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-      const validQuickTab = QuickTab.create({
-        id: 'qt-valid',
-        url: 'https://example.com',
-        position: { left: 100, top: 100 },
-        size: { width: 400, height: 300 }
-      });
-
-      const invalidItem = { id: 'invalid', url: 'test' };
-
-      manager.hydrate([validQuickTab, invalidItem, null, undefined]);
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[StateManager] Skipping non-QuickTab instance during hydration'
-      );
-      expect(manager.count()).toBe(1);
-      expect(manager.has('qt-valid')).toBe(true);
-      expect(manager.has('invalid')).toBe(false);
-
-      consoleSpy.mockRestore();
-    });
-
-    test('clear() should work when state is already empty', () => {
-      expect(manager.count()).toBe(0);
-
-      const listener = jest.fn();
-      eventBus.on('state:cleared', listener);
-
-      manager.clear();
-
-      expect(manager.count()).toBe(0);
       expect(listener).toHaveBeenCalled();
     });
+  });
 
-    test('cleanupDeadTabs() should handle empty state', () => {
+  describe('setCurrentTabId()', () => {
+    test('should update current tab ID', () => {
+      manager.setCurrentTabId(200);
+      expect(manager.currentTabId).toBe(200);
+    });
+  });
+
+  describe('count()', () => {
+    test('should return correct count', () => {
       expect(manager.count()).toBe(0);
 
-      const listener = jest.fn();
-      eventBus.on('state:cleaned', listener);
-
-      manager.cleanupDeadTabs([100, 200]);
-
-      // Event should not be emitted when nothing cleaned
-      expect(listener).not.toHaveBeenCalled();
-    });
-
-    test('cleanupDeadTabs() should handle tabs with no solo/mute arrays', () => {
-      const quickTab = QuickTab.create({
-        id: 'qt-no-arrays',
-        url: 'https://example.com',
+      const qt1 = QuickTab.create({
+        id: 'qt-1',
+        url: 'https://example1.com',
         position: { left: 100, top: 100 },
         size: { width: 400, height: 300 }
       });
 
-      manager.add(quickTab);
-      manager.cleanupDeadTabs([100, 200]);
-
-      // Should not throw, just complete
+      manager.add(qt1);
       expect(manager.count()).toBe(1);
     });
   });

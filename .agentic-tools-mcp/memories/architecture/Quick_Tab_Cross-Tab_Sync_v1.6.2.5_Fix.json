@@ -1,0 +1,8 @@
+{
+  "id": "706d07a6-b823-4395-a6ac-1103fe83c203",
+  "title": "Quick Tab Cross-Tab Sync v1.6.2.5 Fix",
+  "details": "v1.6.2.5 fixes 7 critical sync bugs:\n\n1. **skipDeletions: false for storage.onChanged** - SyncCoordinator.handleStorageChange() now passes skipDeletions: false to hydrate() to trust storage as single source of truth\n2. **all_frames: false in manifest** - Content script only runs in top-level pages, not iframes\n3. **Iframe guard hardened** - 3 independent checks: CSS selectors, blob: URL check, parent DOM structure\n4. **Tab visibility refresh trusts storage** - handleTabVisible() skips merge, uses skipDeletions: false\n5. **Improved logging** - StateManager logs changeDetails array with positionChanged/sizeChanged/zIndexChanged per Quick Tab\n\nKey insight: When storage.onChanged fires, storage is authoritative. If Quick Tab not in storage, delete it locally.",
+  "category": "architecture",
+  "dateCreated": "2025-11-27T04:22:53.942Z",
+  "dateUpdated": "2025-11-27T04:22:53.942Z"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "9eb18899-f641-41e2-8a2f-51d72c6cdbdb",
+  "title": "v1.6.4.3 Minimize/Restore Bug Fixes",
+  "details": "Fixed 5 critical bugs in Quick Tab Manager minimize/restore:\n\n1. Issue 2: UICoordinator.update() must check BOTH `quickTab.minimized` AND `quickTab.visibility?.minimized`\n2. Issue 3: DestroyHandler.closeAll() emits `state:cleared`; UICoordinator has `reconcileRenderedTabs()` to destroy orphans\n3. Issue 4: MinimizedManager stores position/size as IMMUTABLE SNAPSHOT in add() to prevent corruption\n4. Issue 5: Use `isTabMinimizedHelper()` pattern: `tab.minimized ?? tab.visibility?.minimized ?? false`\n\nKey pattern for minimized state detection:\n```javascript\nconst isMinimized = Boolean(quickTab.minimized || quickTab.visibility?.minimized);\n```",
+  "category": "bugfix",
+  "dateCreated": "2025-11-29T05:48:04.851Z",
+  "dateUpdated": "2025-11-29T05:48:04.851Z"
+}

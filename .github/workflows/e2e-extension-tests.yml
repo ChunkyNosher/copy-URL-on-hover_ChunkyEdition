@@ -1,0 +1,170 @@
+name: 'E2E Extension Tests'
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_scenario:
+        description: 'Specific test to run (optional, runs all if empty)'
+        required: false
+        type: string
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'tests/e2e/**'
+      - 'dist/**'
+      - 'manifest.json'
+      - 'playwright.config.js'
+  push:
+    branches: [main]
+
+# Minimal permissions for security
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test-firefox-extension:
+    name: 'Test Firefox Extension with Playwright'
+    runs-on: ubuntu-latest
+
+    steps:
+      # ============================================
+      # Step 1: Checkout Code
+      # ============================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ============================================
+      # Step 2: Setup Node.js
+      # ============================================
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # ============================================
+      # Step 3: Install Dependencies
+      # ============================================
+      - name: Install dependencies
+        run: npm ci
+
+      # ============================================
+      # Step 4: Install Playwright with Firefox
+      # NO XVFB NEEDED - Firefox extensions work in true headless!
+      # ============================================
+      - name: Install Playwright browsers
+        run: npx playwright install firefox --with-deps
+
+      # ============================================
+      # Step 5: Build Extension with Test Mode
+      # ============================================
+      - name: Build extension (production with test mode)
+        run: npm run build:prod
+        env:
+          TEST_MODE: 'true'
+
+      # ============================================
+      # Step 6: Validate Build Output
+      # ============================================
+      - name: Validate build output
+        run: |
+          echo "Validating build output..."
+
+          if [ ! -f dist/manifest.json ]; then
+            echo "❌ ERROR: dist/manifest.json not found!"
+            exit 1
+          fi
+
+          if [ ! -f dist/content.js ]; then
+            echo "❌ ERROR: dist/content.js not found!"
+            exit 1
+          fi
+
+          if [ ! -f dist/background.js ]; then
+            echo "❌ ERROR: dist/background.js not found!"
+            exit 1
+          fi
+
+          echo "✅ All required files present in dist/"
+
+      # ============================================
+      # Step 7: Run Playwright E2E Tests
+      # TRUE HEADLESS MODE - No Xvfb, no DISPLAY variable needed
+      # ============================================
+      - name: Run Playwright tests
+        run: |
+          if [ -n "${{ github.event.inputs.test_scenario }}" ]; then
+            echo "Running specific test: ${{ github.event.inputs.test_scenario }}"
+            npx playwright test --grep "${{ github.event.inputs.test_scenario }}"
+          else
+            echo "Running all E2E tests"
+            npx playwright test
+          fi
+        env:
+          CI: true
+
+      # ============================================
+      # Step 8: Upload Test Results (Always)
+      # ============================================
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      # ============================================
+      # Step 9: Upload Test Artifacts on Failure
+      # ============================================
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-failures
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
+      # ============================================
+      # Step 10: Comment PR with Results
+      # ============================================
+      - name: Comment PR with test results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const resultsPath = 'test-results/results.json';
+
+            if (!fs.existsSync(resultsPath)) {
+              console.log('No results file found');
+              return;
+            }
+
+            const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+            const { stats } = results;
+
+            const body = `## 🧪 E2E Test Results
+
+            - **Total Tests:** ${stats.expected + stats.unexpected + stats.flaky + stats.skipped}
+            - **Passed:** ✅ ${stats.expected}
+            - **Failed:** ❌ ${stats.unexpected}
+            - **Flaky:** ⚠️ ${stats.flaky}
+            - **Skipped:** ⏭️ ${stats.skipped}
+            - **Duration:** ${(stats.duration / 1000).toFixed(2)}s
+
+            [View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

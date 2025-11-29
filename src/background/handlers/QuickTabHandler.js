@@ -17,12 +17,102 @@
  */
 
 export class QuickTabHandler {
+  // v1.6.2.4 - Message deduplication constants for Issue 4 fix
+  // 100ms: Typical double-fire interval for keyboard/context menu events is <10ms
+  // Using 100ms provides safety margin while not blocking legitimate rapid operations
+  static DEDUP_WINDOW_MS = 100;
+  // 5000ms: Cleanup interval balances memory usage vs CPU overhead
+  static DEDUP_CLEANUP_INTERVAL_MS = 5000;
+  // 10000ms: TTL keeps entries long enough for debugging but prevents memory bloat
+  static DEDUP_TTL_MS = 10000;
+
   constructor(globalState, stateCoordinator, browserAPI, initializeFn) {
     this.globalState = globalState;
     this.stateCoordinator = stateCoordinator;
     this.browserAPI = browserAPI;
     this.initializeFn = initializeFn;
     this.isInitialized = false;
+
+    // v1.6.1.6 - Memory leak fix: Track last write to detect self-triggered storage events
+    this.lastWriteTimestamp = null;
+    this.WRITE_IGNORE_WINDOW_MS = 100;
+
+    // v1.6.2.4 - BUG FIX Issue 4: Message deduplication tracking
+    // Prevents duplicate CREATE_QUICK_TAB messages sent within 100ms
+    this.processedMessages = new Map(); // messageKey -> timestamp
+    this.lastCleanup = Date.now();
+  }
+
+  /**
+   * Check if message is a duplicate (same action + id within dedup window)
+   * v1.6.2.4 - BUG FIX Issue 4: Prevents double-creation of Quick Tabs
+   * @param {Object} message - Message to check
+   * @returns {boolean} True if this is a duplicate message
+   */
+  _isDuplicateMessage(message) {
+    // Only deduplicate creation messages
+    if (message.action !== 'CREATE_QUICK_TAB') {
+      return false;
+    }
+
+    // Clean up old entries periodically
+    const now = Date.now();
+    if (now - this.lastCleanup > QuickTabHandler.DEDUP_CLEANUP_INTERVAL_MS) {
+      this._cleanupOldProcessedMessages(now);
+    }
+
+    // Generate unique key for this message
+    const messageKey = `${message.action}-${message.id}`;
+    const lastProcessed = this.processedMessages.get(messageKey);
+
+    // Check if recently processed
+    if (lastProcessed && (now - lastProcessed) < QuickTabHandler.DEDUP_WINDOW_MS) {
+      console.log('[QuickTabHandler] Ignoring duplicate message:', {
+        action: message.action,
+        id: message.id,
+        timeSinceLastMs: now - lastProcessed
+      });
+      return true;
+    }
+
+    // Record this message
+    this.processedMessages.set(messageKey, now);
+    return false;
+  }
+
+  /**
+   * Clean up old processed message entries
+   * @private
+   * @param {number} now - Current timestamp
+   */
+  _cleanupOldProcessedMessages(now) {
+    const cutoff = now - QuickTabHandler.DEDUP_TTL_MS;
+    for (const [key, timestamp] of this.processedMessages.entries()) {
+      if (timestamp < cutoff) {
+        this.processedMessages.delete(key);
+      }
+    }
+    this.lastCleanup = now;
+  }
+
+  /**
+   * Get last write timestamp for self-write detection
+   * v1.6.1.6 - Memory leak fix
+   * @returns {Object|null} Last write info with writeSourceId and timestamp
+   */
+  getLastWriteTimestamp() {
+    return this.lastWriteTimestamp;
+  }
+
+  /**
+   * Generate a unique write source ID and update tracking
+   * v1.6.1.6 - Memory leak fix: Extracted to reduce code duplication
+   * @returns {string} Unique write source ID
+   */
+  _generateWriteSourceId() {
+    const writeSourceId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    this.lastWriteTimestamp = { writeSourceId, timestamp: Date.now() };
+    return writeSourceId;
   }
 
   setInitialized(value) {
@@ -32,7 +122,8 @@ export class QuickTabHandler {
   /**
    * Helper method to update Quick Tab properties
    * Reduces duplication across update handlers
-   * @param {Object} message - Message with id, cookieStoreId, and properties to update
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * @param {Object} message - Message with id and properties to update
    * @param {Function} updateFn - Function to update tab properties
    * @param {boolean} shouldSave - Whether to save to storage immediately
    * @returns {Object} Success response
@@ -42,20 +133,14 @@ export class QuickTabHandler {
       await this.initializeFn();
     }
 
-    const cookieStoreId = message.cookieStoreId || 'firefox-default';
-    const containerState = this.globalState.containers[cookieStoreId];
-
-    if (!containerState) {
-      return { success: true };
-    }
-
-    const tab = containerState.tabs.find(t => t.id === message.id);
+    // v1.6.2.2 - Use unified tabs array instead of container-based lookup
+    const tab = this.globalState.tabs.find(t => t.id === message.id);
     if (!tab) {
       return { success: true };
     }
 
     updateFn(tab, message);
-    containerState.lastUpdate = Date.now();
+    this.globalState.lastUpdate = Date.now();
 
     if (shouldSave) {
       await this.saveStateToStorage();
@@ -79,8 +164,16 @@ export class QuickTabHandler {
 
   /**
    * Handle Quick Tab creation
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.2.4 - BUG FIX Issue 4: Added message deduplication to prevent double-creation
    */
   async handleCreate(message, _sender) {
+    // v1.6.2.4 - BUG FIX Issue 4: Check for duplicate CREATE messages
+    if (this._isDuplicateMessage(message)) {
+      console.log('[QuickTabHandler] Skipping duplicate Create:', message.id);
+      return { success: true, duplicate: true };
+    }
+
     console.log(
       '[QuickTabHandler] Create:',
       message.url,
@@ -97,15 +190,8 @@ export class QuickTabHandler {
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
 
-    // Initialize container state if it doesn't exist
-    if (!this.globalState.containers[cookieStoreId]) {
-      this.globalState.containers[cookieStoreId] = { tabs: [], lastUpdate: 0 };
-    }
-
-    const containerState = this.globalState.containers[cookieStoreId];
-
-    // Check if tab already exists by ID
-    const existingIndex = containerState.tabs.findIndex(t => t.id === message.id);
+    // v1.6.2.2 - Check if tab already exists by ID in unified tabs array
+    const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
 
     const tabData = {
       id: message.id,
@@ -116,16 +202,17 @@ export class QuickTabHandler {
       height: message.height,
       pinnedToUrl: message.pinnedToUrl || null,
       title: message.title || 'Quick Tab',
-      minimized: message.minimized || false
+      minimized: message.minimized || false,
+      cookieStoreId: cookieStoreId // v1.6.2.2 - Store container info on tab itself
     };
 
     if (existingIndex !== -1) {
-      containerState.tabs[existingIndex] = tabData;
+      this.globalState.tabs[existingIndex] = tabData;
     } else {
-      containerState.tabs.push(tabData);
+      this.globalState.tabs.push(tabData);
     }
 
-    containerState.lastUpdate = Date.now();
+    this.globalState.lastUpdate = Date.now();
 
     // Save state
     await this.saveState(message.saveId, cookieStoreId, message);
@@ -135,6 +222,7 @@ export class QuickTabHandler {
 
   /**
    * Handle Quick Tab close
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    */
   async handleClose(message, _sender) {
     console.log(
@@ -152,10 +240,12 @@ export class QuickTabHandler {
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
 
-    if (this.globalState.containers[cookieStoreId]) {
-      const containerState = this.globalState.containers[cookieStoreId];
-      containerState.tabs = containerState.tabs.filter(t => t.id !== message.id);
-      containerState.lastUpdate = Date.now();
+    // v1.6.2.2 - Filter from unified tabs array
+    const originalLength = this.globalState.tabs.length;
+    this.globalState.tabs = this.globalState.tabs.filter(t => t.id !== message.id);
+
+    if (this.globalState.tabs.length !== originalLength) {
+      this.globalState.lastUpdate = Date.now();
 
       // Save state
       await this.saveStateToStorage();
@@ -297,10 +387,33 @@ export class QuickTabHandler {
 
   /**
    * Get current tab ID
+   * v1.6.2.4 - FIX Issue #4: Add fallback when sender.tab is unavailable
+   * Content scripts during initialization may not have sender.tab populated
    */
-  handleGetCurrentTabId(_message, sender) {
-    const tabId = sender.tab?.id;
-    return { success: true, tabId };
+  async handleGetCurrentTabId(_message, sender) {
+    // Primary: Use sender.tab if available
+    if (sender.tab && typeof sender.tab.id === 'number') {
+      console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning ${sender.tab.id} from sender.tab`);
+      return { success: true, tabId: sender.tab.id };
+    }
+
+    // Fallback: Query active tab in current window
+    // This handles cases where sender.tab is not populated during initialization
+    console.log('[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available, querying active tab...');
+    
+    try {
+      const tabs = await this.browserAPI.tabs.query({ active: true, currentWindow: true });
+      if (tabs && tabs.length > 0 && typeof tabs[0].id === 'number') {
+        console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning ${tabs[0].id} from tabs.query`);
+        return { success: true, tabId: tabs[0].id };
+      }
+      
+      console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Could not determine tab ID - no active tab found');
+      return { success: false, tabId: null };
+    } catch (err) {
+      console.error('[QuickTabHandler] GET_CURRENT_TAB_ID: Error querying tabs:', err);
+      return { success: false, tabId: null, error: err.message };
+    }
   }
 
   /**
@@ -329,6 +442,7 @@ export class QuickTabHandler {
   /**
    * Get Quick Tabs state for a specific container
    * Critical for fixing Issue #35 and #51 - content scripts need to load from background's authoritative state
+   * v1.6.2.2 - Updated for unified format (returns all tabs for global visibility)
    */
   async handleGetQuickTabsState(message, _sender) {
     try {
@@ -337,21 +451,15 @@ export class QuickTabHandler {
       }
 
       const cookieStoreId = message.cookieStoreId || 'firefox-default';
-      const containerState = this.globalState.containers[cookieStoreId];
-
-      if (!containerState || !containerState.tabs) {
-        return {
-          success: true,
-          tabs: [],
-          cookieStoreId: cookieStoreId
-        };
-      }
+      
+      // v1.6.2.2 - Return all tabs from unified array for global visibility
+      const allTabs = this.globalState.tabs || [];
 
       return {
         success: true,
-        tabs: containerState.tabs,
+        tabs: allTabs,
         cookieStoreId: cookieStoreId,
-        lastUpdate: containerState.lastUpdate
+        lastUpdate: this.globalState.lastUpdate
       };
     } catch (err) {
       console.error('[QuickTabHandler] Error getting Quick Tabs state:', {
@@ -399,26 +507,29 @@ export class QuickTabHandler {
   /**
    * Save state to storage
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
+   * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    */
   async saveState(saveId, cookieStoreId, message) {
     const generatedSaveId = saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // v1.6.1.6 - Generate unique write source ID to detect self-writes
+    const writeSourceId = this._generateWriteSourceId();
+
+    // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
-      containers: this.globalState.containers,
+      tabs: this.globalState.tabs,
       saveId: generatedSaveId,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
 
     try {
       // v1.6.0.12 - FIX: Use local storage to avoid quota errors
+      // v1.6.1.6 - FIX: Only write to local storage (removed session storage to prevent double events)
       await this.browserAPI.storage.local.set({
         quick_tabs_state_v2: stateToSave
       });
-
-      if (typeof this.browserAPI.storage.session !== 'undefined') {
-        await this.browserAPI.storage.session.set({
-          quick_tabs_session: stateToSave
-        });
-      }
 
       // Broadcast to tabs in same container
       await this.broadcastToContainer(cookieStoreId, {
@@ -448,24 +559,26 @@ export class QuickTabHandler {
   /**
    * Save state to storage (simplified)
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
+   * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    */
   async saveStateToStorage() {
+    // v1.6.1.6 - Generate unique write source ID to detect self-writes
+    const writeSourceId = this._generateWriteSourceId();
+
+    // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
-      containers: this.globalState.containers,
-      timestamp: Date.now()
+      tabs: this.globalState.tabs,
+      timestamp: Date.now(),
+      writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
 
     try {
       // v1.6.0.12 - FIX: Use local storage to avoid quota errors
+      // v1.6.1.6 - FIX: Only write to local storage (removed session storage to prevent double events)
       await this.browserAPI.storage.local.set({
         quick_tabs_state_v2: stateToSave
       });
-
-      if (typeof this.browserAPI.storage.session !== 'undefined') {
-        await this.browserAPI.storage.session.set({
-          quick_tabs_session: stateToSave
-        });
-      }
     } catch (err) {
       // DOMException and browser-native errors don't serialize properly
       // Extract properties explicitly for proper logging

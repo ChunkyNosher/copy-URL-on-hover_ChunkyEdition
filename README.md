@@ -1,8 +1,10 @@
-# Firefox Extension: Copy URL on Hover
+# Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.0.11** - A feature-rich Firefox/Zen Browser extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **complete Firefox Container isolation**, and Persistent Floating Panel Manager.
+**Version 1.6.2.0** - A feature-rich **Firefox/Chrome/Chromium** extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **Firefox Container isolation**, and Persistent Floating Panel Manager.
 
-**🔧 v1.6.0 Status:** Architecture refactoring Phase 1 COMPLETE ✅ (Domain + Storage layers with 96% coverage)
+**🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave, Opera, and other Chromium-based browsers using Manifest v2 with webextension-polyfill.
+
+**🔧 v1.6.2 Status:** Cross-tab sync now uses storage.onChanged exclusively ✅ (BroadcastChannel removed)
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
@@ -33,6 +35,33 @@ Major improvements to filter workflow and UI consistency based on user feedback:
 **Why This Matters:** The previous implementation logged every keystroke to the console, making debugging impossible. Now only actual shortcut executions are logged, providing clean, actionable debug output.
 
 **Documentation:** [Implementation Analysis](docs/manual/v1.6.0/v1.6.0.9-debug-console-filter-and-ui-issues-comprehensive-analysis.md)
+
+---
+
+## 🎯 Firefox Sidebar Integration (v1.6.2) - UPDATED!
+
+**Unified Settings Sidebar for Firefox** - All settings and Quick Tabs Manager now in the sidebar!
+
+### Firefox Users (Native Sidebar Experience)
+- **🔧 Complete Settings in Sidebar** - Click the toolbar button OR press `Alt+Shift+S` to open
+- **📑 5 Tabs** - Copy URL, Quick Tabs, Appearance, Advanced, and Manager tabs
+- **🪟 Integrated Quick Tabs Manager** - View all active Quick Tabs in the Manager tab
+- **🔄 Real-time Sync** - Settings changes sync across all tabs instantly
+- **💾 All Settings Features** - Full Quick Tabs configuration, console log filtering, debug tools
+
+### Chrome/Edge/Brave Users (Popup Compatibility)
+- **📦 Traditional Popup** - Toolbar button opens the standard settings popup (unchanged)
+- **⚙️ Settings Page** - Access via Extensions page → Extension Options
+- **✅ Full Feature Parity** - All features work identically to Firefox
+
+### Keyboard Shortcuts
+- **Firefox Sidebar Settings:** `Alt+Shift+S` - Toggle complete settings sidebar (NEW!)
+- **Quick Tabs Manager:** `Alt+Shift+Z` - Toggle floating Quick Tabs Manager panel (UPDATED!)
+
+### Why This Matters
+Firefox's sidebar API provides a persistent, always-accessible interface for ALL settings without leaving your current page. The complete popup UI has been migrated to the sidebar, including all 4 settings tabs PLUS the Quick Tabs Manager. Chrome/Chromium browsers don't support sidebars, so they continue using the traditional popup approach.
+
+**Cross-Browser Note:** This extension intelligently detects browser capabilities and provides the best user experience for each platform. Firefox users get the complete settings experience in a native sidebar, while Chrome users keep the familiar popup interface.
 
 ---
 
@@ -109,7 +138,7 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 ✓ **Solo/Mute Visibility Control** - Tab-specific Quick Tab visibility (v1.5.9.13)  
 ✓ **Firefox Container Isolation** - Complete container boundary respect (v1.5.9.12)  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
-✓ Cross-Tab Sync via BroadcastChannel + browser.storage  
+✓ **Cross-Tab Sync via storage.onChanged (v1.6.2+)**  
 ✓ Z-Index Management - Smart layering based on interaction  
 ✓ Auto-Updates via GitHub releases  
 ✓ 100+ Site-Specific Handlers  
@@ -138,22 +167,70 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 
 ## 🚀 Installation
 
-### Easy Installation (Recommended)
+### Firefox/Zen Browser (Recommended)
 
 1. Go to [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
-2. Download latest `copy-url-hover-extension.xpi`
+2. Download latest `firefox-extension-vX.X.X.xpi` file
 3. Open Firefox/Zen Browser → `about:addons`
 4. Click gear icon (⚙️) → "Install Add-on From File..."
 5. Select the `.xpi` file and confirm
 
-**Auto-updates enabled** - Notifications for new versions.
+**Auto-updates enabled** - Extension will notify you of new versions automatically.
+
+### Chrome/Edge/Brave/Opera
+
+1. Go to [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+2. Download latest `chrome-extension-vX.X.X.zip` file
+3. Extract the ZIP file to a permanent folder (don't delete after installation!)
+4. Open browser extensions page:
+   - Chrome: `chrome://extensions/`
+   - Edge: `edge://extensions/`
+   - Brave: `brave://extensions/`
+   - Opera: `opera://extensions/`
+5. Enable "Developer mode" (toggle in top-right corner)
+6. Click "Load unpacked" and select the extracted folder
+
+**Note:** Chrome/Chromium-based browsers don't support auto-updates for manually installed extensions. Check the [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases) page for updates.
 
 ### Manual Installation (Development)
 
+**Firefox:**
 1. Navigate to `about:debugging` in Firefox
 2. Click "This Firefox" → "Load Temporary Add-on"
 3. Select `manifest.json` from the extension folder
 4. Extension loaded (removed on browser restart)
+
+**Chrome/Chromium:**
+1. Navigate to `chrome://extensions/` 
+2. Enable "Developer mode" (top-right toggle)
+3. Click "Load unpacked"
+4. Select the extension's `dist/` directory
+
+## 🌐 Browser Compatibility
+
+### Fully Supported
+✅ **Firefox** - All features including Firefox Container isolation  
+✅ **Zen Browser** - Full Firefox-based feature set  
+✅ **Chrome/Chromium** - Core features (containers degrade to single default container)  
+✅ **Edge** - Chrome-compatible, all core features work  
+✅ **Brave** - Chrome-compatible, all core features work  
+✅ **Opera** - Chrome-compatible, all core features work
+
+### Feature Matrix
+
+| Feature | Firefox/Zen | Chrome/Edge/Brave/Opera |
+|---------|-------------|------------------------|
+| Copy URL (Y key) | ✅ | ✅ |
+| Copy Text (X key) | ✅ | ✅ |
+| Quick Tabs | ✅ | ✅ |
+| Solo/Mute | ✅ | ✅ (global only) |
+| Container Isolation | ✅ | ⚠️ Single default container |
+| Quick Tabs Manager | ✅ | ✅ |
+| Settings Persistence | ✅ | ✅ |
+| **Sidebar Settings UI** | ✅ Native sidebar | ⚠️ Traditional popup |
+| **Keyboard Shortcut** | ✅ Ctrl+Shift+S | ⚠️ Via extensions menu |
+
+**Note:** Firefox Containers are a Firefox-exclusive feature. On Chrome/Chromium browsers, all tabs are treated as a single "default" container, and Solo/Mute works globally rather than per-container.
 
 ## 📖 Usage
 

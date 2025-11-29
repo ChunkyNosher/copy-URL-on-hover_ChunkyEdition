@@ -3,8 +3,6 @@ import { EventEmitter } from 'eventemitter3';
 import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { UICoordinator } from '../../../src/features/quick-tabs/coordinators/UICoordinator.js';
 
-/* global createQuickTabWindow */
-
 // Mock dependencies
 const createMockStateManager = () => ({
   getVisible: jest.fn(() => []),
@@ -32,8 +30,13 @@ const createMockQuickTabWindow = () => ({
   isRendered: jest.fn(() => true)
 });
 
-// Mock the window creation function
-global.createQuickTabWindow = jest.fn(() => createMockQuickTabWindow());
+// Mock the createQuickTabWindow function from the window.js module
+jest.mock('../../../src/features/quick-tabs/window.js', () => ({
+  createQuickTabWindow: jest.fn()
+}));
+
+// Import the mocked function for assertions
+import { createQuickTabWindow } from '../../../src/features/quick-tabs/window.js';
 
 describe('UICoordinator', () => {
   let uiCoordinator;
@@ -51,8 +54,8 @@ describe('UICoordinator', () => {
     // Clear mocks but preserve implementation
     jest.clearAllMocks();
 
-    // Re-mock the global function after clearing
-    global.createQuickTabWindow = jest.fn(() => createMockQuickTabWindow());
+    // Re-setup the mock implementation after clearing
+    createQuickTabWindow.mockImplementation(() => createMockQuickTabWindow());
   });
 
   describe('Constructor', () => {
@@ -127,10 +130,10 @@ describe('UICoordinator', () => {
     });
 
     test('should create QuickTabWindow from QuickTab entity', () => {
+      // v1.6.2.2 - Container field removed
       const quickTab = QuickTab.create({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default',
         left: 100,
         top: 200,
         width: 400,
@@ -140,6 +143,7 @@ describe('UICoordinator', () => {
 
       const result = uiCoordinator.render(quickTab);
 
+      // v1.6.2.2 - cookieStoreId no longer expected
       expect(createQuickTabWindow).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'qt-123',
@@ -148,8 +152,7 @@ describe('UICoordinator', () => {
           top: 200,
           width: 400,
           height: 300,
-          title: 'Test Tab',
-          cookieStoreId: 'firefox-default'
+          title: 'Test Tab'
         })
       );
       expect(result).toBeDefined();
@@ -158,8 +161,7 @@ describe('UICoordinator', () => {
     test('should add tab to renderedTabs map', () => {
       const quickTab = QuickTab.create({
         id: 'qt-123',
-        url: 'https://example.com',
-        container: 'firefox-default'
+        url: 'https://example.com'
       });
 
       uiCoordinator.render(quickTab);
@@ -170,8 +172,7 @@ describe('UICoordinator', () => {
     test('should skip if already rendered', () => {
       const quickTab = QuickTab.create({
         id: 'qt-123',
-        url: 'https://example.com',
-        container: 'firefox-default'
+        url: 'https://example.com'
       });
 
       const firstResult = uiCoordinator.render(quickTab);

@@ -16,15 +16,19 @@ module.exports = {
     '^@domain/(.*)$': '<rootDir>/src/domain/$1',
     '^@storage/(.*)$': '<rootDir>/src/storage/$1',
     '^@features/(.*)$': '<rootDir>/src/features/$1',
+    // v1.6.4 - Mock storage-utils.js to prevent actual storage operations in tests
+    '^@utils/storage-utils.js$': '<rootDir>/tests/__mocks__/storage-utils.js',
     '^@utils/(.*)$': '<rootDir>/src/utils/$1',
     '^@core/(.*)$': '<rootDir>/src/core/$1',
     '^@ui/(.*)$': '<rootDir>/src/ui/$1',
-    '^webextension-polyfill$': '<rootDir>/tests/__mocks__/webextension-polyfill.js'
+    '^webextension-polyfill$': '<rootDir>/tests/__mocks__/webextension-polyfill.js',
+    // v1.6.2 - BroadcastManager removed, use mock for backward compatibility
+    '.*/managers/BroadcastManager.js$': '<rootDir>/tests/mocks/BroadcastManagerMock.js'
   },
 
   // Transform ES modules
   transformIgnorePatterns: [
-    'node_modules/(?!(webextension-polyfill|eventemitter3|webext-storage-cache|webext-options-sync|lodash-es)/)'
+    'node_modules/(?!(webextension-polyfill|eventemitter3|webext-storage-cache|webext-options-sync|lodash-es|uuid)/)'
   ],
 
   // Coverage configuration

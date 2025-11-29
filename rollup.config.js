@@ -4,6 +4,7 @@ import resolve from '@rollup/plugin-node-resolve';
 import terser from '@rollup/plugin-terser';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import replace from '@rollup/plugin-replace';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const production = process.env.BUILD === 'production';
@@ -20,6 +21,13 @@ const aliases = {
 
 // Common plugins for all bundles
 const commonPlugins = [
+  replace({
+    preventAssignment: true,
+    values: {
+      'process.env.TEST_MODE': JSON.stringify(process.env.TEST_MODE || 'false'),
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
+    }
+  }),
   alias({ entries: aliases }),
   resolve({
     browser: true,

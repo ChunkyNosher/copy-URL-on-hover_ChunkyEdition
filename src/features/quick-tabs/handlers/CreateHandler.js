@@ -1,6 +1,7 @@
 /**
  * CreateHandler
  * Handles Quick Tab creation logic
+ * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  *
  * Extracted from QuickTabsManager to reduce complexity
  * Lines 903-992 from original index.js
@@ -10,14 +11,13 @@ import { createQuickTabWindow } from '../window.js';
 
 /**
  * CreateHandler - Responsible for creating new Quick Tabs
+ * v1.6.3 - Single-tab Quick Tabs (no storage persistence or cross-tab sync)
  *
  * Responsibilities:
  * - Generate ID if not provided
- * - Auto-assign container if not provided
  * - Handle existing tabs (render if not rendered)
  * - Create QuickTabWindow instance
  * - Store in tabs Map
- * - Broadcast CREATE message
  * - Emit QUICK_TAB_CREATED event
  */
 export class CreateHandler {
@@ -25,27 +25,28 @@ export class CreateHandler {
    * @param {Map} quickTabsMap - Map of id -> QuickTabWindow
    * @param {Object} currentZIndex - Ref object { value: number }
    * @param {string} cookieStoreId - Current container ID
-   * @param {Object} broadcastManager - BroadcastManager instance
    * @param {Object} eventBus - EventEmitter for DOM events
    * @param {Object} Events - Event constants
    * @param {Function} generateId - ID generation function
+   * @param {Function} windowFactory - Optional factory function for creating windows (for testing)
    */
   constructor(
     quickTabsMap,
     currentZIndex,
     cookieStoreId,
-    broadcastManager,
     eventBus,
     Events,
-    generateId
+    generateId,
+    windowFactory = null
   ) {
     this.quickTabsMap = quickTabsMap;
     this.currentZIndex = currentZIndex;
     this.cookieStoreId = cookieStoreId;
-    this.broadcastManager = broadcastManager;
     this.eventBus = eventBus;
     this.Events = Events;
     this.generateId = generateId;
+    // Allow injection of window factory for testing
+    this.createWindow = windowFactory || createQuickTabWindow;
   }
 
   /**
@@ -76,7 +77,7 @@ export class CreateHandler {
   _handleExistingTab(id) {
     const existingTab = this.quickTabsMap.get(id);
 
-    // v1.5.9.10 - Ensure tab is rendered
+    // Ensure tab is rendered
     if (!existingTab.isRendered || !existingTab.isRendered()) {
       console.log('[CreateHandler] Tab exists but not rendered, rendering now:', id);
       existingTab.render();
@@ -95,6 +96,7 @@ export class CreateHandler {
 
   /**
    * Create and store new tab
+   * v1.6.3 - Local only (no storage persistence)
    * @private
    */
   _createNewTab(id, cookieStoreId, options) {
@@ -102,10 +104,16 @@ export class CreateHandler {
 
     const defaults = this._getDefaults();
     const tabOptions = this._buildTabOptions(id, cookieStoreId, options, defaults);
-    const tabWindow = createQuickTabWindow(tabOptions);
+
+    console.log('[CreateHandler] Creating window with factory:', typeof this.createWindow);
+    console.log('[CreateHandler] Tab options:', tabOptions);
+
+    const tabWindow = this.createWindow(tabOptions);
+
+    console.log('[CreateHandler] Window created:', tabWindow);
 
     this.quickTabsMap.set(id, tabWindow);
-    this._broadcastCreation(id, cookieStoreId, options, defaults);
+    
     this._emitCreationEvent(id, options.url);
 
     console.log('[CreateHandler] Quick Tab created successfully:', id);
@@ -161,26 +169,6 @@ export class CreateHandler {
       onSolo: options.onSolo,
       onMute: options.onMute
     };
-  }
-
-  /**
-   * Broadcast creation to other tabs
-   * @private
-   */
-  _broadcastCreation(id, cookieStoreId, options, defaults) {
-    this.broadcastManager.broadcast('CREATE', {
-      id,
-      url: options.url,
-      left: options.left ?? defaults.left,
-      top: options.top ?? defaults.top,
-      width: options.width ?? defaults.width,
-      height: options.height ?? defaults.height,
-      title: options.title ?? defaults.title,
-      cookieStoreId,
-      minimized: options.minimized ?? defaults.minimized,
-      soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
-      mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs
-    });
   }
 
   /**

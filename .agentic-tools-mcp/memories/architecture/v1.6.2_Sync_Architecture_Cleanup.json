@@ -1,0 +1,8 @@
+{
+  "id": "7c1c9ec7-5e22-40e8-820c-ec3beae65ad8",
+  "title": "v1.6.2 Sync Architecture Cleanup",
+  "details": "In v1.6.2, BroadcastChannel was removed in favor of storage.onChanged for cross-tab sync. Key cleanup items:\n\n1. Dead code removed from src/content.js:\n   - _handleQuickTabStorageSync function\n   - SYNC_QUICK_TAB_STATE_FROM_BACKGROUND message handler\n\n2. BroadcastManager.js was deleted from src/features/quick-tabs/managers/\n\n3. Test files must import BroadcastManager from tests/mocks/BroadcastManagerMock.js (not the old path)\n\n4. scenario-08-container-grouping.test.js deleted - container isolation removed in v1.6.2.2\n\n5. Extension-test-utils waitForBroadcastSync renamed to _waitForStorageSync",
+  "category": "architecture",
+  "dateCreated": "2025-11-27T05:49:02.510Z",
+  "dateUpdated": "2025-11-27T05:49:02.510Z"
+}

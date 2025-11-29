@@ -1,0 +1,8 @@
+{
+  "id": "c09edef2-620c-4849-b8dd-4dbc9da3703d",
+  "title": "Quick Tab Storage Sync Fix v1.6.4",
+  "details": "Fixed critical Quick Tab Manager sync issues:\n\n1. Storage persistence after destroy - Added _persistToStorage() to DestroyHandler.js\n2. Storage persistence after minimize/restore - Added _persistToStorage() to VisibilityHandler.js\n3. Storage area mismatch - Settings now uses storage.local (not sync)\n4. Message handlers - Added CLOSE/MINIMIZE/RESTORE_QUICK_TAB in content.js\n5. Shared utilities - Created src/utils/storage-utils.js with generateSaveId(), getBrowserStorageAPI()\n6. Hash collision - background.js now tracks saveId in globalQuickTabState\n\nKey patterns:\n- Use minimizedManager.isMinimized(id) for consistent minimized state\n- Storage format: { tabs: [...], saveId, timestamp }\n- All Quick Tab storage uses storage.local (not sync)\n- Mock storage-utils in tests via jest.config.cjs moduleNameMapper",
+  "category": "architecture",
+  "dateCreated": "2025-11-28T22:18:07.797Z",
+  "dateUpdated": "2025-11-28T22:18:07.797Z"
+}

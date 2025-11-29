@@ -50,15 +50,21 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
 
       expect(manager.minimizedTabs.has('test-tab-1')).toBe(true);
-      expect(manager.minimizedTabs.get('test-tab-1')).toBe(mockTabWindow);
+      // v1.6.4.3 - Now stores snapshot, not direct reference
+      expect(manager.minimizedTabs.get('test-tab-1').window).toBe(mockTabWindow);
     });
 
-    test('should log addition', () => {
+    test('should log addition with snapshot', () => {
       manager.add('test-tab-1', mockTabWindow);
 
+      // v1.6.4.3 - Updated: Logs include snapshot details
       expect(console.log).toHaveBeenCalledWith(
-        '[MinimizedManager] Added minimized tab:',
-        'test-tab-1'
+        '[MinimizedManager] Added minimized tab with snapshot:',
+        {
+          id: 'test-tab-1',
+          savedPosition: { left: 100, top: 200 },
+          savedSize: { width: 800, height: 600 }
+        }
       );
     });
 
@@ -80,8 +86,9 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow2);
 
       expect(manager.minimizedTabs.size).toBe(1);
-      expect(manager.minimizedTabs.get('test-tab-1')).toBe(mockTabWindow2);
-      expect(manager.minimizedTabs.get('test-tab-1').width).toBe(1000);
+      // v1.6.4.3 - Now stores snapshot, not direct reference
+      expect(manager.minimizedTabs.get('test-tab-1').window).toBe(mockTabWindow2);
+      expect(manager.minimizedTabs.get('test-tab-1').window.width).toBe(1000);
     });
   });
 
@@ -129,7 +136,11 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
       const result = manager.restore('test-tab-1');
 
-      expect(result).toBe(true);
+      // v1.6.4.4 - restore() now returns object with snapshot data instead of just true
+      expect(result).toBeTruthy();
+      expect(result.window).toBe(mockTabWindow);
+      expect(result.position).toEqual({ left: 100, top: 200 });
+      expect(result.size).toEqual({ width: 800, height: 600 });
       expect(mockTabWindow.restore).toHaveBeenCalled();
     });
 
@@ -155,10 +166,13 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Restored tab with position:', {
+      // v1.6.4.3 - Updated: Logs include width and height with new snapshot format
+      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Restored tab with snapshot position:', {
         id: 'test-tab-1',
         left: 100,
-        top: 200
+        top: 200,
+        width: 800,
+        height: 600
       });
     });
 
@@ -183,7 +197,9 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', tabWithoutContainer);
       const result = manager.restore('test-tab-1');
 
-      expect(result).toBe(true);
+      // v1.6.4.4 - restore() now returns object with snapshot data instead of just true
+      expect(result).toBeTruthy();
+      expect(result.window).toBe(tabWithoutContainer);
       expect(tabWithoutContainer.restore).toHaveBeenCalled();
       // Should not throw when trying to set styles on null container
     });
@@ -399,32 +415,38 @@ describe('MinimizedManager', () => {
       manager.add('minimal', minimalTab);
       const result = manager.restore('minimal');
 
-      expect(result).toBe(true);
+      // v1.6.4.4 - restore() now returns object with snapshot data instead of just true
+      expect(result).toBeTruthy();
+      expect(result.window).toBe(minimalTab);
       expect(minimalTab.restore).toHaveBeenCalled();
-      // Should use undefined for missing properties
-      expect(minimalTab.container.style.left).toBe('undefinedpx');
+      // v1.6.4.3 - Updated: Should use default values (100) for missing properties
+      expect(minimalTab.container.style.left).toBe('100px');
     });
 
     test('should handle null tab window in add', () => {
+      // v1.6.4.3 - Updated: null tab window is now rejected
       manager.add('null-tab', null);
 
-      expect(manager.isMinimized('null-tab')).toBe(true);
-      expect(manager.getCount()).toBe(1);
+      expect(manager.isMinimized('null-tab')).toBe(false); // Not added
+      expect(manager.getCount()).toBe(0);
     });
 
     test('should handle undefined tab window in add', () => {
+      // v1.6.4.3 - Updated: undefined tab window is now rejected
       manager.add('undefined-tab', undefined);
 
-      expect(manager.isMinimized('undefined-tab')).toBe(true);
-      expect(manager.getCount()).toBe(1);
+      expect(manager.isMinimized('undefined-tab')).toBe(false); // Not added
+      expect(manager.getCount()).toBe(0);
     });
 
     test('should handle restoring null tab window', () => {
+      // v1.6.4.3 - Updated: Since null tab window is rejected in add,
+      // restore won't find it and returns false
       manager.add('null-tab', null);
 
       const result = manager.restore('null-tab');
 
-      expect(result).toBe(false); // tabWindow is null, so returns false
+      expect(result).toBe(false); // tabWindow was never added
     });
   });
 });

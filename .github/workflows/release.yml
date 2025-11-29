@@ -70,50 +70,147 @@ jobs:
         id: get_version
         run: |
           VERSION=$(grep -oP '(?<="version": ")[^"]*' dist/manifest.json)
+          if [ -z "$VERSION" ]; then
+            echo "❌ Failed to extract version from manifest"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extension version: $VERSION"
 
-      - name: Package .xpi Archive
-        working-directory: ./dist
+      - name: Package Firefox Extension (.xpi)
         run: |
-          echo "Packaging extension from dist/ directory..."
-          zip -r -1 -FS ../copy-url-hover-${{ github.ref_name }}.xpi * -x '*.DS_Store' -x '*.map'
-          echo "✓ XPI package created"
+          set -e
+          echo "📦 Packaging Firefox extension..."
+          [ -d "dist" ] || { echo "❌ dist directory not found"; exit 1; }
+          cd dist
+          zip -r -1 -FS ../firefox-extension-v${{ steps.get_version.outputs.version }}.xpi . -x '*.DS_Store' -x '*.map'
+          cd ..
+          [ -f "firefox-extension-v${{ steps.get_version.outputs.version }}.xpi" ] || { echo "❌ Firefox package failed"; exit 1; }
+          echo "✓ Firefox package created"
 
-      - name: Verify .xpi Package
+      - name: Verify Firefox Package
         run: |
-          echo "Verifying .xpi package contents..."
-          unzip -l copy-url-hover-${{ github.ref_name }}.xpi
-          XPI_SIZE=$(wc -c < copy-url-hover-${{ github.ref_name }}.xpi)
-          echo "✓ XPI package size: $XPI_SIZE bytes"
+          echo "Verifying Firefox package contents..."
+          unzip -l firefox-extension-v${{ steps.get_version.outputs.version }}.xpi | head -30
+          XPI_SIZE=$(wc -c < firefox-extension-v${{ steps.get_version.outputs.version }}.xpi)
+          echo "✓ Firefox package size: $XPI_SIZE bytes"
           if [ "$XPI_SIZE" -lt 50000 ]; then
-            echo "ERROR: XPI package seems too small ($XPI_SIZE bytes)!"
+            echo "ERROR: Firefox package seems too small ($XPI_SIZE bytes)!"
             exit 1
+          fi
+          
+          # Verify Firefox manifest has browser_specific_settings
+          unzip -p firefox-extension-v${{ steps.get_version.outputs.version }}.xpi manifest.json | grep -q "browser_specific_settings"
+          if [ $? -eq 0 ]; then
+            echo "✓ Firefox manifest contains browser_specific_settings"
+          else
+            echo "ERROR: Firefox manifest missing browser_specific_settings!"
+            exit 1
+          fi
+
+      - name: Package Chrome Extension (.zip)
+        run: |
+          set -e
+          [ -f "manifest.chrome.json" ] || { echo "❌ manifest.chrome.json not found"; exit 1; }
+          echo "📦 Packaging Chrome extension..."
+          
+          # Create dist-chrome directory
+          rm -rf dist-chrome
+          mkdir -p dist-chrome
+          
+          # Copy dist contents to dist-chrome
+          cp -r dist/* dist-chrome/
+          
+          # Copy and process Chrome-specific manifest
+          node -e "
+          const fs = require('fs');
+          try {
+            const chromeManifest = JSON.parse(fs.readFileSync('manifest.chrome.json', 'utf8'));
+            
+            // Fix paths
+            if (chromeManifest.background?.scripts) {
+              chromeManifest.background.scripts = chromeManifest.background.scripts.map(s => s.replace(/^dist\//, ''));
+            }
+            if (chromeManifest.content_scripts?.length) {
+              chromeManifest.content_scripts.forEach(cs => {
+                if (cs.js?.length) cs.js = cs.js.map(s => s.replace(/^dist\//, ''));
+              });
+            }
+            
+            fs.writeFileSync('dist-chrome/manifest.json', JSON.stringify(chromeManifest, null, 2) + '\n');
+            console.log('✓ Chrome manifest processed');
+          } catch (e) {
+            console.error('❌ Manifest processing failed:', e.message);
+            process.exit(1);
+          }
+          "
+          
+          # Package Chrome extension
+          cd dist-chrome
+          zip -r -1 -FS ../chrome-extension-v${{ steps.get_version.outputs.version }}.zip . -x '*.DS_Store' -x '*.map'
+          cd ..
+          [ -f "chrome-extension-v${{ steps.get_version.outputs.version }}.zip" ] || { echo "❌ Chrome package failed"; exit 1; }
+          echo "✓ Chrome package created"
+
+      - name: Verify Chrome Package
+        run: |
+          echo "Verifying Chrome package contents..."
+          unzip -l chrome-extension-v${{ steps.get_version.outputs.version }}.zip | head -30
+          ZIP_SIZE=$(wc -c < chrome-extension-v${{ steps.get_version.outputs.version }}.zip)
+          echo "✓ Chrome package size: $ZIP_SIZE bytes"
+          if [ "$ZIP_SIZE" -lt 50000 ]; then
+            echo "ERROR: Chrome package seems too small ($ZIP_SIZE bytes)!"
+            exit 1
+          fi
+          
+          # Verify Chrome manifest does NOT have browser_specific_settings
+          # grep -q returns 0 if pattern IS found, 1 if NOT found
+          if unzip -p chrome-extension-v${{ steps.get_version.outputs.version }}.zip manifest.json | grep -q "browser_specific_settings"; then
+            echo "WARNING: Chrome manifest contains browser_specific_settings (Chrome will ignore it)"
+          else
+            echo "✓ Chrome manifest correctly excludes browser_specific_settings"
           fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: copy-url-hover-*.xpi
+          files: |
+            firefox-extension-v${{ steps.get_version.outputs.version }}.xpi
+            chrome-extension-v${{ steps.get_version.outputs.version }}.zip
           append_body: true
           body: |
             ## Copy URL on Hover Extension v${{ steps.get_version.outputs.version }}
 
-            ### Installation Instructions
+            ### 🦊 Firefox Installation
 
-            1. Download the `copy-url-hover-${{ github.ref_name }}.xpi` file below
-            2. Open your Firefox/Zen Browser
+            1. Download the `firefox-extension-v${{ steps.get_version.outputs.version }}.xpi` file below
+            2. Open Firefox or Zen Browser
             3. Navigate to `about:addons`
             4. Click the gear icon and select "Install Add-on From File..."
             5. Select the downloaded `.xpi` file
 
-            ### Auto-Update Setup
+            **Auto-Update:** Once installed, the extension will automatically check for updates.
 
-            Once installed, the extension will automatically check for updates and notify you when a new version is available.
+            ### 🌐 Chrome/Edge Installation
 
-            ### Build Information
+            1. Download the `chrome-extension-v${{ steps.get_version.outputs.version }}.zip` file below
+            2. Extract the ZIP file to a folder
+            3. Open Chrome/Edge and navigate to `chrome://extensions/` or `edge://extensions/`
+            4. Enable "Developer mode" (toggle in top-right corner)
+            5. Click "Load unpacked" and select the extracted folder
 
-            - **Architecture:** Hybrid Modular/EventBus (v1.5.8.10+)
+            **Note:** Chrome Web Store submission requires manual upload of the ZIP file.
+
+            ### 📦 Package Information
+
+            - **Firefox Package:** `.xpi` (signed for auto-update)
+            - **Chrome Package:** `.zip` (for Chrome Web Store or manual installation)
+            - Both packages built from the same source with browser-specific manifests
+
+            ### 🏗️ Build Information
+
+            - **Architecture:** Hybrid Modular/EventBus (v1.5.8+)
+            - **Cross-Browser:** Uses webextension-polyfill for API compatibility
             - Built from modular source using Rollup bundler
             - Bundled content.js from modular src/ structure
             - CSS modularized into ui/css/ directory

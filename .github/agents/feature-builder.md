@@ -87,6 +87,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
+<<<<<<< HEAD
 **Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
@@ -95,9 +96,26 @@ UI)
 **Key Architecture Layers:**
 
 1. **Domain** - Pure business logic (QuickTab, Container entities)
+=======
+**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
+**Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
+
+**Key Architecture Layers:**
+1. **Domain** - Pure business logic (QuickTab entity)
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 2. **Storage** - Persistence abstraction (SyncStorage, SessionStorage)
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
+
+**Storage Format (v1.6.4):**
+```javascript
+{ tabs: [...], saveId: '...', timestamp: ... }
+```
+
+**Storage Utilities (v1.6.4):**
+- Use `src/utils/storage-utils.js` for persistence
+- Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
 ---
 
@@ -268,7 +286,7 @@ async function handleFeatureRequest(request) {
 
 **Coverage Target:** 80% minimum, 90%+ for critical paths
 
-**Use Playwright MCP:** Test browser-specific functionality
+**Use Jest unit tests:** Test browser-specific functionality
 
 ### Phase 5: Documentation
 
@@ -309,11 +327,18 @@ async function handleFeatureRequest(request) {
 - **CodeScene:** Check code health alongside ESLint ⭐
 
 **CRITICAL - Testing (BEFORE and AFTER):**
+<<<<<<< HEAD
 
 - **Playwright Firefox MCP:** Test extension BEFORE changes (baseline) ⭐
 - **Playwright Chrome MCP:** Test extension BEFORE changes (baseline) ⭐
 - **Playwright Firefox MCP:** Test extension AFTER changes (verify feature) ⭐
 - **Playwright Chrome MCP:** Test extension AFTER changes (verify feature) ⭐
+=======
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify feature) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify feature) ⭐
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
 - **Codecov:** Verify test coverage at end ⭐
 
 **Every Task:**
@@ -342,7 +367,7 @@ async function handleFeatureRequest(request) {
 
 ## Architecture Patterns
 
-### Solo/Mute Feature Pattern
+### Solo/Mute Feature Pattern (v1.6.3+)
 
 **Example of clean feature implementation:**
 
@@ -350,11 +375,13 @@ async function handleFeatureRequest(request) {
 
 ```javascript
 class QuickTab {
-  setSolo(tabId) {
-    if (this.mutedTabs.has(tabId)) {
-      throw new Error('Tab is muted');
+  toggleSolo(tabId) {
+    if (this.soloedOnTabs.includes(tabId)) {
+      this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== tabId);
+    } else {
+      this.soloedOnTabs.push(tabId);
+      this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== tabId);
     }
-    this.soloTab = tabId;
   }
 }
 ```
@@ -365,7 +392,7 @@ class QuickTab {
 class SoloMuteManager {
   async setTabSolo(quickTabId, tabId) {
     const quickTab = await this.storage.load(quickTabId);
-    quickTab.setSolo(tabId);
+    quickTab.toggleSolo(tabId);
     await this.storage.save(quickTab);
     this.eventBus.emit('solo-changed', { quickTabId, tabId });
   }
@@ -380,33 +407,35 @@ document.getElementById('solo-btn').addEventListener('click', async () => {
 });
 ```
 
-### Container Isolation Pattern
+### Cross-Tab Sync Pattern (v1.6.2+)
 
-**Always respect container boundaries:**
-
-```javascript
-class ContainerAwareFeature {
-  async getStateForTab(tab) {
-    const container = tab.cookieStoreId || 'firefox-default';
-    return await this.storage.getForContainer(container);
-  }
-}
-```
-
-### Cross-Tab Sync Pattern
-
-**Use BroadcastChannel for real-time sync:**
+**Use storage.onChanged for real-time sync:**
 
 ```javascript
 class SyncedFeature {
   constructor() {
+<<<<<<< HEAD
     this.channel = new BroadcastChannel('feature-sync');
     this.channel.onmessage = e => this.handleSync(e.data);
+=======
+    // Listen for storage changes from other tabs
+    browser.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes.quick_tabs_state_v2) {
+        this.handleSync(changes.quick_tabs_state_v2.newValue);
+      }
+    });
+>>>>>>> f51a27fa4ffaa0630428f94f32af12a93f12c457
   }
 
   async updateState(state) {
-    await this.storage.save(state);
-    this.channel.postMessage({ type: 'state-update', state });
+    // Save to storage - triggers storage.onChanged in other tabs
+    await browser.storage.local.set({
+      quick_tabs_state_v2: {
+        tabs: state.tabs,
+        saveId: generateId(),
+        timestamp: Date.now()
+      }
+    });
   }
 }
 ```
@@ -432,9 +461,9 @@ await browser.storage.local.set({ largeData: data });
 **Tabs:**
 
 ```javascript
-// Always include cookieStoreId
+// Get current tab
 const tab = await browser.tabs.get(tabId);
-const container = tab.cookieStoreId || 'firefox-default';
+// Use tab.id for Solo/Mute arrays
 ```
 
 **Messages:**
@@ -460,8 +489,9 @@ browser.runtime.onMessage.addListener((msg, sender) => {
 - [ ] End-to-end tests for user workflows
 - [ ] Edge case tests (null, undefined, empty, large values)
 - [ ] Error handling tests
-- [ ] Container isolation tests (if applicable)
-- [ ] Cross-tab sync tests (if applicable)
+- [ ] Solo/Mute tests (soloedOnTabs/mutedOnTabs arrays)
+- [ ] Global visibility tests
+- [ ] Cross-tab sync tests via storage.onChanged (if applicable)
 
 **Test File Organization:**
 

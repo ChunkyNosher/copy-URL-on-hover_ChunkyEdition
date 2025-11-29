@@ -1,7 +1,7 @@
 # GitHub Copilot Autonomous Testing Guide
 
 **Extension**: Copy URL on Hover - ChunkyEdition  
-**Version**: 1.6.0.13  
+**Version**: 1.6.3  
 **Testing System**: Test Bridge Pattern with Playwright MCP  
 **Coverage**: ~80% autonomous testing capability
 
@@ -23,14 +23,14 @@
 
 ### ✅ State Verification
 - **Storage checks**: Verify Quick Tabs in browser.storage.local
-- **Cross-tab sync**: Verify BroadcastChannel messaging
-- **Container isolation**: Verify cookieStoreId separation
+- **Cross-tab sync**: Verify storage.onChanged syncing (v1.6.2+)
+- **Global visibility**: All Quick Tabs visible everywhere (v1.6.3+)
 - **State persistence**: Verify data survives page reloads
 
 ### ✅ Cross-Tab Testing
 - **Multiple pages**: `context.newPage()` for new tabs
-- **Synchronization**: Verify Quick Tabs appear across tabs
-- **Isolation**: Verify container-specific Quick Tabs
+- **Synchronization**: Verify Quick Tabs appear across tabs via storage.onChanged
+- **Solo/Mute**: Verify visibility control with soloedOnTabs/mutedOnTabs arrays
 
 ### ✅ Visual Testing
 - **Screenshots**: Capture UI state at any point
@@ -203,10 +203,16 @@ Unpin a Quick Tab.
 - **id**: `string` - Quick Tab ID
 - **Returns**: `Promise<Object>` - Operation result
 
-##### `closeQuickTab(id)`
-Close a specific Quick Tab.
+##### `closeById(id)`
+Close a specific Quick Tab by ID.
 - **id**: `string` - Quick Tab ID
-- **Returns**: `Promise<Object>` - Operation result
+- **Returns**: `void` (synchronous operation)
+
+> **Note:** `closeQuickTab(id)` does NOT exist - use `closeById(id)` instead.
+
+##### `closeAll()`
+Close all Quick Tabs.
+- **Returns**: `void` (synchronous operation)
 
 ##### `waitForQuickTabCount(count, timeout = 5000)`
 Wait for Quick Tab count to reach expected value (polling utility).
@@ -278,7 +284,7 @@ ls -la dist/
 **Checks**:
 1. Add synchronization delays between tab creation and verification
 2. Use `waitForQuickTabCount()` instead of immediate checks
-3. Verify BroadcastChannel is working (check browser console)
+3. Verify storage.onChanged is firing (check browser console)
 
 **Solution**:
 ```javascript

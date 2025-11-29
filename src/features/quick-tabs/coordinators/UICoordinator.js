@@ -8,9 +8,15 @@
  * - Listen to state events and trigger UI updates
  *
  * Complexity: cc ≤ 3 per method
+ * 
+ * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container isolation to enable global Quick Tab visibility
+ * v1.6.3 - Removed cross-tab sync infrastructure (single-tab Quick Tabs only)
+ * v1.6.4.4 - FIX Bug #3: Use shared DOM cleanup utility
  */
 
-/* global createQuickTabWindow */
+import { CONSTANTS } from '../../../core/config.js';
+import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '../../../utils/dom.js';
+import { createQuickTabWindow } from '../window.js';
 
 export class UICoordinator {
   /**
@@ -59,6 +65,8 @@ export class UICoordinator {
 
   /**
    * Render a single QuickTabWindow from QuickTab entity
+   * v1.6.2.2 - Removed container check for global visibility
+   * v1.6.3 - Removed pending updates (no cross-tab sync)
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Rendered tab window
@@ -83,30 +91,110 @@ export class UICoordinator {
   }
 
   /**
+   * Check if minimizedManager is available and has required methods
+   * v1.6.4.5 - Helper to reduce complexity
+   * @private
+   * @returns {boolean} True if minimizedManager is usable
+   */
+  _hasMinimizedManager() {
+    return this.minimizedManager && 
+      typeof this.minimizedManager.isMinimized === 'function';
+  }
+
+  /**
+   * Apply snapshot data from minimizedManager to quickTab for restore
+   * v1.6.4.5 - FIX Issue #3: Use snapshot position/size when restoring
+   * @private
+   * @param {QuickTab} quickTab - QuickTab entity to apply snapshot to
+   */
+  _applySnapshotForRestore(quickTab) {
+    if (!this._hasMinimizedManager() || !this.minimizedManager.isMinimized(quickTab.id)) {
+      return;
+    }
+    
+    const snapshot = this.minimizedManager.getSnapshot(quickTab.id);
+    if (snapshot) {
+      console.log('[UICoordinator] Restoring from snapshot, applying saved position:', snapshot);
+      quickTab.position = snapshot.position;
+      quickTab.size = snapshot.size;
+    }
+    // Restore and remove from minimizedManager
+    this.minimizedManager.restore(quickTab.id);
+  }
+
+  /**
+   * Handle restore of existing minimized window
+   * v1.6.4.5 - Helper to reduce complexity
+   * @private
+   * @param {QuickTabWindow} tabWindow - The window to restore
+   * @param {string} quickTabId - Quick Tab ID
+   * @returns {QuickTabWindow} The restored window
+   */
+  _restoreExistingWindow(tabWindow, quickTabId) {
+    console.log('[UICoordinator] Tab is being restored from minimized state:', quickTabId);
+    
+    if (this._hasMinimizedManager() && this.minimizedManager.isMinimized(quickTabId)) {
+      const restoreResult = this.minimizedManager.restore(quickTabId);
+      if (restoreResult) {
+        console.log('[UICoordinator] Restored via minimizedManager:', restoreResult.position);
+      }
+    } else {
+      tabWindow.restore();
+      console.log('[UICoordinator] Restored tab directly:', quickTabId);
+    }
+    return tabWindow;
+  }
+
+  /**
    * Update an existing QuickTabWindow
+   * v1.6.3.4 - FIX Bug #6: Check for minimized state before rendering
+   * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
+   * v1.6.4.3 - FIX Issue #2: Check BOTH top-level AND nested minimized properties
+   * v1.6.4.4 - FIX Bug #2: When restoring, call restore() on existing window instead of render()
+   * v1.6.4.5 - FIX Issue #3: Use snapshot position/size when restoring, never create duplicate
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
+   * @returns {QuickTabWindow|undefined} Updated or newly rendered tab window, or undefined if skipped
    */
   update(quickTab) {
     const tabWindow = this.renderedTabs.get(quickTab.id);
-
+    const isMinimized = Boolean(quickTab.minimized || quickTab.visibility?.minimized);
+    
+    // Handle non-rendered tab
     if (!tabWindow) {
+      if (isMinimized) {
+        console.log('[UICoordinator] Tab is minimized, skipping render:', quickTab.id);
+        return;
+      }
+      // Apply snapshot if available before rendering
+      this._applySnapshotForRestore(quickTab);
       console.warn('[UICoordinator] Tab not rendered, rendering now:', quickTab.id);
       return this.render(quickTab);
     }
 
+    // Handle restore from minimized state
+    if (tabWindow.minimized && !isMinimized) {
+      return this._restoreExistingWindow(tabWindow, quickTab.id);
+    }
+
+    // Normal update
     console.log('[UICoordinator] Updating tab:', quickTab.id);
 
-    // Update tab properties
-    tabWindow.updatePosition(quickTab.position.left, quickTab.position.top);
-    tabWindow.updateSize(quickTab.size.width, quickTab.size.height);
-    tabWindow.updateZIndex(quickTab.zIndex);
+    const position = this._getSafePosition(quickTab);
+    const size = this._getSafeSize(quickTab);
+    const zIndex = this._getSafeZIndex(quickTab);
+
+    tabWindow.updatePosition(position.left, position.top);
+    tabWindow.updateSize(size.width, size.height);
+    tabWindow.updateZIndex(zIndex);
 
     console.log('[UICoordinator] Tab updated:', quickTab.id);
+    return tabWindow;
   }
 
   /**
    * Destroy a QuickTabWindow
+   * v1.6.4.4 - FIX Bug #3: Verify DOM cleanup after destroy
    *
    * @param {string} quickTabId - ID of tab to destroy
    */
@@ -115,6 +203,10 @@ export class UICoordinator {
 
     if (!tabWindow) {
       console.warn('[UICoordinator] Tab not found for destruction:', quickTabId);
+      // v1.6.4.4 - FIX Bug #3: Still try to clean up orphaned DOM elements using shared utility
+      if (removeQuickTabElement(quickTabId)) {
+        console.log('[UICoordinator] Removed orphaned DOM element for:', quickTabId);
+      }
       return;
     }
 
@@ -128,41 +220,93 @@ export class UICoordinator {
     // Remove from map
     this.renderedTabs.delete(quickTabId);
 
+    // v1.6.4.4 - FIX Bug #3: Verify DOM cleanup - use shared utility
+    if (removeQuickTabElement(quickTabId)) {
+      console.log('[UICoordinator] Removed orphaned DOM element for:', quickTabId);
+    }
+
     console.log('[UICoordinator] Tab destroyed:', quickTabId);
   }
 
   /**
    * Setup state event listeners
-   * v1.6.1 - CRITICAL FIX: Added state:refreshed listener to re-render when tab becomes visible
+   * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
+   * v1.6.4.3 - FIX Issue #3: Add state:cleared listener for reconciliation
    */
   setupStateListeners() {
     console.log('[UICoordinator] Setting up state listeners');
 
     // Listen to state changes and trigger UI updates
     this.eventBus.on('state:added', ({ quickTab }) => {
+      console.log('[UICoordinator] Received state:added event', { quickTabId: quickTab.id });
       this.render(quickTab);
     });
 
     this.eventBus.on('state:updated', ({ quickTab }) => {
+      console.log('[UICoordinator] Received state:updated event', { quickTabId: quickTab.id });
       this.update(quickTab);
     });
 
     this.eventBus.on('state:deleted', ({ id }) => {
+      console.log('[UICoordinator] Received state:deleted event', { quickTabId: id });
       this.destroy(id);
     });
 
-    // v1.6.1 - CRITICAL FIX: Listen to state:refreshed (fired when tab becomes visible)
-    // This ensures UI is updated with latest positions/sizes when switching tabs
-    this.eventBus.on('state:refreshed', () => {
-      console.log('[UICoordinator] State refreshed - re-rendering all visible tabs');
-      this._refreshAllRenderedTabs();
+    // v1.6.4.3 - FIX Issue #3: Listen for state:cleared to remove orphaned windows
+    this.eventBus.on('state:cleared', () => {
+      console.log('[UICoordinator] Received state:cleared event');
+      this.reconcileRenderedTabs();
     });
+
+    console.log('[UICoordinator] ✓ State listeners setup complete');
+  }
+
+  /**
+   * Reconcile rendered tabs with StateManager
+   * v1.6.4.3 - FIX Issue #3: Destroy orphaned tabs that exist in renderedTabs but not in StateManager
+   * v1.6.4.4 - FIX Bug #3: Also scan DOM for orphaned .quick-tab-window elements
+   * This handles the case where "Close All" removes tabs from storage but duplicates remain visible
+   */
+  reconcileRenderedTabs() {
+    console.log('[UICoordinator] Reconciling rendered tabs with StateManager');
+
+    // Get all tab IDs from StateManager
+    const stateTabIds = new Set(this.stateManager.getAll().map(qt => qt.id));
+
+    // Find and destroy orphaned tabs (in renderedTabs but not in StateManager)
+    const orphanedIds = [];
+    for (const [id] of this.renderedTabs) {
+      if (!stateTabIds.has(id)) {
+        orphanedIds.push(id);
+      }
+    }
+
+    // Destroy orphaned tabs
+    for (const id of orphanedIds) {
+      console.log('[UICoordinator] Destroying orphaned tab:', id);
+      this.destroy(id);
+    }
+
+    // v1.6.4.4 - FIX Bug #3: Use shared utility for comprehensive DOM cleanup
+    // Also remove from renderedTabs any IDs that were cleaned up
+    const cleanedCount = cleanupOrphanedQuickTabElements(stateTabIds);
+    
+    // Clean up renderedTabs for any elements that were removed
+    for (const [id] of this.renderedTabs) {
+      if (!stateTabIds.has(id)) {
+        this.renderedTabs.delete(id);
+      }
+    }
+
+    if (orphanedIds.length > 0 || cleanedCount > 0) {
+      console.log(`[UICoordinator] Reconciled: destroyed ${orphanedIds.length} tracked + ${cleanedCount} orphaned DOM element(s)`);
+    } else {
+      console.log('[UICoordinator] Reconciled: no orphaned tabs found');
+    }
   }
 
   /**
    * Refresh all rendered tabs with latest state
-   * v1.6.1 - CRITICAL FIX: Update UI for all rendered tabs when state is refreshed
-   * This is called when tab becomes visible to sync positions/sizes/visibility
    * @private
    */
   _refreshAllRenderedTabs() {
@@ -171,7 +315,7 @@ export class UICoordinator {
     const visibleIds = new Set(visibleTabs.map(qt => qt.id));
 
     // Destroy tabs that should no longer be visible
-    for (const [id, _tabWindow] of this.renderedTabs) {
+    for (const [id] of this.renderedTabs) {
       if (!visibleIds.has(id)) {
         console.log('[UICoordinator] Destroying no-longer-visible tab:', id);
         this.destroy(id);
@@ -193,30 +337,90 @@ export class UICoordinator {
   }
 
   /**
+   * Extract safe position values from QuickTab
+   * v1.6.4.2 - Helper to reduce complexity
+   * @private
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   * @returns {{left: number, top: number}} Safe position values
+   */
+  _getSafePosition(quickTab) {
+    const pos = quickTab.position || {};
+    return {
+      left: pos.left ?? 100,
+      top: pos.top ?? 100
+    };
+  }
+
+  /**
+   * Extract safe size values from QuickTab
+   * v1.6.4.2 - Helper to reduce complexity
+   * @private
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   * @returns {{width: number, height: number}} Safe size values
+   */
+  _getSafeSize(quickTab) {
+    const size = quickTab.size || {};
+    return {
+      width: size.width ?? 400,
+      height: size.height ?? 300
+    };
+  }
+
+  /**
+   * Extract safe zIndex value from QuickTab
+   * v1.6.4.4 - Helper for consistent zIndex handling
+   * @private
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   * @returns {number} Safe zIndex value
+   */
+  _getSafeZIndex(quickTab) {
+    return quickTab.zIndex ?? CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+  }
+
+  /**
+   * Extract safe visibility values from QuickTab
+   * v1.6.4.2 - Helper to reduce complexity
+   * @private
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   * @returns {Object} Safe visibility values
+   */
+  _getSafeVisibility(quickTab) {
+    const vis = quickTab.visibility || {};
+    return {
+      minimized: vis.minimized ?? false,
+      soloedOnTabs: vis.soloedOnTabs ?? [],
+      mutedOnTabs: vis.mutedOnTabs ?? []
+    };
+  }
+
+  /**
    * Create QuickTabWindow from QuickTab entity
+   * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
    * @private
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Created window
    */
   _createWindow(quickTab) {
-    // Use global createQuickTabWindow function
-    // (This function is defined in window.js and attached to global scope)
+    const position = this._getSafePosition(quickTab);
+    const size = this._getSafeSize(quickTab);
+    const visibility = this._getSafeVisibility(quickTab);
+    const zIndex = this._getSafeZIndex(quickTab);
+
+    // Create QuickTabWindow using imported factory function from window.js
     return createQuickTabWindow({
       id: quickTab.id,
       url: quickTab.url,
-      left: quickTab.position.left,
-      top: quickTab.position.top,
-      width: quickTab.size.width,
-      height: quickTab.size.height,
+      left: position.left,
+      top: position.top,
+      width: size.width,
+      height: size.height,
       title: quickTab.title,
       cookieStoreId: quickTab.container,
-      minimized: quickTab.visibility.minimized,
-      zIndex: quickTab.zIndex,
-      soloedOnTabs: quickTab.visibility.soloedOnTabs,
-      mutedOnTabs: quickTab.visibility.mutedOnTabs
-      // Note: Callbacks are passed through from QuickTabsManager facade
-      // They will be added when QuickTabsManager calls this with options
+      minimized: visibility.minimized,
+      zIndex: zIndex,
+      soloedOnTabs: visibility.soloedOnTabs,
+      mutedOnTabs: visibility.mutedOnTabs
     });
   }
 }
