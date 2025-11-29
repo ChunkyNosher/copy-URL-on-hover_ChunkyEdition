@@ -225,6 +225,22 @@ html {
   background: var(--border-color);
 }
 
+/* v1.6.4 - UI Fix: Button colors */
+/* Restore button - green arrow */
+.btn-icon[data-action="restore"] {
+  color: #4caf50;
+}
+
+/* Close button - light gray */
+.btn-icon[data-action="close"] {
+  color: #999;
+}
+
+.btn-icon[data-action="close"]:hover {
+  color: #f44336;
+  background: rgba(244, 67, 54, 0.1);
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;

@@ -1076,6 +1076,58 @@ function _handleClearAllQuickTabs(sendResponse) {
 }
 
 /**
+ * v1.6.4 - FIX Bug #5: Handle QUICK_TABS_CLEARED message from background
+ * This clears local Quick Tab state WITHOUT writing to storage
+ * (Background already cleared storage, we just need to clean up UI)
+ *
+ * @param {Function} sendResponse - Response callback from message listener
+ */
+function _handleQuickTabsCleared(sendResponse) {
+  console.log('[Content] Received QUICK_TABS_CLEARED - clearing local state only');
+
+  try {
+    // Guard: Quick Tabs manager not initialized
+    if (!quickTabsManager) {
+      console.warn('[Content] QuickTabsManager not initialized, nothing to clear');
+      sendResponse({ success: true, message: 'No Quick Tabs to clear', count: 0 });
+      return;
+    }
+
+    // Clear all Quick Tabs from UI without triggering storage write
+    // We need to destroy each tab's DOM elements but not call closeAll()
+    // which would write to storage
+    const tabIds = Array.from(quickTabsManager.tabs.keys());
+    console.log(`[Content] Clearing ${tabIds.length} Quick Tabs (local only, no storage write)`);
+    
+    // Destroy each Quick Tab's DOM directly
+    for (const id of tabIds) {
+      const tabWindow = quickTabsManager.tabs.get(id);
+      if (tabWindow && tabWindow.destroy) {
+        tabWindow.destroy();
+      }
+      quickTabsManager.tabs.delete(id);
+    }
+    
+    // Clear minimized manager
+    if (quickTabsManager.minimizedManager) {
+      quickTabsManager.minimizedManager.clear();
+    }
+
+    sendResponse({
+      success: true,
+      message: 'Local Quick Tabs cleared (storage already cleared by background)',
+      count: tabIds.length
+    });
+  } catch (error) {
+    console.error('[Content] Error clearing local Quick Tabs:', error);
+    sendResponse({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+/**
  * v1.6.4 - FIX Bug #4: Handle close Quick Tab request from Manager
  * @param {string} quickTabId - ID of the Quick Tab to close
  * @param {Function} sendResponse - Response callback from message listener
@@ -1234,6 +1286,16 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       return true; // Keep message channel open for async response
     }
     // ==================== END CLEAR ALL QUICK TABS HANDLER ====================
+
+    // ==================== COORDINATED CLEAR HANDLER ====================
+    // v1.6.4 - FIX Bug #5: Handle QUICK_TABS_CLEARED from background script
+    // This is called after background has already cleared storage
+    // Content script only clears local state (no storage write)
+    if (message.action === 'QUICK_TABS_CLEARED') {
+      _handleQuickTabsCleared(sendResponse);
+      return true;
+    }
+    // ==================== END COORDINATED CLEAR HANDLER ====================
 
     // ==================== MANAGER ACTION HANDLERS ====================
     // v1.6.4 - FIX Bug #4: Handle CLOSE/MINIMIZE/RESTORE actions from Quick Tab Manager
