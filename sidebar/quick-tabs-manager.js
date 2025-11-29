@@ -551,6 +551,7 @@ function setupEventListeners() {
 /**
  * Close all minimized Quick Tabs (NEW FEATURE #1)
  * v1.6.3 - FIX: Changed from storage.sync to storage.local and updated for unified format
+ * v1.6.4.5 - FIX Issue #4: Send CLOSE_QUICK_TAB to content scripts BEFORE updating storage
  */
 async function closeMinimizedTabs() {
   try {
@@ -559,15 +560,43 @@ async function closeMinimizedTabs() {
     if (!result || !result[STATE_KEY]) return;
 
     const state = result[STATE_KEY];
+    
+    // v1.6.4.5 - FIX Issue #4: Collect minimized tab IDs BEFORE filtering
+    const minimizedTabIds = [];
+    if (state.tabs && Array.isArray(state.tabs)) {
+      state.tabs.forEach(tab => {
+        if (isTabMinimizedHelper(tab)) {
+          minimizedTabIds.push(tab.id);
+        }
+      });
+    }
+    
+    console.log('[Manager] Closing minimized tabs:', minimizedTabIds);
+    
+    // v1.6.4.5 - FIX Issue #4: Send CLOSE_QUICK_TAB to ALL tabs for DOM cleanup FIRST
+    const browserTabs = await browser.tabs.query({});
+    for (const tabId of minimizedTabIds) {
+      browserTabs.forEach(tab => {
+        browser.tabs
+          .sendMessage(tab.id, {
+            action: 'CLOSE_QUICK_TAB',
+            quickTabId: tabId
+          })
+          .catch(() => {
+            // Ignore errors for tabs where content script isn't loaded
+          });
+      });
+    }
+    
+    // Now filter and update storage
     const hasChanges = filterMinimizedFromState(state);
 
     if (hasChanges) {
       // Save updated state to local storage (v1.6.3 fix)
       await browser.storage.local.set({ [STATE_KEY]: state });
 
-      // Notify all content scripts to update their local state
-      const tabs = await browser.tabs.query({});
-      tabs.forEach(tab => {
+      // Also send legacy CLOSE_MINIMIZED_QUICK_TABS for backwards compat
+      browserTabs.forEach(tab => {
         browser.tabs
           .sendMessage(tab.id, {
             action: 'CLOSE_MINIMIZED_QUICK_TABS'
