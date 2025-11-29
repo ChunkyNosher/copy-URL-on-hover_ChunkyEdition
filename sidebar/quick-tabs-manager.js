@@ -331,7 +331,32 @@ function _createFavicon(url) {
 }
 
 /**
+ * v1.6.4 - Helper to format size and position string for tab metadata
+ * Extracted to reduce complexity in _createTabInfo
+ * @param {Object} tab - Quick Tab data
+ * @returns {string|null} Formatted size/position string or null
+ */
+function _formatSizePosition(tab) {
+  if (!tab.width || !tab.height) {
+    return null;
+  }
+  
+  let sizeStr = `${Math.round(tab.width)}×${Math.round(tab.height)}`;
+  const hasLeft = tab.left !== undefined && tab.left !== null;
+  const hasTop = tab.top !== undefined && tab.top !== null;
+  
+  if (hasLeft && hasTop) {
+    sizeStr += ` at (${Math.round(tab.left)}, ${Math.round(tab.top)})`;
+  } else {
+    sizeStr += ' at (?, ?)';
+  }
+  
+  return sizeStr;
+}
+
+/**
  * Create tab info section (title + metadata)
+ * v1.6.4 - FIX Bug #6: Added position display (x, y) alongside size
  * @param {Object} tab - Quick Tab data
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {HTMLDivElement} Tab info element
@@ -359,8 +384,10 @@ function _createTabInfo(tab, isMinimized) {
     metaParts.push(`Tab ${tab.activeTabId}`);
   }
 
-  if (tab.width && tab.height) {
-    metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
+  // v1.6.4 - FIX Bug #6: Size with position display
+  const sizePosition = _formatSizePosition(tab);
+  if (sizePosition) {
+    metaParts.push(sizePosition);
   }
 
   if (tab.slotNumber) {

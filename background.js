@@ -1117,6 +1117,45 @@ messageRouter.register('RESET_GLOBAL_QUICK_TAB_STATE', () => {
   return { success: true, message: 'Global Quick Tab state cache reset' };
 });
 
+// v1.6.4 - FIX Bug #5: Coordinated clear handler to prevent storage write storm
+// Settings page sends this message instead of clearing storage + broadcasting to all tabs
+// Background clears storage ONCE, then broadcasts QUICK_TABS_CLEARED to all tabs
+messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
+  console.log('[Background] Coordinated clear: Clearing Quick Tab storage once');
+  
+  try {
+    // Step 1: Clear storage once (single write instead of N writes from N tabs)
+    await browser.storage.local.remove('quick_tabs_state_v2');
+    
+    // Step 2: Clear session storage if available
+    if (typeof browser.storage.session !== 'undefined') {
+      await browser.storage.session.remove('quick_tabs_session');
+    }
+    
+    // Step 3: Reset background's cache
+    globalQuickTabState.tabs = [];
+    globalQuickTabState.lastUpdate = Date.now();
+    globalQuickTabState.saveId = null;
+    lastBroadcastedStateHash = 0;
+    
+    // Step 4: Broadcast to all tabs to clear LOCAL state only (no storage write)
+    const tabs = await browser.tabs.query({});
+    for (const tab of tabs) {
+      browser.tabs.sendMessage(tab.id, {
+        action: 'QUICK_TABS_CLEARED'  // Different message: clear local only, no storage write
+      }).catch(() => {
+        // Content script might not be loaded in this tab
+      });
+    }
+    
+    console.log(`[Background] Coordinated clear complete: Notified ${tabs.length} tabs`);
+    return { success: true };
+  } catch (err) {
+    console.error('[Background] Coordinated clear failed:', err);
+    return { success: false, error: err.message };
+  }
+});
+
 console.log(`[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`);
 
 // Handle messages from content script and sidebar - using MessageRouter
@@ -1389,12 +1428,10 @@ async function _trySendManagerMessage() {
 // v1.6.1.4 - Updated for dual-sidebar implementation
 // v1.6.3.5 - FIX Bug #8: Use synchronous handler to preserve user input context
 //            browser.sidebarAction.open() requires synchronous call from user input
-// v1.6.4 - Removed floating panel. Both shortcuts now open sidebar.
+// v1.6.4 - Removed floating panel and duplicate command. Only toggle-quick-tabs-manager remains.
 browser.commands.onCommand.addListener(command => {
-  // v1.6.4 - Both shortcuts now open sidebar and switch to Manager tab
-  // toggle-quick-tabs-manager (Ctrl+Alt+Z) - opens sidebar (floating panel removed)
-  // open-quick-tabs-manager (Alt+Shift+Z) - opens sidebar
-  if (command === 'toggle-quick-tabs-manager' || command === 'open-quick-tabs-manager') {
+  // v1.6.4 - toggle-quick-tabs-manager (Ctrl+Alt+Z) opens sidebar and switches to Manager tab
+  if (command === 'toggle-quick-tabs-manager') {
     browser.sidebarAction.open()
       .then(() => new Promise(resolve => setTimeout(resolve, 300)))
       .then(() => _sendManagerTabMessage())

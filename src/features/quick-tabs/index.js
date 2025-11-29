@@ -252,7 +252,8 @@ class QuickTabsManager {
 
     this.updateHandler = new UpdateHandler(
       this.tabs,
-      this.internalEventBus
+      this.internalEventBus,
+      this.minimizedManager
     );
 
     this.visibilityHandler = new VisibilityHandler({

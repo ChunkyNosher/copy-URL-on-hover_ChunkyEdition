@@ -796,40 +796,41 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
   }
 });
 
+/**
+ * v1.6.4 - FIX Bug #5: Helper to handle coordinated clear response
+ * Extracted to reduce max-depth
+ * @param {Object} response - Response from background script
+ */
+function _handleClearResponse(response) {
+  if (response && response.success) {
+    showStatus('✓ Quick Tab storage cleared! Settings preserved.');
+  } else {
+    showStatus('✗ Error clearing storage: ' + (response?.error || 'Unknown error'));
+  }
+}
+
 // Clear Quick Tab storage button
+// v1.6.4 - FIX Bug #5: Coordinate through background script to prevent storage write storm
 document.getElementById('clearStorageBtn').addEventListener('click', async () => {
-  if (
-    confirm(
-      'This will clear Quick Tab positions and state. Your settings and keybinds will be preserved. Are you sure?'
-    )
-  ) {
-    try {
-      // v1.6.4 - FIX Bug #3: Clear from storage.local (not sync) to match Manager listener
-      await browserAPI.storage.local.remove('quick_tabs_state_v2');
+  const confirmed = confirm(
+    'This will clear Quick Tab positions and state. Your settings and keybinds will be preserved. Are you sure?'
+  );
+  
+  if (!confirmed) {
+    return;
+  }
 
-      // Clear session storage if available
-      // eslint-disable-next-line max-depth
-      if (typeof browserAPI.storage.session !== 'undefined') {
-        await browserAPI.storage.session.remove('quick_tabs_session');
-      }
-
-      showStatus('✓ Quick Tab storage cleared! Settings preserved.');
-
-      // Notify all tabs to close their Quick Tabs
-      const tabs = await browserAPI.tabs.query({});
-      tabs.forEach(tab => {
-        browserAPI.tabs
-          .sendMessage(tab.id, {
-            action: 'CLEAR_ALL_QUICK_TABS'
-          })
-          .catch(() => {
-            // Content script might not be loaded in this tab
-          });
-      });
-    } catch (err) {
-      showStatus('✗ Error clearing storage: ' + err.message);
-      console.error('Error clearing Quick Tab storage:', err);
-    }
+  try {
+    // v1.6.4 - FIX Bug #5: Send coordinated clear to background script
+    // Background will: 1) Clear storage once 2) Broadcast QUICK_TABS_CLEARED to all tabs
+    // This prevents N tabs from all trying to clear storage simultaneously
+    const response = await browserAPI.runtime.sendMessage({
+      action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
+    });
+    _handleClearResponse(response);
+  } catch (err) {
+    showStatus('✗ Error clearing storage: ' + err.message);
+    console.error('Error clearing Quick Tab storage:', err);
   }
 });
 

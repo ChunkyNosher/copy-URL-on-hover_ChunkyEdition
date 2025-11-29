@@ -21,12 +21,6 @@
       },
       "description": "Open Quick Tabs Manager in sidebar"
     },
-    "open-quick-tabs-manager": {
-      "suggested_key": {
-        "default": "Alt+Shift+Z"
-      },
-      "description": "Open Quick Tabs Manager in sidebar"
-    },
     "_execute_sidebar_action": {
       "suggested_key": {
         "default": "Alt+Shift+S"

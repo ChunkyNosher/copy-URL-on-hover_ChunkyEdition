@@ -1,0 +1,8 @@
+{
+  "id": "49d1fb5a-5569-43fc-8698-140504167958",
+  "title": "Quick Tab v1.6.4 Sync Fixes",
+  "details": "v1.6.4 implements storage persistence for Quick Tab operations:\n\n1. UpdateHandler - Added storage persistence after position/size changes end:\n   - handlePositionChangeEnd() now calls _persistToStorage()\n   - handleSizeChangeEnd() now calls _persistToStorage()\n   - Uses buildStateForStorage() and persistStateToStorage() from @utils/storage-utils.js\n   - Requires minimizedManager as 3rd constructor parameter\n\n2. VisibilityHandler - Already had _persistToStorage() for minimize/restore (v1.6.4 fix)\n\n3. Coordinated Clear Pattern for Settings page:\n   - Settings sends COORDINATED_CLEAR_ALL_QUICK_TABS to background\n   - Background clears storage ONCE, resets cache\n   - Background broadcasts QUICK_TABS_CLEARED to tabs\n   - Content script clears local state only (no storage write)\n   - Prevents storage write storm from N tabs\n\n4. Manager position display: \"800×600 at (250, 150)\" format",
+  "category": "technical_decisions",
+  "dateCreated": "2025-11-29T00:27:49.950Z",
+  "dateUpdated": "2025-11-29T00:27:49.950Z"
+}
