@@ -127,7 +127,8 @@ export class VisibilityHandler {
    * @param {string} id - Quick Tab ID
    */
   handleMinimize(id) {
-    console.log('[VisibilityHandler] Handling minimize for:', id);
+    // v1.6.4 - FIX Issue #1: Log at start to confirm button was clicked
+    console.log('[VisibilityHandler] Minimize button clicked for Quick Tab:', id);
 
     const tabWindow = this.quickTabsMap.get(id);
     if (!tabWindow) return;

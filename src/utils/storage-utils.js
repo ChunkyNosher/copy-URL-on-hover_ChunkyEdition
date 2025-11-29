@@ -84,7 +84,8 @@ export function buildStateForStorage(quickTabsMap, minimizedManager) {
 export function persistStateToStorage(state, logPrefix = '[StorageUtils]') {
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
-    console.log(`${logPrefix} Storage API not available, skipping persist`);
+    // v1.6.4 - FIX Issue #1: Use warn level for visibility in debugging
+    console.warn(`${logPrefix} Storage API not available, cannot persist`);
     return;
   }
 

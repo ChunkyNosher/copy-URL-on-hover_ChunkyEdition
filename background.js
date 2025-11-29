@@ -1359,6 +1359,9 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
+// v1.6.4.1 - Sidebar initialization delay constant (time for DOM ready + scripts loaded)
+const SIDEBAR_INIT_DELAY_MS = 300;
+
 /**
  * Open sidebar and switch to Manager tab
  * v1.6.1.4 - Extracted to fix max-depth eslint error
@@ -1372,8 +1375,8 @@ async function _openSidebarAndSwitchToManager() {
     if (!isOpen) {
       // Open sidebar if closed
       await browser.sidebarAction.open();
-      // Wait longer for sidebar to fully initialize (DOM ready + scripts loaded)
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Wait for sidebar to fully initialize (DOM ready + scripts loaded)
+      await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
     }
     
     // Send message to sidebar to switch to Manager tab with retry logic
@@ -1422,6 +1425,61 @@ async function _trySendManagerMessage() {
   }
 }
 
+/**
+ * Send message to sidebar to switch to Settings tab
+ * v1.6.4 - Added for Alt+Shift+S to always open to Settings tab
+ */
+async function _sendSettingsTabMessage() {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 150;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const success = await _trySendSettingsMessage();
+    if (success) {
+      return true;
+    }
+    // Sidebar might not be ready yet, wait before retry
+    if (attempt < MAX_RETRIES) {
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    }
+  }
+  console.warn('[Background] Could not send SWITCH_TO_SETTINGS_TAB message after', MAX_RETRIES, 'attempts');
+  return false;
+}
+
+/**
+ * Attempt to send SWITCH_TO_SETTINGS_TAB message
+ * v1.6.4.1 - Helper to reduce nesting depth
+ * @returns {Promise<boolean>} true if successful, false otherwise
+ */
+async function _trySendSettingsMessage() {
+  try {
+    await browser.runtime.sendMessage({
+      type: 'SWITCH_TO_SETTINGS_TAB'
+    });
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Get current primary tab state from sidebar
+ * v1.6.4 - Added for Ctrl+Alt+Z toggle behavior
+ * @returns {Promise<string|null>} 'settings', 'manager', or null if sidebar not responding
+ */
+async function _getCurrentPrimaryTab() {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: 'GET_CURRENT_PRIMARY_TAB'
+    });
+    return response?.primaryTab || null;
+  } catch (error) {
+    // Sidebar may not be open or not responding
+    return null;
+  }
+}
+
 // ==================== KEYBOARD COMMANDS ====================
 // Listen for keyboard commands
 // v1.6.0 - PHASE 4.3: Extracted toggle logic to fix max-depth
@@ -1429,22 +1487,93 @@ async function _trySendManagerMessage() {
 // v1.6.3.5 - FIX Bug #8: Use synchronous handler to preserve user input context
 //            browser.sidebarAction.open() requires synchronous call from user input
 // v1.6.4 - Removed floating panel and duplicate command. Only toggle-quick-tabs-manager remains.
+// v1.6.4.1 - Enhanced toggle behavior: Alt+Shift+S opens to Settings, Ctrl+Alt+Z toggles Manager
 browser.commands.onCommand.addListener(command => {
-  // v1.6.4 - toggle-quick-tabs-manager (Ctrl+Alt+Z) opens sidebar and switches to Manager tab
+  // v1.6.4.1 - toggle-quick-tabs-manager (Ctrl+Alt+Z) toggles Manager tab
+  // If sidebar is open and showing Manager, close it; otherwise open to Manager
   if (command === 'toggle-quick-tabs-manager') {
-    browser.sidebarAction.open()
-      .then(() => new Promise(resolve => setTimeout(resolve, 300)))
-      .then(() => _sendManagerTabMessage())
-      .then(() => console.log('[Sidebar] Opened sidebar and switched to Manager tab'))
-      .catch(err => console.error('[Sidebar] Error opening sidebar:', err));
+    _handleToggleQuickTabsManager();
   }
   
-  // _execute_sidebar_action is handled automatically by Firefox
-  // Just log for debugging
+  // v1.6.4.1 - _execute_sidebar_action (Alt+Shift+S) always opens to Settings tab
   if (command === '_execute_sidebar_action') {
-    console.log('[Sidebar] Keyboard shortcut triggered (Alt+Shift+S)');
+    _handleOpenToSettingsTab();
   }
 });
+
+/**
+ * Handle toggle-quick-tabs-manager command (Ctrl+Alt+Z)
+ * v1.6.4.1 - Toggle behavior: close if Manager showing, otherwise open to Manager
+ */
+async function _handleToggleQuickTabsManager() {
+  try {
+    // Check if sidebar is currently open
+    const isOpen = await browser.sidebarAction.isOpen({});
+    
+    if (!isOpen) {
+      // Sidebar is closed - open it and switch to Manager
+      await _openSidebarToManager();
+      return;
+    }
+    
+    // Sidebar is open - check what tab is showing and toggle accordingly
+    await _toggleManagerWhenSidebarOpen();
+  } catch (err) {
+    console.error('[Sidebar] Error handling toggle-quick-tabs-manager:', err);
+  }
+}
+
+/**
+ * Open sidebar and switch to Manager tab
+ * v1.6.4.1 - Helper to reduce nesting depth
+ */
+async function _openSidebarToManager() {
+  await browser.sidebarAction.open();
+  await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
+  await _sendManagerTabMessage();
+  console.log('[Sidebar] Opened sidebar and switched to Manager tab');
+}
+
+/**
+ * Toggle Manager when sidebar is already open
+ * v1.6.4.1 - Helper to reduce nesting depth
+ */
+async function _toggleManagerWhenSidebarOpen() {
+  const currentTab = await _getCurrentPrimaryTab();
+  
+  if (currentTab === 'manager') {
+    // Manager is already showing - close the sidebar
+    await browser.sidebarAction.close();
+    console.log('[Sidebar] Closed sidebar (Manager was showing)');
+  } else {
+    // Settings or other tab is showing - switch to Manager
+    await _sendManagerTabMessage();
+    console.log('[Sidebar] Switched to Manager tab');
+  }
+}
+
+/**
+ * Handle _execute_sidebar_action command (Alt+Shift+S)
+ * v1.6.4.1 - Always open sidebar to Settings tab
+ */
+async function _handleOpenToSettingsTab() {
+  try {
+    // Check if sidebar is currently open
+    const isOpen = await browser.sidebarAction.isOpen({});
+    
+    if (!isOpen) {
+      // Sidebar is closed - open it first
+      await browser.sidebarAction.open();
+      await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
+    }
+    
+    // Switch to Settings tab
+    await _sendSettingsTabMessage();
+    console.log('[Sidebar] Opened sidebar and switched to Settings tab');
+  } catch (err) {
+    console.error('[Sidebar] Error handling _execute_sidebar_action:', err);
+  }
+}
 // ==================== END KEYBOARD COMMANDS ====================
 
 // ==================== BROWSER ACTION HANDLER ====================
