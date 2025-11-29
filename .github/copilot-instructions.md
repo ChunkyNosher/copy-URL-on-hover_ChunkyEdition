@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4.4  
+**Version:** 1.6.4.5  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,13 +15,11 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 
-**Recent Changes (v1.6.4.4):**
-- **DOM Cleanup:** New `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js` for orphaned element removal
-- **Gesture Handler:** Synchronous sidebar operations in `background.js` for Firefox gesture context
-- **Debounced Writes:** `DestroyHandler` batches rapid destroys to prevent storage write storms
-- **MinimizedManager.restore():** Returns `{ window, savedPosition, savedSize }` object for proper restore
-- **UICoordinator:** `reconcileRenderedTabs()` now calls DOM cleanup; proper minimized state detection in `update()`
-- **VisibilityHandler:** Calls `QuickTabWindow.minimize()` directly for manager sidebar actions
+**Recent Changes (v1.6.4.5):**
+- **VisibilityHandler Debounce:** Prevents 200+ duplicate minimize events with `_pendingMinimize`/`_pendingRestore` Sets and 150ms per-tab debounce
+- **UICoordinator Restore Fix:** `_applySnapshotForRestore()` applies saved position/size BEFORE rendering to prevent duplicates at (100,100)
+- **Close Minimized Fix:** `closeMinimizedTabs()` collects IDs BEFORE filtering, sends `CLOSE_QUICK_TAB` to all browser tabs
+- **Backwards Compatibility:** `CLOSE_MINIMIZED_QUICK_TABS` handler added to content.js
 
 ---
 
@@ -115,7 +113,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 QuickTabsManager API (v1.6.4.4)
+## 🔧 QuickTabsManager API (v1.6.4.5)
 
 ### Correct Methods
 
@@ -130,7 +128,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 Storage Utilities (v1.6.4.4)
+## 🔧 Storage Utilities (v1.6.4.5)
 
 **Location:** `src/utils/storage-utils.js`
 
@@ -142,7 +140,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `buildStateForStorage(map, minMgr)` | Build state from quickTabsMap |
 | `persistStateToStorage(state, prefix)` | **Async** persist with 5-second timeout |
 
-**Private Helpers (v1.6.4.4):**
+**Private Helpers:**
 - `serializeTabForStorage(tab, isMinimized)` - Safe value serialization
 - `validateStateSerializable(state)` - Pre-write JSON validation
 - `_getNumericValue()` / `_getArrayValue()` - Safe property extraction
@@ -158,45 +156,53 @@ const success = await persistStateToStorage(state, '[MyHandler]'); // Returns bo
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.4.4)
+## 🏗️ Key Architecture Patterns (v1.6.4.5)
 
-### DOM Cleanup Pattern (v1.6.4.4)
-
-```javascript
-import { cleanupOrphanedQuickTabElements } from '../utils/dom.js';
-
-// In destroy/close operations, call after state cleanup:
-cleanupOrphanedQuickTabElements();
-```
-
-### Synchronous Gesture Handler Pattern (v1.6.4.4)
+### VisibilityHandler Debounce Pattern (v1.6.4.5)
 
 ```javascript
-// Firefox requires synchronous calls within user gesture context
-browser.commands.onCommand.addListener(command => {
-  if (command === 'toggle-quick-tabs-manager') {
-    _handleToggleSync(); // Synchronous helper, NOT async
-  }
-});
-```
+// Prevent 200+ duplicate minimize events per click
+this._pendingMinimize = new Set();
+this._pendingRestore = new Set();
+this._debounceTimers = new Map();
 
-### Debounced Batch Write Pattern (v1.6.4.4)
-
-```javascript
-// Batch rapid destroy operations to prevent storage write storms
-this._pendingDestroys = new Set();
-this._destroyDebounceTimer = null;
-
-scheduleDestroy(id) {
-  this._pendingDestroys.add(id);
-  clearTimeout(this._destroyDebounceTimer);
-  this._destroyDebounceTimer = setTimeout(() => {
-    this._processPendingDestroys();
-  }, 100);
+handleMinimize(id) {
+  if (this._pendingMinimize.has(id)) return; // Skip duplicate
+  this._pendingMinimize.add(id);
+  // ... do work ...
+  this._scheduleDebounce(id, 'minimize', 150);
 }
 ```
 
-### MinimizedManager Restore Pattern (v1.6.4.4)
+### UICoordinator Restore Pattern (v1.6.4.5)
+
+```javascript
+// Apply snapshot BEFORE rendering to prevent duplicates at (100,100)
+_applySnapshotForRestore(quickTab) {
+  const snapshotData = this.minimizedManager.getSnapshot(quickTab.id);
+  if (snapshotData) {
+    quickTab.position = snapshotData.position;
+    quickTab.size = snapshotData.size;
+  }
+}
+```
+
+### closeMinimizedTabs Pattern (v1.6.4.5)
+
+```javascript
+// Collect IDs BEFORE filtering, then send destroy to ALL browser tabs
+closeMinimizedTabs() {
+  const minimizedIds = state.tabs.filter(t => isTabMinimizedHelper(t)).map(t => t.id);
+  // Filter state...
+  for (const id of minimizedIds) {
+    browser.tabs.query({}).then(tabs => {
+      tabs.forEach(tab => browser.tabs.sendMessage(tab.id, { type: 'CLOSE_QUICK_TAB', id }));
+    });
+  }
+}
+```
+
+### MinimizedManager Restore Pattern
 
 ```javascript
 // restore() returns object with window and snapshot data
@@ -225,7 +231,7 @@ reconcileRenderedTabs() {
       this.destroy(id);
     }
   }
-  cleanupOrphanedQuickTabElements(); // v1.6.4.4
+  cleanupOrphanedQuickTabElements();
 }
 ```
 
@@ -314,21 +320,21 @@ Use the agentic-tools MCP to create memories instead.
 ## 📋 Quick Reference
 
 ### Key Files
-- `background.js` - Background script, storage listeners, saveId tracking, `_logMessageError()` utility, synchronous gesture handlers (v1.6.4.4)
-- `src/content.js` - Content script, Quick Tab creation, Manager action handlers
+- `background.js` - Background script, storage listeners, saveId tracking, synchronous gesture handlers
+- `src/content.js` - Content script, Quick Tab creation, Manager action handlers, `CLOSE_MINIMIZED_QUICK_TABS` (v1.6.4.5)
 - `src/utils/storage-utils.js` - Shared storage utilities with async persist
-- `src/utils/dom.js` - DOM utilities including `cleanupOrphanedQuickTabElements()` (v1.6.4.4)
+- `src/utils/dom.js` - DOM utilities including `cleanupOrphanedQuickTabElements()`
 - `src/features/quick-tabs/coordinators/SyncCoordinator.js` - Cross-tab sync
 - `src/features/quick-tabs/managers/StorageManager.js` - Storage operations
 - `src/features/quick-tabs/managers/StateManager.js` - State management
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering, `reconcileRenderedTabs()` with DOM cleanup (v1.6.4.4)
-- `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, `state:cleared` event (v1.6.4.4)
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering, `_applySnapshotForRestore()` (v1.6.4.5)
+- `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, `state:cleared` event
 - `src/features/quick-tabs/handlers/UpdateHandler.js` - Position/size updates with async persistence
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Solo/Mute, direct `minimize()` calls (v1.6.4.4)
-- `src/features/quick-tabs/minimized-manager.js` - Snapshot-based storage, `restore()` returns object (v1.6.4.4)
-- `src/features/quick-tabs/window.js` - QuickTabWindow with null-safe `updateZIndex()` (v1.6.4.4)
-- `sidebar/quick-tabs-manager.js` - Manager UI, `isTabMinimizedHelper()` function
-- `sidebar/settings.js` - Sidebar initialization, reads `_requestedPrimaryTab` on DOMContentLoaded
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Solo/Mute, debounce mechanism (v1.6.4.5)
+- `src/features/quick-tabs/minimized-manager.js` - Snapshot-based storage, `restore()` returns object
+- `src/features/quick-tabs/window.js` - QuickTabWindow with null-safe `updateZIndex()`
+- `sidebar/quick-tabs-manager.js` - Manager UI, `closeMinimizedTabs()` fix (v1.6.4.5)
+- `sidebar/settings.js` - Sidebar initialization
 
 ### Storage Key & Format
 
@@ -336,7 +342,7 @@ Use the agentic-tools MCP to create memories instead.
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
-**Unified Format (v1.6.4.4):**
+**Unified Format (v1.6.4.5):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -358,12 +364,13 @@ Use the agentic-tools MCP to create memories instead.
 }
 ```
 
-### Manager Action Messages (v1.6.4.4)
+### Manager Action Messages (v1.6.4.5)
 
 Content script handles these messages from Manager:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
-- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab (uses `QuickTabWindow.minimize()` directly)
-- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (uses snapshot data from `restore()`)
+- `CLOSE_MINIMIZED_QUICK_TABS` - Close all minimized Quick Tabs (v1.6.4.5 backwards compat)
+- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab
+- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (uses snapshot data)
 
 ---
 
