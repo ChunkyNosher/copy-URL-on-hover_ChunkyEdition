@@ -1,0 +1,8 @@
+{
+  "id": "6dd06da9-20a5-4bb3-9b79-23e71bf6d405",
+  "title": "Quick Tab Storage Persistence Pattern",
+  "details": "Quick Tab handlers (VisibilityHandler, UpdateHandler, DestroyHandler) must persist state to storage.local after any state change. Use buildStateForStorage(quickTabsMap, minimizedManager) and persistStateToStorage(state, logPrefix) from @utils/storage-utils.js. The storage key is 'quick_tabs_state_v2'. UpdateHandler requires minimizedManager as third constructor parameter for consistent state building. Coordinated clear operations should go through background script with COORDINATED_CLEAR_ALL_QUICK_TABS message to prevent storage write storms.",
+  "category": "architecture",
+  "dateCreated": "2025-11-29T00:32:44.858Z",
+  "dateUpdated": "2025-11-29T00:32:44.858Z"
+}
