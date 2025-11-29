@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  and implementing new manager features (v1.6.4.5 closeMinimizedTabs fix)
+  and implementing new manager features (v1.6.3.2 batch mode, mutex pattern)
 tools: ["*"]
 ---
 
@@ -28,16 +28,17 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**Key Manager Features (v1.6.4.5):**
+**Key Manager Features (v1.6.3.2):**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
-- **Minimize/Restore** - `VisibilityHandler` with debounce mechanism (v1.6.4.5)
-- **Close Minimized** - Collects IDs BEFORE filtering, sends to ALL browser tabs (v1.6.4.5)
+- **Minimize/Restore** - `VisibilityHandler` with mutex pattern (v1.6.3.2)
+- **Close Minimized** - Collects IDs BEFORE filtering, sends to ALL browser tabs
+- **Close All Batch Mode** - DestroyHandler._batchMode prevents storage write storms (v1.6.3.2)
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **Minimized Detection** - `isTabMinimizedHelper()`: `tab.minimized ?? tab.visibility?.minimized ?? false`
-- **Restore Snapshots** - `MinimizedManager.restore()` returns `{ window, savedPosition, savedSize }`
+- **Restore Snapshots** - `MinimizedManager.restore()` returns snapshot data
 
 **Storage Format:**
 ```javascript
@@ -48,9 +49,23 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.4.5 Key Patterns
+## v1.6.3.2 Key Patterns
 
-### closeMinimizedTabs Pattern (v1.6.4.5)
+### Restore Flow (UICoordinator Single Rendering Authority)
+
+```
+VisibilityHandler.handleRestore()
+    ↓
+Check _operationLocks (mutex pattern - skip if locked)
+    ↓
+MinimizedManager.restore(id) → applies snapshot, returns data
+    ↓
+emits 'state:updated' event
+    ↓
+UICoordinator.update(quickTab) → calls render() if needed
+```
+
+### closeMinimizedTabs Pattern (v1.6.3.2)
 
 ```javascript
 // CRITICAL: Collect IDs BEFORE filtering, then send to ALL browser tabs
@@ -75,29 +90,36 @@ async closeMinimizedTabs() {
 }
 ```
 
-### VisibilityHandler Debounce (v1.6.4.5)
+### Mutex Pattern for Visibility (v1.6.3.2)
 
 ```javascript
-// Prevents 200+ duplicate minimize events per click
-this._pendingMinimize = new Set();
-this._debounceTimers = new Map();
+// VisibilityHandler prevents duplicate operations
+this._operationLocks = new Map();
 
 handleMinimize(id) {
-  if (this._pendingMinimize.has(id)) return; // Skip duplicate
-  this._pendingMinimize.add(id);
-  // ... do work ...
-  this._scheduleDebounce(id, 'minimize', 150);
+  if (this._operationLocks.has(id)) return;  // Skip duplicate
+  this._operationLocks.set(id, 'minimize');
+  // Lock cleared after debounce timer completes
 }
 ```
 
-### MinimizedManager.restore()
+### Close All Batch Mode (v1.6.3.2)
 
 ```javascript
-const result = minimizedManager.restore(id);
-if (result) {
-  const { window: tabWindow, savedPosition, savedSize } = result;
-  tabWindow.setPosition(savedPosition.left, savedPosition.top);
+// DestroyHandler prevents storage write storms (1 write vs 6+)
+closeAll() {
+  this._batchMode = true;
+  try { for (const id of ids) this.destroy(id); }
+  finally { this._batchMode = false; this.persistState(); }
 }
+```
+
+### MinimizedManager.restore() (v1.6.3.2)
+
+```javascript
+// restore() only applies snapshot, returns data (no tabWindow.restore())
+const snapshot = minimizedManager.restore(id);
+// UICoordinator receives state:updated event and handles rendering
 ```
 
 ---
@@ -211,7 +233,7 @@ setupEventListeners() {
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
-## Manager Action Messages (v1.6.4.5)
+## Manager Action Messages (v1.6.3.2)
 
 Manager sends these messages to content script:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
@@ -228,7 +250,8 @@ Manager sends these messages to content script:
 - [ ] Solo/Mute indicators correct (arrays)
 - [ ] Header shows Solo/Mute counts
 - [ ] Minimize/Restore works
-- [ ] Close Minimized works for all tabs (v1.6.4.5)
+- [ ] Close Minimized works for all tabs
+- [ ] Close All uses batch mode (v1.6.3.2)
 - [ ] Position persists
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠

@@ -99,7 +99,7 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.4)
+- [ ] Version numbers match current release (1.6.3.2)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
@@ -116,7 +116,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.4
+- **Current Version:** 1.6.3.2
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -188,7 +188,7 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.4)
+- Version numbers (1.6.3.2)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
@@ -326,7 +326,7 @@ git commit -m "docs: update Copilot instructions and agents for v1.6.3"
 
 ---
 
-## Current Extension State (v1.6.4)
+## Current Extension State (v1.6.3.2)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -342,7 +342,7 @@ git commit -m "docs: update Copilot instructions and agents for v1.6.3"
 - **Storage Utilities:** Shared functions in `src/utils/storage-utils.js`
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages to content script
 
-### Storage Format (v1.6.4)
+### Storage Format (v1.6.3.2)
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -359,7 +359,7 @@ git commit -m "docs: update Copilot instructions and agents for v1.6.3"
 - ❌ Container isolation → Global visibility
 - ❌ containers storage format → unified tabs array
 - ❌ cookieStoreId filtering → removed
-- ❌ Floating panel → Sidebar-only Manager (v1.6.4)
+- ❌ Floating panel → Sidebar-only Manager (v1.6.3+)
 - ❌ storage.sync for Quick Tab state → storage.local
 
 ### Current Keyboard Shortcuts
@@ -435,7 +435,7 @@ See `.github/copilot-instructions.md` § MCP Tools
 ### 1. Outdated Version References
 
 **Error:** Documentation references v1.5.9 features
-**Fix:** Update all version refs to 1.6.4
+**Fix:** Update all version refs to 1.6.3.2
 
 ### 2. Deprecated Terminology
 
@@ -445,7 +445,7 @@ See `.github/copilot-instructions.md` § MCP Tools
 ### 3. Old Sync Mechanism / Storage Format
 
 **Error:** Referencing BroadcastChannel or container-based storage
-**Fix:** Update to storage.onChanged (v1.6.2+) and unified format (v1.6.4)
+**Fix:** Update to storage.onChanged (v1.6.2+) and unified format (v1.6.3+)
 
 ### 4. Container References
 
@@ -507,7 +507,7 @@ See `.github/copilot-instructions.md` § MCP Tools
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.4
+- [ ] Version numbers updated to 1.6.3.2
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] No container/cookieStoreId references (except removal notes)

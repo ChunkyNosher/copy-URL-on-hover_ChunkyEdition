@@ -51,12 +51,12 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
-**v1.6.4 Update:** Shared storage utilities, Manager action messages, saveId tracking
+**v1.6.3.2 Update:** Shared storage utilities, Manager action messages, saveId tracking
 
-**Storage Format (v1.6.4):**
+**Storage Format (v1.6.3.2):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```

@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
@@ -65,13 +65,12 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
 
-**Recent Architectural Fixes (v1.6.4.4):**
-- Synchronous gesture handlers in `background.js` (Firefox requires sync within gesture context)
-- Debounced batch writes in `DestroyHandler` prevent storage write storms
-- `MinimizedManager.restore()` returns snapshot object for proper window restoration
-- `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js` for DOM cleanup
-- `UICoordinator.update()` proper minimized state detection and restore path
-- `window.js` null-safe `updateZIndex()` with defensive checks
+**v1.6.3.2 Architectural Fixes:**
+- UICoordinator single rendering authority (restore does NOT call render directly)
+- Mutex pattern in VisibilityHandler (_operationLocks prevents duplicates)
+- MinimizedManager.restore() only applies snapshot, returns data (no tabWindow.restore())
+- DragController destroyed flag prevents ghost events after cleanup
+- DestroyHandler._batchMode prevents storage write storms (1 write vs 6+)
 
 ---
 
@@ -201,7 +200,7 @@ Only if:
 
 ## Critical Areas Requiring Architectural Awareness
 
-### Global Visibility (v1.6.4.4)
+### Global Visibility (v1.6.3.2)
 
 **Common Root Causes:**
 - Using old container-based storage format
@@ -213,7 +212,7 @@ Only if:
 - All Quick Tabs globally visible by default
 - Use shared storage utilities from `src/utils/storage-utils.js`
 
-### Solo/Mute State Bugs (v1.6.4.4)
+### Solo/Mute State Bugs (v1.6.3.2)
 
 **Common Root Causes:**
 - Not using soloedOnTabs/mutedOnTabs arrays
@@ -225,7 +224,7 @@ Only if:
 - Enforce invariants at domain layer
 - Centralize state transition logic
 
-### Quick Tab Lifecycle Bugs (v1.6.4.4)
+### Quick Tab Lifecycle Bugs (v1.6.3.2)
 
 **Common Root Causes:**
 - Initialization order dependencies
@@ -239,19 +238,21 @@ Only if:
 - Enforce cleanup patterns with `cleanupOrphanedQuickTabElements()`
 - Use debounced batch writes for destroy operations
 
-### Minimize/Restore Architecture (v1.6.4.4)
+### Minimize/Restore Architecture (v1.6.3.2)
 
 **Common Root Causes:**
-- Duplicate windows on restore
+- Duplicate windows on restore (multiple sources triggering render)
 - Wrong position/size after restore
 - Race conditions between minimize and restore
 
-**Architectural Solution:**
-- `MinimizedManager.restore()` returns snapshot object `{ window, savedPosition, savedSize }`
-- Apply snapshot to correct window instance
+**Architectural Solution (v1.6.3.2):**
+- **UICoordinator is single rendering authority:** restore() does NOT call render() directly
+- **Mutex pattern:** VisibilityHandler._operationLocks prevents duplicate operations
+- **MinimizedManager.restore():** Only applies snapshot, returns data (no tabWindow.restore())
+- Restore flow: VisibilityHandler → MinimizedManager → state:updated event → UICoordinator.update()
 - Proper minimized state detection: `tab.minimized ?? tab.visibility?.minimized ?? false`
 
-### Sidebar Gesture Handling (v1.6.4.4)
+### Sidebar Gesture Handling (v1.6.3.2)
 
 **Common Root Causes:**
 - Async operations losing Firefox gesture context
