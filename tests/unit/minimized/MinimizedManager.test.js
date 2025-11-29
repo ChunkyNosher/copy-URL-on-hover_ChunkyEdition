@@ -136,12 +136,14 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
       const result = manager.restore('test-tab-1');
 
-      // v1.6.4.4 - restore() now returns object with snapshot data instead of just true
+      // v1.6.4.7 - restore() only applies snapshot and returns data, does NOT call tabWindow.restore()
+      // UICoordinator is now the single rendering authority and will call restore() then render()
       expect(result).toBeTruthy();
       expect(result.window).toBe(mockTabWindow);
       expect(result.position).toEqual({ left: 100, top: 200 });
       expect(result.size).toEqual({ width: 800, height: 600 });
-      expect(mockTabWindow.restore).toHaveBeenCalled();
+      // v1.6.4.7 - tabWindow.restore() is NO LONGER called here (fixes Issue #1 duplicate window)
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
 
     test('should remove tab from minimizedTabs after restoration', () => {
@@ -151,33 +153,31 @@ describe('MinimizedManager', () => {
       expect(manager.minimizedTabs.has('test-tab-1')).toBe(false);
     });
 
-    test('should apply snapshot to instance properties before restoring (v1.6.4.6)', () => {
+    test('should apply snapshot to instance properties (v1.6.4.7)', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // v1.6.4.6 - Verify snapshot was applied to instance BEFORE calling restore
-      // The instance properties should have the snapshot values
+      // v1.6.4.7 - Verify snapshot was applied to instance properties
+      // UICoordinator will call tabWindow.restore() then render() using these values
       expect(mockTabWindow.left).toBe(100);
       expect(mockTabWindow.top).toBe(200);
       expect(mockTabWindow.width).toBe(800);
       expect(mockTabWindow.height).toBe(600);
-      // restore() is called after applying snapshot
-      expect(mockTabWindow.restore).toHaveBeenCalled();
+      // v1.6.4.7 - tabWindow.restore() is NO LONGER called by MinimizedManager
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
 
     test('should log restoration with position details', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // v1.6.4.3 - Updated: Logs include width and height with new snapshot format
+      // v1.6.4.7 - Updated log message to reflect deferred rendering
       expect(console.log).toHaveBeenCalledWith(
-        '[MinimizedManager] Restored tab with snapshot position:',
+        '[MinimizedManager] Restored snapshot (render deferred to UICoordinator):',
         {
           id: 'test-tab-1',
-          left: 100,
-          top: 200,
-          width: 800,
-          height: 600
+          position: { left: 100, top: 200 },
+          size: { width: 800, height: 600 }
         }
       );
     });
@@ -203,26 +203,23 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', tabWithoutContainer);
       const result = manager.restore('test-tab-1');
 
-      // v1.6.4.4 - restore() now returns object with snapshot data instead of just true
+      // v1.6.4.7 - restore() only applies snapshot, does NOT call tabWindow.restore()
       expect(result).toBeTruthy();
       expect(result.window).toBe(tabWithoutContainer);
-      expect(tabWithoutContainer.restore).toHaveBeenCalled();
-      // Should not throw when trying to set styles on null container
+      // v1.6.4.7 - tabWindow.restore() is NO LONGER called here
+      expect(tabWithoutContainer.restore).not.toHaveBeenCalled();
     });
 
-    test('should apply correct snapshot before restore even if restore mutates state (v1.6.4.6)', () => {
-      // Mock restore to change position (defensive behavior test)
-      mockTabWindow.restore = jest.fn(() => {
-        // Even if restore changes the position, snapshot was applied before
-        // In real code, render() will use the instance properties
-      });
-
+    test('should apply correct snapshot before caller invokes restore (v1.6.4.7)', () => {
+      // v1.6.4.7 - MinimizedManager only applies snapshot, caller (UICoordinator) calls restore
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // v1.6.4.6 - Should have applied correct snapshot to instance BEFORE calling restore
+      // v1.6.4.7 - Snapshot should be applied to instance
       expect(mockTabWindow.left).toBe(100);
       expect(mockTabWindow.top).toBe(200);
+      // v1.6.4.7 - restore() not called by MinimizedManager
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
   });
 
@@ -373,7 +370,9 @@ describe('MinimizedManager', () => {
       manager.restore('test-tab-1');
 
       expect(manager.isMinimized('test-tab-1')).toBe(false);
-      expect(mockTabWindow.restore).toHaveBeenCalledTimes(2);
+      // v1.6.4.7 - MinimizedManager.restore() no longer calls tabWindow.restore()
+      // The caller (UICoordinator) is responsible for calling it
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
 
     test('should maintain separate state for different tabs', () => {
@@ -393,7 +392,8 @@ describe('MinimizedManager', () => {
 
       expect(manager.isMinimized('test-tab-1')).toBe(false);
       expect(manager.isMinimized('test-tab-2')).toBe(true);
-      expect(mockTabWindow.restore).toHaveBeenCalled();
+      // v1.6.4.7 - MinimizedManager.restore() no longer calls tabWindow.restore()
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
       expect(mockTabWindow2.restore).not.toHaveBeenCalled();
     });
 
@@ -423,11 +423,12 @@ describe('MinimizedManager', () => {
       manager.add('minimal', minimalTab);
       const result = manager.restore('minimal');
 
-      // v1.6.4.4 - restore() now returns object with snapshot data instead of just true
+      // v1.6.4.7 - restore() only applies snapshot, does NOT call tabWindow.restore()
       expect(result).toBeTruthy();
       expect(result.window).toBe(minimalTab);
-      expect(minimalTab.restore).toHaveBeenCalled();
-      // v1.6.4.6 - Snapshot applies to instance properties (with defaults) before restore
+      // v1.6.4.7 - MinimizedManager.restore() no longer calls tabWindow.restore()
+      expect(minimalTab.restore).not.toHaveBeenCalled();
+      // v1.6.4.6 - Snapshot applies to instance properties (with defaults)
       expect(minimalTab.left).toBe(100);
       expect(minimalTab.top).toBe(100);
     });

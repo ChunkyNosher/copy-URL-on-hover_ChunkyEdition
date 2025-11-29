@@ -164,6 +164,9 @@ export class UICoordinator {
   /**
    * Handle restore of existing minimized window
    * v1.6.4.5 - Helper to reduce complexity
+   * v1.6.4.7 - FIX Issue #1 CRITICAL: UICoordinator is single rendering authority
+   *   MinimizedManager.restore() now only applies snapshot and returns result.
+   *   We need to call tabWindow.restore() here, then render if needed.
    * @private
    * @param {QuickTabWindow} tabWindow - The window to restore
    * @param {string} quickTabId - Quick Tab ID
@@ -173,14 +176,28 @@ export class UICoordinator {
     console.log('[UICoordinator] Tab is being restored from minimized state:', quickTabId);
 
     if (this._hasMinimizedManager() && this.minimizedManager.isMinimized(quickTabId)) {
+      // MinimizedManager.restore() applies snapshot to instance but does NOT render
       const restoreResult = this.minimizedManager.restore(quickTabId);
       if (restoreResult) {
-        console.log('[UICoordinator] Restored via minimizedManager:', restoreResult.position);
+        console.log('[UICoordinator] Applied snapshot from minimizedManager:', restoreResult.position);
+        // v1.6.4.7 - Now call restore() on the window (which updates minimized flag but does NOT render)
+        tabWindow.restore();
       }
     } else {
+      // No snapshot available, just call restore() on the window
       tabWindow.restore();
-      console.log('[UICoordinator] Restored tab directly:', quickTabId);
+      console.log('[UICoordinator] Restored tab directly (no snapshot):', quickTabId);
     }
+
+    // v1.6.4.7 - FIX Issue #1: UICoordinator is the single rendering authority
+    // After restore() updates state, if DOM doesn't exist, we need to render it
+    if (!tabWindow.isRendered()) {
+      console.log('[UICoordinator] DOM not attached after restore, rendering:', quickTabId);
+      tabWindow.render();
+      // Update renderedTabs map
+      this.renderedTabs.set(quickTabId, tabWindow);
+    }
+
     return tabWindow;
   }
 

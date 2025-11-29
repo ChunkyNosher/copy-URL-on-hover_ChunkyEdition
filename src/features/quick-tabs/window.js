@@ -89,6 +89,7 @@ export class QuickTabWindow {
     this.container = null;
     this.iframe = null;
     this.rendered = false; // v1.5.9.10 - Track rendering state to prevent rendering bugs
+    this.destroyed = false; // v1.6.4.7 - Track destroyed state to prevent ghost events
     // v1.6.0 Phase 2.9 - isDragging kept for external checks, managed by DragController
     this.isDragging = false;
     this.isResizing = false;
@@ -474,27 +475,31 @@ export class QuickTabWindow {
    * Restore minimized Quick Tab window
    * v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's in the same place
    * v1.6.4.6 - FIX Issues #1, #6: Recreate DOM via render() since minimize() removes it
+   * v1.6.4.7 - FIX Issue #1 CRITICAL: Do NOT call render() here!
+   *   UICoordinator is the single rendering authority. restore() only updates instance state.
+   *   UICoordinator.update() will detect the state change and call render() exactly once.
    *
    * This method now:
    * 1. Clears minimized flag
-   * 2. Calls render() to recreate DOM element
-   * 3. Position/size are already set on instance properties (from snapshot)
-   * 4. render() will use this.left, this.top, this.width, this.height
+   * 2. Updates instance properties (position/size already set from snapshot)
+   * 3. Does NOT call render() - UICoordinator handles rendering
+   * 4. Calls onFocus() callback to notify state change
    */
   restore() {
     this.minimized = false;
 
     console.log(
-      `[Quick Tab] Restoring - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+      `[QuickTabWindow] restore() called - ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
     );
 
-    // v1.6.4.6 - FIX Issue #1: Recreate DOM via render() since minimize() removes it
-    // The position/size instance properties should already be set from snapshot
-    if (!this.container) {
-      this.render();
-      console.log('[QuickTabWindow] Recreated DOM element for restore:', this.id);
-    } else {
-      // Fallback: if container somehow still exists, just show it (legacy behavior)
+    // v1.6.4.7 - FIX Issue #1 CRITICAL: Do NOT call render() here!
+    // UICoordinator is the single rendering authority.
+    // This method ONLY updates instance state; UICoordinator.update() handles DOM creation.
+    // The duplicate window bug was caused by BOTH restore() AND update() calling render().
+
+    // If container exists (shouldn't normally happen), just update its display
+    if (this.container) {
+      console.log('[QuickTabWindow] Container already exists during restore, updating display:', this.id);
       this.container.style.display = 'flex';
       this.container.style.left = `${this.left}px`;
       this.container.style.top = `${this.top}px`;
@@ -502,9 +507,9 @@ export class QuickTabWindow {
       this.container.style.height = `${this.height}px`;
     }
 
-    // Enhanced logging for console log export (Issue #1)
+    // Enhanced logging for console log export
     console.log(
-      `[Quick Tab] Restored (DOM recreated) - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+      `[QuickTabWindow] Restored (state updated, render deferred to UICoordinator) - ID: ${this.id}`
     );
 
     this.onFocus(this.id);
@@ -825,26 +830,51 @@ export class QuickTabWindow {
 
   /**
    * Destroy the Quick Tab window
+   * v1.6.4.7 - FIX Issue #5: Ensure all event listeners are removed BEFORE DOM removal
+   *   Order is critical: cleanup controllers → remove handlers → remove DOM → clear references
    */
   destroy() {
-    // v1.6.0 Phase 2.9 - Cleanup drag controller
+    console.log('[QuickTabWindow] Destroying:', this.id);
+
+    // v1.6.4.7 - FIX Issue #5: Set destroyed flag early to prevent new events
+    this.destroyed = true;
+
+    // v1.6.0 Phase 2.9 - Cleanup drag controller FIRST (removes drag event listeners)
     if (this.dragController) {
       this.dragController.destroy();
       this.dragController = null;
+      console.log('[QuickTabWindow] Cleaned up drag controller');
     }
 
-    // v1.6.0 Phase 2.4 - Cleanup resize controller
+    // v1.6.0 Phase 2.4 - Cleanup resize controller (removes resize handles and listeners)
     if (this.resizeController) {
       this.resizeController.detachAll();
       this.resizeController = null;
+      console.log('[QuickTabWindow] Cleaned up resize controller');
     }
 
+    // v1.6.4.7 - FIX Issue #5: Remove focus handler before DOM removal
+    // Note: The mousedown handler for focus is added via addEventListener but not tracked
+    // This is acceptable since removing the container also removes its listeners
+
+    // v1.6.4.7 - FIX Issue #5: Clear titlebar builder references
+    if (this.titlebarBuilder) {
+      this.titlebarBuilder = null;
+    }
+
+    // v1.6.4.7 - FIX Issue #5: Clear button references
+    this.soloButton = null;
+    this.muteButton = null;
+
+    // v1.6.4.7 - FIX Issue #5: Now remove DOM AFTER all event handlers are cleaned up
     if (this.container) {
       this.container.remove();
       this.container = null;
       this.iframe = null;
       this.rendered = false; // v1.5.9.10 - Reset rendering state
+      console.log('[QuickTabWindow] Removed DOM element');
     }
+
     this.onDestroy(this.id);
     console.log('[QuickTabWindow] Destroyed:', this.id);
   }

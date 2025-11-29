@@ -1,0 +1,8 @@
+{
+  "id": "077ef1bf-f466-4a00-a4cc-45405b4861c2",
+  "title": "v1.6.4.7 Quick Tab Render Authority Fix",
+  "details": "## v1.6.4.7 Quick Tab Architecture Fix\n\n### UICoordinator as Single Rendering Authority\n\nThe duplicate window on restore bug (Issue #1) was caused by both `QuickTabWindow.restore()` and `UICoordinator.update()` calling `render()` independently within the same millisecond.\n\n**Fixed Architecture:**\n1. `QuickTabWindow.restore()` - Only updates instance state (minimized flag), does NOT call render()\n2. `MinimizedManager.restore()` - Only applies snapshot to instance properties, does NOT call tabWindow.restore()\n3. `UICoordinator._restoreExistingWindow()` - THE SINGLE AUTHORITY that calls:\n   - `minimizedManager.restore(id)` - applies snapshot\n   - `tabWindow.restore()` - updates state\n   - `tabWindow.render()` - creates DOM (only if not already rendered)\n\n### Mutex Pattern for Visibility Operations\n\nAdded mutex/lock pattern to prevent duplicate operations from multiple sources:\n- `_operationLocks` Map with 200ms lock duration\n- `_tryAcquireLock('minimize'|'restore', id)` - returns false if lock held\n- `_releaseLock('minimize'|'restore', id)` - releases after debounce\n\n### Batch Mode for closeAll\n\nAdded `_batchMode` flag to DestroyHandler:\n- `closeAll()` sets batch mode before destroying tabs\n- Individual `handleDestroy()` calls skip storage persist when in batch mode\n- Single atomic write after all cleanup completes",
+  "category": "project_context",
+  "dateCreated": "2025-11-29T22:53:20.376Z",
+  "dateUpdated": "2025-11-29T22:53:20.376Z"
+}
