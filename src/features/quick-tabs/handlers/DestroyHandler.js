@@ -6,7 +6,7 @@
  * v1.6.4 - FIX Bug #1: Persist to storage after destroy
  * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
  * v1.6.4.4 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
- * v1.6.4.7 - FIX Issue #6: Add batch mode flag to prevent storage write storm during closeAll
+ * v1.6.3.2 - FIX Issue #6: Add batch mode flag to prevent storage write storm during closeAll
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -17,7 +17,7 @@
  * - Emit destruction events
  * - Persist state to storage after destruction (debounced to prevent write storms)
  *
- * @version 1.6.4.7
+ * @version 1.6.3.2
  */
 
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
@@ -31,7 +31,7 @@ const STORAGE_DEBOUNCE_DELAY = 150;
  * Manages Quick Tab destruction and cleanup operations (local only, no cross-tab sync)
  * v1.6.4 - Now persists state to storage after destruction
  * v1.6.4.4 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
- * v1.6.4.7 - FIX Issue #6: Batch mode to prevent storage write storm during closeAll
+ * v1.6.3.2 - FIX Issue #6: Batch mode to prevent storage write storm during closeAll
  */
 export class DestroyHandler {
   /**
@@ -63,7 +63,7 @@ export class DestroyHandler {
     // v1.6.4.4 - FIX Bug #7: Track destroyed IDs to prevent resurrection
     this._destroyedIds = new Set();
     
-    // v1.6.4.7 - FIX Issue #6: Batch mode flag to skip individual persists during closeAll
+    // v1.6.3.2 - FIX Issue #6: Batch mode flag to skip individual persists during closeAll
     this._batchMode = false;
   }
 
@@ -73,7 +73,7 @@ export class DestroyHandler {
    * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
    * v1.6.4 - FIX Bug #1: Persist to storage after destroy
    * v1.6.4.4 - FIX Bug #7: Track destroyed IDs to prevent resurrection
-   * v1.6.4.7 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
+   * v1.6.3.2 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
    *
    * @param {string} id - Quick Tab ID
    */
@@ -104,7 +104,7 @@ export class DestroyHandler {
     // Reset z-index if all tabs are closed
     this._resetZIndexIfEmpty();
 
-    // v1.6.4.7 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
+    // v1.6.3.2 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
     // closeAll() will do a single persist after all tabs are destroyed
     if (this._batchMode) {
       console.log('[DestroyHandler] Batch mode - skipping individual persist for:', id);
@@ -233,14 +233,14 @@ export class DestroyHandler {
    * v1.6.4 - FIX Bug #1: Persist to storage after close all
    * v1.6.4.3 - FIX Issue #3: Emit state:cleared event for UICoordinator reconciliation
    * v1.6.4.4 - FIX Bug #7: Track all destroyed IDs atomically, use shared cleanup utility
-   * v1.6.4.7 - FIX Issue #6: Use batch mode to prevent storage write storm (6+ writes in 24ms)
+   * v1.6.3.2 - FIX Issue #6: Use batch mode to prevent storage write storm (6+ writes in 24ms)
    * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
    */
   closeAll() {
     console.log('[DestroyHandler] Closing all Quick Tabs');
     const count = this.quickTabsMap.size;
 
-    // v1.6.4.7 - FIX Issue #6: Enable batch mode to skip individual persist calls
+    // v1.6.3.2 - FIX Issue #6: Enable batch mode to skip individual persist calls
     this._batchMode = true;
 
     // v1.6.4.4 - FIX Bug #7: Track all IDs being destroyed
@@ -273,10 +273,10 @@ export class DestroyHandler {
       console.log('[DestroyHandler] Emitted state:cleared:', count);
     }
 
-    // v1.6.4.7 - FIX Issue #6: Disable batch mode before single atomic persist
+    // v1.6.3.2 - FIX Issue #6: Disable batch mode before single atomic persist
     this._batchMode = false;
 
-    // v1.6.4.7 - FIX Issue #6: Single atomic storage write after all cleanup
+    // v1.6.3.2 - FIX Issue #6: Single atomic storage write after all cleanup
     // This replaces 6+ individual writes with 1 write
     console.log('[DestroyHandler] closeAll complete - performing single atomic storage write');
     this._persistToStorage();

@@ -74,7 +74,7 @@ export class MinimizedManager {
    * v1.6.4.3 - FIX Issue #4: Use immutable snapshot instead of potentially corrupted instance
    * v1.6.4.4 - FIX Bug #5: Return snapshot data for caller to apply to correct window
    * v1.6.4.6 - FIX Issue #1, #6: Apply snapshot BEFORE calling restore() so render() uses correct values
-   * v1.6.4.7 - FIX Issue #1 CRITICAL: Do NOT call tabWindow.restore() here!
+   * v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call tabWindow.restore() here!
    *   This was causing duplicate window bug. MinimizedManager only applies snapshot.
    *   UICoordinator is the single rendering authority and will call restore() then render().
    * @param {string} id - Quick Tab ID
@@ -107,7 +107,7 @@ export class MinimizedManager {
         height: savedHeight
       });
 
-      // v1.6.4.7 - FIX Issue #1 CRITICAL: Do NOT call tabWindow.restore() here!
+      // v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call tabWindow.restore() here!
       // This was causing the duplicate window bug - both MinimizedManager.restore()
       // and UICoordinator.update() were calling render().
       // Now UICoordinator._restoreExistingWindow() is the single authority that

@@ -9,7 +9,7 @@
  * and tracking actual pointer position. Extracted from QuickTabWindow.js as part
  * of v1.6.0 Phase 2.9 refactoring.
  *
- * v1.6.4.7 - FIX Issue #5: Add destroyed flag to prevent ghost events after cleanup
+ * v1.6.3.2 - FIX Issue #5: Add destroyed flag to prevent ghost events after cleanup
  *
  * @see docs/misc/v1.6.0-REFACTORING-PHASE3.4-NEXT-STEPS.md
  */
@@ -32,7 +32,7 @@ export class DragController {
     this.onDragCancel = callbacks.onDragCancel || null;
 
     this.isDragging = false;
-    this.destroyed = false; // v1.6.4.7 - FIX Issue #5: Track destroyed state
+    this.destroyed = false; // v1.6.3.2 - FIX Issue #5: Track destroyed state
     this.currentPointerId = null;
     this.offsetX = 0;
     this.offsetY = 0;
@@ -60,11 +60,11 @@ export class DragController {
 
   /**
    * Handle pointer down - start drag
-   * v1.6.4.7 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
    * @param {PointerEvent} e
    */
   handlePointerDown(e) {
-    // v1.6.4.7 - FIX Issue #5: Prevent ghost events after destroy
+    // v1.6.3.2 - FIX Issue #5: Prevent ghost events after destroy
     if (this.destroyed) return;
 
     // Don't drag if clicking on button or other interactive element
@@ -93,11 +93,11 @@ export class DragController {
   /**
    * Handle pointer move - update position
    * Uses requestAnimationFrame to prevent slipping on high-refresh monitors
-   * v1.6.4.7 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
    * @param {PointerEvent} e
    */
   handlePointerMove(e) {
-    // v1.6.4.7 - FIX Issue #5: Prevent ghost events after destroy
+    // v1.6.3.2 - FIX Issue #5: Prevent ghost events after destroy
     if (this.destroyed) return;
     if (!this.isDragging) return;
 
@@ -105,7 +105,7 @@ export class DragController {
     if (this.rafId) return;
 
     this.rafId = requestAnimationFrame(() => {
-      // v1.6.4.7 - FIX Issue #5: Double-check destroyed in RAF callback
+      // v1.6.3.2 - FIX Issue #5: Double-check destroyed in RAF callback
       if (this.destroyed) {
         this.rafId = null;
         return;
@@ -127,11 +127,11 @@ export class DragController {
 
   /**
    * Handle pointer up - end drag
-   * v1.6.4.7 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
    * @param {PointerEvent} e
    */
   handlePointerUp(e) {
-    // v1.6.4.7 - FIX Issue #5: Prevent ghost events after destroy
+    // v1.6.3.2 - FIX Issue #5: Prevent ghost events after destroy
     if (this.destroyed) return;
     if (!this.isDragging) return;
 
@@ -160,11 +160,11 @@ export class DragController {
   /**
    * Handle pointer cancel - CRITICAL FOR ISSUE #51
    * This fires when drag is interrupted (e.g., user switches tabs during drag)
-   * v1.6.4.7 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
    * @param {PointerEvent} _e
    */
   handlePointerCancel(_e) {
-    // v1.6.4.7 - FIX Issue #5: Prevent ghost events after destroy
+    // v1.6.3.2 - FIX Issue #5: Prevent ghost events after destroy
     if (this.destroyed) return;
     if (!this.isDragging) return;
 
@@ -186,10 +186,10 @@ export class DragController {
 
   /**
    * Detach drag listeners and cleanup
-   * v1.6.4.7 - FIX Issue #5: Set destroyed flag FIRST to prevent ghost events
+   * v1.6.3.2 - FIX Issue #5: Set destroyed flag FIRST to prevent ghost events
    */
   destroy() {
-    // v1.6.4.7 - FIX Issue #5: Set destroyed flag FIRST
+    // v1.6.3.2 - FIX Issue #5: Set destroyed flag FIRST
     this.destroyed = true;
 
     this.element.removeEventListener('pointerdown', this.boundHandlePointerDown);

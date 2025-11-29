@@ -5,7 +5,7 @@
  * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
  * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
  * v1.6.4.5 - FIX Issues #1, #2, #6: Debounce minimize/restore, prevent event storms
- * v1.6.4.7 - FIX Issue #2: Add mutex/lock pattern to prevent duplicate operations
+ * v1.6.3.2 - FIX Issue #2: Add mutex/lock pattern to prevent duplicate operations
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -16,7 +16,7 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.4.7
+ * @version 1.6.3.2
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -24,7 +24,7 @@ import { buildStateForStorage, persistStateToStorage } from '@utils/storage-util
 // v1.6.4.5 - FIX Issue #1: Debounce delay for minimize/restore operations
 const MINIMIZE_DEBOUNCE_MS = 150;
 
-// v1.6.4.7 - FIX Issue #2: Lock duration to prevent duplicate operations from multiple sources
+// v1.6.3.2 - FIX Issue #2: Lock duration to prevent duplicate operations from multiple sources
 const OPERATION_LOCK_MS = 200;
 
 /**
@@ -34,7 +34,7 @@ const OPERATION_LOCK_MS = 200;
  * v1.6.4 - Now persists state to storage after minimize/restore
  * v1.6.4.1 - Proper async handling with validation and timeout for storage
  * v1.6.4.5 - Debouncing to prevent event storms and ensure atomic storage writes
- * v1.6.4.7 - Mutex/lock pattern to prevent duplicate operations from multiple sources
+ * v1.6.3.2 - Mutex/lock pattern to prevent duplicate operations from multiple sources
  */
 export class VisibilityHandler {
   /**
@@ -59,7 +59,7 @@ export class VisibilityHandler {
     this._pendingRestore = new Set();
     this._debounceTimers = new Map();
     
-    // v1.6.4.7 - FIX Issue #2: Mutex/lock pattern for operations
+    // v1.6.3.2 - FIX Issue #2: Mutex/lock pattern for operations
     // Key: operation-id (e.g., "minimize-qt-123"), Value: timestamp when lock was acquired
     this._operationLocks = new Map();
   }
@@ -141,7 +141,7 @@ export class VisibilityHandler {
 
   /**
    * Try to acquire a lock for an operation
-   * v1.6.4.7 - FIX Issue #2: Mutex pattern to prevent duplicate operations
+   * v1.6.3.2 - FIX Issue #2: Mutex pattern to prevent duplicate operations
    * @private
    * @param {string} operation - Operation type ('minimize' or 'restore')
    * @param {string} id - Quick Tab ID
@@ -165,7 +165,7 @@ export class VisibilityHandler {
 
   /**
    * Release a lock for an operation
-   * v1.6.4.7 - FIX Issue #2: Mutex pattern cleanup
+   * v1.6.3.2 - FIX Issue #2: Mutex pattern cleanup
    * @private
    * @param {string} operation - Operation type ('minimize' or 'restore')
    * @param {string} id - Quick Tab ID
@@ -182,12 +182,12 @@ export class VisibilityHandler {
    * v1.6.4 - FIX Bug #2: Persist to storage after minimize
    * v1.6.4.4 - FIX Bug #6: Call tabWindow.minimize() to actually hide the window
    * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
-   * v1.6.4.7 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
+   * v1.6.3.2 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
    *
    * @param {string} id - Quick Tab ID
    */
   handleMinimize(id) {
-    // v1.6.4.7 - FIX Issue #2: Use mutex to prevent multiple sources triggering same operation
+    // v1.6.3.2 - FIX Issue #2: Use mutex to prevent multiple sources triggering same operation
     if (!this._tryAcquireLock('minimize', id)) {
       console.log('[VisibilityHandler] Ignoring duplicate minimize request (lock held) for:', id);
       return;
@@ -243,7 +243,7 @@ export class VisibilityHandler {
 
   /**
    * Check if restore operation can proceed
-   * v1.6.4.7 - Helper to reduce handleRestore complexity
+   * v1.6.3.2 - Helper to reduce handleRestore complexity
    * @private
    * @param {string} id - Quick Tab ID
    * @returns {boolean} True if operation can proceed
@@ -267,7 +267,7 @@ export class VisibilityHandler {
 
   /**
    * Cleanup after failed restore attempt
-   * v1.6.4.7 - Helper to reduce handleRestore complexity
+   * v1.6.3.2 - Helper to reduce handleRestore complexity
    * @private
    * @param {string} id - Quick Tab ID
    */
@@ -282,11 +282,11 @@ export class VisibilityHandler {
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
    * v1.6.4 - FIX Bug #2: Persist to storage after restore
    * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
-   * v1.6.4.7 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
+   * v1.6.3.2 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
    * @param {string} id - Quick Tab ID
    */
   handleRestore(id) {
-    // v1.6.4.7 - Check preconditions for restore
+    // v1.6.3.2 - Check preconditions for restore
     if (!this._canProceedWithRestore(id)) {
       return;
     }
@@ -300,7 +300,7 @@ export class VisibilityHandler {
     this._pendingRestore.add(id);
 
     // Restore from minimized manager - returns snapshot with position/size
-    // v1.6.4.7 - Note: minimizedManager.restore() now only applies snapshot, does NOT call tabWindow.restore()
+    // v1.6.3.2 - Note: minimizedManager.restore() now only applies snapshot, does NOT call tabWindow.restore()
     const restored = this.minimizedManager.restore(id);
     if (!restored) {
       console.warn('[VisibilityHandler] Tab not found in minimized manager:', id);
@@ -308,7 +308,7 @@ export class VisibilityHandler {
       return;
     }
 
-    // v1.6.4.7 - Now call tabWindow.restore() which updates state but does NOT render
+    // v1.6.3.2 - Now call tabWindow.restore() which updates state but does NOT render
     // UICoordinator will handle rendering via the state:updated event below
     if (tabWindow?.restore) {
       tabWindow.restore();
@@ -329,7 +329,7 @@ export class VisibilityHandler {
 
   /**
    * Emit state:updated event for restore
-   * v1.6.4.7 - Helper to reduce handleRestore complexity
+   * v1.6.3.2 - Helper to reduce handleRestore complexity
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Quick Tab window instance
@@ -414,7 +414,7 @@ export class VisibilityHandler {
   /**
    * Debounced persist to storage - prevents write storms
    * v1.6.4.5 - FIX Issues #1, #2, #6: Single atomic storage write after debounce
-   * v1.6.4.7 - FIX Issue #2: Release operation locks after debounce completes
+   * v1.6.3.2 - FIX Issue #2: Release operation locks after debounce completes
    * @private
    * @param {string} id - Quick Tab ID that triggered the persist
    * @param {string} operation - 'minimize' or 'restore'
@@ -434,7 +434,7 @@ export class VisibilityHandler {
       this._pendingMinimize.delete(id);
       this._pendingRestore.delete(id);
       
-      // v1.6.4.7 - FIX Issue #2: Release operation locks
+      // v1.6.3.2 - FIX Issue #2: Release operation locks
       this._releaseLock('minimize', id);
       this._releaseLock('restore', id);
       

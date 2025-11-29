@@ -36,7 +36,7 @@ export class UICoordinator {
     this.panelManager = panelManager;
     this.eventBus = eventBus;
     this.renderedTabs = new Map(); // id -> QuickTabWindow
-    // v1.6.4.7 - Cache for quickTabShowDebugId setting
+    // v1.6.3.2 - Cache for quickTabShowDebugId setting
     this.showDebugIdSetting = false;
   }
 
@@ -46,7 +46,7 @@ export class UICoordinator {
   async init() {
     console.log('[UICoordinator] Initializing...');
 
-    // v1.6.4.7 - Load showDebugId setting before rendering
+    // v1.6.3.2 - Load showDebugId setting before rendering
     await this._loadDebugIdSetting();
 
     // Setup state listeners
@@ -60,7 +60,7 @@ export class UICoordinator {
 
   /**
    * Load the quickTabShowDebugId setting from storage
-   * v1.6.4.7 - Feature: Debug UID Display Toggle
+   * v1.6.3.2 - Feature: Debug UID Display Toggle
    * @private
    */
   async _loadDebugIdSetting() {
@@ -164,7 +164,7 @@ export class UICoordinator {
   /**
    * Handle restore of existing minimized window
    * v1.6.4.5 - Helper to reduce complexity
-   * v1.6.4.7 - FIX Issue #1 CRITICAL: UICoordinator is single rendering authority
+   * v1.6.3.2 - FIX Issue #1 CRITICAL: UICoordinator is single rendering authority
    *   MinimizedManager.restore() now only applies snapshot and returns result.
    *   We need to call tabWindow.restore() here, then render if needed.
    * @private
@@ -180,7 +180,7 @@ export class UICoordinator {
       const restoreResult = this.minimizedManager.restore(quickTabId);
       if (restoreResult) {
         console.log('[UICoordinator] Applied snapshot from minimizedManager:', restoreResult.position);
-        // v1.6.4.7 - Now call restore() on the window (which updates minimized flag but does NOT render)
+        // v1.6.3.2 - Now call restore() on the window (which updates minimized flag but does NOT render)
         tabWindow.restore();
       }
     } else {
@@ -189,7 +189,7 @@ export class UICoordinator {
       console.log('[UICoordinator] Restored tab directly (no snapshot):', quickTabId);
     }
 
-    // v1.6.4.7 - FIX Issue #1: UICoordinator is the single rendering authority
+    // v1.6.3.2 - FIX Issue #1: UICoordinator is the single rendering authority
     // After restore() updates state, if DOM doesn't exist, we need to render it
     if (!tabWindow.isRendered()) {
       console.log('[UICoordinator] DOM not attached after restore, rendering:', quickTabId);
@@ -473,7 +473,7 @@ export class UICoordinator {
   /**
    * Create QuickTabWindow from QuickTab entity
    * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
-   * v1.6.4.7 - Pass showDebugId setting to window
+   * v1.6.3.2 - Pass showDebugId setting to window
    * @private
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
@@ -499,7 +499,7 @@ export class UICoordinator {
       zIndex: zIndex,
       soloedOnTabs: visibility.soloedOnTabs,
       mutedOnTabs: visibility.mutedOnTabs,
-      showDebugId: this.showDebugIdSetting // v1.6.4.7 - Pass debug ID display setting
+      showDebugId: this.showDebugIdSetting // v1.6.3.2 - Pass debug ID display setting
     });
   }
 }
