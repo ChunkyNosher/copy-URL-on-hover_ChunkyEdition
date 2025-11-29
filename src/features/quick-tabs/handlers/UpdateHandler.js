@@ -186,11 +186,11 @@ export class UpdateHandler {
       `${t.id}:${t.left}:${t.top}:${t.width}:${t.height}:${t.minimized}`
     ).join('|');
     
-    // Simple hash function
+    // Simple djb2 hash function with 32-bit conversion
     let hash = 0;
     for (let i = 0; i < stateStr.length; i++) {
       hash = ((hash << 5) - hash) + stateStr.charCodeAt(i);
-      hash = hash & hash;
+      hash = hash & 0xffffffff; // Convert to 32-bit integer
     }
     return hash;
   }

@@ -1359,6 +1359,9 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
+// v1.6.4.1 - Sidebar initialization delay constant (time for DOM ready + scripts loaded)
+const SIDEBAR_INIT_DELAY_MS = 300;
+
 /**
  * Open sidebar and switch to Manager tab
  * v1.6.1.4 - Extracted to fix max-depth eslint error
@@ -1372,8 +1375,8 @@ async function _openSidebarAndSwitchToManager() {
     if (!isOpen) {
       // Open sidebar if closed
       await browser.sidebarAction.open();
-      // Wait longer for sidebar to fully initialize (DOM ready + scripts loaded)
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Wait for sidebar to fully initialize (DOM ready + scripts loaded)
+      await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
     }
     
     // Send message to sidebar to switch to Manager tab with retry logic
@@ -1526,7 +1529,7 @@ async function _handleToggleQuickTabsManager() {
  */
 async function _openSidebarToManager() {
   await browser.sidebarAction.open();
-  await new Promise(resolve => setTimeout(resolve, 300));
+  await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
   await _sendManagerTabMessage();
   console.log('[Sidebar] Opened sidebar and switched to Manager tab');
 }
@@ -1561,7 +1564,7 @@ async function _handleOpenToSettingsTab() {
     if (!isOpen) {
       // Sidebar is closed - open it first
       await browser.sidebarAction.open();
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
     }
     
     // Switch to Settings tab
