@@ -160,10 +160,12 @@ export class DestroyHandler {
   /**
    * Close all Quick Tabs
    * v1.6.4 - FIX Bug #1: Persist to storage after close all
+   * v1.6.4.3 - FIX Issue #3: Emit state:cleared event for UICoordinator reconciliation
    * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
    */
   closeAll() {
     console.log('[DestroyHandler] Closing all Quick Tabs');
+    const count = this.quickTabsMap.size;
 
     // Destroy all tabs
     for (const tabWindow of this.quickTabsMap.values()) {
@@ -176,6 +178,13 @@ export class DestroyHandler {
     this.quickTabsMap.clear();
     this.minimizedManager.clear();
     this.currentZIndex.value = this.baseZIndex;
+
+    // v1.6.4.3 - FIX Issue #3: Emit state:cleared for UICoordinator to reconcile
+    // This removes any orphaned windows that may exist in renderedTabs but not StateManager
+    if (this.eventBus) {
+      this.eventBus.emit('state:cleared', { count });
+      console.log('[DestroyHandler] Emitted state:cleared:', count);
+    }
 
     // v1.6.4 - FIX Bug #1: Persist to storage after close all
     this._persistToStorage();

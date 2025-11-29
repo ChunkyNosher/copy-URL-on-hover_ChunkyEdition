@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.3+ unified format, no container filtering)
+  (v1.6.4.3 unified format, reconciliation, state:cleared event)
 tools: ["*"]
 ---
 
@@ -51,15 +51,17 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.3 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
 - **browser.storage.local** - Persistent state storage with key `quick_tabs_state_v2`
 - **Global Visibility** - Quick Tabs visible in all tabs
 - **Shared Storage Utilities** - `src/utils/storage-utils.js` for persistence
+- **UICoordinator Reconciliation** - `reconcileRenderedTabs()` destroys orphaned windows (v1.6.4.3)
+- **state:cleared Event** - Emitted on closeAll() for full cleanup (v1.6.4.3)
 
-**Storage Format (v1.6.4):**
+**Storage Format (v1.6.4.3):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -71,6 +73,32 @@ const relevantMemories = await searchMemories({
 **Target Latency:** <100ms for cross-tab updates
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
+
+---
+
+## UICoordinator Event-Driven Architecture (v1.6.4.3)
+
+**UICoordinator now listens to `state:cleared` event:**
+
+```javascript
+// setupStateListeners() in UICoordinator
+this.eventBus.on('state:added', ({ quickTab }) => this.render(quickTab));
+this.eventBus.on('state:updated', ({ quickTab }) => this.update(quickTab));
+this.eventBus.on('state:deleted', ({ id }) => this.destroy(id));
+this.eventBus.on('state:cleared', () => this.reconcileRenderedTabs()); // v1.6.4.3
+```
+
+**Reconciliation destroys orphaned windows:**
+
+```javascript
+reconcileRenderedTabs() {
+  for (const [id] of this.renderedTabs) {
+    if (!this.stateManager.has(id)) {
+      this.destroy(id);
+    }
+  }
+}
+```
 
 ---
 
@@ -207,8 +235,8 @@ quickTab.shouldBeVisible(currentTabId) {
 | `src/features/quick-tabs/managers/StorageManager.js` | storage.onChanged listener, save/load |
 | `src/features/quick-tabs/coordinators/SyncCoordinator.js` | Handle storage changes, call hydrate |
 | `src/features/quick-tabs/managers/StateManager.js` | Hydrate state, emit events |
-| `src/features/quick-tabs/coordinators/UICoordinator.js` | Listen events, render/update/destroy |
-| `src/utils/storage-utils.js` | Shared persistence utilities (v1.6.4) |
+| `src/features/quick-tabs/coordinators/UICoordinator.js` | Listen events, render/update/destroy, reconcileRenderedTabs() (v1.6.4.3) |
+| `src/utils/storage-utils.js` | Shared persistence utilities |
 | `background.js` | Cache update ONLY (no broadcast), saveId tracking |
 
 ---

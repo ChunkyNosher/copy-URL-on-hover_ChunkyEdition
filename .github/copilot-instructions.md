@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4.2  
+**Version:** 1.6.4.3  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,12 +15,11 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 
-**Recent Changes (v1.6.4.2):**
-- **Storage Utils:** Async `persistStateToStorage()` with 5-second timeout, `serializeTabForStorage()`, `validateStateSerializable()`, `_getNumericValue()`/`_getArrayValue()` helpers
-- **Handler Updates:** DestroyHandler, UpdateHandler, VisibilityHandler use async `_persistToStorage()` with proper error handling
-- **Sidebar Fix:** Background sets `_requestedPrimaryTab` in storage.local before opening; sidebar reads on DOMContentLoaded
-- **UICoordinator:** Added `_getSafePosition()`, `_getSafeSize()`, `_getSafeVisibility()` null-safety helpers
-- **Error Logging:** All error handlers log full details (name, message, stack); `_logMessageError()` utility in background.js
+**Recent Changes (v1.6.4.3):**
+- **UICoordinator:** Added `reconcileRenderedTabs()` to destroy orphaned tabs; `state:cleared` event listener; `update()` checks BOTH `quickTab.minimized` AND `quickTab.visibility?.minimized`
+- **DestroyHandler:** `closeAll()` emits `state:cleared` event for UI cleanup
+- **MinimizedManager:** Snapshot-based storage (`{ window, savedPosition, savedSize }`); uses immutable snapshot values on restore
+- **Manager Sidebar:** `isTabMinimizedHelper()` for consistent minimized state detection: `tab.minimized ?? tab.visibility?.minimized ?? false`
 
 ---
 
@@ -114,7 +113,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 QuickTabsManager API (v1.6.4.2)
+## 🔧 QuickTabsManager API (v1.6.4.3)
 
 ### Correct Methods
 
@@ -129,7 +128,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 Storage Utilities (v1.6.4.2)
+## 🔧 Storage Utilities (v1.6.4.3)
 
 **Location:** `src/utils/storage-utils.js`
 
@@ -141,7 +140,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `buildStateForStorage(map, minMgr)` | Build state from quickTabsMap |
 | `persistStateToStorage(state, prefix)` | **Async** persist with 5-second timeout |
 
-**Private Helpers (v1.6.4.2):**
+**Private Helpers (v1.6.4.3):**
 - `serializeTabForStorage(tab, isMinimized)` - Safe value serialization
 - `validateStateSerializable(state)` - Pre-write JSON validation
 - `_getNumericValue()` / `_getArrayValue()` - Safe property extraction
@@ -154,6 +153,51 @@ const success = await persistStateToStorage(state, '[MyHandler]'); // Returns bo
 ```
 
 **CRITICAL:** Always use `storage.local` for Quick Tab state, NOT `storage.sync`.
+
+---
+
+## 🏗️ Key Architecture Patterns (v1.6.4.3)
+
+### MinimizedManager Snapshot Storage
+
+Stores position/size as **immutable snapshots** to prevent corruption:
+
+```javascript
+// Snapshot stored on minimize (using tabWindow properties)
+this.minimizedTabs.set(id, {
+  window: tabWindow,
+  savedPosition: { left: tabWindow.left, top: tabWindow.top },
+  savedSize: { width: tabWindow.width, height: tabWindow.height }
+});
+
+// Snapshot used on restore (not live instance values)
+const { window, savedPosition, savedSize } = this.minimizedTabs.get(id);
+window.restoreFromSnapshot(savedPosition, savedSize);
+```
+
+### Consistent Minimized State Detection
+
+Use this pattern everywhere for minimized state:
+```javascript
+const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
+```
+
+### UICoordinator Reconciliation
+
+`reconcileRenderedTabs()` destroys orphaned windows not in StateManager:
+```javascript
+reconcileRenderedTabs() {
+  for (const [id] of this.renderedTabs) {
+    if (!this.stateManager.has(id)) {
+      this.destroy(id);
+    }
+  }
+}
+```
+
+### state:cleared Event
+
+Emitted by `closeAll()` to trigger full UI cleanup via `reconcileRenderedTabs()`.
 
 ---
 
@@ -238,14 +282,16 @@ Use the agentic-tools MCP to create memories instead.
 ### Key Files
 - `background.js` - Background script, storage listeners, saveId tracking, `_logMessageError()` utility
 - `src/content.js` - Content script, Quick Tab creation, Manager action handlers
-- `src/utils/storage-utils.js` - Shared storage utilities with async persist (v1.6.4.2)
+- `src/utils/storage-utils.js` - Shared storage utilities with async persist
 - `src/features/quick-tabs/coordinators/SyncCoordinator.js` - Cross-tab sync
 - `src/features/quick-tabs/managers/StorageManager.js` - Storage operations
 - `src/features/quick-tabs/managers/StateManager.js` - State management
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering with null-safety helpers (v1.6.4.2)
-- `src/features/quick-tabs/handlers/DestroyHandler.js` - Destroy with async persistence
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering, `reconcileRenderedTabs()`, `state:cleared` listener (v1.6.4.3)
+- `src/features/quick-tabs/handlers/DestroyHandler.js` - Destroy with async persistence, `state:cleared` event (v1.6.4.3)
 - `src/features/quick-tabs/handlers/UpdateHandler.js` - Position/size updates with async persistence
 - `src/features/quick-tabs/handlers/VisibilityHandler.js` - Solo/Mute with async persistence
+- `src/features/quick-tabs/minimized-manager.js` - Snapshot-based storage for minimize/restore (v1.6.4.3)
+- `sidebar/quick-tabs-manager.js` - Manager UI, `isTabMinimizedHelper()` function (v1.6.4.3)
 - `sidebar/settings.js` - Sidebar initialization, reads `_requestedPrimaryTab` on DOMContentLoaded
 
 ### Storage Key & Format
@@ -254,7 +300,7 @@ Use the agentic-tools MCP to create memories instead.
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
-**Unified Format (v1.6.4.2):**
+**Unified Format (v1.6.4.3):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -276,7 +322,7 @@ Use the agentic-tools MCP to create memories instead.
 }
 ```
 
-### Manager Action Messages (v1.6.4.2)
+### Manager Action Messages (v1.6.4.3)
 
 Content script handles these messages from Manager:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
