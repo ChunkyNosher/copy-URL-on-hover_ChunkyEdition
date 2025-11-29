@@ -2,6 +2,7 @@
  * @fileoverview UpdateHandler - Handles Quick Tab position and size updates
  * Extracted from QuickTabsManager Phase 2.1 refactoring
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
+ * v1.6.4 - FIX Issue #2: Added debounce and change detection for storage writes
  * v1.6.4 - FIX Issue #3: Added storage persistence after position/size changes
  *
  * Responsibilities:
@@ -10,17 +11,21 @@
  * - Handle size updates during resize
  * - Handle size updates at resize end
  * - Emit update events for coordinators
- * - Persist state to storage after updates
+ * - Persist state to storage after updates (debounced, with change detection)
  *
  * @version 1.6.4
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
+// v1.6.4 - FIX Issue #2: Debounce delay (Mozilla best practice: 200-350ms)
+const DEBOUNCE_DELAY_MS = 300;
+
 /**
  * UpdateHandler class
  * Manages Quick Tab position and size updates (local only, no cross-tab sync)
  * v1.6.3 - Simplified for single-tab Quick Tabs
+ * v1.6.4 - FIX Issue #2: Added debounce and change detection for storage writes
  * v1.6.4 - FIX Issue #3: Added storage persistence after position/size changes
  */
 export class UpdateHandler {
@@ -33,6 +38,10 @@ export class UpdateHandler {
     this.quickTabsMap = quickTabsMap;
     this.eventBus = eventBus;
     this.minimizedManager = minimizedManager;
+    
+    // v1.6.4 - FIX Issue #2: Debounce state tracking
+    this._debounceTimer = null;
+    this._lastStateHash = null;
   }
 
   /**
@@ -124,21 +133,77 @@ export class UpdateHandler {
   }
 
   /**
-   * Persist current state to browser.storage.local
+   * Persist current state to browser.storage.local (debounced with change detection)
+   * v1.6.4 - FIX Issue #2: Added debounce and change detection
    * v1.6.4 - FIX Issue #3: Persist to storage after position/size changes
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    */
   _persistToStorage() {
+    // v1.6.4 - FIX Issue #2: Clear any existing debounce timer
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+    }
+    
+    // v1.6.4 - FIX Issue #2: Schedule debounced persist
+    this._debounceTimer = setTimeout(() => {
+      this._doPersist();
+    }, DEBOUNCE_DELAY_MS);
+  }
+  
+  /**
+   * Actually perform the storage write (called after debounce)
+   * v1.6.4 - FIX Issue #2: Only writes if state actually changed
+   * @private
+   */
+  _doPersist() {
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
+    
+    // v1.6.4 - FIX Issue #2: Check if state actually changed
+    const newHash = this._computeStateHash(state);
+    if (newHash === this._lastStateHash) {
+      console.log('[UpdateHandler] State unchanged, skipping storage write');
+      return;
+    }
+    
+    // Update hash and persist
+    this._lastStateHash = newHash;
     persistStateToStorage(state, '[UpdateHandler]');
+  }
+  
+  /**
+   * Compute a simple hash of the state for change detection
+   * v1.6.4 - FIX Issue #2: Used to skip redundant storage writes
+   * @private
+   * @param {Object} state - State object to hash
+   * @returns {number} 32-bit hash of the state
+   */
+  _computeStateHash(state) {
+    if (!state?.tabs) return 0;
+    
+    // Create a string of just the position/size data that we care about
+    const stateStr = state.tabs.map(t => 
+      `${t.id}:${t.left}:${t.top}:${t.width}:${t.height}:${t.minimized}`
+    ).join('|');
+    
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < stateStr.length; i++) {
+      hash = ((hash << 5) - hash) + stateStr.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return hash;
   }
 
   /**
    * Destroy handler and cleanup resources
-   * v1.6.3 - No-op (no resources to cleanup)
+   * v1.6.4 - FIX Issue #2: Clean up debounce timer
    */
   destroy() {
-    // No cleanup needed for single-tab Quick Tabs
+    // v1.6.4 - FIX Issue #2: Clear debounce timer
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
   }
 }

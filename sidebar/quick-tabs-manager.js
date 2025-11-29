@@ -333,6 +333,7 @@ function _createFavicon(url) {
 /**
  * v1.6.4 - Helper to format size and position string for tab metadata
  * Extracted to reduce complexity in _createTabInfo
+ * FIX Issue #3: Only show position if both left and top are defined
  * @param {Object} tab - Quick Tab data
  * @returns {string|null} Formatted size/position string or null
  */
@@ -345,11 +346,11 @@ function _formatSizePosition(tab) {
   const hasLeft = tab.left !== undefined && tab.left !== null;
   const hasTop = tab.top !== undefined && tab.top !== null;
   
+  // v1.6.4 - FIX Issue #3: Only show position if both values exist
   if (hasLeft && hasTop) {
     sizeStr += ` at (${Math.round(tab.left)}, ${Math.round(tab.top)})`;
-  } else {
-    sizeStr += ' at (?, ?)';
   }
+  // Otherwise just show size without position (omit "at (?, ?)")
   
   return sizeStr;
 }

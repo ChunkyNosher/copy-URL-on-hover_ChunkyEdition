@@ -1120,9 +1120,15 @@ function initializeTabSwitching() {
   handlePrimaryTabSwitch(storedPrimaryTab);
   
   // Listen for messages from background script to switch tabs
-  browserAPI.runtime.onMessage.addListener((message) => {
+  browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'SWITCH_TO_MANAGER_TAB') {
       handlePrimaryTabSwitch('manager');
+    } else if (message.type === 'SWITCH_TO_SETTINGS_TAB') {
+      handlePrimaryTabSwitch('settings');
+    } else if (message.type === 'GET_CURRENT_PRIMARY_TAB') {
+      // Return the current primary tab state
+      sendResponse({ primaryTab: getStoredPrimaryTab() });
+      return true; // Keep the message channel open for sendResponse
     }
   });
 }
