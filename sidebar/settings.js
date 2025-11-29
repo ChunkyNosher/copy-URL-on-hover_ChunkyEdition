@@ -976,6 +976,39 @@ function storeSecondaryTab(secondaryTab) {
   }
 }
 
+/**
+ * v1.6.4.2 - FIX Bug #3: Check storage for requested tab from keyboard shortcut
+ * Background script sets _requestedPrimaryTab before opening sidebar to ensure
+ * the correct tab is shown even on first open (when message listener isn't ready)
+ */
+async function _checkAndApplyRequestedTab() {
+  try {
+    const result = await browserAPI.storage.local.get('_requestedPrimaryTab');
+    const requestedTab = result._requestedPrimaryTab;
+    
+    if (requestedTab) {
+      console.debug('[Settings] Found requested tab from keyboard shortcut:', requestedTab);
+      
+      // Apply the requested tab
+      handlePrimaryTabSwitch(requestedTab);
+      
+      // Clear the request so it doesn't persist across sessions
+      await browserAPI.storage.local.remove('_requestedPrimaryTab');
+      console.debug('[Settings] Cleared _requestedPrimaryTab from storage');
+    } else {
+      // No keyboard shortcut request - restore last used tab
+      const storedPrimaryTab = getStoredPrimaryTab();
+      handlePrimaryTabSwitch(storedPrimaryTab);
+    }
+  } catch (error) {
+    // v1.6.4.3 - FIX: More specific error message about what failed
+    console.error('[Settings] Failed to check requested tab from storage.local:', error);
+    // Fallback to stored tab on error (localStorage or default)
+    const storedPrimaryTab = getStoredPrimaryTab();
+    handlePrimaryTabSwitch(storedPrimaryTab);
+  }
+}
+
 // ==================== END TWO-LAYER TAB SYSTEM ====================
 
 /**
@@ -1097,6 +1130,7 @@ function setupButtonHandler(buttonId, handler, options = {}) {
 /**
  * Initialize tab switching event handlers
  * v1.6.1.4 - Extracted to fix max-lines-per-function eslint warning
+ * v1.6.4.2 - FIX Bug #3: Check storage for requested tab on initialization
  */
 function initializeTabSwitching() {
   // Primary tab switching
@@ -1115,12 +1149,13 @@ function initializeTabSwitching() {
     });
   });
   
-  // Restore tab state on load
-  const storedPrimaryTab = getStoredPrimaryTab();
-  handlePrimaryTabSwitch(storedPrimaryTab);
+  // v1.6.4.2 - FIX Bug #3: Check for requested tab from keyboard shortcut
+  // Background script sets _requestedPrimaryTab before opening sidebar
+  _checkAndApplyRequestedTab();
   
   // Listen for messages from background script to switch tabs
   browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.debug('[Settings] Received message:', message.type);
     if (message.type === 'SWITCH_TO_MANAGER_TAB') {
       handlePrimaryTabSwitch('manager');
     } else if (message.type === 'SWITCH_TO_SETTINGS_TAB') {
@@ -1131,6 +1166,8 @@ function initializeTabSwitching() {
       return true; // Keep the message channel open for sendResponse
     }
   });
+  
+  console.debug('[Settings] Tab switching initialized, message listener registered');
 }
 
 // Tab switching logic

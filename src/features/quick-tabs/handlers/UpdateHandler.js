@@ -4,6 +4,7 @@
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.4 - FIX Issue #2: Added debounce and change detection for storage writes
  * v1.6.4 - FIX Issue #3: Added storage persistence after position/size changes
+ * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
  *
  * Responsibilities:
  * - Handle position updates during drag
@@ -13,7 +14,7 @@
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
  *
- * @version 1.6.4
+ * @version 1.6.4.1
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -154,10 +155,18 @@ export class UpdateHandler {
   /**
    * Actually perform the storage write (called after debounce)
    * v1.6.4 - FIX Issue #2: Only writes if state actually changed
+   * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
    * @private
+   * @returns {Promise<void>}
    */
-  _doPersist() {
+  async _doPersist() {
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
+    
+    // v1.6.4.1 - FIX Bug #1: Handle null state from validation failure
+    if (!state) {
+      console.error('[UpdateHandler] Failed to build state for storage');
+      return;
+    }
     
     // v1.6.4 - FIX Issue #2: Check if state actually changed
     const newHash = this._computeStateHash(state);
@@ -168,7 +177,10 @@ export class UpdateHandler {
     
     // Update hash and persist
     this._lastStateHash = newHash;
-    persistStateToStorage(state, '[UpdateHandler]');
+    const success = await persistStateToStorage(state, '[UpdateHandler]');
+    if (!success) {
+      console.error('[UpdateHandler] Storage persist failed or timed out');
+    }
   }
   
   /**

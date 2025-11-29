@@ -4,6 +4,7 @@
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
  * v1.6.4 - FIX Bug #1: Persist to storage after destroy
+ * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -14,7 +15,7 @@
  * - Emit destruction events
  * - Persist state to storage after destruction
  *
- * @version 1.6.4
+ * @version 1.6.4.1
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -124,12 +125,24 @@ export class DestroyHandler {
   /**
    * Persist current state to browser.storage.local
    * v1.6.4 - FIX Bug #1: Persist to storage after destroy
+   * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
+   * @returns {Promise<void>}
    */
-  _persistToStorage() {
+  async _persistToStorage() {
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
-    persistStateToStorage(state, '[DestroyHandler]');
+    
+    // v1.6.4.1 - FIX Bug #1: Handle null state from validation failure
+    if (!state) {
+      console.error('[DestroyHandler] Failed to build state for storage');
+      return;
+    }
+    
+    const success = await persistStateToStorage(state, '[DestroyHandler]');
+    if (!success) {
+      console.error('[DestroyHandler] Storage persist failed or timed out');
+    }
   }
 
   /**

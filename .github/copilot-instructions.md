@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4  
+**Version:** 1.6.4.2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,12 +15,12 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 
-**Recent Changes (v1.6.4):**
-- **Storage Utilities:** New `src/utils/storage-utils.js` with shared persistence functions
-- **Storage Persistence:** DestroyHandler and VisibilityHandler now persist state to storage.local
-- **Manager Actions:** Content script handles CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
-- **Storage Area Fix:** Settings page clears from storage.local (not storage.sync)
-- **saveId Tracking:** background.js tracks saveId in globalQuickTabState for collision detection
+**Recent Changes (v1.6.4.2):**
+- **Storage Utils:** Async `persistStateToStorage()` with 5-second timeout, `serializeTabForStorage()`, `validateStateSerializable()`, `_getNumericValue()`/`_getArrayValue()` helpers
+- **Handler Updates:** DestroyHandler, UpdateHandler, VisibilityHandler use async `_persistToStorage()` with proper error handling
+- **Sidebar Fix:** Background sets `_requestedPrimaryTab` in storage.local before opening; sidebar reads on DOMContentLoaded
+- **UICoordinator:** Added `_getSafePosition()`, `_getSafeSize()`, `_getSafeVisibility()` null-safety helpers
+- **Error Logging:** All error handlers log full details (name, message, stack); `_logMessageError()` utility in background.js
 
 ---
 
@@ -114,7 +114,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 QuickTabsManager API (v1.6.4)
+## 🔧 QuickTabsManager API (v1.6.4.2)
 
 ### Correct Methods
 
@@ -129,7 +129,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 Storage Utilities (v1.6.4)
+## 🔧 Storage Utilities (v1.6.4.2)
 
 **Location:** `src/utils/storage-utils.js`
 
@@ -138,14 +138,19 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `STATE_KEY` | Storage key constant (`quick_tabs_state_v2`) |
 | `generateSaveId()` | Generate unique saveId for deduplication |
 | `getBrowserStorageAPI()` | Get browser/chrome storage API |
-| `persistStateToStorage(state, logPrefix)` | Persist state to storage.local |
+| `buildStateForStorage(map, minMgr)` | Build state from quickTabsMap |
+| `persistStateToStorage(state, prefix)` | **Async** persist with 5-second timeout |
+
+**Private Helpers (v1.6.4.2):**
+- `serializeTabForStorage(tab, isMinimized)` - Safe value serialization
+- `validateStateSerializable(state)` - Pre-write JSON validation
+- `_getNumericValue()` / `_getArrayValue()` - Safe property extraction
 
 **Usage:**
 ```javascript
-import { STATE_KEY, generateSaveId, persistStateToStorage } from '../utils/storage-utils.js';
-
-const state = { tabs: [...], saveId: generateSaveId(), timestamp: Date.now() };
-persistStateToStorage(state, '[MyHandler]');
+import { buildStateForStorage, persistStateToStorage } from '../utils/storage-utils.js';
+const state = buildStateForStorage(quickTabsMap, minimizedManager);
+const success = await persistStateToStorage(state, '[MyHandler]'); // Returns boolean
 ```
 
 **CRITICAL:** Always use `storage.local` for Quick Tab state, NOT `storage.sync`.
@@ -231,15 +236,17 @@ Use the agentic-tools MCP to create memories instead.
 ## 📋 Quick Reference
 
 ### Key Files
-- `background.js` - Background script, storage listeners, saveId tracking
+- `background.js` - Background script, storage listeners, saveId tracking, `_logMessageError()` utility
 - `src/content.js` - Content script, Quick Tab creation, Manager action handlers
-- `src/utils/storage-utils.js` - Shared storage utilities (v1.6.4)
+- `src/utils/storage-utils.js` - Shared storage utilities with async persist (v1.6.4.2)
 - `src/features/quick-tabs/coordinators/SyncCoordinator.js` - Cross-tab sync
 - `src/features/quick-tabs/managers/StorageManager.js` - Storage operations
 - `src/features/quick-tabs/managers/StateManager.js` - State management
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering
-- `src/features/quick-tabs/handlers/DestroyHandler.js` - Destroy with persistence
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Visibility with persistence
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering with null-safety helpers (v1.6.4.2)
+- `src/features/quick-tabs/handlers/DestroyHandler.js` - Destroy with async persistence
+- `src/features/quick-tabs/handlers/UpdateHandler.js` - Position/size updates with async persistence
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Solo/Mute with async persistence
+- `sidebar/settings.js` - Sidebar initialization, reads `_requestedPrimaryTab` on DOMContentLoaded
 
 ### Storage Key & Format
 
@@ -247,7 +254,7 @@ Use the agentic-tools MCP to create memories instead.
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
-**Unified Format (v1.6.4):**
+**Unified Format (v1.6.4.2):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -269,7 +276,7 @@ Use the agentic-tools MCP to create memories instead.
 }
 ```
 
-### Manager Action Messages (v1.6.4)
+### Manager Action Messages (v1.6.4.2)
 
 Content script handles these messages from Manager:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
