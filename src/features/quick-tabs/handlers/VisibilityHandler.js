@@ -310,9 +310,11 @@ export class VisibilityHandler {
 
     // v1.6.3.2 - Now call tabWindow.restore() which updates state but does NOT render
     // UICoordinator will handle rendering via the state:updated event below
-    if (tabWindow?.restore) {
+    if (tabWindow && typeof tabWindow.restore === 'function') {
       tabWindow.restore();
       console.log('[VisibilityHandler] Called tabWindow.restore() for:', id);
+    } else {
+      console.warn('[VisibilityHandler] tabWindow not found in quickTabsMap for:', id);
     }
 
     // Emit restore event for legacy handlers
