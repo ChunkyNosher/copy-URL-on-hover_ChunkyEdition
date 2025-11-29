@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3+ global visibility)
+  Quick Tab functionality (v1.6.4.3 reconciliation, snapshot-based minimize)
 tools: ["*"]
 ---
 
@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.3 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -59,30 +59,32 @@ const relevantMemories = await searchMemories({
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
 - **Shared Storage Utilities** - `src/utils/storage-utils.js` for persistence
+- **UICoordinator Reconciliation** - `reconcileRenderedTabs()` destroys orphans (v1.6.4.3)
+- **MinimizedManager Snapshots** - Immutable position/size on minimize (v1.6.4.3)
 
-**Recent Fixes (v1.6.4):**
-- Handlers persist state via shared storage utilities
-- Manager action messages (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
-- Settings page uses storage.local (not storage.sync)
-- saveId tracking for collision detection
+**Recent Fixes (v1.6.4.3):**
+- UICoordinator listens to `state:cleared` event for full cleanup
+- MinimizedManager stores position/size as immutable snapshots
+- Consistent minimized detection: `tab.minimized ?? tab.visibility?.minimized ?? false`
+- `closeAll()` emits `state:cleared` event
 
-**Storage Format (v1.6.4):**
+**Storage Format (v1.6.4.3):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
 
 ---
 
-## QuickTabsManager API (v1.6.4)
+## QuickTabsManager API (v1.6.4.3)
 
 | Method | Description |
 |--------|-------------|
 | `closeById(id)` | Close a single Quick Tab by ID |
-| `closeAll()` | Close all Quick Tabs |
+| `closeAll()` | Close all Quick Tabs, emits `state:cleared` event |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
-## Storage Utilities (v1.6.4)
+## Storage Utilities (v1.6.4.3)
 
 **Location:** `src/utils/storage-utils.js`
 

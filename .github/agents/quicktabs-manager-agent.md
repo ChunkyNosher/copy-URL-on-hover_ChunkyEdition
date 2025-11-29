@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  and implementing new manager features (v1.6.3+ no container grouping)
+  and implementing new manager features (v1.6.4.3 snapshot-based minimize)
 tools: ["*"]
 ---
 
@@ -51,24 +51,50 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**Key Manager Features (v1.6.4):**
+**Key Manager Features (v1.6.4.3):**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
-- **Minimize/Restore** - Bottom-right minimized manager
+- **Minimize/Restore** - Snapshot-based storage (position/size immutable)
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **Persistent Position** - Draggable with saved position
 - **Clear Storage** - Debug button to clear all Quick Tabs
 - **Manager Actions** - CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages to content script
+- **Minimized Detection** - `isTabMinimizedHelper()`: `tab.minimized ?? tab.visibility?.minimized ?? false`
 
-**Storage Format (v1.6.4):**
+**Storage Format (v1.6.4.3):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
+
+---
+
+## MinimizedManager Architecture (v1.6.4.3)
+
+**Snapshot-based storage prevents corruption:**
+
+```javascript
+// On minimize - store immutable snapshot (using tabWindow properties)
+minimizedTabs.set(id, {
+  window: tabWindow,
+  savedPosition: { left: tabWindow.left, top: tabWindow.top },
+  savedSize: { width: tabWindow.width, height: tabWindow.height }
+});
+
+// On restore - use snapshot values (NOT live instance)
+const { window, savedPosition, savedSize } = minimizedTabs.get(id);
+window.restoreFromSnapshot(savedPosition, savedSize);
+```
+
+**Minimized State Detection Pattern:**
+```javascript
+// Use this pattern EVERYWHERE for consistent detection
+const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
+```
 
 ---
 
@@ -356,18 +382,18 @@ async handleClearStorage() {
 
 ---
 
-## QuickTabsManager API (v1.6.4)
+## QuickTabsManager API (v1.6.4.3)
 
 **Correct Methods:**
 | Method | Description |
 |--------|-------------|
 | `closeById(id)` | Close a single Quick Tab by ID |
-| `closeAll()` | Close all Quick Tabs |
+| `closeAll()` | Close all Quick Tabs, emits `state:cleared` event |
 
 **Common Mistake:**
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST** (use `closeById(id)`)
 
-## Manager Action Messages (v1.6.4)
+## Manager Action Messages (v1.6.4.3)
 
 Manager sends these messages to content script:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab

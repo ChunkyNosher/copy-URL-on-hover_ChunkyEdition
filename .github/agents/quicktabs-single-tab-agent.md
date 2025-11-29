@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3+ global visibility, no container isolation)
+  (v1.6.4.3 consistent minimized detection, snapshot-based restore)
 tools: ["*"]
 ---
 
@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Quick Tab Features:**
@@ -60,8 +60,14 @@ const relevantMemories = await searchMemories({
 - **Global Visibility** - Visible in all tabs by default (no container isolation)
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
-- **Minimize to Manager** - Minimize button
+- **Minimize to Manager** - Snapshot-based storage (position/size immutable) (v1.6.4.3)
 - **State Persistence** - Handlers persist to storage.local via shared utilities
+
+**Minimized State Detection (v1.6.4.3):**
+```javascript
+// Use this pattern EVERYWHERE for consistent detection
+const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
+```
 
 ---
 
@@ -116,7 +122,7 @@ const relevantMemories = await searchMemories({
 
 ---
 
-### Solo/Mute Implementation (v1.6.4)
+### Solo/Mute Implementation (v1.6.4.3)
 
 **Key Rules:**
 1. Solo and Mute are **mutually exclusive**
@@ -125,7 +131,7 @@ const relevantMemories = await searchMemories({
 4. Both use browser `tabId` stored in arrays
 5. Persist changes to storage.local via shared utilities
 
-**Toggle Solo (v1.6.4):**
+**Toggle Solo (v1.6.4.3):**
 ```javascript
 async toggleSolo(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -164,7 +170,7 @@ async toggleSolo(browserTabId) {
 }
 ```
 
-**Toggle Mute (v1.6.4):**
+**Toggle Mute (v1.6.4.3):**
 ```javascript
 async toggleMute(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -205,7 +211,7 @@ async toggleMute(browserTabId) {
 
 ---
 
-## Visibility Pattern (v1.6.4)
+## Visibility Pattern (v1.6.4.3)
 
 **Global visibility with Solo/Mute arrays:**
 
@@ -376,7 +382,7 @@ updateNavigationState() {
 
 ### Issue: Solo/Mute Not Mutually Exclusive
 
-**Fix (v1.6.4):** Filter opposite array when toggling
+**Fix (v1.6.4.3):** Filter opposite array when toggling
 
 ```javascript
 // ✅ CORRECT - Mutual exclusivity with arrays
@@ -392,7 +398,7 @@ if (enablingSolo) {
 
 ### Issue: Quick Tab Not Visible When Expected
 
-**Fix (v1.6.4):** Check soloedOnTabs array logic
+**Fix (v1.6.4.3):** Check soloedOnTabs array logic
 
 ```javascript
 // ✅ CORRECT - Visibility check with arrays

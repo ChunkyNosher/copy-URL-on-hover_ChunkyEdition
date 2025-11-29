@@ -1,0 +1,8 @@
+{
+  "id": "c037b8cc-1ceb-41d7-8d62-54e9dc7ad0d7",
+  "title": "v1.6.4.3 Documentation Update",
+  "details": "Updated documentation for v1.6.4.3 bug fixes:\n\n1. **UICoordinator Changes:**\n   - `reconcileRenderedTabs()` - destroys orphaned tabs not in StateManager\n   - `state:cleared` event listener in `setupStateListeners()`\n   - `update()` checks BOTH `quickTab.minimized` AND `quickTab.visibility?.minimized`\n\n2. **DestroyHandler Changes:**\n   - `closeAll()` emits `state:cleared` event for UI cleanup\n\n3. **MinimizedManager Changes:**\n   - Snapshot-based storage: `{ window, savedPosition: {left, top}, savedSize: {width, height} }`\n   - Uses immutable snapshot values on restore (not live instance properties)\n   - Default constants for position/size\n\n4. **Manager Sidebar Changes:**\n   - `isTabMinimizedHelper()` function for consistent minimized state detection\n   - Pattern: `tab.minimized ?? tab.visibility?.minimized ?? false`\n\n**Files Updated:**\n- .github/copilot-instructions.md\n- .github/agents/quicktabs-manager-agent.md\n- .github/agents/quicktabs-cross-tab-agent.md\n- .github/agents/quicktabs-unified-agent.md\n- .github/agents/quicktabs-single-tab-agent.md",
+  "category": "documentation",
+  "dateCreated": "2025-11-29T05:45:11.652Z",
+  "dateUpdated": "2025-11-29T05:45:11.652Z"
+}
