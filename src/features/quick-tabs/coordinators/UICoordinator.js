@@ -14,9 +14,9 @@
  * v1.6.4.4 - FIX Bug #3: Use shared DOM cleanup utility
  */
 
-import { createQuickTabWindow } from '../window.js';
-import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '../../../utils/dom.js';
 import { CONSTANTS } from '../../../core/config.js';
+import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '../../../utils/dom.js';
+import { createQuickTabWindow } from '../window.js';
 
 export class UICoordinator {
   /**

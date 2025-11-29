@@ -183,28 +183,41 @@ export function cleanupOrphanedQuickTabElements(validTabIds = null) {
   let removedCount = 0;
 
   for (const element of allQuickTabElements) {
-    const elementId = element.id;
-    
-    // If validTabIds is null, remove all elements
-    if (validTabIds === null) {
+    const shouldRemove = _shouldRemoveElement(element, validTabIds);
+    if (shouldRemove) {
       element.remove();
       removedCount++;
-      continue;
-    }
-    
-    // Extract Quick Tab ID from element ID (format: quick-tab-{id})
-    if (elementId && elementId.startsWith('quick-tab-')) {
-      const quickTabId = elementId.substring('quick-tab-'.length);
-      
-      // If this ID is not in the valid set, it's orphaned
-      if (!validTabIds.has(quickTabId)) {
-        element.remove();
-        removedCount++;
-      }
     }
   }
 
   return removedCount;
+}
+
+/**
+ * Helper to determine if a Quick Tab element should be removed
+ * v1.6.4.4 - Extracted to reduce nesting depth
+ * @private
+ * @param {Element} element - DOM element to check
+ * @param {Set<string>|null} validTabIds - Set of valid Quick Tab IDs, or null to remove all
+ * @returns {boolean} True if element should be removed
+ */
+function _shouldRemoveElement(element, validTabIds) {
+  // If validTabIds is null, remove all elements
+  if (validTabIds === null) {
+    return true;
+  }
+  
+  const elementId = element.id;
+  
+  // Extract Quick Tab ID from element ID (format: quick-tab-{id})
+  if (elementId && elementId.startsWith('quick-tab-')) {
+    const quickTabId = elementId.substring('quick-tab-'.length);
+    // If this ID is not in the valid set, it's orphaned
+    return !validTabIds.has(quickTabId);
+  }
+  
+  // Element has no ID or invalid format - don't remove
+  return false;
 }
 
 /**

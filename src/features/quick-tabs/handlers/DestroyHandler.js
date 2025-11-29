@@ -19,8 +19,8 @@
  * @version 1.6.4.4
  */
 
-import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
+import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
 // v1.6.4.4 - FIX Bug #8: Debounce delay for storage writes (ms)
 const STORAGE_DEBOUNCE_DELAY = 150;
