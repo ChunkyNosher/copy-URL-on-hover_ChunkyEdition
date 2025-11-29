@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.4.4 debounced writes, DOM cleanup, gesture handlers)
+  (v1.6.3.2 batch mode, mutex pattern, single rendering authority)
 tools: ["*"]
 ---
 
@@ -51,19 +51,19 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.4 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
 - **browser.storage.local** - Persistent state storage with key `quick_tabs_state_v2`
 - **Global Visibility** - Quick Tabs visible in all tabs
 - **Shared Storage Utilities** - `src/utils/storage-utils.js` for persistence
-- **Debounced Batch Writes** - Prevent storage write storms during rapid operations (v1.6.4.4)
-- **DOM Cleanup** - `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js` (v1.6.4.4)
-- **UICoordinator Reconciliation** - `reconcileRenderedTabs()` destroys orphaned windows
+- **Batch Mode for Close All** - DestroyHandler._batchMode prevents storage write storms (v1.6.3.2)
+- **DOM Cleanup** - `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js`
+- **UICoordinator Single Rendering Authority** - restore() does NOT call render() directly (v1.6.3.2)
 - **state:cleared Event** - Emitted on closeAll() for full cleanup
 
-**Storage Format (v1.6.4.4):**
+**Storage Format (v1.6.3.2):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -78,9 +78,9 @@ const relevantMemories = await searchMemories({
 
 ---
 
-## UICoordinator Event-Driven Architecture (v1.6.4.4)
+## UICoordinator Event-Driven Architecture (v1.6.3.2)
 
-**UICoordinator listens to state events and handles cleanup:**
+**UICoordinator is single rendering authority:**
 
 ```javascript
 // setupStateListeners() in UICoordinator
@@ -88,9 +88,12 @@ this.eventBus.on('state:added', ({ quickTab }) => this.render(quickTab));
 this.eventBus.on('state:updated', ({ quickTab }) => this.update(quickTab));
 this.eventBus.on('state:deleted', ({ id }) => this.destroy(id));
 this.eventBus.on('state:cleared', () => this.reconcileRenderedTabs());
+
+// CRITICAL: restore() does NOT call render() directly (v1.6.3.2)
+// Restore flow: VisibilityHandler → MinimizedManager → state:updated → UICoordinator.update()
 ```
 
-**Reconciliation destroys orphaned windows and cleans DOM (v1.6.4.4):**
+**Reconciliation destroys orphaned windows and cleans DOM:**
 
 ```javascript
 reconcileRenderedTabs() {
@@ -99,27 +102,28 @@ reconcileRenderedTabs() {
       this.destroy(id);
     }
   }
-  cleanupOrphanedQuickTabElements(); // v1.6.4.4
+  cleanupOrphanedQuickTabElements();
 }
 ```
 
 ---
 
-## Debounced Batch Writes (v1.6.4.4)
+## Batch Mode for Close All (v1.6.3.2)
 
-**Prevent storage write storms during rapid operations:**
+**Prevents storage write storms during closeAll():**
 
 ```javascript
-// DestroyHandler batches rapid destroys
-this._pendingDestroys = new Set();
-this._destroyDebounceTimer = null;
-
-scheduleDestroy(id) {
-  this._pendingDestroys.add(id);
-  clearTimeout(this._destroyDebounceTimer);
-  this._destroyDebounceTimer = setTimeout(() => {
-    this._processPendingDestroys();
-  }, 100);
+// DestroyHandler uses _batchMode flag (1 write vs 6+)
+closeAll() {
+  this._batchMode = true;  // Suppress individual storage writes
+  try {
+    for (const id of quickTabIds) {
+      this.destroy(id);  // No storage write during batch
+    }
+  } finally {
+    this._batchMode = false;
+    this.persistState();  // Single storage write
+  }
 }
 ```
 
@@ -258,11 +262,12 @@ quickTab.shouldBeVisible(currentTabId) {
 | `src/features/quick-tabs/managers/StorageManager.js` | storage.onChanged listener, save/load |
 | `src/features/quick-tabs/coordinators/SyncCoordinator.js` | Handle storage changes, call hydrate |
 | `src/features/quick-tabs/managers/StateManager.js` | Hydrate state, emit events |
-| `src/features/quick-tabs/coordinators/UICoordinator.js` | Listen events, render/update/destroy, reconcileRenderedTabs() with DOM cleanup (v1.6.4.4) |
-| `src/features/quick-tabs/handlers/DestroyHandler.js` | Debounced batch writes, `state:cleared` event (v1.6.4.4) |
+| `src/features/quick-tabs/coordinators/UICoordinator.js` | **Single rendering authority**, reconcileRenderedTabs() with DOM cleanup (v1.6.3.2) |
+| `src/features/quick-tabs/handlers/DestroyHandler.js` | **_batchMode for close all**, `state:cleared` event (v1.6.3.2) |
+| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **Mutex pattern _operationLocks** (v1.6.3.2) |
 | `src/utils/storage-utils.js` | Shared persistence utilities |
-| `src/utils/dom.js` | DOM utilities including `cleanupOrphanedQuickTabElements()` (v1.6.4.4) |
-| `background.js` | Cache update ONLY (no broadcast), saveId tracking, synchronous gesture handlers (v1.6.4.4) |
+| `src/utils/dom.js` | DOM utilities including `cleanupOrphanedQuickTabElements()` |
+| `background.js` | Cache update ONLY (no broadcast), saveId tracking, synchronous gesture handlers |
 
 ---
 

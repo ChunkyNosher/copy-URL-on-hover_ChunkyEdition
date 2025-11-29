@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.4.5 debounce, restore snapshots, close minimized fix)
+  Quick Tab functionality (v1.6.3.2 UICoordinator single rendering, mutex pattern)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -36,11 +36,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
 
-**Recent Fixes (v1.6.4.5):**
-- **VisibilityHandler Debounce:** Prevents 200+ duplicate minimize events with `_pendingMinimize`/`_pendingRestore` Sets
-- **UICoordinator Restore Fix:** `_applySnapshotForRestore()` applies position/size BEFORE rendering
-- **Close Minimized Fix:** `closeMinimizedTabs()` collects IDs BEFORE filtering, sends to all browser tabs
-- **Backwards Compat:** `CLOSE_MINIMIZED_QUICK_TABS` handler in content.js
+**v1.6.3.2 Architectural Fixes:**
+- **UICoordinator Single Rendering Authority:** `restore()` NO LONGER calls `render()` directly
+- **Mutex Pattern:** `VisibilityHandler._operationLocks` prevents duplicate minimize/restore
+- **MinimizedManager.restore():** Only applies snapshot, returns data (no tabWindow.restore())
+- **DragController Destroyed Flag:** Prevents ghost events after cleanup
+- **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms
 
 **Storage Format:**
 ```javascript
@@ -60,59 +61,49 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.4.5 Key Patterns
+## v1.6.3.2 Key Patterns
 
-### VisibilityHandler Debounce Pattern
+### Restore Flow (UICoordinator Single Rendering Authority)
+
+```
+VisibilityHandler.handleRestore()
+    ↓
+MinimizedManager.restore(id) → applies snapshot, returns data
+    ↓
+emits 'state:updated' event
+    ↓
+UICoordinator.update(quickTab) → calls render() if needed
+```
+
+### Mutex Pattern for Visibility Operations
 
 ```javascript
-// Prevent 200+ duplicate minimize events per click
-this._pendingMinimize = new Set();
-this._pendingRestore = new Set();
-this._debounceTimers = new Map();
+// VisibilityHandler prevents duplicate operations
+this._operationLocks = new Map();  // id → operation type
 
 handleMinimize(id) {
-  if (this._pendingMinimize.has(id)) return; // Skip duplicate
-  this._pendingMinimize.add(id);
-  // ... do work ...
-  this._scheduleDebounce(id, 'minimize', 150);
+  if (this._operationLocks.has(id)) return;  // Skip duplicate
+  this._operationLocks.set(id, 'minimize');
+  // Lock cleared after debounce timer completes
 }
 ```
 
-### UICoordinator Restore Pattern
+### MinimizedManager.restore() (v1.6.3.2)
 
 ```javascript
-// Apply snapshot BEFORE rendering to prevent duplicates at (100,100)
-_applySnapshotForRestore(quickTab) {
-  const snapshotData = this.minimizedManager.getSnapshot(quickTab.id);
-  if (snapshotData) {
-    quickTab.position = snapshotData.position;
-    quickTab.size = snapshotData.size;
-  }
-}
+// restore() only applies snapshot, does NOT call tabWindow.restore()
+const snapshot = minimizedManager.restore(id);
+// Caller uses snapshot data, UICoordinator handles rendering
 ```
 
-### closeMinimizedTabs Pattern
+### Close All Batch Mode (v1.6.3.2)
 
 ```javascript
-// Collect IDs BEFORE filtering, then send destroy to ALL browser tabs
-closeMinimizedTabs() {
-  const minimizedIds = state.tabs.filter(t => isTabMinimizedHelper(t)).map(t => t.id);
-  // Filter state...
-  for (const id of minimizedIds) {
-    browser.tabs.query({}).then(tabs => {
-      tabs.forEach(tab => browser.tabs.sendMessage(tab.id, { type: 'CLOSE_QUICK_TAB', id }));
-    });
-  }
-}
-```
-
-### MinimizedManager.restore()
-
-```javascript
-const result = minimizedManager.restore(id);
-if (result) {
-  const { window: tabWindow, savedPosition, savedSize } = result;
-  tabWindow.setPosition(savedPosition.left, savedPosition.top);
+// DestroyHandler prevents storage write storms (1 write vs 6+)
+closeAll() {
+  this._batchMode = true;
+  try { /* destroy all */ }
+  finally { this._batchMode = false; this.persistState(); }
 }
 ```
 

@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.4.4 null-safe updateZIndex, snapshot restore, DOM cleanup)
+  (v1.6.3.2 DragController destroyed flag, restore via UICoordinator)
 tools: ["*"]
 ---
 
@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Quick Tab Features:**
@@ -60,25 +60,22 @@ const relevantMemories = await searchMemories({
 - **Global Visibility** - Visible in all tabs by default (no container isolation)
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
-- **Minimize to Manager** - `QuickTabWindow.minimize()` called directly (v1.6.4.4)
-- **State Persistence** - Handlers persist to storage.local via shared utilities
-- **Null-safe updateZIndex()** - Defensive checks prevent TypeError (v1.6.4.4)
+- **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
+- **Restore via UICoordinator** - UICoordinator handles rendering (v1.6.3.2)
+- **DragController Destroyed Flag** - Prevents ghost events (v1.6.3.2)
 
-**Minimized State Detection (v1.6.4.4):**
+**Minimized State Detection (v1.6.3.2):**
 ```javascript
 // Use this pattern EVERYWHERE for consistent detection
 const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
 ```
 
-**Restore Pattern (v1.6.4.4):**
+**Restore Pattern (v1.6.3.2):**
 ```javascript
-// restore() returns object with window and snapshot
-const result = minimizedManager.restore(id);
-if (result) {
-  const { window: tabWindow, savedPosition, savedSize } = result;
-  tabWindow.setPosition(savedPosition.left, savedPosition.top);
-  tabWindow.setSize(savedSize.width, savedSize.height);
-}
+// restore() no longer calls render() - UICoordinator handles it
+// MinimizedManager.restore() only applies snapshot and returns data
+const snapshot = minimizedManager.restore(id);
+// UICoordinator receives state:updated event and renders if needed
 ```
 
 ---
@@ -134,7 +131,7 @@ if (result) {
 
 ---
 
-### Solo/Mute Implementation (v1.6.4.4)
+### Solo/Mute Implementation (v1.6.3.2)
 
 **Key Rules:**
 1. Solo and Mute are **mutually exclusive**
@@ -143,7 +140,7 @@ if (result) {
 4. Both use browser `tabId` stored in arrays
 5. Persist changes to storage.local via shared utilities
 
-**Toggle Solo (v1.6.4.4):**
+**Toggle Solo (v1.6.3.2):**
 ```javascript
 async toggleSolo(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -182,7 +179,7 @@ async toggleSolo(browserTabId) {
 }
 ```
 
-**Toggle Mute (v1.6.4.4):**
+**Toggle Mute (v1.6.3.2):**
 ```javascript
 async toggleMute(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -223,7 +220,7 @@ async toggleMute(browserTabId) {
 
 ---
 
-## Visibility Pattern (v1.6.4.4)
+## Visibility Pattern (v1.6.3.2)
 
 **Global visibility with Solo/Mute arrays:**
 
@@ -394,7 +391,7 @@ updateNavigationState() {
 
 ### Issue: Solo/Mute Not Mutually Exclusive
 
-**Fix (v1.6.4.4):** Filter opposite array when toggling
+**Fix (v1.6.3.2):** Filter opposite array when toggling
 
 ```javascript
 // ✅ CORRECT - Mutual exclusivity with arrays
@@ -410,7 +407,7 @@ if (enablingSolo) {
 
 ### Issue: Quick Tab Not Visible When Expected
 
-**Fix (v1.6.4.4):** Check soloedOnTabs array logic
+**Fix (v1.6.3.2):** Check soloedOnTabs array logic
 
 ```javascript
 // ✅ CORRECT - Visibility check with arrays
@@ -429,29 +426,43 @@ function shouldBeVisible(quickTab, browserTabId) {
 }
 ```
 
-### Issue: updateZIndex TypeError (v1.6.4.4)
+### Issue: updateZIndex TypeError (v1.6.3.2)
 
 **Fix:** Add null/undefined safety checks
 
 ```javascript
-// ✅ CORRECT - Null-safe updateZIndex (v1.6.4.4)
+// ✅ CORRECT - Null-safe updateZIndex (v1.6.3.2)
 updateZIndex(zIndex) {
   if (!this.element) return;
   this.element.style.zIndex = zIndex;
 }
 ```
 
-### Issue: Duplicate Windows on Restore (v1.6.4.4)
+### Issue: Duplicate Windows on Restore (v1.6.3.2)
 
-**Fix:** Use snapshot data from `MinimizedManager.restore()`
+**Fix:** UICoordinator is single rendering authority - restore() does NOT call render()
 
 ```javascript
-// ✅ CORRECT - restore() returns object with window and snapshot
-const result = minimizedManager.restore(id);
-if (result) {
-  const { window: tabWindow, savedPosition, savedSize } = result;
-  tabWindow.setPosition(savedPosition.left, savedPosition.top);
-  tabWindow.setSize(savedSize.width, savedSize.height);
+// ✅ CORRECT - restore() only applies snapshot, UICoordinator renders
+// MinimizedManager.restore() returns snapshot data
+// Emits state:updated event → UICoordinator.update() → render() if needed
+```
+
+### Issue: Ghost Drag Events (v1.6.3.2)
+
+**Fix:** DragController uses destroyed flag
+
+```javascript
+// ✅ CORRECT - Check destroyed flag in all handlers
+class DragController {
+  destroyed = false;
+  
+  destroy() { this.destroyed = true; /* cleanup... */ }
+  
+  onPointerMove(e) {
+    if (this.destroyed) return;  // Prevent ghost events
+    // ...
+  }
 }
 ```
 

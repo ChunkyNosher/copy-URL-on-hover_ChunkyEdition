@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -63,13 +63,12 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
 
-**Recent Fixes (v1.6.4.4):**
-- DOM cleanup with `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js`
-- Synchronous gesture handlers in `background.js` for Firefox
-- Debounced batch writes in `DestroyHandler` prevent storage write storms
-- `MinimizedManager.restore()` returns snapshot object for proper window restoration
-- `window.js` null-safe `updateZIndex()` prevents TypeError
-- `VisibilityHandler` calls `QuickTabWindow.minimize()` directly
+**v1.6.3.2 Architectural Fixes:**
+- UICoordinator single rendering authority (restore does NOT call render directly)
+- Mutex pattern in VisibilityHandler (_operationLocks prevents duplicates)
+- MinimizedManager.restore() only applies snapshot, returns data
+- DragController destroyed flag prevents ghost events
+- DestroyHandler._batchMode prevents storage write storms
 
 ---
 
@@ -246,8 +245,6 @@ const tabs = state.quick_tabs_state_v2?.tabs || [];
 
 **CRITICAL - Testing (BEFORE and AFTER):**
 - **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
-- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
-- **Jest unit tests:** Test extension AFTER changes (verify fix) ⭐
 - **Jest unit tests:** Test extension AFTER changes (verify fix) ⭐
 - **Codecov:** Verify test coverage at end ⭐
 
@@ -276,7 +273,7 @@ const tabs = state.quick_tabs_state_v2?.tabs || [];
 
 ## Common Bug Categories
 
-### Global Visibility (v1.6.4.4)
+### Global Visibility (v1.6.3.2)
 
 **Symptoms:** State not shared correctly across tabs
 
@@ -291,7 +288,7 @@ const state = await browser.storage.local.get(STATE_KEY);
 const tabs = state[STATE_KEY]?.tabs || [];
 ```
 
-### Solo/Mute State Bugs (v1.6.4.4)
+### Solo/Mute State Bugs (v1.6.3.2)
 
 **Symptoms:** Incorrect visibility, state conflicts
 
@@ -310,7 +307,7 @@ function toggleSolo(quickTab, tabId) {
 }
 ```
 
-### Storage Persistence Bugs (v1.6.4.4)
+### Storage Persistence Bugs (v1.6.3.2)
 
 **Symptoms:** State lost after destroy/minimize/restore
 
@@ -320,15 +317,13 @@ function toggleSolo(quickTab, tabId) {
 ```javascript
 import { persistStateToStorage, generateSaveId } from '../utils/storage-utils.js';
 
-// Use debounced batch writes for rapid operations (v1.6.4.4)
-this._pendingDestroys.add(id);
-clearTimeout(this._destroyDebounceTimer);
-this._destroyDebounceTimer = setTimeout(() => {
-  this._processPendingDestroys();
-}, 100);
+// Use _batchMode for rapid operations (v1.6.3.2)
+this._batchMode = true;  // Suppress individual writes during batch
+try { /* destroy operations */ }
+finally { this._batchMode = false; this.persistState(); }  // Single write
 ```
 
-### DOM Cleanup Bugs (v1.6.4.4)
+### DOM Cleanup Bugs (v1.6.3.2)
 
 **Symptoms:** Orphaned Quick Tab elements remain after close/destroy
 
@@ -342,21 +337,22 @@ import { cleanupOrphanedQuickTabElements } from '../utils/dom.js';
 cleanupOrphanedQuickTabElements();
 ```
 
-### Minimize/Restore Bugs (v1.6.4.4)
+### Minimize/Restore Bugs (v1.6.3.2)
 
 **Symptoms:** Duplicate windows on restore, wrong position/size
 
-**Root Cause:** Not using snapshot data from `MinimizedManager.restore()`
+**Root Cause:** Multiple sources triggering restore, or render() called directly
 
-**Standard Fix:**
+**Standard Fix (v1.6.3.2):**
 ```javascript
-// restore() returns object with window and snapshot (v1.6.4.4)
-const result = minimizedManager.restore(id);
-if (result) {
-  const { window: tabWindow, savedPosition, savedSize } = result;
-  tabWindow.setPosition(savedPosition.left, savedPosition.top);
-  tabWindow.setSize(savedSize.width, savedSize.height);
-}
+// UICoordinator is single rendering authority
+// restore() does NOT call render() directly
+// MinimizedManager.restore() only applies snapshot, returns data
+// Emits state:updated → UICoordinator.update() → render() if needed
+
+// VisibilityHandler uses mutex pattern to prevent duplicates
+if (this._operationLocks.has(id)) return;  // Skip duplicate
+this._operationLocks.set(id, 'restore');
 ```
 
 ### Quick Tab Rendering Bugs
@@ -497,16 +493,19 @@ test('edge case #123: empty container string', ...);
 → Edge cases are where bugs hide
 
 ❌ **Not checking global visibility logic**
-→ Quick Tabs are visible everywhere in v1.6.4.4 (no container isolation)
+→ Quick Tabs are visible everywhere in v1.6.3.2 (no container isolation)
 
 ❌ **Using storage.sync for Quick Tab state**
 → Use storage.local for Quick Tab state, storage.sync only for settings
 
 ❌ **Not using debounced batch writes**
-→ Rapid destroy operations cause storage write storms (v1.6.4.4)
+→ Rapid destroy operations cause storage write storms (use _batchMode v1.6.3.2)
 
 ❌ **Not using DOM cleanup**
-→ Call `cleanupOrphanedQuickTabElements()` after destroy operations (v1.6.4.4)
+→ Call `cleanupOrphanedQuickTabElements()` after destroy operations
+
+❌ **Calling render() directly from restore()**
+→ UICoordinator is single rendering authority (v1.6.3.2)
 
 ---
 

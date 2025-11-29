@@ -50,7 +50,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.2 - Two-Layer Sidebar Tab System ✅
 
 **Settings Sidebar Structure (Two-Layer System):**
 - **PRIMARY TABS (Layer 1):**
@@ -71,7 +71,7 @@ const relevantMemories = await searchMemories({
 - Ctrl+Alt+Z or Alt+Shift+Z: Opens sidebar and switches to Quick Tab Manager
 - Command: 'open-quick-tabs-manager' in manifest.json
 
-**Storage (v1.6.4):**
+**Storage (v1.6.3.2):**
 - **Quick Tab state:** `storage.local` (NOT `storage.sync`)
 - **Extension settings:** `storage.sync` (user preferences)
 - **Clear storage:** Must use `storage.local` for Quick Tab state

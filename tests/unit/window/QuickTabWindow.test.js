@@ -568,7 +568,7 @@ describe('QuickTabWindow', () => {
       expect(window.minimized).toBe(false);
     });
 
-    test('should recreate container from scratch (v1.6.4.6)', () => {
+    test('should NOT recreate container (v1.6.3.2 - UICoordinator is single render authority)', () => {
       const window = new QuickTabWindow(options);
       window.render();
       // Simulate minimize removing DOM
@@ -579,9 +579,26 @@ describe('QuickTabWindow', () => {
 
       window.restore();
 
-      // v1.6.4.6 - restore now recreates DOM via render()
-      expect(window.container).not.toBeNull();
-      expect(window.rendered).toBe(true);
+      // v1.6.3.2 - restore() NO LONGER calls render()
+      // UICoordinator is the single rendering authority and will call render() after restore()
+      // This fixes Issue #1 (duplicate window on restore)
+      expect(window.container).toBeNull();
+      expect(window.rendered).toBe(false);
+      expect(window.minimized).toBe(false); // Minimized flag is cleared
+    });
+
+    test('should restore existing container display if it exists', () => {
+      const window = new QuickTabWindow(options);
+      window.render();
+      // Container exists, just hidden
+      window.minimized = true;
+
+      window.restore();
+
+      // v1.6.3.2 - If container exists, just update display style
+      expect(window.container.style.display).toBe('flex');
+      expect(window.container.style.left).toBe('100px');
+      expect(window.container.style.top).toBe('100px');
     });
 
     test('should restore position and size', () => {

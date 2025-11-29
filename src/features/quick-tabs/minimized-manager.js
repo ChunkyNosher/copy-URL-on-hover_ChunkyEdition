@@ -74,6 +74,9 @@ export class MinimizedManager {
    * v1.6.4.3 - FIX Issue #4: Use immutable snapshot instead of potentially corrupted instance
    * v1.6.4.4 - FIX Bug #5: Return snapshot data for caller to apply to correct window
    * v1.6.4.6 - FIX Issue #1, #6: Apply snapshot BEFORE calling restore() so render() uses correct values
+   * v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call tabWindow.restore() here!
+   *   This was causing duplicate window bug. MinimizedManager only applies snapshot.
+   *   UICoordinator is the single rendering authority and will call restore() then render().
    * @param {string} id - Quick Tab ID
    * @returns {Object|boolean} Snapshot object with position/size, or false if not found
    */
@@ -89,14 +92,14 @@ export class MinimizedManager {
       const savedWidth = snapshot.savedSize.width;
       const savedHeight = snapshot.savedSize.height;
 
-      // v1.6.4.6 - FIX Issue #6: Apply snapshot to instance properties BEFORE calling restore()
-      // This ensures render() uses the correct position/size, not defaults (100, 100)
+      // v1.6.4.6 - FIX Issue #6: Apply snapshot to instance properties
+      // This ensures when render() is eventually called, it uses the correct position/size
       tabWindow.left = savedLeft;
       tabWindow.top = savedTop;
       tabWindow.width = savedWidth;
       tabWindow.height = savedHeight;
 
-      console.log('[MinimizedManager] Applied snapshot to instance BEFORE restore:', {
+      console.log('[MinimizedManager] Applied snapshot to instance properties:', {
         id,
         left: savedLeft,
         top: savedTop,
@@ -104,25 +107,17 @@ export class MinimizedManager {
         height: savedHeight
       });
 
-      // Now call restore() which will call render() with correct instance properties
-      tabWindow.restore();
-
-      // v1.6.4.6 - FIX Issue #7: Verify DOM was created with correct position
-      if (tabWindow.container) {
-        console.log('[MinimizedManager] Verified DOM position after restore:', {
-          id,
-          containerLeft: tabWindow.container.style.left,
-          containerTop: tabWindow.container.style.top
-        });
-      }
+      // v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call tabWindow.restore() here!
+      // This was causing the duplicate window bug - both MinimizedManager.restore()
+      // and UICoordinator.update() were calling render().
+      // Now UICoordinator._restoreExistingWindow() is the single authority that
+      // calls tabWindow.restore() (which updates state) then tabWindow.render() (creates DOM).
 
       this.minimizedTabs.delete(id);
-      console.log('[MinimizedManager] Restored tab with snapshot position:', {
+      console.log('[MinimizedManager] Restored snapshot (render deferred to UICoordinator):', {
         id,
-        left: savedLeft,
-        top: savedTop,
-        width: savedWidth,
-        height: savedHeight
+        position: { left: savedLeft, top: savedTop },
+        size: { width: savedWidth, height: savedHeight }
       });
 
       // v1.6.4.4 - FIX Bug #5: Return snapshot data so caller can verify/apply to correct window

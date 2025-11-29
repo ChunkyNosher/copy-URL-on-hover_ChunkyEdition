@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4.7  
+**Version:** 1.6.3.2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,15 +15,12 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 
-**Recent Changes (v1.6.4.7):**
-- **Debug ID Display:** New `quickTabShowDebugId` setting shows Quick Tab ID in titlebar for debugging
-- **Video Pause on Minimize:** Videos/audio pause automatically when Quick Tab is minimized via `_pauseMediaInIframe()`
-
-**Previous Changes (v1.6.4.6):**
-- **DOM Lifecycle Fix:** `minimize()` now REMOVES DOM element via `container.remove()`, destroys controllers
-- **Restore Recreates DOM:** `restore()` calls `render()` to recreate DOM since minimize removes it
-- **Snapshot Before Render:** `MinimizedManager.restore()` applies position/size to instance BEFORE calling `tabWindow.restore()`
-- **UICoordinator DOM Validation:** `render()`/`update()` validate `isRendered()` on existing windows, re-render if DOM detached
+**v1.6.3.2 Architectural Fixes:**
+- **UICoordinator Single Rendering Authority:** `restore()` NO LONGER calls `render()` directly
+- **Mutex Pattern for Visibility:** `VisibilityHandler._operationLocks` prevents duplicate operations
+- **MinimizedManager Changes:** `restore()` only applies snapshot, returns data (no tabWindow.restore())
+- **DragController Destroyed Flag:** Prevents ghost events after cleanup
+- **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms (1 write vs 6+)
 
 ---
 
@@ -117,7 +114,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 QuickTabsManager API (v1.6.4.7)
+## 🔧 QuickTabsManager API (v1.6.3.2)
 
 ### Correct Methods
 
@@ -132,7 +129,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 Storage Utilities (v1.6.4.7)
+## 🔧 Storage Utilities (v1.6.3.2)
 
 **Location:** `src/utils/storage-utils.js`
 
@@ -160,14 +157,94 @@ const success = await persistStateToStorage(state, '[MyHandler]'); // Returns bo
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.4.7)
+## 🏗️ Key Architecture Patterns (v1.6.3.2)
 
-### QuickTabWindow.minimize() Pattern (v1.6.4.7)
+### Restore Flow (v1.6.3.2 - UICoordinator as Single Rendering Authority)
+
+```
+VisibilityHandler.handleRestore()
+    ↓
+MinimizedManager.restore(id) → applies snapshot to instance, returns snapshot data
+    ↓
+emits 'state:updated' event
+    ↓
+UICoordinator.update(quickTab) → calls render() if needed
+```
+
+**Key Point:** `QuickTabWindow.restore()` NO LONGER calls `render()` directly. This prevents duplicate windows.
+
+### Mutex Pattern for Visibility Operations (v1.6.3.2)
+
+```javascript
+// VisibilityHandler prevents duplicate minimize/restore operations
+this._operationLocks = new Map();  // id → operation type
+
+handleMinimize(id) {
+  if (this._operationLocks.has(id)) return;  // Prevent duplicate
+  this._operationLocks.set(id, 'minimize');
+  // ... do work ...
+  // Lock cleared after debounce timer completes
+}
+```
+
+### MinimizedManager.restore() Pattern (v1.6.3.2)
+
+```javascript
+// restore() only applies snapshot, does NOT call tabWindow.restore()
+restore(id) {
+  const snapshot = this.getSnapshot(id);
+  tabWindow.left = snapshot.savedPosition.left;
+  tabWindow.top = snapshot.savedPosition.top;
+  tabWindow.width = snapshot.savedSize.width;
+  tabWindow.height = snapshot.savedSize.height;
+  tabWindow.minimized = false;
+  this.minimizedTabs.delete(id);
+  return snapshot;  // Caller uses snapshot data
+}
+```
+
+### DragController Destroyed Flag (v1.6.3.2)
+
+```javascript
+// Prevents ghost events after cleanup
+class DragController {
+  destroyed = false;
+  
+  destroy() {
+    this.destroyed = true;
+    // Remove event listeners...
+  }
+  
+  onPointerMove(e) {
+    if (this.destroyed) return;  // Guard against ghost events
+    // ...
+  }
+}
+```
+
+### Close All Batch Mode (v1.6.3.2)
+
+```javascript
+// DestroyHandler prevents storage write storms during closeAll()
+closeAll() {
+  this._batchMode = true;  // Suppress individual storage writes
+  try {
+    for (const id of quickTabIds) {
+      this.destroy(id);  // No storage write during batch
+    }
+  } finally {
+    this._batchMode = false;
+    this.persistState();  // Single storage write
+  }
+}
+```
+
+### QuickTabWindow.minimize() Pattern (v1.6.3.2)
 
 ```javascript
 // minimize() pauses media, removes DOM, destroys controllers
 minimize() {
-  this._pauseMediaInIframe();          // Pause any playing video/audio (v1.6.4.7)
+  this._pauseMediaInIframe();          // Pause any playing video/audio
   this.dragController.destroy();       // Cleanup event listeners
   this.resizeController.detachAll();   // Cleanup resize handles
   this.container.remove();             // Actually remove from DOM
@@ -177,33 +254,7 @@ minimize() {
 }
 ```
 
-### QuickTabWindow.restore() Pattern (v1.6.4.7)
-
-```javascript
-// restore() now RECREATES DOM via render()
-restore() {
-  this.minimized = false;
-  if (!this.container) {
-    this.render();  // Recreate DOM since minimize removed it
-  }
-  this.onFocus(this.id);
-}
-```
-
-### MinimizedManager.restore() Pattern (v1.6.4.7)
-
-```javascript
-// Apply snapshot to instance BEFORE calling restore()
-restore(id) {
-  tabWindow.left = snapshot.savedPosition.left;
-  tabWindow.top = snapshot.savedPosition.top;
-  tabWindow.width = snapshot.savedSize.width;
-  tabWindow.height = snapshot.savedSize.height;
-  tabWindow.restore();  // Now render() uses correct values
-}
-```
-
-### UICoordinator DOM Validation (v1.6.4.7)
+### UICoordinator DOM Validation (v1.6.3.2)
 
 ```javascript
 // Validate DOM attachment before operating
@@ -326,14 +377,15 @@ Use the agentic-tools MCP to create memories instead.
 - `src/features/quick-tabs/coordinators/SyncCoordinator.js` - Cross-tab sync
 - `src/features/quick-tabs/managers/StorageManager.js` - Storage operations
 - `src/features/quick-tabs/managers/StateManager.js` - State management
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering, DOM validation with `isRendered()` (v1.6.4.6)
-- `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, `state:cleared` event
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering, **Single Rendering Authority** (v1.6.3.2)
+- `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, `state:cleared` event, **_batchMode** (v1.6.3.2)
 - `src/features/quick-tabs/handlers/UpdateHandler.js` - Position/size updates with async persistence
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Solo/Mute, debounce mechanism
-- `src/features/quick-tabs/minimized-manager.js` - Snapshot-based storage, applies snapshot BEFORE restore (v1.6.4.6)
-- `src/features/quick-tabs/window.js` - `minimize()` removes DOM + pauses media via `_pauseMediaInIframe()`, `restore()` recreates via `render()` (v1.6.4.7)
-- `src/features/quick-tabs/ui/builders/TitlebarBuilder.js` - `_createDebugIdElement()` for debug ID display (v1.6.4.7)
-- `options_page.html` / `options_page.js` - `quickTabShowDebugId` setting (v1.6.4.7)
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Solo/Mute, **mutex pattern _operationLocks** (v1.6.3.2)
+- `src/features/quick-tabs/minimized-manager.js` - Snapshot storage, **restore() returns data only** (v1.6.3.2)
+- `src/features/quick-tabs/window.js` - `minimize()` removes DOM + pauses media, **restore() does NOT render** (v1.6.3.2)
+- `src/features/quick-tabs/controllers/drag-controller.js` - **destroyed flag prevents ghost events** (v1.6.3.2)
+- `src/features/quick-tabs/ui/builders/TitlebarBuilder.js` - `_createDebugIdElement()` for debug ID display
+- `options_page.html` / `options_page.js` - `quickTabShowDebugId` setting
 - `sidebar/quick-tabs-manager.js` - Manager UI, closeMinimizedTabs
 - `sidebar/settings.js` - Sidebar initialization
 
@@ -343,7 +395,7 @@ Use the agentic-tools MCP to create memories instead.
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
-**Unified Format (v1.6.4.7):**
+**Unified Format (v1.6.3.2):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -365,13 +417,13 @@ Use the agentic-tools MCP to create memories instead.
 }
 ```
 
-### Manager Action Messages (v1.6.4.7)
+### Manager Action Messages (v1.6.3.2)
 
 Content script handles these messages from Manager:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
 - `CLOSE_MINIMIZED_QUICK_TABS` - Close all minimized Quick Tabs
-- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab (removes DOM via v1.6.4.6 pattern)
-- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (recreates DOM via `render()`)
+- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab (removes DOM)
+- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (UICoordinator handles rendering)
 
 ---
 

@@ -50,7 +50,7 @@ export class TitlebarBuilder {
     this.soloButton = null;
     this.muteButton = null;
     this.faviconElement = null;
-    this.debugIdElement = null; // v1.6.4.7 - Debug ID display element
+    this.debugIdElement = null; // v1.6.3.2 - Debug ID display element
 
     // Zoom state (internal to titlebar)
     this.currentZoom = 100;
@@ -326,7 +326,7 @@ export class TitlebarBuilder {
 
   /**
    * Create debug ID display element
-   * v1.6.4.7 - Feature: Show Quick Tab Debug ID in titlebar
+   * v1.6.3.2 - Feature: Show Quick Tab Debug ID in titlebar
    * @private
    * @returns {HTMLElement|null} Debug ID element or null if disabled
    */
@@ -376,7 +376,7 @@ export class TitlebarBuilder {
       }
     });
 
-    // v1.6.4.7 - Add debug ID display (left of buttons)
+    // v1.6.3.2 - Add debug ID display (left of buttons)
     this.debugIdElement = this._createDebugIdElement();
     if (this.debugIdElement) {
       controls.appendChild(this.debugIdElement);
