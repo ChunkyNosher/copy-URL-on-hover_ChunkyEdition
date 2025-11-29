@@ -331,26 +331,44 @@ function _createFavicon(url) {
 }
 
 /**
+ * v1.6.4.2 - Helper to get position value from flat or nested format
+ * @param {Object} tab - Quick Tab data
+ * @param {string} flatKey - Key for flat format (e.g., 'width')
+ * @param {string} nestedKey - Key for nested format (e.g., 'size')
+ * @param {string} prop - Property name (e.g., 'width')
+ * @returns {number|undefined} The value or undefined
+ */
+function _getValue(tab, flatKey, nestedKey, prop) {
+  return tab[flatKey] ?? tab[nestedKey]?.[prop];
+}
+
+/**
  * v1.6.4 - Helper to format size and position string for tab metadata
  * Extracted to reduce complexity in _createTabInfo
  * FIX Issue #3: Only show position if both left and top are defined
+ * v1.6.4.2 - FIX TypeError: Handle both flat and nested position/size formats
  * @param {Object} tab - Quick Tab data
  * @returns {string|null} Formatted size/position string or null
  */
 function _formatSizePosition(tab) {
-  if (!tab.width || !tab.height) {
+  // v1.6.4.2 - FIX TypeError: Handle both flat (width/height) and nested (size.width) formats
+  const width = _getValue(tab, 'width', 'size', 'width');
+  const height = _getValue(tab, 'height', 'size', 'height');
+  
+  if (!width || !height) {
     return null;
   }
   
-  let sizeStr = `${Math.round(tab.width)}×${Math.round(tab.height)}`;
-  const hasLeft = tab.left !== undefined && tab.left !== null;
-  const hasTop = tab.top !== undefined && tab.top !== null;
+  let sizeStr = `${Math.round(width)}×${Math.round(height)}`;
+  
+  // v1.6.4.2 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
+  const left = _getValue(tab, 'left', 'position', 'left');
+  const top = _getValue(tab, 'top', 'position', 'top');
   
   // v1.6.4 - FIX Issue #3: Only show position if both values exist
-  if (hasLeft && hasTop) {
-    sizeStr += ` at (${Math.round(tab.left)}, ${Math.round(tab.top)})`;
+  if (left != null && top != null) {
+    sizeStr += ` at (${Math.round(left)}, ${Math.round(top)})`;
   }
-  // Otherwise just show size without position (omit "at (?, ?)")
   
   return sizeStr;
 }

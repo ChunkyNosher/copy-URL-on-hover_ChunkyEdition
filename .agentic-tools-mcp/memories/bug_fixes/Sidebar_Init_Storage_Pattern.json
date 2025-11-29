@@ -1,0 +1,8 @@
+{
+  "id": "b9f5e426-d50d-4e5a-bfba-9e868c84ed33",
+  "title": "Sidebar Init Storage Pattern",
+  "details": "Bug #3 Fix: Keyboard shortcut fails on first use because browser.runtime.sendMessage requires receiver to be loaded.\n\nSolution: Use storage-based communication for initial sidebar tab:\n1. Background sets _requestedPrimaryTab in storage.local BEFORE opening sidebar\n2. Sidebar's settings.js reads this on DOMContentLoaded\n3. Sidebar applies requested tab, then clears the storage key\n\nThis pattern works even when sidebar scripts haven't loaded yet because storage is synchronously available on page load.\n\nKey files:\n- background.js: _openSidebarToManager(), _handleOpenToSettingsTab() \n- sidebar/settings.js: _checkAndApplyRequestedTab(), initializeTabSwitching()\n\nStorage key: _requestedPrimaryTab (prefixed with underscore to indicate internal/temporary)",
+  "category": "bug_fixes",
+  "dateCreated": "2025-11-29T04:07:46.261Z",
+  "dateUpdated": "2025-11-29T04:07:46.261Z"
+}

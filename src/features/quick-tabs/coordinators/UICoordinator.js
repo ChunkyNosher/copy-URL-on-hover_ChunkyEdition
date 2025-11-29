@@ -90,6 +90,7 @@ export class UICoordinator {
   /**
    * Update an existing QuickTabWindow
    * v1.6.3.4 - FIX Bug #6: Check for minimized state before rendering
+   * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
    * @returns {QuickTabWindow|undefined} Updated or newly rendered tab window, or undefined if skipped
@@ -113,9 +114,13 @@ export class UICoordinator {
 
     console.log('[UICoordinator] Updating tab:', quickTab.id);
 
-    // Update tab properties
-    tabWindow.updatePosition(quickTab.position.left, quickTab.position.top);
-    tabWindow.updateSize(quickTab.size.width, quickTab.size.height);
+    // v1.6.4.2 - FIX TypeError: Use helper functions for safe access
+    const position = this._getSafePosition(quickTab);
+    const size = this._getSafeSize(quickTab);
+
+    // Update tab properties with safe values
+    tabWindow.updatePosition(position.left, position.top);
+    tabWindow.updateSize(size.width, size.height);
     tabWindow.updateZIndex(quickTab.zIndex);
 
     console.log('[UICoordinator] Tab updated:', quickTab.id);
@@ -206,29 +211,78 @@ export class UICoordinator {
   }
 
   /**
+   * Extract safe position values from QuickTab
+   * v1.6.4.2 - Helper to reduce complexity
+   * @private
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   * @returns {{left: number, top: number}} Safe position values
+   */
+  _getSafePosition(quickTab) {
+    const pos = quickTab.position || {};
+    return {
+      left: pos.left ?? 100,
+      top: pos.top ?? 100
+    };
+  }
+
+  /**
+   * Extract safe size values from QuickTab
+   * v1.6.4.2 - Helper to reduce complexity
+   * @private
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   * @returns {{width: number, height: number}} Safe size values
+   */
+  _getSafeSize(quickTab) {
+    const size = quickTab.size || {};
+    return {
+      width: size.width ?? 400,
+      height: size.height ?? 300
+    };
+  }
+
+  /**
+   * Extract safe visibility values from QuickTab
+   * v1.6.4.2 - Helper to reduce complexity
+   * @private
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   * @returns {Object} Safe visibility values
+   */
+  _getSafeVisibility(quickTab) {
+    const vis = quickTab.visibility || {};
+    return {
+      minimized: vis.minimized ?? false,
+      soloedOnTabs: vis.soloedOnTabs ?? [],
+      mutedOnTabs: vis.mutedOnTabs ?? []
+    };
+  }
+
+  /**
    * Create QuickTabWindow from QuickTab entity
+   * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
    * @private
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Created window
    */
   _createWindow(quickTab) {
+    const position = this._getSafePosition(quickTab);
+    const size = this._getSafeSize(quickTab);
+    const visibility = this._getSafeVisibility(quickTab);
+
     // Create QuickTabWindow using imported factory function from window.js
     return createQuickTabWindow({
       id: quickTab.id,
       url: quickTab.url,
-      left: quickTab.position.left,
-      top: quickTab.position.top,
-      width: quickTab.size.width,
-      height: quickTab.size.height,
+      left: position.left,
+      top: position.top,
+      width: size.width,
+      height: size.height,
       title: quickTab.title,
       cookieStoreId: quickTab.container,
-      minimized: quickTab.visibility.minimized,
+      minimized: visibility.minimized,
       zIndex: quickTab.zIndex,
-      soloedOnTabs: quickTab.visibility.soloedOnTabs,
-      mutedOnTabs: quickTab.visibility.mutedOnTabs
-      // Note: Callbacks are passed through from QuickTabsManager facade
-      // They will be added when QuickTabsManager calls this with options
+      soloedOnTabs: visibility.soloedOnTabs,
+      mutedOnTabs: visibility.mutedOnTabs
     });
   }
 }

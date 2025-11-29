@@ -1411,7 +1411,23 @@ async function _sendManagerTabMessage() {
 }
 
 /**
+ * Log detailed error information for message sending failures
+ * v1.6.4.3 - FIX: Extracted utility function to reduce code duplication
+ * @param {string} prefix - Log message prefix (e.g., '[Background] Failed to send X:')
+ * @param {Error} error - The error object
+ */
+function _logMessageError(prefix, error) {
+  console.debug(prefix, {
+    name: error?.name || 'Unknown',
+    message: error?.message || 'No message',
+    stack: error?.stack || 'No stack'
+  });
+}
+
+/**
  * Attempt to send SWITCH_TO_MANAGER_TAB message
+ * v1.6.4.2 - FIX Bug #3: Log full error details for debugging
+ * v1.6.4.3 - FIX: Use shared _logMessageError utility
  * @returns {Promise<boolean>} true if successful, false otherwise
  */
 async function _trySendManagerMessage() {
@@ -1421,6 +1437,7 @@ async function _trySendManagerMessage() {
     });
     return true;
   } catch (error) {
+    _logMessageError('[Background] Failed to send SWITCH_TO_MANAGER_TAB:', error);
     return false;
   }
 }
@@ -1450,6 +1467,8 @@ async function _sendSettingsTabMessage() {
 /**
  * Attempt to send SWITCH_TO_SETTINGS_TAB message
  * v1.6.4.1 - Helper to reduce nesting depth
+ * v1.6.4.2 - FIX Bug #3: Log full error details for debugging
+ * v1.6.4.3 - FIX: Use shared _logMessageError utility
  * @returns {Promise<boolean>} true if successful, false otherwise
  */
 async function _trySendSettingsMessage() {
@@ -1459,6 +1478,7 @@ async function _trySendSettingsMessage() {
     });
     return true;
   } catch (error) {
+    _logMessageError('[Background] Failed to send SWITCH_TO_SETTINGS_TAB:', error);
     return false;
   }
 }
@@ -1526,9 +1546,19 @@ async function _handleToggleQuickTabsManager() {
 /**
  * Open sidebar and switch to Manager tab
  * v1.6.4.1 - Helper to reduce nesting depth
+ * v1.6.4.2 - FIX Bug #3: Use storage to set initial tab before opening sidebar
+ *            This ensures the sidebar opens to the correct tab even on first use
  */
 async function _openSidebarToManager() {
+  // v1.6.4.2 - Set requested tab in storage BEFORE opening sidebar
+  // The sidebar will read this on DOMContentLoaded and show the correct tab
+  await browser.storage.local.set({ _requestedPrimaryTab: 'manager' });
+  console.debug('[Background] Set _requestedPrimaryTab to manager');
+  
   await browser.sidebarAction.open();
+  
+  // Wait for sidebar to initialize, then send message as backup
+  // The message may still fail on very first open, but storage ensures correct tab
   await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
   await _sendManagerTabMessage();
   console.log('[Sidebar] Opened sidebar and switched to Manager tab');
@@ -1555,6 +1585,7 @@ async function _toggleManagerWhenSidebarOpen() {
 /**
  * Handle _execute_sidebar_action command (Alt+Shift+S)
  * v1.6.4.1 - Always open sidebar to Settings tab
+ * v1.6.4.2 - FIX Bug #3: Use storage to set initial tab before opening sidebar
  */
 async function _handleOpenToSettingsTab() {
   try {
@@ -1562,12 +1593,16 @@ async function _handleOpenToSettingsTab() {
     const isOpen = await browser.sidebarAction.isOpen({});
     
     if (!isOpen) {
+      // v1.6.4.2 - Set requested tab in storage BEFORE opening sidebar
+      await browser.storage.local.set({ _requestedPrimaryTab: 'settings' });
+      console.debug('[Background] Set _requestedPrimaryTab to settings');
+      
       // Sidebar is closed - open it first
       await browser.sidebarAction.open();
       await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
     }
     
-    // Switch to Settings tab
+    // Switch to Settings tab (may fail on first open, but storage ensures correct tab)
     await _sendSettingsTabMessage();
     console.log('[Sidebar] Opened sidebar and switched to Settings tab');
   } catch (err) {

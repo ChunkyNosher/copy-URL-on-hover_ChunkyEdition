@@ -3,6 +3,7 @@
  * Extracted from QuickTabsManager Phase 2.1 refactoring
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
+ * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -13,7 +14,7 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.4
+ * @version 1.6.4.1
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -23,6 +24,7 @@ import { buildStateForStorage, persistStateToStorage } from '@utils/storage-util
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
  * v1.6.3 - Local only (no cross-tab sync or storage persistence)
  * v1.6.4 - Now persists state to storage after minimize/restore
+ * v1.6.4.1 - Proper async handling with validation and timeout for storage
  */
 export class VisibilityHandler {
   /**
@@ -261,11 +263,32 @@ export class VisibilityHandler {
   /**
    * Persist current state to browser.storage.local
    * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
+   * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
+   * @returns {Promise<void>}
    */
-  _persistToStorage() {
+  async _persistToStorage() {
+    // v1.6.4.1 - FIX Bug #1: Log position/size data when persisting
+    console.log('[VisibilityHandler] Building state for storage persist...');
+    
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
-    persistStateToStorage(state, '[VisibilityHandler]');
+    
+    // v1.6.4.1 - FIX Bug #1: Handle null state from validation failure
+    if (!state) {
+      console.error('[VisibilityHandler] Failed to build state for storage');
+      return;
+    }
+    
+    // v1.6.4.1 - FIX Bug #1: Log tab count and minimized states
+    const minimizedCount = state.tabs.filter(t => t.minimized).length;
+    console.log(`[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`);
+    
+    // v1.6.4.1 - FIX Bug #1: Await the async persist and log result
+    const success = await persistStateToStorage(state, '[VisibilityHandler]');
+    if (!success) {
+      // v1.6.4.3 - FIX: More descriptive error message about potential causes
+      console.error('[VisibilityHandler] Storage persist failed: operation timed out, storage API unavailable, or quota exceeded');
+    }
   }
 }
