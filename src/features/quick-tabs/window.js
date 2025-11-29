@@ -384,8 +384,15 @@ export class QuickTabWindow {
 
   /**
    * Update z-index for stacking
+   * v1.6.4.4 - FIX Bug #4: Add null/undefined safety check for newZIndex
    */
   updateZIndex(newZIndex) {
+    // v1.6.4.4 - FIX Bug #4: Guard against null/undefined to prevent TypeError
+    if (newZIndex === undefined || newZIndex === null) {
+      console.warn('[QuickTabWindow] updateZIndex called with null/undefined, skipping');
+      return;
+    }
+    
     this.zIndex = newZIndex;
     if (this.container) {
       this.container.style.zIndex = newZIndex.toString();

@@ -69,6 +69,9 @@ export class MinimizedManager {
    * Restore a minimized Quick Tab
    * v1.5.9.8 - FIX: Ensure position state is preserved before calling restore
    * v1.6.4.3 - FIX Issue #4: Use immutable snapshot instead of potentially corrupted instance
+   * v1.6.4.4 - FIX Bug #5: Return snapshot data for caller to apply to correct window
+   * @param {string} id - Quick Tab ID
+   * @returns {Object|boolean} Snapshot object with position/size, or false if not found
    */
   restore(id) {
     const snapshot = this.minimizedTabs.get(id);
@@ -106,9 +109,49 @@ export class MinimizedManager {
         width: savedWidth,
         height: savedHeight
       });
+      
+      // v1.6.4.4 - FIX Bug #5: Return snapshot data so caller can verify/apply to correct window
+      return {
+        window: tabWindow,
+        position: { left: savedLeft, top: savedTop },
+        size: { width: savedWidth, height: savedHeight }
+      };
+    }
+    return false;
+  }
+
+  /**
+   * Update window reference in snapshot
+   * v1.6.4.4 - FIX Bug #5: Allow updating window reference when restore creates new window
+   * @param {string} id - Quick Tab ID
+   * @param {Object} newWindow - New QuickTabWindow instance
+   * @returns {boolean} True if updated, false if not found
+   */
+  updateWindowReference(id, newWindow) {
+    const snapshot = this.minimizedTabs.get(id);
+    if (snapshot && newWindow) {
+      snapshot.window = newWindow;
+      console.log('[MinimizedManager] Updated window reference for:', id);
       return true;
     }
     return false;
+  }
+
+  /**
+   * Get snapshot data for a minimized tab without restoring
+   * v1.6.4.4 - FIX Bug #5: Allow reading snapshot data for verification
+   * @param {string} id - Quick Tab ID
+   * @returns {Object|null} Snapshot data or null if not found
+   */
+  getSnapshot(id) {
+    const snapshot = this.minimizedTabs.get(id);
+    if (snapshot && snapshot.savedPosition && snapshot.savedSize) {
+      return {
+        position: { left: snapshot.savedPosition.left, top: snapshot.savedPosition.top },
+        size: { width: snapshot.savedSize.width, height: snapshot.savedSize.height }
+      };
+    }
+    return null;
   }
 
   /**

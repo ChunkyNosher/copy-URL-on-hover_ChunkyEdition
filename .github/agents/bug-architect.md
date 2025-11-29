@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
@@ -65,11 +65,13 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
 
-**Recent Fixes (v1.6.4):**
-- Shared storage utilities in `src/utils/storage-utils.js`
-- Handlers persist state to storage.local after destroy/minimize/restore
-- Settings page uses correct storage area (storage.local for Quick Tab state)
-- saveId tracking in background.js for hash collision detection
+**Recent Architectural Fixes (v1.6.4.4):**
+- Synchronous gesture handlers in `background.js` (Firefox requires sync within gesture context)
+- Debounced batch writes in `DestroyHandler` prevent storage write storms
+- `MinimizedManager.restore()` returns snapshot object for proper window restoration
+- `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js` for DOM cleanup
+- `UICoordinator.update()` proper minimized state detection and restore path
+- `window.js` null-safe `updateZIndex()` with defensive checks
 
 ---
 
@@ -199,7 +201,7 @@ Only if:
 
 ## Critical Areas Requiring Architectural Awareness
 
-### Global Visibility (v1.6.4)
+### Global Visibility (v1.6.4.4)
 
 **Common Root Causes:**
 - Using old container-based storage format
@@ -211,7 +213,7 @@ Only if:
 - All Quick Tabs globally visible by default
 - Use shared storage utilities from `src/utils/storage-utils.js`
 
-### Solo/Mute State Bugs (v1.6.4)
+### Solo/Mute State Bugs (v1.6.4.4)
 
 **Common Root Causes:**
 - Not using soloedOnTabs/mutedOnTabs arrays
@@ -223,17 +225,48 @@ Only if:
 - Enforce invariants at domain layer
 - Centralize state transition logic
 
-### Quick Tab Lifecycle Bugs
+### Quick Tab Lifecycle Bugs (v1.6.4.4)
 
 **Common Root Causes:**
 - Initialization order dependencies
 - Async state access without checks
 - Missing cleanup on tab close
+- Storage write storms during rapid operations
 
 **Architectural Solution:**
 - Define strict lifecycle phases
 - Use initialization flags (like `isRendered()`)
-- Enforce cleanup patterns
+- Enforce cleanup patterns with `cleanupOrphanedQuickTabElements()`
+- Use debounced batch writes for destroy operations
+
+### Minimize/Restore Architecture (v1.6.4.4)
+
+**Common Root Causes:**
+- Duplicate windows on restore
+- Wrong position/size after restore
+- Race conditions between minimize and restore
+
+**Architectural Solution:**
+- `MinimizedManager.restore()` returns snapshot object `{ window, savedPosition, savedSize }`
+- Apply snapshot to correct window instance
+- Proper minimized state detection: `tab.minimized ?? tab.visibility?.minimized ?? false`
+
+### Sidebar Gesture Handling (v1.6.4.4)
+
+**Common Root Causes:**
+- Async operations losing Firefox gesture context
+- Sidebar operations failing silently
+
+**Architectural Solution:**
+- Use synchronous handlers within gesture context
+- Call synchronous helper functions, NOT async ones
+```javascript
+browser.commands.onCommand.addListener(command => {
+  if (command === 'toggle-quick-tabs-manager') {
+    _handleToggleSync(); // Synchronous, NOT async
+  }
+});
+```
 
 ---
 

@@ -125,6 +125,7 @@ export class VisibilityHandler {
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
    * v1.6.4 - FIX Bug #2: Persist to storage after minimize
+   * v1.6.4.4 - FIX Bug #6: Call tabWindow.minimize() to actually hide the window
    *
    * @param {string} id - Quick Tab ID
    */
@@ -133,10 +134,21 @@ export class VisibilityHandler {
     console.log('[VisibilityHandler] Minimize button clicked for Quick Tab:', id);
 
     const tabWindow = this.quickTabsMap.get(id);
-    if (!tabWindow) return;
+    if (!tabWindow) {
+      console.warn('[VisibilityHandler] Tab not found for minimize:', id);
+      return;
+    }
 
-    // Add to minimized manager
+    // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
     this.minimizedManager.add(id, tabWindow);
+
+    // v1.6.4.4 - FIX Bug #6: Actually minimize the window (hide it)
+    // The Manager sidebar was calling handleMinimize but the window wasn't being hidden
+    // because we weren't calling tabWindow.minimize()
+    if (tabWindow.minimize) {
+      tabWindow.minimize();
+      console.log('[VisibilityHandler] Called tabWindow.minimize() for:', id);
+    }
 
     // Emit minimize event for legacy handlers
     if (this.eventBus && this.Events) {

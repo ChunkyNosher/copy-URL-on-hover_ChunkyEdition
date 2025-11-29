@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  and implementing new manager features (v1.6.4.3 snapshot-based minimize)
+  and implementing new manager features (v1.6.4.4 gesture handlers, direct minimize)
 tools: ["*"]
 ---
 
@@ -51,20 +51,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**Key Manager Features (v1.6.4.3):**
+**Key Manager Features (v1.6.4.4):**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
-- **Minimize/Restore** - Snapshot-based storage (position/size immutable)
-- **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
+- **Minimize/Restore** - `VisibilityHandler` calls `QuickTabWindow.minimize()` directly (v1.6.4.4)
+- **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar (synchronous gesture handlers)
 - **Persistent Position** - Draggable with saved position
 - **Clear Storage** - Debug button to clear all Quick Tabs
 - **Manager Actions** - CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages to content script
 - **Minimized Detection** - `isTabMinimizedHelper()`: `tab.minimized ?? tab.visibility?.minimized ?? false`
+- **Restore Snapshots** - `MinimizedManager.restore()` returns `{ window, savedPosition, savedSize }` (v1.6.4.4)
 
-**Storage Format (v1.6.4.3):**
+**Storage Format (v1.6.4.4):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
@@ -73,7 +74,7 @@ const relevantMemories = await searchMemories({
 
 ---
 
-## MinimizedManager Architecture (v1.6.4.3)
+## MinimizedManager Architecture (v1.6.4.4)
 
 **Snapshot-based storage prevents corruption:**
 
@@ -85,15 +86,50 @@ minimizedTabs.set(id, {
   savedSize: { width: tabWindow.width, height: tabWindow.height }
 });
 
-// On restore - use snapshot values (NOT live instance)
-const { window, savedPosition, savedSize } = minimizedTabs.get(id);
-window.restoreFromSnapshot(savedPosition, savedSize);
+// On restore - restore() returns object with window and snapshot (v1.6.4.4)
+const result = minimizedManager.restore(id);
+if (result) {
+  const { window: tabWindow, savedPosition, savedSize } = result;
+  tabWindow.setPosition(savedPosition.left, savedPosition.top);
+  tabWindow.setSize(savedSize.width, savedSize.height);
+}
+```
+
+**Manager Sidebar Minimize (v1.6.4.4):**
+```javascript
+// VisibilityHandler calls QuickTabWindow.minimize() directly
+async handleMinimize(id) {
+  const tabWindow = this.getQuickTabWindow(id);
+  if (tabWindow) {
+    tabWindow.minimize(); // Direct call, no indirection
+  }
+}
 ```
 
 **Minimized State Detection Pattern:**
 ```javascript
 // Use this pattern EVERYWHERE for consistent detection
 const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
+```
+
+---
+
+## Synchronous Gesture Handlers (v1.6.4.4)
+
+**Firefox requires synchronous operations within gesture context:**
+
+```javascript
+// background.js - Keyboard shortcut handler
+browser.commands.onCommand.addListener(command => {
+  if (command === 'toggle-quick-tabs-manager') {
+    _handleToggleSync(); // Synchronous helper, NOT async
+  }
+});
+
+function _handleToggleSync() {
+  // All sidebar operations must be synchronous within gesture context
+  browser.sidebarAction.toggle();
+}
 ```
 
 ---
@@ -382,7 +418,7 @@ async handleClearStorage() {
 
 ---
 
-## QuickTabsManager API (v1.6.4.3)
+## QuickTabsManager API (v1.6.4.4)
 
 **Correct Methods:**
 | Method | Description |
@@ -393,12 +429,12 @@ async handleClearStorage() {
 **Common Mistake:**
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST** (use `closeById(id)`)
 
-## Manager Action Messages (v1.6.4.3)
+## Manager Action Messages (v1.6.4.4)
 
 Manager sends these messages to content script:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
-- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab
-- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab
+- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab (uses `QuickTabWindow.minimize()` directly)
+- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (uses snapshot data from `restore()`)
 
 ---
 
