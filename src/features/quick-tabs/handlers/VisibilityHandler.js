@@ -4,6 +4,7 @@
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
  * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
+ * v1.6.4.5 - FIX Issues #1, #2, #6: Debounce minimize/restore, prevent event storms
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -14,10 +15,13 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.4.1
+ * @version 1.6.4.5
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
+
+// v1.6.4.5 - FIX Issue #1: Debounce delay for minimize/restore operations
+const MINIMIZE_DEBOUNCE_MS = 150;
 
 /**
  * VisibilityHandler class
@@ -25,6 +29,7 @@ import { buildStateForStorage, persistStateToStorage } from '@utils/storage-util
  * v1.6.3 - Local only (no cross-tab sync or storage persistence)
  * v1.6.4 - Now persists state to storage after minimize/restore
  * v1.6.4.1 - Proper async handling with validation and timeout for storage
+ * v1.6.4.5 - Debouncing to prevent event storms and ensure atomic storage writes
  */
 export class VisibilityHandler {
   /**
@@ -43,6 +48,11 @@ export class VisibilityHandler {
     this.currentZIndex = options.currentZIndex;
     this.currentTabId = options.currentTabId;
     this.Events = options.Events;
+    
+    // v1.6.4.5 - FIX Issues #1, #2: Track pending operations to prevent duplicates
+    this._pendingMinimize = new Set();
+    this._pendingRestore = new Set();
+    this._debounceTimers = new Map();
   }
 
   /**
@@ -126,10 +136,17 @@ export class VisibilityHandler {
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
    * v1.6.4 - FIX Bug #2: Persist to storage after minimize
    * v1.6.4.4 - FIX Bug #6: Call tabWindow.minimize() to actually hide the window
+   * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
    *
    * @param {string} id - Quick Tab ID
    */
   handleMinimize(id) {
+    // v1.6.4.5 - FIX Issue #1: Prevent duplicate minimize operations
+    if (this._pendingMinimize.has(id)) {
+      console.log('[VisibilityHandler] Ignoring duplicate minimize request for:', id);
+      return;
+    }
+    
     // v1.6.4 - FIX Issue #1: Log at start to confirm button was clicked
     console.log('[VisibilityHandler] Minimize button clicked for Quick Tab:', id);
 
@@ -138,6 +155,9 @@ export class VisibilityHandler {
       console.warn('[VisibilityHandler] Tab not found for minimize:', id);
       return;
     }
+    
+    // v1.6.4.5 - FIX Issue #1: Mark as pending to prevent duplicate clicks
+    this._pendingMinimize.add(id);
 
     // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
     this.minimizedManager.add(id, tabWindow);
@@ -163,8 +183,8 @@ export class VisibilityHandler {
       console.log('[VisibilityHandler] Emitted state:updated for minimize:', id);
     }
 
-    // v1.6.4 - FIX Bug #2: Persist to storage after minimize
-    this._persistToStorage();
+    // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
+    this._debouncedPersist(id, 'minimize');
   }
 
   /**
@@ -172,18 +192,29 @@ export class VisibilityHandler {
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
    * v1.6.4 - FIX Bug #2: Persist to storage after restore
+   * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
    * @param {string} id - Quick Tab ID
    */
   handleRestore(id) {
+    // v1.6.4.5 - FIX Issue #2: Prevent duplicate restore operations
+    if (this._pendingRestore.has(id)) {
+      console.log('[VisibilityHandler] Ignoring duplicate restore request for:', id);
+      return;
+    }
+    
     console.log('[VisibilityHandler] Handling restore for:', id);
 
     // Get tab info BEFORE restoring (needed for state:updated event)
     const tabWindow = this.quickTabsMap.get(id);
+    
+    // v1.6.4.5 - FIX Issue #2: Mark as pending to prevent duplicate operations
+    this._pendingRestore.add(id);
 
-    // Restore from minimized manager
+    // Restore from minimized manager - returns snapshot with position/size
     const restored = this.minimizedManager.restore(id);
     if (!restored) {
       console.warn('[VisibilityHandler] Tab not found in minimized manager:', id);
+      this._pendingRestore.delete(id);
       return;
     }
 
@@ -199,8 +230,8 @@ export class VisibilityHandler {
       console.log('[VisibilityHandler] Emitted state:updated for restore:', id);
     }
 
-    // v1.6.4 - FIX Bug #2: Persist to storage after restore
-    this._persistToStorage();
+    // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
+    this._debouncedPersist(id, 'restore');
   }
 
   /**
@@ -270,6 +301,37 @@ export class VisibilityHandler {
     tab.muteButton.textContent = isMuted ? '🔇' : '🔊';
     tab.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
     tab.muteButton.style.background = isMuted ? '#c44' : 'transparent';
+  }
+
+  /**
+   * Debounced persist to storage - prevents write storms
+   * v1.6.4.5 - FIX Issues #1, #2, #6: Single atomic storage write after debounce
+   * @private
+   * @param {string} id - Quick Tab ID that triggered the persist
+   * @param {string} operation - 'minimize' or 'restore'
+   */
+  _debouncedPersist(id, operation) {
+    // Clear any existing timer for this tab
+    const existingTimer = this._debounceTimers.get(id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    
+    // Set new debounce timer
+    const timer = setTimeout(async () => {
+      this._debounceTimers.delete(id);
+      
+      // Clear pending flags
+      this._pendingMinimize.delete(id);
+      this._pendingRestore.delete(id);
+      
+      // Perform atomic storage write
+      await this._persistToStorage();
+      
+      console.log(`[VisibilityHandler] Completed ${operation} for ${id} with storage persist`);
+    }, MINIMIZE_DEBOUNCE_MS);
+    
+    this._debounceTimers.set(id, timer);
   }
 
   /**

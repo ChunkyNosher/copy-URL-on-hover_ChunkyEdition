@@ -1316,6 +1316,16 @@ if (typeof browser !== 'undefined' && browser.runtime) {
       _handleRestoreQuickTab(message.quickTabId, sendResponse);
       return true;
     }
+    
+    // v1.6.4.5 - FIX Issue #4: Legacy handler for CLOSE_MINIMIZED_QUICK_TABS
+    // This is sent for backwards compat, but individual CLOSE_QUICK_TAB messages
+    // are the primary mechanism for DOM cleanup
+    if (message.action === 'CLOSE_MINIMIZED_QUICK_TABS') {
+      console.log('[Content] Received CLOSE_MINIMIZED_QUICK_TABS request (legacy)');
+      // No-op: Individual CLOSE_QUICK_TAB messages handle the actual cleanup
+      sendResponse({ success: true, message: 'Handled by individual CLOSE_QUICK_TAB messages' });
+      return true;
+    }
     // ==================== END MANAGER ACTION HANDLERS ====================
 
     // ==================== TEST BRIDGE MESSAGE HANDLERS ====================

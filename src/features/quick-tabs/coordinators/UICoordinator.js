@@ -91,58 +91,99 @@ export class UICoordinator {
   }
 
   /**
+   * Check if minimizedManager is available and has required methods
+   * v1.6.4.5 - Helper to reduce complexity
+   * @private
+   * @returns {boolean} True if minimizedManager is usable
+   */
+  _hasMinimizedManager() {
+    return this.minimizedManager && 
+      typeof this.minimizedManager.isMinimized === 'function';
+  }
+
+  /**
+   * Apply snapshot data from minimizedManager to quickTab for restore
+   * v1.6.4.5 - FIX Issue #3: Use snapshot position/size when restoring
+   * @private
+   * @param {QuickTab} quickTab - QuickTab entity to apply snapshot to
+   */
+  _applySnapshotForRestore(quickTab) {
+    if (!this._hasMinimizedManager() || !this.minimizedManager.isMinimized(quickTab.id)) {
+      return;
+    }
+    
+    const snapshot = this.minimizedManager.getSnapshot(quickTab.id);
+    if (snapshot) {
+      console.log('[UICoordinator] Restoring from snapshot, applying saved position:', snapshot);
+      quickTab.position = snapshot.position;
+      quickTab.size = snapshot.size;
+    }
+    // Restore and remove from minimizedManager
+    this.minimizedManager.restore(quickTab.id);
+  }
+
+  /**
+   * Handle restore of existing minimized window
+   * v1.6.4.5 - Helper to reduce complexity
+   * @private
+   * @param {QuickTabWindow} tabWindow - The window to restore
+   * @param {string} quickTabId - Quick Tab ID
+   * @returns {QuickTabWindow} The restored window
+   */
+  _restoreExistingWindow(tabWindow, quickTabId) {
+    console.log('[UICoordinator] Tab is being restored from minimized state:', quickTabId);
+    
+    if (this._hasMinimizedManager() && this.minimizedManager.isMinimized(quickTabId)) {
+      const restoreResult = this.minimizedManager.restore(quickTabId);
+      if (restoreResult) {
+        console.log('[UICoordinator] Restored via minimizedManager:', restoreResult.position);
+      }
+    } else {
+      tabWindow.restore();
+      console.log('[UICoordinator] Restored tab directly:', quickTabId);
+    }
+    return tabWindow;
+  }
+
+  /**
    * Update an existing QuickTabWindow
    * v1.6.3.4 - FIX Bug #6: Check for minimized state before rendering
    * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
    * v1.6.4.3 - FIX Issue #2: Check BOTH top-level AND nested minimized properties
    * v1.6.4.4 - FIX Bug #2: When restoring, call restore() on existing window instead of render()
+   * v1.6.4.5 - FIX Issue #3: Use snapshot position/size when restoring, never create duplicate
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
    * @returns {QuickTabWindow|undefined} Updated or newly rendered tab window, or undefined if skipped
    */
   update(quickTab) {
     const tabWindow = this.renderedTabs.get(quickTab.id);
-
-    // v1.6.4.3 - FIX Issue #2: Check BOTH top-level `minimized` AND nested `visibility.minimized`
-    // Top-level property is the current format; visibility.minimized is legacy format
-    // Using OR logic ensures we handle both formats correctly
     const isMinimized = Boolean(quickTab.minimized || quickTab.visibility?.minimized);
     
+    // Handle non-rendered tab
     if (!tabWindow) {
-      // v1.6.3.4 - FIX Bug #6: Don't render minimized tabs
       if (isMinimized) {
         console.log('[UICoordinator] Tab is minimized, skipping render:', quickTab.id);
         return;
       }
+      // Apply snapshot if available before rendering
+      this._applySnapshotForRestore(quickTab);
       console.warn('[UICoordinator] Tab not rendered, rendering now:', quickTab.id);
       return this.render(quickTab);
     }
 
-    // v1.6.4.4 - FIX Bug #2: If tab was minimized and is now being restored,
-    // check if minimizedManager has it and restore properly instead of just updating
+    // Handle restore from minimized state
     if (tabWindow.minimized && !isMinimized) {
-      console.log('[UICoordinator] Tab is being restored from minimized state:', quickTab.id);
-      // The window already exists but is hidden - just call restore on it
-      if (this.minimizedManager && this.minimizedManager.isMinimized(quickTab.id)) {
-        this.minimizedManager.restore(quickTab.id);
-        console.log('[UICoordinator] Restored tab via minimizedManager:', quickTab.id);
-        return tabWindow;
-      } else {
-        // Fallback: restore the window directly if not in minimizedManager
-        tabWindow.restore();
-        console.log('[UICoordinator] Restored tab directly:', quickTab.id);
-        return tabWindow;
-      }
+      return this._restoreExistingWindow(tabWindow, quickTab.id);
     }
 
+    // Normal update
     console.log('[UICoordinator] Updating tab:', quickTab.id);
 
-    // v1.6.4.2 - FIX TypeError: Use helper functions for safe access
     const position = this._getSafePosition(quickTab);
     const size = this._getSafeSize(quickTab);
     const zIndex = this._getSafeZIndex(quickTab);
 
-    // Update tab properties with safe values
     tabWindow.updatePosition(position.left, position.top);
     tabWindow.updateSize(size.width, size.height);
     tabWindow.updateZIndex(zIndex);
