@@ -34,6 +34,8 @@ export class QuickTabWindow {
     this.url = options.url;
     this.title = options.title || 'Quick Tab';
     this.cookieStoreId = options.cookieStoreId || 'firefox-default';
+    // v1.6.4.7 - Debug ID display setting (from options, falls back to false)
+    this.showDebugId = options.showDebugId ?? false;
   }
 
   /**
@@ -106,7 +108,7 @@ export class QuickTabWindow {
   /**
    * Process URL to disable autoplay for YouTube videos
    * v1.6.1.5 - Fix for YouTube autoplay issue
-   * 
+   *
    * @param {string} url - Original URL
    * @returns {string} - Modified URL with autoplay disabled
    */
@@ -122,7 +124,9 @@ export class QuickTabWindow {
       // Set or update autoplay parameter to 0
       urlObj.searchParams.set('autoplay', '0');
 
-      console.log(`[QuickTabWindow] Processed YouTube URL for autoplay prevention: ${urlObj.toString()}`);
+      console.log(
+        `[QuickTabWindow] Processed YouTube URL for autoplay prevention: ${urlObj.toString()}`
+      );
       return urlObj.toString();
     } catch (err) {
       console.error('[QuickTabWindow] Error processing URL for autoplay:', err);
@@ -172,12 +176,14 @@ export class QuickTabWindow {
     // Create titlebar using TitlebarBuilder component
     this.titlebarBuilder = new TitlebarBuilder(
       {
+        id: this.id, // v1.6.4.7 - Pass Quick Tab ID for debug display
         title: this.title,
         url: this.url,
         soloedOnTabs: this.soloedOnTabs,
         mutedOnTabs: this.mutedOnTabs,
         currentTabId: this.currentTabId,
-        iframe: null // Will be set after iframe creation
+        iframe: null, // Will be set after iframe creation
+        showDebugId: this.showDebugId // v1.6.4.7 - Debug ID display setting
       },
       {
         onClose: () => this.destroy(),
@@ -191,7 +197,7 @@ export class QuickTabWindow {
             url: currentSrc,
             switchFocus: true
           });
-          
+
           // Check setting and close if enabled
           const settings = await browser.storage.local.get({ quickTabCloseOnOpen: false });
           if (settings.quickTabCloseOnOpen) {
@@ -212,7 +218,7 @@ export class QuickTabWindow {
     // Create iframe content area
     // v1.6.1.5 - Process URL to prevent autoplay and add 'allow' attribute
     const processedUrl = this._processUrlForAutoplay(this.url);
-    
+
     this.iframe = createElement('iframe', {
       src: processedUrl,
       style: {
@@ -344,15 +350,121 @@ export class QuickTabWindow {
   }
 
   /**
+   * Pause any playing media (video/audio) in the iframe
+   * v1.6.4.7 - Feature: Video Pause on Minimize
+   *
+   * Attempts to pause media using:
+   * 1. Direct DOM access for same-origin iframes
+   * 2. postMessage API for YouTube embeds (cross-origin)
+   *
+   * @private
+   */
+  _pauseMediaInIframe() {
+    if (!this.iframe) {
+      return;
+    }
+
+    try {
+      // Attempt 1: Direct DOM access for same-origin iframes
+      const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow?.document;
+      if (iframeDoc) {
+        // Pause all video elements
+        const videos = iframeDoc.querySelectorAll('video');
+        videos.forEach(video => {
+          if (!video.paused) {
+            video.pause();
+            console.log('[QuickTabWindow] Paused video element:', this.id);
+          }
+        });
+
+        // Pause all audio elements
+        const audios = iframeDoc.querySelectorAll('audio');
+        audios.forEach(audio => {
+          if (!audio.paused) {
+            audio.pause();
+            console.log('[QuickTabWindow] Paused audio element:', this.id);
+          }
+        });
+        return;
+      }
+    } catch (e) {
+      // Cross-origin restriction - fall through to postMessage approach
+      console.log('[QuickTabWindow] Cross-origin iframe, trying postMessage:', this.id);
+    }
+
+    // Attempt 2: postMessage for YouTube embeds (works cross-origin)
+    // YouTube IFrame API accepts JSON commands via postMessage
+    // Reference: https://developers.google.com/youtube/iframe_api_reference
+    try {
+      if (this.url.includes('youtube.com') || this.url.includes('youtu.be')) {
+        // YouTube IFrame API command format
+        const pauseCommand = JSON.stringify({
+          event: 'command',
+          func: 'pauseVideo',
+          args: []
+        });
+        this.iframe.contentWindow?.postMessage(pauseCommand, '*');
+        console.log('[QuickTabWindow] Sent YouTube pause command via postMessage:', this.id);
+      }
+    } catch (e) {
+      console.warn('[QuickTabWindow] Failed to send pause command:', this.id, e.message);
+    }
+  }
+
+  /**
    * Minimize the Quick Tab window
+   * v1.6.4.6 - FIX Issues #1, #2, #7: Properly remove DOM and cleanup event listeners
+   * v1.6.4.7 - Feature: Pause media before removing DOM
+   *
+   * This method now:
+   * 1. Pauses any playing media (video/audio)
+   * 2. Destroys drag controller (prevents ghost drag events)
+   * 3. Destroys resize controller (prevents ghost resize handles)
+   * 4. Removes container from DOM (prevents duplicate windows)
+   * 5. Clears references and sets rendered=false
+   * 6. Logs DOM removal for debugging
    */
   minimize() {
     this.minimized = true;
-    this.container.style.display = 'none';
 
     // Enhanced logging for console log export (Issue #1)
     console.log(
-      `[Quick Tab] Minimized - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+      `[Quick Tab] Minimizing - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+    );
+
+    // v1.6.4.7 - Feature: Pause media before removing DOM
+    this._pauseMediaInIframe();
+
+    // v1.6.4.6 - FIX Issue #2: Cleanup drag controller to prevent ghost drag events
+    if (this.dragController) {
+      this.dragController.destroy();
+      this.dragController = null;
+      console.log('[QuickTabWindow] Destroyed drag controller for minimize:', this.id);
+    }
+
+    // v1.6.4.6 - FIX Issue #2: Cleanup resize controller to prevent ghost resize handles
+    if (this.resizeController) {
+      this.resizeController.detachAll();
+      this.resizeController = null;
+      console.log('[QuickTabWindow] Destroyed resize controller for minimize:', this.id);
+    }
+
+    // v1.6.4.6 - FIX Issue #1: Remove container from DOM instead of display:none
+    if (this.container) {
+      this.container.remove();
+      console.log('[QuickTabWindow] Removed DOM element for minimize:', this.id);
+    }
+
+    // v1.6.4.6 - FIX Issue #1: Clear references and mark as not rendered
+    this.container = null;
+    this.iframe = null;
+    this.titlebarBuilder = null;
+    this.soloButton = null;
+    this.muteButton = null;
+    this.rendered = false;
+
+    console.log(
+      `[Quick Tab] Minimized (DOM removed) - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}`
     );
 
     this.onMinimize(this.id);
@@ -361,20 +473,38 @@ export class QuickTabWindow {
   /**
    * Restore minimized Quick Tab window
    * v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's in the same place
+   * v1.6.4.6 - FIX Issues #1, #6: Recreate DOM via render() since minimize() removes it
+   *
+   * This method now:
+   * 1. Clears minimized flag
+   * 2. Calls render() to recreate DOM element
+   * 3. Position/size are already set on instance properties (from snapshot)
+   * 4. render() will use this.left, this.top, this.width, this.height
    */
   restore() {
     this.minimized = false;
-    this.container.style.display = 'flex';
 
-    // v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's restored to the same place
-    this.container.style.left = `${this.left}px`;
-    this.container.style.top = `${this.top}px`;
-    this.container.style.width = `${this.width}px`;
-    this.container.style.height = `${this.height}px`;
+    console.log(
+      `[Quick Tab] Restoring - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+    );
+
+    // v1.6.4.6 - FIX Issue #1: Recreate DOM via render() since minimize() removes it
+    // The position/size instance properties should already be set from snapshot
+    if (!this.container) {
+      this.render();
+      console.log('[QuickTabWindow] Recreated DOM element for restore:', this.id);
+    } else {
+      // Fallback: if container somehow still exists, just show it (legacy behavior)
+      this.container.style.display = 'flex';
+      this.container.style.left = `${this.left}px`;
+      this.container.style.top = `${this.top}px`;
+      this.container.style.width = `${this.width}px`;
+      this.container.style.height = `${this.height}px`;
+    }
 
     // Enhanced logging for console log export (Issue #1)
     console.log(
-      `[Quick Tab] Restored - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+      `[Quick Tab] Restored (DOM recreated) - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
     );
 
     this.onFocus(this.id);
@@ -392,7 +522,7 @@ export class QuickTabWindow {
       console.warn('[QuickTabWindow] updateZIndex called with null/undefined, skipping');
       return;
     }
-    
+
     this.zIndex = newZIndex;
     if (this.container) {
       this.container.style.zIndex = newZIndex.toString();
@@ -656,11 +786,11 @@ export class QuickTabWindow {
   /**
    * Update position of Quick Tab window (Bug #3 Fix - UICoordinator compatibility)
    * v1.6.2.3 - Added for cross-tab sync via UICoordinator.update()
-   * 
+   *
    * Note: This wraps setPosition() and adds timestamp tracking for sync.
    * The difference from setPosition() is the timestamp which helps with
    * conflict resolution in cross-tab synchronization.
-   * 
+   *
    * @param {number} left - X position in pixels
    * @param {number} top - Y position in pixels
    */
@@ -672,11 +802,11 @@ export class QuickTabWindow {
   /**
    * Update size of Quick Tab window (Bug #3 Fix - UICoordinator compatibility)
    * v1.6.2.3 - Added for cross-tab sync via UICoordinator.update()
-   * 
+   *
    * Note: This wraps setSize() and adds timestamp tracking for sync.
    * The difference from setSize() is the timestamp which helps with
    * conflict resolution in cross-tab synchronization.
-   * 
+   *
    * @param {number} width - Width in pixels
    * @param {number} height - Height in pixels
    */

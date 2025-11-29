@@ -17,7 +17,8 @@ const DEFAULT_SETTINGS = {
   defaultHeight: 400,
   syncAcrossTabs: true,
   persistAcrossSessions: true,
-  enableDebugLogging: false
+  enableDebugLogging: false,
+  quickTabShowDebugId: false
 };
 
 // Load settings on page load
@@ -44,6 +45,7 @@ async function loadSettings() {
     document.getElementById('syncAcrossTabs').checked = settings.syncAcrossTabs;
     document.getElementById('persistAcrossSessions').checked = settings.persistAcrossSessions;
     document.getElementById('enableDebugLogging').checked = settings.enableDebugLogging;
+    document.getElementById('quickTabShowDebugId').checked = settings.quickTabShowDebugId ?? false;
 
     console.log('Settings loaded:', settings);
   } catch (err) {
@@ -64,7 +66,8 @@ async function saveSettings() {
       defaultHeight: parseInt(document.getElementById('defaultHeight').value),
       syncAcrossTabs: document.getElementById('syncAcrossTabs').checked,
       persistAcrossSessions: document.getElementById('persistAcrossSessions').checked,
-      enableDebugLogging: document.getElementById('enableDebugLogging').checked
+      enableDebugLogging: document.getElementById('enableDebugLogging').checked,
+      quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked
     };
 
     await browser.storage.sync.set({ [SETTINGS_KEY]: settings });
@@ -160,7 +163,10 @@ async function clearStorage() {
       await browser.storage.session.remove(SESSION_KEY);
     }
 
-    showStatus('All Quick Tabs cleared! Your settings and keyboard shortcuts are preserved.', 'success');
+    showStatus(
+      'All Quick Tabs cleared! Your settings and keyboard shortcuts are preserved.',
+      'success'
+    );
     await updateStorageInfo();
 
     // Notify all tabs to close Quick Tabs

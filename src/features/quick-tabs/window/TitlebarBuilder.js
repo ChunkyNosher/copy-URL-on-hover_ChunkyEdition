@@ -25,12 +25,14 @@ import { createElement } from '../../../utils/dom.js';
 export class TitlebarBuilder {
   /**
    * @param {Object} config - Titlebar configuration
+   * @param {string} config.id - Quick Tab unique ID (for debug display)
    * @param {string} config.title - Initial title text
    * @param {string} config.url - URL for favicon extraction
    * @param {Array<number>} config.soloedOnTabs - Solo tab IDs
    * @param {Array<number>} config.mutedOnTabs - Mute tab IDs
    * @param {number} config.currentTabId - Current tab ID for solo/mute checks
    * @param {HTMLIFrameElement} config.iframe - Iframe element for navigation/zoom
+   * @param {boolean} config.showDebugId - Whether to display Quick Tab ID in titlebar
    * @param {Object} callbacks - Event callbacks
    * @param {Function} callbacks.onClose - Close button clicked
    * @param {Function} callbacks.onMinimize - Minimize button clicked
@@ -48,6 +50,7 @@ export class TitlebarBuilder {
     this.soloButton = null;
     this.muteButton = null;
     this.faviconElement = null;
+    this.debugIdElement = null; // v1.6.4.7 - Debug ID display element
 
     // Zoom state (internal to titlebar)
     this.currentZoom = 100;
@@ -322,6 +325,45 @@ export class TitlebarBuilder {
   }
 
   /**
+   * Create debug ID display element
+   * v1.6.4.7 - Feature: Show Quick Tab Debug ID in titlebar
+   * @private
+   * @returns {HTMLElement|null} Debug ID element or null if disabled
+   */
+  _createDebugIdElement() {
+    if (!this.config.showDebugId || !this.config.id) {
+      return null;
+    }
+
+    // Truncate ID if longer than 15 characters
+    const displayId =
+      this.config.id.length > 15 ? this.config.id.substring(0, 12) + '...' : this.config.id;
+
+    const debugId = createElement(
+      'span',
+      {
+        className: 'quick-tab-debug-id',
+        style: {
+          fontSize: '10px',
+          color: '#888',
+          fontFamily: 'monospace',
+          marginRight: '8px',
+          userSelect: 'text',
+          cursor: 'default',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          maxWidth: '100px'
+        }
+      },
+      displayId
+    );
+    debugId.title = `Quick Tab ID: ${this.config.id}`;
+
+    return debugId;
+  }
+
+  /**
    * Create right section with control buttons
    * @private
    */
@@ -329,9 +371,16 @@ export class TitlebarBuilder {
     const controls = createElement('div', {
       style: {
         display: 'flex',
-        gap: '8px'
+        gap: '8px',
+        alignItems: 'center'
       }
     });
+
+    // v1.6.4.7 - Add debug ID display (left of buttons)
+    this.debugIdElement = this._createDebugIdElement();
+    if (this.debugIdElement) {
+      controls.appendChild(this.debugIdElement);
+    }
 
     // Open in New Tab button
     const openBtn = this._createButton('🔗', () => {

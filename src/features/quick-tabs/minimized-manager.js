@@ -32,10 +32,13 @@ export class MinimizedManager {
   add(id, tabWindow) {
     // Guard against null/undefined tabWindow
     if (!tabWindow) {
-      console.warn('[MinimizedManager] Cannot add minimized tab - tabWindow is null/undefined:', id);
+      console.warn(
+        '[MinimizedManager] Cannot add minimized tab - tabWindow is null/undefined:',
+        id
+      );
       return;
     }
-    
+
     // v1.6.4.3 - FIX Issue #4: Store immutable snapshot of position/size
     // This prevents corruption if a duplicate window overwrites the original's properties
     const snapshot = {
@@ -70,6 +73,7 @@ export class MinimizedManager {
    * v1.5.9.8 - FIX: Ensure position state is preserved before calling restore
    * v1.6.4.3 - FIX Issue #4: Use immutable snapshot instead of potentially corrupted instance
    * v1.6.4.4 - FIX Bug #5: Return snapshot data for caller to apply to correct window
+   * v1.6.4.6 - FIX Issue #1, #6: Apply snapshot BEFORE calling restore() so render() uses correct values
    * @param {string} id - Quick Tab ID
    * @returns {Object|boolean} Snapshot object with position/size, or false if not found
    */
@@ -77,7 +81,7 @@ export class MinimizedManager {
     const snapshot = this.minimizedTabs.get(id);
     if (snapshot) {
       const tabWindow = snapshot.window;
-      
+
       // v1.6.4.3 - FIX Issue #4: Use saved snapshot values, NOT current instance properties
       // The instance properties may have been corrupted by duplicate window creation
       const savedLeft = snapshot.savedPosition.left;
@@ -85,21 +89,32 @@ export class MinimizedManager {
       const savedWidth = snapshot.savedSize.width;
       const savedHeight = snapshot.savedSize.height;
 
-      tabWindow.restore();
-
-      // Apply saved snapshot position/size (defensive, uses immutable values)
-      if (tabWindow.container) {
-        tabWindow.container.style.left = `${savedLeft}px`;
-        tabWindow.container.style.top = `${savedTop}px`;
-        tabWindow.container.style.width = `${savedWidth}px`;
-        tabWindow.container.style.height = `${savedHeight}px`;
-      }
-      
-      // Also update the instance properties to match snapshot
+      // v1.6.4.6 - FIX Issue #6: Apply snapshot to instance properties BEFORE calling restore()
+      // This ensures render() uses the correct position/size, not defaults (100, 100)
       tabWindow.left = savedLeft;
       tabWindow.top = savedTop;
       tabWindow.width = savedWidth;
       tabWindow.height = savedHeight;
+
+      console.log('[MinimizedManager] Applied snapshot to instance BEFORE restore:', {
+        id,
+        left: savedLeft,
+        top: savedTop,
+        width: savedWidth,
+        height: savedHeight
+      });
+
+      // Now call restore() which will call render() with correct instance properties
+      tabWindow.restore();
+
+      // v1.6.4.6 - FIX Issue #7: Verify DOM was created with correct position
+      if (tabWindow.container) {
+        console.log('[MinimizedManager] Verified DOM position after restore:', {
+          id,
+          containerLeft: tabWindow.container.style.left,
+          containerTop: tabWindow.container.style.top
+        });
+      }
 
       this.minimizedTabs.delete(id);
       console.log('[MinimizedManager] Restored tab with snapshot position:', {
@@ -109,7 +124,7 @@ export class MinimizedManager {
         width: savedWidth,
         height: savedHeight
       });
-      
+
       // v1.6.4.4 - FIX Bug #5: Return snapshot data so caller can verify/apply to correct window
       return {
         window: tabWindow,

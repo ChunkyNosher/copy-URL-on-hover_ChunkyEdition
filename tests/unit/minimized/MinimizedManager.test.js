@@ -151,15 +151,18 @@ describe('MinimizedManager', () => {
       expect(manager.minimizedTabs.has('test-tab-1')).toBe(false);
     });
 
-    test('should preserve position state before restoring', () => {
+    test('should apply snapshot to instance properties before restoring (v1.6.4.6)', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // Verify position was applied to container after restore
-      expect(mockTabWindow.container.style.left).toBe('100px');
-      expect(mockTabWindow.container.style.top).toBe('200px');
-      expect(mockTabWindow.container.style.width).toBe('800px');
-      expect(mockTabWindow.container.style.height).toBe('600px');
+      // v1.6.4.6 - Verify snapshot was applied to instance BEFORE calling restore
+      // The instance properties should have the snapshot values
+      expect(mockTabWindow.left).toBe(100);
+      expect(mockTabWindow.top).toBe(200);
+      expect(mockTabWindow.width).toBe(800);
+      expect(mockTabWindow.height).toBe(600);
+      // restore() is called after applying snapshot
+      expect(mockTabWindow.restore).toHaveBeenCalled();
     });
 
     test('should log restoration with position details', () => {
@@ -167,13 +170,16 @@ describe('MinimizedManager', () => {
       manager.restore('test-tab-1');
 
       // v1.6.4.3 - Updated: Logs include width and height with new snapshot format
-      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Restored tab with snapshot position:', {
-        id: 'test-tab-1',
-        left: 100,
-        top: 200,
-        width: 800,
-        height: 600
-      });
+      expect(console.log).toHaveBeenCalledWith(
+        '[MinimizedManager] Restored tab with snapshot position:',
+        {
+          id: 'test-tab-1',
+          left: 100,
+          top: 200,
+          width: 800,
+          height: 600
+        }
+      );
     });
 
     test('should return false for non-existent tab', () => {
@@ -204,17 +210,19 @@ describe('MinimizedManager', () => {
       // Should not throw when trying to set styles on null container
     });
 
-    test('should preserve exact position even if restore changes it', () => {
+    test('should apply correct snapshot before restore even if restore mutates state (v1.6.4.6)', () => {
       // Mock restore to change position (defensive behavior test)
       mockTabWindow.restore = jest.fn(() => {
-        mockTabWindow.container.style.left = '999px'; // Wrong position
+        // Even if restore changes the position, snapshot was applied before
+        // In real code, render() will use the instance properties
       });
 
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // Should force correct position after restore
-      expect(mockTabWindow.container.style.left).toBe('100px'); // Correct position
+      // v1.6.4.6 - Should have applied correct snapshot to instance BEFORE calling restore
+      expect(mockTabWindow.left).toBe(100);
+      expect(mockTabWindow.top).toBe(200);
     });
   });
 
@@ -419,8 +427,9 @@ describe('MinimizedManager', () => {
       expect(result).toBeTruthy();
       expect(result.window).toBe(minimalTab);
       expect(minimalTab.restore).toHaveBeenCalled();
-      // v1.6.4.3 - Updated: Should use default values (100) for missing properties
-      expect(minimalTab.container.style.left).toBe('100px');
+      // v1.6.4.6 - Snapshot applies to instance properties (with defaults) before restore
+      expect(minimalTab.left).toBe(100);
+      expect(minimalTab.top).toBe(100);
     });
 
     test('should handle null tab window in add', () => {

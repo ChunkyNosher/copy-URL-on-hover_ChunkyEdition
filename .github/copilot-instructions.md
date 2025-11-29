@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4.5  
+**Version:** 1.6.4.7  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,11 +15,15 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 
-**Recent Changes (v1.6.4.5):**
-- **VisibilityHandler Debounce:** Prevents 200+ duplicate minimize events with `_pendingMinimize`/`_pendingRestore` Sets and 150ms per-tab debounce
-- **UICoordinator Restore Fix:** `_applySnapshotForRestore()` applies saved position/size BEFORE rendering to prevent duplicates at (100,100)
-- **Close Minimized Fix:** `closeMinimizedTabs()` collects IDs BEFORE filtering, sends `CLOSE_QUICK_TAB` to all browser tabs
-- **Backwards Compatibility:** `CLOSE_MINIMIZED_QUICK_TABS` handler added to content.js
+**Recent Changes (v1.6.4.7):**
+- **Debug ID Display:** New `quickTabShowDebugId` setting shows Quick Tab ID in titlebar for debugging
+- **Video Pause on Minimize:** Videos/audio pause automatically when Quick Tab is minimized via `_pauseMediaInIframe()`
+
+**Previous Changes (v1.6.4.6):**
+- **DOM Lifecycle Fix:** `minimize()` now REMOVES DOM element via `container.remove()`, destroys controllers
+- **Restore Recreates DOM:** `restore()` calls `render()` to recreate DOM since minimize removes it
+- **Snapshot Before Render:** `MinimizedManager.restore()` applies position/size to instance BEFORE calling `tabWindow.restore()`
+- **UICoordinator DOM Validation:** `render()`/`update()` validate `isRendered()` on existing windows, re-render if DOM detached
 
 ---
 
@@ -113,7 +117,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 QuickTabsManager API (v1.6.4.5)
+## 🔧 QuickTabsManager API (v1.6.4.7)
 
 ### Correct Methods
 
@@ -128,7 +132,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 Storage Utilities (v1.6.4.5)
+## 🔧 Storage Utilities (v1.6.4.7)
 
 **Location:** `src/utils/storage-utils.js`
 
@@ -156,61 +160,56 @@ const success = await persistStateToStorage(state, '[MyHandler]'); // Returns bo
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.4.5)
+## 🏗️ Key Architecture Patterns (v1.6.4.7)
 
-### VisibilityHandler Debounce Pattern (v1.6.4.5)
+### QuickTabWindow.minimize() Pattern (v1.6.4.7)
 
 ```javascript
-// Prevent 200+ duplicate minimize events per click
-this._pendingMinimize = new Set();
-this._pendingRestore = new Set();
-this._debounceTimers = new Map();
-
-handleMinimize(id) {
-  if (this._pendingMinimize.has(id)) return; // Skip duplicate
-  this._pendingMinimize.add(id);
-  // ... do work ...
-  this._scheduleDebounce(id, 'minimize', 150);
+// minimize() pauses media, removes DOM, destroys controllers
+minimize() {
+  this._pauseMediaInIframe();          // Pause any playing video/audio (v1.6.4.7)
+  this.dragController.destroy();       // Cleanup event listeners
+  this.resizeController.detachAll();   // Cleanup resize handles
+  this.container.remove();             // Actually remove from DOM
+  this.container = null;
+  this.rendered = false;
+  this.onMinimize(this.id);
 }
 ```
 
-### UICoordinator Restore Pattern (v1.6.4.5)
+### QuickTabWindow.restore() Pattern (v1.6.4.7)
 
 ```javascript
-// Apply snapshot BEFORE rendering to prevent duplicates at (100,100)
-_applySnapshotForRestore(quickTab) {
-  const snapshotData = this.minimizedManager.getSnapshot(quickTab.id);
-  if (snapshotData) {
-    quickTab.position = snapshotData.position;
-    quickTab.size = snapshotData.size;
+// restore() now RECREATES DOM via render()
+restore() {
+  this.minimized = false;
+  if (!this.container) {
+    this.render();  // Recreate DOM since minimize removed it
   }
+  this.onFocus(this.id);
 }
 ```
 
-### closeMinimizedTabs Pattern (v1.6.4.5)
+### MinimizedManager.restore() Pattern (v1.6.4.7)
 
 ```javascript
-// Collect IDs BEFORE filtering, then send destroy to ALL browser tabs
-closeMinimizedTabs() {
-  const minimizedIds = state.tabs.filter(t => isTabMinimizedHelper(t)).map(t => t.id);
-  // Filter state...
-  for (const id of minimizedIds) {
-    browser.tabs.query({}).then(tabs => {
-      tabs.forEach(tab => browser.tabs.sendMessage(tab.id, { type: 'CLOSE_QUICK_TAB', id }));
-    });
-  }
+// Apply snapshot to instance BEFORE calling restore()
+restore(id) {
+  tabWindow.left = snapshot.savedPosition.left;
+  tabWindow.top = snapshot.savedPosition.top;
+  tabWindow.width = snapshot.savedSize.width;
+  tabWindow.height = snapshot.savedSize.height;
+  tabWindow.restore();  // Now render() uses correct values
 }
 ```
 
-### MinimizedManager Restore Pattern
+### UICoordinator DOM Validation (v1.6.4.7)
 
 ```javascript
-// restore() returns object with window and snapshot data
-const result = minimizedManager.restore(id);
-if (result) {
-  const { window: tabWindow, savedPosition, savedSize } = result;
-  tabWindow.setPosition(savedPosition.left, savedPosition.top);
-  tabWindow.setSize(savedSize.width, savedSize.height);
+// Validate DOM attachment before operating
+if (!tabWindow.isRendered()) {
+  this.renderedTabs.delete(quickTab.id);  // Remove stale reference
+  return this.render(quickTab);           // Re-render
 }
 ```
 
@@ -321,19 +320,21 @@ Use the agentic-tools MCP to create memories instead.
 
 ### Key Files
 - `background.js` - Background script, storage listeners, saveId tracking, synchronous gesture handlers
-- `src/content.js` - Content script, Quick Tab creation, Manager action handlers, `CLOSE_MINIMIZED_QUICK_TABS` (v1.6.4.5)
+- `src/content.js` - Content script, Quick Tab creation, Manager action handlers, `CLOSE_MINIMIZED_QUICK_TABS`
 - `src/utils/storage-utils.js` - Shared storage utilities with async persist
 - `src/utils/dom.js` - DOM utilities including `cleanupOrphanedQuickTabElements()`
 - `src/features/quick-tabs/coordinators/SyncCoordinator.js` - Cross-tab sync
 - `src/features/quick-tabs/managers/StorageManager.js` - Storage operations
 - `src/features/quick-tabs/managers/StateManager.js` - State management
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering, `_applySnapshotForRestore()` (v1.6.4.5)
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering, DOM validation with `isRendered()` (v1.6.4.6)
 - `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, `state:cleared` event
 - `src/features/quick-tabs/handlers/UpdateHandler.js` - Position/size updates with async persistence
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Solo/Mute, debounce mechanism (v1.6.4.5)
-- `src/features/quick-tabs/minimized-manager.js` - Snapshot-based storage, `restore()` returns object
-- `src/features/quick-tabs/window.js` - QuickTabWindow with null-safe `updateZIndex()`
-- `sidebar/quick-tabs-manager.js` - Manager UI, `closeMinimizedTabs()` fix (v1.6.4.5)
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Solo/Mute, debounce mechanism
+- `src/features/quick-tabs/minimized-manager.js` - Snapshot-based storage, applies snapshot BEFORE restore (v1.6.4.6)
+- `src/features/quick-tabs/window.js` - `minimize()` removes DOM + pauses media via `_pauseMediaInIframe()`, `restore()` recreates via `render()` (v1.6.4.7)
+- `src/features/quick-tabs/ui/builders/TitlebarBuilder.js` - `_createDebugIdElement()` for debug ID display (v1.6.4.7)
+- `options_page.html` / `options_page.js` - `quickTabShowDebugId` setting (v1.6.4.7)
+- `sidebar/quick-tabs-manager.js` - Manager UI, closeMinimizedTabs
 - `sidebar/settings.js` - Sidebar initialization
 
 ### Storage Key & Format
@@ -342,7 +343,7 @@ Use the agentic-tools MCP to create memories instead.
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
-**Unified Format (v1.6.4.5):**
+**Unified Format (v1.6.4.7):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -364,13 +365,13 @@ Use the agentic-tools MCP to create memories instead.
 }
 ```
 
-### Manager Action Messages (v1.6.4.5)
+### Manager Action Messages (v1.6.4.7)
 
 Content script handles these messages from Manager:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
-- `CLOSE_MINIMIZED_QUICK_TABS` - Close all minimized Quick Tabs (v1.6.4.5 backwards compat)
-- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab
-- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (uses snapshot data)
+- `CLOSE_MINIMIZED_QUICK_TABS` - Close all minimized Quick Tabs
+- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab (removes DOM via v1.6.4.6 pattern)
+- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (recreates DOM via `render()`)
 
 ---
 

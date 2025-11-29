@@ -8,15 +8,20 @@
  * - Listen to state events and trigger UI updates
  *
  * Complexity: cc ≤ 3 per method
- * 
+ *
  * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container isolation to enable global Quick Tab visibility
  * v1.6.3 - Removed cross-tab sync infrastructure (single-tab Quick Tabs only)
  * v1.6.4.4 - FIX Bug #3: Use shared DOM cleanup utility
  */
 
+import browser from 'webextension-polyfill';
+
 import { CONSTANTS } from '../../../core/config.js';
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '../../../utils/dom.js';
 import { createQuickTabWindow } from '../window.js';
+
+/** @constant {string} Settings storage key */
+const SETTINGS_KEY = 'quick_tab_settings';
 
 export class UICoordinator {
   /**
@@ -31,13 +36,18 @@ export class UICoordinator {
     this.panelManager = panelManager;
     this.eventBus = eventBus;
     this.renderedTabs = new Map(); // id -> QuickTabWindow
+    // v1.6.4.7 - Cache for quickTabShowDebugId setting
+    this.showDebugIdSetting = false;
   }
 
   /**
    * Initialize coordinator - setup listeners and render initial state
    */
-  init() {
+  async init() {
     console.log('[UICoordinator] Initializing...');
+
+    // v1.6.4.7 - Load showDebugId setting before rendering
+    await this._loadDebugIdSetting();
 
     // Setup state listeners
     this.setupStateListeners();
@@ -46,6 +56,23 @@ export class UICoordinator {
     this.renderAll();
 
     console.log('[UICoordinator] Initialized');
+  }
+
+  /**
+   * Load the quickTabShowDebugId setting from storage
+   * v1.6.4.7 - Feature: Debug UID Display Toggle
+   * @private
+   */
+  async _loadDebugIdSetting() {
+    try {
+      const result = await browser.storage.sync.get(SETTINGS_KEY);
+      const settings = result[SETTINGS_KEY] || {};
+      this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
+      console.log('[UICoordinator] Loaded showDebugId setting:', this.showDebugIdSetting);
+    } catch (err) {
+      console.warn('[UICoordinator] Failed to load showDebugId setting:', err);
+      this.showDebugIdSetting = false;
+    }
   }
 
   /**
@@ -67,15 +94,28 @@ export class UICoordinator {
    * Render a single QuickTabWindow from QuickTab entity
    * v1.6.2.2 - Removed container check for global visibility
    * v1.6.3 - Removed pending updates (no cross-tab sync)
+   * v1.6.4.6 - FIX Issue #3: Validate DOM attachment before returning cached window
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Rendered tab window
    */
   render(quickTab) {
-    // Skip if already rendered
+    // Check if already in map
     if (this.renderedTabs.has(quickTab.id)) {
-      console.log('[UICoordinator] Tab already rendered:', quickTab.id);
-      return this.renderedTabs.get(quickTab.id);
+      const existingWindow = this.renderedTabs.get(quickTab.id);
+
+      // v1.6.4.6 - FIX Issue #3: Validate DOM is actually attached
+      if (existingWindow.isRendered()) {
+        console.log('[UICoordinator] Tab already rendered and DOM attached:', quickTab.id);
+        return existingWindow;
+      }
+
+      // DOM is detached (e.g., after minimize), remove stale reference and re-render
+      console.log(
+        '[UICoordinator] Tab in map but DOM detached, removing stale reference:',
+        quickTab.id
+      );
+      this.renderedTabs.delete(quickTab.id);
     }
 
     console.log('[UICoordinator] Rendering tab:', quickTab.id);
@@ -97,8 +137,7 @@ export class UICoordinator {
    * @returns {boolean} True if minimizedManager is usable
    */
   _hasMinimizedManager() {
-    return this.minimizedManager && 
-      typeof this.minimizedManager.isMinimized === 'function';
+    return this.minimizedManager && typeof this.minimizedManager.isMinimized === 'function';
   }
 
   /**
@@ -111,7 +150,7 @@ export class UICoordinator {
     if (!this._hasMinimizedManager() || !this.minimizedManager.isMinimized(quickTab.id)) {
       return;
     }
-    
+
     const snapshot = this.minimizedManager.getSnapshot(quickTab.id);
     if (snapshot) {
       console.log('[UICoordinator] Restoring from snapshot, applying saved position:', snapshot);
@@ -132,7 +171,7 @@ export class UICoordinator {
    */
   _restoreExistingWindow(tabWindow, quickTabId) {
     console.log('[UICoordinator] Tab is being restored from minimized state:', quickTabId);
-    
+
     if (this._hasMinimizedManager() && this.minimizedManager.isMinimized(quickTabId)) {
       const restoreResult = this.minimizedManager.restore(quickTabId);
       if (restoreResult) {
@@ -152,6 +191,7 @@ export class UICoordinator {
    * v1.6.4.3 - FIX Issue #2: Check BOTH top-level AND nested minimized properties
    * v1.6.4.4 - FIX Bug #2: When restoring, call restore() on existing window instead of render()
    * v1.6.4.5 - FIX Issue #3: Use snapshot position/size when restoring, never create duplicate
+   * v1.6.4.6 - FIX Issue #3: Validate DOM attachment with isRendered() before operating
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
    * @returns {QuickTabWindow|undefined} Updated or newly rendered tab window, or undefined if skipped
@@ -159,8 +199,8 @@ export class UICoordinator {
   update(quickTab) {
     const tabWindow = this.renderedTabs.get(quickTab.id);
     const isMinimized = Boolean(quickTab.minimized || quickTab.visibility?.minimized);
-    
-    // Handle non-rendered tab
+
+    // Handle non-rendered tab or stale reference (DOM detached)
     if (!tabWindow) {
       if (isMinimized) {
         console.log('[UICoordinator] Tab is minimized, skipping render:', quickTab.id);
@@ -169,6 +209,24 @@ export class UICoordinator {
       // Apply snapshot if available before rendering
       this._applySnapshotForRestore(quickTab);
       console.warn('[UICoordinator] Tab not rendered, rendering now:', quickTab.id);
+      return this.render(quickTab);
+    }
+
+    // v1.6.4.6 - FIX Issue #3: Validate DOM is actually attached
+    if (!tabWindow.isRendered()) {
+      console.log('[UICoordinator] Tab in map but DOM detached, cleaning up:', quickTab.id);
+      this.renderedTabs.delete(quickTab.id);
+
+      if (isMinimized) {
+        console.log(
+          '[UICoordinator] Tab is minimized, skipping render after cleanup:',
+          quickTab.id
+        );
+        return;
+      }
+      // Apply snapshot if available before rendering
+      this._applySnapshotForRestore(quickTab);
+      console.log('[UICoordinator] Re-rendering tab after DOM cleanup:', quickTab.id);
       return this.render(quickTab);
     }
 
@@ -290,7 +348,7 @@ export class UICoordinator {
     // v1.6.4.4 - FIX Bug #3: Use shared utility for comprehensive DOM cleanup
     // Also remove from renderedTabs any IDs that were cleaned up
     const cleanedCount = cleanupOrphanedQuickTabElements(stateTabIds);
-    
+
     // Clean up renderedTabs for any elements that were removed
     for (const [id] of this.renderedTabs) {
       if (!stateTabIds.has(id)) {
@@ -299,7 +357,9 @@ export class UICoordinator {
     }
 
     if (orphanedIds.length > 0 || cleanedCount > 0) {
-      console.log(`[UICoordinator] Reconciled: destroyed ${orphanedIds.length} tracked + ${cleanedCount} orphaned DOM element(s)`);
+      console.log(
+        `[UICoordinator] Reconciled: destroyed ${orphanedIds.length} tracked + ${cleanedCount} orphaned DOM element(s)`
+      );
     } else {
       console.log('[UICoordinator] Reconciled: no orphaned tabs found');
     }
@@ -396,6 +456,7 @@ export class UICoordinator {
   /**
    * Create QuickTabWindow from QuickTab entity
    * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
+   * v1.6.4.7 - Pass showDebugId setting to window
    * @private
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
@@ -420,7 +481,8 @@ export class UICoordinator {
       minimized: visibility.minimized,
       zIndex: zIndex,
       soloedOnTabs: visibility.soloedOnTabs,
-      mutedOnTabs: visibility.mutedOnTabs
+      mutedOnTabs: visibility.mutedOnTabs,
+      showDebugId: this.showDebugIdSetting // v1.6.4.7 - Pass debug ID display setting
     });
   }
 }

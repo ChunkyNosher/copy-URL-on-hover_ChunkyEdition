@@ -1,5 +1,13 @@
 {
-  "projects": [],
+  "projects": [
+    {
+      "id": "a1fadbcc-4e84-4042-88d2-b9d2ecba7ef0",
+      "name": "Feature v1.6.4.7 - Debug ID and Video Pause",
+      "description": "Implementation of two new features: Debug UID Display Toggle and Video Pause on Minimize",
+      "createdAt": "2025-11-29T21:32:30.671Z",
+      "updatedAt": "2025-11-29T21:32:30.671Z"
+    }
+  ],
   "tasks": [],
   "subtasks": [],
   "migration": {

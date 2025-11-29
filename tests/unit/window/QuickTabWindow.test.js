@@ -535,13 +535,16 @@ describe('QuickTabWindow', () => {
       expect(window.minimized).toBe(true);
     });
 
-    test('should hide container', () => {
+    test('should remove container from DOM (v1.6.4.6)', () => {
       const window = new QuickTabWindow(options);
       window.render();
 
       window.minimize();
 
-      expect(window.container.style.display).toBe('none');
+      // v1.6.4.6 - minimize now removes DOM instead of display:none
+      expect(window.container).toBeNull();
+      expect(window.iframe).toBeNull();
+      expect(window.rendered).toBe(false);
     });
 
     test('should call onMinimize callback', () => {
@@ -565,14 +568,20 @@ describe('QuickTabWindow', () => {
       expect(window.minimized).toBe(false);
     });
 
-    test('should show container', () => {
+    test('should recreate container from scratch (v1.6.4.6)', () => {
       const window = new QuickTabWindow(options);
       window.render();
-      window.container.style.display = 'none';
+      // Simulate minimize removing DOM
+      window.container = null;
+      window.iframe = null;
+      window.rendered = false;
+      window.minimized = true;
 
       window.restore();
 
-      expect(window.container.style.display).toBe('flex');
+      // v1.6.4.6 - restore now recreates DOM via render()
+      expect(window.container).not.toBeNull();
+      expect(window.rendered).toBe(true);
     });
 
     test('should restore position and size', () => {
