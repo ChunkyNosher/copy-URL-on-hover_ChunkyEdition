@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.4.3 reconciliation, snapshot-based minimize)
+  Quick Tab functionality (v1.6.4.4 DOM cleanup, debounced writes, restore snapshots)
 tools: ["*"]
 ---
 
@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.4 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -59,23 +59,26 @@ const relevantMemories = await searchMemories({
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
 - **Shared Storage Utilities** - `src/utils/storage-utils.js` for persistence
-- **UICoordinator Reconciliation** - `reconcileRenderedTabs()` destroys orphans (v1.6.4.3)
-- **MinimizedManager Snapshots** - Immutable position/size on minimize (v1.6.4.3)
+- **DOM Cleanup** - `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js` (v1.6.4.4)
+- **Debounced Writes** - Batch rapid destroys to prevent storage write storms (v1.6.4.4)
+- **MinimizedManager Snapshots** - `restore()` returns `{ window, savedPosition, savedSize }` (v1.6.4.4)
 
-**Recent Fixes (v1.6.4.3):**
-- UICoordinator listens to `state:cleared` event for full cleanup
-- MinimizedManager stores position/size as immutable snapshots
-- Consistent minimized detection: `tab.minimized ?? tab.visibility?.minimized ?? false`
-- `closeAll()` emits `state:cleared` event
+**Recent Fixes (v1.6.4.4):**
+- Synchronous gesture handlers for sidebar toggle in `background.js`
+- `UICoordinator.update()` proper minimized state detection and restore path
+- `UICoordinator.reconcileRenderedTabs()` calls DOM cleanup
+- `VisibilityHandler` calls `QuickTabWindow.minimize()` directly
+- `window.js` null-safe `updateZIndex()` prevents TypeError
+- Atomic closure with full cleanup in `DestroyHandler`
 
-**Storage Format (v1.6.4.3):**
+**Storage Format (v1.6.4.4):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
 
 ---
 
-## QuickTabsManager API (v1.6.4.3)
+## QuickTabsManager API (v1.6.4.4)
 
 | Method | Description |
 |--------|-------------|
@@ -84,7 +87,7 @@ const relevantMemories = await searchMemories({
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
-## Storage Utilities (v1.6.4.3)
+## Storage Utilities (v1.6.4.4)
 
 **Location:** `src/utils/storage-utils.js`
 
@@ -94,6 +97,45 @@ import { STATE_KEY, generateSaveId, persistStateToStorage } from '../utils/stora
 // Persist state after changes
 const state = { tabs: [...], saveId: generateSaveId(), timestamp: Date.now() };
 persistStateToStorage(state, '[MyHandler]');
+```
+
+## DOM Cleanup (v1.6.4.4)
+
+**Location:** `src/utils/dom.js`
+
+```javascript
+import { cleanupOrphanedQuickTabElements } from '../utils/dom.js';
+
+// After destroy/close operations:
+cleanupOrphanedQuickTabElements();
+```
+
+## Debounced Batch Writes (v1.6.4.4)
+
+```javascript
+// Prevent storage write storms during rapid operations
+this._pendingDestroys = new Set();
+this._destroyDebounceTimer = null;
+
+scheduleDestroy(id) {
+  this._pendingDestroys.add(id);
+  clearTimeout(this._destroyDebounceTimer);
+  this._destroyDebounceTimer = setTimeout(() => {
+    this._processPendingDestroys();
+  }, 100);
+}
+```
+
+## MinimizedManager.restore() (v1.6.4.4)
+
+```javascript
+// restore() returns object with window and snapshot
+const result = minimizedManager.restore(id);
+if (result) {
+  const { window: tabWindow, savedPosition, savedSize } = result;
+  tabWindow.setPosition(savedPosition.left, savedPosition.top);
+  tabWindow.setSize(savedSize.width, savedSize.height);
+}
 ```
 
 ---

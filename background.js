@@ -1524,20 +1524,45 @@ browser.commands.onCommand.addListener(command => {
 /**
  * Handle toggle-quick-tabs-manager command (Ctrl+Alt+Z)
  * v1.6.4.1 - Toggle behavior: close if Manager showing, otherwise open to Manager
+ * v1.6.4.4 - FIX Bug #1: Use sidebarAction.toggle() to preserve user gesture context
+ *            browser.sidebarAction.isOpen() breaks the gesture context when awaited
  */
 async function _handleToggleQuickTabsManager() {
   try {
-    // Check if sidebar is currently open
-    const isOpen = await browser.sidebarAction.isOpen({});
+    // v1.6.4.4 - FIX Bug #1: Set storage FIRST (synchronous-ish, non-blocking)
+    // This ensures the sidebar knows to show Manager tab when it opens
+    browser.storage.local.set({ _requestedPrimaryTab: 'manager' }).catch(err => {
+      console.warn('[Sidebar] Failed to set _requestedPrimaryTab:', err);
+    });
     
-    if (!isOpen) {
-      // Sidebar is closed - open it and switch to Manager
-      await _openSidebarToManager();
+    // v1.6.4.4 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
+    // toggle() properly handles user gesture context
+    if (browser.sidebarAction.toggle) {
+      await browser.sidebarAction.toggle();
+      console.log('[Sidebar] Toggled sidebar via toggle() API');
+      
+      // After toggle, try to switch to Manager if sidebar is now open
+      // Use setTimeout to let the sidebar initialize
+      setTimeout(async () => {
+        try {
+          await _sendManagerTabMessage();
+        } catch (_e) {
+          // Sidebar may have closed or not ready - ignore
+        }
+      }, SIDEBAR_INIT_DELAY_MS);
       return;
     }
     
-    // Sidebar is open - check what tab is showing and toggle accordingly
-    await _toggleManagerWhenSidebarOpen();
+    // Fallback for older Firefox without toggle()
+    // v1.6.4.4 - FIX Bug #1: Call open() FIRST without any awaits to preserve gesture
+    // We can't check isOpen() first because that breaks the gesture context
+    console.log('[Sidebar] Using fallback approach (no toggle API)');
+    await browser.sidebarAction.open();
+    
+    // Wait for sidebar to initialize, then send message
+    await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
+    await _sendManagerTabMessage();
+    console.log('[Sidebar] Opened sidebar and switched to Manager tab');
   } catch (err) {
     console.error('[Sidebar] Error handling toggle-quick-tabs-manager:', err);
   }
@@ -1586,23 +1611,37 @@ async function _toggleManagerWhenSidebarOpen() {
  * Handle _execute_sidebar_action command (Alt+Shift+S)
  * v1.6.4.1 - Always open sidebar to Settings tab
  * v1.6.4.2 - FIX Bug #3: Use storage to set initial tab before opening sidebar
+ * v1.6.4.4 - FIX Bug #1: Use sidebarAction.toggle() to preserve user gesture context
  */
 async function _handleOpenToSettingsTab() {
   try {
-    // Check if sidebar is currently open
-    const isOpen = await browser.sidebarAction.isOpen({});
+    // v1.6.4.4 - FIX Bug #1: Set storage FIRST (synchronous-ish, non-blocking)
+    browser.storage.local.set({ _requestedPrimaryTab: 'settings' }).catch(err => {
+      console.warn('[Sidebar] Failed to set _requestedPrimaryTab:', err);
+    });
     
-    if (!isOpen) {
-      // v1.6.4.2 - Set requested tab in storage BEFORE opening sidebar
-      await browser.storage.local.set({ _requestedPrimaryTab: 'settings' });
-      console.debug('[Background] Set _requestedPrimaryTab to settings');
+    // v1.6.4.4 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
+    if (browser.sidebarAction.toggle) {
+      await browser.sidebarAction.toggle();
+      console.log('[Sidebar] Toggled sidebar via toggle() API');
       
-      // Sidebar is closed - open it first
-      await browser.sidebarAction.open();
-      await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
+      // After toggle, try to switch to Settings if sidebar is now open
+      setTimeout(async () => {
+        try {
+          await _sendSettingsTabMessage();
+        } catch (_e) {
+          // Sidebar may have closed or not ready - ignore
+        }
+      }, SIDEBAR_INIT_DELAY_MS);
+      return;
     }
     
-    // Switch to Settings tab (may fail on first open, but storage ensures correct tab)
+    // Fallback: Call open() FIRST without awaits
+    console.log('[Sidebar] Using fallback approach (no toggle API)');
+    await browser.sidebarAction.open();
+    await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
+    
+    // Switch to Settings tab
     await _sendSettingsTabMessage();
     console.log('[Sidebar] Opened sidebar and switched to Settings tab');
   } catch (err) {

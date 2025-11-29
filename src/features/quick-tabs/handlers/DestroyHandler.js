@@ -5,6 +5,7 @@
  * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
  * v1.6.4 - FIX Bug #1: Persist to storage after destroy
  * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
+ * v1.6.4.4 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -13,17 +14,22 @@
  * - Cleanup minimized manager references
  * - Reset z-index when all tabs closed
  * - Emit destruction events
- * - Persist state to storage after destruction
+ * - Persist state to storage after destruction (debounced to prevent write storms)
  *
- * @version 1.6.4.1
+ * @version 1.6.4.4
  */
 
+import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
+
+// v1.6.4.4 - FIX Bug #8: Debounce delay for storage writes (ms)
+const STORAGE_DEBOUNCE_DELAY = 150;
 
 /**
  * DestroyHandler class
  * Manages Quick Tab destruction and cleanup operations (local only, no cross-tab sync)
  * v1.6.4 - Now persists state to storage after destruction
+ * v1.6.4.4 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
  */
 export class DestroyHandler {
   /**
@@ -48,6 +54,12 @@ export class DestroyHandler {
     this.currentZIndex = currentZIndex;
     this.Events = Events;
     this.baseZIndex = baseZIndex;
+    
+    // v1.6.4.4 - FIX Bug #8: Debounce timer for storage writes
+    this._storageDebounceTimer = null;
+    
+    // v1.6.4.4 - FIX Bug #7: Track destroyed IDs to prevent resurrection
+    this._destroyedIds = new Set();
   }
 
   /**
@@ -55,18 +67,27 @@ export class DestroyHandler {
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
    * v1.6.4 - FIX Bug #1: Persist to storage after destroy
+   * v1.6.4.4 - FIX Bug #7: Track destroyed IDs to prevent resurrection
    *
    * @param {string} id - Quick Tab ID
    */
   handleDestroy(id) {
     console.log('[DestroyHandler] Handling destroy for:', id);
 
+    // v1.6.4.4 - FIX Bug #7: Mark as destroyed FIRST to prevent resurrection
+    this._destroyedIds.add(id);
+
     // Get tab info BEFORE deleting (needed for state:deleted event)
     const tabWindow = this.quickTabsMap.get(id);
 
-    // Delete from map and minimized manager
+    // v1.6.4.4 - FIX Bug #7: Atomic cleanup - delete from ALL references
     this.quickTabsMap.delete(id);
     this.minimizedManager.remove(id);
+    
+    // v1.6.4.4 - FIX Bug #7: Use shared utility for DOM cleanup
+    if (removeQuickTabElement(id)) {
+      console.log('[DestroyHandler] Removed DOM element for:', id);
+    }
 
     // Emit destruction event (legacy)
     this._emitDestructionEvent(id);
@@ -77,8 +98,26 @@ export class DestroyHandler {
     // Reset z-index if all tabs are closed
     this._resetZIndexIfEmpty();
 
-    // v1.6.4 - FIX Bug #1: Persist to storage after destroy
-    this._persistToStorage();
+    // v1.6.4.4 - FIX Bug #8: Debounced persist to prevent write storms
+    this._debouncedPersistToStorage();
+  }
+
+  /**
+   * Check if a Quick Tab ID was recently destroyed
+   * v1.6.4.4 - FIX Bug #7: Used to prevent resurrection during DOM scans
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if recently destroyed
+   */
+  wasRecentlyDestroyed(id) {
+    return this._destroyedIds.has(id);
+  }
+
+  /**
+   * Clear destroyed IDs tracking (call periodically to prevent memory leak)
+   * v1.6.4.4 - FIX Bug #7: Cleanup destroyed IDs set
+   */
+  clearDestroyedTracking() {
+    this._destroyedIds.clear();
   }
 
   /**
@@ -123,6 +162,24 @@ export class DestroyHandler {
   }
 
   /**
+   * Debounced persist to storage
+   * v1.6.4.4 - FIX Bug #8: Prevents storage write storms (8 writes in 38ms)
+   * @private
+   */
+  _debouncedPersistToStorage() {
+    // Clear existing timer
+    if (this._storageDebounceTimer) {
+      clearTimeout(this._storageDebounceTimer);
+    }
+    
+    // Set new debounced timer
+    this._storageDebounceTimer = setTimeout(() => {
+      this._storageDebounceTimer = null;
+      this._persistToStorage();
+    }, STORAGE_DEBOUNCE_DELAY);
+  }
+
+  /**
    * Persist current state to browser.storage.local
    * v1.6.4 - FIX Bug #1: Persist to storage after destroy
    * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
@@ -139,6 +196,7 @@ export class DestroyHandler {
       return;
     }
     
+    console.debug('[DestroyHandler] Persisting state with', state.tabs?.length || 0, 'tabs');
     const success = await persistStateToStorage(state, '[DestroyHandler]');
     if (!success) {
       console.error('[DestroyHandler] Storage persist failed or timed out');
@@ -161,11 +219,17 @@ export class DestroyHandler {
    * Close all Quick Tabs
    * v1.6.4 - FIX Bug #1: Persist to storage after close all
    * v1.6.4.3 - FIX Issue #3: Emit state:cleared event for UICoordinator reconciliation
+   * v1.6.4.4 - FIX Bug #7: Track all destroyed IDs atomically, use shared cleanup utility
    * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
    */
   closeAll() {
     console.log('[DestroyHandler] Closing all Quick Tabs');
     const count = this.quickTabsMap.size;
+
+    // v1.6.4.4 - FIX Bug #7: Track all IDs being destroyed
+    for (const id of this.quickTabsMap.keys()) {
+      this._destroyedIds.add(id);
+    }
 
     // Destroy all tabs
     for (const tabWindow of this.quickTabsMap.values()) {
@@ -179,6 +243,12 @@ export class DestroyHandler {
     this.minimizedManager.clear();
     this.currentZIndex.value = this.baseZIndex;
 
+    // v1.6.4.4 - FIX Bug #7: Use shared utility to clean up ALL .quick-tab-window elements
+    const removedCount = cleanupOrphanedQuickTabElements(null);
+    if (removedCount > 0) {
+      console.log(`[DestroyHandler] Removed ${removedCount} DOM element(s)`);
+    }
+
     // v1.6.4.3 - FIX Issue #3: Emit state:cleared for UICoordinator to reconcile
     // This removes any orphaned windows that may exist in renderedTabs but not StateManager
     if (this.eventBus) {
@@ -186,7 +256,7 @@ export class DestroyHandler {
       console.log('[DestroyHandler] Emitted state:cleared:', count);
     }
 
-    // v1.6.4 - FIX Bug #1: Persist to storage after close all
+    // v1.6.4.4 - FIX Bug #8: Direct persist (no debounce for closeAll)
     this._persistToStorage();
   }
 }

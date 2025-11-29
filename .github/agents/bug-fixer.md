@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -63,12 +63,13 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
 
-**Recent Fixes (v1.6.4):**
-- Storage persistence after destroy/minimize/restore via shared utilities
-- Settings page uses storage.local for Quick Tab state (not storage.sync)
-- Manager action message handlers in content script
-- saveId tracking in background.js for collision detection
-- New `src/utils/storage-utils.js` with shared persistence functions
+**Recent Fixes (v1.6.4.4):**
+- DOM cleanup with `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js`
+- Synchronous gesture handlers in `background.js` for Firefox
+- Debounced batch writes in `DestroyHandler` prevent storage write storms
+- `MinimizedManager.restore()` returns snapshot object for proper window restoration
+- `window.js` null-safe `updateZIndex()` prevents TypeError
+- `VisibilityHandler` calls `QuickTabWindow.minimize()` directly
 
 ---
 
@@ -275,7 +276,7 @@ const tabs = state.quick_tabs_state_v2?.tabs || [];
 
 ## Common Bug Categories
 
-### Global Visibility (v1.6.4)
+### Global Visibility (v1.6.4.4)
 
 **Symptoms:** State not shared correctly across tabs
 
@@ -290,7 +291,7 @@ const state = await browser.storage.local.get(STATE_KEY);
 const tabs = state[STATE_KEY]?.tabs || [];
 ```
 
-### Solo/Mute State Bugs (v1.6.4)
+### Solo/Mute State Bugs (v1.6.4.4)
 
 **Symptoms:** Incorrect visibility, state conflicts
 
@@ -309,19 +310,53 @@ function toggleSolo(quickTab, tabId) {
 }
 ```
 
-### Storage Persistence Bugs (v1.6.4)
+### Storage Persistence Bugs (v1.6.4.4)
 
 **Symptoms:** State lost after destroy/minimize/restore
 
-**Root Cause:** Handler not persisting to storage.local
+**Root Cause:** Handler not persisting to storage.local or storage write storms
 
 **Standard Fix:**
 ```javascript
 import { persistStateToStorage, generateSaveId } from '../utils/storage-utils.js';
 
-// After state change, persist
-const state = { tabs: [...], saveId: generateSaveId(), timestamp: Date.now() };
-persistStateToStorage(state, '[MyHandler]');
+// Use debounced batch writes for rapid operations (v1.6.4.4)
+this._pendingDestroys.add(id);
+clearTimeout(this._destroyDebounceTimer);
+this._destroyDebounceTimer = setTimeout(() => {
+  this._processPendingDestroys();
+}, 100);
+```
+
+### DOM Cleanup Bugs (v1.6.4.4)
+
+**Symptoms:** Orphaned Quick Tab elements remain after close/destroy
+
+**Root Cause:** UICoordinator destroy not cleaning up DOM fully
+
+**Standard Fix:**
+```javascript
+import { cleanupOrphanedQuickTabElements } from '../utils/dom.js';
+
+// After state cleanup, clean DOM
+cleanupOrphanedQuickTabElements();
+```
+
+### Minimize/Restore Bugs (v1.6.4.4)
+
+**Symptoms:** Duplicate windows on restore, wrong position/size
+
+**Root Cause:** Not using snapshot data from `MinimizedManager.restore()`
+
+**Standard Fix:**
+```javascript
+// restore() returns object with window and snapshot (v1.6.4.4)
+const result = minimizedManager.restore(id);
+if (result) {
+  const { window: tabWindow, savedPosition, savedSize } = result;
+  tabWindow.setPosition(savedPosition.left, savedPosition.top);
+  tabWindow.setSize(savedSize.width, savedSize.height);
+}
 ```
 
 ### Quick Tab Rendering Bugs
@@ -462,10 +497,16 @@ test('edge case #123: empty container string', ...);
 → Edge cases are where bugs hide
 
 ❌ **Not checking global visibility logic**
-→ Quick Tabs are visible everywhere in v1.6.4 (no container isolation)
+→ Quick Tabs are visible everywhere in v1.6.4.4 (no container isolation)
 
 ❌ **Using storage.sync for Quick Tab state**
 → Use storage.local for Quick Tab state, storage.sync only for settings
+
+❌ **Not using debounced batch writes**
+→ Rapid destroy operations cause storage write storms (v1.6.4.4)
+
+❌ **Not using DOM cleanup**
+→ Call `cleanupOrphanedQuickTabElements()` after destroy operations (v1.6.4.4)
 
 ---
 

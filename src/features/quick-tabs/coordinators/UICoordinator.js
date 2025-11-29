@@ -11,8 +11,11 @@
  * 
  * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container isolation to enable global Quick Tab visibility
  * v1.6.3 - Removed cross-tab sync infrastructure (single-tab Quick Tabs only)
+ * v1.6.4.4 - FIX Bug #3: Use shared DOM cleanup utility
  */
 
+import { CONSTANTS } from '../../../core/config.js';
+import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '../../../utils/dom.js';
 import { createQuickTabWindow } from '../window.js';
 
 export class UICoordinator {
@@ -92,6 +95,7 @@ export class UICoordinator {
    * v1.6.3.4 - FIX Bug #6: Check for minimized state before rendering
    * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
    * v1.6.4.3 - FIX Issue #2: Check BOTH top-level AND nested minimized properties
+   * v1.6.4.4 - FIX Bug #2: When restoring, call restore() on existing window instead of render()
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
    * @returns {QuickTabWindow|undefined} Updated or newly rendered tab window, or undefined if skipped
@@ -114,16 +118,34 @@ export class UICoordinator {
       return this.render(quickTab);
     }
 
+    // v1.6.4.4 - FIX Bug #2: If tab was minimized and is now being restored,
+    // check if minimizedManager has it and restore properly instead of just updating
+    if (tabWindow.minimized && !isMinimized) {
+      console.log('[UICoordinator] Tab is being restored from minimized state:', quickTab.id);
+      // The window already exists but is hidden - just call restore on it
+      if (this.minimizedManager && this.minimizedManager.isMinimized(quickTab.id)) {
+        this.minimizedManager.restore(quickTab.id);
+        console.log('[UICoordinator] Restored tab via minimizedManager:', quickTab.id);
+        return tabWindow;
+      } else {
+        // Fallback: restore the window directly if not in minimizedManager
+        tabWindow.restore();
+        console.log('[UICoordinator] Restored tab directly:', quickTab.id);
+        return tabWindow;
+      }
+    }
+
     console.log('[UICoordinator] Updating tab:', quickTab.id);
 
     // v1.6.4.2 - FIX TypeError: Use helper functions for safe access
     const position = this._getSafePosition(quickTab);
     const size = this._getSafeSize(quickTab);
+    const zIndex = this._getSafeZIndex(quickTab);
 
     // Update tab properties with safe values
     tabWindow.updatePosition(position.left, position.top);
     tabWindow.updateSize(size.width, size.height);
-    tabWindow.updateZIndex(quickTab.zIndex);
+    tabWindow.updateZIndex(zIndex);
 
     console.log('[UICoordinator] Tab updated:', quickTab.id);
     return tabWindow;
@@ -131,6 +153,7 @@ export class UICoordinator {
 
   /**
    * Destroy a QuickTabWindow
+   * v1.6.4.4 - FIX Bug #3: Verify DOM cleanup after destroy
    *
    * @param {string} quickTabId - ID of tab to destroy
    */
@@ -139,6 +162,10 @@ export class UICoordinator {
 
     if (!tabWindow) {
       console.warn('[UICoordinator] Tab not found for destruction:', quickTabId);
+      // v1.6.4.4 - FIX Bug #3: Still try to clean up orphaned DOM elements using shared utility
+      if (removeQuickTabElement(quickTabId)) {
+        console.log('[UICoordinator] Removed orphaned DOM element for:', quickTabId);
+      }
       return;
     }
 
@@ -151,6 +178,11 @@ export class UICoordinator {
 
     // Remove from map
     this.renderedTabs.delete(quickTabId);
+
+    // v1.6.4.4 - FIX Bug #3: Verify DOM cleanup - use shared utility
+    if (removeQuickTabElement(quickTabId)) {
+      console.log('[UICoordinator] Removed orphaned DOM element for:', quickTabId);
+    }
 
     console.log('[UICoordinator] Tab destroyed:', quickTabId);
   }
@@ -191,6 +223,7 @@ export class UICoordinator {
   /**
    * Reconcile rendered tabs with StateManager
    * v1.6.4.3 - FIX Issue #3: Destroy orphaned tabs that exist in renderedTabs but not in StateManager
+   * v1.6.4.4 - FIX Bug #3: Also scan DOM for orphaned .quick-tab-window elements
    * This handles the case where "Close All" removes tabs from storage but duplicates remain visible
    */
   reconcileRenderedTabs() {
@@ -213,8 +246,19 @@ export class UICoordinator {
       this.destroy(id);
     }
 
-    if (orphanedIds.length > 0) {
-      console.log(`[UICoordinator] Reconciled: destroyed ${orphanedIds.length} orphaned tab(s)`);
+    // v1.6.4.4 - FIX Bug #3: Use shared utility for comprehensive DOM cleanup
+    // Also remove from renderedTabs any IDs that were cleaned up
+    const cleanedCount = cleanupOrphanedQuickTabElements(stateTabIds);
+    
+    // Clean up renderedTabs for any elements that were removed
+    for (const [id] of this.renderedTabs) {
+      if (!stateTabIds.has(id)) {
+        this.renderedTabs.delete(id);
+      }
+    }
+
+    if (orphanedIds.length > 0 || cleanedCount > 0) {
+      console.log(`[UICoordinator] Reconciled: destroyed ${orphanedIds.length} tracked + ${cleanedCount} orphaned DOM element(s)`);
     } else {
       console.log('[UICoordinator] Reconciled: no orphaned tabs found');
     }
@@ -282,6 +326,17 @@ export class UICoordinator {
   }
 
   /**
+   * Extract safe zIndex value from QuickTab
+   * v1.6.4.4 - Helper for consistent zIndex handling
+   * @private
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   * @returns {number} Safe zIndex value
+   */
+  _getSafeZIndex(quickTab) {
+    return quickTab.zIndex ?? CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+  }
+
+  /**
    * Extract safe visibility values from QuickTab
    * v1.6.4.2 - Helper to reduce complexity
    * @private
@@ -309,6 +364,7 @@ export class UICoordinator {
     const position = this._getSafePosition(quickTab);
     const size = this._getSafeSize(quickTab);
     const visibility = this._getSafeVisibility(quickTab);
+    const zIndex = this._getSafeZIndex(quickTab);
 
     // Create QuickTabWindow using imported factory function from window.js
     return createQuickTabWindow({
@@ -321,7 +377,7 @@ export class UICoordinator {
       title: quickTab.title,
       cookieStoreId: quickTab.container,
       minimized: visibility.minimized,
-      zIndex: quickTab.zIndex,
+      zIndex: zIndex,
       soloedOnTabs: visibility.soloedOnTabs,
       mutedOnTabs: visibility.mutedOnTabs
     });

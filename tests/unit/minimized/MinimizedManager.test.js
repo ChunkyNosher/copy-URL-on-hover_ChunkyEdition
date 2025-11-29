@@ -136,7 +136,11 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
       const result = manager.restore('test-tab-1');
 
-      expect(result).toBe(true);
+      // v1.6.4.4 - restore() now returns object with snapshot data instead of just true
+      expect(result).toBeTruthy();
+      expect(result.window).toBe(mockTabWindow);
+      expect(result.position).toEqual({ left: 100, top: 200 });
+      expect(result.size).toEqual({ width: 800, height: 600 });
       expect(mockTabWindow.restore).toHaveBeenCalled();
     });
 
@@ -193,7 +197,9 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', tabWithoutContainer);
       const result = manager.restore('test-tab-1');
 
-      expect(result).toBe(true);
+      // v1.6.4.4 - restore() now returns object with snapshot data instead of just true
+      expect(result).toBeTruthy();
+      expect(result.window).toBe(tabWithoutContainer);
       expect(tabWithoutContainer.restore).toHaveBeenCalled();
       // Should not throw when trying to set styles on null container
     });
@@ -409,7 +415,9 @@ describe('MinimizedManager', () => {
       manager.add('minimal', minimalTab);
       const result = manager.restore('minimal');
 
-      expect(result).toBe(true);
+      // v1.6.4.4 - restore() now returns object with snapshot data instead of just true
+      expect(result).toBeTruthy();
+      expect(result.window).toBe(minimalTab);
       expect(minimalTab.restore).toHaveBeenCalled();
       // v1.6.4.3 - Updated: Should use default values (100) for missing properties
       expect(minimalTab.container.style.left).toBe('100px');
