@@ -6,6 +6,7 @@
  * v1.6.4.3 - FIX Issue #4: Store position/size as immutable snapshot to prevent corruption
  * v1.6.4.9 - FIX Issue #1: Do NOT delete snapshot in restore(), keep until UICoordinator confirms
  *   Added clearSnapshot() for UICoordinator to call after successful render
+ * v1.6.3.4-v2 - FIX Issue #3: Enhanced logging for snapshot application verification
  */
 
 // Default values for position/size when not provided
@@ -87,6 +88,7 @@ export class MinimizedManager {
    * v1.6.4.9 - FIX Issue #1 CRITICAL: Do NOT delete snapshot here! Keep until UICoordinator confirms.
    *   The 200ms STATE_EMIT_DELAY_MS causes snapshot to be deleted before UICoordinator reads it.
    *   UICoordinator will call clearSnapshot() after successful render.
+   * v1.6.3.4-v2 - FIX Issue #3: Enhanced logging showing saved snapshot values being applied
    * @param {string} id - Quick Tab ID
    * @returns {Object|boolean} Snapshot object with position/size, or false if not found
    */
@@ -111,6 +113,15 @@ export class MinimizedManager {
       const savedTop = snapshot.savedPosition.top;
       const savedWidth = snapshot.savedSize.width;
       const savedHeight = snapshot.savedSize.height;
+      
+      // v1.6.3.4-v2 - FIX Issue #3: Log the SAVED SNAPSHOT VALUES being applied
+      console.log('[MinimizedManager] Snapshot values to be applied:', {
+        id,
+        savedLeft,
+        savedTop,
+        savedWidth,
+        savedHeight
+      });
       
       // v1.6.4.7 - FIX Issue #6: Log BEFORE and AFTER to verify application
       console.log('[MinimizedManager] Instance dimensions BEFORE snapshot application:', {
@@ -143,8 +154,11 @@ export class MinimizedManager {
         tabWindow.top === savedTop &&
         tabWindow.width === savedWidth &&
         tabWindow.height === savedHeight;
-        
-      if (!applicationVerified) {
+      
+      // v1.6.3.4-v2 - FIX Issue #3: Log verification result explicitly
+      if (applicationVerified) {
+        console.log('[MinimizedManager] ✓ Snapshot application VERIFIED - all values match:', id);
+      } else {
         console.error('[MinimizedManager] CRITICAL: Snapshot application verification FAILED!', {
           id,
           expected: { left: savedLeft, top: savedTop, width: savedWidth, height: savedHeight },

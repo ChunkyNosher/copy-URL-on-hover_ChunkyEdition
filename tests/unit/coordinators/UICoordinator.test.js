@@ -454,7 +454,8 @@ describe('UICoordinator', () => {
       });
       mockEventBus.emit('state:updated', { quickTab });
 
-      expect(spy).toHaveBeenCalledWith(quickTab);
+      // v1.6.3.4-v2 - update() now takes source and isRestoreOperation parameters
+      expect(spy).toHaveBeenCalledWith(quickTab, 'unknown', false);
     });
 
     test('should listen to state:deleted events', () => {

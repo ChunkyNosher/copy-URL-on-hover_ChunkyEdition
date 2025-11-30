@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.4  
+**Version:** 1.6.3.4-v2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -14,13 +14,13 @@
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
-- **State hydration on page reload** (v1.6.3.4)
+- **State hydration on page reload** (v1.6.3.4+)
 
-**v1.6.3.4 Key Features:**
-- **State Hydration:** `_initStep6_Hydrate()` restores Quick Tabs from storage on page reload
-- **Source Tracking:** All actions log source ('Manager', 'UI', 'hydration', 'automation')
-- **Z-Index Persistence:** Focus changes persist z-index to storage immediately
-- **Unified Destroy Path:** UI close button uses DestroyHandler for consistent cleanup
+**v1.6.3.4-v2 Key Features (Bug Fixes):**
+- **Source-Aware Map Cleanup:** UICoordinator cleans renderedTabs Map when `source='Manager'` AND `entityMinimized` AND `!domAttached`
+- **isRestoreOperation Flag:** state:updated events include flag for correct UICoordinator routing
+- **Enhanced Dimension Verification:** Logging at every step of restore dimension flow
+- **Fixed:** Duplicate 400x300 window on restore, ghost entries in renderedTabs Map
 
 ---
 
@@ -145,9 +145,37 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.3.4)
+## 🏗️ Key Architecture Patterns (v1.6.3.4-v2)
 
-### State Hydration on Page Reload (v1.6.3.4)
+### Source-Aware Map Cleanup (v1.6.3.4-v2)
+
+```javascript
+// UICoordinator.update() - clean Map when Manager minimize leaves ghost entries
+update(quickTab, source = 'unknown', isRestoreOperation = false) {
+  // If Manager minimized and DOM is detached, clean renderedTabs Map
+  if (source === 'Manager' && entityMinimized && !domAttached) {
+    this.renderedTabs.delete(id);
+  }
+}
+```
+
+### isRestoreOperation Flag (v1.6.3.4-v2)
+
+```javascript
+// VisibilityHandler emits flag on state:updated for restore operations
+this.eventBus.emit('state:updated', { 
+  quickTab, 
+  source: 'Manager',
+  isRestoreOperation: true  // UICoordinator routes to restore path
+});
+
+// UICoordinator.setupStateListeners() extracts flag
+this.eventBus.on('state:updated', ({ quickTab, source, isRestoreOperation }) => {
+  this.update(quickTab, source, isRestoreOperation);
+});
+```
+
+### State Hydration on Page Reload (v1.6.3.4+)
 
 ```javascript
 // index.js - _initStep6_Hydrate() restores Quick Tabs from storage
@@ -158,7 +186,7 @@ async _hydrateStateFromStorage() {
 }
 ```
 
-### Source Tracking Pattern (v1.6.3.4)
+### Source Tracking Pattern (v1.6.3.4+)
 
 ```javascript
 // All handlers accept source parameter for logging
@@ -168,7 +196,7 @@ handleMinimize(id, source = 'UI') {
 // Sources: 'Manager', 'UI', 'hydration', 'automation'
 ```
 
-### Z-Index Persistence (v1.6.3.4)
+### Z-Index Persistence (v1.6.3.4+)
 
 ```javascript
 // VisibilityHandler.handleFocus() persists z-index to storage
@@ -180,7 +208,7 @@ async handleFocus(id) {
 // UpdateHandler includes zIndex in state hash for change detection
 ```
 
-### Unified Destroy Path (v1.6.3.4)
+### Unified Destroy Path (v1.6.3.4+)
 
 ```javascript
 // UI close button now uses DestroyHandler for consistent cleanup
@@ -309,29 +337,36 @@ Use the agentic-tools MCP to create memories instead.
   - DOM re-render recovery on unexpected detachment
   - Unified settings loading from `storage.local`
   - `DOM_VERIFICATION_DELAY_MS = 150`, `DOM_MONITORING_INTERVAL_MS = 500`
+  - **v1.6.3.4-v2:** `update()` accepts `source` and `isRestoreOperation` parameters
+  - **v1.6.3.4-v2:** Source-aware Map cleanup for Manager minimize operations
 - `src/features/quick-tabs/index.js`:
   - DestroyHandler receives `internalEventBus` for state:deleted
-  - **v1.6.3.4:** `_initStep6_Hydrate()` for page reload hydration
+  - **v1.6.3.4+:** `_initStep6_Hydrate()` for page reload hydration
 - `src/features/quick-tabs/handlers/CreateHandler.js`:
   - Uses `storage.local` with key `quickTabShowDebugId`
   - **`async init()`** with storage fallback pattern
 - `src/features/quick-tabs/handlers/DestroyHandler.js`:
   - Debounced batch writes, **`_batchMode`**
-  - **v1.6.3.4:** Source parameter for logging
+  - **v1.6.3.4+:** Source parameter for logging
 - `src/features/quick-tabs/handlers/VisibilityHandler.js`:
   - `STATE_EMIT_DELAY_MS = 200`, `_operationLocks` mutex
   - Re-registers window in quickTabsMap after restore
-  - **v1.6.3.4:** Source parameter, z-index persistence on focus
+  - **v1.6.3.4+:** Source parameter, z-index persistence on focus
+  - **v1.6.3.4-v2:** Emits `isRestoreOperation: true` on state:updated for restore
 - `src/features/quick-tabs/handlers/UpdateHandler.js`:
-  - **v1.6.3.4:** zIndex included in state hash for change detection
-- `src/features/quick-tabs/minimized-manager.js` - Snapshot lifecycle with pendingClearSnapshots
-- `src/features/quick-tabs/window.js` - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` constants
+  - **v1.6.3.4+:** zIndex included in state hash for change detection
+- `src/features/quick-tabs/minimized-manager.js`:
+  - Snapshot lifecycle with pendingClearSnapshots
+  - **v1.6.3.4-v2:** Enhanced `restore()` with verification logging
+- `src/features/quick-tabs/window.js`:
+  - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` constants
+  - **v1.6.3.4-v2:** DOM dimension verification logging after createElement()
 - `src/features/quick-tabs/window/TitlebarBuilder.js`:
   - Shows LAST 12 chars of UID (unique suffix)
   - `updateDebugIdDisplay(showDebugId)`
 - `src/utils/storage-utils.js`:
   - Shared storage utilities with async persist
-  - **v1.6.3.4:** `serializeTabForStorage()` includes zIndex field
+  - **v1.6.3.4+:** `serializeTabForStorage()` includes zIndex field
 - `sidebar/quick-tabs-manager.js` - `_getIndicatorClass()` returns 'orange' when `domVerified=false`
 - `sidebar/settings.html` - UID display checkbox in Advanced tab
 - `sidebar/settings.js` - `quickTabShowDebugId` in DEFAULT_SETTINGS

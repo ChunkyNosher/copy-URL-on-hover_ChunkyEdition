@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.4 state hydration, source tracking, z-index persistence)
+  Quick Tab functionality (v1.6.3.4-v2 source-aware cleanup, isRestoreOperation flag)
 tools: ["*"]
 ---
 
@@ -28,20 +28,20 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v2 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
-- **State Hydration (v1.6.3.4)** - Quick Tabs restored from storage on page reload
+- **State Hydration (v1.6.3.4+)** - Quick Tabs restored from storage on page reload
 
-**v1.6.3.4 Key Features:**
-- **State Hydration:** `_initStep6_Hydrate()` restores Quick Tabs from storage on page reload
-- **Source Tracking:** All handlers log source ('Manager', 'UI', 'hydration', 'automation')
-- **Z-Index Persistence:** `handleFocus()` persists z-index to storage immediately
-- **Unified Destroy Path:** UI close button uses DestroyHandler for consistent cleanup
+**v1.6.3.4-v2 Key Features (Bug Fixes):**
+- **Source-Aware Map Cleanup:** UICoordinator cleans renderedTabs on Manager minimize
+- **isRestoreOperation Flag:** state:updated events route correctly to restore path
+- **Enhanced Dimension Verification:** Logging throughout restore pipeline
+- **Fixed:** Duplicate 400x300 window on restore, ghost Map entries
 
 **Storage Keys:**
 - **State:** `quick_tabs_state_v2` (storage.local)
@@ -60,9 +60,30 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4 Key Patterns
+## v1.6.3.4-v2 Key Patterns
 
-### State Hydration on Page Reload (NEW)
+### Source-Aware Map Cleanup (NEW)
+
+```javascript
+// UICoordinator.update() - clean Map on Manager minimize
+update(quickTab, source = 'unknown', isRestoreOperation = false) {
+  if (source === 'Manager' && entityMinimized && !domAttached) {
+    this.renderedTabs.delete(id);  // Prevents ghost entries
+  }
+}
+```
+
+### isRestoreOperation Flag (NEW)
+
+```javascript
+// VisibilityHandler emits flag for restore routing
+this.eventBus.emit('state:updated', { 
+  quickTab, source: 'Manager', isRestoreOperation: true 
+});
+// UICoordinator routes to _restoreExistingWindow() when flag is true
+```
+
+### State Hydration on Page Reload (v1.6.3.4+)
 
 ```javascript
 // index.js - _initStep6_Hydrate() restores Quick Tabs from storage
@@ -73,7 +94,7 @@ async _hydrateStateFromStorage() {
 }
 ```
 
-### Source Tracking Pattern (NEW)
+### Source Tracking Pattern (v1.6.3.4+)
 
 ```javascript
 // All handlers accept source parameter for logging
@@ -83,7 +104,7 @@ handleMinimize(id, source = 'UI') {
 // Sources: 'Manager', 'UI', 'hydration', 'automation'
 ```
 
-### Z-Index Persistence (NEW)
+### Z-Index Persistence (v1.6.3.4+)
 
 ```javascript
 // VisibilityHandler.handleFocus() persists z-index to storage
@@ -93,7 +114,7 @@ async handleFocus(id) {
 // serializeTabForStorage() includes zIndex field
 ```
 
-### Unified Destroy Path (NEW)
+### Unified Destroy Path (v1.6.3.4+)
 
 ```javascript
 // UI close button now uses DestroyHandler
@@ -175,9 +196,11 @@ UICoordinator._applySnapshotForRestore(quickTab) {
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
 - [ ] Manager displays with Solo/Mute indicators
-- [ ] **v1.6.3.4:** State hydration on page reload
-- [ ] **v1.6.3.4:** Source logged in minimize/restore/close
-- [ ] **v1.6.3.4:** Z-index persists on focus
+- [ ] **v1.6.3.4-v2:** Source-aware Map cleanup on Manager minimize
+- [ ] **v1.6.3.4-v2:** isRestoreOperation flag routes to correct path
+- [ ] **v1.6.3.4+:** State hydration on page reload
+- [ ] **v1.6.3.4+:** Source logged in minimize/restore/close
+- [ ] **v1.6.3.4+:** Z-index persists on focus
 - [ ] Drag/resize functional
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
