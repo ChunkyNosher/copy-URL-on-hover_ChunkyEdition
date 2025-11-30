@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.3  
+**Version:** 1.6.3.4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -14,14 +14,13 @@
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
+- **State hydration on page reload** (v1.6.3.4)
 
-**v1.6.3.3 Key Fixes (14 Critical Bugs):**
-- **Z-Index Tracking:** UICoordinator maintains `_highestZIndex` in memory, increments for each restore/create
-- **UID Truncation:** TitlebarBuilder shows LAST 12 chars (unique suffix) instead of first 12 (identical prefix)
-- **Settings Loading:** UICoordinator uses `storage.local` key `quickTabShowDebugId` (unified with CreateHandler)
-- **Close Button:** DestroyHandler receives `internalEventBus` for proper `state:deleted` events
-- **DOM Stability:** UICoordinator attempts re-render on unexpected DOM detachment
-- **Instance Tracking:** VisibilityHandler re-registers window in quickTabsMap after restore
+**v1.6.3.4 Key Features:**
+- **State Hydration:** `_initStep6_Hydrate()` restores Quick Tabs from storage on page reload
+- **Source Tracking:** All actions log source ('Manager', 'UI', 'hydration', 'automation')
+- **Z-Index Persistence:** Focus changes persist z-index to storage immediately
+- **Unified Destroy Path:** UI close button uses DestroyHandler for consistent cleanup
 
 ---
 
@@ -146,93 +145,72 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.3.3)
+## 🏗️ Key Architecture Patterns (v1.6.3.4)
 
-### Z-Index Tracking (v1.6.3.3)
+### State Hydration on Page Reload (v1.6.3.4)
+
+```javascript
+// index.js - _initStep6_Hydrate() restores Quick Tabs from storage
+async _hydrateStateFromStorage() {
+  const { quick_tabs_state_v2: storedState } = await browser.storage.local.get('quick_tabs_state_v2');
+  if (!storedState?.tabs?.length) return;
+  // Hydrate each tab, repopulate Map and DOM
+}
+```
+
+### Source Tracking Pattern (v1.6.3.4)
+
+```javascript
+// All handlers accept source parameter for logging
+handleMinimize(id, source = 'UI') {
+  console.log(`[VisibilityHandler] Minimizing ${id} from ${source}`);
+}
+// Sources: 'Manager', 'UI', 'hydration', 'automation'
+```
+
+### Z-Index Persistence (v1.6.3.4)
+
+```javascript
+// VisibilityHandler.handleFocus() persists z-index to storage
+async handleFocus(id) {
+  // Increment z-index and persist immediately
+  await persistStateToStorage(state, '[VisibilityHandler.handleFocus]');
+}
+// serializeTabForStorage() includes zIndex field
+// UpdateHandler includes zIndex in state hash for change detection
+```
+
+### Unified Destroy Path (v1.6.3.4)
+
+```javascript
+// UI close button now uses DestroyHandler for consistent cleanup
+// Manager and UI closes both call DestroyHandler
+// Proper storage cleanup on all closes
+```
+
+### Z-Index Tracking (v1.6.3.3+)
 
 ```javascript
 // UICoordinator tracks highest z-index in memory
 this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
-
-_getNextZIndex() {
-  this._highestZIndex++;
-  return this._highestZIndex;
-}
-
-// Applied after restore/create to ensure proper stacking
-tabWindow.updateZIndex(this._getNextZIndex());
+_getNextZIndex() { this._highestZIndex++; return this._highestZIndex; }
 ```
 
-### UID Truncation (v1.6.3.3)
+### UID Truncation (v1.6.3.3+)
 
 ```javascript
-// TitlebarBuilder shows LAST 12 chars (unique suffix) instead of first 12
-// Old: "qt-123-16..." (identical across tabs - useless)
-// New: "...1294jc4k13j2u" (unique random suffix - useful)
+// TitlebarBuilder shows LAST 12 chars (unique suffix)
 const displayId = id.length > 15 ? '...' + id.slice(-12) : id;
-```
-
-### Unified Settings Loading (v1.6.3.3)
-
-```javascript
-// UICoordinator._loadDebugIdSetting() uses same source as CreateHandler:
-// storage.local with individual key 'quickTabShowDebugId'
-const { quickTabShowDebugId } = await browser.storage.local.get('quickTabShowDebugId');
-this.showDebugIdSetting = quickTabShowDebugId ?? false;
-```
-
-### Close Button Fix (v1.6.3.3)
-
-```javascript
-// index.js - DestroyHandler receives internalEventBus (not external eventBus)
-// This ensures state:deleted events reach UICoordinator for cleanup
-this.destroyHandler = new DestroyHandler(
-  this.tabs,
-  this.minimizedManager,
-  this.internalEventBus,  // v1.6.3.3 FIX
-  this.quickTabsMap
-);
-```
-
-### DOM Re-render Recovery (v1.6.3.3)
-
-```javascript
-// UICoordinator detects unexpected DOM detachment and attempts re-render
-_startDOMMonitoring(id, tabWindow) {
-  setInterval(() => {
-    if (!tabWindow.isRendered()) {
-      // Check if entity is NOT minimized (unexpected detachment)
-      const entity = this.stateManager.get(id);
-      if (entity && !entity.visibility?.minimized) {
-        this._attemptReRender(id);  // Recovery attempt
-      }
-    }
-  }, 500);
-}
-```
-
-### Instance Re-registration (v1.6.3.3)
-
-```javascript
-// VisibilityHandler re-registers window in quickTabsMap after restore
-async handleRestore(id) {
-  // ... restore logic ...
-  const tabWindow = this.minimizedManager.restore(id);
-  if (tabWindow) {
-    this.quickTabsMap.set(id, tabWindow);  // Re-register
-  }
-}
 ```
 
 ### Constants Reference
 
-| Constant | Value | Location | Notes |
-|----------|-------|----------|-------|
-| `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator | - |
-| `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator | - |
-| `STATE_EMIT_DELAY_MS` | 200 | VisibilityHandler | Increased from 100ms for DOM verification |
-| `DEFAULT_WIDTH/HEIGHT` | 400/300 | QuickTabWindow | - |
-| `DEFAULT_LEFT/TOP` | 100/100 | QuickTabWindow | - |
+| Constant | Value | Location |
+|----------|-------|----------|
+| `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator |
+| `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator |
+| `STATE_EMIT_DELAY_MS` | 200 | VisibilityHandler |
+| `DEFAULT_WIDTH/HEIGHT` | 400/300 | QuickTabWindow |
 
 ### Consistent Minimized State Detection
 
@@ -327,24 +305,33 @@ Use the agentic-tools MCP to create memories instead.
 - `src/utils/storage-utils.js` - Shared storage utilities with async persist
 - `src/utils/dom.js` - DOM utilities including `cleanupOrphanedQuickTabElements()`
 - `src/features/quick-tabs/coordinators/UICoordinator.js`:
-  - **v1.6.3.3:** Z-index tracking with `_highestZIndex`, `_getNextZIndex()`
-  - **v1.6.3.3:** DOM re-render recovery on unexpected detachment
-  - **v1.6.3.3:** Unified settings loading from `storage.local`
+  - Z-index tracking with `_highestZIndex`, `_getNextZIndex()`
+  - DOM re-render recovery on unexpected detachment
+  - Unified settings loading from `storage.local`
   - `DOM_VERIFICATION_DELAY_MS = 150`, `DOM_MONITORING_INTERVAL_MS = 500`
 - `src/features/quick-tabs/index.js`:
-  - **v1.6.3.3:** DestroyHandler receives `internalEventBus` for state:deleted
+  - DestroyHandler receives `internalEventBus` for state:deleted
+  - **v1.6.3.4:** `_initStep6_Hydrate()` for page reload hydration
 - `src/features/quick-tabs/handlers/CreateHandler.js`:
   - Uses `storage.local` with key `quickTabShowDebugId`
   - **`async init()`** with storage fallback pattern
-- `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, **`_batchMode`**
+- `src/features/quick-tabs/handlers/DestroyHandler.js`:
+  - Debounced batch writes, **`_batchMode`**
+  - **v1.6.3.4:** Source parameter for logging
 - `src/features/quick-tabs/handlers/VisibilityHandler.js`:
   - `STATE_EMIT_DELAY_MS = 200`, `_operationLocks` mutex
-  - **v1.6.3.3:** Re-registers window in quickTabsMap after restore
+  - Re-registers window in quickTabsMap after restore
+  - **v1.6.3.4:** Source parameter, z-index persistence on focus
+- `src/features/quick-tabs/handlers/UpdateHandler.js`:
+  - **v1.6.3.4:** zIndex included in state hash for change detection
 - `src/features/quick-tabs/minimized-manager.js` - Snapshot lifecycle with pendingClearSnapshots
 - `src/features/quick-tabs/window.js` - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` constants
 - `src/features/quick-tabs/window/TitlebarBuilder.js`:
-  - **v1.6.3.3:** Shows LAST 12 chars of UID (unique suffix)
+  - Shows LAST 12 chars of UID (unique suffix)
   - `updateDebugIdDisplay(showDebugId)`
+- `src/utils/storage-utils.js`:
+  - Shared storage utilities with async persist
+  - **v1.6.3.4:** `serializeTabForStorage()` includes zIndex field
 - `sidebar/quick-tabs-manager.js` - `_getIndicatorClass()` returns 'orange' when `domVerified=false`
 - `sidebar/settings.html` - UID display checkbox in Advanced tab
 - `sidebar/settings.js` - `quickTabShowDebugId` in DEFAULT_SETTINGS
@@ -359,7 +346,7 @@ Use the agentic-tools MCP to create memories instead.
 **State Format:**
 ```javascript
 {
-  tabs: [...],           // Array with domVerified property
+  tabs: [...],           // Array with domVerified, zIndex properties
   saveId: 'unique-id',
   timestamp: Date.now()
 }

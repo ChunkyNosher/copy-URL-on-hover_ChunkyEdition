@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.3 UID truncation shows LAST chars, z-index tracking, settings unification)
+  (v1.6.3.4 z-index persistence, source tracking, unified destroy path)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -37,14 +37,9 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-- **Restore via UICoordinator** - Uses fallback chain with snapshot lifecycle
-- **DragController Destroyed Flag** - Prevents ghost events
-- **Dynamic UID Display** - Settings checkbox, storage.local listener
-
-**v1.6.3.3 Key Fixes:**
-- **UID Truncation:** TitlebarBuilder shows LAST 12 chars (unique random suffix)
-- **Z-Index Tracking:** UICoordinator `_getNextZIndex()` for proper stacking
-- **Settings Loading:** Unified `storage.local` key `quickTabShowDebugId`
+- **Z-Index Persistence (v1.6.3.4)** - Focus changes persist to storage
+- **Source Tracking (v1.6.3.4)** - All actions log source
+- **Unified Destroy Path (v1.6.3.4)** - UI close uses DestroyHandler
 
 **Constants Reference:**
 
@@ -54,7 +49,6 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 | `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator |
 | `STATE_EMIT_DELAY_MS` | 200 | VisibilityHandler |
 | `DEFAULT_WIDTH/HEIGHT` | 400/300 | QuickTabWindow |
-| `DEFAULT_LEFT/TOP` | 100/100 | QuickTabWindow |
 
 **Minimized State Detection:**
 ```javascript
@@ -63,36 +57,40 @@ const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
 
 ---
 
-## v1.6.3.3 Key Patterns
+## v1.6.3.4 Key Patterns
 
-### UID Truncation (NEW)
-
-```javascript
-// TitlebarBuilder shows LAST 12 chars (unique suffix) instead of first 12
-// Old format: "qt-123-16..." (identical browser tab ID prefix - useless)
-// New format: "...1294jc4k13j2u" (unique random suffix - useful for debugging)
-const displayId = id.length > 15 ? '...' + id.slice(-12) : id;
-```
-
-### Z-Index Tracking (NEW)
+### Z-Index Persistence (NEW)
 
 ```javascript
-// UICoordinator tracks highest z-index in memory
-this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
-
-_getNextZIndex() {
-  this._highestZIndex++;
-  return this._highestZIndex;
+// VisibilityHandler.handleFocus() persists z-index to storage
+async handleFocus(id) {
+  await persistStateToStorage(state, '[VisibilityHandler.handleFocus]');
 }
-// Apply after restore/create to ensure proper stacking order
+// serializeTabForStorage() includes zIndex field
 ```
 
-### Unified Settings Loading (NEW)
+### Source Tracking Pattern (NEW)
 
 ```javascript
-// Both UICoordinator and CreateHandler use same storage source:
-// storage.local with individual key 'quickTabShowDebugId'
-const { quickTabShowDebugId } = await browser.storage.local.get('quickTabShowDebugId');
+// All handlers accept source parameter for logging
+handleMinimize(id, source = 'UI') {
+  console.log(`[VisibilityHandler] Minimizing ${id} from ${source}`);
+}
+// Sources: 'Manager', 'UI', 'hydration', 'automation'
+```
+
+### Unified Destroy Path (NEW)
+
+```javascript
+// UI close button now uses DestroyHandler
+// Manager and UI closes both go through single path
+```
+
+### UID Truncation (Inherited)
+
+```javascript
+// TitlebarBuilder shows LAST 12 chars (unique suffix)
+const displayId = id.length > 15 ? '...' + id.slice(-12) : id;
 ```
 
 ### Dynamic UID Display
@@ -102,25 +100,6 @@ const { quickTabShowDebugId } = await browser.storage.local.get('quickTabShowDeb
 updateDebugIdDisplay(showDebugId) {
   // Add or remove UID element from titlebar
 }
-```
-
-### Snapshot Lifecycle (Inherited)
-
-```javascript
-// MinimizedManager keeps snapshots until UICoordinator confirms render
-pendingClearSnapshots = new Map();  // Awaiting render confirmation
-hasSnapshot(id)   // Check both active and pending-clear snapshots
-clearSnapshot(id) // UICoordinator calls after successful render
-```
-
-### Restore Flow (Entity-Instance Sync)
-
-```
-VisibilityHandler.handleRestore() → MinimizedManager.restore(id) → UICoordinator:
-  1. _tryApplySnapshotFromManager() → uses hasSnapshot(), calls restore()
-  2. _tryApplyDimensionsFromInstance() → fallback to tabWindow dimensions
-  3. _startDOMMonitoring() → 500ms interval checks for detachment
-  4. clearSnapshot(id) after successful DOM render
 ```
 
 ---

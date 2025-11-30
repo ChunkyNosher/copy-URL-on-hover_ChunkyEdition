@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.3 z-index tracking, UID truncation, settings unification)
+  Quick Tab functionality (v1.6.3.4 state hydration, source tracking, z-index persistence)
 tools: ["*"]
 ---
 
@@ -28,21 +28,20 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
+- **State Hydration (v1.6.3.4)** - Quick Tabs restored from storage on page reload
 
-**v1.6.3.3 Key Fixes (14 Critical Bugs):**
-- **Z-Index Tracking:** UICoordinator maintains `_highestZIndex`, `_getNextZIndex()` method
-- **UID Truncation:** TitlebarBuilder shows LAST 12 chars (unique suffix)
-- **Settings Loading:** UICoordinator uses `storage.local` key `quickTabShowDebugId` (unified with CreateHandler)
-- **Close Button:** DestroyHandler receives `internalEventBus` for `state:deleted` events
-- **DOM Stability:** UICoordinator attempts re-render on unexpected DOM detachment
-- **Instance Tracking:** VisibilityHandler re-registers window in quickTabsMap after restore
+**v1.6.3.4 Key Features:**
+- **State Hydration:** `_initStep6_Hydrate()` restores Quick Tabs from storage on page reload
+- **Source Tracking:** All handlers log source ('Manager', 'UI', 'hydration', 'automation')
+- **Z-Index Persistence:** `handleFocus()` persists z-index to storage immediately
+- **Unified Destroy Path:** UI close button uses DestroyHandler for consistent cleanup
 
 **Storage Keys:**
 - **State:** `quick_tabs_state_v2` (storage.local)
@@ -61,56 +60,53 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.3 Key Patterns
+## v1.6.3.4 Key Patterns
 
-### Z-Index Tracking (NEW)
+### State Hydration on Page Reload (NEW)
+
+```javascript
+// index.js - _initStep6_Hydrate() restores Quick Tabs from storage
+async _hydrateStateFromStorage() {
+  const { quick_tabs_state_v2: storedState } = await browser.storage.local.get('quick_tabs_state_v2');
+  if (!storedState?.tabs?.length) return;
+  // Hydrate each tab, repopulate Map and DOM
+}
+```
+
+### Source Tracking Pattern (NEW)
+
+```javascript
+// All handlers accept source parameter for logging
+handleMinimize(id, source = 'UI') {
+  console.log(`[VisibilityHandler] Minimizing ${id} from ${source}`);
+}
+// Sources: 'Manager', 'UI', 'hydration', 'automation'
+```
+
+### Z-Index Persistence (NEW)
+
+```javascript
+// VisibilityHandler.handleFocus() persists z-index to storage
+async handleFocus(id) {
+  await persistStateToStorage(state, '[VisibilityHandler.handleFocus]');
+}
+// serializeTabForStorage() includes zIndex field
+```
+
+### Unified Destroy Path (NEW)
+
+```javascript
+// UI close button now uses DestroyHandler
+// Manager and UI closes both go through single path
+// Proper storage cleanup on all closes
+```
+
+### Z-Index Tracking (Inherited)
 
 ```javascript
 // UICoordinator tracks highest z-index in memory
 this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
-
-_getNextZIndex() {
-  this._highestZIndex++;
-  return this._highestZIndex;
-}
-// Apply after restore/create for proper stacking
-```
-
-### UID Truncation (NEW)
-
-```javascript
-// TitlebarBuilder shows LAST 12 chars (unique suffix)
-// Old: "qt-123-16..." (identical prefix - useless)
-// New: "...1294jc4k13j2u" (unique random suffix)
-const displayId = id.length > 15 ? '...' + id.slice(-12) : id;
-```
-
-### Unified Settings Loading (NEW)
-
-```javascript
-// UICoordinator uses same storage source as CreateHandler:
-// storage.local with individual key 'quickTabShowDebugId'
-const { quickTabShowDebugId } = await browser.storage.local.get('quickTabShowDebugId');
-```
-
-### Close Button Fix (NEW)
-
-```javascript
-// DestroyHandler receives internalEventBus for state:deleted events
-this.destroyHandler = new DestroyHandler(
-  this.tabs, this.minimizedManager,
-  this.internalEventBus,  // v1.6.3.3 - ensures UICoordinator receives events
-  this.quickTabsMap
-);
-```
-
-### DOM Re-render Recovery (NEW)
-
-```javascript
-// UICoordinator detects unexpected detachment and attempts re-render
-if (!tabWindow.isRendered() && !entity?.visibility?.minimized) {
-  this._attemptReRender(id);  // Recovery attempt
-}
+_getNextZIndex() { this._highestZIndex++; return this._highestZIndex; }
 ```
 
 ### Snapshot Lifecycle (Inherited)
@@ -118,9 +114,7 @@ if (!tabWindow.isRendered() && !entity?.visibility?.minimized) {
 ```javascript
 UICoordinator._applySnapshotForRestore(quickTab) {
   // 1. Try MinimizedManager snapshot with hasSnapshot()
-  if (this._tryApplySnapshotFromManager(quickTab)) return;
   // 2. Fallback to existing tabWindow instance dimensions
-  this._tryApplyDimensionsFromInstance(quickTab);
 }
 // After render: clearSnapshot(id) confirms snapshot deletion
 ```
@@ -131,8 +125,7 @@ UICoordinator._applySnapshotForRestore(quickTab) {
 |----------|-------|----------|
 | `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator |
 | `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator |
-| `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler |
-| `DEFAULT_WIDTH/HEIGHT` | 400/300 | QuickTabWindow |
+| `STATE_EMIT_DELAY_MS` | 200 | VisibilityHandler |
 
 ---
 
@@ -182,9 +175,9 @@ UICoordinator._applySnapshotForRestore(quickTab) {
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
 - [ ] Manager displays with Solo/Mute indicators
-- [ ] **v1.6.3.3:** Z-index correct on restored tabs (stacking order)
-- [ ] **v1.6.3.3:** UID shows last 12 chars (unique suffix)
-- [ ] **v1.6.3.3:** Close button updates storage
+- [ ] **v1.6.3.4:** State hydration on page reload
+- [ ] **v1.6.3.4:** Source logged in minimize/restore/close
+- [ ] **v1.6.3.4:** Z-index persists on focus
 - [ ] Drag/resize functional
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠

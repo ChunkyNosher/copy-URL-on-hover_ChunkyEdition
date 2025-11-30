@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,14 +62,13 @@ const relevantMemories = await searchMemories({
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
+- State hydration on page reload (v1.6.3.4)
 
-**v1.6.3.3 Key Fixes (14 Critical Bugs):**
-- Z-index tracking with `_highestZIndex` and `_getNextZIndex()` method
-- UID truncation shows LAST 12 chars (unique suffix)
-- Settings loading unified with CreateHandler (storage.local)
-- Close button uses internalEventBus for state:deleted events
-- DOM re-render recovery on unexpected detachment
-- Instance re-registration in quickTabsMap after restore
+**v1.6.3.4 Key Features:**
+- State hydration with `_initStep6_Hydrate()` restores Quick Tabs on page reload
+- Source tracking in all handlers ('Manager', 'UI', 'hydration', 'automation')
+- Z-index persistence on focus via `handleFocus()`
+- Unified destroy path (UI close button uses DestroyHandler)
 
 ---
 
