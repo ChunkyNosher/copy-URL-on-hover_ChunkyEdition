@@ -757,43 +757,71 @@ async function goToTab(tabId) {
 }
 
 /**
- * Minimize an active Quick Tab
+ * Helper: Send message to a single tab
+ * v1.6.4.10 - Extracted to reduce nesting depth
+ * @param {number} tabId - Browser tab ID
+ * @param {string} action - Message action
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {Promise<boolean>} True if successful, false otherwise
  */
-async function minimizeQuickTab(quickTabId) {
+async function _sendMessageToTab(tabId, action, quickTabId) {
   try {
-    // Send message to content script in active tab
-    const activeTabs = await browser.tabs.query({ active: true, currentWindow: true });
-    if (activeTabs.length === 0) return;
-
-    await browser.tabs.sendMessage(activeTabs[0].id, {
-      action: 'MINIMIZE_QUICK_TAB',
-      quickTabId: quickTabId
-    });
-
-    console.log(`Minimized Quick Tab ${quickTabId}`);
-  } catch (err) {
-    console.error(`Error minimizing Quick Tab ${quickTabId}:`, err);
+    await browser.tabs.sendMessage(tabId, { action, quickTabId });
+    return true;
+  } catch (_err) {
+    // Content script may not be loaded in tab ${tabId} - expected for new tabs/internal pages
+    return false;
   }
 }
 
 /**
+ * Helper: Send message to all tabs
+ * v1.6.4.10 - Extracted to reduce nesting depth
+ * @param {string} action - Message action
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {Promise<{success: number, errors: number}>} Count of successes and errors
+ */
+async function _sendMessageToAllTabs(action, quickTabId) {
+  const tabs = await browser.tabs.query({});
+  console.log(`[Manager] Sending ${action} to ${tabs.length} tabs for:`, quickTabId);
+  
+  let successCount = 0;
+  let errorCount = 0;
+  
+  for (const tab of tabs) {
+    const result = await _sendMessageToTab(tab.id, action, quickTabId);
+    if (result) {
+      successCount++;
+    } else {
+      errorCount++;
+    }
+  }
+  
+  return { success: successCount, errors: errorCount };
+}
+
+/**
+ * Minimize an active Quick Tab
+ * v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
+ *   Quick Tab may exist in a different browser tab than the active one.
+ *   Cross-tab minimize was failing because message was only sent to active tab.
+ */
+async function minimizeQuickTab(quickTabId) {
+  // v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
+  const result = await _sendMessageToAllTabs('MINIMIZE_QUICK_TAB', quickTabId);
+  console.log(`[Manager] Minimized Quick Tab ${quickTabId} | success: ${result.success}, errors: ${result.errors}`);
+}
+
+/**
  * Restore a minimized Quick Tab
+ * v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
+ *   Quick Tab may exist in a different browser tab than the active one.
+ *   Cross-tab restore was failing because message was only sent to active tab.
  */
 async function restoreQuickTab(quickTabId) {
-  try {
-    // Send message to content script in active tab
-    const activeTabs = await browser.tabs.query({ active: true, currentWindow: true });
-    if (activeTabs.length === 0) return;
-
-    await browser.tabs.sendMessage(activeTabs[0].id, {
-      action: 'RESTORE_QUICK_TAB',
-      quickTabId: quickTabId
-    });
-
-    console.log(`Restored Quick Tab ${quickTabId}`);
-  } catch (err) {
-    console.error(`Error restoring Quick Tab ${quickTabId}:`, err);
-  }
+  // v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
+  const result = await _sendMessageToAllTabs('RESTORE_QUICK_TAB', quickTabId);
+  console.log(`[Manager] Restored Quick Tab ${quickTabId} | success: ${result.success}, errors: ${result.errors}`);
 }
 
 /**

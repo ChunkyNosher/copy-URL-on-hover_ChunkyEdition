@@ -1,0 +1,8 @@
+{
+  "id": "648a41c4-b2d5-4cee-b334-34186a00dad1",
+  "title": "Quick Tab Debug UID Settings",
+  "details": "The Quick Tab Debug UID Display feature implementation has key storage patterns:\n\n1. Settings UI saves to storage.local with individual keys like 'quickTabShowDebugId'\n2. CreateHandler must read from storage.local with individual key, NOT from nested object 'quick_tab_settings.quickTabShowDebugId'\n3. storage.onChanged listener must filter by areaName === 'local' to match where settings.js saves\n\nFiles modified:\n- sidebar/settings.html - checkbox in Advanced tab\n- sidebar/settings.js - DEFAULT_SETTINGS, loadSettings(), gatherSettingsFromForm()\n- src/features/quick-tabs/handlers/CreateHandler.js - _loadDebugIdSetting() and _setupStorageListener()\n\nCONSTANTS.QUICK_TAB_SETTINGS_KEY ('quick_tab_settings') is NOT used for this individual setting - it's an individual key in storage.local.",
+  "category": "implementation_patterns",
+  "dateCreated": "2025-11-30T06:30:34.814Z",
+  "dateUpdated": "2025-11-30T06:30:34.814Z"
+}
