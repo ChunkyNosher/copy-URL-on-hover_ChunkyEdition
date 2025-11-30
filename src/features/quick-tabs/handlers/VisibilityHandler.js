@@ -6,6 +6,9 @@
  * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
  * v1.6.4.5 - FIX Issues #1, #2, #6: Debounce minimize/restore, prevent event storms
  * v1.6.3.2 - FIX Issue #2: Add mutex/lock pattern to prevent duplicate operations
+ * v1.6.3.3 - FIX 14 Critical Bugs:
+ *   - Issue #1: Re-register window in quickTabsMap after restore
+ *   - Issue #3: Remove spurious "Tab not found" warnings during normal operations
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -16,7 +19,7 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.3.2
+ * @version 1.6.3.3
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -287,6 +290,7 @@ export class VisibilityHandler {
    * v1.6.4 - FIX Bug #2: Persist to storage after restore
    * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
    * v1.6.3.2 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
+   * v1.6.3.3 - FIX Issue #1: Re-register window in quickTabsMap after restore to maintain reference
    * @param {string} id - Quick Tab ID
    */
   handleRestore(id) {
@@ -317,6 +321,18 @@ export class VisibilityHandler {
     if (tabWindow && typeof tabWindow.restore === 'function') {
       tabWindow.restore();
       console.log('[VisibilityHandler] Called tabWindow.restore() for:', id);
+      
+      // v1.6.3.3 - FIX Issue #1: Re-register window in quickTabsMap to ensure reference is maintained
+      // This fixes the issue where second+ minimize/restore cycles fail because the window instance
+      // was lost from the map. The tabWindow reference is still valid, just needs to be kept in the map.
+      // Note: This is safe because:
+      // 1. JavaScript is single-threaded - no concurrent access to the Map
+      // 2. The mutex lock at the start of handleRestore prevents re-entry
+      // 3. We're only setting if not present, never overwriting
+      if (!this.quickTabsMap.has(id)) {
+        this.quickTabsMap.set(id, tabWindow);
+        console.log('[VisibilityHandler] Re-registered tabWindow in quickTabsMap:', id);
+      }
     } else {
       console.warn('[VisibilityHandler] tabWindow not found in quickTabsMap for:', id);
     }
@@ -338,12 +354,23 @@ export class VisibilityHandler {
    * v1.6.3.2 - Helper to reduce handleRestore complexity
    * v1.6.4.7 - FIX Issue #4: Verify DOM is rendered before emitting state:updated
    *   Manager was showing green indicator based on entity state, not actual DOM presence.
+   * v1.6.3.3 - FIX Bug #3: Remove spurious warnings that fire during successful operations
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Quick Tab window instance
    */
   _emitRestoreStateUpdate(id, tabWindow) {
-    if (!this.eventBus || !tabWindow) {
+    if (!this.eventBus) {
+      return;
+    }
+    
+    // v1.6.3.3 - FIX Bug #3: tabWindow may be null if not in quickTabsMap initially
+    // This is not an error condition - UICoordinator will render via state:updated event
+    if (!tabWindow) {
+      console.log('[VisibilityHandler] No tabWindow for restore event, UICoordinator will handle:', id);
+      // Still emit state:updated so UICoordinator can render
+      const quickTabData = { id, minimized: false, domVerified: false };
+      this.eventBus.emit('state:updated', { quickTab: quickTabData });
       return;
     }
     
@@ -353,8 +380,10 @@ export class VisibilityHandler {
       // Verify DOM is actually rendered before emitting state:updated
       const isDOMRendered = tabWindow.isRendered ? tabWindow.isRendered() : (tabWindow.container && tabWindow.container.parentNode);
       
+      // v1.6.3.3 - FIX Bug #3: Don't warn if DOM not rendered - this is expected during restore
+      // UICoordinator will handle rendering, we just report the current state
       if (!isDOMRendered) {
-        console.warn('[VisibilityHandler] DOM not rendered after restore, emitting with warning:', id);
+        console.log('[VisibilityHandler] DOM not yet rendered after restore, expected during transition:', id);
       } else {
         console.log('[VisibilityHandler] DOM verified rendered after restore:', id);
       }

@@ -18,6 +18,12 @@
  *   - Issue #3: When DOM detached and instance NOT minimized, ALWAYS render
  *   - Issue #5: Add periodic DOM verification after render
  *   - Issue #6A-D: Enhanced logging throughout
+ * v1.6.3.3 - FIX 14 Critical Bugs:
+ *   - Bug #4: Track highest z-index in memory, apply incremented z-index after restore
+ *   - Bug #5: Settings loading desync - use same storage source as CreateHandler
+ *   - Bug #6: Close button wiring - use internal event bus for state:deleted
+ *   - Bug #8: DOM detaches post-restore - attempt re-render on unexpected detachment
+ *   - Bug #2 (UID): Update showDebugId setting before restore render
  */
 
 import browser from 'webextension-polyfill';
@@ -49,6 +55,19 @@ export class UICoordinator {
     this.showDebugIdSetting = false;
     // v1.6.4.9 - FIX Issue #5: Track DOM monitoring timers for cleanup
     this._domMonitoringTimers = new Map(); // id -> timerId
+    // v1.6.3.3 - FIX Bug #4: Track highest z-index in memory for proper stacking
+    this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+  }
+  
+  /**
+   * Get next z-index for a new or restored window
+   * v1.6.3.3 - FIX Bug #4: Ensures restored windows stack correctly
+   * @private
+   * @returns {number} Next z-index value
+   */
+  _getNextZIndex() {
+    this._highestZIndex++;
+    return this._highestZIndex;
   }
 
   /**
@@ -73,44 +92,21 @@ export class UICoordinator {
    * Load the quickTabShowDebugId setting from storage
    * v1.6.3.2 - Feature: Debug UID Display Toggle
    * v1.6.4.8 - FIX Issue #2: Add fallback to local storage, improved logging
+   * v1.6.3.3 - FIX Bug #5: Use same storage source as CreateHandler (storage.local with individual key)
    * @private
    */
   async _loadDebugIdSetting() {
-    const settingsKey = CONSTANTS.QUICK_TAB_SETTINGS_KEY;
-    
-    // Try sync storage first
+    // v1.6.3.3 - FIX Bug #5: Read from storage.local with individual key 'quickTabShowDebugId'
+    // This matches how settings.js saves the setting and how CreateHandler reads it
     try {
-      const result = await browser.storage.sync.get(settingsKey);
-      console.log('[UICoordinator] Sync storage result:', { settingsKey, result });
-      
-      if (result && result[settingsKey]) {
-        const settings = result[settingsKey];
-        this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
-        console.log('[UICoordinator] Loaded showDebugId from sync storage:', this.showDebugIdSetting);
-        return;
-      }
-    } catch (syncErr) {
-      console.warn('[UICoordinator] Sync storage failed, trying local:', syncErr.message);
+      const result = await browser.storage.local.get('quickTabShowDebugId');
+      this.showDebugIdSetting = result.quickTabShowDebugId ?? false;
+      console.log('[UICoordinator] Loaded showDebugId from storage.local:', this.showDebugIdSetting);
+    } catch (err) {
+      console.warn('[UICoordinator] Failed to load showDebugId setting:', err.message);
+      this.showDebugIdSetting = false;
+      console.log('[UICoordinator] Using default showDebugId:', this.showDebugIdSetting);
     }
-    
-    // Fallback to local storage
-    try {
-      const localResult = await browser.storage.local.get(settingsKey);
-      console.log('[UICoordinator] Local storage result:', { settingsKey, localResult });
-      
-      if (localResult && localResult[settingsKey]) {
-        const settings = localResult[settingsKey];
-        this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
-        console.log('[UICoordinator] Loaded showDebugId from local storage:', this.showDebugIdSetting);
-        return;
-      }
-    } catch (localErr) {
-      console.warn('[UICoordinator] Local storage also failed:', localErr.message);
-    }
-    
-    // Default to false if both sync and local storage fail
-    this.showDebugIdSetting = false;
-    console.log('[UICoordinator] Both sync and local storage failed, using default showDebugId:', this.showDebugIdSetting);
   }
 
   /**
@@ -374,18 +370,24 @@ export class UICoordinator {
     // After restore() updates state, if DOM doesn't exist, we need to render it
     if (!tabWindow.isRendered()) {
       console.log('[UICoordinator] DOM not attached after restore, rendering:', quickTabId);
+      
+      // v1.6.3.3 - FIX Bug #2 (UID Disappears): Ensure showDebugId is current before render
+      // The setting may have changed while the tab was minimized
+      tabWindow.showDebugId = this.showDebugIdSetting;
+      
       tabWindow.render();
       // Update renderedTabs map
       this.renderedTabs.set(quickTabId, tabWindow);
       
-      // v1.6.4.10 - FIX Issue #2: Apply z-index AFTER DOM render
-      // tabWindow.restore() calls onFocus which increments z-index on the instance,
-      // but the DOM didn't exist yet so it wasn't applied. Apply it now.
-      if (tabWindow.zIndex && tabWindow.container) {
-        tabWindow.container.style.zIndex = tabWindow.zIndex.toString();
-        console.log('[UICoordinator] Applied z-index after restore render:', {
+      // v1.6.3.3 - FIX Bug #4: Apply NEXT z-index (increment) so restored tabs stack correctly
+      // Old code used tabWindow.zIndex which was the storage value (always base z-index)
+      const newZIndex = this._getNextZIndex();
+      if (tabWindow.container) {
+        tabWindow.zIndex = newZIndex;
+        tabWindow.container.style.zIndex = newZIndex.toString();
+        console.log('[UICoordinator] Applied incremented z-index after restore render:', {
           id: quickTabId,
-          zIndex: tabWindow.zIndex
+          zIndex: newZIndex
         });
       }
       
@@ -441,6 +443,7 @@ export class UICoordinator {
   /**
    * Start periodic DOM monitoring for a rendered tab
    * v1.6.4.9 - FIX Issue #5: Proactive DOM detachment detection between events
+   * v1.6.3.3 - FIX Bug #8: Attempt to re-render if DOM detaches unexpectedly
    * @private
    * @param {string} quickTabId - Quick Tab ID
    * @param {QuickTabWindow} tabWindow - The window to monitor
@@ -457,13 +460,38 @@ export class UICoordinator {
     const timerId = setInterval(() => {
       checkCount++;
       
+      // v1.6.3.3 - FIX Bug #8: Check if window was minimized (expected detachment)
+      if (tabWindow.minimized) {
+        console.log('[UICoordinator] DOM monitoring: tab minimized, stopping:', quickTabId);
+        this._stopDOMMonitoring(quickTabId);
+        return;
+      }
+      
       if (!tabWindow.isRendered()) {
-        console.warn('[UICoordinator] Periodic DOM check detected detachment:', {
+        console.warn('[UICoordinator] Periodic DOM check detected UNEXPECTED detachment:', {
           id: quickTabId,
           checkNumber: checkCount,
-          elapsedMs: checkCount * DOM_MONITORING_INTERVAL_MS
+          elapsedMs: checkCount * DOM_MONITORING_INTERVAL_MS,
+          minimized: tabWindow.minimized,
+          destroyed: tabWindow.destroyed
         });
-        // Clean up
+        
+        // v1.6.3.3 - FIX Bug #8: If not minimized and not destroyed, try to re-render
+        if (!tabWindow.minimized && !tabWindow.destroyed) {
+          console.log('[UICoordinator] Attempting to re-render detached tab:', quickTabId);
+          try {
+            tabWindow.render();
+            // Note: Don't update z-index on re-render - the tab already had a valid z-index
+            // Only restored tabs get incremented z-index (in _restoreExistingWindow)
+            console.log('[UICoordinator] Successfully re-rendered detached tab:', quickTabId);
+            // Don't stop monitoring - continue checking
+            return;
+          } catch (err) {
+            console.error('[UICoordinator] Failed to re-render detached tab:', quickTabId, err);
+          }
+        }
+        
+        // Clean up if re-render failed or tab was destroyed
         this.renderedTabs.delete(quickTabId);
         this._stopDOMMonitoring(quickTabId);
         return;

@@ -273,7 +273,7 @@ class QuickTabsManager {
     this.destroyHandler = new DestroyHandler(
       this.tabs,
       this.minimizedManager,
-      this.eventBus,
+      this.internalEventBus, // v1.6.3.3 - FIX Bug #6: Use internal bus for state:deleted so UICoordinator receives it
       this.currentZIndex,
       this.Events,
       CONSTANTS.QUICK_TAB_BASE_Z_INDEX

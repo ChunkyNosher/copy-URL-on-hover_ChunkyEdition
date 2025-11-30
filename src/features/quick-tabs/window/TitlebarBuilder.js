@@ -388,6 +388,7 @@ export class TitlebarBuilder {
   /**
    * Create debug ID display element
    * v1.6.3.2 - Feature: Show Quick Tab Debug ID in titlebar
+   * v1.6.3.3 - FIX Bug #1: Show LAST N characters for uniqueness (random suffix is at end)
    * @private
    * @returns {HTMLElement|null} Debug ID element or null if disabled
    */
@@ -396,9 +397,11 @@ export class TitlebarBuilder {
       return null;
     }
 
-    // Truncate ID if longer than 15 characters
+    // v1.6.3.3 - FIX Bug #1: Show LAST 15 characters (the unique part is the random suffix)
+    // Old format truncated prefix like "qt-123-16..." which was identical across tabs
+    // New format shows "...timestamp-random" which is always unique
     const displayId =
-      this.config.id.length > 15 ? this.config.id.substring(0, 12) + '...' : this.config.id;
+      this.config.id.length > 15 ? '...' + this.config.id.slice(-12) : this.config.id;
 
     // v1.6.4.8 - FIX Issue #1: Add marginLeft: 'auto' to push element to right edge
     // v1.6.4.8 - FIX Issue #3: Increase fontSize to 11px and use brighter color #aaa
