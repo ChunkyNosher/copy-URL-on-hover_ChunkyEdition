@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -64,11 +64,12 @@ const relevantMemories = await searchMemories({
 - Direct local creation pattern
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4 Key Features:**
-- State hydration with `_initStep6_Hydrate()` restores Quick Tabs on page reload
-- Source tracking in all handlers ('Manager', 'UI', 'hydration', 'automation')
-- Z-index persistence on focus via `handleFocus()`
-- Unified destroy path (UI close button uses DestroyHandler)
+**v1.6.3.4-v3 Key Features:**
+- Unified restore path - UICoordinator ALWAYS deletes Map entry before restore
+- Early Map cleanup - Manager minimize triggers explicit cleanup BEFORE state checks
+- Snapshot lifecycle fix - `restore()` keeps snapshot until `clearSnapshot()` called
+- Callback verification logging - window.js and UpdateHandler log callback wiring
+- Comprehensive decision logging throughout restore flow
 
 ---
 
@@ -314,24 +315,24 @@ import { cleanupOrphanedQuickTabElements } from '../utils/dom.js';
 cleanupOrphanedQuickTabElements();
 ```
 
-### Minimize/Restore Bugs (v1.6.4.0)
+### Minimize/Restore Bugs (v1.6.3.4-v3)
 
 **Symptoms:** Duplicate windows on restore, wrong position/size
 
-**Root Cause:** Entity-instance sync gap - snapshot dimensions not propagating to entity
+**Root Cause:** Map lifecycle desync - Map entry not cleaned before fresh render
 
-**Standard Fix (v1.6.4.0):**
+**Standard Fix (v1.6.3.4-v3):**
 ```javascript
-// UICoordinator uses fallback chain for restore
-// 1. _tryApplySnapshotFromManager() - get snapshot if still exists
-// 2. _tryApplyDimensionsFromInstance() - fallback to tabWindow instance
-// This ensures entity gets dimensions from instance
+// UICoordinator unified restore path
+_handleRestoreOperation(quickTab) {
+  // ALWAYS delete Map entry first to force fresh render
+  this.renderedTabs.delete(id);
+  this.render(quickTab);
+}
 
-// VisibilityHandler uses mutex pattern to prevent duplicates
-if (this._operationLocks.has(id)) return;  // Skip duplicate
-this._operationLocks.set(id, 'restore');
-
-// STATE_EMIT_DELAY_MS = 200 gives UICoordinator time to render
+// Snapshot lifecycle - keep until render confirmed
+// MinimizedManager.restore() does NOT move to pendingClearSnapshots
+// UICoordinator calls clearSnapshot() after successful render
 ```
 
 ### Quick Tab Rendering Bugs
@@ -484,7 +485,10 @@ test('edge case #123: empty container string', ...);
 → Call `cleanupOrphanedQuickTabElements()` after destroy operations
 
 ❌ **Calling render() directly from restore()**
-→ UICoordinator uses fallback chain for entity-instance sync (v1.6.4.0)
+→ Use unified restore path via UICoordinator event handling (v1.6.3.4-v3)
+
+❌ **Snapshot lifecycle gap**
+→ Keep snapshot in minimizedTabs until UICoordinator calls clearSnapshot() (v1.6.3.4-v3)
 
 ---
 

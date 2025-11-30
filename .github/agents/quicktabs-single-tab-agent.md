@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.4-v2 source-aware cleanup, isRestoreOperation flag, enhanced logging)
+  (v1.6.3.4-v3 unified restore path, callback verification, snapshot lifecycle)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v2 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -37,11 +37,9 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-- **Z-Index Persistence (v1.6.3.4+)** - Focus changes persist to storage
-- **Source Tracking (v1.6.3.4+)** - All actions log source
-- **Unified Destroy Path (v1.6.3.4+)** - UI close uses DestroyHandler
-- **Source-Aware Cleanup (v1.6.3.4-v2)** - Manager minimize cleans Map
-- **isRestoreOperation Flag (v1.6.3.4-v2)** - Correct routing on restore
+- **Unified Restore Path (v1.6.3.4-v3)** - UICoordinator ALWAYS deletes Map entry before restore
+- **Callback Verification (v1.6.3.4-v3)** - window.js and UpdateHandler log callback wiring
+- **Snapshot Lifecycle (v1.6.3.4-v3)** - Snapshot stays until clearSnapshot() called
 
 **Constants Reference:**
 
@@ -59,69 +57,33 @@ const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
 
 ---
 
-## v1.6.3.4-v2 Key Patterns
+## v1.6.3.4-v3 Key Patterns
 
-### Source-Aware Map Cleanup (NEW)
+### Unified Restore Path (NEW)
 
 ```javascript
-// UICoordinator.update() cleans Map on Manager minimize
-update(quickTab, source = 'unknown', isRestoreOperation = false) {
-  if (source === 'Manager' && entityMinimized && !domAttached) {
-    this.renderedTabs.delete(id);  // Prevents ghost entries
-  }
+// UICoordinator ALWAYS deletes Map entry before restore
+_handleRestoreOperation(quickTab) {
+  this.renderedTabs.delete(id);  // Force fresh render
+  this.render(quickTab);
 }
 ```
 
-### isRestoreOperation Flag (NEW)
+### Callback Verification (NEW)
 
 ```javascript
-// VisibilityHandler emits flag for restore routing
-this.eventBus.emit('state:updated', { 
-  quickTab, source: 'Manager', isRestoreOperation: true 
-});
+// window.js logs callback wiring for debugging
+console.log(`[QuickTabWindow.destroy] onDestroy callback exists: ${!!this.callbacks.onDestroy}`);
+
+// UpdateHandler verifies callback re-wiring after restore
+console.log(`[UpdateHandler] Callback wired: ${!!tabWindow.callbacks.onDestroy}`);
 ```
 
-### Z-Index Persistence (v1.6.3.4+)
+### Snapshot Lifecycle (v1.6.3.4-v3)
 
 ```javascript
-// VisibilityHandler.handleFocus() persists z-index to storage
-async handleFocus(id) {
-  await persistStateToStorage(state, '[VisibilityHandler.handleFocus]');
-}
-// serializeTabForStorage() includes zIndex field
-```
-
-### Source Tracking Pattern (v1.6.3.4+)
-
-```javascript
-// All handlers accept source parameter for logging
-handleMinimize(id, source = 'UI') {
-  console.log(`[VisibilityHandler] Minimizing ${id} from ${source}`);
-}
-// Sources: 'Manager', 'UI', 'hydration', 'automation'
-```
-
-### Unified Destroy Path (v1.6.3.4+)
-
-```javascript
-// UI close button now uses DestroyHandler
-// Manager and UI closes both go through single path
-```
-
-### UID Truncation (Inherited)
-
-```javascript
-// TitlebarBuilder shows LAST 12 chars (unique suffix)
-const displayId = id.length > 15 ? '...' + id.slice(-12) : id;
-```
-
-### Dynamic UID Display
-
-```javascript
-// TitlebarBuilder - toggle debug ID dynamically
-updateDebugIdDisplay(showDebugId) {
-  // Add or remove UID element from titlebar
-}
+// MinimizedManager.restore() keeps snapshot in minimizedTabs
+// UICoordinator calls clearSnapshot() after confirmed render
 ```
 
 ---
@@ -378,22 +340,17 @@ updateZIndex(zIndex) {
 }
 ```
 
-### Issue: Duplicate Windows on Restore (v1.6.3.4-v2)
+### Issue: Duplicate Windows on Restore (v1.6.3.4-v3)
 
-**Fix:** UICoordinator uses source-aware Map cleanup and isRestoreOperation flag
+**Fix:** UICoordinator uses unified restore path - ALWAYS delete Map entry before render
 
 ```javascript
-// ✅ CORRECT - UICoordinator.update() with source-aware cleanup
-update(quickTab, source = 'unknown', isRestoreOperation = false) {
-  // Clean Map when Manager minimize leaves ghost entries
-  if (source === 'Manager' && entityMinimized && !domAttached) {
-    this.renderedTabs.delete(id);
-  }
-  // isRestoreOperation routes to _restoreExistingWindow()
-  if (isRestoreOperation) {
-    this._restoreExistingWindow(quickTab);
-  }
+// ✅ CORRECT - UICoordinator unified restore path
+_handleRestoreOperation(quickTab) {
+  this.renderedTabs.delete(id);  // Force fresh render
+  this.render(quickTab);
 }
+// Snapshot stays in minimizedTabs until clearSnapshot() called
 ```
 
 ### Issue: Ghost Drag Events (v1.6.4.0)
