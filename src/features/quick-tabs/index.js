@@ -90,7 +90,7 @@ class QuickTabsManager {
     try {
       await this._initStep1_Context();
       this._initStep2_Managers();
-      this._initStep3_Handlers();
+      await this._initStep3_Handlers(); // v1.6.3.2 - Made async for CreateHandler settings
       this._initStep4_Coordinators();
       await this._initStep5_Setup();
       this._initStep6_Log();
@@ -138,11 +138,12 @@ class QuickTabsManager {
 
   /**
    * STEP 3: Initialize handlers
+   * v1.6.3.2 - Made async to support CreateHandler.init() for loading settings
    * @private
    */
-  _initStep3_Handlers() {
+  async _initStep3_Handlers() {
     console.log('[QuickTabsManager] STEP 3: Initializing handlers...');
-    this._initializeHandlers();
+    await this._initializeHandlers();
     console.log('[QuickTabsManager] STEP 3 Complete');
   }
 
@@ -237,9 +238,10 @@ class QuickTabsManager {
   /**
    * Initialize handler components
    * v1.6.3 - Simplified handlers (no storage/sync)
+   * v1.6.3.2 - Made async to initialize CreateHandler settings
    * @private
    */
-  _initializeHandlers() {
+  async _initializeHandlers() {
     this.createHandler = new CreateHandler(
       this.tabs,
       this.currentZIndex,
@@ -249,6 +251,9 @@ class QuickTabsManager {
       this.generateId.bind(this),
       this.windowFactory
     );
+
+    // v1.6.3.2 - Initialize CreateHandler to load debug settings
+    await this.createHandler.init();
 
     this.updateHandler = new UpdateHandler(
       this.tabs,

@@ -230,11 +230,20 @@ describe('VisibilityHandler', () => {
       expect(eventSpy).toHaveBeenCalledWith({ id: 'qt-123' });
     });
 
-    test('should emit state:updated event for panel sync on restore', () => {
+    test('should emit state:updated event for panel sync on restore', async () => {
+      // Use fake timers for the delayed emit
+      jest.useFakeTimers();
+      
       const stateUpdatedSpy = jest.fn();
       mockEventBus.on('state:updated', stateUpdatedSpy);
 
       visibilityHandler.handleRestore('qt-123');
+      
+      // Fast-forward timers to trigger the delayed emit (100ms delay for DOM verification)
+      jest.advanceTimersByTime(150);
+      
+      // Need to wait for any pending promises
+      await Promise.resolve();
 
       expect(stateUpdatedSpy).toHaveBeenCalledWith({
         quickTab: expect.objectContaining({
@@ -242,6 +251,9 @@ describe('VisibilityHandler', () => {
           minimized: false
         })
       });
+      
+      // Restore real timers
+      jest.useRealTimers();
     });
 
     test('should not emit event if tab not found in minimized manager', () => {

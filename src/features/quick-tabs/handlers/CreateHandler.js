@@ -7,11 +7,15 @@
  * Lines 903-992 from original index.js
  */
 
+import browser from 'webextension-polyfill';
+
+import { CONSTANTS } from '../../../core/config.js';
 import { createQuickTabWindow } from '../window.js';
 
 /**
  * CreateHandler - Responsible for creating new Quick Tabs
  * v1.6.3 - Single-tab Quick Tabs (no storage persistence or cross-tab sync)
+ * v1.6.3.2 - Added showDebugId setting support for Debug ID display
  *
  * Responsibilities:
  * - Generate ID if not provided
@@ -19,6 +23,7 @@ import { createQuickTabWindow } from '../window.js';
  * - Create QuickTabWindow instance
  * - Store in tabs Map
  * - Emit QUICK_TAB_CREATED event
+ * - Load debug settings from storage
  */
 export class CreateHandler {
   /**
@@ -47,6 +52,34 @@ export class CreateHandler {
     this.generateId = generateId;
     // Allow injection of window factory for testing
     this.createWindow = windowFactory || createQuickTabWindow;
+    // v1.6.3.2 - Cache for quickTabShowDebugId setting
+    this.showDebugIdSetting = false;
+  }
+
+  /**
+   * Initialize handler - load settings from storage
+   * v1.6.3.2 - Load showDebugId setting for Debug ID display feature
+   */
+  async init() {
+    await this._loadDebugIdSetting();
+  }
+
+  /**
+   * Load the quickTabShowDebugId setting from storage
+   * v1.6.3.2 - Feature: Debug UID Display Toggle
+   * @private
+   */
+  async _loadDebugIdSetting() {
+    try {
+      const settingsKey = CONSTANTS.QUICK_TAB_SETTINGS_KEY;
+      const result = await browser.storage.sync.get(settingsKey);
+      const settings = result[settingsKey] || {};
+      this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
+      console.log('[CreateHandler] Loaded showDebugId setting:', this.showDebugIdSetting);
+    } catch (err) {
+      console.warn('[CreateHandler] Failed to load showDebugId setting:', err);
+      this.showDebugIdSetting = false;
+    }
   }
 
   /**
@@ -137,28 +170,65 @@ export class CreateHandler {
       title: 'Quick Tab',
       minimized: false,
       soloedOnTabs: [],
-      mutedOnTabs: []
+      mutedOnTabs: [],
+      showDebugId: false // v1.6.3.2 - Default for Debug ID display
     };
   }
 
   /**
    * Build options for createQuickTabWindow
+   * v1.6.3.2 - Added showDebugId setting for Debug ID display feature
+   * v1.6.3.2 - Refactored to reduce complexity by extracting geometry options
    * @private
    */
   _buildTabOptions(id, cookieStoreId, options, defaults) {
     return {
       id,
       url: options.url,
+      cookieStoreId,
+      zIndex: this.currentZIndex.value,
+      ...this._buildGeometryOptions(options, defaults),
+      ...this._buildVisibilityOptions(options, defaults),
+      ...this._extractCallbacks(options)
+    };
+  }
+
+  /**
+   * Build geometry-related options (position/size)
+   * v1.6.3.2 - Extracted to reduce _buildTabOptions complexity
+   * @private
+   */
+  _buildGeometryOptions(options, defaults) {
+    return {
       left: options.left ?? defaults.left,
       top: options.top ?? defaults.top,
       width: options.width ?? defaults.width,
       height: options.height ?? defaults.height,
-      title: options.title ?? defaults.title,
-      cookieStoreId,
+      title: options.title ?? defaults.title
+    };
+  }
+
+  /**
+   * Build visibility-related options (minimized, solo, mute, debug)
+   * v1.6.3.2 - Extracted to reduce _buildTabOptions complexity
+   * @private
+   */
+  _buildVisibilityOptions(options, defaults) {
+    return {
       minimized: options.minimized ?? defaults.minimized,
-      zIndex: this.currentZIndex.value,
       soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
       mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs,
+      showDebugId: options.showDebugId ?? this.showDebugIdSetting
+    };
+  }
+
+  /**
+   * Extract callback options
+   * v1.6.3.2 - Extracted to reduce _buildTabOptions complexity
+   * @private
+   */
+  _extractCallbacks(options) {
+    return {
       onDestroy: options.onDestroy,
       onMinimize: options.onMinimize,
       onFocus: options.onFocus,

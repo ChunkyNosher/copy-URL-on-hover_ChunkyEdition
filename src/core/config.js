@@ -65,7 +65,9 @@ export const CONSTANTS = {
   // v1.6.2.x - Default container for Firefox container isolation
   DEFAULT_CONTAINER: 'firefox-default',
   // v1.6.3 - Maximum retry attempts for generating unique Quick Tab IDs
-  MAX_ID_GENERATION_RETRIES: 10
+  MAX_ID_GENERATION_RETRIES: 10,
+  // v1.6.3.2 - Storage key for Quick Tab settings (sync storage)
+  QUICK_TAB_SETTINGS_KEY: 'quick_tab_settings'
 };
 
 export class ConfigManager {

@@ -27,6 +27,9 @@ const MINIMIZE_DEBOUNCE_MS = 150;
 // v1.6.3.2 - FIX Issue #2: Lock duration to prevent duplicate operations from multiple sources
 const OPERATION_LOCK_MS = 200;
 
+// v1.6.4.7 - FIX Issue #4: Delay for DOM verification before emitting state:updated
+const STATE_EMIT_DELAY_MS = 100;
+
 /**
  * VisibilityHandler class
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
@@ -332,16 +335,35 @@ export class VisibilityHandler {
   /**
    * Emit state:updated event for restore
    * v1.6.3.2 - Helper to reduce handleRestore complexity
+   * v1.6.4.7 - FIX Issue #4: Verify DOM is rendered before emitting state:updated
+   *   Manager was showing green indicator based on entity state, not actual DOM presence.
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Quick Tab window instance
    */
   _emitRestoreStateUpdate(id, tabWindow) {
-    if (this.eventBus && tabWindow) {
-      const quickTabData = this._createQuickTabData(id, tabWindow, false);
-      this.eventBus.emit('state:updated', { quickTab: quickTabData });
-      console.log('[VisibilityHandler] Emitted state:updated for restore:', id);
+    if (!this.eventBus || !tabWindow) {
+      return;
     }
+    
+    // v1.6.4.7 - FIX Issue #4: Delay emit until we can verify DOM is rendered
+    // This prevents Manager from showing green indicator when window isn't actually visible
+    setTimeout(() => {
+      // Verify DOM is actually rendered before emitting state:updated
+      const isDOMRendered = tabWindow.isRendered ? tabWindow.isRendered() : (tabWindow.container && tabWindow.container.parentNode);
+      
+      if (!isDOMRendered) {
+        console.warn('[VisibilityHandler] DOM not rendered after restore, emitting with warning:', id);
+      } else {
+        console.log('[VisibilityHandler] DOM verified rendered after restore:', id);
+      }
+      
+      const quickTabData = this._createQuickTabData(id, tabWindow, false);
+      // v1.6.4.7 - Add DOM verification result to event data
+      quickTabData.domVerified = isDOMRendered;
+      this.eventBus.emit('state:updated', { quickTab: quickTabData });
+      console.log('[VisibilityHandler] Emitted state:updated for restore:', id, { domVerified: isDOMRendered });
+    }, STATE_EMIT_DELAY_MS);
   }
 
   /**
