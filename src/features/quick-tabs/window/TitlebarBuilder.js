@@ -51,6 +51,7 @@ export class TitlebarBuilder {
     this.muteButton = null;
     this.faviconElement = null;
     this.debugIdElement = null; // v1.6.3.2 - Debug ID display element
+    this.controlsContainer = null; // v1.6.4.8 - Controls container for dynamic updates
 
     // Zoom state (internal to titlebar)
     this.currentZoom = 100;
@@ -108,6 +109,66 @@ export class TitlebarBuilder {
       this.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
       this.muteButton.style.background = isMuted ? '#c44' : 'transparent';
     }
+  }
+
+  /**
+   * Update debug ID display dynamically
+   * v1.6.4.8 - FIX Issue #4: Dynamic titlebar updates when settings change
+   * @param {boolean} showDebugId - Whether to show debug ID in titlebar
+   */
+  updateDebugIdDisplay(showDebugId) {
+    // Update config for future builds
+    this.config.showDebugId = showDebugId;
+
+    if (showDebugId) {
+      this._addDebugIdElement();
+    } else {
+      this._removeDebugIdElement();
+    }
+  }
+
+  /**
+   * Add debug ID element to titlebar if not already present
+   * v1.6.4.8 - Extracted to reduce nesting depth
+   * v1.6.4.8 - Use stored controlsContainer reference instead of fragile querySelector
+   * @private
+   */
+  _addDebugIdElement() {
+    // Skip if already present or no controls container
+    if (this.debugIdElement || !this.controlsContainer) {
+      if (!this.controlsContainer) {
+        console.log('[TitlebarBuilder] Cannot add debug ID - no controls container:', this.config.id);
+      }
+      return;
+    }
+
+    this.debugIdElement = this._createDebugIdElement();
+    if (!this.debugIdElement) {
+      // Can happen if config.id is missing or empty
+      console.log('[TitlebarBuilder] Debug ID element not created (no ID in config):', this.config.id);
+      return;
+    }
+
+    // Insert at beginning of controls container
+    if (this.controlsContainer.firstChild) {
+      this.controlsContainer.insertBefore(this.debugIdElement, this.controlsContainer.firstChild);
+    } else {
+      this.controlsContainer.appendChild(this.debugIdElement);
+    }
+    console.log('[TitlebarBuilder] Added debug ID element dynamically:', this.config.id);
+  }
+
+  /**
+   * Remove debug ID element from titlebar if present
+   * v1.6.4.8 - Extracted to reduce nesting depth
+   * @private
+   */
+  _removeDebugIdElement() {
+    if (!this.debugIdElement) return;
+
+    this.debugIdElement.remove();
+    this.debugIdElement = null;
+    console.log('[TitlebarBuilder] Removed debug ID element dynamically:', this.config.id);
   }
 
   // ============================================================================
@@ -371,13 +432,18 @@ export class TitlebarBuilder {
    * @private
    */
   _createRightSection() {
+    // v1.6.4.8 - Added className for robust querySelector targeting
     const controls = createElement('div', {
+      className: 'quick-tab-controls',
       style: {
         display: 'flex',
         gap: '8px',
         alignItems: 'center'
       }
     });
+
+    // Store reference for dynamic updates
+    this.controlsContainer = controls;
 
     // v1.6.3.2 - Add debug ID display (left of buttons)
     this.debugIdElement = this._createDebugIdElement();

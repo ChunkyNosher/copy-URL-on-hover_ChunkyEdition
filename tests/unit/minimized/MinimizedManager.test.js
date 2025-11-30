@@ -171,14 +171,14 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // v1.6.3.2 - Updated log message to reflect deferred rendering
+      // v1.6.4.9 - Updated log message to reflect snapshot moved to pendingClear
       expect(console.log).toHaveBeenCalledWith(
-        '[MinimizedManager] Restored snapshot (render deferred to UICoordinator):',
-        {
+        '[MinimizedManager] Snapshot moved to pendingClear (awaiting UICoordinator clearSnapshot):',
+        expect.objectContaining({
           id: 'test-tab-1',
           position: { left: 100, top: 200 },
           size: { width: 800, height: 600 }
-        }
+        })
       );
     });
 
@@ -344,7 +344,8 @@ describe('MinimizedManager', () => {
     test('should log clearing', () => {
       manager.clear();
 
-      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Cleared all minimized tabs');
+      // v1.6.4.9 - Updated log message to reflect clearing pending snapshots too
+      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Cleared all minimized tabs and pending snapshots');
     });
 
     test('should handle clearing when already empty', () => {

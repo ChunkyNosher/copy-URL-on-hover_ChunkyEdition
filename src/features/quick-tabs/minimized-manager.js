@@ -4,6 +4,8 @@
  *
  * v1.5.9.0 - New module following modular-architecture-blueprint.md
  * v1.6.4.3 - FIX Issue #4: Store position/size as immutable snapshot to prevent corruption
+ * v1.6.4.9 - FIX Issue #1: Do NOT delete snapshot in restore(), keep until UICoordinator confirms
+ *   Added clearSnapshot() for UICoordinator to call after successful render
  */
 
 // Default values for position/size when not provided
@@ -15,12 +17,16 @@ const DEFAULT_SIZE_HEIGHT = 300;
 /**
  * MinimizedManager class - Tracks and manages minimized Quick Tabs
  * v1.6.4.3 - Stores immutable snapshots of position/size to prevent corruption by duplicate windows
+ * v1.6.4.9 - FIX Issue #1: Snapshot lifecycle - keep until UICoordinator confirms successful render
  */
 export class MinimizedManager {
   constructor() {
     // v1.6.4.3 - FIX Issue #4: Store snapshot objects instead of direct references
     // Each entry: { window: QuickTabWindow, savedPosition: {left, top}, savedSize: {width, height} }
     this.minimizedTabs = new Map();
+    // v1.6.4.9 - FIX Issue #1: Track restored but not yet cleared snapshots
+    // These are snapshots that have been applied but UICoordinator hasn't confirmed render yet
+    this.pendingClearSnapshots = new Map();
   }
 
   /**
@@ -78,11 +84,24 @@ export class MinimizedManager {
    *   This was causing duplicate window bug. MinimizedManager only applies snapshot.
    *   UICoordinator is the single rendering authority and will call restore() then render().
    * v1.6.4.7 - FIX Issues #1, #6: Enhanced logging for dimension verification
+   * v1.6.4.9 - FIX Issue #1 CRITICAL: Do NOT delete snapshot here! Keep until UICoordinator confirms.
+   *   The 200ms STATE_EMIT_DELAY_MS causes snapshot to be deleted before UICoordinator reads it.
+   *   UICoordinator will call clearSnapshot() after successful render.
    * @param {string} id - Quick Tab ID
    * @returns {Object|boolean} Snapshot object with position/size, or false if not found
    */
   restore(id) {
-    const snapshot = this.minimizedTabs.get(id);
+    // v1.6.4.9 - FIX Issue #1: Check both active and pending-clear snapshots
+    let snapshot = this.minimizedTabs.get(id);
+    
+    // Also check pending clear snapshots (in case restore is called again before clearSnapshot)
+    if (!snapshot) {
+      snapshot = this.pendingClearSnapshots.get(id);
+      if (snapshot) {
+        console.log('[MinimizedManager] Using pending-clear snapshot for:', id);
+      }
+    }
+    
     if (snapshot) {
       const tabWindow = snapshot.window;
 
@@ -139,11 +158,19 @@ export class MinimizedManager {
       // Now UICoordinator._restoreExistingWindow() is the single authority that
       // calls tabWindow.restore() (which updates state) then tabWindow.render() (creates DOM).
 
-      this.minimizedTabs.delete(id);
-      console.log('[MinimizedManager] Restored snapshot (render deferred to UICoordinator):', {
+      // v1.6.4.9 - FIX Issue #1 CRITICAL: Do NOT delete snapshot here!
+      // Move to pendingClearSnapshots instead - UICoordinator will call clearSnapshot() after render
+      if (this.minimizedTabs.has(id)) {
+        this.pendingClearSnapshots.set(id, snapshot);
+        this.minimizedTabs.delete(id);
+      }
+      
+      // v1.6.4.9 - FIX Issue #6E: Log snapshot movement with stack trace for debugging
+      console.log('[MinimizedManager] Snapshot moved to pendingClear (awaiting UICoordinator clearSnapshot):', {
         id,
         position: { left: savedLeft, top: savedTop },
-        size: { width: savedWidth, height: savedHeight }
+        size: { width: savedWidth, height: savedHeight },
+        caller: new Error().stack?.split('\n').slice(1, 4).join(' | ')
       });
 
       // v1.6.4.4 - FIX Bug #5: Return snapshot data so caller can verify/apply to correct window
@@ -152,6 +179,27 @@ export class MinimizedManager {
         position: { left: savedLeft, top: savedTop },
         size: { width: savedWidth, height: savedHeight }
       };
+    }
+    return false;
+  }
+
+  /**
+   * Clear a pending snapshot after UICoordinator confirms successful render
+   * v1.6.4.9 - FIX Issue #1: Called by UICoordinator after DOM verification passes
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if snapshot was cleared, false if not found
+   */
+  clearSnapshot(id) {
+    if (this.pendingClearSnapshots.has(id)) {
+      this.pendingClearSnapshots.delete(id);
+      console.log('[MinimizedManager] Cleared pending snapshot after successful render:', id);
+      return true;
+    }
+    // Also try to clear from minimizedTabs (edge case cleanup)
+    if (this.minimizedTabs.has(id)) {
+      this.minimizedTabs.delete(id);
+      console.log('[MinimizedManager] Cleared snapshot from minimizedTabs:', id);
+      return true;
     }
     return false;
   }
@@ -176,17 +224,31 @@ export class MinimizedManager {
   /**
    * Get snapshot data for a minimized tab without restoring
    * v1.6.4.4 - FIX Bug #5: Allow reading snapshot data for verification
+   * v1.6.4.9 - FIX Issue #1: Also check pendingClearSnapshots for recently restored tabs
    * @param {string} id - Quick Tab ID
    * @returns {Object|null} Snapshot data or null if not found
    */
   getSnapshot(id) {
-    const snapshot = this.minimizedTabs.get(id);
+    // Check active minimized tabs first
+    let snapshot = this.minimizedTabs.get(id);
+    
+    // v1.6.4.9 - FIX Issue #1: Also check pending clear snapshots
+    if (!snapshot) {
+      snapshot = this.pendingClearSnapshots.get(id);
+    }
+    
     if (snapshot && snapshot.savedPosition && snapshot.savedSize) {
+      console.log('[MinimizedManager] getSnapshot found for:', id, {
+        source: this.minimizedTabs.has(id) ? 'minimizedTabs' : 'pendingClearSnapshots',
+        position: snapshot.savedPosition,
+        size: snapshot.savedSize
+      });
       return {
         position: { left: snapshot.savedPosition.left, top: snapshot.savedPosition.top },
         size: { width: snapshot.savedSize.width, height: snapshot.savedSize.height }
       };
     }
+    console.log('[MinimizedManager] getSnapshot not found for:', id);
     return null;
   }
 
@@ -207,16 +269,30 @@ export class MinimizedManager {
 
   /**
    * Check if a tab is minimized
+   * v1.6.4.9 - FIX Issue #1: A tab is still "minimized" for snapshot purposes if in pendingClear
+   *   But for UI purposes, only check minimizedTabs (not pendingClear)
    */
   isMinimized(id) {
     return this.minimizedTabs.has(id);
   }
 
   /**
+   * Check if a snapshot exists for this tab (either active or pending clear)
+   * v1.6.4.9 - FIX Issue #1: UICoordinator should use this for snapshot lookup
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if any snapshot exists
+   */
+  hasSnapshot(id) {
+    return this.minimizedTabs.has(id) || this.pendingClearSnapshots.has(id);
+  }
+
+  /**
    * Clear all minimized tabs
+   * v1.6.4.9 - FIX Issue #1: Also clear pendingClearSnapshots
    */
   clear() {
     this.minimizedTabs.clear();
-    console.log('[MinimizedManager] Cleared all minimized tabs');
+    this.pendingClearSnapshots.clear();
+    console.log('[MinimizedManager] Cleared all minimized tabs and pending snapshots');
   }
 }

@@ -12,6 +12,12 @@
  * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container isolation to enable global Quick Tab visibility
  * v1.6.3 - Removed cross-tab sync infrastructure (single-tab Quick Tabs only)
  * v1.6.4.4 - FIX Bug #3: Use shared DOM cleanup utility
+ * v1.6.4.9 - FIX Issues #1-6: Complete restore bug fix
+ *   - Issue #1: Use hasSnapshot() instead of isMinimized() for snapshot lookup
+ *   - Issue #2: Call clearSnapshot() after successful render to confirm snapshot deletion
+ *   - Issue #3: When DOM detached and instance NOT minimized, ALWAYS render
+ *   - Issue #5: Add periodic DOM verification after render
+ *   - Issue #6A-D: Enhanced logging throughout
  */
 
 import browser from 'webextension-polyfill';
@@ -22,6 +28,9 @@ import { createQuickTabWindow } from '../window.js';
 
 /** @constant {number} Delay in ms for DOM verification after render (v1.6.4.7) */
 const DOM_VERIFICATION_DELAY_MS = 150;
+
+/** @constant {number} Delay in ms for periodic DOM monitoring (v1.6.4.9 - Issue #5) */
+const DOM_MONITORING_INTERVAL_MS = 500;
 
 export class UICoordinator {
   /**
@@ -38,6 +47,8 @@ export class UICoordinator {
     this.renderedTabs = new Map(); // id -> QuickTabWindow
     // v1.6.3.2 - Cache for quickTabShowDebugId setting
     this.showDebugIdSetting = false;
+    // v1.6.4.9 - FIX Issue #5: Track DOM monitoring timers for cleanup
+    this._domMonitoringTimers = new Map(); // id -> timerId
   }
 
   /**
@@ -123,6 +134,7 @@ export class UICoordinator {
    * v1.6.3 - Removed pending updates (no cross-tab sync)
    * v1.6.4.6 - FIX Issue #3: Validate DOM attachment before returning cached window
    * v1.6.4.8 - FIX Issue #5: Add DOM verification after render to catch detachment early
+   * v1.6.4.9 - FIX Issues #1, #5, #6C: Clear snapshot after render, add monitoring, enhanced logging
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Rendered tab window
@@ -144,6 +156,8 @@ export class UICoordinator {
         quickTab.id
       );
       this.renderedTabs.delete(quickTab.id);
+      // v1.6.4.9 - FIX Issue #5: Clear any monitoring timer for this tab
+      this._stopDOMMonitoring(quickTab.id);
     }
 
     console.log('[UICoordinator] Rendering tab:', quickTab.id);
@@ -153,9 +167,29 @@ export class UICoordinator {
 
     // Store in map
     this.renderedTabs.set(quickTab.id, tabWindow);
+    
+    // v1.6.4.9 - FIX Issue #6C: Log Map entry creation with isRendered() status
+    const isRenderedNow = tabWindow.isRendered();
+    console.log('[UICoordinator] Added to renderedTabs Map:', {
+      id: quickTab.id,
+      isRendered: isRenderedNow,
+      mapSize: this.renderedTabs.size
+    });
 
     // v1.6.4.8 - FIX Issue #5: Verify DOM is attached after render
     this._verifyDOMAfterRender(tabWindow, quickTab.id);
+    
+    // v1.6.4.9 - FIX Issue #1: Clear snapshot from MinimizedManager after successful render
+    // This is the "confirmation" that render succeeded, allowing snapshot deletion
+    if (isRenderedNow && this._hasMinimizedManager()) {
+      const cleared = this.minimizedManager.clearSnapshot(quickTab.id);
+      if (cleared) {
+        console.log('[UICoordinator] Cleared snapshot after successful render:', quickTab.id);
+      }
+    }
+    
+    // v1.6.4.9 - FIX Issue #5: Start periodic DOM monitoring
+    this._startDOMMonitoring(quickTab.id, tabWindow);
 
     console.log('[UICoordinator] Tab rendered:', quickTab.id);
     return tabWindow;
@@ -174,24 +208,52 @@ export class UICoordinator {
   /**
    * Try to apply snapshot from minimizedManager
    * v1.6.4.8 - Helper to reduce _applySnapshotForRestore complexity
+   * v1.6.4.9 - FIX Issues #1, #6B: Use hasSnapshot() instead of isMinimized(), add source logging
    * @private
    * @param {QuickTab} quickTab - QuickTab entity to apply snapshot to
    * @returns {boolean} True if snapshot was applied
    */
   _tryApplySnapshotFromManager(quickTab) {
-    if (!this._hasMinimizedManager() || !this.minimizedManager.isMinimized(quickTab.id)) {
+    if (!this._hasMinimizedManager()) {
+      console.log('[UICoordinator] No minimizedManager available for snapshot check:', quickTab.id);
+      return false;
+    }
+    
+    // v1.6.4.9 - FIX Issue #1: Use hasSnapshot() to check both active and pending-clear snapshots
+    // isMinimized() only checks active minimizedTabs, missing pending-clear snapshots
+    const hasAnySnapshot = this.minimizedManager.hasSnapshot(quickTab.id);
+    const isActivelyMinimized = this.minimizedManager.isMinimized(quickTab.id);
+    
+    // v1.6.4.9 - FIX Issue #6B: Log WHERE snapshot check happens and WHAT it finds
+    console.log('[UICoordinator] Checking MinimizedManager for snapshot:', {
+      id: quickTab.id,
+      hasSnapshot: hasAnySnapshot,
+      isMinimized: isActivelyMinimized
+    });
+    
+    if (!hasAnySnapshot) {
       return false;
     }
     
     const snapshot = this.minimizedManager.getSnapshot(quickTab.id);
     if (!snapshot) {
+      console.log('[UICoordinator] hasSnapshot returned true but getSnapshot returned null:', quickTab.id);
       return false;
     }
     
-    console.log('[UICoordinator] Restoring from snapshot (from minimizedManager):', snapshot);
+    console.log('[UICoordinator] Restoring from snapshot (from minimizedManager):', {
+      id: quickTab.id,
+      position: snapshot.position,
+      size: snapshot.size
+    });
     quickTab.position = snapshot.position;
     quickTab.size = snapshot.size;
-    this.minimizedManager.restore(quickTab.id);
+    
+    // v1.6.4.9 - Only call restore() if still in active minimizedTabs
+    // This applies the snapshot to the instance (for tabWindow dimensions)
+    if (isActivelyMinimized) {
+      this.minimizedManager.restore(quickTab.id);
+    }
     return true;
   }
 
@@ -256,6 +318,7 @@ export class UICoordinator {
    *   MinimizedManager.restore() now only applies snapshot and returns result.
    *   We need to call tabWindow.restore() here, then render if needed.
    * v1.6.4.7 - FIX Issues #1, #5, #6: Enhanced logging, DOM verification after render
+   * v1.6.4.9 - FIX Issue #1: Clear snapshot after successful render, start monitoring
    * @private
    * @param {QuickTabWindow} tabWindow - The window to restore
    * @param {string} quickTabId - Quick Tab ID
@@ -273,7 +336,8 @@ export class UICoordinator {
       height: tabWindow.height
     });
 
-    if (this._hasMinimizedManager() && this.minimizedManager.isMinimized(quickTabId)) {
+    // v1.6.4.9 - FIX Issue #1: Use hasSnapshot() to check both active and pending-clear snapshots
+    if (this._hasMinimizedManager() && this.minimizedManager.hasSnapshot(quickTabId)) {
       // MinimizedManager.restore() applies snapshot to instance but does NOT render
       const restoreResult = this.minimizedManager.restore(quickTabId);
       if (restoreResult) {
@@ -307,6 +371,15 @@ export class UICoordinator {
       
       // v1.6.4.7 - FIX Issue #5: Verify DOM is attached after render
       this._verifyDOMAfterRender(tabWindow, quickTabId);
+      
+      // v1.6.4.9 - FIX Issue #1: Clear snapshot after successful render
+      if (tabWindow.isRendered() && this._hasMinimizedManager()) {
+        this.minimizedManager.clearSnapshot(quickTabId);
+        console.log('[UICoordinator] Cleared snapshot after restore render:', quickTabId);
+      }
+      
+      // v1.6.4.9 - FIX Issue #5: Start periodic DOM monitoring
+      this._startDOMMonitoring(quickTabId, tabWindow);
     }
 
     return tabWindow;
@@ -315,6 +388,7 @@ export class UICoordinator {
   /**
    * Verify DOM is attached after render with delayed check
    * v1.6.4.7 - FIX Issue #5: Proactive DOM detachment detection
+   * v1.6.4.9 - FIX Issue #1: Clear snapshot on delayed verification success
    * @private
    * @param {QuickTabWindow} tabWindow - The window to verify
    * @param {string} quickTabId - Quick Tab ID
@@ -332,10 +406,71 @@ export class UICoordinator {
         console.error(`[UICoordinator] Delayed DOM verification FAILED (detached within ${DOM_VERIFICATION_DELAY_MS}ms):`, quickTabId);
         // Remove stale reference
         this.renderedTabs.delete(quickTabId);
+        // Stop monitoring
+        this._stopDOMMonitoring(quickTabId);
       } else {
         console.log('[UICoordinator] DOM verification PASSED for:', quickTabId);
+        // v1.6.4.9 - FIX Issue #1: Ensure snapshot is cleared after delayed verification passes
+        if (this._hasMinimizedManager()) {
+          this.minimizedManager.clearSnapshot(quickTabId);
+        }
       }
     }, DOM_VERIFICATION_DELAY_MS);
+  }
+  
+  /**
+   * Start periodic DOM monitoring for a rendered tab
+   * v1.6.4.9 - FIX Issue #5: Proactive DOM detachment detection between events
+   * @private
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {QuickTabWindow} tabWindow - The window to monitor
+   */
+  _startDOMMonitoring(quickTabId, tabWindow) {
+    // Clear any existing timer
+    this._stopDOMMonitoring(quickTabId);
+    
+    // v1.6.4.9 - FIX Issue #5: Set up periodic check every 500ms
+    // This catches detachment that happens between events (the 73-second gap issue)
+    let checkCount = 0;
+    const maxChecks = 10; // Monitor for 5 seconds max (10 * 500ms)
+    
+    const timerId = setInterval(() => {
+      checkCount++;
+      
+      if (!tabWindow.isRendered()) {
+        console.warn('[UICoordinator] Periodic DOM check detected detachment:', {
+          id: quickTabId,
+          checkNumber: checkCount,
+          elapsedMs: checkCount * DOM_MONITORING_INTERVAL_MS
+        });
+        // Clean up
+        this.renderedTabs.delete(quickTabId);
+        this._stopDOMMonitoring(quickTabId);
+        return;
+      }
+      
+      // Stop monitoring after maxChecks (5 seconds) - if still attached, it's stable
+      if (checkCount >= maxChecks) {
+        console.log('[UICoordinator] DOM monitoring completed (stable):', quickTabId);
+        this._stopDOMMonitoring(quickTabId);
+      }
+    }, DOM_MONITORING_INTERVAL_MS);
+    
+    this._domMonitoringTimers.set(quickTabId, timerId);
+  }
+  
+  /**
+   * Stop periodic DOM monitoring for a tab
+   * v1.6.4.9 - FIX Issue #5: Cleanup monitoring timer
+   * @private
+   * @param {string} quickTabId - Quick Tab ID
+   */
+  _stopDOMMonitoring(quickTabId) {
+    const timerId = this._domMonitoringTimers.get(quickTabId);
+    if (timerId) {
+      clearInterval(timerId);
+      this._domMonitoringTimers.delete(quickTabId);
+    }
   }
 
   /**
@@ -348,6 +483,7 @@ export class UICoordinator {
    * v1.6.4.6 - FIX Issue #3: Validate DOM attachment with isRendered() before operating
    * v1.6.4.7 - FIX Issues #2, #3, #8: Use tabWindow.minimized (instance state) instead of entity state
    *   When DOM is detached and instance is NOT minimized, ALWAYS render regardless of entity state.
+   * v1.6.4.9 - FIX Issues #2, #3, #6D: Enhanced decision logging, always render when DOM missing + instance not minimized
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
    * @returns {QuickTabWindow|undefined} Updated or newly rendered tab window, or undefined if skipped
@@ -359,6 +495,14 @@ export class UICoordinator {
 
     // Handle non-rendered tab or stale reference (DOM detached)
     if (!tabWindow) {
+      // v1.6.4.9 - FIX Issue #6D: Log decision path
+      console.log('[UICoordinator] Update decision:', {
+        id: quickTab.id,
+        inMap: false,
+        entityMinimized,
+        action: entityMinimized ? 'skip (minimized)' : 'render (not in map)'
+      });
+      
       if (entityMinimized) {
         console.log('[UICoordinator] Tab is minimized (no window), skipping render:', quickTab.id);
         return;
@@ -372,35 +516,55 @@ export class UICoordinator {
     // v1.6.4.7 - FIX Issues #2, #3, #8: Check ACTUAL instance minimized state, not entity state
     // During restore transition, entity may still have minimized=true while tabWindow.minimized=false
     const instanceMinimized = tabWindow.minimized;
+    const domAttached = tabWindow.isRendered();
+
+    // v1.6.4.9 - FIX Issue #6D: Log decision path with all relevant state
+    console.log('[UICoordinator] Update decision:', {
+      id: quickTab.id,
+      inMap: true,
+      domAttached,
+      entityMinimized,
+      instanceMinimized,
+      action: 'evaluating...'
+    });
 
     // v1.6.4.6 - FIX Issue #3: Validate DOM is actually attached
-    if (!tabWindow.isRendered()) {
+    if (!domAttached) {
       console.log('[UICoordinator] Tab in map but DOM detached, cleaning up:', quickTab.id);
       this.renderedTabs.delete(quickTab.id);
+      // v1.6.4.9 - FIX Issue #5: Stop monitoring for this tab
+      this._stopDOMMonitoring(quickTab.id);
 
-      // v1.6.4.7 - FIX Issues #2, #3: Use INSTANCE state, not entity state
+      // v1.6.4.9 - FIX Issues #2, #3 CRITICAL: Use INSTANCE state, not entity state
       // If instance is NOT minimized, the tab is being restored and MUST be rendered
+      // This is the key fix - we removed the early return based on entity state
       if (instanceMinimized) {
-        console.log(
-          '[UICoordinator] Instance is minimized, skipping render after cleanup:',
-          quickTab.id
-        );
+        console.log('[UICoordinator] Instance is minimized, skipping render after cleanup:', {
+          id: quickTab.id,
+          action: 'skip (instance minimized)'
+        });
         return;
       }
       
-      // Instance is NOT minimized but DOM is missing - MUST render regardless of entity state
-      console.log('[UICoordinator] Instance NOT minimized but DOM missing, rendering:', quickTab.id);
+      // v1.6.4.9 - FIX Issues #2, #3: Instance is NOT minimized but DOM is missing - MUST render
+      // This fixes subsequent restore attempts that do nothing
+      console.log('[UICoordinator] Instance NOT minimized but DOM missing, MUST render:', {
+        id: quickTab.id,
+        action: 'render (DOM missing + instance not minimized)'
+      });
       // Apply snapshot if available before rendering
       this._applySnapshotForRestore(quickTab);
       return this.render(quickTab);
     }
 
-    // Handle restore from minimized state
+    // Handle restore from minimized state (instance minimized but entity says not minimized)
     if (instanceMinimized && !entityMinimized) {
+      console.log('[UICoordinator] Update decision: restore (instance minimized, entity not)', quickTab.id);
       return this._restoreExistingWindow(tabWindow, quickTab.id);
     }
 
-    // Normal update
+    // Normal update - DOM is attached, not restoring
+    console.log('[UICoordinator] Update decision: normal update', quickTab.id);
     console.log('[UICoordinator] Updating tab:', quickTab.id);
 
     const position = this._getSafePosition(quickTab);
@@ -418,10 +582,14 @@ export class UICoordinator {
   /**
    * Destroy a QuickTabWindow
    * v1.6.4.4 - FIX Bug #3: Verify DOM cleanup after destroy
+   * v1.6.4.9 - FIX Issue #5: Stop DOM monitoring on destroy
    *
    * @param {string} quickTabId - ID of tab to destroy
    */
   destroy(quickTabId) {
+    // v1.6.4.9 - FIX Issue #5: Stop monitoring first
+    this._stopDOMMonitoring(quickTabId);
+    
     const tabWindow = this.renderedTabs.get(quickTabId);
 
     if (!tabWindow) {
@@ -446,6 +614,11 @@ export class UICoordinator {
     // v1.6.4.4 - FIX Bug #3: Verify DOM cleanup - use shared utility
     if (removeQuickTabElement(quickTabId)) {
       console.log('[UICoordinator] Removed orphaned DOM element for:', quickTabId);
+    }
+    
+    // v1.6.4.9 - Also clear any pending snapshot
+    if (this._hasMinimizedManager()) {
+      this.minimizedManager.clearSnapshot(quickTabId);
     }
 
     console.log('[UICoordinator] Tab destroyed:', quickTabId);
@@ -622,6 +795,7 @@ export class UICoordinator {
    * Create QuickTabWindow from QuickTab entity
    * v1.6.4.2 - FIX TypeError: Add null safety checks for position/size access
    * v1.6.3.2 - Pass showDebugId setting to window
+   * v1.6.4.9 - FIX Issue #6A: Log entity property values before creating window
    * @private
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
@@ -632,6 +806,17 @@ export class UICoordinator {
     const size = this._getSafeSize(quickTab);
     const visibility = this._getSafeVisibility(quickTab);
     const zIndex = this._getSafeZIndex(quickTab);
+    
+    // v1.6.4.9 - FIX Issue #6A: Log entity properties before creating window
+    console.log('[UICoordinator] Creating window from entity:', {
+      id: quickTab.id,
+      rawPosition: quickTab.position,
+      rawSize: quickTab.size,
+      safePosition: position,
+      safeSize: size,
+      visibility,
+      zIndex
+    });
 
     // Create QuickTabWindow using imported factory function from window.js
     return createQuickTabWindow({

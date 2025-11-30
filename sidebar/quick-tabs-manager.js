@@ -254,6 +254,7 @@ function createGlobalSection(totalTabs) {
 /**
  * Render the entire UI based on current state
  * v1.6.3 - FIX: Updated to handle unified format (v1.6.2.2+) instead of container-based format
+ * v1.6.4.9 - FIX Issue #4: Check domVerified property for warning indicator
  * 
  * Unified format:
  * { tabs: [...], saveId: '...', timestamp: ... }
@@ -262,6 +263,7 @@ function createGlobalSection(totalTabs) {
  * - id, url, title
  * - visibility: { minimized, soloedOnTabs, mutedOnTabs }
  * - position, size
+ * - domVerified (optional): false means restore failed to create visible window
  */
 function renderUI() {
   // Extract tabs from state (handles both unified and legacy formats)
@@ -474,6 +476,30 @@ function _createTabActions(tab, isMinimized) {
   return actions;
 }
 
+/**
+ * Determine status indicator class based on tab state
+ * v1.6.4.9 - FIX Issue #4: Check domVerified for warning indicator
+ * @param {Object} tab - Quick Tab data
+ * @param {boolean} isMinimized - Whether tab is minimized
+ * @returns {string} - CSS class for indicator color
+ */
+function _getIndicatorClass(tab, isMinimized) {
+  // Minimized tabs show yellow indicator
+  if (isMinimized) {
+    return 'yellow';
+  }
+  
+  // v1.6.4.9 - FIX Issue #4: Check domVerified property
+  // If domVerified is explicitly false, show orange/warning indicator
+  // This means restore was attempted but DOM wasn't actually rendered
+  if (tab.domVerified === false) {
+    return 'orange';
+  }
+  
+  // Active tabs with verified DOM show green
+  return 'green';
+}
+
 function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   const item = document.createElement('div');
   item.className = `quick-tab-item ${isMinimized ? 'minimized' : 'active'}`;
@@ -481,8 +507,15 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   item.dataset.containerId = cookieStoreId;
 
   // Status indicator
+  // v1.6.4.9 - FIX Issue #4: Use helper function for indicator class
   const indicator = document.createElement('span');
-  indicator.className = `status-indicator ${isMinimized ? 'yellow' : 'green'}`;
+  const indicatorClass = _getIndicatorClass(tab, isMinimized);
+  indicator.className = `status-indicator ${indicatorClass}`;
+  
+  // v1.6.4.9 - FIX Issue #4: Add tooltip for warning state
+  if (indicatorClass === 'orange') {
+    indicator.title = 'Warning: Window may not be visible. Try restoring again.';
+  }
 
   // Create components
   const favicon = _createFavicon(tab.url);
