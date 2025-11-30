@@ -54,14 +54,94 @@ export class CreateHandler {
     this.createWindow = windowFactory || createQuickTabWindow;
     // v1.6.3.2 - Cache for quickTabShowDebugId setting
     this.showDebugIdSetting = false;
+    // v1.6.4.8 - Store listener reference for cleanup
+    this._storageListener = null;
   }
 
   /**
    * Initialize handler - load settings from storage
    * v1.6.3.2 - Load showDebugId setting for Debug ID display feature
+   * v1.6.4.8 - FIX Issue #4: Add storage.onChanged listener for dynamic updates
    */
   async init() {
     await this._loadDebugIdSetting();
+    this._setupStorageListener();
+  }
+
+  /**
+   * Cleanup storage listener to prevent memory leaks
+   * v1.6.4.8 - Added for proper resource cleanup
+   */
+  destroy() {
+    if (this._storageListener) {
+      browser.storage.onChanged.removeListener(this._storageListener);
+      this._storageListener = null;
+      console.log('[CreateHandler] Storage listener removed');
+    }
+  }
+
+  /**
+   * Setup storage.onChanged listener for dynamic setting updates
+   * v1.6.4.8 - FIX Issue #4: Update already-rendered Quick Tabs when settings change
+   * @private
+   */
+  _setupStorageListener() {
+    const settingsKey = CONSTANTS.QUICK_TAB_SETTINGS_KEY;
+
+    // Store listener reference for cleanup
+    // Note: We intentionally don't filter by areaName because settings can be in
+    // either sync or local storage (with fallback), and we want to react to changes
+    // in either area
+    this._storageListener = (changes, areaName) => {
+      // Check if our settings key changed
+      if (!changes[settingsKey]) return;
+
+      const newSettings = changes[settingsKey].newValue;
+      const oldSettings = changes[settingsKey].oldValue;
+      
+      // Check if quickTabShowDebugId specifically changed
+      const newShowDebugId = newSettings?.quickTabShowDebugId ?? false;
+      const oldShowDebugId = oldSettings?.quickTabShowDebugId ?? false;
+      
+      if (newShowDebugId === oldShowDebugId) return;
+
+      console.log('[CreateHandler] Debug ID setting changed:', {
+        areaName,
+        oldValue: oldShowDebugId,
+        newValue: newShowDebugId
+      });
+      
+      // Update cached setting
+      this.showDebugIdSetting = newShowDebugId;
+      
+      // Update all rendered Quick Tabs
+      this._updateAllQuickTabsDebugDisplay(newShowDebugId);
+    };
+
+    browser.storage.onChanged.addListener(this._storageListener);
+    console.log('[CreateHandler] Storage listener setup complete');
+  }
+
+  /**
+   * Update debug ID display on all rendered Quick Tabs
+   * v1.6.4.8 - FIX Issue #4: Dynamic titlebar updates when settings change
+   * @private
+   * @param {boolean} showDebugId - Whether to show debug ID
+   */
+  _updateAllQuickTabsDebugDisplay(showDebugId) {
+    let updatedCount = 0;
+    
+    for (const [_id, tabWindow] of this.quickTabsMap) {
+      // Only update rendered windows with the required method
+      if (!tabWindow || typeof tabWindow.isRendered !== 'function') continue;
+      if (!tabWindow.isRendered()) continue;
+      if (typeof tabWindow.updateDebugIdDisplay !== 'function') continue;
+
+      tabWindow.updateDebugIdDisplay(showDebugId);
+      updatedCount++;
+    }
+    
+    console.log('[CreateHandler] Updated debug ID display on', updatedCount, 'Quick Tabs');
   }
 
   /**

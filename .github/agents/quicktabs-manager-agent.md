@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  and implementing new manager features (v1.6.3.2 batch mode, mutex pattern)
+  warning indicators, and implementing new manager features (v1.6.4.9)
 tools: ["*"]
 ---
 
@@ -28,28 +28,56 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.9 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**Key Manager Features (v1.6.3.2):**
+**Key Manager Features (v1.6.4.9):**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
-- **Minimize/Restore** - `VisibilityHandler` with mutex pattern (v1.6.3.2)
+- **Warning Indicator (v1.6.4.9)** - Orange pulse when `domVerified=false`
+- **Minimize/Restore** - `VisibilityHandler` with mutex pattern
 - **Close Minimized** - Collects IDs BEFORE filtering, sends to ALL browser tabs
-- **Close All Batch Mode** - DestroyHandler._batchMode prevents storage write storms (v1.6.3.2)
+- **Close All Batch Mode** - DestroyHandler._batchMode prevents storage write storms
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
-- **Minimized Detection** - `isTabMinimizedHelper()`: `tab.minimized ?? tab.visibility?.minimized ?? false`
-- **Restore Snapshots** - `MinimizedManager.restore()` returns snapshot data
 
 **Storage Format:**
 ```javascript
-{ tabs: [...], saveId: '...', timestamp: ... }
+{ tabs: [...], saveId: '...', timestamp: ... }  // tabs may have domVerified property
 ```
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
 ---
 
-## v1.6.3.2 Key Patterns
+## v1.6.4.9 Key Patterns
+
+### Warning Indicator (v1.6.4.9 - NEW)
+
+```javascript
+// quick-tabs-manager.js - Orange indicator for unverified DOM
+function _getIndicatorClass(tab, isMinimized) {
+  // If domVerified is explicitly false, show orange/warning indicator
+  if (tab.domVerified === false) return 'orange';  // Pulse animation
+  return isMinimized ? 'red' : 'green';
+}
+// CSS variable: --orange-indicator: #f39c12
+```
+
+### Minimized Detection Helper
+
+```javascript
+function isTabMinimizedHelper(tab) {
+  return tab.minimized ?? tab.visibility?.minimized ?? false;
+}
+```
+
+### Snapshot Lifecycle (v1.6.4.9)
+
+```javascript
+// MinimizedManager keeps snapshots until UICoordinator confirms
+pendingClearSnapshots = new Map();  // Awaiting render confirmation
+hasSnapshot(id)   // Check both active and pending-clear snapshots
+clearSnapshot(id) // UICoordinator calls after successful render
+```
 
 ### Restore Flow (UICoordinator Single Rendering Authority)
 
@@ -58,30 +86,22 @@ VisibilityHandler.handleRestore()
     ↓
 Check _operationLocks (mutex pattern - skip if locked)
     ↓
-MinimizedManager.restore(id) → applies snapshot, returns data
+MinimizedManager.restore(id) → moves snapshot to pendingClear
     ↓
-emits 'state:updated' event
-    ↓
-UICoordinator.update(quickTab) → calls render() if needed
+UICoordinator handles state:updated → renders → clearSnapshot(id)
 ```
 
-### closeMinimizedTabs Pattern (v1.6.3.2)
+### closeMinimizedTabs Pattern
 
 ```javascript
 // CRITICAL: Collect IDs BEFORE filtering, then send to ALL browser tabs
 async closeMinimizedTabs() {
-  const state = await browser.storage.local.get(STATE_KEY);
   const tabs = state[STATE_KEY]?.tabs || [];
-  
-  // Step 1: Collect minimized IDs BEFORE filtering
   const minimizedIds = tabs.filter(t => isTabMinimizedHelper(t)).map(t => t.id);
-  
-  // Step 2: Filter state
   const remaining = tabs.filter(t => !isTabMinimizedHelper(t));
   await browser.storage.local.set({ [STATE_KEY]: { tabs: remaining, ... } });
   
-  // Step 3: Send CLOSE_QUICK_TAB to ALL browser tabs for proper DOM cleanup
-  const browserTabs = await browser.tabs.query({});
+  // Send CLOSE_QUICK_TAB to ALL browser tabs for proper DOM cleanup
   for (const id of minimizedIds) {
     for (const tab of browserTabs) {
       browser.tabs.sendMessage(tab.id, { type: 'CLOSE_QUICK_TAB', id });
@@ -90,46 +110,14 @@ async closeMinimizedTabs() {
 }
 ```
 
-### Mutex Pattern for Visibility (v1.6.3.2)
-
-```javascript
-// VisibilityHandler prevents duplicate operations
-this._operationLocks = new Map();
-
-handleMinimize(id) {
-  if (this._operationLocks.has(id)) return;  // Skip duplicate
-  this._operationLocks.set(id, 'minimize');
-  // Lock cleared after debounce timer completes
-}
-```
-
-### Close All Batch Mode (v1.6.3.2)
-
-```javascript
-// DestroyHandler prevents storage write storms (1 write vs 6+)
-closeAll() {
-  this._batchMode = true;
-  try { for (const id of ids) this.destroy(id); }
-  finally { this._batchMode = false; this.persistState(); }
-}
-```
-
-### MinimizedManager.restore() (v1.6.3.2)
-
-```javascript
-// restore() only applies snapshot, returns data (no tabWindow.restore())
-const snapshot = minimizedManager.restore(id);
-// UICoordinator receives state:updated event and handles rendering
-```
-
 ---
 
 ## Your Responsibilities
 
 1. **Manager UI & Layout** - Panel display, position, resize, drag
 2. **Global Quick Tabs List** - Display all Quick Tabs (no container grouping)
-3. **Solo/Mute Indicators** - Show 🎯/🔇 status in header and per-item
-4. **Minimize/Restore** - Handle minimized tabs panel
+3. **Solo/Mute/Warning Indicators** - Show 🎯/🔇/⚠️ status in header and per-item
+4. **Minimize/Restore** - Handle minimized tabs panel with snapshot lifecycle
 5. **Manager-QuickTab Sync** - EventBus bidirectional communication
 6. **Clear Storage** - Debug feature to clear all Quick Tabs
 
@@ -143,84 +131,22 @@ const snapshot = minimizedManager.restore(id);
 <div id="quick-tabs-panel" class="quick-tabs-panel">
   <div class="panel-header">
     <span class="panel-title">Quick Tabs Manager</span>
-    <span class="solo-mute-indicators">🎯 Solo on 2 tabs | 🔇 Muted on 1 tabs</span>
+    <span class="solo-mute-indicators">🎯 Solo on 2 tabs | 🔇 Muted on 1</span>
   </div>
   <div class="panel-content">
-    <!-- All Quick Tab items (no container grouping) -->
+    <!-- Quick Tab items with indicator classes: green/red/orange -->
     <div class="quick-tab-item" data-id="qt-123">
-      <span class="item-indicators">
-        <span class="solo-indicator">🎯</span>
-        <span class="mute-indicator hidden">🔇</span>
-      </span>
+      <span class="item-indicator orange-pulse"></span> <!-- v1.6.4.9 warning -->
       <button class="item-minimize">−</button>
       <button class="item-close">✕</button>
     </div>
   </div>
   <div class="panel-footer">
-    <button class="clear-storage">Clear Storage</button>
     <button class="close-minimized">Close Minimized</button>
     <button class="close-all">Close All</button>
   </div>
 </div>
 ```
-
----
-
-## Global Display Pattern
-
-```javascript
-class PanelManager {
-  updateQuickTabsList() {
-    const tabs = this.globalState.tabs || [];
-    
-    // Calculate Solo/Mute counts for header
-    let soloCount = 0, muteCount = 0;
-    tabs.forEach(tab => {
-      if (tab.soloedOnTabs?.length > 0) soloCount++;
-      if (tab.mutedOnTabs?.length > 0) muteCount++;
-    });
-    
-    this.updateHeaderIndicators(soloCount, muteCount);
-    this.renderQuickTabs(tabs);
-  }
-}
-```
-
----
-
-## EventBus Communication
-
-```javascript
-setupEventListeners() {
-  eventBus.on('QUICK_TAB_CREATED', (data) => {
-    this.addQuickTab(data);
-  });
-  
-  eventBus.on('QUICK_TAB_CLOSED', (data) => {
-    this.removeQuickTab(data.id);
-  });
-  
-  eventBus.on('SOLO_CHANGED', (data) => {
-    this.updateSoloIndicator(data.quickTabId, data.tabId);
-  });
-  
-  eventBus.on('QUICK_TAB_MINIMIZED', (data) => {
-    this.minimizedManager.add(data.id, data.title);
-  });
-}
-```
-
----
-
-## MCP Server Integration
-
-**MANDATORY for Manager Work:**
-
-- **Context7:** Verify WebExtensions APIs ⭐
-- **Perplexity:** Research UI patterns (paste code) ⭐
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health ⭐
-- **Agentic-Tools:** Search memories, store solutions
 
 ---
 
@@ -233,7 +159,7 @@ setupEventListeners() {
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
-## Manager Action Messages (v1.6.3.2)
+## Manager Action Messages
 
 Manager sends these messages to content script:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
@@ -243,16 +169,27 @@ Manager sends these messages to content script:
 
 ---
 
+## MCP Server Integration
+
+**MANDATORY for Manager Work:**
+- **Context7:** Verify WebExtensions APIs ⭐
+- **Perplexity:** Research UI patterns (paste code) ⭐
+- **ESLint:** Lint all changes ⭐
+- **CodeScene:** Check code health ⭐
+- **Agentic-Tools:** Search memories, store solutions
+
+---
+
 ## Testing Requirements
 
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] All Quick Tabs display globally
 - [ ] Solo/Mute indicators correct (arrays)
+- [ ] **v1.6.4.9:** Orange indicator for `domVerified=false`
 - [ ] Header shows Solo/Mute counts
-- [ ] Minimize/Restore works
+- [ ] Minimize/Restore works with snapshot lifecycle
 - [ ] Close Minimized works for all tabs
-- [ ] Close All uses batch mode (v1.6.3.2)
-- [ ] Position persists
+- [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 

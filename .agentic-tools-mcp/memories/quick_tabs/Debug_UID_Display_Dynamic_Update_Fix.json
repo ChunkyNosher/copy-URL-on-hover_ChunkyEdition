@@ -1,0 +1,8 @@
+{
+  "id": "c57f2fab-904f-4c65-9e15-6f688dda3ce1",
+  "title": "Debug UID Display Dynamic Update Fix",
+  "details": "Fixed Quick Tabs Debug UID Display feature (v1.6.4.8). The feature was completely non-functional due to 4 issues. Issue #4 (no dynamic updates) was the critical missing piece - added storage.onChanged listener in CreateHandler._setupStorageListener() that calls _updateAllQuickTabsDebugDisplay() to update already-rendered Quick Tab titlebars when the quickTabShowDebugId setting changes. Added updateDebugIdDisplay(showDebugId) method in both TitlebarBuilder (with _addDebugIdElement/_removeDebugIdElement helpers) and QuickTabWindow to dynamically add/remove UID elements without recreating the Quick Tab.",
+  "category": "quick_tabs",
+  "dateCreated": "2025-11-30T03:37:30.270Z",
+  "dateUpdated": "2025-11-30T03:37:30.270Z"
+}

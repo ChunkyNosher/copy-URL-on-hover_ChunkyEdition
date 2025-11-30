@@ -8,6 +8,7 @@
   --text-secondary: #666;
   --green-indicator: #4caf50;
   --yellow-indicator: #ffc107;
+  --orange-indicator: #ff9800; /* v1.6.4.9 - FIX Issue #4: Warning indicator */
   --red-danger: #f44336;
   --blue-primary: #4a90e2;
 }
@@ -173,6 +174,21 @@ html {
 
 .status-indicator.yellow {
   background: var(--yellow-indicator);
+}
+
+/* v1.6.4.9 - FIX Issue #4: Warning indicator for domVerified=false */
+.status-indicator.orange {
+  background: var(--orange-indicator);
+  animation: pulse-warning 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .favicon {

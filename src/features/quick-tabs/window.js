@@ -871,6 +871,23 @@ export class QuickTabWindow {
   }
 
   /**
+   * Update debug ID display dynamically
+   * v1.6.4.8 - FIX Issue #4: Update already-rendered Quick Tab titlebars when settings change
+   * @param {boolean} showDebugId - Whether to show debug ID in titlebar
+   */
+  updateDebugIdDisplay(showDebugId) {
+    // Update instance property
+    this.showDebugId = showDebugId;
+
+    // Delegate to TitlebarBuilder if available
+    if (this.titlebarBuilder) {
+      this.titlebarBuilder.updateDebugIdDisplay(showDebugId);
+    } else {
+      console.log('[QuickTabWindow] No titlebarBuilder available for debug ID update:', this.id);
+    }
+  }
+
+  /**
    * Destroy the Quick Tab window
    * v1.6.3.2 - FIX Issue #5: Ensure all event listeners are removed BEFORE DOM removal
    *   Order is critical: cleanup controllers → remove handlers → remove DOM → clear references
