@@ -397,7 +397,7 @@ export class TitlebarBuilder {
       return null;
     }
 
-    // v1.6.3.3 - FIX Bug #1: Show LAST 15 characters (the unique part is the random suffix)
+    // v1.6.3.3 - FIX Bug #1: Show LAST 12 characters (the unique part is the random suffix)
     // Old format truncated prefix like "qt-123-16..." which was identical across tabs
     // New format shows "...timestamp-random" which is always unique
     const displayId =

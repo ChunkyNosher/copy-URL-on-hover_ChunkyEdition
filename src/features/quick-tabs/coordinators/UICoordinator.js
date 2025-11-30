@@ -477,8 +477,8 @@ export class UICoordinator {
         });
         
         // v1.6.3.3 - FIX Bug #8: Attempt re-render if tab is still active
-        const reRenderResult = this._attemptReRenderDetachedTab(tabWindow, quickTabId);
-        if (reRenderResult) return; // Successfully re-rendered, continue monitoring
+        const reRenderSucceeded = this._attemptReRenderDetachedTab(tabWindow, quickTabId);
+        if (reRenderSucceeded) return; // Successfully re-rendered, continue monitoring
         
         // Clean up if re-render failed, not attempted, or tab was destroyed
         this.renderedTabs.delete(quickTabId);

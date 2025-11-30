@@ -330,6 +330,7 @@ export class VisibilityHandler {
       // 2. The mutex lock at the start of handleRestore prevents re-entry
       // 3. We're only setting if not present, never overwriting
       if (!this.quickTabsMap.has(id)) {
+        console.log('[VisibilityHandler] Window exists but not in map (may indicate map inconsistency):', id);
         this.quickTabsMap.set(id, tabWindow);
         console.log('[VisibilityHandler] Re-registered tabWindow in quickTabsMap:', id);
       }
