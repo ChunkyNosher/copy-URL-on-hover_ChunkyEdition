@@ -284,15 +284,13 @@ class QuickTabsManager {
   }
 
   /**
-   * Build options object for tab hydration
-   * v1.6.3.4 - Helper to reduce complexity
+   * Default values for tab hydration
+   * v1.6.4.11 - Extracted to reduce _buildHydrationOptions complexity
    * @private
-   * @param {Object} tabData - Tab data from storage
-   * @returns {Object} Options for createQuickTab
+   * @type {Object}
    */
-  _buildHydrationOptions(tabData) {
-    // Use defaults for missing values
-    const defaults = {
+  static get HYDRATION_DEFAULTS() {
+    return {
       title: 'Quick Tab',
       left: 100,
       top: 100,
@@ -303,19 +301,43 @@ class QuickTabsManager {
       mutedOnTabs: [],
       zIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
     };
+  }
+
+  /**
+   * Apply default value if source value is null/undefined
+   * v1.6.4.11 - Helper to reduce _buildHydrationOptions complexity
+   * @private
+   * @param {*} value - Source value
+   * @param {*} defaultValue - Default value
+   * @returns {*} Value or default
+   */
+  _getWithDefault(value, defaultValue) {
+    return value ?? defaultValue;
+  }
+
+  /**
+   * Build options object for tab hydration
+   * v1.6.3.4 - Helper to reduce complexity
+   * v1.6.4.11 - Refactored: extracted HYDRATION_DEFAULTS and _getWithDefault to reduce cc from 10 to ≤9
+   * @private
+   * @param {Object} tabData - Tab data from storage
+   * @returns {Object} Options for createQuickTab
+   */
+  _buildHydrationOptions(tabData) {
+    const defaults = QuickTabsManager.HYDRATION_DEFAULTS;
 
     return {
       id: tabData.id,
       url: tabData.url,
       title: tabData.title || defaults.title,
-      left: tabData.left ?? defaults.left,
-      top: tabData.top ?? defaults.top,
-      width: tabData.width ?? defaults.width,
-      height: tabData.height ?? defaults.height,
-      minimized: tabData.minimized ?? defaults.minimized,
-      soloedOnTabs: tabData.soloedOnTabs ?? defaults.soloedOnTabs,
-      mutedOnTabs: tabData.mutedOnTabs ?? defaults.mutedOnTabs,
-      zIndex: tabData.zIndex ?? defaults.zIndex,
+      left: this._getWithDefault(tabData.left, defaults.left),
+      top: this._getWithDefault(tabData.top, defaults.top),
+      width: this._getWithDefault(tabData.width, defaults.width),
+      height: this._getWithDefault(tabData.height, defaults.height),
+      minimized: this._getWithDefault(tabData.minimized, defaults.minimized),
+      soloedOnTabs: this._getWithDefault(tabData.soloedOnTabs, defaults.soloedOnTabs),
+      mutedOnTabs: this._getWithDefault(tabData.mutedOnTabs, defaults.mutedOnTabs),
+      zIndex: this._getWithDefault(tabData.zIndex, defaults.zIndex),
       source: 'hydration'
     };
   }
