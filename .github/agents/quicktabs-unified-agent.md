@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.4.0 Entity-Instance sync fix, restore fallback chain)
+  Quick Tab functionality (v1.6.4.9 Snapshot lifecycle, DOM monitoring, warning indicators)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.0 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.9 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -36,13 +36,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
 
-**v1.6.4.0 Architectural Patterns:**
-- **Entity-Instance Sync Fix:** Snapshot dimensions propagate from instance to entity via fallback chain
-- **UICoordinator Restore Helpers:** `_tryApplySnapshotFromManager()` → `_tryApplyDimensionsFromInstance()` fallback
-- **UICoordinator Single Rendering:** Uses `_verifyDOMAfterRender()` with `DOM_VERIFICATION_DELAY_MS = 150`
-- **Mutex Pattern:** `VisibilityHandler._operationLocks` + `STATE_EMIT_DELAY_MS = 200` for delayed emit
-- **Storage Fallback:** CreateHandler tries sync, falls back to local for settings
-- **QuickTabWindow Defaults:** `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300`, `DEFAULT_LEFT/TOP = 100`
+**v1.6.4.9 Architectural Patterns:**
+- **Snapshot Lifecycle:** `pendingClearSnapshots` Map keeps snapshots until UICoordinator confirms render
+- **DOM Monitoring:** `_domMonitoringTimers` with 500ms interval to detect detachment
+- **Manager Warning Indicator:** `_getIndicatorClass()` returns 'orange' when `domVerified=false`
+- **Dynamic UID Display:** TitlebarBuilder.updateDebugIdDisplay() + CreateHandler storage listener
+- **Entity-Instance Sync Fix:** Snapshot dimensions propagate via fallback chain
 - **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms
 
 **Storage Keys:**
@@ -62,80 +61,74 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.4.0 Key Patterns
+## v1.6.4.9 Key Patterns
 
-### Entity-Instance Sync Fix (v1.6.4.0 - CRITICAL)
+### Snapshot Lifecycle (CRITICAL)
 
 ```javascript
-// UICoordinator fallback chain for getting dimensions during restore
-_applySnapshotForRestore(quickTab) {
-  // 1. Try MinimizedManager snapshot (may already be deleted)
+// MinimizedManager keeps snapshots until UICoordinator confirms render
+pendingClearSnapshots = new Map();  // Snapshots awaiting render confirmation
+
+restore(id) {
+  this.pendingClearSnapshots.set(id, snapshot);  // Move to pending
+  this.minimizedTabs.delete(id);
+  return snapshot;
+}
+clearSnapshot(id) { this.pendingClearSnapshots.delete(id); }  // UICoordinator calls this
+hasSnapshot(id) { return minimizedTabs.has(id) || pendingClearSnapshots.has(id); }
+```
+
+### DOM Monitoring (v1.6.4.9)
+
+```javascript
+// UICoordinator monitors DOM for 5 seconds after render (10 checks × 500ms)
+_domMonitoringTimers = new Map();  // id → timerId
+_startDOMMonitoring(id, tabWindow) {
+  setInterval(() => {
+    if (!tabWindow.isRendered()) { this.renderedTabs.delete(id); this._stopDOMMonitoring(id); }
+  }, 500);  // DOM_MONITORING_INTERVAL_MS
+}
+```
+
+### Manager Warning Indicator (v1.6.4.9)
+
+```javascript
+// quick-tabs-manager.js - Orange indicator for unverified DOM
+function _getIndicatorClass(tab, isMinimized) {
+  if (tab.domVerified === false) return 'orange';  // Pulse animation
+  return isMinimized ? 'red' : 'green';
+}
+```
+
+### Dynamic UID Display (v1.6.4.9)
+
+```javascript
+// TitlebarBuilder: updateDebugIdDisplay(showDebugId) - adds/removes UID element
+// CreateHandler: _setupStorageListener() - listens to storage.onChanged
+// CreateHandler: _updateAllQuickTabsDebugDisplay(showDebugId) - updates all Quick Tabs
+// CreateHandler: destroy() - removes storage listener (memory leak prevention)
+```
+
+### Entity-Instance Sync (Fallback Chain)
+
+```javascript
+UICoordinator._applySnapshotForRestore(quickTab) {
+  // 1. Try MinimizedManager snapshot with hasSnapshot()
   if (this._tryApplySnapshotFromManager(quickTab)) return;
   // 2. Fallback to existing tabWindow instance dimensions
   this._tryApplyDimensionsFromInstance(quickTab);
 }
+// After render: clearSnapshot(id) confirms snapshot deletion
 ```
 
-### UICoordinator DOM Verification (v1.6.4.0)
+### Constants Reference
 
-```javascript
-const DOM_VERIFICATION_DELAY_MS = 150;
-_verifyDOMAfterRender(tabWindow, quickTabId) {
-  if (!tabWindow.isRendered()) return;  // Immediate check
-  setTimeout(() => {  // Delayed verification
-    if (!tabWindow.isRendered()) this.renderedTabs.delete(quickTabId);
-  }, DOM_VERIFICATION_DELAY_MS);
-}
-```
-
-### VisibilityHandler Delayed Emit (v1.6.4.0)
-
-```javascript
-const STATE_EMIT_DELAY_MS = 200;  // Wait for DOM verification
-_emitRestoreStateUpdate(id, tabWindow) {
-  setTimeout(() => this.eventBus.emit('state:updated', data), STATE_EMIT_DELAY_MS);
-}
-```
-
-### CreateHandler Async Init with Storage Fallback (v1.6.4.0)
-
-```javascript
-async init() { await this._loadDebugIdSetting(); }
-// Try sync storage first, fallback to local on failure
-```
-
-### Mutex Pattern for Visibility Operations
-
-```javascript
-// VisibilityHandler prevents duplicate operations
-this._operationLocks = new Map();  // id → operation type
-
-handleMinimize(id) {
-  if (this._operationLocks.has(id)) return;  // Skip duplicate
-  this._operationLocks.set(id, 'minimize');
-  // Lock cleared after debounce timer completes
-}
-```
-
-### MinimizedManager.restore() (v1.6.4.0)
-
-```javascript
-// restore() only applies snapshot, does NOT call tabWindow.restore()
-// UICoordinator uses fallback chain to propagate dimensions to entity
-const snapshot = minimizedManager.restore(id);
-// UICoordinator._applySnapshotForRestore() handles entity-instance sync
-```
-
-### Close All Batch Mode (v1.6.4.0)
-
-```javascript
-// DestroyHandler prevents storage write storms (1 write vs 6+)
-closeAll() {
-  this._batchMode = true;
-  try { /* destroy all */ }
-  finally { this._batchMode = false; this.persistState(); }
-}
-```
+| Constant | Value | Location |
+|----------|-------|----------|
+| `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator |
+| `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator |
+| `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler |
+| `DEFAULT_WIDTH/HEIGHT` | 400/300 | QuickTabWindow |
 
 ---
 
@@ -157,80 +150,12 @@ closeAll() {
 - Global Quick Tabs display (no container grouping)
 - Minimize/restore functionality
 - Manager ↔ Quick Tab communication
+- **v1.6.4.9:** Warning indicator for unverified DOM
 
 ### 4. Cross-Tab Synchronization
 - **storage.onChanged events** - Primary sync mechanism
 - Unified storage format with tabs array
 - State consistency across tabs
-
----
-
-## Complete Quick Tab Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                  Browser Tab 1                      │
-├─────────────────────────────────────────────────────┤
-│  ┌──────────────────┐  ┌──────────────────┐       │
-│  │  Quick Tab A     │  │  Quick Tab B     │       │
-│  │  Solo: Tab 1     │  │  Mute: Tab 1     │       │
-│  │  ✅ Visible      │  │  ❌ Hidden       │       │
-│  └──────────────────┘  └──────────────────┘       │
-│                                                     │
-│  ┌────────────────────────────────────┐           │
-│  │  Quick Tabs Manager (Ctrl+Alt+Z)   │           │
-│  │  🎯 Solo on 1 tabs | 🔇 Muted on 0 │           │
-│  └────────────────────────────────────┘           │
-└─────────────────────────────────────────────────────┘
-           ↕ storage.onChanged (NOT BroadcastChannel)
-┌─────────────────────────────────────────────────────┐
-│                  Browser Tab 2                      │
-├─────────────────────────────────────────────────────┤
-│  ┌──────────────────┐  ┌──────────────────┐       │
-│  │  Quick Tab A     │  │  Quick Tab B     │       │
-│  │  ❌ Hidden       │  │  ✅ Visible      │       │
-│  └──────────────────┘  └──────────────────┘       │
-└─────────────────────────────────────────────────────┘
-```
-
----
-
-## Common Cross-Domain Issues
-
-### Issue: Quick Tab Created But Not Synced
-
-**Root Cause:** Storage write failed or storage.onChanged not firing
-
-**Fix:**
-```javascript
-async function createQuickTab(url, title) {
-  const quickTab = renderQuickTabLocally(url, title);
-  await browser.storage.local.set({
-    quick_tabs_state_v2: {
-      tabs: [...existingTabs, quickTab],
-      saveId: generateId(),
-      timestamp: Date.now()
-    }
-  });
-}
-```
-
-### Issue: Solo/Mute Not Working
-
-**Root Cause:** Using old single-value soloTab instead of arrays
-
-**Fix:**
-```javascript
-function shouldQuickTabBeVisible(quickTab, browserTabId) {
-  if (quickTab.soloedOnTabs?.length > 0) {
-    return quickTab.soloedOnTabs.includes(browserTabId);
-  }
-  if (quickTab.mutedOnTabs?.includes(browserTabId)) {
-    return false;
-  }
-  return true;
-}
-```
 
 ---
 
@@ -253,6 +178,7 @@ function shouldQuickTabBeVisible(quickTab, browserTabId) {
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
 - [ ] Manager displays with Solo/Mute indicators
+- [ ] **v1.6.4.9:** Orange indicator for unverified DOM
 - [ ] Drag/resize functional
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠

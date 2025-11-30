@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.4.0 Debug UID CSS fix, DragController destroyed flag, restore via UICoordinator)
+  (v1.6.4.9 Dynamic UID display, DOM monitoring, CreateHandler storage listener)
 tools: ["*"]
 ---
 
@@ -15,44 +15,20 @@ You are a Single Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Fi
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**Agentic-Tools MCP:**
-- **Location:** `.agentic-tools-mcp/` directory
-- **Contents:** Agent memories and task management
-  - `memories/` - Individual memory JSON files organized by category
-  - `tasks/` - Task and project data files
-
 **MANDATORY at end of EVERY task:**
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
-3. `git push`
-
-**Memory files live in ephemeral workspace - commit or lose forever.**
-
-### Memory Search (ALWAYS DO THIS FIRST) 🔍
 
 **Before starting ANY task:**
 ```javascript
-const relevantMemories = await searchMemories({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  query: "[keywords about task/feature/component]",
-  limit: 5,
-  threshold: 0.3
-});
+await searchMemories({ query: "[keywords]", limit: 5 });
 ```
-
-**Memory Tools:**
-- `create_memory` - Store learnings, patterns, decisions
-- `search_memories` - Find relevant context before starting
-- `get_memory` - Retrieve specific memory details
-- `update_memory` - Refine existing memories
-- `list_memories` - Browse all stored knowledge
 
 ---
 
 ## Project Context
 
-**Version:** 1.6.4.0 - Domain-Driven Design (Phase 1 Complete ✅)  
-**Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
+**Version:** 1.6.4.9 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -61,40 +37,77 @@ const relevantMemories = await searchMemories({
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-- **Restore via UICoordinator** - Uses fallback chain with `_tryApplySnapshotFromManager()` and `_tryApplyDimensionsFromInstance()`
-- **DragController Destroyed Flag** - Prevents ghost events (v1.6.4.0)
-- **Debug UID Display** - Flexbox positioning with `marginLeft: 'auto'`, `fontSize: '11px'`, `color: '#aaa'`
-- **Default Dimensions** - `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300` (v1.6.4.0)
+- **Restore via UICoordinator** - Uses fallback chain with snapshot lifecycle (v1.6.4.9)
+- **DragController Destroyed Flag** - Prevents ghost events
+- **Dynamic UID Display (v1.6.4.9)** - TitlebarBuilder.updateDebugIdDisplay() for toggle
 
-**New Constants (v1.6.4.0):**
-- `DOM_VERIFICATION_DELAY_MS = 150` (UICoordinator)
-- `STATE_EMIT_DELAY_MS = 200` (VisibilityHandler - increased from 100)
-- `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` (QuickTabWindow)
+**v1.6.4.9 New Patterns:**
+- **Dynamic UID Display:** TitlebarBuilder.updateDebugIdDisplay(showDebugId) adds/removes element
+- **CreateHandler Storage Listener:** _setupStorageListener() for setting changes
+- **CreateHandler Cleanup:** destroy() removes storage listener (memory leak prevention)
+- **DOM Monitoring:** UICoordinator tracks render state with 500ms interval checks
 
-**Minimized State Detection (v1.6.4.0):**
+**Constants Reference:**
+
+| Constant | Value | Location |
+|----------|-------|----------|
+| `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator |
+| `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator |
+| `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler |
+| `DEFAULT_WIDTH/HEIGHT` | 400/300 | QuickTabWindow |
+| `DEFAULT_LEFT/TOP` | 100/100 | QuickTabWindow |
+
+**Minimized State Detection:**
 ```javascript
-// Use this pattern EVERYWHERE for consistent detection
 const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
 ```
 
-**Restore Pattern (v1.6.4.0 - Entity-Instance Sync Fix):**
+---
+
+## v1.6.4.9 Key Patterns
+
+### Dynamic UID Display (NEW)
+
 ```javascript
-// UICoordinator uses fallback chain for restore dimensions
-// 1. _tryApplySnapshotFromManager() - get from MinimizedManager if exists
-// 2. _tryApplyDimensionsFromInstance() - fallback to tabWindow instance
-// Emits state:updated event → UICoordinator.update() → render() if needed
+// TitlebarBuilder - toggle debug ID dynamically
+updateDebugIdDisplay(showDebugId) {
+  // Add or remove UID element from titlebar
+  // CSS: marginLeft: 'auto', marginRight: '8px', fontSize: '11px', color: '#aaa'
+}
+
+// CreateHandler - listen for setting changes
+_setupStorageListener() {
+  browser.storage.onChanged.addListener((changes) => {
+    if (changes[QUICK_TAB_SETTINGS_KEY]) {
+      const newShowDebugId = changes[QUICK_TAB_SETTINGS_KEY].newValue?.quickTabShowDebugId;
+      this._updateAllQuickTabsDebugDisplay(newShowDebugId);
+    }
+  });
+}
+
+// CreateHandler - cleanup
+destroy() {
+  browser.storage.onChanged.removeListener(this._storageListener);
+}
 ```
 
-**Debug UID CSS Fix (v1.6.4.0):**
+### Snapshot Lifecycle (v1.6.4.9)
+
 ```javascript
-// Proper flexbox positioning for debug ID element
-style: {
-  marginLeft: 'auto',   // Push to right edge in flexbox
-  marginRight: '8px',
-  fontSize: '11px',     // Increased from 10px
-  color: '#aaa',        // Brighter than #888
-  maxWidth: '120px'     // Increased from 100px
-}
+// MinimizedManager keeps snapshots until UICoordinator confirms render
+pendingClearSnapshots = new Map();  // Awaiting render confirmation
+hasSnapshot(id)   // Check both active and pending-clear snapshots
+clearSnapshot(id) // UICoordinator calls after successful render
+```
+
+### Restore Flow (Entity-Instance Sync)
+
+```
+VisibilityHandler.handleRestore() → MinimizedManager.restore(id) → UICoordinator:
+  1. _tryApplySnapshotFromManager() → uses hasSnapshot(), calls restore()
+  2. _tryApplyDimensionsFromInstance() → fallback to tabWindow dimensions
+  3. _startDOMMonitoring() → 500ms interval checks for detachment
+  4. clearSnapshot(id) after successful DOM render
 ```
 
 ---
@@ -103,9 +116,10 @@ style: {
 
 1. **Quick Tab Rendering** - Create iframe with UI controls
 2. **Solo/Mute Controls** - Toggle buttons using arrays, mutual exclusivity
-3. **Drag & Resize** - Pointer Events API implementation
+3. **Drag & Resize** - Pointer Events API implementation with destroyed flag
 4. **Navigation** - Back/Forward/Reload controls
-5. **Global Visibility** - Default visible everywhere (v1.6.3+)
+5. **Dynamic UID Display** - Toggle debug ID via storage listener
+6. **Global Visibility** - Default visible everywhere (v1.6.3+)
 
 ---
 
