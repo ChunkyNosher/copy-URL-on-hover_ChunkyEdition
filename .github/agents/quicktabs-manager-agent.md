@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, and implementing new manager features (v1.6.4.9)
+  warning indicators, cross-tab operations (v1.6.4.10)
 tools: ["*"]
 ---
 
@@ -28,13 +28,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.9 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**Key Manager Features (v1.6.4.9):**
+**Key Manager Features (v1.6.4.10):**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
-- **Warning Indicator (v1.6.4.9)** - Orange pulse when `domVerified=false`
-- **Minimize/Restore** - `VisibilityHandler` with mutex pattern
+- **Warning Indicator** - Orange pulse when `domVerified=false`
+- **Cross-Tab Operations (v1.6.4.10)** - Minimize/restore sends to ALL browser tabs
 - **Close Minimized** - Collects IDs BEFORE filtering, sends to ALL browser tabs
 - **Close All Batch Mode** - DestroyHandler._batchMode prevents storage write storms
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
@@ -48,14 +48,32 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.4.9 Key Patterns
+## v1.6.4.10 Key Patterns
 
-### Warning Indicator (v1.6.4.9 - NEW)
+### Cross-Tab Operations (v1.6.4.10 - NEW)
+
+```javascript
+// Manager sends minimize/restore to ALL browser tabs, not just active
+async handleMinimize(id) {
+  const tabs = await browser.tabs.query({});  // ALL tabs
+  for (const tab of tabs) {
+    browser.tabs.sendMessage(tab.id, { type: 'MINIMIZE_QUICK_TAB', id });
+  }
+}
+
+async handleRestore(id) {
+  const tabs = await browser.tabs.query({});
+  for (const tab of tabs) {
+    browser.tabs.sendMessage(tab.id, { type: 'RESTORE_QUICK_TAB', id });
+  }
+}
+```
+
+### Warning Indicator
 
 ```javascript
 // quick-tabs-manager.js - Orange indicator for unverified DOM
 function _getIndicatorClass(tab, isMinimized) {
-  // If domVerified is explicitly false, show orange/warning indicator
   if (tab.domVerified === false) return 'orange';  // Pulse animation
   return isMinimized ? 'red' : 'green';
 }
@@ -70,7 +88,7 @@ function isTabMinimizedHelper(tab) {
 }
 ```
 
-### Snapshot Lifecycle (v1.6.4.9)
+### Snapshot Lifecycle (Inherited)
 
 ```javascript
 // MinimizedManager keeps snapshots until UICoordinator confirms
@@ -136,7 +154,7 @@ async closeMinimizedTabs() {
   <div class="panel-content">
     <!-- Quick Tab items with indicator classes: green/red/orange -->
     <div class="quick-tab-item" data-id="qt-123">
-      <span class="item-indicator orange-pulse"></span> <!-- v1.6.4.9 warning -->
+      <span class="item-indicator orange-pulse"></span> <!-- warning indicator -->
       <button class="item-minimize">−</button>
       <button class="item-close">✕</button>
     </div>
@@ -185,9 +203,9 @@ Manager sends these messages to content script:
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] All Quick Tabs display globally
 - [ ] Solo/Mute indicators correct (arrays)
-- [ ] **v1.6.4.9:** Orange indicator for `domVerified=false`
+- [ ] Orange indicator for `domVerified=false`
 - [ ] Header shows Solo/Mute counts
-- [ ] Minimize/Restore works with snapshot lifecycle
+- [ ] **v1.6.4.10:** Minimize/restore works in ALL browser tabs
 - [ ] Close Minimized works for all tabs
 - [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐

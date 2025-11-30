@@ -99,19 +99,20 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.2)
+- [ ] Version numbers match current release (1.6.4.10)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array, NOT containers)
-- [ ] Storage area correct (storage.local for state, storage.sync for settings)
+- [ ] Storage area correct (storage.local for state AND UID setting)
 - [ ] Storage utilities documented (src/utils/storage-utils.js)
 - [ ] Manager action messages documented (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
-- [ ] UICoordinator DOM verification pattern documented (`_verifyDOMAfterRender`, `DOM_VERIFICATION_DELAY_MS`)
-- [ ] VisibilityHandler delayed emit pattern documented (`STATE_EMIT_DELAY_MS`)
-- [ ] CreateHandler async init pattern documented (`async init()`, `QUICK_TAB_SETTINGS_KEY`)
-- [ ] QuickTabWindow default constants documented (`DEFAULT_WIDTH/HEIGHT/LEFT/TOP`)
+- [ ] UICoordinator Map cleanup pattern documented (v1.6.4.10)
+- [ ] z-index after render pattern documented (v1.6.4.10)
+- [ ] Cross-tab manager messages documented (ALL browser tabs)
+- [ ] isRendered() Boolean return documented (v1.6.4.10)
+- [ ] UID display settings documented (v1.6.4.10)
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -119,7 +120,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.2
+- **Current Version:** 1.6.4.10
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -128,16 +129,16 @@ stat -c%s .github/copilot-instructions.md
   - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
   - Direct local creation pattern
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
-- **Storage Area:** storage.local for Quick Tab state, storage.sync for settings
-- **Storage Keys:** `quick_tabs_state_v2` (state), `quick_tab_settings` (settings with `quickTabShowDebugId`)
+- **Storage Area:** storage.local for Quick Tab state AND UID setting
+- **Storage Keys:** `quick_tabs_state_v2` (state), `quickTabShowDebugId` (UID setting, individual key)
 - **Storage Utilities:** `src/utils/storage-utils.js` exports
-- **New Constants (v1.6.4.7):**
-  - `DOM_VERIFICATION_DELAY_MS = 150` (UICoordinator)
-  - `STATE_EMIT_DELAY_MS = 100` (VisibilityHandler)
-  - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` (QuickTabWindow)
-  - `QUICK_TAB_SETTINGS_KEY` (config.js)
-- **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
-- **CreateHandler Async Init:** `async init()` for loading debug settings
+- **v1.6.4.10 Key Fixes:**
+  - Map cleanup on DOM detachment when entity minimized
+  - z-index applied AFTER DOM render completes
+  - Manager minimize/restore sends to ALL browser tabs
+  - isRendered() returns strict Boolean
+  - UID display settings complete
+- **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages (ALL browser tabs)
 - **Agent Delegation Table:** When to use which agent
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -197,14 +198,14 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.2)
+- Version numbers (1.6.4.10)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
 - Storage format (unified tabs array, NOT containers)
-- Storage area (storage.local for Quick Tab state, NOT storage.sync)
+- Storage area (storage.local for Quick Tab state AND UID setting)
 - Storage utilities (src/utils/storage-utils.js)
-- Manager action messages (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
+- Manager action messages (ALL browser tabs)
 - Global visibility (Container isolation REMOVED)
 - MCP tool lists
 - File size limits (15KB)
@@ -293,7 +294,7 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.2)
+## Current Extension State (v1.6.4.10)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -305,11 +306,13 @@ await perplexity.research("documentation compression markdown");
 - **Global Visibility:** All Quick Tabs visible everywhere (Container isolation REMOVED)
 - **Quick Tabs Manager:** Sidebar (Ctrl+Alt+Z or Alt+Shift+Z), Solo/Mute indicators
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
+- **Cross-Tab Manager (v1.6.4.10):** Minimize/restore sends to ALL browser tabs
 - **Direct Local Creation:** Content renders first, background persists
 - **Storage Utilities:** Shared functions in `src/utils/storage-utils.js`
-- **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages to content script
+- **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages to ALL browser tabs
+- **UID Display (v1.6.4.10):** Settings checkbox in Advanced tab, storage.local listener
 
-### Storage Format (v1.6.3.2)
+### Storage Format (v1.6.4.10)
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -318,7 +321,7 @@ await perplexity.research("documentation compression markdown");
 }
 ```
 
-**CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
+**CRITICAL:** Use `storage.local` for Quick Tab state AND UID setting
 
 ### Deprecated/Removed
 - ❌ "Pin to Page" terminology → Solo/Mute
@@ -328,6 +331,7 @@ await perplexity.research("documentation compression markdown");
 - ❌ cookieStoreId filtering → removed
 - ❌ Floating panel → Sidebar-only Manager (v1.6.3+)
 - ❌ storage.sync for Quick Tab state → storage.local
+- ❌ quick_tab_settings key → quickTabShowDebugId (individual key)
 
 ### Current Keyboard Shortcuts
 - **Q:** Create Quick Tab
@@ -336,8 +340,9 @@ await perplexity.research("documentation compression markdown");
 - **Y:** Copy URL
 - **X:** Copy link text
 
-### Storage Key
-All operations use: `quick_tabs_state_v2`
+### Storage Keys
+- **State:** `quick_tabs_state_v2`
+- **UID Setting:** `quickTabShowDebugId` (individual key in storage.local)
 
 ---
 
@@ -355,11 +360,12 @@ All operations use: `quick_tabs_state_v2`
 
 | Error | Fix |
 |-------|-----|
-| v1.5.9 references | Update to 1.6.3.2 |
+| v1.6.4.9 or earlier | Update to 1.6.4.10 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
 | storage.sync for state | Use storage.local |
+| quick_tab_settings | Use quickTabShowDebugId |
 | Files >15KB | Apply compression |
 
 ---
@@ -380,16 +386,16 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.2
+- [ ] Version numbers updated to 1.6.4.10
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] No container/cookieStoreId references (except removal notes)
 - [ ] storage.onChanged documented as primary sync
-- [ ] storage.local documented for Quick Tab state (NOT storage.sync)
+- [ ] storage.local documented for Quick Tab state AND UID setting
 - [ ] Storage utilities documented (src/utils/storage-utils.js)
 - [ ] Unified storage format documented (tabs array)
 - [ ] Global visibility documented
-- [ ] Manager action messages documented (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
+- [ ] Manager action messages documented (ALL browser tabs)
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] No docs in prohibited locations

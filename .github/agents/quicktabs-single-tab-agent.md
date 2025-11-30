@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.4.9 Dynamic UID display, DOM monitoring, CreateHandler storage listener)
+  (v1.6.4.10 isRendered() Boolean, z-index fix, UID display settings)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.9 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -37,15 +37,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-- **Restore via UICoordinator** - Uses fallback chain with snapshot lifecycle (v1.6.4.9)
+- **Restore via UICoordinator** - Uses fallback chain with snapshot lifecycle
 - **DragController Destroyed Flag** - Prevents ghost events
-- **Dynamic UID Display (v1.6.4.9)** - TitlebarBuilder.updateDebugIdDisplay() for toggle
+- **Dynamic UID Display (v1.6.4.10)** - Settings checkbox, storage.local listener
 
-**v1.6.4.9 New Patterns:**
-- **Dynamic UID Display:** TitlebarBuilder.updateDebugIdDisplay(showDebugId) adds/removes element
-- **CreateHandler Storage Listener:** _setupStorageListener() for setting changes
-- **CreateHandler Cleanup:** destroy() removes storage listener (memory leak prevention)
-- **DOM Monitoring:** UICoordinator tracks render state with 500ms interval checks
+**v1.6.4.10 Key Fixes:**
+- **isRendered() Strict Boolean:** Returns `Boolean()` not truthy `{}`
+- **z-index After Render:** Applied via requestAnimationFrame after DOM render
+- **UID Display Settings:** Checkbox in Advanced tab, `storage.local` with key `quickTabShowDebugId`
 
 **Constants Reference:**
 
@@ -64,34 +63,44 @@ const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
 
 ---
 
-## v1.6.4.9 Key Patterns
+## v1.6.4.10 Key Patterns
 
-### Dynamic UID Display (NEW)
+### isRendered() Strict Boolean (NEW)
 
 ```javascript
-// TitlebarBuilder - toggle debug ID dynamically
-updateDebugIdDisplay(showDebugId) {
-  // Add or remove UID element from titlebar
-  // CSS: marginLeft: 'auto', marginRight: '8px', fontSize: '11px', color: '#aaa'
-}
-
-// CreateHandler - listen for setting changes
-_setupStorageListener() {
-  browser.storage.onChanged.addListener((changes) => {
-    if (changes[QUICK_TAB_SETTINGS_KEY]) {
-      const newShowDebugId = changes[QUICK_TAB_SETTINGS_KEY].newValue?.quickTabShowDebugId;
-      this._updateAllQuickTabsDebugDisplay(newShowDebugId);
-    }
-  });
-}
-
-// CreateHandler - cleanup
-destroy() {
-  browser.storage.onChanged.removeListener(this._storageListener);
+// window.js - Returns Boolean, not truthy {}
+isRendered() {
+  return Boolean(this.element && document.body.contains(this.element));
 }
 ```
 
-### Snapshot Lifecycle (v1.6.4.9)
+### z-index After Render (NEW)
+
+```javascript
+// UICoordinator applies z-index AFTER DOM render completes
+render(quickTab) {
+  // ... create DOM elements ...
+  requestAnimationFrame(() => {
+    tabWindow.updateZIndex(this._getNextZIndex());
+  });
+}
+```
+
+### Dynamic UID Display (v1.6.4.10 - Complete)
+
+```javascript
+// Settings checkbox in Advanced tab (sidebar/settings.html)
+// DEFAULT_SETTINGS includes quickTabShowDebugId: false (sidebar/settings.js)
+// CreateHandler reads from storage.local key 'quickTabShowDebugId' (individual key)
+// storage.onChanged listener watches 'local' area for correct key
+
+// TitlebarBuilder - toggle debug ID dynamically
+updateDebugIdDisplay(showDebugId) {
+  // Add or remove UID element from titlebar
+}
+```
+
+### Snapshot Lifecycle (Inherited)
 
 ```javascript
 // MinimizedManager keeps snapshots until UICoordinator confirms render

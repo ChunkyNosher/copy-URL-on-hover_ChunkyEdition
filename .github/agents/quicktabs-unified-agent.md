@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.4.9 Snapshot lifecycle, DOM monitoring, warning indicators)
+  Quick Tab functionality (v1.6.4.10 Map cleanup, z-index fix, cross-tab manager)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.9 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -36,17 +36,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
 
-**v1.6.4.9 Architectural Patterns:**
-- **Snapshot Lifecycle:** `pendingClearSnapshots` Map keeps snapshots until UICoordinator confirms render
-- **DOM Monitoring:** `_domMonitoringTimers` with 500ms interval to detect detachment
-- **Manager Warning Indicator:** `_getIndicatorClass()` returns 'orange' when `domVerified=false`
-- **Dynamic UID Display:** TitlebarBuilder.updateDebugIdDisplay() + CreateHandler storage listener
-- **Entity-Instance Sync Fix:** Snapshot dimensions propagate via fallback chain
-- **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms
+**v1.6.4.10 Key Fixes:**
+- **Map Cleanup:** UICoordinator removes stale entries when DOM detached AND entity minimized
+- **z-index Fix:** Applied AFTER DOM render completes
+- **Cross-Tab Manager:** Minimize/restore messages sent to ALL browser tabs
+- **isRendered() Strict Boolean:** Returns `Boolean()` not truthy `{}`
+- **UID Display Complete:** Settings UI in Advanced tab, `storage.local` listener
 
 **Storage Keys:**
 - **State:** `quick_tabs_state_v2` (storage.local)
-- **Settings:** `quick_tab_settings` (storage.sync) - includes `quickTabShowDebugId`
+- **UID Setting:** `quickTabShowDebugId` (storage.local, individual key)
 
 ---
 
@@ -61,55 +60,53 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.4.9 Key Patterns
+## v1.6.4.10 Key Patterns
 
-### Snapshot Lifecycle (CRITICAL)
-
-```javascript
-// MinimizedManager keeps snapshots until UICoordinator confirms render
-pendingClearSnapshots = new Map();  // Snapshots awaiting render confirmation
-
-restore(id) {
-  this.pendingClearSnapshots.set(id, snapshot);  // Move to pending
-  this.minimizedTabs.delete(id);
-  return snapshot;
-}
-clearSnapshot(id) { this.pendingClearSnapshots.delete(id); }  // UICoordinator calls this
-hasSnapshot(id) { return minimizedTabs.has(id) || pendingClearSnapshots.has(id); }
-```
-
-### DOM Monitoring (v1.6.4.9)
+### Map Cleanup on DOM Detachment (NEW)
 
 ```javascript
-// UICoordinator monitors DOM for 5 seconds after render (10 checks × 500ms)
-_domMonitoringTimers = new Map();  // id → timerId
+// UICoordinator removes stale entries when DOM detached AND entity minimized
 _startDOMMonitoring(id, tabWindow) {
   setInterval(() => {
-    if (!tabWindow.isRendered()) { this.renderedTabs.delete(id); this._stopDOMMonitoring(id); }
-  }, 500);  // DOM_MONITORING_INTERVAL_MS
+    if (!tabWindow.isRendered()) {  // Returns Boolean()
+      this.renderedTabs.delete(id);
+      const entity = this.stateManager.get(id);
+      if (entity?.visibility?.minimized) { this._stopDOMMonitoring(id); }
+    }
+  }, 500);
 }
 ```
 
-### Manager Warning Indicator (v1.6.4.9)
+### z-index After Render (NEW)
 
 ```javascript
-// quick-tabs-manager.js - Orange indicator for unverified DOM
-function _getIndicatorClass(tab, isMinimized) {
-  if (tab.domVerified === false) return 'orange';  // Pulse animation
-  return isMinimized ? 'red' : 'green';
+// z-index applied AFTER DOM render completes (not during)
+render(quickTab) {
+  // ... create DOM elements ...
+  requestAnimationFrame(() => { tabWindow.updateZIndex(this._getNextZIndex()); });
 }
 ```
 
-### Dynamic UID Display (v1.6.4.9)
+### Cross-Tab Manager Messages (NEW)
 
 ```javascript
-// TitlebarBuilder: updateDebugIdDisplay(showDebugId) - adds/removes UID element
-// CreateHandler: _setupStorageListener() - listens to storage.onChanged
-// CreateHandler: _updateAllQuickTabsDebugDisplay(showDebugId) - updates all Quick Tabs
-// CreateHandler: destroy() - removes storage listener (memory leak prevention)
+// Manager sends minimize/restore to ALL browser tabs
+async handleMinimize(id) {
+  const tabs = await browser.tabs.query({});  // ALL tabs
+  for (const tab of tabs) {
+    browser.tabs.sendMessage(tab.id, { type: 'MINIMIZE_QUICK_TAB', id });
+  }
+}
 ```
 
-### Entity-Instance Sync (Fallback Chain)
+### isRendered() Strict Boolean (v1.6.4.10)
+
+```javascript
+// window.js - Returns Boolean, not truthy {}
+isRendered() { return Boolean(this.element && document.body.contains(this.element)); }
+```
+
+### Snapshot Lifecycle (Inherited)
 
 ```javascript
 UICoordinator._applySnapshotForRestore(quickTab) {
@@ -148,9 +145,9 @@ UICoordinator._applySnapshotForRestore(quickTab) {
 
 ### 3. Manager Integration
 - Global Quick Tabs display (no container grouping)
-- Minimize/restore functionality
+- Minimize/restore functionality (ALL browser tabs)
 - Manager ↔ Quick Tab communication
-- **v1.6.4.9:** Warning indicator for unverified DOM
+- Warning indicator for unverified DOM
 
 ### 4. Cross-Tab Synchronization
 - **storage.onChanged events** - Primary sync mechanism
@@ -178,7 +175,8 @@ UICoordinator._applySnapshotForRestore(quickTab) {
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
 - [ ] Manager displays with Solo/Mute indicators
-- [ ] **v1.6.4.9:** Orange indicator for unverified DOM
+- [ ] **v1.6.4.10:** Minimize/restore works cross-tab (all browser tabs)
+- [ ] **v1.6.4.10:** z-index correct on restored tabs
 - [ ] Drag/resize functional
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠

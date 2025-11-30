@@ -769,7 +769,7 @@ async function _sendMessageToTab(tabId, action, quickTabId) {
     await browser.tabs.sendMessage(tabId, { action, quickTabId });
     return true;
   } catch (_err) {
-    // Content script may not be loaded in tab ${tabId} - expected for new tabs/internal pages
+    // Content script may not be loaded - expected for new tabs/internal pages
     return false;
   }
 }

@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,14 +62,14 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**Storage Format (v1.6.3.2):**
+**Storage Format (v1.6.4.10):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
 
-**Storage Utilities (v1.6.3.2):**
+**Storage Utilities (v1.6.4.10):**
 - Use `src/utils/storage-utils.js` for persistence
-- Use `storage.local` for Quick Tab state (NOT `storage.sync`)
+- Use `storage.local` for Quick Tab state AND UID setting
 
 ---
 
