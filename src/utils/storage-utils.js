@@ -7,14 +7,16 @@
  * @module storage-utils
  */
 
+import { CONSTANTS } from '../core/config.js';
+
 // Storage key for Quick Tabs state (unified format v1.6.2.2+)
 export const STATE_KEY = 'quick_tabs_state_v2';
 
 // v1.6.4.1 - FIX Bug #1: Timeout for storage operations (5 seconds)
 const STORAGE_TIMEOUT_MS = 5000;
 
-// v1.6.3.4 - FIX Issue #3: Default z-index value (matches CONSTANTS.QUICK_TAB_BASE_Z_INDEX)
-const DEFAULT_ZINDEX = 1000000;
+// v1.6.3.4 - FIX Issue #3: Use CONSTANTS.QUICK_TAB_BASE_Z_INDEX for consistency
+const DEFAULT_ZINDEX = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
 
 /**
  * Generate unique save ID for storage deduplication
