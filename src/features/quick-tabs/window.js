@@ -864,10 +864,14 @@ export class QuickTabWindow {
 
   /**
    * v1.5.9.10 - Check if Quick Tab is rendered on the page
+   * v1.6.4.10 - FIX Issue #6: Ensure strict boolean return (not truthy object)
+   *   The && chain was returning the last truthy value (parentNode object)
+   *   instead of a boolean, causing conditional logic to incorrectly treat
+   *   destroyed windows as "attached" when the result was an empty object.
    * @returns {boolean} True if rendered and attached to DOM
    */
   isRendered() {
-    return this.rendered && this.container && this.container.parentNode;
+    return Boolean(this.rendered && this.container && this.container.parentNode);
   }
 
   /**

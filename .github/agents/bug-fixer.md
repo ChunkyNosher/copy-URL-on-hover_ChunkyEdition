@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.0 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -63,15 +63,12 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
 
-**v1.6.4.0 Architectural Fixes:**
-- Entity-Instance sync fix (snapshot dimensions propagate to entity via fallback chain)
-- UICoordinator restore helpers: `_tryApplySnapshotFromManager()`, `_tryApplyDimensionsFromInstance()`
-- UICoordinator single rendering authority (restore does NOT call render directly)
-- Mutex pattern in VisibilityHandler (_operationLocks prevents duplicates)
-- `STATE_EMIT_DELAY_MS = 200` (increased from 100ms)
-- Storage fallback pattern in CreateHandler (sync → local)
-- DragController destroyed flag prevents ghost events
-- DestroyHandler._batchMode prevents storage write storms
+**v1.6.4.10 Key Fixes:**
+- Map cleanup on DOM detachment when entity minimized
+- z-index applied AFTER DOM render completes
+- Manager sends minimize/restore to ALL browser tabs
+- isRendered() returns strict Boolean
+- UID display settings complete (storage.local listener)
 
 ---
 
@@ -297,7 +294,7 @@ function toggleSolo(quickTab, tabId) {
 ```javascript
 import { persistStateToStorage, generateSaveId } from '../utils/storage-utils.js';
 
-// Use _batchMode for rapid operations (v1.6.3.2)
+// Use _batchMode for rapid operations
 this._batchMode = true;  // Suppress individual writes during batch
 try { /* destroy operations */ }
 finally { this._batchMode = false; this.persistState(); }  // Single write

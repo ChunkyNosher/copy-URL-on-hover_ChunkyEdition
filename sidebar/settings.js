@@ -493,6 +493,9 @@ const DEFAULT_SETTINGS = {
   darkMode: true,
   menuSize: 'medium',
 
+  // v1.6.4.9 - Quick Tab Debug UID Display setting
+  quickTabShowDebugId: false,
+
   // v1.6.0.11 - Added filter defaults (stored separately in storage but reset together)
   // These are stored as liveConsoleCategoriesEnabled and exportLogCategoriesEnabled
   // but included here for documentation and reset functionality
@@ -596,6 +599,8 @@ function loadSettings() {
     document.getElementById('debugMode').checked = items.debugMode;
     document.getElementById('darkMode').checked = items.darkMode;
     document.getElementById('menuSize').value = items.menuSize || 'medium';
+    // v1.6.4.9 - Quick Tab Debug UID Display setting
+    document.getElementById('quickTabShowDebugId').checked = items.quickTabShowDebugId;
 
     applyTheme(items.darkMode);
     applyMenuSize(items.menuSize || 'medium');
@@ -710,7 +715,9 @@ function gatherSettingsFromForm() {
 
     debugMode: document.getElementById('debugMode').checked,
     darkMode: document.getElementById('darkMode').checked,
-    menuSize: document.getElementById('menuSize').value || 'medium'
+    menuSize: document.getElementById('menuSize').value || 'medium',
+    // v1.6.4.9 - Quick Tab Debug UID Display setting
+    quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked
   };
 }
 

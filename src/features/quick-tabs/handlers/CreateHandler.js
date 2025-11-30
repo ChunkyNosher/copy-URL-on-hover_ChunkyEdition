@@ -9,7 +9,6 @@
 
 import browser from 'webextension-polyfill';
 
-import { CONSTANTS } from '../../../core/config.js';
 import { createQuickTabWindow } from '../window.js';
 
 /**
@@ -83,25 +82,23 @@ export class CreateHandler {
   /**
    * Setup storage.onChanged listener for dynamic setting updates
    * v1.6.4.8 - FIX Issue #4: Update already-rendered Quick Tabs when settings change
+   * v1.6.4.9 - FIX Issue #5: Listen for individual key 'quickTabShowDebugId' from storage.local
    * @private
    */
   _setupStorageListener() {
-    const settingsKey = CONSTANTS.QUICK_TAB_SETTINGS_KEY;
-
     // Store listener reference for cleanup
-    // Note: We intentionally don't filter by areaName because settings can be in
-    // either sync or local storage (with fallback), and we want to react to changes
-    // in either area
+    // v1.6.4.9 - FIX: Listen for individual key 'quickTabShowDebugId' (how settings.js saves it)
+    // instead of nested object access via QUICK_TAB_SETTINGS_KEY
     this._storageListener = (changes, areaName) => {
-      // Check if our settings key changed
-      if (!changes[settingsKey]) return;
+      // Only react to local storage changes where settings are saved
+      if (areaName !== 'local') return;
 
-      const newSettings = changes[settingsKey].newValue;
-      const oldSettings = changes[settingsKey].oldValue;
-      
-      // Check if quickTabShowDebugId specifically changed
-      const newShowDebugId = newSettings?.quickTabShowDebugId ?? false;
-      const oldShowDebugId = oldSettings?.quickTabShowDebugId ?? false;
+      // Check if quickTabShowDebugId key changed
+      const changeData = changes.quickTabShowDebugId;
+      if (!changeData) return;
+
+      const newShowDebugId = changeData.newValue ?? false;
+      const oldShowDebugId = changeData.oldValue ?? false;
       
       if (newShowDebugId === oldShowDebugId) return;
 
@@ -151,41 +148,17 @@ export class CreateHandler {
    * @private
    */
   async _loadDebugIdSetting() {
-    const settingsKey = CONSTANTS.QUICK_TAB_SETTINGS_KEY;
-    
-    // Try sync storage first
+    // v1.6.4.9 - FIX Issue #3: Read from storage.local with individual key 'quickTabShowDebugId'
+    // This matches how settings.js saves the setting (individual keys to storage.local)
     try {
-      const result = await browser.storage.sync.get(settingsKey);
-      console.log('[CreateHandler] Sync storage result:', { settingsKey, result });
-      
-      if (result && result[settingsKey]) {
-        const settings = result[settingsKey];
-        this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
-        console.log('[CreateHandler] Loaded showDebugId from sync storage:', this.showDebugIdSetting);
-        return;
-      }
-    } catch (syncErr) {
-      console.warn('[CreateHandler] Sync storage failed, trying local:', syncErr);
+      const result = await browser.storage.local.get('quickTabShowDebugId');
+      this.showDebugIdSetting = result.quickTabShowDebugId ?? false;
+      console.log('[CreateHandler] Loaded showDebugId from storage.local:', this.showDebugIdSetting);
+    } catch (err) {
+      console.warn('[CreateHandler] Failed to load showDebugId setting:', err.message);
+      this.showDebugIdSetting = false;
+      console.log('[CreateHandler] Using default showDebugId setting:', this.showDebugIdSetting);
     }
-    
-    // Fallback to local storage
-    try {
-      const localResult = await browser.storage.local.get(settingsKey);
-      console.log('[CreateHandler] Local storage result:', { settingsKey, localResult });
-      
-      if (localResult && localResult[settingsKey]) {
-        const settings = localResult[settingsKey];
-        this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
-        console.log('[CreateHandler] Loaded showDebugId from local storage:', this.showDebugIdSetting);
-        return;
-      }
-    } catch (localErr) {
-      console.warn('[CreateHandler] Local storage also failed:', localErr.message);
-    }
-    
-    // Default to false if both fail
-    this.showDebugIdSetting = false;
-    console.log('[CreateHandler] Using default showDebugId setting:', this.showDebugIdSetting);
   }
 
   /**

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4.9  
+**Version:** 1.6.4.10  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,13 +15,12 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 
-**v1.6.4.9 Architectural Patterns:**
-- **Snapshot Lifecycle:** MinimizedManager uses `pendingClearSnapshots` Map to keep snapshots until UICoordinator confirms render
-- **DOM Monitoring:** UICoordinator uses `_domMonitoringTimers` with 500ms interval to detect detachment
-- **Manager Warning Indicator:** `_getIndicatorClass()` returns 'orange' when `domVerified=false`
-- **Dynamic UID Display:** TitlebarBuilder.updateDebugIdDisplay() + CreateHandler storage listener
-- **Entity-Instance Sync Fix:** Snapshot dimensions propagate via fallback chain
-- **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms
+**v1.6.4.10 Key Fixes:**
+- **Map Cleanup:** UICoordinator removes stale entries when DOM detached AND entity minimized
+- **z-index Fix:** Applied AFTER DOM render completes (restored tabs no longer behind)
+- **Cross-Tab Manager:** Minimize/restore messages sent to ALL browser tabs
+- **isRendered() Strict Boolean:** Returns `Boolean()` not truthy `{}`
+- **UID Display Complete:** Settings UI, storage persistence, CreateHandler `storage.local` listener
 
 ---
 
@@ -158,66 +157,66 @@ const success = await persistStateToStorage(state, '[MyHandler]'); // Returns bo
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.4.9)
+## 🏗️ Key Architecture Patterns (v1.6.4.10)
 
-### Snapshot Lifecycle (v1.6.4.9 - CRITICAL)
-
-```javascript
-// MinimizedManager keeps snapshots until UICoordinator confirms render
-pendingClearSnapshots = new Map();  // Snapshots awaiting render confirmation
-
-restore(id) {
-  // Move from minimizedTabs to pendingClearSnapshots
-  this.pendingClearSnapshots.set(id, snapshot);
-  this.minimizedTabs.delete(id);
-  return snapshot;  // Caller uses snapshot data
-}
-
-clearSnapshot(id) { this.pendingClearSnapshots.delete(id); }  // Called by UICoordinator
-hasSnapshot(id) { return minimizedTabs.has(id) || pendingClearSnapshots.has(id); }
-```
-
-### DOM Monitoring (v1.6.4.9)
+### Map Cleanup on DOM Detachment (v1.6.4.10)
 
 ```javascript
-// UICoordinator monitors DOM for 5 seconds after render
-_domMonitoringTimers = new Map();  // id → timerId
-
+// UICoordinator removes stale Map entries when DOM detached AND entity minimized
 _startDOMMonitoring(id, tabWindow) {
   const timerId = setInterval(() => {
-    if (!tabWindow.isRendered()) { this.renderedTabs.delete(id); this._stopDOMMonitoring(id); }
-  }, 500);  // DOM_MONITORING_INTERVAL_MS
-  this._domMonitoringTimers.set(id, timerId);
+    if (!tabWindow.isRendered()) {  // Returns Boolean()
+      this.renderedTabs.delete(id);
+      const entity = this.stateManager.get(id);
+      if (entity?.visibility?.minimized) {
+        this._stopDOMMonitoring(id);  // Clean exit for minimized
+      }
+    }
+  }, 500);
 }
 ```
 
-### Manager Warning Indicator (v1.6.4.9)
+### z-index After Render (v1.6.4.10)
 
 ```javascript
-// quick-tabs-manager.js - Orange indicator for unverified DOM
-function _getIndicatorClass(tab, isMinimized) {
-  if (tab.domVerified === false) return 'orange';  // Pulse animation
-  return isMinimized ? 'red' : 'green';
+// z-index applied AFTER DOM render completes (not during)
+render(quickTab) {
+  // ... create DOM elements ...
+  // Apply z-index AFTER element is in DOM
+  requestAnimationFrame(() => {
+    tabWindow.updateZIndex(this._getNextZIndex());
+  });
 }
-// CSS: --orange-indicator: #f39c12
 ```
 
-### Dynamic UID Display (v1.6.4.9)
+### Cross-Tab Manager Messages (v1.6.4.10)
 
 ```javascript
-// TitlebarBuilder: updateDebugIdDisplay(showDebugId) - adds/removes UID element
-// CreateHandler: _setupStorageListener() - listens to storage.onChanged for settings
-// CreateHandler: _updateAllQuickTabsDebugDisplay(showDebugId) - iterates all Quick Tabs
-// CreateHandler: destroy() - removes storage listener to prevent memory leaks
+// Manager sends minimize/restore to ALL browser tabs, not just active
+async handleMinimize(id) {
+  const tabs = await browser.tabs.query({});  // ALL tabs
+  for (const tab of tabs) {
+    browser.tabs.sendMessage(tab.id, { type: 'MINIMIZE_QUICK_TAB', id });
+  }
+}
 ```
 
-### Entity-Instance Sync (v1.6.4.0)
+### isRendered() Strict Boolean (v1.6.4.10)
 
+```javascript
+// window.js - Returns Boolean, not truthy {}
+isRendered() {
+  return Boolean(this.element && document.body.contains(this.element));
+}
 ```
-VisibilityHandler.handleRestore() → MinimizedManager.restore(id) → UICoordinator:
-  1. _tryApplySnapshotFromManager() → uses hasSnapshot(), calls restore()
-  2. _tryApplyDimensionsFromInstance() → fallback to tabWindow dimensions
-  3. clearSnapshot(id) after successful DOM render
+
+### Dynamic UID Display (v1.6.4.10 - Complete)
+
+```javascript
+// Settings checkbox in Advanced tab (settings.html)
+// DEFAULT_SETTINGS includes quickTabShowDebugId: false
+// CreateHandler reads from storage.local key 'quickTabShowDebugId'
+// storage.onChanged listener watches 'local' area for correct key
 ```
 
 ### Constants Reference
@@ -333,31 +332,32 @@ Use the agentic-tools MCP to create memories instead.
 - `src/utils/storage-utils.js` - Shared storage utilities with async persist
 - `src/utils/dom.js` - DOM utilities including `cleanupOrphanedQuickTabElements()`
 - `src/features/quick-tabs/coordinators/UICoordinator.js`:
-  - **v1.6.4.9:** `_domMonitoringTimers`, `_startDOMMonitoring()`, `_stopDOMMonitoring()`
+  - **v1.6.4.10:** Map cleanup for minimized entities, z-index after render
   - `DOM_VERIFICATION_DELAY_MS = 150`, `DOM_MONITORING_INTERVAL_MS = 500`
-  - `_tryApplySnapshotFromManager()` uses `hasSnapshot()`, calls `clearSnapshot()`
 - `src/features/quick-tabs/handlers/CreateHandler.js`:
-  - **v1.6.4.9:** `_setupStorageListener()`, `_updateAllQuickTabsDebugDisplay()`, `destroy()`
+  - **v1.6.4.10:** Uses `storage.local` with key `quickTabShowDebugId`
   - **`async init()`** with storage fallback pattern
 - `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, **`_batchMode`**
 - `src/features/quick-tabs/handlers/VisibilityHandler.js` - `STATE_EMIT_DELAY_MS = 100`, `_operationLocks` mutex
-- `src/features/quick-tabs/minimized-manager.js`:
-  - **v1.6.4.9:** `pendingClearSnapshots`, `clearSnapshot(id)`, `hasSnapshot(id)`
-  - Snapshot lifecycle: keep until UICoordinator confirms render
-- `src/features/quick-tabs/window.js` - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` constants
-- `src/features/quick-tabs/window/TitlebarBuilder.js`:
-  - **v1.6.4.9:** `updateDebugIdDisplay(showDebugId)` - dynamic UID toggle
+- `src/features/quick-tabs/minimized-manager.js` - Snapshot lifecycle with pendingClearSnapshots
+- `src/features/quick-tabs/window.js`:
+  - **v1.6.4.10:** `isRendered()` returns `Boolean()` (strict)
+  - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` constants
+- `src/features/quick-tabs/window/TitlebarBuilder.js` - `updateDebugIdDisplay(showDebugId)`
 - `sidebar/quick-tabs-manager.js`:
-  - **v1.6.4.9:** `_getIndicatorClass()` - returns 'orange' when `domVerified=false`
+  - **v1.6.4.10:** Minimize/restore sends to ALL browser tabs
+  - `_getIndicatorClass()` - returns 'orange' when `domVerified=false`
+- `sidebar/settings.html` - **v1.6.4.10:** UID display checkbox in Advanced tab
+- `sidebar/settings.js` - **v1.6.4.10:** `quickTabShowDebugId` in DEFAULT_SETTINGS
 
 ### Storage Key & Format
 
 **Quick Tab State Key:** `quick_tabs_state_v2` (storage.local)  
-**Quick Tab Settings Key:** `quick_tab_settings` (storage.sync)
+**Quick Tab Settings Key:** `quickTabShowDebugId` (storage.local, individual key)
 
-**CRITICAL:** Use `storage.local` for Quick Tab state, `storage.sync` for settings.
+**CRITICAL:** Use `storage.local` for Quick Tab state AND settings.
 
-**State Format (v1.6.4.9):**
+**State Format (v1.6.4.10):**
 ```javascript
 {
   tabs: [...],           // Array with domVerified property
