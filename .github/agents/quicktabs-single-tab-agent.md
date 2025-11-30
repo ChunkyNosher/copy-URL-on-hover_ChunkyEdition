@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.2 DragController destroyed flag, restore via UICoordinator)
+  (v1.6.4.0 Debug UID CSS fix, DragController destroyed flag, restore via UICoordinator)
 tools: ["*"]
 ---
 
@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4.0 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Quick Tab Features:**
@@ -61,28 +61,40 @@ const relevantMemories = await searchMemories({
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-- **Restore via UICoordinator** - Uses `_verifyDOMAfterRender()` with `DOM_VERIFICATION_DELAY_MS = 150`
-- **DragController Destroyed Flag** - Prevents ghost events (v1.6.3.2)
-- **Debug UID Display** - `quickTabShowDebugId` setting (v1.6.3.2)
-- **Default Dimensions** - `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300` (v1.6.4.7)
+- **Restore via UICoordinator** - Uses fallback chain with `_tryApplySnapshotFromManager()` and `_tryApplyDimensionsFromInstance()`
+- **DragController Destroyed Flag** - Prevents ghost events (v1.6.4.0)
+- **Debug UID Display** - Flexbox positioning with `marginLeft: 'auto'`, `fontSize: '11px'`, `color: '#aaa'`
+- **Default Dimensions** - `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300` (v1.6.4.0)
 
-**New Constants (v1.6.4.7):**
+**New Constants (v1.6.4.0):**
 - `DOM_VERIFICATION_DELAY_MS = 150` (UICoordinator)
-- `STATE_EMIT_DELAY_MS = 100` (VisibilityHandler)
+- `STATE_EMIT_DELAY_MS = 200` (VisibilityHandler - increased from 100)
 - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` (QuickTabWindow)
 
-**Minimized State Detection (v1.6.3.2):**
+**Minimized State Detection (v1.6.4.0):**
 ```javascript
 // Use this pattern EVERYWHERE for consistent detection
 const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
 ```
 
-**Restore Pattern (v1.6.3.2):**
+**Restore Pattern (v1.6.4.0 - Entity-Instance Sync Fix):**
 ```javascript
-// restore() no longer calls render() - UICoordinator handles it
-// MinimizedManager.restore() only applies snapshot and returns data
-const snapshot = minimizedManager.restore(id);
-// UICoordinator receives state:updated event and renders if needed
+// UICoordinator uses fallback chain for restore dimensions
+// 1. _tryApplySnapshotFromManager() - get from MinimizedManager if exists
+// 2. _tryApplyDimensionsFromInstance() - fallback to tabWindow instance
+// Emits state:updated event → UICoordinator.update() → render() if needed
+```
+
+**Debug UID CSS Fix (v1.6.4.0):**
+```javascript
+// Proper flexbox positioning for debug ID element
+style: {
+  marginLeft: 'auto',   // Push to right edge in flexbox
+  marginRight: '8px',
+  fontSize: '11px',     // Increased from 10px
+  color: '#aaa',        // Brighter than #888
+  maxWidth: '120px'     // Increased from 100px
+}
 ```
 
 ---
@@ -138,7 +150,7 @@ const snapshot = minimizedManager.restore(id);
 
 ---
 
-### Solo/Mute Implementation (v1.6.3.2)
+### Solo/Mute Implementation (v1.6.4.0)
 
 **Key Rules:**
 1. Solo and Mute are **mutually exclusive**
@@ -147,7 +159,7 @@ const snapshot = minimizedManager.restore(id);
 4. Both use browser `tabId` stored in arrays
 5. Persist changes to storage.local via shared utilities
 
-**Toggle Solo (v1.6.3.2):**
+**Toggle Solo (v1.6.4.0):**
 ```javascript
 async toggleSolo(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -186,7 +198,7 @@ async toggleSolo(browserTabId) {
 }
 ```
 
-**Toggle Mute (v1.6.3.2):**
+**Toggle Mute (v1.6.4.0):**
 ```javascript
 async toggleMute(browserTabId) {
   const quickTab = this.quickTabsManager.tabs.get(this.id);
@@ -227,7 +239,7 @@ async toggleMute(browserTabId) {
 
 ---
 
-## Visibility Pattern (v1.6.3.2)
+## Visibility Pattern (v1.6.4.0)
 
 **Global visibility with Solo/Mute arrays:**
 
@@ -291,7 +303,7 @@ Use `iframe.contentWindow.history.back()/forward()` and `location.reload()` for 
 
 ### Issue: Solo/Mute Not Mutually Exclusive
 
-**Fix (v1.6.3.2):** Filter opposite array when toggling
+**Fix (v1.6.4.0):** Filter opposite array when toggling
 
 ```javascript
 // ✅ CORRECT - Mutual exclusivity with arrays
@@ -307,7 +319,7 @@ if (enablingSolo) {
 
 ### Issue: Quick Tab Not Visible When Expected
 
-**Fix (v1.6.3.2):** Check soloedOnTabs array logic
+**Fix (v1.6.4.0):** Check soloedOnTabs array logic
 
 ```javascript
 // ✅ CORRECT - Visibility check with arrays
@@ -326,29 +338,30 @@ function shouldBeVisible(quickTab, browserTabId) {
 }
 ```
 
-### Issue: updateZIndex TypeError (v1.6.3.2)
+### Issue: updateZIndex TypeError (v1.6.4.0)
 
 **Fix:** Add null/undefined safety checks
 
 ```javascript
-// ✅ CORRECT - Null-safe updateZIndex (v1.6.3.2)
+// ✅ CORRECT - Null-safe updateZIndex (v1.6.4.0)
 updateZIndex(zIndex) {
   if (!this.element) return;
   this.element.style.zIndex = zIndex;
 }
 ```
 
-### Issue: Duplicate Windows on Restore (v1.6.3.2)
+### Issue: Duplicate Windows on Restore (v1.6.4.0)
 
-**Fix:** UICoordinator is single rendering authority - restore() does NOT call render()
+**Fix:** UICoordinator uses fallback chain - entity-instance sync gap fixed
 
 ```javascript
-// ✅ CORRECT - restore() only applies snapshot, UICoordinator renders
-// MinimizedManager.restore() returns snapshot data
-// Emits state:updated event → UICoordinator.update() → render() if needed
+// ✅ CORRECT - UICoordinator fallback chain for restore
+// 1. _tryApplySnapshotFromManager() - get snapshot if exists
+// 2. _tryApplyDimensionsFromInstance() - fallback to tabWindow instance
+// Entity dimensions now properly synced from instance
 ```
 
-### Issue: Ghost Drag Events (v1.6.3.2)
+### Issue: Ghost Drag Events (v1.6.4.0)
 
 **Fix:** DragController uses destroyed flag
 

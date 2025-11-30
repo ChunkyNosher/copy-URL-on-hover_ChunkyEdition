@@ -97,9 +97,9 @@ export class UICoordinator {
       console.warn('[UICoordinator] Local storage also failed:', localErr.message);
     }
     
-    // Default to false if both fail
+    // Default to false if both sync and local storage fail
     this.showDebugIdSetting = false;
-    console.log('[UICoordinator] Using default showDebugId setting:', this.showDebugIdSetting);
+    console.log('[UICoordinator] Both sync and local storage failed, using default showDebugId:', this.showDebugIdSetting);
   }
 
   /**
@@ -210,7 +210,9 @@ export class UICoordinator {
     
     const hasValidWidth = typeof tabWindow.width === 'number' && tabWindow.width > 0;
     const hasValidHeight = typeof tabWindow.height === 'number' && tabWindow.height > 0;
-    if (!hasValidWidth || !hasValidHeight) {
+    const hasValidLeft = typeof tabWindow.left === 'number';
+    const hasValidTop = typeof tabWindow.top === 'number';
+    if (!hasValidWidth || !hasValidHeight || !hasValidLeft || !hasValidTop) {
       return false;
     }
     

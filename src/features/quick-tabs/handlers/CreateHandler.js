@@ -85,7 +85,7 @@ export class CreateHandler {
         return;
       }
     } catch (syncErr) {
-      console.warn('[CreateHandler] Sync storage failed, trying local:', syncErr.message);
+      console.warn('[CreateHandler] Sync storage failed, trying local:', syncErr);
     }
     
     // Fallback to local storage

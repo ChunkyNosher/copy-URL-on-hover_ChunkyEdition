@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.4.0 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -63,10 +63,13 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
 
-**v1.6.3.2 Architectural Fixes:**
+**v1.6.4.0 Architectural Fixes:**
+- Entity-Instance sync fix (snapshot dimensions propagate to entity via fallback chain)
+- UICoordinator restore helpers: `_tryApplySnapshotFromManager()`, `_tryApplyDimensionsFromInstance()`
 - UICoordinator single rendering authority (restore does NOT call render directly)
 - Mutex pattern in VisibilityHandler (_operationLocks prevents duplicates)
-- MinimizedManager.restore() only applies snapshot, returns data
+- `STATE_EMIT_DELAY_MS = 200` (increased from 100ms)
+- Storage fallback pattern in CreateHandler (sync → local)
 - DragController destroyed flag prevents ghost events
 - DestroyHandler._batchMode prevents storage write storms
 
@@ -173,32 +176,9 @@ const tabs = state.quick_tabs_state_v2?.tabs || [];
 **Required Tests:**
 
 1. **Regression Test** - Proves bug existed
-   ```javascript
-   test('bug #123: should handle null tab', async () => {
-     // Test the specific bug condition
-   });
-   ```
-
 2. **Fix Verification** - Proves fix works
-   ```javascript
-   test('fixed bug #123: handles null tab gracefully', async () => {
-     // Verify fix resolves the issue
-   });
-   ```
-
-3. **Edge Cases** - Tests boundary conditions
-   ```javascript
-   test('edge case: empty container ID', async () => {
-     // Test edge conditions
-   });
-   ```
-
+3. **Edge Cases** - Tests boundary conditions  
 4. **Integration Test** - Verifies no side effects
-   ```javascript
-   test('integration: Quick Tab creation with fix', async () => {
-     // Test full workflow
-   });
-   ```
 
 **Coverage Target:** 100% for bug fix code paths
 
@@ -273,7 +253,7 @@ const tabs = state.quick_tabs_state_v2?.tabs || [];
 
 ## Common Bug Categories
 
-### Global Visibility (v1.6.3.2)
+### Global Visibility (v1.6.4.0)
 
 **Symptoms:** State not shared correctly across tabs
 
@@ -288,7 +268,7 @@ const state = await browser.storage.local.get(STATE_KEY);
 const tabs = state[STATE_KEY]?.tabs || [];
 ```
 
-### Solo/Mute State Bugs (v1.6.3.2)
+### Solo/Mute State Bugs (v1.6.4.0)
 
 **Symptoms:** Incorrect visibility, state conflicts
 
@@ -307,7 +287,7 @@ function toggleSolo(quickTab, tabId) {
 }
 ```
 
-### Storage Persistence Bugs (v1.6.3.2)
+### Storage Persistence Bugs (v1.6.4.0)
 
 **Symptoms:** State lost after destroy/minimize/restore
 
@@ -323,7 +303,7 @@ try { /* destroy operations */ }
 finally { this._batchMode = false; this.persistState(); }  // Single write
 ```
 
-### DOM Cleanup Bugs (v1.6.3.2)
+### DOM Cleanup Bugs (v1.6.4.0)
 
 **Symptoms:** Orphaned Quick Tab elements remain after close/destroy
 
@@ -337,22 +317,24 @@ import { cleanupOrphanedQuickTabElements } from '../utils/dom.js';
 cleanupOrphanedQuickTabElements();
 ```
 
-### Minimize/Restore Bugs (v1.6.3.2)
+### Minimize/Restore Bugs (v1.6.4.0)
 
 **Symptoms:** Duplicate windows on restore, wrong position/size
 
-**Root Cause:** Multiple sources triggering restore, or render() called directly
+**Root Cause:** Entity-instance sync gap - snapshot dimensions not propagating to entity
 
-**Standard Fix (v1.6.3.2):**
+**Standard Fix (v1.6.4.0):**
 ```javascript
-// UICoordinator is single rendering authority
-// restore() does NOT call render() directly
-// MinimizedManager.restore() only applies snapshot, returns data
-// Emits state:updated → UICoordinator.update() → render() if needed
+// UICoordinator uses fallback chain for restore
+// 1. _tryApplySnapshotFromManager() - get snapshot if still exists
+// 2. _tryApplyDimensionsFromInstance() - fallback to tabWindow instance
+// This ensures entity gets dimensions from instance
 
 // VisibilityHandler uses mutex pattern to prevent duplicates
 if (this._operationLocks.has(id)) return;  // Skip duplicate
 this._operationLocks.set(id, 'restore');
+
+// STATE_EMIT_DELAY_MS = 200 gives UICoordinator time to render
 ```
 
 ### Quick Tab Rendering Bugs
@@ -493,19 +475,19 @@ test('edge case #123: empty container string', ...);
 → Edge cases are where bugs hide
 
 ❌ **Not checking global visibility logic**
-→ Quick Tabs are visible everywhere in v1.6.3.2 (no container isolation)
+→ Quick Tabs are visible everywhere in v1.6.4.0 (no container isolation)
 
 ❌ **Using storage.sync for Quick Tab state**
 → Use storage.local for Quick Tab state, storage.sync only for settings
 
 ❌ **Not using debounced batch writes**
-→ Rapid destroy operations cause storage write storms (use _batchMode v1.6.3.2)
+→ Rapid destroy operations cause storage write storms (use _batchMode v1.6.4.0)
 
 ❌ **Not using DOM cleanup**
 → Call `cleanupOrphanedQuickTabElements()` after destroy operations
 
 ❌ **Calling render() directly from restore()**
-→ UICoordinator is single rendering authority (v1.6.3.2)
+→ UICoordinator uses fallback chain for entity-instance sync (v1.6.4.0)
 
 ---
 
