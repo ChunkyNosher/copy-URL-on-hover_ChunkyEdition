@@ -1,0 +1,8 @@
+{
+  "id": "87c06cc8-84ce-40a2-86b9-a80ed821be00",
+  "title": "Entity-Instance Sync Gap Fix",
+  "details": "## Quick Tab Restore Entity-Instance Synchronization Gap\n\n### Problem\nWhen restoring minimized Quick Tabs, the saved dimensions (e.g., 960×540) were lost, resulting in 400×300 default windows.\n\n### Root Cause Sequence\n1. VisibilityHandler.handleRestore() calls minimizedManager.restore() which:\n   - Applies snapshot to tabWindow INSTANCE\n   - REMOVES tab from minimizedTabs Map\n2. state:updated event emitted\n3. UICoordinator.update() receives event with quickTab ENTITY (no position/size)\n4. UICoordinator._applySnapshotForRestore() fails because minimizedManager.isMinimized() returns FALSE\n5. New window created from ENTITY with default dimensions\n\n### Solution (v1.6.4.8)\nAdded fallback in _applySnapshotForRestore() to read from existing tabWindow INSTANCE when MinimizedManager has already deleted the snapshot:\n- _tryApplySnapshotFromManager() - First tries MinimizedManager\n- _tryApplyDimensionsFromInstance() - Falls back to reading from renderedTabs.get(id)\n\n### Key Insight\nThe existing tabWindow instance still has the correct dimensions applied by minimizedManager.restore(), even after the snapshot is deleted. Use it as source of truth when MinimizedManager fails.",
+  "category": "architecture",
+  "dateCreated": "2025-11-30T02:01:36.879Z",
+  "dateUpdated": "2025-11-30T02:01:36.879Z"
+}

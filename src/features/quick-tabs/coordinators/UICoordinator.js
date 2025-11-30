@@ -61,19 +61,45 @@ export class UICoordinator {
   /**
    * Load the quickTabShowDebugId setting from storage
    * v1.6.3.2 - Feature: Debug UID Display Toggle
+   * v1.6.4.8 - FIX Issue #2: Add fallback to local storage, improved logging
    * @private
    */
   async _loadDebugIdSetting() {
+    const settingsKey = CONSTANTS.QUICK_TAB_SETTINGS_KEY;
+    
+    // Try sync storage first
     try {
-      const settingsKey = CONSTANTS.QUICK_TAB_SETTINGS_KEY;
       const result = await browser.storage.sync.get(settingsKey);
-      const settings = result[settingsKey] || {};
-      this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
-      console.log('[UICoordinator] Loaded showDebugId setting:', this.showDebugIdSetting);
-    } catch (err) {
-      console.warn('[UICoordinator] Failed to load showDebugId setting:', err);
-      this.showDebugIdSetting = false;
+      console.log('[UICoordinator] Sync storage result:', { settingsKey, result });
+      
+      if (result && result[settingsKey]) {
+        const settings = result[settingsKey];
+        this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
+        console.log('[UICoordinator] Loaded showDebugId from sync storage:', this.showDebugIdSetting);
+        return;
+      }
+    } catch (syncErr) {
+      console.warn('[UICoordinator] Sync storage failed, trying local:', syncErr.message);
     }
+    
+    // Fallback to local storage
+    try {
+      const localResult = await browser.storage.local.get(settingsKey);
+      console.log('[UICoordinator] Local storage result:', { settingsKey, localResult });
+      
+      if (localResult && localResult[settingsKey]) {
+        const settings = localResult[settingsKey];
+        this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
+        console.log('[UICoordinator] Loaded showDebugId from local storage:', this.showDebugIdSetting);
+        return;
+      }
+    } catch (localErr) {
+      console.warn('[UICoordinator] Local storage also failed:', localErr.message);
+    }
+    
+    // Default to false if both sync and local storage fail
+    this.showDebugIdSetting = false;
+    console.log('[UICoordinator] Both sync and local storage failed, using default showDebugId:', this.showDebugIdSetting);
   }
 
   /**
@@ -96,6 +122,7 @@ export class UICoordinator {
    * v1.6.2.2 - Removed container check for global visibility
    * v1.6.3 - Removed pending updates (no cross-tab sync)
    * v1.6.4.6 - FIX Issue #3: Validate DOM attachment before returning cached window
+   * v1.6.4.8 - FIX Issue #5: Add DOM verification after render to catch detachment early
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Rendered tab window
@@ -127,6 +154,9 @@ export class UICoordinator {
     // Store in map
     this.renderedTabs.set(quickTab.id, tabWindow);
 
+    // v1.6.4.8 - FIX Issue #5: Verify DOM is attached after render
+    this._verifyDOMAfterRender(tabWindow, quickTab.id);
+
     console.log('[UICoordinator] Tab rendered:', quickTab.id);
     return tabWindow;
   }
@@ -142,24 +172,81 @@ export class UICoordinator {
   }
 
   /**
-   * Apply snapshot data from minimizedManager to quickTab for restore
+   * Try to apply snapshot from minimizedManager
+   * v1.6.4.8 - Helper to reduce _applySnapshotForRestore complexity
+   * @private
+   * @param {QuickTab} quickTab - QuickTab entity to apply snapshot to
+   * @returns {boolean} True if snapshot was applied
+   */
+  _tryApplySnapshotFromManager(quickTab) {
+    if (!this._hasMinimizedManager() || !this.minimizedManager.isMinimized(quickTab.id)) {
+      return false;
+    }
+    
+    const snapshot = this.minimizedManager.getSnapshot(quickTab.id);
+    if (!snapshot) {
+      return false;
+    }
+    
+    console.log('[UICoordinator] Restoring from snapshot (from minimizedManager):', snapshot);
+    quickTab.position = snapshot.position;
+    quickTab.size = snapshot.size;
+    this.minimizedManager.restore(quickTab.id);
+    return true;
+  }
+
+  /**
+   * Try to apply dimensions from existing tabWindow instance
+   * v1.6.4.8 - Helper to reduce _applySnapshotForRestore complexity
+   * @private
+   * @param {QuickTab} quickTab - QuickTab entity to apply dimensions to
+   * @returns {boolean} True if dimensions were applied
+   */
+  _tryApplyDimensionsFromInstance(quickTab) {
+    const tabWindow = this.renderedTabs.get(quickTab.id);
+    if (!tabWindow || tabWindow.minimized) {
+      return false;
+    }
+    
+    const hasValidWidth = typeof tabWindow.width === 'number' && tabWindow.width > 0;
+    const hasValidHeight = typeof tabWindow.height === 'number' && tabWindow.height > 0;
+    const hasValidLeft = typeof tabWindow.left === 'number';
+    const hasValidTop = typeof tabWindow.top === 'number';
+    if (!hasValidWidth || !hasValidHeight || !hasValidLeft || !hasValidTop) {
+      return false;
+    }
+    
+    console.log('[UICoordinator] Restoring from tabWindow instance dimensions:', {
+      id: quickTab.id,
+      left: tabWindow.left,
+      top: tabWindow.top,
+      width: tabWindow.width,
+      height: tabWindow.height
+    });
+    quickTab.position = { left: tabWindow.left, top: tabWindow.top };
+    quickTab.size = { width: tabWindow.width, height: tabWindow.height };
+    return true;
+  }
+
+  /**
+   * Apply snapshot data to quickTab entity for restore
    * v1.6.4.5 - FIX Issue #3: Use snapshot position/size when restoring
+   * v1.6.4.8 - FIX Entity-Instance Sync Gap: Read from tabWindow instance if minimizedManager
+   *   has already removed the snapshot (happens when VisibilityHandler calls restore first)
    * @private
    * @param {QuickTab} quickTab - QuickTab entity to apply snapshot to
    */
   _applySnapshotForRestore(quickTab) {
-    if (!this._hasMinimizedManager() || !this.minimizedManager.isMinimized(quickTab.id)) {
+    // First try to get snapshot from minimizedManager
+    if (this._tryApplySnapshotFromManager(quickTab)) {
       return;
     }
-
-    const snapshot = this.minimizedManager.getSnapshot(quickTab.id);
-    if (snapshot) {
-      console.log('[UICoordinator] Restoring from snapshot, applying saved position:', snapshot);
-      quickTab.position = snapshot.position;
-      quickTab.size = snapshot.size;
+    // v1.6.4.8 - FIX Entity-Instance Sync Gap: If minimizedManager doesn't have it,
+    // try to read from the existing tabWindow instance (which may have had snapshot applied)
+    if (this._tryApplyDimensionsFromInstance(quickTab)) {
+      return;
     }
-    // Restore and remove from minimizedManager
-    this.minimizedManager.restore(quickTab.id);
+    console.log('[UICoordinator] No snapshot available for:', quickTab.id);
   }
 
   /**

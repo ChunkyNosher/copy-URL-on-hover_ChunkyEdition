@@ -67,19 +67,45 @@ export class CreateHandler {
   /**
    * Load the quickTabShowDebugId setting from storage
    * v1.6.3.2 - Feature: Debug UID Display Toggle
+   * v1.6.4.8 - FIX Issue #2: Add fallback to local storage, improved logging
    * @private
    */
   async _loadDebugIdSetting() {
+    const settingsKey = CONSTANTS.QUICK_TAB_SETTINGS_KEY;
+    
+    // Try sync storage first
     try {
-      const settingsKey = CONSTANTS.QUICK_TAB_SETTINGS_KEY;
       const result = await browser.storage.sync.get(settingsKey);
-      const settings = result[settingsKey] || {};
-      this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
-      console.log('[CreateHandler] Loaded showDebugId setting:', this.showDebugIdSetting);
-    } catch (err) {
-      console.warn('[CreateHandler] Failed to load showDebugId setting:', err);
-      this.showDebugIdSetting = false;
+      console.log('[CreateHandler] Sync storage result:', { settingsKey, result });
+      
+      if (result && result[settingsKey]) {
+        const settings = result[settingsKey];
+        this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
+        console.log('[CreateHandler] Loaded showDebugId from sync storage:', this.showDebugIdSetting);
+        return;
+      }
+    } catch (syncErr) {
+      console.warn('[CreateHandler] Sync storage failed, trying local:', syncErr);
     }
+    
+    // Fallback to local storage
+    try {
+      const localResult = await browser.storage.local.get(settingsKey);
+      console.log('[CreateHandler] Local storage result:', { settingsKey, localResult });
+      
+      if (localResult && localResult[settingsKey]) {
+        const settings = localResult[settingsKey];
+        this.showDebugIdSetting = settings.quickTabShowDebugId ?? false;
+        console.log('[CreateHandler] Loaded showDebugId from local storage:', this.showDebugIdSetting);
+        return;
+      }
+    } catch (localErr) {
+      console.warn('[CreateHandler] Local storage also failed:', localErr.message);
+    }
+    
+    // Default to false if both fail
+    this.showDebugIdSetting = false;
+    console.log('[CreateHandler] Using default showDebugId setting:', this.showDebugIdSetting);
   }
 
   /**

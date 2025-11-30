@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.2 UICoordinator single rendering, mutex pattern)
+  Quick Tab functionality (v1.6.4.0 Entity-Instance sync fix, restore fallback chain)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.2 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4.0 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -36,11 +36,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
 
-**v1.6.3.2+ Architectural Patterns:**
-- **UICoordinator Single Rendering Authority:** Uses `_verifyDOMAfterRender()` with `DOM_VERIFICATION_DELAY_MS = 150`
-- **Mutex Pattern:** `VisibilityHandler._operationLocks` + `STATE_EMIT_DELAY_MS = 100` for delayed emit
-- **MinimizedManager.restore():** Applies snapshot with BEFORE/AFTER dimension logging, returns data
-- **CreateHandler Async Init:** `async init()` loads `quickTabShowDebugId` from `QUICK_TAB_SETTINGS_KEY`
+**v1.6.4.0 Architectural Patterns:**
+- **Entity-Instance Sync Fix:** Snapshot dimensions propagate from instance to entity via fallback chain
+- **UICoordinator Restore Helpers:** `_tryApplySnapshotFromManager()` → `_tryApplyDimensionsFromInstance()` fallback
+- **UICoordinator Single Rendering:** Uses `_verifyDOMAfterRender()` with `DOM_VERIFICATION_DELAY_MS = 150`
+- **Mutex Pattern:** `VisibilityHandler._operationLocks` + `STATE_EMIT_DELAY_MS = 200` for delayed emit
+- **Storage Fallback:** CreateHandler tries sync, falls back to local for settings
 - **QuickTabWindow Defaults:** `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300`, `DEFAULT_LEFT/TOP = 100`
 - **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms
 
@@ -61,9 +62,21 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.2+ Key Patterns
+## v1.6.4.0 Key Patterns
 
-### UICoordinator DOM Verification (v1.6.4.7)
+### Entity-Instance Sync Fix (v1.6.4.0 - CRITICAL)
+
+```javascript
+// UICoordinator fallback chain for getting dimensions during restore
+_applySnapshotForRestore(quickTab) {
+  // 1. Try MinimizedManager snapshot (may already be deleted)
+  if (this._tryApplySnapshotFromManager(quickTab)) return;
+  // 2. Fallback to existing tabWindow instance dimensions
+  this._tryApplyDimensionsFromInstance(quickTab);
+}
+```
+
+### UICoordinator DOM Verification (v1.6.4.0)
 
 ```javascript
 const DOM_VERIFICATION_DELAY_MS = 150;
@@ -75,20 +88,20 @@ _verifyDOMAfterRender(tabWindow, quickTabId) {
 }
 ```
 
-### VisibilityHandler Delayed Emit (v1.6.4.7)
+### VisibilityHandler Delayed Emit (v1.6.4.0)
 
 ```javascript
-const STATE_EMIT_DELAY_MS = 100;  // Wait for DOM verification
+const STATE_EMIT_DELAY_MS = 200;  // Wait for DOM verification
 _emitRestoreStateUpdate(id, tabWindow) {
   setTimeout(() => this.eventBus.emit('state:updated', data), STATE_EMIT_DELAY_MS);
 }
 ```
 
-### CreateHandler Async Init (v1.6.3.2)
+### CreateHandler Async Init with Storage Fallback (v1.6.4.0)
 
 ```javascript
-async init() { await this._loadDebugIdSetting(); }  // From QUICK_TAB_SETTINGS_KEY
-// QuickTabsManager: await this.createHandler.init();
+async init() { await this._loadDebugIdSetting(); }
+// Try sync storage first, fallback to local on failure
 ```
 
 ### Mutex Pattern for Visibility Operations
@@ -104,15 +117,16 @@ handleMinimize(id) {
 }
 ```
 
-### MinimizedManager.restore() (v1.6.3.2)
+### MinimizedManager.restore() (v1.6.4.0)
 
 ```javascript
 // restore() only applies snapshot, does NOT call tabWindow.restore()
+// UICoordinator uses fallback chain to propagate dimensions to entity
 const snapshot = minimizedManager.restore(id);
-// Caller uses snapshot data, UICoordinator handles rendering
+// UICoordinator._applySnapshotForRestore() handles entity-instance sync
 ```
 
-### Close All Batch Mode (v1.6.3.2)
+### Close All Batch Mode (v1.6.4.0)
 
 ```javascript
 // DestroyHandler prevents storage write storms (1 write vs 6+)

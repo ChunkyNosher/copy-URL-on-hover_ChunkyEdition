@@ -1,0 +1,8 @@
+{
+  "id": "0aa997c2-1cfb-4777-b5c4-d6972377cb06",
+  "title": "v1.6.4.0 Doc Update Patterns",
+  "details": "Documentation updated to v1.6.4.0 with new architectural patterns:\n\n1. **Entity-Instance Sync Fix** - Snapshot dimensions propagate from QuickTabWindow INSTANCE to QuickTab ENTITY via UICoordinator fallback chain:\n   - `_tryApplySnapshotFromManager()` - Try MinimizedManager snapshot first\n   - `_tryApplyDimensionsFromInstance()` - Fallback to tabWindow instance dimensions\n\n2. **STATE_EMIT_DELAY_MS = 200** - Increased from 100ms to give UICoordinator more time for DOM verification before emitting state:updated\n\n3. **Debug UID CSS Fix** - Proper flexbox positioning:\n   - marginLeft: 'auto' (push to right edge)\n   - fontSize: '11px' (increased from 10px)\n   - color: '#aaa' (brighter than #888)\n\n4. **Storage Fallback Pattern** - CreateHandler._loadDebugIdSetting() tries sync storage first, falls back to local storage on failure\n\nFiles updated: copilot-instructions.md, quicktabs-unified-agent.md, quicktabs-single-tab-agent.md, bug-fixer.md, bug-architect.md",
+  "category": "documentation",
+  "dateCreated": "2025-11-30T02:14:13.280Z",
+  "dateUpdated": "2025-11-30T02:14:13.280Z"
+}

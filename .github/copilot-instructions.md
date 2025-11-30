@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.2  
+**Version:** 1.6.4.0  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,13 +15,14 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 
-**v1.6.3.2+ Architectural Patterns:**
-- **UICoordinator Single Rendering Authority:** Only UICoordinator calls `render()` - uses `_verifyDOMAfterRender()` with `DOM_VERIFICATION_DELAY_MS = 150`
-- **Mutex Pattern for Visibility:** `VisibilityHandler._operationLocks` prevents duplicate operations; `STATE_EMIT_DELAY_MS = 100` delays emit for DOM verification
-- **MinimizedManager Changes:** `restore()` only applies snapshot with BEFORE/AFTER dimension logging, returns data
-- **CreateHandler Async Init:** `async init()` loads `quickTabShowDebugId` setting from `QUICK_TAB_SETTINGS_KEY`
-- **QuickTabWindow Defaults:** `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300`, `DEFAULT_LEFT = 100`, `DEFAULT_TOP = 100`
-- **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms (1 write vs 6+)
+**v1.6.4.0 Architectural Patterns:**
+- **Entity-Instance Sync Fix:** Snapshot dimensions propagate from QuickTabWindow INSTANCE to QuickTab ENTITY via fallback chain
+- **UICoordinator Restore Helpers:** `_tryApplySnapshotFromManager()` → `_tryApplyDimensionsFromInstance()` fallback
+- **UICoordinator Single Rendering:** Uses `_verifyDOMAfterRender()` with `DOM_VERIFICATION_DELAY_MS = 150`
+- **Mutex Pattern for Visibility:** `VisibilityHandler._operationLocks` prevents duplicates; `STATE_EMIT_DELAY_MS = 200`
+- **Storage Fallback Pattern:** CreateHandler tries sync storage, falls back to local
+- **QuickTabWindow Defaults:** `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300`, `DEFAULT_LEFT/TOP = 100`
+- **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms
 
 ---
 
@@ -115,7 +116,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 QuickTabsManager API (v1.6.3.2)
+## 🔧 QuickTabsManager API (v1.6.4.0)
 
 ### Correct Methods
 
@@ -130,7 +131,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🔧 Storage Utilities (v1.6.3.2)
+## 🔧 Storage Utilities (v1.6.4.0)
 
 **Location:** `src/utils/storage-utils.js`
 
@@ -158,23 +159,28 @@ const success = await persistStateToStorage(state, '[MyHandler]'); // Returns bo
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.3.2)
+## 🏗️ Key Architecture Patterns (v1.6.4.0)
 
-### Restore Flow (v1.6.3.2 - UICoordinator as Single Rendering Authority)
+### Restore Flow (v1.6.4.0 - Entity-Instance Sync Fix)
 
 ```
 VisibilityHandler.handleRestore()
     ↓
-MinimizedManager.restore(id) → applies snapshot to instance, returns snapshot data
+MinimizedManager.restore(id) → applies snapshot to instance
     ↓
-emits 'state:updated' event
+UICoordinator._applySnapshotForRestore(quickTab)
+    ↓ (fallback chain)
+    1. _tryApplySnapshotFromManager() → get snapshot if exists
+    2. _tryApplyDimensionsFromInstance() → fallback to tabWindow instance
+    ↓
+emits 'state:updated' event (after STATE_EMIT_DELAY_MS = 200ms)
     ↓
 UICoordinator.update(quickTab) → calls render() if needed
 ```
 
-**Key Point:** `QuickTabWindow.restore()` NO LONGER calls `render()` directly. This prevents duplicate windows.
+**Key Point:** Entity-Instance sync gap fixed - snapshot dimensions now propagate from instance to entity.
 
-### Mutex Pattern for Visibility Operations (v1.6.3.2)
+### Mutex Pattern for Visibility Operations (v1.6.4.0)
 
 ```javascript
 // VisibilityHandler prevents duplicate minimize/restore operations
@@ -188,7 +194,7 @@ handleMinimize(id) {
 }
 ```
 
-### MinimizedManager.restore() Pattern (v1.6.3.2)
+### MinimizedManager.restore() Pattern (v1.6.4.0)
 
 ```javascript
 // restore() only applies snapshot, does NOT call tabWindow.restore()
@@ -204,7 +210,7 @@ restore(id) {
 }
 ```
 
-### DragController Destroyed Flag (v1.6.3.2)
+### DragController Destroyed Flag (v1.6.4.0)
 
 ```javascript
 // Prevents ghost events after cleanup
@@ -223,7 +229,7 @@ class DragController {
 }
 ```
 
-### Close All Batch Mode (v1.6.3.2)
+### Close All Batch Mode (v1.6.4.0)
 
 ```javascript
 // DestroyHandler prevents storage write storms during closeAll()
@@ -240,7 +246,7 @@ closeAll() {
 }
 ```
 
-### QuickTabWindow.minimize() Pattern (v1.6.3.2)
+### QuickTabWindow.minimize() Pattern (v1.6.4.0)
 
 ```javascript
 // minimize() pauses media, removes DOM, destroys controllers
@@ -255,7 +261,7 @@ minimize() {
 }
 ```
 
-### UICoordinator DOM Verification (v1.6.4.7)
+### UICoordinator DOM Verification (v1.6.4.0)
 
 ```javascript
 const DOM_VERIFICATION_DELAY_MS = 150;  // Delay for async verification
@@ -275,10 +281,10 @@ _verifyDOMAfterRender(tabWindow, quickTabId) {
 }
 ```
 
-### VisibilityHandler Delayed Emit (v1.6.4.7)
+### VisibilityHandler Delayed Emit (v1.6.4.0)
 
 ```javascript
-const STATE_EMIT_DELAY_MS = 100;  // Wait for DOM verification before emit
+const STATE_EMIT_DELAY_MS = 200;  // Wait for DOM verification before emit
 
 _emitRestoreStateUpdate(id, tabWindow) {
   // Delay to ensure DOM is attached before notifying listeners
@@ -288,22 +294,25 @@ _emitRestoreStateUpdate(id, tabWindow) {
 }
 ```
 
-### CreateHandler Async Initialization (v1.6.3.2)
+### CreateHandler Async Initialization (v1.6.4.0)
 
 ```javascript
-// CreateHandler now has async init() for loading settings
+// CreateHandler now has async init() for loading settings with fallback
 async init() {
   await this._loadDebugIdSetting();  // Loads from QUICK_TAB_SETTINGS_KEY
 }
 
-// QuickTabsManager calls this during initialization
-async _initStep3_Handlers() {
-  this.createHandler = new CreateHandler(...);
-  await this.createHandler.init();  // Load debug settings before use
+// Storage fallback pattern (v1.6.4.0)
+async _loadDebugIdSetting() {
+  try {
+    const result = await browser.storage.sync.get(settingsKey);  // Try sync first
+  } catch (err) {
+    const result = await browser.storage.local.get(settingsKey); // Fallback to local
+  }
 }
 ```
 
-### UICoordinator DOM Validation (v1.6.3.2)
+### UICoordinator DOM Validation (v1.6.4.0)
 
 ```javascript
 // Validate DOM attachment before operating
@@ -421,17 +430,17 @@ Use the agentic-tools MCP to create memories instead.
 ### Key Files
 - `background.js` - Background script, storage listeners, saveId tracking
 - `src/content.js` - Content script, Quick Tab creation, Manager action handlers
-- `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings (v1.6.3.2)
+- `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings
 - `src/utils/storage-utils.js` - Shared storage utilities with async persist
 - `src/utils/dom.js` - DOM utilities including `cleanupOrphanedQuickTabElements()`
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - **`DOM_VERIFICATION_DELAY_MS = 150`**, `_verifyDOMAfterRender()` (v1.6.4.7)
-- `src/features/quick-tabs/handlers/CreateHandler.js` - **`async init()`** for loading debug settings (v1.6.3.2)
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - **`DOM_VERIFICATION_DELAY_MS = 150`**, `_verifyDOMAfterRender()`, `_tryApplySnapshotFromManager()`, `_tryApplyDimensionsFromInstance()`
+- `src/features/quick-tabs/handlers/CreateHandler.js` - **`async init()`** with storage fallback pattern
 - `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, **`_batchMode`**
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - **`STATE_EMIT_DELAY_MS = 100`**, **`_operationLocks`** mutex
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - **`STATE_EMIT_DELAY_MS = 200`**, **`_operationLocks`** mutex
 - `src/features/quick-tabs/minimized-manager.js` - Snapshot storage with BEFORE/AFTER dimension logging
-- `src/features/quick-tabs/window.js` - **`DEFAULT_WIDTH/HEIGHT/LEFT/TOP`** constants (v1.6.4.7)
+- `src/features/quick-tabs/window.js` - **`DEFAULT_WIDTH/HEIGHT/LEFT/TOP`** constants
 - `src/features/quick-tabs/index.js` - **`async _initStep3_Handlers()`** for handler init
-- `src/features/quick-tabs/ui/builders/TitlebarBuilder.js` - `_createDebugIdElement()` for debug ID display
+- `src/features/quick-tabs/window/TitlebarBuilder.js` - Debug UID with flexbox positioning
 - `options_page.html` / `options_page.js` - `quickTabShowDebugId` setting
 - `sidebar/quick-tabs-manager.js` - Manager UI
 
@@ -442,7 +451,7 @@ Use the agentic-tools MCP to create memories instead.
 
 **CRITICAL:** Use `storage.local` for Quick Tab state, `storage.sync` for settings.
 
-**State Format (v1.6.3.2):**
+**State Format (v1.6.4.0):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -451,14 +460,14 @@ Use the agentic-tools MCP to create memories instead.
 }
 ```
 
-**Settings Format (v1.6.3.2):**
+**Settings Format (v1.6.4.0):**
 ```javascript
 {
   quickTabShowDebugId: false  // Show UID in titlebar
 }
 ```
 
-### Manager Action Messages (v1.6.3.2)
+### Manager Action Messages (v1.6.4.0)
 
 Content script handles these messages from Manager:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
