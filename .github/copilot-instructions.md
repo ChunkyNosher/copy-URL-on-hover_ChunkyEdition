@@ -15,11 +15,12 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 
-**v1.6.3.2 Architectural Fixes:**
-- **UICoordinator Single Rendering Authority:** `restore()` NO LONGER calls `render()` directly
-- **Mutex Pattern for Visibility:** `VisibilityHandler._operationLocks` prevents duplicate operations
-- **MinimizedManager Changes:** `restore()` only applies snapshot, returns data (no tabWindow.restore())
-- **DragController Destroyed Flag:** Prevents ghost events after cleanup
+**v1.6.3.2+ Architectural Patterns:**
+- **UICoordinator Single Rendering Authority:** Only UICoordinator calls `render()` - uses `_verifyDOMAfterRender()` with `DOM_VERIFICATION_DELAY_MS = 150`
+- **Mutex Pattern for Visibility:** `VisibilityHandler._operationLocks` prevents duplicate operations; `STATE_EMIT_DELAY_MS = 100` delays emit for DOM verification
+- **MinimizedManager Changes:** `restore()` only applies snapshot with BEFORE/AFTER dimension logging, returns data
+- **CreateHandler Async Init:** `async init()` loads `quickTabShowDebugId` setting from `QUICK_TAB_SETTINGS_KEY`
+- **QuickTabWindow Defaults:** `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300`, `DEFAULT_LEFT = 100`, `DEFAULT_TOP = 100`
 - **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms (1 write vs 6+)
 
 ---
@@ -254,6 +255,54 @@ minimize() {
 }
 ```
 
+### UICoordinator DOM Verification (v1.6.4.7)
+
+```javascript
+const DOM_VERIFICATION_DELAY_MS = 150;  // Delay for async verification
+
+_verifyDOMAfterRender(tabWindow, quickTabId) {
+  // Immediate check
+  if (!tabWindow.isRendered()) {
+    console.error('[UICoordinator] Immediate DOM verification FAILED');
+    return;
+  }
+  // Delayed verification catches async detachment
+  setTimeout(() => {
+    if (!tabWindow.isRendered()) {
+      this.renderedTabs.delete(quickTabId);  // Cleanup stale reference
+    }
+  }, DOM_VERIFICATION_DELAY_MS);
+}
+```
+
+### VisibilityHandler Delayed Emit (v1.6.4.7)
+
+```javascript
+const STATE_EMIT_DELAY_MS = 100;  // Wait for DOM verification before emit
+
+_emitRestoreStateUpdate(id, tabWindow) {
+  // Delay to ensure DOM is attached before notifying listeners
+  setTimeout(() => {
+    this.eventBus.emit('state:updated', { quickTab: data });
+  }, STATE_EMIT_DELAY_MS);
+}
+```
+
+### CreateHandler Async Initialization (v1.6.3.2)
+
+```javascript
+// CreateHandler now has async init() for loading settings
+async init() {
+  await this._loadDebugIdSetting();  // Loads from QUICK_TAB_SETTINGS_KEY
+}
+
+// QuickTabsManager calls this during initialization
+async _initStep3_Handlers() {
+  this.createHandler = new CreateHandler(...);
+  await this.createHandler.init();  // Load debug settings before use
+}
+```
+
 ### UICoordinator DOM Validation (v1.6.3.2)
 
 ```javascript
@@ -370,50 +419,42 @@ Use the agentic-tools MCP to create memories instead.
 ## 📋 Quick Reference
 
 ### Key Files
-- `background.js` - Background script, storage listeners, saveId tracking, synchronous gesture handlers
-- `src/content.js` - Content script, Quick Tab creation, Manager action handlers, `CLOSE_MINIMIZED_QUICK_TABS`
+- `background.js` - Background script, storage listeners, saveId tracking
+- `src/content.js` - Content script, Quick Tab creation, Manager action handlers
+- `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings (v1.6.3.2)
 - `src/utils/storage-utils.js` - Shared storage utilities with async persist
 - `src/utils/dom.js` - DOM utilities including `cleanupOrphanedQuickTabElements()`
-- `src/features/quick-tabs/coordinators/SyncCoordinator.js` - Cross-tab sync
-- `src/features/quick-tabs/managers/StorageManager.js` - Storage operations
-- `src/features/quick-tabs/managers/StateManager.js` - State management
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - UI rendering, **Single Rendering Authority** (v1.6.3.2)
-- `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, `state:cleared` event, **_batchMode** (v1.6.3.2)
-- `src/features/quick-tabs/handlers/UpdateHandler.js` - Position/size updates with async persistence
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Solo/Mute, **mutex pattern _operationLocks** (v1.6.3.2)
-- `src/features/quick-tabs/minimized-manager.js` - Snapshot storage, **restore() returns data only** (v1.6.3.2)
-- `src/features/quick-tabs/window.js` - `minimize()` removes DOM + pauses media, **restore() does NOT render** (v1.6.3.2)
-- `src/features/quick-tabs/controllers/drag-controller.js` - **destroyed flag prevents ghost events** (v1.6.3.2)
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - **`DOM_VERIFICATION_DELAY_MS = 150`**, `_verifyDOMAfterRender()` (v1.6.4.7)
+- `src/features/quick-tabs/handlers/CreateHandler.js` - **`async init()`** for loading debug settings (v1.6.3.2)
+- `src/features/quick-tabs/handlers/DestroyHandler.js` - Debounced batch writes, **`_batchMode`**
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - **`STATE_EMIT_DELAY_MS = 100`**, **`_operationLocks`** mutex
+- `src/features/quick-tabs/minimized-manager.js` - Snapshot storage with BEFORE/AFTER dimension logging
+- `src/features/quick-tabs/window.js` - **`DEFAULT_WIDTH/HEIGHT/LEFT/TOP`** constants (v1.6.4.7)
+- `src/features/quick-tabs/index.js` - **`async _initStep3_Handlers()`** for handler init
 - `src/features/quick-tabs/ui/builders/TitlebarBuilder.js` - `_createDebugIdElement()` for debug ID display
 - `options_page.html` / `options_page.js` - `quickTabShowDebugId` setting
-- `sidebar/quick-tabs-manager.js` - Manager UI, closeMinimizedTabs
-- `sidebar/settings.js` - Sidebar initialization
+- `sidebar/quick-tabs-manager.js` - Manager UI
 
 ### Storage Key & Format
 
-**Storage Key:** `quick_tabs_state_v2`
+**Quick Tab State Key:** `quick_tabs_state_v2` (storage.local)  
+**Quick Tab Settings Key:** `quick_tab_settings` (storage.sync)
 
-**CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
+**CRITICAL:** Use `storage.local` for Quick Tab state, `storage.sync` for settings.
 
-**Unified Format (v1.6.3.2):**
+**State Format (v1.6.3.2):**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
-  saveId: 'unique-id',   // Deduplication ID (tracked by background.js)
-  timestamp: Date.now()  // Last update timestamp
+  saveId: 'unique-id',   // Deduplication ID
+  timestamp: Date.now()
 }
 ```
 
-**Quick Tab Object:**
+**Settings Format (v1.6.3.2):**
 ```javascript
 {
-  id: 'qt-xxx',
-  url: 'https://...',
-  title: 'Page Title',
-  soloedOnTabs: [tabId1, tabId2],  // Show ONLY on these tabs
-  mutedOnTabs: [tabId3],           // Hide on these tabs
-  position: { x, y },
-  size: { width, height }
+  quickTabShowDebugId: false  // Show UID in titlebar
 }
 ```
 

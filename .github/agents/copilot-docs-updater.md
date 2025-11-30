@@ -105,10 +105,13 @@ stat -c%s .github/copilot-instructions.md
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array, NOT containers)
-- [ ] Storage area correct (storage.local for Quick Tab state, NOT storage.sync)
+- [ ] Storage area correct (storage.local for state, storage.sync for settings)
 - [ ] Storage utilities documented (src/utils/storage-utils.js)
 - [ ] Manager action messages documented (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
-- [ ] saveId tracking documented (background.js)
+- [ ] UICoordinator DOM verification pattern documented (`_verifyDOMAfterRender`, `DOM_VERIFICATION_DELAY_MS`)
+- [ ] VisibilityHandler delayed emit pattern documented (`STATE_EMIT_DELAY_MS`)
+- [ ] CreateHandler async init pattern documented (`async init()`, `QUICK_TAB_SETTINGS_KEY`)
+- [ ] QuickTabWindow default constants documented (`DEFAULT_WIDTH/HEIGHT/LEFT/TOP`)
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -125,10 +128,16 @@ stat -c%s .github/copilot-instructions.md
   - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
   - Direct local creation pattern
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
-- **Storage Area:** storage.local for Quick Tab state (NOT storage.sync)
+- **Storage Area:** storage.local for Quick Tab state, storage.sync for settings
+- **Storage Keys:** `quick_tabs_state_v2` (state), `quick_tab_settings` (settings with `quickTabShowDebugId`)
 - **Storage Utilities:** `src/utils/storage-utils.js` exports
+- **New Constants (v1.6.4.7):**
+  - `DOM_VERIFICATION_DELAY_MS = 150` (UICoordinator)
+  - `STATE_EMIT_DELAY_MS = 100` (VisibilityHandler)
+  - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` (QuickTabWindow)
+  - `QUICK_TAB_SETTINGS_KEY` (config.js)
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
-- **saveId Tracking:** background.js tracks saveId for collision detection
+- **CreateHandler Async Init:** `async init()` for loading debug settings
 - **Agent Delegation Table:** When to use which agent
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -274,55 +283,13 @@ await perplexity.research("documentation compression markdown");
 
 ### Step 4: Optimize Size
 
-**If file exceeds 15KB:**
-
-1. **Remove redundant information:**
-   - Consolidate similar sections
-   - Remove duplicate examples
-   - Use tables instead of prose
-   - Remove verbose explanations
-
-2. **Use cross-references:**
-   ```markdown
-   See `.github/copilot-instructions.md` for details.
-   ```
-
-3. **Compress tables:**
-   ```markdown
-   | Short | Col |
-   |-------|-----|
-   | Data  | Here|
-   ```
-
-4. **Use bullet points over paragraphs**
-
-5. **Remove excessive whitespace**
+**If file exceeds 15KB:** Remove redundant info, use cross-references, compress tables, use bullet points.
 
 ### Step 5: Validate & Commit
 
-**Validation checklist:**
 - [ ] All files under 15KB
-- [ ] ESLint passes (if code examples)
-- [ ] No broken cross-references
 - [ ] Version numbers consistent
-- [ ] MCP tools accurate
 - [ ] Terminology current
-- [ ] No prohibited locations used
-
-**Commit with memory:**
-```bash
-# Verify sizes one final time
-for file in .github/copilot-instructions.md .github/agents/*.md; do
-  size=$(wc -c < "$file")
-  if [ $size -gt 15360 ]; then
-    echo "ERROR: $file exceeds 15KB ($size bytes)"
-  fi
-done
-
-# Commit
-git add .github/copilot-instructions.md .github/agents/*.md .agentic-tools-mcp/
-git commit -m "docs: update Copilot instructions and agents for v1.6.3"
-```
 
 ---
 
@@ -376,130 +343,36 @@ All operations use: `quick_tabs_state_v2`
 
 ## Size Optimization Techniques
 
-### 1. Content Prioritization
+**Content Prioritization:** Keep critical instructions, size limits, MCP tools. Remove verbose explanations, duplicates.
 
-**Keep:**
-- Critical instructions
-- Size limits
-- MCP tool usage
-- Current version/architecture
-- Common pitfalls
+**Formatting:** Use tables instead of prose. Use bullet points over paragraphs.
 
-**Remove/Compress:**
-- Verbose explanations
-- Duplicate information
-- Historical context
-- Excessive examples
-
-### 2. Formatting Efficiency
-
-**Use tables:**
-```markdown
-| Task | Agent | When |
-|------|-------|------|
-| Bugs | bug-fixer | Clear repro |
-```
-
-Instead of:
-```markdown
-For bugs with clear reproduction steps, use the bug-fixer agent...
-```
-
-### 3. Cross-Reference Strategy
-
-Instead of duplicating, reference:
-```markdown
-See `.github/copilot-instructions.md` § MCP Tools
-```
-
-### 4. Compress Lists
-
-**Before (verbose):**
-```markdown
-- First, you should do X
-- Then, you need to do Y
-- Finally, complete Z
-```
-
-**After (concise):**
-```markdown
-- Do X
-- Do Y
-- Complete Z
-```
+**Cross-Reference:** Reference `.github/copilot-instructions.md` instead of duplicating.
 
 ---
 
 ## Common Documentation Errors
 
-### 1. Outdated Version References
-
-**Error:** Documentation references v1.5.9 features
-**Fix:** Update all version refs to 1.6.3.2
-
-### 2. Deprecated Terminology
-
-**Error:** Using "Pin to Page" instead of "Solo/Mute"
-**Fix:** Global find/replace "Pin to Page" → "Solo/Mute"
-
-### 3. Old Sync Mechanism / Storage Format
-
-**Error:** Referencing BroadcastChannel or container-based storage
-**Fix:** Update to storage.onChanged (v1.6.2+) and unified format (v1.6.3+)
-
-### 4. Container References
-
-**Error:** Referencing container isolation or cookieStoreId filtering
-**Fix:** Remove all container references - Quick Tabs are globally visible
-
-### 5. Wrong Storage Area
-
-**Error:** Using storage.sync for Quick Tab state
-**Fix:** Use storage.local for Quick Tab state (storage.sync only for settings)
-
-### 6. Size Violations
-
-**Error:** Agent files exceeding 15KB
-**Fix:** Apply compression techniques, use cross-references
-
-### 7. Inconsistent MCP Lists
-
-**Error:** Different agent files list different MCP tools
-**Fix:** Standardize MCP tool lists across all agents
+| Error | Fix |
+|-------|-----|
+| v1.5.9 references | Update to 1.6.3.2 |
+| "Pin to Page" | Use "Solo/Mute" |
+| BroadcastChannel | Use storage.onChanged |
+| Container refs | Remove (global visibility) |
+| storage.sync for state | Use storage.local |
+| Files >15KB | Apply compression |
 
 ---
 
 ## Testing & Validation
 
-**Before every commit:**
-
-- [ ] **Size Check:**
-  ```bash
-  for f in .github/copilot-instructions.md .github/agents/*.md; do
-    s=$(wc -c < "$f"); 
-    [ $s -gt 15360 ] && echo "FAIL: $f ($s bytes)" || echo "PASS: $f";
-  done
-  ```
-
-- [ ] **Version Consistency:**
-  ```bash
-  grep -h "Version.*1\." .github/*.md .github/agents/*.md | sort -u
-  ```
-
-- [ ] **Terminology Check:**
-  ```bash
-  # Should return 0 results
-  grep -r "Pin to Page" .github/
-  grep -r "BroadcastChannel" .github/ | grep -v "REMOVED"
-  ```
-
-- [ ] **Cross-Reference Validity:**
-  ```bash
-  # Check all cross-references exist
-  grep -r "See \`" .github/ | cut -d'`' -f2 | while read f; do
-    [ -f "$f" ] || echo "MISSING: $f"
-  done
-  ```
+```bash
+# Size check (all files under 15360 bytes)
+for f in .github/copilot-instructions.md .github/agents/*.md; do
+  s=$(wc -c < "$f"); 
+  [ $s -gt 15360 ] && echo "FAIL: $f ($s bytes)" || echo "PASS: $f";
+done
+```
 
 ---
 
