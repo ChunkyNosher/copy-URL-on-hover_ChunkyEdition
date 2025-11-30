@@ -2,6 +2,7 @@
  * Storage utility functions for Quick Tabs
  * v1.6.4 - Extracted from handlers to reduce duplication
  * v1.6.4.1 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
+ * v1.6.3.4 - FIX Issue #3: Add z-index persistence
  * 
  * @module storage-utils
  */
@@ -11,6 +12,9 @@ export const STATE_KEY = 'quick_tabs_state_v2';
 
 // v1.6.4.1 - FIX Bug #1: Timeout for storage operations (5 seconds)
 const STORAGE_TIMEOUT_MS = 5000;
+
+// v1.6.3.4 - FIX Issue #3: Default z-index value (matches CONSTANTS.QUICK_TAB_BASE_Z_INDEX)
+const DEFAULT_ZINDEX = 1000000;
 
 /**
  * Generate unique save ID for storage deduplication
@@ -86,6 +90,7 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  * Serialize a single Quick Tab to storage format
  * v1.6.4.1 - FIX Bug #1: Extracted to reduce complexity
  * v1.6.4.2 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
+ * v1.6.3.4 - FIX Issue #3: Include zIndex in serialized data for persistence
  * @private
  * @param {Object} tab - Quick Tab instance
  * @param {boolean} isMinimized - Whether tab is minimized
@@ -100,6 +105,7 @@ function serializeTabForStorage(tab, isMinimized) {
     top: _getNumericValue(tab, 'top', 'position', 'top', 0),
     width: _getNumericValue(tab, 'width', 'size', 'width', 400),
     height: _getNumericValue(tab, 'height', 'size', 'height', 300),
+    zIndex: _getNumericValue(tab, 'zIndex', null, null, DEFAULT_ZINDEX), // v1.6.3.4 - Use constant
     minimized: Boolean(isMinimized),
     soloedOnTabs: _getArrayValue(tab, 'soloedOnTabs', 'soloedOnTabs'),
     mutedOnTabs: _getArrayValue(tab, 'mutedOnTabs', 'mutedOnTabs')

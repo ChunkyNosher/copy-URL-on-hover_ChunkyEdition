@@ -4,6 +4,7 @@
  *
  * v1.6.0 - PHASE 2.2: Facade pattern implementation
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
+ * v1.6.3.4 - FIX Issues #1, #8: Add state rehydration on startup with explicit logging
  *
  * Architecture:
  * - Facade orchestrates managers, handlers, and coordinators
@@ -23,10 +24,12 @@ import { EventManager } from './managers/EventManager.js';
 import { StateManager } from './managers/StateManager.js';
 import { MinimizedManager } from './minimized-manager.js';
 import { CONSTANTS } from '../../core/config.js';
+import { STATE_KEY } from '../../utils/storage-utils.js';
 
 /**
  * QuickTabsManager - Facade for Quick Tab management
  * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync or storage persistence)
+ * v1.6.3.4 - FIX Issues #1, #8: Add state rehydration on startup with logging
  */
 class QuickTabsManager {
   constructor(options = {}) {
@@ -93,7 +96,7 @@ class QuickTabsManager {
       await this._initStep3_Handlers(); // v1.6.3.2 - Made async for CreateHandler settings
       this._initStep4_Coordinators();
       await this._initStep5_Setup();
-      this._initStep6_Log();
+      await this._initStep6_Hydrate(); // v1.6.3.4 - FIX Issue #1: Hydrate state from storage
       this._initStep7_Expose();
 
       this.initialized = true;
@@ -168,11 +171,263 @@ class QuickTabsManager {
   }
 
   /**
-   * STEP 6: Log initialization (no hydration in v1.6.3)
+   * STEP 6: Hydrate state from storage (v1.6.3.4 - FIX Issues #1, #8)
+   * v1.6.3.4 - Added hydration step: reads stored Quick Tabs and repopulates local state
    * @private
    */
-  _initStep6_Log() {
-    console.log('[QuickTabsManager] STEP 6: State initialized empty (no persistence in v1.6.3)');
+  async _initStep6_Hydrate() {
+    console.log('[QuickTabsManager] STEP 6: Attempting to hydrate state from storage...');
+    const hydrationResult = await this._hydrateStateFromStorage();
+    
+    if (hydrationResult.success) {
+      console.log(`[QuickTabsManager] STEP 6: Hydrated ${hydrationResult.count} Quick Tab(s) from storage`);
+    } else {
+      // v1.6.3.4 - FIX Issue #8: Log explicit WARNING when hydration is skipped
+      console.warn('[QuickTabsManager] STEP 6: ⚠️ WARNING - State hydration skipped or failed:', hydrationResult.reason);
+    }
+    console.log('[QuickTabsManager] STEP 6 Complete');
+  }
+
+  /**
+   * Validate stored state from storage
+   * v1.6.3.4 - Helper to reduce complexity
+   * @private
+   * @param {Object} storedState - State from storage
+   * @returns {{valid: boolean, reason: string}}
+   */
+  _validateStoredState(storedState) {
+    if (!storedState) {
+      return { valid: false, reason: 'No stored state found (first run or cleared)' };
+    }
+
+    if (!storedState.tabs || !Array.isArray(storedState.tabs)) {
+      return { valid: false, reason: 'Invalid stored state format (missing tabs array)' };
+    }
+
+    if (storedState.tabs.length === 0) {
+      return { valid: false, reason: 'Stored state has empty tabs array (no tabs to restore)' };
+    }
+
+    return { valid: true, reason: '' };
+  }
+
+  /**
+   * Hydrate tabs from stored state
+   * v1.6.3.4 - Helper to reduce complexity
+   * @private
+   * @param {Array} tabs - Array of tab data from storage
+   * @returns {number} Count of successfully hydrated tabs
+   */
+  _hydrateTabsFromStorage(tabs) {
+    let hydratedCount = 0;
+    for (const tabData of tabs) {
+      const success = this._safeHydrateTab(tabData);
+      if (success) hydratedCount++;
+    }
+    return hydratedCount;
+  }
+
+  /**
+   * Safely hydrate a single tab with error handling
+   * v1.6.3.4 - Helper to reduce nesting depth
+   * @private
+   * @param {Object} tabData - Tab data from storage
+   * @returns {boolean} True if successful
+   */
+  _safeHydrateTab(tabData) {
+    try {
+      return this._hydrateTab(tabData);
+    } catch (tabError) {
+      console.error('[QuickTabsManager] Error hydrating individual tab:', tabData?.id, tabError);
+      return false;
+    }
+  }
+
+  /**
+   * Hydrate Quick Tab state from browser.storage.local
+   * v1.6.3.4 - FIX Issue #1: Restore Quick Tabs after page reload
+   * @private
+   * @returns {Promise<{success: boolean, count: number, reason: string}>}
+   */
+  async _hydrateStateFromStorage() {
+    // Check if browser storage API is available
+    if (typeof browser === 'undefined' || !browser?.storage?.local) {
+      return { success: false, count: 0, reason: 'Storage API unavailable' };
+    }
+
+    try {
+      // Read state from storage
+      const result = await browser.storage.local.get(STATE_KEY);
+      const storedState = result[STATE_KEY];
+
+      // Validate stored state
+      const validation = this._validateStoredState(storedState);
+      if (!validation.valid) {
+        return { success: false, count: 0, reason: validation.reason };
+      }
+
+      console.log(`[QuickTabsManager] Found ${storedState.tabs.length} Quick Tab(s) in storage to hydrate`);
+
+      // Hydrate each stored tab
+      const hydratedCount = this._hydrateTabsFromStorage(storedState.tabs);
+
+      // Emit hydrated event for UICoordinator to render restored tabs
+      if (hydratedCount > 0 && this.internalEventBus) {
+        this.internalEventBus.emit('state:hydrated', { count: hydratedCount });
+      }
+
+      return { success: true, count: hydratedCount, reason: 'Success' };
+    } catch (error) {
+      console.error('[QuickTabsManager] Storage hydration error:', error);
+      return { success: false, count: 0, reason: `Storage error: ${error.message}` };
+    }
+  }
+
+  /**
+   * Build options object for tab hydration
+   * v1.6.3.4 - Helper to reduce complexity
+   * @private
+   * @param {Object} tabData - Tab data from storage
+   * @returns {Object} Options for createQuickTab
+   */
+  _buildHydrationOptions(tabData) {
+    // Use defaults for missing values
+    const defaults = {
+      title: 'Quick Tab',
+      left: 100,
+      top: 100,
+      width: 400,
+      height: 300,
+      minimized: false,
+      soloedOnTabs: [],
+      mutedOnTabs: [],
+      zIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
+    };
+
+    return {
+      id: tabData.id,
+      url: tabData.url,
+      title: tabData.title || defaults.title,
+      left: tabData.left ?? defaults.left,
+      top: tabData.top ?? defaults.top,
+      width: tabData.width ?? defaults.width,
+      height: tabData.height ?? defaults.height,
+      minimized: tabData.minimized ?? defaults.minimized,
+      soloedOnTabs: tabData.soloedOnTabs ?? defaults.soloedOnTabs,
+      mutedOnTabs: tabData.mutedOnTabs ?? defaults.mutedOnTabs,
+      zIndex: tabData.zIndex ?? defaults.zIndex,
+      source: 'hydration'
+    };
+  }
+
+  /**
+   * Add callbacks to hydration options
+   * v1.6.3.4 - Helper to reduce complexity
+   * @private
+   * @param {Object} options - Base options
+   * @returns {Object} Options with callbacks
+   */
+  _addHydrationCallbacks(options) {
+    return {
+      ...options,
+      onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
+      onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
+      onFocus: tabId => this.handleFocus(tabId),
+      onPositionChange: (tabId, left, top) => this.handlePositionChange(tabId, left, top),
+      onPositionChangeEnd: (tabId, left, top) => this.handlePositionChangeEnd(tabId, left, top),
+      onSizeChange: (tabId, width, height) => this.handleSizeChange(tabId, width, height),
+      onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height),
+      onSolo: (tabId, soloedOnTabs) => this.handleSoloToggle(tabId, soloedOnTabs),
+      onMute: (tabId, mutedOnTabs) => this.handleMuteToggle(tabId, mutedOnTabs)
+    };
+  }
+
+  /**
+   * Hydrate a single Quick Tab from stored data
+   * v1.6.3.4 - FIX Issue #1: Helper to create Quick Tab from storage data
+   * @private
+   * @param {Object} tabData - Stored tab data
+   * @returns {boolean} True if hydration succeeded
+   */
+  _hydrateTab(tabData) {
+    // Validate required fields
+    if (!tabData?.id || !tabData?.url) {
+      console.warn('[QuickTabsManager] Skipping invalid tab data (missing id or url):', tabData);
+      return false;
+    }
+
+    // Skip if tab already exists
+    if (this.tabs.has(tabData.id)) {
+      console.log('[QuickTabsManager] Tab already exists, skipping hydration:', tabData.id);
+      return false;
+    }
+
+    // Skip if no createHandler available
+    if (!this.createHandler) {
+      console.warn('[QuickTabsManager] No createHandler available for hydration');
+      return false;
+    }
+
+    console.log(`[QuickTabsManager] Hydrating tab: ${tabData.id} (minimized: ${tabData.minimized})`);
+
+    const options = this._buildHydrationOptions(tabData);
+    const optionsWithCallbacks = this._addHydrationCallbacks(options);
+
+    // Route to appropriate handler based on minimized state
+    if (options.minimized) {
+      this._hydrateMinimizedTab(optionsWithCallbacks);
+    } else {
+      this._hydrateVisibleTab(optionsWithCallbacks);
+    }
+    return true;
+  }
+
+  /**
+   * Hydrate a visible (non-minimized) Quick Tab
+   * v1.6.3.4 - Helper to reduce complexity
+   * @private
+   * @param {Object} options - Quick Tab options with callbacks
+   */
+  _hydrateVisibleTab(options) {
+    const result = this.createHandler.create(options);
+    if (result) {
+      this.currentZIndex.value = result.newZIndex;
+    }
+  }
+
+  /**
+   * Hydrate a minimized Quick Tab (add to minimizedManager without rendering)
+   * v1.6.3.4 - FIX Issue #1: Handle minimized tabs during hydration
+   * @private
+   * @param {Object} options - Quick Tab options
+   */
+  _hydrateMinimizedTab(options) {
+    console.log('[QuickTabsManager] Hydrating minimized tab (no DOM render):', options.id);
+    
+    // Create a minimal tab object for the minimized manager
+    // This will be fully rendered when restored
+    const minimalTab = {
+      id: options.id,
+      url: options.url,
+      title: options.title,
+      left: options.left,
+      top: options.top,
+      width: options.width,
+      height: options.height,
+      minimized: true,
+      soloedOnTabs: options.soloedOnTabs,
+      mutedOnTabs: options.mutedOnTabs,
+      zIndex: options.zIndex
+    };
+
+    // Store snapshot in minimizedManager for later restore
+    if (this.minimizedManager) {
+      this.minimizedManager.add(options.id, minimalTab);
+      console.log('[QuickTabsManager] Added to minimizedManager:', options.id);
+    }
+
+    // Store in tabs Map with minimized state
+    this.tabs.set(options.id, minimalTab);
   }
 
   /**
@@ -440,15 +695,19 @@ class QuickTabsManager {
   /**
    * Create a new Quick Tab
    * Delegates to CreateHandler
+   * v1.6.3.4 - FIX Issue #4: Wire UI close button to DestroyHandler via onDestroy callback
+   * v1.6.3.4 - FIX Issue #6: Add source tracking for logs
    */
   createQuickTab(options) {
     console.log('[QuickTabsManager] createQuickTab called with:', options);
     
     // Add callbacks to options (required by QuickTabWindow)
+    // v1.6.3.4 - FIX Issue #4: onDestroy callback now routes to DestroyHandler
+    // v1.6.3.4 - FIX Issue #6: Source defaults to 'UI' for window callbacks
     const optionsWithCallbacks = {
       ...options,
-      onDestroy: tabId => this.handleDestroy(tabId),
-      onMinimize: tabId => this.handleMinimize(tabId),
+      onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
+      onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
       onFocus: tabId => this.handleFocus(tabId),
       onPositionChange: (tabId, left, top) => this.handlePositionChange(tabId, left, top),
       onPositionChangeEnd: (tabId, left, top) => this.handlePositionChangeEnd(tabId, left, top),
@@ -470,16 +729,25 @@ class QuickTabsManager {
 
   /**
    * Handle Quick Tab destruction
+   * v1.6.3.4 - FIX Issue #4: All closes (UI and Manager) now route through DestroyHandler
+   * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    */
-  handleDestroy(id) {
-    return this.destroyHandler.handleDestroy(id);
+  handleDestroy(id, source = 'unknown') {
+    console.log(`[QuickTabsManager] handleDestroy called for: ${id} (source: ${source})`);
+    return this.destroyHandler.handleDestroy(id, source);
   }
 
   /**
    * Handle Quick Tab minimize
+   * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    */
-  handleMinimize(id) {
-    return this.visibilityHandler.handleMinimize(id);
+  handleMinimize(id, source = 'unknown') {
+    console.log(`[QuickTabsManager] handleMinimize called for: ${id} (source: ${source})`);
+    return this.visibilityHandler.handleMinimize(id, source);
   }
 
   /**
@@ -547,23 +815,33 @@ class QuickTabsManager {
 
   /**
    * Restore Quick Tab from minimized state
+   * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    */
-  restoreQuickTab(id) {
-    return this.visibilityHandler.restoreQuickTab(id);
+  restoreQuickTab(id, source = 'unknown') {
+    console.log(`[QuickTabsManager] restoreQuickTab called for: ${id} (source: ${source})`);
+    return this.visibilityHandler.restoreQuickTab(id, source);
   }
 
   /**
    * Minimize Quick Tab by ID (backward compat)
+   * v1.6.3.4 - FIX Issue #6: Add source parameter
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
    */
-  minimizeById(id) {
-    return this.handleMinimize(id);
+  minimizeById(id, source = 'unknown') {
+    return this.handleMinimize(id, source);
   }
 
   /**
    * Restore Quick Tab by ID (backward compat)
+   * v1.6.3.4 - FIX Issue #6: Add source parameter
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
    */
-  restoreById(id) {
-    return this.visibilityHandler.restoreById(id);
+  restoreById(id, source = 'unknown') {
+    return this.visibilityHandler.restoreById(id, source);
   }
 
   /**

@@ -1129,6 +1129,7 @@ function _handleQuickTabsCleared(sendResponse) {
 
 /**
  * v1.6.4 - FIX Bug #4: Handle close Quick Tab request from Manager
+ * v1.6.3.4 - FIX Issue #6: Add source parameter to track origin
  * @param {string} quickTabId - ID of the Quick Tab to close
  * @param {Function} sendResponse - Response callback from message listener
  */
@@ -1145,8 +1146,9 @@ function _handleCloseQuickTab(quickTabId, sendResponse) {
       return;
     }
 
-    quickTabsManager.closeById(quickTabId);
-    console.log(`[Content] Closed Quick Tab: ${quickTabId}`);
+    // v1.6.3.4 - FIX Issue #6: Pass source to closeById
+    quickTabsManager.destroyHandler.closeById(quickTabId, 'Manager');
+    console.log(`[Content] Closed Quick Tab (source: Manager): ${quickTabId}`);
     sendResponse({ success: true, quickTabId });
   } catch (error) {
     console.error('[Content] Error closing Quick Tab:', error);
@@ -1156,6 +1158,7 @@ function _handleCloseQuickTab(quickTabId, sendResponse) {
 
 /**
  * v1.6.4 - FIX Bug #4: Handle minimize Quick Tab request from Manager
+ * v1.6.3.4 - FIX Issue #6: Add source parameter to track origin
  * @param {string} quickTabId - ID of the Quick Tab to minimize
  * @param {Function} sendResponse - Response callback from message listener
  */
@@ -1172,8 +1175,9 @@ function _handleMinimizeQuickTab(quickTabId, sendResponse) {
       return;
     }
 
-    quickTabsManager.minimizeById(quickTabId);
-    console.log(`[Content] Minimized Quick Tab: ${quickTabId}`);
+    // v1.6.3.4 - FIX Issue #6: Pass source to minimizeById
+    quickTabsManager.minimizeById(quickTabId, 'Manager');
+    console.log(`[Content] Minimized Quick Tab (source: Manager): ${quickTabId}`);
     sendResponse({ success: true, quickTabId });
   } catch (error) {
     console.error('[Content] Error minimizing Quick Tab:', error);
@@ -1183,6 +1187,7 @@ function _handleMinimizeQuickTab(quickTabId, sendResponse) {
 
 /**
  * v1.6.4 - FIX Bug #4: Handle restore Quick Tab request from Manager
+ * v1.6.3.4 - FIX Issue #6: Add source parameter to track origin
  * @param {string} quickTabId - ID of the Quick Tab to restore
  * @param {Function} sendResponse - Response callback from message listener
  */
@@ -1199,8 +1204,9 @@ function _handleRestoreQuickTab(quickTabId, sendResponse) {
       return;
     }
 
-    quickTabsManager.restoreById(quickTabId);
-    console.log(`[Content] Restored Quick Tab: ${quickTabId}`);
+    // v1.6.3.4 - FIX Issue #6: Pass source to restoreById
+    quickTabsManager.restoreById(quickTabId, 'Manager');
+    console.log(`[Content] Restored Quick Tab (source: Manager): ${quickTabId}`);
     sendResponse({ success: true, quickTabId });
   } catch (error) {
     console.error('[Content] Error restoring Quick Tab:', error);
