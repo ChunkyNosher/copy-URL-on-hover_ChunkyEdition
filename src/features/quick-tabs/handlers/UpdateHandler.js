@@ -5,16 +5,18 @@
  * v1.6.4 - FIX Issue #2: Added debounce and change detection for storage writes
  * v1.6.4 - FIX Issue #3: Added storage persistence after position/size changes
  * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
+ * v1.6.3.4 - FIX Issue #3: Add z-index persistence for restore
  *
  * Responsibilities:
  * - Handle position updates during drag
  * - Handle position updates at drag end
  * - Handle size updates during resize
  * - Handle size updates at resize end
+ * - Handle z-index updates on focus
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
  *
- * @version 1.6.4.1
+ * @version 1.6.3.4
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -186,6 +188,7 @@ export class UpdateHandler {
   /**
    * Compute a simple hash of the state for change detection
    * v1.6.4 - FIX Issue #2: Used to skip redundant storage writes
+   * v1.6.3.4 - FIX Issue #3: Include zIndex in hash for proper change detection
    * @private
    * @param {Object} state - State object to hash
    * @returns {number} 32-bit hash of the state
@@ -193,9 +196,10 @@ export class UpdateHandler {
   _computeStateHash(state) {
     if (!state?.tabs) return 0;
     
-    // Create a string of just the position/size data that we care about
+    // Create a string of just the position/size/zIndex data that we care about
+    // v1.6.3.4 - FIX Issue #3: Include zIndex for z-index persistence
     const stateStr = state.tabs.map(t => 
-      `${t.id}:${t.left}:${t.top}:${t.width}:${t.height}:${t.minimized}`
+      `${t.id}:${t.left}:${t.top}:${t.width}:${t.height}:${t.zIndex}:${t.minimized}`
     ).join('|');
     
     // Simple djb2 hash function with 32-bit conversion

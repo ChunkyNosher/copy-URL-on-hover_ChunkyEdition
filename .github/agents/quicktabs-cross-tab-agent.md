@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.3.3 z-index tracking, settings unification, instance re-registration)
+  (v1.6.3.4 state hydration, z-index persistence, source tracking)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
@@ -36,16 +36,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Global Visibility** - Quick Tabs visible in all tabs
 - **Shared Storage Utilities** - `src/utils/storage-utils.js` for persistence
 - **Batch Mode for Close All** - DestroyHandler._batchMode prevents storage write storms
-- **DOM Cleanup** - `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js`
-- **UICoordinator Single Rendering Authority** - restore() does NOT call render() directly
-- **state:cleared Event** - Emitted on closeAll() for full cleanup
-- **Z-Index Tracking (v1.6.3.3)** - `_highestZIndex` for proper stacking
-- **Instance Re-registration (v1.6.3.3)** - quickTabsMap updated after restore
+- **State Hydration (v1.6.3.4)** - `_initStep6_Hydrate()` restores Quick Tabs on page reload
+- **Z-Index Persistence (v1.6.3.4)** - `handleFocus()` persists z-index to storage
+- **Source Tracking (v1.6.3.4)** - All actions log source for debugging
 
 **Storage Format:**
 ```javascript
 {
-  tabs: [...],           // Array of Quick Tab objects
+  tabs: [...],           // Array of Quick Tab objects with zIndex field
   saveId: 'unique-id',   // Deduplication ID (tracked by background.js)
   timestamp: Date.now()  // Last update timestamp
 }
@@ -242,10 +240,10 @@ quickTab.shouldBeVisible(currentTabId) {
 | `src/features/quick-tabs/coordinators/SyncCoordinator.js` | Handle storage changes, call hydrate |
 | `src/features/quick-tabs/managers/StateManager.js` | Hydrate state, emit events |
 | `src/features/quick-tabs/coordinators/UICoordinator.js` | **Single rendering authority**, z-index tracking, DOM recovery |
-| `src/features/quick-tabs/index.js` | **v1.6.3.3:** DestroyHandler receives `internalEventBus` |
-| `src/features/quick-tabs/handlers/DestroyHandler.js` | **_batchMode for close all**, `state:cleared` event |
-| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **Mutex pattern _operationLocks**, instance re-registration |
-| `src/utils/storage-utils.js` | Shared persistence utilities |
+| `src/features/quick-tabs/index.js` | **v1.6.3.4:** `_initStep6_Hydrate()` for page reload |
+| `src/features/quick-tabs/handlers/DestroyHandler.js` | **_batchMode for close all**, source tracking |
+| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **Mutex pattern _operationLocks**, z-index persistence |
+| `src/utils/storage-utils.js` | Shared persistence utilities, zIndex serialization |
 | `src/utils/dom.js` | DOM utilities including `cleanupOrphanedQuickTabElements()` |
 | `background.js` | Cache update ONLY (no broadcast), saveId tracking, synchronous gesture handlers |
 | `sidebar/quick-tabs-manager.js` | Manager panel, minimize/restore operations |
@@ -337,6 +335,8 @@ function shouldBeVisible(quickTab, currentTabId) {
 - [ ] Solo/Mute sync across tabs using arrays (<100ms)
 - [ ] Event-driven architecture (no direct DOM calls from coordinators)
 - [ ] Unified storage format used (tabs array, not containers)
+- [ ] **v1.6.3.4:** State hydration on page reload
+- [ ] **v1.6.3.4:** Z-index persists on focus
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 

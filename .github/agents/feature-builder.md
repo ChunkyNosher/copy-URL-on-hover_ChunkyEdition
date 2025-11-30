@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -61,6 +61,12 @@ const relevantMemories = await searchMemories({
 2. **Storage** - Persistence abstraction (SyncStorage, SessionStorage)
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
+
+**v1.6.3.4 Key Features:**
+- State hydration on page reload via `_initStep6_Hydrate()`
+- Source tracking in handlers
+- Z-index persistence on focus
+- Unified destroy path
 
 **Storage Format:**
 ```javascript

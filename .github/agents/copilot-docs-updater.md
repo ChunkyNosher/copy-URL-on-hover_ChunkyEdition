@@ -99,7 +99,7 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.3)
+- [ ] Version numbers match current release (1.6.3.4)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
@@ -108,10 +108,10 @@ stat -c%s .github/copilot-instructions.md
 - [ ] Storage area correct (storage.local for state AND UID setting)
 - [ ] Storage utilities documented (src/utils/storage-utils.js)
 - [ ] Manager action messages documented (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
-- [ ] Z-index tracking pattern documented (v1.6.3.3)
-- [ ] UID truncation pattern documented (v1.6.3.3 - LAST 12 chars)
-- [ ] Settings unification documented (v1.6.3.3)
-- [ ] Close button fix documented (v1.6.3.3 - internalEventBus)
+- [ ] State hydration pattern documented (v1.6.3.4 - `_initStep6_Hydrate()`)
+- [ ] Source tracking pattern documented (v1.6.3.4)
+- [ ] Z-index persistence documented (v1.6.3.4)
+- [ ] Unified destroy path documented (v1.6.3.4)
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -119,7 +119,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.3
+- **Current Version:** 1.6.3.4
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -127,17 +127,16 @@ stat -c%s .github/copilot-instructions.md
   - Global Quick Tab visibility (Container isolation REMOVED)
   - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
   - Direct local creation pattern
+  - State hydration on page reload (v1.6.3.4)
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
 - **Storage Area:** storage.local for Quick Tab state AND UID setting
 - **Storage Keys:** `quick_tabs_state_v2` (state), `quickTabShowDebugId` (UID setting, individual key)
 - **Storage Utilities:** `src/utils/storage-utils.js` exports
-- **v1.6.3.3 Key Fixes:**
-  - Z-index tracking with `_highestZIndex` and `_getNextZIndex()`
-  - UID truncation shows LAST 12 chars (unique suffix)
-  - Settings loading unified with CreateHandler (storage.local)
-  - Close button uses internalEventBus for state:deleted events
-  - DOM re-render recovery on unexpected detachment
-  - Instance re-registration in quickTabsMap after restore
+- **v1.6.3.4 Key Features:**
+  - State hydration with `_initStep6_Hydrate()` on page reload
+  - Source tracking in handlers ('Manager', 'UI', 'hydration', 'automation')
+  - Z-index persistence on focus via `handleFocus()`
+  - Unified destroy path (UI close button uses DestroyHandler)
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **Agent Delegation Table:** When to use which agent
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
@@ -198,7 +197,7 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.3)
+- Version numbers (1.6.3.4)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
@@ -294,7 +293,7 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.3)
+## Current Extension State (v1.6.3.4)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -309,8 +308,9 @@ await perplexity.research("documentation compression markdown");
 - **Direct Local Creation:** Content renders first, background persists
 - **Storage Utilities:** Shared functions in `src/utils/storage-utils.js`
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
-- **Z-Index Tracking (v1.6.3.3):** `_highestZIndex` and `_getNextZIndex()` for proper stacking
-- **UID Truncation (v1.6.3.3):** Shows LAST 12 chars (unique suffix)
+- **State Hydration (v1.6.3.4):** `_initStep6_Hydrate()` on page reload
+- **Source Tracking (v1.6.3.4):** All actions log source
+- **Z-Index Persistence (v1.6.3.4):** Focus changes persist to storage
 
 ### Storage Format
 ```javascript
@@ -360,7 +360,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.2 or earlier | Update to 1.6.3.3 |
+| v1.6.3.3 or earlier | Update to 1.6.3.4 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -386,7 +386,7 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.3
+- [ ] Version numbers updated to 1.6.3.4
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] No container/cookieStoreId references (except removal notes)

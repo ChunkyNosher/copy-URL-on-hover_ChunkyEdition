@@ -1,0 +1,8 @@
+{
+  "id": "dbb7b594-538e-4017-aff6-661c176052a7",
+  "title": "v1.6.3.4 Documentation Update",
+  "details": "Updated all Copilot instructions and agent files from v1.6.3.3 to v1.6.3.4.\n\nKey v1.6.3.4 features documented:\n- State Hydration on Page Reload: _initStep6_Hydrate() restores Quick Tabs from storage\n- Source Tracking in Logs: All actions log source ('Manager', 'UI', 'hydration', 'automation')\n- Z-Index Persistence: handleFocus() persists z-index to storage immediately\n- Unified Destroy Path: UI close button uses DestroyHandler for consistent cleanup\n\nFiles updated (all under 15KB):\n- .github/copilot-instructions.md\n- .github/agents/quicktabs-unified-agent.md\n- .github/agents/quicktabs-cross-tab-agent.md\n- .github/agents/quicktabs-single-tab-agent.md\n- .github/agents/quicktabs-manager-agent.md\n- .github/agents/bug-fixer.md\n- .github/agents/bug-architect.md\n- .github/agents/feature-builder.md\n- .github/agents/feature-optimizer.md\n- .github/agents/copilot-docs-updater.md\n\nSource values corrected to match actual codebase: 'Manager', 'UI', 'hydration', 'automation' (removed 'background' which was not actually used)",
+  "category": "documentation",
+  "dateCreated": "2025-11-30T19:39:16.241Z",
+  "dateUpdated": "2025-11-30T19:39:16.241Z"
+}

@@ -190,7 +190,8 @@ describe('VisibilityHandler', () => {
 
       visibilityHandler.handleMinimize('qt-123');
 
-      expect(eventSpy).toHaveBeenCalledWith({ id: 'qt-123' });
+      // v1.6.3.4 - FIX Issue #6: Now includes source parameter in event data
+      expect(eventSpy).toHaveBeenCalledWith({ id: 'qt-123', source: 'unknown' });
     });
 
     test('should emit state:updated event for panel sync', () => {
@@ -199,11 +200,13 @@ describe('VisibilityHandler', () => {
 
       visibilityHandler.handleMinimize('qt-123');
 
+      // v1.6.3.4 - FIX Issue #6: Now includes source parameter in event data
       expect(stateUpdatedSpy).toHaveBeenCalledWith({
         quickTab: expect.objectContaining({
           id: 'qt-123',
           minimized: true
-        })
+        }),
+        source: 'unknown'
       });
     });
 
@@ -227,7 +230,8 @@ describe('VisibilityHandler', () => {
 
       visibilityHandler.handleRestore('qt-123');
 
-      expect(eventSpy).toHaveBeenCalledWith({ id: 'qt-123' });
+      // v1.6.3.4 - FIX Issue #6: Now includes source parameter in event data
+      expect(eventSpy).toHaveBeenCalledWith({ id: 'qt-123', source: 'unknown' });
     });
 
     test('should emit state:updated event for panel sync on restore', async () => {
@@ -245,11 +249,13 @@ describe('VisibilityHandler', () => {
       // Need to wait for any pending promises
       await Promise.resolve();
 
+      // v1.6.3.4 - FIX Issue #6: Now includes source parameter in event data
       expect(stateUpdatedSpy).toHaveBeenCalledWith({
         quickTab: expect.objectContaining({
           id: 'qt-123',
           minimized: false
-        })
+        }),
+        source: 'unknown'
       });
       
       // Restore real timers
@@ -299,20 +305,22 @@ describe('VisibilityHandler', () => {
   });
 
   describe('Alias methods', () => {
-    test('restoreQuickTab should call handleRestore', () => {
+    test('restoreQuickTab should call handleRestore with source parameter', () => {
       const spy = jest.spyOn(visibilityHandler, 'handleRestore');
       
       visibilityHandler.restoreQuickTab('qt-123');
       
-      expect(spy).toHaveBeenCalledWith('qt-123');
+      // v1.6.3.4 - FIX Issue #6: Now includes source parameter
+      expect(spy).toHaveBeenCalledWith('qt-123', 'unknown');
     });
 
-    test('restoreById should call handleRestore', () => {
+    test('restoreById should call handleRestore with source parameter', () => {
       const spy = jest.spyOn(visibilityHandler, 'handleRestore');
       
       visibilityHandler.restoreById('qt-123');
       
-      expect(spy).toHaveBeenCalledWith('qt-123');
+      // v1.6.3.4 - FIX Issue #6: Now includes source parameter
+      expect(spy).toHaveBeenCalledWith('qt-123', 'unknown');
     });
   });
 
