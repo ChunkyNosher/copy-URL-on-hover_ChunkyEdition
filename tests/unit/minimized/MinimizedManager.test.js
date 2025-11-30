@@ -146,10 +146,15 @@ describe('MinimizedManager', () => {
       expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
 
-    test('should remove tab from minimizedTabs after restoration', () => {
+    test('should keep tab in minimizedTabs until clearSnapshot called (v1.6.3.4-v3)', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
+      // v1.6.3.4-v3 - restore() keeps snapshot in minimizedTabs until clearSnapshot() is called
+      expect(manager.minimizedTabs.has('test-tab-1')).toBe(true);
+      
+      // After clearSnapshot(), it should be removed
+      manager.clearSnapshot('test-tab-1');
       expect(manager.minimizedTabs.has('test-tab-1')).toBe(false);
     });
 
@@ -171,9 +176,8 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // v1.6.4.9 - Updated log message to reflect snapshot moved to pendingClear
-      expect(console.log).toHaveBeenCalledWith(
-        '[MinimizedManager] Snapshot moved to pendingClear (awaiting UICoordinator clearSnapshot):',
+      // v1.6.3.4-v3 - Updated log message to reflect snapshot is retained (not moved to pendingClear)
+      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Snapshot retained for UICoordinator verification:',
         expect.objectContaining({
           id: 'test-tab-1',
           position: { left: 100, top: 200 },
@@ -292,11 +296,13 @@ describe('MinimizedManager', () => {
       expect(manager.getCount()).toBe(1);
     });
 
-    test('should decrease count when tab restored', () => {
+    test('should decrease count when tab restored and clearSnapshot called', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.add('test-tab-2', mockTabWindow);
 
       manager.restore('test-tab-1');
+      // v1.6.3.4-v3 - restore() no longer removes from minimizedTabs, clearSnapshot() does
+      manager.clearSnapshot('test-tab-1');
 
       expect(manager.getCount()).toBe(1);
     });
@@ -320,9 +326,11 @@ describe('MinimizedManager', () => {
       expect(manager.isMinimized('test-tab-1')).toBe(false);
     });
 
-    test('should return false after tab restored', () => {
+    test('should return false after tab restored and clearSnapshot called', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
+      // v1.6.3.4-v3 - restore() keeps snapshot in minimizedTabs until clearSnapshot() is called
+      manager.clearSnapshot('test-tab-1');
 
       expect(manager.isMinimized('test-tab-1')).toBe(false);
     });
@@ -367,8 +375,11 @@ describe('MinimizedManager', () => {
     test('should handle multiple minimize/restore cycles', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
+      // v1.6.3.4-v3 - clearSnapshot() must be called after restore() to complete cycle
+      manager.clearSnapshot('test-tab-1');
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
+      manager.clearSnapshot('test-tab-1');
 
       expect(manager.isMinimized('test-tab-1')).toBe(false);
       // v1.6.3.2 - MinimizedManager.restore() no longer calls tabWindow.restore()
@@ -390,6 +401,8 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-2', mockTabWindow2);
 
       manager.restore('test-tab-1');
+      // v1.6.3.4-v3 - clearSnapshot() must be called after restore() to remove from minimizedTabs
+      manager.clearSnapshot('test-tab-1');
 
       expect(manager.isMinimized('test-tab-1')).toBe(false);
       expect(manager.isMinimized('test-tab-2')).toBe(true);

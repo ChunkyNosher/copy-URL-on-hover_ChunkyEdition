@@ -4,6 +4,10 @@
  *
  * v1.5.9.0 - Restored missing UI logic identified in v1589-quick-tabs-root-cause.md
  * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification logging after container creation
+ * v1.6.3.4-v3 - FIX 6 Critical Quick Tab Restore Bugs:
+ *   - Issue #3: Callbacks persist through restore - stored on instance, not closure
+ *   - Issue #4: onDestroy callback verified before invoke, with logging
+ *   - Issue #6: Enhanced logging for callback wiring and restore operations
  */
 
 import browser from 'webextension-polyfill';
@@ -309,6 +313,14 @@ export class QuickTabWindow {
     });
 
     // v1.6.0 Phase 2.9 Task 3 - Use DragController facade pattern
+    // v1.6.3.4-v3 - FIX Issue #3: Callbacks reference instance properties (this.onXxx),
+    // so they persist through restore as long as the same instance is reused
+    console.log('[QuickTabWindow] Wiring DragController callbacks:', {
+      id: this.id,
+      hasOnFocus: typeof this.onFocus === 'function',
+      hasOnPositionChange: typeof this.onPositionChange === 'function',
+      hasOnPositionChangeEnd: typeof this.onPositionChangeEnd === 'function'
+    });
     this.dragController = new DragController(titlebar, {
       onDragStart: (x, y) => {
         console.log('[QuickTabWindow] Drag started:', this.id, x, y);
@@ -337,9 +349,12 @@ export class QuickTabWindow {
         console.log('[QuickTabWindow] Drag ended:', this.id, finalX, finalY);
         this.isDragging = false;
 
-        // Final save on drag end
+        // v1.6.3.4-v3 - FIX Issue #3: Verify callback exists and log
         if (this.onPositionChangeEnd) {
+          console.log('[QuickTabWindow] Calling onPositionChangeEnd callback:', this.id);
           this.onPositionChangeEnd(this.id, finalX, finalY);
+        } else {
+          console.warn('[QuickTabWindow] onPositionChangeEnd callback not wired:', this.id);
         }
       },
       onDragCancel: (lastX, lastY) => {
@@ -355,6 +370,12 @@ export class QuickTabWindow {
     });
 
     // v1.6.0 Phase 2.4 - Use ResizeController facade pattern
+    // v1.6.3.4-v3 - FIX Issue #3: Log callback wiring for resize
+    console.log('[QuickTabWindow] Wiring ResizeController callbacks:', {
+      id: this.id,
+      hasOnSizeChange: typeof this.onSizeChange === 'function',
+      hasOnSizeChangeEnd: typeof this.onSizeChangeEnd === 'function'
+    });
     this.resizeController = new ResizeController(this, {
       minWidth: 400,
       minHeight: 300
@@ -922,6 +943,7 @@ export class QuickTabWindow {
    * Destroy the Quick Tab window
    * v1.6.3.2 - FIX Issue #5: Ensure all event listeners are removed BEFORE DOM removal
    *   Order is critical: cleanup controllers → remove handlers → remove DOM → clear references
+   * v1.6.3.4-v3 - FIX Issue #4: Verify onDestroy callback exists before calling, with logging
    */
   destroy() {
     console.log('[QuickTabWindow] Destroying:', this.id);
@@ -965,7 +987,24 @@ export class QuickTabWindow {
       console.log('[QuickTabWindow] Removed DOM element');
     }
 
-    this.onDestroy(this.id);
+    // v1.6.3.4-v3 - FIX Issue #4: Verify onDestroy callback exists and is a function
+    console.log('[QuickTabWindow] Checking onDestroy callback:', {
+      id: this.id,
+      hasOnDestroy: typeof this.onDestroy === 'function',
+      callbackType: typeof this.onDestroy
+    });
+    
+    if (typeof this.onDestroy === 'function') {
+      try {
+        this.onDestroy(this.id);
+        console.log('[QuickTabWindow] onDestroy callback executed successfully:', this.id);
+      } catch (err) {
+        console.error('[QuickTabWindow] onDestroy callback failed:', this.id, err.message);
+      }
+    } else {
+      console.warn('[QuickTabWindow] onDestroy callback not wired or not a function:', this.id);
+    }
+    
     console.log('[QuickTabWindow] Destroyed:', this.id);
   }
 
