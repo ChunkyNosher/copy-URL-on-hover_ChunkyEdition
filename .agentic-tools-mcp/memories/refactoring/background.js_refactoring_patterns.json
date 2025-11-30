@@ -1,0 +1,8 @@
+{
+  "id": "9ed46e92-3477-4177-b4c7-42b7ed823327",
+  "title": "background.js refactoring patterns",
+  "details": "Refactored background.js to achieve CodeScene health score 10.0 (from 6.79). Key patterns used:\n\n1. **Extract Method Pattern**: Split complex functions (cc>9) into small focused helpers:\n   - computeStateHash → _extractTabDataForHash, _computeStringHash\n   - _handleQuickTabStateChange → _isTabsEmptyOrMissing, _hasSaveIdChanged, _shouldUpdateState\n   - tryLoadFromSessionStorage → _hasValidSessionState, _hasValidTabsArray, _applyUnifiedFormatState\n\n2. **Consolidate Duplication**: Generic function with parameters:\n   - _trySendManagerMessage/_trySendSettingsMessage → _sendSidebarMessage(type, logPrefix)\n\n3. **Fix Bumpy Road**: Extract inner loops to separate functions:\n   - migrateContainersToUnifiedFormat → _processContainerTabs\n   - modifiedHeaders filter → _filterSecurityHeader + specific handlers\n\n4. **Complex Conditionals**: Extract to named boolean functions:\n   - Complex if conditions → _hasValidSessionData(), _hasContainerFormat()\n\n5. **Async/Await Cleanup**: Remove async if no await needed (use .catch() chains instead)",
+  "category": "refactoring",
+  "dateCreated": "2025-11-30T23:27:01.009Z",
+  "dateUpdated": "2025-11-30T23:27:01.009Z"
+}
