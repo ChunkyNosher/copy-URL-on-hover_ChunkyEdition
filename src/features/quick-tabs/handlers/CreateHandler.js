@@ -131,7 +131,7 @@ export class CreateHandler {
   _updateAllQuickTabsDebugDisplay(showDebugId) {
     let updatedCount = 0;
     
-    for (const [id, tabWindow] of this.quickTabsMap) {
+    for (const [_id, tabWindow] of this.quickTabsMap) {
       // Only update rendered windows with the required method
       if (!tabWindow || typeof tabWindow.isRendered !== 'function') continue;
       if (!tabWindow.isRendered()) continue;
