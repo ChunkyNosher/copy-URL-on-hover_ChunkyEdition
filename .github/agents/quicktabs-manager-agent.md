@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.4.10)
+  warning indicators, cross-tab operations (v1.6.3.3)
 tools: ["*"]
 ---
 
@@ -28,16 +28,19 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**Key Manager Features (v1.6.4.10):**
+**Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Warning Indicator** - Orange pulse when `domVerified=false`
-- **Cross-Tab Operations (v1.6.4.10)** - Minimize/restore sends to ALL browser tabs
 - **Close Minimized** - Collects IDs BEFORE filtering, sends to ALL browser tabs
 - **Close All Batch Mode** - DestroyHandler._batchMode prevents storage write storms
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
+
+**v1.6.3.3 Related Fixes:**
+- Z-index tracking ensures proper stacking on restore
+- Settings loading unified with CreateHandler
 
 **Storage Format:**
 ```javascript
@@ -48,26 +51,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.4.10 Key Patterns
-
-### Cross-Tab Operations (v1.6.4.10 - NEW)
-
-```javascript
-// Manager sends minimize/restore to ALL browser tabs, not just active
-async handleMinimize(id) {
-  const tabs = await browser.tabs.query({});  // ALL tabs
-  for (const tab of tabs) {
-    browser.tabs.sendMessage(tab.id, { type: 'MINIMIZE_QUICK_TAB', id });
-  }
-}
-
-async handleRestore(id) {
-  const tabs = await browser.tabs.query({});
-  for (const tab of tabs) {
-    browser.tabs.sendMessage(tab.id, { type: 'RESTORE_QUICK_TAB', id });
-  }
-}
-```
+## Manager Patterns
 
 ### Warning Indicator
 
@@ -205,7 +189,7 @@ Manager sends these messages to content script:
 - [ ] Solo/Mute indicators correct (arrays)
 - [ ] Orange indicator for `domVerified=false`
 - [ ] Header shows Solo/Mute counts
-- [ ] **v1.6.4.10:** Minimize/restore works in ALL browser tabs
+- [ ] **v1.6.3.3:** Z-index correct on restored tabs
 - [ ] Close Minimized works for all tabs
 - [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐

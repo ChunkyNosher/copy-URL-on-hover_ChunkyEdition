@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,7 +62,7 @@ const relevantMemories = await searchMemories({
 - Quick Tab rendering: <100ms
 - Cross-tab sync via storage.onChanged: <100ms latency
 
-**Storage (v1.6.4.10):**
+**Storage:**
 - Use `storage.local` for Quick Tab state AND UID setting
 - Use shared utilities from `src/utils/storage-utils.js`
 

@@ -292,7 +292,13 @@ export class QuickTabWindow {
       onDragStart: (x, y) => {
         console.log('[QuickTabWindow] Drag started:', this.id, x, y);
         this.isDragging = true;
-        this.onFocus(this.id);
+        // v1.6.3.3 - FIX Bug #9: Log onFocus callback status to verify wiring after restore
+        if (this.onFocus) {
+          console.log('[QuickTabWindow] Bringing to front via onFocus callback:', this.id);
+          this.onFocus(this.id);
+        } else {
+          console.warn('[QuickTabWindow] onFocus callback not wired for drag:', this.id);
+        }
       },
       onDrag: (newX, newY) => {
         // Update position

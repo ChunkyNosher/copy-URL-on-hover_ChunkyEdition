@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -63,12 +63,13 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
 
-**v1.6.4.10 Key Fixes:**
-- Map cleanup on DOM detachment when entity minimized
-- z-index applied AFTER DOM render completes
-- Manager sends minimize/restore to ALL browser tabs
-- isRendered() returns strict Boolean
-- UID display settings complete (storage.local listener)
+**v1.6.3.3 Key Fixes (14 Critical Bugs):**
+- Z-index tracking with `_highestZIndex` and `_getNextZIndex()` method
+- UID truncation shows LAST 12 chars (unique suffix)
+- Settings loading unified with CreateHandler (storage.local)
+- Close button uses internalEventBus for state:deleted events
+- DOM re-render recovery on unexpected detachment
+- Instance re-registration in quickTabsMap after restore
 
 ---
 

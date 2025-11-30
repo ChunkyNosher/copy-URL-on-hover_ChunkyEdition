@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.4.10 isRendered() Boolean, z-index fix, UID display settings)
+  (v1.6.3.3 UID truncation shows LAST chars, z-index tracking, settings unification)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -39,12 +39,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 - **Restore via UICoordinator** - Uses fallback chain with snapshot lifecycle
 - **DragController Destroyed Flag** - Prevents ghost events
-- **Dynamic UID Display (v1.6.4.10)** - Settings checkbox, storage.local listener
+- **Dynamic UID Display** - Settings checkbox, storage.local listener
 
-**v1.6.4.10 Key Fixes:**
-- **isRendered() Strict Boolean:** Returns `Boolean()` not truthy `{}`
-- **z-index After Render:** Applied via requestAnimationFrame after DOM render
-- **UID Display Settings:** Checkbox in Advanced tab, `storage.local` with key `quickTabShowDebugId`
+**v1.6.3.3 Key Fixes:**
+- **UID Truncation:** TitlebarBuilder shows LAST 12 chars (unique random suffix)
+- **Z-Index Tracking:** UICoordinator `_getNextZIndex()` for proper stacking
+- **Settings Loading:** Unified `storage.local` key `quickTabShowDebugId`
 
 **Constants Reference:**
 
@@ -52,7 +52,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 |----------|-------|----------|
 | `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator |
 | `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator |
-| `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler |
+| `STATE_EMIT_DELAY_MS` | 200 | VisibilityHandler |
 | `DEFAULT_WIDTH/HEIGHT` | 400/300 | QuickTabWindow |
 | `DEFAULT_LEFT/TOP` | 100/100 | QuickTabWindow |
 
@@ -63,37 +63,41 @@ const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
 
 ---
 
-## v1.6.4.10 Key Patterns
+## v1.6.3.3 Key Patterns
 
-### isRendered() Strict Boolean (NEW)
+### UID Truncation (NEW)
 
 ```javascript
-// window.js - Returns Boolean, not truthy {}
-isRendered() {
-  return Boolean(this.element && document.body.contains(this.element));
-}
+// TitlebarBuilder shows LAST 12 chars (unique suffix) instead of first 12
+// Old format: "qt-123-16..." (identical browser tab ID prefix - useless)
+// New format: "...1294jc4k13j2u" (unique random suffix - useful for debugging)
+const displayId = id.length > 15 ? '...' + id.slice(-12) : id;
 ```
 
-### z-index After Render (NEW)
+### Z-Index Tracking (NEW)
 
 ```javascript
-// UICoordinator applies z-index AFTER DOM render completes
-render(quickTab) {
-  // ... create DOM elements ...
-  requestAnimationFrame(() => {
-    tabWindow.updateZIndex(this._getNextZIndex());
-  });
+// UICoordinator tracks highest z-index in memory
+this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+
+_getNextZIndex() {
+  this._highestZIndex++;
+  return this._highestZIndex;
 }
+// Apply after restore/create to ensure proper stacking order
 ```
 
-### Dynamic UID Display (v1.6.4.10 - Complete)
+### Unified Settings Loading (NEW)
 
 ```javascript
-// Settings checkbox in Advanced tab (sidebar/settings.html)
-// DEFAULT_SETTINGS includes quickTabShowDebugId: false (sidebar/settings.js)
-// CreateHandler reads from storage.local key 'quickTabShowDebugId' (individual key)
-// storage.onChanged listener watches 'local' area for correct key
+// Both UICoordinator and CreateHandler use same storage source:
+// storage.local with individual key 'quickTabShowDebugId'
+const { quickTabShowDebugId } = await browser.storage.local.get('quickTabShowDebugId');
+```
 
+### Dynamic UID Display
+
+```javascript
 // TitlebarBuilder - toggle debug ID dynamically
 updateDebugIdDisplay(showDebugId) {
   // Add or remove UID element from titlebar

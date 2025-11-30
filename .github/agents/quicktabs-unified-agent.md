@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.4.10 Map cleanup, z-index fix, cross-tab manager)
+  Quick Tab functionality (v1.6.3.3 z-index tracking, UID truncation, settings unification)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -36,12 +36,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
 
-**v1.6.4.10 Key Fixes:**
-- **Map Cleanup:** UICoordinator removes stale entries when DOM detached AND entity minimized
-- **z-index Fix:** Applied AFTER DOM render completes
-- **Cross-Tab Manager:** Minimize/restore messages sent to ALL browser tabs
-- **isRendered() Strict Boolean:** Returns `Boolean()` not truthy `{}`
-- **UID Display Complete:** Settings UI in Advanced tab, `storage.local` listener
+**v1.6.3.3 Key Fixes (14 Critical Bugs):**
+- **Z-Index Tracking:** UICoordinator maintains `_highestZIndex`, `_getNextZIndex()` method
+- **UID Truncation:** TitlebarBuilder shows LAST 12 chars (unique suffix)
+- **Settings Loading:** UICoordinator uses `storage.local` key `quickTabShowDebugId` (unified with CreateHandler)
+- **Close Button:** DestroyHandler receives `internalEventBus` for `state:deleted` events
+- **DOM Stability:** UICoordinator attempts re-render on unexpected DOM detachment
+- **Instance Tracking:** VisibilityHandler re-registers window in quickTabsMap after restore
 
 **Storage Keys:**
 - **State:** `quick_tabs_state_v2` (storage.local)
@@ -60,50 +61,56 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.4.10 Key Patterns
+## v1.6.3.3 Key Patterns
 
-### Map Cleanup on DOM Detachment (NEW)
+### Z-Index Tracking (NEW)
 
 ```javascript
-// UICoordinator removes stale entries when DOM detached AND entity minimized
-_startDOMMonitoring(id, tabWindow) {
-  setInterval(() => {
-    if (!tabWindow.isRendered()) {  // Returns Boolean()
-      this.renderedTabs.delete(id);
-      const entity = this.stateManager.get(id);
-      if (entity?.visibility?.minimized) { this._stopDOMMonitoring(id); }
-    }
-  }, 500);
+// UICoordinator tracks highest z-index in memory
+this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+
+_getNextZIndex() {
+  this._highestZIndex++;
+  return this._highestZIndex;
 }
+// Apply after restore/create for proper stacking
 ```
 
-### z-index After Render (NEW)
+### UID Truncation (NEW)
 
 ```javascript
-// z-index applied AFTER DOM render completes (not during)
-render(quickTab) {
-  // ... create DOM elements ...
-  requestAnimationFrame(() => { tabWindow.updateZIndex(this._getNextZIndex()); });
-}
+// TitlebarBuilder shows LAST 12 chars (unique suffix)
+// Old: "qt-123-16..." (identical prefix - useless)
+// New: "...1294jc4k13j2u" (unique random suffix)
+const displayId = id.length > 15 ? '...' + id.slice(-12) : id;
 ```
 
-### Cross-Tab Manager Messages (NEW)
+### Unified Settings Loading (NEW)
 
 ```javascript
-// Manager sends minimize/restore to ALL browser tabs
-async handleMinimize(id) {
-  const tabs = await browser.tabs.query({});  // ALL tabs
-  for (const tab of tabs) {
-    browser.tabs.sendMessage(tab.id, { type: 'MINIMIZE_QUICK_TAB', id });
-  }
-}
+// UICoordinator uses same storage source as CreateHandler:
+// storage.local with individual key 'quickTabShowDebugId'
+const { quickTabShowDebugId } = await browser.storage.local.get('quickTabShowDebugId');
 ```
 
-### isRendered() Strict Boolean (v1.6.4.10)
+### Close Button Fix (NEW)
 
 ```javascript
-// window.js - Returns Boolean, not truthy {}
-isRendered() { return Boolean(this.element && document.body.contains(this.element)); }
+// DestroyHandler receives internalEventBus for state:deleted events
+this.destroyHandler = new DestroyHandler(
+  this.tabs, this.minimizedManager,
+  this.internalEventBus,  // v1.6.3.3 - ensures UICoordinator receives events
+  this.quickTabsMap
+);
+```
+
+### DOM Re-render Recovery (NEW)
+
+```javascript
+// UICoordinator detects unexpected detachment and attempts re-render
+if (!tabWindow.isRendered() && !entity?.visibility?.minimized) {
+  this._attemptReRender(id);  // Recovery attempt
+}
 ```
 
 ### Snapshot Lifecycle (Inherited)
@@ -175,8 +182,9 @@ UICoordinator._applySnapshotForRestore(quickTab) {
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
 - [ ] Manager displays with Solo/Mute indicators
-- [ ] **v1.6.4.10:** Minimize/restore works cross-tab (all browser tabs)
-- [ ] **v1.6.4.10:** z-index correct on restored tabs
+- [ ] **v1.6.3.3:** Z-index correct on restored tabs (stacking order)
+- [ ] **v1.6.3.3:** UID shows last 12 chars (unique suffix)
+- [ ] **v1.6.3.3:** Close button updates storage
 - [ ] Drag/resize functional
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
