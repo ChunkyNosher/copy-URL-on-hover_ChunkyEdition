@@ -476,22 +476,11 @@ export class UICoordinator {
           destroyed: tabWindow.destroyed
         });
         
-        // v1.6.3.3 - FIX Bug #8: If not minimized and not destroyed, try to re-render
-        if (!tabWindow.minimized && !tabWindow.destroyed) {
-          console.log('[UICoordinator] Attempting to re-render detached tab:', quickTabId);
-          try {
-            tabWindow.render();
-            // Note: Don't update z-index on re-render - the tab already had a valid z-index
-            // Only restored tabs get incremented z-index (in _restoreExistingWindow)
-            console.log('[UICoordinator] Successfully re-rendered detached tab:', quickTabId);
-            // Don't stop monitoring - continue checking
-            return;
-          } catch (err) {
-            console.error('[UICoordinator] Failed to re-render detached tab:', quickTabId, err);
-          }
-        }
+        // v1.6.3.3 - FIX Bug #8: Attempt re-render if tab is still active
+        const reRenderResult = this._attemptReRenderDetachedTab(tabWindow, quickTabId);
+        if (reRenderResult) return; // Successfully re-rendered, continue monitoring
         
-        // Clean up if re-render failed or tab was destroyed
+        // Clean up if re-render failed, not attempted, or tab was destroyed
         this.renderedTabs.delete(quickTabId);
         this._stopDOMMonitoring(quickTabId);
         return;
@@ -518,6 +507,31 @@ export class UICoordinator {
     if (timerId) {
       clearInterval(timerId);
       this._domMonitoringTimers.delete(quickTabId);
+    }
+  }
+
+  /**
+   * Attempt to re-render a detached Quick Tab
+   * v1.6.3.3 - FIX Bug #8: Extracted helper to reduce nesting depth
+   * @private
+   * @param {QuickTabWindow} tabWindow - The tab window instance
+   * @param {string} quickTabId - Quick Tab ID
+   * @returns {boolean} True if re-render succeeded, false otherwise
+   */
+  _attemptReRenderDetachedTab(tabWindow, quickTabId) {
+    if (tabWindow.minimized || tabWindow.destroyed) {
+      return false; // Not eligible for re-render
+    }
+    
+    console.log('[UICoordinator] Attempting to re-render detached tab:', quickTabId);
+    try {
+      tabWindow.render();
+      // Note: Don't update z-index on re-render - the tab already had a valid z-index
+      console.log('[UICoordinator] Successfully re-rendered detached tab:', quickTabId);
+      return true; // Continue monitoring
+    } catch (err) {
+      console.error('[UICoordinator] Failed to re-render detached tab:', quickTabId, err);
+      return false;
     }
   }
 
@@ -584,50 +598,7 @@ export class UICoordinator {
 
     // v1.6.4.6 - FIX Issue #3: Validate DOM is actually attached
     if (!domAttached) {
-      // v1.6.4.10 - FIX Issue #1 & #5: Log Map cleanup with reason and size change
-      console.log('[UICoordinator] renderedTabs.delete():', {
-        id: quickTab.id,
-        reason: 'DOM detached',
-        mapSizeBefore,
-        mapSizeAfter: mapSizeBefore - 1
-      });
-      this.renderedTabs.delete(quickTab.id);
-      // v1.6.4.9 - FIX Issue #5: Stop monitoring for this tab
-      this._stopDOMMonitoring(quickTab.id);
-
-      // v1.6.4.10 - FIX Issue #1 CRITICAL: When DOM is detached AND entity is minimized,
-      // this is a Manager minimize operation. Clean up and skip render.
-      // The stale Map entry was causing duplicates because update() saw inMap: true
-      // but instanceMinimized: false (old state before minimize).
-      if (entityMinimized) {
-        console.log('[UICoordinator] DOM detached + entity minimized (Manager minimize), cleanup complete:', {
-          id: quickTab.id,
-          action: 'skip (Manager minimize cleanup)',
-          mapSizeAfter: this.renderedTabs.size
-        });
-        return;
-      }
-
-      // v1.6.4.9 - FIX Issues #2, #3 CRITICAL: Use INSTANCE state, not entity state
-      // If instance is NOT minimized, the tab is being restored and MUST be rendered
-      // This is the key fix - we removed the early return based on entity state
-      if (instanceMinimized) {
-        console.log('[UICoordinator] Instance is minimized, skipping render after cleanup:', {
-          id: quickTab.id,
-          action: 'skip (instance minimized)'
-        });
-        return;
-      }
-      
-      // v1.6.4.9 - FIX Issues #2, #3: Instance is NOT minimized but DOM is missing - MUST render
-      // This fixes subsequent restore attempts that do nothing
-      console.log('[UICoordinator] Instance NOT minimized but DOM missing, MUST render:', {
-        id: quickTab.id,
-        action: 'render (DOM missing + instance not minimized)'
-      });
-      // Apply snapshot if available before rendering
-      this._applySnapshotForRestore(quickTab);
-      return this.render(quickTab);
+      return this._handleDetachedDOMUpdate(quickTab, tabWindow, entityMinimized, instanceMinimized, mapSizeBefore);
     }
 
     // Handle restore from minimized state (instance minimized but entity says not minimized)
@@ -650,6 +621,59 @@ export class UICoordinator {
 
     console.log('[UICoordinator] Tab updated:', quickTab.id);
     return tabWindow;
+  }
+
+  /**
+   * Handle update when DOM is detached
+   * v1.6.3.3 - Extracted to reduce complexity of update() method
+   * @private
+   * @param {QuickTab} quickTab - QuickTab entity
+   * @param {QuickTabWindow} tabWindow - Tab window instance
+   * @param {boolean} entityMinimized - Entity minimized state
+   * @param {boolean} instanceMinimized - Instance minimized state
+   * @param {number} mapSizeBefore - Map size before cleanup
+   * @returns {QuickTabWindow|undefined} Rendered window or undefined
+   */
+  _handleDetachedDOMUpdate(quickTab, tabWindow, entityMinimized, instanceMinimized, mapSizeBefore) {
+    // v1.6.4.10 - FIX Issue #1 & #5: Log Map cleanup with reason and size change
+    console.log('[UICoordinator] renderedTabs.delete():', {
+      id: quickTab.id,
+      reason: 'DOM detached',
+      mapSizeBefore,
+      mapSizeAfter: mapSizeBefore - 1
+    });
+    this.renderedTabs.delete(quickTab.id);
+    // v1.6.4.9 - FIX Issue #5: Stop monitoring for this tab
+    this._stopDOMMonitoring(quickTab.id);
+
+    // v1.6.4.10 - FIX Issue #1 CRITICAL: When DOM is detached AND entity is minimized,
+    // this is a Manager minimize operation. Clean up and skip render.
+    if (entityMinimized) {
+      console.log('[UICoordinator] DOM detached + entity minimized (Manager minimize), cleanup complete:', {
+        id: quickTab.id,
+        action: 'skip (Manager minimize cleanup)',
+        mapSizeAfter: this.renderedTabs.size
+      });
+      return;
+    }
+
+    // v1.6.4.9 - FIX Issues #2, #3 CRITICAL: Use INSTANCE state, not entity state
+    if (instanceMinimized) {
+      console.log('[UICoordinator] Instance is minimized, skipping render after cleanup:', {
+        id: quickTab.id,
+        action: 'skip (instance minimized)'
+      });
+      return;
+    }
+    
+    // v1.6.4.9 - FIX Issues #2, #3: Instance is NOT minimized but DOM is missing - MUST render
+    console.log('[UICoordinator] Instance NOT minimized but DOM missing, MUST render:', {
+      id: quickTab.id,
+      action: 'render (DOM missing + instance not minimized)'
+    });
+    // Apply snapshot if available before rendering
+    this._applySnapshotForRestore(quickTab);
+    return this.render(quickTab);
   }
 
   /**

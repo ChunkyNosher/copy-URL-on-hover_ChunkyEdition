@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4.0 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
@@ -65,15 +65,20 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - Direct local creation pattern
 
-**v1.6.4.0 Architectural Fixes:**
-- Entity-Instance sync fix (snapshot dimensions propagate to entity via fallback chain)
-- UICoordinator restore helpers: `_tryApplySnapshotFromManager()`, `_tryApplyDimensionsFromInstance()`
-- UICoordinator single rendering authority (restore does NOT call render directly)
-- Mutex pattern in VisibilityHandler (_operationLocks prevents duplicates)
-- `STATE_EMIT_DELAY_MS = 200` (increased from 100ms)
-- Storage fallback pattern in CreateHandler (sync → local)
-- DragController destroyed flag prevents ghost events after cleanup
-- DestroyHandler._batchMode prevents storage write storms (1 write vs 6+)
+**v1.6.3.3 Key Architectural Fixes (14 Critical Bugs):**
+- **Z-Index Tracking:** UICoordinator `_highestZIndex` and `_getNextZIndex()`
+- **UID Truncation:** TitlebarBuilder shows LAST 12 chars (unique suffix)
+- **Settings Loading:** Unified with CreateHandler (storage.local)
+- **Close Button Wiring:** DestroyHandler receives `internalEventBus`
+- **DOM Recovery:** UICoordinator attempts re-render on unexpected detachment
+- **Instance Re-registration:** VisibilityHandler updates quickTabsMap after restore
+
+**Architectural Patterns:**
+- Entity-Instance sync via UICoordinator fallback chain
+- Mutex pattern in VisibilityHandler (_operationLocks)
+- `STATE_EMIT_DELAY_MS = 200` for DOM verification
+- DragController destroyed flag prevents ghost events
+- DestroyHandler._batchMode prevents storage write storms
 
 ---
 

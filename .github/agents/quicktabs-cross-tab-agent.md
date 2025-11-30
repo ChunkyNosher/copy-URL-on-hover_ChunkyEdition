@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.4.10 cross-tab manager messages, Map lifecycle logging)
+  (v1.6.3.3 z-index tracking, settings unification, instance re-registration)
 tools: ["*"]
 ---
 
@@ -15,43 +15,20 @@ You are a Quick Tab cross-tab sync specialist for the copy-URL-on-hover_ChunkyEd
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**Agentic-Tools MCP:**
-- **Location:** `.agentic-tools-mcp/` directory
-- **Contents:** Agent memories and task management
-  - `memories/` - Individual memory JSON files organized by category
-  - `tasks/` - Task and project data files
-
 **MANDATORY at end of EVERY task:**
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
-3. `git push`
-
-**Memory files live in ephemeral workspace - commit or lose forever.**
-
-### Memory Search (ALWAYS DO THIS FIRST) 🔍
 
 **Before starting ANY task:**
 ```javascript
-const relevantMemories = await searchMemories({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  query: "[keywords about task/feature/component]",
-  limit: 5,
-  threshold: 0.3
-});
+await searchMemories({ query: "[keywords]", limit: 5 });
 ```
-
-**Memory Tools:**
-- `create_memory` - Store learnings, patterns, decisions
-- `search_memories` - Find relevant context before starting
-- `get_memory` - Retrieve specific memory details
-- `update_memory` - Refine existing memories
-- `list_memories` - Browse all stored knowledge
 
 ---
 
 ## Project Context
 
-**Version:** 1.6.4.10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.3 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
@@ -62,10 +39,10 @@ const relevantMemories = await searchMemories({
 - **DOM Cleanup** - `cleanupOrphanedQuickTabElements()` in `src/utils/dom.js`
 - **UICoordinator Single Rendering Authority** - restore() does NOT call render() directly
 - **state:cleared Event** - Emitted on closeAll() for full cleanup
-- **Cross-Tab Manager (v1.6.4.10)** - Minimize/restore sends to ALL browser tabs
-- **Map Lifecycle Logging (v1.6.4.10)** - Comprehensive before/after size logging
+- **Z-Index Tracking (v1.6.3.3)** - `_highestZIndex` for proper stacking
+- **Instance Re-registration (v1.6.3.3)** - quickTabsMap updated after restore
 
-**Storage Format (v1.6.4.10):**
+**Storage Format:**
 ```javascript
 {
   tabs: [...],           // Array of Quick Tab objects
@@ -264,13 +241,14 @@ quickTab.shouldBeVisible(currentTabId) {
 | `src/features/quick-tabs/managers/StorageManager.js` | storage.onChanged listener, save/load |
 | `src/features/quick-tabs/coordinators/SyncCoordinator.js` | Handle storage changes, call hydrate |
 | `src/features/quick-tabs/managers/StateManager.js` | Hydrate state, emit events |
-| `src/features/quick-tabs/coordinators/UICoordinator.js` | **Single rendering authority**, Map cleanup for minimized entities (v1.6.4.10) |
+| `src/features/quick-tabs/coordinators/UICoordinator.js` | **Single rendering authority**, z-index tracking, DOM recovery |
+| `src/features/quick-tabs/index.js` | **v1.6.3.3:** DestroyHandler receives `internalEventBus` |
 | `src/features/quick-tabs/handlers/DestroyHandler.js` | **_batchMode for close all**, `state:cleared` event |
-| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **Mutex pattern _operationLocks** |
+| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **Mutex pattern _operationLocks**, instance re-registration |
 | `src/utils/storage-utils.js` | Shared persistence utilities |
 | `src/utils/dom.js` | DOM utilities including `cleanupOrphanedQuickTabElements()` |
 | `background.js` | Cache update ONLY (no broadcast), saveId tracking, synchronous gesture handlers |
-| `sidebar/quick-tabs-manager.js` | **v1.6.4.10:** Sends minimize/restore to ALL browser tabs |
+| `sidebar/quick-tabs-manager.js` | Manager panel, minimize/restore operations |
 
 ---
 
