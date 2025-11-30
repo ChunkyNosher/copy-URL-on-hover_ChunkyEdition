@@ -5,6 +5,7 @@ on:
     tags:
       - 'v*.*.*' # Matches v1.2.3
       - 'v*.*.*.*' # Matches v1.2.3.4
+      - 'v*.*.*-v*'
       - 'v*.*.*.*-v*'
   workflow_dispatch:
 
