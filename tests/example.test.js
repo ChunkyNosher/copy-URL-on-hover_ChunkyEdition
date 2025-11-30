@@ -106,10 +106,12 @@ describe('Manifest Validation', () => {
    * TEST: Version format
    * WHY: Firefox AMO supports both standard semver (1.5.9) and 4-part versions (1.5.9.0)
    * ACCEPTS: Both 3-part (1.5.9) and 4-part (1.5.9.0) version numbers
+   * ACCEPTS: Versions with -v{number} suffix (e.g., 1.6.3.4-v2) for incremental updates
    */
   test('should have valid semantic version', () => {
     // Updated regex: accepts both 3-part (1.5.9) and 4-part (1.5.9.0) versions
-    const versionPattern = /^\d+\.\d+\.\d+(\.\d+)?$/;
+    // Also accepts optional -v{number} suffix for incremental updates (e.g., 1.6.3.4-v2)
+    const versionPattern = /^\d+\.\d+\.\d+(\.\d+)?(-v\d+)?$/;
     expect(manifest.version).toMatch(versionPattern);
   });
 

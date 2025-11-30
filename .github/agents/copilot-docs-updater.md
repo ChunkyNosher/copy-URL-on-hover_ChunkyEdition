@@ -99,7 +99,7 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.4)
+- [ ] Version numbers match current release (1.6.3.4-v2)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
@@ -108,10 +108,12 @@ stat -c%s .github/copilot-instructions.md
 - [ ] Storage area correct (storage.local for state AND UID setting)
 - [ ] Storage utilities documented (src/utils/storage-utils.js)
 - [ ] Manager action messages documented (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
-- [ ] State hydration pattern documented (v1.6.3.4 - `_initStep6_Hydrate()`)
-- [ ] Source tracking pattern documented (v1.6.3.4)
-- [ ] Z-index persistence documented (v1.6.3.4)
-- [ ] Unified destroy path documented (v1.6.3.4)
+- [ ] State hydration pattern documented (v1.6.3.4+ - `_initStep6_Hydrate()`)
+- [ ] Source tracking pattern documented (v1.6.3.4+)
+- [ ] Z-index persistence documented (v1.6.3.4+)
+- [ ] Unified destroy path documented (v1.6.3.4+)
+- [ ] Source-aware Map cleanup documented (v1.6.3.4-v2)
+- [ ] isRestoreOperation flag documented (v1.6.3.4-v2)
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -119,7 +121,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.4
+- **Current Version:** 1.6.3.4-v2
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -127,16 +129,20 @@ stat -c%s .github/copilot-instructions.md
   - Global Quick Tab visibility (Container isolation REMOVED)
   - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
   - Direct local creation pattern
-  - State hydration on page reload (v1.6.3.4)
+  - State hydration on page reload (v1.6.3.4+)
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
 - **Storage Area:** storage.local for Quick Tab state AND UID setting
 - **Storage Keys:** `quick_tabs_state_v2` (state), `quickTabShowDebugId` (UID setting, individual key)
 - **Storage Utilities:** `src/utils/storage-utils.js` exports
-- **v1.6.3.4 Key Features:**
+- **v1.6.3.4+ Key Features:**
   - State hydration with `_initStep6_Hydrate()` on page reload
   - Source tracking in handlers ('Manager', 'UI', 'hydration', 'automation')
   - Z-index persistence on focus via `handleFocus()`
   - Unified destroy path (UI close button uses DestroyHandler)
+- **v1.6.3.4-v2 Bug Fixes:**
+  - Source-aware Map cleanup in UICoordinator.update()
+  - isRestoreOperation flag for correct event routing
+  - Enhanced dimension verification logging
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **Agent Delegation Table:** When to use which agent
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
@@ -197,7 +203,7 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.4)
+- Version numbers (1.6.3.4-v2)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
@@ -293,7 +299,7 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.4)
+## Current Extension State (v1.6.3.4-v2)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -308,9 +314,11 @@ await perplexity.research("documentation compression markdown");
 - **Direct Local Creation:** Content renders first, background persists
 - **Storage Utilities:** Shared functions in `src/utils/storage-utils.js`
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
-- **State Hydration (v1.6.3.4):** `_initStep6_Hydrate()` on page reload
-- **Source Tracking (v1.6.3.4):** All actions log source
-- **Z-Index Persistence (v1.6.3.4):** Focus changes persist to storage
+- **State Hydration (v1.6.3.4+):** `_initStep6_Hydrate()` on page reload
+- **Source Tracking (v1.6.3.4+):** All actions log source
+- **Z-Index Persistence (v1.6.3.4+):** Focus changes persist to storage
+- **Source-Aware Cleanup (v1.6.3.4-v2):** UICoordinator cleans Map on Manager minimize
+- **isRestoreOperation Flag (v1.6.3.4-v2):** Correct routing on restore
 
 ### Storage Format
 ```javascript
@@ -360,7 +368,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.3 or earlier | Update to 1.6.3.4 |
+| v1.6.3.4 or earlier | Update to 1.6.3.4-v2 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -386,7 +394,7 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.4
+- [ ] Version numbers updated to 1.6.3.4-v2
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] No container/cookieStoreId references (except removal notes)

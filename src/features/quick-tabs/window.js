@@ -3,6 +3,7 @@
  * Handles creation, rendering, and lifecycle of individual Quick Tab overlay windows
  *
  * v1.5.9.0 - Restored missing UI logic identified in v1589-quick-tabs-root-cause.md
+ * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification logging after container creation
  */
 
 import browser from 'webextension-polyfill';
@@ -144,6 +145,7 @@ export class QuickTabWindow {
   /**
    * Create and render the Quick Tab window
    * v1.6.4.7 - FIX Issues #1, #6: Enhanced logging to verify correct dimensions are used
+   * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification after container creation
    */
   render() {
     if (this.container) {
@@ -202,6 +204,16 @@ export class QuickTabWindow {
         visibility: 'hidden',
         opacity: '0'
       }
+    });
+    
+    // v1.6.3.4-v2 - FIX Issue #4: Verify DOM dimensions after container creation
+    console.log('[QuickTabWindow] DOM dimensions AFTER createElement:', {
+      id: this.id,
+      'container.style.width': this.container.style.width,
+      'container.style.height': this.container.style.height,
+      'container.style.left': this.container.style.left,
+      'container.style.top': this.container.style.top,
+      'container.style.zIndex': this.container.style.zIndex
     });
 
     // v1.6.0 Phase 2.9 Task 4 - Use TitlebarBuilder facade pattern
@@ -285,6 +297,15 @@ export class QuickTabWindow {
       this.container.style.top = `${targetTop}px`;
       this.container.style.visibility = 'visible';
       this.container.style.opacity = '1';
+      
+      // v1.6.3.4-v2 - FIX Issue #4: Log final DOM dimensions after anti-flash movement
+      console.log('[QuickTabWindow] DOM dimensions AFTER position correction (final):', {
+        id: this.id,
+        'container.style.left': this.container.style.left,
+        'container.style.top': this.container.style.top,
+        'container.style.width': this.container.style.width,
+        'container.style.height': this.container.style.height
+      });
     });
 
     // v1.6.0 Phase 2.9 Task 3 - Use DragController facade pattern

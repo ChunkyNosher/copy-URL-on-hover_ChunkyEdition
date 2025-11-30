@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.3.4)
+  warning indicators, cross-tab operations (v1.6.3.4-v2 source-aware cleanup)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v2 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -37,12 +37,9 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Close Minimized** - Collects IDs BEFORE filtering, sends to ALL browser tabs
 - **Close All Batch Mode** - DestroyHandler._batchMode prevents storage write storms
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
-- **Source Tracking (v1.6.3.4)** - Manager actions logged with 'Manager' source
-
-**v1.6.3.4 Key Features:**
-- Source tracking in minimize/restore/close logs
-- Z-index persistence on focus
-- Unified destroy path for consistent cleanup
+- **Source Tracking (v1.6.3.4+)** - Manager actions logged with 'Manager' source
+- **Source-Aware Cleanup (v1.6.3.4-v2)** - UICoordinator cleans Map on Manager minimize
+- **isRestoreOperation Flag (v1.6.3.4-v2)** - Correct routing on restore from Manager
 
 **Storage Format:**
 ```javascript
@@ -191,8 +188,10 @@ Manager sends these messages to content script:
 - [ ] Solo/Mute indicators correct (arrays)
 - [ ] Orange indicator for `domVerified=false`
 - [ ] Header shows Solo/Mute counts
-- [ ] **v1.6.3.4:** Source logged as 'Manager' in actions
-- [ ] **v1.6.3.4:** Z-index persists on restore
+- [ ] **v1.6.3.4-v2:** Source-aware Map cleanup on minimize
+- [ ] **v1.6.3.4-v2:** isRestoreOperation flag on restore
+- [ ] **v1.6.3.4+:** Source logged as 'Manager' in actions
+- [ ] **v1.6.3.4+:** Z-index persists on restore
 - [ ] Close Minimized works for all tabs
 - [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐

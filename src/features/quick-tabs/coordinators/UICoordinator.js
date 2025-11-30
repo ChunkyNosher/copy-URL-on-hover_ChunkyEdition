@@ -24,6 +24,11 @@
  *   - Bug #6: Close button wiring - use internal event bus for state:deleted
  *   - Bug #8: DOM detaches post-restore - attempt re-render on unexpected detachment
  *   - Bug #2 (UID): Update showDebugId setting before restore render
+ * v1.6.3.4-v2 - FIX 6 Critical Restore Issues:
+ *   - Issue #1/#2: Source-aware Map cleanup for Manager minimizes
+ *   - Issue #3: Enhanced snapshot application logging
+ *   - Issue #5: isRestoreOperation flag to handle entity-instance desync
+ *   - Issue #6: Extract and use source parameter in update() decisions
  */
 
 import browser from 'webextension-polyfill';
@@ -300,17 +305,37 @@ export class UICoordinator {
    * v1.6.4.5 - FIX Issue #3: Use snapshot position/size when restoring
    * v1.6.4.8 - FIX Entity-Instance Sync Gap: Read from tabWindow instance if minimizedManager
    *   has already removed the snapshot (happens when VisibilityHandler calls restore first)
+   * v1.6.3.4-v2 - FIX Issue #3: Enhanced logging for snapshot application verification
    * @private
    * @param {QuickTab} quickTab - QuickTab entity to apply snapshot to
    */
   _applySnapshotForRestore(quickTab) {
+    // v1.6.3.4-v2 - FIX Issue #3: Log entity dimensions BEFORE snapshot application
+    console.log('[UICoordinator] _applySnapshotForRestore - entity dimensions BEFORE:', {
+      id: quickTab.id,
+      position: quickTab.position,
+      size: quickTab.size
+    });
+    
     // First try to get snapshot from minimizedManager
     if (this._tryApplySnapshotFromManager(quickTab)) {
+      // v1.6.3.4-v2 - FIX Issue #3: Log entity dimensions AFTER snapshot application
+      console.log('[UICoordinator] _applySnapshotForRestore - entity dimensions AFTER (from manager):', {
+        id: quickTab.id,
+        position: quickTab.position,
+        size: quickTab.size
+      });
       return;
     }
     // v1.6.4.8 - FIX Entity-Instance Sync Gap: If minimizedManager doesn't have it,
     // try to read from the existing tabWindow instance (which may have had snapshot applied)
     if (this._tryApplyDimensionsFromInstance(quickTab)) {
+      // v1.6.3.4-v2 - FIX Issue #3: Log entity dimensions AFTER instance application
+      console.log('[UICoordinator] _applySnapshotForRestore - entity dimensions AFTER (from instance):', {
+        id: quickTab.id,
+        position: quickTab.position,
+        size: quickTab.size
+      });
       return;
     }
     console.log('[UICoordinator] No snapshot available for:', quickTab.id);
@@ -324,6 +349,7 @@ export class UICoordinator {
    *   We need to call tabWindow.restore() here, then render if needed.
    * v1.6.4.7 - FIX Issues #1, #5, #6: Enhanced logging, DOM verification after render
    * v1.6.4.9 - FIX Issue #1: Clear snapshot after successful render, start monitoring
+   * v1.6.3.4-v2 - FIX Issue #3: Enhanced logging for snapshot application verification
    * @private
    * @param {QuickTabWindow} tabWindow - The window to restore
    * @param {string} quickTabId - Quick Tab ID
@@ -333,7 +359,7 @@ export class UICoordinator {
     console.log('[UICoordinator] Tab is being restored from minimized state:', quickTabId);
     
     // v1.6.4.7 - FIX Issue #6: Log dimensions BEFORE restore for debugging
-    console.log('[UICoordinator] Pre-restore dimensions:', {
+    console.log('[UICoordinator] Pre-restore instance dimensions:', {
       id: quickTabId,
       left: tabWindow.left,
       top: tabWindow.top,
@@ -343,10 +369,18 @@ export class UICoordinator {
 
     // v1.6.4.9 - FIX Issue #1: Use hasSnapshot() to check both active and pending-clear snapshots
     if (this._hasMinimizedManager() && this.minimizedManager.hasSnapshot(quickTabId)) {
+      // v1.6.3.4-v2 - FIX Issue #3: Log that we're about to apply snapshot from manager
+      console.log('[UICoordinator] Applying snapshot from MinimizedManager for:', quickTabId);
+      
       // MinimizedManager.restore() applies snapshot to instance but does NOT render
       const restoreResult = this.minimizedManager.restore(quickTabId);
       if (restoreResult) {
-        console.log('[UICoordinator] Applied snapshot from minimizedManager:', restoreResult.position, restoreResult.size);
+        // v1.6.3.4-v2 - FIX Issue #3: Log the snapshot values that were applied
+        console.log('[UICoordinator] Snapshot applied from MinimizedManager:', {
+          id: quickTabId,
+          position: restoreResult.position,
+          size: restoreResult.size
+        });
         // v1.6.3.2 - Now call restore() on the window (which updates minimized flag but does NOT render)
         tabWindow.restore();
       }
@@ -356,8 +390,8 @@ export class UICoordinator {
       console.log('[UICoordinator] Restored tab directly (no snapshot):', quickTabId);
     }
     
-    // v1.6.4.7 - FIX Issue #6: Log dimensions AFTER restore for debugging
-    console.log('[UICoordinator] Post-restore dimensions:', {
+    // v1.6.3.4-v2 - FIX Issue #3: Log dimensions AFTER restore/snapshot application
+    console.log('[UICoordinator] Post-restore instance dimensions (before render):', {
       id: quickTabId,
       left: tabWindow.left,
       top: tabWindow.top,
@@ -374,6 +408,15 @@ export class UICoordinator {
       // v1.6.3.3 - FIX Bug #2 (UID Disappears): Ensure showDebugId is current before render
       // The setting may have changed while the tab was minimized
       tabWindow.showDebugId = this.showDebugIdSetting;
+      
+      // v1.6.3.4-v2 - FIX Issue #3: Log dimensions about to be used for render
+      console.log('[UICoordinator] Dimensions being passed to render():', {
+        id: quickTabId,
+        left: tabWindow.left,
+        top: tabWindow.top,
+        width: tabWindow.width,
+        height: tabWindow.height
+      });
       
       tabWindow.render();
       // Update renderedTabs map
@@ -549,11 +592,17 @@ export class UICoordinator {
    * v1.6.4.10 - FIX Issue #1: Remove from renderedTabs when DOM detached and entity is minimized (Manager minimize)
    *   The Manager's minimize button calls handleMinimize which removes DOM but doesn't clear renderedTabs.
    *   This fix ensures stale Map entries are cleaned up to prevent duplicate 400x300 windows on restore.
+   * v1.6.3.4-v2 - FIX Issues #1, #2, #5, #6: Source-aware Map cleanup and isRestoreOperation flag
+   *   - Issue #1/#2: When source='Manager' AND minimized, immediately delete Map entry
+   *   - Issue #5: Use isRestoreOperation flag to correctly route restore even when both states are false
+   *   - Issue #6: Log all source-based decisions for audit trail
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
+   * @param {string} source - Source of the event ('Manager', 'UI', 'automation', 'background', 'unknown')
+   * @param {boolean} isRestoreOperation - Flag indicating this is a restore operation
    * @returns {QuickTabWindow|undefined} Updated or newly rendered tab window, or undefined if skipped
    */
-  update(quickTab) {
+  update(quickTab, source = 'unknown', isRestoreOperation = false) {
     const tabWindow = this.renderedTabs.get(quickTab.id);
     // v1.6.4.7 - FIX Issue #8: Entity minimized state (may be stale during restore transition)
     const entityMinimized = Boolean(quickTab.minimized || quickTab.visibility?.minimized);
@@ -561,11 +610,27 @@ export class UICoordinator {
 
     // Handle non-rendered tab or stale reference (DOM detached)
     if (!tabWindow) {
+      // v1.6.3.4-v2 - FIX Issue #5: If isRestoreOperation flag is set, apply snapshot and render
+      if (isRestoreOperation && !entityMinimized) {
+        console.log('[UICoordinator] Update decision:', {
+          id: quickTab.id,
+          inMap: false,
+          entityMinimized,
+          source,
+          isRestoreOperation,
+          mapSize: mapSizeBefore,
+          action: 'render (restore operation, not in map)'
+        });
+        this._applySnapshotForRestore(quickTab);
+        return this.render(quickTab);
+      }
+      
       // v1.6.4.9 - FIX Issue #6D: Log decision path
       console.log('[UICoordinator] Update decision:', {
         id: quickTab.id,
         inMap: false,
         entityMinimized,
+        source,
         mapSize: mapSizeBefore,
         action: entityMinimized ? 'skip (minimized)' : 'render (not in map)'
       });
@@ -585,20 +650,45 @@ export class UICoordinator {
     const instanceMinimized = tabWindow.minimized;
     const domAttached = tabWindow.isRendered();
 
-    // v1.6.4.9 - FIX Issue #6D: Log decision path with all relevant state
+    // v1.6.3.4-v2 - FIX Issue #6: Log decision path with source and all relevant state
     console.log('[UICoordinator] Update decision:', {
       id: quickTab.id,
       inMap: true,
       domAttached,
       entityMinimized,
       instanceMinimized,
+      source,
+      isRestoreOperation,
       mapSize: mapSizeBefore,
       action: 'evaluating...'
     });
+    
+    // v1.6.3.4-v2 - FIX Issues #1, #2, #6: Source-aware Map cleanup for Manager minimizes
+    // When Manager minimize: source='Manager', entityMinimized=true, DOM is detached
+    // We must clean up the Map entry immediately to prevent stale references
+    if (source === 'Manager' && entityMinimized && !domAttached) {
+      console.log('[UICoordinator] renderedTabs.delete() - Manager minimize cleanup:', {
+        id: quickTab.id,
+        reason: 'Manager minimize (source-aware cleanup)',
+        source,
+        mapSizeBefore,
+        mapSizeAfter: mapSizeBefore - 1
+      });
+      this.renderedTabs.delete(quickTab.id);
+      this._stopDOMMonitoring(quickTab.id);
+      return;
+    }
 
     // v1.6.4.6 - FIX Issue #3: Validate DOM is actually attached
     if (!domAttached) {
-      return this._handleDetachedDOMUpdate(quickTab, tabWindow, entityMinimized, instanceMinimized, mapSizeBefore);
+      return this._handleDetachedDOMUpdate(quickTab, tabWindow, entityMinimized, instanceMinimized, mapSizeBefore, source, isRestoreOperation);
+    }
+    
+    // v1.6.3.4-v2 - FIX Issue #5: Handle restore via isRestoreOperation flag
+    // This handles the race condition where both entity and instance are minimized=false
+    if (isRestoreOperation && !instanceMinimized && !entityMinimized) {
+      console.log('[UICoordinator] Update decision: restore via isRestoreOperation flag', quickTab.id);
+      return this._restoreExistingWindow(tabWindow, quickTab.id);
     }
 
     // Handle restore from minimized state (instance minimized but entity says not minimized)
@@ -626,19 +716,23 @@ export class UICoordinator {
   /**
    * Handle update when DOM is detached
    * v1.6.3.3 - Extracted to reduce complexity of update() method
+   * v1.6.3.4-v2 - FIX Issues #1, #2, #6: Add source parameter for source-aware cleanup
    * @private
    * @param {QuickTab} quickTab - QuickTab entity
    * @param {QuickTabWindow} tabWindow - Tab window instance
    * @param {boolean} entityMinimized - Entity minimized state
    * @param {boolean} instanceMinimized - Instance minimized state
    * @param {number} mapSizeBefore - Map size before cleanup
+   * @param {string} source - Source of the event
+   * @param {boolean} isRestoreOperation - Flag indicating this is a restore operation
    * @returns {QuickTabWindow|undefined} Rendered window or undefined
    */
-  _handleDetachedDOMUpdate(quickTab, tabWindow, entityMinimized, instanceMinimized, mapSizeBefore) {
-    // v1.6.4.10 - FIX Issue #1 & #5: Log Map cleanup with reason and size change
+  _handleDetachedDOMUpdate(quickTab, tabWindow, entityMinimized, instanceMinimized, mapSizeBefore, source = 'unknown', isRestoreOperation = false) {
+    // v1.6.3.4-v2 - FIX Issues #1, #2: Log Map cleanup with source for audit trail
     console.log('[UICoordinator] renderedTabs.delete():', {
       id: quickTab.id,
       reason: 'DOM detached',
+      source,
       mapSizeBefore,
       mapSizeAfter: mapSizeBefore - 1
     });
@@ -651,16 +745,29 @@ export class UICoordinator {
     if (entityMinimized) {
       console.log('[UICoordinator] DOM detached + entity minimized (Manager minimize), cleanup complete:', {
         id: quickTab.id,
+        source,
         action: 'skip (Manager minimize cleanup)',
         mapSizeAfter: this.renderedTabs.size
       });
       return;
+    }
+    
+    // v1.6.3.4-v2 - FIX Issue #5: Handle restore via isRestoreOperation flag
+    if (isRestoreOperation) {
+      console.log('[UICoordinator] DOM detached + isRestoreOperation flag, MUST render:', {
+        id: quickTab.id,
+        source,
+        action: 'render (restore operation with DOM detached)'
+      });
+      this._applySnapshotForRestore(quickTab);
+      return this.render(quickTab);
     }
 
     // v1.6.4.9 - FIX Issues #2, #3 CRITICAL: Use INSTANCE state, not entity state
     if (instanceMinimized) {
       console.log('[UICoordinator] Instance is minimized, skipping render after cleanup:', {
         id: quickTab.id,
+        source,
         action: 'skip (instance minimized)'
       });
       return;
@@ -669,6 +776,7 @@ export class UICoordinator {
     // v1.6.4.9 - FIX Issues #2, #3: Instance is NOT minimized but DOM is missing - MUST render
     console.log('[UICoordinator] Instance NOT minimized but DOM missing, MUST render:', {
       id: quickTab.id,
+      source,
       action: 'render (DOM missing + instance not minimized)'
     });
     // Apply snapshot if available before rendering
@@ -735,6 +843,7 @@ export class UICoordinator {
    * Setup state event listeners
    * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
    * v1.6.4.3 - FIX Issue #3: Add state:cleared listener for reconciliation
+   * v1.6.3.4-v2 - FIX Issue #6: Pass source and isRestoreOperation from events to update()
    */
   setupStateListeners() {
     console.log('[UICoordinator] Setting up state listeners');
@@ -745,9 +854,17 @@ export class UICoordinator {
       this.render(quickTab);
     });
 
-    this.eventBus.on('state:updated', ({ quickTab }) => {
-      console.log('[UICoordinator] Received state:updated event', { quickTabId: quickTab.id });
-      this.update(quickTab);
+    this.eventBus.on('state:updated', ({ quickTab, source }) => {
+      // v1.6.3.4-v2 - FIX Issue #6: Extract source from event and pass to update()
+      const eventSource = source || quickTab.source || 'unknown';
+      // v1.6.3.4-v2 - FIX Issue #5: Extract isRestoreOperation flag if present
+      const isRestoreOperation = quickTab.isRestoreOperation || false;
+      console.log('[UICoordinator] Received state:updated event', { 
+        quickTabId: quickTab.id,
+        source: eventSource,
+        isRestoreOperation 
+      });
+      this.update(quickTab, eventSource, isRestoreOperation);
     });
 
     this.eventBus.on('state:deleted', ({ id }) => {

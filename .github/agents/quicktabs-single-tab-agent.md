@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.4 z-index persistence, source tracking, unified destroy path)
+  (v1.6.3.4-v2 source-aware cleanup, isRestoreOperation flag, enhanced logging)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v2 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -37,9 +37,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-- **Z-Index Persistence (v1.6.3.4)** - Focus changes persist to storage
-- **Source Tracking (v1.6.3.4)** - All actions log source
-- **Unified Destroy Path (v1.6.3.4)** - UI close uses DestroyHandler
+- **Z-Index Persistence (v1.6.3.4+)** - Focus changes persist to storage
+- **Source Tracking (v1.6.3.4+)** - All actions log source
+- **Unified Destroy Path (v1.6.3.4+)** - UI close uses DestroyHandler
+- **Source-Aware Cleanup (v1.6.3.4-v2)** - Manager minimize cleans Map
+- **isRestoreOperation Flag (v1.6.3.4-v2)** - Correct routing on restore
 
 **Constants Reference:**
 
@@ -57,9 +59,29 @@ const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
 
 ---
 
-## v1.6.3.4 Key Patterns
+## v1.6.3.4-v2 Key Patterns
 
-### Z-Index Persistence (NEW)
+### Source-Aware Map Cleanup (NEW)
+
+```javascript
+// UICoordinator.update() cleans Map on Manager minimize
+update(quickTab, source = 'unknown', isRestoreOperation = false) {
+  if (source === 'Manager' && entityMinimized && !domAttached) {
+    this.renderedTabs.delete(id);  // Prevents ghost entries
+  }
+}
+```
+
+### isRestoreOperation Flag (NEW)
+
+```javascript
+// VisibilityHandler emits flag for restore routing
+this.eventBus.emit('state:updated', { 
+  quickTab, source: 'Manager', isRestoreOperation: true 
+});
+```
+
+### Z-Index Persistence (v1.6.3.4+)
 
 ```javascript
 // VisibilityHandler.handleFocus() persists z-index to storage
@@ -69,7 +91,7 @@ async handleFocus(id) {
 // serializeTabForStorage() includes zIndex field
 ```
 
-### Source Tracking Pattern (NEW)
+### Source Tracking Pattern (v1.6.3.4+)
 
 ```javascript
 // All handlers accept source parameter for logging
@@ -79,7 +101,7 @@ handleMinimize(id, source = 'UI') {
 // Sources: 'Manager', 'UI', 'hydration', 'automation'
 ```
 
-### Unified Destroy Path (NEW)
+### Unified Destroy Path (v1.6.3.4+)
 
 ```javascript
 // UI close button now uses DestroyHandler
@@ -356,15 +378,22 @@ updateZIndex(zIndex) {
 }
 ```
 
-### Issue: Duplicate Windows on Restore (v1.6.4.0)
+### Issue: Duplicate Windows on Restore (v1.6.3.4-v2)
 
-**Fix:** UICoordinator uses fallback chain - entity-instance sync gap fixed
+**Fix:** UICoordinator uses source-aware Map cleanup and isRestoreOperation flag
 
 ```javascript
-// ✅ CORRECT - UICoordinator fallback chain for restore
-// 1. _tryApplySnapshotFromManager() - get snapshot if exists
-// 2. _tryApplyDimensionsFromInstance() - fallback to tabWindow instance
-// Entity dimensions now properly synced from instance
+// ✅ CORRECT - UICoordinator.update() with source-aware cleanup
+update(quickTab, source = 'unknown', isRestoreOperation = false) {
+  // Clean Map when Manager minimize leaves ghost entries
+  if (source === 'Manager' && entityMinimized && !domAttached) {
+    this.renderedTabs.delete(id);
+  }
+  // isRestoreOperation routes to _restoreExistingWindow()
+  if (isRestoreOperation) {
+    this._restoreExistingWindow(quickTab);
+  }
+}
 ```
 
 ### Issue: Ghost Drag Events (v1.6.4.0)

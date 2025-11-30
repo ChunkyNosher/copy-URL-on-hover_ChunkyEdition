@@ -13,6 +13,7 @@
  *   - Issue #2: Atomic Map/DOM cleanup on minimize
  *   - Issue #5: Explicit Map deletion with logging
  *   - Issue #6: Source parameter for all operations
+ * v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag for entity-instance state desync
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -23,7 +24,7 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.3.4
+ * @version 1.6.4.11
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -374,6 +375,7 @@ export class VisibilityHandler {
    *   Manager was showing green indicator based on entity state, not actual DOM presence.
    * v1.6.3.3 - FIX Bug #3: Remove spurious warnings that fire during successful operations
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
+   * v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag to event payload
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Quick Tab window instance
@@ -389,7 +391,8 @@ export class VisibilityHandler {
     if (!tabWindow) {
       console.log(`[VisibilityHandler] No tabWindow for restore event (source: ${source}), UICoordinator will handle:`, id);
       // Still emit state:updated so UICoordinator can render
-      const quickTabData = { id, minimized: false, domVerified: false, source };
+      // v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag
+      const quickTabData = { id, minimized: false, domVerified: false, source, isRestoreOperation: true };
       this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
       return;
     }
@@ -412,8 +415,10 @@ export class VisibilityHandler {
       // v1.6.4.7 - Add DOM verification result to event data
       quickTabData.domVerified = isDOMRendered;
       quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
+      // v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag so UICoordinator routes correctly
+      quickTabData.isRestoreOperation = true;
       this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
-      console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { domVerified: isDOMRendered });
+      console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { domVerified: isDOMRendered, isRestoreOperation: true });
     }, STATE_EMIT_DELAY_MS);
   }
 
