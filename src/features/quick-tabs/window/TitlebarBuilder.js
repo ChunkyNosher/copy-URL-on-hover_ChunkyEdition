@@ -339,21 +339,24 @@ export class TitlebarBuilder {
     const displayId =
       this.config.id.length > 15 ? this.config.id.substring(0, 12) + '...' : this.config.id;
 
+    // v1.6.4.8 - FIX Issue #1: Add marginLeft: 'auto' to push element to right edge
+    // v1.6.4.8 - FIX Issue #3: Increase fontSize to 11px and use brighter color #aaa
     const debugId = createElement(
       'span',
       {
         className: 'quick-tab-debug-id',
         style: {
-          fontSize: '10px',
-          color: '#888',
+          fontSize: '11px',
+          color: '#aaa',
           fontFamily: 'monospace',
+          marginLeft: 'auto',
           marginRight: '8px',
           userSelect: 'text',
           cursor: 'default',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
-          maxWidth: '100px'
+          maxWidth: '120px'
         }
       },
       displayId

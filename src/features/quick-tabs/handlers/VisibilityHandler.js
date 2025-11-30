@@ -27,8 +27,9 @@ const MINIMIZE_DEBOUNCE_MS = 150;
 // v1.6.3.2 - FIX Issue #2: Lock duration to prevent duplicate operations from multiple sources
 const OPERATION_LOCK_MS = 200;
 
-// v1.6.4.7 - FIX Issue #4: Delay for DOM verification before emitting state:updated
-const STATE_EMIT_DELAY_MS = 100;
+// v1.6.4.8 - FIX Issue #4: Increased delay for DOM verification before emitting state:updated
+// 200ms gives UICoordinator time to render and verify DOM attachment
+const STATE_EMIT_DELAY_MS = 200;
 
 /**
  * VisibilityHandler class

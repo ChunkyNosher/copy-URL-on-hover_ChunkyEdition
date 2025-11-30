@@ -239,8 +239,8 @@ describe('VisibilityHandler', () => {
 
       visibilityHandler.handleRestore('qt-123');
       
-      // Fast-forward timers to trigger the delayed emit (100ms delay for DOM verification)
-      jest.advanceTimersByTime(150);
+      // Fast-forward timers to trigger the delayed emit (200ms delay for DOM verification - v1.6.4.8)
+      jest.advanceTimersByTime(250);
       
       // Need to wait for any pending promises
       await Promise.resolve();
