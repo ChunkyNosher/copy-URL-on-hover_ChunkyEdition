@@ -61,8 +61,15 @@ const relevantMemories = await searchMemories({
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-- **Restore via UICoordinator** - UICoordinator handles rendering (v1.6.3.2)
+- **Restore via UICoordinator** - Uses `_verifyDOMAfterRender()` with `DOM_VERIFICATION_DELAY_MS = 150`
 - **DragController Destroyed Flag** - Prevents ghost events (v1.6.3.2)
+- **Debug UID Display** - `quickTabShowDebugId` setting (v1.6.3.2)
+- **Default Dimensions** - `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300` (v1.6.4.7)
+
+**New Constants (v1.6.4.7):**
+- `DOM_VERIFICATION_DELAY_MS = 150` (UICoordinator)
+- `STATE_EMIT_DELAY_MS = 100` (VisibilityHandler)
+- `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` (QuickTabWindow)
 
 **Minimized State Detection (v1.6.3.2):**
 ```javascript
@@ -257,133 +264,26 @@ class QuickTab {
 
 ## Drag & Resize with Pointer Events
 
-**Use Pointer Events API (no pointer escape):**
+**Key Pattern:** Use `setPointerCapture()` / `releasePointerCapture()` to prevent pointer escape.
 
 ```javascript
-setupDrag() {
-  this.header.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('button')) return; // Ignore buttons
-    
-    // Capture pointer
-    this.header.setPointerCapture(e.pointerId);
-    
-    this.isDragging = true;
-    this.dragStartX = e.clientX - this.element.offsetLeft;
-    this.dragStartY = e.clientY - this.element.offsetTop;
-  });
-  
-  this.header.addEventListener('pointermove', (e) => {
-    if (!this.isDragging) return;
-    
-    const newX = e.clientX - this.dragStartX;
-    const newY = e.clientY - this.dragStartY;
-    
-    this.element.style.left = `${newX}px`;
-    this.element.style.top = `${newY}px`;
-  });
-  
-  this.header.addEventListener('pointerup', (e) => {
-    if (this.isDragging) {
-      this.header.releasePointerCapture(e.pointerId);
-      this.isDragging = false;
-      this.savePosition();
-    }
-  });
-}
-
-setupResize() {
-  this.resizeHandles.forEach(handle => {
-    handle.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      
-      // Capture pointer
-      handle.setPointerCapture(e.pointerId);
-      
-      this.isResizing = true;
-      this.resizeDirection = handle.dataset.direction;
-      this.resizeStartX = e.clientX;
-      this.resizeStartY = e.clientY;
-      this.resizeStartWidth = this.element.offsetWidth;
-      this.resizeStartHeight = this.element.offsetHeight;
-      this.resizeStartLeft = this.element.offsetLeft;
-      this.resizeStartTop = this.element.offsetTop;
-    });
-  });
-  
-  document.addEventListener('pointermove', (e) => {
-    if (!this.isResizing) return;
-    
-    const deltaX = e.clientX - this.resizeStartX;
-    const deltaY = e.clientY - this.resizeStartY;
-    
-    this.applyResize(this.resizeDirection, deltaX, deltaY);
-  });
-  
-  document.addEventListener('pointerup', (e) => {
-    if (this.isResizing) {
-      this.isResizing = false;
-      this.saveSize();
-    }
-  });
-}
+// Drag setup - capture on pointerdown, release on pointerup
+header.setPointerCapture(e.pointerId);
+// ... handle pointermove ...
+header.releasePointerCapture(e.pointerId);
 ```
 
 ---
 
 ## Navigation Controls
 
-**Back/Forward/Reload:**
-
-```javascript
-setupNavigation() {
-  this.backButton.addEventListener('click', () => {
-    this.iframe.contentWindow.history.back();
-  });
-  
-  this.forwardButton.addEventListener('click', () => {
-    this.iframe.contentWindow.history.forward();
-  });
-  
-  this.reloadButton.addEventListener('click', () => {
-    this.iframe.contentWindow.location.reload();
-  });
-  
-  // Update button states
-  this.iframe.addEventListener('load', () => {
-    this.updateNavigationState();
-  });
-}
-
-updateNavigationState() {
-  // Enable/disable based on history
-  const canGoBack = this.iframe.contentWindow.history.length > 1;
-  this.backButton.disabled = !canGoBack;
-  
-  // Update title and favicon
-  this.updateTitle();
-  this.updateFavicon();
-}
-```
+Use `iframe.contentWindow.history.back()/forward()` and `location.reload()` for navigation.
 
 ---
 
 ## MCP Server Integration
 
-**MANDATORY for Single Quick Tab Work:**
-
-**CRITICAL - During Implementation:**
-- **Context7:** Verify WebExtensions APIs DURING implementation ⭐
-- **Perplexity:** Research drag/resize patterns (paste code) ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health ⭐
-
-**CRITICAL - Testing:**
-- **Playwright Firefox/Chrome MCP:** Test BEFORE/AFTER changes ⭐
-- **Codecov:** Verify coverage ⭐
-
-**Every Task:**
-- **Agentic-Tools:** Search memories, store UI solutions
+**Context7:** Verify APIs | **Perplexity:** Research patterns | **ESLint:** Lint changes | **CodeScene:** Code health
 
 ---
 

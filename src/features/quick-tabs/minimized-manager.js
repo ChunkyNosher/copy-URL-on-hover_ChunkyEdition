@@ -77,6 +77,7 @@ export class MinimizedManager {
    * v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call tabWindow.restore() here!
    *   This was causing duplicate window bug. MinimizedManager only applies snapshot.
    *   UICoordinator is the single rendering authority and will call restore() then render().
+   * v1.6.4.7 - FIX Issues #1, #6: Enhanced logging for dimension verification
    * @param {string} id - Quick Tab ID
    * @returns {Object|boolean} Snapshot object with position/size, or false if not found
    */
@@ -91,6 +92,15 @@ export class MinimizedManager {
       const savedTop = snapshot.savedPosition.top;
       const savedWidth = snapshot.savedSize.width;
       const savedHeight = snapshot.savedSize.height;
+      
+      // v1.6.4.7 - FIX Issue #6: Log BEFORE and AFTER to verify application
+      console.log('[MinimizedManager] Instance dimensions BEFORE snapshot application:', {
+        id,
+        left: tabWindow.left,
+        top: tabWindow.top,
+        width: tabWindow.width,
+        height: tabWindow.height
+      });
 
       // v1.6.4.6 - FIX Issue #6: Apply snapshot to instance properties
       // This ensures when render() is eventually called, it uses the correct position/size
@@ -99,13 +109,29 @@ export class MinimizedManager {
       tabWindow.width = savedWidth;
       tabWindow.height = savedHeight;
 
-      console.log('[MinimizedManager] Applied snapshot to instance properties:', {
+      // v1.6.4.7 - FIX Issue #6: Log AFTER to verify application succeeded
+      console.log('[MinimizedManager] Instance dimensions AFTER snapshot application:', {
         id,
-        left: savedLeft,
-        top: savedTop,
-        width: savedWidth,
-        height: savedHeight
+        left: tabWindow.left,
+        top: tabWindow.top,
+        width: tabWindow.width,
+        height: tabWindow.height
       });
+      
+      // v1.6.4.7 - Verify the values match what we intended to set
+      const applicationVerified = 
+        tabWindow.left === savedLeft &&
+        tabWindow.top === savedTop &&
+        tabWindow.width === savedWidth &&
+        tabWindow.height === savedHeight;
+        
+      if (!applicationVerified) {
+        console.error('[MinimizedManager] CRITICAL: Snapshot application verification FAILED!', {
+          id,
+          expected: { left: savedLeft, top: savedTop, width: savedWidth, height: savedHeight },
+          actual: { left: tabWindow.left, top: tabWindow.top, width: tabWindow.width, height: tabWindow.height }
+        });
+      }
 
       // v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call tabWindow.restore() here!
       // This was causing the duplicate window bug - both MinimizedManager.restore()

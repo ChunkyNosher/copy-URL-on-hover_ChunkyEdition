@@ -36,17 +36,17 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
 - **Global Visibility** - All Quick Tabs visible across all tabs
 
-**v1.6.3.2 Architectural Fixes:**
-- **UICoordinator Single Rendering Authority:** `restore()` NO LONGER calls `render()` directly
-- **Mutex Pattern:** `VisibilityHandler._operationLocks` prevents duplicate minimize/restore
-- **MinimizedManager.restore():** Only applies snapshot, returns data (no tabWindow.restore())
-- **DragController Destroyed Flag:** Prevents ghost events after cleanup
+**v1.6.3.2+ Architectural Patterns:**
+- **UICoordinator Single Rendering Authority:** Uses `_verifyDOMAfterRender()` with `DOM_VERIFICATION_DELAY_MS = 150`
+- **Mutex Pattern:** `VisibilityHandler._operationLocks` + `STATE_EMIT_DELAY_MS = 100` for delayed emit
+- **MinimizedManager.restore():** Applies snapshot with BEFORE/AFTER dimension logging, returns data
+- **CreateHandler Async Init:** `async init()` loads `quickTabShowDebugId` from `QUICK_TAB_SETTINGS_KEY`
+- **QuickTabWindow Defaults:** `DEFAULT_WIDTH = 400`, `DEFAULT_HEIGHT = 300`, `DEFAULT_LEFT/TOP = 100`
 - **Close All Batch Mode:** `DestroyHandler._batchMode` prevents storage write storms
 
-**Storage Format:**
-```javascript
-{ tabs: [...], saveId: '...', timestamp: ... }
-```
+**Storage Keys:**
+- **State:** `quick_tabs_state_v2` (storage.local)
+- **Settings:** `quick_tab_settings` (storage.sync) - includes `quickTabShowDebugId`
 
 ---
 
@@ -61,18 +61,34 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.2 Key Patterns
+## v1.6.3.2+ Key Patterns
 
-### Restore Flow (UICoordinator Single Rendering Authority)
+### UICoordinator DOM Verification (v1.6.4.7)
 
+```javascript
+const DOM_VERIFICATION_DELAY_MS = 150;
+_verifyDOMAfterRender(tabWindow, quickTabId) {
+  if (!tabWindow.isRendered()) return;  // Immediate check
+  setTimeout(() => {  // Delayed verification
+    if (!tabWindow.isRendered()) this.renderedTabs.delete(quickTabId);
+  }, DOM_VERIFICATION_DELAY_MS);
+}
 ```
-VisibilityHandler.handleRestore()
-    ↓
-MinimizedManager.restore(id) → applies snapshot, returns data
-    ↓
-emits 'state:updated' event
-    ↓
-UICoordinator.update(quickTab) → calls render() if needed
+
+### VisibilityHandler Delayed Emit (v1.6.4.7)
+
+```javascript
+const STATE_EMIT_DELAY_MS = 100;  // Wait for DOM verification
+_emitRestoreStateUpdate(id, tabWindow) {
+  setTimeout(() => this.eventBus.emit('state:updated', data), STATE_EMIT_DELAY_MS);
+}
+```
+
+### CreateHandler Async Init (v1.6.3.2)
+
+```javascript
+async init() { await this._loadDebugIdSetting(); }  // From QUICK_TAB_SETTINGS_KEY
+// QuickTabsManager: await this.createHandler.init();
 ```
 
 ### Mutex Pattern for Visibility Operations

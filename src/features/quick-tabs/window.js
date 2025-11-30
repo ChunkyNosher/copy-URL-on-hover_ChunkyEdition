@@ -13,6 +13,12 @@ import { TitlebarBuilder } from './window/TitlebarBuilder.js';
 import { CONSTANTS } from '../../core/config.js';
 import { createElement } from '../../utils/dom.js';
 
+// v1.6.4.7 - Default dimensions for fallback when invalid values provided
+const DEFAULT_WIDTH = 400;
+const DEFAULT_HEIGHT = 300;
+const DEFAULT_LEFT = 100;
+const DEFAULT_TOP = 100;
+
 /**
  * QuickTabWindow class - Manages a single Quick Tab overlay instance
  */
@@ -137,17 +143,42 @@ export class QuickTabWindow {
 
   /**
    * Create and render the Quick Tab window
+   * v1.6.4.7 - FIX Issues #1, #6: Enhanced logging to verify correct dimensions are used
    */
   render() {
     if (this.container) {
       console.warn('[QuickTabWindow] Already rendered:', this.id);
       return this.container;
     }
+    
+    // v1.6.4.7 - FIX Issue #6: Log dimensions at start of render to verify correct values
+    console.log('[QuickTabWindow] render() called with dimensions:', {
+      id: this.id,
+      left: this.left,
+      top: this.top,
+      width: this.width,
+      height: this.height
+    });
 
-    const targetLeft = Number.isFinite(this.left) ? this.left : 100;
-    const targetTop = Number.isFinite(this.top) ? this.top : 100;
+    const targetLeft = Number.isFinite(this.left) ? this.left : DEFAULT_LEFT;
+    const targetTop = Number.isFinite(this.top) ? this.top : DEFAULT_TOP;
+    // v1.6.4.7 - FIX Issue #1: Ensure width/height use instance properties, not defaults
+    const targetWidth = Number.isFinite(this.width) && this.width > 0 ? this.width : DEFAULT_WIDTH;
+    const targetHeight = Number.isFinite(this.height) && this.height > 0 ? this.height : DEFAULT_HEIGHT;
+    
     this.left = targetLeft;
     this.top = targetTop;
+    this.width = targetWidth;
+    this.height = targetHeight;
+    
+    // v1.6.4.7 - FIX Issue #6: Log final dimensions being applied to DOM
+    console.log('[QuickTabWindow] Applying dimensions to DOM:', {
+      id: this.id,
+      width: targetWidth,
+      height: targetHeight,
+      left: targetLeft,
+      top: targetTop
+    });
 
     // Create main container
     this.container = createElement('div', {
@@ -157,8 +188,8 @@ export class QuickTabWindow {
         position: 'fixed',
         left: '-9999px',
         top: '-9999px',
-        width: `${this.width}px`,
-        height: `${this.height}px`,
+        width: `${targetWidth}px`,
+        height: `${targetHeight}px`,
         zIndex: this.zIndex.toString(),
         backgroundColor: '#1e1e1e',
         border: '2px solid #444',
@@ -478,12 +509,14 @@ export class QuickTabWindow {
    * v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call render() here!
    *   UICoordinator is the single rendering authority. restore() only updates instance state.
    *   UICoordinator.update() will detect the state change and call render() exactly once.
+   * v1.6.4.7 - FIX Issue #7: Log explicit warning when container is null (expected behavior)
    *
    * This method now:
    * 1. Clears minimized flag
    * 2. Updates instance properties (position/size already set from snapshot)
    * 3. Does NOT call render() - UICoordinator handles rendering
-   * 4. Calls onFocus() callback to notify state change
+   * 4. Logs container state for debugging
+   * 5. Calls onFocus() callback to notify state change
    */
   restore() {
     this.minimized = false;
@@ -497,14 +530,23 @@ export class QuickTabWindow {
     // This method ONLY updates instance state; UICoordinator.update() handles DOM creation.
     // The duplicate window bug was caused by BOTH restore() AND update() calling render().
 
-    // If container exists (shouldn't normally happen), just update its display
+    // v1.6.4.7 - FIX Issue #7: Log container state for debugging
     if (this.container) {
-      console.log('[QuickTabWindow] Container already exists during restore, updating display:', this.id);
+      console.log('[QuickTabWindow] Container exists during restore, updating display:', this.id);
       this.container.style.display = 'flex';
       this.container.style.left = `${this.left}px`;
       this.container.style.top = `${this.top}px`;
       this.container.style.width = `${this.width}px`;
       this.container.style.height = `${this.height}px`;
+    } else {
+      // v1.6.4.7 - FIX Issue #7: This is expected behavior - UICoordinator will call render()
+      console.log('[QuickTabWindow] Container is null during restore (expected), UICoordinator will render:', this.id);
+      console.log('[QuickTabWindow] Dimensions to be used by UICoordinator:', {
+        left: this.left,
+        top: this.top,
+        width: this.width,
+        height: this.height
+      });
     }
 
     // Enhanced logging for console log export

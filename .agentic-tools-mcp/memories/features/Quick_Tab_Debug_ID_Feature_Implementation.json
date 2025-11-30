@@ -1,0 +1,8 @@
+{
+  "id": "ed6773be-ec13-448d-bbcc-55c71047c901",
+  "title": "Quick Tab Debug ID Feature Implementation",
+  "details": "## Quick Tab Debug UID Display Feature (v1.6.3.2)\n\n### Implementation Summary\nAdded toggleable debug UID display to Quick Tab titlebars.\n\n### Key Files Modified\n1. `src/core/config.js` - Added `QUICK_TAB_SETTINGS_KEY` to CONSTANTS\n2. `src/features/quick-tabs/handlers/CreateHandler.js` - Added `init()` method to load setting, added `showDebugId` to options\n3. `src/features/quick-tabs/index.js` - Made initialization async to call `createHandler.init()`\n4. `src/features/quick-tabs/coordinators/UICoordinator.js` - Updated to use shared CONSTANTS\n\n### Architecture Pattern\nSettings are loaded from `browser.storage.sync` under `quick_tab_settings` key during handler initialization, then cached and passed through the creation chain.\n\n### Already Implemented Components (Pre-existing)\n- options_page.html/js - UI toggle for `quickTabShowDebugId`\n- window.js - Passes `showDebugId` to TitlebarBuilder\n- TitlebarBuilder.js - `_createDebugIdElement()` method creates the display\n\n### Complexity Reduction\nRefactored `_buildTabOptions()` to stay under ESLint complexity limit by extracting:\n- `_buildGeometryOptions()` - position/size options\n- `_buildVisibilityOptions()` - minimized/solo/mute/debug options\n- `_extractCallbacks()` - callback functions",
+  "category": "features",
+  "dateCreated": "2025-11-30T00:25:30.527Z",
+  "dateUpdated": "2025-11-30T00:25:30.527Z"
+}
