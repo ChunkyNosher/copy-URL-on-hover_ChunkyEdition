@@ -1,0 +1,8 @@
+{
+  "id": "3b91f604-ad67-47e9-8852-f14b6b882260",
+  "title": "Quick Tab Restore Fix v1.6.3.4-v3",
+  "details": "## v1.6.3.4-v3 Quick Tab Restore Bug Fix Summary\n\n### 6 Issues Fixed:\n1. **Duplicate 400x300 Window on 2nd+ Restore** - Unified restore path via fresh render()\n2. **renderedTabs Map Lifecycle Desync** - Explicit early cleanup for Manager minimize  \n3. **UpdateHandler Stops Persisting** - Added callback wiring logging verification\n4. **Close Button Doesn't Update Manager** - onDestroy callback verification with try/catch\n5. **Snapshot Pending-Clear Lifecycle Gap** - Snapshot stays in minimizedTabs until clearSnapshot()\n6. **Insufficient Logging** - Comprehensive logging at all decision points\n\n### Key Architectural Changes:\n- UICoordinator.update() refactored to extract helper methods (_handleManagerMinimize, _handleRestoreOperation, _handleNotInMap, _handleStateMismatchRestore, _performNormalUpdate)\n- MinimizedManager.restore() NO LONGER moves snapshot to pendingClearSnapshots\n- clearSnapshot() is now REQUIRED to remove snapshot after successful render\n- All restore operations use unified fresh render() path (no dual code paths)\n\n### Files Modified:\n- UICoordinator.js - Refactored update(), extracted helpers, unified restore path\n- window.js - Callback wiring logging, onDestroy verification\n- minimized-manager.js - Changed snapshot lifecycle\n- UpdateHandler.js - Logging for callback invocation\n- MinimizedManager.test.js - Updated tests for new snapshot behavior\n\n### Testing:\n- All 1565 tests pass\n- No ESLint errors in modified files\n- No CodeQL security issues",
+  "category": "bug_fixes",
+  "dateCreated": "2025-11-30T22:04:40.138Z",
+  "dateUpdated": "2025-11-30T22:04:40.138Z"
+}

@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.4-v2 source-aware cleanup, isRestoreOperation flag)
+  Quick Tab functionality (v1.6.3.4-v3 unified restore path, early Map cleanup)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v2 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,11 +37,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Global Visibility** - All Quick Tabs visible across all tabs
 - **State Hydration (v1.6.3.4+)** - Quick Tabs restored from storage on page reload
 
-**v1.6.3.4-v2 Key Features (Bug Fixes):**
-- **Source-Aware Map Cleanup:** UICoordinator cleans renderedTabs on Manager minimize
-- **isRestoreOperation Flag:** state:updated events route correctly to restore path
-- **Enhanced Dimension Verification:** Logging throughout restore pipeline
-- **Fixed:** Duplicate 400x300 window on restore, ghost Map entries
+**v1.6.3.4-v3 Key Features (Bug Fixes):**
+- **Unified Restore Path:** UICoordinator ALWAYS deletes Map entry before restore
+- **Early Map Cleanup:** Manager minimize triggers explicit cleanup BEFORE state checks
+- **Snapshot Lifecycle Fix:** `restore()` keeps snapshot until `clearSnapshot()` called
+- **Callback Verification Logging:** window.js and UpdateHandler log callback wiring
+- **Comprehensive Decision Logging:** All decision points log conditions and outcomes
 
 **Storage Keys:**
 - **State:** `quick_tabs_state_v2` (storage.local)
@@ -60,93 +61,44 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v2 Key Patterns
+## v1.6.3.4-v3 Key Patterns
 
-### Source-Aware Map Cleanup (NEW)
+### Unified Restore Path (NEW)
 
 ```javascript
-// UICoordinator.update() - clean Map on Manager minimize
-update(quickTab, source = 'unknown', isRestoreOperation = false) {
-  if (source === 'Manager' && entityMinimized && !domAttached) {
-    this.renderedTabs.delete(id);  // Prevents ghost entries
-  }
+// UICoordinator ALWAYS deletes Map entry before restore
+_handleRestoreOperation(quickTab) {
+  this.renderedTabs.delete(id);  // Force fresh render
+  this.render(quickTab);
 }
 ```
 
-### isRestoreOperation Flag (NEW)
+### Early Map Cleanup (NEW)
 
 ```javascript
-// VisibilityHandler emits flag for restore routing
-this.eventBus.emit('state:updated', { 
-  quickTab, source: 'Manager', isRestoreOperation: true 
-});
-// UICoordinator routes to _restoreExistingWindow() when flag is true
-```
-
-### State Hydration on Page Reload (v1.6.3.4+)
-
-```javascript
-// index.js - _initStep6_Hydrate() restores Quick Tabs from storage
-async _hydrateStateFromStorage() {
-  const { quick_tabs_state_v2: storedState } = await browser.storage.local.get('quick_tabs_state_v2');
-  if (!storedState?.tabs?.length) return;
-  // Hydrate each tab, repopulate Map and DOM
+// UICoordinator.update() - explicit cleanup BEFORE state checks
+_handleManagerMinimize(quickTab) {
+  this.renderedTabs.delete(id);  // Clean Map immediately
 }
 ```
 
-### Source Tracking Pattern (v1.6.3.4+)
+### Snapshot Lifecycle (v1.6.3.4-v3)
 
 ```javascript
-// All handlers accept source parameter for logging
-handleMinimize(id, source = 'UI') {
-  console.log(`[VisibilityHandler] Minimizing ${id} from ${source}`);
+// MinimizedManager.restore() - keeps snapshot in minimizedTabs
+restore(id) {
+  const snapshot = this.minimizedTabs.get(id);
+  // Apply snapshot but do NOT move to pendingClearSnapshots
+  // UICoordinator calls clearSnapshot() after confirmed render
 }
-// Sources: 'Manager', 'UI', 'hydration', 'automation'
 ```
 
-### Z-Index Persistence (v1.6.3.4+)
+### Callback Verification (v1.6.3.4-v3)
 
 ```javascript
-// VisibilityHandler.handleFocus() persists z-index to storage
-async handleFocus(id) {
-  await persistStateToStorage(state, '[VisibilityHandler.handleFocus]');
-}
-// serializeTabForStorage() includes zIndex field
+// window.js and UpdateHandler log callback wiring
+console.log(`[QuickTabWindow.destroy] onDestroy callback exists: ${!!this.callbacks.onDestroy}`);
 ```
-
-### Unified Destroy Path (v1.6.3.4+)
-
-```javascript
-// UI close button now uses DestroyHandler
-// Manager and UI closes both go through single path
-// Proper storage cleanup on all closes
-```
-
-### Z-Index Tracking (Inherited)
-
-```javascript
-// UICoordinator tracks highest z-index in memory
-this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
-_getNextZIndex() { this._highestZIndex++; return this._highestZIndex; }
-```
-
-### Snapshot Lifecycle (Inherited)
-
-```javascript
-UICoordinator._applySnapshotForRestore(quickTab) {
-  // 1. Try MinimizedManager snapshot with hasSnapshot()
-  // 2. Fallback to existing tabWindow instance dimensions
-}
-// After render: clearSnapshot(id) confirms snapshot deletion
-```
-
-### Constants Reference
-
-| Constant | Value | Location |
-|----------|-------|----------|
-| `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator |
-| `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator |
-| `STATE_EMIT_DELAY_MS` | 200 | VisibilityHandler |
 
 ---
 
@@ -196,8 +148,9 @@ UICoordinator._applySnapshotForRestore(quickTab) {
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
 - [ ] Manager displays with Solo/Mute indicators
-- [ ] **v1.6.3.4-v2:** Source-aware Map cleanup on Manager minimize
-- [ ] **v1.6.3.4-v2:** isRestoreOperation flag routes to correct path
+- [ ] **v1.6.3.4-v3:** Unified restore path - Map entry deleted before render
+- [ ] **v1.6.3.4-v3:** Early Map cleanup on Manager minimize
+- [ ] **v1.6.3.4-v3:** Snapshot stays in minimizedTabs until clearSnapshot()
 - [ ] **v1.6.3.4+:** State hydration on page reload
 - [ ] **v1.6.3.4+:** Source logged in minimize/restore/close
 - [ ] **v1.6.3.4+:** Z-index persists on focus

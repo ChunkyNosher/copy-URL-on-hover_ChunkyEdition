@@ -6,6 +6,7 @@
  * v1.6.4 - FIX Issue #3: Added storage persistence after position/size changes
  * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
  * v1.6.3.4 - FIX Issue #3: Add z-index persistence for restore
+ * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation verification
  *
  * Responsibilities:
  * - Handle position updates during drag
@@ -16,7 +17,7 @@
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
  *
- * @version 1.6.3.4
+ * @version 1.6.3.4-v3
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -64,12 +65,16 @@ export class UpdateHandler {
    * Handle position change end (drag end)
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.4 - FIX Issue #3: Added storage persistence
+   * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation
    *
    * @param {string} id - Quick Tab ID
    * @param {number} left - Final left position
    * @param {number} top - Final top position
    */
   handlePositionChangeEnd(id, left, top) {
+    // v1.6.3.4-v3 - FIX Issue #6: Log callback invocation for debugging
+    console.log('[UpdateHandler] handlePositionChangeEnd called:', { id, left, top });
+    
     const roundedLeft = Math.round(left);
     const roundedTop = Math.round(top);
 
@@ -78,6 +83,9 @@ export class UpdateHandler {
     if (tab) {
       tab.left = roundedLeft;
       tab.top = roundedTop;
+      console.log('[UpdateHandler] Updated tab position in Map:', { id, left: roundedLeft, top: roundedTop });
+    } else {
+      console.warn('[UpdateHandler] Tab not found in quickTabsMap:', id);
     }
 
     // Emit event for coordinators
@@ -88,6 +96,7 @@ export class UpdateHandler {
     });
 
     // v1.6.4 - FIX Issue #3: Persist to storage after drag ends
+    console.log('[UpdateHandler] Scheduling storage persist after position change');
     this._persistToStorage();
   }
 
@@ -108,12 +117,16 @@ export class UpdateHandler {
    * Handle size change end (resize end)
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.4 - FIX Issue #3: Added storage persistence
+   * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation
    *
    * @param {string} id - Quick Tab ID
    * @param {number} width - Final width
    * @param {number} height - Final height
    */
   handleSizeChangeEnd(id, width, height) {
+    // v1.6.3.4-v3 - FIX Issue #6: Log callback invocation for debugging
+    console.log('[UpdateHandler] handleSizeChangeEnd called:', { id, width, height });
+    
     const roundedWidth = Math.round(width);
     const roundedHeight = Math.round(height);
 
@@ -122,6 +135,9 @@ export class UpdateHandler {
     if (tab) {
       tab.width = roundedWidth;
       tab.height = roundedHeight;
+      console.log('[UpdateHandler] Updated tab size in Map:', { id, width: roundedWidth, height: roundedHeight });
+    } else {
+      console.warn('[UpdateHandler] Tab not found in quickTabsMap:', id);
     }
 
     // Emit event for coordinators
@@ -132,6 +148,7 @@ export class UpdateHandler {
     });
 
     // v1.6.4 - FIX Issue #3: Persist to storage after resize ends
+    console.log('[UpdateHandler] Scheduling storage persist after size change');
     this._persistToStorage();
   }
 

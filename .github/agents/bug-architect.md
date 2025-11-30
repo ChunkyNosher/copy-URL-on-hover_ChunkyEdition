@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
@@ -66,8 +66,8 @@ const relevantMemories = await searchMemories({
 - Direct local creation pattern
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4 Key Features:**
-- State hydration with `_initStep6_Hydrate()` on page reload
+**v1.6.3.4-v3 Key Features:**
+- Unified restore path - UICoordinator ALWAYS deletes Map entry before restore
 - Source tracking in handlers ('Manager', 'UI', 'hydration', 'automation')
 - Z-index persistence on focus via `handleFocus()`
 - Unified destroy path (UI close button uses DestroyHandler)
