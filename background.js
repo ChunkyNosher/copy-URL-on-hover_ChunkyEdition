@@ -9,11 +9,6 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
-// v1.6.0 - PHASE 3.2: Import storage format detection and migration strategies
-import { LegacyMigrator } from './src/background/strategies/formatMigrators/LegacyMigrator.js';
-import { V1_5_8_14_Migrator } from './src/background/strategies/formatMigrators/V1_5_8_14_Migrator.js';
-import { V1_5_8_15_Migrator } from './src/background/strategies/formatMigrators/V1_5_8_15_Migrator.js';
-import { StorageFormatDetector } from './src/background/strategies/StorageFormatDetector.js';
 
 const runtimeAPI =
   (typeof browser !== 'undefined' && browser.runtime) ||
@@ -102,35 +97,57 @@ let lastBroadcastedStateHash = 0;
 const WRITE_IGNORE_WINDOW_MS = 100;
 
 /**
+ * Extract relevant tab data for hashing
+ * v1.6.4.11 - Extracted from computeStateHash to reduce complexity
+ * @param {Object} tab - Tab object
+ * @returns {Object} Normalized tab data for hashing
+ */
+function _extractTabDataForHash(tab) {
+  return {
+    id: tab.id,
+    url: tab.url,
+    left: tab.left ?? tab.position?.left,
+    top: tab.top ?? tab.position?.top,
+    width: tab.width ?? tab.size?.width,
+    height: tab.height ?? tab.size?.height,
+    minimized: tab.minimized ?? tab.visibility?.minimized
+  };
+}
+
+/**
+ * Compute 32-bit hash from string
+ * v1.6.4.11 - Extracted from computeStateHash to reduce complexity
+ * @param {string} str - String to hash
+ * @returns {number} 32-bit hash value
+ */
+function _computeStringHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash;
+}
+
+/**
  * Compute a simple hash of the Quick Tab state for deduplication
  * v1.6.1.6 - Memory leak fix: Used to skip redundant broadcasts
  * v1.6.2.2 - Updated for unified format
  * v1.6.3.2 - FIX Bug #2: Include saveId in hash to detect different writes with same content
+ * v1.6.4.11 - Refactored: Extracted _extractTabDataForHash and _computeStringHash (cc reduced)
  * @param {Object} state - Quick Tab state object
  * @returns {number} 32-bit hash of the state
  */
 function computeStateHash(state) {
   if (!state) return 0;
-  // v1.6.3.2 - FIX: Include saveId in hash calculation so different writes produce different hashes
-  // This prevents hash collisions when storage is cleared (empty tabs array produces same hash)
-  const stateStr = JSON.stringify({
-    saveId: state.saveId,  // v1.6.3.2 - Include saveId to detect unique writes
-    tabData: (state.tabs || []).map(t => ({
-      id: t.id,
-      url: t.url,
-      left: t.left || t.position?.left,
-      top: t.top || t.position?.top,
-      width: t.width || t.size?.width,
-      height: t.height || t.size?.height,
-      minimized: t.minimized || t.visibility?.minimized
-    }))
-  });
-  let hash = 0;
-  for (let i = 0; i < stateStr.length; i++) {
-    hash = ((hash << 5) - hash) + stateStr.charCodeAt(i);
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return hash;
+  
+  const tabs = state.tabs || [];
+  const tabData = tabs.map(_extractTabDataForHash);
+  
+  // v1.6.3.2 - FIX: Include saveId in hash calculation
+  const stateStr = JSON.stringify({ saveId: state.saveId, tabData });
+  
+  return _computeStringHash(stateStr);
 }
 
 // v1.6.2.2 - Format detection and migrators removed (unified format)
@@ -160,7 +177,57 @@ async function initializeGlobalState() {
 }
 
 /**
+ * Check if session storage has valid session state
+ * v1.6.4.11 - Extracted to reduce complexity and fix complex conditional
+ * @param {Object} result - Result from browser.storage.session.get()
+ * @returns {boolean} true if valid session data exists
+ */
+function _hasValidSessionState(result) {
+  if (!result) return false;
+  if (!result.quick_tabs_session) return false;
+  return true;
+}
+
+/**
+ * Check if state has valid tabs array (unified format)
+ * v1.6.4.11 - Extracted to reduce complexity
+ * @param {Object} state - State object to check
+ * @returns {boolean} true if state has valid tabs array
+ */
+function _hasValidTabsArray(state) {
+  return state && state.tabs && Array.isArray(state.tabs);
+}
+
+/**
+ * Apply unified format state to global state
+ * v1.6.4.11 - Extracted to reduce complexity in tryLoadFromSessionStorage
+ * @param {Object} sessionState - Session state with tabs array
+ * @param {string} source - Source name for logging
+ * @param {string} format - Format name for logging
+ */
+function _applyUnifiedFormatState(sessionState, source, format) {
+  globalQuickTabState.tabs = sessionState.tabs;
+  globalQuickTabState.lastUpdate = sessionState.timestamp || Date.now();
+  logSuccessfulLoad(source, format);
+  isInitialized = true;
+}
+
+/**
+ * Apply migrated container format state to global state
+ * v1.6.4.11 - Extracted to reduce complexity in tryLoadFromSessionStorage
+ * @param {Object} sessionState - Session state with containers object
+ * @param {string} source - Source name for logging
+ */
+function _applyMigratedContainerState(sessionState, source) {
+  globalQuickTabState.tabs = migrateContainersToUnifiedFormat(sessionState.containers);
+  globalQuickTabState.lastUpdate = sessionState.timestamp || Date.now();
+  logSuccessfulLoad(source, 'migrated from container format');
+  isInitialized = true;
+}
+
+/**
  * Helper: Try loading from session storage
+ * v1.6.4.11 - Refactored: Extracted helpers to reduce cc below 9
  *
  * @returns {Promise<boolean>} True if loaded successfully
  */
@@ -173,28 +240,21 @@ async function tryLoadFromSessionStorage() {
   const result = await browser.storage.session.get('quick_tabs_session');
 
   // Guard: No data in session storage
-  if (!result || !result.quick_tabs_session) {
+  if (!_hasValidSessionState(result)) {
     return false;
   }
 
-  // v1.6.2.2 - Load unified format directly
   const sessionState = result.quick_tabs_session;
   
   // v1.6.2.2 - Unified format
-  if (sessionState.tabs && Array.isArray(sessionState.tabs)) {
-    globalQuickTabState.tabs = sessionState.tabs;
-    globalQuickTabState.lastUpdate = sessionState.timestamp || Date.now();
-    logSuccessfulLoad('session storage', 'v1.6.2.2 unified');
-    isInitialized = true;
+  if (_hasValidTabsArray(sessionState)) {
+    _applyUnifiedFormatState(sessionState, 'session storage', 'v1.6.2.2 unified');
     return true;
   }
   
   // Backward compatibility: container format migration
   if (sessionState.containers) {
-    globalQuickTabState.tabs = migrateContainersToUnifiedFormat(sessionState.containers);
-    globalQuickTabState.lastUpdate = sessionState.timestamp || Date.now();
-    logSuccessfulLoad('session storage', 'migrated from container format');
-    isInitialized = true;
+    _applyMigratedContainerState(sessionState, 'session storage');
     return true;
   }
 
@@ -202,8 +262,30 @@ async function tryLoadFromSessionStorage() {
 }
 
 /**
+ * Process a single container for migration
+ * v1.6.4.11 - Extracted from migrateContainersToUnifiedFormat to fix max-depth
+ * @param {string} containerKey - Container identifier
+ * @param {Array} tabs - Tabs in the container
+ * @param {Set} seenIds - Set of already processed tab IDs
+ * @param {Array} allTabs - Target array for deduplicated tabs
+ */
+function _processContainerTabs(containerKey, tabs, seenIds, allTabs) {
+  console.log(`[Background] Migrating ${tabs.length} tabs from container: ${containerKey}`);
+  
+  for (const tab of tabs) {
+    if (seenIds.has(tab.id)) {
+      console.warn(`[Background] Skipping duplicate tab ID during migration: ${tab.id}`);
+      continue;
+    }
+    seenIds.add(tab.id);
+    allTabs.push(tab);
+  }
+}
+
+/**
  * Migrate container format to unified format
  * v1.6.2.2 - Backward compatibility helper
+ * v1.6.4.11 - Refactored: Extracted _processContainerTabs to fix max-depth (bumps reduced)
  * 
  * @param {Object} containers - Container data object
  * @returns {Array} Unified tabs array (deduplicated)
@@ -216,17 +298,7 @@ function migrateContainersToUnifiedFormat(containers) {
     const tabs = containers[containerKey]?.tabs || [];
     if (tabs.length === 0) continue;
     
-    console.log(`[Background] Migrating ${tabs.length} tabs from container: ${containerKey}`);
-    
-    for (const tab of tabs) {
-      // Skip duplicate tab IDs
-      if (seenIds.has(tab.id)) {
-        console.warn(`[Background] Skipping duplicate tab ID during migration: ${tab.id}`);
-        continue;
-      }
-      seenIds.add(tab.id);
-      allTabs.push(tab);
-    }
+    _processContainerTabs(containerKey, tabs, seenIds, allTabs);
   }
   
   return allTabs;
@@ -447,7 +519,21 @@ class StateCoordinator {
   }
 
   /**
+   * Check if session storage result has valid Quick Tab data
+   * v1.6.4.11 - Extracted to fix complex conditional
+   * @param {Object} result - Session storage result
+   * @returns {boolean} true if valid data exists
+   */
+  _hasValidSessionData(result) {
+    if (!result) return false;
+    if (!result.quick_tabs_session) return false;
+    if (!result.quick_tabs_session.tabs) return false;
+    return true;
+  }
+
+  /**
    * Helper: Try loading from session storage
+   * v1.6.4.11 - Refactored: Extracted _hasValidSessionData to fix complex conditional
    *
    * @returns {Promise<boolean>} True if loaded successfully
    */
@@ -460,7 +546,7 @@ class StateCoordinator {
     const result = await browser.storage.session.get('quick_tabs_session');
 
     // Guard: No valid data
-    if (!result || !result.quick_tabs_session || !result.quick_tabs_session.tabs) {
+    if (!this._hasValidSessionData(result)) {
       return false;
     }
 
@@ -780,53 +866,92 @@ console.log('[Quick Tabs] Initializing Firefox MV3 X-Frame-Options bypass...');
 // Track modified URLs for debugging
 const modifiedUrls = new Set();
 
+/**
+ * Handle X-Frame-Options header removal
+ * v1.6.4.11 - Extracted from onHeadersReceived to reduce complexity
+ * @param {Object} header - HTTP header object
+ * @param {string} url - Request URL for logging
+ * @returns {boolean} false to remove header, true to keep
+ */
+function _handleXFrameOptionsHeader(header, url) {
+  console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${url}`);
+  modifiedUrls.add(url);
+  return false;
+}
+
+/**
+ * Handle CSP header modification
+ * v1.6.4.11 - Extracted from onHeadersReceived to reduce complexity
+ * @param {Object} header - HTTP header object (modified in place)
+ * @param {string} url - Request URL for logging
+ * @returns {boolean} false to remove header, true to keep
+ */
+function _handleCSPHeader(header, url) {
+  const originalValue = header.value;
+  header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
+
+  // If CSP is now empty, remove the header entirely
+  const trimmedValue = header.value.trim();
+  if (trimmedValue === '' || trimmedValue === ';') {
+    console.log(`[Quick Tabs] ✓ Removed empty CSP from ${url}`);
+    modifiedUrls.add(url);
+    return false;
+  }
+
+  // Log if we modified it
+  if (header.value !== originalValue) {
+    console.log(`[Quick Tabs] ✓ Modified CSP for ${url}`);
+    modifiedUrls.add(url);
+  }
+  return true;
+}
+
+/**
+ * Handle CORP header removal
+ * v1.6.4.11 - Extracted from onHeadersReceived to reduce complexity
+ * @param {Object} header - HTTP header object
+ * @param {string} url - Request URL for logging
+ * @returns {boolean} false to remove header, true to keep
+ */
+function _handleCORPHeader(header, url) {
+  const value = header.value.toLowerCase();
+  if (value === 'same-origin' || value === 'same-site') {
+    console.log(`[Quick Tabs] ✓ Removed CORP: ${header.value} from ${url}`);
+    modifiedUrls.add(url);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Filter security headers for Quick Tab iframe embedding
+ * v1.6.4.11 - Refactored: Extracted handlers (cc reduced from 9 to ~3)
+ * @param {Object} header - HTTP header object
+ * @param {string} url - Request URL for logging
+ * @returns {boolean} false to remove header, true to keep
+ */
+function _filterSecurityHeader(header, url) {
+  const name = header.name.toLowerCase();
+
+  if (name === 'x-frame-options') {
+    return _handleXFrameOptionsHeader(header, url);
+  }
+  if (name === 'content-security-policy') {
+    return _handleCSPHeader(header, url);
+  }
+  if (name === 'cross-origin-resource-policy') {
+    return _handleCORPHeader(header, url);
+  }
+  return true;
+}
+
 browser.webRequest.onHeadersReceived.addListener(
   details => {
     console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
 
-    const headers = details.responseHeaders;
-    const modifiedHeaders = headers.filter(header => {
-      const name = header.name.toLowerCase();
-
-      // Remove X-Frame-Options header (blocks iframe embedding)
-      if (name === 'x-frame-options') {
-        console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${details.url}`);
-        modifiedUrls.add(details.url);
-        return false;
-      }
-
-      // Remove Content-Security-Policy frame-ancestors directive
-      if (name === 'content-security-policy') {
-        const originalValue = header.value;
-        // Remove frame-ancestors directive from CSP
-        header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
-
-        // If CSP is now empty, remove the header entirely
-        if (header.value.trim() === '' || header.value.trim() === ';') {
-          console.log(`[Quick Tabs] ✓ Removed empty CSP from ${details.url}`);
-          modifiedUrls.add(details.url);
-          return false;
-        }
-
-        // Log if we modified it
-        if (header.value !== originalValue) {
-          console.log(`[Quick Tabs] ✓ Modified CSP for ${details.url}`);
-          modifiedUrls.add(details.url);
-        }
-      }
-
-      // Remove restrictive Cross-Origin-Resource-Policy
-      if (name === 'cross-origin-resource-policy') {
-        const value = header.value.toLowerCase();
-        if (value === 'same-origin' || value === 'same-site') {
-          console.log(`[Quick Tabs] ✓ Removed CORP: ${header.value} from ${details.url}`);
-          modifiedUrls.add(details.url);
-          return false;
-        }
-      }
-
-      return true;
-    });
+    const modifiedHeaders = details.responseHeaders.filter(
+      header => _filterSecurityHeader(header, details.url)
+    );
 
     return { responseHeaders: modifiedHeaders };
   },
@@ -872,7 +997,8 @@ console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
 
 // Listen for tab switches to restore Quick Tabs
 // v1.6.2.2 - Updated for unified format (no container filtering)
-chrome.tabs.onActivated.addListener(async activeInfo => {
+// v1.6.4.11 - Fixed: Removed async since we use .catch() chains (require-await)
+chrome.tabs.onActivated.addListener(activeInfo => {
   console.log('[Background] Tab activated:', activeInfo.tabId);
 
   // Message the activated tab to potentially restore Quick Tabs from storage
@@ -887,22 +1013,18 @@ chrome.tabs.onActivated.addListener(async activeInfo => {
     });
 
   // v1.6.2.2 - Send global state for immediate sync (no container filtering)
-  try {
-    if (globalQuickTabState.tabs && globalQuickTabState.tabs.length > 0) {
-      chrome.tabs
-        .sendMessage(activeInfo.tabId, {
-          action: 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND',
-          state: {
-            tabs: globalQuickTabState.tabs,
-            lastUpdate: globalQuickTabState.lastUpdate
-          }
-        })
-        .catch(() => {
-          // Content script might not be ready yet, that's OK
-        });
-    }
-  } catch (err) {
-    console.error('[Background] Error syncing tab state:', err);
+  if (globalQuickTabState.tabs && globalQuickTabState.tabs.length > 0) {
+    chrome.tabs
+      .sendMessage(activeInfo.tabId, {
+        action: 'SYNC_QUICK_TAB_STATE_FROM_BACKGROUND',
+        state: {
+          tabs: globalQuickTabState.tabs,
+          lastUpdate: globalQuickTabState.lastUpdate
+        }
+      })
+      .catch(() => {
+        // Content script might not be ready yet, that's OK
+      });
   }
 });
 
@@ -1176,10 +1298,53 @@ if (chrome.sidePanel) {
 }
 
 /**
+ * Apply unified format state to global state from storage
+ * v1.6.4.11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
+ * @param {Object} newValue - Storage value with tabs array
+ */
+function _applyUnifiedFormatFromStorage(newValue) {
+  globalQuickTabState.tabs = newValue.tabs;
+  globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
+  // v1.6.4 - FIX Bug #7: Track saveId for hash collision detection
+  globalQuickTabState.saveId = newValue.saveId || null;
+  console.log(
+    '[Background] Updated global state from storage (unified format):',
+    newValue.tabs.length,
+    'tabs'
+  );
+}
+
+/**
+ * Check if value has container format (legacy)
+ * v1.6.4.11 - Extracted to reduce complexity
+ * @param {Object} value - Value to check
+ * @returns {boolean} true if value has containers property
+ */
+function _hasContainerFormat(value) {
+  return typeof value === 'object' && value.containers;
+}
+
+/**
+ * Apply migrated container format state from storage
+ * v1.6.4.11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
+ * @param {Object} newValue - Storage value with containers object
+ */
+function _applyMigratedContainerFromStorage(newValue) {
+  globalQuickTabState.tabs = migrateContainersToUnifiedFormat(newValue.containers);
+  globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
+  console.log(
+    '[Background] Updated global state from storage (migrated from container format):',
+    globalQuickTabState.tabs.length,
+    'tabs'
+  );
+}
+
+/**
  * Helper: Update global state from storage value
  * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (lines 1087, 1095)
  * v1.6.2.2 - Updated for unified format
  * v1.6.4 - FIX Bug #7: Track saveId for hash collision detection
+ * v1.6.4.11 - Refactored: Extracted helpers to reduce cc below 9
  *
  * @param {Object|null} newValue - New storage value
  */
@@ -1191,28 +1356,14 @@ function _updateGlobalStateFromStorage(newValue) {
   }
 
   // v1.6.2.2 - Unified format
-  if (newValue.tabs && Array.isArray(newValue.tabs)) {
-    globalQuickTabState.tabs = newValue.tabs;
-    globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
-    // v1.6.4 - FIX Bug #7: Track saveId for hash collision detection
-    globalQuickTabState.saveId = newValue.saveId || null;
-    console.log(
-      '[Background] Updated global state from storage (unified format):',
-      newValue.tabs.length,
-      'tabs'
-    );
+  if (_hasValidTabsArray(newValue)) {
+    _applyUnifiedFormatFromStorage(newValue);
     return;
   }
 
   // Backward compatibility: container format migration
-  if (typeof newValue === 'object' && newValue.containers) {
-    globalQuickTabState.tabs = migrateContainersToUnifiedFormat(newValue.containers);
-    globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
-    console.log(
-      '[Background] Updated global state from storage (migrated from container format):',
-      globalQuickTabState.tabs.length,
-      'tabs'
-    );
+  if (_hasContainerFormat(newValue)) {
+    _applyMigratedContainerFromStorage(newValue);
   }
 }
 
@@ -1268,12 +1419,55 @@ function _clearCacheForEmptyStorage(newValue) {
 }
 
 /**
+ * Check if tabs array is empty or missing
+ * v1.6.4.11 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * @param {Object} newValue - Storage value to check
+ * @returns {boolean} true if tabs is empty or missing
+ */
+function _isTabsEmptyOrMissing(newValue) {
+  return !newValue?.tabs || newValue.tabs.length === 0;
+}
+
+/**
+ * Check if saveId has changed between current and new state
+ * v1.6.4.11 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * @param {Object} newValue - New storage value
+ * @returns {boolean} true if saveId changed
+ */
+function _hasSaveIdChanged(newValue) {
+  const currentSaveId = globalQuickTabState.saveId;
+  const newSaveId = newValue?.saveId;
+  return newSaveId && newSaveId !== currentSaveId;
+}
+
+/**
+ * Check if state requires update (hash or saveId changed)
+ * v1.6.4.11 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * @param {Object} newValue - New storage value
+ * @returns {boolean} true if state should be updated
+ */
+function _shouldUpdateState(newValue) {
+  const newHash = computeStateHash(newValue);
+  const hashChanged = newHash !== lastBroadcastedStateHash;
+  const saveIdChanged = _hasSaveIdChanged(newValue);
+  
+  if (!hashChanged && !saveIdChanged) {
+    console.log('[Background] State unchanged (same hash and saveId), skipping cache update');
+    return false;
+  }
+  
+  lastBroadcastedStateHash = newHash;
+  return true;
+}
+
+/**
  * Handle Quick Tab state changes from storage
  * v1.6.2 - MIGRATION: Removed legacy _broadcastToAllTabs call
  * v1.6.2.2 - Updated for unified format
  * v1.6.3.2 - FIX Bug #1, #6: ALWAYS update cache when tabs is empty or missing
  *            Refactored to reduce complexity by extracting helpers
  * v1.6.4 - FIX Bug #7: Check saveId before hash comparison
+ * v1.6.4.11 - Refactored: Extracted helpers to reduce cc below 9
  * 
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
@@ -1292,27 +1486,15 @@ function _handleQuickTabStateChange(changes) {
   }
 
   // v1.6.3.2 - FIX Bug #1, #6: ALWAYS update cache if tabs is empty or missing
-  const isEmptyOrMissing = !newValue?.tabs || newValue.tabs.length === 0;
-  if (isEmptyOrMissing) {
+  if (_isTabsEmptyOrMissing(newValue)) {
     _clearCacheForEmptyStorage(newValue);
     return;
   }
 
-  // v1.6.4 - FIX Bug #7: Check saveId directly before hash comparison
-  // If saveId changed but hash is the same (rare edge case), still update
-  const currentSaveId = globalQuickTabState.saveId;
-  const newSaveId = newValue?.saveId;
-  const saveIdChanged = newSaveId && newSaveId !== currentSaveId;
-
-  // v1.6.1.6 - FIX: Check if state actually changed (prevents redundant cache updates)
-  // v1.6.3.2 - FIX: computeStateHash now includes saveId for unique write detection
-  const newHash = computeStateHash(newValue);
-  if (newHash === lastBroadcastedStateHash && !saveIdChanged) {
-    console.log('[Background] State unchanged (same hash and saveId), skipping cache update');
+  // v1.6.4 - Check if state actually requires update
+  if (!_shouldUpdateState(newValue)) {
     return;
   }
-
-  lastBroadcastedStateHash = newHash;
   
   // v1.6.2 - MIGRATION: Only update background's cache, no broadcast needed
   console.log('[Background] Quick Tab state changed, updating cache (cross-tab sync via storage.onChanged)');
@@ -1389,28 +1571,6 @@ async function _openSidebarAndSwitchToManager() {
 }
 
 /**
- * Send message to sidebar to switch to Manager tab
- * v1.6.1.4 - Extracted to reduce nesting
- * v1.6.2.0 - Enhanced retry logic with multiple attempts
- */
-async function _sendManagerTabMessage() {
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY = 150; // ms between retries
-  
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const success = await _trySendManagerMessage();
-    if (success) {
-      return;
-    }
-    // Sidebar might not be ready yet, wait before retry
-    if (attempt < MAX_RETRIES) {
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-    }
-  }
-  console.warn('[Background] Could not send message to sidebar after', MAX_RETRIES, 'attempts');
-}
-
-/**
  * Log detailed error information for message sending failures
  * v1.6.4.3 - FIX: Extracted utility function to reduce code duplication
  * @param {string} prefix - Log message prefix (e.g., '[Background] Failed to send X:')
@@ -1425,62 +1585,63 @@ function _logMessageError(prefix, error) {
 }
 
 /**
- * Attempt to send SWITCH_TO_MANAGER_TAB message
- * v1.6.4.2 - FIX Bug #3: Log full error details for debugging
- * v1.6.4.3 - FIX: Use shared _logMessageError utility
+ * Attempt to send a single sidebar message
+ * v1.6.4.11 - Extracted from _sendSidebarMessage to fix max-depth
+ * @param {string} messageType - Message type to send
  * @returns {Promise<boolean>} true if successful, false otherwise
  */
-async function _trySendManagerMessage() {
+async function _trySendSidebarMessage(messageType) {
   try {
-    await browser.runtime.sendMessage({
-      type: 'SWITCH_TO_MANAGER_TAB'
-    });
+    await browser.runtime.sendMessage({ type: messageType });
     return true;
   } catch (error) {
-    _logMessageError('[Background] Failed to send SWITCH_TO_MANAGER_TAB:', error);
+    _logMessageError(`[Background] Failed to send ${messageType}:`, error);
     return false;
   }
 }
 
 /**
- * Send message to sidebar to switch to Settings tab
- * v1.6.4 - Added for Alt+Shift+S to always open to Settings tab
+ * Generic sidebar message sender with retry logic
+ * v1.6.4.11 - Consolidated from _sendManagerTabMessage and _sendSettingsTabMessage
+ *           - Extracted _trySendSidebarMessage to fix max-depth
+ * @param {string} messageType - Message type to send (e.g., 'SWITCH_TO_MANAGER_TAB')
+ * @param {string} logPrefix - Prefix for logging (e.g., 'Manager')
+ * @returns {Promise<boolean>} true if sent successfully, false otherwise
  */
-async function _sendSettingsTabMessage() {
+async function _sendSidebarMessage(messageType, logPrefix) {
   const MAX_RETRIES = 3;
-  const RETRY_DELAY = 150;
+  const RETRY_DELAY = 150; // ms between retries
   
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const success = await _trySendSettingsMessage();
-    if (success) {
-      return true;
-    }
+    const success = await _trySendSidebarMessage(messageType);
+    if (success) return true;
+    
     // Sidebar might not be ready yet, wait before retry
     if (attempt < MAX_RETRIES) {
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
     }
   }
-  console.warn('[Background] Could not send SWITCH_TO_SETTINGS_TAB message after', MAX_RETRIES, 'attempts');
+  console.warn(`[Background] Could not send ${logPrefix} message after ${MAX_RETRIES} attempts`);
   return false;
 }
 
 /**
- * Attempt to send SWITCH_TO_SETTINGS_TAB message
- * v1.6.4.1 - Helper to reduce nesting depth
- * v1.6.4.2 - FIX Bug #3: Log full error details for debugging
- * v1.6.4.3 - FIX: Use shared _logMessageError utility
- * @returns {Promise<boolean>} true if successful, false otherwise
+ * Send message to sidebar to switch to Manager tab
+ * v1.6.1.4 - Extracted to reduce nesting
+ * v1.6.2.0 - Enhanced retry logic with multiple attempts
+ * v1.6.4.11 - Refactored: Uses generic _sendSidebarMessage
  */
-async function _trySendSettingsMessage() {
-  try {
-    await browser.runtime.sendMessage({
-      type: 'SWITCH_TO_SETTINGS_TAB'
-    });
-    return true;
-  } catch (error) {
-    _logMessageError('[Background] Failed to send SWITCH_TO_SETTINGS_TAB:', error);
-    return false;
-  }
+function _sendManagerTabMessage() {
+  return _sendSidebarMessage('SWITCH_TO_MANAGER_TAB', 'Manager');
+}
+
+/**
+ * Send message to sidebar to switch to Settings tab
+ * v1.6.4 - Added for Alt+Shift+S to always open to Settings tab
+ * v1.6.4.11 - Refactored: Uses generic _sendSidebarMessage
+ */
+function _sendSettingsTabMessage() {
+  return _sendSidebarMessage('SWITCH_TO_SETTINGS_TAB', 'Settings');
 }
 
 /**

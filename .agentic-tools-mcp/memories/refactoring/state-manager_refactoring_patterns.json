@@ -1,0 +1,8 @@
+{
+  "id": "7ffab739-c3e7-48f7-ba63-6df6edd550f9",
+  "title": "state-manager refactoring patterns",
+  "details": "Successfully refactored state-manager.js to improve CodeScene code health score from 8.28 to 10.\n\nKey patterns used:\n1. **Extract container resolution**: Created `_resolveContainer()` to handle auto-detecting cookieStoreId\n2. **Extract storage helpers**: Created `_loadContainerStates()`, `_persistToSync()`, `_persistToSession()` for storage operations\n3. **Consolidate update methods**: Created `_updateTabProperties()` to consolidate updatePosition/updateSize/pinTab/unpinTab\n4. **Use constants**: Added `DEFAULT_CONTAINER` constant to eliminate magic strings\n5. **Remove unnecessary async**: Thin wrapper methods don't need async if they just return the promise\n\nResults: 20% code reduction (401 to 320 lines), perfect 10 code health score.",
+  "category": "refactoring",
+  "dateCreated": "2025-11-30T23:37:11.583Z",
+  "dateUpdated": "2025-11-30T23:37:11.583Z"
+}

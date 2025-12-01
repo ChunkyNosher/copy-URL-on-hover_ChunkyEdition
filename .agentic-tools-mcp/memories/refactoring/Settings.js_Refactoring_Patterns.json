@@ -1,0 +1,8 @@
+{
+  "id": "25c5828f-6016-43a7-9c34-d814a708e611",
+  "title": "Settings.js Refactoring Patterns",
+  "details": "Refactored sidebar/settings.js to improve CodeScene code health from 8.88 to 10.0.\n\nPatterns used:\n1. Validation Rules Pattern: Replaced multiple if/throw conditions with LOG_VALIDATION_RULES array containing {condition, message/messageBuilder}\n2. Settings Gatherer Pattern: Extracted gatherSettingsFromForm() into 8 helper functions (_gatherCopyUrlSettings, _gatherCopyTextSettings, etc.) and used object spread\n3. Tab Handler Map Pattern: Replaced if/else if for tab switching with PRIMARY_TAB_HANDLERS map and extracted _switchToSettingsTab/_switchToManagerTab\n\nKey complexity reductions:\n- _validateCollectedLogs: cc 13 → ~3 (loop over rules)\n- gatherSettingsFromForm: cc 13 → 1 (just combines helpers)\n- handlePrimaryTabSwitch: cc 10 → ~3 (handler lookup)",
+  "category": "refactoring",
+  "dateCreated": "2025-12-01T01:01:51.437Z",
+  "dateUpdated": "2025-12-01T01:01:51.437Z"
+}

@@ -20,17 +20,17 @@
 import { EventEmitter } from 'eventemitter3';
 
 import { QuickTab } from '../../../src/domain/QuickTab.js';
-import { BroadcastManager } from '../../mocks/BroadcastManagerMock.js';
-import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { VisibilityHandler } from '../../../src/features/quick-tabs/handlers/VisibilityHandler.js';
+import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
 import { wait } from '../../helpers/quick-tabs-test-utils.js';
+import { BroadcastManager } from '../../mocks/BroadcastManagerMock.js';
 
 describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
   let tabs;
   let stateManagers;
   let broadcastManagers;
-  let visibilityHandlers;
+  let _visibilityHandlers;
   let eventBuses;
   let channels;
 
@@ -91,7 +91,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       return new StateManager(eventBuses[index], tab.tabId);
     });
 
-    visibilityHandlers = tabs.map((tab, index) => {
+    _visibilityHandlers = tabs.map((tab, index) => {
       return new VisibilityHandler(eventBuses[index], tab.tabId);
     });
 
@@ -116,30 +116,33 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
     // Wire up visibility update handlers
     eventBuses.forEach((bus, tabIndex) => {
       bus.on('broadcast:received', (message) => {
-        if (message.type === 'SOLO') {
-          const qt = stateManagers[tabIndex].get(message.data.id);
-          if (qt) {
-            qt.visibility.soloedOnTabs = message.data.soloedOnTabs;
-            // Clear mute when solo is set
-            if (message.data.soloedOnTabs && message.data.soloedOnTabs.length > 0) {
-              qt.visibility.mutedOnTabs = [];
-            }
-            stateManagers[tabIndex].update(qt);
-          }
-        } else if (message.type === 'MUTE') {
-          const qt = stateManagers[tabIndex].get(message.data.id);
-          if (qt) {
-            qt.visibility.mutedOnTabs = message.data.mutedOnTabs;
-            // Clear solo when mute is set
-            if (message.data.mutedOnTabs && message.data.mutedOnTabs.length > 0) {
-              qt.visibility.soloedOnTabs = [];
-            }
-            stateManagers[tabIndex].update(qt);
-          }
-        }
+        handleVisibilityBroadcast(message, stateManagers[tabIndex]);
       });
     });
   });
+
+  /**
+   * Handle visibility broadcast message (extracted to reduce nesting)
+   */
+  function handleVisibilityBroadcast(message, stateManager) {
+    if (message.type === 'SOLO') {
+      const qt = stateManager.get(message.data.id);
+      if (!qt) return;
+      qt.visibility.soloedOnTabs = message.data.soloedOnTabs;
+      // Clear mute when solo is set
+      const hasSolo = message.data.soloedOnTabs && message.data.soloedOnTabs.length > 0;
+      if (hasSolo) qt.visibility.mutedOnTabs = [];
+      stateManager.update(qt);
+    } else if (message.type === 'MUTE') {
+      const qt = stateManager.get(message.data.id);
+      if (!qt) return;
+      qt.visibility.mutedOnTabs = message.data.mutedOnTabs;
+      // Clear solo when mute is set
+      const hasMute = message.data.mutedOnTabs && message.data.mutedOnTabs.length > 0;
+      if (hasMute) qt.visibility.soloedOnTabs = [];
+      stateManager.update(qt);
+    }
+  }
 
   afterEach(() => {
     broadcastManagers.forEach(bm => bm.close());
@@ -488,7 +491,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       stateManagers.forEach(sm => sm.add(new QuickTab(quickTab)));
 
       // Tab A activates solo - apply locally first
-      let qtA = stateManagers[0].get('qt-cross-tab-1');
+      const qtA = stateManagers[0].get('qt-cross-tab-1');
       qtA.visibility.soloedOnTabs = [tabs[0].tabId];
       qtA.visibility.mutedOnTabs = [];
       stateManagers[0].update(qtA);
@@ -505,7 +508,7 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       });
 
       // Tab B activates mute (should clear solo in all tabs) - apply locally first
-      let qtB = stateManagers[1].get('qt-cross-tab-1');
+      const qtB = stateManagers[1].get('qt-cross-tab-1');
       qtB.visibility.mutedOnTabs = [tabs[1].tabId];
       qtB.visibility.soloedOnTabs = [];
       stateManagers[1].update(qtB);
@@ -541,12 +544,12 @@ describe('Scenario 9: Solo/Mute Mutual Exclusivity Protocol', () => {
       stateManagers.forEach(sm => sm.add(new QuickTab(quickTab)));
 
       // Tab A attempts solo, Tab B attempts mute simultaneously - apply locally first
-      let qtConcA = stateManagers[0].get('qt-concurrent-1');
+      const qtConcA = stateManagers[0].get('qt-concurrent-1');
       qtConcA.visibility.soloedOnTabs = [tabs[0].tabId];
       qtConcA.visibility.mutedOnTabs = [];
       stateManagers[0].update(qtConcA);
       
-      let qtConcB = stateManagers[1].get('qt-concurrent-1');
+      const qtConcB = stateManagers[1].get('qt-concurrent-1');
       qtConcB.visibility.mutedOnTabs = [tabs[1].tabId];
       qtConcB.visibility.soloedOnTabs = [];
       stateManagers[1].update(qtConcB);

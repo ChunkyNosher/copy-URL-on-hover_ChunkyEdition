@@ -167,6 +167,31 @@ function _logCollectionDebugInfo(backgroundLogs, contentLogs) {
 }
 
 /**
+ * Validation rules for collected logs
+ * Each rule has a condition function and an error message
+ * Rules are checked in order; first matching rule throws
+ */
+const LOG_VALIDATION_RULES = [
+  {
+    condition: (_, __, ___, activeTab) => activeTab && activeTab.url.startsWith('about:'),
+    message: 'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
+  },
+  {
+    condition: (_, __, ___, activeTab) => !activeTab,
+    message: 'No active tab found. Try clicking on a webpage tab first.'
+  },
+  {
+    condition: (_, backgroundLogs, contentLogs) => contentLogs.length === 0 && backgroundLogs.length === 0,
+    message: 'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
+  },
+  {
+    condition: (_, backgroundLogs, contentLogs) => contentLogs.length === 0,
+    messageBuilder: (_, backgroundLogs) => 
+      `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
+  }
+];
+
+/**
  * Validate that logs were collected and throw appropriate errors
  * @param {Array} allLogs - All collected logs
  * @param {Array} backgroundLogs - Background logs
@@ -179,29 +204,17 @@ function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab)
 
   console.warn('[Popup] No logs to export');
 
-  // Check if content script is loaded
-  if (activeTab && activeTab.url.startsWith('about:')) {
-    throw new Error(
-      'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
-    );
+  // Find first matching validation rule and throw appropriate error
+  for (const rule of LOG_VALIDATION_RULES) {
+    if (rule.condition(allLogs, backgroundLogs, contentLogs, activeTab)) {
+      const errorMessage = rule.messageBuilder 
+        ? rule.messageBuilder(allLogs, backgroundLogs, contentLogs, activeTab)
+        : rule.message;
+      throw new Error(errorMessage);
+    }
   }
 
-  if (!activeTab) {
-    throw new Error('No active tab found. Try clicking on a webpage tab first.');
-  }
-
-  if (contentLogs.length === 0 && backgroundLogs.length === 0) {
-    throw new Error(
-      'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
-    );
-  }
-
-  if (contentLogs.length === 0) {
-    throw new Error(
-      `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
-    );
-  }
-
+  // Default error if no specific rule matched
   throw new Error('No logs found. Try enabling debug mode and using the extension first.');
 }
 
@@ -646,30 +659,51 @@ function showStatus(message, isSuccess = true) {
 }
 
 /**
- * Gather all settings from the form
- * @returns {Object} Settings object
+ * Gather copy URL shortcut settings from form
+ * @returns {Object} Copy URL settings
  */
-// eslint-disable-next-line complexity
-function gatherSettingsFromForm() {
+function _gatherCopyUrlSettings() {
   return {
     copyUrlKey: document.getElementById('copyUrlKey').value || 'y',
     copyUrlCtrl: document.getElementById('copyUrlCtrl').checked,
     copyUrlAlt: document.getElementById('copyUrlAlt').checked,
-    copyUrlShift: document.getElementById('copyUrlShift').checked,
+    copyUrlShift: document.getElementById('copyUrlShift').checked
+  };
+}
 
+/**
+ * Gather copy text shortcut settings from form
+ * @returns {Object} Copy text settings
+ */
+function _gatherCopyTextSettings() {
+  return {
     copyTextKey: document.getElementById('copyTextKey').value || 'x',
     copyTextCtrl: document.getElementById('copyTextCtrl').checked,
     copyTextAlt: document.getElementById('copyTextAlt').checked,
-    copyTextShift: document.getElementById('copyTextShift').checked,
+    copyTextShift: document.getElementById('copyTextShift').checked
+  };
+}
 
-    // Open Link in New Tab settings
+/**
+ * Gather open new tab shortcut settings from form
+ * @returns {Object} Open new tab settings
+ */
+function _gatherOpenNewTabSettings() {
+  return {
     openNewTabKey: document.getElementById('openNewTabKey').value || 'o',
     openNewTabCtrl: document.getElementById('openNewTabCtrl').checked,
     openNewTabAlt: document.getElementById('openNewTabAlt').checked,
     openNewTabShift: document.getElementById('openNewTabShift').checked,
-    openNewTabSwitchFocus: document.getElementById('openNewTabSwitchFocus').checked,
+    openNewTabSwitchFocus: document.getElementById('openNewTabSwitchFocus').checked
+  };
+}
 
-    // Quick Tab settings
+/**
+ * Gather Quick Tab settings from form
+ * @returns {Object} Quick Tab settings
+ */
+function _gatherQuickTabSettings() {
+  return {
     quickTabKey: document.getElementById('quickTabKey').value || 'q',
     quickTabCtrl: document.getElementById('quickTabCtrl').checked,
     quickTabAlt: document.getElementById('quickTabAlt').checked,
@@ -677,28 +711,48 @@ function gatherSettingsFromForm() {
     quickTabCloseKey: document.getElementById('quickTabCloseKey').value || 'Escape',
     quickTabMaxWindows: safeParseInt(document.getElementById('quickTabMaxWindows').value, 3),
     quickTabDefaultWidth: safeParseInt(document.getElementById('quickTabDefaultWidth').value, 800),
-    quickTabDefaultHeight: safeParseInt(
-      document.getElementById('quickTabDefaultHeight').value,
-      600
-    ),
+    quickTabDefaultHeight: safeParseInt(document.getElementById('quickTabDefaultHeight').value, 600),
     quickTabPosition: document.getElementById('quickTabPosition').value || 'follow-cursor',
     quickTabCustomX: safeParseInt(document.getElementById('quickTabCustomX').value, 100),
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
+    quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked
+  };
+}
 
+/**
+ * Gather notification display settings from form
+ * @returns {Object} Notification display settings
+ */
+function _gatherNotificationSettings() {
+  return {
     showNotification: document.getElementById('showNotification').checked,
-    notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',
+    notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip'
+  };
+}
 
-    // Tooltip settings
+/**
+ * Gather tooltip settings from form
+ * @returns {Object} Tooltip settings
+ */
+function _gatherTooltipSettings() {
+  return {
     tooltipColor: validateHexColor(
       document.getElementById('tooltipColor').value,
       DEFAULT_SETTINGS.tooltipColor
     ),
     tooltipDuration: safeParseInt(document.getElementById('tooltipDuration').value, 1500),
-    tooltipAnimation: document.getElementById('tooltipAnimation').value || 'fade',
+    tooltipAnimation: document.getElementById('tooltipAnimation').value || 'fade'
+  };
+}
 
-    // Notification settings
+/**
+ * Gather notification appearance settings from form
+ * @returns {Object} Notification appearance settings
+ */
+function _gatherNotificationAppearanceSettings() {
+  return {
     notifColor: validateHexColor(
       document.getElementById('notifColor').value,
       DEFAULT_SETTINGS.notifColor
@@ -711,13 +765,37 @@ function gatherSettingsFromForm() {
       DEFAULT_SETTINGS.notifBorderColor
     ),
     notifBorderWidth: safeParseInt(document.getElementById('notifBorderWidth').value, 1),
-    notifAnimation: document.getElementById('notifAnimation').value || 'slide',
+    notifAnimation: document.getElementById('notifAnimation').value || 'slide'
+  };
+}
 
+/**
+ * Gather general/advanced settings from form
+ * @returns {Object} General settings
+ */
+function _gatherGeneralSettings() {
+  return {
     debugMode: document.getElementById('debugMode').checked,
     darkMode: document.getElementById('darkMode').checked,
-    menuSize: document.getElementById('menuSize').value || 'medium',
-    // v1.6.4.9 - Quick Tab Debug UID Display setting
-    quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked
+    menuSize: document.getElementById('menuSize').value || 'medium'
+  };
+}
+
+/**
+ * Gather all settings from the form
+ * Combines all settings groups into a single object
+ * @returns {Object} Complete settings object
+ */
+function gatherSettingsFromForm() {
+  return {
+    ..._gatherCopyUrlSettings(),
+    ..._gatherCopyTextSettings(),
+    ..._gatherOpenNewTabSettings(),
+    ..._gatherQuickTabSettings(),
+    ..._gatherNotificationSettings(),
+    ..._gatherTooltipSettings(),
+    ..._gatherNotificationAppearanceSettings(),
+    ..._gatherGeneralSettings()
   };
 }
 
@@ -859,53 +937,81 @@ document.getElementById('quickTabPosition').addEventListener('change', function 
 // ==================== TWO-LAYER TAB SYSTEM ====================
 
 /**
- * Handle primary tab switching (Settings vs Manager)
- * @param {string} primaryTab - The primary tab identifier ('settings' or 'manager')
+ * Update the active state of primary tab buttons
+ * @param {string} primaryTab - The primary tab identifier
  */
-function handlePrimaryTabSwitch(primaryTab) {
-  // Update primary tab active state
+function _updatePrimaryTabActiveState(primaryTab) {
   document.querySelectorAll('.primary-tab-button').forEach(btn => {
     btn.classList.remove('active');
   });
   document.querySelector(`[data-primary-tab="${primaryTab}"]`)?.classList.add('active');
+}
+
+/**
+ * Handle switching to the Settings primary tab
+ * Shows secondary tabs and restores last active secondary tab
+ * @param {HTMLElement|null} secondaryTabsContainer - The secondary tabs container
+ * @param {HTMLElement|null} managerContent - The manager content element
+ */
+function _switchToSettingsTab(secondaryTabsContainer, managerContent) {
+  if (secondaryTabsContainer) {
+    secondaryTabsContainer.style.display = 'flex';
+  }
+  
+  if (managerContent) {
+    managerContent.classList.remove('active');
+  }
+  
+  const lastSecondaryTab = getStoredSecondaryTab() || 'copy-url';
+  showSecondaryTab(lastSecondaryTab);
+}
+
+/**
+ * Handle switching to the Manager primary tab
+ * Hides secondary tabs and shows manager content
+ * @param {HTMLElement|null} secondaryTabsContainer - The secondary tabs container
+ * @param {HTMLElement|null} managerContent - The manager content element
+ */
+function _switchToManagerTab(secondaryTabsContainer, managerContent) {
+  if (secondaryTabsContainer) {
+    secondaryTabsContainer.style.display = 'none';
+  }
+  
+  document.querySelectorAll('.tab-content').forEach(content => {
+    if (content.id !== 'manager') {
+      content.classList.remove('active');
+    }
+  });
+  
+  if (managerContent) {
+    managerContent.classList.add('active');
+  }
+}
+
+/**
+ * Primary tab switch handlers map
+ * Maps tab identifiers to their handler functions
+ */
+const PRIMARY_TAB_HANDLERS = {
+  settings: _switchToSettingsTab,
+  manager: _switchToManagerTab
+};
+
+/**
+ * Handle primary tab switching (Settings vs Manager)
+ * @param {string} primaryTab - The primary tab identifier ('settings' or 'manager')
+ */
+function handlePrimaryTabSwitch(primaryTab) {
+  _updatePrimaryTabActiveState(primaryTab);
 
   const secondaryTabsContainer = document.getElementById('settings-subtabs');
   const managerContent = document.getElementById('manager');
   
-  if (primaryTab === 'settings') {
-    // Show secondary tabs
-    if (secondaryTabsContainer) {
-      secondaryTabsContainer.style.display = 'flex';
-    }
-    
-    // Hide manager content
-    if (managerContent) {
-      managerContent.classList.remove('active');
-    }
-    
-    // Restore last active secondary tab or default to copy-url
-    const lastSecondaryTab = getStoredSecondaryTab() || 'copy-url';
-    showSecondaryTab(lastSecondaryTab);
-  } else if (primaryTab === 'manager') {
-    // Hide secondary tabs
-    if (secondaryTabsContainer) {
-      secondaryTabsContainer.style.display = 'none';
-    }
-    
-    // Hide all secondary tab content
-    document.querySelectorAll('.tab-content').forEach(content => {
-      if (content.id !== 'manager') {
-        content.classList.remove('active');
-      }
-    });
-    
-    // Show manager content
-    if (managerContent) {
-      managerContent.classList.add('active');
-    }
+  const handler = PRIMARY_TAB_HANDLERS[primaryTab];
+  if (handler) {
+    handler(secondaryTabsContainer, managerContent);
   }
   
-  // Store primary tab selection
   storePrimaryTab(primaryTab);
 }
 

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.4-v3  
+**Version:** 1.6.3.4-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,6 +15,16 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 - **State hydration on page reload** (v1.6.3.4+)
+
+**v1.6.3.4-v4 Code Health Improvements:**
+| File | Before | After | Change |
+|------|--------|-------|--------|
+| background.js | 6.79 | 10.0 | +3.21 |
+| state-manager.js | 8.28 | 10.0 | +1.72 |
+| UICoordinator.js | 8.41 | 9.68 | +1.27 |
+| content.js | 8.55 | 9.09 | +0.54 |
+| window.js | 8.72 | 10.0 | +1.28 |
+| settings.js | 8.88 | 10.0 | +1.12 |
 
 **v1.6.3.4-v3 Key Features (Bug Fixes):**
 - **Unified Restore Path:** UICoordinator ALWAYS deletes Map entry before restore for fresh render
@@ -146,9 +156,20 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.3.4-v3)
+## 🏗️ Key Architecture Patterns (v1.6.3.4-v4)
 
-### Unified Restore Path (v1.6.3.4-v3)
+### Refactoring Patterns Used (v1.6.3.4-v4)
+
+| Pattern | Problem Solved | Files Applied |
+|---------|----------------|---------------|
+| Early Returns | Bumpy Road (deep nesting) | background.js, state-manager.js |
+| Method Extraction | Complex methods >15 lines | UICoordinator.js, content.js |
+| Code Consolidation | Duplicate logic | state-manager.js, settings.js |
+| Parameter Objects | Excess arguments (>4) | window.js |
+| Validation Rules | Long validation chains | background.js, content.js |
+| Handler Maps | Large switch/if-else | background.js, settings.js |
+
+### Unified Restore Path (v1.6.3.4-v3+)
 
 ```javascript
 // UICoordinator ALWAYS deletes Map entry before restore for fresh render
@@ -158,7 +179,7 @@ _handleRestoreOperation(quickTab) {
 }
 ```
 
-### Early Map Cleanup (v1.6.3.4-v3)
+### Early Map Cleanup (v1.6.3.4-v3+)
 
 ```javascript
 // UICoordinator.update() - explicit cleanup BEFORE state checks
@@ -168,7 +189,7 @@ _handleManagerMinimize(quickTab) {
 }
 ```
 
-### Snapshot Lifecycle (v1.6.3.4-v3)
+### Snapshot Lifecycle (v1.6.3.4-v3+)
 
 ```javascript
 // MinimizedManager.restore() - snapshot stays in minimizedTabs
@@ -179,7 +200,7 @@ restore(id) {
 }
 ```
 
-### Callback Verification (v1.6.3.4-v3)
+### Callback Verification (v1.6.3.4-v3+)
 
 ```javascript
 // window.js - logs callback wiring for debugging

@@ -21,17 +21,17 @@
 import { EventEmitter } from 'eventemitter3';
 
 import { QuickTab } from '../../../src/domain/QuickTab.js';
-import { BroadcastManager } from '../../mocks/BroadcastManagerMock.js';
-import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { VisibilityHandler } from '../../../src/features/quick-tabs/handlers/VisibilityHandler.js';
+import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
 import { wait } from '../../helpers/quick-tabs-test-utils.js';
+import { BroadcastManager } from '../../mocks/BroadcastManagerMock.js';
 
 describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
   let tabs;
   let stateManagers;
   let broadcastManagers;
-  let visibilityHandlers;
+  let _visibilityHandlers;
   let eventBuses;
   let channels;
 
@@ -92,7 +92,7 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
       return new StateManager(eventBuses[index], tab.tabId);
     });
 
-    visibilityHandlers = tabs.map((tab, index) => {
+    _visibilityHandlers = tabs.map((tab, index) => {
       return new VisibilityHandler(eventBuses[index], tab.tabId);
     });
 
@@ -457,7 +457,7 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
 
       // Minimize from Tab C
       const smC = stateManagers[2];
-      let qtC = smC.get('qt-any-tab-minimize');
+      const qtC = smC.get('qt-any-tab-minimize');
       qtC.visibility.minimized = true;
       smC.update(qtC);
       await broadcastManagers[2].broadcast('UPDATE_MINIMIZE', {

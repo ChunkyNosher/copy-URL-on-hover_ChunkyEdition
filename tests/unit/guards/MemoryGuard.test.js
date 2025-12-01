@@ -57,7 +57,7 @@ describe('MemoryGuard', () => {
 
   describe('startMonitoring', () => {
     it('should start monitoring', () => {
-      const result = memoryGuard.startMonitoring();
+      const _result = memoryGuard.startMonitoring();
       
       // In test environment, performance.memory may not be available
       // so result could be true or false

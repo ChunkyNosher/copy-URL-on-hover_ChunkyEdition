@@ -1,13 +1,30 @@
 // tests/extension/fixtures.js
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import playwright from 'playwright/test';
+import { fileURLToPath } from 'url';
 
 const { test: base, chromium, firefox, expect: baseExpect } = playwright;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/**
+ * Clean session files that might cause hangs
+ * @param {string} tmpDir - Temp directory path
+ */
+function cleanSessionFiles(tmpDir) {
+  const sessionFiles = [
+    path.join(tmpDir, 'sessionstore-backups'),
+    path.join(tmpDir, 'sessionCheckpoints.json'),
+    path.join(tmpDir, 'sessionstore.jsonlz4')
+  ];
+  for (const file of sessionFiles) {
+    if (fs.existsSync(file)) {
+      fs.rmSync(file, { recursive: true, force: true });
+    }
+  }
+}
 
 /**
  * Extension testing fixture
@@ -21,7 +38,6 @@ export const test = base.extend({
   // eslint-disable-next-line no-empty-pattern
   context: async ({ browserName }, use) => {
     const pathToExtension = path.join(__dirname, '../../dist');
-    let browser;
     let context;
 
     // Validate extension exists before attempting to load
@@ -81,18 +97,9 @@ export const test = base.extend({
       
       // Clean any existing session state that might cause hangs
       try {
-        const sessionFiles = [
-          path.join(tmpDir, 'sessionstore-backups'),
-          path.join(tmpDir, 'sessionCheckpoints.json'),
-          path.join(tmpDir, 'sessionstore.jsonlz4')
-        ];
-        for (const file of sessionFiles) {
-          if (fs.existsSync(file)) {
-            fs.rmSync(file, { recursive: true, force: true });
-          }
-        }
+        cleanSessionFiles(tmpDir);
         console.log('[Fixture] Cleaned session state files');
-      } catch (error) {
+      } catch (_error) {
         console.log('[Fixture] No session files to clean (fresh start)');
       }
       
@@ -165,26 +172,27 @@ export const test = base.extend({
       // For now, we'll use a placeholder since the extension must be manually loaded
       console.log('[Fixture] Firefox extension ID detection not implemented');
       await use('firefox-extension-id');
-    } else {
-      // Chromium extension ID extraction from service worker
-      try {
-        let background = context.serviceWorkers()[0];
-        if (!background) {
-          // Wait for service worker with timeout
-          background = await Promise.race([
-            context.waitForEvent('serviceworker'),
-            new Promise((_resolve, reject) => setTimeout(() => reject(new Error('Service worker timeout')), 10000))
-          ]);
-        }
-
-        const extensionId = background.url().split('/')[2];
-        console.log('[Fixture] Extension ID:', extensionId);
-        await use(extensionId);
-      } catch (error) {
-        console.log('[Fixture] Could not detect extension ID:', error.message);
-        // Use a placeholder if service worker detection fails
-        await use('unknown-extension-id');
+      return;
+    }
+    
+    // Chromium extension ID extraction from service worker
+    try {
+      let background = context.serviceWorkers()[0];
+      if (!background) {
+        // Wait for service worker with timeout
+        background = await Promise.race([
+          context.waitForEvent('serviceworker'),
+          new Promise((_resolve, reject) => setTimeout(() => reject(new Error('Service worker timeout')), 10000))
+        ]);
       }
+
+      const extensionId = background.url().split('/')[2];
+      console.log('[Fixture] Extension ID:', extensionId);
+      await use(extensionId);
+    } catch (error) {
+      console.log('[Fixture] Could not detect extension ID:', error.message);
+      // Use a placeholder if service worker detection fails
+      await use('unknown-extension-id');
     }
   }
 });

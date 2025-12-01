@@ -14,10 +14,10 @@
 import { EventEmitter } from 'eventemitter3';
 
 import { QuickTab } from '../../../src/domain/QuickTab.js';
-import { BroadcastManager } from '../../mocks/BroadcastManagerMock.js';
 import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
 import { wait } from '../../helpers/quick-tabs-test-utils.js';
+import { BroadcastManager } from '../../mocks/BroadcastManagerMock.js';
 
 describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
   let tabs;

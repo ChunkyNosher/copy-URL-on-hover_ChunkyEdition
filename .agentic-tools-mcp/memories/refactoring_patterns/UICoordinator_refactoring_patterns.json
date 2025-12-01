@@ -1,0 +1,8 @@
+{
+  "id": "ddf718ce-b816-4b38-a81c-f1e86a7d4d56",
+  "title": "UICoordinator refactoring patterns",
+  "details": "UICoordinator.js refactoring patterns used to improve CodeScene code health from 8.41 to 9.68:\n\n1. **Bumpy Road Fix**: Extract nested conditionals into helper methods with early returns. Example: render() → _handleExistingWindowInRender() + _finalizeRender()\n\n2. **Complex Method Fix**: Extract conditional logic into boolean helper functions. Example: _tryApplyDimensionsFromInstance() → uses _hasValidDimensions() helper\n\n3. **Excess Arguments Fix**: Introduce UpdateContext parameter object pattern. Pass { quickTab, tabWindow, entityMinimized, source, isRestoreOperation, mapSizeBefore } as single ctx object instead of 5-7 individual parameters.\n\n4. **ESLint Complexity Fix**: For functions with many nullish coalescing operations, extract a _getWithDefault(value, default) helper method to reduce cyclomatic complexity.\n\nVersion markers: v1.6.4.11 - Refactored to reduce complexity",
+  "category": "refactoring_patterns",
+  "dateCreated": "2025-11-30T23:50:43.029Z",
+  "dateUpdated": "2025-11-30T23:50:43.029Z"
+}

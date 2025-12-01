@@ -11,92 +11,93 @@
 
 console.log('[Test Bridge Background Handler] Initializing...');
 
+/**
+ * Method signature handlers for test bridge methods
+ * Maps method name to function that extracts parameters from data
+ */
+const METHOD_HANDLERS = {
+  createQuickTab: (testBridge, data) => testBridge.createQuickTab(data.url, data.options),
+  getQuickTabById: (testBridge, data) => testBridge.getQuickTabById(data.id),
+  minimizeQuickTab: (testBridge, data) => testBridge.minimizeQuickTab(data.id),
+  restoreQuickTab: (testBridge, data) => testBridge.restoreQuickTab(data.id),
+  pinQuickTab: (testBridge, data) => testBridge.pinQuickTab(data.id),
+  unpinQuickTab: (testBridge, data) => testBridge.unpinQuickTab(data.id),
+  closeQuickTab: (testBridge, data) => testBridge.closeQuickTab(data.id),
+  getQuickTabGeometry: (testBridge, data) => testBridge.getQuickTabGeometry(data.id),
+  verifyZIndexOrder: (testBridge, data) => testBridge.verifyZIndexOrder(data.ids),
+  getQuickTabs: (testBridge) => testBridge.getQuickTabs(),
+  clearAllQuickTabs: (testBridge) => testBridge.clearAllQuickTabs()
+};
+
+/**
+ * Route test bridge method calls based on method name and data
+ * @param {Object} testBridge - Test bridge API
+ * @param {string} method - Method name
+ * @param {Object} data - Method parameters
+ * @returns {Promise} Method result promise
+ */
+function routeTestBridgeMethod(testBridge, method, data) {
+  const handler = METHOD_HANDLERS[method];
+  if (!handler) {
+    throw new Error(`Unhandled method: ${method}`);
+  }
+  return handler(testBridge, data);
+}
+
+/**
+ * Handle test bridge call result and send response
+ * @param {string} method - Method name
+ * @param {Promise} methodPromise - Method promise
+ * @param {Function} sendResponse - Response callback
+ */
+function handleTestBridgeResult(method, methodPromise, sendResponse) {
+  methodPromise
+    .then(result => {
+      console.log('[Test Bridge Background Handler] Method succeeded:', { method, result });
+      sendResponse({ success: true, data: result });
+    })
+    .catch(error => {
+      console.error('[Test Bridge Background Handler] Method failed:', { method, error });
+      sendResponse({ success: false, error: error.message });
+    });
+}
+
 // Add message listener for test bridge calls
-browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'TEST_BRIDGE_CALL') {
-    console.log('[Test Bridge Background Handler] Received call:', message.data);
-    
-    const { method, data } = message.data;
-    
-    // Validate test bridge is available
-    if (typeof window.__COPILOT_TEST_BRIDGE__ === 'undefined') {
-      console.error('[Test Bridge Background Handler] Test bridge not available');
-      sendResponse({
-        success: false,
-        error: 'Test bridge not available'
-      });
-      return true;
-    }
-    
-    // Call test bridge method
-    const testBridge = window.__COPILOT_TEST_BRIDGE__;
-    
-    if (typeof testBridge[method] !== 'function') {
-      console.error('[Test Bridge Background Handler] Unknown method:', method);
-      sendResponse({
-        success: false,
-        error: `Unknown test bridge method: ${method}`
-      });
-      return true;
-    }
-    
-    // Execute method with proper parameter unpacking
-    let methodPromise;
-    try {
-      // Different methods have different signatures
-      switch (method) {
-        case 'createQuickTab':
-          methodPromise = testBridge[method](data.url, data.options);
-          break;
-        case 'getQuickTabById':
-        case 'minimizeQuickTab':
-        case 'restoreQuickTab':
-        case 'pinQuickTab':
-        case 'unpinQuickTab':
-        case 'closeQuickTab':
-        case 'getQuickTabGeometry':
-          methodPromise = testBridge[method](data.id);
-          break;
-        case 'verifyZIndexOrder':
-          methodPromise = testBridge[method](data.ids);
-          break;
-        case 'getQuickTabs':
-        case 'clearAllQuickTabs':
-          methodPromise = testBridge[method]();
-          break;
-        default:
-          throw new Error(`Unhandled method: ${method}`);
-      }
-      
-      methodPromise
-        .then(result => {
-          console.log('[Test Bridge Background Handler] Method succeeded:', { method, result });
-          sendResponse({
-            success: true,
-            data: result
-          });
-        })
-        .catch(error => {
-          console.error('[Test Bridge Background Handler] Method failed:', { method, error });
-          sendResponse({
-            success: false,
-            error: error.message
-          });
-        });
-    } catch (error) {
-      console.error('[Test Bridge Background Handler] Method execution error:', { method, error });
-      sendResponse({
-        success: false,
-        error: error.message
-      });
-    }
-    
-    // Return true to indicate async response
+browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type !== 'TEST_BRIDGE_CALL') {
+    return false; // Not a test bridge call, let other handlers process it
+  }
+
+  console.log('[Test Bridge Background Handler] Received call:', message.data);
+  
+  const { method, data } = message.data;
+  
+  // Validate test bridge is available
+  if (typeof window.__COPILOT_TEST_BRIDGE__ === 'undefined') {
+    console.error('[Test Bridge Background Handler] Test bridge not available');
+    sendResponse({ success: false, error: 'Test bridge not available' });
     return true;
   }
   
-  // Not a test bridge call, let other handlers process it
-  return false;
+  const testBridge = window.__COPILOT_TEST_BRIDGE__;
+  
+  if (typeof testBridge[method] !== 'function') {
+    console.error('[Test Bridge Background Handler] Unknown method:', method);
+    sendResponse({ success: false, error: `Unknown test bridge method: ${method}` });
+    return true;
+  }
+  
+  // Execute method with proper parameter unpacking
+  try {
+    const methodPromise = routeTestBridgeMethod(testBridge, method, data);
+    handleTestBridgeResult(method, methodPromise, sendResponse);
+  } catch (error) {
+    console.error('[Test Bridge Background Handler] Method execution error:', { method, error });
+    sendResponse({ success: false, error: error.message });
+  }
+  
+  // Return true to indicate async response
+  return true;
 });
 
 console.log('[Test Bridge Background Handler] ✓ Ready to handle TEST_BRIDGE_CALL messages');

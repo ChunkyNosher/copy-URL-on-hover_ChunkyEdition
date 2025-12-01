@@ -150,14 +150,53 @@ export class QuickTabWindow {
    * Create and render the Quick Tab window
    * v1.6.4.7 - FIX Issues #1, #6: Enhanced logging to verify correct dimensions are used
    * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification after container creation
+   * v1.6.4.11 - Refactored to extract helper methods for improved code health
    */
   render() {
     if (this.container) {
       console.warn('[QuickTabWindow] Already rendered:', this.id);
       return this.container;
     }
-    
-    // v1.6.4.7 - FIX Issue #6: Log dimensions at start of render to verify correct values
+
+    // Step 1: Validate and normalize dimensions
+    const dimensions = this._validateAndNormalizeDimensions();
+
+    // Step 2: Create container
+    this._createContainer(dimensions);
+
+    // Step 3: Create and attach titlebar
+    const titlebar = this._createTitlebar();
+    this.container.appendChild(titlebar);
+
+    // Step 4: Create and attach iframe
+    this._createIframe();
+    this.container.appendChild(this.iframe);
+    this.titlebarBuilder.config.iframe = this.iframe;
+    this.setupIframeLoadHandler();
+
+    // Step 5: Add to document and mark as rendered
+    document.body.appendChild(this.container);
+    this.rendered = true;
+
+    // Step 6: Apply anti-flash positioning
+    this._setupAntiFlashPositioning(dimensions);
+
+    // Step 7: Setup controllers
+    this._setupDragController(titlebar);
+    this._setupResizeController();
+    this.setupFocusHandlers();
+
+    console.log('[QuickTabWindow] Rendered:', this.id);
+    return this.container;
+  }
+
+  /**
+   * Validate and normalize dimensions with fallback to defaults
+   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * @private
+   * @returns {{ left: number, top: number, width: number, height: number }}
+   */
+  _validateAndNormalizeDimensions() {
     console.log('[QuickTabWindow] render() called with dimensions:', {
       id: this.id,
       left: this.left,
@@ -168,16 +207,14 @@ export class QuickTabWindow {
 
     const targetLeft = Number.isFinite(this.left) ? this.left : DEFAULT_LEFT;
     const targetTop = Number.isFinite(this.top) ? this.top : DEFAULT_TOP;
-    // v1.6.4.7 - FIX Issue #1: Ensure width/height use instance properties, not defaults
     const targetWidth = Number.isFinite(this.width) && this.width > 0 ? this.width : DEFAULT_WIDTH;
     const targetHeight = Number.isFinite(this.height) && this.height > 0 ? this.height : DEFAULT_HEIGHT;
-    
+
     this.left = targetLeft;
     this.top = targetTop;
     this.width = targetWidth;
     this.height = targetHeight;
-    
-    // v1.6.4.7 - FIX Issue #6: Log final dimensions being applied to DOM
+
     console.log('[QuickTabWindow] Applying dimensions to DOM:', {
       id: this.id,
       width: targetWidth,
@@ -186,7 +223,16 @@ export class QuickTabWindow {
       top: targetTop
     });
 
-    // Create main container
+    return { left: targetLeft, top: targetTop, width: targetWidth, height: targetHeight };
+  }
+
+  /**
+   * Create the main container element
+   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * @private
+   * @param {{ width: number, height: number }} dimensions
+   */
+  _createContainer(dimensions) {
     this.container = createElement('div', {
       id: `quick-tab-${this.id}`,
       className: 'quick-tab-window',
@@ -194,8 +240,8 @@ export class QuickTabWindow {
         position: 'fixed',
         left: '-9999px',
         top: '-9999px',
-        width: `${targetWidth}px`,
-        height: `${targetHeight}px`,
+        width: `${dimensions.width}px`,
+        height: `${dimensions.height}px`,
         zIndex: this.zIndex.toString(),
         backgroundColor: '#1e1e1e',
         border: '2px solid #444',
@@ -209,8 +255,7 @@ export class QuickTabWindow {
         opacity: '0'
       }
     });
-    
-    // v1.6.3.4-v2 - FIX Issue #4: Verify DOM dimensions after container creation
+
     console.log('[QuickTabWindow] DOM dimensions AFTER createElement:', {
       id: this.id,
       'container.style.width': this.container.style.width,
@@ -219,19 +264,25 @@ export class QuickTabWindow {
       'container.style.top': this.container.style.top,
       'container.style.zIndex': this.container.style.zIndex
     });
+  }
 
-    // v1.6.0 Phase 2.9 Task 4 - Use TitlebarBuilder facade pattern
-    // Create titlebar using TitlebarBuilder component
+  /**
+   * Create titlebar using TitlebarBuilder
+   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * @private
+   * @returns {HTMLElement} The titlebar element
+   */
+  _createTitlebar() {
     this.titlebarBuilder = new TitlebarBuilder(
       {
-        id: this.id, // v1.6.3.2 - Pass Quick Tab ID for debug display
+        id: this.id,
         title: this.title,
         url: this.url,
         soloedOnTabs: this.soloedOnTabs,
         mutedOnTabs: this.mutedOnTabs,
         currentTabId: this.currentTabId,
-        iframe: null, // Will be set after iframe creation
-        showDebugId: this.showDebugId // v1.6.3.2 - Debug ID display setting
+        iframe: null,
+        showDebugId: this.showDebugId
       },
       {
         onClose: () => this.destroy(),
@@ -245,8 +296,6 @@ export class QuickTabWindow {
             url: currentSrc,
             switchFocus: true
           });
-
-          // Check setting and close if enabled
           const settings = await browser.storage.local.get({ quickTabCloseOnOpen: false });
           if (settings.quickTabCloseOnOpen) {
             this.destroy();
@@ -255,18 +304,19 @@ export class QuickTabWindow {
       }
     );
 
-    // Note: iframe is null during titlebar build, will be updated before first use
     const titlebar = this.titlebarBuilder.build();
-    this.container.appendChild(titlebar);
-
-    // Store button references for updating (solo/mute state changes)
     this.soloButton = this.titlebarBuilder.soloButton;
     this.muteButton = this.titlebarBuilder.muteButton;
+    return titlebar;
+  }
 
-    // Create iframe content area
-    // v1.6.1.5 - Process URL to prevent autoplay and add 'allow' attribute
+  /**
+   * Create iframe content area
+   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * @private
+   */
+  _createIframe() {
     const processedUrl = this._processUrlForAutoplay(this.url);
-
     this.iframe = createElement('iframe', {
       src: processedUrl,
       style: {
@@ -275,34 +325,24 @@ export class QuickTabWindow {
         width: '100%',
         height: 'calc(100% - 40px)'
       },
-      sandbox:
-        'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox',
-      // v1.6.1.5 - Add 'allow' attribute without autoplay permission to prevent autoplay
+      sandbox: 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox',
       allow: 'picture-in-picture; fullscreen'
     });
+  }
 
-    this.container.appendChild(this.iframe);
-
-    // Update TitlebarBuilder with iframe reference (needed for navigation/zoom)
-    this.titlebarBuilder.config.iframe = this.iframe;
-
-    // Setup iframe load listener to update title
-    this.setupIframeLoadHandler();
-
-    // Add to document
-    document.body.appendChild(this.container);
-
-    // v1.5.9.10 - Mark as rendered
-    this.rendered = true;
-
-    // Fix Quick Tab flash by moving into place after a frame
+  /**
+   * Apply anti-flash positioning after a frame
+   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * @private
+   * @param {{ left: number, top: number }} dimensions
+   */
+  _setupAntiFlashPositioning(dimensions) {
     requestAnimationFrame(() => {
-      this.container.style.left = `${targetLeft}px`;
-      this.container.style.top = `${targetTop}px`;
+      this.container.style.left = `${dimensions.left}px`;
+      this.container.style.top = `${dimensions.top}px`;
       this.container.style.visibility = 'visible';
       this.container.style.opacity = '1';
-      
-      // v1.6.3.4-v2 - FIX Issue #4: Log final DOM dimensions after anti-flash movement
+
       console.log('[QuickTabWindow] DOM dimensions AFTER position correction (final):', {
         id: this.id,
         'container.style.left': this.container.style.left,
@@ -311,81 +351,110 @@ export class QuickTabWindow {
         'container.style.height': this.container.style.height
       });
     });
+  }
 
-    // v1.6.0 Phase 2.9 Task 3 - Use DragController facade pattern
-    // v1.6.3.4-v3 - FIX Issue #3: Callbacks reference instance properties (this.onXxx),
-    // so they persist through restore as long as the same instance is reused
+  /**
+   * Setup DragController with callbacks
+   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * @private
+   * @param {HTMLElement} titlebar - The titlebar element for drag handling
+   */
+  _setupDragController(titlebar) {
     console.log('[QuickTabWindow] Wiring DragController callbacks:', {
       id: this.id,
       hasOnFocus: typeof this.onFocus === 'function',
       hasOnPositionChange: typeof this.onPositionChange === 'function',
       hasOnPositionChangeEnd: typeof this.onPositionChangeEnd === 'function'
     });
+
     this.dragController = new DragController(titlebar, {
-      onDragStart: (x, y) => {
-        console.log('[QuickTabWindow] Drag started:', this.id, x, y);
-        this.isDragging = true;
-        // v1.6.3.3 - FIX Bug #9: Log onFocus callback status to verify wiring after restore
-        if (this.onFocus) {
-          console.log('[QuickTabWindow] Bringing to front via onFocus callback:', this.id);
-          this.onFocus(this.id);
-        } else {
-          console.warn('[QuickTabWindow] onFocus callback not wired for drag:', this.id);
-        }
-      },
-      onDrag: (newX, newY) => {
-        // Update position
-        this.left = newX;
-        this.top = newY;
-        this.container.style.left = `${newX}px`;
-        this.container.style.top = `${newY}px`;
-
-        // Call position change callback (throttled by DragController's RAF)
-        if (this.onPositionChange) {
-          this.onPositionChange(this.id, newX, newY);
-        }
-      },
-      onDragEnd: (finalX, finalY) => {
-        console.log('[QuickTabWindow] Drag ended:', this.id, finalX, finalY);
-        this.isDragging = false;
-
-        // v1.6.3.4-v3 - FIX Issue #3: Verify callback exists and log
-        if (this.onPositionChangeEnd) {
-          console.log('[QuickTabWindow] Calling onPositionChangeEnd callback:', this.id);
-          this.onPositionChangeEnd(this.id, finalX, finalY);
-        } else {
-          console.warn('[QuickTabWindow] onPositionChangeEnd callback not wired:', this.id);
-        }
-      },
-      onDragCancel: (lastX, lastY) => {
-        // CRITICAL FOR ISSUE #51: Emergency save position when drag is interrupted
-        console.log('[QuickTabWindow] Drag cancelled:', this.id, lastX, lastY);
-        this.isDragging = false;
-
-        // Emergency save position before tab loses focus
-        if (this.onPositionChangeEnd) {
-          this.onPositionChangeEnd(this.id, lastX, lastY);
-        }
-      }
+      onDragStart: (x, y) => this._handleDragStart(x, y),
+      onDrag: (newX, newY) => this._handleDrag(newX, newY),
+      onDragEnd: (finalX, finalY) => this._handleDragEnd(finalX, finalY),
+      onDragCancel: (lastX, lastY) => this._handleDragCancel(lastX, lastY)
     });
+  }
 
-    // v1.6.0 Phase 2.4 - Use ResizeController facade pattern
-    // v1.6.3.4-v3 - FIX Issue #3: Log callback wiring for resize
+  /**
+   * Handle drag start event
+   * v1.6.4.11 - Extracted from render() callback
+   * @private
+   */
+  _handleDragStart(x, y) {
+    console.log('[QuickTabWindow] Drag started:', this.id, x, y);
+    this.isDragging = true;
+    if (this.onFocus) {
+      console.log('[QuickTabWindow] Bringing to front via onFocus callback:', this.id);
+      this.onFocus(this.id);
+    } else {
+      console.warn('[QuickTabWindow] onFocus callback not wired for drag:', this.id);
+    }
+  }
+
+  /**
+   * Handle drag event (position update)
+   * v1.6.4.11 - Extracted from render() callback
+   * @private
+   */
+  _handleDrag(newX, newY) {
+    this.left = newX;
+    this.top = newY;
+    this.container.style.left = `${newX}px`;
+    this.container.style.top = `${newY}px`;
+
+    if (this.onPositionChange) {
+      this.onPositionChange(this.id, newX, newY);
+    }
+  }
+
+  /**
+   * Handle drag end event
+   * v1.6.4.11 - Extracted from render() callback
+   * @private
+   */
+  _handleDragEnd(finalX, finalY) {
+    console.log('[QuickTabWindow] Drag ended:', this.id, finalX, finalY);
+    this.isDragging = false;
+
+    if (this.onPositionChangeEnd) {
+      console.log('[QuickTabWindow] Calling onPositionChangeEnd callback:', this.id);
+      this.onPositionChangeEnd(this.id, finalX, finalY);
+    } else {
+      console.warn('[QuickTabWindow] onPositionChangeEnd callback not wired:', this.id);
+    }
+  }
+
+  /**
+   * Handle drag cancel event (emergency save)
+   * v1.6.4.11 - Extracted from render() callback
+   * @private
+   */
+  _handleDragCancel(lastX, lastY) {
+    console.log('[QuickTabWindow] Drag cancelled:', this.id, lastX, lastY);
+    this.isDragging = false;
+
+    if (this.onPositionChangeEnd) {
+      this.onPositionChangeEnd(this.id, lastX, lastY);
+    }
+  }
+
+  /**
+   * Setup ResizeController
+   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * @private
+   */
+  _setupResizeController() {
     console.log('[QuickTabWindow] Wiring ResizeController callbacks:', {
       id: this.id,
       hasOnSizeChange: typeof this.onSizeChange === 'function',
       hasOnSizeChangeEnd: typeof this.onSizeChangeEnd === 'function'
     });
+
     this.resizeController = new ResizeController(this, {
       minWidth: 400,
       minHeight: 300
     });
     this.resizeController.attachHandles();
-
-    this.setupFocusHandlers();
-
-    console.log('[QuickTabWindow] Rendered:', this.id);
-    return this.container;
   }
 
   // v1.6.0 Phase 2.9 Task 4 - createFavicon() moved to TitlebarBuilder
@@ -432,6 +501,7 @@ export class QuickTabWindow {
   /**
    * Pause any playing media (video/audio) in the iframe
    * v1.6.3.2 - Feature: Video Pause on Minimize
+   * v1.6.4.11 - Refactored to extract helpers for improved code health
    *
    * Attempts to pause media using:
    * 1. Direct DOM access for same-origin iframes
@@ -444,48 +514,88 @@ export class QuickTabWindow {
       return;
     }
 
-    try {
-      // Attempt 1: Direct DOM access for same-origin iframes
-      const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow?.document;
-      if (iframeDoc) {
-        // Pause all video elements
-        const videos = iframeDoc.querySelectorAll('video');
-        videos.forEach(video => {
-          if (!video.paused) {
-            video.pause();
-            console.log('[QuickTabWindow] Paused video element:', this.id);
-          }
-        });
-
-        // Pause all audio elements
-        const audios = iframeDoc.querySelectorAll('audio');
-        audios.forEach(audio => {
-          if (!audio.paused) {
-            audio.pause();
-            console.log('[QuickTabWindow] Paused audio element:', this.id);
-          }
-        });
-        return;
-      }
-    } catch (e) {
-      // Cross-origin restriction - fall through to postMessage approach
-      console.log('[QuickTabWindow] Cross-origin iframe, trying postMessage:', this.id);
+    // Try same-origin approach first
+    if (this._pauseSameOriginMedia()) {
+      return;
     }
 
-    // Attempt 2: postMessage for YouTube embeds (works cross-origin)
-    // YouTube IFrame API accepts JSON commands via postMessage
-    // Reference: https://developers.google.com/youtube/iframe_api_reference
+    // Fall back to postMessage for cross-origin (YouTube)
+    this._pauseYouTubeViaPostMessage();
+  }
+
+  /**
+   * Attempt to pause media via direct DOM access (same-origin only)
+   * v1.6.4.11 - Extracted from _pauseMediaInIframe() to reduce complexity
+   * @private
+   * @returns {boolean} True if same-origin access succeeded, false otherwise
+   */
+  _pauseSameOriginMedia() {
     try {
-      if (this.url.includes('youtube.com') || this.url.includes('youtu.be')) {
-        // YouTube IFrame API command format
-        const pauseCommand = JSON.stringify({
-          event: 'command',
-          func: 'pauseVideo',
-          args: []
-        });
-        this.iframe.contentWindow?.postMessage(pauseCommand, '*');
-        console.log('[QuickTabWindow] Sent YouTube pause command via postMessage:', this.id);
+      const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow?.document;
+      if (!iframeDoc) {
+        return false;
       }
+
+      this._pauseVideoElements(iframeDoc);
+      this._pauseAudioElements(iframeDoc);
+      return true;
+    } catch (_e) {
+      console.log('[QuickTabWindow] Cross-origin iframe, trying postMessage:', this.id);
+      return false;
+    }
+  }
+
+  /**
+   * Pause all video elements in a document
+   * v1.6.4.11 - Extracted from _pauseMediaInIframe()
+   * @private
+   * @param {Document} doc - The document to search for videos
+   */
+  _pauseVideoElements(doc) {
+    const videos = doc.querySelectorAll('video');
+    videos.forEach(video => {
+      if (!video.paused) {
+        video.pause();
+        console.log('[QuickTabWindow] Paused video element:', this.id);
+      }
+    });
+  }
+
+  /**
+   * Pause all audio elements in a document
+   * v1.6.4.11 - Extracted from _pauseMediaInIframe()
+   * @private
+   * @param {Document} doc - The document to search for audio
+   */
+  _pauseAudioElements(doc) {
+    const audios = doc.querySelectorAll('audio');
+    audios.forEach(audio => {
+      if (!audio.paused) {
+        audio.pause();
+        console.log('[QuickTabWindow] Paused audio element:', this.id);
+      }
+    });
+  }
+
+  /**
+   * Pause YouTube video via postMessage API (cross-origin)
+   * v1.6.4.11 - Extracted from _pauseMediaInIframe() to reduce complexity
+   * Reference: https://developers.google.com/youtube/iframe_api_reference
+   * @private
+   */
+  _pauseYouTubeViaPostMessage() {
+    try {
+      if (!this.url.includes('youtube.com') && !this.url.includes('youtu.be')) {
+        return;
+      }
+
+      const pauseCommand = JSON.stringify({
+        event: 'command',
+        func: 'pauseVideo',
+        args: []
+      });
+      this.iframe.contentWindow?.postMessage(pauseCommand, '*');
+      console.log('[QuickTabWindow] Sent YouTube pause command via postMessage:', this.id);
     } catch (e) {
       console.warn('[QuickTabWindow] Failed to send pause command:', this.id, e.message);
     }

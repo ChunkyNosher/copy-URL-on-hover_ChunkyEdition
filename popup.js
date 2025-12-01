@@ -880,8 +880,122 @@ function handleTabSwitch(event) {
   }
 }
 
-// Tab switching logic
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * Setup two-way sync between color text input and color picker
+ * @param {HTMLInputElement} textInput - Text input element
+ * @param {HTMLInputElement} pickerInput - Color picker element
+ */
+function setupColorInputSync(textInput, pickerInput) {
+  // When text input changes, update picker
+  textInput.addEventListener('input', () => {
+    const color = validateHexColor(textInput.value);
+    textInput.value = color;
+    pickerInput.value = color;
+  });
+
+  textInput.addEventListener('blur', () => {
+    const color = validateHexColor(textInput.value);
+    textInput.value = color;
+    pickerInput.value = color;
+  });
+
+  // When picker changes, update text input
+  pickerInput.addEventListener('input', () => {
+    const color = pickerInput.value.toUpperCase();
+    textInput.value = color;
+  });
+}
+
+/**
+ * Handle export logs button click
+ */
+async function handleExportAllLogs() {
+  const manifest = browserAPI.runtime.getManifest();
+  await exportAllLogs(manifest.version);
+}
+
+/**
+ * Handle clear logs button click
+ */
+async function handleClearLogHistory() {
+  const response = await browserAPI.runtime.sendMessage({
+    action: 'CLEAR_CONSOLE_LOGS'
+  });
+
+  const clearedTabs = response?.clearedTabs || 0;
+  const backgroundEntries = response?.clearedBackgroundEntries || 0;
+
+  const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
+  showStatus(
+    `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
+    true
+  );
+}
+
+/**
+ * Setup button with async handler that shows loading/success/error states
+ * @param {string} buttonId - Button element ID
+ * @param {Function} handler - Async handler function
+ * @param {Object} options - Configuration options
+ */
+function setupButtonHandler(buttonId, handler, options = {}) {
+  const button = document.getElementById(buttonId);
+  if (!button) return;
+
+  const {
+    loadingText = '⏳ Loading...',
+    successText = '✓ Success!',
+    errorText = '✗ Failed',
+    successDuration = 2000,
+    errorDuration = 3000
+  } = options;
+
+  button.addEventListener('click', async () => {
+    const originalText = button.textContent;
+    const originalBg = button.style.backgroundColor;
+
+    try {
+      // Show loading state
+      button.disabled = true;
+      button.textContent = loadingText;
+
+      // Execute handler
+      await handler();
+
+      // Show success state
+      button.textContent = successText;
+      button.classList.add('success');
+
+      // Reset after duration
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.backgroundColor = originalBg;
+        button.classList.remove('success');
+        button.disabled = false;
+      }, successDuration);
+    } catch (error) {
+      // Show error state
+      button.textContent = errorText;
+      button.classList.add('error');
+
+      // Show error message in status
+      showStatus(`${originalText} failed: ${error.message}`, false);
+
+      // Reset after duration
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.backgroundColor = originalBg;
+        button.classList.remove('error');
+        button.disabled = false;
+      }, errorDuration);
+    }
+  });
+}
+
+/**
+ * Initialize UI components on DOMContentLoaded
+ */
+function initializePopupUI() {
   // Settings tab switching
   document.querySelectorAll('.tab-button').forEach(tab => {
     tab.addEventListener('click', handleTabSwitch);
@@ -894,32 +1008,6 @@ document.addEventListener('DOMContentLoaded', () => {
     footerElement.textContent = `${manifest.name} v${manifest.version}`;
   }
 
-  /**
-   * Setup two-way sync between color text input and color picker
-   * @param {HTMLInputElement} textInput - Text input element
-   * @param {HTMLInputElement} pickerInput - Color picker element
-   */
-  function setupColorInputSync(textInput, pickerInput) {
-    // When text input changes, update picker
-    textInput.addEventListener('input', () => {
-      const color = validateHexColor(textInput.value);
-      textInput.value = color;
-      pickerInput.value = color;
-    });
-
-    textInput.addEventListener('blur', () => {
-      const color = validateHexColor(textInput.value);
-      textInput.value = color;
-      pickerInput.value = color;
-    });
-
-    // When picker changes, update text input
-    pickerInput.addEventListener('input', () => {
-      const color = pickerInput.value.toUpperCase();
-      textInput.value = color;
-    });
-  }
-
   // Add color input event listeners to sync text and picker inputs
   COLOR_INPUTS.forEach(({ textId, pickerId }) => {
     const textInput = document.getElementById(textId);
@@ -930,115 +1018,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ==================== EXPORT LOGS BUTTON ====================
-  /**
-   * Handle export logs button click
-   */
-  async function handleExportAllLogs() {
-    const manifest = browserAPI.runtime.getManifest();
-    await exportAllLogs(manifest.version);
-  }
-
-  /**
-   * Handle clear logs button click
-   */
-  async function handleClearLogHistory() {
-    const response = await browserAPI.runtime.sendMessage({
-      action: 'CLEAR_CONSOLE_LOGS'
-    });
-
-    const clearedTabs = response?.clearedTabs || 0;
-    const backgroundEntries = response?.clearedBackgroundEntries || 0;
-
-    const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
-    showStatus(
-      `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
-      true
-    );
-  }
-
-  /**
-   * Setup button with async handler that shows loading/success/error states
-   * @param {string} buttonId - Button element ID
-   * @param {Function} handler - Async handler function
-   * @param {Object} options - Configuration options
-   */
-  function setupButtonHandler(buttonId, handler, options = {}) {
-    const button = document.getElementById(buttonId);
-    if (!button) return;
-
-    const {
-      loadingText = '⏳ Loading...',
-      successText = '✓ Success!',
-      errorText = '✗ Failed',
-      successDuration = 2000,
-      errorDuration = 3000
-    } = options;
-
-    button.addEventListener('click', async () => {
-      const originalText = button.textContent;
-      const originalBg = button.style.backgroundColor;
-
-      try {
-        // Show loading state
-        button.disabled = true;
-        button.textContent = loadingText;
-
-        // Execute handler
-        await handler();
-
-        // Show success state
-        button.textContent = successText;
-        button.classList.add('success');
-
-        // Reset after duration
-        setTimeout(() => {
-          button.textContent = originalText;
-          button.style.backgroundColor = originalBg;
-          button.classList.remove('success');
-          button.disabled = false;
-        }, successDuration);
-      } catch (error) {
-        // Show error state
-        button.textContent = errorText;
-        button.classList.add('error');
-
-        // Show error message in status
-        showStatus(`${originalText} failed: ${error.message}`, false);
-
-        // Reset after duration
-        setTimeout(() => {
-          button.textContent = originalText;
-          button.style.backgroundColor = originalBg;
-          button.classList.remove('error');
-          button.disabled = false;
-        }, errorDuration);
-      }
-    });
-  }
-
   // Export logs button event listener
   setupButtonHandler('exportLogsBtn', handleExportAllLogs, {
     loadingText: '⏳ Exporting...',
     successText: '✓ Logs Exported!',
     errorText: '✗ Export Failed'
   });
-  // ==================== END EXPORT LOGS BUTTON ====================
 
-  // ==================== CLEAR LOGS BUTTON ====================
+  // Clear logs button
   setupButtonHandler('clearLogsBtn', handleClearLogHistory, {
     loadingText: '⏳ Clearing...',
     successText: '✓ Logs Cleared',
     errorText: '✗ Clear Failed'
   });
-  // ==================== END CLEAR LOGS BUTTON ====================
 
-  // ==================== COLLAPSIBLE FILTER GROUPS ====================
-  // v1.6.0.11 - Removed separate save/reset buttons; filters now save with main "Save Settings"
+  // Initialize collapsible filter groups
   initCollapsibleGroups();
   loadFilterSettings();
-  // ==================== END COLLAPSIBLE FILTER GROUPS ====================
-});
+}
+
+// Tab switching logic
+document.addEventListener('DOMContentLoaded', initializePopupUI);
 
 // ==================== FILTER SETTINGS FUNCTIONS ====================
 
