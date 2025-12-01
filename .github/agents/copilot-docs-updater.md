@@ -99,18 +99,17 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.4-v7)
+- [ ] Version numbers match current release (1.6.3.4-v8)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array, NOT containers)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.4-v7:** Real QuickTabWindow hydration documented
-- [ ] **v1.6.3.4-v7:** Instance validation pattern documented
-- [ ] **v1.6.3.4-v7:** Try/Finally lock pattern documented
-- [ ] **v1.6.3.4-v7:** Handler return objects documented
-- [ ] **v1.6.3.4-v7:** State events on hydration documented
+- [ ] **v1.6.3.4-v8:** Empty write protection documented
+- [ ] **v1.6.3.4-v8:** FIFO queue pattern documented
+- [ ] **v1.6.3.4-v8:** Callback suppression documented
+- [ ] **v1.6.3.4-v8:** Safe map deletion documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -118,7 +117,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.4-v7
+- **Current Version:** 1.6.3.4-v8
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -128,12 +127,12 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload (v1.6.3.4+)
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
-- **v1.6.3.4-v7 Key Features (Hydration Architecture Fixes):**
-  - Real QuickTabWindow Hydration - `_hydrateMinimizedTab()` creates actual instances
-  - Instance Validation - Check `typeof tabWindow.render === 'function'`
-  - URL Validation in Render - UICoordinator validates URL before `_createWindow()`
-  - Try/Finally Lock Pattern - Guaranteed lock cleanup in VisibilityHandler
-  - Handler Return Objects - `handleMinimize/handleRestore` return `{ success, error }`
+- **v1.6.3.4-v8 Key Features (Storage & Sync Fixes):**
+  - Empty Write Protection - `_shouldRejectEmptyWrite()` + `forceEmpty` param
+  - FIFO Storage Write Queue - `queueStorageWrite()` serializes writes
+  - Callback Suppression - `_initiatedOperations` Set + 50ms delay
+  - Focus Debounce - `_lastFocusTime` Map with 100ms threshold
+  - Safe Map Deletion - `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -192,12 +191,12 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.4-v7)
+- Version numbers (1.6.3.4-v8)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
 - Storage format (unified tabs array, NOT containers)
-- Timing constants (v1.6.3.4-v7 values)
+- Timing constants (v1.6.3.4-v8 values)
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
 - MCP tool lists
@@ -287,7 +286,7 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.4-v7)
+## Current Extension State (v1.6.3.4-v8)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -299,19 +298,21 @@ await perplexity.research("documentation compression markdown");
 - **Global Visibility:** All Quick Tabs visible everywhere (Container isolation REMOVED)
 - **Quick Tabs Manager:** Sidebar (Ctrl+Alt+Z or Alt+Shift+Z), Solo/Mute indicators
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
-- **Real QuickTabWindow Hydration (v1.6.3.4-v7):** Creates actual instances via factory
-- **Instance Validation (v1.6.3.4-v7):** Check render method before operations
-- **Try/Finally Lock Pattern (v1.6.3.4-v7):** Guaranteed cleanup in handlers
-- **Handler Return Objects (v1.6.3.4-v7):** Return `{ success, error }`
+- **Empty Write Protection (v8):** `forceEmpty` param, 1s cooldown
+- **FIFO Storage Queue (v8):** `queueStorageWrite()` serializes writes
+- **Callback Suppression (v8):** `_initiatedOperations` Set + 50ms delay
+- **Safe Map Deletion (v8):** `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
 
 ### Timing Constants
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
+| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
 | `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
+| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
 
 ### Current Keyboard Shortcuts
 - **Q:** Create Quick Tab
@@ -336,7 +337,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.4-v6 or earlier | Update to 1.6.3.4-v7 |
+| v1.6.3.4-v7 or earlier | Update to 1.6.3.4-v8 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -360,15 +361,15 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.4-v7
+- [ ] Version numbers updated to 1.6.3.4-v8
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged documented as primary sync
-- [ ] **v1.6.3.4-v7:** Real QuickTabWindow hydration documented
-- [ ] **v1.6.3.4-v7:** Instance validation pattern documented
-- [ ] **v1.6.3.4-v7:** Try/Finally lock pattern documented
-- [ ] **v1.6.3.4-v7:** Handler return objects documented
-- [ ] **v1.6.3.4-v7:** Timing constants correct
+- [ ] **v1.6.3.4-v8:** Empty write protection documented
+- [ ] **v1.6.3.4-v8:** FIFO queue pattern documented
+- [ ] **v1.6.3.4-v8:** Callback suppression documented
+- [ ] **v1.6.3.4-v8:** Safe map deletion documented
+- [ ] **v1.6.3.4-v8:** Timing constants correct
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠

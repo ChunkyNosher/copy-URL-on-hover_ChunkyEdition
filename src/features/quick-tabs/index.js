@@ -248,6 +248,7 @@ class QuickTabsManager {
   /**
    * Hydrate Quick Tab state from browser.storage.local
    * v1.6.3.4 - FIX Issue #1: Restore Quick Tabs after page reload
+   * v1.6.3.4-v8 - Extracted logging to reduce complexity
    * @private
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
@@ -258,9 +259,7 @@ class QuickTabsManager {
     }
 
     try {
-      // Read state from storage
-      const result = await browser.storage.local.get(STATE_KEY);
-      const storedState = result[STATE_KEY];
+      const storedState = await this._readAndLogStorageState();
 
       // Validate stored state
       const validation = this._validateStoredState(storedState);
@@ -283,6 +282,28 @@ class QuickTabsManager {
       console.error('[QuickTabsManager] Storage hydration error:', error);
       return { success: false, count: 0, reason: `Storage error: ${error.message}` };
     }
+  }
+  
+  /**
+   * Read state from storage and log result
+   * v1.6.3.4-v8 - FIX Issue #8: Extracted to reduce _hydrateStateFromStorage complexity
+   * @private
+   * @returns {Promise<Object|null>} Stored state or null
+   */
+  async _readAndLogStorageState() {
+    console.log('[QuickTabsManager] Reading state from storage.local (key:', STATE_KEY, ')');
+    
+    const result = await browser.storage.local.get(STATE_KEY);
+    const storedState = result[STATE_KEY];
+    
+    console.log('[QuickTabsManager] Storage read result:', {
+      found: !!storedState,
+      tabCount: storedState?.tabs?.length ?? 0,
+      saveId: storedState?.saveId ?? 'none',
+      transactionId: storedState?.transactionId ?? 'none'
+    });
+    
+    return storedState;
   }
 
   /**

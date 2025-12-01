@@ -4,6 +4,7 @@
  * v1.6.4.1 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
  * v1.6.3.4 - FIX Issue #3: Add z-index persistence
  * v1.6.3.4-v6 - FIX Issues #1-6: Add transaction tracking, URL validation, state validation
+ * v1.6.3.4-v8 - FIX Issues #1, #7: Empty write protection, storage write queue
  * 
  * @module storage-utils
  */
@@ -34,6 +35,20 @@ let lastStorageChangeTime = 0;
 // 200ms is empirically determined to be sufficient for storage.onChanged callbacks
 // Math.min ensures reasonable cleanup even if STORAGE_TIMEOUT_MS is misconfigured
 const TRANSACTION_CLEANUP_DELAY_MS = 200;
+
+// v1.6.3.4-v8 - FIX Issue #1: Empty write protection
+// Cooldown period between empty (0 tabs) writes to prevent cascades
+const EMPTY_WRITE_COOLDOWN_MS = 1000;
+let lastEmptyWriteTime = 0;
+// Note: previousTabCount is safe as module-level state because:
+// 1. JavaScript is single-threaded for synchronous code
+// 2. Storage writes are queued in FIFO order via storageWriteQueuePromise
+// 3. This is only used for WARNING logging, not for correctness
+let previousTabCount = 0;
+
+// v1.6.3.4-v8 - FIX Issue #7: Storage write queue for FIFO ordering
+// Each persist operation waits for previous one to complete
+let storageWriteQueuePromise = Promise.resolve();
 
 /**
  * Generate unique save ID for storage deduplication
@@ -533,60 +548,52 @@ function createTimeoutPromise(ms, operation) {
 }
 
 /**
- * Persist Quick Tab state to storage.local
- * v1.6.4 - Extracted from handlers
- * v1.6.4.1 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
- * v1.6.4.2 - FIX: Ensure timeout is always cleared to prevent memory leak
- * v1.6.3.4-v6 - FIX Issue #1, #5: Transaction tracking and deduplication
- * 
- * @param {Object} state - State object to persist
- * @param {string} logPrefix - Prefix for log messages (e.g., '[DestroyHandler]')
- * @returns {Promise<boolean>} - Promise resolving to true on success, false on failure
+ * Check if empty write should be rejected (cooldown protection)
+ * v1.6.3.4-v8 - FIX Issue #1: Prevent empty write cascades
+ * @private
+ * @param {number} tabCount - Number of tabs in state
+ * @param {boolean} forceEmpty - Whether to force the empty write
+ * @param {string} logPrefix - Log prefix for messages
+ * @param {string} transactionId - Transaction ID for logging
+ * @returns {boolean} True if write should be rejected
  */
-export async function persistStateToStorage(state, logPrefix = '[StorageUtils]') {
-  // v1.6.3.4-v6 - FIX Issue #1: Generate transaction ID for tracking
-  const transactionId = generateTransactionId();
-  console.log(`${logPrefix} Storage write STARTED [${transactionId}]`);
+function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId) {
+  if (tabCount > 0) {
+    return false; // Not an empty write
+  }
   
-  // v1.6.4.1 - FIX Bug #1: Validate state before attempting storage
-  if (!state) {
-    console.error(`${logPrefix} Cannot persist: state is null/undefined`);
+  // v1.6.3.4-v8 - FIX Issue #1: Log WARNING when going from N tabs to 0
+  if (previousTabCount > 0) {
+    console.warn(`${logPrefix} ⚠️ WARNING: State going from ${previousTabCount} tabs → 0 tabs [${transactionId}]`);
+    console.warn(`${logPrefix} Stack trace:`, new Error().stack);
+  }
+  
+  if (forceEmpty) {
+    console.log(`${logPrefix} Empty write allowed (forceEmpty=true) [${transactionId}]`);
     return false;
   }
   
-  if (!state.tabs || !Array.isArray(state.tabs)) {
-    console.error(`${logPrefix} Cannot persist: state.tabs is invalid`);
-    return false;
+  const now = Date.now();
+  if (now - lastEmptyWriteTime < EMPTY_WRITE_COOLDOWN_MS) {
+    console.warn(`${logPrefix} REJECTED: Empty write within cooldown (${now - lastEmptyWriteTime}ms < ${EMPTY_WRITE_COOLDOWN_MS}ms) [${transactionId}]`);
+    return true;
   }
   
-  // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
-  if (!hasStateChanged(state)) {
-    console.log(`${logPrefix} Storage write SKIPPED [${transactionId}] (no changes)`);
-    return true; // Not an error, just nothing to write
-  }
-  
-  // v1.6.3.4-v6 - FIX Issue #6: Validate state before persist
-  const validation = validateStateForPersist(state);
-  if (!validation.valid) {
-    console.error(`${logPrefix} State validation failed [${transactionId}]:`, validation.errors);
-    // Allow persist to continue but log the errors
-  }
-  
+  lastEmptyWriteTime = now;
+  return false;
+}
+
+/**
+ * Perform the actual storage write operation
+ * v1.6.3.4-v8 - FIX Issue #7: Extracted for queue implementation
+ * @private
+ */
+async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId) {
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
     console.warn(`${logPrefix} Storage API not available, cannot persist`);
     return false;
   }
-
-  const tabCount = state.tabs.length;
-  const minimizedCount = state.tabs.filter(t => t.minimized).length;
-  console.log(`${logPrefix} Persisting ${tabCount} tabs (${minimizedCount} minimized) [${transactionId}]`);
-  
-  // v1.6.3.4-v6 - FIX Issue #1: Add transaction ID to state for tracking
-  const stateWithTxn = {
-    ...state,
-    transactionId
-  };
   
   // v1.6.3.4-v6 - FIX Issue #1: Track in-progress transaction
   IN_PROGRESS_TRANSACTIONS.add(transactionId);
@@ -600,6 +607,9 @@ export async function persistStateToStorage(state, logPrefix = '[StorageUtils]')
     
     await Promise.race([storagePromise, timeout.promise]);
     
+    // v1.6.3.4-v8 - Update previous tab count after successful write
+    previousTabCount = tabCount;
+    
     console.log(`${logPrefix} Storage write COMPLETED [${transactionId}] (${tabCount} tabs)`);
     return true;
   } catch (err) {
@@ -610,10 +620,90 @@ export async function persistStateToStorage(state, logPrefix = '[StorageUtils]')
     timeout.clear();
     
     // v1.6.3.4-v6 - FIX Issue #1: Remove transaction from in-progress set after a delay
-    // This delay allows storage.onChanged to fire and be ignored
-    // Uses TRANSACTION_CLEANUP_DELAY_MS which is based on STORAGE_TIMEOUT_MS
     setTimeout(() => {
       IN_PROGRESS_TRANSACTIONS.delete(transactionId);
     }, TRANSACTION_CLEANUP_DELAY_MS);
   }
+}
+
+/**
+ * Queue a storage write operation (FIFO ordering)
+ * v1.6.3.4-v8 - FIX Issue #7: Ensures writes are serialized
+ * @param {Function} writeOperation - Async function to execute
+ * @returns {Promise<boolean>} Result of the write operation
+ */
+export function queueStorageWrite(writeOperation) {
+  // Chain this operation to the previous one
+  storageWriteQueuePromise = storageWriteQueuePromise
+    .then(() => writeOperation())
+    .catch(err => {
+      console.error('[StorageUtils] Queued write failed:', err);
+      return false;
+    });
+  
+  return storageWriteQueuePromise;
+}
+
+/**
+ * Persist Quick Tab state to storage.local
+ * v1.6.4 - Extracted from handlers
+ * v1.6.4.1 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
+ * v1.6.4.2 - FIX: Ensure timeout is always cleared to prevent memory leak
+ * v1.6.3.4-v6 - FIX Issue #1, #5: Transaction tracking and deduplication
+ * v1.6.3.4-v8 - FIX Issues #1, #7: Empty write protection, storage write queue
+ * 
+ * @param {Object} state - State object to persist
+ * @param {string} logPrefix - Prefix for log messages (e.g., '[DestroyHandler]')
+ * @param {boolean} forceEmpty - Allow empty (0 tabs) writes (default: false)
+ * @returns {Promise<boolean>} - Promise resolving to true on success, false on failure
+ */
+export function persistStateToStorage(state, logPrefix = '[StorageUtils]', forceEmpty = false) {
+  // v1.6.3.4-v6 - FIX Issue #1: Generate transaction ID for tracking
+  const transactionId = generateTransactionId();
+  console.log(`${logPrefix} Storage write STARTED [${transactionId}]`);
+  
+  // v1.6.4.1 - FIX Bug #1: Validate state before attempting storage
+  if (!state) {
+    console.error(`${logPrefix} Cannot persist: state is null/undefined`);
+    return Promise.resolve(false);
+  }
+  
+  if (!state.tabs || !Array.isArray(state.tabs)) {
+    console.error(`${logPrefix} Cannot persist: state.tabs is invalid`);
+    return Promise.resolve(false);
+  }
+  
+  const tabCount = state.tabs.length;
+  const minimizedCount = state.tabs.filter(t => t.minimized).length;
+  
+  // v1.6.3.4-v8 - FIX Issue #1: Reject empty writes unless forceEmpty is true
+  if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
+    return Promise.resolve(false);
+  }
+  
+  // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
+  if (!hasStateChanged(state)) {
+    console.log(`${logPrefix} Storage write SKIPPED [${transactionId}] (no changes)`);
+    return Promise.resolve(true); // Not an error, just nothing to write
+  }
+  
+  // v1.6.3.4-v6 - FIX Issue #6: Validate state before persist
+  const validation = validateStateForPersist(state);
+  if (!validation.valid) {
+    console.error(`${logPrefix} State validation failed [${transactionId}]:`, validation.errors);
+    // Allow persist to continue but log the errors
+  }
+  
+  console.log(`${logPrefix} Persisting ${tabCount} tabs (${minimizedCount} minimized) [${transactionId}]`);
+  
+  // v1.6.3.4-v6 - FIX Issue #1: Add transaction ID to state for tracking
+  const stateWithTxn = {
+    ...state,
+    transactionId
+  };
+  
+  // v1.6.3.4-v8 - FIX Issue #7: Queue the write operation for FIFO ordering
+  return queueStorageWrite(() => 
+    _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId)
+  );
 }

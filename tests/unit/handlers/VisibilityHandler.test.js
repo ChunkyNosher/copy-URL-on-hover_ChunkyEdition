@@ -50,7 +50,8 @@ describe('VisibilityHandler', () => {
     mockMinimizedManager = {
       add: jest.fn(),
       remove: jest.fn(),
-      restore: jest.fn(() => true)
+      restore: jest.fn(() => true),
+      getCount: jest.fn(() => 0)
     };
 
     // Create mock event bus

@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.4-v5 spam-click fixes, DragController destroyed flag)
+  (v1.6.3.4-v8 storage & sync fixes, callback suppression, focus debounce)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -37,53 +37,43 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-- **DragController Destroyed Flag (v1.6.3.4-v5)** - Prevents stale callbacks after destroy
-- **Entity-Instance Same Object (v1.6.3.4-v5)** - Entity in Map IS the tabWindow
 
-**Timing Constants (v1.6.3.4-v5):**
+**v1.6.3.4-v8 Key Features:**
+- **Callback Suppression** - `_initiatedOperations` Set + 50ms delay
+- **Focus Debounce** - `_lastFocusTime` Map with 100ms threshold
+- **Safe Map Deletion** - Check `has()` before `delete()`
+
+**Timing Constants (v1.6.3.4-v8):**
 
 | Constant | Value | Location |
 |----------|-------|----------|
+| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | VisibilityHandler |
+| `Focus debounce threshold` | 100 | VisibilityHandler |
 | `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | VisibilityHandler |
-| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | UICoordinator |
-| `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator |
-
-**Minimized State Detection:**
-```javascript
-const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
-```
 
 ---
 
-## v1.6.3.4-v5 Key Patterns
+## v1.6.3.4-v8 Key Patterns
 
-### DragController Destroyed Flag
-
-```javascript
-destroy() { this.destroyed = true; }
-_onDragEnd() { if (this.destroyed) return; } // Prevent stale callbacks
-```
-
-### Entity-Instance Same Object Pattern
+### Callback Suppression Pattern
 
 ```javascript
-const entity = this.quickTabsMap.get(id);
-entity.minimized = false; // Updates both entity AND instance
+// Track initiated operation to suppress callbacks
+this._initiatedOperations.add(`minimize-${id}`);
+try { tabWindow.minimize(); }
+finally { setTimeout(() => this._initiatedOperations.delete(`minimize-${id}`), 50); }
 ```
 
-### Snapshot Clear Delay
+### Focus Debounce Pattern
 
 ```javascript
-const SNAPSHOT_CLEAR_DELAY_MS = 400;
-_scheduleSnapshotClearing(id) {
-  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
-}
+// Debounce focus events with 100ms threshold
+const lastFocus = this._lastFocusTime.get(id) || 0;
+if (Date.now() - lastFocus < 100) return;
+this._lastFocusTime.set(id, Date.now());
+// proceed with focus handling
 ```
-
-### Legacy Pattern (v1.6.3.4-v3)
-
-**Snapshot Lifecycle:** `restore()` keeps snapshot until `clearSnapshot()` called
 
 ---
 
@@ -98,299 +88,20 @@ _scheduleSnapshotClearing(id) {
 
 ---
 
-## Quick Tab Structure
-
-**Complete UI with all controls (v1.6.3+):**
-
-```html
-<div class="quick-tab" data-id="qt-123">
-  <!-- Title Bar -->
-  <div class="quick-tab-header">
-    <img class="quick-tab-favicon" src="...">
-    <span class="quick-tab-title">Page Title</span>
-    
-    <!-- Control Buttons -->
-    <div class="quick-tab-controls">
-      <button class="nav-back" title="Back">←</button>
-      <button class="nav-forward" title="Forward">→</button>
-      <button class="nav-reload" title="Reload">↻</button>
-      <button class="open-new-tab" title="Open in New Tab">🔗</button>
-      <button class="solo-toggle" title="Solo" data-active="false">🎯</button>
-      <button class="mute-toggle" title="Mute" data-active="false">🔇</button>
-      <button class="minimize" title="Minimize">−</button>
-      <button class="close" title="Close">✕</button>
-    </div>
-  </div>
-  
-  <!-- Content iframe -->
-  <iframe class="quick-tab-iframe" src="about:blank"></iframe>
-  
-  <!-- Resize Handles (8-direction) -->
-  <div class="resize-handle resize-n"></div>
-  <div class="resize-handle resize-ne"></div>
-  <div class="resize-handle resize-e"></div>
-  <div class="resize-handle resize-se"></div>
-  <div class="resize-handle resize-s"></div>
-  <div class="resize-handle resize-sw"></div>
-  <div class="resize-handle resize-w"></div>
-  <div class="resize-handle resize-nw"></div>
-</div>
-```
-
----
-
-### Solo/Mute Implementation (v1.6.4.0)
-
-**Key Rules:**
-1. Solo and Mute are **mutually exclusive**
-2. Solo = show ONLY on specific browser tabs (soloedOnTabs array)
-3. Mute = hide ONLY on specific browser tabs (mutedOnTabs array)
-4. Both use browser `tabId` stored in arrays
-5. Persist changes to storage.local via shared utilities
-
-**Toggle Solo (v1.6.4.0):**
-```javascript
-async toggleSolo(browserTabId) {
-  const quickTab = this.quickTabsManager.tabs.get(this.id);
-  
-  // Initialize arrays if needed
-  quickTab.soloedOnTabs = quickTab.soloedOnTabs || [];
-  quickTab.mutedOnTabs = quickTab.mutedOnTabs || [];
-  
-  // Check current state
-  const isSolo = quickTab.soloedOnTabs.includes(browserTabId);
-  
-  if (isSolo) {
-    // Disable Solo - remove from array
-    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== browserTabId);
-    this.soloButton.dataset.active = 'false';
-    this.soloButton.textContent = '⭕';
-  } else {
-    // Enable Solo, remove from Mute
-    quickTab.soloedOnTabs.push(browserTabId);
-    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== browserTabId);
-    this.soloButton.dataset.active = 'true';
-    this.soloButton.textContent = '🎯';
-    this.muteButton.dataset.active = 'false';
-    this.muteButton.textContent = '🔊';
-  }
-  
-  // Save state - storage.onChanged syncs to other tabs
-  await this.quickTabsManager.saveState();
-  
-  // Emit event for manager
-  eventBus.emit('SOLO_CHANGED', {
-    quickTabId: this.id,
-    tabId: browserTabId,
-    enabled: !isSolo
-  });
-}
-```
-
-**Toggle Mute (v1.6.4.0):**
-```javascript
-async toggleMute(browserTabId) {
-  const quickTab = this.quickTabsManager.tabs.get(this.id);
-  
-  // Initialize arrays if needed
-  quickTab.soloedOnTabs = quickTab.soloedOnTabs || [];
-  quickTab.mutedOnTabs = quickTab.mutedOnTabs || [];
-  
-  // Check current state
-  const isMute = quickTab.mutedOnTabs.includes(browserTabId);
-  
-  if (isMute) {
-    // Disable Mute - remove from array
-    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== browserTabId);
-    this.muteButton.dataset.active = 'false';
-    this.muteButton.textContent = '🔊';
-  } else {
-    // Enable Mute, remove from Solo
-    quickTab.mutedOnTabs.push(browserTabId);
-    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== browserTabId);
-    this.muteButton.dataset.active = 'true';
-    this.muteButton.textContent = '🔇';
-    this.soloButton.dataset.active = 'false';
-    this.soloButton.textContent = '⭕';
-  }
-  
-  // Save state
-  await this.quickTabsManager.saveState();
-  
-  // Emit event for manager
-  eventBus.emit('MUTE_CHANGED', {
-    quickTabId: this.id,
-    tabId: browserTabId,
-    enabled: !isMute
-  });
-}
-```
-
----
-
-## Visibility Pattern (v1.6.4.0)
-
-**Global visibility with Solo/Mute arrays:**
-
-```javascript
-class QuickTab {
-  constructor(url, title) {
-    this.id = generateId();
-    this.url = url;
-    this.title = title;
-    
-    // Solo/Mute state using arrays (v1.6.3+)
-    this.soloedOnTabs = []; // Array of browser tab IDs
-    this.mutedOnTabs = [];  // Array of browser tab IDs
-  }
-  
-  shouldBeVisible(browserTabId) {
-    // Solo mode - show ONLY on these tabs
-    if (this.soloedOnTabs?.length > 0) {
-      return this.soloedOnTabs.includes(browserTabId);
-    }
-    
-    // Mute mode - hide ONLY on these tabs
-    if (this.mutedOnTabs?.includes(browserTabId)) {
-      return false;
-    }
-    
-    // Default - show everywhere (global visibility)
-    return true;
-  }
-}
-```
-
----
-
-## Drag & Resize with Pointer Events
-
-**Key Pattern:** Use `setPointerCapture()` / `releasePointerCapture()` to prevent pointer escape.
-
-```javascript
-// Drag setup - capture on pointerdown, release on pointerup
-header.setPointerCapture(e.pointerId);
-// ... handle pointermove ...
-header.releasePointerCapture(e.pointerId);
-```
-
----
-
-## Navigation Controls
-
-Use `iframe.contentWindow.history.back()/forward()` and `location.reload()` for navigation.
-
----
-
 ## MCP Server Integration
 
-**Context7:** Verify APIs | **Perplexity:** Research patterns | **ESLint:** Lint changes | **CodeScene:** Code health
-
----
-
-## Common Quick Tab Issues
-
-### Issue: Solo/Mute Not Mutually Exclusive
-
-**Fix (v1.6.4.0):** Filter opposite array when toggling
-
-```javascript
-// ✅ CORRECT - Mutual exclusivity with arrays
-if (enablingSolo) {
-  quickTab.soloedOnTabs.push(tabId);
-  quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
-} else if (enablingMute) {
-  quickTab.mutedOnTabs.push(tabId);
-  quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
-}
-// Persist via shared utilities
-```
-
-### Issue: Quick Tab Not Visible When Expected
-
-**Fix (v1.6.4.0):** Check soloedOnTabs array logic
-
-```javascript
-// ✅ CORRECT - Visibility check with arrays
-function shouldBeVisible(quickTab, browserTabId) {
-  // If ANY tabs are soloed, only show on those tabs
-  if (quickTab.soloedOnTabs?.length > 0) {
-    return quickTab.soloedOnTabs.includes(browserTabId);
-  }
-  
-  // Check mute
-  if (quickTab.mutedOnTabs?.includes(browserTabId)) {
-    return false;
-  }
-  
-  return true; // Global visibility default
-}
-```
-
-### Issue: updateZIndex TypeError (v1.6.4.0)
-
-**Fix:** Add null/undefined safety checks
-
-```javascript
-// ✅ CORRECT - Null-safe updateZIndex (v1.6.4.0)
-updateZIndex(zIndex) {
-  if (!this.element) return;
-  this.element.style.zIndex = zIndex;
-}
-```
-
-### Issue: Duplicate Windows on Restore (v1.6.3.4-v3)
-
-**Fix:** UICoordinator uses unified restore path - ALWAYS delete Map entry before render
-
-### Issue: Ghost Drag Events (v1.6.3.4-v5)
-
-**Fix:** DragController uses destroyed flag
-
-```javascript
-// ✅ CORRECT - Check destroyed flag in all handlers
-destroy() { this.destroyed = true; }
-onPointerMove(e) { if (this.destroyed) return; }
-```
-
-### Issue: Spam-Click Breaks Minimize/Restore (v1.6.3.4-v5)
-
-**Fix:** Manager tracks pending operations, disables buttons during ops
-
-```javascript
-const PENDING_OPERATIONS = new Set();
-_startPendingOperation(id) { PENDING_OPERATIONS.add(id); }
-// 2-second timeout auto-clears
-```
-
-### Issue: Drag Pointer Escapes Quick Tab
-
-**Fix:** Use setPointerCapture
+**MANDATORY:** Context7, Perplexity, ESLint, CodeScene, Agentic-Tools
 
 ---
 
 ## Testing Requirements
 
-**For Every Quick Tab Change:**
-
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] Global visibility correct (no container filtering)
 - [ ] Drag works without pointer escape
-- [ ] Resize works in all 8 directions
-- [ ] **v1.6.3.4-v5:** DragController destroyed flag prevents ghost callbacks
-- [ ] **v1.6.3.4-v5:** Spam-clicks don't cause duplicate tabs
-- [ ] Navigation controls functional
+- [ ] **v1.6.3.4-v8:** Callback suppression prevents circular events
+- [ ] **v1.6.3.4-v8:** Focus debounce prevents duplicate events
 - [ ] ESLint passes ⭐
-- [ ] Memory files committed 🧠
-
----
-
-## Before Every Commit Checklist
-
-- [ ] Solo/Mute tested with arrays
-- [ ] Global visibility verified
-- [ ] Drag/resize working
-- [ ] ESLint passed ⭐
 - [ ] Memory files committed 🧠
 
 ---

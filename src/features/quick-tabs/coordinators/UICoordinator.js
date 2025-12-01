@@ -84,6 +84,46 @@ export class UICoordinator {
   }
   
   /**
+   * Safely delete from renderedTabs Map with logging and validation
+   * v1.6.3.4-v8 - FIX Issue #5: Prevent double deletion and Map corruption
+   * @private
+   * @param {string} id - Quick Tab ID to delete
+   * @param {string} reason - Reason for deletion (for logging)
+   * @returns {boolean} True if deleted, false if entry didn't exist
+   */
+  _safeDeleteFromRenderedTabs(id, reason) {
+    if (!this.renderedTabs.has(id)) {
+      console.warn('[UICoordinator] WARNING: Attempted to delete non-existent Map entry:', {
+        id,
+        reason,
+        mapSize: this.renderedTabs.size
+      });
+      return false;
+    }
+    
+    const mapSizeBefore = this.renderedTabs.size;
+    this.renderedTabs.delete(id);
+    
+    console.log('[UICoordinator] renderedTabs.delete():', {
+      id,
+      reason,
+      mapSizeBefore,
+      mapSizeAfter: this.renderedTabs.size
+    });
+    
+    // v1.6.3.4-v8 - FIX Issue #5: Sanity check - size should never unexpectedly go to zero
+    if (mapSizeBefore > 1 && this.renderedTabs.size === 0) {
+      console.error('[UICoordinator] CRITICAL: Map unexpectedly empty after single delete!', {
+        id,
+        reason,
+        mapSizeBefore
+      });
+    }
+    
+    return true;
+  }
+  
+  /**
    * Get next z-index for a new or restored window
    * v1.6.3.3 - FIX Bug #4: Ensures restored windows stack correctly
    * @private
@@ -153,10 +193,10 @@ export class UICoordinator {
    * v1.6.4.11 - Extracted to reduce render() bumpy road
    * @private
    * @param {QuickTab} quickTab - QuickTab domain entity
-   * @param {number} mapSizeBefore - Map size before operation
+   * @param {number} _mapSizeBefore - Map size before operation (unused, logged by helper)
    * @returns {QuickTabWindow|null} Existing window if valid, null if needs re-render
    */
-  _handleExistingWindowInRender(quickTab, mapSizeBefore) {
+  _handleExistingWindowInRender(quickTab, _mapSizeBefore) {
     if (!this.renderedTabs.has(quickTab.id)) {
       return null; // Not in map, needs fresh render
     }
@@ -169,15 +209,8 @@ export class UICoordinator {
       return existingWindow; // Return cached window
     }
 
-    // DOM is detached (e.g., after minimize), remove stale reference
-    // v1.6.4.10 - FIX Issue #5: Log Map removal with reason
-    console.log('[UICoordinator] renderedTabs.delete():', {
-      id: quickTab.id,
-      reason: 'DOM detached, re-rendering',
-      mapSizeBefore,
-      mapSizeAfter: mapSizeBefore - 1
-    });
-    this.renderedTabs.delete(quickTab.id);
+    // v1.6.3.4-v8 - Use helper for safe deletion with validation and logging
+    this._safeDeleteFromRenderedTabs(quickTab.id, 'DOM detached, re-rendering');
     // v1.6.4.9 - FIX Issue #5: Clear any monitoring timer for this tab
     this._stopDOMMonitoring(quickTab.id);
     

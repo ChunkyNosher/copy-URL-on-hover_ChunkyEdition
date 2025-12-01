@@ -16,43 +16,20 @@ You are a bug-fixer specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Z
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**Agentic-Tools MCP:**
-- **Location:** `.agentic-tools-mcp/` directory
-- **Contents:** Agent memories and task management
-  - `memories/` - Individual memory JSON files organized by category
-  - `tasks/` - Task and project data files
-
 **MANDATORY at end of EVERY task:**
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
-3. `git push`
-
-**Memory files live in ephemeral workspace - commit or lose forever.**
-
-### Memory Search (ALWAYS DO THIS FIRST) 🔍
 
 **Before starting ANY task:**
 ```javascript
-const relevantMemories = await searchMemories({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  query: "[keywords about task/feature/component]",
-  limit: 5,
-  threshold: 0.3
-});
+await searchMemories({ query: "[keywords]", limit: 5 });
 ```
-
-**Memory Tools:**
-- `create_memory` - Store learnings, patterns, decisions
-- `search_memories` - Find relevant context before starting
-- `get_memory` - Retrieve specific memory details
-- `update_memory` - Refine existing memories
-- `list_memories` - Browse all stored knowledge
 
 ---
 
 ## Project Context
 
-**Version:** 1.6.3.4-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -61,16 +38,22 @@ const relevantMemories = await searchMemories({
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged
-- Direct local creation pattern
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v7 Key Features (Hydration Architecture Fixes):**
-- Real QuickTabWindow Hydration - `_hydrateMinimizedTab()` creates actual instances
-- Instance Validation - Check `typeof tabWindow.render === 'function'`
-- URL Validation in Render - UICoordinator validates URL before `_createWindow()`
-- Try/Finally Lock Pattern - Guaranteed lock cleanup in VisibilityHandler
-- Handler Return Objects - `handleMinimize/handleRestore` return `{ success, error }`
-- State Events on Hydration - emit `state:added` for hydrated tabs
+**v1.6.3.4-v8 Key Features (Storage & Sync Fixes):**
+- Empty Write Protection - `_shouldRejectEmptyWrite()` + `forceEmpty` param
+- FIFO Storage Write Queue - `queueStorageWrite()` serializes writes
+- Callback Suppression - `_initiatedOperations` Set + 50ms delay
+- Focus Debounce - `_lastFocusTime` Map with 100ms threshold
+- Safe Map Deletion - `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
+
+**Timing Constants (v1.6.3.4-v8):**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
+| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
+| Focus debounce threshold | 100 | Prevent duplicate focus events |
 
 ---
 
@@ -93,437 +76,90 @@ const relevantMemories = await searchMemories({
 ## Bug Fix Methodology
 
 ### Step 1: Reproduce & Verify
-
-**Reproduction Checklist:**
 - [ ] Can reproduce reliably (90%+ success rate)
 - [ ] Identified exact conditions that trigger bug
-- [ ] Documented steps to reproduce
 - [ ] Verified bug in current main branch
 
-**If can't reproduce reliably → investigate environmental factors**
-
 ### Step 2: Diagnose Root Cause
-
-**Diagnostic Process:**
-
 1. **Isolate** - Which component/function contains the bug?
 2. **Trace** - Follow execution path to failure point
 3. **Analyze** - What assumption was violated?
 4. **Verify** - Is this the root cause or a symptom?
 
-**Use Agentic-Tools MCP:** Search memories for similar past bugs and patterns
-
 ### Step 3: Design Fix
 
-**Fix Quality Criteria:**
+✅ **Good Fix:** Addresses root cause, minimal changes, no new debt, respects boundaries
+❌ **Bad Fix:** Masks symptom, complex workaround, violates architecture, race conditions
 
-✅ **Good Fix:**
-- Addresses root cause (not symptom)
-- Minimal code changes
-- No new technical debt
-- Respects architecture boundaries
-- Easily testable
+---
 
-❌ **Bad Fix:**
-- Masks symptom without fixing cause
-- Requires complex workaround
-- Violates architecture boundaries
-- Introduces race conditions
-- Hard to test
+## Common Bug Patterns (v1.6.3.4-v8)
 
-**Decision Point:** If fix doesn't meet "Good Fix" criteria → escalate to bug-architect
-
-### Step 4: Implement Fix
-
-**Implementation Guidelines:**
-
-1. **Minimal Changes** - Only touch what's necessary
-2. **Preserve Behavior** - Don't change unrelated functionality
-3. **Follow Patterns** - Use existing patterns from codebase
-4. **Add Guards** - Defensive checks where appropriate
-
-**Common Bug Patterns:**
-
-**Race Conditions:**
+### Empty Write Prevention
 ```javascript
-// ✅ GOOD - Proper async handling
-async function updateState() {
-  const currentState = await getState();
-  const newState = transform(currentState);
-  await setState(newState);
+// ✅ GOOD - Use forceEmpty only for explicit Clear All
+await persistStateToStorage(state, '[Handler]', false); // Normal writes
+await persistStateToStorage(state, '[Handler]', true);  // Only for Clear All
+```
+
+### FIFO Queue for Storage Writes
+```javascript
+// ✅ GOOD - Queue writes to prevent race conditions
+import { queueStorageWrite } from '@utils/storage-utils.js';
+await queueStorageWrite(async () => { /* storage op */ });
+```
+
+### Callback Suppression
+```javascript
+// ✅ GOOD - Suppress circular callbacks
+this._initiatedOperations.add(`minimize-${id}`);
+try { tabWindow.minimize(); }
+finally { setTimeout(() => this._initiatedOperations.delete(`minimize-${id}`), 50); }
+```
+
+### Safe Map Deletion
+```javascript
+// ✅ GOOD - Check before delete
+if (this._renderedTabs.has(id)) {
+  this._renderedTabs.delete(id);
 }
 ```
 
-**Null/Undefined Access:**
-```javascript
-// ✅ GOOD - Guard checks
-if (!tab) {
-  console.warn('Invalid tab data');
-  return;
-}
-```
-
-**Global Visibility (v1.6.3+):**
+### Global Visibility (v1.6.3+)
 ```javascript
 // ✅ GOOD - Use unified storage format
 const state = await browser.storage.local.get('quick_tabs_state_v2');
 const tabs = state.quick_tabs_state_v2?.tabs || [];
 ```
 
-### Step 5: Test Comprehensively
-
-**Required Tests:**
-
-1. **Regression Test** - Proves bug existed
-2. **Fix Verification** - Proves fix works
-3. **Edge Cases** - Tests boundary conditions  
-4. **Integration Test** - Verifies no side effects
-
-**Coverage Target:** 100% for bug fix code paths
-
-### Step 6: Document Fix
-
-**Required Documentation:**
-
-1. **Commit Message:**
-   ```
-   fix: resolve Quick Tab rendering issue (#123)
-   
-   Root cause: PanelManager callbacks invoked before DOM element created
-   Solution: Initialize panel element before attaching callbacks
-   Impact: Quick Tabs now render immediately
-   
-   Fixes #123
-   ```
-
-2. **Code Comments:**
-   ```javascript
-   // Fix for #123: Initialize panel before callbacks to prevent
-   // rendering failures when state updates during initialization
-   this.panel = this.createPanelElement();
-   this.attachStateCallbacks();
-   ```
-
-3. **Update Issue:**
-   - Explain root cause
-   - Describe solution approach
-   - Note any remaining concerns
-
 ---
 
 ## MCP Server Integration
 
-**MANDATORY MCP Usage During Bug Fixes:**
-
-**CRITICAL - Use During Implementation:**
-- **Context7:** Verify API usage against current docs DURING implementation ⭐
-- **Perplexity:** Double-check solution approach, verify no better alternatives ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health alongside ESLint ⭐
-
-**CRITICAL - Testing (BEFORE and AFTER):**
-- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
-- **Jest unit tests:** Test extension AFTER changes (verify fix) ⭐
-- **Codecov:** Verify test coverage at end ⭐
-
-**Every Task:**
-- **Agentic-Tools:** Search memories before starting, store patterns after
-
-### Enhanced Bug Fix Workflow
-
-```
-1. Search memories (Agentic-Tools) | 2. Reproduce bug
-3. Playwright Firefox/Chrome: Test BEFORE (baseline)
-4. Perplexity: Research bug pattern + verify approach (paste code)
-5. Context7: Get current API docs | 6. Diagnose root cause
-7. Implement fix
-8. Context7: Double-check implementation vs docs
-9. Perplexity: Verify no better solution exists (paste relevant code)
-10. ESLint: Lint | 11. CodeScene: Check health
-12. Write tests | 13. Run all tests (npm run test, test:extension)
-14. Playwright Firefox/Chrome: Test AFTER (verify fix)
-15. Codecov: Verify coverage
-16. Store pattern (Agentic-Tools) | 17. GitHub: Update issue
-18. Commit memory (.agentic-tools-mcp/)
-```
-
----
-
-## Common Bug Categories
-
-### Global Visibility (v1.6.4.0)
-
-**Symptoms:** State not shared correctly across tabs
-
-**Root Cause:** Using old container-based storage format or wrong storage area
-
-**Standard Fix:**
-```javascript
-// Use unified storage format with storage.local (NOT storage.sync)
-import { STATE_KEY, persistStateToStorage } from '../utils/storage-utils.js';
-
-const state = await browser.storage.local.get(STATE_KEY);
-const tabs = state[STATE_KEY]?.tabs || [];
-```
-
-### Solo/Mute State Bugs (v1.6.4.0)
-
-**Symptoms:** Incorrect visibility, state conflicts
-
-**Root Cause:** Not using soloedOnTabs/mutedOnTabs arrays
-
-**Standard Fix:**
-```javascript
-// Ensure atomic state transition with arrays
-function toggleSolo(quickTab, tabId) {
-  if (quickTab.soloedOnTabs.includes(tabId)) {
-    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
-  } else {
-    quickTab.soloedOnTabs.push(tabId);
-    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
-  }
-}
-```
-
-### Storage Persistence Bugs (v1.6.4.0)
-
-**Symptoms:** State lost after destroy/minimize/restore
-
-**Root Cause:** Handler not persisting to storage.local or storage write storms
-
-**Standard Fix:**
-```javascript
-import { persistStateToStorage, generateSaveId } from '../utils/storage-utils.js';
-
-// Use _batchMode for rapid operations
-this._batchMode = true;  // Suppress individual writes during batch
-try { /* destroy operations */ }
-finally { this._batchMode = false; this.persistState(); }  // Single write
-```
-
-### DOM Cleanup Bugs (v1.6.4.0)
-
-**Symptoms:** Orphaned Quick Tab elements remain after close/destroy
-
-**Root Cause:** UICoordinator destroy not cleaning up DOM fully
-
-**Standard Fix:**
-```javascript
-import { cleanupOrphanedQuickTabElements } from '../utils/dom.js';
-
-// After state cleanup, clean DOM
-cleanupOrphanedQuickTabElements();
-```
-
-### Minimize/Restore Bugs (v1.6.3.4-v7)
-
-**Symptoms:** Duplicate windows on restore, spam-click breaks minimize/restore, ghost tabs
-
-**Root Cause:** Fake placeholder objects, missing error propagation, lock cleanup issues
-
-**Standard Fix (v1.6.3.4-v7):**
-```javascript
-// Real QuickTabWindow Hydration - creates actual instances
-const tabWindow = createQuickTabWindow(tabData, eventBus, dependencies);
-
-// Instance Validation Pattern
-if (typeof tabWindow.render !== 'function') {
-  throw new Error('Invalid QuickTabWindow instance');
-}
-
-// Handler Return Objects - proper error propagation
-const result = await visibilityHandler.handleRestore(id);
-if (!result.success) {
-  sendResponse({ success: false, error: result.error });
-}
-
-// Try/Finally Lock Pattern - guaranteed cleanup
-async handleRestore(id) {
-  const lock = this._acquireLock(id);
-  try { return { success: true }; }
-  catch (error) { return { success: false, error: error.message }; }
-  finally { this._releaseLock(lock); }
-}
-```
-
-### DragController Ghost Events (v1.6.3.4-v5)
-
-**Symptoms:** Stale drag callbacks firing after destroy
-
-**Root Cause:** Destroyed flag not checked in callbacks
-
-**Standard Fix (v1.6.3.4-v5):**
-```javascript
-destroy() { this.destroyed = true; }
-_onDragEnd() { if (this.destroyed) return; } // Prevent stale callbacks
-```
-
-### Quick Tab Rendering Bugs
-
-**Symptoms:** Tabs don't render, blank iframes
-
-**Root Cause:** Initialization order issues
-
-**Standard Fix:**
-```javascript
-// Ensure proper initialization order
-async function initializeQuickTab() {
-  this.element = this.createElement();
-  await this.loadContent();
-  this.attachEventHandlers();
-}
-```
-
-### Cross-Tab Sync Bugs (v1.6.2+)
-
-**Symptoms:** State inconsistencies across tabs
-
-**Root Cause:** storage.onChanged not properly handled
-
-**Standard Fix:**
-```javascript
-// Use storage.onChanged for sync
-browser.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.quick_tabs_state_v2) {
-    this.handleSync(changes.quick_tabs_state_v2.newValue);
-  }
-});
-```
+**MANDATORY:** Context7, Perplexity, ESLint, CodeScene, Agentic-Tools
 
 ---
 
 ## Testing Requirements
 
-**For Every Bug Fix:**
-
 - [ ] Regression test added (proves bug existed)
 - [ ] Fix verification test added (proves fix works)
-- [ ] Edge cases covered (boundary conditions)
-- [ ] Integration test if affects multiple components
+- [ ] Edge cases covered
 - [ ] All existing tests still pass
-- [ ] Coverage: 100% for bug fix code paths
-
-**Test Naming Convention:**
-```javascript
-// Pattern: [bug|fixed-bug|edge-case]: description
-test('bug #123: renders Quick Tab with null container', ...);
-test('fixed bug #123: handles null container gracefully', ...);
-test('edge case #123: empty container string', ...);
-```
-
----
-
-## Code Quality Requirements
-
-**Every fix must:**
-
-- [ ] Pass ESLint with zero errors ⭐
-- [ ] Follow existing code patterns
-- [ ] Include defensive checks where appropriate
-- [ ] Have clear comments explaining fix
-- [ ] Not introduce new TODOs
-- [ ] Maintain or improve code coverage
-
----
-
-## Escalation Criteria
-
-**Escalate to bug-architect when:**
-
-- Root cause requires architectural change
-- Fix introduces technical debt
-- Bug affects multiple components
-- Pattern problem (not isolated bug)
-- Uncertainty about proper fix approach
-
-**Escalate to refactor-specialist when:**
-
-- Code area needs significant refactoring
-- Bug is symptom of broader design issue
-- Fix would benefit from pattern improvement
+- [ ] ESLint passes ⭐
+- [ ] Memory files committed 🧠
 
 ---
 
 ## Before Every Commit Checklist
 
-**Pre-Implementation:**
-- [ ] Searched memories for similar bugs 🧠
-- [ ] Playwright Firefox/Chrome: Tested BEFORE changes ⭐
-
-**Implementation:**
 - [ ] Bug reproduced and verified
 - [ ] Root cause identified
-- [ ] Context7: Verified API usage ⭐
-- [ ] Perplexity: Verified solution approach (pasted code) ⭐
 - [ ] Fix implemented with minimal changes
-- [ ] Context7: Double-checked implementation ⭐
-- [ ] Perplexity: Verified no better alternative ⭐
-
-**Code Quality:**
-- [ ] ESLint: Linted all changes ⭐
-- [ ] CodeScene: Checked code health ⭐
-
-**Testing:**
-- [ ] Regression test added (100% coverage)
-- [ ] Fix verification test added
-- [ ] Edge cases tested
-- [ ] All tests pass (npm run test, test:extension) ⭐
-- [ ] Playwright Firefox/Chrome: Tested AFTER changes ⭐
-- [ ] Codecov: Verified coverage ⭐
-
-**Documentation:**
-- [ ] Code comments added
-- [ ] GitHub issue updated
-- [ ] Documentation under 20KB 📏
-- [ ] No docs in docs/manual/ 📏
-- [ ] Agent file under 25KB 📏
+- [ ] ESLint passed ⭐
+- [ ] All tests pass
 - [ ] Memory files committed 🧠
 
 ---
-
-## Common Pitfalls to Avoid
-
-❌ **Fixing symptoms, not root cause**
-→ Always ask "why does this bug happen?"
-
-❌ **Over-engineering the fix**
-→ Keep changes minimal and surgical
-
-❌ **Skipping tests**
-→ Tests prevent regressions and prove fix works
-
-❌ **Ignoring edge cases**
-→ Edge cases are where bugs hide
-
-❌ **Not checking global visibility logic**
-→ Quick Tabs are visible everywhere in v1.6.4.0 (no container isolation)
-
-❌ **Using storage.sync for Quick Tab state**
-→ Use storage.local for Quick Tab state, storage.sync only for settings
-
-❌ **Not using debounced batch writes**
-→ Rapid destroy operations cause storage write storms (use _batchMode v1.6.4.0)
-
-❌ **Not using DOM cleanup**
-→ Call `cleanupOrphanedQuickTabElements()` after destroy operations
-
-❌ **Calling render() directly from restore()**
-→ Use unified restore path via UICoordinator event handling (v1.6.3.4-v3)
-
-❌ **Snapshot lifecycle gap**
-→ Keep snapshot in minimizedTabs until UICoordinator calls clearSnapshot() (v1.6.3.4-v3)
-
----
-
-## Success Metrics
-
-**Successful Bug Fix:**
-- ✅ Bug no longer reproducible
-- ✅ No regressions introduced
-- ✅ 100% test coverage of fix
-- ✅ Code quality maintained
-- ✅ Clear documentation
-- ✅ Fast turnaround time
 
 **Your strength: Rapid, reliable fixes with comprehensive testing.**
