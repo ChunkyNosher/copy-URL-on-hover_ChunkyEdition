@@ -1,7 +1,9 @@
+/* eslint-disable import/order */
 import { EventEmitter } from 'eventemitter3';
 
 import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { UICoordinator } from '../../../src/features/quick-tabs/coordinators/UICoordinator.js';
+/* eslint-enable import/order */
 
 // Mock dependencies
 const createMockStateManager = () => ({

@@ -134,13 +134,13 @@
       "name": "Fix remaining ESLint errors across codebase",
       "details": "Fix remaining ESLint errors in popup.js (max-lines-per-function), rollup.config.js (import order), test files (import order, unused vars, no-prototype-builtins), shims/container-shim.js (require-await), storage/SyncStorageAdapter.js (require-await).",
       "projectId": "b48e11b0-0e7e-4668-984d-075396404cd8",
-      "completed": false,
+      "completed": true,
       "createdAt": "2025-11-30T23:14:32.976Z",
-      "updatedAt": "2025-11-30T23:14:32.976Z",
+      "updatedAt": "2025-12-01T02:32:41.674Z",
       "dependsOn": [],
       "priority": 4,
       "complexity": 4,
-      "status": "pending",
+      "status": "done",
       "tags": [
         "eslint",
         "cleanup"
@@ -153,13 +153,13 @@
       "name": "Update version and documentation",
       "details": "Update manifest.json version to 1.6.3.4-v4, update Copilot instructions and agent files with new patterns and changes from refactoring.",
       "projectId": "b48e11b0-0e7e-4668-984d-075396404cd8",
-      "completed": false,
+      "completed": true,
       "createdAt": "2025-11-30T23:14:32.981Z",
-      "updatedAt": "2025-11-30T23:14:32.981Z",
+      "updatedAt": "2025-12-01T02:37:21.378Z",
       "dependsOn": [],
       "priority": 3,
       "complexity": 3,
-      "status": "pending",
+      "status": "done",
       "tags": [
         "documentation",
         "versioning"
