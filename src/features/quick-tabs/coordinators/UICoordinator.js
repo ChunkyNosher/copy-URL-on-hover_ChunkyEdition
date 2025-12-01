@@ -73,6 +73,8 @@ export class UICoordinator {
     this._domMonitoringTimers = new Map(); // id -> timerId
     // v1.6.3.3 - FIX Bug #4: Track highest z-index in memory for proper stacking
     this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+    // v1.6.3.4-v5 - FIX Issue #5: Track pending snapshot clear timers
+    this._pendingSnapshotClears = new Map();
   }
   
   /**
@@ -221,11 +223,6 @@ export class UICoordinator {
    * @param {string} quickTabId - Quick Tab ID
    */
   _scheduleSnapshotClearing(quickTabId) {
-    // Track pending snapshot clear timers
-    if (!this._pendingSnapshotClears) {
-      this._pendingSnapshotClears = new Map();
-    }
-    
     // Cancel any existing timer for this tab
     const existingTimer = this._pendingSnapshotClears.get(quickTabId);
     if (existingTimer) {
