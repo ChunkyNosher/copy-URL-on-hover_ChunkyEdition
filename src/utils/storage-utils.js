@@ -64,8 +64,8 @@ let transactionActive = false;
  */
 export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
   const browserAPI = getBrowserStorageAPI();
-  if (!browserAPI) {
-    console.warn(`${logPrefix} Cannot capture snapshot: storage API unavailable`);
+  if (!browserAPI?.storage?.local) {
+    console.warn(`${logPrefix} Cannot capture snapshot: storage.local API unavailable`);
     return null;
   }
   

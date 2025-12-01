@@ -259,17 +259,8 @@ describe('VisibilityHandler', () => {
 
       visibilityHandler.handleRestore('qt-123');
       
-      // v1.6.3.4-v9 - Need to flush the microtask queue before advancing timers
-      // because _emitRestoreStateUpdate is now async
-      await Promise.resolve();
-      await Promise.resolve();
-      
-      // Fast-forward timers to trigger the delayed emit (200ms delay for DOM verification - v1.6.4.8)
-      jest.advanceTimersByTime(250);
-      
-      // Need to wait for any pending promises again after timer advance
-      await Promise.resolve();
-      await Promise.resolve();
+      // v1.6.3.4-v9 - Use runAllTimersAsync to handle async setTimeout inside _emitRestoreStateUpdate
+      await jest.runAllTimersAsync();
 
       // v1.6.3.4 - FIX Issue #6: Now includes source parameter in event data
       expect(stateUpdatedSpy).toHaveBeenCalledWith({

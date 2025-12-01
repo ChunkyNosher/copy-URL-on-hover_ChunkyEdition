@@ -219,7 +219,10 @@ export class VisibilityHandler {
    */
   _validateEventPayload(quickTabData) {
     const requiredFields = ['id', 'url'];
-    const missingFields = requiredFields.filter(field => !quickTabData[field]);
+    // Check for null, undefined, or empty string values
+    const missingFields = requiredFields.filter(field => 
+      !(field in quickTabData) || quickTabData[field] === null || quickTabData[field] === undefined || quickTabData[field] === ''
+    );
     
     return {
       valid: missingFields.length === 0,

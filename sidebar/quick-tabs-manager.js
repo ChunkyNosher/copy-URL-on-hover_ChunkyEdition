@@ -4,6 +4,20 @@
 // Storage keys
 const STATE_KEY = 'quick_tabs_state_v2';
 
+// v1.6.3.4-v9 - FIX Issue #15: Error notification styles (code review feedback)
+const ERROR_NOTIFICATION_STYLES = {
+  position: 'fixed',
+  top: '10px',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  background: '#d32f2f',
+  color: 'white',
+  padding: '8px 16px',
+  borderRadius: '4px',
+  zIndex: '10000',
+  fontSize: '14px'
+};
+
 // v1.6.3.4-v5 - FIX Issue #4: Pending operations tracking
 // Prevents spam-clicking by tracking in-progress restore/minimize operations
 const PENDING_OPERATIONS = new Set();
@@ -702,6 +716,8 @@ function setupEventListeners() {
         // Fire-and-forget: Reconciliation handles its own error handling and UI updates
         _reconcileWithContentScripts(oldValue).catch(err => {
           console.error('[Manager] Reconciliation error:', err);
+          // v1.6.3.4-v9: Show user feedback on reconciliation failure
+          _showErrorNotification('Failed to recover Quick Tab state. Data may be lost.');
         });
         return; // Don't proceed with normal update until reconciliation completes
       }
@@ -1130,18 +1146,8 @@ function _showErrorNotification(message) {
   const notification = document.createElement('div');
   notification.className = 'error-notification';
   notification.textContent = message;
-  notification.style.cssText = `
-    position: fixed;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #d32f2f;
-    color: white;
-    padding: 8px 16px;
-    border-radius: 4px;
-    z-index: 10000;
-    font-size: 14px;
-  `;
+  // v1.6.3.4-v9: Use extracted styles constant for maintainability
+  Object.assign(notification.style, ERROR_NOTIFICATION_STYLES);
   document.body.appendChild(notification);
   
   // Remove after 3 seconds
