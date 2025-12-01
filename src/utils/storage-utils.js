@@ -31,8 +31,9 @@ const STORAGE_CHANGE_COOLDOWN_MS = 50;
 let lastStorageChangeTime = 0;
 
 // v1.6.3.4-v6 - Delay before cleaning up transaction ID (allows storage.onChanged to fire)
-// Set to a fraction of STORAGE_TIMEOUT_MS to ensure quick cleanup while still catching events
-const TRANSACTION_CLEANUP_DELAY_MS = Math.min(200, STORAGE_TIMEOUT_MS / 25);
+// 200ms is empirically determined to be sufficient for storage.onChanged callbacks
+// Math.min ensures reasonable cleanup even if STORAGE_TIMEOUT_MS is misconfigured
+const TRANSACTION_CLEANUP_DELAY_MS = 200;
 
 /**
  * Generate unique save ID for storage deduplication

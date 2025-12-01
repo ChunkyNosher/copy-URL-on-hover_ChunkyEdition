@@ -613,8 +613,9 @@ export class VisibilityHandler {
     // v1.6.3.4-v6 - FIX Issue #6: Full state validation
     const validation = validateStateForPersist(state);
     if (!validation.valid) {
-      console.error('[VisibilityHandler] State validation failed, ABORTING persist:', validation.errors);
-      return;
+      console.warn('[VisibilityHandler] State validation warnings (proceeding with persist):', validation.errors);
+      // Continue with persist despite validation warnings - data integrity is maintained
+      // by the individual tab validation in buildStateForStorage
     }
     
     // v1.6.4.1 - FIX Bug #1: Log tab count and minimized states

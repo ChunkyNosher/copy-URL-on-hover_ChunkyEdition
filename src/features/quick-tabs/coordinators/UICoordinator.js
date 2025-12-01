@@ -271,12 +271,15 @@ export class UICoordinator {
     const lastRenderTime = this._renderTimestamps.get(quickTab.id);
     const now = Date.now();
     if (lastRenderTime && (now - lastRenderTime) < RESTORE_LOCK_MS) {
-      console.log('[UICoordinator] Duplicate render blocked (within lock period):', {
-        id: quickTab.id,
-        timeSinceLastRender: now - lastRenderTime
-      });
       const existing = this.renderedTabs.get(quickTab.id);
-      if (existing) return existing;
+      if (existing && existing.isRendered()) {
+        console.log('[UICoordinator] Duplicate render blocked (within lock period):', {
+          id: quickTab.id,
+          timeSinceLastRender: now - lastRenderTime
+        });
+        return existing;
+      }
+      // No valid existing window found - continue with normal rendering
     }
     
     // Check for existing valid window
