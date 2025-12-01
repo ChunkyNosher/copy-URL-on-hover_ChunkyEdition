@@ -25,6 +25,9 @@ describe('VisibilityHandler', () => {
     // Create mock tab with buttons
     mockTab = {
       id: 'qt-123',
+      // v1.6.3.4-v9 - Add url for event payload validation
+      url: 'https://example.com',
+      title: 'Example Tab',
       soloedOnTabs: [],
       mutedOnTabs: [],
       soloButton: {
@@ -40,7 +43,14 @@ describe('VisibilityHandler', () => {
       updateZIndex: jest.fn(),
       // v1.6.3.4-v7 - Add missing methods for instance validation
       minimize: jest.fn(),
-      restore: jest.fn()
+      restore: jest.fn(),
+      // v1.6.3.4-v9 - Add minimized state for restore validation
+      minimized: true,
+      // v1.6.3.4-v9 - Add position and size for complete entity data
+      left: 100,
+      top: 100,
+      width: 400,
+      height: 300
     };
 
     // Create mock Map
@@ -51,7 +61,9 @@ describe('VisibilityHandler', () => {
       add: jest.fn(),
       remove: jest.fn(),
       restore: jest.fn(() => true),
-      getCount: jest.fn(() => 0)
+      getCount: jest.fn(() => 0),
+      // v1.6.3.4-v9 - Add hasSnapshot for restore validation
+      hasSnapshot: jest.fn(() => true)
     };
 
     // Create mock event bus
@@ -247,11 +259,8 @@ describe('VisibilityHandler', () => {
 
       visibilityHandler.handleRestore('qt-123');
       
-      // Fast-forward timers to trigger the delayed emit (200ms delay for DOM verification - v1.6.4.8)
-      jest.advanceTimersByTime(250);
-      
-      // Need to wait for any pending promises
-      await Promise.resolve();
+      // v1.6.3.4-v9 - Use runAllTimersAsync to handle async setTimeout inside _emitRestoreStateUpdate
+      await jest.runAllTimersAsync();
 
       // v1.6.3.4 - FIX Issue #6: Now includes source parameter in event data
       expect(stateUpdatedSpy).toHaveBeenCalledWith({

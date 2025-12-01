@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.4-v8  
+**Version:** 1.6.3.4-v9  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -16,19 +16,22 @@
 - Direct local creation pattern
 - **State hydration on page reload** (v1.6.3.4+)
 
+**v1.6.3.4-v9 Key Features (Restore State Wipe Fixes - Issues #14-#20):**
+- **Complete Event Payload:** `_fetchEntityFromStorage()` fetches complete entity when tabWindow null
+- **Event Payload Validation:** `_validateEventPayload()` prevents incomplete event emission
+- **Enhanced _createQuickTabData:** Includes position, size, container, zIndex
+- **Restore Precondition Validation:** `_validateRestorePreconditions()` validates entity before operations
+- **Manager Restore Validation:** `restoreQuickTab()` validates tab is minimized before message
+- **Transaction Pattern:** `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()` with snapshots
+- **Storage Reconciliation:** Manager detects suspicious storage changes (count drop to 0) and reconciles
+- **Error Notifications:** `_showErrorNotification()` for user feedback
+
 **v1.6.3.4-v8 Key Features (Storage & Sync Fixes):**
 - **Empty Write Protection:** `_shouldRejectEmptyWrite()` + `forceEmpty` param, 1s cooldown
 - **FIFO Storage Write Queue:** `queueStorageWrite()` serializes all writes via Promise chain
 - **Callback Suppression:** `_initiatedOperations` Set + `CALLBACK_SUPPRESSION_DELAY_MS = 50`
 - **Focus Debounce:** `_lastFocusTime` Map with 100ms threshold
 - **Safe Map Deletion:** `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
-- **Enhanced Logging:** `_logStorageChange()`, `_logCorruptionWarning()`, transaction IDs
-
-**v1.6.3.4-v7 Key Features (Hydration Architecture Fixes):**
-- **Real QuickTabWindow Hydration:** `_hydrateMinimizedTab()` creates actual instances
-- **Instance Validation:** Check `typeof tabWindow.render === 'function'`
-- **Try/Finally Lock Pattern:** Guaranteed lock cleanup in VisibilityHandler
-- **Handler Return Objects:** `handleMinimize/handleRestore` return `{ success, error }`
 
 ---
 
@@ -152,12 +155,18 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `IN_PROGRESS_TRANSACTIONS` | Set for transaction tracking |
 | `isValidQuickTabUrl(url)` | Validate URL for Quick Tab |
 | `EMPTY_WRITE_COOLDOWN_MS` | **v8:** 1000ms cooldown between empty writes |
+| `beginTransaction(logPrefix)` | **v9:** Start transaction, capture snapshot |
+| `commitTransaction(logPrefix)` | **v9:** Complete transaction, clear snapshot |
+| `rollbackTransaction(logPrefix)` | **v9:** Restore snapshot on failure |
+| `captureStateSnapshot(logPrefix)` | **v9:** Capture current storage state |
+| `isTransactionActive()` | **v9:** Check if transaction in progress |
+| `getStateSnapshot()` | **v9:** Get current snapshot |
 
 **CRITICAL:** Always use `storage.local` for Quick Tab state, NOT `storage.sync`.
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.3.4-v8)
+## 🏗️ Key Architecture Patterns (v1.6.3.4-v9)
 
 ### Timing Constants Reference
 
@@ -170,6 +179,45 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `SNAPSHOT_CLEAR_DELAY_MS` | 400 | UICoordinator | Allows double-clicks |
 | `RENDER_COOLDOWN_MS` | 1000 | UICoordinator | Prevent duplicate renders |
 | `EMPTY_WRITE_COOLDOWN_MS` | 1000 | storage-utils.js | **v8:** Prevent empty write cascades |
+
+### Transaction Pattern (v1.6.3.4-v9)
+
+```javascript
+import { beginTransaction, commitTransaction, rollbackTransaction } from '@utils/storage-utils.js';
+
+const started = await beginTransaction('[HandlerName]');
+if (!started) { /* handle error */ }
+try {
+  // ... multi-step operation
+  commitTransaction('[HandlerName]');
+} catch (error) {
+  await rollbackTransaction('[HandlerName]');
+}
+```
+
+### Restore Validation Pattern (v1.6.3.4-v9)
+
+```javascript
+// VisibilityHandler validates before proceeding
+const validation = this._validateRestorePreconditions(tabWindow, id, source);
+if (!validation.valid) {
+  return { success: false, error: validation.error };
+}
+```
+
+### Complete Event Payload Pattern (v1.6.3.4-v9)
+
+```javascript
+// Fetch from storage when tabWindow is null
+if (!tabWindow) {
+  const entity = await this._fetchEntityFromStorage(id);
+  if (!entity) return; // Cannot emit incomplete event
+  // Build complete payload from storage entity
+}
+// Validate before emitting
+const validation = this._validateEventPayload(quickTabData);
+if (!validation.valid) return;
+```
 
 ### Empty Write Protection (v1.6.3.4-v8)
 
@@ -310,10 +358,10 @@ Use the agentic-tools MCP to create memories instead.
 ## 📋 Quick Reference
 
 ### Key Files
-- `background.js` - Background script, storage listeners, saveId tracking, **v8:** `_logStorageChange()`, `_logCorruptionWarning()`
+- `background.js` - Background script, storage listeners, saveId tracking
 - `src/content.js` - Content script, Quick Tab creation, Manager action handlers
 - `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings
-- `src/utils/storage-utils.js` - **v8:** `queueStorageWrite()`, `forceEmpty` param, `EMPTY_WRITE_COOLDOWN_MS`
+- `src/utils/storage-utils.js` - **v9:** Transaction pattern (`beginTransaction`, `commitTransaction`, `rollbackTransaction`)
 - `src/utils/dom.js` - DOM utilities including `cleanupOrphanedQuickTabElements()`
 - `src/features/quick-tabs/coordinators/UICoordinator.js`:
   - Z-index tracking with `_highestZIndex`, `_getNextZIndex()`
@@ -325,14 +373,19 @@ Use the agentic-tools MCP to create memories instead.
 - `src/features/quick-tabs/handlers/DestroyHandler.js`:
   - Debounced batch writes, **`_batchMode`**
 - `src/features/quick-tabs/handlers/VisibilityHandler.js`:
+  - **v9:** `_fetchEntityFromStorage()` fetches complete entity
+  - **v9:** `_validateEventPayload()` prevents incomplete events
+  - **v9:** `_validateRestorePreconditions()` validates before restore
+  - **v9:** `_createQuickTabData()` includes position, size, container
   - **v8:** `_initiatedOperations` Set for callback suppression
-  - **v8:** `_lastFocusTime` Map for focus debounce (100ms threshold)
-  - **v8:** `CALLBACK_SUPPRESSION_DELAY_MS = 50`
   - try/finally pattern guarantees `_releaseLock()` on all paths
 - `src/features/quick-tabs/window.js`:
   - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` constants
 - `sidebar/quick-tabs-manager.js`:
   - `PENDING_OPERATIONS` Set tracks in-progress minimize/restore
+  - **v9:** `_reconcileWithContentScripts()` detects storage corruption
+  - **v9:** `_showErrorNotification()` for user feedback
+  - **v9:** `restoreQuickTab()` validates tab is minimized before restore
 
 ### Storage Key & Format
 

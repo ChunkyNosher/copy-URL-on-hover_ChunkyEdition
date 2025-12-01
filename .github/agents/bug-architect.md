@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -64,7 +64,7 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v8 Key Features (Storage & Sync Fixes):**
+**v1.6.3.4-v9 Key Features (Storage & Sync Fixes):**
 - Empty Write Protection - `_shouldRejectEmptyWrite()` + `forceEmpty` param, 1s cooldown
 - FIFO Storage Write Queue - `queueStorageWrite()` serializes writes
 - Callback Suppression - `_initiatedOperations` Set + 50ms delay
@@ -72,10 +72,10 @@ const relevantMemories = await searchMemories({
 - Safe Map Deletion - `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
 
 **Architectural Patterns:**
-- FIFO queue for storage writes (v1.6.3.4-v8)
-- Callback suppression with initiated operations tracking (v1.6.3.4-v8)
+- FIFO queue for storage writes (v1.6.3.4-v9)
+- Callback suppression with initiated operations tracking (v1.6.3.4-v9)
 - Mutex pattern in VisibilityHandler (_operationLocks)
-- Safe map deletion with has() check before delete() (v1.6.3.4-v8)
+- Safe map deletion with has() check before delete() (v1.6.3.4-v9)
 
 ---
 

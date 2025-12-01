@@ -4,6 +4,20 @@
 // Storage keys
 const STATE_KEY = 'quick_tabs_state_v2';
 
+// v1.6.3.4-v9 - FIX Issue #15: Error notification styles (code review feedback)
+const ERROR_NOTIFICATION_STYLES = {
+  position: 'fixed',
+  top: '10px',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  background: '#d32f2f',
+  color: 'white',
+  padding: '8px 16px',
+  borderRadius: '4px',
+  zIndex: '10000',
+  fontSize: '14px'
+};
+
 // v1.6.3.4-v5 - FIX Issue #4: Pending operations tracking
 // Prevents spam-clicking by tracking in-progress restore/minimize operations
 const PENDING_OPERATIONS = new Set();
@@ -676,17 +690,37 @@ function setupEventListeners() {
   // Listen for storage changes to auto-update
   // v1.6.3 - FIX: Changed from 'sync' to 'local' (storage location since v1.6.0.12)
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
+  // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   browser.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === 'local' && changes[STATE_KEY]) {
       // v1.6.3.4-v6 - FIX Issue #1: Check for transaction in progress
       const newValue = changes[STATE_KEY].newValue;
       const oldValue = changes[STATE_KEY].oldValue;
       
+      const oldTabCount = oldValue?.tabs?.length ?? 0;
+      const newTabCount = newValue?.tabs?.length ?? 0;
+      
       console.log('[Manager] Storage change detected:', {
-        oldTabCount: oldValue?.tabs?.length ?? 0,
-        newTabCount: newValue?.tabs?.length ?? 0,
+        oldTabCount,
+        newTabCount,
         transactionId: newValue?.transactionId
       });
+      
+      // v1.6.3.4-v9 - FIX Issue #18: Detect suspicious storage changes
+      const isSuspiciousDrop = oldTabCount > 0 && newTabCount === 0;
+      if (isSuspiciousDrop) {
+        console.warn('[Manager] ⚠️ SUSPICIOUS: Tab count dropped from', oldTabCount, 'to 0!');
+        console.warn('[Manager] This may indicate storage corruption. Querying content scripts...');
+        
+        // Query content scripts for current state (reconciliation)
+        // Fire-and-forget: Reconciliation handles its own error handling and UI updates
+        _reconcileWithContentScripts(oldValue).catch(err => {
+          console.error('[Manager] Reconciliation error:', err);
+          // v1.6.3.4-v9: Show user feedback on reconciliation failure
+          _showErrorNotification('Failed to recover Quick Tab state. Data may be lost.');
+        });
+        return; // Don't proceed with normal update until reconciliation completes
+      }
       
       // v1.6.3.4-v6 - FIX Issue #1: Debounce to avoid reading mid-transaction
       if (storageReadDebounceTimer) {
@@ -706,6 +740,142 @@ function setupEventListeners() {
       }, STORAGE_READ_DEBOUNCE_MS);
     }
   });
+}
+
+/**
+ * Reconcile storage state with content scripts when suspicious changes detected
+ * v1.6.3.4-v9 - FIX Issue #18: Query content scripts before clearing UI
+ * @param {Object} _previousState - The previous state before the suspicious change (unused but kept for future use)
+ */
+async function _reconcileWithContentScripts(_previousState) {
+  console.log('[Manager] Starting reconciliation with content scripts...');
+  
+  try {
+    const foundQuickTabs = await _queryAllContentScriptsForQuickTabs();
+    const uniqueQuickTabs = _deduplicateQuickTabs(foundQuickTabs);
+    
+    console.log('[Manager] Reconciliation found', uniqueQuickTabs.length, 'unique Quick Tabs in content scripts');
+    
+    await _processReconciliationResult(uniqueQuickTabs);
+  } catch (err) {
+    console.error('[Manager] Reconciliation failed:', err);
+    _scheduleNormalUpdate();
+  }
+}
+
+/**
+ * Query all content scripts for their Quick Tabs state
+ * v1.6.3.4-v9 - Extracted to reduce nesting depth
+ * @returns {Promise<Array>} Array of Quick Tabs from all tabs
+ */
+async function _queryAllContentScriptsForQuickTabs() {
+  const tabs = await browser.tabs.query({});
+  const foundQuickTabs = [];
+  
+  for (const tab of tabs) {
+    const quickTabs = await _queryContentScriptForQuickTabs(tab.id);
+    foundQuickTabs.push(...quickTabs);
+  }
+  
+  return foundQuickTabs;
+}
+
+/**
+ * Query a single content script for Quick Tabs
+ * v1.6.3.4-v9 - Extracted to reduce nesting depth
+ * @param {number} tabId - Browser tab ID
+ * @returns {Promise<Array>} Quick Tabs from this tab
+ */
+async function _queryContentScriptForQuickTabs(tabId) {
+  try {
+    const response = await browser.tabs.sendMessage(tabId, {
+      action: 'GET_QUICK_TABS_STATE'
+    });
+    
+    if (response?.quickTabs && Array.isArray(response.quickTabs)) {
+      console.log(`[Manager] Received ${response.quickTabs.length} Quick Tabs from tab ${tabId}`);
+      return response.quickTabs;
+    }
+    return [];
+  } catch (_err) {
+    // Content script may not be loaded - this is expected
+    return [];
+  }
+}
+
+/**
+ * Deduplicate Quick Tabs by ID
+ * v1.6.3.4-v9 - Extracted to reduce nesting depth
+ * @param {Array} quickTabs - Array of Quick Tabs (may contain duplicates)
+ * @returns {Array} Deduplicated array
+ */
+function _deduplicateQuickTabs(quickTabs) {
+  const uniqueQuickTabs = [];
+  const seenIds = new Set();
+  
+  for (const qt of quickTabs) {
+    if (!seenIds.has(qt.id)) {
+      seenIds.add(qt.id);
+      uniqueQuickTabs.push(qt);
+    }
+  }
+  
+  return uniqueQuickTabs;
+}
+
+/**
+ * Process reconciliation result - restore or proceed with normal update
+ * v1.6.3.4-v9 - Extracted to reduce nesting depth
+ * @param {Array} uniqueQuickTabs - Deduplicated Quick Tabs from content scripts
+ */
+async function _processReconciliationResult(uniqueQuickTabs) {
+  if (uniqueQuickTabs.length > 0) {
+    // Content scripts have Quick Tabs but storage is empty - this is corruption!
+    console.warn('[Manager] CORRUPTION DETECTED: Content scripts have Quick Tabs but storage is empty');
+    await _restoreStateFromContentScripts(uniqueQuickTabs);
+  } else {
+    // No Quick Tabs found in content scripts - the empty state may be valid
+    console.log('[Manager] No Quick Tabs found in content scripts - empty state appears valid');
+    _scheduleNormalUpdate();
+  }
+}
+
+/**
+ * Restore state from content scripts data
+ * v1.6.3.4-v9 - Extracted to reduce nesting depth
+ * @param {Array} quickTabs - Quick Tabs from content scripts
+ */
+async function _restoreStateFromContentScripts(quickTabs) {
+  console.warn('[Manager] Restoring from content script state...');
+  
+  const restoredState = {
+    tabs: quickTabs,
+    timestamp: Date.now(),
+    saveId: `reconciled-${Date.now()}`
+  };
+  
+  await browser.storage.local.set({ [STATE_KEY]: restoredState });
+  console.log('[Manager] State restored from content scripts:', quickTabs.length, 'tabs');
+  
+  // Update local state and re-render
+  quickTabsState = restoredState;
+  renderUI();
+}
+
+/**
+ * Schedule normal state update after delay
+ * v1.6.3.4-v9 - Extracted to reduce code duplication
+ */
+function _scheduleNormalUpdate() {
+  setTimeout(() => {
+    loadQuickTabsState().then(() => {
+      const newHash = computeStateHash(quickTabsState);
+      if (newHash !== lastRenderedStateHash) {
+        lastRenderedStateHash = newHash;
+        renderUI();
+      }
+    });
+  }, STORAGE_READ_DEBOUNCE_MS);
 }
 
 /**
@@ -956,11 +1126,43 @@ async function minimizeQuickTab(quickTabId) {
 }
 
 /**
+ * Find Quick Tab data in current state by ID
+ * v1.6.3.4-v9 - FIX Issue #15: Helper to get tab data for validation
+ * @param {string} quickTabId - Quick Tab ID to find
+ * @returns {Object|null} Tab data or null if not found
+ */
+function _findTabInState(quickTabId) {
+  if (!quickTabsState?.tabs) return null;
+  return quickTabsState.tabs.find(tab => tab.id === quickTabId) || null;
+}
+
+/**
+ * Show error notification to user
+ * v1.6.3.4-v9 - FIX Issue #15: User feedback for invalid operations
+ * @param {string} message - Error message to display
+ */
+function _showErrorNotification(message) {
+  // Create notification element
+  const notification = document.createElement('div');
+  notification.className = 'error-notification';
+  notification.textContent = message;
+  // v1.6.3.4-v9: Use extracted styles constant for maintainability
+  Object.assign(notification.style, ERROR_NOTIFICATION_STYLES);
+  document.body.appendChild(notification);
+  
+  // Remove after 3 seconds
+  setTimeout(() => {
+    notification.remove();
+  }, 3000);
+}
+
+/**
  * Restore a minimized Quick Tab
  * v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
  *   Quick Tab may exist in a different browser tab than the active one.
  *   Cross-tab restore was failing because message was only sent to active tab.
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
+ * v1.6.3.4-v9 - FIX Issue #15: Validate tab is actually minimized before restore
  */
 async function restoreQuickTab(quickTabId) {
   // v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking
@@ -969,6 +1171,27 @@ async function restoreQuickTab(quickTabId) {
     console.log(`[Manager] Ignoring duplicate restore for ${quickTabId} (operation pending)`);
     return;
   }
+  
+  // v1.6.3.4-v9 - FIX Issue #15: Validate tab is minimized before restore
+  const tabData = _findTabInState(quickTabId);
+  if (!tabData) {
+    console.warn('[Manager] Restore REJECTED: Tab not found in state:', quickTabId);
+    _showErrorNotification('Quick Tab not found');
+    return;
+  }
+  
+  const isMinimized = isTabMinimizedHelper(tabData);
+  if (!isMinimized) {
+    console.warn('[Manager] Restore REJECTED: Tab is not minimized:', {
+      id: quickTabId,
+      minimized: tabData.minimized,
+      visibilityMinimized: tabData.visibility?.minimized
+    });
+    _showErrorNotification('Tab is already active - cannot restore');
+    return;
+  }
+  
+  console.log('[Manager] Restore validated - tab is minimized:', quickTabId);
   
   // Mark operation as pending
   PENDING_OPERATIONS.add(operationKey);

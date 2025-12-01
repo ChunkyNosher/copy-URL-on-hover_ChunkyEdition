@@ -28,7 +28,7 @@
  * @version 1.6.4.12
  */
 
-import { buildStateForStorage, persistStateToStorage, validateStateForPersist } from '@utils/storage-utils.js';
+import { buildStateForStorage, persistStateToStorage, validateStateForPersist, STATE_KEY, getBrowserStorageAPI } from '@utils/storage-utils.js';
 
 // v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
 // STATE_EMIT_DELAY_MS must be LESS THAN MINIMIZE_DEBOUNCE_MS to prevent race condition
@@ -152,6 +152,7 @@ export class VisibilityHandler {
   /**
    * Create minimal Quick Tab data object for state:updated events
    * v1.6.3.1 - Helper to reduce code duplication
+   * v1.6.3.4-v9 - FIX Issue #14: Include complete entity data (url, position, size, title, container)
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Quick Tab window instance
@@ -163,7 +164,69 @@ export class VisibilityHandler {
       id,
       minimized,
       url: tabWindow?.url,
-      title: tabWindow?.title
+      title: tabWindow?.title,
+      // v1.6.3.4-v9 - FIX Issue #14: Include position, size, container
+      position: tabWindow ? { left: tabWindow.left, top: tabWindow.top } : null,
+      size: tabWindow ? { width: tabWindow.width, height: tabWindow.height } : null,
+      container: tabWindow?.cookieStoreId || tabWindow?.container || null,
+      zIndex: tabWindow?.zIndex
+    };
+  }
+
+  /**
+   * Fetch entity data from storage for event payload when tabWindow is not available
+   * v1.6.3.4-v9 - FIX Issue #14: Ensure complete event payload
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @returns {Promise<Object|null>} Entity data or null if not found
+   */
+  async _fetchEntityFromStorage(id) {
+    try {
+      const browserAPI = getBrowserStorageAPI();
+      if (!browserAPI?.storage?.local) {
+        console.warn('[VisibilityHandler] Storage API not available for entity fetch');
+        return null;
+      }
+      
+      const result = await browserAPI.storage.local.get(STATE_KEY);
+      const state = result?.[STATE_KEY];
+      
+      if (!state?.tabs || !Array.isArray(state.tabs)) {
+        console.log('[VisibilityHandler] No state found in storage for entity fetch');
+        return null;
+      }
+      
+      const entity = state.tabs.find(tab => tab.id === id);
+      if (!entity) {
+        console.log('[VisibilityHandler] Entity not found in storage:', id);
+        return null;
+      }
+      
+      console.log('[VisibilityHandler] Fetched entity from storage:', { id, url: entity.url });
+      return entity;
+    } catch (err) {
+      console.error('[VisibilityHandler] Error fetching entity from storage:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Validate that event payload has all required fields
+   * v1.6.3.4-v9 - FIX Issue #14: Prevent incomplete event emission
+   * @private
+   * @param {Object} quickTabData - Event payload to validate
+   * @returns {{ valid: boolean, missingFields: string[] }}
+   */
+  _validateEventPayload(quickTabData) {
+    const requiredFields = ['id', 'url'];
+    // Check for null, undefined, or empty string values
+    const missingFields = requiredFields.filter(field => 
+      !(field in quickTabData) || quickTabData[field] === null || quickTabData[field] === undefined || quickTabData[field] === ''
+    );
+    
+    return {
+      valid: missingFields.length === 0,
+      missingFields
     };
   }
 
@@ -431,8 +494,57 @@ export class VisibilityHandler {
   }
 
   /**
+   * Validate restore preconditions
+   * v1.6.3.4-v9 - FIX Issue #20: Extracted to reduce _executeRestore complexity
+   * @private
+   * @param {Object} tabWindow - Tab window instance
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   * @returns {{ valid: boolean, error?: string }}
+   */
+  _validateRestorePreconditions(tabWindow, id, source) {
+    // v1.6.3.4-v7 - FIX Issue #3: Validate instance if it exists
+    if (!this._validateTabWindowInstance(tabWindow, id, source)) {
+      return { valid: false, error: 'Invalid tab instance (not QuickTabWindow)' };
+    }
+    
+    // v1.6.3.4-v9 - FIX Issue #20: Validate tab is actually minimized before restore
+    const hasSnapshot = this.minimizedManager?.hasSnapshot?.(id);
+    const isEntityMinimized = tabWindow?.minimized === true;
+    
+    if (tabWindow && !isEntityMinimized && !hasSnapshot) {
+      console.warn(`[VisibilityHandler] Restore validation FAILED (source: ${source}): Tab is not minimized:`, {
+        id,
+        entityMinimized: tabWindow?.minimized,
+        hasSnapshot
+      });
+      return { valid: false, error: 'Tab is not minimized - cannot restore' };
+    }
+    
+    return { valid: true };
+  }
+
+  /**
+   * Perform restore on tabWindow instance
+   * v1.6.3.4-v9 - Extracted to reduce _executeRestore complexity
+   * @private
+   */
+  _performTabWindowRestore(tabWindow, id, source) {
+    if (!tabWindow) {
+      console.warn(`[VisibilityHandler] tabWindow not found in quickTabsMap (source: ${source}) for:`, id);
+      return;
+    }
+    
+    tabWindow.restore();
+    console.log(`[VisibilityHandler] Called tabWindow.restore() (source: ${source}) for:`, id);
+    this._ensureTabInMap(tabWindow, id, source);
+  }
+
+  /**
    * Execute restore operation (extracted to reduce handleRestore complexity)
    * v1.6.3.4-v7 - Helper for try/finally pattern in handleRestore
+   * v1.6.3.4-v9 - FIX Issue #20: Add validation before proceeding
+   * Refactored: Extracted helpers to reduce complexity
    * @private
    */
   _executeRestore(id, source) {
@@ -440,9 +552,10 @@ export class VisibilityHandler {
 
     const tabWindow = this.quickTabsMap.get(id);
     
-    // v1.6.3.4-v7 - FIX Issue #3: Validate instance if it exists
-    if (!this._validateTabWindowInstance(tabWindow, id, source)) {
-      return { success: false, error: 'Invalid tab instance (not QuickTabWindow)' };
+    // Validate preconditions
+    const validation = this._validateRestorePreconditions(tabWindow, id, source);
+    if (!validation.valid) {
+      return { success: false, error: validation.error };
     }
     
     // v1.6.4.5 - FIX Issue #2: Mark as pending to prevent duplicate operations
@@ -458,26 +571,22 @@ export class VisibilityHandler {
     const restored = this.minimizedManager.restore(id);
     if (!restored) {
       console.warn(`[VisibilityHandler] Tab not found in minimized manager (source: ${source}):`, id);
-      this._emitRestoreStateUpdate(id, tabWindow, source);
+      // Fire-and-forget: Event emission runs async but doesn't block return
+      void this._emitRestoreStateUpdate(id, tabWindow, source);
       this._debouncedPersist(id, 'restore', source);
       return { success: true };
     }
 
-    // Call tabWindow.restore() which updates state but does NOT render
-    if (tabWindow) {
-      tabWindow.restore();
-      console.log(`[VisibilityHandler] Called tabWindow.restore() (source: ${source}) for:`, id);
-      this._ensureTabInMap(tabWindow, id, source);
-    } else {
-      console.warn(`[VisibilityHandler] tabWindow not found in quickTabsMap (source: ${source}) for:`, id);
-    }
+    // Perform restore on tabWindow
+    this._performTabWindowRestore(tabWindow, id, source);
 
     // Emit restore event for legacy handlers
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id, source });
     }
 
-    this._emitRestoreStateUpdate(id, tabWindow, source);
+    // Fire-and-forget: Event emission runs async but doesn't block return
+    void this._emitRestoreStateUpdate(id, tabWindow, source);
     this._debouncedPersist(id, 'restore', source);
     
     return { success: true };
@@ -491,24 +600,58 @@ export class VisibilityHandler {
    * v1.6.3.3 - FIX Bug #3: Remove spurious warnings that fire during successful operations
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
    * v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag to event payload
+   * v1.6.3.4-v9 - FIX Issue #14: Fetch complete entity from storage when tabWindow is null
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Quick Tab window instance
    * @param {string} source - Source of action
    */
-  _emitRestoreStateUpdate(id, tabWindow, source = 'unknown') {
+  async _emitRestoreStateUpdate(id, tabWindow, source = 'unknown') {
     if (!this.eventBus) {
       return;
     }
     
     // v1.6.3.3 - FIX Bug #3: tabWindow may be null if not in quickTabsMap initially
-    // This is not an error condition - UICoordinator will render via state:updated event
+    // v1.6.3.4-v9 - FIX Issue #14: Fetch complete entity from storage
     if (!tabWindow) {
-      console.log(`[VisibilityHandler] No tabWindow for restore event (source: ${source}), UICoordinator will handle:`, id);
-      // Still emit state:updated so UICoordinator can render
-      // v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag
-      const quickTabData = { id, minimized: false, domVerified: false, source, isRestoreOperation: true };
+      console.log(`[VisibilityHandler] No tabWindow for restore event (source: ${source}), fetching from storage:`, id);
+      
+      // Fetch complete entity from storage
+      const entity = await this._fetchEntityFromStorage(id);
+      
+      if (!entity) {
+        // v1.6.3.4-v9 - FIX Issue #14: Cannot emit incomplete event
+        console.error(`[VisibilityHandler] REJECTED: Cannot emit state:updated without entity data (source: ${source}):`, id);
+        return;
+      }
+      
+      // Build complete payload from storage entity
+      const quickTabData = {
+        id,
+        minimized: false,
+        domVerified: false,
+        source,
+        isRestoreOperation: true,
+        url: entity.url,
+        title: entity.title,
+        position: { left: entity.left, top: entity.top },
+        size: { width: entity.width, height: entity.height },
+        container: entity.container || entity.cookieStoreId || null,
+        zIndex: entity.zIndex
+      };
+      
+      // Validate payload before emitting
+      const validation = this._validateEventPayload(quickTabData);
+      if (!validation.valid) {
+        console.error(`[VisibilityHandler] REJECTED: Event payload missing required fields (source: ${source}):`, {
+          id,
+          missingFields: validation.missingFields
+        });
+        return;
+      }
+      
       this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
+      console.log(`[VisibilityHandler] Emitted state:updated for restore from storage (source: ${source}):`, id);
       return;
     }
     
@@ -532,6 +675,17 @@ export class VisibilityHandler {
       quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
       // v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag so UICoordinator routes correctly
       quickTabData.isRestoreOperation = true;
+      
+      // v1.6.3.4-v9 - FIX Issue #14: Validate payload before emitting
+      const validation = this._validateEventPayload(quickTabData);
+      if (!validation.valid) {
+        console.error(`[VisibilityHandler] REJECTED: Event payload missing required fields (source: ${source}):`, {
+          id,
+          missingFields: validation.missingFields
+        });
+        return;
+      }
+      
       this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
       console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { domVerified: isDOMRendered, isRestoreOperation: true });
     }, STATE_EMIT_DELAY_MS);

@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.3.4-v8 storage & sync fixes)
+  warning indicators, cross-tab operations (v1.6.3.4-v9 restore state wipe fixes)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -38,11 +38,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Handler Return Objects** - Check `result.success` from handlers
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 
-**v1.6.3.4-v8 Key Features:**
-- **Empty Write Protection** - `forceEmpty` param for Clear All
-- **FIFO Queue** - `queueStorageWrite()` serializes storage writes
-- **Callback Suppression** - `_initiatedOperations` Set + 50ms delay
-- **Safe Map Deletion** - Check `has()` before `delete()`
+**v1.6.3.4-v9 Key Features (Restore State Wipe Fixes - Issues #14-#20):**
+- **Restore Validation** - `restoreQuickTab()` validates tab is minimized before message
+- **Storage Reconciliation** - `_reconcileWithContentScripts()` detects suspicious changes
+- **Error Notifications** - `_showErrorNotification()` for user feedback
+- **Transaction Pattern** - `beginTransaction`, `commitTransaction`, `rollbackTransaction`
+- **Complete Event Payload** - `_fetchEntityFromStorage()`, `_validateEventPayload()`
 
 **Timing Constants:**
 
@@ -56,32 +57,35 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v8 Manager Patterns
+## v1.6.3.4-v9 Manager Patterns
 
-### Clear All with forceEmpty
-
-```javascript
-// Use forceEmpty=true for explicit user-initiated Clear All
-await persistStateToStorage({ tabs: [] }, '[Manager]', true);
-```
-
-### Callback Suppression
+### Restore Validation
 
 ```javascript
-this._initiatedOperations.add(`minimize-${id}`);
-try { tabWindow.minimize(); }
-finally { setTimeout(() => this._initiatedOperations.delete(`minimize-${id}`), 50); }
-```
-
-### Pending Operations Pattern
-
-```javascript
-const PENDING_OPERATIONS = new Set();
-_startPendingOperation(id) {
-  PENDING_OPERATIONS.add(id);
-  button.disabled = true;
-  setTimeout(() => _finishPendingOperation(id), 2000); // Auto-clear
+// Manager validates tab is minimized before sending restore message
+const tabData = _findTabInState(quickTabId);
+if (!isTabMinimizedHelper(tabData)) {
+  _showErrorNotification('Tab is already active - cannot restore');
+  return;
 }
+```
+
+### Storage Reconciliation
+
+```javascript
+// Manager detects suspicious storage changes (count drop to 0)
+if (oldTabCount > 0 && newTabCount === 0) {
+  await _reconcileWithContentScripts(oldValue);
+}
+```
+
+### Transaction Pattern
+
+```javascript
+import { beginTransaction, commitTransaction, rollbackTransaction } from '@utils/storage-utils.js';
+const started = await beginTransaction('[Manager]');
+try { /* operation */ commitTransaction('[Manager]'); }
+catch { await rollbackTransaction('[Manager]'); }
 ```
 
 ---
@@ -115,8 +119,9 @@ _startPendingOperation(id) {
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] All Quick Tabs display globally
 - [ ] Solo/Mute indicators correct (arrays)
-- [ ] **v1.6.3.4-v8:** Clear All uses forceEmpty=true
-- [ ] **v1.6.3.4-v8:** FIFO queue prevents race conditions
+- [ ] **v1.6.3.4-v9:** Restore validation prevents invalid operations
+- [ ] **v1.6.3.4-v9:** Storage reconciliation detects corruption
+- [ ] **v1.6.3.4-v9:** Error notifications display correctly
 - [ ] Buttons disabled during pending operations
 - [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐

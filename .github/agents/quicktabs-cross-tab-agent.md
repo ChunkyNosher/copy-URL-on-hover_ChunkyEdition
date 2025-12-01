@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.3.4-v8 storage & sync fixes, FIFO queue, callback suppression)
+  (v1.6.3.4-v9 restore state wipe fixes, transaction pattern, storage reconciliation)
 tools: ["*"]
 ---
 
@@ -28,16 +28,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
 - **browser.storage.local** - Persistent state storage with key `quick_tabs_state_v2`
 - **Global Visibility** - Quick Tabs visible in all tabs
-- **FIFO Queue (v8)** - `queueStorageWrite()` serializes all writes via Promise chain
-- **Callback Suppression (v8)** - `_initiatedOperations` Set prevents circular events
+- **Transaction Pattern (v9)** - `beginTransaction`, `commitTransaction`, `rollbackTransaction`
+- **Storage Reconciliation (v9)** - Manager detects suspicious changes (count drop to 0)
 
-**Timing Constants (v1.6.3.4-v8):**
+**Timing Constants:**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
@@ -61,36 +61,40 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v8 Sync Patterns
+## v1.6.3.4-v9 Sync Patterns
 
-### FIFO Queue Pattern
-
-```javascript
-// All writes go through queue automatically via persistStateToStorage
-import { queueStorageWrite } from '@utils/storage-utils.js';
-await queueStorageWrite(async () => {
-  // your async storage operation - serialized via Promise chain
-  return true;
-});
-```
-
-### Callback Suppression Pattern
+### Transaction Pattern
 
 ```javascript
-// Track initiated operation to suppress callbacks
-this._initiatedOperations.add(`minimize-${id}`);
-try { tabWindow.minimize(); }
-finally {
-  setTimeout(() => this._initiatedOperations.delete(`minimize-${id}`), 50);
+import { beginTransaction, commitTransaction, rollbackTransaction } from '@utils/storage-utils.js';
+
+const started = await beginTransaction('[HandlerName]');
+if (!started) { /* handle error */ }
+try {
+  // ... multi-step operation
+  commitTransaction('[HandlerName]');
+} catch (error) {
+  await rollbackTransaction('[HandlerName]');
 }
 ```
 
-### Empty Write Protection
+### Storage Reconciliation
 
 ```javascript
-// Reject writes that go from N tabs → 0 tabs unless forceEmpty=true
-await persistStateToStorage(state, '[Handler]', false); // Normal - rejects empty
-await persistStateToStorage(state, '[Handler]', true);  // Only for Clear All
+// Manager detects suspicious storage changes (count drop to 0)
+if (oldTabCount > 0 && newTabCount === 0) {
+  await _reconcileWithContentScripts(oldValue);
+}
+```
+
+### Complete Event Payload
+
+```javascript
+// Fetch from storage when tabWindow is null
+const entity = await this._fetchEntityFromStorage(id);
+// Validate before emitting
+const validation = this._validateEventPayload(quickTabData);
+if (!validation.valid) return;
 ```
 
 ---
@@ -115,11 +119,10 @@ await browser.storage.local.set({ quick_tabs_state_v2: { tabs: [...], saveId, ti
 
 | File | Purpose |
 |------|---------|
-| `src/utils/storage-utils.js` | **v8:** `queueStorageWrite()`, `forceEmpty` param |
+| `src/utils/storage-utils.js` | **v9:** Transaction pattern functions |
 | `src/features/quick-tabs/managers/StorageManager.js` | storage.onChanged listener |
-| `src/features/quick-tabs/coordinators/UICoordinator.js` | **v8:** `_safeDeleteFromRenderedTabs()` |
-| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **v8:** `_initiatedOperations`, callback suppression |
-| `background.js` | **v8:** `_logStorageChange()`, `_logCorruptionWarning()` |
+| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **v9:** `_fetchEntityFromStorage()`, `_validateEventPayload()` |
+| `sidebar/quick-tabs-manager.js` | **v9:** `_reconcileWithContentScripts()` |
 
 ---
 
@@ -134,9 +137,9 @@ await browser.storage.local.set({ quick_tabs_state_v2: { tabs: [...], saveId, ti
 - [ ] storage.onChanged events processed correctly
 - [ ] Global visibility works (no container filtering)
 - [ ] Solo/Mute sync across tabs using arrays (<100ms)
-- [ ] **v1.6.3.4-v8:** FIFO queue prevents race conditions
-- [ ] **v1.6.3.4-v8:** Callback suppression prevents circular events
-- [ ] **v1.6.3.4-v8:** Empty writes rejected (forceEmpty=false)
+- [ ] **v1.6.3.4-v9:** Transaction pattern works
+- [ ] **v1.6.3.4-v9:** Storage reconciliation detects corruption
+- [ ] **v1.6.3.4-v9:** Complete event payload emitted
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 

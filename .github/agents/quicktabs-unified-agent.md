@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.4-v8 storage & sync fixes)
+  Quick Tab functionality (v1.6.3.4-v9 restore state wipe fixes)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,12 +37,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Global Visibility** - All Quick Tabs visible across all tabs
 - **State Hydration (v1.6.3.4+)** - Quick Tabs restored from storage on page reload
 
-**v1.6.3.4-v8 Key Features (Storage & Sync Fixes):**
-- **Empty Write Protection:** `_shouldRejectEmptyWrite()` + `forceEmpty` param, 1s cooldown
-- **FIFO Storage Write Queue:** `queueStorageWrite()` serializes all writes
-- **Callback Suppression:** `_initiatedOperations` Set + 50ms delay
-- **Focus Debounce:** `_lastFocusTime` Map with 100ms threshold
-- **Safe Map Deletion:** `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
+**v1.6.3.4-v9 Key Features (Restore State Wipe Fixes - Issues #14-#20):**
+- **Complete Event Payload:** `_fetchEntityFromStorage()` fetches complete entity when tabWindow null
+- **Event Payload Validation:** `_validateEventPayload()` prevents incomplete event emission
+- **Enhanced _createQuickTabData:** Includes position, size, container, zIndex
+- **Restore Precondition Validation:** `_validateRestorePreconditions()` validates entity before ops
+- **Manager Restore Validation:** `restoreQuickTab()` validates tab is minimized before message
+- **Transaction Pattern:** `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`
+- **Storage Reconciliation:** Manager detects suspicious changes (count drop to 0) and reconciles
 
 **Timing Constants:**
 - `CALLBACK_SUPPRESSION_DELAY_MS = 50ms` (suppress circular callbacks)
@@ -69,42 +71,44 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v8 Key Patterns
+## v1.6.3.4-v9 Key Patterns
 
-### Empty Write Protection
-
-```javascript
-// Use forceEmpty=true ONLY for explicit user-initiated "Clear All"
-await persistStateToStorage(state, '[Handler]', false); // Normal - rejects empty
-await persistStateToStorage(state, '[Handler]', true);  // Allow empty for Clear All
-```
-
-### FIFO Queue Pattern
+### Transaction Pattern
 
 ```javascript
-import { queueStorageWrite } from '@utils/storage-utils.js';
-await queueStorageWrite(async () => {
-  // your async storage operation - serialized via Promise chain
-  return true;
-});
-```
+import { beginTransaction, commitTransaction, rollbackTransaction } from '@utils/storage-utils.js';
 
-### Callback Suppression Pattern
-
-```javascript
-// Track initiated operation to suppress callbacks
-this._initiatedOperations.add(`minimize-${id}`);
-try { tabWindow.minimize(); }
-finally { setTimeout(() => this._initiatedOperations.delete(`minimize-${id}`), 50); }
-```
-
-### Safe Map Deletion
-
-```javascript
-// Check has() before delete() to prevent double-deletion
-if (this._renderedTabs.has(id)) {
-  this._renderedTabs.delete(id);
+const started = await beginTransaction('[HandlerName]');
+if (!started) { /* handle error */ }
+try {
+  // ... multi-step operation
+  commitTransaction('[HandlerName]');
+} catch (error) {
+  await rollbackTransaction('[HandlerName]');
 }
+```
+
+### Restore Validation Pattern
+
+```javascript
+// VisibilityHandler validates before proceeding
+const validation = this._validateRestorePreconditions(tabWindow, id, source);
+if (!validation.valid) {
+  return { success: false, error: validation.error };
+}
+```
+
+### Complete Event Payload Pattern
+
+```javascript
+// Fetch from storage when tabWindow is null
+if (!tabWindow) {
+  const entity = await this._fetchEntityFromStorage(id);
+  if (!entity) return; // Cannot emit incomplete event
+}
+// Validate before emitting
+const validation = this._validateEventPayload(quickTabData);
+if (!validation.valid) return;
 ```
 
 ---
@@ -137,9 +141,9 @@ if (this._renderedTabs.has(id)) {
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
-- [ ] **v1.6.3.4-v8:** Empty writes rejected (forceEmpty=false)
-- [ ] **v1.6.3.4-v8:** FIFO queue prevents race conditions
-- [ ] **v1.6.3.4-v8:** Callback suppression prevents circular events
+- [ ] **v1.6.3.4-v9:** Transaction pattern works
+- [ ] **v1.6.3.4-v9:** Restore validation prevents invalid operations
+- [ ] **v1.6.3.4-v9:** Complete event payload emitted
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 

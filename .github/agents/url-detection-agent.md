@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **URL Detection Features:**
 - **Hover Detection** - Track hovered links for Quick Tab creation

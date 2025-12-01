@@ -1,0 +1,8 @@
+{
+  "id": "d2982cb2-bfd2-43e3-9d77-8bb1e9c1ce17",
+  "title": "v1.6.3.4-v9 Doc Update Complete",
+  "details": "Updated all Copilot instructions and agent files from v1.6.3.4-v8 to v1.6.3.4-v9.\n\nKey v9 features documented:\n- Transaction Pattern: beginTransaction(), commitTransaction(), rollbackTransaction()\n- Complete Event Payload: _fetchEntityFromStorage(), _validateEventPayload()\n- Restore Precondition Validation: _validateRestorePreconditions()\n- Manager Restore Validation: restoreQuickTab() validates minimized state\n- Storage Reconciliation: Manager detects suspicious changes (count drop to 0)\n- Error Notifications: _showErrorNotification()\n\nFiles updated:\n- .github/copilot-instructions.md (14KB)\n- All .github/agents/*.md files\n\nNew storage-utils.js exports added:\n- beginTransaction(logPrefix)\n- commitTransaction(logPrefix)\n- rollbackTransaction(logPrefix)\n- captureStateSnapshot(logPrefix)\n- isTransactionActive()\n- getStateSnapshot()\n\nAll files verified under 15KB limit.",
+  "category": "documentation",
+  "dateCreated": "2025-12-01T21:10:16.942Z",
+  "dateUpdated": "2025-12-01T21:10:16.942Z"
+}

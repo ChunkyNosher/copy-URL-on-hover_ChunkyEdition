@@ -99,17 +99,17 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.4-v8)
+- [ ] Version numbers match current release (1.6.3.4-v9)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array, NOT containers)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.4-v8:** Empty write protection documented
-- [ ] **v1.6.3.4-v8:** FIFO queue pattern documented
-- [ ] **v1.6.3.4-v8:** Callback suppression documented
-- [ ] **v1.6.3.4-v8:** Safe map deletion documented
+- [ ] **v1.6.3.4-v9:** Transaction pattern documented
+- [ ] **v1.6.3.4-v9:** Restore precondition validation documented
+- [ ] **v1.6.3.4-v9:** Storage reconciliation documented
+- [ ] **v1.6.3.4-v9:** Complete event payload documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -117,7 +117,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.4-v8
+- **Current Version:** 1.6.3.4-v9
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -127,12 +127,11 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload (v1.6.3.4+)
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
-- **v1.6.3.4-v8 Key Features (Storage & Sync Fixes):**
-  - Empty Write Protection - `_shouldRejectEmptyWrite()` + `forceEmpty` param
-  - FIFO Storage Write Queue - `queueStorageWrite()` serializes writes
-  - Callback Suppression - `_initiatedOperations` Set + 50ms delay
-  - Focus Debounce - `_lastFocusTime` Map with 100ms threshold
-  - Safe Map Deletion - `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
+- **v1.6.3.4-v9 Key Features (Restore State Wipe Fixes):**
+  - Transaction Pattern - `beginTransaction`, `commitTransaction`, `rollbackTransaction`
+  - Complete Event Payload - `_fetchEntityFromStorage()`, `_validateEventPayload()`
+  - Restore Precondition Validation - `_validateRestorePreconditions()`
+  - Storage Reconciliation - Manager detects suspicious storage changes
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -191,12 +190,12 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.4-v8)
+- Version numbers (1.6.3.4-v9)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
 - Storage format (unified tabs array, NOT containers)
-- Timing constants (v1.6.3.4-v8 values)
+- Timing constants (v1.6.3.4 values)
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
 - MCP tool lists
@@ -286,7 +285,7 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.4-v8)
+## Current Extension State (v1.6.3.4-v9)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -298,10 +297,10 @@ await perplexity.research("documentation compression markdown");
 - **Global Visibility:** All Quick Tabs visible everywhere (Container isolation REMOVED)
 - **Quick Tabs Manager:** Sidebar (Ctrl+Alt+Z or Alt+Shift+Z), Solo/Mute indicators
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
-- **Empty Write Protection (v8):** `forceEmpty` param, 1s cooldown
-- **FIFO Storage Queue (v8):** `queueStorageWrite()` serializes writes
-- **Callback Suppression (v8):** `_initiatedOperations` Set + 50ms delay
-- **Safe Map Deletion (v8):** `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
+- **Transaction Pattern (v9):** `beginTransaction`, `commitTransaction`, `rollbackTransaction`
+- **Complete Event Payload (v9):** `_fetchEntityFromStorage()`, `_validateEventPayload()`
+- **Restore Validation (v9):** `_validateRestorePreconditions()` validates entity before operations
+- **Storage Reconciliation (v9):** Manager detects suspicious changes (count drop to 0)
 
 ### Timing Constants
 
@@ -337,7 +336,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.4-v7 or earlier | Update to 1.6.3.4-v8 |
+| v1.6.3.4-v8 or earlier | Update to 1.6.3.4-v9 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -361,15 +360,14 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.4-v8
+- [ ] Version numbers updated to 1.6.3.4-v9
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged documented as primary sync
-- [ ] **v1.6.3.4-v8:** Empty write protection documented
-- [ ] **v1.6.3.4-v8:** FIFO queue pattern documented
-- [ ] **v1.6.3.4-v8:** Callback suppression documented
-- [ ] **v1.6.3.4-v8:** Safe map deletion documented
-- [ ] **v1.6.3.4-v8:** Timing constants correct
+- [ ] **v1.6.3.4-v9:** Transaction pattern documented
+- [ ] **v1.6.3.4-v9:** Complete event payload documented
+- [ ] **v1.6.3.4-v9:** Restore validation documented
+- [ ] **v1.6.3.4-v9:** Storage reconciliation documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠
