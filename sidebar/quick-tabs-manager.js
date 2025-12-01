@@ -9,6 +9,14 @@ const STATE_KEY = 'quick_tabs_state_v2';
 const PENDING_OPERATIONS = new Set();
 const OPERATION_TIMEOUT_MS = 2000; // Clear pending state after 2 seconds
 
+// v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
+const STORAGE_READ_DEBOUNCE_MS = 300;
+let storageReadDebounceTimer = null;
+let lastStorageReadTime = 0;
+
+// v1.6.3.4-v6 - FIX Issue #5: Track last rendered state hash to avoid unnecessary re-renders
+let lastRenderedStateHash = 0;
+
 // UI Elements (cached for performance)
 let containersList;
 let emptyState;
@@ -18,6 +26,23 @@ let lastSyncEl;
 // State
 let containersData = {}; // Maps cookieStoreId -> container info
 let quickTabsState = {}; // Maps cookieStoreId -> { tabs: [], timestamp }
+
+/**
+ * Compute hash of state for deduplication
+ * v1.6.3.4-v6 - FIX Issue #5: Prevent unnecessary re-renders
+ * @param {Object} state - State to hash
+ * @returns {number} Hash value
+ */
+function computeStateHash(state) {
+  if (!state) return 0;
+  const str = JSON.stringify(state);
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return hash;
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -122,19 +147,82 @@ function getContainerIcon(icon) {
 }
 
 /**
+ * Check if a URL is valid for Quick Tab
+ * v1.6.3.4-v6 - Extracted to reduce loadQuickTabsState complexity
+ * @param {string} url - URL to validate
+ * @returns {boolean} True if valid
+ */
+function isValidTabUrl(url) {
+  return url && url !== 'undefined' && !String(url).includes('/undefined');
+}
+
+/**
+ * Filter invalid tabs from state
+ * v1.6.3.4-v6 - Extracted to reduce loadQuickTabsState complexity
+ * @param {Object} state - State object to filter
+ */
+function filterInvalidTabs(state) {
+  if (!state.tabs || !Array.isArray(state.tabs)) return;
+  
+  const originalCount = state.tabs.length;
+  state.tabs = state.tabs.filter(tab => {
+    if (!isValidTabUrl(tab.url)) {
+      console.warn('[Manager] Filtering invalid tab:', { id: tab.id, url: tab.url });
+      return false;
+    }
+    return true;
+  });
+  
+  if (state.tabs.length !== originalCount) {
+    console.log('[Manager] Filtered', originalCount - state.tabs.length, 'invalid tabs');
+  }
+}
+
+/**
+ * Check if storage read should be debounced
+ * v1.6.3.4-v6 - Extracted to reduce loadQuickTabsState complexity
+ * Simply uses timing-based debounce (no storage read needed)
+ * @returns {Promise<void>} Resolves when ready to read
+ */
+async function checkStorageDebounce() {
+  const now = Date.now();
+  const timeSinceLastRead = now - lastStorageReadTime;
+  
+  // If within debounce period, wait the remaining time
+  if (timeSinceLastRead < STORAGE_READ_DEBOUNCE_MS) {
+    const waitTime = STORAGE_READ_DEBOUNCE_MS - timeSinceLastRead;
+    console.log('[Manager] Debouncing storage read, waiting', waitTime, 'ms');
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  
+  lastStorageReadTime = Date.now();
+}
+
+/**
  * Load Quick Tabs state from browser.storage.local
  * v1.6.3 - FIX: Changed from storage.sync to storage.local (storage location since v1.6.0.12)
+ * v1.6.3.4-v6 - FIX Issue #1: Debounce reads to avoid mid-transaction reads
+ * Refactored: Extracted helpers to reduce complexity
  */
 async function loadQuickTabsState() {
   try {
+    await checkStorageDebounce();
+    
     const result = await browser.storage.local.get(STATE_KEY);
+    const state = result?.[STATE_KEY];
 
-    if (result && result[STATE_KEY]) {
-      quickTabsState = result[STATE_KEY];
-    } else {
+    if (!state) {
       quickTabsState = {};
+      console.log('Loaded Quick Tabs state: empty');
+      return;
     }
-
+    
+    // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
+    const newHash = computeStateHash(state);
+    if (newHash === lastRenderedStateHash) return;
+    
+    quickTabsState = state;
+    filterInvalidTabs(quickTabsState);
     console.log('Loaded Quick Tabs state:', quickTabsState);
   } catch (err) {
     console.error('Error loading Quick Tabs state:', err);
@@ -587,11 +675,35 @@ function setupEventListeners() {
 
   // Listen for storage changes to auto-update
   // v1.6.3 - FIX: Changed from 'sync' to 'local' (storage location since v1.6.0.12)
+  // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   browser.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === 'local' && changes[STATE_KEY]) {
-      loadQuickTabsState().then(() => {
-        renderUI();
+      // v1.6.3.4-v6 - FIX Issue #1: Check for transaction in progress
+      const newValue = changes[STATE_KEY].newValue;
+      const oldValue = changes[STATE_KEY].oldValue;
+      
+      console.log('[Manager] Storage change detected:', {
+        oldTabCount: oldValue?.tabs?.length ?? 0,
+        newTabCount: newValue?.tabs?.length ?? 0,
+        transactionId: newValue?.transactionId
       });
+      
+      // v1.6.3.4-v6 - FIX Issue #1: Debounce to avoid reading mid-transaction
+      if (storageReadDebounceTimer) {
+        clearTimeout(storageReadDebounceTimer);
+      }
+      
+      storageReadDebounceTimer = setTimeout(() => {
+        storageReadDebounceTimer = null;
+        loadQuickTabsState().then(() => {
+          // v1.6.3.4-v6 - FIX Issue #5: Only render if state actually changed
+          const newHash = computeStateHash(quickTabsState);
+          if (newHash !== lastRenderedStateHash) {
+            lastRenderedStateHash = newHash;
+            renderUI();
+          }
+        });
+      }, STORAGE_READ_DEBOUNCE_MS);
     }
   });
 }
