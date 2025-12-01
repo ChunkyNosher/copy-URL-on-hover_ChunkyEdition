@@ -5,6 +5,7 @@
  * v1.6.0 - PHASE 2.2: Facade pattern implementation
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.3.4 - FIX Issues #1, #8: Add state rehydration on startup with explicit logging
+ * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
  *
  * Architecture:
  * - Facade orchestrates managers, handlers, and coordinators
@@ -23,6 +24,7 @@ import { VisibilityHandler } from './handlers/VisibilityHandler.js';
 import { EventManager } from './managers/EventManager.js';
 import { StateManager } from './managers/StateManager.js';
 import { MinimizedManager } from './minimized-manager.js';
+import { QuickTabWindow } from './window.js'; // v1.6.3.4-v7 - FIX Issue #1: Import for hydration
 import { CONSTANTS } from '../../core/config.js';
 import { STATE_KEY } from '../../utils/storage-utils.js';
 
@@ -407,6 +409,7 @@ class QuickTabsManager {
   /**
    * Hydrate a visible (non-minimized) Quick Tab
    * v1.6.3.4 - Helper to reduce complexity
+   * v1.6.3.4-v7 - FIX Issue #7: Emit state:added after creation for UICoordinator tracking
    * @private
    * @param {Object} options - Quick Tab options with callbacks
    */
@@ -414,42 +417,110 @@ class QuickTabsManager {
     const result = this.createHandler.create(options);
     if (result) {
       this.currentZIndex.value = result.newZIndex;
+      
+      // v1.6.3.4-v7 - FIX Issue #7: Emit state:added so UICoordinator can track
+      if (this.internalEventBus && result.tabWindow) {
+        this.internalEventBus.emit('state:added', { 
+          quickTab: {
+            id: options.id,
+            url: options.url,
+            title: options.title,
+            minimized: false,
+            position: { left: options.left, top: options.top },
+            size: { width: options.width, height: options.height },
+            zIndex: result.newZIndex
+          }
+        });
+      }
     }
   }
 
   /**
-   * Hydrate a minimized Quick Tab (add to minimizedManager without rendering)
+   * Hydrate a minimized Quick Tab (create real instance but don't render)
    * v1.6.3.4 - FIX Issue #1: Handle minimized tabs during hydration
+   * v1.6.3.4-v7 - FIX Issue #1 CRITICAL: Create REAL QuickTabWindow instance, not plain object
+   *   The old approach created plain objects that lacked all QuickTabWindow methods.
+   *   When restore/minimize was called, the methods didn't exist causing 100% failure rate.
+   *   Now we create a real instance with minimized=true that has all methods but no DOM.
    * @private
    * @param {Object} options - Quick Tab options
    */
   _hydrateMinimizedTab(options) {
-    console.log('[QuickTabsManager] Hydrating minimized tab (no DOM render):', options.id);
+    console.log('[QuickTabsManager] Hydrating minimized tab (dormant mode, no DOM):', options.id);
     
-    // Create a minimal tab object for the minimized manager
-    // This will be fully rendered when restored
-    const minimalTab = {
-      id: options.id,
-      url: options.url,
-      title: options.title,
-      left: options.left,
-      top: options.top,
-      width: options.width,
-      height: options.height,
-      minimized: true,
-      soloedOnTabs: options.soloedOnTabs,
-      mutedOnTabs: options.mutedOnTabs,
-      zIndex: options.zIndex
-    };
+    try {
+      // v1.6.3.4-v7 - FIX Issue #1: Create REAL QuickTabWindow instance
+      // NOTE: We use `new QuickTabWindow()` directly instead of `createQuickTabWindow()` factory
+      // because the factory calls render() which we DON'T want for minimized tabs.
+      // The instance exists with all methods but no DOM attached (minimized=true)
+      const tabWindow = new QuickTabWindow({
+        id: options.id,
+        url: options.url,
+        title: options.title,
+        left: options.left,
+        top: options.top,
+        width: options.width,
+        height: options.height,
+        minimized: true,
+        soloedOnTabs: options.soloedOnTabs,
+        mutedOnTabs: options.mutedOnTabs,
+        zIndex: options.zIndex,
+        // Wire up callbacks - these persist through restore cycles
+        onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
+        onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
+        onFocus: tabId => this.handleFocus(tabId),
+        onPositionChange: (tabId, left, top) => this.handlePositionChange(tabId, left, top),
+        onPositionChangeEnd: (tabId, left, top) => this.handlePositionChangeEnd(tabId, left, top),
+        onSizeChange: (tabId, width, height) => this.handleSizeChange(tabId, width, height),
+        onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height),
+        onSolo: (tabId, soloedOnTabs) => this.handleSoloToggle(tabId, soloedOnTabs),
+        onMute: (tabId, mutedOnTabs) => this.handleMuteToggle(tabId, mutedOnTabs)
+      });
+      
+      // v1.6.3.4-v7 - Log instance type to confirm real QuickTabWindow
+      console.log('[QuickTabsManager] Created real QuickTabWindow instance:', {
+        id: options.id,
+        constructorName: tabWindow.constructor.name,
+        hasRender: typeof tabWindow.render === 'function',
+        hasMinimize: typeof tabWindow.minimize === 'function',
+        hasRestore: typeof tabWindow.restore === 'function',
+        hasDestroy: typeof tabWindow.destroy === 'function',
+        minimized: tabWindow.minimized,
+        url: tabWindow.url
+      });
 
-    // Store snapshot in minimizedManager for later restore
-    if (this.minimizedManager) {
-      this.minimizedManager.add(options.id, minimalTab);
-      console.log('[QuickTabsManager] Added to minimizedManager:', options.id);
+      // Store snapshot in minimizedManager for later restore
+      if (this.minimizedManager) {
+        this.minimizedManager.add(options.id, tabWindow);
+        console.log('[QuickTabsManager] Added to minimizedManager:', options.id);
+      }
+
+      // Store in tabs Map - now a REAL QuickTabWindow instance with all methods
+      this.tabs.set(options.id, tabWindow);
+      
+      // v1.6.3.4-v7 - FIX Issue #7: Emit state:added so UICoordinator can track this tab
+      if (this.internalEventBus) {
+        this.internalEventBus.emit('state:added', { 
+          quickTab: {
+            id: options.id,
+            url: options.url,
+            title: options.title,
+            minimized: true,
+            position: { left: options.left, top: options.top },
+            size: { width: options.width, height: options.height },
+            zIndex: options.zIndex
+          }
+        });
+      }
+      
+    } catch (err) {
+      console.error('[QuickTabsManager] Failed to create QuickTabWindow for hydration:', {
+        id: options.id,
+        url: options.url,
+        error: err.message
+      });
+      // Don't add to map if creation fails - prevents fake objects
     }
-
-    // Store in tabs Map with minimized state
-    this.tabs.set(options.id, minimalTab);
   }
 
   /**

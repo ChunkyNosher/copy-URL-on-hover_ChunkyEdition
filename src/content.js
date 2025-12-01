@@ -1244,7 +1244,31 @@ function _handleQuickTabsCleared(sendResponse) {
 }
 
 /**
+ * Check if action result indicates failure
+ * v1.6.3.4-v7 - Helper to reduce _handleManagerAction complexity
+ * @private
+ * @param {Object|undefined} result - Result from action function
+ * @returns {boolean} True if result indicates failure
+ */
+function _isActionFailure(result) {
+  if (!result || typeof result !== 'object') return false;
+  return Boolean(result.error) || result.success === false;
+}
+
+/**
+ * Get error message from action result
+ * v1.6.3.4-v7 - Helper to reduce _handleManagerAction complexity
+ * @private
+ * @param {Object} result - Result from action function
+ * @returns {string} Error message
+ */
+function _getActionError(result) {
+  return result.error || 'Operation failed';
+}
+
+/**
  * Generic manager action handler wrapper
+ * v1.6.3.4-v7 - FIX Issue #3: Check result from handler and send proper error responses
  * @private
  */
 function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
@@ -1260,7 +1284,16 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
       return;
     }
 
-    actionFn(quickTabId);
+    // v1.6.3.4-v7 - FIX Issue #3: Get result from handler and check for errors
+    const result = actionFn(quickTabId);
+    
+    // Check if handler returned failure
+    if (_isActionFailure(result)) {
+      console.warn(`[Content] ${action} Quick Tab failed (source: Manager): ${quickTabId}`, result);
+      sendResponse({ success: false, error: _getActionError(result), quickTabId });
+      return;
+    }
+    
     console.log(`[Content] ${action} Quick Tab (source: Manager): ${quickTabId}`);
     sendResponse({ success: true, quickTabId });
   } catch (error) {

@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -64,12 +64,13 @@ const relevantMemories = await searchMemories({
 - Direct local creation pattern
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
-- Entity-Instance Same Object - Entity in quickTabsMap IS the tabWindow
-- Snapshot Clear Delay - `SNAPSHOT_CLEAR_DELAY_MS = 400ms` allows double-clicks
-- DragController Destroyed Flag - Prevents stale callbacks after destroy
-- Manager PENDING_OPERATIONS - Set tracks ops, disables buttons during operation
-- Updated timing: `STATE_EMIT_DELAY_MS = 100ms`, `MINIMIZE_DEBOUNCE_MS = 200ms`
+**v1.6.3.4-v7 Key Features (Hydration Architecture Fixes):**
+- Real QuickTabWindow Hydration - `_hydrateMinimizedTab()` creates actual instances
+- Instance Validation - Check `typeof tabWindow.render === 'function'`
+- URL Validation in Render - UICoordinator validates URL before `_createWindow()`
+- Try/Finally Lock Pattern - Guaranteed lock cleanup in VisibilityHandler
+- Handler Return Objects - `handleMinimize/handleRestore` return `{ success, error }`
+- State Events on Hydration - emit `state:added` for hydrated tabs
 
 ---
 
@@ -315,27 +316,35 @@ import { cleanupOrphanedQuickTabElements } from '../utils/dom.js';
 cleanupOrphanedQuickTabElements();
 ```
 
-### Minimize/Restore Bugs (v1.6.3.4-v5)
+### Minimize/Restore Bugs (v1.6.3.4-v7)
 
 **Symptoms:** Duplicate windows on restore, spam-click breaks minimize/restore, ghost tabs
 
-**Root Cause:** Timing issues, stale callbacks, missing pending operation tracking
+**Root Cause:** Fake placeholder objects, missing error propagation, lock cleanup issues
 
-**Standard Fix (v1.6.3.4-v5):**
+**Standard Fix (v1.6.3.4-v7):**
 ```javascript
-// Entity-Instance Same Object Pattern
-const entity = this.quickTabsMap.get(id);
-entity.minimized = false; // Updates both entity AND instance
+// Real QuickTabWindow Hydration - creates actual instances
+const tabWindow = createQuickTabWindow(tabData, eventBus, dependencies);
 
-// Snapshot Clear Delay - allows double-clicks
-const SNAPSHOT_CLEAR_DELAY_MS = 400;
-_scheduleSnapshotClearing(id) {
-  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
+// Instance Validation Pattern
+if (typeof tabWindow.render !== 'function') {
+  throw new Error('Invalid QuickTabWindow instance');
 }
 
-// Manager Pending Operations - prevents spam-clicks
-const PENDING_OPERATIONS = new Set();
-_startPendingOperation(id) { PENDING_OPERATIONS.add(id); button.disabled = true; }
+// Handler Return Objects - proper error propagation
+const result = await visibilityHandler.handleRestore(id);
+if (!result.success) {
+  sendResponse({ success: false, error: result.error });
+}
+
+// Try/Finally Lock Pattern - guaranteed cleanup
+async handleRestore(id) {
+  const lock = this._acquireLock(id);
+  try { return { success: true }; }
+  catch (error) { return { success: false, error: error.message }; }
+  finally { this._releaseLock(lock); }
+}
 ```
 
 ### DragController Ghost Events (v1.6.3.4-v5)

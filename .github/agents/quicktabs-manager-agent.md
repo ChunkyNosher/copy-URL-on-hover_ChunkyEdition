@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.3.4-v6 storage race condition fixes)
+  warning indicators, cross-tab operations (v1.6.3.4-v7 hydration fixes)
 tools: ["*"]
 ---
 
@@ -28,25 +28,24 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v6 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v7 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Warning Indicator** - Orange pulse when `domVerified=false`
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
-- **Debounced Storage Reads (v1.6.3.4-v6)** - `STORAGE_READ_DEBOUNCE_MS = 300ms`
-- **PENDING_OPERATIONS (v1.6.3.4-v5)** - Set tracks in-progress ops, disables buttons
-- **Button Disable During Ops** - Prevents spam-clicks
+- **Handler Return Objects (v7)** - Check `result.success` from handlers
+- **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 
-**Timing Constants (v1.6.3.4-v6):**
+**Timing Constants:**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
-| `STORAGE_READ_DEBOUNCE_MS` | 300 | **v6:** Debounce storage reads |
 | `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
+| `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
 | `PENDING_OP_TIMEOUT_MS` | 2000 | Auto-clear stuck operations |
 
 **Storage Format:**
@@ -58,21 +57,19 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v6 Manager Patterns
+## v1.6.3.4-v7 Manager Patterns
 
-### Debounced Storage Reads
+### Handler Return Objects
 
 ```javascript
-const STORAGE_READ_DEBOUNCE_MS = 300;
-let debounceTimer;
-function checkStorageDebounce() {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(loadQuickTabsState, STORAGE_READ_DEBOUNCE_MS);
+// Check result.success from handler operations
+const result = await visibilityHandler.handleRestore(id);
+if (!result.success) {
+  sendResponse({ success: false, error: result.error });
 }
-// Used in storage.onChanged handler and loadQuickTabsState()
 ```
 
-### Pending Operations Pattern (v5+)
+### Pending Operations Pattern
 
 ```javascript
 const PENDING_OPERATIONS = new Set();
@@ -139,9 +136,9 @@ function _getIndicatorClass(tab, isMinimized) {
 - [ ] All Quick Tabs display globally
 - [ ] Solo/Mute indicators correct (arrays)
 - [ ] Orange indicator for `domVerified=false`
-- [ ] **v1.6.3.4-v6:** Debounced storage reads prevent read storms
-- [ ] **v1.6.3.4-v5:** Buttons disabled during pending operations
-- [ ] **v1.6.3.4-v5:** Pending operations auto-clear after 2 seconds
+- [ ] **v1.6.3.4-v7:** Handler return objects properly checked
+- [ ] Buttons disabled during pending operations
+- [ ] Pending operations auto-clear after 2 seconds
 - [ ] Close Minimized works for all tabs
 - [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐

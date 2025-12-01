@@ -37,7 +37,10 @@ describe('VisibilityHandler', () => {
         title: 'Mute (hide on this tab)',
         style: { background: 'transparent' }
       },
-      updateZIndex: jest.fn()
+      updateZIndex: jest.fn(),
+      // v1.6.3.4-v7 - Add missing methods for instance validation
+      minimize: jest.fn(),
+      restore: jest.fn()
     };
 
     // Create mock Map

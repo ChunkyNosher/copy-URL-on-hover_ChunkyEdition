@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.4-v6 storage race condition fixes)
+  Quick Tab functionality (v1.6.3.4-v7 hydration architecture fixes)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v6 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v7 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,27 +37,24 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Global Visibility** - All Quick Tabs visible across all tabs
 - **State Hydration (v1.6.3.4+)** - Quick Tabs restored from storage on page reload
 
+**v1.6.3.4-v7 Key Features (Hydration Architecture Fixes):**
+- **Real QuickTabWindow Hydration:** `_hydrateMinimizedTab()` creates actual instances via factory
+- **Instance Validation:** Check `typeof tabWindow.render === 'function'` before ops
+- **URL Validation in Render:** UICoordinator validates URL before `_createWindow()`
+- **Try/Finally Lock Pattern:** Guaranteed lock cleanup in VisibilityHandler
+- **Handler Return Objects:** `handleMinimize/handleRestore` return `{ success, error }`
+- **State Events on Hydration:** emit `state:added` for hydrated tabs
+
 **v1.6.3.4-v6 Key Features (Storage Race Condition Fixes):**
 - **Transactional Storage:** `IN_PROGRESS_TRANSACTIONS` Set prevents concurrent writes
 - **URL Validation:** `isValidQuickTabUrl()` prevents ghost iframes
-- **Debounced Storage Reads:** `STORAGE_READ_DEBOUNCE_MS = 300ms` in Manager
-- **Restore Operation Locks:** `RESTORE_IN_PROGRESS` Set prevents duplicate renders
 - **Write Deduplication:** `computeStateHash()` and `hasStateChanged()`
-- **State Validation:** `validateStateForPersist()` checks required properties
 
-**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
-- **Entity-Instance Same Object:** Entity in quickTabsMap IS the tabWindow
-- **Snapshot Clear Delay:** `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
-- **DragController Destroyed Flag:** Prevents stale callbacks
-- **Manager PENDING_OPERATIONS:** Disables buttons during ops
-
-**Timing Constants (v1.6.3.4-v6):**
+**Timing Constants:**
 - `STATE_EMIT_DELAY_MS = 100ms` (state event fires first)
 - `MINIMIZE_DEBOUNCE_MS = 200ms` (storage persist after state)
-- `STORAGE_READ_DEBOUNCE_MS = 300ms` (v6: debounce Manager reads)
 - `SNAPSHOT_CLEAR_DELAY_MS = 400ms` (allows double-clicks)
-- `STORAGE_COOLDOWN_MS = 50ms` (v6: prevent duplicate processing)
-- `RENDER_COOLDOWN_MS = 1000ms` (v6: prevent duplicate renders)
+- `RENDER_COOLDOWN_MS = 1000ms` (prevent duplicate renders)
 
 **Storage Keys:**
 - **State:** `quick_tabs_state_v2` (storage.local)
@@ -76,37 +73,41 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v6 Key Patterns
+## v1.6.3.4-v7 Key Patterns
 
-### Transactional Storage Pattern
+### Real QuickTabWindow Hydration
 
 ```javascript
-const IN_PROGRESS_TRANSACTIONS = new Set();
-const transactionId = generateTransactionId();
-IN_PROGRESS_TRANSACTIONS.add(transactionId);
-try { await persistStateToStorage(state); }
-finally { IN_PROGRESS_TRANSACTIONS.delete(transactionId); }
+// _hydrateMinimizedTab() creates REAL instances, not plain objects
+const tabWindow = createQuickTabWindow(tabData, eventBus, dependencies);
+this.quickTabsMap.set(tabData.id, tabWindow);
+this.internalEventBus.emit('state:added', { quickTab: tabWindow });
 ```
 
-### URL Validation Pattern
+### Instance Validation Pattern
 
 ```javascript
-if (!isValidQuickTabUrl(url)) {
-  throw new Error('Invalid URL for Quick Tab');
+if (typeof tabWindow.render !== 'function') {
+  throw new Error('Invalid QuickTabWindow instance');
 }
 ```
 
-### Write Deduplication Pattern
+### Try/Finally Lock Pattern
 
 ```javascript
-if (!hasStateChanged(oldState, newState)) return; // Skip redundant write
+async handleRestore(id) {
+  const lock = this._acquireLock(id);
+  try { return { success: true }; }
+  catch (error) { return { success: false, error: error.message }; }
+  finally { this._releaseLock(lock); }
+}
 ```
 
-### Entity-Instance Same Object (v5+)
+### Handler Return Objects
 
 ```javascript
-const entity = this.quickTabsMap.get(id);
-entity.minimized = false; // Updates both entity AND instance
+const result = await visibilityHandler.handleRestore(id);
+if (!result.success) sendResponse({ success: false, error: result.error });
 ```
 
 ---
@@ -139,11 +140,10 @@ entity.minimized = false; // Updates both entity AND instance
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
-- [ ] **v1.6.3.4-v6:** No duplicate/ghost tabs from race conditions
-- [ ] **v1.6.3.4-v6:** URL validation prevents invalid iframes
-- [ ] **v1.6.3.4-v6:** Transactional storage prevents concurrent writes
-- [ ] **v1.6.3.4-v6:** Write deduplication prevents redundant storage
-- [ ] **v1.6.3.4+:** State hydration on page reload
+- [ ] **v1.6.3.4-v7:** Real instances hydrated (not plain objects)
+- [ ] **v1.6.3.4-v7:** Handler return objects propagate errors
+- [ ] **v1.6.3.4-v7:** Lock cleanup guaranteed via try/finally
+- [ ] **v1.6.3.4-v7:** State events emitted on hydration
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
