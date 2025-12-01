@@ -338,8 +338,12 @@ export class VisibilityHandler {
    * @returns {boolean} True if valid, false if invalid (and removed from map)
    */
   _validateTabWindowInstance(tabWindow, id, source) {
-    if (!tabWindow || typeof tabWindow.restore === 'function') {
-      return true; // Valid (or doesn't exist)
+    // Valid cases: tabWindow doesn't exist (null), or has the required restore method
+    if (!tabWindow) {
+      return true; // Doesn't exist - let caller handle this
+    }
+    if (typeof tabWindow.restore === 'function') {
+      return true; // Valid QuickTabWindow instance
     }
     
     console.error(`[VisibilityHandler] Invalid tab instance (not QuickTabWindow, source: ${source}):`, {

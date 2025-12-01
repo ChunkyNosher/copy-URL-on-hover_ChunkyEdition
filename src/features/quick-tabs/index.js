@@ -450,7 +450,8 @@ class QuickTabsManager {
     
     try {
       // v1.6.3.4-v7 - FIX Issue #1: Create REAL QuickTabWindow instance
-      // Create real QuickTabWindow instance in "dormant" mode
+      // NOTE: We use `new QuickTabWindow()` directly instead of `createQuickTabWindow()` factory
+      // because the factory calls render() which we DON'T want for minimized tabs.
       // The instance exists with all methods but no DOM attached (minimized=true)
       const tabWindow = new QuickTabWindow({
         id: options.id,
