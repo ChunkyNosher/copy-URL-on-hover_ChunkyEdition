@@ -31,6 +31,7 @@
 - **Early Map Cleanup:** Manager minimize triggers explicit Map cleanup BEFORE state checks
 - **Snapshot Lifecycle Fix:** `MinimizedManager.restore()` keeps snapshot in `minimizedTabs` until `clearSnapshot()` called
 - **Callback Verification Logging:** window.js and UpdateHandler log callback wiring
+- **Comprehensive Decision Logging:** All major decision points log conditions and outcomes
 
 ---
 
