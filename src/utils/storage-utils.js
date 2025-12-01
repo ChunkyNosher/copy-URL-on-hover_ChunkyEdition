@@ -50,6 +50,148 @@ let previousTabCount = 0;
 // Each persist operation waits for previous one to complete
 let storageWriteQueuePromise = Promise.resolve();
 
+// v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern with rollback capability
+// Stores state snapshots for rollback on failure
+let stateSnapshot = null;
+let transactionActive = false;
+
+/**
+ * Capture current storage state as a snapshot for potential rollback
+ * v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern implementation
+ * 
+ * @param {string} logPrefix - Prefix for log messages
+ * @returns {Promise<Object|null>} Captured state snapshot or null on error
+ */
+export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI) {
+    console.warn(`${logPrefix} Cannot capture snapshot: storage API unavailable`);
+    return null;
+  }
+  
+  try {
+    const result = await browserAPI.storage.local.get(STATE_KEY);
+    stateSnapshot = result?.[STATE_KEY] || { tabs: [], timestamp: 0 };
+    console.log(`${logPrefix} State snapshot captured:`, {
+      tabCount: stateSnapshot.tabs?.length || 0,
+      timestamp: stateSnapshot.timestamp
+    });
+    return stateSnapshot;
+  } catch (err) {
+    console.error(`${logPrefix} Failed to capture state snapshot:`, err);
+    return null;
+  }
+}
+
+/**
+ * Begin a storage transaction - captures state snapshot
+ * v1.6.3.4-v9 - FIX Issue #17: Transaction pattern with BEGIN/COMMIT/ROLLBACK
+ * 
+ * @param {string} logPrefix - Prefix for log messages
+ * @returns {Promise<boolean>} True if transaction started, false if already active
+ */
+export async function beginTransaction(logPrefix = '[StorageUtils]') {
+  if (transactionActive) {
+    console.warn(`${logPrefix} Transaction already active - nested transactions not supported`);
+    return false;
+  }
+  
+  transactionActive = true;
+  const snapshot = await captureStateSnapshot(logPrefix);
+  
+  if (!snapshot) {
+    transactionActive = false;
+    console.error(`${logPrefix} Failed to begin transaction: could not capture snapshot`);
+    return false;
+  }
+  
+  console.log(`${logPrefix} Transaction BEGIN`);
+  return true;
+}
+
+/**
+ * Commit current transaction - clears snapshot and marks transaction complete
+ * v1.6.3.4-v9 - FIX Issue #17: Transaction pattern with BEGIN/COMMIT/ROLLBACK
+ * 
+ * @param {string} logPrefix - Prefix for log messages
+ * @returns {boolean} True if committed, false if no active transaction
+ */
+export function commitTransaction(logPrefix = '[StorageUtils]') {
+  if (!transactionActive) {
+    console.warn(`${logPrefix} No active transaction to commit`);
+    return false;
+  }
+  
+  stateSnapshot = null;
+  transactionActive = false;
+  console.log(`${logPrefix} Transaction COMMIT`);
+  return true;
+}
+
+/**
+ * Rollback current transaction - restores state snapshot to storage
+ * v1.6.3.4-v9 - FIX Issue #16, #17: Rollback on failure instead of writing empty state
+ * 
+ * @param {string} logPrefix - Prefix for log messages
+ * @returns {Promise<boolean>} True if rollback succeeded, false on error
+ */
+export async function rollbackTransaction(logPrefix = '[StorageUtils]') {
+  if (!transactionActive) {
+    console.warn(`${logPrefix} No active transaction to rollback`);
+    return false;
+  }
+  
+  if (!stateSnapshot) {
+    console.error(`${logPrefix} Cannot rollback: no snapshot available`);
+    transactionActive = false;
+    return false;
+  }
+  
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI) {
+    console.error(`${logPrefix} Cannot rollback: storage API unavailable`);
+    transactionActive = false;
+    return false;
+  }
+  
+  try {
+    console.log(`${logPrefix} Transaction ROLLBACK - restoring snapshot:`, {
+      tabCount: stateSnapshot.tabs?.length || 0
+    });
+    
+    await browserAPI.storage.local.set({ [STATE_KEY]: stateSnapshot });
+    
+    stateSnapshot = null;
+    transactionActive = false;
+    console.log(`${logPrefix} Rollback completed successfully`);
+    return true;
+  } catch (err) {
+    console.error(`${logPrefix} Rollback FAILED:`, err);
+    transactionActive = false;
+    return false;
+  }
+}
+
+/**
+ * Check if a transaction is currently active
+ * v1.6.3.4-v9 - FIX Issue #17: Helper for transaction state
+ * 
+ * @returns {boolean} True if transaction is active
+ */
+export function isTransactionActive() {
+  return transactionActive;
+}
+
+/**
+ * Get the current state snapshot (if transaction is active)
+ * v1.6.3.4-v9 - FIX Issue #17: Helper for accessing snapshot
+ * 
+ * @returns {Object|null} Current snapshot or null
+ */
+export function getStateSnapshot() {
+  return stateSnapshot;
+}
+
 /**
  * Generate unique save ID for storage deduplication
  * Format: 'timestamp-random9chars'

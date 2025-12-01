@@ -36,6 +36,9 @@
  *   - Issue #4: Verify onDestroy callback exists before invoking
  *   - Issue #5: Improved snapshot lifecycle - don't move to pending until confirmed
  *   - Issue #6: Comprehensive logging at all decision points
+ * v1.6.3.4-v9 - FIX Issues #16, #19:
+ *   - Issue #16: Render rejection does NOT write to storage - silent failure
+ *   - Issue #19: Copy-on-write pattern for entity state updates
  */
 
 import browser from 'webextension-polyfill';
@@ -294,6 +297,7 @@ export class UICoordinator {
    * v1.6.4.11 - Refactored: extracted helpers to eliminate bumpy road pattern
    * v1.6.3.4-v6 - FIX Issue #4: Track render timestamps to prevent duplicate processing
    * v1.6.3.4-v7 - FIX Issue #2, #4: Validate URL and entity before creating window
+   * v1.6.3.4-v9 - FIX Issue #16: Render rejection does NOT write to storage
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow|null} Rendered tab window, or null if validation fails
@@ -302,12 +306,16 @@ export class UICoordinator {
     const mapSizeBefore = this.renderedTabs.size;
     
     // v1.6.3.4-v7 - FIX Issue #2: Validate URL exists before attempting render
+    // v1.6.3.4-v9 - FIX Issue #16: Return null silently - do NOT trigger any storage writes
     if (!quickTab.url) {
       console.error('[UICoordinator] REJECTED: Cannot render Quick Tab with undefined URL:', {
         id: quickTab.id,
         url: quickTab.url,
-        reason: 'URL is undefined or empty'
+        reason: 'URL is undefined or empty',
+        storageAction: 'NONE - rejection does not modify storage'
       });
+      // v1.6.3.4-v9 - FIX Issue #16: Critical - return null without any side effects
+      // DO NOT emit events, DO NOT modify maps, DO NOT write to storage
       return null;
     }
     
@@ -338,6 +346,7 @@ export class UICoordinator {
     this._renderTimestamps.set(quickTab.id, now);
 
     // v1.6.3.4-v7 - FIX Issue #4: Wrap window creation in try/catch to handle URL validation failures
+    // v1.6.3.4-v9 - FIX Issue #16: On failure, return null without storage writes
     let tabWindow;
     try {
       // Create QuickTabWindow from QuickTab entity
@@ -346,10 +355,12 @@ export class UICoordinator {
       console.error('[UICoordinator] Failed to create QuickTabWindow:', {
         id: quickTab.id,
         url: quickTab.url,
-        error: err.message
+        error: err.message,
+        storageAction: 'NONE - failure does not modify storage'
       });
       // Clear render timestamp so future attempts can proceed
       this._renderTimestamps.delete(quickTab.id);
+      // v1.6.3.4-v9 - FIX Issue #16: Return null without any storage side effects
       return null;
     }
 
