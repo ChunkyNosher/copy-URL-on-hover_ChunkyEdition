@@ -1,0 +1,8 @@
+{
+  "id": "8ec5633f-a778-4bcc-bb8b-ac5bbde749f3",
+  "title": "Content.js refactoring patterns",
+  "details": "Refactored content.js from CodeScene score 8.55 to 9.09 using these patterns:\n\n1. Extract complex conditionals into named boolean helper functions\n2. Use wrapper functions to reduce duplication in similar handlers\n3. Use dispatcher pattern (ACTION_HANDLERS/TYPE_HANDLERS maps) to replace large if-chain\n4. Extract logging arguments into helper functions to reduce cc from optional chaining operators\n5. Generic handler wrappers (_wrapSyncTestHandler, _wrapAsyncTestHandler) reduce boilerplate in test bridge handlers\n\nTrade-off: Extracting functions reduces cyclomatic complexity but increases function count, which can trigger \"Brain Class\" warnings. Balance is needed.",
+  "category": "refactoring",
+  "dateCreated": "2025-12-01T00:38:53.003Z",
+  "dateUpdated": "2025-12-01T00:38:53.003Z"
+}
