@@ -692,7 +692,7 @@ export class VisibilityHandler {
     const minimizedCount = state.tabs.filter(t => t.minimized).length;
     const activeCount = state.tabs.filter(t => !t.minimized).length;
     // v1.6.3.4-v8 - FIX Issue #2: getAllMinimized() DOES NOT EXIST - use getCount()
-    const minimizedManagerCount = this.minimizedManager?.getCount?.() ?? 0;
+    const minimizedManagerCount = this.minimizedManager?.getCount() ?? 0;
     
     console.log('[VisibilityHandler] State validation before persist:', {
       totalTabs: state.tabs.length,

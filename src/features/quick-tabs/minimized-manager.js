@@ -212,7 +212,8 @@ export class MinimizedManager {
    */
   clearSnapshot(id) {
     // v1.6.3.4-v8 - FIX Issue #8: Log caller for debugging
-    const caller = new Error().stack?.split('\n')[2]?.trim() || 'unknown';
+    const stackLines = new Error().stack?.split('\n') || [];
+    const caller = (stackLines.length > 2 ? stackLines[2]?.trim() : null) || 'unknown';
     console.log('[MinimizedManager] clearSnapshot() called:', {
       id,
       caller,
