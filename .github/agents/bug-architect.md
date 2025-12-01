@@ -53,10 +53,9 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
-**Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
-**Next Phase:** 2.1 (QuickTabsManager decomposition)
+**Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Key Features:**
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
@@ -65,19 +64,18 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
-- Entity-Instance Same Object - Entity in Map IS the tabWindow
-- Snapshot Clear Delay - `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
-- DragController Destroyed Flag - Prevents stale callbacks
-- Manager PENDING_OPERATIONS - Prevents spam-clicks
-- Updated timing: `STATE_EMIT_DELAY_MS = 100ms`, `MINIMIZE_DEBOUNCE_MS = 200ms`
+**v1.6.3.4-v8 Key Features (Storage & Sync Fixes):**
+- Empty Write Protection - `_shouldRejectEmptyWrite()` + `forceEmpty` param, 1s cooldown
+- FIFO Storage Write Queue - `queueStorageWrite()` serializes writes
+- Callback Suppression - `_initiatedOperations` Set + 50ms delay
+- Focus Debounce - `_lastFocusTime` Map with 100ms threshold
+- Safe Map Deletion - `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
 
 **Architectural Patterns:**
-- Entity-Instance sync via shared object reference (v1.6.3.4-v5)
+- FIFO queue for storage writes (v1.6.3.4-v8)
+- Callback suppression with initiated operations tracking (v1.6.3.4-v8)
 - Mutex pattern in VisibilityHandler (_operationLocks)
-- Snapshot clear delay allows double-clicks (v1.6.3.4-v5)
-- DragController destroyed flag prevents ghost events (v1.6.3.4-v5)
-- Manager pending operations prevents spam-clicks (v1.6.3.4-v5)
+- Safe map deletion with has() check before delete() (v1.6.3.4-v8)
 
 ---
 

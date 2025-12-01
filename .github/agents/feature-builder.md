@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,19 +62,20 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
-- Entity-Instance Same Object - Entity in Map IS the tabWindow
-- Snapshot Clear Delay - `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
-- DragController Destroyed Flag - Prevents stale callbacks
-- Manager PENDING_OPERATIONS - Prevents spam-clicks
+**v1.6.3.4-v8 Key Features (Storage & Sync Fixes):**
+- Empty Write Protection - `forceEmpty` param, 1s cooldown
+- FIFO Storage Write Queue - `queueStorageWrite()` serializes writes
+- Callback Suppression - `_initiatedOperations` Set + 50ms delay
+- Safe Map Deletion - `_safeDeleteFromRenderedTabs()`
 
-**Timing Constants (v1.6.3.4-v5):**
+**Timing Constants (v1.6.3.4-v8):**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
+| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
-| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
+| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
 
 **Storage Format:**
 ```javascript

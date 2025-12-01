@@ -52,17 +52,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.4-v5 Timing Constants:**
+**v1.6.3.4-v8 Timing Constants:**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
+| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
-| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
+| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
 
 **Performance Targets:**
 - Bundle size: content.js <500KB, background.js <300KB
@@ -73,6 +74,7 @@ const relevantMemories = await searchMemories({
 **Storage:**
 - Use `storage.local` for Quick Tab state AND UID setting
 - Use shared utilities from `src/utils/storage-utils.js`
+- **v8:** Use `queueStorageWrite()` for serialized writes
 
 ---
 
