@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.4-v8 storage & sync fixes, callback suppression, focus debounce)
+  (v1.6.3.4-v9 restore state wipe fixes, restore validation, complete event payload)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v8 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,12 +38,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.4-v8 Key Features:**
-- **Callback Suppression** - `_initiatedOperations` Set + 50ms delay
-- **Focus Debounce** - `_lastFocusTime` Map with 100ms threshold
-- **Safe Map Deletion** - Check `has()` before `delete()`
+**v1.6.3.4-v9 Key Features (Restore State Wipe Fixes):**
+- **Restore Validation** - `_validateRestorePreconditions()` validates before operations
+- **Complete Event Payload** - `_fetchEntityFromStorage()`, `_validateEventPayload()`
+- **Enhanced _createQuickTabData** - Includes position, size, container, zIndex
 
-**Timing Constants (v1.6.3.4-v8):**
+**Timing Constants:**
 
 | Constant | Value | Location |
 |----------|-------|----------|
@@ -54,25 +54,29 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v8 Key Patterns
+## v1.6.3.4-v9 Key Patterns
 
-### Callback Suppression Pattern
+### Restore Validation Pattern
 
 ```javascript
-// Track initiated operation to suppress callbacks
-this._initiatedOperations.add(`minimize-${id}`);
-try { tabWindow.minimize(); }
-finally { setTimeout(() => this._initiatedOperations.delete(`minimize-${id}`), 50); }
+// VisibilityHandler validates before proceeding
+const validation = this._validateRestorePreconditions(tabWindow, id, source);
+if (!validation.valid) {
+  return { success: false, error: validation.error };
+}
 ```
 
-### Focus Debounce Pattern
+### Complete Event Payload Pattern
 
 ```javascript
-// Debounce focus events with 100ms threshold
-const lastFocus = this._lastFocusTime.get(id) || 0;
-if (Date.now() - lastFocus < 100) return;
-this._lastFocusTime.set(id, Date.now());
-// proceed with focus handling
+// Fetch from storage when tabWindow is null
+if (!tabWindow) {
+  const entity = await this._fetchEntityFromStorage(id);
+  if (!entity) return; // Cannot emit incomplete event
+}
+// Validate before emitting
+const validation = this._validateEventPayload(quickTabData);
+if (!validation.valid) return;
 ```
 
 ---
@@ -99,8 +103,8 @@ this._lastFocusTime.set(id, Date.now());
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] Global visibility correct (no container filtering)
 - [ ] Drag works without pointer escape
-- [ ] **v1.6.3.4-v8:** Callback suppression prevents circular events
-- [ ] **v1.6.3.4-v8:** Focus debounce prevents duplicate events
+- [ ] **v1.6.3.4-v9:** Restore validation prevents invalid operations
+- [ ] **v1.6.3.4-v9:** Complete event payload emitted
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 

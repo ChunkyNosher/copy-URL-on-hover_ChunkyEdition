@@ -50,7 +50,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v8 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.4-v9 - Two-Layer Sidebar Tab System ✅
 
 **Settings Sidebar Structure (Two-Layer System):**
 - **PRIMARY TABS (Layer 1):**
