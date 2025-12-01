@@ -201,76 +201,94 @@ export class VisibilityHandler {
    * v1.6.3.2 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
    * v1.6.3.4 - FIX Issues #5, #6: Atomic Map cleanup, source logging
    * v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
+   * v1.6.3.4-v7 - FIX Issues #3, #6: Instance validation and try/finally for lock cleanup
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
+   * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleMinimize(id, source = 'unknown') {
     // v1.6.3.2 - FIX Issue #2: Use mutex to prevent multiple sources triggering same operation
     if (!this._tryAcquireLock('minimize', id)) {
       console.log(`[VisibilityHandler] Ignoring duplicate minimize request (lock held, source: ${source}) for:`, id);
-      return;
+      return { success: false, error: 'Operation lock held' };
     }
 
-    // v1.6.4.5 - FIX Issue #1: Prevent duplicate minimize operations
-    if (this._pendingMinimize.has(id)) {
-      console.log(`[VisibilityHandler] Ignoring duplicate minimize request (pending, source: ${source}) for:`, id);
-      this._releaseLock('minimize', id);
-      return;
-    }
-    
-    // v1.6.4 - FIX Issue #1: Log at start to confirm button was clicked
-    // v1.6.3.4 - FIX Issue #6: Include source in log
-    console.log(`[VisibilityHandler] Minimize button clicked (source: ${source}) for Quick Tab:`, id);
+    // v1.6.3.4-v7 - FIX Issue #6: Use try/finally to ensure lock is ALWAYS released
+    try {
+      // v1.6.4.5 - FIX Issue #1: Prevent duplicate minimize operations
+      if (this._pendingMinimize.has(id)) {
+        console.log(`[VisibilityHandler] Ignoring duplicate minimize request (pending, source: ${source}) for:`, id);
+        return { success: false, error: 'Operation pending' };
+      }
+      
+      // v1.6.4 - FIX Issue #1: Log at start to confirm button was clicked
+      // v1.6.3.4 - FIX Issue #6: Include source in log
+      console.log(`[VisibilityHandler] Minimize button clicked (source: ${source}) for Quick Tab:`, id);
 
-    const tabWindow = this.quickTabsMap.get(id);
-    if (!tabWindow) {
-      console.warn(`[VisibilityHandler] Tab not found for minimize (source: ${source}):`, id);
-      this._releaseLock('minimize', id);
-      return;
-    }
-    
-    // v1.6.4.5 - FIX Issue #1: Mark as pending to prevent duplicate clicks
-    this._pendingMinimize.add(id);
+      const tabWindow = this.quickTabsMap.get(id);
+      if (!tabWindow) {
+        console.warn(`[VisibilityHandler] Tab not found for minimize (source: ${source}):`, id);
+        return { success: false, error: 'Tab not found' };
+      }
+      
+      // v1.6.3.4-v7 - FIX Issue #3: Validate this is a real QuickTabWindow instance
+      if (typeof tabWindow.minimize !== 'function') {
+        console.error(`[VisibilityHandler] Invalid tab instance (not QuickTabWindow, source: ${source}):`, {
+          id,
+          type: tabWindow.constructor?.name,
+          hasMinimize: typeof tabWindow.minimize
+        });
+        // Remove invalid entry from map
+        this.quickTabsMap.delete(id);
+        return { success: false, error: 'Invalid tab instance (not QuickTabWindow)' };
+      }
+      
+      // v1.6.4.5 - FIX Issue #1: Mark as pending to prevent duplicate clicks
+      this._pendingMinimize.add(id);
 
-    // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
-    // Note: tabWindow IS the entity in quickTabsMap - they reference the same object
-    // This must happen BEFORE calling minimizedManager.add() or tabWindow.minimize()
-    // so that all downstream reads see the correct state
-    console.log(`[VisibilityHandler] Updating entity.minimized = true (source: ${source}) for:`, id);
-    tabWindow.minimized = true;
+      // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
+      // Note: tabWindow IS the entity in quickTabsMap - they reference the same object
+      // This must happen BEFORE calling minimizedManager.add() or tabWindow.minimize()
+      // so that all downstream reads see the correct state
+      console.log(`[VisibilityHandler] Updating entity.minimized = true (source: ${source}) for:`, id);
+      tabWindow.minimized = true;
 
-    // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
-    this.minimizedManager.add(id, tabWindow);
+      // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
+      this.minimizedManager.add(id, tabWindow);
 
-    // v1.6.4.4 - FIX Bug #6: Actually minimize the window (hide it)
-    // The Manager sidebar was calling handleMinimize but the window wasn't being hidden
-    // because we weren't calling tabWindow.minimize()
-    if (tabWindow.minimize) {
+      // v1.6.4.4 - FIX Bug #6: Actually minimize the window (hide it)
+      // The Manager sidebar was calling handleMinimize but the window wasn't being hidden
+      // because we weren't calling tabWindow.minimize()
       tabWindow.minimize();
       console.log(`[VisibilityHandler] Called tabWindow.minimize() (source: ${source}) for:`, id);
+
+      // v1.6.3.4 - FIX Issue #5: Do NOT delete from Map during minimize
+      // The tab still exists, it's just hidden. Map entry needed for restore.
+      // Note: tabWindow.minimize() already sets container = null, so isRendered() will be false
+
+      // Emit minimize event for legacy handlers
+      if (this.eventBus && this.Events) {
+        this.eventBus.emit(this.Events.QUICK_TAB_MINIMIZED, { id, source });
+      }
+
+      // v1.6.3.1 - FIX Bug #7: Emit state:updated for panel to refresh
+      // This allows PanelContentManager to update when Quick Tab is minimized from its window
+      if (this.eventBus) {
+        const quickTabData = this._createQuickTabData(id, tabWindow, true);
+        quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
+        this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
+        console.log(`[VisibilityHandler] Emitted state:updated for minimize (source: ${source}):`, id);
+      }
+
+      // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
+      this._debouncedPersist(id, 'minimize', source);
+      
+      return { success: true };
+    } finally {
+      // v1.6.3.4-v7 - FIX Issue #6: Guarantee lock release even on exceptions
+      this._releaseLock('minimize', id);
     }
-
-    // v1.6.3.4 - FIX Issue #5: Do NOT delete from Map during minimize
-    // The tab still exists, it's just hidden. Map entry needed for restore.
-    // Note: tabWindow.minimize() already sets container = null, so isRendered() will be false
-
-    // Emit minimize event for legacy handlers
-    if (this.eventBus && this.Events) {
-      this.eventBus.emit(this.Events.QUICK_TAB_MINIMIZED, { id, source });
-    }
-
-    // v1.6.3.1 - FIX Bug #7: Emit state:updated for panel to refresh
-    // This allows PanelContentManager to update when Quick Tab is minimized from its window
-    if (this.eventBus) {
-      const quickTabData = this._createQuickTabData(id, tabWindow, true);
-      quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
-      this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
-      console.log(`[VisibilityHandler] Emitted state:updated for minimize (source: ${source}):`, id);
-    }
-
-    // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
-    this._debouncedPersist(id, 'minimize', source);
   }
 
   /**
@@ -311,6 +329,46 @@ export class VisibilityHandler {
   }
 
   /**
+   * Validate tab instance is a real QuickTabWindow
+   * v1.6.3.4-v7 - FIX Issue #3: Helper to validate instance type
+   * @private
+   * @param {Object} tabWindow - Tab window to validate
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   * @returns {boolean} True if valid, false if invalid (and removed from map)
+   */
+  _validateTabWindowInstance(tabWindow, id, source) {
+    if (!tabWindow || typeof tabWindow.restore === 'function') {
+      return true; // Valid (or doesn't exist)
+    }
+    
+    console.error(`[VisibilityHandler] Invalid tab instance (not QuickTabWindow, source: ${source}):`, {
+      id,
+      type: tabWindow.constructor?.name,
+      hasRestore: typeof tabWindow.restore
+    });
+    // Remove invalid entry from map
+    this.quickTabsMap.delete(id);
+    return false;
+  }
+
+  /**
+   * Re-register window in quickTabsMap if missing
+   * v1.6.3.4-v7 - Helper to reduce handleRestore complexity
+   * @private
+   * @param {Object} tabWindow - Tab window to register
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   */
+  _ensureTabInMap(tabWindow, id, source) {
+    if (this.quickTabsMap.has(id)) return;
+    
+    console.log(`[VisibilityHandler] Window exists but not in map (source: ${source}), re-registering:`, id);
+    this.quickTabsMap.set(id, tabWindow);
+    console.log(`[VisibilityHandler] Re-registered tabWindow in quickTabsMap (source: ${source}):`, id);
+  }
+
+  /**
    * Handle restore of minimized Quick Tab
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
@@ -323,64 +381,64 @@ export class VisibilityHandler {
    *   - Issue #1: Emit state:updated even when snapshot not found
    *   - Issue #2: Update entity.minimized = false in quickTabsMap after restore
    *   - Issue #7: Entity state is single source of truth - update FIRST
+   * v1.6.3.4-v7 - FIX Issues #3, #6: Instance validation and try/finally for lock cleanup
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
+   * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleRestore(id, source = 'unknown') {
     // v1.6.3.2 - Check preconditions for restore
     if (!this._canProceedWithRestore(id, source)) {
-      return;
+      return { success: false, error: 'Operation blocked (lock held or pending)' };
     }
     
-    // v1.6.3.4 - FIX Issue #6: Include source in log
+    // v1.6.3.4-v7 - FIX Issue #6: Use try/finally to ensure lock is ALWAYS released
+    try {
+      return this._executeRestore(id, source);
+    } finally {
+      // v1.6.3.4-v7 - FIX Issue #6: Guarantee lock release even on exceptions
+      this._releaseLock('restore', id);
+    }
+  }
+
+  /**
+   * Execute restore operation (extracted to reduce handleRestore complexity)
+   * v1.6.3.4-v7 - Helper for try/finally pattern in handleRestore
+   * @private
+   */
+  _executeRestore(id, source) {
     console.log(`[VisibilityHandler] Handling restore (source: ${source}) for:`, id);
 
-    // Get tab info BEFORE restoring (needed for state:updated event)
     const tabWindow = this.quickTabsMap.get(id);
+    
+    // v1.6.3.4-v7 - FIX Issue #3: Validate instance if it exists
+    if (!this._validateTabWindowInstance(tabWindow, id, source)) {
+      return { success: false, error: 'Invalid tab instance (not QuickTabWindow)' };
+    }
     
     // v1.6.4.5 - FIX Issue #2: Mark as pending to prevent duplicate operations
     this._pendingRestore.add(id);
 
-    // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = false FIRST (entity is source of truth)
-    // Note: tabWindow IS the entity in quickTabsMap - they reference the same object
-    // This must happen BEFORE calling minimizedManager.restore() or tabWindow.restore()
-    // so that all downstream reads see the correct state
+    // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = false FIRST
     if (tabWindow) {
       console.log(`[VisibilityHandler] Updating entity.minimized = false (source: ${source}) for:`, id);
       tabWindow.minimized = false;
     }
 
-    // Restore from minimized manager - returns snapshot with position/size
-    // v1.6.3.2 - Note: minimizedManager.restore() now only applies snapshot, does NOT call tabWindow.restore()
+    // Restore from minimized manager
     const restored = this.minimizedManager.restore(id);
     if (!restored) {
       console.warn(`[VisibilityHandler] Tab not found in minimized manager (source: ${source}):`, id);
-      // v1.6.3.4-v5 - FIX Issue #1: Still emit state:updated event so UICoordinator knows about restore attempt
-      // This prevents ghost tabs by ensuring UICoordinator can handle the case
       this._emitRestoreStateUpdate(id, tabWindow, source);
-      // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
       this._debouncedPersist(id, 'restore', source);
-      return;
+      return { success: true };
     }
 
-    // v1.6.3.2 - Now call tabWindow.restore() which updates state but does NOT render
-    // UICoordinator will handle rendering via the state:updated event below
-    if (tabWindow && typeof tabWindow.restore === 'function') {
+    // Call tabWindow.restore() which updates state but does NOT render
+    if (tabWindow) {
       tabWindow.restore();
       console.log(`[VisibilityHandler] Called tabWindow.restore() (source: ${source}) for:`, id);
-      
-      // v1.6.3.3 - FIX Issue #1: Re-register window in quickTabsMap to ensure reference is maintained
-      // This fixes the issue where second+ minimize/restore cycles fail because the window instance
-      // was lost from the map. The tabWindow reference is still valid, just needs to be kept in the map.
-      // Note: This is safe because:
-      // 1. JavaScript is single-threaded - no concurrent access to the Map
-      // 2. The mutex lock at the start of handleRestore prevents re-entry
-      // 3. We're only setting if not present, never overwriting
-      if (!this.quickTabsMap.has(id)) {
-        console.log(`[VisibilityHandler] Window exists but not in map (source: ${source}), re-registering:`, id);
-        this.quickTabsMap.set(id, tabWindow);
-        console.log(`[VisibilityHandler] Re-registered tabWindow in quickTabsMap (source: ${source}):`, id);
-      }
+      this._ensureTabInMap(tabWindow, id, source);
     } else {
       console.warn(`[VisibilityHandler] tabWindow not found in quickTabsMap (source: ${source}) for:`, id);
     }
@@ -390,11 +448,10 @@ export class VisibilityHandler {
       this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id, source });
     }
 
-    // v1.6.3.1 - FIX Bug #7: Emit state:updated for panel to refresh
     this._emitRestoreStateUpdate(id, tabWindow, source);
-
-    // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
     this._debouncedPersist(id, 'restore', source);
+    
+    return { success: true };
   }
 
   /**

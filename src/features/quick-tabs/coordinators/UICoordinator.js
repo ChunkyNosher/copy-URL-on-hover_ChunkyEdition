@@ -260,12 +260,23 @@ export class UICoordinator {
    * v1.6.4.10 - FIX Issue #5: Enhanced Map lifecycle logging with before/after sizes
    * v1.6.4.11 - Refactored: extracted helpers to eliminate bumpy road pattern
    * v1.6.3.4-v6 - FIX Issue #4: Track render timestamps to prevent duplicate processing
+   * v1.6.3.4-v7 - FIX Issue #2, #4: Validate URL and entity before creating window
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
-   * @returns {QuickTabWindow} Rendered tab window
+   * @returns {QuickTabWindow|null} Rendered tab window, or null if validation fails
    */
   render(quickTab) {
     const mapSizeBefore = this.renderedTabs.size;
+    
+    // v1.6.3.4-v7 - FIX Issue #2: Validate URL exists before attempting render
+    if (!quickTab.url) {
+      console.error('[UICoordinator] REJECTED: Cannot render Quick Tab with undefined URL:', {
+        id: quickTab.id,
+        url: quickTab.url,
+        reason: 'URL is undefined or empty'
+      });
+      return null;
+    }
     
     // v1.6.3.4-v6 - FIX Issue #4: Check for recent render to prevent duplicates
     const lastRenderTime = this._renderTimestamps.get(quickTab.id);
@@ -293,8 +304,21 @@ export class UICoordinator {
     // v1.6.3.4-v6 - FIX Issue #4: Track render timestamp
     this._renderTimestamps.set(quickTab.id, now);
 
-    // Create QuickTabWindow from QuickTab entity
-    const tabWindow = this._createWindow(quickTab);
+    // v1.6.3.4-v7 - FIX Issue #4: Wrap window creation in try/catch to handle URL validation failures
+    let tabWindow;
+    try {
+      // Create QuickTabWindow from QuickTab entity
+      tabWindow = this._createWindow(quickTab);
+    } catch (err) {
+      console.error('[UICoordinator] Failed to create QuickTabWindow:', {
+        id: quickTab.id,
+        url: quickTab.url,
+        error: err.message
+      });
+      // Clear render timestamp so future attempts can proceed
+      this._renderTimestamps.delete(quickTab.id);
+      return null;
+    }
 
     // Finalize render - store, verify, monitor
     this._finalizeRender(tabWindow, quickTab);
