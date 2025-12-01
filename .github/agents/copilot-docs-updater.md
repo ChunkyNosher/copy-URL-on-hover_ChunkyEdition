@@ -99,20 +99,18 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.4-v3)
+- [ ] Version numbers match current release (1.6.3.4-v5)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array, NOT containers)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] Storage utilities documented (src/utils/storage-utils.js)
-- [ ] Manager action messages documented (CLOSE/MINIMIZE/RESTORE_QUICK_TAB)
-- [ ] State hydration pattern documented (v1.6.3.4+ - `_initStep6_Hydrate()`)
-- [ ] Unified restore path documented (v1.6.3.4-v3)
-- [ ] Early Map cleanup documented (v1.6.3.4-v3)
-- [ ] Snapshot lifecycle fix documented (v1.6.3.4-v3)
-- [ ] Callback verification logging documented (v1.6.3.4-v3)
+- [ ] **v1.6.3.4-v5:** Entity-Instance Same Object pattern documented
+- [ ] **v1.6.3.4-v5:** Snapshot Clear Delay (400ms) documented
+- [ ] **v1.6.3.4-v5:** DragController destroyed flag documented
+- [ ] **v1.6.3.4-v5:** Manager PENDING_OPERATIONS documented
+- [ ] **v1.6.3.4-v5:** Updated timing constants documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -120,7 +118,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.4-v3
+- **Current Version:** 1.6.3.4-v5
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -130,20 +128,15 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload (v1.6.3.4+)
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
-- **Storage Area:** storage.local for Quick Tab state AND UID setting
-- **Storage Keys:** `quick_tabs_state_v2` (state), `quickTabShowDebugId` (UID setting, individual key)
-- **Storage Utilities:** `src/utils/storage-utils.js` exports
-- **v1.6.3.4-v3 Key Features (Bug Fixes):**
-  - Unified restore path - UICoordinator ALWAYS deletes Map entry before restore
-  - Early Map cleanup - Manager minimize triggers explicit cleanup BEFORE state checks
-  - Snapshot lifecycle fix - `restore()` keeps snapshot until `clearSnapshot()` called
-  - Callback verification logging - window.js and UpdateHandler log callback wiring
-  - Comprehensive decision logging throughout restore flow
+- **v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
+  - Entity-Instance Same Object - Entity in Map IS the tabWindow
+  - Snapshot Clear Delay - `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
+  - DragController Destroyed Flag - Prevents stale callbacks
+  - Manager PENDING_OPERATIONS - Set tracks ops, disables buttons
+  - Updated timing: `STATE_EMIT_DELAY_MS = 100ms`, `MINIMIZE_DEBOUNCE_MS = 200ms`
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
-- **Agent Delegation Table:** When to use which agent
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
-- **Prohibited Locations:** docs/manual/, root *.md
 - **Testing:** npm test, npm run lint
 - **Memory Persistence:** Commit .agentic-tools-mcp/
 
@@ -199,13 +192,12 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.4-v3)
+- Version numbers (1.6.3.4-v5)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
 - Storage format (unified tabs array, NOT containers)
-- Storage area (storage.local for Quick Tab state AND UID setting)
-- Storage utilities (src/utils/storage-utils.js)
+- Timing constants (v1.6.3.4-v5 values)
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
 - MCP tool lists
@@ -295,7 +287,7 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.4-v3)
+## Current Extension State (v1.6.3.4-v5)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -307,34 +299,18 @@ await perplexity.research("documentation compression markdown");
 - **Global Visibility:** All Quick Tabs visible everywhere (Container isolation REMOVED)
 - **Quick Tabs Manager:** Sidebar (Ctrl+Alt+Z or Alt+Shift+Z), Solo/Mute indicators
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
-- **Direct Local Creation:** Content renders first, background persists
-- **Storage Utilities:** Shared functions in `src/utils/storage-utils.js`
-- **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
-- **Unified Restore Path (v1.6.3.4-v3):** UICoordinator ALWAYS deletes Map entry before restore
-- **Early Map Cleanup (v1.6.3.4-v3):** Manager minimize triggers explicit cleanup BEFORE state checks
-- **Snapshot Lifecycle (v1.6.3.4-v3):** `restore()` keeps snapshot until `clearSnapshot()` called
-- **Callback Verification (v1.6.3.4-v3):** window.js and UpdateHandler log callback wiring
+- **Entity-Instance Same Object (v1.6.3.4-v5):** Entity in Map IS the tabWindow
+- **Snapshot Clear Delay (v1.6.3.4-v5):** `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
+- **DragController Destroyed Flag (v1.6.3.4-v5):** Prevents stale callbacks
+- **Manager PENDING_OPERATIONS (v1.6.3.4-v5):** Prevents spam-clicks
 
-### Storage Format
-```javascript
-{
-  tabs: [...],           // Array of Quick Tab objects
-  saveId: 'unique-id',   // Deduplication ID (tracked by background.js)
-  timestamp: Date.now()  // Last update timestamp
-}
-```
+### Timing Constants (v1.6.3.4-v5)
 
-**CRITICAL:** Use `storage.local` for Quick Tab state AND UID setting
-
-### Deprecated/Removed
-- ❌ "Pin to Page" terminology → Solo/Mute
-- ❌ BroadcastChannel → storage.onChanged
-- ❌ Container isolation → Global visibility
-- ❌ containers storage format → unified tabs array
-- ❌ cookieStoreId filtering → removed
-- ❌ Floating panel → Sidebar-only Manager (v1.6.3+)
-- ❌ storage.sync for Quick Tab state → storage.local
-- ❌ quick_tab_settings key → quickTabShowDebugId (individual key)
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
+| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
+| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
 
 ### Current Keyboard Shortcuts
 - **Q:** Create Quick Tab
@@ -342,10 +318,6 @@ await perplexity.research("documentation compression markdown");
 - **Esc:** Close all Quick Tabs
 - **Y:** Copy URL
 - **X:** Copy link text
-
-### Storage Keys
-- **State:** `quick_tabs_state_v2`
-- **UID Setting:** `quickTabShowDebugId` (individual key in storage.local)
 
 ---
 
@@ -363,12 +335,11 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.4-v2 or earlier | Update to 1.6.3.4-v3 |
+| v1.6.3.4-v4 or earlier | Update to 1.6.3.4-v5 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
-| storage.sync for state | Use storage.local |
-| quick_tab_settings | Use quickTabShowDebugId |
+| STATE_EMIT_DELAY_MS = 200 | Use 100 (v1.6.3.4-v5) |
 | Files >15KB | Apply compression |
 
 ---
@@ -389,23 +360,17 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.4-v3
+- [ ] Version numbers updated to 1.6.3.4-v5
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
-- [ ] No container/cookieStoreId references (except removal notes)
 - [ ] storage.onChanged documented as primary sync
-- [ ] storage.local documented for Quick Tab state AND UID setting
-- [ ] Storage utilities documented (src/utils/storage-utils.js)
-- [ ] Unified storage format documented (tabs array)
-- [ ] Global visibility documented
-- [ ] Manager action messages documented
-- [ ] Unified restore path documented (v1.6.3.4-v3)
-- [ ] Snapshot lifecycle fix documented (v1.6.3.4-v3)
+- [ ] **v1.6.3.4-v5:** Entity-Instance Same Object documented
+- [ ] **v1.6.3.4-v5:** Snapshot Clear Delay (400ms) documented
+- [ ] **v1.6.3.4-v5:** DragController destroyed flag documented
+- [ ] **v1.6.3.4-v5:** Manager PENDING_OPERATIONS documented
+- [ ] **v1.6.3.4-v5:** Timing constants correct (100/200/400ms)
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
-- [ ] No docs in prohibited locations
-- [ ] Cross-references valid
-- [ ] ESLint passed (if code examples)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠
 
 ---

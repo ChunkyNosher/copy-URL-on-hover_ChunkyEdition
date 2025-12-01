@@ -50,6 +50,10 @@ const DOM_VERIFICATION_DELAY_MS = 150;
 /** @constant {number} Delay in ms for periodic DOM monitoring (v1.6.4.9 - Issue #5) */
 const DOM_MONITORING_INTERVAL_MS = 500;
 
+/** @constant {number} Delay in ms before clearing snapshot after render (v1.6.3.4-v5 - Issue #5) */
+// 400ms grace period allows for accidental double-clicks without losing snapshot
+const SNAPSHOT_CLEAR_DELAY_MS = 400;
+
 export class UICoordinator {
   /**
    * @param {StateManager} stateManager - State manager instance
@@ -69,6 +73,8 @@ export class UICoordinator {
     this._domMonitoringTimers = new Map(); // id -> timerId
     // v1.6.3.3 - FIX Bug #4: Track highest z-index in memory for proper stacking
     this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+    // v1.6.3.4-v5 - FIX Issue #5: Track pending snapshot clear timers
+    this._pendingSnapshotClears = new Map();
   }
   
   /**
@@ -175,6 +181,8 @@ export class UICoordinator {
   /**
    * Finalize render - store in map, verify, clear snapshot, start monitoring
    * v1.6.4.11 - Extracted to reduce render() bumpy road
+   * v1.6.3.4-v5 - FIX Issue #5: Delay snapshot clearing by SNAPSHOT_CLEAR_DELAY_MS (400ms)
+   *   to allow for accidental double-clicks without losing the snapshot
    * @private
    * @param {QuickTabWindow} tabWindow - Created tab window
    * @param {QuickTab} quickTab - QuickTab domain entity
@@ -197,17 +205,43 @@ export class UICoordinator {
     // v1.6.4.8 - FIX Issue #5: Verify DOM is attached after render
     this._verifyDOMAfterRender(tabWindow, quickTab.id);
     
-    // v1.6.4.9 - FIX Issue #1: Clear snapshot from MinimizedManager after successful render
-    // This is the "confirmation" that render succeeded, allowing snapshot deletion
+    // v1.6.3.4-v5 - FIX Issue #5: DELAY snapshot clearing to allow for double-clicks
+    // Old behavior: clear immediately after render (no tolerance for spam-clicks)
+    // New behavior: delay clearing by SNAPSHOT_CLEAR_DELAY_MS (400ms) grace period
     if (isRenderedNow && this._hasMinimizedManager()) {
-      const cleared = this.minimizedManager.clearSnapshot(quickTab.id);
-      if (cleared) {
-        console.log('[UICoordinator] Cleared snapshot after successful render:', quickTab.id);
-      }
+      this._scheduleSnapshotClearing(quickTab.id);
     }
     
     // v1.6.4.9 - FIX Issue #5: Start periodic DOM monitoring
     this._startDOMMonitoring(quickTab.id, tabWindow);
+  }
+
+  /**
+   * Schedule delayed snapshot clearing with grace period
+   * v1.6.3.4-v5 - FIX Issue #5: Grace period for accidental double-clicks
+   * @private
+   * @param {string} quickTabId - Quick Tab ID
+   */
+  _scheduleSnapshotClearing(quickTabId) {
+    // Cancel any existing timer for this tab
+    const existingTimer = this._pendingSnapshotClears.get(quickTabId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    
+    // Schedule delayed clearing
+    const timer = setTimeout(() => {
+      this._pendingSnapshotClears.delete(quickTabId);
+      if (this._hasMinimizedManager()) {
+        const cleared = this.minimizedManager.clearSnapshot(quickTabId);
+        if (cleared) {
+          console.log('[UICoordinator] Cleared snapshot after grace period:', quickTabId);
+        }
+      }
+    }, SNAPSHOT_CLEAR_DELAY_MS);
+    
+    this._pendingSnapshotClears.set(quickTabId, timer);
+    console.log(`[UICoordinator] Scheduled snapshot clearing in ${SNAPSHOT_CLEAR_DELAY_MS}ms:`, quickTabId);
   }
 
   /**
@@ -427,6 +461,7 @@ export class UICoordinator {
   /**
    * Render restored window and apply post-render setup
    * v1.6.4.11 - Extracted to reduce _restoreExistingWindow bumpy road
+   * v1.6.3.4-v5 - FIX Issue #5: Use delayed snapshot clearing
    * @private
    * @param {QuickTabWindow} tabWindow - The window to render
    * @param {string} quickTabId - Quick Tab ID
@@ -455,10 +490,9 @@ export class UICoordinator {
     // v1.6.4.7 - FIX Issue #5: Verify DOM is attached after render
     this._verifyDOMAfterRender(tabWindow, quickTabId);
     
-    // v1.6.4.9 - FIX Issue #1: Clear snapshot after successful render
+    // v1.6.3.4-v5 - FIX Issue #5: Use delayed snapshot clearing (see _scheduleSnapshotClearing)
     if (tabWindow.isRendered() && this._hasMinimizedManager()) {
-      this.minimizedManager.clearSnapshot(quickTabId);
-      console.log('[UICoordinator] Cleared snapshot after restore render:', quickTabId);
+      this._scheduleSnapshotClearing(quickTabId);
     }
     
     // v1.6.4.9 - FIX Issue #5: Start periodic DOM monitoring

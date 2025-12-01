@@ -52,9 +52,17 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
+
+**v1.6.3.4-v5 Timing Constants:**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
+| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
+| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
 
 **Performance Targets:**
 - Bundle size: content.js <500KB, background.js <300KB

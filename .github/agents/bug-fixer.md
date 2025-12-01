@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -64,12 +64,12 @@ const relevantMemories = await searchMemories({
 - Direct local creation pattern
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v3 Key Features:**
-- Unified restore path - UICoordinator ALWAYS deletes Map entry before restore
-- Early Map cleanup - Manager minimize triggers explicit cleanup BEFORE state checks
-- Snapshot lifecycle fix - `restore()` keeps snapshot until `clearSnapshot()` called
-- Callback verification logging - window.js and UpdateHandler log callback wiring
-- Comprehensive decision logging throughout restore flow
+**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
+- Entity-Instance Same Object - Entity in quickTabsMap IS the tabWindow
+- Snapshot Clear Delay - `SNAPSHOT_CLEAR_DELAY_MS = 400ms` allows double-clicks
+- DragController Destroyed Flag - Prevents stale callbacks after destroy
+- Manager PENDING_OPERATIONS - Set tracks ops, disables buttons during operation
+- Updated timing: `STATE_EMIT_DELAY_MS = 100ms`, `MINIMIZE_DEBOUNCE_MS = 200ms`
 
 ---
 
@@ -315,24 +315,39 @@ import { cleanupOrphanedQuickTabElements } from '../utils/dom.js';
 cleanupOrphanedQuickTabElements();
 ```
 
-### Minimize/Restore Bugs (v1.6.3.4-v3)
+### Minimize/Restore Bugs (v1.6.3.4-v5)
 
-**Symptoms:** Duplicate windows on restore, wrong position/size
+**Symptoms:** Duplicate windows on restore, spam-click breaks minimize/restore, ghost tabs
 
-**Root Cause:** Map lifecycle desync - Map entry not cleaned before fresh render
+**Root Cause:** Timing issues, stale callbacks, missing pending operation tracking
 
-**Standard Fix (v1.6.3.4-v3):**
+**Standard Fix (v1.6.3.4-v5):**
 ```javascript
-// UICoordinator unified restore path
-_handleRestoreOperation(quickTab) {
-  // ALWAYS delete Map entry first to force fresh render
-  this.renderedTabs.delete(id);
-  this.render(quickTab);
+// Entity-Instance Same Object Pattern
+const entity = this.quickTabsMap.get(id);
+entity.minimized = false; // Updates both entity AND instance
+
+// Snapshot Clear Delay - allows double-clicks
+const SNAPSHOT_CLEAR_DELAY_MS = 400;
+_scheduleSnapshotClearing(id) {
+  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
 }
 
-// Snapshot lifecycle - keep until render confirmed
-// MinimizedManager.restore() does NOT move to pendingClearSnapshots
-// UICoordinator calls clearSnapshot() after successful render
+// Manager Pending Operations - prevents spam-clicks
+const PENDING_OPERATIONS = new Set();
+_startPendingOperation(id) { PENDING_OPERATIONS.add(id); button.disabled = true; }
+```
+
+### DragController Ghost Events (v1.6.3.4-v5)
+
+**Symptoms:** Stale drag callbacks firing after destroy
+
+**Root Cause:** Destroyed flag not checked in callbacks
+
+**Standard Fix (v1.6.3.4-v5):**
+```javascript
+destroy() { this.destroyed = true; }
+_onDragEnd() { if (this.destroyed) return; } // Prevent stale callbacks
 ```
 
 ### Quick Tab Rendering Bugs

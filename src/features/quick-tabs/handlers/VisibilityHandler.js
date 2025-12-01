@@ -29,15 +29,18 @@
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
-// v1.6.4.5 - FIX Issue #1: Debounce delay for minimize/restore operations
-const MINIMIZE_DEBOUNCE_MS = 150;
+// v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
+// STATE_EMIT_DELAY_MS must be LESS THAN MINIMIZE_DEBOUNCE_MS to prevent race condition
+// Old values: MINIMIZE_DEBOUNCE_MS=150, STATE_EMIT_DELAY_MS=200 (race condition!)
+// New values: STATE_EMIT_DELAY_MS=100, MINIMIZE_DEBOUNCE_MS=200 (correct order)
+const MINIMIZE_DEBOUNCE_MS = 200;
 
 // v1.6.3.2 - FIX Issue #2: Lock duration to prevent duplicate operations from multiple sources
 const OPERATION_LOCK_MS = 200;
 
-// v1.6.4.8 - FIX Issue #4: Increased delay for DOM verification before emitting state:updated
-// 200ms gives UICoordinator time to render and verify DOM attachment
-const STATE_EMIT_DELAY_MS = 200;
+// v1.6.3.4-v5 - FIX Issue #6: Reduced delay to ensure event fires before storage persist
+// 100ms gives UICoordinator time to render but fires before MINIMIZE_DEBOUNCE_MS (200ms)
+const STATE_EMIT_DELAY_MS = 100;
 
 /**
  * VisibilityHandler class
@@ -196,6 +199,7 @@ export class VisibilityHandler {
    * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
    * v1.6.3.2 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
    * v1.6.3.4 - FIX Issues #5, #6: Atomic Map cleanup, source logging
+   * v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
@@ -227,6 +231,13 @@ export class VisibilityHandler {
     
     // v1.6.4.5 - FIX Issue #1: Mark as pending to prevent duplicate clicks
     this._pendingMinimize.add(id);
+
+    // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
+    // Note: tabWindow IS the entity in quickTabsMap - they reference the same object
+    // This must happen BEFORE calling minimizedManager.add() or tabWindow.minimize()
+    // so that all downstream reads see the correct state
+    console.log(`[VisibilityHandler] Updating entity.minimized = true (source: ${source}) for:`, id);
+    tabWindow.minimized = true;
 
     // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
     this.minimizedManager.add(id, tabWindow);
@@ -307,6 +318,10 @@ export class VisibilityHandler {
    * v1.6.3.2 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
    * v1.6.3.3 - FIX Issue #1: Re-register window in quickTabsMap after restore to maintain reference
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
+   * v1.6.3.4-v5 - FIX Issues #1, #2, #7: 
+   *   - Issue #1: Emit state:updated even when snapshot not found
+   *   - Issue #2: Update entity.minimized = false in quickTabsMap after restore
+   *   - Issue #7: Entity state is single source of truth - update FIRST
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    */
@@ -325,12 +340,25 @@ export class VisibilityHandler {
     // v1.6.4.5 - FIX Issue #2: Mark as pending to prevent duplicate operations
     this._pendingRestore.add(id);
 
+    // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = false FIRST (entity is source of truth)
+    // Note: tabWindow IS the entity in quickTabsMap - they reference the same object
+    // This must happen BEFORE calling minimizedManager.restore() or tabWindow.restore()
+    // so that all downstream reads see the correct state
+    if (tabWindow) {
+      console.log(`[VisibilityHandler] Updating entity.minimized = false (source: ${source}) for:`, id);
+      tabWindow.minimized = false;
+    }
+
     // Restore from minimized manager - returns snapshot with position/size
     // v1.6.3.2 - Note: minimizedManager.restore() now only applies snapshot, does NOT call tabWindow.restore()
     const restored = this.minimizedManager.restore(id);
     if (!restored) {
       console.warn(`[VisibilityHandler] Tab not found in minimized manager (source: ${source}):`, id);
-      this._cleanupFailedRestore(id);
+      // v1.6.3.4-v5 - FIX Issue #1: Still emit state:updated event so UICoordinator knows about restore attempt
+      // This prevents ghost tabs by ensuring UICoordinator can handle the case
+      this._emitRestoreStateUpdate(id, tabWindow, source);
+      // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
+      this._debouncedPersist(id, 'restore', source);
       return;
     }
 

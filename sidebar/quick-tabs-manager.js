@@ -4,6 +4,11 @@
 // Storage keys
 const STATE_KEY = 'quick_tabs_state_v2';
 
+// v1.6.3.4-v5 - FIX Issue #4: Pending operations tracking
+// Prevents spam-clicking by tracking in-progress restore/minimize operations
+const PENDING_OPERATIONS = new Set();
+const OPERATION_TIMEOUT_MS = 2000; // Clear pending state after 2 seconds
+
 // UI Elements (cached for performance)
 let containersList;
 let emptyState;
@@ -426,6 +431,7 @@ function _createTabInfo(tab, isMinimized) {
 
 /**
  * Create action buttons for Quick Tab
+ * v1.6.3.4-v5 - FIX Issue #4: Disable restore button when operation in progress (domVerified=false)
  * @param {Object} tab - Quick Tab data
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {HTMLDivElement} Actions element
@@ -433,6 +439,10 @@ function _createTabInfo(tab, isMinimized) {
 function _createTabActions(tab, isMinimized) {
   const actions = document.createElement('div');
   actions.className = 'tab-actions';
+
+  // v1.6.3.4-v5 - FIX Issue #4: Check if restore is pending/in-progress
+  // domVerified=false means restore was attempted but DOM isn't confirmed yet
+  const isRestorePending = !isMinimized && tab.domVerified === false;
 
   if (!isMinimized) {
     // Active Quick Tab actions: Go to Tab + Minimize
@@ -452,6 +462,11 @@ function _createTabActions(tab, isMinimized) {
     minimizeBtn.title = 'Minimize';
     minimizeBtn.dataset.action = 'minimize';
     minimizeBtn.dataset.quickTabId = tab.id;
+    // v1.6.3.4-v5 - FIX Issue #4: Disable minimize if restore is pending
+    if (isRestorePending) {
+      minimizeBtn.disabled = true;
+      minimizeBtn.title = 'Restore in progress...';
+    }
     actions.appendChild(minimizeBtn);
   } else {
     // Minimized Quick Tab actions: Restore
@@ -805,8 +820,24 @@ async function _sendMessageToAllTabs(action, quickTabId) {
  * v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
  *   Quick Tab may exist in a different browser tab than the active one.
  *   Cross-tab minimize was failing because message was only sent to active tab.
+ * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
  */
 async function minimizeQuickTab(quickTabId) {
+  // v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking
+  const operationKey = `minimize-${quickTabId}`;
+  if (PENDING_OPERATIONS.has(operationKey)) {
+    console.log(`[Manager] Ignoring duplicate minimize for ${quickTabId} (operation pending)`);
+    return;
+  }
+  
+  // Mark operation as pending
+  PENDING_OPERATIONS.add(operationKey);
+  
+  // Auto-clear pending state after timeout (safety net)
+  setTimeout(() => {
+    PENDING_OPERATIONS.delete(operationKey);
+  }, OPERATION_TIMEOUT_MS);
+  
   // v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
   const result = await _sendMessageToAllTabs('MINIMIZE_QUICK_TAB', quickTabId);
   console.log(`[Manager] Minimized Quick Tab ${quickTabId} | success: ${result.success}, errors: ${result.errors}`);
@@ -817,11 +848,30 @@ async function minimizeQuickTab(quickTabId) {
  * v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
  *   Quick Tab may exist in a different browser tab than the active one.
  *   Cross-tab restore was failing because message was only sent to active tab.
+ * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
  */
 async function restoreQuickTab(quickTabId) {
+  // v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking
+  const operationKey = `restore-${quickTabId}`;
+  if (PENDING_OPERATIONS.has(operationKey)) {
+    console.log(`[Manager] Ignoring duplicate restore for ${quickTabId} (operation pending)`);
+    return;
+  }
+  
+  // Mark operation as pending
+  PENDING_OPERATIONS.add(operationKey);
+  
+  // Auto-clear pending state after timeout (safety net)
+  setTimeout(() => {
+    PENDING_OPERATIONS.delete(operationKey);
+  }, OPERATION_TIMEOUT_MS);
+  
   // v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
   const result = await _sendMessageToAllTabs('RESTORE_QUICK_TAB', quickTabId);
   console.log(`[Manager] Restored Quick Tab ${quickTabId} | success: ${result.success}, errors: ${result.errors}`);
+  
+  // Note: Pending state is cleared by setTimeout above (safety net after OPERATION_TIMEOUT_MS)
+  // This ensures UI re-renders from storage update before allowing more clicks
 }
 
 /**

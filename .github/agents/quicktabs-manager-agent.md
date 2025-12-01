@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.3.4-v3 unified restore path)
+  warning indicators, cross-tab operations (v1.6.3.4-v5 spam-click fixes)
 tools: ["*"]
 ---
 
@@ -28,18 +28,25 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Warning Indicator** - Orange pulse when `domVerified=false`
-- **Close Minimized** - Collects IDs BEFORE filtering, sends to ALL browser tabs
-- **Close All Batch Mode** - DestroyHandler._batchMode prevents storage write storms
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
-- **Unified Restore Path (v1.6.3.4-v3)** - UICoordinator ALWAYS deletes Map entry before restore
-- **Early Map Cleanup (v1.6.3.4-v3)** - Manager minimize triggers explicit cleanup BEFORE state checks
-- **Snapshot Lifecycle (v1.6.3.4-v3)** - `restore()` keeps snapshot until `clearSnapshot()` called
+- **PENDING_OPERATIONS (v1.6.3.4-v5)** - Set tracks in-progress ops, disables buttons
+- **Button Disable During Ops (v1.6.3.4-v5)** - Prevents spam-clicks
+- **2-Second Timeout (v1.6.3.4-v5)** - Auto-clears stuck pending operations
+
+**Timing Constants (v1.6.3.4-v5):**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
+| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
+| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
+| `PENDING_OP_TIMEOUT_MS` | 2000 | Auto-clear stuck operations |
 
 **Storage Format:**
 ```javascript
@@ -52,15 +59,28 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Manager Patterns
 
+### Pending Operations Pattern (v1.6.3.4-v5)
+
+```javascript
+const PENDING_OPERATIONS = new Set();
+_startPendingOperation(id) {
+  PENDING_OPERATIONS.add(id);
+  button.disabled = true;
+  setTimeout(() => _finishPendingOperation(id), 2000); // Auto-clear
+}
+_finishPendingOperation(id) {
+  PENDING_OPERATIONS.delete(id);
+  button.disabled = false;
+}
+```
+
 ### Warning Indicator
 
 ```javascript
-// quick-tabs-manager.js - Orange indicator for unverified DOM
 function _getIndicatorClass(tab, isMinimized) {
   if (tab.domVerified === false) return 'orange';  // Pulse animation
   return isMinimized ? 'red' : 'green';
 }
-// CSS variable: --orange-indicator: #f39c12
 ```
 
 ### Minimized Detection Helper
@@ -71,43 +91,13 @@ function isTabMinimizedHelper(tab) {
 }
 ```
 
-### Snapshot Lifecycle (Inherited)
+### Snapshot Clear Delay (v1.6.3.4-v5)
 
 ```javascript
-// MinimizedManager keeps snapshots until UICoordinator confirms
-pendingClearSnapshots = new Map();  // Awaiting render confirmation
-hasSnapshot(id)   // Check both active and pending-clear snapshots
-clearSnapshot(id) // UICoordinator calls after successful render
-```
-
-### Restore Flow (UICoordinator Single Rendering Authority)
-
-```
-VisibilityHandler.handleRestore()
-    ↓
-Check _operationLocks (mutex pattern - skip if locked)
-    ↓
-MinimizedManager.restore(id) → moves snapshot to pendingClear
-    ↓
-UICoordinator handles state:updated → renders → clearSnapshot(id)
-```
-
-### closeMinimizedTabs Pattern
-
-```javascript
-// CRITICAL: Collect IDs BEFORE filtering, then send to ALL browser tabs
-async closeMinimizedTabs() {
-  const tabs = state[STATE_KEY]?.tabs || [];
-  const minimizedIds = tabs.filter(t => isTabMinimizedHelper(t)).map(t => t.id);
-  const remaining = tabs.filter(t => !isTabMinimizedHelper(t));
-  await browser.storage.local.set({ [STATE_KEY]: { tabs: remaining, ... } });
-  
-  // Send CLOSE_QUICK_TAB to ALL browser tabs for proper DOM cleanup
-  for (const id of minimizedIds) {
-    for (const tab of browserTabs) {
-      browser.tabs.sendMessage(tab.id, { type: 'CLOSE_QUICK_TAB', id });
-    }
-  }
+const SNAPSHOT_CLEAR_DELAY_MS = 400;
+// UICoordinator delays clearSnapshot to allow double-clicks
+_scheduleSnapshotClearing(id) {
+  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
 }
 ```
 
@@ -188,9 +178,9 @@ Manager sends these messages to content script:
 - [ ] Solo/Mute indicators correct (arrays)
 - [ ] Orange indicator for `domVerified=false`
 - [ ] Header shows Solo/Mute counts
-- [ ] **v1.6.3.4-v3:** Unified restore path - Map entry deleted before render
-- [ ] **v1.6.3.4-v3:** Early Map cleanup on Manager minimize
-- [ ] **v1.6.3.4-v3:** Snapshot stays until clearSnapshot() called
+- [ ] **v1.6.3.4-v5:** Spam-clicks don't cause duplicate/ghost tabs
+- [ ] **v1.6.3.4-v5:** Buttons disabled during pending operations
+- [ ] **v1.6.3.4-v5:** Pending operations auto-clear after 2 seconds
 - [ ] Close Minimized works for all tabs
 - [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐
