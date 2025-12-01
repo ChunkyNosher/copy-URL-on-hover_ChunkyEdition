@@ -14,10 +14,10 @@
 import { EventEmitter } from 'eventemitter3';
 
 import { QuickTab } from '../../../src/domain/QuickTab.js';
-import { BroadcastManager } from '../../mocks/BroadcastManagerMock.js';
 import { StateManager } from '../../../src/features/quick-tabs/managers/StateManager.js';
 import { createMultiTabScenario } from '../../helpers/cross-tab-simulator.js';
 import { wait } from '../../helpers/quick-tabs-test-utils.js';
+import { BroadcastManager } from '../../mocks/BroadcastManagerMock.js';
 
 describe('Scenario 16: Rapid Position Updates Protocol', () => {
   let tabs;
@@ -280,7 +280,7 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       await wait(150);
 
       // Verify all tabs have final position
-      stateManagers.forEach((sm, index) => {
+      stateManagers.forEach((sm, _index) => {
         const qtInTab = sm.get(qt.id);
         expect(qtInTab.position.left).toBe(300);
         expect(qtInTab.position.top).toBe(200);

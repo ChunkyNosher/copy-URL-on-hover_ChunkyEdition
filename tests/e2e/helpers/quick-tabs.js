@@ -33,7 +33,7 @@ export async function createQuickTab(page, url) {
  * @returns {Promise<Array>} - Array of Quick Tab objects
  */
 export async function getQuickTabs(page) {
-  return await page.evaluate(() => {
+  return page.evaluate(() => {
     if (typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined') {
       return window.__COPILOT_TEST_BRIDGE__.getQuickTabs();
     }
@@ -136,7 +136,7 @@ export async function setMuteMode(page, slotNumber, tabId) {
  * @returns {Promise<boolean>} - True if visible
  */
 export async function isQuickTabVisible(page, slotNumber) {
-  return await page.evaluate(slot => {
+  return page.evaluate(slot => {
     if (typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined') {
       return window.__COPILOT_TEST_BRIDGE__.getQuickTabVisibility(slot);
     }
@@ -161,7 +161,7 @@ export async function waitForSync(page, ms = 200) {
  * @returns {Promise<number>} - Number of Quick Tabs
  */
 export async function getQuickTabCountFromDOM(page) {
-  return await page.$$eval('[data-quick-tab-id]', elements => elements.length);
+  return page.$$eval('[data-quick-tab-id]', elements => elements.length);
 }
 
 /**
@@ -170,7 +170,7 @@ export async function getQuickTabCountFromDOM(page) {
  * @returns {Promise<boolean>} - True if extension is ready
  */
 export async function isExtensionReady(page) {
-  return await page.evaluate(() => {
+  return page.evaluate(() => {
     return typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined';
   });
 }

@@ -89,14 +89,14 @@ export function assertQuickTabState(qt, expectedState) {
   }
 
   // Check solo state
-  if (expectedState.hasOwnProperty('soloTabId')) {
+  if (Object.hasOwn(expectedState, 'soloTabId')) {
     if (qt.soloTabId !== expectedState.soloTabId) {
       errors.push(`soloTabId: expected ${expectedState.soloTabId}, got ${qt.soloTabId}`);
     }
   }
 
   // Check mute state
-  if (expectedState.hasOwnProperty('mutedTabs')) {
+  if (Object.hasOwn(expectedState, 'mutedTabs')) {
     const expectedMuted = JSON.stringify(expectedState.mutedTabs || []);
     const actualMuted = JSON.stringify(qt.mutedTabs || []);
     if (expectedMuted !== actualMuted) {
@@ -105,14 +105,14 @@ export function assertQuickTabState(qt, expectedState) {
   }
 
   // Check minimized state
-  if (expectedState.hasOwnProperty('isMinimized')) {
+  if (Object.hasOwn(expectedState, 'isMinimized')) {
     if (qt.isMinimized !== expectedState.isMinimized) {
       errors.push(`isMinimized: expected ${expectedState.isMinimized}, got ${qt.isMinimized}`);
     }
   }
 
   // Check z-index
-  if (expectedState.hasOwnProperty('zIndex')) {
+  if (Object.hasOwn(expectedState, 'zIndex')) {
     if (qt.zIndex !== expectedState.zIndex) {
       errors.push(`zIndex: expected ${expectedState.zIndex}, got ${qt.zIndex}`);
     }

@@ -190,7 +190,7 @@ test.describe('Scenario 3: Solo Mode', () => {
     
     // Verify QT 1 does NOT appear (solo mode active)
     await page2.waitForTimeout(2000); // Allow sync time
-    const tabs2 = await helper2.getQuickTabs();
+    const _tabs2 = await helper2.getQuickTabs();
     
     // QT should exist in storage but be pinned to page1
     const qt1 = await helper2.getQuickTabById(quickTabId);

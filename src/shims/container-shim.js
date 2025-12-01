@@ -24,7 +24,7 @@ export class ContainerShim {
    * @param {string} _cookieStoreId - Unused in shim, accepts for API compatibility
    * @returns {Promise<object>}
    */
-  async get(_cookieStoreId) {
+  get(_cookieStoreId) {
     // Always return default container for non-Firefox browsers
     return Promise.resolve(this.defaultContainer);
   }
@@ -33,7 +33,7 @@ export class ContainerShim {
    * Query all containers
    * @returns {Promise<Array>}
    */
-  async query() {
+  query() {
     // Chrome doesn't have containers, return single default
     return Promise.resolve([this.defaultContainer]);
   }

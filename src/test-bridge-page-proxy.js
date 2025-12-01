@@ -31,7 +31,7 @@
      * @param {Object} data - Method parameters
      * @returns {Promise<any>} Method result
      */
-    async _call(method, data) {
+    _call(method, data) {
       return new Promise((resolve, reject) => {
         const requestId = `test-bridge-${Date.now()}-${Math.random()}`;
         
@@ -63,39 +63,39 @@
       });
     },
     
-    async createQuickTab(url, options = {}) {
+    createQuickTab(url, options = {}) {
       return this._call('createQuickTab', { url, options });
     },
     
-    async getQuickTabs() {
+    getQuickTabs() {
       return this._call('getQuickTabs', {});
     },
     
-    async getQuickTabById(id) {
+    getQuickTabById(id) {
       return this._call('getQuickTabById', { id });
     },
     
-    async minimizeQuickTab(id) {
+    minimizeQuickTab(id) {
       return this._call('minimizeQuickTab', { id });
     },
     
-    async restoreQuickTab(id) {
+    restoreQuickTab(id) {
       return this._call('restoreQuickTab', { id });
     },
     
-    async pinQuickTab(id) {
+    pinQuickTab(id) {
       return this._call('pinQuickTab', { id });
     },
     
-    async unpinQuickTab(id) {
+    unpinQuickTab(id) {
       return this._call('unpinQuickTab', { id });
     },
     
-    async closeQuickTab(id) {
+    closeQuickTab(id) {
       return this._call('closeQuickTab', { id });
     },
     
-    async clearAllQuickTabs() {
+    clearAllQuickTabs() {
       return this._call('clearAllQuickTabs', {});
     },
     
@@ -111,11 +111,11 @@
       throw new Error(`Timeout waiting for ${count} Quick Tabs`);
     },
     
-    async getQuickTabGeometry(id) {
+    getQuickTabGeometry(id) {
       return this._call('getQuickTabGeometry', { id });
     },
     
-    async verifyZIndexOrder(ids) {
+    verifyZIndexOrder(ids) {
       return this._call('verifyZIndexOrder', { ids });
     }
   };

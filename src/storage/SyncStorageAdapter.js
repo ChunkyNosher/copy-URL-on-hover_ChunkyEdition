@@ -122,7 +122,7 @@ export class SyncStorageAdapter extends StorageAdapter {
    *
    * @returns {Promise<{tabs: Array, timestamp: number}|null>} Unified state
    */
-  async loadAll() {
+  loadAll() {
     return this.load();
   }
 
