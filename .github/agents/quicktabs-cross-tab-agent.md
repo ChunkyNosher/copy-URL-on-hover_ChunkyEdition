@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.3.4-v3 unified restore path, early Map cleanup, snapshot lifecycle)
+  (v1.6.3.4-v5 spam-click fixes, entity-instance same object pattern)
 tools: ["*"]
 ---
 
@@ -28,18 +28,23 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
 - **browser.storage.local** - Persistent state storage with key `quick_tabs_state_v2`
 - **Global Visibility** - Quick Tabs visible in all tabs
-- **Shared Storage Utilities** - `src/utils/storage-utils.js` for persistence
-- **Batch Mode for Close All** - DestroyHandler._batchMode prevents storage write storms
+- **Entity-Instance Same Object (v1.6.3.4-v5)** - Entity in Map IS the tabWindow
+- **Snapshot Clear Delay (v1.6.3.4-v5)** - `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
 - **State Hydration (v1.6.3.4+)** - `_initStep6_Hydrate()` restores Quick Tabs on page reload
-- **Unified Restore Path (v1.6.3.4-v3)** - UICoordinator ALWAYS deletes Map entry before restore
-- **Early Map Cleanup (v1.6.3.4-v3)** - Manager minimize triggers explicit cleanup BEFORE state checks
-- **Snapshot Lifecycle (v1.6.3.4-v3)** - `restore()` keeps snapshot until `clearSnapshot()` called
+
+**Timing Constants (v1.6.3.4-v5):**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
+| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
+| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
 
 **Storage Format:**
 ```javascript

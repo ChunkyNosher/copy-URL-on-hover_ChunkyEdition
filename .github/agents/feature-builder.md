@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,19 +62,24 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**v1.6.3.4-v3 Key Features:**
-- Unified restore path - UICoordinator ALWAYS deletes Map entry before restore
-- Early Map cleanup - Manager minimize triggers explicit cleanup BEFORE state checks
-- Snapshot lifecycle fix - `restore()` keeps snapshot until `clearSnapshot()` called
+**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
+- Entity-Instance Same Object - Entity in Map IS the tabWindow
+- Snapshot Clear Delay - `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
+- DragController Destroyed Flag - Prevents stale callbacks
+- Manager PENDING_OPERATIONS - Prevents spam-clicks
+
+**Timing Constants (v1.6.3.4-v5):**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
+| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
+| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
 
 **Storage Format:**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
-
-**Storage Utilities:**
-- Use `src/utils/storage-utils.js` for persistence
-- Use `storage.local` for Quick Tab state AND UID setting
 
 ---
 

@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE  
 **Next Phase:** 2.1 (QuickTabsManager decomposition)
@@ -63,21 +63,21 @@ const relevantMemories = await searchMemories({
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged
-- Direct local creation pattern
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v3 Key Features:**
-- Unified restore path - UICoordinator ALWAYS deletes Map entry before restore
-- Source tracking in handlers ('Manager', 'UI', 'hydration', 'automation')
-- Z-index persistence on focus via `handleFocus()`
-- Unified destroy path (UI close button uses DestroyHandler)
+**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
+- Entity-Instance Same Object - Entity in Map IS the tabWindow
+- Snapshot Clear Delay - `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
+- DragController Destroyed Flag - Prevents stale callbacks
+- Manager PENDING_OPERATIONS - Prevents spam-clicks
+- Updated timing: `STATE_EMIT_DELAY_MS = 100ms`, `MINIMIZE_DEBOUNCE_MS = 200ms`
 
 **Architectural Patterns:**
-- Entity-Instance sync via UICoordinator fallback chain
+- Entity-Instance sync via shared object reference (v1.6.3.4-v5)
 - Mutex pattern in VisibilityHandler (_operationLocks)
-- `STATE_EMIT_DELAY_MS = 200` for DOM verification
-- DragController destroyed flag prevents ghost events
-- DestroyHandler._batchMode prevents storage write storms
+- Snapshot clear delay allows double-clicks (v1.6.3.4-v5)
+- DragController destroyed flag prevents ghost events (v1.6.3.4-v5)
+- Manager pending operations prevents spam-clicks (v1.6.3.4-v5)
 
 ---
 

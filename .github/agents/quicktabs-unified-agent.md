@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.4-v3 unified restore path, early Map cleanup)
+  Quick Tab functionality (v1.6.3.4-v5 spam-click fixes, unified restore path)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,12 +37,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Global Visibility** - All Quick Tabs visible across all tabs
 - **State Hydration (v1.6.3.4+)** - Quick Tabs restored from storage on page reload
 
-**v1.6.3.4-v3 Key Features (Bug Fixes):**
-- **Unified Restore Path:** UICoordinator ALWAYS deletes Map entry before restore
-- **Early Map Cleanup:** Manager minimize triggers explicit cleanup BEFORE state checks
-- **Snapshot Lifecycle Fix:** `restore()` keeps snapshot until `clearSnapshot()` called
-- **Callback Verification Logging:** window.js and UpdateHandler log callback wiring
-- **Comprehensive Decision Logging:** All decision points log conditions and outcomes
+**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
+- **Entity-Instance Same Object:** Entity in quickTabsMap IS the tabWindow (shared reference)
+- **Snapshot Clear Delay:** `SNAPSHOT_CLEAR_DELAY_MS = 400ms` allows double-clicks
+- **DragController Destroyed Flag:** Prevents stale callbacks after destroy
+- **Manager PENDING_OPERATIONS:** Set tracks in-progress ops, disables buttons
+
+**Timing Constants (v1.6.3.4-v5):**
+- `STATE_EMIT_DELAY_MS = 100ms` (state event fires first)
+- `MINIMIZE_DEBOUNCE_MS = 200ms` (storage persist after state)
+- `SNAPSHOT_CLEAR_DELAY_MS = 400ms` (allows double-clicks)
 
 **Storage Keys:**
 - **State:** `quick_tabs_state_v2` (storage.local)
@@ -61,44 +65,45 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v3 Key Patterns
+## v1.6.3.4-v5 Key Patterns
 
-### Unified Restore Path (NEW)
+### Entity-Instance Same Object Pattern
 
 ```javascript
-// UICoordinator ALWAYS deletes Map entry before restore
-_handleRestoreOperation(quickTab) {
-  this.renderedTabs.delete(id);  // Force fresh render
-  this.render(quickTab);
+// Entity in quickTabsMap IS the tabWindow - same object reference
+const entity = this.quickTabsMap.get(id);
+entity.minimized = false; // Updates both entity AND instance
+```
+
+### Snapshot Clear Delay Pattern
+
+```javascript
+const SNAPSHOT_CLEAR_DELAY_MS = 400;
+_scheduleSnapshotClearing(id) {
+  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
 }
 ```
 
-### Early Map Cleanup (NEW)
+### DragController Destroyed Flag
 
 ```javascript
-// UICoordinator.update() - explicit cleanup BEFORE state checks
-_handleManagerMinimize(quickTab) {
-  this.renderedTabs.delete(id);  // Clean Map immediately
-}
+destroy() { this.destroyed = true; }
+_onDragEnd() { if (this.destroyed) return; } // Prevent stale callbacks
 ```
 
-### Snapshot Lifecycle (v1.6.3.4-v3)
+### Manager Pending Operations
 
 ```javascript
-// MinimizedManager.restore() - keeps snapshot in minimizedTabs
-restore(id) {
-  const snapshot = this.minimizedTabs.get(id);
-  // Apply snapshot but do NOT move to pendingClearSnapshots
-  // UICoordinator calls clearSnapshot() after confirmed render
-}
+const PENDING_OPERATIONS = new Set();
+_startPendingOperation(id) { PENDING_OPERATIONS.add(id); /* disable button */ }
+_finishPendingOperation(id) { PENDING_OPERATIONS.delete(id); }
 ```
 
-### Callback Verification (v1.6.3.4-v3)
+### Legacy Patterns (v1.6.3.4-v3)
 
-```javascript
-// window.js and UpdateHandler log callback wiring
-console.log(`[QuickTabWindow.destroy] onDestroy callback exists: ${!!this.callbacks.onDestroy}`);
-```
+**Unified Restore Path:** UICoordinator deletes Map entry before restore  
+**Early Map Cleanup:** Manager minimize triggers cleanup BEFORE state checks  
+**Snapshot Lifecycle:** `restore()` keeps snapshot until `clearSnapshot()` called
 
 ---
 
@@ -148,12 +153,12 @@ console.log(`[QuickTabWindow.destroy] onDestroy callback exists: ${!!this.callba
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
 - [ ] Manager displays with Solo/Mute indicators
-- [ ] **v1.6.3.4-v3:** Unified restore path - Map entry deleted before render
-- [ ] **v1.6.3.4-v3:** Early Map cleanup on Manager minimize
-- [ ] **v1.6.3.4-v3:** Snapshot stays in minimizedTabs until clearSnapshot()
+- [ ] **v1.6.3.4-v5:** Spam-clicks don't cause duplicate/ghost tabs
+- [ ] **v1.6.3.4-v5:** Entity-Instance same object pattern works
+- [ ] **v1.6.3.4-v5:** Snapshot clear delay (400ms) allows double-clicks
+- [ ] **v1.6.3.4-v5:** DragController destroyed flag prevents stale callbacks
+- [ ] **v1.6.3.4-v5:** Manager buttons disabled during pending operations
 - [ ] **v1.6.3.4+:** State hydration on page reload
-- [ ] **v1.6.3.4+:** Source logged in minimize/restore/close
-- [ ] **v1.6.3.4+:** Z-index persists on focus
 - [ ] Drag/resize functional
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠

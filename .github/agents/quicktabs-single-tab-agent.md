@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.4-v3 unified restore path, callback verification, snapshot lifecycle)
+  (v1.6.3.4-v5 spam-click fixes, DragController destroyed flag)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -37,18 +37,17 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-- **Unified Restore Path (v1.6.3.4-v3)** - UICoordinator ALWAYS deletes Map entry before restore
-- **Callback Verification (v1.6.3.4-v3)** - window.js and UpdateHandler log callback wiring
-- **Snapshot Lifecycle (v1.6.3.4-v3)** - Snapshot stays until clearSnapshot() called
+- **DragController Destroyed Flag (v1.6.3.4-v5)** - Prevents stale callbacks after destroy
+- **Entity-Instance Same Object (v1.6.3.4-v5)** - Entity in Map IS the tabWindow
 
-**Constants Reference:**
+**Timing Constants (v1.6.3.4-v5):**
 
 | Constant | Value | Location |
 |----------|-------|----------|
+| `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler |
+| `MINIMIZE_DEBOUNCE_MS` | 200 | VisibilityHandler |
+| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | UICoordinator |
 | `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator |
-| `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator |
-| `STATE_EMIT_DELAY_MS` | 200 | VisibilityHandler |
-| `DEFAULT_WIDTH/HEIGHT` | 400/300 | QuickTabWindow |
 
 **Minimized State Detection:**
 ```javascript
@@ -57,34 +56,34 @@ const isMinimized = tab.minimized ?? tab.visibility?.minimized ?? false;
 
 ---
 
-## v1.6.3.4-v3 Key Patterns
+## v1.6.3.4-v5 Key Patterns
 
-### Unified Restore Path (NEW)
+### DragController Destroyed Flag
 
 ```javascript
-// UICoordinator ALWAYS deletes Map entry before restore
-_handleRestoreOperation(quickTab) {
-  this.renderedTabs.delete(id);  // Force fresh render
-  this.render(quickTab);
+destroy() { this.destroyed = true; }
+_onDragEnd() { if (this.destroyed) return; } // Prevent stale callbacks
+```
+
+### Entity-Instance Same Object Pattern
+
+```javascript
+const entity = this.quickTabsMap.get(id);
+entity.minimized = false; // Updates both entity AND instance
+```
+
+### Snapshot Clear Delay
+
+```javascript
+const SNAPSHOT_CLEAR_DELAY_MS = 400;
+_scheduleSnapshotClearing(id) {
+  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
 }
 ```
 
-### Callback Verification (NEW)
+### Legacy Pattern (v1.6.3.4-v3)
 
-```javascript
-// window.js logs callback wiring for debugging
-console.log(`[QuickTabWindow.destroy] onDestroy callback exists: ${!!this.callbacks.onDestroy}`);
-
-// UpdateHandler verifies callback re-wiring after restore
-console.log(`[UpdateHandler] Callback wired: ${!!tabWindow.callbacks.onDestroy}`);
-```
-
-### Snapshot Lifecycle (v1.6.3.4-v3)
-
-```javascript
-// MinimizedManager.restore() keeps snapshot in minimizedTabs
-// UICoordinator calls clearSnapshot() after confirmed render
-```
+**Snapshot Lifecycle:** `restore()` keeps snapshot until `clearSnapshot()` called
 
 ---
 
@@ -344,49 +343,29 @@ updateZIndex(zIndex) {
 
 **Fix:** UICoordinator uses unified restore path - ALWAYS delete Map entry before render
 
-```javascript
-// ✅ CORRECT - UICoordinator unified restore path
-_handleRestoreOperation(quickTab) {
-  this.renderedTabs.delete(id);  // Force fresh render
-  this.render(quickTab);
-}
-// Snapshot stays in minimizedTabs until clearSnapshot() called
-```
-
-### Issue: Ghost Drag Events (v1.6.4.0)
+### Issue: Ghost Drag Events (v1.6.3.4-v5)
 
 **Fix:** DragController uses destroyed flag
 
 ```javascript
 // ✅ CORRECT - Check destroyed flag in all handlers
-class DragController {
-  destroyed = false;
-  
-  destroy() { this.destroyed = true; /* cleanup... */ }
-  
-  onPointerMove(e) {
-    if (this.destroyed) return;  // Prevent ghost events
-    // ...
-  }
-}
+destroy() { this.destroyed = true; }
+onPointerMove(e) { if (this.destroyed) return; }
+```
+
+### Issue: Spam-Click Breaks Minimize/Restore (v1.6.3.4-v5)
+
+**Fix:** Manager tracks pending operations, disables buttons during ops
+
+```javascript
+const PENDING_OPERATIONS = new Set();
+_startPendingOperation(id) { PENDING_OPERATIONS.add(id); }
+// 2-second timeout auto-clears
 ```
 
 ### Issue: Drag Pointer Escapes Quick Tab
 
 **Fix:** Use setPointerCapture
-
-```javascript
-// ✅ CORRECT - Pointer captured
-element.addEventListener('pointerdown', (e) => {
-  element.setPointerCapture(e.pointerId);
-  // Start drag
-});
-
-element.addEventListener('pointerup', (e) => {
-  element.releasePointerCapture(e.pointerId);
-  // End drag
-});
-```
 
 ---
 
@@ -398,6 +377,8 @@ element.addEventListener('pointerup', (e) => {
 - [ ] Global visibility correct (no container filtering)
 - [ ] Drag works without pointer escape
 - [ ] Resize works in all 8 directions
+- [ ] **v1.6.3.4-v5:** DragController destroyed flag prevents ghost callbacks
+- [ ] **v1.6.3.4-v5:** Spam-clicks don't cause duplicate tabs
 - [ ] Navigation controls functional
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠

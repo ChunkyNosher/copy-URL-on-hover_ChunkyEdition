@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.4-v4  
+**Version:** 1.6.3.4-v5  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,6 +15,13 @@
 - **Cross-tab sync via storage.onChanged exclusively**
 - Direct local creation pattern
 - **State hydration on page reload** (v1.6.3.4+)
+
+**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
+- **Entity-Instance Same Object:** Entity in quickTabsMap IS the tabWindow (shared reference)
+- **Snapshot Clear Delay:** `SNAPSHOT_CLEAR_DELAY_MS = 400ms` allows double-clicks before clearing
+- **DragController Destroyed Flag:** Prevents stale callbacks from firing after destroy
+- **Manager PENDING_OPERATIONS:** Set tracks in-progress operations, disables buttons during ops
+- **Updated Timing Constants:** `STATE_EMIT_DELAY_MS = 100ms`, `MINIMIZE_DEBOUNCE_MS = 200ms`
 
 **v1.6.3.4-v4 Code Health Improvements:**
 | File | Before | After | Change |
@@ -156,9 +163,51 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.3.4-v4)
+## 🏗️ Key Architecture Patterns (v1.6.3.4-v5)
 
-### Refactoring Patterns Used (v1.6.3.4-v4)
+### Timing Constants Reference (v1.6.3.4-v5)
+
+| Constant | Value | Location | Purpose |
+|----------|-------|----------|---------|
+| `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler | State event fires first |
+| `MINIMIZE_DEBOUNCE_MS` | 200 | VisibilityHandler | Storage persist after state |
+| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | UICoordinator | Allows double-clicks |
+| `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator | DOM verification |
+| `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator | Monitor DOM presence |
+
+### Entity-Instance Same Object Pattern (v1.6.3.4-v5+)
+
+```javascript
+// Entity in quickTabsMap IS the tabWindow - same object reference
+const entity = this.quickTabsMap.get(id);
+entity.minimized = false; // Updates both entity AND instance
+```
+
+### Snapshot Clear Delay Pattern (v1.6.3.4-v5+)
+
+```javascript
+const SNAPSHOT_CLEAR_DELAY_MS = 400;
+_scheduleSnapshotClearing(id) {
+  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
+}
+```
+
+### DragController Destroyed Flag (v1.6.3.4-v5+)
+
+```javascript
+destroy() { this.destroyed = true; }
+_onDragEnd() { if (this.destroyed) return; } // Prevent stale callbacks
+```
+
+### Manager Pending Operations (v1.6.3.4-v5+)
+
+```javascript
+const PENDING_OPERATIONS = new Set();
+_startPendingOperation(id) { PENDING_OPERATIONS.add(id); /* disable button */ }
+_finishPendingOperation(id) { /* 2-second timeout */ PENDING_OPERATIONS.delete(id); }
+```
+
+### Refactoring Patterns (v1.6.3.4-v4)
 
 | Pattern | Problem Solved | Files Applied |
 |---------|----------------|---------------|
@@ -169,76 +218,13 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | Validation Rules | Long validation chains | background.js, content.js |
 | Handler Maps | Large switch/if-else | background.js, settings.js |
 
-### Unified Restore Path (v1.6.3.4-v3+)
+### Legacy Patterns (v1.6.3.4-v3/v4)
 
-```javascript
-// UICoordinator ALWAYS deletes Map entry before restore for fresh render
-_handleRestoreOperation(quickTab) {
-  this.renderedTabs.delete(id);  // Force fresh render
-  this.render(quickTab);
-}
-```
-
-### Early Map Cleanup (v1.6.3.4-v3+)
-
-```javascript
-// UICoordinator.update() - explicit cleanup BEFORE state checks
-_handleManagerMinimize(quickTab) {
-  this.renderedTabs.delete(id);  // Clean Map immediately
-  // Then proceed with minimize
-}
-```
-
-### Snapshot Lifecycle (v1.6.3.4-v3+)
-
-```javascript
-// MinimizedManager.restore() - snapshot stays in minimizedTabs
-restore(id) {
-  const snapshot = this.minimizedTabs.get(id);
-  // Apply snapshot but do NOT move to pendingClearSnapshots
-  // Snapshot cleared by UICoordinator after confirmed render via clearSnapshot()
-}
-```
-
-### Callback Verification (v1.6.3.4-v3+)
-
-```javascript
-// window.js - logs callback wiring for debugging
-console.log(`[QuickTabWindow.destroy] onDestroy callback exists: ${!!this.callbacks.onDestroy}`);
-
-// UpdateHandler - verifies callback re-wiring after restore
-console.log(`[UpdateHandler] Callback wired: ${!!tabWindow.callbacks.onDestroy}`);
-```
-
-### State Hydration on Page Reload (v1.6.3.4+)
-
-```javascript
-// index.js - _initStep6_Hydrate() restores Quick Tabs from storage
-async _hydrateStateFromStorage() {
-  const { quick_tabs_state_v2: storedState } = await browser.storage.local.get('quick_tabs_state_v2');
-  if (!storedState?.tabs?.length) return;
-  // Hydrate each tab, repopulate Map and DOM
-}
-```
-
-### Source Tracking Pattern (v1.6.3.4+)
-
-```javascript
-// All handlers accept source parameter for logging
-handleMinimize(id, source = 'UI') {
-  console.log(`[VisibilityHandler] Minimizing ${id} from ${source}`);
-}
-// Sources: 'Manager', 'UI', 'hydration', 'automation'
-```
-
-### Constants Reference
-
-| Constant | Value | Location |
-|----------|-------|----------|
-| `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator |
-| `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator |
-| `STATE_EMIT_DELAY_MS` | 200 | VisibilityHandler |
-| `DEFAULT_WIDTH/HEIGHT` | 400/300 | QuickTabWindow |
+**Unified Restore Path:** UICoordinator deletes Map entry before restore for fresh render  
+**Early Map Cleanup:** Manager minimize triggers explicit cleanup BEFORE state checks  
+**Snapshot Lifecycle:** `restore()` keeps snapshot until `clearSnapshot()` called  
+**State Hydration:** `_initStep6_Hydrate()` restores Quick Tabs from storage on page reload  
+**Source Tracking:** All handlers accept source parameter ('Manager', 'UI', 'hydration')
 
 ### Consistent Minimized State Detection
 
@@ -336,9 +322,8 @@ Use the agentic-tools MCP to create memories instead.
   - Z-index tracking with `_highestZIndex`, `_getNextZIndex()`
   - DOM re-render recovery on unexpected detachment
   - Unified settings loading from `storage.local`
-  - `DOM_VERIFICATION_DELAY_MS = 150`, `DOM_MONITORING_INTERVAL_MS = 500`
+  - **v1.6.3.4-v5:** `SNAPSHOT_CLEAR_DELAY_MS = 400`, `_scheduleSnapshotClearing()` method
   - **v1.6.3.4-v3:** Helper methods: `_handleManagerMinimize()`, `_handleRestoreOperation()`, `_handleNotInMap()`, `_handleStateMismatchRestore()`, `_performNormalUpdate()`
-  - **v1.6.3.4-v3:** Unified restore path - ALWAYS delete Map entry before render
 - `src/features/quick-tabs/index.js`:
   - DestroyHandler receives `internalEventBus` for state:deleted
   - **v1.6.3.4+:** `_initStep6_Hydrate()` for page reload hydration
@@ -349,10 +334,10 @@ Use the agentic-tools MCP to create memories instead.
   - Debounced batch writes, **`_batchMode`**
   - **v1.6.3.4+:** Source parameter for logging
 - `src/features/quick-tabs/handlers/VisibilityHandler.js`:
-  - `STATE_EMIT_DELAY_MS = 200`, `_operationLocks` mutex
-  - Re-registers window in quickTabsMap after restore
-  - **v1.6.3.4+:** Source parameter, z-index persistence on focus
-  - **v1.6.3.4-v3:** Emits `isRestoreOperation: true` on state:updated for restore
+  - **v1.6.3.4-v5:** `STATE_EMIT_DELAY_MS = 100ms`, `MINIMIZE_DEBOUNCE_MS = 200ms`
+  - **v1.6.3.4-v5:** Entity state updated FIRST in handleMinimize/handleRestore before instance
+  - **v1.6.3.4-v5:** handleRestore emits state:updated even when snapshot not found
+  - Re-registers window in quickTabsMap after restore, `_operationLocks` mutex
 - `src/features/quick-tabs/handlers/UpdateHandler.js`:
   - **v1.6.3.4+:** zIndex included in state hash for change detection
   - **v1.6.3.4-v3:** Callback verification logging after restore
@@ -362,13 +347,20 @@ Use the agentic-tools MCP to create memories instead.
 - `src/features/quick-tabs/window.js`:
   - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` constants
   - **v1.6.3.4-v3:** `destroy()` verifies and logs onDestroy callback execution
+- `src/features/quick-tabs/window/DragController.js`:
+  - **v1.6.3.4-v5:** `destroyed` flag prevents stale callbacks after destroy
+  - All drag callbacks check `this.destroyed` before executing
 - `src/features/quick-tabs/window/TitlebarBuilder.js`:
   - Shows LAST 12 chars of UID (unique suffix)
   - `updateDebugIdDisplay(showDebugId)`
 - `src/utils/storage-utils.js`:
   - Shared storage utilities with async persist
   - **v1.6.3.4+:** `serializeTabForStorage()` includes zIndex field
-- `sidebar/quick-tabs-manager.js` - `_getIndicatorClass()` returns 'orange' when `domVerified=false`
+- `sidebar/quick-tabs-manager.js`:
+  - **v1.6.3.4-v5:** `PENDING_OPERATIONS` Set tracks in-progress minimize/restore
+  - **v1.6.3.4-v5:** `_startPendingOperation()`, `_finishPendingOperation()` with 2-second timeout
+  - **v1.6.3.4-v5:** Buttons disabled while operation is pending
+  - `_getIndicatorClass()` returns 'orange' when `domVerified=false`
 - `sidebar/settings.html` - UID display checkbox in Advanced tab
 - `sidebar/settings.js` - `quickTabShowDebugId` in DEFAULT_SETTINGS
 
