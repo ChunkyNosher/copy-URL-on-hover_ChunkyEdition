@@ -1519,6 +1519,7 @@ function _shouldUpdateState(newValue) {
  * v1.6.4 - FIX Bug #7: Check saveId before hash comparison
  * v1.6.4.11 - Refactored: Extracted helpers to reduce cc below 9
  * v1.6.3.4-v6 - FIX Issues #1, #2, #5: Transaction tracking, URL filtering, cooldown
+ * v1.6.3.4-v8 - FIX Issue #8: Extracted logging and validation helpers
  * 
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
@@ -1530,21 +1531,71 @@ function _shouldUpdateState(newValue) {
 function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
   const oldValue = changes.quick_tabs_state_v2.oldValue;
-
-  // v1.6.3.4-v6 - FIX Issue #1: Check if this is our own transaction
-  if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
-    console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
+  
+  // v1.6.3.4-v8 - Log state change for debugging
+  _logStorageChange(oldValue, newValue);
+  
+  // v1.6.3.4-v8 - Check early exit conditions
+  if (_shouldIgnoreStorageChange(newValue, oldValue)) {
     return;
   }
+  
+  // v1.6.3.4-v8 - Process and cache the update
+  _processStorageUpdate(newValue);
+}
 
-  // v1.6.3.4-v6 - FIX Issue #5: Cooldown period to prevent processing identical changes
+/**
+ * Log storage change with comprehensive details for debugging
+ * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
+ * @param {Object} oldValue - Previous storage value
+ * @param {Object} newValue - New storage value
+ */
+function _logStorageChange(oldValue, newValue) {
+  const oldCount = oldValue?.tabs?.length ?? 0;
+  const newCount = newValue?.tabs?.length ?? 0;
+  
+  console.log('[Background] ┌─ storage.onChanged RECEIVED ─────────────────────────');
+  console.log('[Background] │ tabs:', oldCount, '→', newCount);
+  console.log('[Background] │ saveId:', oldValue?.saveId ?? 'none', '→', newValue?.saveId ?? 'none');
+  _logCorruptionWarning(oldCount, newCount);
+  console.log('[Background] └──────────────────────────────────────────────────────');
+}
+
+/**
+ * Log warning for potential storage corruption (N → 0 tabs)
+ * v1.6.3.4-v8 - Extracted to reduce _logStorageChange complexity
+ * @param {number} oldCount - Previous tab count
+ * @param {number} newCount - New tab count
+ */
+function _logCorruptionWarning(oldCount, newCount) {
+  if (oldCount > 0 && newCount === 0) {
+    console.warn('[Background] │ ⚠️ WARNING: Tab count dropped from', oldCount, 'to 0!');
+    console.warn('[Background] │ This may indicate a storage corruption cascade');
+  }
+}
+
+/**
+ * Check if storage change should be ignored (early exit conditions)
+ * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value (unused, for signature consistency)
+ * @returns {boolean} True if change should be ignored
+ */
+function _shouldIgnoreStorageChange(newValue, oldValue) {
+  // Check if this is our own transaction
+  if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
+    console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
+    return true;
+  }
+
+  // Update cooldown tracking
   const now = Date.now();
   if (now - lastStorageChangeProcessed < STORAGE_CHANGE_COOLDOWN_MS) {
     console.log('[Background] Storage change within cooldown, may skip');
   }
   lastStorageChangeProcessed = now;
 
-  // v1.6.3.4-v6 - FIX Issue #5: Log oldValue vs newValue comparison
+  // Log comparison
   console.log('[Background] Storage change comparison:', {
     oldTabCount: oldValue?.tabs?.length ?? 0,
     newTabCount: newValue?.tabs?.length ?? 0,
@@ -1553,27 +1604,36 @@ function _handleQuickTabStateChange(changes) {
     transactionId: newValue?.transactionId
   });
 
-  // v1.6.1.6 - FIX: Check if this is our own write (prevents feedback loop)
+  // Check if this is our own write
   if (_isSelfWrite(newValue, quickTabHandler)) {
     console.log('[Background] Ignoring self-write:', newValue.writeSourceId);
-    return;
+    return true;
   }
+  
+  return false;
+}
 
-  // v1.6.3.2 - FIX Bug #1, #6: ALWAYS update cache if tabs is empty or missing
+/**
+ * Process storage update and update global cache
+ * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
+ * @param {Object} newValue - New storage value
+ */
+function _processStorageUpdate(newValue) {
+  // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
     _clearCacheForEmptyStorage(newValue);
     return;
   }
 
-  // v1.6.4 - Check if state actually requires update
+  // Check if state actually requires update
   if (!_shouldUpdateState(newValue)) {
     return;
   }
   
-  // v1.6.3.4-v6 - FIX Issue #2: Filter out tabs with invalid URLs before updating cache
+  // Filter out tabs with invalid URLs
   const filteredValue = filterValidTabs(newValue);
   
-  // v1.6.2 - MIGRATION: Only update background's cache, no broadcast needed
+  // Update background's cache
   console.log('[Background] Quick Tab state changed, updating cache (cross-tab sync via storage.onChanged)');
   _updateGlobalStateFromStorage(filteredValue);
 }

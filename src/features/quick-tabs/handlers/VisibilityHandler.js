@@ -43,6 +43,11 @@ const OPERATION_LOCK_MS = 200;
 // 100ms gives UICoordinator time to render but fires before MINIMIZE_DEBOUNCE_MS (200ms)
 const STATE_EMIT_DELAY_MS = 100;
 
+// v1.6.3.4-v8 - FIX Issue #3: Delay before clearing operation suppression flag
+// 50ms allows any pending callbacks to be suppressed while still being quick enough
+// to not interfere with subsequent legitimate operations
+const CALLBACK_SUPPRESSION_DELAY_MS = 50;
+
 /**
  * VisibilityHandler class
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
@@ -78,6 +83,13 @@ export class VisibilityHandler {
     // v1.6.3.2 - FIX Issue #2: Mutex/lock pattern for operations
     // Key: operation-id (e.g., "minimize-qt-123"), Value: timestamp when lock was acquired
     this._operationLocks = new Map();
+    
+    // v1.6.3.4-v8 - FIX Issue #3: Track operations initiated by this handler
+    // to suppress callbacks that would cause circular propagation
+    this._initiatedOperations = new Set();
+    
+    // v1.6.3.4-v8 - FIX Issue #6: Track recent focus events for debouncing
+    this._lastFocusTime = new Map(); // id -> timestamp
   }
 
   /**
@@ -202,12 +214,20 @@ export class VisibilityHandler {
    * v1.6.3.4 - FIX Issues #5, #6: Atomic Map cleanup, source logging
    * v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
    * v1.6.3.4-v7 - FIX Issues #3, #6: Instance validation and try/finally for lock cleanup
+   * v1.6.3.4-v8 - FIX Issue #3: Suppress callbacks during handler-initiated operations
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleMinimize(id, source = 'unknown') {
+    // v1.6.3.4-v8 - FIX Issue #3: Check if this is a callback from our own minimize() call
+    const operationKey = `minimize-${id}`;
+    if (this._initiatedOperations.has(operationKey)) {
+      console.log(`[VisibilityHandler] Suppressing callback re-entry for minimize (source: ${source}):`, id);
+      return { success: true, error: 'Suppressed callback' };
+    }
+    
     // v1.6.3.2 - FIX Issue #2: Use mutex to prevent multiple sources triggering same operation
     if (!this._tryAcquireLock('minimize', id)) {
       console.log(`[VisibilityHandler] Ignoring duplicate minimize request (lock held, source: ${source}) for:`, id);
@@ -257,11 +277,16 @@ export class VisibilityHandler {
       // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
       this.minimizedManager.add(id, tabWindow);
 
-      // v1.6.4.4 - FIX Bug #6: Actually minimize the window (hide it)
-      // The Manager sidebar was calling handleMinimize but the window wasn't being hidden
-      // because we weren't calling tabWindow.minimize()
-      tabWindow.minimize();
-      console.log(`[VisibilityHandler] Called tabWindow.minimize() (source: ${source}) for:`, id);
+      // v1.6.3.4-v8 - FIX Issue #3: Mark this operation as initiated by handler to suppress callback
+      this._initiatedOperations.add(operationKey);
+      try {
+        // v1.6.4.4 - FIX Bug #6: Actually minimize the window (hide it)
+        tabWindow.minimize();
+        console.log(`[VisibilityHandler] Called tabWindow.minimize() (source: ${source}) for:`, id);
+      } finally {
+        // v1.6.3.4-v8 - Clear the suppression flag after short delay (allows any pending callbacks)
+        setTimeout(() => this._initiatedOperations.delete(operationKey), CALLBACK_SUPPRESSION_DELAY_MS);
+      }
 
       // v1.6.3.4 - FIX Issue #5: Do NOT delete from Map during minimize
       // The tab still exists, it's just hidden. Map entry needed for restore.
@@ -536,10 +561,22 @@ export class VisibilityHandler {
    * Handle Quick Tab focus (bring to front)
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.4 - FIX Issue #3: Persist z-index to storage after focus
+   * v1.6.3.4-v8 - FIX Issue #6: Debounce duplicate focus events (100ms)
    *
    * @param {string} id - Quick Tab ID
    */
   handleFocus(id) {
+    // v1.6.3.4-v8 - FIX Issue #6: Debounce focus events to prevent duplicates
+    const FOCUS_DEBOUNCE_MS = 100;
+    const now = Date.now();
+    const lastFocus = this._lastFocusTime.get(id) || 0;
+    
+    if (now - lastFocus < FOCUS_DEBOUNCE_MS) {
+      console.log('[VisibilityHandler] Ignoring duplicate focus (within debounce window):', id);
+      return;
+    }
+    this._lastFocusTime.set(id, now);
+    
     console.log('[VisibilityHandler] Bringing to front:', id);
 
     const tabWindow = this.quickTabsMap.get(id);
@@ -654,7 +691,8 @@ export class VisibilityHandler {
     // v1.6.3.4-v6 - FIX Issue #6: Validate minimized count matches actual state
     const minimizedCount = state.tabs.filter(t => t.minimized).length;
     const activeCount = state.tabs.filter(t => !t.minimized).length;
-    const minimizedManagerCount = this.minimizedManager?.getAllMinimized?.()?.length ?? 0;
+    // v1.6.3.4-v8 - FIX Issue #2: getAllMinimized() DOES NOT EXIST - use getCount()
+    const minimizedManagerCount = this.minimizedManager?.getCount?.() ?? 0;
     
     console.log('[VisibilityHandler] State validation before persist:', {
       totalTabs: state.tabs.length,

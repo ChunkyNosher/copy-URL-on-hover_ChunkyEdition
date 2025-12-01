@@ -206,10 +206,20 @@ export class MinimizedManager {
    * Clear a snapshot after UICoordinator confirms successful render
    * v1.6.4.9 - FIX Issue #1: Called by UICoordinator after DOM verification passes
    * v1.6.3.4-v3 - FIX Issue #5: Now clears from minimizedTabs first (where snapshot stays during restore)
+   * v1.6.3.4-v8 - FIX Issue #8: Enhanced logging with caller identification via stack trace
    * @param {string} id - Quick Tab ID
    * @returns {boolean} True if snapshot was cleared, false if not found
    */
   clearSnapshot(id) {
+    // v1.6.3.4-v8 - FIX Issue #8: Log caller for debugging
+    const caller = new Error().stack?.split('\n')[2]?.trim() || 'unknown';
+    console.log('[MinimizedManager] clearSnapshot() called:', {
+      id,
+      caller,
+      minimizedTabsSize: this.minimizedTabs.size,
+      pendingSize: this.pendingClearSnapshots.size
+    });
+    
     // v1.6.3.4-v3 - FIX Issue #5: First check minimizedTabs (where snapshot stays during restore)
     if (this.minimizedTabs.has(id)) {
       this.minimizedTabs.delete(id);
