@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.4-v5  
+**Version:** 1.6.3.4-v6  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -16,29 +16,19 @@
 - Direct local creation pattern
 - **State hydration on page reload** (v1.6.3.4+)
 
+**v1.6.3.4-v6 Key Features (Storage Race Condition Fixes):**
+- **Transactional Storage Pattern:** `IN_PROGRESS_TRANSACTIONS` Set prevents concurrent writes
+- **URL Validation:** `isValidQuickTabUrl()` prevents ghost iframes from invalid URLs
+- **Debounced Storage Reads:** `STORAGE_READ_DEBOUNCE_MS = 300ms` in Manager
+- **Restore Operation Locks:** `RESTORE_IN_PROGRESS` Set prevents duplicate renders
+- **Write Deduplication:** `computeStateHash()` and `hasStateChanged()` prevent redundant writes
+- **State Validation Before Persist:** `validateStateForPersist()` checks required properties
+
 **v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
 - **Entity-Instance Same Object:** Entity in quickTabsMap IS the tabWindow (shared reference)
 - **Snapshot Clear Delay:** `SNAPSHOT_CLEAR_DELAY_MS = 400ms` allows double-clicks before clearing
 - **DragController Destroyed Flag:** Prevents stale callbacks from firing after destroy
 - **Manager PENDING_OPERATIONS:** Set tracks in-progress operations, disables buttons during ops
-- **Updated Timing Constants:** `STATE_EMIT_DELAY_MS = 100ms`, `MINIMIZE_DEBOUNCE_MS = 200ms`
-
-**v1.6.3.4-v4 Code Health Improvements:**
-| File | Before | After | Change |
-|------|--------|-------|--------|
-| background.js | 6.79 | 10.0 | +3.21 |
-| state-manager.js | 8.28 | 10.0 | +1.72 |
-| UICoordinator.js | 8.41 | 9.68 | +1.27 |
-| content.js | 8.55 | 9.09 | +0.54 |
-| window.js | 8.72 | 10.0 | +1.28 |
-| settings.js | 8.88 | 10.0 | +1.12 |
-
-**v1.6.3.4-v3 Key Features (Bug Fixes):**
-- **Unified Restore Path:** UICoordinator ALWAYS deletes Map entry before restore for fresh render
-- **Early Map Cleanup:** Manager minimize triggers explicit Map cleanup BEFORE state checks
-- **Snapshot Lifecycle Fix:** `MinimizedManager.restore()` keeps snapshot in `minimizedTabs` until `clearSnapshot()` called
-- **Callback Verification Logging:** window.js and UpdateHandler log callback wiring
-- **Comprehensive Decision Logging:** All major decision points log conditions and outcomes
 
 ---
 
@@ -158,27 +148,57 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `getBrowserStorageAPI()` | Get browser/chrome storage API |
 | `buildStateForStorage(map, minMgr)` | Build state from quickTabsMap |
 | `persistStateToStorage(state, prefix)` | **Async** persist with 5-second timeout |
+| `IN_PROGRESS_TRANSACTIONS` | **v6:** Set for transaction tracking |
+| `generateTransactionId()` | **v6:** Create unique transaction ID |
+| `isValidQuickTabUrl(url)` | **v6:** Validate URL for Quick Tab |
+| `computeStateHash(state)` | **v6:** Hash state for comparison |
+| `hasStateChanged(old, new)` | **v6:** Compare states by hash |
+| `shouldProcessStorageChange()` | **v6:** Check if change should be processed |
+| `validateStateForPersist(state)` | **v6:** Validate state before persist |
 
 **CRITICAL:** Always use `storage.local` for Quick Tab state, NOT `storage.sync`.
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.3.4-v5)
+## 🏗️ Key Architecture Patterns (v1.6.3.4-v6)
 
-### Timing Constants Reference (v1.6.3.4-v5)
+### Timing Constants Reference (v1.6.3.4-v6)
 
 | Constant | Value | Location | Purpose |
 |----------|-------|----------|---------|
 | `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler | State event fires first |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | VisibilityHandler | Storage persist after state |
+| `STORAGE_READ_DEBOUNCE_MS` | 300 | quick-tabs-manager.js | **v6:** Debounce storage reads |
 | `SNAPSHOT_CLEAR_DELAY_MS` | 400 | UICoordinator | Allows double-clicks |
+| `STORAGE_COOLDOWN_MS` | 50 | background.js | **v6:** Prevent duplicate processing |
+| `RENDER_COOLDOWN_MS` | 1000 | UICoordinator | **v6:** Prevent duplicate renders |
 | `DOM_VERIFICATION_DELAY_MS` | 150 | UICoordinator | DOM verification |
 | `DOM_MONITORING_INTERVAL_MS` | 500 | UICoordinator | Monitor DOM presence |
+
+### Transactional Storage Pattern (v1.6.3.4-v6+)
+
+```javascript
+const IN_PROGRESS_TRANSACTIONS = new Set();
+const transactionId = generateTransactionId();
+try { await persistStateToStorage(state, prefix); }
+finally { IN_PROGRESS_TRANSACTIONS.delete(transactionId); }
+```
+
+### URL Validation Pattern (v1.6.3.4-v6+)
+
+```javascript
+if (!isValidQuickTabUrl(url)) throw new Error('Invalid URL');
+```
+
+### Write Deduplication Pattern (v1.6.3.4-v6+)
+
+```javascript
+if (!hasStateChanged(oldState, newState)) return; // Skip redundant write
+```
 
 ### Entity-Instance Same Object Pattern (v1.6.3.4-v5+)
 
 ```javascript
-// Entity in quickTabsMap IS the tabWindow - same object reference
 const entity = this.quickTabsMap.get(id);
 entity.minimized = false; // Updates both entity AND instance
 ```
@@ -187,44 +207,28 @@ entity.minimized = false; // Updates both entity AND instance
 
 ```javascript
 const SNAPSHOT_CLEAR_DELAY_MS = 400;
-_scheduleSnapshotClearing(id) {
-  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
-}
+setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
 ```
 
 ### DragController Destroyed Flag (v1.6.3.4-v5+)
 
 ```javascript
 destroy() { this.destroyed = true; }
-_onDragEnd() { if (this.destroyed) return; } // Prevent stale callbacks
+_onDragEnd() { if (this.destroyed) return; }
 ```
 
 ### Manager Pending Operations (v1.6.3.4-v5+)
 
 ```javascript
 const PENDING_OPERATIONS = new Set();
-_startPendingOperation(id) { PENDING_OPERATIONS.add(id); /* disable button */ }
-_finishPendingOperation(id) { /* 2-second timeout */ PENDING_OPERATIONS.delete(id); }
+_startPendingOperation(id) { PENDING_OPERATIONS.add(id); }
 ```
 
-### Refactoring Patterns (v1.6.3.4-v4)
+### Legacy Patterns (v1.6.3.4-v3 through v5)
 
-| Pattern | Problem Solved | Files Applied |
-|---------|----------------|---------------|
-| Early Returns | Bumpy Road (deep nesting) | background.js, state-manager.js |
-| Method Extraction | Complex methods >15 lines | UICoordinator.js, content.js |
-| Code Consolidation | Duplicate logic | state-manager.js, settings.js |
-| Parameter Objects | Excess arguments (>4) | window.js |
-| Validation Rules | Long validation chains | background.js, content.js |
-| Handler Maps | Large switch/if-else | background.js, settings.js |
-
-### Legacy Patterns (v1.6.3.4-v3/v4)
-
-**Unified Restore Path:** UICoordinator deletes Map entry before restore for fresh render  
-**Early Map Cleanup:** Manager minimize triggers explicit cleanup BEFORE state checks  
-**Snapshot Lifecycle:** `restore()` keeps snapshot until `clearSnapshot()` called  
-**State Hydration:** `_initStep6_Hydrate()` restores Quick Tabs from storage on page reload  
-**Source Tracking:** All handlers accept source parameter ('Manager', 'UI', 'hydration')
+- **Unified Restore Path:** UICoordinator deletes Map entry before restore
+- **Snapshot Lifecycle:** `restore()` keeps snapshot until `clearSnapshot()` called
+- **State Hydration:** `_initStep6_Hydrate()` restores Quick Tabs on page reload
 
 ### Consistent Minimized State Detection
 
@@ -313,7 +317,7 @@ Use the agentic-tools MCP to create memories instead.
 ## 📋 Quick Reference
 
 ### Key Files
-- `background.js` - Background script, storage listeners, saveId tracking
+- `background.js` - Background script, storage listeners, saveId tracking, **v6:** `STORAGE_COOLDOWN_MS`, `shouldProcessStorageChange()`
 - `src/content.js` - Content script, Quick Tab creation, Manager action handlers
 - `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings
 - `src/utils/storage-utils.js` - Shared storage utilities with async persist
@@ -322,8 +326,8 @@ Use the agentic-tools MCP to create memories instead.
   - Z-index tracking with `_highestZIndex`, `_getNextZIndex()`
   - DOM re-render recovery on unexpected detachment
   - Unified settings loading from `storage.local`
+  - **v1.6.3.4-v6:** `RESTORE_IN_PROGRESS` Set, `_renderTimestamps` Map, `RENDER_COOLDOWN_MS = 1000`
   - **v1.6.3.4-v5:** `SNAPSHOT_CLEAR_DELAY_MS = 400`, `_scheduleSnapshotClearing()` method
-  - **v1.6.3.4-v3:** Helper methods: `_handleManagerMinimize()`, `_handleRestoreOperation()`, `_handleNotInMap()`, `_handleStateMismatchRestore()`, `_performNormalUpdate()`
 - `src/features/quick-tabs/index.js`:
   - DestroyHandler receives `internalEventBus` for state:deleted
   - **v1.6.3.4+:** `_initStep6_Hydrate()` for page reload hydration
@@ -335,18 +339,16 @@ Use the agentic-tools MCP to create memories instead.
   - **v1.6.3.4+:** Source parameter for logging
 - `src/features/quick-tabs/handlers/VisibilityHandler.js`:
   - **v1.6.3.4-v5:** `STATE_EMIT_DELAY_MS = 100ms`, `MINIMIZE_DEBOUNCE_MS = 200ms`
-  - **v1.6.3.4-v5:** Entity state updated FIRST in handleMinimize/handleRestore before instance
-  - **v1.6.3.4-v5:** handleRestore emits state:updated even when snapshot not found
+  - Entity state updated FIRST in handleMinimize/handleRestore before instance
   - Re-registers window in quickTabsMap after restore, `_operationLocks` mutex
 - `src/features/quick-tabs/handlers/UpdateHandler.js`:
   - **v1.6.3.4+:** zIndex included in state hash for change detection
   - **v1.6.3.4-v3:** Callback verification logging after restore
 - `src/features/quick-tabs/minimized-manager.js`:
-  - **v1.6.3.4-v3:** `restore()` keeps snapshot in minimizedTabs until `clearSnapshot()` called
-  - **v1.6.3.4-v3:** Snapshot cleared by UICoordinator after confirmed render
+  - Snapshot stays in minimizedTabs until `clearSnapshot()` called
 - `src/features/quick-tabs/window.js`:
   - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` constants
-  - **v1.6.3.4-v3:** `destroy()` verifies and logs onDestroy callback execution
+  - **v1.6.3.4-v6:** URL validation in constructor (throws for invalid URLs)
 - `src/features/quick-tabs/window/DragController.js`:
   - **v1.6.3.4-v5:** `destroyed` flag prevents stale callbacks after destroy
   - All drag callbacks check `this.destroyed` before executing
@@ -355,11 +357,12 @@ Use the agentic-tools MCP to create memories instead.
   - `updateDebugIdDisplay(showDebugId)`
 - `src/utils/storage-utils.js`:
   - Shared storage utilities with async persist
+  - **v1.6.3.4-v6:** Transaction tracking, URL validation, hash comparison, state validation
   - **v1.6.3.4+:** `serializeTabForStorage()` includes zIndex field
 - `sidebar/quick-tabs-manager.js`:
+  - **v1.6.3.4-v6:** `STORAGE_READ_DEBOUNCE_MS = 300ms`, debounced storage reads
   - **v1.6.3.4-v5:** `PENDING_OPERATIONS` Set tracks in-progress minimize/restore
-  - **v1.6.3.4-v5:** `_startPendingOperation()`, `_finishPendingOperation()` with 2-second timeout
-  - **v1.6.3.4-v5:** Buttons disabled while operation is pending
+  - Buttons disabled while operation is pending
   - `_getIndicatorClass()` returns 'orange' when `domVerified=false`
 - `sidebar/settings.html` - UID display checkbox in Advanced tab
 - `sidebar/settings.js` - `quickTabShowDebugId` in DEFAULT_SETTINGS
