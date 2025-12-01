@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.3.4-v5 spam-click fixes)
+  warning indicators, cross-tab operations (v1.6.3.4-v6 storage race condition fixes)
 tools: ["*"]
 ---
 
@@ -28,23 +28,24 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v6 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Warning Indicator** - Orange pulse when `domVerified=false`
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
+- **Debounced Storage Reads (v1.6.3.4-v6)** - `STORAGE_READ_DEBOUNCE_MS = 300ms`
 - **PENDING_OPERATIONS (v1.6.3.4-v5)** - Set tracks in-progress ops, disables buttons
-- **Button Disable During Ops (v1.6.3.4-v5)** - Prevents spam-clicks
-- **2-Second Timeout (v1.6.3.4-v5)** - Auto-clears stuck pending operations
+- **Button Disable During Ops** - Prevents spam-clicks
 
-**Timing Constants (v1.6.3.4-v5):**
+**Timing Constants (v1.6.3.4-v6):**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
+| `STORAGE_READ_DEBOUNCE_MS` | 300 | **v6:** Debounce storage reads |
 | `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
 | `PENDING_OP_TIMEOUT_MS` | 2000 | Auto-clear stuck operations |
 
@@ -57,9 +58,21 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## Manager Patterns
+## v1.6.3.4-v6 Manager Patterns
 
-### Pending Operations Pattern (v1.6.3.4-v5)
+### Debounced Storage Reads
+
+```javascript
+const STORAGE_READ_DEBOUNCE_MS = 300;
+let debounceTimer;
+function checkStorageDebounce() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(loadQuickTabsState, STORAGE_READ_DEBOUNCE_MS);
+}
+// Used in storage.onChanged handler and loadQuickTabsState()
+```
+
+### Pending Operations Pattern (v5+)
 
 ```javascript
 const PENDING_OPERATIONS = new Set();
@@ -83,61 +96,16 @@ function _getIndicatorClass(tab, isMinimized) {
 }
 ```
 
-### Minimized Detection Helper
-
-```javascript
-function isTabMinimizedHelper(tab) {
-  return tab.minimized ?? tab.visibility?.minimized ?? false;
-}
-```
-
-### Snapshot Clear Delay (v1.6.3.4-v5)
-
-```javascript
-const SNAPSHOT_CLEAR_DELAY_MS = 400;
-// UICoordinator delays clearSnapshot to allow double-clicks
-_scheduleSnapshotClearing(id) {
-  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
-}
-```
-
 ---
 
 ## Your Responsibilities
 
 1. **Manager UI & Layout** - Panel display, position, resize, drag
 2. **Global Quick Tabs List** - Display all Quick Tabs (no container grouping)
-3. **Solo/Mute/Warning Indicators** - Show 🎯/🔇/⚠️ status in header and per-item
-4. **Minimize/Restore** - Handle minimized tabs panel with snapshot lifecycle
+3. **Solo/Mute/Warning Indicators** - Show 🎯/🔇/⚠️ status
+4. **Minimize/Restore** - Handle minimized tabs with snapshot lifecycle
 5. **Manager-QuickTab Sync** - EventBus bidirectional communication
 6. **Clear Storage** - Debug feature to clear all Quick Tabs
-
----
-
-## Manager Architecture
-
-### PanelManager Structure
-
-```html
-<div id="quick-tabs-panel" class="quick-tabs-panel">
-  <div class="panel-header">
-    <span class="panel-title">Quick Tabs Manager</span>
-    <span class="solo-mute-indicators">🎯 Solo on 2 tabs | 🔇 Muted on 1</span>
-  </div>
-  <div class="panel-content">
-    <!-- Quick Tab items with indicator classes: green/red/orange -->
-    <div class="quick-tab-item" data-id="qt-123">
-      <span class="item-indicator orange-pulse"></span> <!-- warning indicator -->
-      <button class="item-minimize">−</button>
-      <button class="item-close">✕</button>
-    </div>
-  </div>
-  <div class="panel-footer">
-    <button class="close-minimized">Close Minimized</button>
-    <button class="close-all">Close All</button>
-  </div>
-</div>
-```
 
 ---
 
@@ -152,9 +120,8 @@ _scheduleSnapshotClearing(id) {
 
 ## Manager Action Messages
 
-Manager sends these messages to content script:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
-- `CLOSE_MINIMIZED_QUICK_TABS` - Close all minimized (backwards compat)
+- `CLOSE_MINIMIZED_QUICK_TABS` - Close all minimized
 - `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab
 - `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab
 
@@ -162,12 +129,7 @@ Manager sends these messages to content script:
 
 ## MCP Server Integration
 
-**MANDATORY for Manager Work:**
-- **Context7:** Verify WebExtensions APIs ⭐
-- **Perplexity:** Research UI patterns (paste code) ⭐
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health ⭐
-- **Agentic-Tools:** Search memories, store solutions
+**MANDATORY:** Context7, Perplexity, ESLint, CodeScene, Agentic-Tools
 
 ---
 
@@ -177,8 +139,7 @@ Manager sends these messages to content script:
 - [ ] All Quick Tabs display globally
 - [ ] Solo/Mute indicators correct (arrays)
 - [ ] Orange indicator for `domVerified=false`
-- [ ] Header shows Solo/Mute counts
-- [ ] **v1.6.3.4-v5:** Spam-clicks don't cause duplicate/ghost tabs
+- [ ] **v1.6.3.4-v6:** Debounced storage reads prevent read storms
 - [ ] **v1.6.3.4-v5:** Buttons disabled during pending operations
 - [ ] **v1.6.3.4-v5:** Pending operations auto-clear after 2 seconds
 - [ ] Close Minimized works for all tabs

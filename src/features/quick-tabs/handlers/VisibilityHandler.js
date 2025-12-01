@@ -14,6 +14,7 @@
  *   - Issue #5: Explicit Map deletion with logging
  *   - Issue #6: Source parameter for all operations
  * v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag for entity-instance state desync
+ * v1.6.3.4-v6 - FIX Issue #6: Ensure sync point after restore before persist
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -24,10 +25,10 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.4.11
+ * @version 1.6.4.12
  */
 
-import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
+import { buildStateForStorage, persistStateToStorage, validateStateForPersist } from '@utils/storage-utils.js';
 
 // v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
 // STATE_EMIT_DELAY_MS must be LESS THAN MINIMIZE_DEBOUNCE_MS to prevent race condition
@@ -572,6 +573,7 @@ export class VisibilityHandler {
    * Persist current state to browser.storage.local
    * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
    * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
+   * v1.6.3.4-v6 - FIX Issue #6: Validate counts and state before persist
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    * @returns {Promise<void>}
@@ -588,8 +590,35 @@ export class VisibilityHandler {
       return;
     }
     
-    // v1.6.4.1 - FIX Bug #1: Log tab count and minimized states
+    // v1.6.3.4-v6 - FIX Issue #6: Validate minimized count matches actual state
     const minimizedCount = state.tabs.filter(t => t.minimized).length;
+    const activeCount = state.tabs.filter(t => !t.minimized).length;
+    const minimizedManagerCount = this.minimizedManager?.getAllMinimized?.()?.length ?? 0;
+    
+    console.log('[VisibilityHandler] State validation before persist:', {
+      totalTabs: state.tabs.length,
+      minimizedCount,
+      activeCount,
+      minimizedManagerCount
+    });
+    
+    // v1.6.3.4-v6 - FIX Issue #6: Warn if counts don't match
+    if (minimizedCount !== minimizedManagerCount) {
+      console.warn('[VisibilityHandler] Minimized count mismatch:', {
+        stateMinimized: minimizedCount,
+        managerMinimized: minimizedManagerCount
+      });
+    }
+    
+    // v1.6.3.4-v6 - FIX Issue #6: Full state validation
+    const validation = validateStateForPersist(state);
+    if (!validation.valid) {
+      console.warn('[VisibilityHandler] State validation warnings (proceeding with persist):', validation.errors);
+      // Continue with persist despite validation warnings - data integrity is maintained
+      // by the individual tab validation in buildStateForStorage
+    }
+    
+    // v1.6.4.1 - FIX Bug #1: Log tab count and minimized states
     console.log(`[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`);
     
     // v1.6.4.1 - FIX Bug #1: Await the async persist and log result

@@ -54,6 +54,10 @@ const DOM_MONITORING_INTERVAL_MS = 500;
 // 400ms grace period allows for accidental double-clicks without losing snapshot
 const SNAPSHOT_CLEAR_DELAY_MS = 400;
 
+// v1.6.3.4-v6 - FIX Issue #4: Track restore operations to prevent duplicates
+const RESTORE_IN_PROGRESS = new Set();
+const RESTORE_LOCK_MS = 500;
+
 export class UICoordinator {
   /**
    * @param {StateManager} stateManager - State manager instance
@@ -75,6 +79,8 @@ export class UICoordinator {
     this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
     // v1.6.3.4-v5 - FIX Issue #5: Track pending snapshot clear timers
     this._pendingSnapshotClears = new Map();
+    // v1.6.3.4-v6 - FIX Issue #3: Track render timestamps to prevent duplicate processing
+    this._renderTimestamps = new Map(); // id -> timestamp
   }
   
   /**
@@ -253,12 +259,28 @@ export class UICoordinator {
    * v1.6.4.9 - FIX Issues #1, #5, #6C: Clear snapshot after render, add monitoring, enhanced logging
    * v1.6.4.10 - FIX Issue #5: Enhanced Map lifecycle logging with before/after sizes
    * v1.6.4.11 - Refactored: extracted helpers to eliminate bumpy road pattern
+   * v1.6.3.4-v6 - FIX Issue #4: Track render timestamps to prevent duplicate processing
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow} Rendered tab window
    */
   render(quickTab) {
     const mapSizeBefore = this.renderedTabs.size;
+    
+    // v1.6.3.4-v6 - FIX Issue #4: Check for recent render to prevent duplicates
+    const lastRenderTime = this._renderTimestamps.get(quickTab.id);
+    const now = Date.now();
+    if (lastRenderTime && (now - lastRenderTime) < RESTORE_LOCK_MS) {
+      const existing = this.renderedTabs.get(quickTab.id);
+      if (existing && existing.isRendered()) {
+        console.log('[UICoordinator] Duplicate render blocked (within lock period):', {
+          id: quickTab.id,
+          timeSinceLastRender: now - lastRenderTime
+        });
+        return existing;
+      }
+      // No valid existing window found - continue with normal rendering
+    }
     
     // Check for existing valid window
     const existingWindow = this._handleExistingWindowInRender(quickTab, mapSizeBefore);
@@ -267,6 +289,9 @@ export class UICoordinator {
     }
 
     console.log('[UICoordinator] Rendering tab:', quickTab.id);
+    
+    // v1.6.3.4-v6 - FIX Issue #4: Track render timestamp
+    this._renderTimestamps.set(quickTab.id, now);
 
     // Create QuickTabWindow from QuickTab entity
     const tabWindow = this._createWindow(quickTab);
@@ -826,6 +851,7 @@ export class UICoordinator {
    * Handle restore operations with unified path
    * v1.6.3.4-v3 - Extracted to reduce update() complexity
    * v1.6.4.11 - Refactored: uses UpdateContext object for parameters
+   * v1.6.3.4-v6 - FIX Issue #4: Add restore-in-progress lock to prevent duplicates
    * @private
    * @param {Object} ctx - Update context { quickTab, tabWindow, entityMinimized, source, isRestoreOperation, mapSizeBefore }
    * @returns {QuickTabWindow|null} Rendered window if handled, null to continue
@@ -836,6 +862,16 @@ export class UICoordinator {
     if (!isRestoreOperation || entityMinimized) {
       return null; // Not a restore operation, continue processing
     }
+    
+    // v1.6.3.4-v6 - FIX Issue #4: Check if restore is already in progress
+    if (RESTORE_IN_PROGRESS.has(quickTab.id)) {
+      console.log('[UICoordinator] Restore already in progress, skipping:', quickTab.id);
+      return this.renderedTabs.get(quickTab.id) || null;
+    }
+    
+    // v1.6.3.4-v6 - FIX Issue #4: Lock restore operation
+    RESTORE_IN_PROGRESS.add(quickTab.id);
+    setTimeout(() => RESTORE_IN_PROGRESS.delete(quickTab.id), RESTORE_LOCK_MS);
     
     if (tabWindow) {
       console.log('[UICoordinator] renderedTabs.delete() - restore operation cleanup:', {

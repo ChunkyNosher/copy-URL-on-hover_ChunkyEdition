@@ -5,8 +5,41 @@
 
 export const STATE_KEY = 'quick_tabs_state_v2';
 
+// v1.6.3.4-v6 - Mock transaction tracking
+export const IN_PROGRESS_TRANSACTIONS = new Set();
+
 export function generateSaveId() {
   return `test-${Date.now()}-mockid`;
+}
+
+export function generateTransactionId() {
+  return `test-txn-${Date.now()}`;
+}
+
+export function isValidQuickTabUrl(url) {
+  if (!url || url === 'undefined') return false;
+  if (String(url).includes('/undefined')) return false;
+  if (url === 'about:blank') return true;
+  return url.startsWith('http://') || url.startsWith('https://') || 
+         url.startsWith('moz-extension://') || url.startsWith('chrome-extension://');
+}
+
+export function shouldProcessStorageChange(_transactionId) {
+  return true;
+}
+
+export function computeStateHash(_state) {
+  return 0;
+}
+
+export function hasStateChanged(_state) {
+  return true;
+}
+
+export function validateStateForPersist(state) {
+  if (!state) return { valid: false, errors: ['State is null'] };
+  if (!state.tabs) return { valid: false, errors: ['No tabs'] };
+  return { valid: true, errors: [] };
 }
 
 export function getBrowserStorageAPI() {

@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.4-v5 spam-click fixes, unified restore path)
+  Quick Tab functionality (v1.6.3.4-v6 storage race condition fixes)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v6 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,16 +37,27 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Global Visibility** - All Quick Tabs visible across all tabs
 - **State Hydration (v1.6.3.4+)** - Quick Tabs restored from storage on page reload
 
-**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
-- **Entity-Instance Same Object:** Entity in quickTabsMap IS the tabWindow (shared reference)
-- **Snapshot Clear Delay:** `SNAPSHOT_CLEAR_DELAY_MS = 400ms` allows double-clicks
-- **DragController Destroyed Flag:** Prevents stale callbacks after destroy
-- **Manager PENDING_OPERATIONS:** Set tracks in-progress ops, disables buttons
+**v1.6.3.4-v6 Key Features (Storage Race Condition Fixes):**
+- **Transactional Storage:** `IN_PROGRESS_TRANSACTIONS` Set prevents concurrent writes
+- **URL Validation:** `isValidQuickTabUrl()` prevents ghost iframes
+- **Debounced Storage Reads:** `STORAGE_READ_DEBOUNCE_MS = 300ms` in Manager
+- **Restore Operation Locks:** `RESTORE_IN_PROGRESS` Set prevents duplicate renders
+- **Write Deduplication:** `computeStateHash()` and `hasStateChanged()`
+- **State Validation:** `validateStateForPersist()` checks required properties
 
-**Timing Constants (v1.6.3.4-v5):**
+**v1.6.3.4-v5 Key Features (Spam-Click Fixes):**
+- **Entity-Instance Same Object:** Entity in quickTabsMap IS the tabWindow
+- **Snapshot Clear Delay:** `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
+- **DragController Destroyed Flag:** Prevents stale callbacks
+- **Manager PENDING_OPERATIONS:** Disables buttons during ops
+
+**Timing Constants (v1.6.3.4-v6):**
 - `STATE_EMIT_DELAY_MS = 100ms` (state event fires first)
 - `MINIMIZE_DEBOUNCE_MS = 200ms` (storage persist after state)
+- `STORAGE_READ_DEBOUNCE_MS = 300ms` (v6: debounce Manager reads)
 - `SNAPSHOT_CLEAR_DELAY_MS = 400ms` (allows double-clicks)
+- `STORAGE_COOLDOWN_MS = 50ms` (v6: prevent duplicate processing)
+- `RENDER_COOLDOWN_MS = 1000ms` (v6: prevent duplicate renders)
 
 **Storage Keys:**
 - **State:** `quick_tabs_state_v2` (storage.local)
@@ -65,84 +76,60 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v5 Key Patterns
+## v1.6.3.4-v6 Key Patterns
 
-### Entity-Instance Same Object Pattern
+### Transactional Storage Pattern
 
 ```javascript
-// Entity in quickTabsMap IS the tabWindow - same object reference
-const entity = this.quickTabsMap.get(id);
-entity.minimized = false; // Updates both entity AND instance
+const IN_PROGRESS_TRANSACTIONS = new Set();
+const transactionId = generateTransactionId();
+IN_PROGRESS_TRANSACTIONS.add(transactionId);
+try { await persistStateToStorage(state); }
+finally { IN_PROGRESS_TRANSACTIONS.delete(transactionId); }
 ```
 
-### Snapshot Clear Delay Pattern
+### URL Validation Pattern
 
 ```javascript
-const SNAPSHOT_CLEAR_DELAY_MS = 400;
-_scheduleSnapshotClearing(id) {
-  setTimeout(() => this.minimizedManager.clearSnapshot(id), SNAPSHOT_CLEAR_DELAY_MS);
+if (!isValidQuickTabUrl(url)) {
+  throw new Error('Invalid URL for Quick Tab');
 }
 ```
 
-### DragController Destroyed Flag
+### Write Deduplication Pattern
 
 ```javascript
-destroy() { this.destroyed = true; }
-_onDragEnd() { if (this.destroyed) return; } // Prevent stale callbacks
+if (!hasStateChanged(oldState, newState)) return; // Skip redundant write
 ```
 
-### Manager Pending Operations
+### Entity-Instance Same Object (v5+)
 
 ```javascript
-const PENDING_OPERATIONS = new Set();
-_startPendingOperation(id) { PENDING_OPERATIONS.add(id); /* disable button */ }
-_finishPendingOperation(id) { PENDING_OPERATIONS.delete(id); }
+const entity = this.quickTabsMap.get(id);
+entity.minimized = false; // Updates both entity AND instance
 ```
-
-### Legacy Patterns (v1.6.3.4-v3)
-
-**Unified Restore Path:** UICoordinator deletes Map entry before restore  
-**Early Map Cleanup:** Manager minimize triggers cleanup BEFORE state checks  
-**Snapshot Lifecycle:** `restore()` keeps snapshot until `clearSnapshot()` called
 
 ---
 
 ## Your Responsibilities
 
 ### 1. Quick Tab Lifecycle
-- Creation from link hover (Q key)
-- Rendering with full UI controls
-- Position/size persistence
-- Closing and cleanup
+- Creation from link hover (Q key), Rendering, Position/size persistence, Closing/cleanup
 
 ### 2. Solo/Mute System
-- Mutual exclusivity enforcement
-- Per-browser-tab visibility (`soloedOnTabs`, `mutedOnTabs` arrays)
-- Real-time cross-tab sync
-- UI indicators (🎯 Solo, 🔇 Muted)
+- Mutual exclusivity, Per-browser-tab visibility arrays, Real-time sync, UI indicators
 
 ### 3. Manager Integration
-- Global Quick Tabs display (no container grouping)
-- Minimize/restore functionality (ALL browser tabs)
-- Manager ↔ Quick Tab communication
-- Warning indicator for unverified DOM
+- Global display, Minimize/restore, Manager ↔ Quick Tab communication
 
 ### 4. Cross-Tab Synchronization
-- **storage.onChanged events** - Primary sync mechanism
-- Unified storage format with tabs array
-- State consistency across tabs
+- **storage.onChanged events**, Unified storage format, State consistency
 
 ---
 
 ## MCP Server Integration
 
-**MANDATORY for Quick Tab Work:**
-
-- **Context7:** Verify WebExtensions APIs ⭐
-- **Perplexity:** Research patterns (paste code) ⭐
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health ⭐
-- **Agentic-Tools:** Search memories, store solutions
+**MANDATORY:** Context7, Perplexity, ESLint, CodeScene, Agentic-Tools
 
 ---
 
@@ -152,14 +139,11 @@ _finishPendingOperation(id) { PENDING_OPERATIONS.delete(id); }
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
-- [ ] Manager displays with Solo/Mute indicators
-- [ ] **v1.6.3.4-v5:** Spam-clicks don't cause duplicate/ghost tabs
-- [ ] **v1.6.3.4-v5:** Entity-Instance same object pattern works
-- [ ] **v1.6.3.4-v5:** Snapshot clear delay (400ms) allows double-clicks
-- [ ] **v1.6.3.4-v5:** DragController destroyed flag prevents stale callbacks
-- [ ] **v1.6.3.4-v5:** Manager buttons disabled during pending operations
+- [ ] **v1.6.3.4-v6:** No duplicate/ghost tabs from race conditions
+- [ ] **v1.6.3.4-v6:** URL validation prevents invalid iframes
+- [ ] **v1.6.3.4-v6:** Transactional storage prevents concurrent writes
+- [ ] **v1.6.3.4-v6:** Write deduplication prevents redundant storage
 - [ ] **v1.6.3.4+:** State hydration on page reload
-- [ ] Drag/resize functional
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 

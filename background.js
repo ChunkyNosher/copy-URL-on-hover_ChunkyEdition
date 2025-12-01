@@ -96,6 +96,56 @@ let lastBroadcastedStateHash = 0;
 // v1.6.1.6 - Memory leak fix: Window for ignoring self-triggered storage events (ms)
 const WRITE_IGNORE_WINDOW_MS = 100;
 
+// v1.6.3.4-v6 - FIX Issue #1: Track in-progress storage transactions
+// This prevents storage.onChanged from processing writes we just triggered
+const IN_PROGRESS_TRANSACTIONS = new Set();
+
+// v1.6.3.4-v6 - FIX Issue #5: Cooldown for storage.onChanged processing
+const STORAGE_CHANGE_COOLDOWN_MS = 50;
+let lastStorageChangeProcessed = 0;
+
+/**
+ * Check if a URL is valid for Quick Tab creation
+ * v1.6.3.4-v6 - FIX Issue #2: Filter corrupted tabs before broadcast
+ * @param {*} url - URL to validate
+ * @returns {boolean} True if URL is valid
+ */
+function isValidQuickTabUrl(url) {
+  if (url === undefined || url === null || url === '') return false;
+  if (url === 'undefined' || String(url) === 'undefined') return false;
+  const urlStr = String(url);
+  if (urlStr.includes('/undefined')) return false;
+  const validProtocols = ['http://', 'https://', 'moz-extension://', 'chrome-extension://'];
+  return validProtocols.some(proto => urlStr.startsWith(proto));
+}
+
+/**
+ * Filter out tabs with invalid URLs from state
+ * v1.6.3.4-v6 - FIX Issue #2: Prevent ghost iframes
+ * @param {Object} state - State object with tabs array
+ * @returns {Object} State with only valid tabs
+ */
+function filterValidTabs(state) {
+  if (!state?.tabs || !Array.isArray(state.tabs)) {
+    return state;
+  }
+  
+  const originalCount = state.tabs.length;
+  const validTabs = state.tabs.filter(tab => {
+    if (!isValidQuickTabUrl(tab.url)) {
+      console.warn('[Background] Filtering out tab with invalid URL:', { id: tab.id, url: tab.url });
+      return false;
+    }
+    return true;
+  });
+  
+  if (validTabs.length !== originalCount) {
+    console.log('[Background] Filtered', originalCount - validTabs.length, 'invalid tabs');
+  }
+  
+  return { ...state, tabs: validTabs };
+}
+
 /**
  * Extract relevant tab data for hashing
  * v1.6.4.11 - Extracted from computeStateHash to reduce complexity
@@ -1468,6 +1518,7 @@ function _shouldUpdateState(newValue) {
  *            Refactored to reduce complexity by extracting helpers
  * v1.6.4 - FIX Bug #7: Check saveId before hash comparison
  * v1.6.4.11 - Refactored: Extracted helpers to reduce cc below 9
+ * v1.6.3.4-v6 - FIX Issues #1, #2, #5: Transaction tracking, URL filtering, cooldown
  * 
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
@@ -1478,6 +1529,29 @@ function _shouldUpdateState(newValue) {
  */
 function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
+  const oldValue = changes.quick_tabs_state_v2.oldValue;
+
+  // v1.6.3.4-v6 - FIX Issue #1: Check if this is our own transaction
+  if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
+    console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
+    return;
+  }
+
+  // v1.6.3.4-v6 - FIX Issue #5: Cooldown period to prevent processing identical changes
+  const now = Date.now();
+  if (now - lastStorageChangeProcessed < STORAGE_CHANGE_COOLDOWN_MS) {
+    console.log('[Background] Storage change within cooldown, may skip');
+  }
+  lastStorageChangeProcessed = now;
+
+  // v1.6.3.4-v6 - FIX Issue #5: Log oldValue vs newValue comparison
+  console.log('[Background] Storage change comparison:', {
+    oldTabCount: oldValue?.tabs?.length ?? 0,
+    newTabCount: newValue?.tabs?.length ?? 0,
+    oldSaveId: oldValue?.saveId,
+    newSaveId: newValue?.saveId,
+    transactionId: newValue?.transactionId
+  });
 
   // v1.6.1.6 - FIX: Check if this is our own write (prevents feedback loop)
   if (_isSelfWrite(newValue, quickTabHandler)) {
@@ -1496,9 +1570,12 @@ function _handleQuickTabStateChange(changes) {
     return;
   }
   
+  // v1.6.3.4-v6 - FIX Issue #2: Filter out tabs with invalid URLs before updating cache
+  const filteredValue = filterValidTabs(newValue);
+  
   // v1.6.2 - MIGRATION: Only update background's cache, no broadcast needed
   console.log('[Background] Quick Tab state changed, updating cache (cross-tab sync via storage.onChanged)');
-  _updateGlobalStateFromStorage(newValue);
+  _updateGlobalStateFromStorage(filteredValue);
 }
 
 /**

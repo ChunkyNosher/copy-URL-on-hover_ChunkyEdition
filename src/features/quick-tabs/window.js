@@ -8,6 +8,7 @@
  *   - Issue #3: Callbacks persist through restore - stored on instance, not closure
  *   - Issue #4: onDestroy callback verified before invoke, with logging
  *   - Issue #6: Enhanced logging for callback wiring and restore operations
+ * v1.6.3.4-v6 - FIX Issue #2: Add URL validation in constructor to reject malformed URLs
  */
 
 import browser from 'webextension-polyfill';
@@ -17,6 +18,7 @@ import { ResizeController } from './window/ResizeController.js';
 import { TitlebarBuilder } from './window/TitlebarBuilder.js';
 import { CONSTANTS } from '../../core/config.js';
 import { createElement } from '../../utils/dom.js';
+import { isValidQuickTabUrl } from '../../utils/storage-utils.js';
 
 // v1.6.4.7 - Default dimensions for fallback when invalid values provided
 const DEFAULT_WIDTH = 400;
@@ -29,6 +31,17 @@ const DEFAULT_TOP = 100;
  */
 export class QuickTabWindow {
   constructor(options) {
+    // v1.6.3.4-v6 - FIX Issue #2: Validate URL before creating window
+    // Uses shared isValidQuickTabUrl from storage-utils.js
+    if (!isValidQuickTabUrl(options.url)) {
+      console.error('[QuickTabWindow] REJECTED: Invalid URL for Quick Tab creation:', {
+        id: options.id,
+        url: options.url,
+        reason: 'URL validation failed (undefined, malformed, or invalid protocol)'
+      });
+      throw new Error(`Invalid URL for Quick Tab: ${options.url}`);
+    }
+    
     // v1.6.0 Phase 2.4 - Extract initialization methods to reduce complexity
     this._initializeBasicProperties(options);
     this._initializePositionAndSize(options);
@@ -39,6 +52,7 @@ export class QuickTabWindow {
 
   /**
    * Initialize basic properties (id, url, title, etc.)
+   * v1.6.3.4-v6 - FIX Issue #2: Log URL for debugging
    */
   _initializeBasicProperties(options) {
     this.id = options.id;
@@ -47,6 +61,9 @@ export class QuickTabWindow {
     this.cookieStoreId = options.cookieStoreId || 'firefox-default';
     // v1.6.3.2 - Debug ID display setting (from options, falls back to false)
     this.showDebugId = options.showDebugId ?? false;
+    
+    // v1.6.3.4-v6 - FIX Issue #2: Log URL for debugging ghost iframe issues
+    console.log('[QuickTabWindow] Created with URL:', { id: this.id, url: this.url });
   }
 
   /**

@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.3.4-v5 spam-click fixes, entity-instance same object pattern)
+  (v1.6.3.4-v6 storage race condition fixes, transactional storage pattern)
 tools: ["*"]
 ---
 
@@ -28,23 +28,27 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v6 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
 - **browser.storage.local** - Persistent state storage with key `quick_tabs_state_v2`
 - **Global Visibility** - Quick Tabs visible in all tabs
-- **Entity-Instance Same Object (v1.6.3.4-v5)** - Entity in Map IS the tabWindow
-- **Snapshot Clear Delay (v1.6.3.4-v5)** - `SNAPSHOT_CLEAR_DELAY_MS = 400ms`
+- **Transactional Storage (v1.6.3.4-v6)** - `IN_PROGRESS_TRANSACTIONS` prevents concurrent writes
+- **Write Deduplication (v1.6.3.4-v6)** - `hasStateChanged()` prevents redundant writes
+- **Debounced Reads (v1.6.3.4-v6)** - Manager uses `STORAGE_READ_DEBOUNCE_MS = 300ms`
 - **State Hydration (v1.6.3.4+)** - `_initStep6_Hydrate()` restores Quick Tabs on page reload
 
-**Timing Constants (v1.6.3.4-v5):**
+**Timing Constants (v1.6.3.4-v6):**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
+| `STORAGE_READ_DEBOUNCE_MS` | 300 | **v6:** Debounce Manager reads |
 | `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
+| `STORAGE_COOLDOWN_MS` | 50 | **v6:** Prevent duplicate processing |
+| `RENDER_COOLDOWN_MS` | 1000 | **v6:** Prevent duplicate renders |
 
 **Storage Format:**
 ```javascript
@@ -61,29 +65,63 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
+## v1.6.3.4-v6 Race Condition Prevention Patterns
+
+### Transactional Storage Pattern
+
+```javascript
+const IN_PROGRESS_TRANSACTIONS = new Set();
+const transactionId = generateTransactionId();
+IN_PROGRESS_TRANSACTIONS.add(transactionId);
+try { await persistStateToStorage(state); }
+finally { IN_PROGRESS_TRANSACTIONS.delete(transactionId); }
+```
+
+### Write Deduplication Pattern
+
+```javascript
+if (!hasStateChanged(oldState, newState)) {
+  return; // Skip redundant write
+}
+```
+
+### Debounced Storage Reads (Manager)
+
+```javascript
+const STORAGE_READ_DEBOUNCE_MS = 300;
+let debounceTimer;
+function checkStorageDebounce() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(loadQuickTabsState, STORAGE_READ_DEBOUNCE_MS);
+}
+```
+
+### Storage Cooldown (Background)
+
+```javascript
+const STORAGE_COOLDOWN_MS = 50;
+if (!shouldProcessStorageChange(changes, source)) return;
+```
+
+---
+
 ## UICoordinator Event-Driven Architecture
 
 **UICoordinator is single rendering authority:**
 
 ```javascript
-// setupStateListeners() in UICoordinator
 this.eventBus.on('state:added', ({ quickTab }) => this.render(quickTab));
 this.eventBus.on('state:updated', ({ quickTab }) => this.update(quickTab));
 this.eventBus.on('state:deleted', ({ id }) => this.destroy(id));
 this.eventBus.on('state:cleared', () => this.reconcileRenderedTabs());
-
-// CRITICAL: restore() does NOT call render() directly
-// Restore flow: VisibilityHandler → MinimizedManager → state:updated → UICoordinator.update()
 ```
 
-**Reconciliation destroys orphaned windows and cleans DOM:**
+**Reconciliation destroys orphaned windows:**
 
 ```javascript
 reconcileRenderedTabs() {
   for (const [id] of this.renderedTabs) {
-    if (!this.stateManager.has(id)) {
-      this.destroy(id);
-    }
+    if (!this.stateManager.has(id)) this.destroy(id);
   }
   cleanupOrphanedQuickTabElements();
 }
@@ -91,150 +129,19 @@ reconcileRenderedTabs() {
 
 ---
 
-## Batch Mode for Close All
-
-**Prevents storage write storms during closeAll():**
-
-```javascript
-// DestroyHandler uses _batchMode flag (1 write vs 6+)
-closeAll() {
-  this._batchMode = true;  // Suppress individual storage writes
-  try {
-    for (const id of quickTabIds) {
-      this.destroy(id);  // No storage write during batch
-    }
-  } finally {
-    this._batchMode = false;
-    this.persistState();  // Single storage write
-  }
-}
-```
-
----
-
-## Your Responsibilities
-
-1. **storage.onChanged Event Handling** - Listen and process storage change events
-2. **State Synchronization** - Quick Tab state across tabs via storage
-3. **Global Visibility** - All Quick Tabs visible everywhere (no container filtering)
-4. **Solo/Mute Sync** - Real-time visibility updates using arrays
-5. **Event-Driven Architecture** - Emit events for UI updates
-
----
-
-## storage.onChanged Sync Architecture (v1.6.3+)
-
-**Primary sync flow via storage.onChanged:**
+## storage.onChanged Sync Architecture
 
 ```javascript
 // Tab A: Writes to storage (unified format)
-await browser.storage.local.set({ 
-  quick_tabs_state_v2: {
-    tabs: [...],           // All Quick Tabs
-    saveId: 'unique-id',
-    timestamp: Date.now()
-  }
-});
-// Tab A updates its OWN UI immediately (no storage event for self)
+await browser.storage.local.set({ quick_tabs_state_v2: { tabs: [...], saveId, timestamp } });
 
 // Tab B, C, D: storage.onChanged fires automatically
-// StorageManager._onStorageChanged() receives the event
-// SyncCoordinator.handleStorageChange() processes it
-// StateManager.hydrate() emits state:added/updated/deleted
-// UICoordinator renders/updates/destroys Quick Tabs (globally)
+// StorageManager._onStorageChanged() → SyncCoordinator.handleStorageChange()
+// → StateManager.hydrate() emits state:added/updated/deleted
+// → UICoordinator renders/updates/destroys (globally)
 ```
 
-**Key Insight:** storage.onChanged does NOT fire in the tab that made the change. This is handled by the browser automatically.
-
----
-
-## Event-Driven Architecture
-
-**CRITICAL: Do NOT call DOM methods from coordinators!**
-
-```javascript
-// ✅ CORRECT - Event-driven pattern
-class SyncCoordinator {
-  handleStorageChange(newValue) {
-    // Extract Quick Tabs from storage
-    const quickTabData = this._extractQuickTabsFromStorage(newValue);
-    
-    // Convert to domain entities
-    const quickTabs = quickTabData.map(data => QuickTab.fromStorage(data));
-    
-    // Hydrate state (emits state:added, state:updated, state:deleted events)
-    this.stateManager.hydrate(quickTabs);
-    
-    // UICoordinator listens to these events and handles rendering
-    // We do NOT call createQuickTabWindow() directly!
-  }
-}
-
-// UICoordinator listens to events
-this.eventBus.on('state:added', ({ quickTab }) => {
-  this.render(quickTab);
-});
-this.eventBus.on('state:updated', ({ quickTab }) => {
-  this.update(quickTab);
-});
-this.eventBus.on('state:deleted', ({ id }) => {
-  this.destroy(id);
-});
-```
-
----
-
-## Background Script Role (v1.6.2+)
-
-**Background script does NOT broadcast to tabs!**
-
-```javascript
-// ✅ CORRECT - Background only updates its cache
-function _handleQuickTabStateChange(changes) {
-  const newValue = changes.quick_tabs_state_v2.newValue;
-  
-  // Update background's cache ONLY
-  _updateGlobalStateFromStorage(newValue);
-  
-  // NO _broadcastToAllTabs() call!
-  // storage.onChanged fires in content scripts automatically
-}
-```
-
----
-
-## Global Visibility Sync (v1.6.3+)
-
-**CRITICAL: All Quick Tabs visible globally (no container filtering):**
-
-```javascript
-handleStorageChange(newValue) {
-  // Extract Quick Tabs from unified storage format
-  const quickTabData = newValue.tabs || [];
-  
-  // Convert to domain entities
-  const quickTabs = quickTabData.map(data => QuickTab.fromStorage(data));
-  
-  // Hydrate - StateManager emits events, UICoordinator renders
-  // NO container filtering in v1.6.3+
-  this.stateManager.hydrate(quickTabs);
-}
-
-// Visibility check (v1.6.3+) - only Solo/Mute, no container
-quickTab.shouldBeVisible(currentTabId) {
-  // Solo check - if soloed on any tabs, only show on those
-  if (this.soloedOnTabs?.length > 0) {
-    return this.soloedOnTabs.includes(currentTabId);
-  }
-  
-  // Mute check
-  if (this.mutedOnTabs?.includes(currentTabId)) {
-    return false;
-  }
-  
-  return true; // Default: visible everywhere
-}
-```
+**Key Insight:** storage.onChanged does NOT fire in the tab that made the change.
 
 ---
 
@@ -242,96 +149,20 @@ quickTab.shouldBeVisible(currentTabId) {
 
 | File | Purpose |
 |------|---------|
-| `src/features/quick-tabs/managers/StorageManager.js` | storage.onChanged listener, save/load |
-| `src/features/quick-tabs/coordinators/SyncCoordinator.js` | Handle storage changes, call hydrate |
+| `src/features/quick-tabs/managers/StorageManager.js` | storage.onChanged listener |
+| `src/features/quick-tabs/coordinators/SyncCoordinator.js` | Handle storage changes |
 | `src/features/quick-tabs/managers/StateManager.js` | Hydrate state, emit events |
-| `src/features/quick-tabs/coordinators/UICoordinator.js` | **Single rendering authority**, z-index tracking, DOM recovery, **v1.6.3.4-v3 unified restore path, early Map cleanup** |
-| `src/features/quick-tabs/index.js` | **v1.6.3.4+:** `_initStep6_Hydrate()` for page reload |
-| `src/features/quick-tabs/handlers/DestroyHandler.js` | **_batchMode for close all**, source tracking |
-| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **Mutex pattern _operationLocks**, z-index persistence, isRestoreOperation flag |
-| `src/features/quick-tabs/minimized-manager.js` | **v1.6.3.4-v3:** Snapshot stays in minimizedTabs until clearSnapshot() |
-| `src/utils/storage-utils.js` | Shared persistence utilities, zIndex serialization |
-| `src/utils/dom.js` | DOM utilities including `cleanupOrphanedQuickTabElements()` |
-| `background.js` | Cache update ONLY (no broadcast), saveId tracking, synchronous gesture handlers |
-| `sidebar/quick-tabs-manager.js` | Manager panel, minimize/restore operations |
-
----
-
-## Storage Key
-
-All operations use: `quick_tabs_state_v2`
+| `src/features/quick-tabs/coordinators/UICoordinator.js` | Single rendering authority, **v6: RESTORE_IN_PROGRESS** |
+| `src/features/quick-tabs/handlers/DestroyHandler.js` | **_batchMode for close all** |
+| `src/utils/storage-utils.js` | **v6: Transaction tracking, hash comparison, validation** |
+| `background.js` | Cache update ONLY, **v6: STORAGE_COOLDOWN_MS** |
+| `sidebar/quick-tabs-manager.js` | **v6: STORAGE_READ_DEBOUNCE_MS** |
 
 ---
 
 ## MCP Server Integration
 
-**MANDATORY for Cross-Tab Sync Work:**
-
-**CRITICAL - During Implementation:**
-- **Context7:** Verify storage.onChanged API DURING implementation ⭐
-- **Perplexity:** Research sync patterns (paste code) ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health ⭐
-
-**CRITICAL - Testing:**
-- **Jest unit tests:** Run `npm test` BEFORE/AFTER changes ⭐
-- **Codecov:** Verify coverage ⭐
-
-**Every Task:**
-- **Agentic-Tools:** Search memories, store sync solutions
-
----
-
-## Common Sync Issues
-
-### Issue: Storage changes not syncing to other tabs
-
-**Root Cause:** storage.onChanged listener not set up in content script
-
-**Fix:** Verify StorageManager.setupStorageListeners() is called in each tab
-
-```javascript
-// ✅ CORRECT - Listener in content script context
-browser.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.quick_tabs_state_v2) {
-    this.handleStorageChange(changes.quick_tabs_state_v2.newValue);
-  }
-});
-```
-
-### Issue: ReferenceError - createQuickTabWindow is not defined
-
-**Root Cause:** Coordinator trying to call rendering directly
-
-**Fix:** Use event-driven architecture - emit events, let UICoordinator render
-
-```javascript
-// ✅ CORRECT - Emit events, don't render directly
-this.stateManager.hydrate(quickTabs);
-// StateManager emits state:added, UICoordinator renders
-```
-
-### Issue: Quick Tab appears but shouldn't (visibility)
-
-**Fix (v1.6.3+):** Check soloedOnTabs and mutedOnTabs arrays
-
-```javascript
-// ✅ CORRECT - Check arrays for visibility (no container check)
-function shouldBeVisible(quickTab, currentTabId) {
-  // If soloed on specific tabs, only show there
-  if (quickTab.soloedOnTabs?.length > 0) {
-    return quickTab.soloedOnTabs.includes(currentTabId);
-  }
-  
-  // If muted on this tab, hide
-  if (quickTab.mutedOnTabs?.includes(currentTabId)) {
-    return false;
-  }
-  
-  return true; // Default: visible
-}
-```
+**MANDATORY:** Context7, Perplexity, ESLint, CodeScene, Agentic-Tools
 
 ---
 
@@ -341,12 +172,11 @@ function shouldBeVisible(quickTab, currentTabId) {
 - [ ] Global visibility works (no container filtering)
 - [ ] Solo/Mute sync across tabs using arrays (<100ms)
 - [ ] Event-driven architecture (no direct DOM calls from coordinators)
-- [ ] Unified storage format used (tabs array, not containers)
-- [ ] **v1.6.3.4-v3:** Unified restore path - Map entry deleted before render
-- [ ] **v1.6.3.4-v3:** Early Map cleanup on Manager minimize
-- [ ] **v1.6.3.4-v3:** Snapshot stays in minimizedTabs until clearSnapshot()
+- [ ] **v1.6.3.4-v6:** Transactional storage prevents concurrent writes
+- [ ] **v1.6.3.4-v6:** Write deduplication prevents redundant storage
+- [ ] **v1.6.3.4-v6:** Debounced reads prevent read storms
+- [ ] **v1.6.3.4-v6:** Storage cooldown prevents duplicate processing
 - [ ] **v1.6.3.4+:** State hydration on page reload
-- [ ] **v1.6.3.4+:** Z-index persists on focus
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
