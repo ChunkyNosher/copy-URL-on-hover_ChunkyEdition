@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.3.4-v9 restore state wipe fixes)
+  warning indicators, cross-tab operations (v1.6.3.4-v10 atomic snapshot clearing)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -38,54 +38,34 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Handler Return Objects** - Check `result.success` from handlers
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 
-**v1.6.3.4-v9 Key Features (Restore State Wipe Fixes - Issues #14-#20):**
-- **Restore Validation** - `restoreQuickTab()` validates tab is minimized before message
-- **Storage Reconciliation** - `_reconcileWithContentScripts()` detects suspicious changes
-- **Error Notifications** - `_showErrorNotification()` for user feedback
-- **Transaction Pattern** - `beginTransaction`, `commitTransaction`, `rollbackTransaction`
-- **Complete Event Payload** - `_fetchEntityFromStorage()`, `_validateEventPayload()`
+**v1.6.3.4-v10 Key Features:**
+- **Atomic Snapshot Clearing** - `clearSnapshot()` uses local variables before modifications
+- **Storage Queue Reset** - Failed writes don't corrupt subsequent writes
+- **Comprehensive Logging** - Structured logs at decision branches
 
 **Timing Constants:**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
-| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
 | `PENDING_OP_TIMEOUT_MS` | 2000 | Auto-clear stuck operations |
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
 ---
 
-## v1.6.3.4-v9 Manager Patterns
+## v1.6.3.4-v10 Manager Patterns
 
-### Restore Validation
+### Atomic Snapshot Clearing
 
 ```javascript
-// Manager validates tab is minimized before sending restore message
-const tabData = _findTabInState(quickTabId);
-if (!isTabMinimizedHelper(tabData)) {
-  _showErrorNotification('Tab is already active - cannot restore');
-  return;
+// MinimizedManager uses local variables to capture state before modifications
+clearSnapshot(id) {
+  const snapshot = this._snapshots.get(id);
+  if (!snapshot) return null;
+  this._snapshots.delete(id);
+  return snapshot;
 }
-```
-
-### Storage Reconciliation
-
-```javascript
-// Manager detects suspicious storage changes (count drop to 0)
-if (oldTabCount > 0 && newTabCount === 0) {
-  await _reconcileWithContentScripts(oldValue);
-}
-```
-
-### Transaction Pattern
-
-```javascript
-import { beginTransaction, commitTransaction, rollbackTransaction } from '@utils/storage-utils.js';
-const started = await beginTransaction('[Manager]');
-try { /* operation */ commitTransaction('[Manager]'); }
-catch { await rollbackTransaction('[Manager]'); }
 ```
 
 ---
@@ -119,9 +99,7 @@ catch { await rollbackTransaction('[Manager]'); }
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] All Quick Tabs display globally
 - [ ] Solo/Mute indicators correct (arrays)
-- [ ] **v1.6.3.4-v9:** Restore validation prevents invalid operations
-- [ ] **v1.6.3.4-v9:** Storage reconciliation detects corruption
-- [ ] **v1.6.3.4-v9:** Error notifications display correctly
+- [ ] **v10:** Atomic snapshot clearing works
 - [ ] Buttons disabled during pending operations
 - [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐

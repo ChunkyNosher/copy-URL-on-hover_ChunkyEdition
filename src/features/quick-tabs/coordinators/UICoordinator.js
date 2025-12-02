@@ -1038,11 +1038,37 @@ export class UICoordinator {
   }
 
   /**
+   * Get human-readable reason for transition decision
+   * v1.6.3.4-v10 - FIX Issue #8: Helper to avoid deeply nested ternary
+   * @private
+   * @param {boolean} entityMinimized - Entity minimized state
+   * @param {boolean} instanceMinimized - Instance minimized state
+   * @param {boolean} isRestoreOperation - Whether this is a restore operation
+   * @returns {string} Human-readable reason
+   */
+  _getTransitionReason(entityMinimized, instanceMinimized, isRestoreOperation) {
+    if (entityMinimized) {
+      return 'entity is minimized';
+    }
+    if (isRestoreOperation) {
+      return 'restore operation';
+    }
+    if (!instanceMinimized) {
+      return 'instance not minimized';
+    }
+    return 'entity not minimized';
+  }
+
+  /**
    * Handle update when DOM is detached
    * v1.6.3.3 - Extracted to reduce complexity of update() method
    * v1.6.3.4-v2 - FIX Issues #1, #2, #6: Add source parameter for source-aware cleanup
    * v1.6.3.4-v3 - FIX Issues #1, #2: Simplified logic - always clean up and then render if needed
    * v1.6.4.11 - Refactored: uses UpdateContext object for parameters (reduces from 7 to 1)
+   * v1.6.3.4-v10 - FIX Issue #3: Use look-ahead pattern instead of immediate deletion
+   *   The problem was that deleting from renderedTabs Map BEFORE knowing the final state
+   *   created an async gap where the tab appeared "not rendered" during transition.
+   *   Now we determine final state (willRender) first and only delete when final state is minimized.
    * @private
    * @param {Object} ctx - Update context { quickTab, entityMinimized, instanceMinimized, source, isRestoreOperation, mapSizeBefore }
    * @returns {QuickTabWindow|undefined} Rendered window or undefined
@@ -1050,23 +1076,47 @@ export class UICoordinator {
   _handleDetachedDOMUpdate(ctx) {
     const { quickTab, entityMinimized, instanceMinimized, source, isRestoreOperation, mapSizeBefore } = ctx;
     
-    // v1.6.3.4-v3 - FIX Issues #1, #2: ALWAYS clean up Map entry when DOM is detached
-    console.log('[UICoordinator] renderedTabs.delete():', {
+    // v1.6.3.4-v10 - FIX Issue #3: Log transition state BEFORE any modifications
+    // This helps diagnose the 73-second gaps in logs
+    console.log('[UICoordinator] _handleDetachedDOMUpdate - transition state:', {
       id: quickTab.id,
-      reason: 'DOM detached',
-      source,
       entityMinimized,
       instanceMinimized,
       isRestoreOperation,
+      source,
       mapSizeBefore,
-      mapSizeAfter: mapSizeBefore - 1
+      hasExistingEntry: this.renderedTabs.has(quickTab.id)
     });
-    this.renderedTabs.delete(quickTab.id);
-    this._stopDOMMonitoring(quickTab.id);
 
-    // v1.6.3.4-v3 - FIX Issue #1: When entity is minimized (Manager minimize), we're done
-    if (entityMinimized) {
-      console.log('[UICoordinator] DOM detached + entity minimized, cleanup complete:', {
+    // v1.6.3.4-v10 - FIX Issue #3: Determine final action BEFORE modifying Map
+    // This prevents the "deleted but about to recreate" intermediate state
+    const willRender = !entityMinimized && (!instanceMinimized || isRestoreOperation);
+    
+    // v1.6.3.4-v10 - FIX Issue #8: Use helper for readable transition reason
+    const transitionReason = this._getTransitionReason(entityMinimized, instanceMinimized, isRestoreOperation);
+    console.log('[UICoordinator] Transition decision:', {
+      id: quickTab.id,
+      willRender,
+      reason: transitionReason
+    });
+    
+    // v1.6.3.4-v10 - FIX Issue #3: Only delete from Map AFTER we know final state
+    // If we're going to render, we can skip the delete entirely since we'll set() after render
+    if (!willRender) {
+      // Final state is "not rendered" - safe to delete now
+      console.log('[UICoordinator] renderedTabs.delete():', {
+        id: quickTab.id,
+        reason: 'DOM detached and will NOT render',
+        source,
+        entityMinimized,
+        instanceMinimized,
+        mapSizeBefore,
+        mapSizeAfter: mapSizeBefore - 1
+      });
+      this._safeDeleteFromRenderedTabs(quickTab.id, 'DOM detached - final state minimized');
+      this._stopDOMMonitoring(quickTab.id);
+      
+      console.log('[UICoordinator] DOM detached + will not render, cleanup complete:', {
         id: quickTab.id,
         source,
         action: 'skip (cleanup only)',
@@ -1074,36 +1124,36 @@ export class UICoordinator {
       });
       return;
     }
+
+    // v1.6.3.4-v10 - FIX Issue #3: We're going to render
+    // The existing Map entry (if any) will be overwritten by render()
+    // So we can clean up DOM monitoring but defer Map deletion
+    this._stopDOMMonitoring(quickTab.id);
     
-    // v1.6.3.4-v3 - FIX Issue #5: Handle restore via isRestoreOperation flag
-    if (isRestoreOperation) {
-      console.log('[UICoordinator] DOM detached + isRestoreOperation, MUST render:', {
+    // Log that we're keeping the Map entry until render() overwrites it
+    if (this.renderedTabs.has(quickTab.id)) {
+      console.log('[UICoordinator] Keeping Map entry until render() completes:', {
         id: quickTab.id,
         source,
-        action: 'render (restore operation with DOM detached)'
+        reason: 'copy-on-write pattern - render() will overwrite'
       });
-      this._applySnapshotForRestore(quickTab);
-      return this.render(quickTab);
     }
 
-    // v1.6.4.9 - FIX Issues #2, #3 CRITICAL: Use INSTANCE state, not entity state
-    if (instanceMinimized) {
-      console.log('[UICoordinator] Instance is minimized, skipping render after cleanup:', {
-        id: quickTab.id,
-        source,
-        action: 'skip (instance minimized)'
-      });
-      return;
-    }
-    
-    // v1.6.4.9 - FIX Issues #2, #3: Instance is NOT minimized but DOM is missing - MUST render
-    console.log('[UICoordinator] Instance NOT minimized but DOM missing, MUST render:', {
+    // Apply snapshot if available before rendering
+    console.log('[UICoordinator] DOM detached but will render - applying snapshot:', {
       id: quickTab.id,
       source,
-      action: 'render (DOM missing + instance not minimized)'
+      isRestoreOperation,
+      action: 'render'
     });
-    // Apply snapshot if available before rendering
     this._applySnapshotForRestore(quickTab);
+    
+    // Now delete just before render so the render path is clean
+    // This minimizes the async gap window
+    if (this.renderedTabs.has(quickTab.id)) {
+      this._safeDeleteFromRenderedTabs(quickTab.id, 'DOM detached - preparing for re-render');
+    }
+    
     return this.render(quickTab);
   }
 

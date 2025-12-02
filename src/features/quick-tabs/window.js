@@ -685,13 +685,15 @@ export class QuickTabWindow {
    *   UICoordinator is the single rendering authority. restore() only updates instance state.
    *   UICoordinator.update() will detect the state change and call render() exactly once.
    * v1.6.4.7 - FIX Issue #7: Log explicit warning when container is null (expected behavior)
+   * v1.6.3.4-v10 - FIX Issue #1: REMOVE ALL DOM manipulation from restore()
+   *   UICoordinator is the SOLE rendering authority. restore() ONLY updates instance state.
+   *   Removed the `if (this.container) { ... }` block that was directly manipulating DOM.
    *
    * This method now:
    * 1. Clears minimized flag
-   * 2. Updates instance properties (position/size already set from snapshot)
+   * 2. Logs dimensions for debugging (but does NOT manipulate DOM)
    * 3. Does NOT call render() - UICoordinator handles rendering
-   * 4. Logs container state for debugging
-   * 5. Calls onFocus() callback to notify state change
+   * 4. Calls onFocus() callback to notify state change
    */
   restore() {
     this.minimized = false;
@@ -705,24 +707,23 @@ export class QuickTabWindow {
     // This method ONLY updates instance state; UICoordinator.update() handles DOM creation.
     // The duplicate window bug was caused by BOTH restore() AND update() calling render().
 
-    // v1.6.4.7 - FIX Issue #7: Log container state for debugging
-    if (this.container) {
-      console.log('[QuickTabWindow] Container exists during restore, updating display:', this.id);
-      this.container.style.display = 'flex';
-      this.container.style.left = `${this.left}px`;
-      this.container.style.top = `${this.top}px`;
-      this.container.style.width = `${this.width}px`;
-      this.container.style.height = `${this.height}px`;
-    } else {
-      // v1.6.4.7 - FIX Issue #7: This is expected behavior - UICoordinator will call render()
-      console.log('[QuickTabWindow] Container is null during restore (expected), UICoordinator will render:', this.id);
-      console.log('[QuickTabWindow] Dimensions to be used by UICoordinator:', {
-        left: this.left,
-        top: this.top,
-        width: this.width,
-        height: this.height
-      });
-    }
+    // v1.6.3.4-v10 - FIX Issue #1: REMOVED ALL DOM MANIPULATION
+    // Previously, this method would update container.style if this.container existed.
+    // This caused a race condition where whether container exists depends on minimize/restore timing.
+    // When DOM was removed during minimize but instance still held stale container reference,
+    // restore() would manipulate a detached element instead of deferring to UICoordinator.
+    // Now UICoordinator is the SOLE authority for DOM manipulation.
+    console.log('[QuickTabWindow] Container state:', {
+      id: this.id,
+      hasContainer: !!this.container,
+      containerAttached: !!this.container?.parentNode
+    });
+    console.log('[QuickTabWindow] Dimensions to be used by UICoordinator:', {
+      left: this.left,
+      top: this.top,
+      width: this.width,
+      height: this.height
+    });
 
     // Enhanced logging for console log export
     console.log(

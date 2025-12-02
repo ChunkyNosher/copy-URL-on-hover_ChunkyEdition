@@ -1,0 +1,8 @@
+{
+  "id": "b8974fa8-ae4e-43fe-b826-592d7a9762c9",
+  "title": "Generation Counter Debounce Pattern",
+  "details": "VisibilityHandler uses generation counter for debounce timers to prevent timer callback corruption. Store _timerGeneration Map at class level. Each _debouncedPersist() increments generation for id, and callback only executes if generation matches. Pattern prevents rapid minimize/restore cycles from corrupting state.",
+  "category": "patterns",
+  "dateCreated": "2025-12-02T02:50:22.643Z",
+  "dateUpdated": "2025-12-02T02:50:22.643Z"
+}

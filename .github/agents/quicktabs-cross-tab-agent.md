@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.3.4-v9 restore state wipe fixes, transaction pattern, storage reconciliation)
+  (v1.6.3.4-v10 storage queue reset, comprehensive logging)
 tools: ["*"]
 ---
 
@@ -28,14 +28,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
 - **browser.storage.local** - Persistent state storage with key `quick_tabs_state_v2`
 - **Global Visibility** - Quick Tabs visible in all tabs
-- **Transaction Pattern (v9)** - `beginTransaction`, `commitTransaction`, `rollbackTransaction`
-- **Storage Reconciliation (v9)** - Manager detects suspicious changes (count drop to 0)
+- **Storage Queue Reset (v10)** - `queueStorageWrite()` resets on failure for independent writes
 
 **Timing Constants:**
 
@@ -44,7 +43,6 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
-| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
 
 **Storage Format:**
 ```javascript
@@ -61,40 +59,20 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v9 Sync Patterns
+## v1.6.3.4-v10 Sync Patterns
 
-### Transaction Pattern
+### Storage Queue Reset
 
 ```javascript
-import { beginTransaction, commitTransaction, rollbackTransaction } from '@utils/storage-utils.js';
-
-const started = await beginTransaction('[HandlerName]');
-if (!started) { /* handle error */ }
-try {
-  // ... multi-step operation
-  commitTransaction('[HandlerName]');
-} catch (error) {
-  await rollbackTransaction('[HandlerName]');
+// queueStorageWrite resets queue on failure - failed writes don't corrupt subsequent writes
+async function queueStorageWrite(writeOperation) {
+  try {
+    return await writeOperation();
+  } catch (error) {
+    _writeQueue = Promise.resolve(); // Reset queue
+    throw error;
+  }
 }
-```
-
-### Storage Reconciliation
-
-```javascript
-// Manager detects suspicious storage changes (count drop to 0)
-if (oldTabCount > 0 && newTabCount === 0) {
-  await _reconcileWithContentScripts(oldValue);
-}
-```
-
-### Complete Event Payload
-
-```javascript
-// Fetch from storage when tabWindow is null
-const entity = await this._fetchEntityFromStorage(id);
-// Validate before emitting
-const validation = this._validateEventPayload(quickTabData);
-if (!validation.valid) return;
 ```
 
 ---
@@ -119,10 +97,9 @@ await browser.storage.local.set({ quick_tabs_state_v2: { tabs: [...], saveId, ti
 
 | File | Purpose |
 |------|---------|
-| `src/utils/storage-utils.js` | **v9:** Transaction pattern functions |
+| `src/utils/storage-utils.js` | **v10:** `queueStorageWrite()` resets on failure |
 | `src/features/quick-tabs/managers/StorageManager.js` | storage.onChanged listener |
-| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **v9:** `_fetchEntityFromStorage()`, `_validateEventPayload()` |
-| `sidebar/quick-tabs-manager.js` | **v9:** `_reconcileWithContentScripts()` |
+| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **v10:** `_timerGeneration` debounce |
 
 ---
 
@@ -137,9 +114,8 @@ await browser.storage.local.set({ quick_tabs_state_v2: { tabs: [...], saveId, ti
 - [ ] storage.onChanged events processed correctly
 - [ ] Global visibility works (no container filtering)
 - [ ] Solo/Mute sync across tabs using arrays (<100ms)
-- [ ] **v1.6.3.4-v9:** Transaction pattern works
-- [ ] **v1.6.3.4-v9:** Storage reconciliation detects corruption
-- [ ] **v1.6.3.4-v9:** Complete event payload emitted
+- [ ] **v10:** Storage queue resets on failure
+- [ ] **v10:** Comprehensive logging at decision branches
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 

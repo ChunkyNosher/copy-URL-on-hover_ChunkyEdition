@@ -65,8 +65,12 @@ export class DestroyHandler {
     // v1.6.4.4 - FIX Bug #7: Track destroyed IDs to prevent resurrection
     this._destroyedIds = new Set();
     
-    // v1.6.3.2 - FIX Issue #6: Batch mode flag to skip individual persists during closeAll
-    this._batchMode = false;
+    // v1.6.3.4-v10 - FIX Issue #6: Replace boolean _batchMode with Set tracking specific operation IDs
+    // The boolean flag was vulnerable to timer interleaving: if a timer from an earlier
+    // minimize operation fires during closeAll(), it would incorrectly skip persist because
+    // _batchMode was true for the unrelated closeAll() operation.
+    // Now each operation checks if its specific ID is in the batch Set.
+    this._batchOperationIds = new Set();
   }
 
   /**
@@ -77,6 +81,7 @@ export class DestroyHandler {
    * v1.6.4.4 - FIX Bug #7: Track destroyed IDs to prevent resurrection
    * v1.6.3.2 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
    * v1.6.3.4 - FIX Issues #4, #6, #7: Add source parameter, enhanced logging
+   * v1.6.3.4-v10 - FIX Issue #6: Check batch Set membership instead of boolean flag
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
@@ -117,10 +122,14 @@ export class DestroyHandler {
     // Reset z-index if all tabs are closed
     this._resetZIndexIfEmpty();
 
-    // v1.6.3.2 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
-    // closeAll() will do a single persist after all tabs are destroyed
-    if (this._batchMode) {
-      console.log(`[DestroyHandler] Batch mode - skipping individual persist (source: ${source}):`, id);
+    // v1.6.3.4-v10 - FIX Issue #6: Check if this specific ID is in batch mode (Set membership)
+    // This replaces the boolean _batchMode flag which was vulnerable to timer interleaving.
+    // Only skip persist if THIS specific ID was added to the batch Set by closeAll().
+    if (this._batchOperationIds.has(id)) {
+      console.log(`[DestroyHandler] Batch mode - skipping individual persist (source: ${source}):`, {
+        id,
+        batchSetSize: this._batchOperationIds.size
+      });
       return;
     }
 
@@ -260,6 +269,9 @@ export class DestroyHandler {
    * v1.6.4.4 - FIX Bug #7: Track all destroyed IDs atomically, use shared cleanup utility
    * v1.6.3.2 - FIX Issue #6: Use batch mode to prevent storage write storm (6+ writes in 24ms)
    * v1.6.3.4 - FIX Issue #7: Enhanced logging throughout closeAll
+   * v1.6.3.4-v10 - FIX Issue #6: Use Set of operation IDs instead of boolean flag
+   *   The boolean was vulnerable to timer interleaving from earlier operations.
+   *   Now each ID is tracked individually in _batchOperationIds Set.
    * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
    * 
    * @param {string} source - Source of action ('UI', 'Manager', etc.)
@@ -268,8 +280,15 @@ export class DestroyHandler {
     console.log(`[DestroyHandler] Closing all Quick Tabs (source: ${source})`);
     const count = this.quickTabsMap.size;
 
-    // v1.6.3.2 - FIX Issue #6: Enable batch mode to skip individual persist calls
-    this._batchMode = true;
+    // v1.6.3.4-v10 - FIX Issue #6: Add all IDs to batch Set BEFORE destroy loop
+    // This ensures handleDestroy() checks for membership correctly
+    for (const id of this.quickTabsMap.keys()) {
+      this._batchOperationIds.add(id);
+    }
+    console.log(`[DestroyHandler] Added ${count} IDs to batch Set (source: ${source}):`, {
+      batchSetSize: this._batchOperationIds.size,
+      ids: Array.from(this._batchOperationIds)
+    });
 
     // v1.6.4.4 - FIX Bug #7: Track all IDs being destroyed
     for (const id of this.quickTabsMap.keys()) {
@@ -277,7 +296,7 @@ export class DestroyHandler {
       console.log(`[DestroyHandler] Marked for destruction (source: ${source}):`, id);
     }
 
-    // Destroy all tabs - each destroy() call will skip storage persist due to batch mode
+    // Destroy all tabs - each destroy() call will skip storage persist due to batch Set
     for (const tabWindow of this.quickTabsMap.values()) {
       if (tabWindow.destroy) {
         tabWindow.destroy();
@@ -306,8 +325,9 @@ export class DestroyHandler {
       console.log(`[DestroyHandler] Emitted state:cleared (source: ${source}):`, count);
     }
 
-    // v1.6.3.2 - FIX Issue #6: Disable batch mode before single atomic persist
-    this._batchMode = false;
+    // v1.6.3.4-v10 - FIX Issue #6: Clear batch Set after all cleanup is complete
+    this._batchOperationIds.clear();
+    console.log(`[DestroyHandler] Cleared batch Set after closeAll (source: ${source})`);
 
     // v1.6.3.2 - FIX Issue #6: Single atomic storage write after all cleanup
     // This replaces 6+ individual writes with 1 write
