@@ -1,0 +1,8 @@
+{
+  "id": "67ef7baa-b1b2-44ba-af7e-55d7400f5f22",
+  "title": "Version naming convention",
+  "details": "The repository uses a specific version naming scheme with `-vXX` suffixes, NOT `v1.6.X.Y` format. For example:\n- v1.6.3.4 (base version)\n- v1.6.3.4-v2 (second iteration)\n- v1.6.3.4-v10 (tenth iteration)\n- v1.6.3.4-v11 (current version)\n\nThere is NO v1.6.4 version. The incorrect v1.6.4.X labels were fixed to the proper format in this refactoring task.",
+  "category": "versioning",
+  "dateCreated": "2025-12-02T05:34:44.467Z",
+  "dateUpdated": "2025-12-02T05:34:44.467Z"
+}

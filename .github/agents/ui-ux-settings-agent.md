@@ -61,9 +61,9 @@ const relevantMemories = await searchMemories({
   - **Copy URL Tab** - Keyboard shortcuts (Y, X, O)
   - **Quick Tabs Tab** - Quick Tab settings, max windows, defaults
   - **Appearance Tab** - Dark mode, colors, borders, animations
-  - **Advanced Tab** - Debug mode, storage management, logs, **UID display (v1.6.4.10)**
+  - **Advanced Tab** - Debug mode, storage management, logs, **UID display (v1.6.3.4-v11)**
 
-**v1.6.4.10 Settings Changes:**
+**v1.6.3.4-v11 Settings Changes:**
 - **UID Display Checkbox:** Added to Advanced tab (`quickTabShowDebugId`)
 - **Storage:** Uses `storage.local` with individual key `quickTabShowDebugId`
 - **DEFAULT_SETTINGS:** Includes `quickTabShowDebugId: false`
@@ -76,7 +76,7 @@ const relevantMemories = await searchMemories({
 - Ctrl+Alt+Z or Alt+Shift+Z: Opens sidebar and switches to Quick Tab Manager
 - Command: 'open-quick-tabs-manager' in manifest.json
 
-**Storage (v1.6.4.10):**
+**Storage (v1.6.3.4-v11):**
 - **Quick Tab state:** `storage.local` (NOT `storage.sync`)
 - **UID display setting:** `storage.local` key `quickTabShowDebugId`
 - **Extension settings:** `storage.sync` (user preferences)

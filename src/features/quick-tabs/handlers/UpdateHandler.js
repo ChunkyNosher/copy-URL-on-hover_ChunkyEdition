@@ -2,9 +2,9 @@
  * @fileoverview UpdateHandler - Handles Quick Tab position and size updates
  * Extracted from QuickTabsManager Phase 2.1 refactoring
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
- * v1.6.4 - FIX Issue #2: Added debounce and change detection for storage writes
- * v1.6.4 - FIX Issue #3: Added storage persistence after position/size changes
- * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
+ * v1.6.3.4 - FIX Issue #2: Added debounce and change detection for storage writes
+ * v1.6.3.4 - FIX Issue #3: Added storage persistence after position/size changes
+ * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation and timeout
  * v1.6.3.4 - FIX Issue #3: Add z-index persistence for restore
  * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation verification
  *
@@ -22,15 +22,15 @@
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
-// v1.6.4 - FIX Issue #2: Debounce delay (Mozilla best practice: 200-350ms)
+// v1.6.3.4 - FIX Issue #2: Debounce delay (Mozilla best practice: 200-350ms)
 const DEBOUNCE_DELAY_MS = 300;
 
 /**
  * UpdateHandler class
  * Manages Quick Tab position and size updates (local only, no cross-tab sync)
  * v1.6.3 - Simplified for single-tab Quick Tabs
- * v1.6.4 - FIX Issue #2: Added debounce and change detection for storage writes
- * v1.6.4 - FIX Issue #3: Added storage persistence after position/size changes
+ * v1.6.3.4 - FIX Issue #2: Added debounce and change detection for storage writes
+ * v1.6.3.4 - FIX Issue #3: Added storage persistence after position/size changes
  */
 export class UpdateHandler {
   /**
@@ -43,7 +43,7 @@ export class UpdateHandler {
     this.eventBus = eventBus;
     this.minimizedManager = minimizedManager;
     
-    // v1.6.4 - FIX Issue #2: Debounce state tracking
+    // v1.6.3.4 - FIX Issue #2: Debounce state tracking
     this._debounceTimer = null;
     // v1.6.3.4-v10 - FIX Issue #5: Use 64-bit hash (object with lo/hi parts)
     this._lastStateHash = null;
@@ -65,7 +65,7 @@ export class UpdateHandler {
   /**
    * Handle position change end (drag end)
    * v1.6.3 - Local only (no storage persistence)
-   * v1.6.4 - FIX Issue #3: Added storage persistence
+   * v1.6.3.4 - FIX Issue #3: Added storage persistence
    * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation
    *
    * @param {string} id - Quick Tab ID
@@ -96,7 +96,7 @@ export class UpdateHandler {
       top: roundedTop
     });
 
-    // v1.6.4 - FIX Issue #3: Persist to storage after drag ends
+    // v1.6.3.4 - FIX Issue #3: Persist to storage after drag ends
     console.log('[UpdateHandler] Scheduling storage persist after position change');
     this._persistToStorage();
   }
@@ -117,7 +117,7 @@ export class UpdateHandler {
   /**
    * Handle size change end (resize end)
    * v1.6.3 - Local only (no storage persistence)
-   * v1.6.4 - FIX Issue #3: Added storage persistence
+   * v1.6.3.4 - FIX Issue #3: Added storage persistence
    * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation
    *
    * @param {string} id - Quick Tab ID
@@ -148,25 +148,25 @@ export class UpdateHandler {
       height: roundedHeight
     });
 
-    // v1.6.4 - FIX Issue #3: Persist to storage after resize ends
+    // v1.6.3.4 - FIX Issue #3: Persist to storage after resize ends
     console.log('[UpdateHandler] Scheduling storage persist after size change');
     this._persistToStorage();
   }
 
   /**
    * Persist current state to browser.storage.local (debounced with change detection)
-   * v1.6.4 - FIX Issue #2: Added debounce and change detection
-   * v1.6.4 - FIX Issue #3: Persist to storage after position/size changes
+   * v1.6.3.4 - FIX Issue #2: Added debounce and change detection
+   * v1.6.3.4 - FIX Issue #3: Persist to storage after position/size changes
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    */
   _persistToStorage() {
-    // v1.6.4 - FIX Issue #2: Clear any existing debounce timer
+    // v1.6.3.4 - FIX Issue #2: Clear any existing debounce timer
     if (this._debounceTimer) {
       clearTimeout(this._debounceTimer);
     }
     
-    // v1.6.4 - FIX Issue #2: Schedule debounced persist
+    // v1.6.3.4 - FIX Issue #2: Schedule debounced persist
     this._debounceTimer = setTimeout(() => {
       this._doPersist();
     }, DEBOUNCE_DELAY_MS);
@@ -187,8 +187,8 @@ export class UpdateHandler {
 
   /**
    * Actually perform the storage write (called after debounce)
-   * v1.6.4 - FIX Issue #2: Only writes if state actually changed
-   * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
+   * v1.6.3.4 - FIX Issue #2: Only writes if state actually changed
+   * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
    * v1.6.3.4-v10 - FIX Issue #5: Compare both parts of 64-bit hash
    * @private
    * @returns {Promise<void>}
@@ -196,7 +196,7 @@ export class UpdateHandler {
   async _doPersist() {
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
     
-    // v1.6.4.1 - FIX Bug #1: Handle null state from validation failure
+    // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
     if (!state) {
       console.error('[UpdateHandler] Failed to build state for storage');
       return;
@@ -233,7 +233,7 @@ export class UpdateHandler {
   
   /**
    * Compute a simple hash of the state for change detection
-   * v1.6.4 - FIX Issue #2: Used to skip redundant storage writes
+   * v1.6.3.4 - FIX Issue #2: Used to skip redundant storage writes
    * v1.6.3.4 - FIX Issue #3: Include zIndex in hash for proper change detection
    * v1.6.3.4-v10 - FIX Issue #5: Implement 64-bit hash to reduce collision probability
    *   The 32-bit hash had ~50% collision probability over session lifetime (birthday paradox).
@@ -273,10 +273,10 @@ export class UpdateHandler {
 
   /**
    * Destroy handler and cleanup resources
-   * v1.6.4 - FIX Issue #2: Clean up debounce timer
+   * v1.6.3.4 - FIX Issue #2: Clean up debounce timer
    */
   destroy() {
-    // v1.6.4 - FIX Issue #2: Clear debounce timer
+    // v1.6.3.4 - FIX Issue #2: Clear debounce timer
     if (this._debounceTimer) {
       clearTimeout(this._debounceTimer);
       this._debounceTimer = null;

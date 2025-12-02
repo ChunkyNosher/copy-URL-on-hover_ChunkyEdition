@@ -2,9 +2,9 @@
  * @fileoverview VisibilityHandler - Handles Quick Tab visibility operations
  * Extracted from QuickTabsManager Phase 2.1 refactoring
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
- * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
- * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
- * v1.6.4.5 - FIX Issues #1, #2, #6: Debounce minimize/restore, prevent event storms
+ * v1.6.3.4 - FIX Bug #2: Persist to storage after minimize/restore
+ * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation and timeout
+ * v1.6.3.4-v6 - FIX Issues #1, #2, #6: Debounce minimize/restore, prevent event storms
  * v1.6.3.2 - FIX Issue #2: Add mutex/lock pattern to prevent duplicate operations
  * v1.6.3.3 - FIX 14 Critical Bugs:
  *   - Issue #1: Re-register window in quickTabsMap after restore
@@ -52,9 +52,9 @@ const CALLBACK_SUPPRESSION_DELAY_MS = 50;
  * VisibilityHandler class
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
  * v1.6.3 - Local only (no cross-tab sync or storage persistence)
- * v1.6.4 - Now persists state to storage after minimize/restore
- * v1.6.4.1 - Proper async handling with validation and timeout for storage
- * v1.6.4.5 - Debouncing to prevent event storms and ensure atomic storage writes
+ * v1.6.3.4 - Now persists state to storage after minimize/restore
+ * v1.6.3.4-v2 - Proper async handling with validation and timeout for storage
+ * v1.6.3.4-v6 - Debouncing to prevent event storms and ensure atomic storage writes
  * v1.6.3.2 - Mutex/lock pattern to prevent duplicate operations from multiple sources
  */
 export class VisibilityHandler {
@@ -75,7 +75,7 @@ export class VisibilityHandler {
     this.currentTabId = options.currentTabId;
     this.Events = options.Events;
     
-    // v1.6.4.5 - FIX Issues #1, #2: Track pending operations to prevent duplicates
+    // v1.6.3.4-v6 - FIX Issues #1, #2: Track pending operations to prevent duplicates
     this._pendingMinimize = new Set();
     this._pendingRestore = new Set();
     this._debounceTimers = new Map();
@@ -275,9 +275,9 @@ export class VisibilityHandler {
    * Handle Quick Tab minimize
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
-   * v1.6.4 - FIX Bug #2: Persist to storage after minimize
-   * v1.6.4.4 - FIX Bug #6: Call tabWindow.minimize() to actually hide the window
-   * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
+   * v1.6.3.4 - FIX Bug #2: Persist to storage after minimize
+   * v1.6.3.4-v5 - FIX Bug #6: Call tabWindow.minimize() to actually hide the window
+   * v1.6.3.4-v6 - FIX Issues #1, #2: Debounce to prevent event storms
    * v1.6.3.2 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
    * v1.6.3.4 - FIX Issues #5, #6: Atomic Map cleanup, source logging
    * v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
@@ -304,13 +304,13 @@ export class VisibilityHandler {
 
     // v1.6.3.4-v7 - FIX Issue #6: Use try/finally to ensure lock is ALWAYS released
     try {
-      // v1.6.4.5 - FIX Issue #1: Prevent duplicate minimize operations
+      // v1.6.3.4-v6 - FIX Issue #1: Prevent duplicate minimize operations
       if (this._pendingMinimize.has(id)) {
         console.log(`[VisibilityHandler] Ignoring duplicate minimize request (pending, source: ${source}) for:`, id);
         return { success: false, error: 'Operation pending' };
       }
       
-      // v1.6.4 - FIX Issue #1: Log at start to confirm button was clicked
+      // v1.6.3.4 - FIX Issue #1: Log at start to confirm button was clicked
       // v1.6.3.4 - FIX Issue #6: Include source in log
       console.log(`[VisibilityHandler] Minimize button clicked (source: ${source}) for Quick Tab:`, id);
 
@@ -332,7 +332,7 @@ export class VisibilityHandler {
         return { success: false, error: 'Invalid tab instance (not QuickTabWindow)' };
       }
       
-      // v1.6.4.5 - FIX Issue #1: Mark as pending to prevent duplicate clicks
+      // v1.6.3.4-v6 - FIX Issue #1: Mark as pending to prevent duplicate clicks
       this._pendingMinimize.add(id);
 
       // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
@@ -348,7 +348,7 @@ export class VisibilityHandler {
       // v1.6.3.4-v8 - FIX Issue #3: Mark this operation as initiated by handler to suppress callback
       this._initiatedOperations.add(operationKey);
       try {
-        // v1.6.4.4 - FIX Bug #6: Actually minimize the window (hide it)
+        // v1.6.3.4-v5 - FIX Bug #6: Actually minimize the window (hide it)
         tabWindow.minimize();
         console.log(`[VisibilityHandler] Called tabWindow.minimize() (source: ${source}) for:`, id);
       } finally {
@@ -374,7 +374,7 @@ export class VisibilityHandler {
         console.log(`[VisibilityHandler] Emitted state:updated for minimize (source: ${source}):`, id);
       }
 
-      // v1.6.4.5 - FIX Issue #6: Persist to storage with debounce
+      // v1.6.3.4-v6 - FIX Issue #6: Persist to storage with debounce
       this._debouncedPersist(id, 'minimize', source);
       
       return { success: true };
@@ -469,8 +469,8 @@ export class VisibilityHandler {
    * Handle restore of minimized Quick Tab
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
-   * v1.6.4 - FIX Bug #2: Persist to storage after restore
-   * v1.6.4.5 - FIX Issues #1, #2: Debounce to prevent event storms
+   * v1.6.3.4 - FIX Bug #2: Persist to storage after restore
+   * v1.6.3.4-v6 - FIX Issues #1, #2: Debounce to prevent event storms
    * v1.6.3.2 - FIX Issue #2: Use mutex/lock pattern for true duplicate prevention
    * v1.6.3.3 - FIX Issue #1: Re-register window in quickTabsMap after restore to maintain reference
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
@@ -563,7 +563,7 @@ export class VisibilityHandler {
       return { success: false, error: validation.error };
     }
     
-    // v1.6.4.5 - FIX Issue #2: Mark as pending to prevent duplicate operations
+    // v1.6.3.4-v6 - FIX Issue #2: Mark as pending to prevent duplicate operations
     this._pendingRestore.add(id);
 
     // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = false FIRST
@@ -600,7 +600,7 @@ export class VisibilityHandler {
   /**
    * Emit state:updated event for restore
    * v1.6.3.2 - Helper to reduce handleRestore complexity
-   * v1.6.4.7 - FIX Issue #4: Verify DOM is rendered before emitting state:updated
+   * v1.6.3.4-v8 - FIX Issue #4: Verify DOM is rendered before emitting state:updated
    *   Manager was showing green indicator based on entity state, not actual DOM presence.
    * v1.6.3.3 - FIX Bug #3: Remove spurious warnings that fire during successful operations
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
@@ -660,7 +660,7 @@ export class VisibilityHandler {
       return;
     }
     
-    // v1.6.4.7 - FIX Issue #4: Delay emit until we can verify DOM is rendered
+    // v1.6.3.4-v8 - FIX Issue #4: Delay emit until we can verify DOM is rendered
     // This prevents Manager from showing green indicator when window isn't actually visible
     setTimeout(() => {
       // Verify DOM is actually rendered before emitting state:updated
@@ -675,7 +675,7 @@ export class VisibilityHandler {
       }
       
       const quickTabData = this._createQuickTabData(id, tabWindow, false);
-      // v1.6.4.7 - Add DOM verification result to event data
+      // v1.6.3.4-v8 - Add DOM verification result to event data
       quickTabData.domVerified = isDOMRendered;
       quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
       // v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag so UICoordinator routes correctly
@@ -790,7 +790,7 @@ export class VisibilityHandler {
 
   /**
    * Debounced persist to storage - prevents write storms
-   * v1.6.4.5 - FIX Issues #1, #2, #6: Single atomic storage write after debounce
+   * v1.6.3.4-v6 - FIX Issues #1, #2, #6: Single atomic storage write after debounce
    * v1.6.3.2 - FIX Issue #2: Release operation locks after debounce completes
    * v1.6.3.4 - FIX Issue #6: Add source to logging
    * v1.6.3.4-v10 - FIX Issue #2: Generation counter pattern for timer corruption
@@ -870,20 +870,20 @@ export class VisibilityHandler {
 
   /**
    * Persist current state to browser.storage.local
-   * v1.6.4 - FIX Bug #2: Persist to storage after minimize/restore
-   * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
+   * v1.6.3.4 - FIX Bug #2: Persist to storage after minimize/restore
+   * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
    * v1.6.3.4-v6 - FIX Issue #6: Validate counts and state before persist
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    * @returns {Promise<void>}
    */
   async _persistToStorage() {
-    // v1.6.4.1 - FIX Bug #1: Log position/size data when persisting
+    // v1.6.3.4-v2 - FIX Bug #1: Log position/size data when persisting
     console.log('[VisibilityHandler] Building state for storage persist...');
     
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
     
-    // v1.6.4.1 - FIX Bug #1: Handle null state from validation failure
+    // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
     if (!state) {
       console.error('[VisibilityHandler] Failed to build state for storage');
       return;
@@ -918,13 +918,13 @@ export class VisibilityHandler {
       // by the individual tab validation in buildStateForStorage
     }
     
-    // v1.6.4.1 - FIX Bug #1: Log tab count and minimized states
+    // v1.6.3.4-v2 - FIX Bug #1: Log tab count and minimized states
     console.log(`[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`);
     
-    // v1.6.4.1 - FIX Bug #1: Await the async persist and log result
+    // v1.6.3.4-v2 - FIX Bug #1: Await the async persist and log result
     const success = await persistStateToStorage(state, '[VisibilityHandler]');
     if (!success) {
-      // v1.6.4.3 - FIX: More descriptive error message about potential causes
+      // v1.6.3.4-v4 - FIX: More descriptive error message about potential causes
       console.error('[VisibilityHandler] Storage persist failed: operation timed out, storage API unavailable, or quota exceeded');
     }
   }

@@ -82,7 +82,7 @@ const globalQuickTabState = {
   // v1.6.2.2 - Unified format: single tabs array for global visibility
   tabs: [],
   lastUpdate: 0,
-  // v1.6.4 - FIX Bug #7: Track saveId for hash collision detection
+  // v1.6.3.4 - FIX Bug #7: Track saveId for hash collision detection
   saveId: null
 };
 
@@ -103,6 +103,13 @@ const IN_PROGRESS_TRANSACTIONS = new Set();
 // v1.6.3.4-v6 - FIX Issue #5: Cooldown for storage.onChanged processing
 const STORAGE_CHANGE_COOLDOWN_MS = 50;
 let lastStorageChangeProcessed = 0;
+
+// v1.6.3.4-v11 - FIX Issue #1, #8: Track last non-empty state timestamp to prevent clearing during transactions
+// Also track consecutive 0-tab reads to require confirmation before clearing
+let lastNonEmptyStateTimestamp = Date.now();
+let consecutiveZeroTabReads = 0;
+const ZERO_TAB_CLEAR_THRESHOLD = 2; // Require 2 consecutive 0-tab reads
+const NON_EMPTY_STATE_COOLDOWN_MS = 1000; // Don't clear within 1 second of last non-empty state
 
 /**
  * Check if a URL is valid for Quick Tab creation
@@ -148,7 +155,7 @@ function filterValidTabs(state) {
 
 /**
  * Extract relevant tab data for hashing
- * v1.6.4.11 - Extracted from computeStateHash to reduce complexity
+ * v1.6.3.4-v11 - Extracted from computeStateHash to reduce complexity
  * @param {Object} tab - Tab object
  * @returns {Object} Normalized tab data for hashing
  */
@@ -166,7 +173,7 @@ function _extractTabDataForHash(tab) {
 
 /**
  * Compute 32-bit hash from string
- * v1.6.4.11 - Extracted from computeStateHash to reduce complexity
+ * v1.6.3.4-v11 - Extracted from computeStateHash to reduce complexity
  * @param {string} str - String to hash
  * @returns {number} 32-bit hash value
  */
@@ -184,7 +191,7 @@ function _computeStringHash(str) {
  * v1.6.1.6 - Memory leak fix: Used to skip redundant broadcasts
  * v1.6.2.2 - Updated for unified format
  * v1.6.3.2 - FIX Bug #2: Include saveId in hash to detect different writes with same content
- * v1.6.4.11 - Refactored: Extracted _extractTabDataForHash and _computeStringHash (cc reduced)
+ * v1.6.3.4-v11 - Refactored: Extracted _extractTabDataForHash and _computeStringHash (cc reduced)
  * @param {Object} state - Quick Tab state object
  * @returns {number} 32-bit hash of the state
  */
@@ -228,7 +235,7 @@ async function initializeGlobalState() {
 
 /**
  * Check if session storage has valid session state
- * v1.6.4.11 - Extracted to reduce complexity and fix complex conditional
+ * v1.6.3.4-v11 - Extracted to reduce complexity and fix complex conditional
  * @param {Object} result - Result from browser.storage.session.get()
  * @returns {boolean} true if valid session data exists
  */
@@ -240,7 +247,7 @@ function _hasValidSessionState(result) {
 
 /**
  * Check if state has valid tabs array (unified format)
- * v1.6.4.11 - Extracted to reduce complexity
+ * v1.6.3.4-v11 - Extracted to reduce complexity
  * @param {Object} state - State object to check
  * @returns {boolean} true if state has valid tabs array
  */
@@ -250,7 +257,7 @@ function _hasValidTabsArray(state) {
 
 /**
  * Apply unified format state to global state
- * v1.6.4.11 - Extracted to reduce complexity in tryLoadFromSessionStorage
+ * v1.6.3.4-v11 - Extracted to reduce complexity in tryLoadFromSessionStorage
  * @param {Object} sessionState - Session state with tabs array
  * @param {string} source - Source name for logging
  * @param {string} format - Format name for logging
@@ -264,7 +271,7 @@ function _applyUnifiedFormatState(sessionState, source, format) {
 
 /**
  * Apply migrated container format state to global state
- * v1.6.4.11 - Extracted to reduce complexity in tryLoadFromSessionStorage
+ * v1.6.3.4-v11 - Extracted to reduce complexity in tryLoadFromSessionStorage
  * @param {Object} sessionState - Session state with containers object
  * @param {string} source - Source name for logging
  */
@@ -277,7 +284,7 @@ function _applyMigratedContainerState(sessionState, source) {
 
 /**
  * Helper: Try loading from session storage
- * v1.6.4.11 - Refactored: Extracted helpers to reduce cc below 9
+ * v1.6.3.4-v11 - Refactored: Extracted helpers to reduce cc below 9
  *
  * @returns {Promise<boolean>} True if loaded successfully
  */
@@ -313,7 +320,7 @@ async function tryLoadFromSessionStorage() {
 
 /**
  * Process a single container for migration
- * v1.6.4.11 - Extracted from migrateContainersToUnifiedFormat to fix max-depth
+ * v1.6.3.4-v11 - Extracted from migrateContainersToUnifiedFormat to fix max-depth
  * @param {string} containerKey - Container identifier
  * @param {Array} tabs - Tabs in the container
  * @param {Set} seenIds - Set of already processed tab IDs
@@ -335,7 +342,7 @@ function _processContainerTabs(containerKey, tabs, seenIds, allTabs) {
 /**
  * Migrate container format to unified format
  * v1.6.2.2 - Backward compatibility helper
- * v1.6.4.11 - Refactored: Extracted _processContainerTabs to fix max-depth (bumps reduced)
+ * v1.6.3.4-v11 - Refactored: Extracted _processContainerTabs to fix max-depth (bumps reduced)
  * 
  * @param {Object} containers - Container data object
  * @returns {Array} Unified tabs array (deduplicated)
@@ -570,7 +577,7 @@ class StateCoordinator {
 
   /**
    * Check if session storage result has valid Quick Tab data
-   * v1.6.4.11 - Extracted to fix complex conditional
+   * v1.6.3.4-v11 - Extracted to fix complex conditional
    * @param {Object} result - Session storage result
    * @returns {boolean} true if valid data exists
    */
@@ -583,7 +590,7 @@ class StateCoordinator {
 
   /**
    * Helper: Try loading from session storage
-   * v1.6.4.11 - Refactored: Extracted _hasValidSessionData to fix complex conditional
+   * v1.6.3.4-v11 - Refactored: Extracted _hasValidSessionData to fix complex conditional
    *
    * @returns {Promise<boolean>} True if loaded successfully
    */
@@ -916,9 +923,28 @@ console.log('[Quick Tabs] Initializing Firefox MV3 X-Frame-Options bypass...');
 // Track modified URLs for debugging
 const modifiedUrls = new Set();
 
+// v1.6.3.4-v11 - FIX Issue #6: Track recently processed iframe URLs to prevent spam logging
+const recentlyProcessedIframes = new Map(); // url -> timestamp
+const IFRAME_DEDUP_WINDOW_MS = 200; // Skip logging if same URL processed within 200ms
+
+/**
+ * Clean up old entries from recentlyProcessedIframes Map
+ * v1.6.3.4-v11 - FIX Issue #6: Extracted to reduce nesting depth
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _cleanupOldIframeEntries(now) {
+  const cutoff = now - IFRAME_DEDUP_WINDOW_MS * 10;
+  for (const [url, timestamp] of recentlyProcessedIframes) {
+    if (timestamp < cutoff) {
+      recentlyProcessedIframes.delete(url);
+    }
+  }
+}
+
 /**
  * Handle X-Frame-Options header removal
- * v1.6.4.11 - Extracted from onHeadersReceived to reduce complexity
+ * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
  * @param {Object} header - HTTP header object
  * @param {string} url - Request URL for logging
  * @returns {boolean} false to remove header, true to keep
@@ -931,7 +957,7 @@ function _handleXFrameOptionsHeader(header, url) {
 
 /**
  * Handle CSP header modification
- * v1.6.4.11 - Extracted from onHeadersReceived to reduce complexity
+ * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
  * @param {Object} header - HTTP header object (modified in place)
  * @param {string} url - Request URL for logging
  * @returns {boolean} false to remove header, true to keep
@@ -958,7 +984,7 @@ function _handleCSPHeader(header, url) {
 
 /**
  * Handle CORP header removal
- * v1.6.4.11 - Extracted from onHeadersReceived to reduce complexity
+ * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
  * @param {Object} header - HTTP header object
  * @param {string} url - Request URL for logging
  * @returns {boolean} false to remove header, true to keep
@@ -975,7 +1001,7 @@ function _handleCORPHeader(header, url) {
 
 /**
  * Filter security headers for Quick Tab iframe embedding
- * v1.6.4.11 - Refactored: Extracted handlers (cc reduced from 9 to ~3)
+ * v1.6.3.4-v11 - Refactored: Extracted handlers (cc reduced from 9 to ~3)
  * @param {Object} header - HTTP header object
  * @param {string} url - Request URL for logging
  * @returns {boolean} false to remove header, true to keep
@@ -997,7 +1023,20 @@ function _filterSecurityHeader(header, url) {
 
 browser.webRequest.onHeadersReceived.addListener(
   details => {
-    console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
+    // v1.6.3.4-v11 - FIX Issue #6: Deduplicate iframe processing logs
+    const now = Date.now();
+    const lastProcessed = recentlyProcessedIframes.get(details.url);
+    const shouldLog = !lastProcessed || (now - lastProcessed) >= IFRAME_DEDUP_WINDOW_MS;
+    
+    if (shouldLog) {
+      console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
+      recentlyProcessedIframes.set(details.url, now);
+      
+      // Clean up old entries to prevent memory leak
+      if (recentlyProcessedIframes.size > 100) {
+        _cleanupOldIframeEntries(now);
+      }
+    }
 
     const modifiedHeaders = details.responseHeaders.filter(
       header => _filterSecurityHeader(header, details.url)
@@ -1047,7 +1086,7 @@ console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
 
 // Listen for tab switches to restore Quick Tabs
 // v1.6.2.2 - Updated for unified format (no container filtering)
-// v1.6.4.11 - Fixed: Removed async since we use .catch() chains (require-await)
+// v1.6.3.4-v11 - Fixed: Removed async since we use .catch() chains (require-await)
 chrome.tabs.onActivated.addListener(activeInfo => {
   console.log('[Background] Tab activated:', activeInfo.tabId);
 
@@ -1289,7 +1328,7 @@ messageRouter.register('RESET_GLOBAL_QUICK_TAB_STATE', () => {
   return { success: true, message: 'Global Quick Tab state cache reset' };
 });
 
-// v1.6.4 - FIX Bug #5: Coordinated clear handler to prevent storage write storm
+// v1.6.3.4 - FIX Bug #5: Coordinated clear handler to prevent storage write storm
 // Settings page sends this message instead of clearing storage + broadcasting to all tabs
 // Background clears storage ONCE, then broadcasts QUICK_TABS_CLEARED to all tabs
 messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
@@ -1349,13 +1388,13 @@ if (chrome.sidePanel) {
 
 /**
  * Apply unified format state to global state from storage
- * v1.6.4.11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
+ * v1.6.3.4-v11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
  * @param {Object} newValue - Storage value with tabs array
  */
 function _applyUnifiedFormatFromStorage(newValue) {
   globalQuickTabState.tabs = newValue.tabs;
   globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
-  // v1.6.4 - FIX Bug #7: Track saveId for hash collision detection
+  // v1.6.3.4 - FIX Bug #7: Track saveId for hash collision detection
   globalQuickTabState.saveId = newValue.saveId || null;
   console.log(
     '[Background] Updated global state from storage (unified format):',
@@ -1366,7 +1405,7 @@ function _applyUnifiedFormatFromStorage(newValue) {
 
 /**
  * Check if value has container format (legacy)
- * v1.6.4.11 - Extracted to reduce complexity
+ * v1.6.3.4-v11 - Extracted to reduce complexity
  * @param {Object} value - Value to check
  * @returns {boolean} true if value has containers property
  */
@@ -1376,7 +1415,7 @@ function _hasContainerFormat(value) {
 
 /**
  * Apply migrated container format state from storage
- * v1.6.4.11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
+ * v1.6.3.4-v11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
  * @param {Object} newValue - Storage value with containers object
  */
 function _applyMigratedContainerFromStorage(newValue) {
@@ -1393,8 +1432,8 @@ function _applyMigratedContainerFromStorage(newValue) {
  * Helper: Update global state from storage value
  * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (lines 1087, 1095)
  * v1.6.2.2 - Updated for unified format
- * v1.6.4 - FIX Bug #7: Track saveId for hash collision detection
- * v1.6.4.11 - Refactored: Extracted helpers to reduce cc below 9
+ * v1.6.3.4 - FIX Bug #7: Track saveId for hash collision detection
+ * v1.6.3.4-v11 - Refactored: Extracted helpers to reduce cc below 9
  *
  * @param {Object|null} newValue - New storage value
  */
@@ -1456,21 +1495,55 @@ function _isSelfWrite(newValue, handler) {
 /**
  * Helper: Clear cache when storage is empty
  * v1.6.3.2 - Extracted from _handleQuickTabStateChange to reduce complexity
- * v1.6.4 - FIX Bug #7: Reset saveId when cache is cleared
+ * v1.6.3.4 - FIX Bug #7: Reset saveId when cache is cleared
+ * v1.6.3.4-v11 - FIX Issue #1, #8: Add cooldown and consecutive read validation
  * @param {Object} newValue - New storage value
+ * @returns {boolean} True if cache was cleared, false if rejected
  */
 function _clearCacheForEmptyStorage(newValue) {
-  console.log('[Background] Storage cleared (empty/missing tabs), clearing cache immediately');
+  const now = Date.now();
+  
+  // v1.6.3.4-v11 - FIX Issue #1: Check cooldown period
+  const timeSinceNonEmpty = now - lastNonEmptyStateTimestamp;
+  if (timeSinceNonEmpty < NON_EMPTY_STATE_COOLDOWN_MS) {
+    console.warn('[Background] │ ⚠️ REJECTED: Clear within cooldown period:', {
+      timeSinceNonEmpty,
+      cooldownMs: NON_EMPTY_STATE_COOLDOWN_MS,
+      reason: 'May be intermediate transaction state'
+    });
+    return false;
+  }
+  
+  // v1.6.3.4-v11 - FIX Issue #8: Check consecutive zero-tab reads
+  consecutiveZeroTabReads++;
+  if (consecutiveZeroTabReads < ZERO_TAB_CLEAR_THRESHOLD) {
+    console.warn('[Background] │ ⚠️ DEFERRED: Zero-tab read', consecutiveZeroTabReads, '/', ZERO_TAB_CLEAR_THRESHOLD);
+    console.warn('[Background] │ Waiting for confirmation before clearing cache');
+    return false;
+  }
+  
+  // v1.6.3.4-v11 - FIX Issue #1: Log WARNING when clearing
+  console.warn('[Background] ⚠️ WARNING: Clearing cache with 0 tabs:', {
+    consecutiveReads: consecutiveZeroTabReads,
+    timeSinceNonEmpty,
+    currentCacheTabCount: globalQuickTabState.tabs?.length || 0
+  });
+  
+  console.log('[Background] Storage cleared (empty/missing tabs), clearing cache');
   globalQuickTabState.tabs = [];
   globalQuickTabState.lastUpdate = newValue?.timestamp || Date.now();
-  // v1.6.4 - FIX Bug #7: Reset saveId when cache is cleared
+  // v1.6.3.4 - FIX Bug #7: Reset saveId when cache is cleared
   globalQuickTabState.saveId = newValue?.saveId || null;
   lastBroadcastedStateHash = computeStateHash(newValue);
+  
+  // Reset consecutive counter after successful clear
+  consecutiveZeroTabReads = 0;
+  return true;
 }
 
 /**
  * Check if tabs array is empty or missing
- * v1.6.4.11 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * v1.6.3.4-v11 - Extracted from _handleQuickTabStateChange to reduce complexity
  * @param {Object} newValue - Storage value to check
  * @returns {boolean} true if tabs is empty or missing
  */
@@ -1480,7 +1553,7 @@ function _isTabsEmptyOrMissing(newValue) {
 
 /**
  * Check if saveId has changed between current and new state
- * v1.6.4.11 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * v1.6.3.4-v11 - Extracted from _handleQuickTabStateChange to reduce complexity
  * @param {Object} newValue - New storage value
  * @returns {boolean} true if saveId changed
  */
@@ -1492,7 +1565,7 @@ function _hasSaveIdChanged(newValue) {
 
 /**
  * Check if state requires update (hash or saveId changed)
- * v1.6.4.11 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * v1.6.3.4-v11 - Extracted from _handleQuickTabStateChange to reduce complexity
  * @param {Object} newValue - New storage value
  * @returns {boolean} true if state should be updated
  */
@@ -1516,8 +1589,8 @@ function _shouldUpdateState(newValue) {
  * v1.6.2.2 - Updated for unified format
  * v1.6.3.2 - FIX Bug #1, #6: ALWAYS update cache when tabs is empty or missing
  *            Refactored to reduce complexity by extracting helpers
- * v1.6.4 - FIX Bug #7: Check saveId before hash comparison
- * v1.6.4.11 - Refactored: Extracted helpers to reduce cc below 9
+ * v1.6.3.4 - FIX Bug #7: Check saveId before hash comparison
+ * v1.6.3.4-v11 - Refactored: Extracted helpers to reduce cc below 9
  * v1.6.3.4-v6 - FIX Issues #1, #2, #5: Transaction tracking, URL filtering, cooldown
  * v1.6.3.4-v8 - FIX Issue #8: Extracted logging and validation helpers
  * 
@@ -1616,6 +1689,7 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 /**
  * Process storage update and update global cache
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
+ * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
  * @param {Object} newValue - New storage value
  */
 function _processStorageUpdate(newValue) {
@@ -1625,6 +1699,10 @@ function _processStorageUpdate(newValue) {
     return;
   }
 
+  // v1.6.3.4-v11 - FIX Issue #8: Reset consecutive counter and update timestamp when we get valid tabs
+  consecutiveZeroTabReads = 0;
+  lastNonEmptyStateTimestamp = Date.now();
+
   // Check if state actually requires update
   if (!_shouldUpdateState(newValue)) {
     return;
@@ -1633,8 +1711,14 @@ function _processStorageUpdate(newValue) {
   // Filter out tabs with invalid URLs
   const filteredValue = filterValidTabs(newValue);
   
-  // Update background's cache
-  console.log('[Background] Quick Tab state changed, updating cache (cross-tab sync via storage.onChanged)');
+  // v1.6.3.4-v11 - FIX Issue #3: Update background's cache ONLY - no broadcast to tabs
+  // Each tab handles its own sync via storage.onChanged listener in StorageManager
+  // Background script only maintains its cache (globalQuickTabState) for popup/sidebar queries
+  console.log('[Background] Updating cache only (no broadcast):', {
+    tabCount: filteredValue.tabs?.length || 0,
+    saveId: filteredValue.saveId,
+    note: 'Tabs sync independently via storage.onChanged'
+  });
   _updateGlobalStateFromStorage(filteredValue);
 }
 
@@ -1678,7 +1762,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
-// v1.6.4.1 - Sidebar initialization delay constant (time for DOM ready + scripts loaded)
+// v1.6.3.4-v2 - Sidebar initialization delay constant (time for DOM ready + scripts loaded)
 const SIDEBAR_INIT_DELAY_MS = 300;
 
 /**
@@ -1709,7 +1793,7 @@ async function _openSidebarAndSwitchToManager() {
 
 /**
  * Log detailed error information for message sending failures
- * v1.6.4.3 - FIX: Extracted utility function to reduce code duplication
+ * v1.6.3.4-v4 - FIX: Extracted utility function to reduce code duplication
  * @param {string} prefix - Log message prefix (e.g., '[Background] Failed to send X:')
  * @param {Error} error - The error object
  */
@@ -1723,7 +1807,7 @@ function _logMessageError(prefix, error) {
 
 /**
  * Attempt to send a single sidebar message
- * v1.6.4.11 - Extracted from _sendSidebarMessage to fix max-depth
+ * v1.6.3.4-v11 - Extracted from _sendSidebarMessage to fix max-depth
  * @param {string} messageType - Message type to send
  * @returns {Promise<boolean>} true if successful, false otherwise
  */
@@ -1739,7 +1823,7 @@ async function _trySendSidebarMessage(messageType) {
 
 /**
  * Generic sidebar message sender with retry logic
- * v1.6.4.11 - Consolidated from _sendManagerTabMessage and _sendSettingsTabMessage
+ * v1.6.3.4-v11 - Consolidated from _sendManagerTabMessage and _sendSettingsTabMessage
  *           - Extracted _trySendSidebarMessage to fix max-depth
  * @param {string} messageType - Message type to send (e.g., 'SWITCH_TO_MANAGER_TAB')
  * @param {string} logPrefix - Prefix for logging (e.g., 'Manager')
@@ -1766,7 +1850,7 @@ async function _sendSidebarMessage(messageType, logPrefix) {
  * Send message to sidebar to switch to Manager tab
  * v1.6.1.4 - Extracted to reduce nesting
  * v1.6.2.0 - Enhanced retry logic with multiple attempts
- * v1.6.4.11 - Refactored: Uses generic _sendSidebarMessage
+ * v1.6.3.4-v11 - Refactored: Uses generic _sendSidebarMessage
  */
 function _sendManagerTabMessage() {
   return _sendSidebarMessage('SWITCH_TO_MANAGER_TAB', 'Manager');
@@ -1774,8 +1858,8 @@ function _sendManagerTabMessage() {
 
 /**
  * Send message to sidebar to switch to Settings tab
- * v1.6.4 - Added for Alt+Shift+S to always open to Settings tab
- * v1.6.4.11 - Refactored: Uses generic _sendSidebarMessage
+ * v1.6.3.4 - Added for Alt+Shift+S to always open to Settings tab
+ * v1.6.3.4-v11 - Refactored: Uses generic _sendSidebarMessage
  */
 function _sendSettingsTabMessage() {
   return _sendSidebarMessage('SWITCH_TO_SETTINGS_TAB', 'Settings');
@@ -1783,7 +1867,7 @@ function _sendSettingsTabMessage() {
 
 /**
  * Get current primary tab state from sidebar
- * v1.6.4 - Added for Ctrl+Alt+Z toggle behavior
+ * v1.6.3.4 - Added for Ctrl+Alt+Z toggle behavior
  * @returns {Promise<string|null>} 'settings', 'manager', or null if sidebar not responding
  */
 async function _getCurrentPrimaryTab() {
@@ -1804,16 +1888,16 @@ async function _getCurrentPrimaryTab() {
 // v1.6.1.4 - Updated for dual-sidebar implementation
 // v1.6.3.5 - FIX Bug #8: Use synchronous handler to preserve user input context
 //            browser.sidebarAction.open() requires synchronous call from user input
-// v1.6.4 - Removed floating panel and duplicate command. Only toggle-quick-tabs-manager remains.
-// v1.6.4.1 - Enhanced toggle behavior: Alt+Shift+S opens to Settings, Ctrl+Alt+Z toggles Manager
+// v1.6.3.4 - Removed floating panel and duplicate command. Only toggle-quick-tabs-manager remains.
+// v1.6.3.4-v2 - Enhanced toggle behavior: Alt+Shift+S opens to Settings, Ctrl+Alt+Z toggles Manager
 browser.commands.onCommand.addListener(command => {
-  // v1.6.4.1 - toggle-quick-tabs-manager (Ctrl+Alt+Z) toggles Manager tab
+  // v1.6.3.4-v2 - toggle-quick-tabs-manager (Ctrl+Alt+Z) toggles Manager tab
   // If sidebar is open and showing Manager, close it; otherwise open to Manager
   if (command === 'toggle-quick-tabs-manager') {
     _handleToggleQuickTabsManager();
   }
   
-  // v1.6.4.1 - _execute_sidebar_action (Alt+Shift+S) always opens to Settings tab
+  // v1.6.3.4-v2 - _execute_sidebar_action (Alt+Shift+S) always opens to Settings tab
   if (command === '_execute_sidebar_action') {
     _handleOpenToSettingsTab();
   }
@@ -1821,19 +1905,19 @@ browser.commands.onCommand.addListener(command => {
 
 /**
  * Handle toggle-quick-tabs-manager command (Ctrl+Alt+Z)
- * v1.6.4.1 - Toggle behavior: close if Manager showing, otherwise open to Manager
- * v1.6.4.4 - FIX Bug #1: Use sidebarAction.toggle() to preserve user gesture context
+ * v1.6.3.4-v2 - Toggle behavior: close if Manager showing, otherwise open to Manager
+ * v1.6.3.4-v5 - FIX Bug #1: Use sidebarAction.toggle() to preserve user gesture context
  *            browser.sidebarAction.isOpen() breaks the gesture context when awaited
  */
 async function _handleToggleQuickTabsManager() {
   try {
-    // v1.6.4.4 - FIX Bug #1: Set storage FIRST (synchronous-ish, non-blocking)
+    // v1.6.3.4-v5 - FIX Bug #1: Set storage FIRST (synchronous-ish, non-blocking)
     // This ensures the sidebar knows to show Manager tab when it opens
     browser.storage.local.set({ _requestedPrimaryTab: 'manager' }).catch(err => {
       console.warn('[Sidebar] Failed to set _requestedPrimaryTab:', err);
     });
     
-    // v1.6.4.4 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
+    // v1.6.3.4-v5 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
     // toggle() properly handles user gesture context
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
@@ -1852,7 +1936,7 @@ async function _handleToggleQuickTabsManager() {
     }
     
     // Fallback for older Firefox without toggle()
-    // v1.6.4.4 - FIX Bug #1: Call open() FIRST without any awaits to preserve gesture
+    // v1.6.3.4-v5 - FIX Bug #1: Call open() FIRST without any awaits to preserve gesture
     // We can't check isOpen() first because that breaks the gesture context
     console.log('[Sidebar] Using fallback approach (no toggle API)');
     await browser.sidebarAction.open();
@@ -1868,12 +1952,12 @@ async function _handleToggleQuickTabsManager() {
 
 /**
  * Open sidebar and switch to Manager tab
- * v1.6.4.1 - Helper to reduce nesting depth
- * v1.6.4.2 - FIX Bug #3: Use storage to set initial tab before opening sidebar
+ * v1.6.3.4-v2 - Helper to reduce nesting depth
+ * v1.6.3.4-v3 - FIX Bug #3: Use storage to set initial tab before opening sidebar
  *            This ensures the sidebar opens to the correct tab even on first use
  */
 async function _openSidebarToManager() {
-  // v1.6.4.2 - Set requested tab in storage BEFORE opening sidebar
+  // v1.6.3.4-v3 - Set requested tab in storage BEFORE opening sidebar
   // The sidebar will read this on DOMContentLoaded and show the correct tab
   await browser.storage.local.set({ _requestedPrimaryTab: 'manager' });
   console.debug('[Background] Set _requestedPrimaryTab to manager');
@@ -1889,7 +1973,7 @@ async function _openSidebarToManager() {
 
 /**
  * Toggle Manager when sidebar is already open
- * v1.6.4.1 - Helper to reduce nesting depth
+ * v1.6.3.4-v2 - Helper to reduce nesting depth
  */
 async function _toggleManagerWhenSidebarOpen() {
   const currentTab = await _getCurrentPrimaryTab();
@@ -1907,18 +1991,18 @@ async function _toggleManagerWhenSidebarOpen() {
 
 /**
  * Handle _execute_sidebar_action command (Alt+Shift+S)
- * v1.6.4.1 - Always open sidebar to Settings tab
- * v1.6.4.2 - FIX Bug #3: Use storage to set initial tab before opening sidebar
- * v1.6.4.4 - FIX Bug #1: Use sidebarAction.toggle() to preserve user gesture context
+ * v1.6.3.4-v2 - Always open sidebar to Settings tab
+ * v1.6.3.4-v3 - FIX Bug #3: Use storage to set initial tab before opening sidebar
+ * v1.6.3.4-v5 - FIX Bug #1: Use sidebarAction.toggle() to preserve user gesture context
  */
 async function _handleOpenToSettingsTab() {
   try {
-    // v1.6.4.4 - FIX Bug #1: Set storage FIRST (synchronous-ish, non-blocking)
+    // v1.6.3.4-v5 - FIX Bug #1: Set storage FIRST (synchronous-ish, non-blocking)
     browser.storage.local.set({ _requestedPrimaryTab: 'settings' }).catch(err => {
       console.warn('[Sidebar] Failed to set _requestedPrimaryTab:', err);
     });
     
-    // v1.6.4.4 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
+    // v1.6.3.4-v5 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
       console.log('[Sidebar] Toggled sidebar via toggle() API');

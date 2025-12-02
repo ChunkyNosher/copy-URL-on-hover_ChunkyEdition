@@ -174,7 +174,7 @@ export function hasClass(element, className) {
 
 /**
  * Remove all Quick Tab window elements from DOM that are not in the valid set
- * v1.6.4.4 - FIX Bug #3 & #7: Shared utility for comprehensive DOM cleanup
+ * v1.6.3.4-v5 - FIX Bug #3 & #7: Shared utility for comprehensive DOM cleanup
  * @param {Set<string>|null} validTabIds - Set of valid Quick Tab IDs to keep, or null to remove all
  * @returns {number} Number of elements removed
  */
@@ -195,7 +195,7 @@ export function cleanupOrphanedQuickTabElements(validTabIds = null) {
 
 /**
  * Helper to determine if a Quick Tab element should be removed
- * v1.6.4.4 - Extracted to reduce nesting depth
+ * v1.6.3.4-v5 - Extracted to reduce nesting depth
  * @private
  * @param {Element} element - DOM element to check
  * @param {Set<string>|null} validTabIds - Set of valid Quick Tab IDs, or null to remove all
@@ -222,7 +222,7 @@ function _shouldRemoveElement(element, validTabIds) {
 
 /**
  * Remove a specific Quick Tab element by ID
- * v1.6.4.4 - FIX Bug #7: Utility for single element cleanup
+ * v1.6.3.4-v5 - FIX Bug #7: Utility for single element cleanup
  * @param {string} quickTabId - Quick Tab ID
  * @returns {boolean} True if element was found and removed
  */

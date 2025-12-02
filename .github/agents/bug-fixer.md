@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -40,20 +40,22 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Cross-tab sync via storage.onChanged
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v10 Key Patterns:**
-- Generation Counter Debounce - `_timerGeneration` Map prevents timer corruption
-- Copy-on-Write - `_prepareDetachedDOMUpdate()` for safe Map updates
-- 64-bit Hash - djb2/sdbm returning `{lo, hi}` object
-- Batch Set - `_batchOperationIds` Set replaces `_batchMode` boolean
-- Storage Queue Reset - `queueStorageWrite()` resets on failure
+**v1.6.3.4-v11 Key Patterns:**
+- QuickTabsManager.destroy() with `beforeunload` handler
+- Message deduplication (2000ms restore, 200ms iframes)
+- Consecutive read validation for cache clearing
+- Atomic snapshot clear with `clearSnapshot()`
+- `_safeClearRenderedTabs()` with comprehensive logging
+- `_verifyCallbacksAfterRestore()` for callback verification
 
-**Timing Constants (v1.6.3.4-v10):**
+**Timing Constants (v1.6.3.4-v11):**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
+| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing deduplication |
+| `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
 | `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
-| Focus debounce threshold | 100 | Prevent duplicate focus events |
 
 ---
 
@@ -93,43 +95,30 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## Common Bug Patterns (v1.6.3.4-v10)
+## Common Bug Patterns (v1.6.3.4-v11)
 
-### Empty Write Prevention
+### Memory Leak Prevention
 ```javascript
-// ✅ GOOD - Use forceEmpty only for explicit Clear All
-await persistStateToStorage(state, '[Handler]', false); // Normal writes
-await persistStateToStorage(state, '[Handler]', true);  // Only for Clear All
+// ✅ GOOD - Use destroy() for cleanup
+window.addEventListener('beforeunload', () => quickTabsManager.destroy());
+```
+
+### Message Deduplication
+```javascript
+// ✅ GOOD - Deduplicate restore messages
+if (_isDuplicateRestoreMessage(quickTabId)) return;
 ```
 
 ### FIFO Queue for Storage Writes
 ```javascript
 // ✅ GOOD - Queue writes to prevent race conditions
-import { queueStorageWrite } from '@utils/storage-utils.js';
 await queueStorageWrite(async () => { /* storage op */ });
-```
-
-### Callback Suppression
-```javascript
-// ✅ GOOD - Suppress circular callbacks
-this._initiatedOperations.add(`minimize-${id}`);
-try { tabWindow.minimize(); }
-finally { setTimeout(() => this._initiatedOperations.delete(`minimize-${id}`), 50); }
 ```
 
 ### Safe Map Deletion
 ```javascript
 // ✅ GOOD - Check before delete
-if (this._renderedTabs.has(id)) {
-  this._renderedTabs.delete(id);
-}
-```
-
-### Global Visibility (v1.6.3+)
-```javascript
-// ✅ GOOD - Use unified storage format
-const state = await browser.storage.local.get('quick_tabs_state_v2');
-const tabs = state.quick_tabs_state_v2?.tabs || [];
+if (this._renderedTabs.has(id)) this._renderedTabs.delete(id);
 ```
 
 ---

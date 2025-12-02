@@ -3,9 +3,9 @@
  * Extracted from QuickTabsManager Phase 2.1 refactoring
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
- * v1.6.4 - FIX Bug #1: Persist to storage after destroy
- * v1.6.4.1 - FIX Bug #1: Proper async handling with validation and timeout
- * v1.6.4.4 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
+ * v1.6.3.4 - FIX Bug #1: Persist to storage after destroy
+ * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation and timeout
+ * v1.6.3.4-v5 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
  * v1.6.3.2 - FIX Issue #6: Add batch mode flag to prevent storage write storm during closeAll
  * v1.6.3.4 - FIX Issues #4, #6, #7: Add source tracking, consolidate all destroy logic
  *
@@ -25,14 +25,14 @@
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
-// v1.6.4.4 - FIX Bug #8: Debounce delay for storage writes (ms)
+// v1.6.3.4-v5 - FIX Bug #8: Debounce delay for storage writes (ms)
 const STORAGE_DEBOUNCE_DELAY = 150;
 
 /**
  * DestroyHandler class
  * Manages Quick Tab destruction and cleanup operations (local only, no cross-tab sync)
- * v1.6.4 - Now persists state to storage after destruction
- * v1.6.4.4 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
+ * v1.6.3.4 - Now persists state to storage after destruction
+ * v1.6.3.4-v5 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
  * v1.6.3.2 - FIX Issue #6: Batch mode to prevent storage write storm during closeAll
  */
 export class DestroyHandler {
@@ -59,10 +59,10 @@ export class DestroyHandler {
     this.Events = Events;
     this.baseZIndex = baseZIndex;
     
-    // v1.6.4.4 - FIX Bug #8: Debounce timer for storage writes
+    // v1.6.3.4-v5 - FIX Bug #8: Debounce timer for storage writes
     this._storageDebounceTimer = null;
     
-    // v1.6.4.4 - FIX Bug #7: Track destroyed IDs to prevent resurrection
+    // v1.6.3.4-v5 - FIX Bug #7: Track destroyed IDs to prevent resurrection
     this._destroyedIds = new Set();
     
     // v1.6.3.4-v10 - FIX Issue #6: Replace boolean _batchMode with Set tracking specific operation IDs
@@ -77,8 +77,8 @@ export class DestroyHandler {
    * Handle Quick Tab destruction
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
-   * v1.6.4 - FIX Bug #1: Persist to storage after destroy
-   * v1.6.4.4 - FIX Bug #7: Track destroyed IDs to prevent resurrection
+   * v1.6.3.4 - FIX Bug #1: Persist to storage after destroy
+   * v1.6.3.4-v5 - FIX Bug #7: Track destroyed IDs to prevent resurrection
    * v1.6.3.2 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
    * v1.6.3.4 - FIX Issues #4, #6, #7: Add source parameter, enhanced logging
    * v1.6.3.4-v10 - FIX Issue #6: Check batch Set membership instead of boolean flag
@@ -90,7 +90,7 @@ export class DestroyHandler {
     // v1.6.3.4 - FIX Issue #6: Log with source indication
     console.log(`[DestroyHandler] Handling destroy for: ${id} (source: ${source})`);
 
-    // v1.6.4.4 - FIX Bug #7: Mark as destroyed FIRST to prevent resurrection
+    // v1.6.3.4-v5 - FIX Bug #7: Mark as destroyed FIRST to prevent resurrection
     this._destroyedIds.add(id);
 
     // Get tab info BEFORE deleting (needed for state:deleted event)
@@ -101,14 +101,14 @@ export class DestroyHandler {
       console.warn(`[DestroyHandler] Tab not found in Map (source: ${source}):`, id);
     }
 
-    // v1.6.4.4 - FIX Bug #7: Atomic cleanup - delete from ALL references
+    // v1.6.3.4-v5 - FIX Bug #7: Atomic cleanup - delete from ALL references
     // v1.6.3.4 - FIX Issue #5: Log Map deletion
     const wasInMap = this.quickTabsMap.delete(id);
     console.log(`[DestroyHandler] Map.delete result (source: ${source}):`, { id, wasInMap });
     
     this.minimizedManager.remove(id);
     
-    // v1.6.4.4 - FIX Bug #7: Use shared utility for DOM cleanup
+    // v1.6.3.4-v5 - FIX Bug #7: Use shared utility for DOM cleanup
     if (removeQuickTabElement(id)) {
       console.log(`[DestroyHandler] Removed DOM element (source: ${source}):`, id);
     }
@@ -133,7 +133,7 @@ export class DestroyHandler {
       return;
     }
 
-    // v1.6.4.4 - FIX Bug #8: Debounced persist to prevent write storms
+    // v1.6.3.4-v5 - FIX Bug #8: Debounced persist to prevent write storms
     this._debouncedPersistToStorage();
     
     console.log(`[DestroyHandler] Destroy complete (source: ${source}):`, id);
@@ -141,7 +141,7 @@ export class DestroyHandler {
 
   /**
    * Check if a Quick Tab ID was recently destroyed
-   * v1.6.4.4 - FIX Bug #7: Used to prevent resurrection during DOM scans
+   * v1.6.3.4-v5 - FIX Bug #7: Used to prevent resurrection during DOM scans
    * @param {string} id - Quick Tab ID
    * @returns {boolean} True if recently destroyed
    */
@@ -151,7 +151,7 @@ export class DestroyHandler {
 
   /**
    * Clear destroyed IDs tracking (call periodically to prevent memory leak)
-   * v1.6.4.4 - FIX Bug #7: Cleanup destroyed IDs set
+   * v1.6.3.4-v5 - FIX Bug #7: Cleanup destroyed IDs set
    */
   clearDestroyedTracking() {
     this._destroyedIds.clear();
@@ -202,7 +202,7 @@ export class DestroyHandler {
 
   /**
    * Debounced persist to storage
-   * v1.6.4.4 - FIX Bug #8: Prevents storage write storms (8 writes in 38ms)
+   * v1.6.3.4-v5 - FIX Bug #8: Prevents storage write storms (8 writes in 38ms)
    * @private
    */
   _debouncedPersistToStorage() {
@@ -220,8 +220,8 @@ export class DestroyHandler {
 
   /**
    * Persist current state to browser.storage.local
-   * v1.6.4 - FIX Bug #1: Persist to storage after destroy
-   * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
+   * v1.6.3.4 - FIX Bug #1: Persist to storage after destroy
+   * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    * @returns {Promise<void>}
@@ -229,7 +229,7 @@ export class DestroyHandler {
   async _persistToStorage() {
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
     
-    // v1.6.4.1 - FIX Bug #1: Handle null state from validation failure
+    // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
     if (!state) {
       console.error('[DestroyHandler] Failed to build state for storage');
       return;
@@ -264,9 +264,9 @@ export class DestroyHandler {
 
   /**
    * Close all Quick Tabs
-   * v1.6.4 - FIX Bug #1: Persist to storage after close all
-   * v1.6.4.3 - FIX Issue #3: Emit state:cleared event for UICoordinator reconciliation
-   * v1.6.4.4 - FIX Bug #7: Track all destroyed IDs atomically, use shared cleanup utility
+   * v1.6.3.4 - FIX Bug #1: Persist to storage after close all
+   * v1.6.3.4-v4 - FIX Issue #3: Emit state:cleared event for UICoordinator reconciliation
+   * v1.6.3.4-v5 - FIX Bug #7: Track all destroyed IDs atomically, use shared cleanup utility
    * v1.6.3.2 - FIX Issue #6: Use batch mode to prevent storage write storm (6+ writes in 24ms)
    * v1.6.3.4 - FIX Issue #7: Enhanced logging throughout closeAll
    * v1.6.3.4-v10 - FIX Issue #6: Use Set of operation IDs instead of boolean flag
@@ -290,7 +290,7 @@ export class DestroyHandler {
       ids: Array.from(this._batchOperationIds)
     });
 
-    // v1.6.4.4 - FIX Bug #7: Track all IDs being destroyed
+    // v1.6.3.4-v5 - FIX Bug #7: Track all IDs being destroyed
     for (const id of this.quickTabsMap.keys()) {
       this._destroyedIds.add(id);
       console.log(`[DestroyHandler] Marked for destruction (source: ${source}):`, id);
@@ -312,13 +312,13 @@ export class DestroyHandler {
     
     this.currentZIndex.value = this.baseZIndex;
 
-    // v1.6.4.4 - FIX Bug #7: Use shared utility to clean up ALL .quick-tab-window elements
+    // v1.6.3.4-v5 - FIX Bug #7: Use shared utility to clean up ALL .quick-tab-window elements
     const removedCount = cleanupOrphanedQuickTabElements(null);
     if (removedCount > 0) {
       console.log(`[DestroyHandler] Removed ${removedCount} DOM element(s) (source: ${source})`);
     }
 
-    // v1.6.4.3 - FIX Issue #3: Emit state:cleared for UICoordinator to reconcile
+    // v1.6.3.4-v4 - FIX Issue #3: Emit state:cleared for UICoordinator to reconcile
     // This removes any orphaned windows that may exist in renderedTabs but not StateManager
     if (this.eventBus) {
       this.eventBus.emit('state:cleared', { count, source });

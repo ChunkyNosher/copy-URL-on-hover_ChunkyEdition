@@ -53,14 +53,14 @@ export class CreateHandler {
     this.createWindow = windowFactory || createQuickTabWindow;
     // v1.6.3.2 - Cache for quickTabShowDebugId setting
     this.showDebugIdSetting = false;
-    // v1.6.4.8 - Store listener reference for cleanup
+    // v1.6.3.4-v9 - Store listener reference for cleanup
     this._storageListener = null;
   }
 
   /**
    * Initialize handler - load settings from storage
    * v1.6.3.2 - Load showDebugId setting for Debug ID display feature
-   * v1.6.4.8 - FIX Issue #4: Add storage.onChanged listener for dynamic updates
+   * v1.6.3.4-v9 - FIX Issue #4: Add storage.onChanged listener for dynamic updates
    */
   async init() {
     await this._loadDebugIdSetting();
@@ -69,7 +69,7 @@ export class CreateHandler {
 
   /**
    * Cleanup storage listener to prevent memory leaks
-   * v1.6.4.8 - Added for proper resource cleanup
+   * v1.6.3.4-v9 - Added for proper resource cleanup
    */
   destroy() {
     if (this._storageListener) {
@@ -81,13 +81,13 @@ export class CreateHandler {
 
   /**
    * Setup storage.onChanged listener for dynamic setting updates
-   * v1.6.4.8 - FIX Issue #4: Update already-rendered Quick Tabs when settings change
-   * v1.6.4.9 - FIX Issue #5: Listen for individual key 'quickTabShowDebugId' from storage.local
+   * v1.6.3.4-v9 - FIX Issue #4: Update already-rendered Quick Tabs when settings change
+   * v1.6.3.4-v10 - FIX Issue #5: Listen for individual key 'quickTabShowDebugId' from storage.local
    * @private
    */
   _setupStorageListener() {
     // Store listener reference for cleanup
-    // v1.6.4.9 - FIX: Listen for individual key 'quickTabShowDebugId' (how settings.js saves it)
+    // v1.6.3.4-v10 - FIX: Listen for individual key 'quickTabShowDebugId' (how settings.js saves it)
     // instead of nested object access via QUICK_TAB_SETTINGS_KEY
     this._storageListener = (changes, areaName) => {
       // Only react to local storage changes where settings are saved
@@ -121,7 +121,7 @@ export class CreateHandler {
 
   /**
    * Update debug ID display on all rendered Quick Tabs
-   * v1.6.4.8 - FIX Issue #4: Dynamic titlebar updates when settings change
+   * v1.6.3.4-v9 - FIX Issue #4: Dynamic titlebar updates when settings change
    * @private
    * @param {boolean} showDebugId - Whether to show debug ID
    */
@@ -144,11 +144,11 @@ export class CreateHandler {
   /**
    * Load the quickTabShowDebugId setting from storage
    * v1.6.3.2 - Feature: Debug UID Display Toggle
-   * v1.6.4.8 - FIX Issue #2: Add fallback to local storage, improved logging
+   * v1.6.3.4-v9 - FIX Issue #2: Add fallback to local storage, improved logging
    * @private
    */
   async _loadDebugIdSetting() {
-    // v1.6.4.9 - FIX Issue #3: Read from storage.local with individual key 'quickTabShowDebugId'
+    // v1.6.3.4-v10 - FIX Issue #3: Read from storage.local with individual key 'quickTabShowDebugId'
     // This matches how settings.js saves the setting (individual keys to storage.local)
     try {
       const result = await browser.storage.local.get('quickTabShowDebugId');

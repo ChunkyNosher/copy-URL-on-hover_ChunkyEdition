@@ -50,14 +50,14 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
 
       expect(manager.minimizedTabs.has('test-tab-1')).toBe(true);
-      // v1.6.4.3 - Now stores snapshot, not direct reference
+      // v1.6.3.4-v4 - Now stores snapshot, not direct reference
       expect(manager.minimizedTabs.get('test-tab-1').window).toBe(mockTabWindow);
     });
 
     test('should log addition with snapshot', () => {
       manager.add('test-tab-1', mockTabWindow);
 
-      // v1.6.4.3 - Updated: Logs include snapshot details
+      // v1.6.3.4-v4 - Updated: Logs include snapshot details
       expect(console.log).toHaveBeenCalledWith(
         '[MinimizedManager] Added minimized tab with snapshot:',
         {
@@ -86,7 +86,7 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow2);
 
       expect(manager.minimizedTabs.size).toBe(1);
-      // v1.6.4.3 - Now stores snapshot, not direct reference
+      // v1.6.3.4-v4 - Now stores snapshot, not direct reference
       expect(manager.minimizedTabs.get('test-tab-1').window).toBe(mockTabWindow2);
       expect(manager.minimizedTabs.get('test-tab-1').window.width).toBe(1000);
     });
@@ -352,7 +352,7 @@ describe('MinimizedManager', () => {
     test('should log clearing', () => {
       manager.clear();
 
-      // v1.6.4.9 - Updated log message to reflect clearing pending snapshots too
+      // v1.6.3.4-v10 - Updated log message to reflect clearing pending snapshots too
       expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Cleared all minimized tabs and pending snapshots');
     });
 
@@ -442,13 +442,13 @@ describe('MinimizedManager', () => {
       expect(result.window).toBe(minimalTab);
       // v1.6.3.2 - MinimizedManager.restore() no longer calls tabWindow.restore()
       expect(minimalTab.restore).not.toHaveBeenCalled();
-      // v1.6.4.6 - Snapshot applies to instance properties (with defaults)
+      // v1.6.3.4-v7 - Snapshot applies to instance properties (with defaults)
       expect(minimalTab.left).toBe(100);
       expect(minimalTab.top).toBe(100);
     });
 
     test('should handle null tab window in add', () => {
-      // v1.6.4.3 - Updated: null tab window is now rejected
+      // v1.6.3.4-v4 - Updated: null tab window is now rejected
       manager.add('null-tab', null);
 
       expect(manager.isMinimized('null-tab')).toBe(false); // Not added
@@ -456,7 +456,7 @@ describe('MinimizedManager', () => {
     });
 
     test('should handle undefined tab window in add', () => {
-      // v1.6.4.3 - Updated: undefined tab window is now rejected
+      // v1.6.3.4-v4 - Updated: undefined tab window is now rejected
       manager.add('undefined-tab', undefined);
 
       expect(manager.isMinimized('undefined-tab')).toBe(false); // Not added
@@ -464,7 +464,7 @@ describe('MinimizedManager', () => {
     });
 
     test('should handle restoring null tab window', () => {
-      // v1.6.4.3 - Updated: Since null tab window is rejected in add,
+      // v1.6.3.4-v4 - Updated: Since null tab window is rejected in add,
       // restore won't find it and returns false
       manager.add('null-tab', null);
 

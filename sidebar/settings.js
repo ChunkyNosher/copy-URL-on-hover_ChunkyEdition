@@ -506,7 +506,7 @@ const DEFAULT_SETTINGS = {
   darkMode: true,
   menuSize: 'medium',
 
-  // v1.6.4.9 - Quick Tab Debug UID Display setting
+  // v1.6.3.4-v10 - Quick Tab Debug UID Display setting
   quickTabShowDebugId: false,
 
   // v1.6.0.11 - Added filter defaults (stored separately in storage but reset together)
@@ -612,7 +612,7 @@ function loadSettings() {
     document.getElementById('debugMode').checked = items.debugMode;
     document.getElementById('darkMode').checked = items.darkMode;
     document.getElementById('menuSize').value = items.menuSize || 'medium';
-    // v1.6.4.9 - Quick Tab Debug UID Display setting
+    // v1.6.3.4-v10 - Quick Tab Debug UID Display setting
     document.getElementById('quickTabShowDebugId').checked = items.quickTabShowDebugId;
 
     applyTheme(items.darkMode);
@@ -882,7 +882,7 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 });
 
 /**
- * v1.6.4 - FIX Bug #5: Helper to handle coordinated clear response
+ * v1.6.3.4 - FIX Bug #5: Helper to handle coordinated clear response
  * Extracted to reduce max-depth
  * @param {Object} response - Response from background script
  */
@@ -895,7 +895,7 @@ function _handleClearResponse(response) {
 }
 
 // Clear Quick Tab storage button
-// v1.6.4 - FIX Bug #5: Coordinate through background script to prevent storage write storm
+// v1.6.3.4 - FIX Bug #5: Coordinate through background script to prevent storage write storm
 document.getElementById('clearStorageBtn').addEventListener('click', async () => {
   const confirmed = confirm(
     'This will clear Quick Tab positions and state. Your settings and keybinds will be preserved. Are you sure?'
@@ -906,7 +906,7 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
   }
 
   try {
-    // v1.6.4 - FIX Bug #5: Send coordinated clear to background script
+    // v1.6.3.4 - FIX Bug #5: Send coordinated clear to background script
     // Background will: 1) Clear storage once 2) Broadcast QUICK_TABS_CLEARED to all tabs
     // This prevents N tabs from all trying to clear storage simultaneously
     const response = await browserAPI.runtime.sendMessage({
@@ -1090,7 +1090,7 @@ function storeSecondaryTab(secondaryTab) {
 }
 
 /**
- * v1.6.4.2 - FIX Bug #3: Check storage for requested tab from keyboard shortcut
+ * v1.6.3.4-v3 - FIX Bug #3: Check storage for requested tab from keyboard shortcut
  * Background script sets _requestedPrimaryTab before opening sidebar to ensure
  * the correct tab is shown even on first open (when message listener isn't ready)
  */
@@ -1114,7 +1114,7 @@ async function _checkAndApplyRequestedTab() {
       handlePrimaryTabSwitch(storedPrimaryTab);
     }
   } catch (error) {
-    // v1.6.4.3 - FIX: More specific error message about what failed
+    // v1.6.3.4-v4 - FIX: More specific error message about what failed
     console.error('[Settings] Failed to check requested tab from storage.local:', error);
     // Fallback to stored tab on error (localStorage or default)
     const storedPrimaryTab = getStoredPrimaryTab();
@@ -1243,7 +1243,7 @@ function setupButtonHandler(buttonId, handler, options = {}) {
 /**
  * Initialize tab switching event handlers
  * v1.6.1.4 - Extracted to fix max-lines-per-function eslint warning
- * v1.6.4.2 - FIX Bug #3: Check storage for requested tab on initialization
+ * v1.6.3.4-v3 - FIX Bug #3: Check storage for requested tab on initialization
  */
 function initializeTabSwitching() {
   // Primary tab switching
@@ -1262,7 +1262,7 @@ function initializeTabSwitching() {
     });
   });
   
-  // v1.6.4.2 - FIX Bug #3: Check for requested tab from keyboard shortcut
+  // v1.6.3.4-v3 - FIX Bug #3: Check for requested tab from keyboard shortcut
   // Background script sets _requestedPrimaryTab before opening sidebar
   _checkAndApplyRequestedTab();
   

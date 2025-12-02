@@ -1181,7 +1181,7 @@ function _handleClearAllQuickTabs(sendResponse) {
 }
 
 /**
- * v1.6.4 - FIX Bug #5: Handle QUICK_TABS_CLEARED message from background
+ * v1.6.3.4 - FIX Bug #5: Handle QUICK_TABS_CLEARED message from background
  * This clears local Quick Tab state WITHOUT writing to storage
  * (Background already cleared storage, we just need to clean up UI)
  *
@@ -1266,6 +1266,57 @@ function _getActionError(result) {
   return result.error || 'Operation failed';
 }
 
+// v1.6.3.4-v11 - FIX Issue #2: Message deduplication to prevent duplicate RESTORE_QUICK_TAB processing
+// Map of quickTabId -> timestamp of last processed restore message
+const recentRestoreMessages = new Map();
+const RESTORE_DEDUP_WINDOW_MS = 2000; // Reject duplicates within 2000ms window
+
+/**
+ * Check if restore message is a duplicate (within deduplication window)
+ * v1.6.3.4-v11 - FIX Issue #2: Prevent duplicate restore processing
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {boolean} True if this is a duplicate that should be rejected
+ */
+function _isDuplicateRestoreMessage(quickTabId) {
+  const now = Date.now();
+  const lastProcessed = recentRestoreMessages.get(quickTabId);
+  
+  if (lastProcessed && (now - lastProcessed) < RESTORE_DEDUP_WINDOW_MS) {
+    console.warn('[Content] BLOCKED duplicate RESTORE_QUICK_TAB:', {
+      quickTabId,
+      timeSinceLastRestore: now - lastProcessed,
+      dedupWindowMs: RESTORE_DEDUP_WINDOW_MS
+    });
+    return true;
+  }
+  
+  // Update the timestamp
+  recentRestoreMessages.set(quickTabId, now);
+  
+  // Clean up old entries to prevent memory leak
+  if (recentRestoreMessages.size > 50) {
+    _cleanupOldRestoreEntries(now);
+  }
+  
+  return false;
+}
+
+/**
+ * Clean up old entries from recentRestoreMessages Map
+ * v1.6.3.4-v11 - FIX Issue #2: Extracted to reduce nesting depth
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _cleanupOldRestoreEntries(now) {
+  const cutoff = now - RESTORE_DEDUP_WINDOW_MS * 5;
+  for (const [id, timestamp] of recentRestoreMessages) {
+    if (timestamp < cutoff) {
+      recentRestoreMessages.delete(id);
+    }
+  }
+}
+
 /**
  * Generic manager action handler wrapper
  * v1.6.3.4-v7 - FIX Issue #3: Check result from handler and send proper error responses
@@ -1310,7 +1361,25 @@ function _handleMinimizeQuickTab(quickTabId, sendResponse) {
   _handleManagerAction(quickTabId, 'Minimized', id => quickTabsManager.minimizeById(id, 'Manager'), sendResponse);
 }
 
+/**
+ * Handle RESTORE_QUICK_TAB message with deduplication
+ * v1.6.3.4-v11 - FIX Issue #2: Prevent duplicate restore processing
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to restore
+ * @param {Function} sendResponse - Response callback
+ */
 function _handleRestoreQuickTab(quickTabId, sendResponse) {
+  // v1.6.3.4-v11 - FIX Issue #2: Check for duplicate restore within dedup window
+  if (_isDuplicateRestoreMessage(quickTabId)) {
+    sendResponse({ 
+      success: false, 
+      error: 'Duplicate restore request rejected',
+      quickTabId,
+      reason: 'deduplication'
+    });
+    return;
+  }
+  
   _handleManagerAction(quickTabId, 'Restored', id => quickTabsManager.restoreById(id, 'Manager'), sendResponse);
 }
 
@@ -1589,7 +1658,7 @@ function _testHandleGetManagerState(sendResponse) {
         size: null,
         minimizedTabs: minimizedTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
         minimizedCount: minimizedTabs.length,
-        deprecationNotice: 'Floating panel removed in v1.6.4. Use sidebar Quick Tabs Manager instead.'
+        deprecationNotice: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
       }
     });
   } catch (error) {
@@ -1604,7 +1673,7 @@ function _testHandleGetManagerState(sendResponse) {
  */
 function _testHandleSetManagerPosition(sendResponse) {
   console.log('[Test Bridge Handler] TEST_SET_MANAGER_POSITION (deprecated - floating panel removed)');
-  sendResponse({ success: false, error: 'Floating panel removed in v1.6.4. Use sidebar Quick Tabs Manager instead.' });
+  sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
 }
 
 /**
@@ -1613,7 +1682,7 @@ function _testHandleSetManagerPosition(sendResponse) {
  */
 function _testHandleSetManagerSize(sendResponse) {
   console.log('[Test Bridge Handler] TEST_SET_MANAGER_SIZE (deprecated - floating panel removed)');
-  sendResponse({ success: false, error: 'Floating panel removed in v1.6.4. Use sidebar Quick Tabs Manager instead.' });
+  sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
 }
 
 /**
@@ -2011,6 +2080,33 @@ function _dispatchMessage(message, _sender, sendResponse) {
   // Message not handled by this listener
   return false;
 }
+
+// ==================== BEFOREUNLOAD CLEANUP HANDLER ====================
+// v1.6.3.4-v11 - FIX Issue #3: Cleanup resources on page navigation to prevent memory leaks
+// This handler ensures storage listeners and other resources are properly released
+// Note: Content scripts are injected once per page load, but we add a guard for safety
+
+/**
+ * Handler for beforeunload event to cleanup resources
+ * @private
+ */
+function _handleBeforeUnload() {
+  console.log('[Content] beforeunload event - starting cleanup');
+  
+  if (quickTabsManager?.destroy) {
+    console.log('[Content] Calling quickTabsManager.destroy() for resource cleanup');
+    quickTabsManager.destroy();
+  } else {
+    console.log('[Content] quickTabsManager not available or no destroy method, skipping cleanup');
+  }
+}
+
+// Guard: Only add listener if not already added (safety for any edge cases)
+if (!window._CUO_beforeunload_registered) {
+  window.addEventListener('beforeunload', _handleBeforeUnload);
+  window._CUO_beforeunload_registered = true;
+}
+// ==================== END BEFOREUNLOAD CLEANUP HANDLER ====================
 
 // ==================== LOG EXPORT MESSAGE HANDLER ====================
 // Listen for log export requests from popup

@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.4-v10 restore() simplified, UICoordinator single render authority)
+  (v1.6.3.4-v11 callback verification, safe clearing)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,10 +38,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.4-v10 Key Features:**
-- **restore() Simplified** - Only updates `this.minimized = false` + `onFocus()`, no DOM manipulation
+**v1.6.3.4-v11 Key Features:**
+- **Callback Verification** - `_verifyCallbacksAfterRestore()` ensures callbacks exist
+- **Safe Clearing** - `_safeClearRenderedTabs()` with comprehensive logging
 - **UICoordinator Single Render Authority** - TRUE single rendering authority pattern
-- **Generation Counter Debounce** - `_timerGeneration` Map in VisibilityHandler
+- **restore() Simplified** - Only updates `this.minimized = false` + `onFocus()`
 
 **Timing Constants:**
 
@@ -53,24 +54,25 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v10 Key Patterns
+## v1.6.3.4-v11 Key Patterns
+
+### Callback Verification
+
+```javascript
+_verifyCallbacksAfterRestore(tabWindow) {
+  if (!tabWindow._callbacks || !tabWindow._callbacks.length) {
+    console.warn('[UICoordinator] Missing callbacks after restore');
+  }
+}
+```
 
 ### Simplified restore() Pattern
 
 ```javascript
-// QuickTabWindow.restore() only updates state, no DOM manipulation
 restore() {
   this.minimized = false;
   this.onFocus(); // Just focus, UICoordinator handles rendering
 }
-```
-
-### UICoordinator Single Render Authority
-
-```javascript
-// UICoordinator is the TRUE single rendering authority
-// restore() does NOT create DOM elements
-// UICoordinator._renderQuickTab() is the only place DOM is created
 ```
 
 ---
@@ -86,8 +88,8 @@ restore() {
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] Global visibility correct (no container filtering)
 - [ ] Drag works without pointer escape
-- [ ] **v10:** restore() only updates state, no DOM
-- [ ] **v10:** UICoordinator is single render authority
+- [ ] **v11:** Callback verification after restore
+- [ ] **v11:** Safe clearing with logging
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 

@@ -51,7 +51,7 @@ export class TitlebarBuilder {
     this.muteButton = null;
     this.faviconElement = null;
     this.debugIdElement = null; // v1.6.3.2 - Debug ID display element
-    this.controlsContainer = null; // v1.6.4.8 - Controls container for dynamic updates
+    this.controlsContainer = null; // v1.6.3.4-v9 - Controls container for dynamic updates
 
     // Zoom state (internal to titlebar)
     this.currentZoom = 100;
@@ -113,7 +113,7 @@ export class TitlebarBuilder {
 
   /**
    * Update debug ID display dynamically
-   * v1.6.4.8 - FIX Issue #4: Dynamic titlebar updates when settings change
+   * v1.6.3.4-v9 - FIX Issue #4: Dynamic titlebar updates when settings change
    * @param {boolean} showDebugId - Whether to show debug ID in titlebar
    */
   updateDebugIdDisplay(showDebugId) {
@@ -129,8 +129,8 @@ export class TitlebarBuilder {
 
   /**
    * Add debug ID element to titlebar if not already present
-   * v1.6.4.8 - Extracted to reduce nesting depth
-   * v1.6.4.8 - Use stored controlsContainer reference instead of fragile querySelector
+   * v1.6.3.4-v9 - Extracted to reduce nesting depth
+   * v1.6.3.4-v9 - Use stored controlsContainer reference instead of fragile querySelector
    * @private
    */
   _addDebugIdElement() {
@@ -160,7 +160,7 @@ export class TitlebarBuilder {
 
   /**
    * Remove debug ID element from titlebar if present
-   * v1.6.4.8 - Extracted to reduce nesting depth
+   * v1.6.3.4-v9 - Extracted to reduce nesting depth
    * @private
    */
   _removeDebugIdElement() {
@@ -403,8 +403,8 @@ export class TitlebarBuilder {
     const displayId =
       this.config.id.length > 15 ? '...' + this.config.id.slice(-12) : this.config.id;
 
-    // v1.6.4.8 - FIX Issue #1: Add marginLeft: 'auto' to push element to right edge
-    // v1.6.4.8 - FIX Issue #3: Increase fontSize to 11px and use brighter color #aaa
+    // v1.6.3.4-v9 - FIX Issue #1: Add marginLeft: 'auto' to push element to right edge
+    // v1.6.3.4-v9 - FIX Issue #3: Increase fontSize to 11px and use brighter color #aaa
     const debugId = createElement(
       'span',
       {
@@ -435,7 +435,7 @@ export class TitlebarBuilder {
    * @private
    */
   _createRightSection() {
-    // v1.6.4.8 - Added className for robust querySelector targeting
+    // v1.6.3.4-v9 - Added className for robust querySelector targeting
     const controls = createElement('div', {
       className: 'quick-tab-controls',
       style: {

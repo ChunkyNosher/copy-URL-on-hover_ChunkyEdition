@@ -361,7 +361,7 @@ function createGlobalSection(totalTabs) {
 /**
  * Render the entire UI based on current state
  * v1.6.3 - FIX: Updated to handle unified format (v1.6.2.2+) instead of container-based format
- * v1.6.4.9 - FIX Issue #4: Check domVerified property for warning indicator
+ * v1.6.3.4-v10 - FIX Issue #4: Check domVerified property for warning indicator
  * 
  * Unified format:
  * { tabs: [...], saveId: '...', timestamp: ... }
@@ -400,7 +400,7 @@ function renderUI() {
   const tabsList = document.createElement('div');
   tabsList.className = 'quick-tabs-list';
 
-  // v1.6.4.3 - FIX Issue #5: Use module-level helper for consistent minimized state detection
+  // v1.6.3.4-v4 - FIX Issue #5: Use module-level helper for consistent minimized state detection
   // Separate active and minimized tabs using consistent helper
   const activeTabs = allTabs.filter(t => !isTabMinimizedHelper(t));
   const minimizedTabs = allTabs.filter(t => isTabMinimizedHelper(t));
@@ -441,7 +441,7 @@ function _createFavicon(url) {
 }
 
 /**
- * v1.6.4.2 - Helper to get position value from flat or nested format
+ * v1.6.3.4-v3 - Helper to get position value from flat or nested format
  * @param {Object} tab - Quick Tab data
  * @param {string} flatKey - Key for flat format (e.g., 'width')
  * @param {string} nestedKey - Key for nested format (e.g., 'size')
@@ -453,15 +453,15 @@ function _getValue(tab, flatKey, nestedKey, prop) {
 }
 
 /**
- * v1.6.4 - Helper to format size and position string for tab metadata
+ * v1.6.3.4 - Helper to format size and position string for tab metadata
  * Extracted to reduce complexity in _createTabInfo
  * FIX Issue #3: Only show position if both left and top are defined
- * v1.6.4.2 - FIX TypeError: Handle both flat and nested position/size formats
+ * v1.6.3.4-v3 - FIX TypeError: Handle both flat and nested position/size formats
  * @param {Object} tab - Quick Tab data
  * @returns {string|null} Formatted size/position string or null
  */
 function _formatSizePosition(tab) {
-  // v1.6.4.2 - FIX TypeError: Handle both flat (width/height) and nested (size.width) formats
+  // v1.6.3.4-v3 - FIX TypeError: Handle both flat (width/height) and nested (size.width) formats
   const width = _getValue(tab, 'width', 'size', 'width');
   const height = _getValue(tab, 'height', 'size', 'height');
   
@@ -471,11 +471,11 @@ function _formatSizePosition(tab) {
   
   let sizeStr = `${Math.round(width)}×${Math.round(height)}`;
   
-  // v1.6.4.2 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
+  // v1.6.3.4-v3 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
   const left = _getValue(tab, 'left', 'position', 'left');
   const top = _getValue(tab, 'top', 'position', 'top');
   
-  // v1.6.4 - FIX Issue #3: Only show position if both values exist
+  // v1.6.3.4 - FIX Issue #3: Only show position if both values exist
   if (left != null && top != null) {
     sizeStr += ` at (${Math.round(left)}, ${Math.round(top)})`;
   }
@@ -485,7 +485,7 @@ function _formatSizePosition(tab) {
 
 /**
  * Create tab info section (title + metadata)
- * v1.6.4 - FIX Bug #6: Added position display (x, y) alongside size
+ * v1.6.3.4 - FIX Bug #6: Added position display (x, y) alongside size
  * @param {Object} tab - Quick Tab data
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {HTMLDivElement} Tab info element
@@ -513,7 +513,7 @@ function _createTabInfo(tab, isMinimized) {
     metaParts.push(`Tab ${tab.activeTabId}`);
   }
 
-  // v1.6.4 - FIX Bug #6: Size with position display
+  // v1.6.3.4 - FIX Bug #6: Size with position display
   const sizePosition = _formatSizePosition(tab);
   if (sizePosition) {
     metaParts.push(sizePosition);
@@ -595,7 +595,7 @@ function _createTabActions(tab, isMinimized) {
 
 /**
  * Determine status indicator class based on tab state
- * v1.6.4.9 - FIX Issue #4: Check domVerified for warning indicator
+ * v1.6.3.4-v10 - FIX Issue #4: Check domVerified for warning indicator
  * @param {Object} tab - Quick Tab data
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {string} - CSS class for indicator color
@@ -606,7 +606,7 @@ function _getIndicatorClass(tab, isMinimized) {
     return 'yellow';
   }
   
-  // v1.6.4.9 - FIX Issue #4: Check domVerified property
+  // v1.6.3.4-v10 - FIX Issue #4: Check domVerified property
   // If domVerified is explicitly false, show orange/warning indicator
   // This means restore was attempted but DOM wasn't actually rendered
   if (tab.domVerified === false) {
@@ -624,12 +624,12 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   item.dataset.containerId = cookieStoreId;
 
   // Status indicator
-  // v1.6.4.9 - FIX Issue #4: Use helper function for indicator class
+  // v1.6.3.4-v10 - FIX Issue #4: Use helper function for indicator class
   const indicator = document.createElement('span');
   const indicatorClass = _getIndicatorClass(tab, isMinimized);
   indicator.className = `status-indicator ${indicatorClass}`;
   
-  // v1.6.4.9 - FIX Issue #4: Add tooltip for warning state
+  // v1.6.3.4-v10 - FIX Issue #4: Add tooltip for warning state
   if (indicatorClass === 'orange') {
     indicator.title = 'Warning: Window may not be visible. Try restoring again.';
   }
@@ -881,7 +881,7 @@ function _scheduleNormalUpdate() {
 /**
  * Close all minimized Quick Tabs (NEW FEATURE #1)
  * v1.6.3 - FIX: Changed from storage.sync to storage.local and updated for unified format
- * v1.6.4.5 - FIX Issue #4: Send CLOSE_QUICK_TAB to content scripts BEFORE updating storage
+ * v1.6.3.4-v6 - FIX Issue #4: Send CLOSE_QUICK_TAB to content scripts BEFORE updating storage
  */
 async function closeMinimizedTabs() {
   try {
@@ -891,7 +891,7 @@ async function closeMinimizedTabs() {
 
     const state = result[STATE_KEY];
     
-    // v1.6.4.5 - FIX Issue #4: Collect minimized tab IDs BEFORE filtering
+    // v1.6.3.4-v6 - FIX Issue #4: Collect minimized tab IDs BEFORE filtering
     const minimizedTabIds = [];
     if (state.tabs && Array.isArray(state.tabs)) {
       state.tabs.forEach(tab => {
@@ -903,7 +903,7 @@ async function closeMinimizedTabs() {
     
     console.log('[Manager] Closing minimized tabs:', minimizedTabIds);
     
-    // v1.6.4.5 - FIX Issue #4: Send CLOSE_QUICK_TAB to ALL tabs for DOM cleanup FIRST
+    // v1.6.3.4-v6 - FIX Issue #4: Send CLOSE_QUICK_TAB to ALL tabs for DOM cleanup FIRST
     const browserTabs = await browser.tabs.query({});
     for (const tabId of minimizedTabIds) {
       browserTabs.forEach(tab => {
@@ -945,7 +945,7 @@ async function closeMinimizedTabs() {
 
 /**
  * Check if a tab is minimized using consistent logic
- * v1.6.4.3 - FIX Issue #5: Helper for consistent minimized state detection
+ * v1.6.3.4-v4 - FIX Issue #5: Helper for consistent minimized state detection
  * Prefers top-level `minimized` property as single source of truth
  * @param {Object} tab - Quick Tab data
  * @returns {boolean} - True if tab is minimized
@@ -956,7 +956,7 @@ function isTabMinimizedHelper(tab) {
 
 /**
  * Filter minimized tabs from state object
- * v1.6.4.3 - FIX Issue #5: Use consistent isTabMinimizedHelper
+ * v1.6.3.4-v4 - FIX Issue #5: Use consistent isTabMinimizedHelper
  * @param {Object} state - State object to modify in place
  * @returns {boolean} - True if changes were made
  */
@@ -966,7 +966,7 @@ function filterMinimizedFromState(state) {
   // Handle unified format (v1.6.2.2+)
   if (state.tabs && Array.isArray(state.tabs)) {
     const originalLength = state.tabs.length;
-    // v1.6.4.3 - FIX Issue #5: Use consistent helper
+    // v1.6.3.4-v4 - FIX Issue #5: Use consistent helper
     state.tabs = state.tabs.filter(t => !isTabMinimizedHelper(t));
 
     if (state.tabs.length !== originalLength) {
@@ -984,7 +984,7 @@ function filterMinimizedFromState(state) {
 
 /**
  * Filter minimized tabs from legacy container format
- * v1.6.4.3 - FIX Issue #5: Use consistent isTabMinimizedHelper
+ * v1.6.3.4-v4 - FIX Issue #5: Use consistent isTabMinimizedHelper
  * @param {Object} state - State object in container format
  * @returns {boolean} - True if changes were made
  */
@@ -996,7 +996,7 @@ function filterMinimizedFromContainerFormat(state) {
     
     if (state[cookieStoreId] && state[cookieStoreId].tabs) {
       const originalLength = state[cookieStoreId].tabs.length;
-      // v1.6.4.3 - FIX Issue #5: Use consistent helper
+      // v1.6.3.4-v4 - FIX Issue #5: Use consistent helper
       state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !isTabMinimizedHelper(t));
 
       if (state[cookieStoreId].tabs.length !== originalLength) {
@@ -1055,7 +1055,7 @@ async function goToTab(tabId) {
 
 /**
  * Helper: Send message to a single tab
- * v1.6.4.10 - Extracted to reduce nesting depth
+ * v1.6.3.4-v11 - Extracted to reduce nesting depth
  * @param {number} tabId - Browser tab ID
  * @param {string} action - Message action
  * @param {string} quickTabId - Quick Tab ID
@@ -1073,7 +1073,7 @@ async function _sendMessageToTab(tabId, action, quickTabId) {
 
 /**
  * Helper: Send message to all tabs
- * v1.6.4.10 - Extracted to reduce nesting depth
+ * v1.6.3.4-v11 - Extracted to reduce nesting depth
  * @param {string} action - Message action
  * @param {string} quickTabId - Quick Tab ID
  * @returns {Promise<{success: number, errors: number}>} Count of successes and errors
@@ -1099,7 +1099,7 @@ async function _sendMessageToAllTabs(action, quickTabId) {
 
 /**
  * Minimize an active Quick Tab
- * v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
+ * v1.6.3.4-v11 - FIX Issue #4: Send to ALL tabs, not just active tab
  *   Quick Tab may exist in a different browser tab than the active one.
  *   Cross-tab minimize was failing because message was only sent to active tab.
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
@@ -1120,7 +1120,7 @@ async function minimizeQuickTab(quickTabId) {
     PENDING_OPERATIONS.delete(operationKey);
   }, OPERATION_TIMEOUT_MS);
   
-  // v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
+  // v1.6.3.4-v11 - FIX Issue #4: Send to ALL tabs, not just active tab
   const result = await _sendMessageToAllTabs('MINIMIZE_QUICK_TAB', quickTabId);
   console.log(`[Manager] Minimized Quick Tab ${quickTabId} | success: ${result.success}, errors: ${result.errors}`);
 }
@@ -1158,7 +1158,7 @@ function _showErrorNotification(message) {
 
 /**
  * Restore a minimized Quick Tab
- * v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
+ * v1.6.3.4-v11 - FIX Issue #4: Send to ALL tabs, not just active tab
  *   Quick Tab may exist in a different browser tab than the active one.
  *   Cross-tab restore was failing because message was only sent to active tab.
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
@@ -1201,7 +1201,7 @@ async function restoreQuickTab(quickTabId) {
     PENDING_OPERATIONS.delete(operationKey);
   }, OPERATION_TIMEOUT_MS);
   
-  // v1.6.4.10 - FIX Issue #4: Send to ALL tabs, not just active tab
+  // v1.6.3.4-v11 - FIX Issue #4: Send to ALL tabs, not just active tab
   const result = await _sendMessageToAllTabs('RESTORE_QUICK_TAB', quickTabId);
   console.log(`[Manager] Restored Quick Tab ${quickTabId} | success: ${result.success}, errors: ${result.errors}`);
   

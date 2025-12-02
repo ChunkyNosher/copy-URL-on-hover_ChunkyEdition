@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,21 +62,22 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**v1.6.3.4-v10 Key Patterns:**
+**v1.6.3.4-v11 Key Patterns:**
+- QuickTabsManager.destroy() with `beforeunload` handler
+- Message deduplication (2000ms restore, 200ms iframes)
+- Consecutive read validation for cache clearing
+- Atomic snapshot clear with `clearSnapshot()`
 - Generation Counter Debounce - `_timerGeneration` Map
-- Copy-on-Write - `_prepareDetachedDOMUpdate()` for safe Map updates
-- 64-bit Hash - djb2/sdbm returning `{lo, hi}` object
-- Batch Set - `_batchOperationIds` Set replaces `_batchMode`
 - Storage Queue Reset - `queueStorageWrite()` resets on failure
 
-**Timing Constants (v1.6.3.4-v10):**
+**Timing Constants (v1.6.3.4-v11):**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
-| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
+| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing deduplication |
+| `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
 
 **Storage Format:**
 ```javascript
