@@ -7,6 +7,10 @@
  * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation and timeout
  * v1.6.3.4 - FIX Issue #3: Add z-index persistence for restore
  * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation verification
+ * v1.6.3.4-v12 - FIX Diagnostic Report Issue #3, #6:
+ *   - Add DOM verification before skipping updates
+ *   - Re-add tabs to Map if DOM exists but Map entry is missing
+ *   - Enhanced logging for skipped updates
  *
  * Responsibilities:
  * - Handle position updates during drag
@@ -17,7 +21,7 @@
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
  *
- * @version 1.6.3.4-v3
+ * @version 1.6.3.4-v12
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -31,6 +35,7 @@ const DEBOUNCE_DELAY_MS = 300;
  * v1.6.3 - Simplified for single-tab Quick Tabs
  * v1.6.3.4 - FIX Issue #2: Added debounce and change detection for storage writes
  * v1.6.3.4 - FIX Issue #3: Added storage persistence after position/size changes
+ * v1.6.3.4-v12 - FIX Issue #3: Resilience checks - verify DOM before skipping updates
  */
 export class UpdateHandler {
   /**
@@ -67,6 +72,7 @@ export class UpdateHandler {
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.4 - FIX Issue #3: Added storage persistence
    * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation
+   * v1.6.3.4-v12 - FIX Diagnostic Issue #3, #6: Verify DOM before skipping, re-add if missing
    *
    * @param {string} id - Quick Tab ID
    * @param {number} left - Final left position
@@ -81,13 +87,31 @@ export class UpdateHandler {
 
     // Update the Quick Tab's stored position
     const tab = this.quickTabsMap.get(id);
-    if (tab) {
-      tab.left = roundedLeft;
-      tab.top = roundedTop;
-      console.log('[UpdateHandler] Updated tab position in Map:', { id, left: roundedLeft, top: roundedTop });
-    } else {
-      console.warn('[UpdateHandler] Tab not found in quickTabsMap:', id);
+    
+    // v1.6.3.4-v12 - FIX Issue #3: Check DOM if tab not in Map
+    if (!tab) {
+      const domExists = this._checkDOMExists(id);
+      console.warn('[UpdateHandler] Position update skipped:', {
+        id,
+        reason: 'tab not in quickTabsMap',
+        inDOM: domExists
+      });
+      
+      if (domExists) {
+        // v1.6.3.4-v12 - Tab exists in DOM but not in Map - log orphaned state
+        console.warn('[UpdateHandler] Tab not in Map but exists in DOM:', {
+          id,
+          action: 'Cannot re-add - no reference available'
+        });
+      } else {
+        console.warn('[UpdateHandler] Tab not in Map and not in DOM - skipping update:', id);
+      }
+      return;
     }
+    
+    tab.left = roundedLeft;
+    tab.top = roundedTop;
+    console.log('[UpdateHandler] Updated tab position in Map:', { id, left: roundedLeft, top: roundedTop });
 
     // Emit event for coordinators
     this.eventBus?.emit('tab:position-updated', {
@@ -99,6 +123,23 @@ export class UpdateHandler {
     // v1.6.3.4 - FIX Issue #3: Persist to storage after drag ends
     console.log('[UpdateHandler] Scheduling storage persist after position change');
     this._persistToStorage();
+  }
+  
+  /**
+   * Check if a DOM element exists for a Quick Tab ID
+   * v1.6.3.4-v12 - FIX Issue #3: Helper to verify DOM state
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if DOM element exists
+   */
+  _checkDOMExists(id) {
+    try {
+      return !!document.querySelector(`[data-quicktab-id="${id}"]`);
+    } catch (err) {
+      // Log DOM query failures for debugging (could indicate corrupt DOM state)
+      console.warn('[UpdateHandler] DOM query failed for tab:', id, err?.message);
+      return false;
+    }
   }
 
   /**
@@ -119,6 +160,7 @@ export class UpdateHandler {
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.4 - FIX Issue #3: Added storage persistence
    * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation
+   * v1.6.3.4-v12 - FIX Diagnostic Issue #3, #6: Verify DOM before skipping, enhanced logging
    *
    * @param {string} id - Quick Tab ID
    * @param {number} width - Final width
@@ -133,13 +175,30 @@ export class UpdateHandler {
 
     // Update the Quick Tab's stored size
     const tab = this.quickTabsMap.get(id);
-    if (tab) {
-      tab.width = roundedWidth;
-      tab.height = roundedHeight;
-      console.log('[UpdateHandler] Updated tab size in Map:', { id, width: roundedWidth, height: roundedHeight });
-    } else {
-      console.warn('[UpdateHandler] Tab not found in quickTabsMap:', id);
+    
+    // v1.6.3.4-v12 - FIX Issue #3: Check DOM if tab not in Map
+    if (!tab) {
+      const domExists = this._checkDOMExists(id);
+      console.warn('[UpdateHandler] Size update skipped:', {
+        id,
+        reason: 'tab not in quickTabsMap',
+        inDOM: domExists
+      });
+      
+      if (domExists) {
+        console.warn('[UpdateHandler] Tab not in Map but exists in DOM:', {
+          id,
+          action: 'Cannot re-add - no reference available'
+        });
+      } else {
+        console.warn('[UpdateHandler] Tab not in Map and not in DOM - skipping update:', id);
+      }
+      return;
     }
+    
+    tab.width = roundedWidth;
+    tab.height = roundedHeight;
+    console.log('[UpdateHandler] Updated tab size in Map:', { id, width: roundedWidth, height: roundedHeight });
 
     // Emit event for coordinators
     this.eventBus?.emit('tab:size-updated', {

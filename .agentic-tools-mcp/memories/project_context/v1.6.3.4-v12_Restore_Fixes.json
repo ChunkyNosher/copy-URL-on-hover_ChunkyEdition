@@ -1,0 +1,8 @@
+{
+  "id": "e0630f91-e46f-4a96-98f2-2e3aaab147a1",
+  "title": "v1.6.3.4-v12 Restore Fixes",
+  "details": "v1.6.3.4-v12 implemented fixes for 6 diagnostic issues:\n\n1. Storage Corruption: Enhanced logging with transaction sequencing, pendingWriteCount tracking\n2. Manager List Clears: _safeClearRenderedTabs() now verifies DOM before clearing, blocks if tabs exist\n3. Position/Size Updates: UpdateHandler._checkDOMExists() added, logs when skipping updates\n4. Duplicate Quick Tabs: _findDOMElementById() and _tryRecoverWindowFromDOM() reuse existing windows\n5. Yellow Indicator: MinimizedManager.validateStateConsistency() and clearSnapshotAtomic() added\n6. Missing Logging: Enhanced logging throughout storage-utils, UICoordinator, UpdateHandler, MinimizedManager\n\nKey patterns:\n- userInitiated parameter for _safeClearRenderedTabs (defaults to false for backward compat)\n- _verifyAllTabsDOMDetached() checks if all tabs have detached DOM\n- Recovery uses domElement.__quickTabWindow if set by window.js",
+  "category": "project_context",
+  "dateCreated": "2025-12-02T06:23:27.938Z",
+  "dateUpdated": "2025-12-02T06:23:27.938Z"
+}
