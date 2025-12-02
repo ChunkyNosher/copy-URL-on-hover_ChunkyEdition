@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.3.5 mediator integration)
+  warning indicators, cross-tab operations (v1.6.3.5-v2 DOM verification, debounce)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -37,38 +37,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 
-**v1.6.3.5 New Features:**
-- **QuickTabMediator Integration** - Manager uses mediator for operations
+**v1.6.3.5-v2 Timing Constants:**
+- **`STORAGE_READ_DEBOUNCE_MS`** - 50ms (reduced from 300ms)
+- **`DOM_VERIFICATION_DELAY_MS`** - 500ms for DOM verify timing
+
+**v1.6.3.5 Architecture:**
+- **QuickTabMediator** - Manager uses mediator for operations
 - **State Machine Validation** - Operations check state before executing
-- **MapTransactionManager** - Atomic Map ops with logging
 - **Restore Lock** - `_restoreInProgress` Set prevents duplicate restores
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
-
----
-
-## v1.6.3.5 Manager Patterns
-
-### Mediator Operations
-
-```javascript
-const mediator = getMediator();
-const result = mediator.minimize(id, 'manager-button');
-if (!result.success) {
-  showError(result.error);
-  return;
-}
-```
-
-### State Machine Checks
-
-```javascript
-const sm = getStateMachine();
-if (sm.getState(id) === QuickTabState.MINIMIZING) {
-  // Already minimizing, disable button
-  button.disabled = true;
-}
-```
 
 ---
 
@@ -102,13 +80,12 @@ if (sm.getState(id) === QuickTabState.MINIMIZING) {
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] All Quick Tabs display globally
 - [ ] Solo/Mute indicators correct (arrays)
-- [ ] Mediator operations work from manager
-- [ ] State machine validation prevents invalid ops
+- [ ] STORAGE_READ_DEBOUNCE_MS is 50ms
+- [ ] DOM_VERIFICATION_DELAY_MS is 500ms
 - [ ] Buttons disabled during pending operations
-- [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Central coordination of all Quick Tabs state.**
+**Your strength: Central coordination of all Quick Tabs state with fast debounce.**

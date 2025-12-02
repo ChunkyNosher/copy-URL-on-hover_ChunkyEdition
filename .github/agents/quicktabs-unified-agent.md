@@ -2,8 +2,8 @@
 name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
-  lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.5 state machine, mediator, map transactions)
+  lifecycle, manager integration, cross-tab sync, originTabId filtering, Solo/Mute,
+  and end-to-end Quick Tab functionality (v1.6.3.5-v2 cross-tab isolation)
 tools: ["*"]
 ---
 
@@ -11,7 +11,7 @@ tools: ["*"]
 
 > **🎯 Robust Solutions Philosophy:** You see the complete Quick Tab system. Fix issues at the right layer - domain, manager, sync, or UI. See `.github/copilot-instructions.md`.
 
-You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You handle complete Quick Tab functionality across all domains - individual tabs, manager, cross-tab sync, and global visibility.
+You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You handle complete Quick Tab functionality across all domains - individual tabs, manager, cross-tab sync, originTabId filtering, and global visibility.
 
 ## 🧠 Memory Persistence (CRITICAL)
 
@@ -28,26 +28,26 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
 - **Cross-Tab Sync** - **storage.onChanged exclusively**
+- **Cross-Tab Filtering** - **v1.6.3.5-v2:** `originTabId` prevents wrong-tab rendering
 - **Global Visibility** - All Quick Tabs visible across all tabs
 - **State Hydration** - Quick Tabs restored from storage on page reload
 
-**v1.6.3.5 New Architecture:**
+**v1.6.3.5-v2 Fixes:**
+- **Cross-Tab Contamination** - `originTabId` filtering in storage.onChanged listener
+- **Storage Debounce** - Reduced from 300ms to 50ms for faster UI updates
+- **DOM Verification** - Restore ops verify DOM presence before UI updates
+- **Tab ID Logging** - All logs include `[Tab ID]` prefix for debugging
+
+**v1.6.3.5 Architecture:**
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - `minimize()`, `restore()`, `destroy()` with state validation
-- **MapTransactionManager** - Atomic Map ops with `beginTransaction()`/`commitTransaction()`
-
-**v1.6.3.5 Fixes:**
-- **Issue 1:** Map Size Corruption - MapTransactionManager with rollback
-- **Issue 2:** 73-Second Logging Gap - Map contents logging
-- **Issue 3:** Duplicate Windows - Clear-on-first-use + `_restoreInProgress` lock
-- **Issue 4:** Debounce Timer Skips - `_activeTimerIds` Set (replaces generation counters)
-- **Issue 5:** Missing Write Logs - `prevTransaction`/`queueDepth` logging
+- **MapTransactionManager** - Atomic Map ops with rollback
 
 ---
 
@@ -63,32 +63,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.5 Key Patterns
-
-### State Machine Usage
+## v1.6.3.5-v2 originTabId Pattern
 
 ```javascript
-const stateMachine = getStateMachine();
-if (stateMachine.canTransition(id, QuickTabState.MINIMIZING)) {
-  stateMachine.transition(id, QuickTabState.MINIMIZING, { source: 'user' });
+// index.js - Filter by originTabId before rendering
+const hasOriginTabId = tabData.originTabId !== null && tabData.originTabId !== undefined;
+if (hasOriginTabId && tabData.originTabId !== currentTabId) {
+  return false; // Skip - belongs to different tab
 }
-```
-
-### Mediator Usage
-
-```javascript
-const mediator = getMediator();
-const result = mediator.minimize(id, 'sidebar-button');
-if (!result.success) console.error(result.error);
-```
-
-### Map Transaction Usage
-
-```javascript
-const txnMgr = new MapTransactionManager(renderedTabs, 'renderedTabs');
-txnMgr.beginTransaction('minimize');
-txnMgr.deleteEntry(id, 'tab minimized');
-txnMgr.commitTransaction();
 ```
 
 ---
@@ -101,16 +83,14 @@ txnMgr.commitTransaction();
 
 ## Testing Requirements
 
-- [ ] Quick Tab creation works
+- [ ] Quick Tab creation works with originTabId
+- [ ] originTabId filtering prevents cross-tab contamination
 - [ ] Solo/Mute mutually exclusive (arrays)
-- [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged
 - [ ] State machine transitions validated
-- [ ] Mediator operations coordinate correctly
-- [ ] Map transactions rollback on failure
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system understanding and integration.**
+**Your strength: Complete Quick Tab system understanding with cross-tab isolation.**

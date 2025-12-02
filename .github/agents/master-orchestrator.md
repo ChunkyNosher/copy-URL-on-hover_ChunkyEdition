@@ -51,18 +51,22 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
 **Storage Format:**
 ```javascript
-{ tabs: [...], saveId: '...', timestamp: ... }
+{ tabs: [{ id, originTabId, ... }], saveId: '...', timestamp: ... }
 ```
 
 **CRITICAL:** Use `storage.local` for Quick Tab state AND UID setting
 
-**v1.6.3.5 New Architecture:**
+**v1.6.3.5-v2 Fixes:**
+- **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
+- **Storage Debounce** - Reduced from 300ms to 50ms
+
+**v1.6.3.5 Architecture:**
 - **QuickTabStateMachine** - State tracking and validation
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging

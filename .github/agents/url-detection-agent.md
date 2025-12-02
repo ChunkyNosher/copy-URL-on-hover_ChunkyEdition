@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **URL Detection Features:**
 - **Hover Detection** - Track hovered links for Quick Tab creation
@@ -59,7 +59,11 @@ const relevantMemories = await searchMemories({
 - **URL Validation** - Ensure valid URLs before processing
 - **URL Normalization** - Clean and standardize URLs
 
-**v1.6.3.5 New Architecture:**
+**v1.6.3.5-v2 Fixes:**
+- **Cross-Tab Filtering** - `originTabId` tracks originating tab
+- **Tab ID Logging** - All logs include `[Tab ID]` prefix
+
+**v1.6.3.5 Architecture:**
 - **QuickTabStateMachine** - State tracking for Quick Tab lifecycle
 - **QuickTabMediator** - Operation coordination
 - **MapTransactionManager** - Atomic operations
