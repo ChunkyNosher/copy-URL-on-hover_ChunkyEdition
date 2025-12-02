@@ -388,18 +388,63 @@ class QuickTabsManager {
   }
 
   /**
+   * Validate tab data for hydration
+   * v1.6.3.5-v2 - Extracted to reduce _hydrateTab complexity
+   * @private
+   * @param {Object} tabData - Stored tab data
+   * @returns {boolean} True if valid
+   */
+  _isValidTabData(tabData) {
+    if (!tabData?.id || !tabData?.url) {
+      console.warn('[QuickTabsManager] Skipping invalid tab data (missing id or url):', tabData);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Check if tab should be filtered by originTabId
+   * v1.6.3.5-v2 - Extracted to reduce _hydrateTab complexity
+   * @private
+   * @param {Object} tabData - Stored tab data
+   * @returns {boolean} True if tab should be skipped (filtered out)
+   */
+  _shouldSkipDueToOriginTab(tabData) {
+    // Only filter if both originTabId and currentTabId are defined
+    const hasOriginTabId = tabData.originTabId !== null && tabData.originTabId !== undefined;
+    const hasCurrentTabId = this.currentTabId !== null && this.currentTabId !== undefined;
+    
+    if (!hasOriginTabId || !hasCurrentTabId) {
+      return false; // Can't filter without both IDs
+    }
+    
+    const shouldRender = this._shouldRenderOnThisTab(tabData);
+    if (!shouldRender) {
+      console.log('[QuickTabsManager] Skipping hydration - tab originated from different tab:', {
+        id: tabData.id,
+        originTabId: tabData.originTabId,
+        currentTabId: this.currentTabId
+      });
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Hydrate a single Quick Tab from stored data
    * v1.6.3.4 - FIX Issue #1: Helper to create Quick Tab from storage data
+   * v1.6.3.5-v2 - FIX Report 1 Issue #2: Filter by originTabId for cross-tab isolation
+   * Refactored to reduce complexity by extracting validation helpers
    * @private
    * @param {Object} tabData - Stored tab data
    * @returns {boolean} True if hydration succeeded
    */
   _hydrateTab(tabData) {
     // Validate required fields
-    if (!tabData?.id || !tabData?.url) {
-      console.warn('[QuickTabsManager] Skipping invalid tab data (missing id or url):', tabData);
-      return false;
-    }
+    if (!this._isValidTabData(tabData)) return false;
+
+    // v1.6.3.5-v2 - FIX Report 1 Issue #2: Filter by originTabId
+    if (this._shouldSkipDueToOriginTab(tabData)) return false;
 
     // Skip if tab already exists
     if (this.tabs.has(tabData.id)) {
@@ -425,6 +470,33 @@ class QuickTabsManager {
       this._hydrateVisibleTab(optionsWithCallbacks);
     }
     return true;
+  }
+
+  /**
+   * Determine if a Quick Tab should render on this tab
+   * v1.6.3.5-v2 - FIX Report 1 Issue #2: Cross-tab filtering logic
+   * @private
+   * @param {Object} tabData - Quick Tab data
+   * @returns {boolean} True if should render
+   */
+  _shouldRenderOnThisTab(tabData) {
+    const currentTabId = this.currentTabId;
+    const originTabId = tabData.originTabId;
+    const soloedOnTabs = tabData.soloedOnTabs || [];
+    const mutedOnTabs = tabData.mutedOnTabs || [];
+    
+    // If soloed to specific tabs, only render on those tabs
+    if (soloedOnTabs.length > 0) {
+      return soloedOnTabs.includes(currentTabId);
+    }
+    
+    // If muted on this tab, don't render
+    if (mutedOnTabs.includes(currentTabId)) {
+      return false;
+    }
+    
+    // Default: only render on originating tab
+    return originTabId === currentTabId;
   }
 
   /**
@@ -818,8 +890,10 @@ class QuickTabsManager {
     // Add callbacks to options (required by QuickTabWindow)
     // v1.6.3.4 - FIX Issue #4: onDestroy callback now routes to DestroyHandler
     // v1.6.3.4 - FIX Issue #6: Source defaults to 'UI' for window callbacks
+    // v1.6.3.5-v2 - FIX Report 1 Issue #2: Set originTabId for cross-tab filtering
     const optionsWithCallbacks = {
       ...options,
+      originTabId: options.originTabId ?? this.currentTabId, // v1.6.3.5-v2
       onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
       onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
       onFocus: tabId => this.handleFocus(tabId),

@@ -23,10 +23,20 @@ const ERROR_NOTIFICATION_STYLES = {
 const PENDING_OPERATIONS = new Set();
 const OPERATION_TIMEOUT_MS = 2000; // Clear pending state after 2 seconds
 
-// v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
-const STORAGE_READ_DEBOUNCE_MS = 300;
+// v1.6.3.5-v2 - FIX Report 2 Issue #2: Lowered from 300ms to 50ms for faster UI updates
+const STORAGE_READ_DEBOUNCE_MS = 50;
 let storageReadDebounceTimer = null;
 let lastStorageReadTime = 0;
+
+// v1.6.3.5-v2 - FIX Report 1 Issue #2: Track current tab ID for Quick Tab origin filtering
+let currentBrowserTabId = null;
+
+// v1.6.3.5-v2 - FIX Code Review: Constants for saveId patterns used in corruption detection
+const SAVEID_RECONCILED = 'reconciled';
+const SAVEID_CLEARED = 'cleared';
+
+// v1.6.3.5-v2 - FIX Code Review: DOM verification delay after restore
+const DOM_VERIFICATION_DELAY_MS = 500;
 
 // v1.6.3.4-v6 - FIX Issue #5: Track last rendered state hash to avoid unnecessary re-renders
 let lastRenderedStateHash = 0;
@@ -65,6 +75,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   emptyState = document.getElementById('emptyState');
   totalTabsEl = document.getElementById('totalTabs');
   lastSyncEl = document.getElementById('lastSync');
+
+  // v1.6.3.5-v2 - FIX Report 1 Issue #2: Get current tab ID for origin filtering
+  try {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]) {
+      currentBrowserTabId = tabs[0].id;
+      console.log('[Manager] Current browser tab ID:', currentBrowserTabId);
+    }
+  } catch (err) {
+    console.warn('[Manager] Could not get current tab ID:', err);
+  }
 
   // Load container information from Firefox API
   await loadContainerInfo();
@@ -196,6 +217,7 @@ function filterInvalidTabs(state) {
  * Check if storage read should be debounced
  * v1.6.3.4-v6 - Extracted to reduce loadQuickTabsState complexity
  * Simply uses timing-based debounce (no storage read needed)
+ * v1.6.3.5-v2 - FIX Report 2 Issue #2: Reduced debounce from 300ms to 50ms
  * @returns {Promise<void>} Resolves when ready to read
  */
 async function checkStorageDebounce() {
@@ -691,55 +713,90 @@ function setupEventListeners() {
   // v1.6.3 - FIX: Changed from 'sync' to 'local' (storage location since v1.6.0.12)
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
+  // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
   browser.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'local' && changes[STATE_KEY]) {
-      // v1.6.3.4-v6 - FIX Issue #1: Check for transaction in progress
-      const newValue = changes[STATE_KEY].newValue;
-      const oldValue = changes[STATE_KEY].oldValue;
-      
-      const oldTabCount = oldValue?.tabs?.length ?? 0;
-      const newTabCount = newValue?.tabs?.length ?? 0;
-      
-      console.log('[Manager] Storage change detected:', {
-        oldTabCount,
-        newTabCount,
-        transactionId: newValue?.transactionId
-      });
-      
-      // v1.6.3.4-v9 - FIX Issue #18: Detect suspicious storage changes
-      const isSuspiciousDrop = oldTabCount > 0 && newTabCount === 0;
-      if (isSuspiciousDrop) {
-        console.warn('[Manager] ⚠️ SUSPICIOUS: Tab count dropped from', oldTabCount, 'to 0!');
-        console.warn('[Manager] This may indicate storage corruption. Querying content scripts...');
-        
-        // Query content scripts for current state (reconciliation)
-        // Fire-and-forget: Reconciliation handles its own error handling and UI updates
-        _reconcileWithContentScripts(oldValue).catch(err => {
-          console.error('[Manager] Reconciliation error:', err);
-          // v1.6.3.4-v9: Show user feedback on reconciliation failure
-          _showErrorNotification('Failed to recover Quick Tab state. Data may be lost.');
-        });
-        return; // Don't proceed with normal update until reconciliation completes
-      }
-      
-      // v1.6.3.4-v6 - FIX Issue #1: Debounce to avoid reading mid-transaction
-      if (storageReadDebounceTimer) {
-        clearTimeout(storageReadDebounceTimer);
-      }
-      
-      storageReadDebounceTimer = setTimeout(() => {
-        storageReadDebounceTimer = null;
-        loadQuickTabsState().then(() => {
-          // v1.6.3.4-v6 - FIX Issue #5: Only render if state actually changed
-          const newHash = computeStateHash(quickTabsState);
-          if (newHash !== lastRenderedStateHash) {
-            lastRenderedStateHash = newHash;
-            renderUI();
-          }
-        });
-      }, STORAGE_READ_DEBOUNCE_MS);
-    }
+    if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    _handleStorageChange(changes[STATE_KEY]);
   });
+}
+
+/**
+ * Handle storage change event
+ * v1.6.3.5-v2 - Extracted to reduce setupEventListeners complexity
+ * @param {Object} change - The storage change object
+ */
+function _handleStorageChange(change) {
+  const newValue = change.newValue;
+  const oldValue = change.oldValue;
+  
+  const oldTabCount = oldValue?.tabs?.length ?? 0;
+  const newTabCount = newValue?.tabs?.length ?? 0;
+  
+  console.log('[Manager] Storage change detected:', {
+    oldTabCount,
+    newTabCount,
+    transactionId: newValue?.transactionId
+  });
+  
+  // Check for suspicious drop
+  if (_isSuspiciousStorageDrop(oldTabCount, newTabCount, newValue)) {
+    _handleSuspiciousStorageDrop(oldValue);
+    return;
+  }
+  
+  _scheduleStorageUpdate();
+}
+
+/**
+ * Check if storage change is a suspicious drop (potential corruption)
+ * v1.6.3.5-v2 - FIX Report 2 Issue #6: Better heuristics for corruption detection
+ * @param {number} oldTabCount - Previous tab count
+ * @param {number} newTabCount - New tab count
+ * @param {Object} newValue - New storage value
+ * @returns {boolean} True if suspicious
+ */
+function _isSuspiciousStorageDrop(oldTabCount, newTabCount, newValue) {
+  const isSuspiciousDrop = oldTabCount > 0 && newTabCount === 0;
+  const isExplicitClear = newValue?.saveId?.includes(SAVEID_RECONCILED) || 
+                          newValue?.saveId?.includes(SAVEID_CLEARED) ||
+                          !newValue;
+  return isSuspiciousDrop && !isExplicitClear;
+}
+
+/**
+ * Handle suspicious storage drop (potential corruption)
+ * v1.6.3.5-v2 - Extracted for clarity
+ * @param {Object} oldValue - Previous storage value
+ */
+function _handleSuspiciousStorageDrop(oldValue) {
+  console.warn('[Manager] ⚠️ SUSPICIOUS: Tab count dropped to 0!');
+  console.warn('[Manager] This may indicate storage corruption. Querying content scripts...');
+  
+  _reconcileWithContentScripts(oldValue).catch(err => {
+    console.error('[Manager] Reconciliation error:', err);
+    _showErrorNotification('Failed to recover Quick Tab state. Data may be lost.');
+  });
+}
+
+/**
+ * Schedule debounced storage update
+ * v1.6.3.5-v2 - Extracted to reduce complexity
+ */
+function _scheduleStorageUpdate() {
+  if (storageReadDebounceTimer) {
+    clearTimeout(storageReadDebounceTimer);
+  }
+  
+  storageReadDebounceTimer = setTimeout(() => {
+    storageReadDebounceTimer = null;
+    loadQuickTabsState().then(() => {
+      const newHash = computeStateHash(quickTabsState);
+      if (newHash !== lastRenderedStateHash) {
+        lastRenderedStateHash = newHash;
+        renderUI();
+      }
+    });
+  }, STORAGE_READ_DEBOUNCE_MS);
 }
 
 /**
@@ -843,6 +900,7 @@ async function _processReconciliationResult(uniqueQuickTabs) {
 /**
  * Restore state from content scripts data
  * v1.6.3.4-v9 - Extracted to reduce nesting depth
+ * v1.6.3.5-v2 - FIX Code Review: Use SAVEID_RECONCILED constant
  * @param {Array} quickTabs - Quick Tabs from content scripts
  */
 async function _restoreStateFromContentScripts(quickTabs) {
@@ -851,7 +909,7 @@ async function _restoreStateFromContentScripts(quickTabs) {
   const restoredState = {
     tabs: quickTabs,
     timestamp: Date.now(),
-    saveId: `reconciled-${Date.now()}`
+    saveId: `${SAVEID_RECONCILED}-${Date.now()}`
   };
   
   await browser.storage.local.set({ [STATE_KEY]: restoredState });
@@ -1163,6 +1221,7 @@ function _showErrorNotification(message) {
  *   Cross-tab restore was failing because message was only sent to active tab.
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
  * v1.6.3.4-v9 - FIX Issue #15: Validate tab is actually minimized before restore
+ * v1.6.3.5-v2 - FIX Report 2 Issue #8: DOM-verified handshake before UI update
  */
 async function restoreQuickTab(quickTabId) {
   // v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking
@@ -1204,6 +1263,25 @@ async function restoreQuickTab(quickTabId) {
   // v1.6.3.4-v11 - FIX Issue #4: Send to ALL tabs, not just active tab
   const result = await _sendMessageToAllTabs('RESTORE_QUICK_TAB', quickTabId);
   console.log(`[Manager] Restored Quick Tab ${quickTabId} | success: ${result.success}, errors: ${result.errors}`);
+  
+  // v1.6.3.5-v2 - FIX Report 2 Issue #8: Verify DOM was actually rendered
+  // Wait a short time then check domVerified in storage
+  setTimeout(async () => {
+    try {
+      const stateResult = await browser.storage.local.get(STATE_KEY);
+      const state = stateResult?.[STATE_KEY];
+      const tab = state?.tabs?.find(t => t.id === quickTabId);
+      
+      if (tab && tab.domVerified === false) {
+        console.warn('[Manager] Restore WARNING: DOM not verified after restore:', quickTabId);
+        // UI will show orange indicator to alert user
+      } else if (tab && !tab.minimized) {
+        console.log('[Manager] Restore confirmed: DOM verified for:', quickTabId);
+      }
+    } catch (err) {
+      console.error('[Manager] Error verifying restore:', err);
+    }
+  }, DOM_VERIFICATION_DELAY_MS); // v1.6.3.5-v2: Use constant
   
   // Note: Pending state is cleared by setTimeout above (safety net after OPERATION_TIMEOUT_MS)
   // This ensures UI re-renders from storage update before allowing more clicks
