@@ -45,6 +45,7 @@ export class UpdateHandler {
     
     // v1.6.4 - FIX Issue #2: Debounce state tracking
     this._debounceTimer = null;
+    // v1.6.3.4-v10 - FIX Issue #5: Use 64-bit hash (object with lo/hi parts)
     this._lastStateHash = null;
   }
 
@@ -172,9 +173,23 @@ export class UpdateHandler {
   }
   
   /**
+   * Check if 64-bit hash has changed compared to last hash
+   * v1.6.3.4-v10 - FIX Issue #5: Helper for cleaner hash comparison
+   * @private
+   * @param {{ lo: number, hi: number }|null} oldHash - Previous hash
+   * @param {{ lo: number, hi: number }} newHash - New hash
+   * @returns {boolean} True if hash has changed
+   */
+  _hasHashChanged(oldHash, newHash) {
+    if (!oldHash) return true; // No previous hash means "changed"
+    return newHash.lo !== oldHash.lo || newHash.hi !== oldHash.hi;
+  }
+
+  /**
    * Actually perform the storage write (called after debounce)
    * v1.6.4 - FIX Issue #2: Only writes if state actually changed
    * v1.6.4.1 - FIX Bug #1: Proper async handling with validation
+   * v1.6.3.4-v10 - FIX Issue #5: Compare both parts of 64-bit hash
    * @private
    * @returns {Promise<void>}
    */
@@ -187,12 +202,26 @@ export class UpdateHandler {
       return;
     }
     
-    // v1.6.4 - FIX Issue #2: Check if state actually changed
+    // v1.6.3.4-v10 - FIX Issue #5: Compute 64-bit hash and compare both parts
     const newHash = this._computeStateHash(state);
-    if (newHash === this._lastStateHash) {
-      console.log('[UpdateHandler] State unchanged, skipping storage write');
+    const hashChanged = this._hasHashChanged(this._lastStateHash, newHash);
+    
+    if (!hashChanged) {
+      console.log('[UpdateHandler] State unchanged (hash match), skipping storage write:', {
+        hashLo: newHash.lo,
+        hashHi: newHash.hi
+      });
       return;
     }
+    
+    // v1.6.3.4-v10 - FIX Issue #8: Log hash change for debugging
+    console.log('[UpdateHandler] State changed (hash mismatch), proceeding with storage write:', {
+      oldHashLo: this._lastStateHash?.lo,
+      oldHashHi: this._lastStateHash?.hi,
+      newHashLo: newHash.lo,
+      newHashHi: newHash.hi,
+      tabCount: state.tabs?.length
+    });
     
     // Update hash and persist
     this._lastStateHash = newHash;
@@ -206,12 +235,17 @@ export class UpdateHandler {
    * Compute a simple hash of the state for change detection
    * v1.6.4 - FIX Issue #2: Used to skip redundant storage writes
    * v1.6.3.4 - FIX Issue #3: Include zIndex in hash for proper change detection
+   * v1.6.3.4-v10 - FIX Issue #5: Implement 64-bit hash to reduce collision probability
+   *   The 32-bit hash had ~50% collision probability over session lifetime (birthday paradox).
+   *   Now using dual hash (djb2 + sdbm) for 64-bit equivalent with negligible collision rate.
    * @private
    * @param {Object} state - State object to hash
-   * @returns {number} 32-bit hash of the state
+   * @returns {{ lo: number, hi: number }} Object with low and high 32-bit hash parts
    */
   _computeStateHash(state) {
-    if (!state?.tabs) return 0;
+    if (!state?.tabs) {
+      return { lo: 0, hi: 0 };
+    }
     
     // Create a string of just the position/size/zIndex data that we care about
     // v1.6.3.4 - FIX Issue #3: Include zIndex for z-index persistence
@@ -219,13 +253,22 @@ export class UpdateHandler {
       `${t.id}:${t.left}:${t.top}:${t.width}:${t.height}:${t.zIndex}:${t.minimized}`
     ).join('|');
     
-    // Simple djb2 hash function with 32-bit conversion
-    let hash = 0;
+    // v1.6.3.4-v10 - FIX Issue #5: djb2 hash for low 32 bits
+    let hashLo = 0;
     for (let i = 0; i < stateStr.length; i++) {
-      hash = ((hash << 5) - hash) + stateStr.charCodeAt(i);
-      hash = hash & 0xffffffff; // Convert to 32-bit integer
+      hashLo = ((hashLo << 5) - hashLo) + stateStr.charCodeAt(i);
+      hashLo = hashLo & 0xffffffff; // Convert to 32-bit integer
     }
-    return hash;
+    
+    // v1.6.3.4-v10 - FIX Issue #5: sdbm hash for high 32 bits
+    // Using different algorithm ensures different collision patterns
+    let hashHi = 0;
+    for (let i = 0; i < stateStr.length; i++) {
+      hashHi = stateStr.charCodeAt(i) + (hashHi << 6) + (hashHi << 16) - hashHi;
+      hashHi = hashHi & 0xffffffff; // Convert to 32-bit integer
+    }
+    
+    return { lo: hashLo, hi: hashHi };
   }
 
   /**

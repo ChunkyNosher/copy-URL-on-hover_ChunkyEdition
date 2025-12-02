@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -40,14 +40,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Cross-tab sync via storage.onChanged
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v9 Key Features (Storage & Sync Fixes):**
-- Empty Write Protection - `_shouldRejectEmptyWrite()` + `forceEmpty` param
-- FIFO Storage Write Queue - `queueStorageWrite()` serializes writes
-- Callback Suppression - `_initiatedOperations` Set + 50ms delay
-- Focus Debounce - `_lastFocusTime` Map with 100ms threshold
-- Safe Map Deletion - `_safeDeleteFromRenderedTabs()` checks `has()` before `delete()`
+**v1.6.3.4-v10 Key Patterns:**
+- Generation Counter Debounce - `_timerGeneration` Map prevents timer corruption
+- Copy-on-Write - `_prepareDetachedDOMUpdate()` for safe Map updates
+- 64-bit Hash - djb2/sdbm returning `{lo, hi}` object
+- Batch Set - `_batchOperationIds` Set replaces `_batchMode` boolean
+- Storage Queue Reset - `queueStorageWrite()` resets on failure
 
-**Timing Constants (v1.6.3.4-v9):**
+**Timing Constants (v1.6.3.4-v10):**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
@@ -93,7 +93,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## Common Bug Patterns (v1.6.3.4-v9)
+## Common Bug Patterns (v1.6.3.4-v10)
 
 ### Empty Write Prevention
 ```javascript

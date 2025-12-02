@@ -80,6 +80,11 @@ export class VisibilityHandler {
     this._pendingRestore = new Set();
     this._debounceTimers = new Map();
     
+    // v1.6.3.4-v10 - FIX Issue #2: Generation counter for debounce timer corruption prevention
+    // When handleMinimize() called twice rapidly, first timer's callback can delete second timer's Map entry
+    // Generation counter ensures only the LATEST timer's callback executes cleanup
+    this._timerGeneration = new Map(); // id -> generation number
+    
     // v1.6.3.2 - FIX Issue #2: Mutex/lock pattern for operations
     // Key: operation-id (e.g., "minimize-qt-123"), Value: timestamp when lock was acquired
     this._operationLocks = new Map();
@@ -788,20 +793,62 @@ export class VisibilityHandler {
    * v1.6.4.5 - FIX Issues #1, #2, #6: Single atomic storage write after debounce
    * v1.6.3.2 - FIX Issue #2: Release operation locks after debounce completes
    * v1.6.3.4 - FIX Issue #6: Add source to logging
+   * v1.6.3.4-v10 - FIX Issue #2: Generation counter pattern for timer corruption
+   *   When handleMinimize() called twice rapidly, first timer's callback could delete
+   *   second timer's Map entry. Now each timer has a generation number and callback
+   *   only executes if generation matches current.
    * @private
    * @param {string} id - Quick Tab ID that triggered the persist
    * @param {string} operation - 'minimize' or 'restore'
    * @param {string} source - Source of action
    */
   _debouncedPersist(id, operation, source = 'unknown') {
+    // v1.6.3.4-v10 - FIX Issue #2: Increment generation counter for this ID
+    // This ensures only the LATEST timer callback will execute
+    const generation = (this._timerGeneration.get(id) || 0) + 1;
+    this._timerGeneration.set(id, generation);
+    
+    console.log(`[VisibilityHandler] _debouncedPersist scheduling (source: ${source}):`, {
+      id,
+      operation,
+      generation,
+      existingTimer: this._debounceTimers.has(id)
+    });
+    
     // Clear any existing timer for this tab
     const existingTimer = this._debounceTimers.get(id);
     if (existingTimer) {
       clearTimeout(existingTimer);
+      console.log(`[VisibilityHandler] Cleared previous debounce timer (source: ${source}):`, {
+        id,
+        previousGeneration: generation - 1
+      });
     }
     
-    // Set new debounce timer
+    // Set new debounce timer with generation check
     const timer = setTimeout(async () => {
+      // v1.6.3.4-v10 - FIX Issue #2: Check if generation still matches
+      // If not, a newer timer has been scheduled and this callback should be ignored
+      const currentGeneration = this._timerGeneration.get(id);
+      if (currentGeneration !== generation) {
+        console.log('[VisibilityHandler] Timer callback SKIPPED (stale generation):', {
+          id,
+          operation,
+          source,
+          timerGeneration: generation,
+          currentGeneration
+        });
+        return;
+      }
+      
+      console.log(`[VisibilityHandler] Timer callback executing (source: ${source}):`, {
+        id,
+        operation,
+        generation,
+        pendingMinimizeSize: this._pendingMinimize.size,
+        pendingRestoreSize: this._pendingRestore.size
+      });
+      
       this._debounceTimers.delete(id);
       
       // Clear pending flags
@@ -815,7 +862,7 @@ export class VisibilityHandler {
       // Perform atomic storage write
       await this._persistToStorage();
       
-      console.log(`[VisibilityHandler] Completed ${operation} (source: ${source}) for ${id} with storage persist`);
+      console.log(`[VisibilityHandler] Completed ${operation} (source: ${source}) for ${id} with storage persist (generation: ${generation})`);
     }, MINIMIZE_DEBOUNCE_MS);
     
     this._debounceTimers.set(id, timer);

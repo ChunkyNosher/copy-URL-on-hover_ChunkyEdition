@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.4-v9 restore state wipe fixes, restore validation, complete event payload)
+  (v1.6.3.4-v10 restore() simplified, UICoordinator single render authority)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,57 +38,40 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.4-v9 Key Features (Restore State Wipe Fixes):**
-- **Restore Validation** - `_validateRestorePreconditions()` validates before operations
-- **Complete Event Payload** - `_fetchEntityFromStorage()`, `_validateEventPayload()`
-- **Enhanced _createQuickTabData** - Includes position, size, container, zIndex
+**v1.6.3.4-v10 Key Features:**
+- **restore() Simplified** - Only updates `this.minimized = false` + `onFocus()`, no DOM manipulation
+- **UICoordinator Single Render Authority** - TRUE single rendering authority pattern
+- **Generation Counter Debounce** - `_timerGeneration` Map in VisibilityHandler
 
 **Timing Constants:**
 
 | Constant | Value | Location |
 |----------|-------|----------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | VisibilityHandler |
-| `Focus debounce threshold` | 100 | VisibilityHandler |
 | `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | VisibilityHandler |
 
 ---
 
-## v1.6.3.4-v9 Key Patterns
+## v1.6.3.4-v10 Key Patterns
 
-### Restore Validation Pattern
+### Simplified restore() Pattern
 
 ```javascript
-// VisibilityHandler validates before proceeding
-const validation = this._validateRestorePreconditions(tabWindow, id, source);
-if (!validation.valid) {
-  return { success: false, error: validation.error };
+// QuickTabWindow.restore() only updates state, no DOM manipulation
+restore() {
+  this.minimized = false;
+  this.onFocus(); // Just focus, UICoordinator handles rendering
 }
 ```
 
-### Complete Event Payload Pattern
+### UICoordinator Single Render Authority
 
 ```javascript
-// Fetch from storage when tabWindow is null
-if (!tabWindow) {
-  const entity = await this._fetchEntityFromStorage(id);
-  if (!entity) return; // Cannot emit incomplete event
-}
-// Validate before emitting
-const validation = this._validateEventPayload(quickTabData);
-if (!validation.valid) return;
+// UICoordinator is the TRUE single rendering authority
+// restore() does NOT create DOM elements
+// UICoordinator._renderQuickTab() is the only place DOM is created
 ```
-
----
-
-## Your Responsibilities
-
-1. **Quick Tab Rendering** - Create iframe with UI controls
-2. **Solo/Mute Controls** - Toggle buttons using arrays, mutual exclusivity
-3. **Drag & Resize** - Pointer Events API implementation with destroyed flag
-4. **Navigation** - Back/Forward/Reload controls
-5. **Dynamic UID Display** - Toggle debug ID via storage listener
-6. **Global Visibility** - Default visible everywhere (v1.6.3+)
 
 ---
 
@@ -103,8 +86,8 @@ if (!validation.valid) return;
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] Global visibility correct (no container filtering)
 - [ ] Drag works without pointer escape
-- [ ] **v1.6.3.4-v9:** Restore validation prevents invalid operations
-- [ ] **v1.6.3.4-v9:** Complete event payload emitted
+- [ ] **v10:** restore() only updates state, no DOM
+- [ ] **v10:** UICoordinator is single render authority
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 

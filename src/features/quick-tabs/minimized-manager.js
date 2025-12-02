@@ -207,6 +207,10 @@ export class MinimizedManager {
    * v1.6.4.9 - FIX Issue #1: Called by UICoordinator after DOM verification passes
    * v1.6.3.4-v3 - FIX Issue #5: Now clears from minimizedTabs first (where snapshot stays during restore)
    * v1.6.3.4-v8 - FIX Issue #8: Enhanced logging with caller identification via stack trace
+   * v1.6.3.4-v10 - FIX Issue #4: Atomic snapshot clearing - capture state in local variables
+   *   The problem was checking two Maps sequentially without atomicity. Between checks,
+   *   a timer could move the snapshot between Maps. Now we capture the state atomically
+   *   using local variables before any modifications.
    * @param {string} id - Quick Tab ID
    * @returns {boolean} True if snapshot was cleared, false if not found
    */
@@ -214,26 +218,48 @@ export class MinimizedManager {
     // v1.6.3.4-v8 - FIX Issue #8: Log caller for debugging
     const stackLines = new Error().stack?.split('\n') || [];
     const caller = (stackLines.length > 2 ? stackLines[2]?.trim() : null) || 'unknown';
+    
+    // v1.6.3.4-v10 - FIX Issue #4: Capture state atomically in local variables BEFORE any modifications
+    // This prevents race conditions where timer moves snapshot between Maps mid-operation
+    const inMinimizedTabs = this.minimizedTabs.has(id);
+    const inPendingClear = this.pendingClearSnapshots.has(id);
+    
     console.log('[MinimizedManager] clearSnapshot() called:', {
       id,
       caller,
+      inMinimizedTabs,
+      inPendingClear,
       minimizedTabsSize: this.minimizedTabs.size,
       pendingSize: this.pendingClearSnapshots.size
     });
     
-    // v1.6.3.4-v3 - FIX Issue #5: First check minimizedTabs (where snapshot stays during restore)
-    if (this.minimizedTabs.has(id)) {
+    // v1.6.3.4-v10 - FIX Issue #4: Use captured state for atomic decision
+    // First check minimizedTabs (where snapshot stays during restore)
+    if (inMinimizedTabs) {
       this.minimizedTabs.delete(id);
-      console.log('[MinimizedManager] Cleared snapshot from minimizedTabs after successful render:', id);
+      console.log('[MinimizedManager] Cleared snapshot from minimizedTabs after successful render:', {
+        id,
+        remainingMinimizedTabs: this.minimizedTabs.size
+      });
       return true;
     }
+    
     // Then check pendingClearSnapshots (legacy path)
-    if (this.pendingClearSnapshots.has(id)) {
+    if (inPendingClear) {
       this.pendingClearSnapshots.delete(id);
-      console.log('[MinimizedManager] Cleared snapshot from pendingClearSnapshots:', id);
+      console.log('[MinimizedManager] Cleared snapshot from pendingClearSnapshots:', {
+        id,
+        remainingPendingSnapshots: this.pendingClearSnapshots.size
+      });
       return true;
     }
-    console.log('[MinimizedManager] clearSnapshot called but no snapshot found:', id);
+    
+    // v1.6.3.4-v10 - FIX Issue #4: Enhanced logging when not found
+    console.log('[MinimizedManager] clearSnapshot called but no snapshot found:', {
+      id,
+      minimizedTabsIds: Array.from(this.minimizedTabs.keys()),
+      pendingClearIds: Array.from(this.pendingClearSnapshots.keys())
+    });
     return false;
   }
 

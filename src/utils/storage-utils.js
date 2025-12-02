@@ -771,6 +771,10 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
 /**
  * Queue a storage write operation (FIFO ordering)
  * v1.6.3.4-v8 - FIX Issue #7: Ensures writes are serialized
+ * v1.6.3.4-v10 - FIX Issue #7: Reset queue on failure to break error propagation
+ *   The problem was that when writeOperation fails, .catch() returned `false`,
+ *   which contaminated the Promise chain for subsequent writes.
+ *   Now we reset the queue on failure so each write is independent.
  * @param {Function} writeOperation - Async function to execute
  * @returns {Promise<boolean>} Result of the write operation
  */
@@ -780,6 +784,11 @@ export function queueStorageWrite(writeOperation) {
     .then(() => writeOperation())
     .catch(err => {
       console.error('[StorageUtils] Queued write failed:', err);
+      // v1.6.3.4-v10 - FIX Issue #7: Reset queue to break error propagation chain
+      // Without this reset, the `false` return value contaminates subsequent writes
+      // because the Promise chain carries the error state forward.
+      // By resetting to a fresh Promise.resolve(), subsequent writes start fresh.
+      storageWriteQueuePromise = Promise.resolve();
       return false;
     });
   

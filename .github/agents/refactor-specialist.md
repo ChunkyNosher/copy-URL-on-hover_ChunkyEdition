@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,15 +62,15 @@ const relevantMemories = await searchMemories({
 - Enforce architecture boundaries
 - Reduce complexity
 
-**Storage Format (v1.6.3.4-v9):**
+**Storage Format (v1.6.3.4-v10):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
 
-**Storage (v1.6.3.4-v9):**
+**Storage (v1.6.3.4-v10):**
 - Use `storage.local` for Quick Tab state AND UID setting
 - Use shared utilities from `src/utils/storage-utils.js`
-- Use `queueStorageWrite()` for serialized FIFO writes
+- Use `queueStorageWrite()` for serialized FIFO writes (resets on failure)
 
 ---
 
