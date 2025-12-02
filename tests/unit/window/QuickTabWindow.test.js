@@ -535,13 +535,13 @@ describe('QuickTabWindow', () => {
       expect(window.minimized).toBe(true);
     });
 
-    test('should remove container from DOM (v1.6.4.6)', () => {
+    test('should remove container from DOM (v1.6.3.4-v7)', () => {
       const window = new QuickTabWindow(options);
       window.render();
 
       window.minimize();
 
-      // v1.6.4.6 - minimize now removes DOM instead of display:none
+      // v1.6.3.4-v7 - minimize now removes DOM instead of display:none
       expect(window.container).toBeNull();
       expect(window.iframe).toBeNull();
       expect(window.rendered).toBe(false);

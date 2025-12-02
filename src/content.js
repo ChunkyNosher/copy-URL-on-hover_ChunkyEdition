@@ -1181,7 +1181,7 @@ function _handleClearAllQuickTabs(sendResponse) {
 }
 
 /**
- * v1.6.4 - FIX Bug #5: Handle QUICK_TABS_CLEARED message from background
+ * v1.6.3.4 - FIX Bug #5: Handle QUICK_TABS_CLEARED message from background
  * This clears local Quick Tab state WITHOUT writing to storage
  * (Background already cleared storage, we just need to clean up UI)
  *
@@ -1658,7 +1658,7 @@ function _testHandleGetManagerState(sendResponse) {
         size: null,
         minimizedTabs: minimizedTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
         minimizedCount: minimizedTabs.length,
-        deprecationNotice: 'Floating panel removed in v1.6.4. Use sidebar Quick Tabs Manager instead.'
+        deprecationNotice: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
       }
     });
   } catch (error) {
@@ -1673,7 +1673,7 @@ function _testHandleGetManagerState(sendResponse) {
  */
 function _testHandleSetManagerPosition(sendResponse) {
   console.log('[Test Bridge Handler] TEST_SET_MANAGER_POSITION (deprecated - floating panel removed)');
-  sendResponse({ success: false, error: 'Floating panel removed in v1.6.4. Use sidebar Quick Tabs Manager instead.' });
+  sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
 }
 
 /**
@@ -1682,7 +1682,7 @@ function _testHandleSetManagerPosition(sendResponse) {
  */
 function _testHandleSetManagerSize(sendResponse) {
   console.log('[Test Bridge Handler] TEST_SET_MANAGER_SIZE (deprecated - floating panel removed)');
-  sendResponse({ success: false, error: 'Floating panel removed in v1.6.4. Use sidebar Quick Tabs Manager instead.' });
+  sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
 }
 
 /**

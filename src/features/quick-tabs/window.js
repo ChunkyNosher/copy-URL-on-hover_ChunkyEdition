@@ -20,7 +20,7 @@ import { CONSTANTS } from '../../core/config.js';
 import { createElement } from '../../utils/dom.js';
 import { isValidQuickTabUrl } from '../../utils/storage-utils.js';
 
-// v1.6.4.7 - Default dimensions for fallback when invalid values provided
+// v1.6.3.4-v8 - Default dimensions for fallback when invalid values provided
 const DEFAULT_WIDTH = 400;
 const DEFAULT_HEIGHT = 300;
 const DEFAULT_LEFT = 100;
@@ -165,9 +165,9 @@ export class QuickTabWindow {
 
   /**
    * Create and render the Quick Tab window
-   * v1.6.4.7 - FIX Issues #1, #6: Enhanced logging to verify correct dimensions are used
+   * v1.6.3.4-v8 - FIX Issues #1, #6: Enhanced logging to verify correct dimensions are used
    * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification after container creation
-   * v1.6.4.11 - Refactored to extract helper methods for improved code health
+   * v1.6.3.4-v11 - Refactored to extract helper methods for improved code health
    */
   render() {
     if (this.container) {
@@ -209,7 +209,7 @@ export class QuickTabWindow {
 
   /**
    * Validate and normalize dimensions with fallback to defaults
-   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
    * @private
    * @returns {{ left: number, top: number, width: number, height: number }}
    */
@@ -245,7 +245,7 @@ export class QuickTabWindow {
 
   /**
    * Create the main container element
-   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
    * @private
    * @param {{ width: number, height: number }} dimensions
    */
@@ -285,7 +285,7 @@ export class QuickTabWindow {
 
   /**
    * Create titlebar using TitlebarBuilder
-   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
    * @private
    * @returns {HTMLElement} The titlebar element
    */
@@ -329,7 +329,7 @@ export class QuickTabWindow {
 
   /**
    * Create iframe content area
-   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
    * @private
    */
   _createIframe() {
@@ -349,7 +349,7 @@ export class QuickTabWindow {
 
   /**
    * Apply anti-flash positioning after a frame
-   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
    * @private
    * @param {{ left: number, top: number }} dimensions
    */
@@ -372,7 +372,7 @@ export class QuickTabWindow {
 
   /**
    * Setup DragController with callbacks
-   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
    * @private
    * @param {HTMLElement} titlebar - The titlebar element for drag handling
    */
@@ -394,7 +394,7 @@ export class QuickTabWindow {
 
   /**
    * Handle drag start event
-   * v1.6.4.11 - Extracted from render() callback
+   * v1.6.3.4-v11 - Extracted from render() callback
    * @private
    */
   _handleDragStart(x, y) {
@@ -410,7 +410,7 @@ export class QuickTabWindow {
 
   /**
    * Handle drag event (position update)
-   * v1.6.4.11 - Extracted from render() callback
+   * v1.6.3.4-v11 - Extracted from render() callback
    * @private
    */
   _handleDrag(newX, newY) {
@@ -426,7 +426,7 @@ export class QuickTabWindow {
 
   /**
    * Handle drag end event
-   * v1.6.4.11 - Extracted from render() callback
+   * v1.6.3.4-v11 - Extracted from render() callback
    * @private
    */
   _handleDragEnd(finalX, finalY) {
@@ -443,7 +443,7 @@ export class QuickTabWindow {
 
   /**
    * Handle drag cancel event (emergency save)
-   * v1.6.4.11 - Extracted from render() callback
+   * v1.6.3.4-v11 - Extracted from render() callback
    * @private
    */
   _handleDragCancel(lastX, lastY) {
@@ -457,7 +457,7 @@ export class QuickTabWindow {
 
   /**
    * Setup ResizeController
-   * v1.6.4.11 - Extracted from render() to reduce complexity
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
    * @private
    */
   _setupResizeController() {
@@ -518,7 +518,7 @@ export class QuickTabWindow {
   /**
    * Pause any playing media (video/audio) in the iframe
    * v1.6.3.2 - Feature: Video Pause on Minimize
-   * v1.6.4.11 - Refactored to extract helpers for improved code health
+   * v1.6.3.4-v11 - Refactored to extract helpers for improved code health
    *
    * Attempts to pause media using:
    * 1. Direct DOM access for same-origin iframes
@@ -542,7 +542,7 @@ export class QuickTabWindow {
 
   /**
    * Attempt to pause media via direct DOM access (same-origin only)
-   * v1.6.4.11 - Extracted from _pauseMediaInIframe() to reduce complexity
+   * v1.6.3.4-v11 - Extracted from _pauseMediaInIframe() to reduce complexity
    * @private
    * @returns {boolean} True if same-origin access succeeded, false otherwise
    */
@@ -564,7 +564,7 @@ export class QuickTabWindow {
 
   /**
    * Pause all video elements in a document
-   * v1.6.4.11 - Extracted from _pauseMediaInIframe()
+   * v1.6.3.4-v11 - Extracted from _pauseMediaInIframe()
    * @private
    * @param {Document} doc - The document to search for videos
    */
@@ -580,7 +580,7 @@ export class QuickTabWindow {
 
   /**
    * Pause all audio elements in a document
-   * v1.6.4.11 - Extracted from _pauseMediaInIframe()
+   * v1.6.3.4-v11 - Extracted from _pauseMediaInIframe()
    * @private
    * @param {Document} doc - The document to search for audio
    */
@@ -596,7 +596,7 @@ export class QuickTabWindow {
 
   /**
    * Pause YouTube video via postMessage API (cross-origin)
-   * v1.6.4.11 - Extracted from _pauseMediaInIframe() to reduce complexity
+   * v1.6.3.4-v11 - Extracted from _pauseMediaInIframe() to reduce complexity
    * Reference: https://developers.google.com/youtube/iframe_api_reference
    * @private
    */
@@ -620,7 +620,7 @@ export class QuickTabWindow {
 
   /**
    * Minimize the Quick Tab window
-   * v1.6.4.6 - FIX Issues #1, #2, #7: Properly remove DOM and cleanup event listeners
+   * v1.6.3.4-v7 - FIX Issues #1, #2, #7: Properly remove DOM and cleanup event listeners
    * v1.6.3.2 - Feature: Pause media before removing DOM
    *
    * This method now:
@@ -642,27 +642,27 @@ export class QuickTabWindow {
     // v1.6.3.2 - Feature: Pause media before removing DOM
     this._pauseMediaInIframe();
 
-    // v1.6.4.6 - FIX Issue #2: Cleanup drag controller to prevent ghost drag events
+    // v1.6.3.4-v7 - FIX Issue #2: Cleanup drag controller to prevent ghost drag events
     if (this.dragController) {
       this.dragController.destroy();
       this.dragController = null;
       console.log('[QuickTabWindow] Destroyed drag controller for minimize:', this.id);
     }
 
-    // v1.6.4.6 - FIX Issue #2: Cleanup resize controller to prevent ghost resize handles
+    // v1.6.3.4-v7 - FIX Issue #2: Cleanup resize controller to prevent ghost resize handles
     if (this.resizeController) {
       this.resizeController.detachAll();
       this.resizeController = null;
       console.log('[QuickTabWindow] Destroyed resize controller for minimize:', this.id);
     }
 
-    // v1.6.4.6 - FIX Issue #1: Remove container from DOM instead of display:none
+    // v1.6.3.4-v7 - FIX Issue #1: Remove container from DOM instead of display:none
     if (this.container) {
       this.container.remove();
       console.log('[QuickTabWindow] Removed DOM element for minimize:', this.id);
     }
 
-    // v1.6.4.6 - FIX Issue #1: Clear references and mark as not rendered
+    // v1.6.3.4-v7 - FIX Issue #1: Clear references and mark as not rendered
     this.container = null;
     this.iframe = null;
     this.titlebarBuilder = null;
@@ -680,11 +680,11 @@ export class QuickTabWindow {
   /**
    * Restore minimized Quick Tab window
    * v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's in the same place
-   * v1.6.4.6 - FIX Issues #1, #6: Recreate DOM via render() since minimize() removes it
+   * v1.6.3.4-v7 - FIX Issues #1, #6: Recreate DOM via render() since minimize() removes it
    * v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call render() here!
    *   UICoordinator is the single rendering authority. restore() only updates instance state.
    *   UICoordinator.update() will detect the state change and call render() exactly once.
-   * v1.6.4.7 - FIX Issue #7: Log explicit warning when container is null (expected behavior)
+   * v1.6.3.4-v8 - FIX Issue #7: Log explicit warning when container is null (expected behavior)
    * v1.6.3.4-v10 - FIX Issue #1: REMOVE ALL DOM manipulation from restore()
    *   UICoordinator is the SOLE rendering authority. restore() ONLY updates instance state.
    *   Removed the `if (this.container) { ... }` block that was directly manipulating DOM.
@@ -737,10 +737,10 @@ export class QuickTabWindow {
 
   /**
    * Update z-index for stacking
-   * v1.6.4.4 - FIX Bug #4: Add null/undefined safety check for newZIndex
+   * v1.6.3.4-v5 - FIX Bug #4: Add null/undefined safety check for newZIndex
    */
   updateZIndex(newZIndex) {
-    // v1.6.4.4 - FIX Bug #4: Guard against null/undefined to prevent TypeError
+    // v1.6.3.4-v5 - FIX Bug #4: Guard against null/undefined to prevent TypeError
     if (newZIndex === undefined || newZIndex === null) {
       console.warn('[QuickTabWindow] updateZIndex called with null/undefined, skipping');
       return;
@@ -1040,7 +1040,7 @@ export class QuickTabWindow {
 
   /**
    * v1.5.9.10 - Check if Quick Tab is rendered on the page
-   * v1.6.4.10 - FIX Issue #6: Ensure strict boolean return (not truthy object)
+   * v1.6.3.4-v11 - FIX Issue #6: Ensure strict boolean return (not truthy object)
    *   The && chain was returning the last truthy value (parentNode object)
    *   instead of a boolean, causing conditional logic to incorrectly treat
    *   destroyed windows as "attached" when the result was an empty object.
@@ -1052,7 +1052,7 @@ export class QuickTabWindow {
 
   /**
    * Update debug ID display dynamically
-   * v1.6.4.8 - FIX Issue #4: Update already-rendered Quick Tab titlebars when settings change
+   * v1.6.3.4-v9 - FIX Issue #4: Update already-rendered Quick Tab titlebars when settings change
    * @param {boolean} showDebugId - Whether to show debug ID in titlebar
    */
   updateDebugIdDisplay(showDebugId) {

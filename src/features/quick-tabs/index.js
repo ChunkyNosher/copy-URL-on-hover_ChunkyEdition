@@ -308,7 +308,7 @@ class QuickTabsManager {
 
   /**
    * Default values for tab hydration
-   * v1.6.4.11 - Extracted to reduce _buildHydrationOptions complexity
+   * v1.6.3.4-v11 - Extracted to reduce _buildHydrationOptions complexity
    * @private
    * @type {Object}
    */
@@ -328,7 +328,7 @@ class QuickTabsManager {
 
   /**
    * Apply default value if source value is null/undefined
-   * v1.6.4.11 - Helper to reduce _buildHydrationOptions complexity
+   * v1.6.3.4-v11 - Helper to reduce _buildHydrationOptions complexity
    * @private
    * @param {*} value - Source value
    * @param {*} defaultValue - Default value
@@ -341,7 +341,7 @@ class QuickTabsManager {
   /**
    * Build options object for tab hydration
    * v1.6.3.4 - Helper to reduce complexity
-   * v1.6.4.11 - Refactored: extracted HYDRATION_DEFAULTS and _getWithDefault to reduce cc from 10 to ≤9
+   * v1.6.3.4-v11 - Refactored: extracted HYDRATION_DEFAULTS and _getWithDefault to reduce cc from 10 to ≤9
    * @private
    * @param {Object} tabData - Tab data from storage
    * @returns {Object} Options for createQuickTab
@@ -652,14 +652,14 @@ class QuickTabsManager {
   /**
    * Initialize coordinator components
    * v1.6.3 - Removed SyncCoordinator
-   * v1.6.4 - Removed PanelManager (floating panel removed, sidebar-only)
+   * v1.6.3.4 - Removed PanelManager (floating panel removed, sidebar-only)
    * @private
    */
   _initializeCoordinators() {
     this.uiCoordinator = new UICoordinator(
       this.state,
       this.minimizedManager,
-      null, // panelManager removed in v1.6.4
+      null, // panelManager removed in v1.6.3.4
       this.internalEventBus
     );
   }

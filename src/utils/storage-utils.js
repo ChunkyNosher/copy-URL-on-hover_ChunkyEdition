@@ -1,7 +1,7 @@
 /**
  * Storage utility functions for Quick Tabs
- * v1.6.4 - Extracted from handlers to reduce duplication
- * v1.6.4.1 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
+ * v1.6.3.4 - Extracted from handlers to reduce duplication
+ * v1.6.3.4-v2 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
  * v1.6.3.4 - FIX Issue #3: Add z-index persistence
  * v1.6.3.4-v6 - FIX Issues #1-6: Add transaction tracking, URL validation, state validation
  * v1.6.3.4-v8 - FIX Issues #1, #7: Empty write protection, storage write queue
@@ -14,7 +14,7 @@ import { CONSTANTS } from '../core/config.js';
 // Storage key for Quick Tabs state (unified format v1.6.2.2+)
 export const STATE_KEY = 'quick_tabs_state_v2';
 
-// v1.6.4.1 - FIX Bug #1: Timeout for storage operations (5 seconds)
+// v1.6.3.4-v2 - FIX Bug #1: Timeout for storage operations (5 seconds)
 const STORAGE_TIMEOUT_MS = 5000;
 
 // v1.6.3.4 - FIX Issue #3: Use CONSTANTS.QUICK_TAB_BASE_Z_INDEX for consistency
@@ -381,7 +381,7 @@ export function getBrowserStorageAPI() {
 
 /**
  * Get numeric value from flat or nested tab property
- * v1.6.4.2 - Helper to reduce complexity
+ * v1.6.3.4-v3 - Helper to reduce complexity
  * @private
  * @param {Object} tab - Quick Tab instance
  * @param {string} flatKey - Key for flat format (e.g., 'left')
@@ -391,19 +391,19 @@ export function getBrowserStorageAPI() {
  * @returns {number} Resolved value
  */
 function _getNumericValue(tab, flatKey, nestedObj, nestedKey, defaultVal) {
-  // v1.6.4.2 - Use nullish coalescing to properly handle 0 values
+  // v1.6.3.4-v3 - Use nullish coalescing to properly handle 0 values
   const flatVal = tab[flatKey];
   const nestedVal = tab[nestedObj]?.[nestedKey];
   const rawVal = flatVal ?? nestedVal ?? defaultVal;
-  // v1.6.4.3 - FIX: Validate that Number() produces a valid number (not NaN)
+  // v1.6.3.4-v4 - FIX: Validate that Number() produces a valid number (not NaN)
   const numVal = Number(rawVal);
   return isNaN(numVal) ? defaultVal : numVal;
 }
 
 /**
  * Get array value from flat or nested tab property
- * v1.6.4.2 - Helper to reduce complexity
- * v1.6.4.3 - Note: Unlike _getNumericValue, this function doesn't have a defaultVal
+ * v1.6.3.4-v3 - Helper to reduce complexity
+ * v1.6.3.4-v4 - Note: Unlike _getNumericValue, this function doesn't have a defaultVal
  *            parameter because arrays always default to empty []. The nestedKey
  *            parameter accesses tab.visibility[nestedKey] specifically.
  * @private
@@ -421,8 +421,8 @@ function _getArrayValue(tab, flatKey, nestedKey) {
 
 /**
  * Serialize a single Quick Tab to storage format
- * v1.6.4.1 - FIX Bug #1: Extracted to reduce complexity
- * v1.6.4.2 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
+ * v1.6.3.4-v2 - FIX Bug #1: Extracted to reduce complexity
+ * v1.6.3.4-v3 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
  * v1.6.3.4 - FIX Issue #3: Include zIndex in serialized data for persistence
  * @private
  * @param {Object} tab - Quick Tab instance
@@ -447,7 +447,7 @@ function serializeTabForStorage(tab, isMinimized) {
 
 /**
  * Validate that a state object can be serialized to JSON
- * v1.6.4.1 - FIX Bug #1: Extracted to reduce complexity
+ * v1.6.3.4-v2 - FIX Bug #1: Extracted to reduce complexity
  * @private
  * @param {Object} state - State object to validate
  * @returns {boolean} True if valid, false otherwise
@@ -618,8 +618,8 @@ function _processTabForStorage(tab, minimizedManager) {
 
 /**
  * Build current state from quickTabsMap for storage
- * v1.6.4 - Extracted from handlers to reduce duplication
- * v1.6.4.1 - FIX Bug #1: Add validation and error handling
+ * v1.6.3.4 - Extracted from handlers to reduce duplication
+ * v1.6.3.4-v2 - FIX Bug #1: Add validation and error handling
  * v1.6.3.4-v6 - FIX Issue #2, #6: Filter invalid URLs, validate before return
  * Refactored: Extracted _processTabForStorage to reduce complexity
  * Uses minimizedManager.isMinimized() for consistent minimized state
@@ -666,21 +666,21 @@ export function buildStateForStorage(quickTabsMap, minimizedManager) {
 
 /**
  * Create a Promise that rejects after a timeout
- * v1.6.4.1 - FIX Bug #1: Helper for Promise timeout wrapper
+ * v1.6.3.4-v2 - FIX Bug #1: Helper for Promise timeout wrapper
  * @private
  * @param {number} ms - Timeout in milliseconds
  * @param {string} operation - Description of the operation for error message
  * @returns {{promise: Promise, clear: Function}} Object with timeout promise and cleanup function
  */
 function createTimeoutPromise(ms, operation) {
-  // v1.6.4.3 - FIX: Initialize timeoutId to null for safer cleanup
+  // v1.6.3.4-v4 - FIX: Initialize timeoutId to null for safer cleanup
   let timeoutId = null;
   const promise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new Error(`${operation} timed out after ${ms}ms`));
     }, ms);
   });
-  // v1.6.4.3 - FIX: Only clear if timeoutId was set (safety check)
+  // v1.6.3.4-v4 - FIX: Only clear if timeoutId was set (safety check)
   const clear = () => {
     if (timeoutId !== null) {
       clearTimeout(timeoutId);
@@ -745,11 +745,11 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
   // v1.6.3.4-v6 - FIX Issue #1: Track in-progress transaction
   IN_PROGRESS_TRANSACTIONS.add(transactionId);
   
-  // v1.6.4.1 - FIX Bug #1: Create timeout with cleanup to prevent race condition
+  // v1.6.3.4-v2 - FIX Bug #1: Create timeout with cleanup to prevent race condition
   const timeout = createTimeoutPromise(STORAGE_TIMEOUT_MS, 'storage.local.set');
   
   try {
-    // v1.6.4.1 - FIX Bug #1: Wrap storage.local.set with timeout
+    // v1.6.3.4-v2 - FIX Bug #1: Wrap storage.local.set with timeout
     const storagePromise = browserAPI.storage.local.set({ [STATE_KEY]: stateWithTxn });
     
     await Promise.race([storagePromise, timeout.promise]);
@@ -763,7 +763,7 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     console.error(`${logPrefix} Storage write FAILED [${transactionId}]:`, err.message || err);
     return false;
   } finally {
-    // v1.6.4.2 - FIX: Always clear timeout to prevent memory leak
+    // v1.6.3.4-v3 - FIX: Always clear timeout to prevent memory leak
     timeout.clear();
     
     // v1.6.3.4-v6 - FIX Issue #1: Remove transaction from in-progress set after a delay
@@ -802,9 +802,9 @@ export function queueStorageWrite(writeOperation) {
 
 /**
  * Persist Quick Tab state to storage.local
- * v1.6.4 - Extracted from handlers
- * v1.6.4.1 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
- * v1.6.4.2 - FIX: Ensure timeout is always cleared to prevent memory leak
+ * v1.6.3.4 - Extracted from handlers
+ * v1.6.3.4-v2 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
+ * v1.6.3.4-v3 - FIX: Ensure timeout is always cleared to prevent memory leak
  * v1.6.3.4-v6 - FIX Issue #1, #5: Transaction tracking and deduplication
  * v1.6.3.4-v8 - FIX Issues #1, #7: Empty write protection, storage write queue
  * 
@@ -818,7 +818,7 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   const transactionId = generateTransactionId();
   console.log(`${logPrefix} Storage write STARTED [${transactionId}]`);
   
-  // v1.6.4.1 - FIX Bug #1: Validate state before attempting storage
+  // v1.6.3.4-v2 - FIX Bug #1: Validate state before attempting storage
   if (!state) {
     console.error(`${logPrefix} Cannot persist: state is null/undefined`);
     return Promise.resolve(false);
