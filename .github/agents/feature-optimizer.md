@@ -52,18 +52,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.4-v10 Timing Constants:**
+**v1.6.3.4-v11 Timing Constants:**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
-| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
+| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing deduplication |
+| `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
 
 **Performance Targets:**
 - Bundle size: content.js <500KB, background.js <300KB

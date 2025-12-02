@@ -1,0 +1,8 @@
+{
+  "id": "b203fe8f-5779-47a9-9b0e-a186b71d2288",
+  "title": "Storage Listener Memory Leak Fix",
+  "details": "## Storage Listener Memory Leak Fix Pattern (v1.6.4.11)\n\n### Root Cause\nCreateHandler.destroy() existed but was never called, causing storage.onChanged listeners to accumulate across page reloads.\n\n### Solution Pattern\n1. **QuickTabsManager.destroy() Method** - Added in src/features/quick-tabs/index.js\n   - Checks `this.initialized` flag before cleanup (idempotent)\n   - Stops MemoryGuard monitoring\n   - Calls `this.createHandler.destroy()` to remove storage listener\n   - Closes all Quick Tabs via `this.closeAll()`\n   - Removes all event listeners from `this.internalEventBus.removeAllListeners()`\n   - Sets `this.initialized = false` after cleanup\n\n2. **beforeunload Handler** - Added in src/content.js\n   - Named function `_handleBeforeUnload()` for proper removal\n   - Guard flag `window._CUO_beforeunload_registered` prevents duplicate registration\n   - Calls `quickTabsManager.destroy()` if available\n\n### Key Files\n- `src/features/quick-tabs/index.js` - QuickTabsManager.destroy()\n- `src/features/quick-tabs/handlers/CreateHandler.js` - destroy() for storage listener\n- `src/content.js` - beforeunload handler\n\n### Testing\nAll 1567 tests pass. Build and lint succeed. CodeQL shows no security alerts.",
+  "category": "technical",
+  "dateCreated": "2025-12-02T04:42:12.116Z",
+  "dateUpdated": "2025-12-02T04:42:12.116Z"
+}

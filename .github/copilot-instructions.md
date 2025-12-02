@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.4-v10  
+**Version:** 1.6.3.4-v11  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -16,16 +16,15 @@
 - Direct local creation pattern
 - **State hydration on page reload** (v1.6.3.4+)
 
-**v1.6.3.4-v10 Key Features (8 Critical Fixes):**
-- **QuickTabWindow.restore() Simplified:** Only updates `this.minimized = false` + `onFocus()`, no DOM manipulation
-- **UICoordinator Single Render Authority:** TRUE single rendering authority pattern
-- **Generation Counter Debounce:** `_timerGeneration` Map prevents timer callback corruption
-- **Look-Ahead Pattern:** `_handleDetachedDOMUpdate()` determines final state before Map modifications
-- **Atomic Snapshot Clearing:** MinimizedManager uses local variables before modifications
-- **64-bit Hash Function:** UpdateHandler uses djb2/sdbm returning `{lo, hi}` object
-- **Batch Set Pattern:** DestroyHandler `_batchOperationIds` Set replaces `_batchMode` boolean
-- **Storage Queue Reset:** `queueStorageWrite()` resets queue on failure
-- **Comprehensive Logging:** All decision branches logged with structured format
+**v1.6.3.4-v11 Key Features (8 Critical Fixes):**
+- **QuickTabsManager.destroy():** Proper cleanup with `beforeunload` handler for storage listener memory leak
+- **Message Deduplication:** 2000ms window for RESTORE_QUICK_TAB, 200ms for iframe processing
+- **Background Cache Validation:** Consecutive read validation before clearing cache
+- **Atomic Snapshot Clear:** `clearSnapshot()` pattern for clear-on-first-use
+- **Safe Rendered Tabs Clearing:** `_safeClearRenderedTabs()` with comprehensive logging
+- **Callback Verification:** `_verifyCallbacksAfterRestore()` ensures callbacks exist post-restore
+- **Background Isolation:** Background storage.onChanged only updates its own cache
+- **Empty Write Warning:** Explicit warning when writing 0 tabs without forceEmpty flag
 
 ---
 
@@ -144,8 +143,8 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `generateSaveId()` | Generate unique saveId for deduplication |
 | `getBrowserStorageAPI()` | Get browser/chrome storage API |
 | `buildStateForStorage(map, minMgr)` | Build state from quickTabsMap |
-| `persistStateToStorage(state, prefix, forceEmpty)` | Persist state with empty write protection |
-| `queueStorageWrite(writeOperation)` | **v10:** Queue write, resets on failure |
+| `persistStateToStorage(state, prefix, forceEmpty)` | **v11:** Warns when writing 0 tabs without forceEmpty |
+| `queueStorageWrite(writeOperation)` | Queue write, resets on failure |
 | `IN_PROGRESS_TRANSACTIONS` | Set for transaction tracking |
 | `isValidQuickTabUrl(url)` | Validate URL for Quick Tab |
 | `EMPTY_WRITE_COOLDOWN_MS` | 1000ms cooldown between empty writes |
@@ -157,7 +156,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.3.4-v10)
+## 🏗️ Key Architecture Patterns (v1.6.3.4-v11)
 
 ### Timing Constants Reference
 
@@ -166,102 +165,109 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | VisibilityHandler | Suppress circular callbacks |
 | `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler | State event fires first |
 | `MINIMIZE_DEBOUNCE_MS` | 200 | VisibilityHandler | Storage persist after state |
+| `IFRAME_DEDUP_WINDOW_MS` | 200 | background.js | Iframe processing deduplication |
 | `STORAGE_READ_DEBOUNCE_MS` | 300 | quick-tabs-manager.js | Debounce storage reads |
 | `SNAPSHOT_CLEAR_DELAY_MS` | 400 | UICoordinator | Allows double-clicks |
 | `RENDER_COOLDOWN_MS` | 1000 | UICoordinator | Prevent duplicate renders |
 | `EMPTY_WRITE_COOLDOWN_MS` | 1000 | storage-utils.js | Prevent empty write cascades |
+| `RESTORE_DEDUP_WINDOW_MS` | 2000 | content.js | Restore message deduplication |
 
-### Generation Counter Debounce (v1.6.3.4-v10)
+### Generation Counter Debounce
 
 ```javascript
 // VisibilityHandler uses generation counters to prevent timer callback corruption
-this._timerGeneration = new Map(); // Maps id -> generation counter
-
+this._timerGeneration = new Map();
 _debouncedPersist(id) {
   const currentGen = (this._timerGeneration.get(id) || 0) + 1;
   this._timerGeneration.set(id, currentGen);
-  
   setTimeout(() => {
-    // Only proceed if generation matches (no newer timer started)
-    if (this._timerGeneration.get(id) === currentGen) {
-      this._persist(id);
-    }
+    if (this._timerGeneration.get(id) === currentGen) this._persist(id);
   }, DEBOUNCE_MS);
 }
 ```
 
-### Look-Ahead Pattern (v1.6.3.4-v10)
+### Look-Ahead Pattern
 
 ```javascript
-// UICoordinator determines final state BEFORE any Map modifications
-// This prevents the "deleted but about to recreate" intermediate state
+// UICoordinator determines final state BEFORE Map modifications
 _handleDetachedDOMUpdate(ctx) {
-  // v10: Determine final action BEFORE modifying Map
   const willRender = !entityMinimized && (!instanceMinimized || isRestoreOperation);
-  
-  // Only delete from Map when final state is "not rendered"
-  if (!willRender) {
-    this._safeDeleteFromRenderedTabs(id, 'final state minimized');
-  }
-  // render() will overwrite existing entry - no intermediate deletion needed
+  if (!willRender) this._safeDeleteFromRenderedTabs(id, 'final state minimized');
 }
 ```
 
-### 64-bit Hash Function (v1.6.3.4-v10)
+### 64-bit Hash Function
 
 ```javascript
-// UpdateHandler uses 64-bit hash for negligible collision probability
 _computeStateHash(state) {
   const str = JSON.stringify(state);
-  return {
-    lo: djb2Hash(str),   // Low 32 bits
-    hi: sdbmHash(str)    // High 32 bits
-  };
+  return { lo: djb2Hash(str), hi: sdbmHash(str) };
 }
 ```
 
-### Batch Set Pattern (v1.6.3.4-v10)
+### Batch Set Pattern
 
 ```javascript
-// DestroyHandler uses Set for thread-safe batch operations
 this._batchOperationIds = new Set();
-
 closeAll() {
-  // Add all IDs to Set BEFORE destroy loop
-  for (const id of quickTabsMap.keys()) {
-    this._batchOperationIds.add(id);
-  }
-  // Then destroy - handleDestroy checks _batchOperationIds.has(id)
+  for (const id of quickTabsMap.keys()) this._batchOperationIds.add(id);
 }
 ```
 
-### Storage Queue Reset (v1.6.3.4-v10)
+### Storage Queue Reset
 
 ```javascript
-// queueStorageWrite resets queue on failure for independent writes
 async function queueStorageWrite(writeOperation) {
-  try {
-    return await writeOperation();
-  } catch (error) {
-    // Reset queue - failed writes don't corrupt subsequent writes
-    _writeQueue = Promise.resolve();
-    throw error;
-  }
+  try { return await writeOperation(); }
+  catch (error) { _writeQueue = Promise.resolve(); throw error; }
 }
 ```
 
-### Transaction Pattern (v1.6.3.4-v9+)
+### Transaction Pattern
 
 ```javascript
-import { beginTransaction, commitTransaction, rollbackTransaction } from '@utils/storage-utils.js';
+const started = await beginTransaction('[Handler]');
+try { /* op */ commitTransaction('[Handler]'); }
+catch (error) { await rollbackTransaction('[Handler]'); }
+```
 
-const started = await beginTransaction('[HandlerName]');
-if (!started) { /* handle error */ }
-try {
-  // ... multi-step operation
-  commitTransaction('[HandlerName]');
-} catch (error) {
-  await rollbackTransaction('[HandlerName]');
+### Message Deduplication (v11)
+
+```javascript
+const RESTORE_DEDUP_WINDOW_MS = 2000;
+const _restoreMessageTimestamps = new Map();
+function _isDuplicateRestoreMessage(id) {
+  const last = _restoreMessageTimestamps.get(id);
+  if (last && (Date.now() - last) < RESTORE_DEDUP_WINDOW_MS) return true;
+  _restoreMessageTimestamps.set(id, Date.now());
+  return false;
+}
+```
+
+### Atomic Snapshot Clear (v11)
+
+```javascript
+// UICoordinator calls clearSnapshot() after successful render
+this.minimizedManager.clearSnapshot(quickTabId);
+```
+
+### Consecutive Read Validation (v11)
+
+```javascript
+let consecutiveZeroTabReads = 0;
+if (consecutiveZeroTabReads < 2) return; // Wait for validation
+```
+
+### QuickTabsManager.destroy() (v11)
+
+```javascript
+destroy() {
+  if (!this.initialized) return;
+  this.memoryGuard?.stopMonitoring();
+  this.createHandler?.destroy();
+  this.closeAll();
+  this.internalEventBus?.removeAllListeners?.();
+  this.initialized = false;
 }
 ```
 
@@ -346,34 +352,37 @@ Use the agentic-tools MCP to create memories instead.
 ## 📋 Quick Reference
 
 ### Key Files
-- `background.js` - Background script, storage listeners, saveId tracking
-- `src/content.js` - Content script, Quick Tab creation, Manager action handlers
+- `background.js` - **v11:** Consecutive read validation, iframe deduplication (200ms window)
+- `src/content.js` - **v11:** `beforeunload` handler calls `quickTabsManager.destroy()`, message deduplication (2000ms)
 - `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings
-- `src/utils/storage-utils.js` - **v10:** `queueStorageWrite()` resets queue on failure
+- `src/utils/storage-utils.js` - **v11:** Warns when writing 0 tabs without forceEmpty
 - `src/utils/dom.js` - DOM utilities including `cleanupOrphanedQuickTabElements()`
 - `src/features/quick-tabs/coordinators/UICoordinator.js`:
   - Z-index tracking with `_highestZIndex`, `_getNextZIndex()`
-  - **v10:** Look-ahead pattern in `_handleDetachedDOMUpdate()` + `_getTransitionReason()` helper
-  - `_safeDeleteFromRenderedTabs()` helper method
+  - **v11:** `_safeClearRenderedTabs()` with comprehensive logging
+  - **v11:** `_verifyCallbacksAfterRestore()` ensures callbacks exist
+  - Atomic snapshot clear with `clearSnapshot()`
 - `src/features/quick-tabs/index.js`:
   - `_hydrateMinimizedTab()` creates real QuickTabWindow instances
+  - **v11:** `destroy()` method for proper cleanup
 - `src/features/quick-tabs/handlers/CreateHandler.js`:
+  - **v11:** `destroy()` method removes storage listener
   - Uses `storage.local` with key `quickTabShowDebugId`
 - `src/features/quick-tabs/handlers/DestroyHandler.js`:
-  - **v10:** `_batchOperationIds` Set replaces `_batchMode` boolean
+  - `_batchOperationIds` Set replaces `_batchMode` boolean
 - `src/features/quick-tabs/handlers/UpdateHandler.js`:
-  - **v10:** `_computeStateHash()` returns `{lo, hi}` 64-bit hash
+  - `_computeStateHash()` returns `{lo, hi}` 64-bit hash
 - `src/features/quick-tabs/handlers/VisibilityHandler.js`:
-  - **v10:** `_timerGeneration` Map for debounce generation counters
+  - `_timerGeneration` Map for debounce generation counters
   - `_fetchEntityFromStorage()` fetches complete entity
   - `_validateEventPayload()` prevents incomplete events
   - `_validateRestorePreconditions()` validates before restore
   - `_initiatedOperations` Set for callback suppression
 - `src/features/quick-tabs/window.js`:
-  - **v10:** `restore()` only updates `this.minimized = false` + `onFocus()`
+  - `restore()` only updates `this.minimized = false` + `onFocus()`
   - `DEFAULT_WIDTH/HEIGHT/LEFT/TOP` constants
 - `src/features/quick-tabs/minimized-manager.js`:
-  - **v10:** `clearSnapshot()` uses atomic local variables
+  - **v11:** `clearSnapshot()` atomic clear-on-first-use
 - `sidebar/quick-tabs-manager.js`:
   - `PENDING_OPERATIONS` Set tracks in-progress minimize/restore
   - `_reconcileWithContentScripts()` detects storage corruption
@@ -401,7 +410,7 @@ Content script handles these messages from Manager:
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
 - `CLOSE_MINIMIZED_QUICK_TABS` - Close all minimized Quick Tabs
 - `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab (removes DOM)
-- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (UICoordinator handles rendering)
+- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (**v11:** 2000ms deduplication window)
 
 ---
 

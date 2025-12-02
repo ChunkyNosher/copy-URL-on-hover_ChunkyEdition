@@ -104,6 +104,13 @@ const IN_PROGRESS_TRANSACTIONS = new Set();
 const STORAGE_CHANGE_COOLDOWN_MS = 50;
 let lastStorageChangeProcessed = 0;
 
+// v1.6.3.4-v11 - FIX Issue #1, #8: Track last non-empty state timestamp to prevent clearing during transactions
+// Also track consecutive 0-tab reads to require confirmation before clearing
+let lastNonEmptyStateTimestamp = Date.now();
+let consecutiveZeroTabReads = 0;
+const ZERO_TAB_CLEAR_THRESHOLD = 2; // Require 2 consecutive 0-tab reads
+const NON_EMPTY_STATE_COOLDOWN_MS = 1000; // Don't clear within 1 second of last non-empty state
+
 /**
  * Check if a URL is valid for Quick Tab creation
  * v1.6.3.4-v6 - FIX Issue #2: Filter corrupted tabs before broadcast
@@ -916,6 +923,25 @@ console.log('[Quick Tabs] Initializing Firefox MV3 X-Frame-Options bypass...');
 // Track modified URLs for debugging
 const modifiedUrls = new Set();
 
+// v1.6.3.4-v11 - FIX Issue #6: Track recently processed iframe URLs to prevent spam logging
+const recentlyProcessedIframes = new Map(); // url -> timestamp
+const IFRAME_DEDUP_WINDOW_MS = 200; // Skip logging if same URL processed within 200ms
+
+/**
+ * Clean up old entries from recentlyProcessedIframes Map
+ * v1.6.3.4-v11 - FIX Issue #6: Extracted to reduce nesting depth
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _cleanupOldIframeEntries(now) {
+  const cutoff = now - IFRAME_DEDUP_WINDOW_MS * 10;
+  for (const [url, timestamp] of recentlyProcessedIframes) {
+    if (timestamp < cutoff) {
+      recentlyProcessedIframes.delete(url);
+    }
+  }
+}
+
 /**
  * Handle X-Frame-Options header removal
  * v1.6.4.11 - Extracted from onHeadersReceived to reduce complexity
@@ -997,7 +1023,20 @@ function _filterSecurityHeader(header, url) {
 
 browser.webRequest.onHeadersReceived.addListener(
   details => {
-    console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
+    // v1.6.3.4-v11 - FIX Issue #6: Deduplicate iframe processing logs
+    const now = Date.now();
+    const lastProcessed = recentlyProcessedIframes.get(details.url);
+    const shouldLog = !lastProcessed || (now - lastProcessed) >= IFRAME_DEDUP_WINDOW_MS;
+    
+    if (shouldLog) {
+      console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
+      recentlyProcessedIframes.set(details.url, now);
+      
+      // Clean up old entries to prevent memory leak
+      if (recentlyProcessedIframes.size > 100) {
+        _cleanupOldIframeEntries(now);
+      }
+    }
 
     const modifiedHeaders = details.responseHeaders.filter(
       header => _filterSecurityHeader(header, details.url)
@@ -1457,15 +1496,49 @@ function _isSelfWrite(newValue, handler) {
  * Helper: Clear cache when storage is empty
  * v1.6.3.2 - Extracted from _handleQuickTabStateChange to reduce complexity
  * v1.6.4 - FIX Bug #7: Reset saveId when cache is cleared
+ * v1.6.3.4-v11 - FIX Issue #1, #8: Add cooldown and consecutive read validation
  * @param {Object} newValue - New storage value
+ * @returns {boolean} True if cache was cleared, false if rejected
  */
 function _clearCacheForEmptyStorage(newValue) {
-  console.log('[Background] Storage cleared (empty/missing tabs), clearing cache immediately');
+  const now = Date.now();
+  
+  // v1.6.3.4-v11 - FIX Issue #1: Check cooldown period
+  const timeSinceNonEmpty = now - lastNonEmptyStateTimestamp;
+  if (timeSinceNonEmpty < NON_EMPTY_STATE_COOLDOWN_MS) {
+    console.warn('[Background] │ ⚠️ REJECTED: Clear within cooldown period:', {
+      timeSinceNonEmpty,
+      cooldownMs: NON_EMPTY_STATE_COOLDOWN_MS,
+      reason: 'May be intermediate transaction state'
+    });
+    return false;
+  }
+  
+  // v1.6.3.4-v11 - FIX Issue #8: Check consecutive zero-tab reads
+  consecutiveZeroTabReads++;
+  if (consecutiveZeroTabReads < ZERO_TAB_CLEAR_THRESHOLD) {
+    console.warn('[Background] │ ⚠️ DEFERRED: Zero-tab read', consecutiveZeroTabReads, '/', ZERO_TAB_CLEAR_THRESHOLD);
+    console.warn('[Background] │ Waiting for confirmation before clearing cache');
+    return false;
+  }
+  
+  // v1.6.3.4-v11 - FIX Issue #1: Log WARNING when clearing
+  console.warn('[Background] ⚠️ WARNING: Clearing cache with 0 tabs:', {
+    consecutiveReads: consecutiveZeroTabReads,
+    timeSinceNonEmpty,
+    currentCacheTabCount: globalQuickTabState.tabs?.length || 0
+  });
+  
+  console.log('[Background] Storage cleared (empty/missing tabs), clearing cache');
   globalQuickTabState.tabs = [];
   globalQuickTabState.lastUpdate = newValue?.timestamp || Date.now();
   // v1.6.4 - FIX Bug #7: Reset saveId when cache is cleared
   globalQuickTabState.saveId = newValue?.saveId || null;
   lastBroadcastedStateHash = computeStateHash(newValue);
+  
+  // Reset consecutive counter after successful clear
+  consecutiveZeroTabReads = 0;
+  return true;
 }
 
 /**
@@ -1616,6 +1689,7 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 /**
  * Process storage update and update global cache
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
+ * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
  * @param {Object} newValue - New storage value
  */
 function _processStorageUpdate(newValue) {
@@ -1625,6 +1699,10 @@ function _processStorageUpdate(newValue) {
     return;
   }
 
+  // v1.6.3.4-v11 - FIX Issue #8: Reset consecutive counter and update timestamp when we get valid tabs
+  consecutiveZeroTabReads = 0;
+  lastNonEmptyStateTimestamp = Date.now();
+
   // Check if state actually requires update
   if (!_shouldUpdateState(newValue)) {
     return;
@@ -1633,8 +1711,14 @@ function _processStorageUpdate(newValue) {
   // Filter out tabs with invalid URLs
   const filteredValue = filterValidTabs(newValue);
   
-  // Update background's cache
-  console.log('[Background] Quick Tab state changed, updating cache (cross-tab sync via storage.onChanged)');
+  // v1.6.3.4-v11 - FIX Issue #3: Update background's cache ONLY - no broadcast to tabs
+  // Each tab handles its own sync via storage.onChanged listener in StorageManager
+  // Background script only maintains its cache (globalQuickTabState) for popup/sidebar queries
+  console.log('[Background] Updating cache only (no broadcast):', {
+    tabCount: filteredValue.tabs?.length || 0,
+    saveId: filteredValue.saveId,
+    note: 'Tabs sync independently via storage.onChanged'
+  });
   _updateGlobalStateFromStorage(filteredValue);
 }
 

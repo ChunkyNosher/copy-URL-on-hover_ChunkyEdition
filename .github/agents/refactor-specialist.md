@@ -62,15 +62,16 @@ const relevantMemories = await searchMemories({
 - Enforce architecture boundaries
 - Reduce complexity
 
-**Storage Format (v1.6.3.4-v10):**
+**Storage Format (v1.6.3.4-v11):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
 
-**Storage (v1.6.3.4-v10):**
+**Storage (v1.6.3.4-v11):**
 - Use `storage.local` for Quick Tab state AND UID setting
 - Use shared utilities from `src/utils/storage-utils.js`
 - Use `queueStorageWrite()` for serialized FIFO writes (resets on failure)
+- Warning when writing 0 tabs without forceEmpty flag
 
 ---
 

@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.3.4-v10 storage queue reset, comprehensive logging)
+  (v1.6.3.4-v11 background isolation, consecutive read validation)
 tools: ["*"]
 ---
 
@@ -28,13 +28,19 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
 - **browser.storage.local** - Persistent state storage with key `quick_tabs_state_v2`
 - **Global Visibility** - Quick Tabs visible in all tabs
-- **Storage Queue Reset (v10)** - `queueStorageWrite()` resets on failure for independent writes
+- **Background Isolation (v11)** - Background storage.onChanged only updates its own cache
+
+**v1.6.3.4-v11 Key Features:**
+- **Consecutive Read Validation** - Background validates before clearing cache
+- **Iframe Deduplication** - 200ms window prevents duplicate processing
+- **Message Deduplication** - 2000ms window for RESTORE_QUICK_TAB
+- **Empty Write Warning** - Warning when writing 0 tabs without forceEmpty
 
 **Timing Constants:**
 
@@ -42,7 +48,8 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
+| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing deduplication |
+| `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
 
 **Storage Format:**
 ```javascript
@@ -59,20 +66,27 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v10 Sync Patterns
+## v1.6.3.4-v11 Sync Patterns
 
-### Storage Queue Reset
+### Consecutive Read Validation
 
 ```javascript
-// queueStorageWrite resets queue on failure - failed writes don't corrupt subsequent writes
-async function queueStorageWrite(writeOperation) {
-  try {
-    return await writeOperation();
-  } catch (error) {
-    _writeQueue = Promise.resolve(); // Reset queue
-    throw error;
+let consecutiveZeroTabReads = 0;
+// Before clearing cache for 0 tabs:
+if (consecutiveZeroTabReads < 2) return; // Wait for validation
+```
+
+### Background Isolation
+
+```javascript
+// Background storage.onChanged only updates its own cache
+// Does NOT broadcast to content scripts
+browser.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.quick_tabs_state_v2) {
+    _cachedState = changes.quick_tabs_state_v2.newValue;
+    // NO broadcasting - each tab handles via its own listener
   }
-}
+});
 ```
 
 ---
@@ -97,9 +111,10 @@ await browser.storage.local.set({ quick_tabs_state_v2: { tabs: [...], saveId, ti
 
 | File | Purpose |
 |------|---------|
-| `src/utils/storage-utils.js` | **v10:** `queueStorageWrite()` resets on failure |
+| `background.js` | **v11:** Consecutive read validation, iframe deduplication |
+| `src/utils/storage-utils.js` | **v11:** Empty write warning |
 | `src/features/quick-tabs/managers/StorageManager.js` | storage.onChanged listener |
-| `src/features/quick-tabs/handlers/VisibilityHandler.js` | **v10:** `_timerGeneration` debounce |
+| `src/features/quick-tabs/handlers/VisibilityHandler.js` | `_timerGeneration` debounce |
 
 ---
 
@@ -114,8 +129,8 @@ await browser.storage.local.set({ quick_tabs_state_v2: { tabs: [...], saveId, ti
 - [ ] storage.onChanged events processed correctly
 - [ ] Global visibility works (no container filtering)
 - [ ] Solo/Mute sync across tabs using arrays (<100ms)
-- [ ] **v10:** Storage queue resets on failure
-- [ ] **v10:** Comprehensive logging at decision branches
+- [ ] **v11:** Consecutive read validation prevents false cache clears
+- [ ] **v11:** Background isolation (no broadcasts)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 

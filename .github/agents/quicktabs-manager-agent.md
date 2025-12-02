@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.3.4-v10 atomic snapshot clearing)
+  warning indicators, cross-tab operations (v1.6.3.4-v11 message deduplication)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -38,10 +38,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Handler Return Objects** - Check `result.success` from handlers
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 
-**v1.6.3.4-v10 Key Features:**
-- **Atomic Snapshot Clearing** - `clearSnapshot()` uses local variables before modifications
-- **Storage Queue Reset** - Failed writes don't corrupt subsequent writes
-- **Comprehensive Logging** - Structured logs at decision branches
+**v1.6.3.4-v11 Key Features:**
+- **Message Deduplication** - 2000ms window for RESTORE_QUICK_TAB
+- **Atomic Snapshot Clear** - `clearSnapshot()` pattern
+- **Safe Rendered Tabs Clearing** - `_safeClearRenderedTabs()` with logging
+- **Callback Verification** - `_verifyCallbacksAfterRestore()` ensures callbacks
 
 **Timing Constants:**
 
@@ -49,23 +50,31 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `PENDING_OP_TIMEOUT_MS` | 2000 | Auto-clear stuck operations |
+| `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
 ---
 
-## v1.6.3.4-v10 Manager Patterns
+## v1.6.3.4-v11 Manager Patterns
 
-### Atomic Snapshot Clearing
+### Message Deduplication
 
 ```javascript
-// MinimizedManager uses local variables to capture state before modifications
-clearSnapshot(id) {
-  const snapshot = this._snapshots.get(id);
-  if (!snapshot) return null;
-  this._snapshots.delete(id);
-  return snapshot;
+const RESTORE_DEDUP_WINDOW_MS = 2000;
+function _isDuplicateRestoreMessage(id) {
+  const last = _restoreMessageTimestamps.get(id);
+  if (last && (Date.now() - last) < RESTORE_DEDUP_WINDOW_MS) return true;
+  _restoreMessageTimestamps.set(id, Date.now());
+  return false;
 }
+```
+
+### Atomic Snapshot Clear
+
+```javascript
+// UICoordinator calls clearSnapshot() after successful render
+this.minimizedManager.clearSnapshot(quickTabId);
 ```
 
 ---
@@ -76,6 +85,7 @@ clearSnapshot(id) {
 |--------|-------------|
 | `closeById(id)` | Close a single Quick Tab by ID |
 | `closeAll()` | Close all Quick Tabs, emits `state:cleared` event |
+| `destroy()` | **v11:** Cleanup with storage listener removal |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
@@ -84,7 +94,7 @@ clearSnapshot(id) {
 - `CLOSE_QUICK_TAB` - Close a specific Quick Tab
 - `CLOSE_MINIMIZED_QUICK_TABS` - Close all minimized
 - `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab
-- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab
+- `RESTORE_QUICK_TAB` - Restore (**v11:** 2000ms deduplication)
 
 ---
 
@@ -99,7 +109,8 @@ clearSnapshot(id) {
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] All Quick Tabs display globally
 - [ ] Solo/Mute indicators correct (arrays)
-- [ ] **v10:** Atomic snapshot clearing works
+- [ ] **v11:** Message deduplication prevents duplicates
+- [ ] **v11:** Atomic snapshot clearing works
 - [ ] Buttons disabled during pending operations
 - [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐

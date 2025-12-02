@@ -127,6 +127,42 @@ export class UICoordinator {
   }
   
   /**
+   * Safely clear all entries from renderedTabs Map with logging
+   * v1.6.3.4-v11 - FIX Issue #4: Ensure ALL Map.clear() operations are logged
+   * @private
+   * @param {string} reason - Reason for clearing (for logging)
+   * @param {string} source - Source of the clear operation
+   */
+  _safeClearRenderedTabs(reason, source = 'unknown') {
+    const mapSizeBefore = this.renderedTabs.size;
+    
+    if (mapSizeBefore === 0) {
+      console.log('[UICoordinator] renderedTabs already empty, nothing to clear:', { reason, source });
+      return;
+    }
+    
+    console.warn('[UICoordinator] ⚠️ renderedTabs.clear() called:', {
+      reason,
+      source,
+      mapSizeBefore,
+      clearedIds: Array.from(this.renderedTabs.keys())
+    });
+    
+    // Stop all DOM monitoring timers before clearing
+    for (const id of this.renderedTabs.keys()) {
+      this._stopDOMMonitoring(id);
+    }
+    
+    this.renderedTabs.clear();
+    
+    console.log('[UICoordinator] renderedTabs cleared:', {
+      mapSizeAfter: this.renderedTabs.size,
+      reason,
+      source
+    });
+  }
+  
+  /**
    * Get next z-index for a new or restored window
    * v1.6.3.3 - FIX Bug #4: Ensures restored windows stack correctly
    * @private
@@ -261,6 +297,10 @@ export class UICoordinator {
   /**
    * Schedule delayed snapshot clearing with grace period
    * v1.6.3.4-v5 - FIX Issue #5: Grace period for accidental double-clicks
+   * v1.6.3.4-v11 - FIX Issue #7: Implement atomic clear-on-first-use pattern
+   *   The snapshot is cleared IMMEDIATELY when restore starts but stored in a
+   *   temporary variable for the current restore operation. This prevents a
+   *   second restore from accessing the same snapshot.
    * @private
    * @param {string} quickTabId - Quick Tab ID
    */
@@ -271,19 +311,32 @@ export class UICoordinator {
       clearTimeout(existingTimer);
     }
     
-    // Schedule delayed clearing
+    // v1.6.3.4-v11 - FIX Issue #7: Clear snapshot IMMEDIATELY to prevent second restore from using it
+    // The snapshot was already extracted and used by _applySnapshotForRestore() before this call
+    // We clear it now to prevent race conditions with rapid successive restores
+    if (this._hasMinimizedManager()) {
+      const cleared = this.minimizedManager.clearSnapshot(quickTabId);
+      if (cleared) {
+        console.log('[UICoordinator] Snapshot cleared atomically (first-use pattern):', quickTabId);
+      }
+    }
+    
+    // Schedule a delayed verification to ensure cleanup
+    // This is now just for safety/logging, not the primary clearing mechanism
     const timer = setTimeout(() => {
       this._pendingSnapshotClears.delete(quickTabId);
       if (this._hasMinimizedManager()) {
-        const cleared = this.minimizedManager.clearSnapshot(quickTabId);
-        if (cleared) {
-          console.log('[UICoordinator] Cleared snapshot after grace period:', quickTabId);
+        // Verify it's truly cleared (defensive)
+        const hasSnapshot = this.minimizedManager.hasSnapshot(quickTabId);
+        if (hasSnapshot) {
+          console.warn('[UICoordinator] Snapshot unexpectedly still exists, clearing:', quickTabId);
+          this.minimizedManager.clearSnapshot(quickTabId);
         }
       }
     }, SNAPSHOT_CLEAR_DELAY_MS);
     
     this._pendingSnapshotClears.set(quickTabId, timer);
-    console.log(`[UICoordinator] Scheduled snapshot clearing in ${SNAPSHOT_CLEAR_DELAY_MS}ms:`, quickTabId);
+    console.log(`[UICoordinator] Scheduled snapshot verification in ${SNAPSHOT_CLEAR_DELAY_MS}ms:`, quickTabId);
   }
 
   /**
@@ -577,6 +630,9 @@ export class UICoordinator {
     tabWindow.render();
     this.renderedTabs.set(quickTabId, tabWindow);
     
+    // v1.6.3.4-v11 - FIX Issue #5: Verify callbacks are properly wired after restore
+    this._verifyCallbacksAfterRestore(tabWindow, quickTabId);
+    
     // Apply incremented z-index for proper stacking
     this._applyZIndexAfterRestore(tabWindow, quickTabId);
     
@@ -590,6 +646,38 @@ export class UICoordinator {
     
     // v1.6.4.9 - FIX Issue #5: Start periodic DOM monitoring
     this._startDOMMonitoring(quickTabId, tabWindow);
+  }
+  
+  /**
+   * Verify that callbacks are properly wired after restore render
+   * v1.6.3.4-v11 - FIX Issue #5: Restored Window Callback Failures
+   * @private
+   * @param {QuickTabWindow} tabWindow - The window to verify
+   * @param {string} quickTabId - Quick Tab ID
+   */
+  _verifyCallbacksAfterRestore(tabWindow, quickTabId) {
+    const callbackStatus = {
+      id: quickTabId,
+      onPositionChangeEnd: typeof tabWindow.onPositionChangeEnd === 'function',
+      onSizeChangeEnd: typeof tabWindow.onSizeChangeEnd === 'function',
+      onFocus: typeof tabWindow.onFocus === 'function',
+      onMinimize: typeof tabWindow.onMinimize === 'function',
+      onClose: typeof tabWindow.onClose === 'function'
+    };
+    
+    const missingCallbacks = Object.entries(callbackStatus)
+      .filter(([key, value]) => key !== 'id' && !value)
+      .map(([key]) => key);
+    
+    if (missingCallbacks.length > 0) {
+      console.warn('[UICoordinator] ⚠️ Missing callbacks after restore:', {
+        id: quickTabId,
+        missingCallbacks,
+        allCallbacks: callbackStatus
+      });
+    } else {
+      console.log('[UICoordinator] ✓ All callbacks verified for restored window:', quickTabId);
+    }
   }
 
   /**

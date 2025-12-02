@@ -1061,6 +1061,64 @@ class QuickTabsManager {
   updateQuickTabSize(id, width, height) {
     return this.handleSizeChange(id, width, height);
   }
+
+  // ============================================================================
+  // LIFECYCLE METHODS
+  // ============================================================================
+
+  /**
+   * Cleanup and teardown the QuickTabsManager
+   * v1.6.3.4-v11 - FIX Issue #1, #2, #3: Proper resource cleanup to prevent memory leaks
+   * 
+   * This method:
+   * - Stops MemoryGuard monitoring
+   * - Removes storage.onChanged listener via CreateHandler.destroy()
+   * - Closes all Quick Tabs (DOM cleanup)
+   * - Removes all event listeners from internalEventBus
+   * - Marks manager as uninitialized
+   * 
+   * This method is idempotent - safe to call multiple times.
+   * 
+   * @returns {void}
+   */
+  destroy() {
+    // Guard: Only cleanup if initialized
+    if (!this.initialized) {
+      console.log('[QuickTabsManager] destroy() called but not initialized, skipping');
+      return;
+    }
+
+    console.log('[QuickTabsManager] Starting cleanup/teardown...');
+
+    // Step 1: Stop MemoryGuard monitoring
+    if (this.memoryGuard?.stopMonitoring) {
+      console.log('[QuickTabsManager] Stopping MemoryGuard monitoring');
+      this.memoryGuard.stopMonitoring();
+    }
+
+    // Step 2: Remove storage listener via CreateHandler.destroy()
+    if (this.createHandler?.destroy) {
+      console.log('[QuickTabsManager] Calling createHandler.destroy() to remove storage listener');
+      this.createHandler.destroy();
+    }
+
+    // Step 3: Close all Quick Tabs (DOM cleanup)
+    if (this.tabs.size > 0) {
+      console.log(`[QuickTabsManager] Closing ${this.tabs.size} Quick Tab(s)`);
+      this.closeAll();
+    }
+
+    // Step 4: Remove all event listeners from internalEventBus
+    if (this.internalEventBus?.removeAllListeners) {
+      console.log('[QuickTabsManager] Removing all event listeners from internalEventBus');
+      this.internalEventBus.removeAllListeners();
+    }
+
+    // Step 5: Mark as uninitialized
+    this.initialized = false;
+
+    console.log('[QuickTabsManager] ✓ Cleanup/teardown complete');
+  }
 }
 
 // ============================================================================

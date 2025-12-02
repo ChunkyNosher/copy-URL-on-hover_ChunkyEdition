@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -64,12 +64,13 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v10 Key Patterns:**
+**v1.6.3.4-v11 Key Patterns:**
+- QuickTabsManager.destroy() with `beforeunload` handler
+- Message deduplication (2000ms restore, 200ms iframes)
+- Consecutive read validation for cache clearing
+- Atomic snapshot clear with `clearSnapshot()`
 - Generation Counter Debounce - `_timerGeneration` Map
-- Copy-on-Write - `_prepareDetachedDOMUpdate()` helper
 - 64-bit Hash - djb2/sdbm returning `{lo, hi}` object
-- Batch Set - `_batchOperationIds` Set
-- Storage Queue Reset - `queueStorageWrite()` resets on failure
 
 **Architectural Patterns:**
 - FIFO queue for storage writes

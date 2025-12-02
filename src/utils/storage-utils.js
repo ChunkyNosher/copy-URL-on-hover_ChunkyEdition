@@ -692,6 +692,7 @@ function createTimeoutPromise(ms, operation) {
 /**
  * Check if empty write should be rejected (cooldown protection)
  * v1.6.3.4-v8 - FIX Issue #1: Prevent empty write cascades
+ * v1.6.3.4-v11 - FIX Issue #8: Add explicit warning when forceEmpty is required
  * @private
  * @param {number} tabCount - Number of tabs in state
  * @param {boolean} forceEmpty - Whether to force the empty write
@@ -714,6 +715,10 @@ function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)
     console.log(`${logPrefix} Empty write allowed (forceEmpty=true) [${transactionId}]`);
     return false;
   }
+  
+  // v1.6.3.4-v11 - FIX Issue #8: Add explicit warning that forceEmpty is required
+  console.warn(`${logPrefix} ⚠️ Writing 0 tabs without forceEmpty flag [${transactionId}]`);
+  console.warn(`${logPrefix} Set forceEmpty=true if intentional (e.g., "Close All" action)`);
   
   const now = Date.now();
   if (now - lastEmptyWriteTime < EMPTY_WRITE_COOLDOWN_MS) {

@@ -99,17 +99,17 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.4-v10)
+- [ ] Version numbers match current release (1.6.3.4-v11)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array, NOT containers)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.4-v10:** Generation counter debounce documented
-- [ ] **v1.6.3.4-v10:** Copy-on-write pattern documented
-- [ ] **v1.6.3.4-v10:** 64-bit hash function documented
-- [ ] **v1.6.3.4-v10:** Batch set pattern documented
+- [ ] **v1.6.3.4-v11:** QuickTabsManager.destroy() with beforeunload documented
+- [ ] **v1.6.3.4-v11:** Message deduplication patterns documented
+- [ ] **v1.6.3.4-v11:** Consecutive read validation documented
+- [ ] **v1.6.3.4-v11:** Atomic snapshot clear documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -117,7 +117,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.4-v10
+- **Current Version:** 1.6.3.4-v11
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -127,13 +127,13 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload (v1.6.3.4+)
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
-- **v1.6.3.4-v10 Key Features (8 Critical Fixes):**
-  - QuickTabWindow.restore() - Only updates state, no DOM manipulation
-  - Generation Counter Debounce - `_timerGeneration` Map prevents timer corruption
-  - Copy-on-Write - `_prepareDetachedDOMUpdate()` for safe Map updates
-  - 64-bit Hash - djb2/sdbm returning `{lo, hi}` object
-  - Batch Set - `_batchOperationIds` Set replaces `_batchMode`
-  - Storage Queue Reset - `queueStorageWrite()` resets on failure
+- **v1.6.3.4-v11 Key Features (8 Critical Fixes):**
+  - QuickTabsManager.destroy() - Cleanup with beforeunload handler
+  - Message Deduplication - 2000ms restore, 200ms iframes
+  - Consecutive Read Validation - Background validates before cache clear
+  - Atomic Snapshot Clear - clearSnapshot() pattern
+  - Safe Rendered Tabs Clearing - _safeClearRenderedTabs() with logging
+  - Callback Verification - _verifyCallbacksAfterRestore()
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -192,12 +192,12 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.4-v10)
+- Version numbers (1.6.3.4-v11)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
 - Storage format (unified tabs array, NOT containers)
-- Timing constants (v1.6.3.4 values)
+- Timing constants (v1.6.3.4-v11 values)
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
 - MCP tool lists
@@ -287,7 +287,7 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.4-v10)
+## Current Extension State (v1.6.3.4-v11)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -299,12 +299,10 @@ await perplexity.research("documentation compression markdown");
 - **Global Visibility:** All Quick Tabs visible everywhere (Container isolation REMOVED)
 - **Quick Tabs Manager:** Sidebar (Ctrl+Alt+Z or Alt+Shift+Z), Solo/Mute indicators
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
-- **QuickTabWindow.restore() (v10):** Only updates `this.minimized = false` + `onFocus()`
-- **UICoordinator (v10):** TRUE single rendering authority pattern
-- **Generation Counter (v10):** `_timerGeneration` Map in VisibilityHandler
-- **Copy-on-Write (v10):** `_prepareDetachedDOMUpdate()` in UICoordinator
-- **64-bit Hash (v10):** UpdateHandler djb2/sdbm returning `{lo, hi}`
-- **Batch Set (v10):** DestroyHandler `_batchOperationIds` Set
+- **QuickTabsManager.destroy() (v11):** Proper cleanup with `beforeunload` handler
+- **Message Deduplication (v11):** 2000ms for restore, 200ms for iframes
+- **Consecutive Read Validation (v11):** Background validates before clearing cache
+- **Atomic Snapshot Clear (v11):** `clearSnapshot()` pattern
 
 ### Timing Constants
 
@@ -312,10 +310,9 @@ await perplexity.research("documentation compression markdown");
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
-| `SNAPSHOT_CLEAR_DELAY_MS` | 400 | Allows double-clicks |
+| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing deduplication |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
-| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
+| `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
 
 ### Current Keyboard Shortcuts
 - **Q:** Create Quick Tab
@@ -340,7 +337,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.4-v9 or earlier | Update to 1.6.3.4-v10 |
+| v1.6.3.4-v10 or earlier | Update to 1.6.3.4-v11 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -364,14 +361,14 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.4-v10
+- [ ] Version numbers updated to 1.6.3.4-v11
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged documented as primary sync
-- [ ] **v1.6.3.4-v10:** Generation counter debounce documented
-- [ ] **v1.6.3.4-v10:** Copy-on-write pattern documented
-- [ ] **v1.6.3.4-v10:** 64-bit hash documented
-- [ ] **v1.6.3.4-v10:** Batch set pattern documented
+- [ ] **v1.6.3.4-v11:** QuickTabsManager.destroy() documented
+- [ ] **v1.6.3.4-v11:** Message deduplication documented
+- [ ] **v1.6.3.4-v11:** Consecutive read validation documented
+- [ ] **v1.6.3.4-v11:** Atomic snapshot clear documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠
