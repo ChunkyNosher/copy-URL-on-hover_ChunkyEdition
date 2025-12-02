@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -38,24 +38,17 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged
-- State hydration on page reload (v1.6.3.4+)
+- State hydration on page reload
 
-**v1.6.3.4-v12 Key Patterns:**
-- QuickTabsManager.destroy() with `beforeunload` handler
-- Message deduplication (2000ms restore, 200ms iframes)
-- Consecutive read validation for cache clearing
-- Atomic snapshot clear with `clearSnapshot()`
-- `_safeClearRenderedTabs()` with comprehensive logging
-- `_verifyCallbacksAfterRestore()` for callback verification
+**v1.6.3.5 New Modules:**
+- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
+- **QuickTabMediator** - Operation coordination with rollback
+- **MapTransactionManager** - Atomic Map operations with logging
 
-**Timing Constants (v1.6.3.4-v12):**
-
-| Constant | Value | Purpose |
-|----------|-------|---------|
-| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
-| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing deduplication |
-| `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
-| `EMPTY_WRITE_COOLDOWN_MS` | 1000 | Prevent empty write cascades |
+**v1.6.3.5 Key Patterns:**
+- `_activeTimerIds` Set (replaces generation counters for debounce)
+- Clear-on-first-use + `_restoreInProgress` lock
+- `prevTransaction`/`queueDepth` logging in storage writes
 
 ---
 
@@ -95,30 +88,29 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## Common Bug Patterns (v1.6.3.4-v12)
+## v1.6.3.5 Fix Patterns
 
-### Memory Leak Prevention
+### State Machine Transitions
 ```javascript
-// ✅ GOOD - Use destroy() for cleanup
-window.addEventListener('beforeunload', () => quickTabsManager.destroy());
+const sm = getStateMachine();
+if (!sm.canTransition(id, QuickTabState.MINIMIZING)) {
+  console.warn('Invalid transition - check state first');
+  return;
+}
 ```
 
-### Message Deduplication
+### Mediator Operations
 ```javascript
-// ✅ GOOD - Deduplicate restore messages
-if (_isDuplicateRestoreMessage(quickTabId)) return;
+const result = getMediator().minimize(id, 'user-action');
+if (!result.success) console.error(result.error);
 ```
 
-### FIFO Queue for Storage Writes
+### Map Transactions
 ```javascript
-// ✅ GOOD - Queue writes to prevent race conditions
-await queueStorageWrite(async () => { /* storage op */ });
-```
-
-### Safe Map Deletion
-```javascript
-// ✅ GOOD - Check before delete
-if (this._renderedTabs.has(id)) this._renderedTabs.delete(id);
+const txn = new MapTransactionManager(map, 'myMap');
+txn.beginTransaction('operation');
+txn.deleteEntry(id, 'reason');
+txn.commitTransaction();
 ```
 
 ---
@@ -136,17 +128,6 @@ if (this._renderedTabs.has(id)) this._renderedTabs.delete(id);
 - [ ] Edge cases covered
 - [ ] All existing tests still pass
 - [ ] ESLint passes ⭐
-- [ ] Memory files committed 🧠
-
----
-
-## Before Every Commit Checklist
-
-- [ ] Bug reproduced and verified
-- [ ] Root cause identified
-- [ ] Fix implemented with minimal changes
-- [ ] ESLint passed ⭐
-- [ ] All tests pass
 - [ ] Memory files committed 🧠
 
 ---

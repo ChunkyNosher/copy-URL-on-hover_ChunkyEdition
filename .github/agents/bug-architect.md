@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,21 +62,19 @@ const relevantMemories = await searchMemories({
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged
-- State hydration on page reload (v1.6.3.4+)
+- State hydration on page reload
 
-**v1.6.3.4-v12 Key Patterns:**
-- QuickTabsManager.destroy() with `beforeunload` handler
-- Message deduplication (2000ms restore, 200ms iframes)
-- Consecutive read validation for cache clearing
-- Atomic snapshot clear with `clearSnapshot()`
-- Generation Counter Debounce - `_timerGeneration` Map
-- 64-bit Hash - djb2/sdbm returning `{lo, hi}` object
+**v1.6.3.5 New Architecture:**
+- **QuickTabStateMachine** - Explicit lifecycle state tracking (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
+- **QuickTabMediator** - Operation coordination with state validation and rollback
+- **MapTransactionManager** - Atomic Map operations with logging and rollback
 
-**Architectural Patterns:**
-- FIFO queue for storage writes
-- Callback suppression with initiated operations tracking
-- Mutex pattern in VisibilityHandler (_operationLocks)
-- Safe map deletion with has() check before delete()
+**v1.6.3.5 Key Patterns:**
+- Active Timer IDs Set (replaces generation counters)
+- State machine validated transitions
+- Map transaction snapshots with rollback
+- Clear-on-first-use + restore-in-progress lock
+- Enhanced queue logging with prevTransaction/queueDepth
 
 ---
 
@@ -244,23 +242,29 @@ Only if:
 - Enforce cleanup patterns with `cleanupOrphanedQuickTabElements()`
 - Use debounced batch writes for destroy operations
 
-### Minimize/Restore Architecture (v1.6.3.4)
+### Minimize/Restore Architecture (v1.6.3.5)
 
 **Common Root Causes:**
-- Entity-instance sync gap (snapshot dimensions not propagating to entity)
-- Duplicate windows on restore (multiple sources triggering render)
-- Wrong position/size after restore
-- Race conditions between minimize and restore
+- State transition without validation
+- Multiple sources triggering same operation
+- Missing operation locks
+- Map corruption from untracked modifications
 
-**Architectural Solution (v1.6.3.4):**
-- **Entity-Instance Sync Fix:** UICoordinator uses fallback chain for dimensions
-  - `_tryApplySnapshotFromManager()` - get snapshot if still exists
-  - `_tryApplyDimensionsFromInstance()` - fallback to tabWindow instance
-- **UICoordinator is single rendering authority:** restore() does NOT call render() directly
-- **Mutex pattern:** VisibilityHandler._operationLocks prevents duplicate operations
-- **STATE_EMIT_DELAY_MS = 200:** Gives UICoordinator time to render before emit
-- Restore flow: VisibilityHandler → MinimizedManager → state:updated event → UICoordinator.update()
-- Proper minimized state detection: `tab.minimized ?? tab.visibility?.minimized ?? false`
+**Architectural Solution (v1.6.3.5):**
+- **State Machine:** QuickTabStateMachine validates all transitions
+  - `canTransition()` before any operation
+  - `transition()` logs every state change with source
+- **Mediator Pattern:** QuickTabMediator coordinates operations
+  - Single entry point for minimize/restore/destroy
+  - Operation locks prevent duplicates (500ms timeout)
+  - Automatic rollback on failure
+- **Map Transactions:** MapTransactionManager for atomic operations
+  - `beginTransaction()` captures snapshot
+  - `commitTransaction()` validates expected state
+  - `rollbackTransaction()` restores on failure
+- **Debounce Fix:** `_activeTimerIds` Set instead of generation counters
+  - Each timer has unique ID
+  - Timer checks if its ID still in Set before executing
 
 ### Sidebar Gesture Handling (v1.6.3.4)
 

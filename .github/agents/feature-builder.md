@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,22 +62,16 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**v1.6.3.4-v12 Key Patterns:**
-- QuickTabsManager.destroy() with `beforeunload` handler
-- Message deduplication (2000ms restore, 200ms iframes)
-- Consecutive read validation for cache clearing
-- Atomic snapshot clear with `clearSnapshot()`
-- Generation Counter Debounce - `_timerGeneration` Map
-- Storage Queue Reset - `queueStorageWrite()` resets on failure
+**v1.6.3.5 New Architecture:**
+- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
+- **QuickTabMediator** - Operation coordination with rollback
+- **MapTransactionManager** - Atomic Map operations with logging
 
-**Timing Constants (v1.6.3.4-v12):**
-
-| Constant | Value | Purpose |
-|----------|-------|---------|
-| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
-| `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing deduplication |
-| `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
+**v1.6.3.5 Key Patterns:**
+- Active Timer IDs Set (replaces generation counters)
+- State machine validated transitions
+- Map transaction snapshots with rollback
+- Clear-on-first-use + restore-in-progress lock
 
 **Storage Format:**
 ```javascript

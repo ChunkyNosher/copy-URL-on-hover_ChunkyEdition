@@ -805,24 +805,30 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
  *   Now we reset the queue on failure so each write is independent.
  * v1.6.3.4-v12 - FIX Issue #6: Log queue state for debugging
  *   Note: New parameters are optional with defaults for backward compatibility
+ * v1.6.3.5 - FIX Issue #5: Enhanced queue reset logging with dropped writes count
  * @param {Function} writeOperation - Async function to execute
  * @param {string} [logPrefix='[StorageUtils]'] - Prefix for logging (optional)
  * @param {string} [transactionId=''] - Transaction ID for logging (optional)
  * @returns {Promise<boolean>} Result of the write operation
  */
 export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', transactionId = '') {
-  // v1.6.3.4-v12 - FIX Issue #6: Log queue state
+  // v1.6.3.4-v12 - FIX Issue #6: Log queue state with previous transaction
   pendingWriteCount++;
   console.log(`${logPrefix} Storage write queued:`, {
     pending: pendingWriteCount,
-    transaction: transactionId
+    transaction: transactionId,
+    prevTransaction: lastCompletedTransactionId,
+    queueDepth: pendingWriteCount
   });
   
   // Chain this operation to the previous one
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(() => writeOperation())
     .catch(err => {
-      console.error('[StorageUtils] Queued write failed:', err);
+      // v1.6.3.5 - FIX Issue #5: Enhanced logging for queue reset
+      const droppedWrites = pendingWriteCount - 1; // Current write failed, others are dropped
+      console.error(`[StorageUtils] Queue RESET after failure [${transactionId}] - ${droppedWrites} pending writes dropped:`, err);
+      
       pendingWriteCount = Math.max(0, pendingWriteCount - 1);
       // v1.6.3.4-v10 - FIX Issue #7: Reset queue to break error propagation chain
       // Without this reset, the `false` return value contaminates subsequent writes

@@ -22,10 +22,14 @@ const DEFAULT_POSITION_TOP = 100;
 const DEFAULT_SIZE_WIDTH = 400;
 const DEFAULT_SIZE_HEIGHT = 300;
 
+// v1.6.3.5 - FIX Issue #3: Restore lock duration (matches SNAPSHOT_CLEAR_DELAY_MS)
+const RESTORE_LOCK_DURATION_MS = 500;
+
 /**
  * MinimizedManager class - Tracks and manages minimized Quick Tabs
  * v1.6.3.4-v4 - Stores immutable snapshots of position/size to prevent corruption by duplicate windows
  * v1.6.3.4-v10 - FIX Issue #1: Snapshot lifecycle - keep until UICoordinator confirms successful render
+ * v1.6.3.5 - FIX Issue #3: Add restore-in-progress lock to prevent duplicates
  */
 export class MinimizedManager {
   constructor() {
@@ -35,6 +39,8 @@ export class MinimizedManager {
     // v1.6.3.4-v10 - FIX Issue #1: Track restored but not yet cleared snapshots
     // These are snapshots that have been applied but UICoordinator hasn't confirmed render yet
     this.pendingClearSnapshots = new Map();
+    // v1.6.3.5 - FIX Issue #3: Track restore-in-progress per Quick Tab ID
+    this._restoreInProgress = new Set();
   }
 
   /**
@@ -99,15 +105,66 @@ export class MinimizedManager {
    * v1.6.3.4-v3 - FIX Issue #5: Keep snapshot in minimizedTabs during restore
    *   Only clearSnapshot() will remove it after UICoordinator confirms successful render.
    *   This allows multiple calls to getSnapshot() during the restore flow.
+   * v1.6.3.5 - FIX Issue #3: Add restore-in-progress lock to prevent duplicate 400x300 windows
+   *   Clear snapshot atomically BEFORE applying it to prevent race conditions
+   *   Refactored to extract helpers to reduce complexity
    * @param {string} id - Quick Tab ID
    * @returns {Object|boolean} Snapshot object with position/size, or false if not found
    */
   restore(id) {
-    // v1.6.3.4-v3 - FIX Issue #5: Check minimizedTabs first, then pendingClear for re-entry
+    // v1.6.3.5 - FIX Issue #3: Check restore-in-progress lock
+    const duplicateResult = this._handleDuplicateRestore(id);
+    if (duplicateResult !== null) return duplicateResult;
+    
+    // Find snapshot from available sources
+    const { snapshot, snapshotSource } = this._findSnapshot(id);
+    if (!snapshot) {
+      console.log('[MinimizedManager] No snapshot found for restore:', id);
+      return false;
+    }
+    
+    // Set restore-in-progress lock
+    this._setRestoreLock(id);
+    
+    // Move snapshot to pending (clear-on-first-use)
+    this._moveSnapshotToPending(id, snapshot, snapshotSource);
+    
+    // Apply snapshot and verify
+    const result = this._applyAndVerifySnapshot(id, snapshot, snapshotSource);
+    
+    return result;
+  }
+  
+  /**
+   * Handle duplicate restore attempts
+   * v1.6.3.5 - Extracted to reduce restore() complexity
+   * @private
+   */
+  _handleDuplicateRestore(id) {
+    if (!this._restoreInProgress.has(id)) return null;
+    
+    console.log('[MinimizedManager] Restore already in progress, rejecting duplicate:', id);
+    const existingSnapshot = this.minimizedTabs.get(id) || this.pendingClearSnapshots.get(id);
+    if (existingSnapshot) {
+      return {
+        window: existingSnapshot.window,
+        position: { left: existingSnapshot.savedPosition.left, top: existingSnapshot.savedPosition.top },
+        size: { width: existingSnapshot.savedSize.width, height: existingSnapshot.savedSize.height },
+        duplicate: true
+      };
+    }
+    return false;
+  }
+  
+  /**
+   * Find snapshot from minimizedTabs or pendingClearSnapshots
+   * v1.6.3.5 - Extracted to reduce restore() complexity
+   * @private
+   */
+  _findSnapshot(id) {
     let snapshot = this.minimizedTabs.get(id);
     let snapshotSource = 'minimizedTabs';
     
-    // Also check pending clear snapshots (in case restore is called again before clearSnapshot)
     if (!snapshot) {
       snapshot = this.pendingClearSnapshots.get(id);
       snapshotSource = 'pendingClearSnapshots';
@@ -116,93 +173,98 @@ export class MinimizedManager {
       }
     }
     
-    if (!snapshot) {
-      console.log('[MinimizedManager] No snapshot found for restore:', id);
-      return false;
-    }
+    return { snapshot, snapshotSource };
+  }
+  
+  /**
+   * Set restore-in-progress lock with timeout
+   * v1.6.3.5 - Extracted to reduce restore() complexity
+   * @private
+   */
+  _setRestoreLock(id) {
+    this._restoreInProgress.add(id);
+    setTimeout(() => this._restoreInProgress.delete(id), RESTORE_LOCK_DURATION_MS);
+  }
+  
+  /**
+   * Move snapshot from minimizedTabs to pendingClear (clear-on-first-use)
+   * v1.6.3.5 - Extracted to reduce restore() complexity
+   * @private
+   */
+  _moveSnapshotToPending(id, snapshot, snapshotSource) {
+    if (snapshotSource !== 'minimizedTabs') return;
     
+    this.minimizedTabs.delete(id);
+    this.pendingClearSnapshots.set(id, snapshot);
+    console.log('[MinimizedManager] Atomically moved snapshot to pendingClear (clear-on-first-use):', id);
+  }
+  
+  /**
+   * Apply snapshot to tabWindow and verify application
+   * v1.6.3.5 - Extracted to reduce restore() complexity
+   * @private
+   */
+  _applyAndVerifySnapshot(id, snapshot, snapshotSource) {
     const tabWindow = snapshot.window;
 
     // v1.6.3.4-v4 - FIX Issue #4: Use saved snapshot values, NOT current instance properties
-    // The instance properties may have been corrupted by duplicate window creation
     const savedLeft = snapshot.savedPosition.left;
     const savedTop = snapshot.savedPosition.top;
     const savedWidth = snapshot.savedSize.width;
     const savedHeight = snapshot.savedSize.height;
     
-    // v1.6.3.4-v3 - FIX Issue #5: Log which source the snapshot came from
+    // Log snapshot source and dimensions
     console.log('[MinimizedManager] restore() snapshot lookup:', {
-      id,
-      source: snapshotSource,
+      id, source: snapshotSource,
       savedPosition: { left: savedLeft, top: savedTop },
       savedSize: { width: savedWidth, height: savedHeight }
     });
     
-    // v1.6.3.4-v8 - FIX Issue #6: Log BEFORE and AFTER to verify application
+    // Log dimensions before applying
     console.log('[MinimizedManager] Instance dimensions BEFORE snapshot application:', {
-      id,
-      left: tabWindow.left,
-      top: tabWindow.top,
-      width: tabWindow.width,
-      height: tabWindow.height
+      id, left: tabWindow.left, top: tabWindow.top,
+      width: tabWindow.width, height: tabWindow.height
     });
 
-    // v1.6.3.4-v7 - FIX Issue #6: Apply snapshot to instance properties
-    // This ensures when render() is eventually called, it uses the correct position/size
+    // Apply snapshot to instance
     tabWindow.left = savedLeft;
     tabWindow.top = savedTop;
     tabWindow.width = savedWidth;
     tabWindow.height = savedHeight;
 
-    // v1.6.3.4-v8 - FIX Issue #6: Log AFTER to verify application succeeded
-    console.log('[MinimizedManager] Instance dimensions AFTER snapshot application:', {
-      id,
-      left: tabWindow.left,
-      top: tabWindow.top,
-      width: tabWindow.width,
-      height: tabWindow.height
-    });
-    
-    // v1.6.3.4-v8 - Verify the values match what we intended to set
-    const applicationVerified = 
-      tabWindow.left === savedLeft &&
-      tabWindow.top === savedTop &&
-      tabWindow.width === savedWidth &&
-      tabWindow.height === savedHeight;
-    
-    // v1.6.3.4-v2 - FIX Issue #3: Log verification result explicitly
-    if (applicationVerified) {
-      console.log('[MinimizedManager] ✓ Snapshot application VERIFIED - all values match:', id);
-    } else {
-      console.error('[MinimizedManager] CRITICAL: Snapshot application verification FAILED!', {
-        id,
-        expected: { left: savedLeft, top: savedTop, width: savedWidth, height: savedHeight },
-        actual: { left: tabWindow.left, top: tabWindow.top, width: tabWindow.width, height: tabWindow.height }
-      });
-    }
+    // Verify application
+    this._verifySnapshotApplication(id, tabWindow, savedLeft, savedTop, savedWidth, savedHeight);
 
-    // v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call tabWindow.restore() here!
-    // This was causing the duplicate window bug - both MinimizedManager.restore()
-    // and UICoordinator.update() were calling render().
-    // Now UICoordinator._restoreExistingWindow() is the single authority that
-    // calls tabWindow.restore() (which updates state) then tabWindow.render() (creates DOM).
-
-    // v1.6.3.4-v3 - FIX Issue #5 CRITICAL: Do NOT move snapshot to pending here!
-    // Keep the snapshot in minimizedTabs until UICoordinator calls clearSnapshot().
-    // This allows the snapshot to be re-read during the restore flow if needed.
-    console.log('[MinimizedManager] Snapshot retained for UICoordinator verification:', {
-      id,
-      position: { left: savedLeft, top: savedTop },
-      size: { width: savedWidth, height: savedHeight },
-      note: 'Call clearSnapshot() after successful render to remove'
+    console.log('[MinimizedManager] Snapshot applied:', {
+      id, position: { left: savedLeft, top: savedTop },
+      size: { width: savedWidth, height: savedHeight }
     });
 
-    // v1.6.3.4-v5 - FIX Bug #5: Return snapshot data so caller can verify/apply to correct window
     return {
       window: tabWindow,
       position: { left: savedLeft, top: savedTop },
       size: { width: savedWidth, height: savedHeight }
     };
+  }
+  
+  /**
+   * Verify snapshot values were correctly applied to tabWindow
+   * v1.6.3.5 - Extracted to reduce complexity
+   * @private
+   */
+  _verifySnapshotApplication(id, tabWindow, savedLeft, savedTop, savedWidth, savedHeight) {
+    const verified = tabWindow.left === savedLeft && tabWindow.top === savedTop &&
+                     tabWindow.width === savedWidth && tabWindow.height === savedHeight;
+    
+    if (verified) {
+      console.log('[MinimizedManager] ✓ Snapshot application VERIFIED:', id);
+    } else {
+      console.error('[MinimizedManager] CRITICAL: Snapshot verification FAILED!', {
+        id,
+        expected: { left: savedLeft, top: savedTop, width: savedWidth, height: savedHeight },
+        actual: { left: tabWindow.left, top: tabWindow.top, width: tabWindow.width, height: tabWindow.height }
+      });
+    }
   }
 
   /**
@@ -427,10 +489,12 @@ export class MinimizedManager {
   /**
    * Clear all minimized tabs
    * v1.6.3.4-v10 - FIX Issue #1: Also clear pendingClearSnapshots
+   * v1.6.3.5 - FIX Issue #3: Also clear restore-in-progress locks
    */
   clear() {
     this.minimizedTabs.clear();
     this.pendingClearSnapshots.clear();
-    console.log('[MinimizedManager] Cleared all minimized tabs and pending snapshots');
+    this._restoreInProgress.clear();
+    console.log('[MinimizedManager] Cleared all minimized tabs, pending snapshots, and restore locks');
   }
 }
