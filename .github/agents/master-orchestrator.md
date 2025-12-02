@@ -51,18 +51,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**Storage Format (v1.6.3.4-v11):**
+**Storage Format (v1.6.3.4-v12):**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
 
 **CRITICAL:** Use `storage.local` for Quick Tab state AND UID setting
 
-**v1.6.3.4-v11 Key Patterns:**
+**v1.6.3.4-v12 Key Patterns:**
 - QuickTabsManager.destroy() with `beforeunload` handler
 - Message deduplication (2000ms restore, 200ms iframes)
 - Consecutive read validation for cache clearing

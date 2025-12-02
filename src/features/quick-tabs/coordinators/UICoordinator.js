@@ -198,7 +198,9 @@ export class UICoordinator {
    */
   _findDOMElementById(quickTabId) {
     try {
-      const element = document.querySelector(`[data-quicktab-id="${quickTabId}"]`);
+      // v1.6.3.4-v12 - FIX Security: Escape ID to prevent CSS injection
+      const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(quickTabId) : quickTabId;
+      const element = document.querySelector(`[data-quicktab-id="${escapedId}"]`);
       if (element) {
         console.log('[UICoordinator] Found existing DOM element for Quick Tab:', {
           id: quickTabId,

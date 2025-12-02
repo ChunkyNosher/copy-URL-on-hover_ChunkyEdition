@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.4-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -40,7 +40,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Cross-tab sync via storage.onChanged
 - State hydration on page reload (v1.6.3.4+)
 
-**v1.6.3.4-v11 Key Patterns:**
+**v1.6.3.4-v12 Key Patterns:**
 - QuickTabsManager.destroy() with `beforeunload` handler
 - Message deduplication (2000ms restore, 200ms iframes)
 - Consecutive read validation for cache clearing
@@ -48,7 +48,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - `_safeClearRenderedTabs()` with comprehensive logging
 - `_verifyCallbacksAfterRestore()` for callback verification
 
-**Timing Constants (v1.6.3.4-v11):**
+**Timing Constants (v1.6.3.4-v12):**
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
@@ -95,7 +95,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## Common Bug Patterns (v1.6.3.4-v11)
+## Common Bug Patterns (v1.6.3.4-v12)
 
 ### Memory Leak Prevention
 ```javascript

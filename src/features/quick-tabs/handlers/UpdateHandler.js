@@ -134,7 +134,9 @@ export class UpdateHandler {
    */
   _checkDOMExists(id) {
     try {
-      return !!document.querySelector(`[data-quicktab-id="${id}"]`);
+      // v1.6.3.4-v12 - FIX Security: Escape ID to prevent CSS injection
+      const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
+      return !!document.querySelector(`[data-quicktab-id="${escapedId}"]`);
     } catch (err) {
       // Log DOM query failures for debugging (could indicate corrupt DOM state)
       console.warn('[UpdateHandler] DOM query failed for tab:', id, err?.message);

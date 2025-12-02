@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.4-v11 callback verification, safe clearing)
+  (v1.6.3.4-v12 position/size DOM checks, duplicate prevention)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v12 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,10 +38,10 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.4-v11 Key Features:**
-- **Callback Verification** - `_verifyCallbacksAfterRestore()` ensures callbacks exist
-- **Safe Clearing** - `_safeClearRenderedTabs()` with comprehensive logging
-- **UICoordinator Single Render Authority** - TRUE single rendering authority pattern
+**v1.6.3.4-v12 Key Features:**
+- **Position/Size Updates Fix** - `_checkDOMExists()` verifies DOM before updates
+- **Duplicate Prevention** - `_findDOMElementById()`, `_tryRecoverWindowFromDOM()`
+- **Render Refactoring** - `_validateRenderUrl()`, `_checkDuplicateRender()`, `_createAndFinalizeWindow()`
 - **restore() Simplified** - Only updates `this.minimized = false` + `onFocus()`
 
 **Timing Constants:**
@@ -54,25 +54,30 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v11 Key Patterns
+## v1.6.3.4-v12 Key Patterns
 
-### Callback Verification
+### DOM Existence Check
 
 ```javascript
-_verifyCallbacksAfterRestore(tabWindow) {
-  if (!tabWindow._callbacks || !tabWindow._callbacks.length) {
-    console.warn('[UICoordinator] Missing callbacks after restore');
+// UpdateHandler._checkDOMExists() before position/size updates
+_checkDOMExists(id) {
+  return document.getElementById(`quick-tab-${id}`) !== null;
+}
+
+handlePositionChangeEnd(id, position) {
+  if (!this._checkDOMExists(id)) {
+    console.log(`[UpdateHandler] Skipping position update - tab ${id} not in DOM`);
+    return;
   }
+  // ... update logic
 }
 ```
 
-### Simplified restore() Pattern
+### Duplicate Prevention
 
 ```javascript
-restore() {
-  this.minimized = false;
-  this.onFocus(); // Just focus, UICoordinator handles rendering
-}
+_findDOMElementById(id) { return document.getElementById(`quick-tab-${id}`); }
+_tryRecoverWindowFromDOM(id, element) { /* Reuses existing window */ }
 ```
 
 ---
@@ -88,8 +93,9 @@ restore() {
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] Global visibility correct (no container filtering)
 - [ ] Drag works without pointer escape
-- [ ] **v11:** Callback verification after restore
-- [ ] **v11:** Safe clearing with logging
+- [ ] **v12:** DOM existence check before updates
+- [ ] **v12:** Duplicate prevention via DOM check
+- [ ] **v12:** Render refactoring methods work
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 

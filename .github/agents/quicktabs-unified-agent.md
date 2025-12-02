@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, cross-tab sync, Solo/Mute, and end-to-end 
-  Quick Tab functionality (v1.6.3.4-v11 memory leak fixes, message deduplication)
+  Quick Tab functionality (v1.6.3.4-v12 storage corruption, duplicate prevention)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v12 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,15 +37,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Global Visibility** - All Quick Tabs visible across all tabs
 - **State Hydration (v1.6.3.4+)** - Quick Tabs restored from storage on page reload
 
-**v1.6.3.4-v11 Key Features (8 Critical Fixes):**
-- **QuickTabsManager.destroy():** Proper cleanup with `beforeunload` handler
-- **Message Deduplication:** 2000ms for restore, 200ms for iframes
-- **Consecutive Read Validation:** Background validates before clearing cache
-- **Atomic Snapshot Clear:** `clearSnapshot()` pattern
-- **Safe Rendered Tabs Clearing:** `_safeClearRenderedTabs()` with logging
-- **Callback Verification:** `_verifyCallbacksAfterRestore()` ensures callbacks
-- **Background Isolation:** storage.onChanged only updates its own cache
-- **Empty Write Warning:** Warning when writing 0 tabs without forceEmpty
+**v1.6.3.4-v12 Key Features (6 Critical Fixes):**
+- **Storage Corruption Fix:** `pendingWriteCount`, `lastCompletedTransactionId` tracking
+- **Manager List Clears Fix:** `_safeClearRenderedTabs(userInitiated)` with DOM verification
+- **Position/Size Updates Fix:** `_checkDOMExists()` helper in UpdateHandler
+- **Duplicate Quick Tabs Fix:** `_findDOMElementById()`, `_tryRecoverWindowFromDOM()`
+- **Yellow Indicator Fix:** `validateStateConsistency()`, `clearSnapshotAtomic()` in MinimizedManager
+- **Enhanced Diagnostic Logging:** Transaction sequencing, Map operations logs
 
 **Timing Constants:**
 - `CALLBACK_SUPPRESSION_DELAY_MS = 50ms` (suppress circular callbacks)
@@ -71,38 +69,31 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v11 Key Patterns
+## v1.6.3.4-v12 Key Patterns
 
-### QuickTabsManager.destroy()
+### Storage Write Tracking
 
 ```javascript
-destroy() {
-  if (!this.initialized) return;
-  this.memoryGuard?.stopMonitoring();
-  this.createHandler?.destroy();
-  this.closeAll();
-  this.internalEventBus?.removeAllListeners?.();
-  this.initialized = false;
+// storage-utils.js tracks pending writes and transaction IDs
+pendingWriteCount++; // Incremented on write start
+lastCompletedTransactionId = transactionId; // Set on commit
+```
+
+### DOM Verification Before Clear
+
+```javascript
+_safeClearRenderedTabs(userInitiated = false) {
+  if (!this._verifyAllTabsDOMDetached()) return false;
+  this._renderedTabs.clear();
+  return true;
 }
 ```
 
-### Message Deduplication
+### Duplicate Prevention
 
 ```javascript
-const RESTORE_DEDUP_WINDOW_MS = 2000;
-function _isDuplicateRestoreMessage(id) {
-  const last = _restoreMessageTimestamps.get(id);
-  if (last && (Date.now() - last) < RESTORE_DEDUP_WINDOW_MS) return true;
-  _restoreMessageTimestamps.set(id, Date.now());
-  return false;
-}
-```
-
-### Atomic Snapshot Clear
-
-```javascript
-// UICoordinator calls clearSnapshot() after successful render
-this.minimizedManager.clearSnapshot(quickTabId);
+_findDOMElementById(id) { return document.getElementById(`quick-tab-${id}`); }
+_tryRecoverWindowFromDOM(id, element) { /* Reuses existing */ }
 ```
 
 ---
@@ -119,8 +110,9 @@ this.minimizedManager.clearSnapshot(quickTabId);
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] Global visibility (no container filtering)
 - [ ] Cross-tab sync via storage.onChanged (<100ms)
-- [ ] **v11:** destroy() removes storage listeners
-- [ ] **v11:** Message deduplication prevents duplicates
+- [ ] **v12:** DOM verification before clearing
+- [ ] **v12:** Duplicate prevention via DOM check
+- [ ] **v12:** Storage write tracking works
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
