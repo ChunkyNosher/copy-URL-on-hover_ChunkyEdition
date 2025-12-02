@@ -51,13 +51,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **URL Detection Features:**
 - **Hover Detection** - Track hovered links for Quick Tab creation
 - **Site Handlers** - 100+ site-specific URL extractors
 - **URL Validation** - Ensure valid URLs before processing
 - **URL Normalization** - Clean and standardize URLs
+
+**v1.6.3.5 New Architecture:**
+- **QuickTabStateMachine** - State tracking for Quick Tab lifecycle
+- **QuickTabMediator** - Operation coordination
+- **MapTransactionManager** - Atomic operations
 
 ---
 

@@ -146,16 +146,17 @@ describe('MinimizedManager', () => {
       expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
 
-    test('should keep tab in minimizedTabs until clearSnapshot called (v1.6.3.4-v3)', () => {
+    test('should move tab to pendingClear (clear-on-first-use) after restore (v1.6.3.5)', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // v1.6.3.4-v3 - restore() keeps snapshot in minimizedTabs until clearSnapshot() is called
-      expect(manager.minimizedTabs.has('test-tab-1')).toBe(true);
-      
-      // After clearSnapshot(), it should be removed
-      manager.clearSnapshot('test-tab-1');
+      // v1.6.3.5 - restore() moves snapshot to pendingClear immediately (clear-on-first-use pattern)
       expect(manager.minimizedTabs.has('test-tab-1')).toBe(false);
+      expect(manager.pendingClearSnapshots.has('test-tab-1')).toBe(true);
+      
+      // After clearSnapshot(), it should be removed from pendingClear
+      manager.clearSnapshot('test-tab-1');
+      expect(manager.pendingClearSnapshots.has('test-tab-1')).toBe(false);
     });
 
     test('should apply snapshot to instance properties (v1.6.3.2)', () => {
@@ -176,8 +177,8 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // v1.6.3.4-v3 - Updated log message to reflect snapshot is retained (not moved to pendingClear)
-      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Snapshot retained for UICoordinator verification:',
+      // v1.6.3.5 - Updated log message to reflect snapshot is moved to pendingClear (clear-on-first-use)
+      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Snapshot applied:',
         expect.objectContaining({
           id: 'test-tab-1',
           position: { left: 100, top: 200 },
@@ -196,6 +197,20 @@ describe('MinimizedManager', () => {
       manager.restore('non-existent');
 
       expect(mockTabWindow.restore).not.toHaveBeenCalled();
+    });
+
+    test('should reject duplicate restore attempts within lock period (v1.6.3.5)', () => {
+      manager.add('test-tab-1', mockTabWindow);
+      
+      // First restore should succeed
+      const result1 = manager.restore('test-tab-1');
+      expect(result1).toBeTruthy();
+      expect(result1.duplicate).toBeUndefined();
+      
+      // Second immediate restore should be marked as duplicate
+      const result2 = manager.restore('test-tab-1');
+      expect(result2).toBeTruthy();
+      expect(result2.duplicate).toBe(true);
     });
 
     test('should handle tab without container', () => {
@@ -352,8 +367,8 @@ describe('MinimizedManager', () => {
     test('should log clearing', () => {
       manager.clear();
 
-      // v1.6.3.4-v10 - Updated log message to reflect clearing pending snapshots too
-      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Cleared all minimized tabs and pending snapshots');
+      // v1.6.3.5 - Updated log message to reflect clearing restore locks too
+      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Cleared all minimized tabs, pending snapshots, and restore locks');
     });
 
     test('should handle clearing when already empty', () => {

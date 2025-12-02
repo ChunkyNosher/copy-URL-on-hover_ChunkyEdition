@@ -49,6 +49,7 @@ import browser from 'webextension-polyfill';
 
 import { CONSTANTS } from '../../../core/config.js';
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '../../../utils/dom.js';
+import { MapTransactionManager } from '../map-transaction-manager.js';
 import { createQuickTabWindow } from '../window.js';
 
 /** @constant {number} Delay in ms for DOM verification after render (v1.6.3.4-v8) */
@@ -88,22 +89,46 @@ export class UICoordinator {
     this._pendingSnapshotClears = new Map();
     // v1.6.3.4-v6 - FIX Issue #3: Track render timestamps to prevent duplicate processing
     this._renderTimestamps = new Map(); // id -> timestamp
+    // v1.6.3.5 - FIX Issue #1: MapTransactionManager for atomic operations
+    this._mapTxnManager = new MapTransactionManager(this.renderedTabs, 'renderedTabs');
+  }
+  
+  /**
+   * Get detailed logging info for Map operations (Issue #2 fix)
+   * v1.6.3.5 - FIX Issue #2: Capture Map state for comprehensive logging
+   * @private
+   * @param {string} operation - The operation being performed
+   * @param {string} targetId - The ID being operated on
+   * @returns {Object} Log info object
+   */
+  _getMapLogInfo(operation, targetId) {
+    const stackLines = new Error().stack?.split('\n') || [];
+    return {
+      mapKeys: Array.from(this.renderedTabs.keys()),
+      operation,
+      targetId,
+      timestamp: Date.now(),
+      stackDepth: stackLines.length
+    };
   }
   
   /**
    * Safely delete from renderedTabs Map with logging and validation
    * v1.6.3.4-v8 - FIX Issue #5: Prevent double deletion and Map corruption
+   * v1.6.3.5 - FIX Issue #2: Enhanced logging with Map contents (not just size)
    * @private
    * @param {string} id - Quick Tab ID to delete
    * @param {string} reason - Reason for deletion (for logging)
    * @returns {boolean} True if deleted, false if entry didn't exist
    */
   _safeDeleteFromRenderedTabs(id, reason) {
+    // v1.6.3.5 - FIX Issue #2: Log Map contents before operation
+    const logInfo = this._getMapLogInfo('delete', id);
+    
     if (!this.renderedTabs.has(id)) {
       console.warn('[UICoordinator] WARNING: Attempted to delete non-existent Map entry:', {
-        id,
-        reason,
-        mapSize: this.renderedTabs.size
+        ...logInfo,
+        reason
       });
       return false;
     }
@@ -111,11 +136,13 @@ export class UICoordinator {
     const mapSizeBefore = this.renderedTabs.size;
     this.renderedTabs.delete(id);
     
+    // v1.6.3.5 - FIX Issue #2: Log Map contents after operation
     console.log('[UICoordinator] renderedTabs.delete():', {
-      id,
+      ...logInfo,
       reason,
       mapSizeBefore,
-      mapSizeAfter: this.renderedTabs.size
+      mapSizeAfter: this.renderedTabs.size,
+      mapKeysAfter: Array.from(this.renderedTabs.keys())
     });
     
     // v1.6.3.4-v8 - FIX Issue #5: Sanity check - size should never unexpectedly go to zero
@@ -123,7 +150,8 @@ export class UICoordinator {
       console.error('[UICoordinator] CRITICAL: Map unexpectedly empty after single delete!', {
         id,
         reason,
-        mapSizeBefore
+        mapSizeBefore,
+        mapKeysBefore: logInfo.mapKeys
       });
     }
     
@@ -136,6 +164,7 @@ export class UICoordinator {
    * v1.6.3.4-v12 - FIX Issue #2: Verify DOM elements before clearing
    *   Only clear if user-initiated (Close All) or DOM verification confirms tabs are gone
    *   Note: userInitiated parameter defaults to false for backward compatibility
+   * v1.6.3.5 - FIX Issue #2: Enhanced logging with Map contents and timestamps
    * @private
    * @param {string} reason - Reason for clearing (for logging)
    * @param {string} [source='unknown'] - Source of the clear operation (optional)
@@ -143,22 +172,35 @@ export class UICoordinator {
    * @returns {boolean} True if cleared, false if blocked
    */
   _safeClearRenderedTabs(reason, source = 'unknown', userInitiated = false) {
+    // v1.6.3.5 - FIX Issue #2: Log Map contents before operation
+    const logInfo = this._getMapLogInfo('clear', 'all');
     const mapSizeBefore = this.renderedTabs.size;
     
     if (mapSizeBefore === 0) {
-      console.log('[UICoordinator] renderedTabs already empty, nothing to clear:', { reason, source });
+      console.log('[UICoordinator] renderedTabs already empty, nothing to clear:', { 
+        ...logInfo,
+        reason, 
+        source 
+      });
       return true;
     }
     
     // v1.6.3.4-v12 - FIX Issue #2: Only clear if user-initiated or DOM verification passes
     if (!userInitiated && !this._verifyAllTabsDOMDetached()) {
-      console.error('[UICoordinator] ⛔ BLOCKED: renderedTabs.clear() rejected - DOM elements still exist');
+      console.error('[UICoordinator] ⛔ BLOCKED: renderedTabs.clear() rejected - DOM elements still exist:', {
+        ...logInfo,
+        reason,
+        source
+      });
       return false;
     }
     
     console.warn('[UICoordinator] ⚠️ renderedTabs.clear() called:', {
-      reason, source, userInitiated, mapSizeBefore,
-      clearedIds: Array.from(this.renderedTabs.keys())
+      ...logInfo,
+      reason, 
+      source, 
+      userInitiated, 
+      mapSizeBefore
     });
     
     // Stop all DOM monitoring timers and clear
@@ -167,7 +209,12 @@ export class UICoordinator {
     }
     this.renderedTabs.clear();
     
-    console.log('[UICoordinator] renderedTabs cleared:', { mapSizeAfter: this.renderedTabs.size, reason, source });
+    console.log('[UICoordinator] renderedTabs cleared:', { 
+      mapSizeAfter: this.renderedTabs.size, 
+      reason, 
+      source,
+      timestamp: Date.now()
+    });
     return true;
   }
   
@@ -1029,6 +1076,7 @@ export class UICoordinator {
    *   - Issue #6: Enhanced logging for Map lifecycle and restore decision
    *   - Refactored to extract helpers and reduce complexity
    * v1.6.3.4-v11 - Refactored: introduced UpdateContext object to reduce function argument count
+   * v1.6.3.5 - FIX Issue #2: Enhanced Map logging with mapKeys array at entry and exit
    *
    * @param {QuickTab} quickTab - Updated QuickTab entity
    * @param {string} source - Source of the event ('Manager', 'UI', 'automation', 'background', 'unknown')
@@ -1040,7 +1088,10 @@ export class UICoordinator {
     const tabWindow = this.renderedTabs.get(quickTab.id);
     const entityMinimized = Boolean(quickTab.minimized || quickTab.visibility?.minimized);
 
+    // v1.6.3.5 - FIX Issue #2: Enhanced logging with Map contents
+    const logInfo = this._getMapLogInfo('update-entry', quickTab.id);
     console.log('[UICoordinator] update() entry:', {
+      ...logInfo,
       id: quickTab.id,
       inMap: !!tabWindow,
       entityMinimized,
@@ -1136,12 +1187,13 @@ export class UICoordinator {
    * v1.6.3.4-v3 - Extracted to reduce update() complexity
    * v1.6.3.4-v11 - Refactored: uses UpdateContext object for parameters
    * v1.6.3.4-v6 - FIX Issue #4: Add restore-in-progress lock to prevent duplicates
+   * v1.6.3.5 - FIX Issue #1: Use transaction wrapper for atomic delete+set sequence
    * @private
    * @param {Object} ctx - Update context { quickTab, tabWindow, entityMinimized, source, isRestoreOperation, mapSizeBefore }
    * @returns {QuickTabWindow|null} Rendered window if handled, null to continue
    */
   _handleRestoreOperation(ctx) {
-    const { quickTab, tabWindow, entityMinimized, source, isRestoreOperation, mapSizeBefore } = ctx;
+    const { quickTab, entityMinimized, isRestoreOperation } = ctx;
     
     if (!isRestoreOperation || entityMinimized) {
       return null; // Not a restore operation, continue processing
@@ -1157,24 +1209,81 @@ export class UICoordinator {
     RESTORE_IN_PROGRESS.add(quickTab.id);
     setTimeout(() => RESTORE_IN_PROGRESS.delete(quickTab.id), RESTORE_LOCK_MS);
     
-    if (tabWindow) {
-      console.log('[UICoordinator] renderedTabs.delete() - restore operation cleanup:', {
+    return this._executeRestoreWithTransaction(ctx);
+  }
+  
+  /**
+   * Execute restore with transaction wrapper
+   * v1.6.3.5 - Extracted to reduce _handleRestoreOperation complexity
+   * @private
+   * @param {Object} ctx - Update context
+   * @returns {QuickTabWindow|null} Rendered window or null on error
+   */
+  _executeRestoreWithTransaction(ctx) {
+    const { quickTab, tabWindow, source, mapSizeBefore } = ctx;
+    const transactionStarted = this._mapTxnManager.beginTransaction('restore operation');
+    
+    try {
+      this._cleanupTabWindowForRestore(quickTab.id, tabWindow, transactionStarted, source, mapSizeBefore);
+      
+      console.log('[UICoordinator] Update decision: restore via unified fresh render path:', {
         id: quickTab.id,
-        reason: 'restore operation - forcing fresh render path',
         source,
-        mapSizeBefore,
-        mapSizeAfter: mapSizeBefore - 1
+        isRestoreOperation: true,
+        inTransaction: transactionStarted
       });
-      this.renderedTabs.delete(quickTab.id);
-      this._stopDOMMonitoring(quickTab.id);
+      
+      this._applySnapshotForRestore(quickTab);
+      const result = this.render(quickTab);
+      
+      this._commitRestoreTransaction(transactionStarted);
+      return result;
+    } catch (err) {
+      console.error('[UICoordinator] Restore operation failed, rolling back:', err);
+      if (transactionStarted) {
+        this._mapTxnManager.rollbackTransaction();
+      }
+      return null;
     }
-    console.log('[UICoordinator] Update decision: restore via unified fresh render path:', {
-      id: quickTab.id,
+  }
+  
+  /**
+   * Clean up existing tabWindow for restore operation
+   * v1.6.3.5 - Extracted to reduce nesting depth
+   * @private
+   */
+  _cleanupTabWindowForRestore(id, tabWindow, transactionStarted, source, mapSizeBefore) {
+    if (!tabWindow) return;
+    
+    const logInfo = this._getMapLogInfo('delete-before-restore', id);
+    console.log('[UICoordinator] renderedTabs.delete() - restore operation cleanup:', {
+      ...logInfo,
+      reason: 'restore operation - forcing fresh render path',
       source,
-      isRestoreOperation
+      mapSizeBefore,
+      mapSizeAfter: mapSizeBefore - 1
     });
-    this._applySnapshotForRestore(quickTab);
-    return this.render(quickTab);
+    
+    if (transactionStarted) {
+      this._mapTxnManager.deleteEntry(id, 'restore operation cleanup');
+    } else {
+      this.renderedTabs.delete(id);
+    }
+    this._stopDOMMonitoring(id);
+  }
+  
+  /**
+   * Commit restore transaction if started
+   * v1.6.3.5 - Extracted to reduce nesting depth
+   * @private
+   */
+  _commitRestoreTransaction(transactionStarted) {
+    if (!transactionStarted) return;
+    
+    const commitResult = this._mapTxnManager.commitTransaction();
+    if (!commitResult.success) {
+      console.error('[UICoordinator] Transaction commit failed:', commitResult.error);
+    }
   }
 
   /**

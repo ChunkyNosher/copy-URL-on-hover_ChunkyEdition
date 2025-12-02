@@ -50,7 +50,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.5 - Two-Layer Sidebar Tab System ✅
 
 **Settings Sidebar Structure (Two-Layer System):**
 - **PRIMARY TABS (Layer 1):**
@@ -61,12 +61,12 @@ const relevantMemories = await searchMemories({
   - **Copy URL Tab** - Keyboard shortcuts (Y, X, O)
   - **Quick Tabs Tab** - Quick Tab settings, max windows, defaults
   - **Appearance Tab** - Dark mode, colors, borders, animations
-  - **Advanced Tab** - Debug mode, storage management, logs, **UID display (v1.6.3.4-v12)**
+  - **Advanced Tab** - Debug mode, storage management, logs, UID display
 
-**v1.6.3.4-v12 Settings Changes:**
-- **UID Display Checkbox:** Added to Advanced tab (`quickTabShowDebugId`)
-- **Storage:** Uses `storage.local` with individual key `quickTabShowDebugId`
-- **DEFAULT_SETTINGS:** Includes `quickTabShowDebugId: false`
+**v1.6.3.5 New Architecture:**
+- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
+- **QuickTabMediator** - Operation coordination with rollback
+- **MapTransactionManager** - Atomic Map operations with logging
 
 **Tab State Persistence:**
 - Primary tab: localStorage.getItem('sidebarActivePrimaryTab')
@@ -76,11 +76,10 @@ const relevantMemories = await searchMemories({
 - Ctrl+Alt+Z or Alt+Shift+Z: Opens sidebar and switches to Quick Tab Manager
 - Command: 'open-quick-tabs-manager' in manifest.json
 
-**Storage (v1.6.3.4-v12):**
+**Storage:**
 - **Quick Tab state:** `storage.local` (NOT `storage.sync`)
 - **UID display setting:** `storage.local` key `quickTabShowDebugId`
 - **Extension settings:** `storage.sync` (user preferences)
-- **Clear storage:** Must use `storage.local` for Quick Tab state
 
 ---
 

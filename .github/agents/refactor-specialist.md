@@ -52,9 +52,14 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.4-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
+
+**v1.6.3.5 New Architecture:**
+- **QuickTabStateMachine** - State tracking (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
+- **QuickTabMediator** - Operation coordination with rollback
+- **MapTransactionManager** - Atomic Map operations with logging
 
 **Refactoring Goals:**
 - Eliminate technical debt
@@ -62,16 +67,15 @@ const relevantMemories = await searchMemories({
 - Enforce architecture boundaries
 - Reduce complexity
 
-**Storage Format (v1.6.3.4-v12):**
+**Storage Format:**
 ```javascript
 { tabs: [...], saveId: '...', timestamp: ... }
 ```
 
-**Storage (v1.6.3.4-v12):**
+**Storage:**
 - Use `storage.local` for Quick Tab state AND UID setting
 - Use shared utilities from `src/utils/storage-utils.js`
-- Use `queueStorageWrite()` for serialized FIFO writes (resets on failure)
-- Warning when writing 0 tabs without forceEmpty flag
+- Use `queueStorageWrite()` for serialized FIFO writes
 
 ---
 
