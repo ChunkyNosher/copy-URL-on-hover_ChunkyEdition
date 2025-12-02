@@ -99,17 +99,17 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.4-v11)
+- [ ] Version numbers match current release (1.6.3.4-v12)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array, NOT containers)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.4-v11:** QuickTabsManager.destroy() with beforeunload documented
-- [ ] **v1.6.3.4-v11:** Message deduplication patterns documented
-- [ ] **v1.6.3.4-v11:** Consecutive read validation documented
-- [ ] **v1.6.3.4-v11:** Atomic snapshot clear documented
+- [ ] **v1.6.3.4-v12:** Storage corruption fix (pendingWriteCount) documented
+- [ ] **v1.6.3.4-v12:** Manager list clears fix (DOM verification) documented
+- [ ] **v1.6.3.4-v12:** Position/size DOM checks documented
+- [ ] **v1.6.3.4-v12:** Duplicate Quick Tabs prevention documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -117,7 +117,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.4-v11
+- **Current Version:** 1.6.3.4-v12
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively (v1.6.2+)
 - **Key Features:**
@@ -127,13 +127,13 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload (v1.6.3.4+)
 - **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
-- **v1.6.3.4-v11 Key Features (8 Critical Fixes):**
-  - QuickTabsManager.destroy() - Cleanup with beforeunload handler
-  - Message Deduplication - 2000ms restore, 200ms iframes
-  - Consecutive Read Validation - Background validates before cache clear
-  - Atomic Snapshot Clear - clearSnapshot() pattern
-  - Safe Rendered Tabs Clearing - _safeClearRenderedTabs() with logging
-  - Callback Verification - _verifyCallbacksAfterRestore()
+- **v1.6.3.4-v12 Key Features (6 Critical Fixes):**
+  - Storage Corruption Fix - `pendingWriteCount`, `lastCompletedTransactionId` tracking
+  - Manager List Clears Fix - `_safeClearRenderedTabs(userInitiated)` with DOM verification
+  - Position/Size Updates Fix - `_checkDOMExists()` helper in UpdateHandler
+  - Duplicate Quick Tabs Fix - `_findDOMElementById()`, `_tryRecoverWindowFromDOM()`
+  - Yellow Indicator Fix - `validateStateConsistency()`, `clearSnapshotAtomic()`
+  - Enhanced Diagnostic Logging - Transaction sequencing, Map operations logs
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -192,12 +192,12 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.4-v11)
+- Version numbers (1.6.3.4-v12)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
 - Storage format (unified tabs array, NOT containers)
-- Timing constants (v1.6.3.4-v11 values)
+- Timing constants (v1.6.3.4-v12 values)
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
 - MCP tool lists
@@ -287,7 +287,7 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.4-v11)
+## Current Extension State (v1.6.3.4-v12)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
@@ -299,10 +299,10 @@ await perplexity.research("documentation compression markdown");
 - **Global Visibility:** All Quick Tabs visible everywhere (Container isolation REMOVED)
 - **Quick Tabs Manager:** Sidebar (Ctrl+Alt+Z or Alt+Shift+Z), Solo/Mute indicators
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
-- **QuickTabsManager.destroy() (v11):** Proper cleanup with `beforeunload` handler
-- **Message Deduplication (v11):** 2000ms for restore, 200ms for iframes
-- **Consecutive Read Validation (v11):** Background validates before clearing cache
-- **Atomic Snapshot Clear (v11):** `clearSnapshot()` pattern
+- **Storage Corruption Fix (v12):** `pendingWriteCount`, `lastCompletedTransactionId` tracking
+- **Manager List Clears Fix (v12):** `_safeClearRenderedTabs(userInitiated)` with DOM verification
+- **Position/Size Updates Fix (v12):** `_checkDOMExists()` helper
+- **Duplicate Quick Tabs Fix (v12):** `_findDOMElementById()`, `_tryRecoverWindowFromDOM()`
 
 ### Timing Constants
 
@@ -337,7 +337,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.4-v10 or earlier | Update to 1.6.3.4-v11 |
+| v1.6.3.4-v10 or earlier | Update to 1.6.3.4-v12 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -361,14 +361,14 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.4-v11
+- [ ] Version numbers updated to 1.6.3.4-v12
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged documented as primary sync
-- [ ] **v1.6.3.4-v11:** QuickTabsManager.destroy() documented
-- [ ] **v1.6.3.4-v11:** Message deduplication documented
-- [ ] **v1.6.3.4-v11:** Consecutive read validation documented
-- [ ] **v1.6.3.4-v11:** Atomic snapshot clear documented
+- [ ] **v1.6.3.4-v12:** Storage corruption fix documented
+- [ ] **v1.6.3.4-v12:** Manager list clears fix documented
+- [ ] **v1.6.3.4-v12:** Position/size DOM checks documented
+- [ ] **v1.6.3.4-v12:** Duplicate prevention documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠

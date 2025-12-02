@@ -11,6 +11,9 @@
  *   - Don't move to pendingClearSnapshots until UICoordinator calls clearSnapshot()
  *   - Keep snapshot in minimizedTabs during restore to allow re-reading
  *   - Comprehensive logging at all snapshot operations
+ * v1.6.3.4-v12 - FIX Diagnostic Report Issue #5, #6:
+ *   - State validation logging for entity.minimized vs Map consistency
+ *   - Atomic snapshot clear with validation after clear
  */
 
 // Default values for position/size when not provided
@@ -343,6 +346,82 @@ export class MinimizedManager {
    */
   hasSnapshot(id) {
     return this.minimizedTabs.has(id) || this.pendingClearSnapshots.has(id);
+  }
+  
+  /**
+   * Validate state consistency between entity.minimized flag and Map contents
+   * v1.6.3.4-v12 - FIX Diagnostic Issue #5, #6: State validation logging
+   * @param {string} id - Quick Tab ID
+   * @param {boolean} entityMinimizedFlag - The entity.minimized flag value
+   * @returns {boolean} True if states are consistent
+   */
+  validateStateConsistency(id, entityMinimizedFlag) {
+    const inMap = this.minimizedTabs.has(id);
+    const inPending = this.pendingClearSnapshots.has(id);
+    
+    // State is consistent if:
+    // - entity.minimized=true AND in minimizedTabs (normal minimized state)
+    // - entity.minimized=false AND NOT in minimizedTabs (normal visible state)
+    // - entity.minimized=false AND in pendingClear (restore in progress - acceptable)
+    
+    const isConsistent = (entityMinimizedFlag && inMap) || 
+                         (!entityMinimizedFlag && !inMap) ||
+                         (!entityMinimizedFlag && inPending);
+    
+    if (!isConsistent) {
+      console.warn('[MinimizedManager] ⚠️ State desync detected:', {
+        id,
+        entityMinimized: entityMinimizedFlag,
+        inMinimizedTabs: inMap,
+        inPendingClear: inPending,
+        expected: entityMinimizedFlag ? 'should be in minimizedTabs' : 'should NOT be in minimizedTabs'
+      });
+    } else {
+      console.log('[MinimizedManager] State consistency check passed:', {
+        id,
+        entityMinimized: entityMinimizedFlag,
+        inMinimizedTabs: inMap
+      });
+    }
+    
+    return isConsistent;
+  }
+  
+  /**
+   * Atomically clear snapshot and update entity.minimized flag
+   * v1.6.3.4-v12 - FIX Diagnostic Issue #5: Ensure atomic update
+   * @param {string} id - Quick Tab ID
+   * @param {Object} entity - The entity object to update (optional)
+   * @returns {boolean} True if cleared and validated
+   */
+  clearSnapshotAtomic(id, entity = null) {
+    // Clear the snapshot
+    const cleared = this.clearSnapshot(id);
+    
+    // Update entity.minimized if provided
+    if (entity && typeof entity === 'object') {
+      entity.minimized = false;
+      console.log('[MinimizedManager] Snapshot cleared, entity.minimized updated to false:', id);
+    }
+    
+    // Validate after clear
+    const stillHasSnapshot = this.hasSnapshot(id);
+    if (stillHasSnapshot) {
+      console.error('[MinimizedManager] CRITICAL: Snapshot still exists after clear!', {
+        id,
+        inMinimizedTabs: this.minimizedTabs.has(id),
+        inPendingClear: this.pendingClearSnapshots.has(id)
+      });
+      return false;
+    }
+    
+    console.log('[MinimizedManager] Snapshot cleared atomically, validated:', {
+      id,
+      cleared,
+      hasSnapshotAfterClear: stillHasSnapshot
+    });
+    
+    return cleared;
   }
 
   /**

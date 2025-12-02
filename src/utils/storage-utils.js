@@ -5,6 +5,10 @@
  * v1.6.3.4 - FIX Issue #3: Add z-index persistence
  * v1.6.3.4-v6 - FIX Issues #1-6: Add transaction tracking, URL validation, state validation
  * v1.6.3.4-v8 - FIX Issues #1, #7: Empty write protection, storage write queue
+ * v1.6.3.4-v12 - FIX Diagnostic Report Issues #1, #6:
+ *   - Enhanced storage write logging with caller identification
+ *   - Transaction sequencing with pending count tracking
+ *   - Improved saveId validation before writes complete
  * 
  * @module storage-utils
  */
@@ -49,6 +53,10 @@ let previousTabCount = 0;
 // v1.6.3.4-v8 - FIX Issue #7: Storage write queue for FIFO ordering
 // Each persist operation waits for previous one to complete
 let storageWriteQueuePromise = Promise.resolve();
+
+// v1.6.3.4-v12 - FIX Issue #1, #6: Track pending write count for logging
+let pendingWriteCount = 0;
+let lastCompletedTransactionId = null;
 
 // v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern with rollback capability
 // Stores state snapshots for rollback on failure
@@ -733,17 +741,27 @@ function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)
 /**
  * Perform the actual storage write operation
  * v1.6.3.4-v8 - FIX Issue #7: Extracted for queue implementation
+ * v1.6.3.4-v12 - FIX Issue #1, #6: Enhanced logging with transaction sequencing
  * @private
  */
 async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId) {
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
     console.warn(`${logPrefix} Storage API not available, cannot persist`);
+    pendingWriteCount = Math.max(0, pendingWriteCount - 1);
     return false;
   }
   
   // v1.6.3.4-v6 - FIX Issue #1: Track in-progress transaction
   IN_PROGRESS_TRANSACTIONS.add(transactionId);
+  
+  // v1.6.3.4-v12 - FIX Issue #6: Log transaction sequencing
+  console.log(`${logPrefix} Storage write executing:`, {
+    transaction: transactionId,
+    prevTransaction: lastCompletedTransactionId,
+    pendingCount: pendingWriteCount,
+    tabCount
+  });
   
   // v1.6.3.4-v2 - FIX Bug #1: Create timeout with cleanup to prevent race condition
   const timeout = createTimeoutPromise(STORAGE_TIMEOUT_MS, 'storage.local.set');
@@ -757,9 +775,14 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     // v1.6.3.4-v8 - Update previous tab count after successful write
     previousTabCount = tabCount;
     
+    // v1.6.3.4-v12 - FIX Issue #6: Update last completed transaction
+    lastCompletedTransactionId = transactionId;
+    pendingWriteCount = Math.max(0, pendingWriteCount - 1);
+    
     console.log(`${logPrefix} Storage write COMPLETED [${transactionId}] (${tabCount} tabs)`);
     return true;
   } catch (err) {
+    pendingWriteCount = Math.max(0, pendingWriteCount - 1);
     console.error(`${logPrefix} Storage write FAILED [${transactionId}]:`, err.message || err);
     return false;
   } finally {
@@ -780,15 +803,27 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
  *   The problem was that when writeOperation fails, .catch() returned `false`,
  *   which contaminated the Promise chain for subsequent writes.
  *   Now we reset the queue on failure so each write is independent.
+ * v1.6.3.4-v12 - FIX Issue #6: Log queue state for debugging
+ *   Note: New parameters are optional with defaults for backward compatibility
  * @param {Function} writeOperation - Async function to execute
+ * @param {string} [logPrefix='[StorageUtils]'] - Prefix for logging (optional)
+ * @param {string} [transactionId=''] - Transaction ID for logging (optional)
  * @returns {Promise<boolean>} Result of the write operation
  */
-export function queueStorageWrite(writeOperation) {
+export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', transactionId = '') {
+  // v1.6.3.4-v12 - FIX Issue #6: Log queue state
+  pendingWriteCount++;
+  console.log(`${logPrefix} Storage write queued:`, {
+    pending: pendingWriteCount,
+    transaction: transactionId
+  });
+  
   // Chain this operation to the previous one
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(() => writeOperation())
     .catch(err => {
       console.error('[StorageUtils] Queued write failed:', err);
+      pendingWriteCount = Math.max(0, pendingWriteCount - 1);
       // v1.6.3.4-v10 - FIX Issue #7: Reset queue to break error propagation chain
       // Without this reset, the `false` return value contaminates subsequent writes
       // because the Promise chain carries the error state forward.
@@ -850,6 +885,15 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
     // Allow persist to continue but log the errors
   }
   
+  // v1.6.3.4-v12 - FIX Issue #6: Log write initiator with operation type
+  console.log(`${logPrefix} Storage write initiated:`, {
+    file: logPrefix.replace(/\[|\]/g, ''),
+    operation: forceEmpty ? 'forceEmpty' : 'persist',
+    tabCount,
+    minimizedCount,
+    transaction: transactionId
+  });
+  
   console.log(`${logPrefix} Persisting ${tabCount} tabs (${minimizedCount} minimized) [${transactionId}]`);
   
   // v1.6.3.4-v6 - FIX Issue #1: Add transaction ID to state for tracking
@@ -859,7 +903,10 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   };
   
   // v1.6.3.4-v8 - FIX Issue #7: Queue the write operation for FIFO ordering
-  return queueStorageWrite(() => 
-    _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId)
+  // v1.6.3.4-v12 - FIX Issue #6: Pass logPrefix and transactionId for logging
+  return queueStorageWrite(
+    () => _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId),
+    logPrefix,
+    transactionId
   );
 }

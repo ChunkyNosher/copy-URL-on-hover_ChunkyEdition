@@ -39,6 +39,10 @@
  * v1.6.3.4-v9 - FIX Issues #16, #19:
  *   - Issue #16: Render rejection does NOT write to storage - silent failure
  *   - Issue #19: Copy-on-write pattern for entity state updates
+ * v1.6.3.4-v12 - FIX Diagnostic Report Issues #2, #4, #6:
+ *   - Issue #2: Defensive Map cleanup - verify DOM before clearing renderedTabs
+ *   - Issue #4: Check DOM for existing elements before creating duplicate windows
+ *   - Issue #6: Enhanced logging for Map operations and orphaned window detection
  */
 
 import browser from 'webextension-polyfill';
@@ -129,37 +133,85 @@ export class UICoordinator {
   /**
    * Safely clear all entries from renderedTabs Map with logging
    * v1.6.3.4-v11 - FIX Issue #4: Ensure ALL Map.clear() operations are logged
+   * v1.6.3.4-v12 - FIX Issue #2: Verify DOM elements before clearing
+   *   Only clear if user-initiated (Close All) or DOM verification confirms tabs are gone
+   *   Note: userInitiated parameter defaults to false for backward compatibility
    * @private
    * @param {string} reason - Reason for clearing (for logging)
-   * @param {string} source - Source of the clear operation
+   * @param {string} [source='unknown'] - Source of the clear operation (optional)
+   * @param {boolean} [userInitiated=false] - True if user explicitly initiated (optional)
+   * @returns {boolean} True if cleared, false if blocked
    */
-  _safeClearRenderedTabs(reason, source = 'unknown') {
+  _safeClearRenderedTabs(reason, source = 'unknown', userInitiated = false) {
     const mapSizeBefore = this.renderedTabs.size;
     
     if (mapSizeBefore === 0) {
       console.log('[UICoordinator] renderedTabs already empty, nothing to clear:', { reason, source });
-      return;
+      return true;
+    }
+    
+    // v1.6.3.4-v12 - FIX Issue #2: Only clear if user-initiated or DOM verification passes
+    if (!userInitiated && !this._verifyAllTabsDOMDetached()) {
+      console.error('[UICoordinator] ⛔ BLOCKED: renderedTabs.clear() rejected - DOM elements still exist');
+      return false;
     }
     
     console.warn('[UICoordinator] ⚠️ renderedTabs.clear() called:', {
-      reason,
-      source,
-      mapSizeBefore,
+      reason, source, userInitiated, mapSizeBefore,
       clearedIds: Array.from(this.renderedTabs.keys())
     });
     
-    // Stop all DOM monitoring timers before clearing
+    // Stop all DOM monitoring timers and clear
     for (const id of this.renderedTabs.keys()) {
       this._stopDOMMonitoring(id);
     }
-    
     this.renderedTabs.clear();
     
-    console.log('[UICoordinator] renderedTabs cleared:', {
-      mapSizeAfter: this.renderedTabs.size,
-      reason,
-      source
-    });
+    console.log('[UICoordinator] renderedTabs cleared:', { mapSizeAfter: this.renderedTabs.size, reason, source });
+    return true;
+  }
+  
+  /**
+   * Verify all tracked tabs have detached DOM
+   * v1.6.3.4-v12 - Helper to reduce _safeClearRenderedTabs complexity
+   * @private
+   * @returns {boolean} True if all tabs are DOM-detached
+   */
+  _verifyAllTabsDOMDetached() {
+    for (const [id, tabWindow] of this.renderedTabs) {
+      const domElement = this._findDOMElementById(id);
+      const isRendered = tabWindow && typeof tabWindow.isRendered === 'function' && tabWindow.isRendered();
+      if (domElement || isRendered) {
+        console.log('[UICoordinator] Tab still has DOM:', { id, hasDOMElement: !!domElement, isRendered });
+        return false;
+      }
+    }
+    return true;
+  }
+  
+  /**
+   * Check if a DOM element exists for a Quick Tab ID
+   * v1.6.3.4-v12 - FIX Issue #4: Detect orphaned DOM elements before creating duplicates
+   * @private
+   * @param {string} quickTabId - Quick Tab ID to check
+   * @returns {Element|null} The DOM element if found, null otherwise
+   */
+  _findDOMElementById(quickTabId) {
+    try {
+      // v1.6.3.4-v12 - FIX Security: Escape ID to prevent CSS injection
+      const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(quickTabId) : quickTabId;
+      const element = document.querySelector(`[data-quicktab-id="${escapedId}"]`);
+      if (element) {
+        console.log('[UICoordinator] Found existing DOM element for Quick Tab:', {
+          id: quickTabId,
+          element: element.tagName
+        });
+      }
+      return element;
+    } catch (err) {
+      console.warn('[UICoordinator] Error querying DOM for Quick Tab:', quickTabId, err);
+      return null;
+    }
   }
   
   /**
@@ -351,77 +403,153 @@ export class UICoordinator {
    * v1.6.3.4-v6 - FIX Issue #4: Track render timestamps to prevent duplicate processing
    * v1.6.3.4-v7 - FIX Issue #2, #4: Validate URL and entity before creating window
    * v1.6.3.4-v9 - FIX Issue #16: Render rejection does NOT write to storage
+   * v1.6.3.4-v12 - FIX Issue #4: Check for existing DOM element before creating duplicate
+   *   Refactored to reduce complexity by extracting helper methods
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow|null} Rendered tab window, or null if validation fails
    */
   render(quickTab) {
-    const mapSizeBefore = this.renderedTabs.size;
-    
-    // v1.6.3.4-v7 - FIX Issue #2: Validate URL exists before attempting render
-    // v1.6.3.4-v9 - FIX Issue #16: Return null silently - do NOT trigger any storage writes
-    if (!quickTab.url) {
-      console.error('[UICoordinator] REJECTED: Cannot render Quick Tab with undefined URL:', {
-        id: quickTab.id,
-        url: quickTab.url,
-        reason: 'URL is undefined or empty',
-        storageAction: 'NONE - rejection does not modify storage'
-      });
-      // v1.6.3.4-v9 - FIX Issue #16: Critical - return null without any side effects
-      // DO NOT emit events, DO NOT modify maps, DO NOT write to storage
+    // Validate URL first
+    if (!this._validateRenderUrl(quickTab)) {
       return null;
     }
     
-    // v1.6.3.4-v6 - FIX Issue #4: Check for recent render to prevent duplicates
+    // Check for duplicate render within lock period
+    const duplicateCheck = this._checkDuplicateRender(quickTab);
+    if (duplicateCheck) return duplicateCheck;
+    
+    // Check for existing valid window in Map
+    const existingWindow = this._handleExistingWindowInRender(quickTab, this.renderedTabs.size);
+    if (existingWindow) return existingWindow;
+    
+    // Check for orphaned DOM element and try to recover
+    const recoveredWindow = this._handleOrphanedDOMElement(quickTab);
+    if (recoveredWindow) return recoveredWindow;
+
+    // Create new window
+    return this._createAndFinalizeWindow(quickTab);
+  }
+  
+  /**
+   * Validate URL for render
+   * v1.6.3.4-v12 - Extracted to reduce render() complexity
+   * @private
+   */
+  _validateRenderUrl(quickTab) {
+    if (!quickTab.url) {
+      console.error('[UICoordinator] REJECTED: Cannot render Quick Tab with undefined URL:', {
+        id: quickTab.id, url: quickTab.url
+      });
+      return false;
+    }
+    return true;
+  }
+  
+  /**
+   * Check for duplicate render within lock period
+   * v1.6.3.4-v12 - Extracted to reduce render() complexity
+   * @private
+   * @returns {QuickTabWindow|null} Existing window if duplicate blocked, null to continue
+   */
+  _checkDuplicateRender(quickTab) {
     const lastRenderTime = this._renderTimestamps.get(quickTab.id);
     const now = Date.now();
     if (lastRenderTime && (now - lastRenderTime) < RESTORE_LOCK_MS) {
       const existing = this.renderedTabs.get(quickTab.id);
       if (existing && existing.isRendered()) {
-        console.log('[UICoordinator] Duplicate render blocked (within lock period):', {
-          id: quickTab.id,
-          timeSinceLastRender: now - lastRenderTime
-        });
+        console.log('[UICoordinator] Duplicate render blocked:', { id: quickTab.id });
         return existing;
       }
-      // No valid existing window found - continue with normal rendering
     }
+    return null;
+  }
+  
+  /**
+   * Handle orphaned DOM element - try to recover or remove
+   * v1.6.3.4-v12 - Extracted to reduce render() complexity
+   * @private
+   * @returns {QuickTabWindow|null} Recovered window if found, null otherwise
+   */
+  _handleOrphanedDOMElement(quickTab) {
+    const existingDOMElement = this._findDOMElementById(quickTab.id);
+    if (!existingDOMElement) return null;
     
-    // Check for existing valid window
-    const existingWindow = this._handleExistingWindowInRender(quickTab, mapSizeBefore);
-    if (existingWindow) {
-      return existingWindow;
-    }
-
-    console.log('[UICoordinator] Rendering tab:', quickTab.id);
+    console.warn('[UICoordinator] Orphaned window detected:', { id: quickTab.id, inMap: false, inDOM: true });
     
-    // v1.6.3.4-v6 - FIX Issue #4: Track render timestamp
-    this._renderTimestamps.set(quickTab.id, now);
+    const recoveredWindow = this._tryRecoverWindowFromDOM(existingDOMElement, quickTab);
+    if (recoveredWindow) return recoveredWindow;
+    
+    console.log('[UICoordinator] Could not recover window, removing orphaned element:', quickTab.id);
+    existingDOMElement.remove();
+    return null;
+  }
+  
+  /**
+   * Create new window and finalize render
+   * v1.6.3.4-v12 - Extracted to reduce render() complexity
+   * @private
+   */
+  _createAndFinalizeWindow(quickTab) {
+    console.log('[UICoordinator] Creating new window instance:', quickTab.id);
+    this._renderTimestamps.set(quickTab.id, Date.now());
 
-    // v1.6.3.4-v7 - FIX Issue #4: Wrap window creation in try/catch to handle URL validation failures
-    // v1.6.3.4-v9 - FIX Issue #16: On failure, return null without storage writes
     let tabWindow;
     try {
-      // Create QuickTabWindow from QuickTab entity
       tabWindow = this._createWindow(quickTab);
     } catch (err) {
-      console.error('[UICoordinator] Failed to create QuickTabWindow:', {
-        id: quickTab.id,
-        url: quickTab.url,
-        error: err.message,
-        storageAction: 'NONE - failure does not modify storage'
-      });
-      // Clear render timestamp so future attempts can proceed
+      console.error('[UICoordinator] Failed to create QuickTabWindow:', { id: quickTab.id, error: err.message });
       this._renderTimestamps.delete(quickTab.id);
-      // v1.6.3.4-v9 - FIX Issue #16: Return null without any storage side effects
       return null;
     }
 
-    // Finalize render - store, verify, monitor
     this._finalizeRender(tabWindow, quickTab);
-
     console.log('[UICoordinator] Tab rendered:', quickTab.id);
     return tabWindow;
+  }
+  
+  /**
+   * Try to recover a QuickTabWindow from an orphaned DOM element
+   * v1.6.3.4-v12 - FIX Issue #4: Reuse existing window instead of creating duplicate
+   * 
+   * Note: Uses __quickTabWindow property on DOM elements which is set by window.js
+   * during render(). This is a common pattern for associating data with DOM elements
+   * in browser extensions. If window.js doesn't set this property, recovery will
+   * gracefully fail and a new window will be created.
+   * 
+   * @private
+   * @param {Element} domElement - The existing DOM element
+   * @param {QuickTab} quickTab - QuickTab domain entity
+   * @returns {QuickTabWindow|null} Recovered window or null if recovery failed
+   */
+  _tryRecoverWindowFromDOM(domElement, quickTab) {
+    // The window reference might be stored on the element by window.js render()
+    // If not present, recovery fails gracefully and caller creates a new window
+    const recoveredWindow = domElement.__quickTabWindow;
+    
+    if (recoveredWindow && typeof recoveredWindow.isRendered === 'function') {
+      console.log('[UICoordinator] DOM element found but not in Map - reusing existing window:', quickTab.id);
+      
+      // Restore the window
+      if (typeof recoveredWindow.restore === 'function') {
+        recoveredWindow.restore();
+      }
+      
+      // Re-add to renderedTabs Map
+      this.renderedTabs.set(quickTab.id, recoveredWindow);
+      
+      console.log('[UICoordinator] Re-added recovered window to Map:', {
+        id: quickTab.id,
+        mapSizeAfter: this.renderedTabs.size
+      });
+      
+      // Start DOM monitoring
+      this._startDOMMonitoring(quickTab.id, recoveredWindow);
+      
+      return recoveredWindow;
+    }
+    
+    return null;
   }
 
   /**

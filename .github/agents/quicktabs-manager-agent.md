@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   sync between Quick Tabs and manager, global display, Solo/Mute indicators,
-  warning indicators, cross-tab operations (v1.6.3.4-v11 message deduplication)
+  warning indicators, cross-tab operations (v1.6.3.4-v12 DOM verification, list fixes)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v12 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -38,11 +38,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Handler Return Objects** - Check `result.success` from handlers
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 
-**v1.6.3.4-v11 Key Features:**
+**v1.6.3.4-v12 Key Features:**
+- **Manager List Clears Fix** - `_safeClearRenderedTabs(userInitiated)` with DOM verification
+- **DOM Verification** - `_verifyAllTabsDOMDetached()` before clearing
+- **Yellow Indicator Fix** - `validateStateConsistency()`, `clearSnapshotAtomic()`
 - **Message Deduplication** - 2000ms window for RESTORE_QUICK_TAB
-- **Atomic Snapshot Clear** - `clearSnapshot()` pattern
-- **Safe Rendered Tabs Clearing** - `_safeClearRenderedTabs()` with logging
-- **Callback Verification** - `_verifyCallbacksAfterRestore()` ensures callbacks
 
 **Timing Constants:**
 
@@ -56,25 +56,30 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v11 Manager Patterns
+## v1.6.3.4-v12 Manager Patterns
 
-### Message Deduplication
+### DOM Verification Before Clearing
 
 ```javascript
-const RESTORE_DEDUP_WINDOW_MS = 2000;
-function _isDuplicateRestoreMessage(id) {
-  const last = _restoreMessageTimestamps.get(id);
-  if (last && (Date.now() - last) < RESTORE_DEDUP_WINDOW_MS) return true;
-  _restoreMessageTimestamps.set(id, Date.now());
-  return false;
+_safeClearRenderedTabs(userInitiated = false) {
+  if (!this._verifyAllTabsDOMDetached()) {
+    console.warn('[UICoordinator] DOM elements still exist, blocking clear');
+    return false;
+  }
+  this._renderedTabs.clear();
+  return true;
 }
 ```
 
-### Atomic Snapshot Clear
+### State Consistency Validation
 
 ```javascript
-// UICoordinator calls clearSnapshot() after successful render
-this.minimizedManager.clearSnapshot(quickTabId);
+// MinimizedManager validates entity.minimized vs Map consistency
+validateStateConsistency(id, entityMinimized, mapHasEntry) {
+  if (entityMinimized && !mapHasEntry) {
+    console.warn(`[MinimizedManager] Inconsistency: ${id} minimized but not in Map`);
+  }
+}
 ```
 
 ---
@@ -109,8 +114,9 @@ this.minimizedManager.clearSnapshot(quickTabId);
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] All Quick Tabs display globally
 - [ ] Solo/Mute indicators correct (arrays)
-- [ ] **v11:** Message deduplication prevents duplicates
-- [ ] **v11:** Atomic snapshot clearing works
+- [ ] **v12:** DOM verification before clearing works
+- [ ] **v12:** State consistency validation detects issues
+- [ ] **v12:** Yellow indicator fix works correctly
 - [ ] Buttons disabled during pending operations
 - [ ] Close All uses batch mode
 - [ ] ESLint passes ⭐

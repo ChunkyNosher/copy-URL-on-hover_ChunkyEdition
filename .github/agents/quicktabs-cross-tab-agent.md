@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, state sync across browser tabs, and ensuring Quick Tab state consistency
-  (v1.6.3.4-v11 background isolation, consecutive read validation)
+  (v1.6.3.4-v12 storage write tracking, transaction sequencing)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.4-v11 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.4-v12 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **Sync Architecture:**
 - **storage.onChanged** - Primary sync mechanism (fires in ALL OTHER tabs)
@@ -36,11 +36,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Global Visibility** - Quick Tabs visible in all tabs
 - **Background Isolation (v11)** - Background storage.onChanged only updates its own cache
 
-**v1.6.3.4-v11 Key Features:**
-- **Consecutive Read Validation** - Background validates before clearing cache
+**v1.6.3.4-v12 Key Features:**
+- **Storage Write Tracking** - `pendingWriteCount`, `lastCompletedTransactionId` in storage-utils
+- **Transaction Sequencing** - Enhanced logging for write initiator, op type, tab count
 - **Iframe Deduplication** - 200ms window prevents duplicate processing
 - **Message Deduplication** - 2000ms window for RESTORE_QUICK_TAB
-- **Empty Write Warning** - Warning when writing 0 tabs without forceEmpty
 
 **Timing Constants:**
 
@@ -66,7 +66,23 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.4-v11 Sync Patterns
+## v1.6.3.4-v12 Sync Patterns
+
+### Storage Write Tracking
+
+```javascript
+// storage-utils.js tracks pending writes
+let pendingWriteCount = 0;
+let lastCompletedTransactionId = null;
+
+async function persistStateToStorage(state, prefix, forceEmpty) {
+  pendingWriteCount++;
+  console.log(`[${prefix}] Write initiated: ${state.tabs?.length || 0} tabs`);
+  // ... write logic
+  lastCompletedTransactionId = state.saveId;
+  pendingWriteCount--;
+}
+```
 
 ### Consecutive Read Validation
 
@@ -74,19 +90,6 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 let consecutiveZeroTabReads = 0;
 // Before clearing cache for 0 tabs:
 if (consecutiveZeroTabReads < 2) return; // Wait for validation
-```
-
-### Background Isolation
-
-```javascript
-// Background storage.onChanged only updates its own cache
-// Does NOT broadcast to content scripts
-browser.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.quick_tabs_state_v2) {
-    _cachedState = changes.quick_tabs_state_v2.newValue;
-    // NO broadcasting - each tab handles via its own listener
-  }
-});
 ```
 
 ---
@@ -111,8 +114,8 @@ await browser.storage.local.set({ quick_tabs_state_v2: { tabs: [...], saveId, ti
 
 | File | Purpose |
 |------|---------|
-| `background.js` | **v11:** Consecutive read validation, iframe deduplication |
-| `src/utils/storage-utils.js` | **v11:** Empty write warning |
+| `background.js` | Consecutive read validation, iframe deduplication |
+| `src/utils/storage-utils.js` | **v12:** `pendingWriteCount`, `lastCompletedTransactionId` |
 | `src/features/quick-tabs/managers/StorageManager.js` | storage.onChanged listener |
 | `src/features/quick-tabs/handlers/VisibilityHandler.js` | `_timerGeneration` debounce |
 
@@ -129,8 +132,9 @@ await browser.storage.local.set({ quick_tabs_state_v2: { tabs: [...], saveId, ti
 - [ ] storage.onChanged events processed correctly
 - [ ] Global visibility works (no container filtering)
 - [ ] Solo/Mute sync across tabs using arrays (<100ms)
-- [ ] **v11:** Consecutive read validation prevents false cache clears
-- [ ] **v11:** Background isolation (no broadcasts)
+- [ ] **v12:** Storage write tracking logs correctly
+- [ ] **v12:** Transaction sequencing works
+- [ ] Consecutive read validation prevents false cache clears
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
