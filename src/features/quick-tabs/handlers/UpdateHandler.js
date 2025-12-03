@@ -48,8 +48,11 @@ export class UpdateHandler {
     this.eventBus = eventBus;
     this.minimizedManager = minimizedManager;
     
-    // v1.6.3.4 - FIX Issue #2: Debounce state tracking
+    // v1.6.3.4 - FIX Issue #2: Debounce state tracking for _persistToStorage
     this._debounceTimer = null;
+    // v1.6.3.5-v7 - FIX Bug: Separate timer object for drag/resize debouncing
+    // This prevents conflict with single-timer _debounceTimer used by _persistToStorage
+    this._dragDebounceTimers = {};
     // v1.6.3.4-v10 - FIX Issue #5: Use 64-bit hash (object with lo/hi parts)
     this._lastStateHash = null;
   }
@@ -93,19 +96,14 @@ export class UpdateHandler {
   _debouncedDragPersist(id, type) {
     const key = `drag-${id}-${type}`;
     
-    // Initialize timers object if needed
-    if (!this._debounceTimer) {
-      this._debounceTimer = {};
-    }
-    
     // Clear existing timer for this operation
-    if (this._debounceTimer[key]) {
-      clearTimeout(this._debounceTimer[key]);
+    if (this._dragDebounceTimers[key]) {
+      clearTimeout(this._dragDebounceTimers[key]);
     }
     
     // Schedule new persist (200ms - faster than DEBOUNCE_DELAY_MS for end operations)
-    this._debounceTimer[key] = setTimeout(() => {
-      delete this._debounceTimer[key];
+    this._dragDebounceTimers[key] = setTimeout(() => {
+      delete this._dragDebounceTimers[key];
       this._doPersist();
     }, 200);
   }

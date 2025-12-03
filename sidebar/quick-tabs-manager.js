@@ -43,8 +43,13 @@ const DOM_VERIFICATION_DELAY_MS = 500;
 let lastRenderedStateHash = 0;
 
 // v1.6.3.5-v4 - FIX Diagnostic Issue #2: In-memory state cache to prevent list clearing during storage storms
-// This is the primary truth for what the Manager displays. Storage changes update this cache
-// but 0-tab storage states from non-owner tabs do NOT clear this cache.
+// v1.6.3.5-v6 - ARCHITECTURE NOTE (Issue #6 - Manager as Pure Consumer):
+//   This cache exists as a FALLBACK to protect against storage storms/corruption.
+//   It is NOT a competing authority with background's state.
+//   Normal operation: Manager receives state from storage.onChanged/messages
+//   Recovery operation: Manager uses cache when storage returns suspicious 0-tab results
+//   The cache should NEVER be used to overwrite background's authoritative state.
+//   See v1.6.3.5-architectural-issues.md Architecture Issue #6 for context.
 let inMemoryTabsCache = [];
 let lastKnownGoodTabCount = 0;
 const MIN_TABS_FOR_CACHE_PROTECTION = 1; // Protect cache if we have at least 1 tab
@@ -146,7 +151,13 @@ function handleStateUpdateMessage(quickTabId, changes) {
 /**
  * Send MANAGER_COMMAND to background for remote Quick Tab control
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Manager can control Quick Tabs in any tab
- * NOTE: Currently unused - will be used when full message-based control is enabled
+ * v1.6.3.5-v6 - ARCHITECTURE NOTE: This is the PREFERRED approach for Quick Tab control.
+ *   Background routes commands to specific host tabs via quickTabHostTabs Map.
+ *   This enables per-tab ownership and prevents cross-tab ghosting.
+ *   
+ * Currently used for: none (minimize/restore still use targeted messaging)
+ * Should be used for: MINIMIZE_QUICK_TAB, RESTORE_QUICK_TAB, CLOSE_QUICK_TAB, FOCUS_QUICK_TAB
+ * 
  * @param {string} command - Command to execute (MINIMIZE_QUICK_TAB, RESTORE_QUICK_TAB, etc.)
  * @param {string} quickTabId - Quick Tab ID
  * @returns {Promise<Object>} Response from background
@@ -1163,6 +1174,17 @@ async function _processReconciliationResult(uniqueQuickTabs) {
  * Restore state from content scripts data
  * v1.6.3.4-v9 - Extracted to reduce nesting depth
  * v1.6.3.5-v2 - FIX Code Review: Use SAVEID_RECONCILED constant
+ * 
+ * ARCHITECTURE NOTE (v1.6.3.5-v6):
+ * This function writes directly to storage as a RECOVERY operation.
+ * This is an intentional exception to the "single-writer" architecture because:
+ * 1. It only runs when storage corruption is detected
+ * 2. Background's cache may be corrupted, so we need to restore from content scripts
+ * 3. The SAVEID_RECONCILED prefix allows other components to recognize this write
+ * 
+ * DO NOT use this pattern for normal operations - use message-based control instead.
+ * See v1.6.3.5-architectural-issues.md Architecture Issue #6.
+ * 
  * @param {Array} quickTabs - Quick Tabs from content scripts
  */
 async function _restoreStateFromContentScripts(quickTabs) {
@@ -1202,6 +1224,20 @@ function _scheduleNormalUpdate() {
  * Close all minimized Quick Tabs (NEW FEATURE #1)
  * v1.6.3 - FIX: Changed from storage.sync to storage.local and updated for unified format
  * v1.6.3.4-v6 - FIX Issue #4: Send CLOSE_QUICK_TAB to content scripts BEFORE updating storage
+ * 
+ * ARCHITECTURE NOTE (v1.6.3.5-v6):
+ * This function writes directly to storage, which violates the "single-writer" architecture.
+ * This is a known deviation that should be addressed in a future refactor:
+ * - Should send CLOSE_MINIMIZED_QUICK_TABS command to background
+ * - Background should handle the storage write
+ * - Manager should receive confirmation via message
+ * 
+ * Current behavior is acceptable for now because:
+ * 1. Operation is atomic (read-modify-write within same function)
+ * 2. Content scripts are notified before storage write
+ * 3. No race condition risk since minimized tabs have no DOM
+ * 
+ * TODO: Migrate to background-coordinated approach (see v1.6.3.5-architectural-issues.md)
  */
 async function closeMinimizedTabs() {
   try {
@@ -1332,28 +1368,32 @@ function filterMinimizedFromContainerFormat(state) {
 /**
  * Close all Quick Tabs - both active and minimized (NEW FEATURE #2)
  * v1.6.3 - FIX: Changed from storage.sync to storage.local
+ * v1.6.3.5-v6 - FIX Architecture Issue #1: Use background-coordinated clear
+ *   Instead of writing directly to storage, we send COORDINATED_CLEAR_ALL_QUICK_TABS
+ *   to background which handles the single storage write and broadcasts to all tabs.
+ *   This prevents multi-writer race conditions.
  */
 async function closeAllTabs() {
   try {
-    // Clear all Quick Tabs from local storage (v1.6.3 fix)
-    await browser.storage.local.remove(STATE_KEY);
-
-    // Notify all content scripts to close Quick Tabs
-    const tabs = await browser.tabs.query({});
-    tabs.forEach(tab => {
-      browser.tabs
-        .sendMessage(tab.id, {
-          action: 'CLEAR_ALL_QUICK_TABS'
-        })
-        .catch(() => {
-          // Ignore errors
-        });
+    console.log('[Manager] Sending COORDINATED_CLEAR_ALL_QUICK_TABS to background...');
+    
+    // v1.6.3.5-v6 - Use background-coordinated clear (single-writer architecture)
+    const response = await browser.runtime.sendMessage({
+      action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
     });
+    
+    if (response?.success) {
+      console.log('[Manager] Coordinated clear successful');
+    } else {
+      console.warn('[Manager] Coordinated clear returned:', response);
+    }
 
-    console.log('Closed all Quick Tabs');
+    console.log('[Manager] Closed all Quick Tabs via coordinated clear');
 
     // Update UI immediately
     quickTabsState = {};
+    inMemoryTabsCache = [];
+    lastKnownGoodTabCount = 0;
     renderUI();
   } catch (err) {
     console.error('Error closing all tabs:', err);
