@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5-v3  
+**Version:** 1.6.3.5-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -14,10 +14,10 @@
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Cross-tab sync via storage.onChanged + Background-as-Coordinator**
 - **Cross-tab isolation via `originTabId`**
-- **Self-Write Detection** (v1.6.3.5-v3)
+- **Per-Tab Ownership Validation** (v1.6.3.5-v4)
 - Direct local creation pattern, State hydration on page reload
 
-**v1.6.3.5-v3 Architecture (Background-as-Coordinator):**
+**v1.6.3.5-v4 Architecture (Background-as-Coordinator):**
 
 **Core Modules:**
 - **QuickTabStateMachine** (`state-machine.js`) - Explicit lifecycle state tracking
@@ -25,11 +25,11 @@
 - **MapTransactionManager** (`map-transaction-manager.js`) - Atomic Map operations
 - **Background Script** - Coordinator for state broadcasts and manager commands
 
-**v1.6.3.5-v3 New Features:**
-- **Self-Write Detection** - `isSelfWrite()` prevents double-processing own writes
-- **Background-as-Coordinator** - Manager commands routed through background.js
-- **Firefox Spurious Event Detection** - `_isSpuriousFirefoxEvent()` filters no-change events
-- **Enhanced Timer Logging** - STARTED/COMPLETED/FAILED logging for all timer callbacks
+**v1.6.3.5-v4 New Features:**
+- **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner tabs from writing
+- **Manager Storage Storm Protection** - `inMemoryTabsCache` survives 0-tab anomalies
+- **UICoordinator Invariant Checks** - `_verifyInvariant()` ensures mutual exclusion
+- **Content Script Identity Logging** - Logs tab ID, URL, timestamp on init
 
 ---
 
@@ -74,7 +74,7 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 
 ### CRITICAL: Background-as-Coordinator + storage.onChanged
 
-**v1.6.3.5-v3 Message Types:**
+**v1.6.3.5-v4 Message Types:**
 - `QUICK_TAB_STATE_CHANGE` - Content script → Background for state changes
 - `QUICK_TAB_STATE_UPDATED` - Background → All contexts for broadcasts
 - `MANAGER_COMMAND` - Manager → Background for remote control
@@ -95,7 +95,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 **Key Points:**
 - storage.onChanged does NOT fire in the tab that made the change
-- **v1.6.3.5-v3:** `isSelfWrite()` detects own writes via `writingTabId`/`writingInstanceId`
+- **v1.6.3.5-v4:** `canCurrentTabModifyQuickTab()` validates ownership before writes
 - Background script coordinates broadcasts, does NOT store state
 - Manager commands routed through background.js to host tabs
 
@@ -116,69 +116,53 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.5-v3 New Architecture Features
+## 🆕 v1.6.3.5-v4 New Architecture Features
 
-### Self-Write Detection
+### Per-Tab Ownership Validation
 
 **Exports from `src/utils/storage-utils.js`:**
-- `WRITING_INSTANCE_ID` - Unique per-tab-load identifier
-- `getWritingTabId()` - Get current browser tab ID
-- `getWritingInstanceId()` - Get instance ID
-- `isSelfWrite(storageValue)` - Check if write originated from current tab
+- `canCurrentTabModifyQuickTab(tabData, currentTabId)` - Check if current tab can modify a Quick Tab
+- `validateOwnershipForWrite(tabs, currentTabId)` - Filter tabs by ownership before write
+- `isOwnerOfQuickTab` - Alias for `canCurrentTabModifyQuickTab`
 
-Storage writes include `writingTabId` and `writingInstanceId` fields.
+**Ownership rules:** Only the tab that created a Quick Tab (matching `originTabId`) can persist changes. Empty states bypass ownership for Close All scenarios.
 
-### Background-as-Coordinator Functions
+### Manager Storage Storm Protection
 
-**background.js:**
-- `handleQuickTabStateChange(message, senderTabId)` - Process state changes
-- `broadcastQuickTabStateUpdate(quickTabId, state, excludeTabId)` - Broadcast to all
-- `handleManagerCommand(message)` - Route manager commands
-- `executeManagerCommand(command, quickTabId)` - Execute on host tabs
-- `quickTabHostTabs` Map - Track which tab hosts each Quick Tab
+**`sidebar/quick-tabs-manager.js`:**
+- `inMemoryTabsCache` - Local cache protects against storage anomalies
+- `lastKnownGoodTabCount` - Tracks last valid tab count
+- `_handleEmptyStorageState()` - Use cache when storage returns empty
+- `_detectStorageStorm()` - Detect 0-tab anomalies and recover from cache
+- `_updateInMemoryCache()` - Update cache from validated storage
 
-**sidebar/quick-tabs-manager.js:**
-- `quickTabHostInfo` Map - Track Quick Tab host tabs
-- `handleStateUpdateMessage(message)` - Handle real-time state updates
-- `_sendManagerCommand(command, quickTabId)` - Send commands to background
+### UICoordinator Invariant Checks
 
-**src/content.js:**
-- `QUICK_TAB_COMMAND_HANDLERS` - Lookup table for command execution
-- `_executeQuickTabCommand(command, quickTabId)` - Execute remote commands
+- `_verifyInvariant(quickTabId)` - Verify mutual exclusion (renderedTabs vs MinimizedManager)
+- `_lastRenderTime` Map - Track render timestamps per Quick Tab
+- Enhanced `_finalizeRender()` with invariant checking
 
-### Firefox Spurious Event Detection
+### Content Script Identity Logging
 
-- `_isSpuriousFirefoxEvent(newValue, oldValue)` - Detect no-change events
-- `_hasMatchingSaveIdAndTabCount(newValue, oldValue)` - Compare saveId and count
-- `_recentlyProcessedWrites` Map with `_isRecentlyProcessedInstanceWrite()`
-
-### Cross-Tab Filtering with `originTabId`
-
-Each Quick Tab tracks its origin via `originTabId`. `storage.onChanged` filters by this field:
+**v1.6.3.5-v4:** Content script logs identity on init (FIX Diagnostic Issue #7):
 ```javascript
-if (hasOriginTabId && tabData.originTabId !== currentTabId) return false;
+console.log('[Copy-URL-on-Hover] Content Script Identity:', { tabId, url, timestamp });
 ```
 
 ### Updated Timing Constants
 
-| Constant | Value | Location | Purpose |
-|----------|-------|----------|---------|
-| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | VisibilityHandler | Suppress circular callbacks |
-| `STORAGE_READ_DEBOUNCE_MS` | 50 | quick-tabs-manager.js | Fast UI updates |
-| `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler | State event fires first |
-| `MINIMIZE_DEBOUNCE_MS` | 200 | VisibilityHandler | Storage persist after state |
-| `IFRAME_DEDUP_WINDOW_MS` | 200 | background.js | Iframe processing deduplication |
-| `OPERATION_LOCK_MS` | 500 | QuickTabMediator | Operation lock timeout |
-| `DOM_VERIFICATION_DELAY_MS` | 500 | quick-tabs-manager.js | DOM verify timing |
-| `RENDER_COOLDOWN_MS` | 1000 | UICoordinator | Prevent duplicate renders |
-| `RESTORE_DEDUP_WINDOW_MS` | 2000 | content.js | Restore message deduplication |
-
-### Tab ID Prefixed Logging + Enhanced Timer Logging
-
-**v1.6.3.5-v3:** Timer callbacks log STARTED/COMPLETED/FAILED. All logs include Tab ID prefix:
-```javascript
-this._logPrefix = `[VisibilityHandler][Tab ${options.currentTabId ?? 'unknown'}]`;
-```
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
+| `STORAGE_READ_DEBOUNCE_MS` | 50 | Fast UI updates |
+| `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
+| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
+| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing dedup |
+| `OPERATION_LOCK_MS` | 500 | Operation lock timeout |
+| `DOM_VERIFICATION_DELAY_MS` | 500 | DOM verify timing |
+| `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
+| `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message dedup |
+| `MIN_TABS_FOR_CACHE_PROTECTION` | 1 | **v1.6.3.5-v4:** Cache threshold |
 
 ---
 
@@ -228,12 +212,11 @@ Atomic Map operations with logging and rollback.
 | Export | Description |
 |--------|-------------|
 | `STATE_KEY` | Storage key (`quick_tabs_state_v2`) |
-| `WRITING_INSTANCE_ID` | **v1.6.3.5-v3:** Unique per-tab-load identifier |
-| `getWritingTabId()` | **v1.6.3.5-v3:** Get current browser tab ID |
-| `getWritingInstanceId()` | **v1.6.3.5-v3:** Get instance ID |
-| `isSelfWrite(storageValue)` | **v1.6.3.5-v3:** Check if write from current tab |
+| `canCurrentTabModifyQuickTab()` | **v1.6.3.5-v4:** Check tab ownership |
+| `validateOwnershipForWrite()` | **v1.6.3.5-v4:** Filter tabs by ownership |
+| `isSelfWrite(storageValue)` | Check if write from current tab |
 | `generateSaveId()` | Unique saveId for deduplication |
-| `persistStateToStorage()` | Write with `prevTransaction`/`queueDepth` logging |
+| `persistStateToStorage()` | Write with ownership validation |
 | `queueStorageWrite()` | Queue write, resets on failure |
 | `beginTransaction()`/`commitTransaction()`/`rollbackTransaction()` | Transaction lifecycle |
 
@@ -255,9 +238,9 @@ Atomic Map operations with logging and rollback.
 
 `MapTransactionManager` wraps Map ops with `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`.
 
-### Clear-on-First-Use + Restore Lock
+### Ownership Validation Pattern (v1.6.3.5-v4)
 
-`_restoreInProgress` Set prevents duplicate windows during restore operations.
+Only owner tabs can persist Quick Tab changes. `persistStateToStorage()` calls `_validatePersistOwnership()` before writing.
 
 ---
 
@@ -340,19 +323,17 @@ Use the agentic-tools MCP to create memories instead.
 ## 📋 Quick Reference
 
 ### Key Files
-- `background.js` - **v1.6.3.5-v3:** Background-as-Coordinator with `handleQuickTabStateChange()`, `broadcastQuickTabStateUpdate()`, `handleManagerCommand()`, `executeManagerCommand()`, `quickTabHostTabs` Map
-- `src/content.js` - **v1.6.3.5-v3:** `QUICK_TAB_COMMAND_HANDLERS`, `_executeQuickTabCommand()`, `beforeunload` handler, message deduplication (2000ms)
+- `background.js` - Background-as-Coordinator with `handleQuickTabStateChange()`, `broadcastQuickTabStateUpdate()`, `handleManagerCommand()`, `quickTabHostTabs` Map
+- `src/content.js` - **v1.6.3.5-v4:** Identity logging on init, `QUICK_TAB_COMMAND_HANDLERS`, message deduplication (2000ms)
 - `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings
-- `src/utils/storage-utils.js` - **v1.6.3.5-v3:** `WRITING_INSTANCE_ID`, `isSelfWrite()`, `getWritingTabId()`, `getWritingInstanceId()`, `originTabId` serialization, `_isSpuriousFirefoxEvent()`
-- `src/features/quick-tabs/state-machine.js` - QuickTabStateMachine, States: UNKNOWN, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
+- `src/utils/storage-utils.js` - **v1.6.3.5-v4:** `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`, ownership validation
+- `src/features/quick-tabs/state-machine.js` - QuickTabStateMachine, States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - `src/features/quick-tabs/mediator.js` - QuickTabMediator, `minimize()`, `restore()`, `destroy()`, `executeWithRollback()`
-- `src/features/quick-tabs/map-transaction-manager.js` - MapTransactionManager, `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`
-- `src/features/quick-tabs/handlers/CreateHandler.js` - `originTabId` support for cross-tab filtering
-- `src/features/quick-tabs/index.js` - `_shouldFilterByOriginTabId()` cross-tab filtering
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - Z-index tracking, `_safeClearRenderedTabs(userInitiated)`, `_verifyAllTabsDOMDetached()`
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - `_activeTimerIds` Set, `_logPrefix` with Tab ID, **v1.6.3.5-v3:** enhanced timer logging
-- `src/features/quick-tabs/minimized-manager.js` - `_restoreInProgress` Set, Clear-on-first-use pattern
-- `sidebar/quick-tabs-manager.js` - **v1.6.3.5-v3:** `quickTabHostInfo` Map, `handleStateUpdateMessage()`, `_sendManagerCommand()`, `PENDING_OPERATIONS` Set
+- `src/features/quick-tabs/map-transaction-manager.js` - MapTransactionManager with rollback
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - **v1.6.3.5-v4:** `_verifyInvariant()`, `_lastRenderTime` Map
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - `_activeTimerIds` Set, Tab ID prefixed logging
+- `src/features/quick-tabs/minimized-manager.js` - `_restoreInProgress` Set
+- `sidebar/quick-tabs-manager.js` - **v1.6.3.5-v4:** `inMemoryTabsCache`, `_detectStorageStorm()`, `_handleEmptyStorageState()`
 
 ### Storage Key & Format
 
@@ -378,16 +359,12 @@ Use the agentic-tools MCP to create memories instead.
 
 ### Manager Action Messages
 
-**v1.6.3.5-v3 Background-as-Coordinator Messages:**
+**Background-as-Coordinator Messages:**
 - `QUICK_TAB_STATE_CHANGE` - Content script → Background for state changes
 - `QUICK_TAB_STATE_UPDATED` - Background → All contexts for broadcasts
 - `MANAGER_COMMAND` - Manager → Background for remote control
 - `EXECUTE_COMMAND` - Background → Content script for command execution
-
-**Legacy Messages:**
-- `CLOSE_QUICK_TAB` - Close a specific Quick Tab
-- `MINIMIZE_QUICK_TAB` - Minimize a Quick Tab (removes DOM)
-- `RESTORE_QUICK_TAB` - Restore a minimized Quick Tab (2000ms dedup)
+- `CLOSE_QUICK_TAB` / `MINIMIZE_QUICK_TAB` / `RESTORE_QUICK_TAB` - Legacy messages
 
 ---
 

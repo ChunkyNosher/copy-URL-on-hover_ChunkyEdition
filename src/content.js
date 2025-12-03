@@ -406,6 +406,19 @@ function reportInitializationError(err) {
     }
     
     console.log('[Copy-URL-on-Hover] STEP: Starting extension initialization...');
+    
+    // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Log content script identity on init
+    // This helps track which tab ID owns which Quick Tabs
+    try {
+      const tabInfo = await browser.tabs.getCurrent();
+      console.log('[Copy-URL-on-Hover] Content Script Identity:', {
+        tabId: tabInfo?.id || 'unknown',
+        url: window.location.href,
+        timestamp: Date.now()
+      });
+    } catch (tabErr) {
+      console.log('[Copy-URL-on-Hover] Content Script Identity: tab ID unavailable (running in background context?)');
+    }
 
     // Load configuration
     CONFIG = await loadConfiguration();

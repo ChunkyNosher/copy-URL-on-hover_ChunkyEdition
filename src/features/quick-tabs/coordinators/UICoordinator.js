@@ -66,6 +66,9 @@ const SNAPSHOT_CLEAR_DELAY_MS = 400;
 const RESTORE_IN_PROGRESS = new Set();
 const RESTORE_LOCK_MS = 500;
 
+// v1.6.3.5-v4 - FIX Diagnostic Issue #4: Cooldown for render operations to prevent rapid duplicates
+const _RENDER_COOLDOWN_MS = 1000;
+
 export class UICoordinator {
   /**
    * @param {StateManager} stateManager - State manager instance
@@ -91,6 +94,56 @@ export class UICoordinator {
     this._renderTimestamps = new Map(); // id -> timestamp
     // v1.6.3.5 - FIX Issue #1: MapTransactionManager for atomic operations
     this._mapTxnManager = new MapTransactionManager(this.renderedTabs, 'renderedTabs');
+    // v1.6.3.5-v4 - FIX Issue #4: Track last render time per tab to prevent rapid duplicates
+    this._lastRenderTime = new Map(); // id -> timestamp
+  }
+  
+  /**
+   * Verify invariant: tab cannot be in both renderedTabs AND minimizedManager simultaneously
+   * v1.6.3.5-v4 - FIX Diagnostic Issue #4: Strengthen invariants
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} operation - Operation being performed (for logging)
+   * @returns {{ valid: boolean, inRenderedTabs: boolean, inMinimizedManager: boolean }}
+   */
+  _verifyInvariant(id, operation) {
+    const inRenderedTabs = this.renderedTabs.has(id);
+    const inMinimizedManager = this._hasMinimizedManager() && this.minimizedManager.isMinimized(id);
+    
+    // Tab should NOT be in both simultaneously (except during transitions)
+    // During restore: briefly in both as we're moving from minimized to rendered
+    const violatesInvariant = inRenderedTabs && inMinimizedManager;
+    
+    if (violatesInvariant) {
+      const tabWindow = this.renderedTabs.get(id);
+      const isRenderedDOM = tabWindow?.isRendered?.() ?? false;
+      
+      console.error('[UICoordinator] ⛔ INVARIANT VIOLATION: Tab in both renderedTabs AND minimizedManager:', {
+        id,
+        operation,
+        inRenderedTabs,
+        inMinimizedManager,
+        isRenderedDOM,
+        renderedTabsSize: this.renderedTabs.size,
+        minimizedCount: this.minimizedManager?.getCount?.() ?? 0
+      });
+      
+      // Auto-fix: if DOM is not rendered, remove from renderedTabs
+      if (!isRenderedDOM) {
+        console.warn('[UICoordinator] Auto-fixing invariant violation: removing from renderedTabs (no DOM)');
+        this.renderedTabs.delete(id);
+        return { valid: true, inRenderedTabs: false, inMinimizedManager };
+      }
+    } else {
+      console.log('[UICoordinator] Invariant check passed:', {
+        id,
+        operation,
+        inRenderedTabs,
+        inMinimizedManager
+      });
+    }
+    
+    return { valid: !violatesInvariant, inRenderedTabs, inMinimizedManager };
   }
   
   /**
@@ -365,18 +418,26 @@ export class UICoordinator {
    * @param {QuickTab} quickTab - QuickTab domain entity
    */
   _finalizeRender(tabWindow, quickTab) {
+    // v1.6.3.5-v4 - FIX Diagnostic Issue #4: Verify invariant before Map modification
+    const invariantCheck = this._verifyInvariant(quickTab.id, '_finalizeRender');
+    if (!invariantCheck.valid) {
+      console.warn('[UICoordinator] Invariant violation before render - auto-fixed');
+    }
+    
     // Store in map
     // v1.6.3.4-v11 - FIX Issue #5: Log Map addition with before/after sizes
     const mapSizeAfterDelete = this.renderedTabs.size;
     this.renderedTabs.set(quickTab.id, tabWindow);
     
     // v1.6.3.4-v10 - FIX Issue #6C: Log Map entry creation with isRendered() status
+    // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Enhanced logging with full Map keys
     const isRenderedNow = tabWindow.isRendered();
     console.log('[UICoordinator] renderedTabs.set():', {
       id: quickTab.id,
       isRendered: isRenderedNow,
       mapSizeBefore: mapSizeAfterDelete,
-      mapSizeAfter: this.renderedTabs.size
+      mapSizeAfter: this.renderedTabs.size,
+      allMapKeys: Array.from(this.renderedTabs.keys())
     });
 
     // v1.6.3.4-v9 - FIX Issue #5: Verify DOM is attached after render
