@@ -50,7 +50,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.5-v2 - Two-Layer Sidebar Tab System ✅
 
 **Settings Sidebar Structure (Two-Layer System):**
 - **PRIMARY TABS (Layer 1):**
@@ -63,10 +63,9 @@ const relevantMemories = await searchMemories({
   - **Appearance Tab** - Dark mode, colors, borders, animations
   - **Advanced Tab** - Debug mode, storage management, logs, UID display
 
-**v1.6.3.5 New Architecture:**
-- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
-- **QuickTabMediator** - Operation coordination with rollback
-- **MapTransactionManager** - Atomic Map operations with logging
+**v1.6.3.5-v2 Fixes:**
+- **Storage Debounce** - `STORAGE_READ_DEBOUNCE_MS` reduced to 50ms
+- **DOM Verification** - `DOM_VERIFICATION_DELAY_MS` (500ms)
 
 **Tab State Persistence:**
 - Primary tab: localStorage.getItem('sidebarActivePrimaryTab')

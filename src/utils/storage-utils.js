@@ -432,6 +432,7 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  * v1.6.3.4-v2 - FIX Bug #1: Extracted to reduce complexity
  * v1.6.3.4-v3 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
  * v1.6.3.4 - FIX Issue #3: Include zIndex in serialized data for persistence
+ * v1.6.3.5-v2 - FIX Report 1 Issue #2: Include originTabId for cross-tab filtering
  * @private
  * @param {Object} tab - Quick Tab instance
  * @param {boolean} isMinimized - Whether tab is minimized
@@ -449,7 +450,9 @@ function serializeTabForStorage(tab, isMinimized) {
     zIndex: _getNumericValue(tab, 'zIndex', null, null, DEFAULT_ZINDEX), // v1.6.3.4 - Use constant
     minimized: Boolean(isMinimized),
     soloedOnTabs: _getArrayValue(tab, 'soloedOnTabs', 'soloedOnTabs'),
-    mutedOnTabs: _getArrayValue(tab, 'mutedOnTabs', 'mutedOnTabs')
+    mutedOnTabs: _getArrayValue(tab, 'mutedOnTabs', 'mutedOnTabs'),
+    // v1.6.3.5-v2 - FIX Report 1 Issue #2: Track originating tab ID for cross-tab filtering
+    originTabId: tab.originTabId ?? tab.activeTabId ?? null
   };
 }
 

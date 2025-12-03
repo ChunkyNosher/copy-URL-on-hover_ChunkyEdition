@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,19 +62,19 @@ const relevantMemories = await searchMemories({
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged
+- **v1.6.3.5-v2:** `originTabId` for cross-tab filtering
 - State hydration on page reload
 
-**v1.6.3.5 New Architecture:**
-- **QuickTabStateMachine** - Explicit lifecycle state tracking (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
+**v1.6.3.5-v2 Fixes:**
+- **Cross-Tab Filtering** - `originTabId` prevents Quick Tabs appearing on wrong tabs
+- **Storage Debounce** - Reduced from 300ms to 50ms
+- **DOM Verification** - Restore operations verify DOM presence
+- **Tab ID Logging** - All logs include `[Tab ID]` prefix
+
+**v1.6.3.5 Architecture:**
+- **QuickTabStateMachine** - Explicit lifecycle state tracking
 - **QuickTabMediator** - Operation coordination with state validation and rollback
 - **MapTransactionManager** - Atomic Map operations with logging and rollback
-
-**v1.6.3.5 Key Patterns:**
-- Active Timer IDs Set (replaces generation counters)
-- State machine validated transitions
-- Map transaction snapshots with rollback
-- Clear-on-first-use + restore-in-progress lock
-- Enhanced queue logging with prevTransaction/queueDepth
 
 ---
 

@@ -99,17 +99,17 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.5)
+- [ ] Version numbers match current release (1.6.3.5-v2)
 - [ ] Architecture references accurate (DDD Phase 1 Complete)
 - [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
-- [ ] Unified storage format documented (tabs array, NOT containers)
+- [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.5:** QuickTabStateMachine documented
-- [ ] **v1.6.3.5:** QuickTabMediator documented
-- [ ] **v1.6.3.5:** MapTransactionManager documented
-- [ ] **v1.6.3.5:** _activeTimerIds pattern documented
+- [ ] **v1.6.3.5-v2:** originTabId cross-tab filtering documented
+- [ ] **v1.6.3.5-v2:** STORAGE_READ_DEBOUNCE_MS (50ms) documented
+- [ ] **v1.6.3.5-v2:** DOM_VERIFICATION_DELAY_MS (500ms) documented
+- [ ] **v1.6.3.5-v2:** Tab ID prefixed logging documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -117,7 +117,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.5
+- **Current Version:** 1.6.3.5-v2
 - **Architecture Status:** DDD Phase 1 Complete ✅
 - **Cross-Tab Sync:** storage.onChanged exclusively
 - **Key Features:**
@@ -126,13 +126,16 @@ stat -c%s .github/copilot-instructions.md
   - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
   - Direct local creation pattern
   - State hydration on page reload
-- **Storage Format:** `{ tabs: [...], saveId: '...', timestamp: ... }`
-- **v1.6.3.5 New Architecture:**
+- **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId: '...', timestamp: ... }`
+- **v1.6.3.5-v2 Features:**
+  - originTabId - Cross-tab filtering to prevent wrong-tab rendering
+  - STORAGE_READ_DEBOUNCE_MS - 50ms (reduced from 300ms)
+  - DOM_VERIFICATION_DELAY_MS - 500ms for DOM verify timing
+  - Tab ID prefixed logging for cross-tab debugging
+- **v1.6.3.5 Architecture:**
   - QuickTabStateMachine - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
   - QuickTabMediator - Operation coordination with state validation and rollback
   - MapTransactionManager - Atomic Map operations with logging and rollback
-  - _activeTimerIds Set - Replaces generation counters for debounce
-  - Clear-on-first-use + _restoreInProgress lock
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -191,14 +194,15 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.5)
+- Version numbers (1.6.3.5-v2)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Phase 1 Complete)
 - Sync mechanism (storage.onChanged, NOT BroadcastChannel)
-- Storage format (unified tabs array, NOT containers)
+- Storage format (unified tabs array with originTabId)
 - New architecture classes (StateMachine, Mediator, MapTransactionManager)
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
+- **v1.6.3.5-v2:** originTabId filtering, STORAGE_READ_DEBOUNCE_MS (50ms)
 - MCP tool lists
 - File size limits (15KB)
 - Testing commands
@@ -286,14 +290,20 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.5)
+## Current Extension State (v1.6.3.5-v2)
 
 ### Architecture
 - **Status:** Phase 1 Complete ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### New Modules (v1.6.3.5)
+### v1.6.3.5-v2 Features
+- **originTabId** - Cross-tab filtering to prevent Quick Tabs appearing on wrong tabs
+- **STORAGE_READ_DEBOUNCE_MS** - 50ms (reduced from 300ms)
+- **DOM_VERIFICATION_DELAY_MS** - 500ms for DOM verification timing
+- **Tab ID Logging** - All logs include `[Tab ID]` prefix for debugging
+
+### v1.6.3.5 Modules
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - `minimize()`, `restore()`, `destroy()` with state validation
 - **MapTransactionManager** - `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`
@@ -303,17 +313,15 @@ await perplexity.research("documentation compression markdown");
 - **Global Visibility:** All Quick Tabs visible everywhere (Container isolation REMOVED)
 - **Quick Tabs Manager:** Sidebar (Ctrl+Alt+Z or Alt+Shift+Z), Solo/Mute indicators
 - **Cross-Tab Sync:** storage.onChanged exclusively (BroadcastChannel REMOVED)
-- **Active Timer IDs (v1.6.3.5):** `_activeTimerIds` Set replaces generation counters
-- **Clear-on-First-Use (v1.6.3.5):** Restore lock with `_restoreInProgress` Set
 
 ### Timing Constants
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
+| `STORAGE_READ_DEBOUNCE_MS` | 50 | **v1.6.3.5-v2:** Fast UI updates |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing deduplication |
-| `OPERATION_LOCK_MS` | 500 | Mediator operation lock |
+| `DOM_VERIFICATION_DELAY_MS` | 500 | **v1.6.3.5-v2:** DOM verify timing |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
 | `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
 
@@ -340,11 +348,11 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.4-v12 or earlier | Update to 1.6.3.5 |
+| v1.6.3.5 or earlier | Update to 1.6.3.5-v2 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
-| Generation counters | Use _activeTimerIds Set |
+| 300ms debounce | Use 50ms (STORAGE_READ_DEBOUNCE_MS) |
 | Files >15KB | Apply compression |
 
 ---
@@ -365,14 +373,13 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.5
+- [ ] Version numbers updated to 1.6.3.5-v2
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged documented as primary sync
-- [ ] **v1.6.3.5:** QuickTabStateMachine documented
-- [ ] **v1.6.3.5:** QuickTabMediator documented
-- [ ] **v1.6.3.5:** MapTransactionManager documented
-- [ ] **v1.6.3.5:** _activeTimerIds pattern documented
+- [ ] **v1.6.3.5-v2:** originTabId filtering documented
+- [ ] **v1.6.3.5-v2:** STORAGE_READ_DEBOUNCE_MS (50ms) documented
+- [ ] **v1.6.3.5-v2:** DOM_VERIFICATION_DELAY_MS (500ms) documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠

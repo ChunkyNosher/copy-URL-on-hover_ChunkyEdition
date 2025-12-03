@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -38,17 +38,18 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged
+- **v1.6.3.5-v2:** `originTabId` for cross-tab filtering
 - State hydration on page reload
 
-**v1.6.3.5 New Modules:**
+**v1.6.3.5-v2 Fixes:**
+- **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
+- **Storage Debounce** - Reduced from 300ms to 50ms
+- **DOM Verification** - Restore ops verify DOM presence
+
+**v1.6.3.5 Modules:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
-
-**v1.6.3.5 Key Patterns:**
-- `_activeTimerIds` Set (replaces generation counters for debounce)
-- Clear-on-first-use + `_restoreInProgress` lock
-- `prevTransaction`/`queueDepth` logging in storage writes
 
 ---
 

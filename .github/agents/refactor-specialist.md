@@ -52,11 +52,16 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.5 New Architecture:**
+**v1.6.3.5-v2 Fixes:**
+- **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
+- **Storage Debounce** - Reduced from 300ms to 50ms (`STORAGE_READ_DEBOUNCE_MS`)
+- **DOM Verification** - `DOM_VERIFICATION_DELAY_MS` (500ms)
+
+**v1.6.3.5 Architecture:**
 - **QuickTabStateMachine** - State tracking (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging

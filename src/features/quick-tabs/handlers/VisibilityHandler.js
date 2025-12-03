@@ -56,6 +56,7 @@ const CALLBACK_SUPPRESSION_DELAY_MS = 50;
  * v1.6.3.4-v2 - Proper async handling with validation and timeout for storage
  * v1.6.3.4-v6 - Debouncing to prevent event storms and ensure atomic storage writes
  * v1.6.3.2 - Mutex/lock pattern to prevent duplicate operations from multiple sources
+ * v1.6.3.5-v2 - FIX Report 1 Issue #7: Enhanced logging with Tab ID prefix
  */
 export class VisibilityHandler {
   /**
@@ -74,6 +75,9 @@ export class VisibilityHandler {
     this.currentZIndex = options.currentZIndex;
     this.currentTabId = options.currentTabId;
     this.Events = options.Events;
+    
+    // v1.6.3.5-v2 - FIX Report 1 Issue #7: Create log prefix with Tab ID
+    this._logPrefix = `[VisibilityHandler][Tab ${options.currentTabId ?? 'unknown'}]`;
     
     // v1.6.3.4-v6 - FIX Issues #1, #2: Track pending operations to prevent duplicates
     this._pendingMinimize = new Set();
@@ -295,13 +299,13 @@ export class VisibilityHandler {
     // v1.6.3.4-v8 - FIX Issue #3: Check if this is a callback from our own minimize() call
     const operationKey = `minimize-${id}`;
     if (this._initiatedOperations.has(operationKey)) {
-      console.log(`[VisibilityHandler] Suppressing callback re-entry for minimize (source: ${source}):`, id);
+      console.log(`${this._logPrefix} Suppressing callback re-entry for minimize (source: ${source}):`, id);
       return { success: true, error: 'Suppressed callback' };
     }
     
     // v1.6.3.2 - FIX Issue #2: Use mutex to prevent multiple sources triggering same operation
     if (!this._tryAcquireLock('minimize', id)) {
-      console.log(`[VisibilityHandler] Ignoring duplicate minimize request (lock held, source: ${source}) for:`, id);
+      console.log(`${this._logPrefix} Ignoring duplicate minimize request (lock held, source: ${source}) for:`, id);
       return { success: false, error: 'Operation lock held' };
     }
 
@@ -309,23 +313,24 @@ export class VisibilityHandler {
     try {
       // v1.6.3.4-v6 - FIX Issue #1: Prevent duplicate minimize operations
       if (this._pendingMinimize.has(id)) {
-        console.log(`[VisibilityHandler] Ignoring duplicate minimize request (pending, source: ${source}) for:`, id);
+        console.log(`${this._logPrefix} Ignoring duplicate minimize request (pending, source: ${source}) for:`, id);
         return { success: false, error: 'Operation pending' };
       }
       
       // v1.6.3.4 - FIX Issue #1: Log at start to confirm button was clicked
       // v1.6.3.4 - FIX Issue #6: Include source in log
-      console.log(`[VisibilityHandler] Minimize button clicked (source: ${source}) for Quick Tab:`, id);
+      // v1.6.3.5-v2 - FIX Report 1 Issue #7: Use Tab ID prefix
+      console.log(`${this._logPrefix} Minimize button clicked (source: ${source}) for Quick Tab:`, id);
 
       const tabWindow = this.quickTabsMap.get(id);
       if (!tabWindow) {
-        console.warn(`[VisibilityHandler] Tab not found for minimize (source: ${source}):`, id);
+        console.warn(`${this._logPrefix} Tab not found for minimize (source: ${source}):`, id);
         return { success: false, error: 'Tab not found' };
       }
       
       // v1.6.3.4-v7 - FIX Issue #3: Validate this is a real QuickTabWindow instance
       if (typeof tabWindow.minimize !== 'function') {
-        console.error(`[VisibilityHandler] Invalid tab instance (not QuickTabWindow, source: ${source}):`, {
+        console.error(`${this._logPrefix} Invalid tab instance (not QuickTabWindow, source: ${source}):`, {
           id,
           type: tabWindow.constructor?.name,
           hasMinimize: typeof tabWindow.minimize
@@ -342,10 +347,12 @@ export class VisibilityHandler {
       // Note: tabWindow IS the entity in quickTabsMap - they reference the same object
       // This must happen BEFORE calling minimizedManager.add() or tabWindow.minimize()
       // so that all downstream reads see the correct state
-      console.log(`[VisibilityHandler] Updating entity.minimized = true (source: ${source}) for:`, id);
+      console.log(`${this._logPrefix} Updating entity.minimized = true (source: ${source}) for:`, id);
       tabWindow.minimized = true;
 
       // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
+      // v1.6.3.5-v2 - FIX Report 1 Issue #7: Log snapshot lifecycle
+      console.log(`${this._logPrefix} Creating snapshot (source: ${source}) for:`, id);
       this.minimizedManager.add(id, tabWindow);
 
       // v1.6.3.4-v8 - FIX Issue #3: Mark this operation as initiated by handler to suppress callback
@@ -353,7 +360,7 @@ export class VisibilityHandler {
       try {
         // v1.6.3.4-v5 - FIX Bug #6: Actually minimize the window (hide it)
         tabWindow.minimize();
-        console.log(`[VisibilityHandler] Called tabWindow.minimize() (source: ${source}) for:`, id);
+        console.log(`${this._logPrefix} Called tabWindow.minimize() (source: ${source}) for:`, id);
       } finally {
         // v1.6.3.4-v8 - Clear the suppression flag after short delay (allows any pending callbacks)
         setTimeout(() => this._initiatedOperations.delete(operationKey), CALLBACK_SUPPRESSION_DELAY_MS);
@@ -374,7 +381,7 @@ export class VisibilityHandler {
         const quickTabData = this._createQuickTabData(id, tabWindow, true);
         quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
         this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
-        console.log(`[VisibilityHandler] Emitted state:updated for minimize (source: ${source}):`, id);
+        console.log(`${this._logPrefix} Emitted state:updated for minimize (source: ${source}):`, id);
       }
 
       // v1.6.3.4-v6 - FIX Issue #6: Persist to storage with debounce

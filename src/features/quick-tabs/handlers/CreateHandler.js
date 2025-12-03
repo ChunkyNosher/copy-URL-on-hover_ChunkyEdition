@@ -209,6 +209,7 @@ export class CreateHandler {
   /**
    * Create and store new tab
    * v1.6.3 - Local only (no storage persistence)
+   * v1.6.3.5-v2 - FIX Report 1 Issue #2: Capture originTabId for cross-tab filtering
    * @private
    */
   _createNewTab(id, cookieStoreId, options) {
@@ -238,6 +239,7 @@ export class CreateHandler {
 
   /**
    * Get default option values
+   * v1.6.3.5-v2 - FIX Report 1 Issue #2: Add originTabId default
    * @private
    */
   _getDefaults() {
@@ -250,7 +252,8 @@ export class CreateHandler {
       minimized: false,
       soloedOnTabs: [],
       mutedOnTabs: [],
-      showDebugId: false // v1.6.3.2 - Default for Debug ID display
+      showDebugId: false, // v1.6.3.2 - Default for Debug ID display
+      originTabId: null // v1.6.3.5-v2 - Track originating tab for cross-tab filtering
     };
   }
 
@@ -290,6 +293,9 @@ export class CreateHandler {
   /**
    * Build visibility-related options (minimized, solo, mute, debug)
    * v1.6.3.2 - Extracted to reduce _buildTabOptions complexity
+   * v1.6.3.5-v2 - FIX Report 1 Issue #2: Include originTabId
+   *   activeTabId is used as fallback because older code may set activeTabId
+   *   to track which browser tab contains the Quick Tab
    * @private
    */
   _buildVisibilityOptions(options, defaults) {
@@ -297,7 +303,10 @@ export class CreateHandler {
       minimized: options.minimized ?? defaults.minimized,
       soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
       mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs,
-      showDebugId: options.showDebugId ?? this.showDebugIdSetting
+      showDebugId: options.showDebugId ?? this.showDebugIdSetting,
+      // originTabId tracks which browser tab created this Quick Tab
+      // Use activeTabId as fallback for backward compatibility
+      originTabId: options.originTabId ?? options.activeTabId ?? defaults.originTabId
     };
   }
 

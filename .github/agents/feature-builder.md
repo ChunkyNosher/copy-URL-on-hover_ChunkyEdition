@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,16 +62,14 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**v1.6.3.5 New Architecture:**
+**v1.6.3.5-v2 Fixes:**
+- **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
+- **Storage Debounce** - Reduced from 300ms to 50ms
+
+**v1.6.3.5 Architecture:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
-
-**v1.6.3.5 Key Patterns:**
-- Active Timer IDs Set (replaces generation counters)
-- State machine validated transitions
-- Map transaction snapshots with rollback
-- Clear-on-first-use + restore-in-progress lock
 
 **Storage Format:**
 ```javascript

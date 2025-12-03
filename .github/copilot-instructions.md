@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5  
+**Version:** 1.6.3.5-v2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Clean Architecture  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -13,22 +13,22 @@
 - **Global Quick Tab visibility** (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Cross-tab sync via storage.onChanged exclusively**
+- **Cross-tab isolation via `originTabId`** (v1.6.3.5-v2)
 - Direct local creation pattern
 - **State hydration on page reload**
 
-**v1.6.3.5 Architecture (5 Critical Fixes + 3 New Modules):**
+**v1.6.3.5-v2 Architecture (16 Bug Fixes + New Features):**
 
-**New Modules:**
+**Core Modules:**
 - **QuickTabStateMachine** (`state-machine.js`) - Explicit lifecycle state tracking
 - **QuickTabMediator** (`mediator.js`) - Operation coordination with rollback
 - **MapTransactionManager** (`map-transaction-manager.js`) - Atomic Map operations
 
-**Fixes:**
-- **Issue 1: Map Size Corruption** - MapTransactionManager with rollback
-- **Issue 2: 73-Second Logging Gap** - Comprehensive Map contents logging
-- **Issue 3: Duplicate Windows** - Clear-on-first-use + restore-in-progress lock
-- **Issue 4: Debounce Timer Skips** - `_activeTimerIds` Set approach
-- **Issue 5: Missing Write Logs** - `prevTransaction`/`queueDepth` logging
+**v1.6.3.5-v2 Fixes:**
+- **Cross-Tab Filtering** - `originTabId` prevents Quick Tabs appearing on wrong tabs
+- **Storage Debounce** - Reduced from 300ms to 50ms for faster UI updates
+- **DOM Verification** - Restore operations verify DOM presence before UI updates
+- **Tab ID Logging** - All logs include `[Tab ID]` prefix for cross-tab debugging
 
 ---
 
@@ -137,7 +137,49 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.5 New Architecture Classes
+## 🆕 v1.6.3.5-v2 New Architecture Features
+
+### Cross-Tab Filtering with `originTabId`
+
+Each Quick Tab now tracks which browser tab created it via `originTabId`. The `storage.onChanged` listener filters by this field to prevent Quick Tabs appearing on wrong tabs.
+
+```javascript
+// storage-utils.js - Tab serialization includes originTabId
+originTabId: tab.originTabId ?? tab.activeTabId ?? null
+
+// index.js - Filter by originTabId before rendering
+const hasOriginTabId = tabData.originTabId !== null && tabData.originTabId !== undefined;
+if (hasOriginTabId && tabData.originTabId !== currentTabId) {
+  return false; // Skip - belongs to different tab
+}
+```
+
+### Updated Timing Constants
+
+| Constant | Value | Location | Purpose |
+|----------|-------|----------|---------|
+| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | VisibilityHandler | Suppress circular callbacks |
+| `STORAGE_READ_DEBOUNCE_MS` | 50 | quick-tabs-manager.js | **v1.6.3.5-v2:** Reduced from 300ms |
+| `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler | State event fires first |
+| `MINIMIZE_DEBOUNCE_MS` | 200 | VisibilityHandler | Storage persist after state |
+| `IFRAME_DEDUP_WINDOW_MS` | 200 | background.js | Iframe processing deduplication |
+| `OPERATION_LOCK_MS` | 500 | QuickTabMediator | Operation lock timeout |
+| `DOM_VERIFICATION_DELAY_MS` | 500 | quick-tabs-manager.js | **v1.6.3.5-v2:** DOM verify timing |
+| `RENDER_COOLDOWN_MS` | 1000 | UICoordinator | Prevent duplicate renders |
+| `RESTORE_DEDUP_WINDOW_MS` | 2000 | content.js | Restore message deduplication |
+
+### Tab ID Prefixed Logging
+
+All VisibilityHandler logs now include Tab ID for cross-tab debugging:
+
+```javascript
+this._logPrefix = `[VisibilityHandler][Tab ${options.currentTabId ?? 'unknown'}]`;
+console.log(`${this._logPrefix} Minimize button clicked for:`, id);
+```
+
+---
+
+## v1.6.3.5 Architecture Classes
 
 ### QuickTabStateMachine (`state-machine.js`)
 
@@ -182,105 +224,33 @@ Atomic Map operations with logging and rollback.
 
 | Export | Description |
 |--------|-------------|
-| `STATE_KEY` | Storage key constant (`quick_tabs_state_v2`) |
-| `generateSaveId()` | Generate unique saveId for deduplication |
-| `getBrowserStorageAPI()` | Get browser/chrome storage API |
-| `buildStateForStorage(map, minMgr)` | Build state from quickTabsMap |
-| `persistStateToStorage(state, prefix, forceEmpty)` | **v12:** Write initiator logging with file, op type, tab count |
-| `queueStorageWrite(writeOperation)` | Queue write, resets on failure |
-| `IN_PROGRESS_TRANSACTIONS` | Set for transaction tracking |
-| `isValidQuickTabUrl(url)` | Validate URL for Quick Tab |
-| `EMPTY_WRITE_COOLDOWN_MS` | 1000ms cooldown between empty writes |
-| `beginTransaction(logPrefix)` | Start transaction, capture snapshot |
-| `commitTransaction(logPrefix)` | Complete transaction, clear snapshot |
-| `rollbackTransaction(logPrefix)` | Restore snapshot on failure |
-| `pendingWriteCount` | **v12:** Tracks pending write operations |
-| `lastCompletedTransactionId` | **v12:** Tracks transaction sequencing |
+| `STATE_KEY` | Storage key (`quick_tabs_state_v2`) |
+| `generateSaveId()` | Unique saveId for deduplication |
+| `persistStateToStorage()` | Write with `prevTransaction`/`queueDepth` logging |
+| `queueStorageWrite()` | Queue write, resets on failure |
+| `beginTransaction()`/`commitTransaction()`/`rollbackTransaction()` | Transaction lifecycle |
 
 **CRITICAL:** Always use `storage.local` for Quick Tab state, NOT `storage.sync`.
 
 ---
 
-## 🏗️ Key Architecture Patterns (v1.6.3.5)
+## 🏗️ Key Architecture Patterns
 
-### Timing Constants Reference
+### Active Timer IDs Pattern
 
-| Constant | Value | Location | Purpose |
-|----------|-------|----------|---------|
-| `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | VisibilityHandler | Suppress circular callbacks |
-| `STATE_EMIT_DELAY_MS` | 100 | VisibilityHandler | State event fires first |
-| `MINIMIZE_DEBOUNCE_MS` | 200 | VisibilityHandler | Storage persist after state |
-| `IFRAME_DEDUP_WINDOW_MS` | 200 | background.js | Iframe processing deduplication |
-| `OPERATION_LOCK_MS` | 500 | QuickTabMediator | Operation lock timeout |
-| `RENDER_COOLDOWN_MS` | 1000 | UICoordinator | Prevent duplicate renders |
-| `RESTORE_DEDUP_WINDOW_MS` | 2000 | content.js | Restore message deduplication |
+`_activeTimerIds` Set replaces generation counters. Each timer has unique ID, checks if still in Set before executing.
 
-### Active Timer IDs Pattern (v1.6.3.5)
+### State Machine Pattern
 
-```javascript
-// VisibilityHandler uses _activeTimerIds Set instead of generation counters
-// Old approach: generation counter - ALL timers skip on rapid operations
-// New approach: Each timer has unique ID, checks if still in Set
-this._activeTimerIds = new Set();
-this._timerIdCounter = 0;
-_debouncedPersist(id) {
-  const timerId = `${id}-${++this._timerIdCounter}`;
-  this._activeTimerIds.add(timerId);
-  setTimeout(() => {
-    if (this._activeTimerIds.has(timerId)) {
-      this._activeTimerIds.delete(timerId);
-      this._persist(id);
-    }
-  }, DEBOUNCE_MS);
-}
-```
+`QuickTabStateMachine.canTransition()` validates before ops, `transition()` logs with source.
 
-### State Machine Pattern (v1.6.3.5)
+### Map Transaction Pattern
 
-```javascript
-// QuickTabStateMachine validates transitions before operations
-const stateMachine = getStateMachine();
-if (stateMachine.canTransition(id, QuickTabState.MINIMIZING)) {
-  stateMachine.transition(id, QuickTabState.MINIMIZING, { source: 'user' });
-  // Perform minimize...
-  stateMachine.transition(id, QuickTabState.MINIMIZED, { source: 'user' });
-}
-```
+`MapTransactionManager` wraps Map ops with `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`.
 
-### Map Transaction Pattern (v1.6.3.5)
+### Clear-on-First-Use + Restore Lock
 
-```javascript
-// MapTransactionManager wraps all Map operations
-const txnManager = new MapTransactionManager(renderedTabs, 'renderedTabs');
-txnManager.beginTransaction('minimize operation');
-txnManager.deleteEntry(id, 'tab minimized');
-const result = txnManager.commitTransaction({ expectedSize: renderedTabs.size });
-if (!result.success) txnManager.rollbackTransaction();
-```
-
-### Clear-on-First-Use + Restore Lock (v1.6.3.5)
-
-```javascript
-// MinimizedManager prevents duplicate windows
-this._restoreInProgress = new Set();
-getSnapshotForRestore(id) {
-  if (this._restoreInProgress.has(id)) return null;
-  this._restoreInProgress.add(id);
-  setTimeout(() => this._restoreInProgress.delete(id), RESTORE_LOCK_DURATION_MS);
-  return this._snapshots.get(id);
-}
-```
-
-### Storage Queue Logging (v1.6.3.5)
-
-```javascript
-// Enhanced write logging with prevTransaction and queueDepth
-console.log('[storage-utils] Write:', {
-  prevTransaction: lastCompletedTransactionId,
-  queueDepth: pendingWriteCount,
-  tabCount: state.tabs.length
-});
-```
+`_restoreInProgress` Set prevents duplicate windows during restore operations.
 
 ---
 
@@ -366,30 +336,35 @@ Use the agentic-tools MCP to create memories instead.
 - `background.js` - Consecutive read validation, iframe deduplication (200ms window)
 - `src/content.js` - `beforeunload` handler, message deduplication (2000ms)
 - `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings
-- `src/utils/storage-utils.js` - **v1.6.3.5:** `prevTransaction`, `queueDepth` logging
+- `src/utils/storage-utils.js` - `prevTransaction`, `queueDepth` logging, **v1.6.3.5-v2:** `originTabId` serialization
 - `src/features/quick-tabs/state-machine.js`:
-  - **NEW v1.6.3.5:** QuickTabStateMachine class
+  - QuickTabStateMachine class
   - States: UNKNOWN, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
   - `getStateMachine()` singleton access
 - `src/features/quick-tabs/mediator.js`:
-  - **NEW v1.6.3.5:** QuickTabMediator class
+  - QuickTabMediator class
   - `minimize()`, `restore()`, `destroy()` with state validation
   - `executeWithRollback()` for atomic operations
 - `src/features/quick-tabs/map-transaction-manager.js`:
-  - **NEW v1.6.3.5:** MapTransactionManager class
+  - MapTransactionManager class
   - `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`
   - Full Map contents logging at every operation
+- `src/features/quick-tabs/handlers/CreateHandler.js`:
+  - **v1.6.3.5-v2:** `originTabId` support for cross-tab filtering
+- `src/features/quick-tabs/index.js`:
+  - **v1.6.3.5-v2:** `_shouldFilterByOriginTabId()` cross-tab filtering
 - `src/features/quick-tabs/coordinators/UICoordinator.js`:
   - Z-index tracking, `_safeClearRenderedTabs(userInitiated)`
   - `_verifyAllTabsDOMDetached()`, duplicate prevention
 - `src/features/quick-tabs/handlers/VisibilityHandler.js`:
-  - **v1.6.3.5:** `_activeTimerIds` Set for debounce (replaces generation counters)
-  - `_fetchEntityFromStorage()`, `_validateEventPayload()`
+  - `_activeTimerIds` Set for debounce (replaces generation counters)
+  - **v1.6.3.5-v2:** `_logPrefix` with Tab ID for cross-tab debugging
 - `src/features/quick-tabs/minimized-manager.js`:
-  - **v1.6.3.5:** `_restoreInProgress` Set for restore lock
+  - `_restoreInProgress` Set for restore lock
   - Clear-on-first-use pattern, `validateStateConsistency()`
 - `sidebar/quick-tabs-manager.js`:
   - `PENDING_OPERATIONS` Set, `_reconcileWithContentScripts()`
+  - **v1.6.3.5-v2:** `STORAGE_READ_DEBOUNCE_MS` (50ms), `DOM_VERIFICATION_DELAY_MS` (500ms)
 
 ### Storage Key & Format
 
@@ -399,7 +374,13 @@ Use the agentic-tools MCP to create memories instead.
 **State Format:**
 ```javascript
 {
-  tabs: [...],           // Array with domVerified, zIndex properties
+  tabs: [{
+    id: 'unique-id',
+    originTabId: 12345,  // v1.6.3.5-v2: Track originating browser tab
+    domVerified: true,
+    zIndex: 1000,
+    // ... other tab properties
+  }],
   saveId: 'unique-id',
   timestamp: Date.now()
 }
