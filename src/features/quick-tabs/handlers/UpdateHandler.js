@@ -48,8 +48,11 @@ export class UpdateHandler {
     this.eventBus = eventBus;
     this.minimizedManager = minimizedManager;
     
-    // v1.6.3.4 - FIX Issue #2: Debounce state tracking
+    // v1.6.3.4 - FIX Issue #2: Debounce state tracking for _persistToStorage
     this._debounceTimer = null;
+    // v1.6.3.5-v7 - FIX Bug: Separate timer object for drag/resize debouncing
+    // This prevents conflict with single-timer _debounceTimer used by _persistToStorage
+    this._dragDebounceTimers = {};
     // v1.6.3.4-v10 - FIX Issue #5: Use 64-bit hash (object with lo/hi parts)
     this._lastStateHash = null;
   }
@@ -57,14 +60,52 @@ export class UpdateHandler {
   /**
    * Handle position change during drag
    * v1.6.3 - Local only (no cross-tab broadcast)
+   * v1.6.3.5-v7 - FIX Issue #4: Add debounced persistence during drag for live Manager updates
    *
-   * @param {string} _id - Quick Tab ID (unused in local-only mode)
-   * @param {number} _left - New left position (unused in local-only mode)
-   * @param {number} _top - New top position (unused in local-only mode)
+   * @param {string} id - Quick Tab ID
+   * @param {number} left - New left position
+   * @param {number} top - New top position
    */
-  handlePositionChange(_id, _left, _top) {
-    // v1.6.3 - No storage writes or broadcasts during drag
-    // Position updates are visual only until drag ends
+  handlePositionChange(id, left, top) {
+    // v1.6.3.5-v7 - FIX Issue #4: Update in-memory state for live tracking
+    const tab = this.quickTabsMap.get(id);
+    if (tab) {
+      tab.left = Math.round(left);
+      tab.top = Math.round(top);
+      
+      // Emit lightweight event for Manager live updates (without persistence)
+      this.eventBus?.emit('tab:position-changing', {
+        id,
+        left: tab.left,
+        top: tab.top
+      });
+      
+      // Debounced persist during drag (200ms) for cross-context sync
+      this._debouncedDragPersist(id, 'position');
+    }
+  }
+  
+  /**
+   * Debounced persist during drag/resize operations
+   * v1.6.3.5-v7 - FIX Issue #4: Enable live sync without overwhelming storage
+   * Uses 200ms debounce (faster than end persist, but not on every pixel)
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} type - 'position' or 'size'
+   */
+  _debouncedDragPersist(id, type) {
+    const key = `drag-${id}-${type}`;
+    
+    // Clear existing timer for this operation
+    if (this._dragDebounceTimers[key]) {
+      clearTimeout(this._dragDebounceTimers[key]);
+    }
+    
+    // Schedule new persist (200ms - faster than DEBOUNCE_DELAY_MS for end operations)
+    this._dragDebounceTimers[key] = setTimeout(() => {
+      delete this._dragDebounceTimers[key];
+      this._doPersist();
+    }, 200);
   }
 
   /**
@@ -147,14 +188,29 @@ export class UpdateHandler {
   /**
    * Handle size change during resize
    * v1.6.3 - Local only (no cross-tab broadcast)
+   * v1.6.3.5-v7 - FIX Issue #4: Add debounced persistence during resize for live Manager updates
    *
-   * @param {string} _id - Quick Tab ID (unused in local-only mode)
-   * @param {number} _width - New width (unused in local-only mode)
-   * @param {number} _height - New height (unused in local-only mode)
+   * @param {string} id - Quick Tab ID
+   * @param {number} width - New width
+   * @param {number} height - New height
    */
-  handleSizeChange(_id, _width, _height) {
-    // v1.6.3 - No storage writes or broadcasts during resize
-    // Size updates are visual only until resize ends
+  handleSizeChange(id, width, height) {
+    // v1.6.3.5-v7 - FIX Issue #4: Update in-memory state for live tracking
+    const tab = this.quickTabsMap.get(id);
+    if (tab) {
+      tab.width = Math.round(width);
+      tab.height = Math.round(height);
+      
+      // Emit lightweight event for Manager live updates (without persistence)
+      this.eventBus?.emit('tab:size-changing', {
+        id,
+        width: tab.width,
+        height: tab.height
+      });
+      
+      // Debounced persist during resize (200ms) for cross-context sync
+      this._debouncedDragPersist(id, 'size');
+    }
   }
 
   /**

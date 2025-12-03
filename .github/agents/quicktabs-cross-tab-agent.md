@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, Background-as-Coordinator messaging, Per-Tab Ownership Validation,
-  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.5-v6)
+  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.5-v7)
 tools: ["*"]
 ---
 
@@ -28,19 +28,21 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v7 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.5-v6 Sync Architecture:**
+**v1.6.3.5-v7 Sync Architecture:**
 - **storage.onChanged** - Primary sync (fires in ALL OTHER tabs)
 - **Background-as-Coordinator** - Routes manager commands via background.js
 - **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner writes
 - **originTabId filtering** - Quick Tabs only render on originating tab
 - **Promise-Based Sequencing** - `_delay()` helper for deterministic event→storage ordering
+- **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background (v1.6.3.5-v7)
 
-**v1.6.3.5-v6 Fixes:**
-- **Restore Trusts UICoordinator** - No DOM verification rollback in sync
-- **CreateHandler→UICoordinator** - `window:created` event for Map population
-- **Manager UI Logging** - Comprehensive logging for state changes
+**v1.6.3.5-v7 Fixes:**
+- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo` or `originTabId`
+- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()`
+- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
+- **State Transition Logging** - Comprehensive `StateManager.persistToStorage(source)` logging
 
 **Ownership Functions:**
 - `canCurrentTabModifyQuickTab(tabData, currentTabId)` - Check ownership
@@ -72,9 +74,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] originTabId filtering prevents cross-tab contamination
 - [ ] Background-as-Coordinator messages route correctly
 - [ ] Promise-based sequencing works (event→storage order)
+- [ ] Targeted tab messaging works (v1.6.3.5-v7)
+- [ ] Drag/resize persistence syncs across tabs (v1.6.3.5-v7)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.5-v6 fixes and Per-Tab Ownership Validation.**
+**Your strength: Reliable cross-tab sync with v1.6.3.5-v7 fixes and Per-Tab Ownership Validation.**

@@ -370,6 +370,11 @@ export class VisibilityHandler {
       // so that all downstream reads see the correct state
       console.log(`${this._logPrefix} Updating entity.minimized = true (source: ${source}) for:`, id);
       tabWindow.minimized = true;
+      
+      // v1.6.3.5-v7 - FIX Issue #6: Set domVerified: false when minimizing
+      // This ensures minimize state is explicitly tracked and survives reload
+      tabWindow.domVerified = false;
+      console.log(`${this._logPrefix} Set domVerified = false for minimize (source: ${source}):`, id);
 
       // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
       // v1.6.3.5-v2 - FIX Report 1 Issue #7: Log snapshot lifecycle
@@ -401,6 +406,7 @@ export class VisibilityHandler {
       if (this.eventBus) {
         const quickTabData = this._createQuickTabData(id, tabWindow, true);
         quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
+        quickTabData.domVerified = false; // v1.6.3.5-v7 - FIX Issue #6
         this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
         console.log(`${this._logPrefix} Emitted state:updated for minimize (source: ${source}):`, id);
       }

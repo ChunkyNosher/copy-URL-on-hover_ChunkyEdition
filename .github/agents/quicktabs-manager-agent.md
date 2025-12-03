@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
-  real-time state updates, comprehensive UI logging (v1.6.3.5-v6)
+  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.5-v7)
 tools: ["*"]
 ---
 
@@ -28,19 +28,25 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v7 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
+- **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background (v1.6.3.5-v7)
 
-**v1.6.3.5-v6 Logging (NEW):**
-- **storage.onChanged Logging** - Logs old/new counts and instance info
-- **UI List Logging** - Logs tab additions and removals with IDs
-- **Sync Timestamp Logging** - Logs "Last sync" updates with reasons
-- **State Read Logging** - Logs read sources (storage/cache/memory)
+**v1.6.3.5-v7 Fixes:**
+- **Empty List Fix** - `onStoragePersistNeeded` callback triggers after `clearSnapshot()`
+- **Sync Timestamp** - `lastLocalUpdateTime` tracks actual UI update time
+- **Targeted Tab Messaging** - Uses `quickTabHostInfo` or `originTabId` for cross-tab restore
+- **State Logging** - Comprehensive logging for storage.onChanged and UI changes
+
+**Manager as Pure Consumer (v1.6.3.5-v7):**
+- `inMemoryTabsCache` is fallback protection only
+- All writes go through Background-as-Coordinator
+- `closeAllTabs()` uses `CLEAR_ALL_QUICK_TABS` message
 
 **Storage Storm Protection:**
 - **`inMemoryTabsCache`** - Local cache protects against 0-tab anomalies
@@ -66,7 +72,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 | Method | Description |
 |--------|-------------|
 | `closeById(id)` | Close a single Quick Tab by ID |
-| `closeAll()` | Close all Quick Tabs |
+| `closeAll()` | Close all Quick Tabs via `CLEAR_ALL_QUICK_TABS` (Single Writer Model) |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
@@ -84,10 +90,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] Storage storm protection works (`inMemoryTabsCache`)
 - [ ] All Quick Tabs display globally
 - [ ] Background-as-Coordinator messages route correctly
-- [ ] UI logging visible in console (v1.6.3.5-v6)
+- [ ] UI logging visible in console
+- [ ] Empty list fix works after minimize/restore (v1.6.3.5-v7)
+- [ ] Sync timestamp shows accurate time (v1.6.3.5-v7)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with storage storm protection and comprehensive logging (v1.6.3.5-v6).**
+**Your strength: Manager coordination with storage storm protection, Single Writer Model, and accurate sync timestamps (v1.6.3.5-v7).**

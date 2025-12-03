@@ -1,0 +1,8 @@
+{
+  "id": "fecbe51f-4272-4ec2-8c62-b7ee2163468b",
+  "title": "v1.6.3.5-v6 Architectural Decisions",
+  "details": "## v1.6.3.5-v6 Architectural Improvements\n\n### Timer Conflict Bug Fix (UpdateHandler.js)\nThe `_debounceTimer` field was used inconsistently:\n- Constructor initialized as `null` (single timer)\n- `_debouncedDragPersist()` converted to object (multi-timer)\n- `_persistToStorage()` treated as single timer\n\n**Solution:** Added separate `_dragDebounceTimers` object for drag/resize operations.\n\n### Single-Writer Architecture Progress\n- `closeAllTabs()` now uses `COORDINATED_CLEAR_ALL_QUICK_TABS` message to background\n- Manager no longer writes directly to storage for \"close all\" operation\n- Background handles single storage write and broadcasts to all tabs\n\n### Architecture Documentation Added\n- `inMemoryTabsCache` documented as FALLBACK, not competing authority\n- `_sendManagerCommand()` documented as PREFERRED approach\n- `_restoreStateFromContentScripts()` documented as RECOVERY only\n- `closeMinimizedTabs()` has TODO for future migration\n\n### Key Insight\nThe multi-writer storage pattern causes race conditions. Moving toward background as single writer:\n1. Content scripts send state change intents via messages\n2. Manager sends commands via messages\n3. Background is sole caller of `browser.storage.local.set/remove`",
+  "category": "technical_decision",
+  "dateCreated": "2025-12-03T19:36:25.948Z",
+  "dateUpdated": "2025-12-03T19:36:25.948Z"
+}

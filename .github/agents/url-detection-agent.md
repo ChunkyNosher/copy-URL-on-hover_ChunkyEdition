@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.5-v7 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **URL Detection Features:**
 - **Hover Detection** - Track hovered links for Quick Tab creation
@@ -59,16 +59,22 @@ const relevantMemories = await searchMemories({
 - **URL Validation** - Ensure valid URLs before processing
 - **URL Normalization** - Clean and standardize URLs
 
-**v1.6.3.5-v6 Fixes:**
-- **Restore Trusts UICoordinator** - No DOM verification rollback
-- **closeAll Mutex** - `_closeAllInProgress` prevents duplicate execution
-- **CreateHandler→UICoordinator** - `window:created` event coordination
-- **Manager UI Logging** - Comprehensive state change logging
+**v1.6.3.5-v7 Fixes (8 Issues):**
+- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
+- **Duplicate Window Prevention** - render() early return guard
+- **Cross-Tab Restore** - Targeted tab messaging
+- **Drag/Resize Persistence** - 200ms debounced
+- **State Transition Logging** - Comprehensive logging
+- **Minimize State on Reload** - `domVerified: false`
+- **Manager Sync Timestamp** - `lastLocalUpdateTime`
+- **Z-Index Persistence** - Storage after `updateZIndex()`
 
-**v1.6.3.5-v6 Architecture:**
+**v1.6.3.5-v7 Architecture:**
 - **QuickTabStateMachine** - State tracking for Quick Tab lifecycle
 - **QuickTabMediator** - Operation coordination
 - **MapTransactionManager** - Atomic operations
+- **MinimizedManager** - `onStoragePersistNeeded` callback (v1.6.3.5-v7)
+- **UpdateHandler** - `_debouncedDragPersist()` (v1.6.3.5-v7)
 - **DestroyHandler** - `_closeAllInProgress` mutex
 - **CreateHandler** - `_emitWindowCreatedEvent()` method
 - **UICoordinator** - `_registerCreatedWindow()` method

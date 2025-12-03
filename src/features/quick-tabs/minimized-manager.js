@@ -30,8 +30,16 @@ const RESTORE_LOCK_DURATION_MS = 500;
  * v1.6.3.4-v4 - Stores immutable snapshots of position/size to prevent corruption by duplicate windows
  * v1.6.3.4-v10 - FIX Issue #1: Snapshot lifecycle - keep until UICoordinator confirms successful render
  * v1.6.3.5 - FIX Issue #3: Add restore-in-progress lock to prevent duplicates
+ * v1.6.3.5-v7 - FIX Issue #1: Add storage persistence callback after snapshot operations
  */
 export class MinimizedManager {
+  /**
+   * Storage persistence callback - set by QuickTabsManager to trigger saves
+   * v1.6.3.5-v7 - FIX Issue #1: Manager shows empty list after minimize/restore
+   * @type {Function|null}
+   */
+  onStoragePersistNeeded = null;
+  
   constructor() {
     // v1.6.3.4-v4 - FIX Issue #4: Store snapshot objects instead of direct references
     // Each entry: { window: QuickTabWindow, savedPosition: {left, top}, savedSize: {width, height} }
@@ -41,6 +49,8 @@ export class MinimizedManager {
     this.pendingClearSnapshots = new Map();
     // v1.6.3.5 - FIX Issue #3: Track restore-in-progress per Quick Tab ID
     this._restoreInProgress = new Set();
+    // v1.6.3.5-v7 - FIX Issue #7: Track last local update time for accurate "Last sync"
+    this.lastLocalUpdateTime = Date.now();
   }
 
   /**
@@ -276,6 +286,7 @@ export class MinimizedManager {
    *   The problem was checking two Maps sequentially without atomicity. Between checks,
    *   a timer could move the snapshot between Maps. Now we capture the state atomically
    *   using local variables before any modifications.
+   * v1.6.3.5-v7 - FIX Issue #1: Trigger storage persistence after clearing snapshot
    * @param {string} id - Quick Tab ID
    * @returns {boolean} True if snapshot was cleared, false if not found
    */
@@ -298,6 +309,8 @@ export class MinimizedManager {
       pendingSize: this.pendingClearSnapshots.size
     });
     
+    let cleared = false;
+    
     // v1.6.3.4-v10 - FIX Issue #4: Use captured state for atomic decision
     // First check minimizedTabs (where snapshot stays during restore)
     if (inMinimizedTabs) {
@@ -306,26 +319,45 @@ export class MinimizedManager {
         id,
         remainingMinimizedTabs: this.minimizedTabs.size
       });
-      return true;
-    }
-    
-    // Then check pendingClearSnapshots (legacy path)
-    if (inPendingClear) {
+      cleared = true;
+    } else if (inPendingClear) {
+      // Then check pendingClearSnapshots (legacy path)
       this.pendingClearSnapshots.delete(id);
       console.log('[MinimizedManager] Cleared snapshot from pendingClearSnapshots:', {
         id,
         remainingPendingSnapshots: this.pendingClearSnapshots.size
       });
-      return true;
+      cleared = true;
     }
     
-    // v1.6.3.4-v10 - FIX Issue #4: Enhanced logging when not found
-    console.log('[MinimizedManager] clearSnapshot called but no snapshot found:', {
-      id,
-      minimizedTabsIds: Array.from(this.minimizedTabs.keys()),
-      pendingClearIds: Array.from(this.pendingClearSnapshots.keys())
-    });
-    return false;
+    // v1.6.3.5-v7 - FIX Issue #1: Trigger storage persistence if snapshot was cleared
+    if (cleared) {
+      this.lastLocalUpdateTime = Date.now();
+      this._triggerStoragePersist();
+    } else {
+      // v1.6.3.4-v10 - FIX Issue #4: Enhanced logging when not found
+      console.log('[MinimizedManager] clearSnapshot called but no snapshot found:', {
+        id,
+        minimizedTabsIds: Array.from(this.minimizedTabs.keys()),
+        pendingClearIds: Array.from(this.pendingClearSnapshots.keys())
+      });
+    }
+    
+    return cleared;
+  }
+  
+  /**
+   * Trigger storage persistence via callback
+   * v1.6.3.5-v7 - FIX Issue #1: Helper to notify QuickTabsManager to save state
+   * @private
+   */
+  _triggerStoragePersist() {
+    if (typeof this.onStoragePersistNeeded === 'function') {
+      console.log('[MinimizedManager] Triggering storage persistence');
+      this.onStoragePersistNeeded();
+    } else {
+      console.log('[MinimizedManager] No storage persist callback registered');
+    }
   }
 
   /**

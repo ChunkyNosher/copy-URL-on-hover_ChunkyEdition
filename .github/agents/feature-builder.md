@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,16 +62,22 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**v1.6.3.5-v6 Fixes:**
-- **Restore Trusts UICoordinator** - No DOM verification rollback
-- **closeAll Mutex** - `_closeAllInProgress` prevents duplicate execution
-- **CreateHandler→UICoordinator** - `window:created` event coordination
-- **Manager UI Logging** - Comprehensive state change logging
+**v1.6.3.5-v7 Fixes (8 Issues):**
+- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
+- **Duplicate Window Prevention** - render() early return guard
+- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo`
+- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()`
+- **State Transition Logging** - Comprehensive `StateManager.persistToStorage()` logging
+- **Minimize State on Reload** - Set `domVerified: false` when minimizing
+- **Manager Sync Timestamp** - `lastLocalUpdateTime` tracking
+- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
 
-**v1.6.3.5-v6 Architecture:**
+**v1.6.3.5-v7 Architecture:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
+- **MinimizedManager** - `onStoragePersistNeeded` callback (v1.6.3.5-v7)
+- **UpdateHandler** - `_debouncedDragPersist()` (v1.6.3.5-v7)
 - **DestroyHandler** - `_closeAllInProgress` mutex
 - **CreateHandler** - `_emitWindowCreatedEvent()` method
 - **UICoordinator** - `_registerCreatedWindow()` method
