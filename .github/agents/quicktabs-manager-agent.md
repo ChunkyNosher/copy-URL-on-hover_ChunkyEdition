@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
-  real-time state updates (v1.6.3.5-v5)
+  real-time state updates, comprehensive UI logging (v1.6.3.5-v6)
 tools: ["*"]
 ---
 
@@ -28,13 +28,19 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
+
+**v1.6.3.5-v6 Logging (NEW):**
+- **storage.onChanged Logging** - Logs old/new counts and instance info
+- **UI List Logging** - Logs tab additions and removals with IDs
+- **Sync Timestamp Logging** - Logs "Last sync" updates with reasons
+- **State Read Logging** - Logs read sources (storage/cache/memory)
 
 **Storage Storm Protection:**
 - **`inMemoryTabsCache`** - Local cache protects against 0-tab anomalies
@@ -78,9 +84,10 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] Storage storm protection works (`inMemoryTabsCache`)
 - [ ] All Quick Tabs display globally
 - [ ] Background-as-Coordinator messages route correctly
+- [ ] UI logging visible in console (v1.6.3.5-v6)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with storage storm protection.**
+**Your strength: Manager coordination with storage storm protection and comprehensive logging (v1.6.3.5-v6).**

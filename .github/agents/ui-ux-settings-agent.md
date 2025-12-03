@@ -63,9 +63,11 @@ const relevantMemories = await searchMemories({
   - **Appearance Tab** - Dark mode, colors, borders, animations
   - **Advanced Tab** - Debug mode, storage management, logs, UID display
 
-**v1.6.3.5-v2 Fixes:**
-- **Storage Debounce** - `STORAGE_READ_DEBOUNCE_MS` reduced to 50ms
-- **DOM Verification** - `DOM_VERIFICATION_DELAY_MS` (500ms)
+**v1.6.3.5-v6 Fixes:**
+- **Restore Trusts UICoordinator** - No DOM verification rollback
+- **closeAll Mutex** - `_closeAllInProgress` prevents duplicate execution
+- **CreateHandler→UICoordinator** - `window:created` event coordination
+- **Manager UI Logging** - Comprehensive state change logging
 
 **Tab State Persistence:**
 - Primary tab: localStorage.getItem('sidebarActivePrimaryTab')

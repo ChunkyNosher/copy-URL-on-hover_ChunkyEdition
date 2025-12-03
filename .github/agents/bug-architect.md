@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v3 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -61,20 +61,23 @@ const relevantMemories = await searchMemories({
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v3:** Background-as-Coordinator with Self-Write Detection
+- **v1.6.3.5-v6:** Background-as-Coordinator with Per-Tab Ownership Validation
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v3 Features:**
-- **Self-Write Detection** - `isSelfWrite()` with `writingTabId`/`writingInstanceId`
-- **Background-as-Coordinator** - Manager commands routed through background.js
-- **Firefox Spurious Event Detection** - `_isSpuriousFirefoxEvent()`
-- **Enhanced Timer Logging** - STARTED/COMPLETED/FAILED
+**v1.6.3.5-v6 Fixes:**
+- **Restore Trusts UICoordinator** - No DOM verification rollback in VisibilityHandler
+- **closeAll Mutex** - `_closeAllInProgress` in DestroyHandler prevents duplicates
+- **CreateHandler→UICoordinator** - `window:created` event populates `renderedTabs`
+- **Manager UI Logging** - Comprehensive storage.onChanged and UI logging
 
-**v1.6.3.5 Architecture:**
+**v1.6.3.5-v6 Architecture:**
 - **QuickTabStateMachine** - Explicit lifecycle state tracking
 - **QuickTabMediator** - Operation coordination with state validation and rollback
 - **MapTransactionManager** - Atomic Map operations with logging and rollback
+- **DestroyHandler** - `_closeAllInProgress` mutex, `_scheduleMutexRelease()` method
+- **CreateHandler** - `_emitWindowCreatedEvent()` for UICoordinator coordination
+- **UICoordinator** - `_registerCreatedWindow()` listens for `window:created`
 
 ---
 
@@ -242,7 +245,7 @@ Only if:
 - Enforce cleanup patterns with `cleanupOrphanedQuickTabElements()`
 - Use debounced batch writes for destroy operations
 
-### Minimize/Restore Architecture (v1.6.3.5)
+### Minimize/Restore Architecture (v1.6.3.5-v6)
 
 **Common Root Causes:**
 - State transition without validation
@@ -250,7 +253,7 @@ Only if:
 - Missing operation locks
 - Map corruption from untracked modifications
 
-**Architectural Solution (v1.6.3.5):**
+**Architectural Solution (v1.6.3.5-v6):**
 - **State Machine:** QuickTabStateMachine validates all transitions
   - `canTransition()` before any operation
   - `transition()` logs every state change with source
@@ -262,9 +265,12 @@ Only if:
   - `beginTransaction()` captures snapshot
   - `commitTransaction()` validates expected state
   - `rollbackTransaction()` restores on failure
+- **closeAll Mutex:** `_closeAllInProgress` flag in DestroyHandler
+  - `_scheduleMutexRelease()` releases after 2000ms cooldown
+  - Prevents duplicate closeAll execution
+- **Restore Trusts UICoordinator:** No DOM verification rollback
+  - `_verifyRestoreAndEmit()` emits `isRestoreOperation: true` flag
 - **Debounce Fix:** `_activeTimerIds` Set instead of generation counters
-  - Each timer has unique ID
-  - Timer checks if its ID still in Set before executing
 
 ### Sidebar Gesture Handling (v1.6.3.4)
 

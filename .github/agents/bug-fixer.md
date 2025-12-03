@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v3 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -37,20 +37,23 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v3:** Background-as-Coordinator with Self-Write Detection
+- **v1.6.3.5-v6:** Background-as-Coordinator with Per-Tab Ownership Validation
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v3 Features:**
-- **Self-Write Detection** - `isSelfWrite()` prevents double-processing
-- **Background-as-Coordinator** - Manager commands via background.js
-- **Firefox Spurious Event Detection** - `_isSpuriousFirefoxEvent()`
-- **Enhanced Timer Logging** - STARTED/COMPLETED/FAILED
+**v1.6.3.5-v6 Fixes:**
+- **Restore Trusts UICoordinator** - No DOM verification rollback
+- **closeAll Mutex** - `_closeAllInProgress` prevents duplicates
+- **CreateHandler→UICoordinator** - `window:created` event coordination
+- **Manager UI Logging** - Comprehensive state change logging
 
-**v1.6.3.5 Modules:**
+**v1.6.3.5-v6 Modules:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
+- **DestroyHandler** - `_closeAllInProgress` mutex
+- **CreateHandler** - `_emitWindowCreatedEvent()` method
+- **UICoordinator** - `_registerCreatedWindow()` method
 
 ---
 
@@ -90,7 +93,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.5 Fix Patterns
+## v1.6.3.5-v6 Fix Patterns
 
 ### State Machine Transitions
 ```javascript
@@ -113,6 +116,16 @@ const txn = new MapTransactionManager(map, 'myMap');
 txn.beginTransaction('operation');
 txn.deleteEntry(id, 'reason');
 txn.commitTransaction();
+```
+
+### closeAll Mutex (v1.6.3.5-v6)
+```javascript
+if (this._closeAllInProgress) {
+  console.log('[DestroyHandler] closeAll already in progress, skipping');
+  return;
+}
+this._closeAllInProgress = true;
+this._scheduleMutexRelease(); // Releases after 2000ms
 ```
 
 ---

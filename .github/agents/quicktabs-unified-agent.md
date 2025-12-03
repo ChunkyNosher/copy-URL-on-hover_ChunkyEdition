@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v5)
+  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v6)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,22 +37,29 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
 
-**v1.6.3.5-v5 New Features:**
+**v1.6.3.5-v6 Fixes:**
+- **Restore Trusts UICoordinator** - No DOM verification rollback in VisibilityHandler
+- **closeAll Mutex** - `_closeAllInProgress` flag prevents duplicate closeAll execution
+- **CreateHandler→UICoordinator** - `window:created` event populates `renderedTabs` Map
+- **Manager UI Logging** - Comprehensive storage.onChanged and UI state logging
+
+**v1.6.3.5-v5 Features (Retained):**
 - **Promise-Based Sequencing** - `_delay()` helper for deterministic event→storage ordering
-- **Transaction Rollback in Restore** - `preRestoreState` snapshot, rollback on DOM failure
 - **cleanupTransactionId()** - Event-driven transaction ID cleanup
 - **StateManager Storage Pipeline** - Uses `persistStateToStorage` instead of direct writes
 - **QuickTabWindow currentTabId** - Passed via constructor, `_getCurrentTabId()` helper
 
-**v1.6.3.5-v5 Deprecated:**
+**Deprecated (v1.6.3.5-v5):**
 - ⚠️ window.js: `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()`
 - ⚠️ index.js: `updateQuickTabPosition()`, `updateQuickTabSize()`
-- 🗑️ Removed: `lastPositionUpdate`, `lastSizeUpdate` fields
 
-**v1.6.3.5 Architecture:**
+**v1.6.3.5-v6 Architecture:**
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - `minimize()`, `restore()`, `destroy()` with state validation
 - **MapTransactionManager** - Atomic Map ops with rollback
+- **DestroyHandler** - `_closeAllInProgress` mutex, `_scheduleMutexRelease()`
+- **CreateHandler** - `_emitWindowCreatedEvent()` emits `window:created`
+- **UICoordinator** - `_registerCreatedWindow()` listens for `window:created`
 
 ---
 
@@ -81,9 +88,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] State machine transitions validated
 - [ ] Promise-based sequencing works
+- [ ] closeAll mutex prevents duplicates (v1.6.3.5-v6)
+- [ ] window:created event fires correctly (v1.6.3.5-v6)
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with Promise-Based Sequencing and ownership validation.**
+**Your strength: Complete Quick Tab system with v1.6.3.5-v6 fixes and Per-Tab Ownership Validation.**

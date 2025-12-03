@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5-v5  
+**Version:** 1.6.3.5-v6  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -16,9 +16,10 @@
 - **Cross-tab isolation via `originTabId`**
 - **Per-Tab Ownership Validation** (v1.6.3.5-v4)
 - **Promise-Based Sequencing** (v1.6.3.5-v5) - Deterministic operation ordering
+- **CreateHandler→UICoordinator coordination** (v1.6.3.5-v6) - `window:created` event
 - Direct local creation pattern, State hydration on page reload
 
-**v1.6.3.5-v5 Architecture (Background-as-Coordinator):**
+**v1.6.3.5-v6 Architecture (Background-as-Coordinator):**
 
 **Core Modules:**
 - **QuickTabStateMachine** (`state-machine.js`) - Explicit lifecycle state tracking
@@ -26,17 +27,21 @@
 - **MapTransactionManager** (`map-transaction-manager.js`) - Atomic Map operations
 - **Background Script** - Coordinator for state broadcasts and manager commands
 
-**v1.6.3.5-v5 New Features:**
-- **Promise-Based Sequencing** - `_delay()` helper replaces setTimeout for deterministic event→storage ordering
-- **Transaction Rollback in Restore** - `preRestoreState` snapshot captured, rollback on DOM verification failure
-- **cleanupTransactionId()** - New export in storage-utils.js for event-driven transaction ID cleanup
-- **StateManager Storage Pipeline** - Uses `persistStateToStorage` instead of direct storage.local.set
-- **QuickTabWindow currentTabId** - Passed via constructor, `_getCurrentTabId()` helper for Solo/Mute
+**v1.6.3.5-v6 Fixes:**
+- **Restore Trusts UICoordinator** - Removed DOM verification rollback in VisibilityHandler
+- **closeAll Mutex** - `_closeAllInProgress` flag in DestroyHandler prevents duplicate execution
+- **CreateHandler→UICoordinator** - `window:created` event populates `renderedTabs` Map
+- **Manager UI Logging** - Comprehensive storage.onChanged and UI state logging
 
-**v1.6.3.5-v5 Deprecated (Legacy Cross-Tab Sync):**
+**v1.6.3.5-v5 Features (Retained):**
+- **Promise-Based Sequencing** - `_delay()` helper for deterministic event→storage ordering
+- **cleanupTransactionId()** - Event-driven transaction ID cleanup in storage-utils.js
+- **StateManager Storage Pipeline** - Uses `persistStateToStorage` instead of direct storage.local.set
+- **QuickTabWindow currentTabId** - Passed via constructor, `_getCurrentTabId()` helper
+
+**Deprecated (v1.6.3.5-v5):**
 - ⚠️ `window.js`: `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Bypass UpdateHandler
 - ⚠️ `index.js`: `updateQuickTabPosition()`, `updateQuickTabSize()` - Log deprecation warnings
-- 🗑️ Removed: `lastPositionUpdate`, `lastSizeUpdate` fields from QuickTabWindow
 
 ---
 
@@ -81,11 +86,14 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 
 ### CRITICAL: Background-as-Coordinator + storage.onChanged
 
-**v1.6.3.5-v5 Message Types:**
+**v1.6.3.5-v6 Message Types:**
 - `QUICK_TAB_STATE_CHANGE` - Content script → Background for state changes
 - `QUICK_TAB_STATE_UPDATED` - Background → All contexts for broadcasts
 - `MANAGER_COMMAND` - Manager → Background for remote control
 - `EXECUTE_COMMAND` - Background → Content script for command execution
+
+**v1.6.3.5-v6 Events:**
+- `window:created` - CreateHandler → UICoordinator to populate `renderedTabs` Map
 
 **Event Flow:**
 ```
@@ -102,8 +110,9 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 **Key Points:**
 - storage.onChanged does NOT fire in the tab that made the change
-- **v1.6.3.5-v5:** `canCurrentTabModifyQuickTab()` validates ownership before writes
-- **v1.6.3.5-v5:** Promise-based sequencing enforces event→storage execution order
+- **v1.6.3.5-v6:** `canCurrentTabModifyQuickTab()` validates ownership before writes
+- **v1.6.3.5-v6:** Promise-based sequencing enforces event→storage execution order
+- **v1.6.3.5-v6:** Restore trusts UICoordinator (no DOM verification rollback)
 - Background script coordinates broadcasts, does NOT store state
 - Manager commands routed through background.js to host tabs
 
@@ -124,15 +133,31 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.5-v5 Architecture Features
+## 🆕 v1.6.3.5-v6 Architecture Features
+
+### Restore Trusts UICoordinator (v1.6.3.5-v6)
+
+`_verifyRestoreAndEmit()` no longer performs DOM verification rollback. Restore operations trust UICoordinator for rendering and emit `isRestoreOperation: true` flag.
+
+### closeAll Mutex (v1.6.3.5-v6)
+
+`_closeAllInProgress` boolean in DestroyHandler prevents duplicate closeAll execution. `_scheduleMutexRelease()` releases after 2000ms cooldown.
+
+### CreateHandler→UICoordinator Coordination (v1.6.3.5-v6)
+
+CreateHandler emits `window:created` event after creating QuickTabWindow. UICoordinator listens via `_registerCreatedWindow()` to populate `renderedTabs` Map.
+
+### Manager UI Logging (v1.6.3.5-v6)
+
+Comprehensive logging in quick-tabs-manager.js for storage.onChanged events, UI list changes, sync timestamps, and state read sources.
 
 ### Promise-Based Sequencing (v1.6.3.5-v5)
 
 `_delay()` helper + async/await replaces setTimeout callbacks. Guarantees event→storage execution order.
 
-### Transaction Rollback in Restore (v1.6.3.5-v5)
+### Transaction Rollback (v1.6.3.5-v5)
 
-`_executeRestore()`: `preRestoreState` snapshot captured, DOM verification with rollback on failure.
+`MapTransactionManager` provides `preRestoreState` snapshot with `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`.
 
 ### Per-Tab Ownership Validation
 
@@ -144,7 +169,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ### UICoordinator Invariant Checks
 
-`_verifyInvariant()`, `_lastRenderTime` Map for render timestamp tracking.
+`_verifyInvariant()`, `_lastRenderTime` Map for render timestamp tracking, `_registerCreatedWindow()` for `window:created` events.
 
 ### StateManager Storage Pipeline (v1.6.3.5-v5)
 
@@ -164,10 +189,11 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `DOM_VERIFICATION_DELAY_MS` | 500 | DOM verify timing |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
 | `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message dedup |
+| `CLOSE_ALL_MUTEX_RELEASE_MS` | 2000 | closeAll mutex cooldown |
 
 ---
 
-## v1.6.3.5 Architecture Classes
+## v1.6.3.5-v6 Architecture Classes
 
 ### QuickTabStateMachine
 States: UNKNOWN, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED  
@@ -178,6 +204,15 @@ Single entry point with rollback: `minimize()`, `restore()`, `destroy()`, `execu
 
 ### MapTransactionManager
 Atomic Map ops: `beginTransaction()`, `deleteEntry()`, `setEntry()`, `commitTransaction()`, `rollbackTransaction()`
+
+### DestroyHandler (v1.6.3.5-v6)
+`_closeAllInProgress` mutex, `_scheduleMutexRelease()` method for 2000ms cooldown
+
+### CreateHandler (v1.6.3.5-v6)
+`_emitWindowCreatedEvent()` emits `window:created` event for UICoordinator coordination
+
+### UICoordinator (v1.6.3.5-v6)
+`_registerCreatedWindow()` listens for `window:created` events to populate `renderedTabs` Map
 
 ---
 
@@ -200,11 +235,13 @@ Atomic Map ops: `beginTransaction()`, `deleteEntry()`, `setEntry()`, `commitTran
 ## 🏗️ Key Patterns
 
 - **Promise-Based Sequencing** - `_delay()` + async/await for event→storage ordering
-- **Transaction Rollback** - `preRestoreState` captured, rollback on DOM verification failure
+- **Transaction Rollback** - `preRestoreState` captured via MapTransactionManager
 - **Active Timer IDs** - `_activeTimerIds` Set checks validity before executing
 - **State Machine** - `canTransition()` validates, `transition()` logs with source
 - **Map Transaction** - `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`
 - **Ownership Validation** - Only owner tabs persist via `persistStateToStorage()`
+- **closeAll Mutex** - `_closeAllInProgress` prevents duplicate execution (v1.6.3.5-v6)
+- **window:created Event** - CreateHandler→UICoordinator coordination (v1.6.3.5-v6)
 
 ---
 
@@ -258,16 +295,18 @@ Atomic Map ops: `beginTransaction()`, `deleteEntry()`, `setEntry()`, `commitTran
 - `background.js` - Background-as-Coordinator with `handleQuickTabStateChange()`, `broadcastQuickTabStateUpdate()`, `handleManagerCommand()`, `quickTabHostTabs` Map
 - `src/content.js` - Identity logging on init, `QUICK_TAB_COMMAND_HANDLERS`, message deduplication (2000ms)
 - `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings
-- `src/utils/storage-utils.js` - `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`, **v1.6.3.5-v5:** `cleanupTransactionId()`
+- `src/utils/storage-utils.js` - `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`, `cleanupTransactionId()`
 - `src/features/quick-tabs/state-machine.js` - QuickTabStateMachine, States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - `src/features/quick-tabs/mediator.js` - QuickTabMediator, `minimize()`, `restore()`, `destroy()`, `executeWithRollback()`
 - `src/features/quick-tabs/map-transaction-manager.js` - MapTransactionManager with rollback
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - `_verifyInvariant()`, `_lastRenderTime` Map
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - **v1.6.3.5-v5:** `_delay()` helper, `_executeRestore()` with DOM verification, `_activeTimerIds` Set
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - `_verifyInvariant()`, `_lastRenderTime` Map, **v1.6.3.5-v6:** `_registerCreatedWindow()` for `window:created` events
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - `_delay()` helper, **v1.6.3.5-v6:** `_verifyRestoreAndEmit()` trusts UICoordinator (no rollback)
+- `src/features/quick-tabs/handlers/DestroyHandler.js` - **v1.6.3.5-v6:** `_closeAllInProgress` mutex, `_scheduleMutexRelease()` method
+- `src/features/quick-tabs/handlers/CreateHandler.js` - **v1.6.3.5-v6:** `_emitWindowCreatedEvent()` emits `window:created` event
 - `src/features/quick-tabs/minimized-manager.js` - `_restoreInProgress` Set
-- `src/features/quick-tabs/window.js` - **v1.6.3.5-v5:** `currentTabId` via constructor, `_getCurrentTabId()`, deprecated: `setPosition/setSize/updatePosition/updateSize`
-- `src/features/quick-tabs/index.js` - **v1.6.3.5-v5:** Deprecated `updateQuickTabPosition()`, `updateQuickTabSize()`
-- `sidebar/quick-tabs-manager.js` - `inMemoryTabsCache`, `_detectStorageStorm()`, `_handleEmptyStorageState()`
+- `src/features/quick-tabs/window.js` - `currentTabId` via constructor, `_getCurrentTabId()`, deprecated: `setPosition/setSize/updatePosition/updateSize`
+- `src/features/quick-tabs/index.js` - Deprecated `updateQuickTabPosition()`, `updateQuickTabSize()`
+- `sidebar/quick-tabs-manager.js` - `inMemoryTabsCache`, `_detectStorageStorm()`, **v1.6.3.5-v6:** Comprehensive UI logging
 
 ### Storage Key & Format
 

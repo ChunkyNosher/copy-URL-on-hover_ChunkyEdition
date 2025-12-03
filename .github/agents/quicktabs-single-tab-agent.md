@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  and all single Quick Tab functionality (v1.6.3.5-v5)
+  window:created event coordination, and all single Quick Tab functionality (v1.6.3.5-v6)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,13 +38,18 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.5-v5 Features:**
+**v1.6.3.5-v6 Fixes:**
+- **CreateHandler→UICoordinator** - `window:created` event populates `renderedTabs` Map
+- **UICoordinator** - `_registerCreatedWindow()` listens for `window:created` events
+- **Restore Trusts UICoordinator** - No DOM verification rollback in restore
+
+**v1.6.3.5-v5 Features (Retained):**
 - **UICoordinator Invariant Checks** - `_verifyInvariant()` ensures mutual exclusion
 - **`_lastRenderTime` Map** - Track render timestamps per Quick Tab
 - **currentTabId via constructor** - `_getCurrentTabId()` helper for Solo/Mute methods
 - **Per-Tab Ownership Validation** - Only owner tab can persist changes
 
-**v1.6.3.5-v5 Deprecated:**
+**Deprecated (v1.6.3.5-v5):**
 - ⚠️ `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Use UpdateHandler
 
 **State Machine:** States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
@@ -63,10 +68,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] UICoordinator invariants verified (`_verifyInvariant`)
 - [ ] Global visibility correct (no container filtering)
 - [ ] originTabId set correctly on creation
+- [ ] window:created event fires (v1.6.3.5-v6)
 - [ ] Drag works without pointer escape
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Individual Quick Tab isolation with UICoordinator invariant checks.**
+**Your strength: Individual Quick Tab isolation with UICoordinator invariant checks and window:created coordination (v1.6.3.5-v6).**
