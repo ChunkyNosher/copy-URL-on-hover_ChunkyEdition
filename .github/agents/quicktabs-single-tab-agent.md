@@ -3,11 +3,11 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, and all single Quick Tab functionality
-  (v1.6.3.5-v2 originTabId tracking, Tab ID logging)
+  (v1.6.3.5-v3 Self-Write Detection, Enhanced Timer Logging)
 tools: ["*"]
 ---
 
-> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared guidelines on documentation updates, issue creation, and MCP server usage.
+> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared guidelines.
 
 > **🎯 Robust Solutions Philosophy:** Each Quick Tab is self-contained. Focus on proper state management with soloedOnTabs/mutedOnTabs arrays. See `.github/copilot-instructions.md`.
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.5-v3 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,10 +38,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.5-v2 Features:**
+**v1.6.3.5-v3 Features:**
 - **originTabId** - Tracks which browser tab created the Quick Tab
-- **Tab ID Logging** - All VisibilityHandler logs include `[Tab ID]` prefix
-- **State Machine** - Tracks states: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
+- **Self-Write Detection** - `isSelfWrite()` prevents double-processing
+- **Enhanced Timer Logging** - STARTED/COMPLETED/FAILED for all timers
+- **State Machine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 
 ---
 
@@ -56,11 +57,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] Global visibility correct (no container filtering)
 - [ ] originTabId set correctly on creation
-- [ ] Tab ID prefixed logging works
+- [ ] Self-Write Detection prevents double-processing
 - [ ] Drag works without pointer escape
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Individual Quick Tab isolation with originTabId tracking.**
+**Your strength: Individual Quick Tab isolation with originTabId tracking and Self-Write Detection.**

@@ -99,17 +99,17 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.5-v2)
-- [ ] Architecture references accurate (DDD Phase 1 Complete)
-- [ ] Cross-tab sync uses storage.onChanged (NOT BroadcastChannel)
+- [ ] Version numbers match current release (1.6.3.5-v3)
+- [ ] Architecture references accurate (DDD with Background-as-Coordinator)
+- [ ] Cross-tab sync uses storage.onChanged + Background-as-Coordinator
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.5-v2:** originTabId cross-tab filtering documented
-- [ ] **v1.6.3.5-v2:** STORAGE_READ_DEBOUNCE_MS (50ms) documented
-- [ ] **v1.6.3.5-v2:** DOM_VERIFICATION_DELAY_MS (500ms) documented
-- [ ] **v1.6.3.5-v2:** Tab ID prefixed logging documented
+- [ ] **v1.6.3.5-v3:** Self-Write Detection (isSelfWrite, writingTabId/writingInstanceId)
+- [ ] **v1.6.3.5-v3:** Background-as-Coordinator messages documented
+- [ ] **v1.6.3.5-v3:** Firefox Spurious Event Detection documented
+- [ ] **v1.6.3.5-v3:** Enhanced Timer Logging documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -117,25 +117,24 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.5-v2
-- **Architecture Status:** DDD Phase 1 Complete ✅
-- **Cross-Tab Sync:** storage.onChanged exclusively
+- **Current Version:** 1.6.3.5-v3
+- **Architecture Status:** DDD with Background-as-Coordinator ✅
+- **Cross-Tab Sync:** storage.onChanged + Background-as-Coordinator
 - **Key Features:**
   - Solo/Mute tab-specific visibility (soloedOnTabs/mutedOnTabs arrays)
   - Global Quick Tab visibility (Container isolation REMOVED)
   - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
   - Direct local creation pattern
   - State hydration on page reload
-- **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId: '...', timestamp: ... }`
-- **v1.6.3.5-v2 Features:**
-  - originTabId - Cross-tab filtering to prevent wrong-tab rendering
-  - STORAGE_READ_DEBOUNCE_MS - 50ms (reduced from 300ms)
-  - DOM_VERIFICATION_DELAY_MS - 500ms for DOM verify timing
-  - Tab ID prefixed logging for cross-tab debugging
-- **v1.6.3.5 Architecture:**
-  - QuickTabStateMachine - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
-  - QuickTabMediator - Operation coordination with state validation and rollback
-  - MapTransactionManager - Atomic Map operations with logging and rollback
+- **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp, writingTabId, writingInstanceId }`
+- **v1.6.3.5-v3 Features:**
+  - Self-Write Detection - `isSelfWrite()` with `writingTabId`/`writingInstanceId`
+  - Background-as-Coordinator - Manager commands via background.js
+  - Firefox Spurious Event Detection - `_isSpuriousFirefoxEvent()`
+  - Enhanced Timer Logging - STARTED/COMPLETED/FAILED
+- **v1.6.3.5-v3 Message Types:**
+  - QUICK_TAB_STATE_CHANGE, QUICK_TAB_STATE_UPDATED
+  - MANAGER_COMMAND, EXECUTE_COMMAND
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -194,15 +193,15 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.5-v2)
+- Version numbers (1.6.3.5-v3)
 - Feature names (Solo/Mute, NOT "Pin to Page")
-- Architecture status (Phase 1 Complete)
-- Sync mechanism (storage.onChanged, NOT BroadcastChannel)
-- Storage format (unified tabs array with originTabId)
+- Architecture status (Background-as-Coordinator)
+- Sync mechanism (storage.onChanged + Background-as-Coordinator)
+- Storage format (unified tabs array with originTabId, writingTabId, writingInstanceId)
 - New architecture classes (StateMachine, Mediator, MapTransactionManager)
+- **v1.6.3.5-v3:** Self-Write Detection, Background-as-Coordinator messages
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
-- **v1.6.3.5-v2:** originTabId filtering, STORAGE_READ_DEBOUNCE_MS (50ms)
 - MCP tool lists
 - File size limits (15KB)
 - Testing commands
@@ -229,7 +228,7 @@ cat manifest.json | grep version
 # Check for outdated terms
 grep -r "Pin to Page" .github/
 grep -r "BroadcastChannel" .github/
-grep -r "1.5.9" .github/
+grep -r "1.6.3.5-v2" .github/
 ```
 
 **Use Agentic-Tools:**
@@ -290,18 +289,24 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.5-v2)
+## Current Extension State (v1.6.3.5-v3)
 
 ### Architecture
-- **Status:** Phase 1 Complete ✅
+- **Status:** Background-as-Coordinator ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### v1.6.3.5-v2 Features
-- **originTabId** - Cross-tab filtering to prevent Quick Tabs appearing on wrong tabs
-- **STORAGE_READ_DEBOUNCE_MS** - 50ms (reduced from 300ms)
-- **DOM_VERIFICATION_DELAY_MS** - 500ms for DOM verification timing
-- **Tab ID Logging** - All logs include `[Tab ID]` prefix for debugging
+### v1.6.3.5-v3 Features
+- **Self-Write Detection** - `isSelfWrite()` with `writingTabId`/`writingInstanceId`
+- **Background-as-Coordinator** - Manager commands routed through background.js
+- **Firefox Spurious Event Detection** - `_isSpuriousFirefoxEvent()`
+- **Enhanced Timer Logging** - STARTED/COMPLETED/FAILED
+
+### v1.6.3.5-v3 Message Types
+- `QUICK_TAB_STATE_CHANGE` - Content script → Background
+- `QUICK_TAB_STATE_UPDATED` - Background → All contexts
+- `MANAGER_COMMAND` - Manager → Background
+- `EXECUTE_COMMAND` - Background → Content script
 
 ### v1.6.3.5 Modules
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
@@ -348,7 +353,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.5 or earlier | Update to 1.6.3.5-v2 |
+| v1.6.3.5-v2 or earlier | Update to 1.6.3.5-v3 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -373,13 +378,13 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.5-v2
+- [ ] Version numbers updated to 1.6.3.5-v3
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
-- [ ] storage.onChanged documented as primary sync
-- [ ] **v1.6.3.5-v2:** originTabId filtering documented
-- [ ] **v1.6.3.5-v2:** STORAGE_READ_DEBOUNCE_MS (50ms) documented
-- [ ] **v1.6.3.5-v2:** DOM_VERIFICATION_DELAY_MS (500ms) documented
+- [ ] storage.onChanged + Background-as-Coordinator documented
+- [ ] **v1.6.3.5-v3:** Self-Write Detection documented
+- [ ] **v1.6.3.5-v3:** Background-as-Coordinator messages documented
+- [ ] **v1.6.3.5-v3:** Firefox Spurious Event Detection documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠
