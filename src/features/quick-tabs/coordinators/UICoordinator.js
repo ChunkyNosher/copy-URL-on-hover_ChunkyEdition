@@ -6,6 +6,7 @@
  * - Update UI when state changes
  * - Manage QuickTabWindow lifecycle
  * - Listen to state events and trigger UI updates
+ * - Register windows from window:created events
  *
  * Complexity: cc ≤ 3 per method
  *
@@ -43,6 +44,7 @@
  *   - Issue #2: Defensive Map cleanup - verify DOM before clearing renderedTabs
  *   - Issue #4: Check DOM for existing elements before creating duplicate windows
  *   - Issue #6: Enhanced logging for Map operations and orphaned window detection
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Add window:created listener to populate renderedTabs
  */
 
 import browser from 'webextension-polyfill';
@@ -1603,6 +1605,7 @@ export class UICoordinator {
    * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
    * v1.6.3.4-v4 - FIX Issue #3: Add state:cleared listener for reconciliation
    * v1.6.3.4-v2 - FIX Issue #6: Pass source and isRestoreOperation from events to update()
+   * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Add window:created listener for Map registration
    */
   setupStateListeners() {
     console.log('[UICoordinator] Setting up state listeners');
@@ -1637,7 +1640,45 @@ export class UICoordinator {
       this.reconcileRenderedTabs();
     });
 
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #4: Listen for window:created from CreateHandler
+    // This ensures renderedTabs Map is populated when QuickTabWindows are created
+    this.eventBus.on('window:created', ({ id, tabWindow }) => {
+      console.log('[UICoordinator] Received window:created event', { id });
+      this._registerCreatedWindow(id, tabWindow);
+    });
+
     console.log('[UICoordinator] ✓ State listeners setup complete');
+  }
+
+  /**
+   * Register a created window in renderedTabs Map
+   * v1.6.3.5-v6 - FIX Diagnostic Issue #4: UICoordinator Map never populated
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - QuickTabWindow instance
+   */
+  _registerCreatedWindow(id, tabWindow) {
+    if (!id || !tabWindow) {
+      console.warn('[UICoordinator] Invalid window:created event - missing id or tabWindow');
+      return;
+    }
+    
+    // Check if already in Map to avoid overwriting
+    if (this.renderedTabs.has(id)) {
+      console.log('[UICoordinator] Window already in renderedTabs Map:', id);
+      return;
+    }
+    
+    // Register window in Map
+    this.renderedTabs.set(id, tabWindow);
+    console.log('[UICoordinator] Registered window in renderedTabs from window:created:', {
+      id,
+      mapSizeAfter: this.renderedTabs.size,
+      allMapKeys: Array.from(this.renderedTabs.keys())
+    });
+    
+    // Start DOM monitoring for the newly registered window
+    this._startDOMMonitoring(id, tabWindow);
   }
 
   /**

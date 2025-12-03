@@ -21,6 +21,9 @@
  *   - Issue #3: Promise chaining enforces event->storage execution order
  *   - Issue #4: Try/catch in all timer callbacks with context markers
  *   - Issue #6: Transaction pattern with rollback capability
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #1: Remove DOM verification rollback
+ *   - Issue #1: Removed DOM verification rollback that caused infinite restore deadlock
+ *   - Trust UICoordinator to handle rendering via event-driven architecture
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -31,13 +34,13 @@
  * - Handle solo toggle (show only on specific tabs)
  * - Handle mute toggle (hide on specific tabs)
  * - Handle minimize operation with DOM cleanup
- * - Handle restore operation with DOM verification and rollback
+ * - Handle restore operation (trusts UICoordinator for rendering)
  * - Handle focus operation (bring to front)
  * - Update button appearances
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.3.5-v5
+ * @version 1.6.3.5-v6
  */
 
 import { buildStateForStorage, persistStateToStorage, validateStateForPersist, STATE_KEY, getBrowserStorageAPI } from '@utils/storage-utils.js';
@@ -60,9 +63,9 @@ const STATE_EMIT_DELAY_MS = 100;
 // to not interfere with subsequent legitimate operations
 const CALLBACK_SUPPRESSION_DELAY_MS = 50;
 
-// v1.6.3.5-v5 - FIX Issue #1: Delay before verifying DOM state after restore
-// 100ms gives browser time to render DOM before verification
-const DOM_VERIFICATION_DELAY_MS = 100;
+// v1.6.3.5-v6 - FIX Issue #1: Reduced delay - DOM verification is no longer used for rollback
+// Keep a short delay for event emission sequencing only
+const DOM_VERIFICATION_DELAY_MS = 50;
 
 /**
  * VisibilityHandler class
@@ -74,6 +77,7 @@ const DOM_VERIFICATION_DELAY_MS = 100;
  * v1.6.3.2 - Mutex/lock pattern to prevent duplicate operations from multiple sources
  * v1.6.3.5-v2 - FIX Report 1 Issue #7: Enhanced logging with Tab ID prefix
  * v1.6.3.5-v5 - FIX Diagnostic Issues #1, #2, #3, #4, #6: Promise-based coordination
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #1: Removed DOM verification rollback
  */
 export class VisibilityHandler {
   /**
@@ -632,29 +636,32 @@ export class VisibilityHandler {
   }
 
   /**
-   * Verify DOM state after restore and emit events
-   * v1.6.3.5-v5 - FIX Issues #1, #2, #3: Promise-based DOM verification with rollback
-   * Refactored: Extracted _handleDOMVerificationFailure to reduce complexity
+   * Emit state:updated event after restore operation
+   * v1.6.3.5-v5 - FIX Issues #1, #2, #3: Promise-based event emission
+   * v1.6.3.5-v6 - FIX Diagnostic Issue #1: Removed DOM verification rollback
+   *   - DOM verification no longer triggers rollback - UICoordinator is trusted
+   *   - Simply emit state:updated event and persist to storage
+   *   - This fixes the infinite restore deadlock
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Tab window instance
    * @param {string} source - Source of action
-   * @param {Object|null} preRestoreState - Pre-restore state for rollback
+   * @param {Object|null} _preRestoreState - Pre-restore state (unused, kept for signature compat)
    */
-  async _verifyRestoreAndEmit(id, tabWindow, source, preRestoreState) {
+  async _verifyRestoreAndEmit(id, tabWindow, source, _preRestoreState) {
     try {
-      // v1.6.3.5-v5 - FIX Issue #2: Use promise-based delay instead of setTimeout
+      // v1.6.3.5-v6 - FIX Issue #1: Short delay for event sequencing only (no rollback)
       await this._delay(DOM_VERIFICATION_DELAY_MS);
       
-      // v1.6.3.5-v5 - FIX Issue #1: Verify DOM state
+      // v1.6.3.5-v6 - FIX Issue #1: Log DOM state but do NOT rollback
+      // Trust UICoordinator to handle rendering via event-driven architecture
       const isDOMRendered = this._isDOMRendered(tabWindow);
-      
-      if (!isDOMRendered && tabWindow) {
-        this._handleDOMVerificationFailure(id, tabWindow, source, preRestoreState);
-        return;
-      }
-      
-      console.log(`[VisibilityHandler] DOM verification PASSED (source: ${source}) for:`, id);
+      console.log(`[VisibilityHandler] Restore state check (source: ${source}):`, {
+        id,
+        isDOMRendered,
+        // v1.6.3.5-v6: Rollback removed - we trust UICoordinator
+        rollbackEnabled: false
+      });
       
       // v1.6.3.5-v5 - FIX Issue #3: Synchronous event emission followed by persist
       this._emitRestoreStateUpdateSync(id, tabWindow, source);
@@ -673,31 +680,26 @@ export class VisibilityHandler {
   }
 
   /**
-   * Handle DOM verification failure by rolling back entity state
-   * v1.6.3.5-v5 - Extracted to reduce _verifyRestoreAndEmit complexity
+   * Handle DOM verification failure (DEPRECATED - v1.6.3.5-v6)
+   * v1.6.3.5-v5 - Original implementation with rollback
+   * v1.6.3.5-v6 - DEPRECATED: Rollback caused infinite restore deadlock
+   *   - Now only logs a warning, no state rollback
+   *   - UICoordinator is trusted to handle rendering
    * @private
+   * @deprecated No longer performs rollback - kept for future diagnostics only
    */
-  _handleDOMVerificationFailure(id, tabWindow, source, preRestoreState) {
-    console.error(`[VisibilityHandler] DOM verification FAILED (source: ${source}) for:`, id);
+  _handleDOMVerificationFailure(id, tabWindow, source, _preRestoreState) {
+    // v1.6.3.5-v6 - FIX Issue #1: Log warning but do NOT rollback
+    // Rollback was causing infinite deadlock with UICoordinator
+    console.warn(`[VisibilityHandler] DOM not rendered after restore (source: ${source}), trusting UICoordinator:`, id);
     
-    // v1.6.3.5-v5 - FIX Issue #6: Rollback entity state
-    if (preRestoreState) {
-      console.log(`[VisibilityHandler] Rolling back entity state (source: ${source}) for:`, id);
-      tabWindow.minimized = preRestoreState.minimized;
-      
-      // Re-add to minimized manager if it was minimized before
-      if (preRestoreState.minimized && this.minimizedManager) {
-        this.minimizedManager.add(id, tabWindow);
-      }
-    }
-    
-    // Emit error event instead of success
+    // v1.6.3.5-v6 - Emit state:updated anyway - UICoordinator will handle rendering
     if (this.eventBus) {
-      this.eventBus.emit('state:restore-failed', {
-        id,
-        source,
-        reason: 'DOM verification failed'
-      });
+      const quickTabData = this._createQuickTabData(id, tabWindow, false);
+      quickTabData.source = source;
+      quickTabData.isRestoreOperation = true;
+      quickTabData.domVerified = false; // Signal that DOM wasn't verified yet
+      this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
     }
   }
 

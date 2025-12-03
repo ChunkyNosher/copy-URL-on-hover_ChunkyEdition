@@ -2,6 +2,7 @@
  * CreateHandler
  * Handles Quick Tab creation logic
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created event for UICoordinator
  *
  * Extracted from QuickTabsManager to reduce complexity
  * Lines 903-992 from original index.js
@@ -15,6 +16,7 @@ import { createQuickTabWindow } from '../window.js';
  * CreateHandler - Responsible for creating new Quick Tabs
  * v1.6.3 - Single-tab Quick Tabs (no storage persistence or cross-tab sync)
  * v1.6.3.2 - Added showDebugId setting support for Debug ID display
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created for UICoordinator Map
  *
  * Responsibilities:
  * - Generate ID if not provided
@@ -22,6 +24,7 @@ import { createQuickTabWindow } from '../window.js';
  * - Create QuickTabWindow instance
  * - Store in tabs Map
  * - Emit QUICK_TAB_CREATED event
+ * - Emit window:created event for UICoordinator registration
  * - Load debug settings from storage
  */
 export class CreateHandler {
@@ -210,6 +213,7 @@ export class CreateHandler {
    * Create and store new tab
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Capture originTabId for cross-tab filtering
+   * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created for UICoordinator Map
    * @private
    */
   _createNewTab(id, cookieStoreId, options) {
@@ -228,6 +232,10 @@ export class CreateHandler {
     this.quickTabsMap.set(id, tabWindow);
     
     this._emitCreationEvent(id, options.url);
+    
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created for UICoordinator
+    // This allows UICoordinator to register the window in its renderedTabs Map
+    this._emitWindowCreatedEvent(id, tabWindow);
 
     console.log('[CreateHandler] Quick Tab created successfully:', id);
 
@@ -337,5 +345,19 @@ export class CreateHandler {
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_CREATED, { id, url });
     }
+  }
+
+  /**
+   * Emit window:created event for UICoordinator registration
+   * v1.6.3.5-v6 - FIX Diagnostic Issue #4: UICoordinator Map never populated
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Created tab window instance
+   */
+  _emitWindowCreatedEvent(id, tabWindow) {
+    if (!this.eventBus) return;
+    
+    this.eventBus.emit('window:created', { id, tabWindow });
+    console.log('[CreateHandler] Emitted window:created for UICoordinator:', id);
   }
 }
