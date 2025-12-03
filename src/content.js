@@ -1983,25 +1983,25 @@ const ACTION_HANDLERS = {
 const QUICK_TAB_COMMAND_HANDLERS = {
   'MINIMIZE_QUICK_TAB': (quickTabId, source) => {
     const handler = quickTabsManager?.visibilityHandler?.handleMinimize;
-    if (!handler) return { success: false, error: 'handleMinimize not available' };
+    if (!handler) return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
     return { success: true, action: 'minimized' };
   },
   'RESTORE_QUICK_TAB': (quickTabId, source) => {
     const handler = quickTabsManager?.visibilityHandler?.handleRestore;
-    if (!handler) return { success: false, error: 'handleRestore not available' };
+    if (!handler) return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
     return { success: true, action: 'restored' };
   },
   'CLOSE_QUICK_TAB': (quickTabId, _source) => {
     const handler = quickTabsManager?.closeById;
-    if (!handler) return { success: false, error: 'closeById not available' };
+    if (!handler) return { success: false, error: 'Quick Tabs manager not initialized - closeById not available' };
     handler.call(quickTabsManager, quickTabId);
     return { success: true, action: 'closed' };
   },
   'FOCUS_QUICK_TAB': (quickTabId, source) => {
     const handler = quickTabsManager?.visibilityHandler?.handleFocus;
-    if (!handler) return { success: false, error: 'handleFocus not available' };
+    if (!handler) return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
     return { success: true, action: 'focused' };
   }

@@ -1742,6 +1742,17 @@ function _hasMatchingSaveIdAndTabCount(newValue, oldValue) {
 }
 
 /**
+ * Compute simple tab content hash for comparison
+ * v1.6.3.5-v3 - FIX Code Review: Verify actual tab contents, not just counts
+ * @private
+ */
+function _computeQuickTabContentKey(value) {
+  if (!value?.tabs || !Array.isArray(value.tabs)) return '';
+  // Create a deterministic key from tab IDs and minimized states
+  return value.tabs.map(t => `${t.id}:${t.minimized ? 1 : 0}`).sort().join(',');
+}
+
+/**
  * Check if this is a Firefox spurious storage.onChanged event (no actual data change)
  * v1.6.3.5-v3 - FIX Diagnostic Issue #8: Firefox fires onChanged even without data change
  * NOTE: We use multiple criteria to avoid false positives from saveId collisions
@@ -1756,12 +1767,21 @@ function _isSpuriousFirefoxEvent(newValue, oldValue) {
   // Check if saveIds and tab counts match - likely spurious
   if (!_hasMatchingSaveIdAndTabCount(newValue, oldValue)) return false;
   
+  // v1.6.3.5-v3 - FIX Code Review: Also verify tab contents actually match
+  const oldContentKey = _computeQuickTabContentKey(oldValue);
+  const newContentKey = _computeQuickTabContentKey(newValue);
+  if (oldContentKey !== newContentKey) {
+    // Content differs - this is NOT spurious despite matching saveId/count
+    console.log('[Background] Not spurious - tab content differs despite matching saveId/count');
+    return false;
+  }
+  
   // Extra validation: check if timestamp is also the same (very high confidence)
   const sameTimestamp = newValue.timestamp && oldValue.timestamp && newValue.timestamp === oldValue.timestamp;
   if (sameTimestamp) {
-    console.log('[Background] Spurious event detected (same saveId, tabCount, timestamp)');
+    console.log('[Background] Spurious event detected (same saveId, tabCount, timestamp, content)');
   } else {
-    console.log('[Background] Probable spurious event (same saveId, tabCount):', {
+    console.log('[Background] Probable spurious event (same saveId, tabCount, content):', {
       saveId: newValue.saveId,
       tabCount: newValue.tabs?.length ?? 0
     });
@@ -2312,6 +2332,17 @@ function handleManagerCommand(message) {
 }
 
 /**
+ * Valid Manager commands (allowlist for security)
+ * v1.6.3.5-v3 - FIX Code Review: Command validation
+ */
+const VALID_MANAGER_COMMANDS = new Set([
+  'MINIMIZE_QUICK_TAB',
+  'RESTORE_QUICK_TAB',
+  'CLOSE_QUICK_TAB',
+  'FOCUS_QUICK_TAB'
+]);
+
+/**
  * Execute Manager command by sending to target content script
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Route commands to correct tab
  * @param {string} command - Command to execute
@@ -2319,6 +2350,12 @@ function handleManagerCommand(message) {
  * @param {number} hostTabId - Tab ID hosting the Quick Tab
  */
 async function executeManagerCommand(command, quickTabId, hostTabId) {
+  // v1.6.3.5-v3 - FIX Code Review: Validate command against allowlist
+  if (!VALID_MANAGER_COMMANDS.has(command)) {
+    console.warn('[Background] Invalid command rejected:', { command, quickTabId });
+    return { success: false, error: `Unknown command: ${command}` };
+  }
+  
   const executeMessage = {
     type: 'EXECUTE_COMMAND',
     command,

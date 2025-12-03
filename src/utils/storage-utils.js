@@ -106,11 +106,15 @@ async function initWritingTabId() {
 
 /**
  * Fetch current tab from browser API
+ * v1.6.3.5-v3 - FIX Code Review: Added error handling
  * @private
  */
 function _fetchCurrentTab(browserAPI) {
   if (!browserAPI?.tabs?.getCurrent) return Promise.resolve(null);
-  return browserAPI.tabs.getCurrent();
+  return browserAPI.tabs.getCurrent().catch(err => {
+    console.warn('[StorageUtils] Failed to get current tab:', err.message);
+    return null;
+  });
 }
 
 /**
