@@ -8,18 +8,19 @@
  * v1.6.3.4-v5 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
  * v1.6.3.2 - FIX Issue #6: Add batch mode flag to prevent storage write storm during closeAll
  * v1.6.3.4 - FIX Issues #4, #6, #7: Add source tracking, consolidate all destroy logic
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #3: Add closeAll mutex to prevent duplicate executions
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
  * - Close Quick Tabs via closeById (calls tab.destroy())
- * - Close all Quick Tabs via closeAll
+ * - Close all Quick Tabs via closeAll (with mutex protection)
  * - Cleanup minimized manager references
  * - Reset z-index when all tabs closed
  * - Emit destruction events
  * - Persist state to storage after destruction (debounced to prevent write storms)
  * - Log all destroy operations with source indication
  *
- * @version 1.6.3.4
+ * @version 1.6.3.5-v6
  */
 
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
@@ -28,12 +29,16 @@ import { buildStateForStorage, persistStateToStorage } from '@utils/storage-util
 // v1.6.3.4-v5 - FIX Bug #8: Debounce delay for storage writes (ms)
 const STORAGE_DEBOUNCE_DELAY = 150;
 
+// v1.6.3.5-v6 - FIX Diagnostic Issue #3: Cooldown for closeAll mutex (ms)
+const CLOSE_ALL_COOLDOWN_MS = 2000;
+
 /**
  * DestroyHandler class
  * Manages Quick Tab destruction and cleanup operations (local only, no cross-tab sync)
  * v1.6.3.4 - Now persists state to storage after destruction
  * v1.6.3.4-v5 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
  * v1.6.3.2 - FIX Issue #6: Batch mode to prevent storage write storm during closeAll
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #3: closeAll mutex to prevent duplicate executions
  */
 export class DestroyHandler {
   /**
@@ -71,6 +76,10 @@ export class DestroyHandler {
     // _batchMode was true for the unrelated closeAll() operation.
     // Now each operation checks if its specific ID is in the batch Set.
     this._batchOperationIds = new Set();
+    
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #3: Mutex flag to prevent closeAll duplicate execution
+    this._closeAllInProgress = false;
+    this._closeAllCooldownTimer = null;
   }
 
   /**
@@ -263,6 +272,22 @@ export class DestroyHandler {
   }
 
   /**
+   * Schedule mutex release after cooldown
+   * v1.6.3.5-v6 - Extracted to improve readability (per code review)
+   * @private
+   */
+  _scheduleMutexRelease() {
+    if (this._closeAllCooldownTimer) {
+      clearTimeout(this._closeAllCooldownTimer);
+    }
+    this._closeAllCooldownTimer = setTimeout(() => {
+      this._closeAllInProgress = false;
+      this._closeAllCooldownTimer = null;
+      console.log(`[DestroyHandler] closeAll mutex released after ${CLOSE_ALL_COOLDOWN_MS}ms cooldown`);
+    }, CLOSE_ALL_COOLDOWN_MS);
+  }
+
+  /**
    * Close all Quick Tabs
    * v1.6.3.4 - FIX Bug #1: Persist to storage after close all
    * v1.6.3.4-v4 - FIX Issue #3: Emit state:cleared event for UICoordinator reconciliation
@@ -272,12 +297,27 @@ export class DestroyHandler {
    * v1.6.3.4-v10 - FIX Issue #6: Use Set of operation IDs instead of boolean flag
    *   The boolean was vulnerable to timer interleaving from earlier operations.
    *   Now each ID is tracked individually in _batchOperationIds Set.
+   * v1.6.3.5-v6 - FIX Diagnostic Issue #3: Add mutex to prevent duplicate executions
+   *   Problem: closeAll() was executing 2-3 times per button click
+   *   Fix: Add _closeAllInProgress flag with 2000ms cooldown
    * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
    * 
    * @param {string} source - Source of action ('UI', 'Manager', etc.)
    */
   closeAll(source = 'Manager') {
-    console.log(`[DestroyHandler] Closing all Quick Tabs (source: ${source})`);
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #3: Check mutex to prevent duplicate execution
+    if (this._closeAllInProgress) {
+      console.warn(`[DestroyHandler] closeAll BLOCKED (mutex held, source: ${source})`);
+      return;
+    }
+    
+    // v1.6.3.5-v6 - Acquire mutex
+    this._closeAllInProgress = true;
+    console.log(`[DestroyHandler] Closing all Quick Tabs (source: ${source}) - mutex acquired`);
+    
+    // v1.6.3.5-v6 - Schedule mutex release with cooldown (extracted per code review)
+    this._scheduleMutexRelease();
+    
     const count = this.quickTabsMap.size;
 
     // v1.6.3.4-v10 - FIX Issue #6: Add all IDs to batch Set BEFORE destroy loop

@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,14 +62,19 @@ const relevantMemories = await searchMemories({
 
 **CRITICAL:** Use `storage.local` for Quick Tab state AND UID setting
 
-**v1.6.3.5-v2 Fixes:**
-- **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
-- **Storage Debounce** - Reduced from 300ms to 50ms
+**v1.6.3.5-v6 Fixes:**
+- **Restore Trusts UICoordinator** - No DOM verification rollback
+- **closeAll Mutex** - `_closeAllInProgress` prevents duplicate execution
+- **CreateHandler→UICoordinator** - `window:created` event coordination
+- **Manager UI Logging** - Comprehensive state change logging
 
-**v1.6.3.5 Architecture:**
+**v1.6.3.5-v6 Architecture:**
 - **QuickTabStateMachine** - State tracking and validation
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
+- **DestroyHandler** - `_closeAllInProgress` mutex
+- **CreateHandler** - `_emitWindowCreatedEvent()` method
+- **UICoordinator** - `_registerCreatedWindow()` method
 
 ---
 

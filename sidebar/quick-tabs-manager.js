@@ -1,5 +1,6 @@
 // Quick Tabs Manager Sidebar Script
 // Manages display and interaction with Quick Tabs across all containers
+// v1.6.3.5-v6 - FIX Diagnostic Issue #5: Added comprehensive logging for UI state changes
 
 // Storage keys
 const STATE_KEY = 'quick_tabs_state_v2';
@@ -386,23 +387,45 @@ function _updateInMemoryCache(tabs) {
  * v1.6.3 - FIX: Changed from storage.sync to storage.local (storage location since v1.6.0.12)
  * v1.6.3.4-v6 - FIX Issue #1: Debounce reads to avoid mid-transaction reads
  * v1.6.3.5-v4 - FIX Diagnostic Issue #2: Use in-memory cache to protect against storage storms
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read operations
  * Refactored: Extracted helpers to reduce complexity and nesting depth
  */
 async function loadQuickTabsState() {
+  const loadStartTime = Date.now();
+  
   try {
     await checkStorageDebounce();
+    
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read start
+    console.log('[Manager] Reading Quick Tab state from storage...');
     
     const result = await browser.storage.local.get(STATE_KEY);
     const state = result?.[STATE_KEY];
 
     if (!state) {
       _handleEmptyStorageState();
+      console.log('[Manager] Storage read complete: empty state', {
+        source: 'storage.local',
+        durationMs: Date.now() - loadStartTime
+      });
       return;
     }
     
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read result
+    console.log('[Manager] Storage read result:', {
+      tabCount: state.tabs?.length ?? 0,
+      saveId: state.saveId,
+      timestamp: state.timestamp,
+      source: 'storage.local',
+      durationMs: Date.now() - loadStartTime
+    });
+    
     // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
     const newHash = computeStateHash(state);
-    if (newHash === lastRenderedStateHash) return;
+    if (newHash === lastRenderedStateHash) {
+      console.log('[Manager] Storage state unchanged (hash match), skipping update');
+      return;
+    }
     
     // v1.6.3.5-v4 - FIX Diagnostic Issue #2: Protect against storage storms
     if (_detectStorageStorm(state)) return;
@@ -485,6 +508,7 @@ function extractTabsFromState(state) {
 
 /**
  * Update UI stats (total tabs and last sync time)
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log last sync timestamp updates
  * @param {number} totalTabs - Number of Quick Tabs
  * @param {number} latestTimestamp - Timestamp of last sync
  */
@@ -493,9 +517,19 @@ function updateUIStats(totalTabs, latestTimestamp) {
 
   if (latestTimestamp > 0) {
     const date = new Date(latestTimestamp);
-    lastSyncEl.textContent = `Last sync: ${date.toLocaleTimeString()}`;
+    const timeStr = date.toLocaleTimeString();
+    lastSyncEl.textContent = `Last sync: ${timeStr}`;
+    
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log last sync update
+    console.log('[Manager] Last sync updated:', {
+      timestamp: latestTimestamp,
+      formatted: timeStr,
+      totalTabs,
+      reason: 'storage state timestamp'
+    });
   } else {
     lastSyncEl.textContent = 'Last sync: Never';
+    console.log('[Manager] Last sync: Never (no timestamp)');
   }
 }
 
@@ -538,6 +572,7 @@ function createGlobalSection(totalTabs) {
  * v1.6.3 - FIX: Updated to handle unified format (v1.6.2.2+) instead of container-based format
  * v1.6.3.4-v10 - FIX Issue #4: Check domVerified property for warning indicator
  * v1.6.3.5-v4 - FIX Diagnostic Issue #7: Add logging for UI state changes
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Comprehensive UI list change logging
  * 
  * Unified format:
  * { tabs: [...], saveId: '...', timestamp: ... }
@@ -549,6 +584,8 @@ function createGlobalSection(totalTabs) {
  * - domVerified (optional): false means restore failed to create visible window
  */
 function renderUI() {
+  const renderStartTime = Date.now();
+  
   // Extract tabs from state (handles both unified and legacy formats)
   const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
   const totalTabs = allTabs.length;
@@ -556,12 +593,22 @@ function renderUI() {
   // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Log UI rebuild with tab details
   const activeTabs = allTabs.filter(t => !isTabMinimizedHelper(t));
   const minimizedTabs = allTabs.filter(t => isTabMinimizedHelper(t));
-  console.log('[Manager] UI Rebuild:', {
+  
+  // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Comprehensive UI list logging
+  console.log('[Manager] UI Rebuild starting:', {
     totalTabs,
     activeCount: activeTabs.length,
     minimizedCount: minimizedTabs.length,
     cacheCount: inMemoryTabsCache.length,
-    tabIds: allTabs.map(t => ({ id: t.id, minimized: isTabMinimizedHelper(t) }))
+    lastRenderedHash: lastRenderedStateHash,
+    trigger: 'renderUI()',
+    timestamp: Date.now()
+  });
+  
+  // Log tab IDs for debugging
+  console.log('[Manager] UI List contents:', {
+    activeTabIds: activeTabs.map(t => ({ id: t.id, url: t.url?.substring(0, 50) })),
+    minimizedTabIds: minimizedTabs.map(t => ({ id: t.id, minimized: true }))
   });
 
   // Update stats
@@ -571,7 +618,7 @@ function renderUI() {
   if (totalTabs === 0) {
     containersList.style.display = 'none';
     emptyState.style.display = 'flex';
-    console.log('[Manager] UI showing empty state');
+    console.log('[Manager] UI showing empty state (0 tabs)');
     return;
   }
 
@@ -601,6 +648,15 @@ function renderUI() {
   
   // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Update rendered state hash
   lastRenderedStateHash = computeStateHash(quickTabsState);
+  
+  // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log render completion
+  const renderDuration = Date.now() - renderStartTime;
+  console.log('[Manager] UI Rebuild complete:', {
+    renderedActive: activeTabs.length,
+    renderedMinimized: minimizedTabs.length,
+    newHash: lastRenderedStateHash,
+    durationMs: renderDuration
+  });
 }
 
 /**
@@ -887,6 +943,7 @@ function setupEventListeners() {
 /**
  * Handle storage change event
  * v1.6.3.5-v2 - Extracted to reduce setupEventListeners complexity
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Added comprehensive logging
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
@@ -896,11 +953,32 @@ function _handleStorageChange(change) {
   const oldTabCount = oldValue?.tabs?.length ?? 0;
   const newTabCount = newValue?.tabs?.length ?? 0;
   
-  console.log('[Manager] Storage change detected:', {
+  // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Comprehensive storage.onChanged logging
+  console.log('[Manager] storage.onChanged received:', {
     oldTabCount,
     newTabCount,
-    transactionId: newValue?.transactionId
+    delta: newTabCount - oldTabCount,
+    saveId: newValue?.saveId,
+    transactionId: newValue?.transactionId,
+    writingInstanceId: newValue?.writingInstanceId,
+    timestamp: newValue?.timestamp,
+    processedAt: Date.now()
   });
+  
+  // Log tab IDs that changed
+  const oldIds = new Set((oldValue?.tabs || []).map(t => t.id));
+  const newIds = new Set((newValue?.tabs || []).map(t => t.id));
+  const addedIds = [...newIds].filter(id => !oldIds.has(id));
+  const removedIds = [...oldIds].filter(id => !newIds.has(id));
+  
+  if (addedIds.length > 0 || removedIds.length > 0) {
+    console.log('[Manager] storage.onChanged tab changes:', {
+      addedIds,
+      removedIds,
+      addedCount: addedIds.length,
+      removedCount: removedIds.length
+    });
+  }
   
   // Check for suspicious drop
   if (_isSuspiciousStorageDrop(oldTabCount, newTabCount, newValue)) {
