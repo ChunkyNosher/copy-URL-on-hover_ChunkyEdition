@@ -63,6 +63,9 @@ let quickTabsState = {}; // Maps cookieStoreId -> { tabs: [], timestamp }
 // Key: quickTabId, Value: { hostTabId, lastUpdate }
 const quickTabHostInfo = new Map();
 
+// v1.6.3.5-v7 - FIX Issue #7: Track when Manager's internal state was last updated (from any source)
+let lastLocalUpdateTime = 0;
+
 /**
  * Compute hash of state for deduplication
  * v1.6.3.4-v6 - FIX Issue #5: Prevent unnecessary re-renders
@@ -105,6 +108,7 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 /**
  * Handle state update message from background
  * v1.6.3.5-v3 - FIX Architecture Phase 1: Update local state from message
+ * v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime for accurate "Last sync"
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  */
@@ -134,6 +138,9 @@ function handleStateUpdateMessage(quickTabId, changes) {
   
   // Update timestamp
   quickTabsState.timestamp = Date.now();
+  
+  // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive state updates
+  lastLocalUpdateTime = Date.now();
 }
 
 /**
@@ -435,6 +442,10 @@ async function loadQuickTabsState() {
     
     quickTabsState = state;
     filterInvalidTabs(quickTabsState);
+    
+    // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
+    lastLocalUpdateTime = Date.now();
+    
     console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
   } catch (err) {
     console.error('[Manager] Error loading Quick Tabs state:', err);
@@ -509,23 +520,32 @@ function extractTabsFromState(state) {
 /**
  * Update UI stats (total tabs and last sync time)
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log last sync timestamp updates
+ * v1.6.3.5-v7 - FIX Issue #7: Use lastLocalUpdateTime for accurate "Last sync"
+ *   The timestamp now reflects when Manager's internal state was updated from ANY source
+ *   (storage read, message, or reconciliation), not just storage write timestamp.
  * @param {number} totalTabs - Number of Quick Tabs
- * @param {number} latestTimestamp - Timestamp of last sync
+ * @param {number} latestTimestamp - Timestamp of last sync (from storage, used as fallback)
  */
 function updateUIStats(totalTabs, latestTimestamp) {
   totalTabsEl.textContent = `${totalTabs} Quick Tab${totalTabs !== 1 ? 's' : ''}`;
 
-  if (latestTimestamp > 0) {
-    const date = new Date(latestTimestamp);
+  // v1.6.3.5-v7 - FIX Issue #7: Prefer lastLocalUpdateTime over storage timestamp
+  // This reflects when Manager actually received updates, not when storage was written
+  const effectiveTimestamp = lastLocalUpdateTime > 0 ? lastLocalUpdateTime : latestTimestamp;
+  
+  if (effectiveTimestamp > 0) {
+    const date = new Date(effectiveTimestamp);
     const timeStr = date.toLocaleTimeString();
     lastSyncEl.textContent = `Last sync: ${timeStr}`;
     
     // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log last sync update
     console.log('[Manager] Last sync updated:', {
-      timestamp: latestTimestamp,
+      timestamp: effectiveTimestamp,
       formatted: timeStr,
       totalTabs,
-      reason: 'storage state timestamp'
+      reason: lastLocalUpdateTime > 0 ? 'local state update' : 'storage state timestamp',
+      localUpdateTime: lastLocalUpdateTime,
+      storageTimestamp: latestTimestamp
     });
   } else {
     lastSyncEl.textContent = 'Last sync: Never';
@@ -1403,6 +1423,7 @@ async function _sendMessageToAllTabs(action, quickTabId) {
  *   Quick Tab may exist in a different browser tab than the active one.
  *   Cross-tab minimize was failing because message was only sent to active tab.
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
+ * v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging via quickTabHostInfo or originTabId
  */
 async function minimizeQuickTab(quickTabId) {
   // v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking
@@ -1420,9 +1441,37 @@ async function minimizeQuickTab(quickTabId) {
     PENDING_OPERATIONS.delete(operationKey);
   }, OPERATION_TIMEOUT_MS);
   
-  // v1.6.3.4-v11 - FIX Issue #4: Send to ALL tabs, not just active tab
-  const result = await _sendMessageToAllTabs('MINIMIZE_QUICK_TAB', quickTabId);
-  console.log(`[Manager] Minimized Quick Tab ${quickTabId} | success: ${result.success}, errors: ${result.errors}`);
+  // v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging
+  const tabData = _findTabInState(quickTabId);
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+  const originTabId = tabData?.originTabId;
+  const targetTabId = hostInfo?.hostTabId || originTabId;
+  
+  if (targetTabId) {
+    console.log('[Manager] Sending MINIMIZE_QUICK_TAB to specific host tab:', {
+      quickTabId,
+      targetTabId,
+      source: hostInfo ? 'quickTabHostInfo' : 'originTabId'
+    });
+    
+    try {
+      await browser.tabs.sendMessage(targetTabId, {
+        action: 'MINIMIZE_QUICK_TAB',
+        quickTabId
+      });
+      console.log(`[Manager] Minimized Quick Tab ${quickTabId} via targeted message to tab ${targetTabId}`);
+    } catch (err) {
+      console.warn(`[Manager] Targeted minimize failed (tab ${targetTabId} may be closed), falling back to broadcast:`, err.message);
+      // Fallback to broadcast if targeted message fails
+      const result = await _sendMessageToAllTabs('MINIMIZE_QUICK_TAB', quickTabId);
+      console.log(`[Manager] Minimized Quick Tab ${quickTabId} via broadcast | success: ${result.success}, errors: ${result.errors}`);
+    }
+  } else {
+    // No host info available - fall back to broadcast
+    console.log('[Manager] No host tab info found, using broadcast for minimize:', quickTabId);
+    const result = await _sendMessageToAllTabs('MINIMIZE_QUICK_TAB', quickTabId);
+    console.log(`[Manager] Minimized Quick Tab ${quickTabId} via broadcast | success: ${result.success}, errors: ${result.errors}`);
+  }
 }
 
 /**
@@ -1464,6 +1513,8 @@ function _showErrorNotification(message) {
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
  * v1.6.3.4-v9 - FIX Issue #15: Validate tab is actually minimized before restore
  * v1.6.3.5-v2 - FIX Report 2 Issue #8: DOM-verified handshake before UI update
+ * v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging via quickTabHostInfo or originTabId
+ *   Instead of broadcasting to ALL tabs, first try to send to the specific host tab
  */
 async function restoreQuickTab(quickTabId) {
   // v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking
@@ -1502,9 +1553,37 @@ async function restoreQuickTab(quickTabId) {
     PENDING_OPERATIONS.delete(operationKey);
   }, OPERATION_TIMEOUT_MS);
   
-  // v1.6.3.4-v11 - FIX Issue #4: Send to ALL tabs, not just active tab
-  const result = await _sendMessageToAllTabs('RESTORE_QUICK_TAB', quickTabId);
-  console.log(`[Manager] Restored Quick Tab ${quickTabId} | success: ${result.success}, errors: ${result.errors}`);
+  // v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging
+  // First check quickTabHostInfo for the host tab
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+  const originTabId = tabData.originTabId;
+  const targetTabId = hostInfo?.hostTabId || originTabId;
+  
+  if (targetTabId) {
+    console.log('[Manager] Sending RESTORE_QUICK_TAB to specific host tab:', {
+      quickTabId,
+      targetTabId,
+      source: hostInfo ? 'quickTabHostInfo' : 'originTabId'
+    });
+    
+    try {
+      await browser.tabs.sendMessage(targetTabId, {
+        action: 'RESTORE_QUICK_TAB',
+        quickTabId
+      });
+      console.log(`[Manager] Restored Quick Tab ${quickTabId} via targeted message to tab ${targetTabId}`);
+    } catch (err) {
+      console.warn(`[Manager] Targeted restore failed (tab ${targetTabId} may be closed), falling back to broadcast:`, err.message);
+      // Fallback to broadcast if targeted message fails
+      const result = await _sendMessageToAllTabs('RESTORE_QUICK_TAB', quickTabId);
+      console.log(`[Manager] Restored Quick Tab ${quickTabId} via broadcast | success: ${result.success}, errors: ${result.errors}`);
+    }
+  } else {
+    // No host info available - fall back to broadcast
+    console.log('[Manager] No host tab info found, using broadcast for restore:', quickTabId);
+    const result = await _sendMessageToAllTabs('RESTORE_QUICK_TAB', quickTabId);
+    console.log(`[Manager] Restored Quick Tab ${quickTabId} via broadcast | success: ${result.success}, errors: ${result.errors}`);
+  }
   
   // v1.6.3.5-v2 - FIX Report 2 Issue #8: Verify DOM was actually rendered
   // Wait a short time then check domVerified in storage

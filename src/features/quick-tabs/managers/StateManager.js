@@ -40,11 +40,16 @@ export class StateManager {
    * v1.6.3.5-v5 - FIX Issue #3: Route through persistStateToStorage instead of direct write
    *   This consolidates all persistence through one pipeline with consistent transaction
    *   tracking, validation, and queuing - preventing parallel persistence conflicts.
+   * v1.6.3.5-v7 - FIX Issue #5: Add comprehensive logging with timing, source, and state snapshot
    * 
    * Writes unified format (v1.6.2.2+):
    * { tabs: [...], saveId: '...', timestamp: ..., transactionId: ... }
+   * 
+   * @param {string} [source='unknown'] - Source of persist operation for logging
    */
-  async persistToStorage() {
+  async persistToStorage(source = 'unknown') {
+    const startTime = Date.now();
+    
     try {
       const tabs = this.getAll().map(qt => qt.serialize());
       const state = {
@@ -53,17 +58,51 @@ export class StateManager {
         saveId: generateSaveId()
       };
 
+      // v1.6.3.5-v7 - FIX Issue #5: Comprehensive logging before persist
+      console.log('[StateManager] persistToStorage() starting:', {
+        source,
+        tabCount: tabs.length,
+        saveId: state.saveId,
+        minimizedCount: tabs.filter(t => t.minimized).length,
+        activeCount: tabs.filter(t => !t.minimized).length,
+        tabIds: tabs.map(t => t.id).slice(0, 5), // First 5 IDs for debugging
+        timestamp: state.timestamp
+      });
+
       // v1.6.3.5-v5 - FIX Issue #3: Use centralized persistStateToStorage instead of direct write
       // This ensures all storage writes have transaction IDs, respect FIFO queue,
       // use hash deduplication, and validate ownership.
       const success = await persistStateToStorage(state, '[StateManager]');
+      
+      const duration = Date.now() - startTime;
+      
       if (success) {
-        console.log(`[StateManager] Persisted ${tabs.length} Quick Tabs to storage`);
+        console.log(`[StateManager] Persisted ${tabs.length} Quick Tabs to storage:`, {
+          source,
+          saveId: state.saveId,
+          durationMs: duration,
+          success: true
+        });
       } else {
-        console.warn('[StateManager] Storage persist returned false (may have been skipped/blocked)');
+        console.warn('[StateManager] Storage persist returned false:', {
+          source,
+          saveId: state.saveId,
+          durationMs: duration,
+          success: false,
+          reason: 'may have been skipped/blocked'
+        });
       }
+      
+      return success;
     } catch (err) {
-      console.error('[StateManager] Failed to persist to storage:', err);
+      const duration = Date.now() - startTime;
+      console.error('[StateManager] Failed to persist to storage:', {
+        source,
+        durationMs: duration,
+        error: err.message,
+        stack: err.stack
+      });
+      return false;
     }
   }
 
@@ -276,12 +315,15 @@ export class StateManager {
 
   /**
    * Update Quick Tab z-index
+   * v1.6.3.5-v7 - FIX Issue #8: Add storage persistence after z-index updates
    * @param {string} id - Quick Tab ID
    * @param {number} zIndex - New z-index
    */
   updateZIndex(id, zIndex) {
+    const startTime = Date.now();
     const quickTab = this.quickTabs.get(id);
     if (quickTab) {
+      const oldZIndex = quickTab.zIndex;
       quickTab.updateZIndex(zIndex);
       this.quickTabs.set(id, quickTab);
 
@@ -289,17 +331,39 @@ export class StateManager {
       if (zIndex > this.currentZIndex) {
         this.currentZIndex = zIndex;
       }
+      
+      // v1.6.3.5-v7 - FIX Issue #5: Comprehensive logging for state transitions
+      console.log('[StateManager] Z-index updated:', {
+        id,
+        oldZIndex,
+        newZIndex: zIndex,
+        currentHighest: this.currentZIndex,
+        durationMs: Date.now() - startTime
+      });
+      
+      // v1.6.3.5-v7 - FIX Issue #8: Persist to storage after z-index update
+      this.persistToStorage('z-index-update').catch(() => { /* errors logged in persistToStorage */ });
     }
   }
 
   /**
    * Bring Quick Tab to front
+   * v1.6.3.5-v7 - FIX Issue #5: Add comprehensive logging
    * @param {string} id - Quick Tab ID
    */
   bringToFront(id) {
+    const startTime = Date.now();
+    console.log('[StateManager] bringToFront() called:', { id, currentZIndex: this.currentZIndex });
+    
     const nextZIndex = this.getNextZIndex();
     this.updateZIndex(id, nextZIndex);
     this.eventBus?.emit('state:z-index-changed', { id, zIndex: nextZIndex });
+    
+    console.log('[StateManager] bringToFront() complete:', {
+      id,
+      newZIndex: nextZIndex,
+      durationMs: Date.now() - startTime
+    });
   }
 
   /**
