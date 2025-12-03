@@ -99,17 +99,16 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.5-v3)
+- [ ] Version numbers match current release (1.6.3.5-v5)
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Cross-tab sync uses storage.onChanged + Background-as-Coordinator
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.5-v3:** Self-Write Detection (isSelfWrite, writingTabId/writingInstanceId)
-- [ ] **v1.6.3.5-v3:** Background-as-Coordinator messages documented
-- [ ] **v1.6.3.5-v3:** Firefox Spurious Event Detection documented
-- [ ] **v1.6.3.5-v3:** Enhanced Timer Logging documented
+- [ ] **v1.6.3.5-v5:** Promise-Based Sequencing documented
+- [ ] **v1.6.3.5-v5:** Transaction Rollback in Restore documented
+- [ ] **v1.6.3.5-v5:** Deprecated methods documented (window.js, index.js)
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -117,7 +116,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.5-v3
+- **Current Version:** 1.6.3.5-v5
 - **Architecture Status:** DDD with Background-as-Coordinator ✅
 - **Cross-Tab Sync:** storage.onChanged + Background-as-Coordinator
 - **Key Features:**
@@ -127,14 +126,14 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload
 - **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp, writingTabId, writingInstanceId }`
-- **v1.6.3.5-v3 Features:**
-  - Self-Write Detection - `isSelfWrite()` with `writingTabId`/`writingInstanceId`
-  - Background-as-Coordinator - Manager commands via background.js
-  - Firefox Spurious Event Detection - `_isSpuriousFirefoxEvent()`
-  - Enhanced Timer Logging - STARTED/COMPLETED/FAILED
-- **v1.6.3.5-v3 Message Types:**
-  - QUICK_TAB_STATE_CHANGE, QUICK_TAB_STATE_UPDATED
-  - MANAGER_COMMAND, EXECUTE_COMMAND
+- **v1.6.3.5-v5 Features:**
+  - Promise-Based Sequencing - `_delay()` helper for deterministic ordering
+  - Transaction Rollback in Restore - `preRestoreState` snapshot, rollback on failure
+  - StateManager Storage Pipeline - Uses `persistStateToStorage`
+  - QuickTabWindow currentTabId - Passed via constructor
+- **v1.6.3.5-v5 Deprecated:**
+  - window.js: `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()`
+  - index.js: `updateQuickTabPosition()`, `updateQuickTabSize()`
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -193,13 +192,13 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.5-v3)
+- Version numbers (1.6.3.5-v5)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Background-as-Coordinator)
 - Sync mechanism (storage.onChanged + Background-as-Coordinator)
 - Storage format (unified tabs array with originTabId, writingTabId, writingInstanceId)
 - New architecture classes (StateMachine, Mediator, MapTransactionManager)
-- **v1.6.3.5-v3:** Self-Write Detection, Background-as-Coordinator messages
+- **v1.6.3.5-v5:** Promise-Based Sequencing, Transaction Rollback, Deprecated methods
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
 - MCP tool lists
@@ -228,7 +227,7 @@ cat manifest.json | grep version
 # Check for outdated terms
 grep -r "Pin to Page" .github/
 grep -r "BroadcastChannel" .github/
-grep -r "1.6.3.5-v2" .github/
+grep -r "1.6.3.5-v4" .github/
 ```
 
 **Use Agentic-Tools:**
@@ -289,24 +288,26 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.5-v3)
+## Current Extension State (v1.6.3.5-v5)
 
 ### Architecture
 - **Status:** Background-as-Coordinator ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### v1.6.3.5-v3 Features
-- **Self-Write Detection** - `isSelfWrite()` with `writingTabId`/`writingInstanceId`
-- **Background-as-Coordinator** - Manager commands routed through background.js
-- **Firefox Spurious Event Detection** - `_isSpuriousFirefoxEvent()`
-- **Enhanced Timer Logging** - STARTED/COMPLETED/FAILED
+### v1.6.3.5-v5 Features
+- **Promise-Based Sequencing** - `_delay()` helper for deterministic event→storage ordering
+- **Transaction Rollback in Restore** - `preRestoreState` snapshot, rollback on DOM verification failure
+- **StateManager Storage Pipeline** - Uses `persistStateToStorage` instead of direct storage.local.set
+- **QuickTabWindow currentTabId** - Passed via constructor, `_getCurrentTabId()` helper
 
-### v1.6.3.5-v3 Message Types
-- `QUICK_TAB_STATE_CHANGE` - Content script → Background
-- `QUICK_TAB_STATE_UPDATED` - Background → All contexts
-- `MANAGER_COMMAND` - Manager → Background
-- `EXECUTE_COMMAND` - Background → Content script
+### v1.6.3.5-v5 Deprecated
+- **window.js:** `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Bypass UpdateHandler
+- **index.js:** `updateQuickTabPosition()`, `updateQuickTabSize()` - Log deprecation warnings
+- **Removed:** `lastPositionUpdate`, `lastSizeUpdate` fields from QuickTabWindow
+
+### v1.6.3.5-v5 New Exports
+- `cleanupTransactionId()` in storage-utils.js - Event-driven transaction ID cleanup
 
 ### v1.6.3.5 Modules
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
@@ -324,9 +325,9 @@ await perplexity.research("documentation compression markdown");
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
-| `STORAGE_READ_DEBOUNCE_MS` | 50 | **v1.6.3.5-v2:** Fast UI updates |
+| `STORAGE_READ_DEBOUNCE_MS` | 50 | Fast UI updates |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `DOM_VERIFICATION_DELAY_MS` | 500 | **v1.6.3.5-v2:** DOM verify timing |
+| `DOM_VERIFICATION_DELAY_MS` | 500 | DOM verify timing |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
 | `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
 
@@ -353,11 +354,10 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.5-v2 or earlier | Update to 1.6.3.5-v3 |
+| v1.6.3.5-v4 or earlier | Update to 1.6.3.5-v5 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
-| 300ms debounce | Use 50ms (STORAGE_READ_DEBOUNCE_MS) |
 | Files >15KB | Apply compression |
 
 ---
@@ -378,13 +378,13 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.5-v3
+- [ ] Version numbers updated to 1.6.3.5-v5
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged + Background-as-Coordinator documented
-- [ ] **v1.6.3.5-v3:** Self-Write Detection documented
-- [ ] **v1.6.3.5-v3:** Background-as-Coordinator messages documented
-- [ ] **v1.6.3.5-v3:** Firefox Spurious Event Detection documented
+- [ ] **v1.6.3.5-v5:** Promise-Based Sequencing documented
+- [ ] **v1.6.3.5-v5:** Transaction Rollback documented
+- [ ] **v1.6.3.5-v5:** Deprecated methods documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠

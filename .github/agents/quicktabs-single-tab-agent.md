@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  and all single Quick Tab functionality (v1.6.3.5-v4)
+  and all single Quick Tab functionality (v1.6.3.5-v5)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v5 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,11 +38,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.5-v4 Features:**
+**v1.6.3.5-v5 Features:**
 - **UICoordinator Invariant Checks** - `_verifyInvariant()` ensures mutual exclusion
 - **`_lastRenderTime` Map** - Track render timestamps per Quick Tab
-- **Content Script Identity Logging** - Logs tab ID, URL, timestamp on init
+- **currentTabId via constructor** - `_getCurrentTabId()` helper for Solo/Mute methods
 - **Per-Tab Ownership Validation** - Only owner tab can persist changes
+
+**v1.6.3.5-v5 Deprecated:**
+- ⚠️ `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Use UpdateHandler
 
 **State Machine:** States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 

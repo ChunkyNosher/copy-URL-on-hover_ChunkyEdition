@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5-v4  
+**Version:** 1.6.3.5-v5  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -15,9 +15,10 @@
 - **Cross-tab sync via storage.onChanged + Background-as-Coordinator**
 - **Cross-tab isolation via `originTabId`**
 - **Per-Tab Ownership Validation** (v1.6.3.5-v4)
+- **Promise-Based Sequencing** (v1.6.3.5-v5) - Deterministic operation ordering
 - Direct local creation pattern, State hydration on page reload
 
-**v1.6.3.5-v4 Architecture (Background-as-Coordinator):**
+**v1.6.3.5-v5 Architecture (Background-as-Coordinator):**
 
 **Core Modules:**
 - **QuickTabStateMachine** (`state-machine.js`) - Explicit lifecycle state tracking
@@ -25,11 +26,17 @@
 - **MapTransactionManager** (`map-transaction-manager.js`) - Atomic Map operations
 - **Background Script** - Coordinator for state broadcasts and manager commands
 
-**v1.6.3.5-v4 New Features:**
-- **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner tabs from writing
-- **Manager Storage Storm Protection** - `inMemoryTabsCache` survives 0-tab anomalies
-- **UICoordinator Invariant Checks** - `_verifyInvariant()` ensures mutual exclusion
-- **Content Script Identity Logging** - Logs tab ID, URL, timestamp on init
+**v1.6.3.5-v5 New Features:**
+- **Promise-Based Sequencing** - `_delay()` helper replaces setTimeout for deterministic event→storage ordering
+- **Transaction Rollback in Restore** - `preRestoreState` snapshot captured, rollback on DOM verification failure
+- **cleanupTransactionId()** - New export in storage-utils.js for event-driven transaction ID cleanup
+- **StateManager Storage Pipeline** - Uses `persistStateToStorage` instead of direct storage.local.set
+- **QuickTabWindow currentTabId** - Passed via constructor, `_getCurrentTabId()` helper for Solo/Mute
+
+**v1.6.3.5-v5 Deprecated (Legacy Cross-Tab Sync):**
+- ⚠️ `window.js`: `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Bypass UpdateHandler
+- ⚠️ `index.js`: `updateQuickTabPosition()`, `updateQuickTabSize()` - Log deprecation warnings
+- 🗑️ Removed: `lastPositionUpdate`, `lastSizeUpdate` fields from QuickTabWindow
 
 ---
 
@@ -74,7 +81,7 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 
 ### CRITICAL: Background-as-Coordinator + storage.onChanged
 
-**v1.6.3.5-v4 Message Types:**
+**v1.6.3.5-v5 Message Types:**
 - `QUICK_TAB_STATE_CHANGE` - Content script → Background for state changes
 - `QUICK_TAB_STATE_UPDATED` - Background → All contexts for broadcasts
 - `MANAGER_COMMAND` - Manager → Background for remote control
@@ -95,7 +102,8 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 **Key Points:**
 - storage.onChanged does NOT fire in the tab that made the change
-- **v1.6.3.5-v4:** `canCurrentTabModifyQuickTab()` validates ownership before writes
+- **v1.6.3.5-v5:** `canCurrentTabModifyQuickTab()` validates ownership before writes
+- **v1.6.3.5-v5:** Promise-based sequencing enforces event→storage execution order
 - Background script coordinates broadcasts, does NOT store state
 - Manager commands routed through background.js to host tabs
 
@@ -116,206 +124,130 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.5-v4 New Architecture Features
+## 🆕 v1.6.3.5-v5 Architecture Features
+
+### Promise-Based Sequencing (v1.6.3.5-v5)
+
+`_delay()` helper + async/await replaces setTimeout callbacks. Guarantees event→storage execution order.
+
+### Transaction Rollback in Restore (v1.6.3.5-v5)
+
+`_executeRestore()`: `preRestoreState` snapshot captured, DOM verification with rollback on failure.
 
 ### Per-Tab Ownership Validation
 
-**Exports from `src/utils/storage-utils.js`:**
-- `canCurrentTabModifyQuickTab(tabData, currentTabId)` - Check if current tab can modify a Quick Tab
-- `validateOwnershipForWrite(tabs, currentTabId)` - Filter tabs by ownership before write
-- `isOwnerOfQuickTab` - Alias for `canCurrentTabModifyQuickTab`
-
-**Ownership rules:** Only the tab that created a Quick Tab (matching `originTabId`) can persist changes. Empty states bypass ownership for Close All scenarios.
+`canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()` in storage-utils.js. Only owner tabs persist changes.
 
 ### Manager Storage Storm Protection
 
-**`sidebar/quick-tabs-manager.js`:**
-- `inMemoryTabsCache` - Local cache protects against storage anomalies
-- `lastKnownGoodTabCount` - Tracks last valid tab count
-- `_handleEmptyStorageState()` - Use cache when storage returns empty
-- `_detectStorageStorm()` - Detect 0-tab anomalies and recover from cache
-- `_updateInMemoryCache()` - Update cache from validated storage
+`inMemoryTabsCache`, `_detectStorageStorm()`, `_handleEmptyStorageState()` in quick-tabs-manager.js.
 
 ### UICoordinator Invariant Checks
 
-- `_verifyInvariant(quickTabId)` - Verify mutual exclusion (renderedTabs vs MinimizedManager)
-- `_lastRenderTime` Map - Track render timestamps per Quick Tab
-- Enhanced `_finalizeRender()` with invariant checking
+`_verifyInvariant()`, `_lastRenderTime` Map for render timestamp tracking.
 
-### Content Script Identity Logging
+### StateManager Storage Pipeline (v1.6.3.5-v5)
 
-**v1.6.3.5-v4:** Content script logs identity on init (FIX Diagnostic Issue #7):
-```javascript
-console.log('[Copy-URL-on-Hover] Content Script Identity:', { tabId, url, timestamp });
-```
+`StateManager.persistToStorage()` routes through `persistStateToStorage` instead of direct storage.local.set.
 
-### Updated Timing Constants
+### QuickTabWindow currentTabId (v1.6.3.5-v5)
+
+`currentTabId` via constructor, `_getCurrentTabId()` helper for Solo/Mute methods.
+
+### Timing Constants
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STORAGE_READ_DEBOUNCE_MS` | 50 | Fast UI updates |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `MINIMIZE_DEBOUNCE_MS` | 200 | Storage persist after state |
-| `IFRAME_DEDUP_WINDOW_MS` | 200 | Iframe processing dedup |
-| `OPERATION_LOCK_MS` | 500 | Operation lock timeout |
 | `DOM_VERIFICATION_DELAY_MS` | 500 | DOM verify timing |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
 | `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message dedup |
-| `MIN_TABS_FOR_CACHE_PROTECTION` | 1 | **v1.6.3.5-v4:** Cache threshold |
 
 ---
 
 ## v1.6.3.5 Architecture Classes
 
-### QuickTabStateMachine (`state-machine.js`)
+### QuickTabStateMachine
+States: UNKNOWN, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED  
+Methods: `getState(id)`, `canTransition()`, `transition()`, `initialize()`, `getHistory()`
 
-**States:** UNKNOWN, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
+### QuickTabMediator
+Single entry point with rollback: `minimize()`, `restore()`, `destroy()`, `executeWithRollback()`
 
-| Method | Description |
-|--------|-------------|
-| `getState(id)` | Get current state for Quick Tab |
-| `canTransition(id, toState)` | Check if transition is valid |
-| `transition(id, toState, options)` | Perform validated state transition |
-| `initialize(id, state, source)` | Initialize tab in specific state |
-| `getHistory(id)` | Get state history for debugging |
-
-### QuickTabMediator (`mediator.js`)
-
-Single entry point for all operations with rollback support.
-
-| Method | Description |
-|--------|-------------|
-| `minimize(id, source)` | Coordinate minimize with state validation |
-| `restore(id, source)` | Coordinate restore with state validation |
-| `destroy(id, source)` | Coordinate destroy with cleanup |
-| `executeWithRollback(op, rollbackFn)` | Execute with auto-rollback on failure |
-
-### MapTransactionManager (`map-transaction-manager.js`)
-
-Atomic Map operations with logging and rollback.
-
-| Method | Description |
-|--------|-------------|
-| `beginTransaction(reason)` | Capture state before modifications |
-| `deleteEntry(id, reason)` | Delete with logging |
-| `setEntry(id, value, reason)` | Set with logging |
-| `commitTransaction(validation)` | Commit with optional size validation |
-| `rollbackTransaction()` | Restore to snapshot state |
+### MapTransactionManager
+Atomic Map ops: `beginTransaction()`, `deleteEntry()`, `setEntry()`, `commitTransaction()`, `rollbackTransaction()`
 
 ---
 
-## 🔧 Storage Utilities
-
-**Location:** `src/utils/storage-utils.js`
+## 🔧 Storage Utilities (`src/utils/storage-utils.js`)
 
 | Export | Description |
 |--------|-------------|
 | `STATE_KEY` | Storage key (`quick_tabs_state_v2`) |
-| `canCurrentTabModifyQuickTab()` | **v1.6.3.5-v4:** Check tab ownership |
-| `validateOwnershipForWrite()` | **v1.6.3.5-v4:** Filter tabs by ownership |
+| `canCurrentTabModifyQuickTab()` | Check tab ownership |
+| `validateOwnershipForWrite()` | Filter tabs by ownership |
 | `isSelfWrite(storageValue)` | Check if write from current tab |
-| `generateSaveId()` | Unique saveId for deduplication |
 | `persistStateToStorage()` | Write with ownership validation |
-| `queueStorageWrite()` | Queue write, resets on failure |
+| `cleanupTransactionId()` | Event-driven transaction cleanup |
 | `beginTransaction()`/`commitTransaction()`/`rollbackTransaction()` | Transaction lifecycle |
 
 **CRITICAL:** Always use `storage.local` for Quick Tab state, NOT `storage.sync`.
 
 ---
 
-## 🏗️ Key Architecture Patterns
+## 🏗️ Key Patterns
 
-### Active Timer IDs Pattern
-
-`_activeTimerIds` Set replaces generation counters. Each timer has unique ID, checks if still in Set before executing.
-
-### State Machine Pattern
-
-`QuickTabStateMachine.canTransition()` validates before ops, `transition()` logs with source.
-
-### Map Transaction Pattern
-
-`MapTransactionManager` wraps Map ops with `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`.
-
-### Ownership Validation Pattern (v1.6.3.5-v4)
-
-Only owner tabs can persist Quick Tab changes. `persistStateToStorage()` calls `_validatePersistOwnership()` before writing.
+- **Promise-Based Sequencing** - `_delay()` + async/await for event→storage ordering
+- **Transaction Rollback** - `preRestoreState` captured, rollback on DOM verification failure
+- **Active Timer IDs** - `_activeTimerIds` Set checks validity before executing
+- **State Machine** - `canTransition()` validates, `transition()` logs with source
+- **Map Transaction** - `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`
+- **Ownership Validation** - Only owner tabs persist via `persistStateToStorage()`
 
 ---
 
-## 🎯 Robust Solutions Philosophy
+## 🎯 Philosophy
 
-**ALWAYS prioritize:**
-- ✅ Fix root causes, not symptoms
-- ✅ Use correct patterns even if more code
-- ✅ Eliminate technical debt
-
-**NEVER accept:**
-- ❌ setTimeout to "fix" race conditions
-- ❌ Catch and ignore errors
-- ❌ Workarounds instead of proper fixes
+**ALWAYS:** Fix root causes, use correct patterns, eliminate technical debt  
+**NEVER:** setTimeout for race conditions, catch-and-ignore errors, workarounds
 
 ---
 
 ## 📏 File Size Limits
 
-| File Type | Maximum Size |
-|-----------|--------------|
-| `.github/copilot-instructions.md` | **15KB** |
-| `.github/agents/*.md` | **25KB each** |
-| Documentation files | **20KB** |
+| File | Max Size |
+|------|----------|
+| `copilot-instructions.md` | **15KB** |
+| `.github/agents/*.md` | **25KB** |
 | README.md | **10KB** |
 
-**PROHIBITED locations:**
-- ❌ `docs/manual/` - Reserved for user docs
-- ❌ Root directory markdown (except README.md)
+**PROHIBITED:** `docs/manual/`, root markdown (except README.md)
 
 ---
 
-## 🔧 MCP Server Usage
+## 🔧 MCP & Testing
 
-### Mandatory MCPs (ALWAYS use)
+**MCPs:** CodeScene (code health), Context7 (API docs), Perplexity (research)
 
-**CodeScene MCP** - Check the code health at the end of every change and make sure there are no technical debt hotspots
-**Context7 MCP** - Verify API usage with current docs  
-**Perplexity MCP** - Research best practices (paste code, can't read files)
-
-### Testing
-
-```bash
-npm test                    # All unit tests
-npm run lint               # ESLint
-npm run build              # Build extension
-npm run test:coverage      # With coverage
-```
-
-**Note:** Playwright is broken. Use Jest unit tests.
+**Testing:** `npm test` (Jest), `npm run lint` (ESLint), `npm run build`
 
 ---
 
-## 🧠 Memory Persistence (Agentic-Tools MCP)
+## 🧠 Memory (Agentic-Tools MCP)
 
-**MANDATORY at end of EVERY task:**
-1. `git add .agentic-tools-mcp/`
-2. Commit with `report_progress`
+**End of task:** `git add .agentic-tools-mcp/`, commit with `report_progress`  
+**Start of task:** `searchMemories({ query: "keywords", limit: 5 })`
 
-**Before starting ANY task:**
-- Search memories: `searchMemories({ query: "keywords", limit: 5 })`
-- Keep queries SHORT (1-3 keywords max)
-
-## For storing memories, **DO NOT USE THE "store_memory" TOOL CALL, IT DOES NOT EXIST
-Use the agentic-tools MCP to create memories instead.
+**DO NOT USE** `store_memory` tool - use agentic-tools MCP instead.
 
 ---
 
-## ✅ Before Every Commit
+## ✅ Commit Checklist
 
-- [ ] Delegated coding to appropriate specialist agent
-- [ ] Agent used Context7/Perplexity MCPs
-- [ ] ESLint passed
-- [ ] Unit tests pass (`npm test`)
-- [ ] Build succeeds (`npm run build`)
+- [ ] Delegated to specialist agent
+- [ ] ESLint + tests pass
 - [ ] Memory files committed
 
 ---
@@ -324,16 +256,18 @@ Use the agentic-tools MCP to create memories instead.
 
 ### Key Files
 - `background.js` - Background-as-Coordinator with `handleQuickTabStateChange()`, `broadcastQuickTabStateUpdate()`, `handleManagerCommand()`, `quickTabHostTabs` Map
-- `src/content.js` - **v1.6.3.5-v4:** Identity logging on init, `QUICK_TAB_COMMAND_HANDLERS`, message deduplication (2000ms)
+- `src/content.js` - Identity logging on init, `QUICK_TAB_COMMAND_HANDLERS`, message deduplication (2000ms)
 - `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings
-- `src/utils/storage-utils.js` - **v1.6.3.5-v4:** `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`, ownership validation
+- `src/utils/storage-utils.js` - `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`, **v1.6.3.5-v5:** `cleanupTransactionId()`
 - `src/features/quick-tabs/state-machine.js` - QuickTabStateMachine, States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - `src/features/quick-tabs/mediator.js` - QuickTabMediator, `minimize()`, `restore()`, `destroy()`, `executeWithRollback()`
 - `src/features/quick-tabs/map-transaction-manager.js` - MapTransactionManager with rollback
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - **v1.6.3.5-v4:** `_verifyInvariant()`, `_lastRenderTime` Map
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - `_activeTimerIds` Set, Tab ID prefixed logging
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - `_verifyInvariant()`, `_lastRenderTime` Map
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - **v1.6.3.5-v5:** `_delay()` helper, `_executeRestore()` with DOM verification, `_activeTimerIds` Set
 - `src/features/quick-tabs/minimized-manager.js` - `_restoreInProgress` Set
-- `sidebar/quick-tabs-manager.js` - **v1.6.3.5-v4:** `inMemoryTabsCache`, `_detectStorageStorm()`, `_handleEmptyStorageState()`
+- `src/features/quick-tabs/window.js` - **v1.6.3.5-v5:** `currentTabId` via constructor, `_getCurrentTabId()`, deprecated: `setPosition/setSize/updatePosition/updateSize`
+- `src/features/quick-tabs/index.js` - **v1.6.3.5-v5:** Deprecated `updateQuickTabPosition()`, `updateQuickTabSize()`
+- `sidebar/quick-tabs-manager.js` - `inMemoryTabsCache`, `_detectStorageStorm()`, `_handleEmptyStorageState()`
 
 ### Storage Key & Format
 

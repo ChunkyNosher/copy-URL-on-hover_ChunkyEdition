@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
-  real-time state updates (v1.6.3.5-v4)
+  real-time state updates (v1.6.3.5-v5)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v5 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -36,7 +36,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 
-**v1.6.3.5-v4 Storage Storm Protection:**
+**Storage Storm Protection:**
 - **`inMemoryTabsCache`** - Local cache protects against 0-tab anomalies
 - **`lastKnownGoodTabCount`** - Tracks last valid tab count
 - **`_handleEmptyStorageState()`** - Use cache when storage returns empty
