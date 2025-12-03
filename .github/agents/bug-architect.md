@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v3 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -61,15 +61,15 @@ const relevantMemories = await searchMemories({
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- Cross-tab sync via storage.onChanged
-- **v1.6.3.5-v2:** `originTabId` for cross-tab filtering
+- **v1.6.3.5-v3:** Background-as-Coordinator with Self-Write Detection
+- Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v2 Fixes:**
-- **Cross-Tab Filtering** - `originTabId` prevents Quick Tabs appearing on wrong tabs
-- **Storage Debounce** - Reduced from 300ms to 50ms
-- **DOM Verification** - Restore operations verify DOM presence
-- **Tab ID Logging** - All logs include `[Tab ID]` prefix
+**v1.6.3.5-v3 Features:**
+- **Self-Write Detection** - `isSelfWrite()` with `writingTabId`/`writingInstanceId`
+- **Background-as-Coordinator** - Manager commands routed through background.js
+- **Firefox Spurious Event Detection** - `_isSpuriousFirefoxEvent()`
+- **Enhanced Timer Logging** - STARTED/COMPLETED/FAILED
 
 **v1.6.3.5 Architecture:**
 - **QuickTabStateMachine** - Explicit lifecycle state tracking

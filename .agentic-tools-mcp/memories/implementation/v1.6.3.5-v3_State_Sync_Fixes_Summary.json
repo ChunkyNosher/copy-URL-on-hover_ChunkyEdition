@@ -1,0 +1,8 @@
+{
+  "id": "26949a1a-0c58-461f-98da-203d9ec5e807",
+  "title": "v1.6.3.5-v3 State Sync Fixes Summary",
+  "details": "## v1.6.3.5-v3 Implementation Summary\n\n### Self-Write Detection (Issue 1 Fix)\n- `src/utils/storage-utils.js` exports: `WRITING_INSTANCE_ID`, `getWritingTabId()`, `getWritingInstanceId()`, `isSelfWrite()`\n- Storage writes include `writingTabId` and `writingInstanceId` fields\n\n### Background-as-Coordinator Architecture\n- Message types: QUICK_TAB_STATE_CHANGE, QUICK_TAB_STATE_UPDATED, MANAGER_COMMAND, EXECUTE_COMMAND\n- background.js functions: handleQuickTabStateChange(), broadcastQuickTabStateUpdate(), handleManagerCommand(), executeManagerCommand()\n- quickTabHostTabs Map tracks Quick Tab host tabs\n\n### Security\n- VALID_MANAGER_COMMANDS Set validates commands in executeManagerCommand()\n- Tab content comparison in spurious event detection via _computeQuickTabContentKey()\n\n### Key Constants\n- RECENT_WRITE_EXPIRY_MS = 500\n- VALID_MANAGER_COMMANDS = ['MINIMIZE_QUICK_TAB', 'RESTORE_QUICK_TAB', 'CLOSE_QUICK_TAB', 'FOCUS_QUICK_TAB']",
+  "category": "implementation",
+  "dateCreated": "2025-12-03T02:10:50.436Z",
+  "dateUpdated": "2025-12-03T02:10:50.436Z"
+}

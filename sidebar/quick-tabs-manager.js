@@ -51,6 +51,10 @@ let lastSyncEl;
 let containersData = {}; // Maps cookieStoreId -> container info
 let quickTabsState = {}; // Maps cookieStoreId -> { tabs: [], timestamp }
 
+// v1.6.3.5-v3 - FIX Architecture Phase 3: Track which tab hosts each Quick Tab
+// Key: quickTabId, Value: { hostTabId, lastUpdate }
+const quickTabHostInfo = new Map();
+
 /**
  * Compute hash of state for deduplication
  * v1.6.3.4-v6 - FIX Issue #5: Prevent unnecessary re-renders
@@ -66,6 +70,89 @@ function computeStateHash(state) {
     hash = hash & hash;
   }
   return hash;
+}
+
+// v1.6.3.5-v3 - FIX Architecture Phase 1: Listen for state updates from background
+browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'QUICK_TAB_STATE_UPDATED') {
+    console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
+      quickTabId: message.quickTabId,
+      changes: message.changes,
+      source: message.originalSource
+    });
+    
+    // Update local state cache
+    if (message.quickTabId && message.changes) {
+      handleStateUpdateMessage(message.quickTabId, message.changes);
+    }
+    
+    // Re-render UI
+    renderUI();
+    sendResponse({ received: true });
+    return true;
+  }
+  return false;
+});
+
+/**
+ * Handle state update message from background
+ * v1.6.3.5-v3 - FIX Architecture Phase 1: Update local state from message
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes
+ */
+function handleStateUpdateMessage(quickTabId, changes) {
+  if (!quickTabsState.tabs) {
+    quickTabsState = { tabs: [] };
+  }
+  
+  const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
+  if (existingIndex >= 0) {
+    // Update existing tab
+    Object.assign(quickTabsState.tabs[existingIndex], changes);
+    console.log('[Manager] Updated tab from message:', quickTabId);
+  } else if (changes.url) {
+    // Add new tab
+    quickTabsState.tabs.push({ id: quickTabId, ...changes });
+    console.log('[Manager] Added new tab from message:', quickTabId);
+  }
+  
+  // Track host tab info if provided
+  if (changes.originTabId) {
+    quickTabHostInfo.set(quickTabId, {
+      hostTabId: changes.originTabId,
+      lastUpdate: Date.now()
+    });
+  }
+  
+  // Update timestamp
+  quickTabsState.timestamp = Date.now();
+}
+
+/**
+ * Send MANAGER_COMMAND to background for remote Quick Tab control
+ * v1.6.3.5-v3 - FIX Architecture Phase 3: Manager can control Quick Tabs in any tab
+ * NOTE: Currently unused - will be used when full message-based control is enabled
+ * @param {string} command - Command to execute (MINIMIZE_QUICK_TAB, RESTORE_QUICK_TAB, etc.)
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {Promise<Object>} Response from background
+ */
+async function _sendManagerCommand(command, quickTabId) {
+  console.log('[Manager] Sending MANAGER_COMMAND:', { command, quickTabId });
+  
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: 'MANAGER_COMMAND',
+      command,
+      quickTabId,
+      sourceContext: 'sidebar'
+    });
+    
+    console.log('[Manager] Command response:', response);
+    return response;
+  } catch (err) {
+    console.error('[Manager] Failed to send command:', { command, quickTabId, error: err.message });
+    return { success: false, error: err.message };
+  }
 }
 
 // Initialize
@@ -104,6 +191,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadQuickTabsState();
     renderUI();
   }, 2000);
+  
+  console.log('[Manager] v1.6.3.5-v3 Message infrastructure initialized');
 });
 
 /**
