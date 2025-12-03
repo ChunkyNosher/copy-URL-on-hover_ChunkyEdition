@@ -1,0 +1,8 @@
+{
+  "id": "612c9c27-09c9-4ad8-857e-cea7babbc2cb",
+  "title": "Quick Tab per-tab ownership v1.6.3.5-v4",
+  "details": "In v1.6.3.5-v4, Quick Tabs now enforce per-tab ownership for state persistence:\n\n1. **canCurrentTabModifyQuickTab(originTabId)** - Check if current tab can modify a Quick Tab\n2. **validateOwnershipForWrite(tabs, currentTabId)** - Filter tabs by ownership before write\n3. **_validatePersistOwnership()** - Helper integrated into persistStateToStorage()\n\nKey Pattern:\n- Only the tab that created a Quick Tab (matches `originTabId`) can persist changes to it\n- Empty states (tabs.length === 0) bypass ownership validation for \"Close All\" scenarios\n- This prevents cross-tab storage storms where non-owner tabs write stale 0-tab state\n\nManager also uses in-memory cache (`inMemoryTabsCache`) to survive storage storms.\n\nUICoordinator has invariant checks: Tab cannot be in both renderedTabs AND MinimizedManager simultaneously.",
+  "category": "architecture",
+  "dateCreated": "2025-12-03T04:58:51.017Z",
+  "dateUpdated": "2025-12-03T04:58:51.017Z"
+}
