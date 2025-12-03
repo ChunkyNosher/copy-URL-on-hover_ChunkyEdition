@@ -15,17 +15,29 @@
  *   - Issue #6: Source parameter for all operations
  * v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag for entity-instance state desync
  * v1.6.3.4-v6 - FIX Issue #6: Ensure sync point after restore before persist
+ * v1.6.3.5-v5 - FIX Quick Tab Restore Diagnostic Issues:
+ *   - Issue #1: DOM state verification after restore with rollback on failure
+ *   - Issue #2: Promise-based sequencing replaces timer-based coordination
+ *   - Issue #3: Promise chaining enforces event->storage execution order
+ *   - Issue #4: Try/catch in all timer callbacks with context markers
+ *   - Issue #6: Transaction pattern with rollback capability
+ *
+ * Architecture (Single-Tab Model v1.6.3+):
+ * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
+ * - Storage used for persistence and hydration, not for cross-tab sync
+ * - Mutex/lock pattern prevents duplicate operations from multiple sources
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
  * - Handle mute toggle (hide on specific tabs)
- * - Handle minimize operation
+ * - Handle minimize operation with DOM cleanup
+ * - Handle restore operation with DOM verification and rollback
  * - Handle focus operation (bring to front)
  * - Update button appearances
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.4.12
+ * @version 1.6.3.5-v5
  */
 
 import { buildStateForStorage, persistStateToStorage, validateStateForPersist, STATE_KEY, getBrowserStorageAPI } from '@utils/storage-utils.js';
@@ -48,15 +60,20 @@ const STATE_EMIT_DELAY_MS = 100;
 // to not interfere with subsequent legitimate operations
 const CALLBACK_SUPPRESSION_DELAY_MS = 50;
 
+// v1.6.3.5-v5 - FIX Issue #1: Delay before verifying DOM state after restore
+// 100ms gives browser time to render DOM before verification
+const DOM_VERIFICATION_DELAY_MS = 100;
+
 /**
  * VisibilityHandler class
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
- * v1.6.3 - Local only (no cross-tab sync or storage persistence)
+ * v1.6.3 - Single-tab only (storage used for persistence, not cross-tab sync)
  * v1.6.3.4 - Now persists state to storage after minimize/restore
  * v1.6.3.4-v2 - Proper async handling with validation and timeout for storage
  * v1.6.3.4-v6 - Debouncing to prevent event storms and ensure atomic storage writes
  * v1.6.3.2 - Mutex/lock pattern to prevent duplicate operations from multiple sources
  * v1.6.3.5-v2 - FIX Report 1 Issue #7: Enhanced logging with Tab ID prefix
+ * v1.6.3.5-v5 - FIX Diagnostic Issues #1, #2, #3, #4, #6: Promise-based coordination
  */
 export class VisibilityHandler {
   /**
@@ -559,6 +576,7 @@ export class VisibilityHandler {
    * Execute restore operation (extracted to reduce handleRestore complexity)
    * v1.6.3.4-v7 - Helper for try/finally pattern in handleRestore
    * v1.6.3.4-v9 - FIX Issue #20: Add validation before proceeding
+   * v1.6.3.5-v5 - FIX Issues #1, #6: DOM verification and transaction pattern with rollback
    * Refactored: Extracted helpers to reduce complexity
    * @private
    */
@@ -575,6 +593,12 @@ export class VisibilityHandler {
     
     // v1.6.3.4-v6 - FIX Issue #2: Mark as pending to prevent duplicate operations
     this._pendingRestore.add(id);
+
+    // v1.6.3.5-v5 - FIX Issue #6: Capture pre-restore state for rollback
+    const preRestoreState = tabWindow ? {
+      minimized: tabWindow.minimized,
+      rendered: tabWindow.rendered
+    } : null;
 
     // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = false FIRST
     if (tabWindow) {
@@ -595,16 +619,142 @@ export class VisibilityHandler {
     // Perform restore on tabWindow
     this._performTabWindowRestore(tabWindow, id, source);
 
+    // v1.6.3.5-v5 - FIX Issue #1: Verify DOM state after restore
+    // Use promise-based verification instead of fire-and-forget
+    this._verifyRestoreAndEmit(id, tabWindow, source, preRestoreState);
+
     // Emit restore event for legacy handlers
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id, source });
     }
-
-    // Fire-and-forget: Event emission runs async but doesn't block return
-    void this._emitRestoreStateUpdate(id, tabWindow, source);
-    this._debouncedPersist(id, 'restore', source);
     
     return { success: true };
+  }
+
+  /**
+   * Verify DOM state after restore and emit events
+   * v1.6.3.5-v5 - FIX Issues #1, #2, #3: Promise-based DOM verification with rollback
+   * Refactored: Extracted _handleDOMVerificationFailure to reduce complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Tab window instance
+   * @param {string} source - Source of action
+   * @param {Object|null} preRestoreState - Pre-restore state for rollback
+   */
+  async _verifyRestoreAndEmit(id, tabWindow, source, preRestoreState) {
+    try {
+      // v1.6.3.5-v5 - FIX Issue #2: Use promise-based delay instead of setTimeout
+      await this._delay(DOM_VERIFICATION_DELAY_MS);
+      
+      // v1.6.3.5-v5 - FIX Issue #1: Verify DOM state
+      const isDOMRendered = this._isDOMRendered(tabWindow);
+      
+      if (!isDOMRendered && tabWindow) {
+        this._handleDOMVerificationFailure(id, tabWindow, source, preRestoreState);
+        return;
+      }
+      
+      console.log(`[VisibilityHandler] DOM verification PASSED (source: ${source}) for:`, id);
+      
+      // v1.6.3.5-v5 - FIX Issue #3: Synchronous event emission followed by persist
+      this._emitRestoreStateUpdateSync(id, tabWindow, source);
+      
+      // v1.6.3.5-v5 - FIX Issue #3: Persist after event emission completes
+      this._debouncedPersist(id, 'restore', source);
+      
+    } catch (err) {
+      // v1.6.3.5-v5 - FIX Issue #4: Try/catch with context markers
+      console.error(`[VisibilityHandler] Error in _verifyRestoreAndEmit (source: ${source}):`, {
+        id,
+        error: err.message,
+        stack: err.stack
+      });
+    }
+  }
+
+  /**
+   * Handle DOM verification failure by rolling back entity state
+   * v1.6.3.5-v5 - Extracted to reduce _verifyRestoreAndEmit complexity
+   * @private
+   */
+  _handleDOMVerificationFailure(id, tabWindow, source, preRestoreState) {
+    console.error(`[VisibilityHandler] DOM verification FAILED (source: ${source}) for:`, id);
+    
+    // v1.6.3.5-v5 - FIX Issue #6: Rollback entity state
+    if (preRestoreState) {
+      console.log(`[VisibilityHandler] Rolling back entity state (source: ${source}) for:`, id);
+      tabWindow.minimized = preRestoreState.minimized;
+      
+      // Re-add to minimized manager if it was minimized before
+      if (preRestoreState.minimized && this.minimizedManager) {
+        this.minimizedManager.add(id, tabWindow);
+      }
+    }
+    
+    // Emit error event instead of success
+    if (this.eventBus) {
+      this.eventBus.emit('state:restore-failed', {
+        id,
+        source,
+        reason: 'DOM verification failed'
+      });
+    }
+  }
+
+  /**
+   * Promise-based delay helper
+   * v1.6.3.5-v5 - FIX Issue #2: Replace timer-based with promise-based sequencing
+   * @private
+   * @param {number} ms - Delay in milliseconds
+   * @returns {Promise<void>}
+   */
+  _delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Check if tab window DOM is rendered
+   * v1.6.3.5-v5 - Extracted helper to reduce code duplication (Code Review feedback)
+   * @private
+   * @param {Object} tabWindow - Tab window instance
+   * @returns {boolean} True if DOM is rendered
+   */
+  _isDOMRendered(tabWindow) {
+    return tabWindow?.isRendered?.() || 
+      (tabWindow?.container && tabWindow?.container?.parentNode);
+  }
+
+  /**
+   * Emit state:updated event for restore (synchronous version for promise chaining)
+   * v1.6.3.5-v5 - FIX Issue #3: Synchronous event emission for ordered execution
+   * Note: Returns void, caller handles flow control
+   * @private
+   */
+  _emitRestoreStateUpdateSync(id, tabWindow, source) {
+    if (!this.eventBus) return;
+    
+    const isDOMRendered = this._isDOMRendered(tabWindow);
+    
+    const quickTabData = this._createQuickTabData(id, tabWindow, false);
+    quickTabData.domVerified = isDOMRendered;
+    quickTabData.source = source;
+    quickTabData.isRestoreOperation = true;
+    
+    // Validate payload before emitting
+    const validation = this._validateEventPayload(quickTabData);
+    if (!validation.valid) {
+      console.error(`[VisibilityHandler] REJECTED: Event payload missing required fields (source: ${source}):`, {
+        id,
+        missingFields: validation.missingFields
+      });
+      return;
+    }
+    
+    this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
+    console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { 
+      domVerified: isDOMRendered, 
+      isRestoreOperation: true 
+    });
   }
 
   /**
@@ -616,6 +766,7 @@ export class VisibilityHandler {
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
    * v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag to event payload
    * v1.6.3.4-v9 - FIX Issue #14: Fetch complete entity from storage when tabWindow is null
+   * v1.6.3.5-v5 - FIX Issue #4: Wrap timer callback in try/catch with context markers
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Quick Tab window instance
@@ -676,45 +827,55 @@ export class VisibilityHandler {
     // v1.6.3.4-v8 - FIX Issue #4: Delay emit until we can verify DOM is rendered
     // This prevents Manager from showing green indicator when window isn't actually visible
     setTimeout(() => {
-      // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback entry with timing info
-      const actualDelay = Date.now() - timerScheduleTime;
-      console.log(`${this._logPrefix} state:updated emit timer FIRED (id: ${id}, scheduledDelay: ${STATE_EMIT_DELAY_MS}ms, actualDelay: ${actualDelay}ms, source: ${source})`);
-      
-      // Verify DOM is actually rendered before emitting state:updated
-      const isDOMRendered = tabWindow.isRendered ? tabWindow.isRendered() : (tabWindow.container && tabWindow.container.parentNode);
-      
-      // v1.6.3.3 - FIX Bug #3: Don't warn if DOM not rendered - this is expected during restore
-      // UICoordinator will handle rendering, we just report the current state
-      if (!isDOMRendered) {
-        console.log(`[VisibilityHandler] DOM not yet rendered after restore (source: ${source}), expected during transition:`, id);
-      } else {
-        console.log(`[VisibilityHandler] DOM verified rendered after restore (source: ${source}):`, id);
-      }
-      
-      const quickTabData = this._createQuickTabData(id, tabWindow, false);
-      // v1.6.3.4-v8 - Add DOM verification result to event data
-      quickTabData.domVerified = isDOMRendered;
-      quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
-      // v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag so UICoordinator routes correctly
-      quickTabData.isRestoreOperation = true;
-      
-      // v1.6.3.4-v9 - FIX Issue #14: Validate payload before emitting
-      const validation = this._validateEventPayload(quickTabData);
-      if (!validation.valid) {
-        console.error(`[VisibilityHandler] REJECTED: Event payload missing required fields (source: ${source}):`, {
-          id,
-          missingFields: validation.missingFields
+      // v1.6.3.5-v5 - FIX Issue #4: Wrap entire callback in try/catch to prevent silent failures
+      try {
+        // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback entry with timing info
+        const actualDelay = Date.now() - timerScheduleTime;
+        console.log(`${this._logPrefix} state:updated emit timer FIRED (id: ${id}, scheduledDelay: ${STATE_EMIT_DELAY_MS}ms, actualDelay: ${actualDelay}ms, source: ${source})`);
+        
+        // v1.6.3.5-v5 - Use extracted helper for DOM verification
+        const isDOMRendered = this._isDOMRendered(tabWindow);
+        
+        // v1.6.3.3 - FIX Bug #3: Don't warn if DOM not rendered - this is expected during restore
+        // UICoordinator will handle rendering, we just report the current state
+        if (!isDOMRendered) {
+          console.log(`[VisibilityHandler] DOM not yet rendered after restore (source: ${source}), expected during transition:`, id);
+        } else {
+          console.log(`[VisibilityHandler] DOM verified rendered after restore (source: ${source}):`, id);
+        }
+        
+        const quickTabData = this._createQuickTabData(id, tabWindow, false);
+        // v1.6.3.4-v8 - Add DOM verification result to event data
+        quickTabData.domVerified = isDOMRendered;
+        quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
+        // v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag so UICoordinator routes correctly
+        quickTabData.isRestoreOperation = true;
+        
+        // v1.6.3.4-v9 - FIX Issue #14: Validate payload before emitting
+        const validation = this._validateEventPayload(quickTabData);
+        if (!validation.valid) {
+          console.error(`[VisibilityHandler] REJECTED: Event payload missing required fields (source: ${source}):`, {
+            id,
+            missingFields: validation.missingFields
+          });
+          // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback exit on rejection
+          console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: rejected, reason: invalid payload, duration: ${Date.now() - timerScheduleTime}ms)`);
+          return;
+        }
+        
+        this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
+        console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { domVerified: isDOMRendered, isRestoreOperation: true });
+        
+        // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback exit on success
+        console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: success, duration: ${Date.now() - timerScheduleTime}ms)`);
+      } catch (err) {
+        // v1.6.3.5-v5 - FIX Issue #4: Log errors in timer callback with context
+        console.error(`[VisibilityHandler] ERROR in state:updated emit timer (id: ${id}, source: ${source}):`, {
+          error: err.message,
+          stack: err.stack,
+          duration: Date.now() - timerScheduleTime
         });
-        // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback exit on rejection
-        console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: rejected, reason: invalid payload, duration: ${Date.now() - timerScheduleTime}ms)`);
-        return;
       }
-      
-      this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
-      console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { domVerified: isDOMRendered, isRestoreOperation: true });
-      
-      // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback exit on success
-      console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: success, duration: ${Date.now() - timerScheduleTime}ms)`);
     }, STATE_EMIT_DELAY_MS);
   }
 

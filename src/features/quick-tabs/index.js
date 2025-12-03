@@ -6,11 +6,14 @@
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.3.4 - FIX Issues #1, #8: Add state rehydration on startup with explicit logging
  * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
+ * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
  *
- * Architecture:
+ * Architecture (Single-Tab Model v1.6.3+):
+ * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
  * - Facade orchestrates managers, handlers, and coordinators
- * - Maintains backward compatibility with legacy API
+ * - Maintains backward compatibility with legacy API (with deprecation warnings)
  * - Delegates all business logic to specialized components
+ * - No cross-tab broadcasting - storage used for persistence and hydration only
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -368,6 +371,7 @@ class QuickTabsManager {
   /**
    * Add callbacks to hydration options
    * v1.6.3.4 - Helper to reduce complexity
+   * v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
    * @private
    * @param {Object} options - Base options
    * @returns {Object} Options with callbacks
@@ -375,6 +379,8 @@ class QuickTabsManager {
   _addHydrationCallbacks(options) {
     return {
       ...options,
+      // v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
+      currentTabId: this.currentTabId,
       onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
       onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
       onFocus: tabId => this.handleFocus(tabId),
@@ -535,6 +541,7 @@ class QuickTabsManager {
    *   The old approach created plain objects that lacked all QuickTabWindow methods.
    *   When restore/minimize was called, the methods didn't exist causing 100% failure rate.
    *   Now we create a real instance with minimized=true that has all methods but no DOM.
+   * v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
    * @private
    * @param {Object} options - Quick Tab options
    */
@@ -558,6 +565,8 @@ class QuickTabsManager {
         soloedOnTabs: options.soloedOnTabs,
         mutedOnTabs: options.mutedOnTabs,
         zIndex: options.zIndex,
+        // v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
+        currentTabId: this.currentTabId,
         // Wire up callbacks - these persist through restore cycles
         onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
         onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
@@ -891,9 +900,11 @@ class QuickTabsManager {
     // v1.6.3.4 - FIX Issue #4: onDestroy callback now routes to DestroyHandler
     // v1.6.3.4 - FIX Issue #6: Source defaults to 'UI' for window callbacks
     // v1.6.3.5-v2 - FIX Report 1 Issue #2: Set originTabId for cross-tab filtering
+    // v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
     const optionsWithCallbacks = {
       ...options,
       originTabId: options.originTabId ?? this.currentTabId, // v1.6.3.5-v2
+      currentTabId: this.currentTabId, // v1.6.3.5-v5 - FIX Issue #2: Pass for Solo/Mute
       onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
       onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
       onFocus: tabId => this.handleFocus(tabId),
@@ -1122,17 +1133,21 @@ class QuickTabsManager {
 
   /**
    * Update Quick Tab position (legacy)
-   * @deprecated Use handlePositionChange instead
+   * @deprecated v1.6.3.5-v5 - FIX Issue #5: This method bypasses UpdateHandler validation.
+   * Use handlePositionChange/handlePositionChangeEnd instead.
    */
   updateQuickTabPosition(id, left, top) {
+    console.warn('[QuickTabsManager] DEPRECATED: updateQuickTabPosition() bypasses UpdateHandler. Use handlePositionChange/handlePositionChangeEnd instead.');
     return this.handlePositionChange(id, left, top);
   }
 
   /**
    * Update Quick Tab size (legacy)
-   * @deprecated Use handleSizeChange instead
+   * @deprecated v1.6.3.5-v5 - FIX Issue #5: This method bypasses UpdateHandler validation.
+   * Use handleSizeChange/handleSizeChangeEnd instead.
    */
   updateQuickTabSize(id, width, height) {
+    console.warn('[QuickTabsManager] DEPRECATED: updateQuickTabSize() bypasses UpdateHandler. Use handleSizeChange/handleSizeChangeEnd instead.');
     return this.handleSizeChange(id, width, height);
   }
 

@@ -3,6 +3,7 @@
  * Phase 2.1: Extracted from QuickTabsManager
  * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync or storage persistence)
  * v1.6.3.1 - Added persistToStorage() for sidebar/manager sync
+ * v1.6.3.5-v5 - FIX Issue #3: Use persistStateToStorage instead of direct browser.storage.local.set
  *
  * Responsibilities:
  * - Maintain Map of QuickTab instances
@@ -10,17 +11,16 @@
  * - Query Quick Tabs by ID or criteria
  * - Track current tab ID for visibility filtering
  * - Assign global slots to Quick Tabs
- * - Persist state to browser.storage.local for cross-context sync
+ * - Persist state to browser.storage.local via storage-utils (single pipeline)
  *
  * Uses:
  * - QuickTab domain entities (not QuickTabWindow UI components)
  * - Map for O(1) lookups
  */
 
-import { QuickTab } from '@domain/QuickTab.js';
+import { persistStateToStorage, generateSaveId } from '@utils/storage-utils.js';
 
-// Storage key for Quick Tabs state (unified format v1.6.2.2+)
-const STATE_KEY = 'quick_tabs_state_v2';
+import { QuickTab } from '@domain/QuickTab.js';
 
 export class StateManager {
   constructor(eventBus, currentTabId = null) {
@@ -36,10 +36,13 @@ export class StateManager {
 
   /**
    * Persist current state to browser.storage.local
-   * v1.6.3.1 - New method for cross-context sync (sidebar, manager, other tabs)
+   * v1.6.3.1 - New method for sidebar/manager sync
+   * v1.6.3.5-v5 - FIX Issue #3: Route through persistStateToStorage instead of direct write
+   *   This consolidates all persistence through one pipeline with consistent transaction
+   *   tracking, validation, and queuing - preventing parallel persistence conflicts.
    * 
    * Writes unified format (v1.6.2.2+):
-   * { tabs: [...], saveId: '...', timestamp: ... }
+   * { tabs: [...], saveId: '...', timestamp: ..., transactionId: ... }
    */
   async persistToStorage() {
     try {
@@ -47,23 +50,21 @@ export class StateManager {
       const state = {
         tabs: tabs,
         timestamp: Date.now(),
-        saveId: this._generateSaveId()
+        saveId: generateSaveId()
       };
 
-      await browser.storage.local.set({ [STATE_KEY]: state });
-      console.log(`[StateManager] Persisted ${tabs.length} Quick Tabs to storage`);
+      // v1.6.3.5-v5 - FIX Issue #3: Use centralized persistStateToStorage instead of direct write
+      // This ensures all storage writes have transaction IDs, respect FIFO queue,
+      // use hash deduplication, and validate ownership.
+      const success = await persistStateToStorage(state, '[StateManager]');
+      if (success) {
+        console.log(`[StateManager] Persisted ${tabs.length} Quick Tabs to storage`);
+      } else {
+        console.warn('[StateManager] Storage persist returned false (may have been skipped/blocked)');
+      }
     } catch (err) {
       console.error('[StateManager] Failed to persist to storage:', err);
     }
-  }
-
-  /**
-   * Generate unique save ID for deduplication
-   * @private
-   * @returns {string} - Unique save ID
-   */
-  _generateSaveId() {
-    return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
   /**
