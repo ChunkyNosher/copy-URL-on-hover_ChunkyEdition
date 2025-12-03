@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.5-v7 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -61,20 +61,26 @@ const relevantMemories = await searchMemories({
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v6:** Background-as-Coordinator with Per-Tab Ownership Validation
+- **v1.6.3.5-v7:** Background-as-Coordinator with Per-Tab Ownership Validation
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v6 Fixes:**
-- **Restore Trusts UICoordinator** - No DOM verification rollback in VisibilityHandler
-- **closeAll Mutex** - `_closeAllInProgress` in DestroyHandler prevents duplicates
-- **CreateHandler→UICoordinator** - `window:created` event populates `renderedTabs`
-- **Manager UI Logging** - Comprehensive storage.onChanged and UI logging
+**v1.6.3.5-v7 Fixes (8 Issues):**
+- **Manager Empty List Fix** - `onStoragePersistNeeded` callback in MinimizedManager
+- **Duplicate Window Prevention** - render() early return guard
+- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo`
+- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()`
+- **State Transition Logging** - Comprehensive `StateManager.persistToStorage()` logging
+- **Minimize State on Reload** - Set `domVerified: false` when minimizing
+- **Manager Sync Timestamp** - `lastLocalUpdateTime` tracks actual UI update time
+- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
 
-**v1.6.3.5-v6 Architecture:**
+**v1.6.3.5-v7 Architecture:**
 - **QuickTabStateMachine** - Explicit lifecycle state tracking
 - **QuickTabMediator** - Operation coordination with state validation and rollback
 - **MapTransactionManager** - Atomic Map operations with logging and rollback
+- **MinimizedManager** - `onStoragePersistNeeded` callback, `_triggerStoragePersist()` (v1.6.3.5-v7)
+- **UpdateHandler** - `_debouncedDragPersist()`, `_dragDebounceTimers` Map (v1.6.3.5-v7)
 - **DestroyHandler** - `_closeAllInProgress` mutex, `_scheduleMutexRelease()` method
 - **CreateHandler** - `_emitWindowCreatedEvent()` for UICoordinator coordination
 - **UICoordinator** - `_registerCreatedWindow()` listens for `window:created`
@@ -245,15 +251,16 @@ Only if:
 - Enforce cleanup patterns with `cleanupOrphanedQuickTabElements()`
 - Use debounced batch writes for destroy operations
 
-### Minimize/Restore Architecture (v1.6.3.5-v6)
+### Minimize/Restore Architecture (v1.6.3.5-v7)
 
 **Common Root Causes:**
 - State transition without validation
 - Multiple sources triggering same operation
 - Missing operation locks
 - Map corruption from untracked modifications
+- Position/size not persisted during drag/resize
 
-**Architectural Solution (v1.6.3.5-v6):**
+**Architectural Solution (v1.6.3.5-v7):**
 - **State Machine:** QuickTabStateMachine validates all transitions
   - `canTransition()` before any operation
   - `transition()` logs every state change with source
@@ -265,12 +272,14 @@ Only if:
   - `beginTransaction()` captures snapshot
   - `commitTransaction()` validates expected state
   - `rollbackTransaction()` restores on failure
+- **Debounced Drag Persistence:** `_debouncedDragPersist()` with 200ms debounce (v1.6.3.5-v7)
+  - `_dragDebounceTimers` Map for live sync
+  - Storage persistence after `updateZIndex()` for z-index sync
+- **Manager Empty List Fix:** `onStoragePersistNeeded` callback in MinimizedManager (v1.6.3.5-v7)
 - **closeAll Mutex:** `_closeAllInProgress` flag in DestroyHandler
   - `_scheduleMutexRelease()` releases after 2000ms cooldown
-  - Prevents duplicate closeAll execution
+- **Minimize State Preservation:** Set `domVerified: false` when minimizing (v1.6.3.5-v7)
 - **Restore Trusts UICoordinator:** No DOM verification rollback
-  - `_verifyRestoreAndEmit()` emits `isRestoreOperation: true` flag
-- **Debounce Fix:** `_activeTimerIds` Set instead of generation counters
 
 ### Sidebar Gesture Handling (v1.6.3.4)
 

@@ -50,7 +50,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v2 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.5-v7 - Two-Layer Sidebar Tab System ✅
 
 **Settings Sidebar Structure (Two-Layer System):**
 - **PRIMARY TABS (Layer 1):**
@@ -63,11 +63,15 @@ const relevantMemories = await searchMemories({
   - **Appearance Tab** - Dark mode, colors, borders, animations
   - **Advanced Tab** - Debug mode, storage management, logs, UID display
 
-**v1.6.3.5-v6 Fixes:**
-- **Restore Trusts UICoordinator** - No DOM verification rollback
-- **closeAll Mutex** - `_closeAllInProgress` prevents duplicate execution
-- **CreateHandler→UICoordinator** - `window:created` event coordination
-- **Manager UI Logging** - Comprehensive state change logging
+**v1.6.3.5-v7 Fixes (8 Issues):**
+- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
+- **Duplicate Window Prevention** - render() early return guard
+- **Cross-Tab Restore** - Targeted tab messaging
+- **Drag/Resize Persistence** - 200ms debounced
+- **State Transition Logging** - Comprehensive logging
+- **Minimize State on Reload** - `domVerified: false`
+- **Manager Sync Timestamp** - `lastLocalUpdateTime`
+- **Z-Index Persistence** - Storage after `updateZIndex()`
 
 **Tab State Persistence:**
 - Primary tab: localStorage.getItem('sidebarActivePrimaryTab')

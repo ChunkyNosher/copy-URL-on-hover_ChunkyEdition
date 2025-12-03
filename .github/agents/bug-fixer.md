@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.5-v7 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -37,20 +37,26 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v6:** Background-as-Coordinator with Per-Tab Ownership Validation
+- **v1.6.3.5-v7:** Background-as-Coordinator with Per-Tab Ownership Validation
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v6 Fixes:**
-- **Restore Trusts UICoordinator** - No DOM verification rollback
-- **closeAll Mutex** - `_closeAllInProgress` prevents duplicates
-- **CreateHandler→UICoordinator** - `window:created` event coordination
-- **Manager UI Logging** - Comprehensive state change logging
+**v1.6.3.5-v7 Fixes (8 Issues):**
+- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
+- **Duplicate Window Prevention** - render() early return guard
+- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo`
+- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()`
+- **State Logging** - Comprehensive `StateManager.persistToStorage()` logging
+- **Minimize State** - Set `domVerified: false` when minimizing
+- **Manager Sync** - `lastLocalUpdateTime` tracking
+- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
 
-**v1.6.3.5-v6 Modules:**
+**v1.6.3.5-v7 Modules:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
+- **MinimizedManager** - `onStoragePersistNeeded` callback (v1.6.3.5-v7)
+- **UpdateHandler** - `_debouncedDragPersist()` (v1.6.3.5-v7)
 - **DestroyHandler** - `_closeAllInProgress` mutex
 - **CreateHandler** - `_emitWindowCreatedEvent()` method
 - **UICoordinator** - `_registerCreatedWindow()` method
@@ -93,7 +99,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.5-v6 Fix Patterns
+## v1.6.3.5-v7 Fix Patterns
 
 ### State Machine Transitions
 ```javascript
@@ -118,7 +124,18 @@ txn.deleteEntry(id, 'reason');
 txn.commitTransaction();
 ```
 
-### closeAll Mutex (v1.6.3.5-v6)
+### Debounced Drag Persistence (v1.6.3.5-v7)
+```javascript
+// UpdateHandler._debouncedDragPersist()
+if (this._dragDebounceTimers.has(id)) {
+  clearTimeout(this._dragDebounceTimers.get(id));
+}
+this._dragDebounceTimers.set(id, setTimeout(() => {
+  this._persistDragState(id);
+}, DRAG_DEBOUNCE_MS)); // 200ms
+```
+
+### closeAll Mutex
 ```javascript
 if (this._closeAllInProgress) {
   console.log('[DestroyHandler] closeAll already in progress, skipping');

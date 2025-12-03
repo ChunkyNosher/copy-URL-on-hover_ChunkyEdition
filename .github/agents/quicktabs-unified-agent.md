@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v6)
+  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v7)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v6 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v7 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,26 +37,27 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
 
-**v1.6.3.5-v6 Fixes:**
+**v1.6.3.5-v7 Fixes (8 Issues):**
+- **Manager Empty List Fix** - `onStoragePersistNeeded` callback in MinimizedManager
+- **Duplicate Window Prevention** - render() early return guard checking `this.container`
+- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo` or `originTabId`
+- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()` with `_dragDebounceTimers`
+- **State Transition Logging** - Comprehensive `StateManager.persistToStorage(source)` logging
+- **Minimize State on Reload** - Set `domVerified: false` when minimizing
+- **Manager Sync Timestamp** - `lastLocalUpdateTime` tracks actual UI update time
+- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
+
+**v1.6.3.5-v6 Features (Retained):**
 - **Restore Trusts UICoordinator** - No DOM verification rollback in VisibilityHandler
 - **closeAll Mutex** - `_closeAllInProgress` flag prevents duplicate closeAll execution
 - **CreateHandler→UICoordinator** - `window:created` event populates `renderedTabs` Map
-- **Manager UI Logging** - Comprehensive storage.onChanged and UI state logging
 
-**v1.6.3.5-v5 Features (Retained):**
-- **Promise-Based Sequencing** - `_delay()` helper for deterministic event→storage ordering
-- **cleanupTransactionId()** - Event-driven transaction ID cleanup
-- **StateManager Storage Pipeline** - Uses `persistStateToStorage` instead of direct writes
-- **QuickTabWindow currentTabId** - Passed via constructor, `_getCurrentTabId()` helper
-
-**Deprecated (v1.6.3.5-v5):**
-- ⚠️ window.js: `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()`
-- ⚠️ index.js: `updateQuickTabPosition()`, `updateQuickTabSize()`
-
-**v1.6.3.5-v6 Architecture:**
+**v1.6.3.5-v7 Architecture:**
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - `minimize()`, `restore()`, `destroy()` with state validation
 - **MapTransactionManager** - Atomic Map ops with rollback
+- **MinimizedManager** - `onStoragePersistNeeded` callback, `_triggerStoragePersist()` (v1.6.3.5-v7)
+- **UpdateHandler** - `_debouncedDragPersist()`, `_dragDebounceTimers`, `DRAG_DEBOUNCE_MS` (v1.6.3.5-v7)
 - **DestroyHandler** - `_closeAllInProgress` mutex, `_scheduleMutexRelease()`
 - **CreateHandler** - `_emitWindowCreatedEvent()` emits `window:created`
 - **UICoordinator** - `_registerCreatedWindow()` listens for `window:created`
@@ -68,7 +69,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 | Method | Description |
 |--------|-------------|
 | `closeById(id)` | Close a single Quick Tab by ID |
-| `closeAll()` | Close all Quick Tabs, emits `state:cleared` event |
+| `closeAll()` | Close all Quick Tabs, uses `CLEAR_ALL_QUICK_TABS` via background (Single Writer Model) |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
@@ -88,11 +89,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] State machine transitions validated
 - [ ] Promise-based sequencing works
-- [ ] closeAll mutex prevents duplicates (v1.6.3.5-v6)
-- [ ] window:created event fires correctly (v1.6.3.5-v6)
+- [ ] closeAll mutex prevents duplicates
+- [ ] window:created event fires correctly
+- [ ] Drag/resize persistence works (200ms debounce) (v1.6.3.5-v7)
+- [ ] Manager empty list fixed after minimize/restore (v1.6.3.5-v7)
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.5-v6 fixes and Per-Tab Ownership Validation.**
+**Your strength: Complete Quick Tab system with v1.6.3.5-v7 fixes and Per-Tab Ownership Validation.**
