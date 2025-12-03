@@ -63,6 +63,11 @@ let lastCompletedTransactionId = null;
 let stateSnapshot = null;
 let transactionActive = false;
 
+// v1.6.3.5-v4 - FIX Diagnostic Issue #1: Per-tab ownership enforcement
+// Only the tab that owns a Quick Tab (originTabId matches currentTabId) should write state
+// This prevents cross-tab storage storms where non-owner tabs write stale 0-tab state
+let ownershipValidationEnabled = true;
+
 // v1.6.3.5-v3 - FIX Diagnostic Issue #1: Self-write detection for storage.onChanged
 // writingInstanceId is unique per tab load (generated once at module load)
 // This allows storage.onChanged handlers to detect and skip self-writes
@@ -163,6 +168,104 @@ export function isSelfWrite(newValue, currentTabId = null) {
   }
   
   return false;
+}
+
+/**
+ * Check if this tab is the owner of a Quick Tab (has originTabId matching currentTabId)
+ * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Per-tab ownership enforcement
+ * @param {Object} tabData - Quick Tab data with originTabId
+ * @param {number|null} currentTabId - Current tab's ID (optional, uses cached if null)
+ * @returns {boolean} True if this tab is the owner (can modify), false otherwise
+ */
+export function canCurrentTabModifyQuickTab(tabData, currentTabId = null) {
+  // Get current tab ID
+  const tabId = currentTabId ?? currentWritingTabId;
+  
+  // If we don't have originTabId, we can't determine ownership - allow write
+  if (tabData.originTabId === null || tabData.originTabId === undefined) {
+    return true;
+  }
+  
+  // If we don't know our tab ID, allow write (can't validate)
+  if (tabId === null) {
+    return true;
+  }
+  
+  return tabData.originTabId === tabId;
+}
+
+// Legacy alias for backwards compatibility
+export const isOwnerOfQuickTab = canCurrentTabModifyQuickTab;
+
+/**
+ * Check if current tab should write to storage based on Quick Tab ownership
+ * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Only owner tabs should write state
+ * @param {Array} tabs - Array of Quick Tab data objects
+ * @param {number|null} currentTabId - Current tab's ID
+ * @returns {{ shouldWrite: boolean, ownedTabs: Array, reason: string }}
+ */
+export function validateOwnershipForWrite(tabs, currentTabId = null) {
+  if (!ownershipValidationEnabled) {
+    return { shouldWrite: true, ownedTabs: tabs, reason: 'ownership validation disabled' };
+  }
+  
+  if (!Array.isArray(tabs)) {
+    return { shouldWrite: true, ownedTabs: [], reason: 'invalid tabs array' };
+  }
+  
+  const tabId = currentTabId ?? currentWritingTabId;
+  
+  // If we don't know our tab ID, allow write
+  if (tabId === null) {
+    return { shouldWrite: true, ownedTabs: tabs, reason: 'unknown tab ID' };
+  }
+  
+  // Filter to only tabs owned by this tab
+  const ownedTabs = tabs.filter(tab => {
+    // No originTabId means we can't determine ownership - include it
+    if (tab.originTabId === null || tab.originTabId === undefined) {
+      return true;
+    }
+    return tab.originTabId === tabId;
+  });
+  
+  // v1.6.3.5-v4 - FIX Diagnostic Issue #1: Log filtering decision
+  const nonOwnedCount = tabs.length - ownedTabs.length;
+  if (nonOwnedCount > 0) {
+    console.log('[StorageUtils] Ownership filtering:', {
+      currentTabId: tabId,
+      totalTabs: tabs.length,
+      ownedTabs: ownedTabs.length,
+      filteredOut: nonOwnedCount,
+      filteredIds: tabs.filter(t => t.originTabId !== tabId && t.originTabId != null).map(t => ({
+        id: t.id,
+        originTabId: t.originTabId
+      }))
+    });
+  }
+  
+  // Should write if we own at least one tab, OR if writing empty state intentionally
+  // NOTE: Empty state (tabs.length === 0) MUST bypass ownership validation because:
+  // 1. When user intentionally closes all Quick Tabs via "Close All", we need to persist the empty state
+  // 2. The forceEmpty parameter in persistStateToStorage controls when empty writes are allowed
+  // 3. Empty states have no tabs to check ownership against, so we allow the write
+  const shouldWrite = ownedTabs.length > 0 || tabs.length === 0;
+  
+  return {
+    shouldWrite,
+    ownedTabs,
+    reason: shouldWrite ? 'has owned tabs' : 'no owned tabs - non-owner write blocked'
+  };
+}
+
+/**
+ * Enable or disable ownership validation for storage writes
+ * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Allow toggling for backwards compatibility
+ * @param {boolean} enabled - Whether to enable ownership validation
+ */
+export function setOwnershipValidationEnabled(enabled) {
+  ownershipValidationEnabled = enabled;
+  console.log('[StorageUtils] Ownership validation enabled:', enabled);
 }
 
 /**
@@ -947,12 +1050,36 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
 }
 
 /**
+ * Validate ownership for persist operation
+ * v1.6.3.5-v4 - Extracted to reduce persistStateToStorage complexity
+ * @private
+ * @param {Object} state - State to validate
+ * @param {boolean} forceEmpty - Whether empty writes are forced
+ * @param {string} logPrefix - Logging prefix
+ * @param {string} transactionId - Transaction ID for logging
+ * @returns {{ shouldProceed: boolean }}
+ */
+function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) {
+  const ownershipCheck = validateOwnershipForWrite(state.tabs, currentWritingTabId);
+  if (!ownershipCheck.shouldWrite && !forceEmpty) {
+    console.warn(`${logPrefix} Storage write BLOCKED [${transactionId}]:`, {
+      reason: ownershipCheck.reason,
+      currentTabId: currentWritingTabId,
+      tabCount: state.tabs.length
+    });
+    return { shouldProceed: false };
+  }
+  return { shouldProceed: true };
+}
+
+/**
  * Persist Quick Tab state to storage.local
  * v1.6.3.4 - Extracted from handlers
  * v1.6.3.4-v2 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
  * v1.6.3.4-v3 - FIX: Ensure timeout is always cleared to prevent memory leak
  * v1.6.3.4-v6 - FIX Issue #1, #5: Transaction tracking and deduplication
  * v1.6.3.4-v8 - FIX Issues #1, #7: Empty write protection, storage write queue
+ * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Ownership validation extracted
  * 
  * @param {Object} state - State object to persist
  * @param {string} logPrefix - Prefix for log messages (e.g., '[DestroyHandler]')
@@ -980,6 +1107,11 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   
   // v1.6.3.4-v8 - FIX Issue #1: Reject empty writes unless forceEmpty is true
   if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
+    return Promise.resolve(false);
+  }
+  
+  // v1.6.3.5-v4 - FIX Diagnostic Issue #1: Validate ownership before writing
+  if (!_validatePersistOwnership(state, forceEmpty, logPrefix, transactionId).shouldProceed) {
     return Promise.resolve(false);
   }
   

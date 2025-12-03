@@ -41,6 +41,13 @@ const DOM_VERIFICATION_DELAY_MS = 500;
 // v1.6.3.4-v6 - FIX Issue #5: Track last rendered state hash to avoid unnecessary re-renders
 let lastRenderedStateHash = 0;
 
+// v1.6.3.5-v4 - FIX Diagnostic Issue #2: In-memory state cache to prevent list clearing during storage storms
+// This is the primary truth for what the Manager displays. Storage changes update this cache
+// but 0-tab storage states from non-owner tabs do NOT clear this cache.
+let inMemoryTabsCache = [];
+let lastKnownGoodTabCount = 0;
+const MIN_TABS_FOR_CACHE_PROTECTION = 1; // Protect cache if we have at least 1 tab
+
 // UI Elements (cached for performance)
 let containersList;
 let emptyState;
@@ -324,10 +331,62 @@ async function checkStorageDebounce() {
 }
 
 /**
+ * Handle empty storage state
+ * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
+ * Sets quickTabsState and logs appropriately - used as flow control signal
+ */
+function _handleEmptyStorageState() {
+  if (inMemoryTabsCache.length > 0) {
+    console.log('[Manager] Storage returned empty but cache has', inMemoryTabsCache.length, 'tabs - using cache');
+    quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
+  } else {
+    quickTabsState = {};
+    console.log('[Manager] Loaded Quick Tabs state: empty');
+  }
+}
+
+/**
+ * Detect and handle storage storm (0 tabs but cache has tabs)
+ * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
+ * @param {Object} state - Storage state
+ * @returns {boolean} True if storm detected and handled
+ */
+function _detectStorageStorm(state) {
+  const storageTabs = state.tabs || [];
+  if (storageTabs.length !== 0 || inMemoryTabsCache.length < MIN_TABS_FOR_CACHE_PROTECTION) {
+    return false;
+  }
+  
+  console.warn('[Manager] ⚠️ Storage storm detected - 0 tabs in storage but', inMemoryTabsCache.length, 'in cache:', {
+    storageTabCount: storageTabs.length,
+    cacheTabCount: inMemoryTabsCache.length,
+    lastKnownGoodCount: lastKnownGoodTabCount,
+    saveId: state.saveId
+  });
+  quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
+  console.log('[Manager] Using in-memory cache to prevent list clearing');
+  return true;
+}
+
+/**
+ * Update in-memory cache with valid state
+ * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
+ * @param {Array} tabs - Tabs array from storage
+ */
+function _updateInMemoryCache(tabs) {
+  if (tabs.length > 0) {
+    inMemoryTabsCache = [...tabs];
+    lastKnownGoodTabCount = tabs.length;
+    console.log('[Manager] Updated in-memory cache:', { tabCount: tabs.length });
+  }
+}
+
+/**
  * Load Quick Tabs state from browser.storage.local
  * v1.6.3 - FIX: Changed from storage.sync to storage.local (storage location since v1.6.0.12)
  * v1.6.3.4-v6 - FIX Issue #1: Debounce reads to avoid mid-transaction reads
- * Refactored: Extracted helpers to reduce complexity
+ * v1.6.3.5-v4 - FIX Diagnostic Issue #2: Use in-memory cache to protect against storage storms
+ * Refactored: Extracted helpers to reduce complexity and nesting depth
  */
 async function loadQuickTabsState() {
   try {
@@ -337,8 +396,7 @@ async function loadQuickTabsState() {
     const state = result?.[STATE_KEY];
 
     if (!state) {
-      quickTabsState = {};
-      console.log('Loaded Quick Tabs state: empty');
+      _handleEmptyStorageState();
       return;
     }
     
@@ -346,11 +404,17 @@ async function loadQuickTabsState() {
     const newHash = computeStateHash(state);
     if (newHash === lastRenderedStateHash) return;
     
+    // v1.6.3.5-v4 - FIX Diagnostic Issue #2: Protect against storage storms
+    if (_detectStorageStorm(state)) return;
+    
+    // v1.6.3.5-v4 - Update cache with new valid state
+    _updateInMemoryCache(state.tabs || []);
+    
     quickTabsState = state;
     filterInvalidTabs(quickTabsState);
-    console.log('Loaded Quick Tabs state:', quickTabsState);
+    console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
   } catch (err) {
-    console.error('Error loading Quick Tabs state:', err);
+    console.error('[Manager] Error loading Quick Tabs state:', err);
   }
 }
 
@@ -473,6 +537,7 @@ function createGlobalSection(totalTabs) {
  * Render the entire UI based on current state
  * v1.6.3 - FIX: Updated to handle unified format (v1.6.2.2+) instead of container-based format
  * v1.6.3.4-v10 - FIX Issue #4: Check domVerified property for warning indicator
+ * v1.6.3.5-v4 - FIX Diagnostic Issue #7: Add logging for UI state changes
  * 
  * Unified format:
  * { tabs: [...], saveId: '...', timestamp: ... }
@@ -488,6 +553,17 @@ function renderUI() {
   const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
   const totalTabs = allTabs.length;
 
+  // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Log UI rebuild with tab details
+  const activeTabs = allTabs.filter(t => !isTabMinimizedHelper(t));
+  const minimizedTabs = allTabs.filter(t => isTabMinimizedHelper(t));
+  console.log('[Manager] UI Rebuild:', {
+    totalTabs,
+    activeCount: activeTabs.length,
+    minimizedCount: minimizedTabs.length,
+    cacheCount: inMemoryTabsCache.length,
+    tabIds: allTabs.map(t => ({ id: t.id, minimized: isTabMinimizedHelper(t) }))
+  });
+
   // Update stats
   updateUIStats(totalTabs, latestTimestamp);
 
@@ -495,6 +571,7 @@ function renderUI() {
   if (totalTabs === 0) {
     containersList.style.display = 'none';
     emptyState.style.display = 'flex';
+    console.log('[Manager] UI showing empty state');
     return;
   }
 
@@ -511,11 +588,6 @@ function renderUI() {
   const tabsList = document.createElement('div');
   tabsList.className = 'quick-tabs-list';
 
-  // v1.6.3.4-v4 - FIX Issue #5: Use module-level helper for consistent minimized state detection
-  // Separate active and minimized tabs using consistent helper
-  const activeTabs = allTabs.filter(t => !isTabMinimizedHelper(t));
-  const minimizedTabs = allTabs.filter(t => isTabMinimizedHelper(t));
-
   // Render active tabs first, then minimized tabs
   activeTabs.forEach(tab => {
     tabsList.appendChild(renderQuickTabItem(tab, 'global', false));
@@ -526,6 +598,9 @@ function renderUI() {
 
   section.appendChild(tabsList);
   containersList.appendChild(section);
+  
+  // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Update rendered state hash
+  lastRenderedStateHash = computeStateHash(quickTabsState);
 }
 
 /**
