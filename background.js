@@ -1650,39 +1650,154 @@ function _logCorruptionWarning(oldCount, newCount) {
 /**
  * Check if storage change should be ignored (early exit conditions)
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
+ * v1.6.3.5-v3 - FIX Diagnostic Issue #1: Add writingInstanceId/writingTabId detection
+ * v1.6.3.5-v3 - FIX Diagnostic Issue #8: Check for Firefox spurious events (no data change)
  * @param {Object} newValue - New storage value
- * @param {Object} oldValue - Previous storage value (unused, for signature consistency)
+ * @param {Object} oldValue - Previous storage value
  * @returns {boolean} True if change should be ignored
  */
 function _shouldIgnoreStorageChange(newValue, oldValue) {
-  // Check if this is our own transaction
+  // v1.6.3.5-v3 - FIX Diagnostic Issue #8: Check for Firefox spurious events
+  if (_isSpuriousFirefoxEvent(newValue, oldValue)) {
+    console.log('[Background] Firefox spurious onChanged - no data change detected');
+    return true;
+  }
+
+  // Check if this is a self-write via various detection methods
+  if (_isAnySelfWrite(newValue)) {
+    return true;
+  }
+
+  // Update cooldown tracking and log comparison
+  _updateCooldownAndLogChange(newValue, oldValue);
+  
+  return false;
+}
+
+/**
+ * Check if this is a self-write via any detection method
+ * v1.6.3.5-v3 - Extracted to reduce _shouldIgnoreStorageChange complexity
+ * @param {Object} newValue - New storage value
+ * @returns {boolean} True if self-write
+ */
+function _isAnySelfWrite(newValue) {
+  // Check transaction ID
   if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
     console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
     return true;
   }
+  
+  // Check writingInstanceId (content script self-write)
+  if (newValue?.writingInstanceId && _isRecentlyProcessedInstanceWrite(newValue.writingInstanceId, newValue.saveId)) {
+    console.log('[Background] Ignoring recently processed instance write:', {
+      instanceId: newValue.writingInstanceId,
+      saveId: newValue.saveId
+    });
+    return true;
+  }
 
-  // Update cooldown tracking
+  // Check legacy self-write method
+  if (_isSelfWrite(newValue, quickTabHandler)) {
+    console.log('[Background] Ignoring self-write:', newValue.writeSourceId);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Update cooldown tracking and log the storage change
+ * v1.6.3.5-v3 - Extracted to reduce _shouldIgnoreStorageChange complexity
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ */
+function _updateCooldownAndLogChange(newValue, oldValue) {
   const now = Date.now();
   if (now - lastStorageChangeProcessed < STORAGE_CHANGE_COOLDOWN_MS) {
     console.log('[Background] Storage change within cooldown, may skip');
   }
   lastStorageChangeProcessed = now;
 
-  // Log comparison
   console.log('[Background] Storage change comparison:', {
     oldTabCount: oldValue?.tabs?.length ?? 0,
     newTabCount: newValue?.tabs?.length ?? 0,
     oldSaveId: oldValue?.saveId,
     newSaveId: newValue?.saveId,
-    transactionId: newValue?.transactionId
+    transactionId: newValue?.transactionId,
+    writingInstanceId: newValue?.writingInstanceId,
+    writingTabId: newValue?.writingTabId
   });
+}
 
-  // Check if this is our own write
-  if (_isSelfWrite(newValue, quickTabHandler)) {
-    console.log('[Background] Ignoring self-write:', newValue.writeSourceId);
+/**
+ * Check if saveId and tabCount match between two storage values
+ * v1.6.3.5-v3 - Helper to reduce _isSpuriousFirefoxEvent complexity
+ * @private
+ */
+function _hasMatchingSaveIdAndTabCount(newValue, oldValue) {
+  const sameSaveId = newValue.saveId && oldValue.saveId && newValue.saveId === oldValue.saveId;
+  const oldTabCount = oldValue.tabs?.length ?? 0;
+  const newTabCount = newValue.tabs?.length ?? 0;
+  return sameSaveId && oldTabCount === newTabCount;
+}
+
+/**
+ * Check if this is a Firefox spurious storage.onChanged event (no actual data change)
+ * v1.6.3.5-v3 - FIX Diagnostic Issue #8: Firefox fires onChanged even without data change
+ * NOTE: We use multiple criteria to avoid false positives from saveId collisions
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ * @returns {boolean} True if this is a spurious event
+ */
+function _isSpuriousFirefoxEvent(newValue, oldValue) {
+  // If either is null/undefined, it's a real change
+  if (!newValue || !oldValue) return false;
+  
+  // Check if saveIds and tab counts match - likely spurious
+  if (!_hasMatchingSaveIdAndTabCount(newValue, oldValue)) return false;
+  
+  // Extra validation: check if timestamp is also the same (very high confidence)
+  const sameTimestamp = newValue.timestamp && oldValue.timestamp && newValue.timestamp === oldValue.timestamp;
+  if (sameTimestamp) {
+    console.log('[Background] Spurious event detected (same saveId, tabCount, timestamp)');
+  } else {
+    console.log('[Background] Probable spurious event (same saveId, tabCount):', {
+      saveId: newValue.saveId,
+      tabCount: newValue.tabs?.length ?? 0
+    });
+  }
+  return true;
+}
+
+// Track recently processed instance writes to prevent double-processing
+const _recentlyProcessedWrites = new Map(); // instanceId+saveId -> timestamp
+const RECENT_WRITE_EXPIRY_MS = 500;
+
+/**
+ * Check if a write from this instance was recently processed
+ * v1.6.3.5-v3 - FIX Diagnostic Issue #1: Prevent double-processing
+ * @param {string} instanceId - Writing instance ID
+ * @param {string} saveId - Save ID
+ * @returns {boolean} True if recently processed
+ */
+function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
+  const key = `${instanceId}-${saveId}`;
+  const now = Date.now();
+  
+  // Clean up old entries
+  for (const [k, timestamp] of _recentlyProcessedWrites.entries()) {
+    if (now - timestamp > RECENT_WRITE_EXPIRY_MS) {
+      _recentlyProcessedWrites.delete(k);
+    }
+  }
+  
+  // Check if this write was recently processed
+  if (_recentlyProcessedWrites.has(key)) {
     return true;
   }
   
+  // Mark as processed
+  _recentlyProcessedWrites.set(key, now);
   return false;
 }
 
@@ -2059,3 +2174,200 @@ if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAc
   console.log('[Sidebar] Browser action uses popup (Chrome compatibility)');
 }
 // ==================== END BROWSER ACTION HANDLER ====================
+
+// ==================== v1.6.3.5-v3 MESSAGE INFRASTRUCTURE ====================
+// Background-as-Coordinator architecture for Quick Tab state synchronization
+// Phase 1: Message handlers (non-breaking, parallel with storage events)
+// Phase 2-3: Content script state changes via messages + Manager remote control
+
+/**
+ * Track which tab hosts each Quick Tab
+ * v1.6.3.5-v3 - FIX Architecture Phase 3: Enable Manager remote control
+ * Key: quickTabId, Value: browser tab ID
+ */
+const quickTabHostTabs = new Map();
+
+/**
+ * Handle QUICK_TAB_STATE_CHANGE message from content scripts
+ * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
+ * Background becomes the coordinator, updating cache and broadcasting to other contexts
+ * @param {Object} message - Message containing state change
+ * @param {Object} sender - Sender info (includes tab.id)
+ */
+async function handleQuickTabStateChange(message, sender) {
+  const { quickTabId, changes, source } = message;
+  const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
+  
+  console.log('[Background] QUICK_TAB_STATE_CHANGE received:', {
+    quickTabId,
+    changes,
+    source,
+    sourceTabId
+  });
+  
+  // Track which tab hosts this Quick Tab
+  if (quickTabId && sourceTabId) {
+    quickTabHostTabs.set(quickTabId, sourceTabId);
+    console.log('[Background] Updated quickTabHostTabs:', {
+      quickTabId,
+      hostTabId: sourceTabId,
+      totalTracked: quickTabHostTabs.size
+    });
+  }
+  
+  // Update globalQuickTabState cache
+  if (changes && quickTabId) {
+    const existingTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
+    if (existingTab) {
+      Object.assign(existingTab, changes);
+      globalQuickTabState.lastUpdate = Date.now();
+      console.log('[Background] Updated cache for:', quickTabId, changes);
+    } else if (changes.url) {
+      // New Quick Tab
+      globalQuickTabState.tabs.push({
+        id: quickTabId,
+        ...changes,
+        originTabId: sourceTabId
+      });
+      globalQuickTabState.lastUpdate = Date.now();
+      console.log('[Background] Added new tab to cache:', quickTabId);
+    }
+  }
+  
+  // Broadcast to all interested parties
+  await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
+  
+  return { success: true };
+}
+
+/**
+ * Broadcast QUICK_TAB_STATE_UPDATED to Manager and other tabs
+ * v1.6.3.5-v3 - FIX Architecture Phase 1: Background broadcasts state changes
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes
+ * @param {string} source - Source of change
+ * @param {number} excludeTabId - Tab to exclude from broadcast (the source tab)
+ */
+async function broadcastQuickTabStateUpdate(quickTabId, changes, source, excludeTabId) {
+  const message = {
+    type: 'QUICK_TAB_STATE_UPDATED',
+    quickTabId,
+    changes,
+    source: 'background',
+    originalSource: source,
+    timestamp: Date.now()
+  };
+  
+  console.log('[Background] Broadcasting QUICK_TAB_STATE_UPDATED:', {
+    quickTabId,
+    changes,
+    source,
+    excludeTabId
+  });
+  
+  // Broadcast to Manager sidebar (if open)
+  try {
+    await browser.runtime.sendMessage(message);
+    console.log('[Background] Sent state update to sidebar/popup');
+  } catch (_err) {
+    // Sidebar may not be open - ignore
+  }
+  
+  // Note: We don't broadcast to other content scripts here because:
+  // 1. storage.onChanged handles cross-tab sync
+  // 2. Adding tab broadcasts could cause feedback loops
+  // In Phase 4, this will be the primary sync mechanism
+}
+
+/**
+ * Handle MANAGER_COMMAND message from sidebar
+ * v1.6.3.5-v3 - FIX Architecture Phase 3: Manager can control Quick Tabs in any tab
+ * @param {Object} message - Message containing command
+ */
+function handleManagerCommand(message) {
+  const { command, quickTabId, sourceContext } = message;
+  
+  console.log('[Background] MANAGER_COMMAND received:', {
+    command,
+    quickTabId,
+    sourceContext
+  });
+  
+  // Find which tab hosts this Quick Tab
+  const hostTabId = quickTabHostTabs.get(quickTabId);
+  
+  if (!hostTabId) {
+    console.warn('[Background] Cannot execute command - Quick Tab host unknown:', quickTabId);
+    // Try to find from cache
+    const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
+    if (cachedTab?.originTabId) {
+      console.log('[Background] Found host from cache:', cachedTab.originTabId);
+      quickTabHostTabs.set(quickTabId, cachedTab.originTabId);
+      return executeManagerCommand(command, quickTabId, cachedTab.originTabId);
+    }
+    return Promise.resolve({ success: false, error: 'Quick Tab host unknown' });
+  }
+  
+  return executeManagerCommand(command, quickTabId, hostTabId);
+}
+
+/**
+ * Execute Manager command by sending to target content script
+ * v1.6.3.5-v3 - FIX Architecture Phase 3: Route commands to correct tab
+ * @param {string} command - Command to execute
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} hostTabId - Tab ID hosting the Quick Tab
+ */
+async function executeManagerCommand(command, quickTabId, hostTabId) {
+  const executeMessage = {
+    type: 'EXECUTE_COMMAND',
+    command,
+    quickTabId,
+    source: 'manager'
+  };
+  
+  console.log('[Background] Routing command to tab:', {
+    command,
+    quickTabId,
+    hostTabId
+  });
+  
+  try {
+    const response = await browser.tabs.sendMessage(hostTabId, executeMessage);
+    console.log('[Background] Command executed successfully:', response);
+    return { success: true, response };
+  } catch (err) {
+    console.error('[Background] Failed to execute command:', {
+      command,
+      quickTabId,
+      hostTabId,
+      error: err.message
+    });
+    return { success: false, error: err.message };
+  }
+}
+
+// Register message handlers for Quick Tab coordination
+// This extends the existing runtime.onMessage listener
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // v1.6.3.5-v3 - FIX Architecture Phase 1-3: Handle Quick Tab coordination messages
+  if (message.type === 'QUICK_TAB_STATE_CHANGE') {
+    handleQuickTabStateChange(message, sender)
+      .then(result => sendResponse(result))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true; // Keep channel open for async response
+  }
+  
+  if (message.type === 'MANAGER_COMMAND') {
+    handleManagerCommand(message)
+      .then(result => sendResponse(result))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+  
+  // Let other handlers process the message
+  return false;
+});
+
+console.log('[Background] v1.6.3.5-v3 Message infrastructure registered');
+// ==================== END MESSAGE INFRASTRUCTURE ====================

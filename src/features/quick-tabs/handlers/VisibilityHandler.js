@@ -670,9 +670,16 @@ export class VisibilityHandler {
       return;
     }
     
+    // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Track timer scheduling for logging
+    const timerScheduleTime = Date.now();
+    
     // v1.6.3.4-v8 - FIX Issue #4: Delay emit until we can verify DOM is rendered
     // This prevents Manager from showing green indicator when window isn't actually visible
     setTimeout(() => {
+      // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback entry with timing info
+      const actualDelay = Date.now() - timerScheduleTime;
+      console.log(`${this._logPrefix} state:updated emit timer FIRED (id: ${id}, scheduledDelay: ${STATE_EMIT_DELAY_MS}ms, actualDelay: ${actualDelay}ms, source: ${source})`);
+      
       // Verify DOM is actually rendered before emitting state:updated
       const isDOMRendered = tabWindow.isRendered ? tabWindow.isRendered() : (tabWindow.container && tabWindow.container.parentNode);
       
@@ -698,11 +705,16 @@ export class VisibilityHandler {
           id,
           missingFields: validation.missingFields
         });
+        // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback exit on rejection
+        console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: rejected, reason: invalid payload, duration: ${Date.now() - timerScheduleTime}ms)`);
         return;
       }
       
       this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
       console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { domVerified: isDOMRendered, isRestoreOperation: true });
+      
+      // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback exit on success
+      console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: success, duration: ${Date.now() - timerScheduleTime}ms)`);
     }, STATE_EMIT_DELAY_MS);
   }
 
@@ -820,12 +832,16 @@ export class VisibilityHandler {
     this._timerIdCounter++;
     const timerId = `timer-${id}-${this._timerIdCounter}`;
     
+    // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Track schedule time for accurate delay measurement
+    const timerScheduleTime = Date.now();
+    
     console.log(`[VisibilityHandler] _debouncedPersist scheduling (source: ${source}):`, {
       id,
       operation,
       timerId,
       existingTimer: this._debounceTimers.has(id),
-      activeTimerCount: this._activeTimerIds.size
+      activeTimerCount: this._activeTimerIds.size,
+      scheduledDelayMs: MINIMIZE_DEBOUNCE_MS
     });
     
     // Clear any existing timer for this tab
@@ -835,9 +851,10 @@ export class VisibilityHandler {
       if (typeof existingTimer === 'object' && existingTimer.timeoutId) {
         clearTimeout(existingTimer.timeoutId);
         this._activeTimerIds.delete(existingTimer.timerId);
-        console.log(`[VisibilityHandler] Cleared previous debounce timer (source: ${source}):`, {
+        console.log(`[VisibilityHandler] Timer CANCELLED before execution (source: ${source}):`, {
           id,
-          cancelledTimerId: existingTimer.timerId
+          cancelledTimerId: existingTimer.timerId,
+          reason: 'replaced by newer timer'
         });
       } else {
         // Legacy format - existingTimer is just the timeout ID
@@ -850,48 +867,86 @@ export class VisibilityHandler {
     this._activeTimerIds.add(timerId);
     
     // Set new debounce timer with timer ID check
-    const timeoutId = setTimeout(async () => {
-      // v1.6.3.5 - FIX Issue #4: Check if this timer ID is still active
-      // If not, a newer timer replaced this one and this callback should be skipped
-      if (!this._activeTimerIds.has(timerId)) {
-        console.log('[VisibilityHandler] Timer callback SKIPPED (timer cancelled):', {
-          id,
-          operation,
-          source,
-          timerId
-        });
-        return;
-      }
-      
-      // Remove from active set now that we're executing
-      this._activeTimerIds.delete(timerId);
-      
-      console.log(`[VisibilityHandler] Timer callback executing (source: ${source}):`, {
-        id,
-        operation,
-        timerId,
-        pendingMinimizeSize: this._pendingMinimize.size,
-        pendingRestoreSize: this._pendingRestore.size
-      });
-      
-      this._debounceTimers.delete(id);
-      
-      // Clear pending flags
-      this._pendingMinimize.delete(id);
-      this._pendingRestore.delete(id);
-      
-      // v1.6.3.2 - FIX Issue #2: Release operation locks
-      this._releaseLock('minimize', id);
-      this._releaseLock('restore', id);
-      
-      // Perform atomic storage write
-      await this._persistToStorage();
-      
-      console.log(`[VisibilityHandler] Completed ${operation} (source: ${source}) for ${id} with storage persist (timerId: ${timerId})`);
-    }, MINIMIZE_DEBOUNCE_MS);
+    const timeoutId = setTimeout(
+      () => this._executeDebouncedPersistCallback(id, operation, source, timerId, timerScheduleTime),
+      MINIMIZE_DEBOUNCE_MS
+    );
     
     // Store both the timeout ID and the timer ID
     this._debounceTimers.set(id, { timeoutId, timerId });
+  }
+  
+  /**
+   * Execute the debounced persist callback
+   * v1.6.3.5-v3 - Extracted to reduce _debouncedPersist complexity
+   * @private
+   */
+  async _executeDebouncedPersistCallback(id, operation, source, timerId, timerScheduleTime) {
+    // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Calculate actual delay for logging
+    const actualDelay = Date.now() - timerScheduleTime;
+    
+    // v1.6.3.5 - FIX Issue #4: Check if this timer ID is still active
+    // If not, a newer timer replaced this one and this callback should be skipped
+    if (!this._activeTimerIds.has(timerId)) {
+      console.log('[VisibilityHandler] Timer callback SKIPPED (timer cancelled):', {
+        id,
+        operation,
+        source,
+        timerId
+      });
+      return;
+    }
+    
+    // Remove from active set now that we're executing
+    this._activeTimerIds.delete(timerId);
+    
+    // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback STARTED with actual delay
+    const callbackStartTime = Date.now();
+    console.log(`[VisibilityHandler] Timer callback STARTED (source: ${source}):`, {
+      id,
+      operation,
+      timerId,
+      scheduledDelayMs: MINIMIZE_DEBOUNCE_MS,
+      actualDelayMs: actualDelay,
+      pendingMinimizeSize: this._pendingMinimize.size,
+      pendingRestoreSize: this._pendingRestore.size
+    });
+    
+    this._debounceTimers.delete(id);
+    
+    // Clear pending flags
+    this._pendingMinimize.delete(id);
+    this._pendingRestore.delete(id);
+    
+    // v1.6.3.2 - FIX Issue #2: Release operation locks
+    this._releaseLock('minimize', id);
+    this._releaseLock('restore', id);
+    
+    // Perform atomic storage write
+    try {
+      await this._persistToStorage();
+      
+      // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback COMPLETED with duration
+      const callbackDuration = Date.now() - callbackStartTime;
+      console.log(`[VisibilityHandler] Timer callback COMPLETED (source: ${source}):`, {
+        id,
+        operation,
+        timerId,
+        durationMs: callbackDuration,
+        outcome: 'success'
+      });
+    } catch (err) {
+      // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback FAILED
+      const callbackDuration = Date.now() - callbackStartTime;
+      console.error(`[VisibilityHandler] Timer callback FAILED (source: ${source}):`, {
+        id,
+        operation,
+        timerId,
+        durationMs: callbackDuration,
+        outcome: 'error',
+        error: err.message
+      });
+    }
   }
 
   /**

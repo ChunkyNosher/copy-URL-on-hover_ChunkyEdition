@@ -63,6 +63,104 @@ let lastCompletedTransactionId = null;
 let stateSnapshot = null;
 let transactionActive = false;
 
+// v1.6.3.5-v3 - FIX Diagnostic Issue #1: Self-write detection for storage.onChanged
+// writingInstanceId is unique per tab load (generated once at module load)
+// This allows storage.onChanged handlers to detect and skip self-writes
+// NOTE: Using crypto.getRandomValues() for better randomness
+const WRITING_INSTANCE_ID = (() => {
+  const timestamp = Date.now();
+  // Use crypto.getRandomValues if available for better randomness
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const array = new Uint8Array(6);
+    crypto.getRandomValues(array);
+    const randomPart = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    return `inst-${timestamp}-${randomPart}`;
+  }
+  // Fallback for environments without crypto
+  return `inst-${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
+})();
+
+// Current tab ID for self-write detection (initialized lazily)
+let currentWritingTabId = null;
+
+/**
+ * Initialize the writing tab ID asynchronously
+ * v1.6.3.5-v3 - FIX Diagnostic Issue #1: Self-write detection
+ */
+async function initWritingTabId() {
+  if (currentWritingTabId !== null) return currentWritingTabId;
+  
+  try {
+    const browserAPI = getBrowserStorageAPI();
+    const tab = await _fetchCurrentTab(browserAPI);
+    if (tab?.id) {
+      currentWritingTabId = tab.id;
+      console.log('[StorageUtils] Initialized writingTabId:', currentWritingTabId);
+    }
+  } catch (err) {
+    console.warn('[StorageUtils] Could not get current tab ID:', err.message);
+  }
+  
+  return currentWritingTabId;
+}
+
+/**
+ * Fetch current tab from browser API
+ * @private
+ */
+function _fetchCurrentTab(browserAPI) {
+  if (!browserAPI?.tabs?.getCurrent) return Promise.resolve(null);
+  return browserAPI.tabs.getCurrent();
+}
+
+/**
+ * Get or initialize the current tab ID for self-write detection
+ * @returns {Promise<number|null>} Current tab ID or null
+ */
+export function getWritingTabId() {
+  return initWritingTabId();
+}
+
+/**
+ * Get the instance ID for self-write detection
+ * @returns {string} Unique instance ID for this tab load
+ */
+export function getWritingInstanceId() {
+  return WRITING_INSTANCE_ID;
+}
+
+/**
+ * Check if a storage change is a self-write (from this tab/instance)
+ * v1.6.3.5-v3 - FIX Diagnostic Issue #1: Skip processing of self-writes
+ * @param {Object} newValue - New storage value with writingTabId/writingInstanceId
+ * @param {number|null} currentTabId - Current tab's ID (optional, uses cached if null)
+ * @returns {boolean} True if this is a self-write that should be skipped
+ */
+export function isSelfWrite(newValue, currentTabId = null) {
+  if (!newValue) return false;
+  
+  // Check instance ID first (most reliable)
+  if (newValue.writingInstanceId && newValue.writingInstanceId === WRITING_INSTANCE_ID) {
+    console.log('[StorageUtils] SKIPPED self-write (writingInstanceId matches):', {
+      instanceId: WRITING_INSTANCE_ID,
+      transactionId: newValue.transactionId
+    });
+    return true;
+  }
+  
+  // Fall back to tab ID check
+  const tabId = currentTabId ?? currentWritingTabId;
+  if (tabId !== null && newValue.writingTabId && newValue.writingTabId === tabId) {
+    console.log('[StorageUtils] SKIPPED self-write (writingTabId matches):', {
+      tabId,
+      transactionId: newValue.transactionId
+    });
+    return true;
+  }
+  
+  return false;
+}
+
 /**
  * Capture current storage state as a snapshot for potential rollback
  * v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern implementation
@@ -905,10 +1003,14 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   
   console.log(`${logPrefix} Persisting ${tabCount} tabs (${minimizedCount} minimized) [${transactionId}]`);
   
-  // v1.6.3.4-v6 - FIX Issue #1: Add transaction ID to state for tracking
+  // v1.6.3.5-v3 - FIX Diagnostic Issue #1: Add self-write detection fields
+  // writingInstanceId: Unique ID per tab load (most reliable)
+  // writingTabId: Current browser tab ID (will be set async)
   const stateWithTxn = {
     ...state,
-    transactionId
+    transactionId,
+    writingInstanceId: WRITING_INSTANCE_ID,
+    writingTabId: currentWritingTabId // May be null initially, but set for subsequent writes
   };
   
   // v1.6.3.4-v8 - FIX Issue #7: Queue the write operation for FIFO ordering

@@ -1974,7 +1974,87 @@ const ACTION_HANDLERS = {
 /**
  * Type handlers map for message.type-based test bridge messages
  */
+
+/**
+ * Command handler lookup table
+ * v1.6.3.5-v3 - Extracted to reduce _executeQuickTabCommand complexity
+ * @private
+ */
+const QUICK_TAB_COMMAND_HANDLERS = {
+  'MINIMIZE_QUICK_TAB': (quickTabId, source) => {
+    const handler = quickTabsManager?.visibilityHandler?.handleMinimize;
+    if (!handler) return { success: false, error: 'handleMinimize not available' };
+    handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
+    return { success: true, action: 'minimized' };
+  },
+  'RESTORE_QUICK_TAB': (quickTabId, source) => {
+    const handler = quickTabsManager?.visibilityHandler?.handleRestore;
+    if (!handler) return { success: false, error: 'handleRestore not available' };
+    handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
+    return { success: true, action: 'restored' };
+  },
+  'CLOSE_QUICK_TAB': (quickTabId, _source) => {
+    const handler = quickTabsManager?.closeById;
+    if (!handler) return { success: false, error: 'closeById not available' };
+    handler.call(quickTabsManager, quickTabId);
+    return { success: true, action: 'closed' };
+  },
+  'FOCUS_QUICK_TAB': (quickTabId, source) => {
+    const handler = quickTabsManager?.visibilityHandler?.handleFocus;
+    if (!handler) return { success: false, error: 'handleFocus not available' };
+    handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
+    return { success: true, action: 'focused' };
+  }
+};
+
+/**
+ * Execute a single Quick Tab command
+ * v1.6.3.5-v3 - Extracted to reduce EXECUTE_COMMAND handler complexity
+ * @private
+ */
+function _executeQuickTabCommand(command, quickTabId, source) {
+  const handler = QUICK_TAB_COMMAND_HANDLERS[command];
+  if (!handler) return { success: false, error: `Unknown command: ${command}` };
+  return handler(quickTabId, source);
+}
+
 const TYPE_HANDLERS = {
+  // v1.6.3.5-v3 - FIX Architecture Phase 3: Handle EXECUTE_COMMAND from background
+  // This enables Manager sidebar to control Quick Tabs in this tab remotely
+  'EXECUTE_COMMAND': (message, sendResponse) => {
+    const { command, quickTabId, source } = message;
+    console.log('[Content] EXECUTE_COMMAND received:', { command, quickTabId, source });
+    
+    if (!quickTabsManager) {
+      console.warn('[Content] quickTabsManager not available');
+      sendResponse({ success: false, error: 'quickTabsManager not available' });
+      return true;
+    }
+    
+    try {
+      const result = _executeQuickTabCommand(command, quickTabId, source);
+      console.log('[Content] EXECUTE_COMMAND result:', result);
+      sendResponse(result);
+    } catch (err) {
+      console.error('[Content] EXECUTE_COMMAND error:', err);
+      sendResponse({ success: false, error: err.message });
+    }
+    
+    return true;
+  },
+  
+  // v1.6.3.5-v3 - FIX Architecture Phase 1: Handle state update notifications
+  'QUICK_TAB_STATE_UPDATED': (message, sendResponse) => {
+    console.log('[Content] QUICK_TAB_STATE_UPDATED received:', {
+      quickTabId: message.quickTabId,
+      changes: message.changes
+    });
+    // Content script doesn't need to do anything - it manages its own state
+    // This handler is mainly for logging and potential future use
+    sendResponse({ received: true });
+    return true;
+  },
+  
   'TEST_CREATE_QUICK_TAB': (message, sendResponse) => {
     _testHandleCreateQuickTab(message.data, sendResponse);
     return true;
