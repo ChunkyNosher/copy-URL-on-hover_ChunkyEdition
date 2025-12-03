@@ -577,12 +577,17 @@ function scheduleFallbackCleanup(transactionId) {
   }
   
   // Schedule fallback cleanup
+  // v1.6.3.5-v5 - FIX Code Review #2: Wrapped in try/catch for error handling consistency
   const timeoutId = setTimeout(() => {
-    if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
-      console.warn('[StorageUtils] Transaction fallback cleanup (storage.onChanged not received):', transactionId);
-      IN_PROGRESS_TRANSACTIONS.delete(transactionId);
+    try {
+      if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
+        console.warn('[StorageUtils] Transaction fallback cleanup (storage.onChanged not received):', transactionId);
+        IN_PROGRESS_TRANSACTIONS.delete(transactionId);
+      }
+      TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
+    } catch (err) {
+      console.error('[StorageUtils] Error in transaction fallback cleanup:', transactionId, err.message);
     }
-    TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
   }, TRANSACTION_FALLBACK_CLEANUP_MS);
   
   TRANSACTION_CLEANUP_TIMEOUTS.set(transactionId, timeoutId);

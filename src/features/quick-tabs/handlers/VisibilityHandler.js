@@ -595,9 +595,9 @@ export class VisibilityHandler {
     this._pendingRestore.add(id);
 
     // v1.6.3.5-v5 - FIX Issue #6: Capture pre-restore state for rollback
+    // Note: Only capturing minimized state, as 'rendered' state is managed by UICoordinator
     const preRestoreState = tabWindow ? {
-      minimized: tabWindow.minimized,
-      rendered: tabWindow.rendered
+      minimized: tabWindow.minimized
     } : null;
 
     // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = false FIRST
@@ -713,15 +713,22 @@ export class VisibilityHandler {
   }
 
   /**
-   * Check if tab window DOM is rendered
+   * Check if tab window DOM is rendered and connected to document
    * v1.6.3.5-v5 - Extracted helper to reduce code duplication (Code Review feedback)
+   * v1.6.3.5-v5 - Enhanced to verify parentNode is connected to document (Code Review #1)
    * @private
    * @param {Object} tabWindow - Tab window instance
-   * @returns {boolean} True if DOM is rendered
+   * @returns {boolean} True if DOM is rendered and connected to document
    */
   _isDOMRendered(tabWindow) {
-    return tabWindow?.isRendered?.() || 
-      (tabWindow?.container && tabWindow?.container?.parentNode);
+    // Use isRendered() method if available (preferred)
+    if (tabWindow?.isRendered?.()) {
+      return true;
+    }
+    // Fallback: Check container exists and is connected to document
+    // isConnected is true only if the element is in the DOM tree
+    const container = tabWindow?.container;
+    return container && container.parentNode && (container.isConnected ?? document.body.contains(container));
   }
 
   /**
