@@ -237,7 +237,7 @@ export function validateOwnershipForWrite(tabs, currentTabId = null) {
       totalTabs: tabs.length,
       ownedTabs: ownedTabs.length,
       filteredOut: nonOwnedCount,
-      filteredIds: tabs.filter(t => t.originTabId !== tabId && t.originTabId != null).map(t => ({
+      filteredIds: tabs.filter(t => t.originTabId !== tabId && t.originTabId !== null && t.originTabId !== undefined).map(t => ({
         id: t.id,
         originTabId: t.originTabId
       }))
