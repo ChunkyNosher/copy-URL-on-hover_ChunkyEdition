@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v7)
+  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v8)
 tools: ["*"]
 ---
 
@@ -28,39 +28,37 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v7 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v8 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z, storage storm protection
 - **Background-as-Coordinator** - Manager commands routed through background.js
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
-- **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
+- **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping (v1.6.3.5-v8)
 
-**v1.6.3.5-v7 Fixes (8 Issues):**
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback in MinimizedManager
-- **Duplicate Window Prevention** - render() early return guard checking `this.container`
-- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo` or `originTabId`
-- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()` with `_dragDebounceTimers`
-- **State Transition Logging** - Comprehensive `StateManager.persistToStorage(source)` logging
-- **Minimize State on Reload** - Set `domVerified: false` when minimizing
-- **Manager Sync Timestamp** - `lastLocalUpdateTime` tracks actual UI update time
-- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
+**v1.6.3.5-v8 Fixes (10 Issues):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` in UICoordinator
+2. **Manager minimize/restore** - Coordinated snapshots, renderedTabs, entity.minimized
+3. **Position/size after restore** - `_emitOrphanedTabEvent()` in UpdateHandler
+4. **Z-index/stacking** - `_executeRestore()` increments z-index
+5. **Last sync flicker** - Stabilized restore-related persistence
+6. **Clear Quick Tab Storage** - `UICoordinator.clearAll()`, clears `quickTabHostInfo`
+7. **Phantom Quick Tabs** - `quickTabHostTabs` cleared during coordinated clear
+8. **Storage thrashing** - `saveId: 'cleared-{timestamp}'` pattern
+9. **Snapshot inconsistencies** - `forceCleanup()`, `getAllSnapshotIds()` in MinimizedManager
+10. **Logging coverage** - `_logPrefix` with tab ID
 
-**v1.6.3.5-v6 Features (Retained):**
-- **Restore Trusts UICoordinator** - No DOM verification rollback in VisibilityHandler
-- **closeAll Mutex** - `_closeAllInProgress` flag prevents duplicate closeAll execution
-- **CreateHandler→UICoordinator** - `window:created` event populates `renderedTabs` Map
-
-**v1.6.3.5-v7 Architecture:**
+**v1.6.3.5-v8 Architecture:**
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - `minimize()`, `restore()`, `destroy()` with state validation
 - **MapTransactionManager** - Atomic Map ops with rollback
-- **MinimizedManager** - `onStoragePersistNeeded` callback, `_triggerStoragePersist()` (v1.6.3.5-v7)
-- **UpdateHandler** - `_debouncedDragPersist()`, `_dragDebounceTimers`, `DRAG_DEBOUNCE_MS` (v1.6.3.5-v7)
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()` (v1.6.3.5-v8)
+- **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()` (v1.6.3.5-v8)
+- **UICoordinator** - `currentTabId`, `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix` (v1.6.3.5-v8)
+- **VisibilityHandler** - `_logPrefix`, enhanced `_executeRestore()` (v1.6.3.5-v8)
 - **DestroyHandler** - `_closeAllInProgress` mutex, `_scheduleMutexRelease()`
 - **CreateHandler** - `_emitWindowCreatedEvent()` emits `window:created`
-- **UICoordinator** - `_registerCreatedWindow()` listens for `window:created`
 
 ---
 
@@ -83,6 +81,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8)
 - [ ] Ownership validation works (`canCurrentTabModifyQuickTab`)
 - [ ] Storage storm protection (`inMemoryTabsCache`)
 - [ ] UICoordinator invariants verified
@@ -90,12 +89,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] State machine transitions validated
 - [ ] Promise-based sequencing works
 - [ ] closeAll mutex prevents duplicates
-- [ ] window:created event fires correctly
-- [ ] Drag/resize persistence works (200ms debounce) (v1.6.3.5-v7)
-- [ ] Manager empty list fixed after minimize/restore (v1.6.3.5-v7)
+- [ ] Coordinated clear works (`clearAll()` + `quickTabHostTabs` reset) (v1.6.3.5-v8)
+- [ ] Orphaned tab recovery works (`_emitOrphanedTabEvent`) (v1.6.3.5-v8)
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.5-v7 fixes and Per-Tab Ownership Validation.**
+**Your strength: Complete Quick Tab system with v1.6.3.5-v8 fixes and Per-Tab Scoping via `_shouldRenderOnThisTab()`.**

@@ -1,6 +1,10 @@
 // Quick Tabs Manager Sidebar Script
 // Manages display and interaction with Quick Tabs across all containers
 // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Added comprehensive logging for UI state changes
+// v1.6.3.5-v8 - FIX Diagnostic Issues #6, #7, #10:
+//   - Issue #6: Clear quickTabHostInfo on Close All
+//   - Issue #7: Clear phantom Quick Tabs via coordinated clear
+//   - Issue #10: Enhanced logging with affected IDs
 
 // Storage keys
 const STATE_KEY = 'quick_tabs_state_v2';
@@ -1372,10 +1376,17 @@ function filterMinimizedFromContainerFormat(state) {
  *   Instead of writing directly to storage, we send COORDINATED_CLEAR_ALL_QUICK_TABS
  *   to background which handles the single storage write and broadcasts to all tabs.
  *   This prevents multi-writer race conditions.
+ * v1.6.3.5-v8 - FIX Issue #6, #10: Enhanced logging with affected IDs
  */
 async function closeAllTabs() {
   try {
-    console.log('[Manager] Sending COORDINATED_CLEAR_ALL_QUICK_TABS to background...');
+    // v1.6.3.5-v8 - FIX Issue #10: Log IDs being cleared
+    const clearedIds = quickTabsState?.tabs?.map(t => t.id) || [];
+    console.log('[Manager] Close All: Starting coordinated clear:', {
+      tabCount: clearedIds.length,
+      ids: clearedIds,
+      cacheCount: inMemoryTabsCache.length
+    });
     
     // v1.6.3.5-v6 - Use background-coordinated clear (single-writer architecture)
     const response = await browser.runtime.sendMessage({
@@ -1388,15 +1399,23 @@ async function closeAllTabs() {
       console.warn('[Manager] Coordinated clear returned:', response);
     }
 
-    console.log('[Manager] Closed all Quick Tabs via coordinated clear');
+    // v1.6.3.5-v8 - FIX Issue #6: Clear quickTabHostInfo to prevent phantom Quick Tabs
+    quickTabHostInfo.clear();
+    
+    // v1.6.3.5-v8 - FIX Issue #10: Log completion with details
+    console.log('[Manager] Close All complete:', {
+      clearedIds,
+      clearedCount: clearedIds.length
+    });
 
     // Update UI immediately
     quickTabsState = {};
     inMemoryTabsCache = [];
     lastKnownGoodTabCount = 0;
+    lastLocalUpdateTime = Date.now();
     renderUI();
   } catch (err) {
-    console.error('Error closing all tabs:', err);
+    console.error('[Manager] Error closing all tabs:', err);
   }
 }
 

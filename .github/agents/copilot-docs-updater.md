@@ -99,17 +99,17 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.5-v7)
+- [ ] Version numbers match current release (1.6.3.5-v8)
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Cross-tab sync uses storage.onChanged + Background-as-Coordinator
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.5-v7:** Manager empty list fix documented (`onStoragePersistNeeded`)
-- [ ] **v1.6.3.5-v7:** Debounced drag/resize documented (`_debouncedDragPersist`)
-- [ ] **v1.6.3.5-v7:** Cross-tab restore targeted messaging documented
-- [ ] **v1.6.3.5-v7:** Single Writer Model documented (`CLEAR_ALL_QUICK_TABS`)
+- [ ] **v1.6.3.5-v8:** Per-tab scoping documented (`_shouldRenderOnThisTab`)
+- [ ] **v1.6.3.5-v8:** Coordinated clear documented (`UICoordinator.clearAll`)
+- [ ] **v1.6.3.5-v8:** Orphaned tab recovery documented (`_emitOrphanedTabEvent`)
+- [ ] **v1.6.3.5-v8:** Snapshot cleanup documented (`forceCleanup`, `getAllSnapshotIds`)
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -117,7 +117,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.5-v7
+- **Current Version:** 1.6.3.5-v8
 - **Architecture Status:** DDD with Background-as-Coordinator ✅
 - **Cross-Tab Sync:** storage.onChanged + Background-as-Coordinator
 - **Key Features:**
@@ -127,19 +127,20 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload
 - **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp, writingTabId, writingInstanceId }`
-- **v1.6.3.5-v7 Fixes (8 Issues):**
-  - Manager empty list fix (`onStoragePersistNeeded` callback)
-  - Duplicate window prevention (render() early return guard)
-  - Cross-tab restore (targeted tab messaging via `quickTabHostInfo`)
-  - Drag/resize persistence (200ms debounced via `_debouncedDragPersist`)
-  - State transition logging (comprehensive `StateManager.persistToStorage` logging)
-  - Minimize state on reload (`domVerified: false` when minimizing)
-  - Manager sync timestamp (`lastLocalUpdateTime` tracking)
-  - Z-index persistence (storage persistence after `updateZIndex`)
-- **v1.6.3.5-v6 Features (Retained):**
-  - Restore trusts UICoordinator (no DOM verification rollback)
-  - closeAll mutex (`_closeAllInProgress`) prevents duplicate execution
-  - window:created event (CreateHandler→UICoordinator coordination)
+- **v1.6.3.5-v8 Fixes (10 Issues):**
+  - Per-tab scoping (`_shouldRenderOnThisTab` in UICoordinator)
+  - Manager minimize/restore coordination
+  - Orphaned tab recovery (`_emitOrphanedTabEvent`)
+  - Z-index increment on restore
+  - Last sync flicker fix
+  - Coordinated clear (`UICoordinator.clearAll`)
+  - Phantom Quick Tab cleanup
+  - Storage thrashing prevention
+  - Snapshot cleanup (`forceCleanup`, `getAllSnapshotIds`)
+  - Enhanced logging (`_logPrefix`)
+- **v1.6.3.5-v8 Manifest Changes:**
+  - `unlimitedStorage`, `sessions`, `contextualIdentities` permissions
+  - Security: Removed `state-manager.js` from `web_accessible_resources`
 - **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
@@ -198,13 +199,13 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.5-v7)
+- Version numbers (1.6.3.5-v8)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Background-as-Coordinator)
 - Sync mechanism (storage.onChanged + Background-as-Coordinator)
 - Storage format (unified tabs array with originTabId, writingTabId, writingInstanceId)
 - New architecture classes (StateMachine, Mediator, MapTransactionManager)
-- **v1.6.3.5-v7:** Manager empty list fix, debounced drag/resize, targeted tab messaging
+- **v1.6.3.5-v8:** Per-tab scoping, coordinated clear, orphaned tab recovery, snapshot cleanup
 - Single Writer Model (`CLEAR_ALL_QUICK_TABS` for Manager closeAll)
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
@@ -234,7 +235,7 @@ cat manifest.json | grep version
 # Check for outdated terms
 grep -r "Pin to Page" .github/
 grep -r "BroadcastChannel" .github/
-grep -r "1.6.3.5-v6" .github/
+grep -r "1.6.3.5-v6" .github/  # Check for very old versions
 ```
 
 **Use Agentic-Tools:**
@@ -295,34 +296,36 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.5-v7)
+## Current Extension State (v1.6.3.5-v8)
 
 ### Architecture
 - **Status:** Background-as-Coordinator ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### v1.6.3.5-v7 Fixes (8 Issues)
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback in MinimizedManager
-- **Duplicate Window Prevention** - render() early return guard checking `this.container`
-- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo` or `originTabId`
-- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()` with `_dragDebounceTimers`
-- **State Transition Logging** - Comprehensive `StateManager.persistToStorage(source)` logging
-- **Minimize State on Reload** - Set `domVerified: false` when minimizing
-- **Manager Sync Timestamp** - `lastLocalUpdateTime` tracks actual UI update time
-- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
+### v1.6.3.5-v8 Manifest Changes
+- `unlimitedStorage` - Prevents storage quota errors
+- `sessions` - Enables crash recovery and tab history
+- `contextualIdentities` - Better container API integration
+- Security: Removed `state-manager.js` from `web_accessible_resources`
 
-### v1.6.3.5-v6 Features (Retained)
-- **Restore Trusts UICoordinator** - No DOM verification rollback in VisibilityHandler
-- **closeAll Mutex** - `_closeAllInProgress` flag prevents duplicate execution, 2000ms cooldown
-- **CreateHandler→UICoordinator** - `window:created` event populates `renderedTabs` Map
+### v1.6.3.5-v8 Fixes (10 Issues)
+1. **Per-tab scoping** - `_shouldRenderOnThisTab()` in UICoordinator
+2. **Manager minimize/restore** - Coordinated snapshots
+3. **Orphaned tab recovery** - `_emitOrphanedTabEvent()` in UpdateHandler
+4. **Z-index on restore** - `_executeRestore()` increments z-index
+5. **Last sync flicker** - Stabilized persistence
+6. **Coordinated clear** - `UICoordinator.clearAll()`, clears `quickTabHostInfo`
+7. **Phantom Quick Tabs** - `quickTabHostTabs` cleared
+8. **Storage thrashing** - `saveId: 'cleared-{timestamp}'` pattern
+9. **Snapshot cleanup** - `forceCleanup()`, `getAllSnapshotIds()` in MinimizedManager
+10. **Enhanced logging** - `_logPrefix` with tab ID
 
-### v1.6.3.5-v7 Modules
-- **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
-- **QuickTabMediator** - `minimize()`, `restore()`, `destroy()` with state validation
-- **MapTransactionManager** - `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`
-- **MinimizedManager** - `onStoragePersistNeeded` callback, `_triggerStoragePersist()` (v1.6.3.5-v7)
-- **UpdateHandler** - `_debouncedDragPersist()`, `_dragDebounceTimers`, `DRAG_DEBOUNCE_MS` (v1.6.3.5-v7)
+### v1.6.3.5-v8 Modules
+- **UICoordinator** - `currentTabId`, `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix`
+- **VisibilityHandler** - `_logPrefix`, enhanced `_executeRestore()`
+- **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()`
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
 
 ### Features
 - **Solo/Mute:** Tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
@@ -337,7 +340,7 @@ await perplexity.research("documentation compression markdown");
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STORAGE_READ_DEBOUNCE_MS` | 50 | Fast UI updates |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `DRAG_DEBOUNCE_MS` | 200 | Debounced drag/resize persistence (v1.6.3.5-v7) |
+| `DRAG_DEBOUNCE_MS` | 200 | Debounced drag/resize persistence |
 | `DOM_VERIFICATION_DELAY_MS` | 500 | DOM verify timing |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
 | `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message deduplication |
@@ -365,7 +368,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.5-v6 or earlier | Update to 1.6.3.5-v7 |
+| v1.6.3.5-v7 or earlier | Update to 1.6.3.5-v8 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -389,13 +392,13 @@ done
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.5-v7
+- [ ] Version numbers updated to 1.6.3.5-v8
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged + Background-as-Coordinator documented
-- [ ] **v1.6.3.5-v7:** Manager empty list fix documented
-- [ ] **v1.6.3.5-v7:** Debounced drag/resize documented
-- [ ] **v1.6.3.5-v7:** Single Writer Model documented
+- [ ] **v1.6.3.5-v8:** Per-tab scoping documented
+- [ ] **v1.6.3.5-v8:** Coordinated clear documented
+- [ ] **v1.6.3.5-v8:** Manifest permission changes documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠

@@ -24,6 +24,10 @@
  * v1.6.3.5-v6 - FIX Diagnostic Issue #1: Remove DOM verification rollback
  *   - Issue #1: Removed DOM verification rollback that caused infinite restore deadlock
  *   - Trust UICoordinator to handle rendering via event-driven architecture
+ * v1.6.3.5-v8 - FIX Diagnostic Issues #4, #5, #10:
+ *   - Issue #4: Z-index sync after restore via dedicated z-index update
+ *   - Issue #5: Stable restore persistence via skip-if-unchanged check
+ *   - Issue #10: Enhanced logging with tab context
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -40,7 +44,7 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.3.5-v6
+ * @version 1.6.3.5-v8
  */
 
 import { buildStateForStorage, persistStateToStorage, validateStateForPersist, STATE_KEY, getBrowserStorageAPI } from '@utils/storage-utils.js';
@@ -612,14 +616,24 @@ export class VisibilityHandler {
 
     // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = false FIRST
     if (tabWindow) {
-      console.log(`[VisibilityHandler] Updating entity.minimized = false (source: ${source}) for:`, id);
+      console.log(`${this._logPrefix} Updating entity.minimized = false (source: ${source}) for:`, id);
       tabWindow.minimized = false;
+      
+      // v1.6.3.5-v8 - FIX Issue #4: Ensure z-index is brought to front after restore
+      if (this.currentZIndex) {
+        this.currentZIndex.value++;
+        tabWindow.zIndex = this.currentZIndex.value;
+        console.log(`${this._logPrefix} Updated z-index for restored tab (source: ${source}):`, {
+          id,
+          newZIndex: tabWindow.zIndex
+        });
+      }
     }
 
     // Restore from minimized manager
     const restored = this.minimizedManager.restore(id);
     if (!restored) {
-      console.warn(`[VisibilityHandler] Tab not found in minimized manager (source: ${source}):`, id);
+      console.warn(`${this._logPrefix} Tab not found in minimized manager (source: ${source}):`, id);
       // Fire-and-forget: Event emission runs async but doesn't block return
       void this._emitRestoreStateUpdate(id, tabWindow, source);
       this._debouncedPersist(id, 'restore', source);

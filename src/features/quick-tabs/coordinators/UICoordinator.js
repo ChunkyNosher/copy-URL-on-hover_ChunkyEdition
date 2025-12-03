@@ -7,6 +7,7 @@
  * - Manage QuickTabWindow lifecycle
  * - Listen to state events and trigger UI updates
  * - Register windows from window:created events
+ * - Enforce per-tab scoping via originTabId
  *
  * Complexity: cc ≤ 3 per method
  *
@@ -45,6 +46,10 @@
  *   - Issue #4: Check DOM for existing elements before creating duplicate windows
  *   - Issue #6: Enhanced logging for Map operations and orphaned window detection
  * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Add window:created listener to populate renderedTabs
+ * v1.6.3.5-v8 - FIX Diagnostic Issues #1, #6, #10:
+ *   - Issue #1: Enforce per-tab scoping via originTabId check
+ *   - Issue #6: Coordinated clear path for Close All
+ *   - Issue #10: Enhanced logging with tab context
  */
 
 import browser from 'webextension-polyfill';
@@ -77,12 +82,17 @@ export class UICoordinator {
    * @param {MinimizedManager} minimizedManager - Minimized manager instance
    * @param {PanelManager} panelManager - Panel manager instance
    * @param {EventEmitter} eventBus - Internal event bus
+   * @param {number} [currentTabId=null] - Current browser tab ID for cross-tab filtering
    */
-  constructor(stateManager, minimizedManager, panelManager, eventBus) {
+  constructor(stateManager, minimizedManager, panelManager, eventBus, currentTabId = null) {
     this.stateManager = stateManager;
     this.minimizedManager = minimizedManager;
     this.panelManager = panelManager;
     this.eventBus = eventBus;
+    // v1.6.3.5-v8 - FIX Issue #1: Store current tab ID for cross-tab filtering
+    this.currentTabId = currentTabId;
+    // v1.6.3.5-v8 - FIX Issue #10: Create log prefix with Tab ID for enhanced logging
+    this._logPrefix = `[UICoordinator][Tab ${currentTabId ?? 'unknown'}]`;
     this.renderedTabs = new Map(); // id -> QuickTabWindow
     // v1.6.3.2 - Cache for quickTabShowDebugId setting
     this.showDebugIdSetting = false;
@@ -515,6 +525,7 @@ export class UICoordinator {
    * v1.6.3.4-v9 - FIX Issue #16: Render rejection does NOT write to storage
    * v1.6.3.4-v12 - FIX Issue #4: Check for existing DOM element before creating duplicate
    *   Refactored to reduce complexity by extracting helper methods
+   * v1.6.3.5-v8 - FIX Issue #1: Add cross-tab scoping check
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {QuickTabWindow|null} Rendered tab window, or null if validation fails
@@ -522,6 +533,11 @@ export class UICoordinator {
   render(quickTab) {
     // Validate URL first
     if (!this._validateRenderUrl(quickTab)) {
+      return null;
+    }
+    
+    // v1.6.3.5-v8 - FIX Issue #1: Check cross-tab scoping
+    if (!this._shouldRenderOnThisTab(quickTab)) {
       return null;
     }
     
@@ -548,12 +564,50 @@ export class UICoordinator {
    */
   _validateRenderUrl(quickTab) {
     if (!quickTab.url) {
-      console.error('[UICoordinator] REJECTED: Cannot render Quick Tab with undefined URL:', {
+      console.error(`${this._logPrefix} REJECTED: Cannot render Quick Tab with undefined URL:`, {
         id: quickTab.id, url: quickTab.url
       });
       return false;
     }
     return true;
+  }
+  
+  /**
+   * Check if Quick Tab should be rendered on this tab (cross-tab scoping)
+   * v1.6.3.5-v8 - FIX Issue #1: Enforce strict per-tab scoping
+   * Quick Tabs should only render in the browser tab that created them
+   * @private
+   * @param {Object} quickTab - Quick Tab entity with originTabId property
+   * @returns {boolean} True if Quick Tab should render on this tab
+   */
+  _shouldRenderOnThisTab(quickTab) {
+    // If we don't know our tab ID, allow rendering (backwards compatibility)
+    // TODO v1.6.4: Remove this fallback once all tabs reliably have currentTabId set
+    if (this.currentTabId === null) {
+      console.log(`${this._logPrefix} No currentTabId set, allowing render:`, quickTab.id);
+      return true;
+    }
+    
+    // If Quick Tab has no originTabId, allow rendering (backwards compatibility)
+    // TODO v1.6.4: Remove this fallback once all Quick Tabs have originTabId from creation
+    const originTabId = quickTab.originTabId;
+    if (originTabId === null || originTabId === undefined) {
+      console.log(`${this._logPrefix} No originTabId on Quick Tab, allowing render:`, quickTab.id);
+      return true;
+    }
+    
+    // Only render if this is the origin tab
+    const shouldRender = originTabId === this.currentTabId;
+    
+    if (!shouldRender) {
+      console.log(`${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab belongs to different tab:`, {
+        id: quickTab.id,
+        originTabId,
+        currentTabId: this.currentTabId
+      });
+    }
+    
+    return shouldRender;
   }
   
   /**
@@ -1597,7 +1651,66 @@ export class UICoordinator {
       this.minimizedManager.clearSnapshot(quickTabId);
     }
 
-    console.log('[UICoordinator] Tab destroyed:', quickTabId, '| mapSize:', this.renderedTabs.size);
+    console.log(`${this._logPrefix} Tab destroyed:`, quickTabId, '| mapSize:', this.renderedTabs.size);
+  }
+
+  /**
+   * Clear all Quick Tabs from this tab context
+   * v1.6.3.5-v8 - FIX Issue #6: Coordinated global destruction path
+   * Clears renderedTabs, minimizedManager snapshots, and DOM elements
+   * @param {string} source - Source of clear operation ('Manager', 'background', etc.)
+   */
+  clearAll(source = 'unknown') {
+    console.log(`${this._logPrefix} clearAll() called (source: ${source}):`, {
+      renderedTabsCount: this.renderedTabs.size,
+      hasMinimizedManager: this._hasMinimizedManager()
+    });
+    
+    const clearedIds = [];
+    
+    // Stop all DOM monitoring timers
+    for (const id of this._domMonitoringTimers.keys()) {
+      this._stopDOMMonitoring(id);
+    }
+    
+    // Destroy all rendered tabs
+    for (const [id, tabWindow] of this.renderedTabs) {
+      clearedIds.push(id);
+      if (tabWindow?.destroy) {
+        tabWindow.destroy();
+      }
+      // Remove DOM element
+      removeQuickTabElement(id);
+    }
+    
+    // Clear the Map
+    this.renderedTabs.clear();
+    
+    // Clear minimized manager
+    if (this._hasMinimizedManager()) {
+      this.minimizedManager.clear();
+    }
+    
+    // Clear pending snapshot timers
+    for (const timer of this._pendingSnapshotClears.values()) {
+      clearTimeout(timer);
+    }
+    this._pendingSnapshotClears.clear();
+    
+    // Clear render timestamps
+    this._renderTimestamps.clear();
+    this._lastRenderTime.clear();
+    
+    // Reset z-index
+    this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
+    
+    // Final DOM cleanup using shared utility
+    cleanupOrphanedQuickTabElements(null);
+    
+    console.log(`${this._logPrefix} clearAll() complete (source: ${source}):`, {
+      clearedIds,
+      clearedCount: clearedIds.length
+    });
   }
 
   /**

@@ -359,6 +359,15 @@ export class MinimizedManager {
       console.log('[MinimizedManager] No storage persist callback registered');
     }
   }
+  
+  /**
+   * Update local timestamp to track when state was last modified
+   * v1.6.3.5-v8 - Helper for consistent timestamp updates across state-modifying operations
+   * @private
+   */
+  _updateLocalTimestamp() {
+    this.lastLocalUpdateTime = Date.now();
+  }
 
   /**
    * Update window reference in snapshot
@@ -522,11 +531,74 @@ export class MinimizedManager {
    * Clear all minimized tabs
    * v1.6.3.4-v10 - FIX Issue #1: Also clear pendingClearSnapshots
    * v1.6.3.5 - FIX Issue #3: Also clear restore-in-progress locks
+   * v1.6.3.5-v8 - FIX Issue #9: Enhanced logging for debug visibility
    */
   clear() {
+    const minimizedCount = this.minimizedTabs.size;
+    const pendingCount = this.pendingClearSnapshots.size;
+    const restoreCount = this._restoreInProgress.size;
+    
+    // Log IDs being cleared for debugging
+    const clearedIds = [
+      ...Array.from(this.minimizedTabs.keys()),
+      ...Array.from(this.pendingClearSnapshots.keys())
+    ];
+    
     this.minimizedTabs.clear();
     this.pendingClearSnapshots.clear();
     this._restoreInProgress.clear();
-    console.log('[MinimizedManager] Cleared all minimized tabs, pending snapshots, and restore locks');
+    this._updateLocalTimestamp();
+    
+    console.log('[MinimizedManager] clear() complete:', {
+      minimizedCleared: minimizedCount,
+      pendingCleared: pendingCount,
+      restoreLocksCleared: restoreCount,
+      clearedIds
+    });
+  }
+  
+  /**
+   * Force cleanup a specific snapshot from all Maps
+   * v1.6.3.5-v8 - FIX Issue #9: Ensure atomic cleanup across all collections
+   * @param {string} id - Quick Tab ID to clean up
+   * @returns {boolean} True if anything was cleaned up
+   */
+  forceCleanup(id) {
+    // Guard: Validate id parameter
+    if (!id) {
+      console.warn('[MinimizedManager] forceCleanup called with invalid id:', id);
+      return false;
+    }
+    
+    const wasInMinimized = this.minimizedTabs.delete(id);
+    const wasInPending = this.pendingClearSnapshots.delete(id);
+    const wasRestoreInProgress = this._restoreInProgress.delete(id);
+    
+    const cleaned = wasInMinimized || wasInPending || wasRestoreInProgress;
+    
+    if (cleaned) {
+      console.log('[MinimizedManager] forceCleanup:', {
+        id,
+        wasInMinimized,
+        wasInPending,
+        wasRestoreInProgress
+      });
+      this._updateLocalTimestamp();
+      this._triggerStoragePersist();
+    }
+    
+    return cleaned;
+  }
+  
+  /**
+   * Get all snapshot IDs (from both minimizedTabs and pendingClearSnapshots)
+   * v1.6.3.5-v8 - FIX Issue #10: Enhanced logging support
+   * @returns {string[]} Array of all snapshot IDs
+   */
+  getAllSnapshotIds() {
+    return [
+      ...Array.from(this.minimizedTabs.keys()),
+      ...Array.from(this.pendingClearSnapshots.keys())
+    ];
   }
 }

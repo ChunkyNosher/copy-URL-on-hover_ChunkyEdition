@@ -11,6 +11,9 @@
  *   - Add DOM verification before skipping updates
  *   - Re-add tabs to Map if DOM exists but Map entry is missing
  *   - Enhanced logging for skipped updates
+ * v1.6.3.5-v8 - FIX Diagnostic Issue #3:
+ *   - Re-wire window reference after restore using eventBus
+ *   - Enhanced tab recovery for post-restore updates
  *
  * Responsibilities:
  * - Handle position updates during drag
@@ -21,7 +24,7 @@
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
  *
- * @version 1.6.3.4-v12
+ * @version 1.6.3.5-v8
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -114,6 +117,7 @@ export class UpdateHandler {
    * v1.6.3.4 - FIX Issue #3: Added storage persistence
    * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation
    * v1.6.3.4-v12 - FIX Diagnostic Issue #3, #6: Verify DOM before skipping, re-add if missing
+   * v1.6.3.5-v8 - FIX Issue #3: Emit event when orphaned DOM detected for re-wiring
    *
    * @param {string} id - Quick Tab ID
    * @param {number} left - Final left position
@@ -139,13 +143,8 @@ export class UpdateHandler {
       });
       
       if (domExists) {
-        // v1.6.3.4-v12 - Tab exists in DOM but not in Map - log orphaned state
-        console.warn('[UpdateHandler] Tab not in Map but exists in DOM:', {
-          id,
-          action: 'Cannot re-add - no reference available'
-        });
-      } else {
-        console.warn('[UpdateHandler] Tab not in Map and not in DOM - skipping update:', id);
+        // v1.6.3.5-v8 - FIX Issue #3: Request re-wiring via event
+        this._emitOrphanedTabEvent(id, 'position', { left: roundedLeft, top: roundedTop });
       }
       return;
     }
@@ -164,6 +163,35 @@ export class UpdateHandler {
     // v1.6.3.4 - FIX Issue #3: Persist to storage after drag ends
     console.log('[UpdateHandler] Scheduling storage persist after position change');
     this._persistToStorage();
+  }
+  
+  /**
+   * Emit event when orphaned DOM element detected
+   * v1.6.3.5-v8 - FIX Issue #3: Request re-wiring from UICoordinator
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} updateType - Type of update that triggered detection
+   * @param {Object} updateData - Update data to apply after re-wiring
+   */
+  _emitOrphanedTabEvent(id, updateType, updateData) {
+    console.warn('[UpdateHandler] Tab not in Map but exists in DOM, requesting re-wire:', {
+      id,
+      updateType,
+      updateData
+    });
+    
+    // Guard: Only emit if eventBus is available
+    if (!this.eventBus) {
+      console.warn('[UpdateHandler] Cannot emit tab:orphaned - eventBus not available');
+      return;
+    }
+    
+    // Emit event for UICoordinator to handle re-wiring
+    this.eventBus.emit('tab:orphaned', {
+      id,
+      updateType,
+      updateData
+    });
   }
   
   /**
@@ -219,6 +247,7 @@ export class UpdateHandler {
    * v1.6.3.4 - FIX Issue #3: Added storage persistence
    * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation
    * v1.6.3.4-v12 - FIX Diagnostic Issue #3, #6: Verify DOM before skipping, enhanced logging
+   * v1.6.3.5-v8 - FIX Issue #3: Emit event when orphaned DOM detected for re-wiring
    *
    * @param {string} id - Quick Tab ID
    * @param {number} width - Final width
@@ -244,12 +273,8 @@ export class UpdateHandler {
       });
       
       if (domExists) {
-        console.warn('[UpdateHandler] Tab not in Map but exists in DOM:', {
-          id,
-          action: 'Cannot re-add - no reference available'
-        });
-      } else {
-        console.warn('[UpdateHandler] Tab not in Map and not in DOM - skipping update:', id);
+        // v1.6.3.5-v8 - FIX Issue #3: Request re-wiring via event
+        this._emitOrphanedTabEvent(id, 'size', { width: roundedWidth, height: roundedHeight });
       }
       return;
     }

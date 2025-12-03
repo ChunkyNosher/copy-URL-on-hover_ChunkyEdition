@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5-v7  
+**Version:** 1.6.3.5-v8  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -13,13 +13,18 @@
 - **Global Quick Tab visibility** (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Cross-tab sync via storage.onChanged + Background-as-Coordinator**
-- **Cross-tab isolation via `originTabId`**
+- **Cross-tab isolation via `originTabId`** with strict per-tab scoping
 - **Per-Tab Ownership Validation** (v1.6.3.5-v4)
-- **Promise-Based Sequencing** (v1.6.3.5-v5) - Deterministic operation ordering
-- **Debounced Drag/Resize Persistence** (v1.6.3.5-v7) - Live sync during drag
+- **Promise-Based Sequencing** (v1.6.3.5-v5)
 - Direct local creation pattern, State hydration on page reload
 
-**v1.6.3.5-v7 Architecture (Background-as-Coordinator):**
+**v1.6.3.5-v8 Manifest Changes:**
+- `unlimitedStorage` permission - Prevents storage quota errors
+- `sessions` permission - Enables crash recovery and tab history
+- `contextualIdentities` permission - Better container API integration
+- Security: Removed `state-manager.js` from `web_accessible_resources`
+
+**v1.6.3.5-v8 Architecture (Background-as-Coordinator):**
 
 **Core Modules:**
 - **QuickTabStateMachine** (`state-machine.js`) - Explicit lifecycle state tracking
@@ -27,21 +32,20 @@
 - **MapTransactionManager** (`map-transaction-manager.js`) - Atomic Map operations
 - **Background Script** - Coordinator for state broadcasts and manager commands
 
-**v1.6.3.5-v7 Fixes (8 Issues):**
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback in MinimizedManager
-- **Duplicate Window Prevention** - render() early return guard checking `this.container`
-- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo` or `originTabId`
-- **Drag/Resize Persistence** - 200ms debounced persistence via `_debouncedDragPersist()`
-- **State Transition Logging** - Comprehensive logging in `StateManager.persistToStorage()`
-- **Minimize State on Reload** - Set `domVerified: false` explicitly when minimizing
-- **Manager Sync Timestamp** - `lastLocalUpdateTime` tracks actual UI update time
-- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
+**v1.6.3.5-v8 Fixes (10 Issues):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` in UICoordinator enforces strict per-tab scoping
+2. **Manager minimize/restore** - Coordinated MinimizedManager snapshots, renderedTabs, entity.minimized
+3. **Position/size after restore** - `_emitOrphanedTabEvent()` in UpdateHandler for re-wiring
+4. **Z-index/stacking** - `_executeRestore()` increments z-index on restore
+5. **Last sync flicker** - Stabilized restore-related persistence, no duplicate writes
+6. **Clear Quick Tab Storage** - `clearAll()` in UICoordinator, clears `quickTabHostInfo`
+7. **Phantom Quick Tabs** - `quickTabHostTabs` cleared in background.js during coordinated clear
+8. **Storage thrashing** - Reset counters, `saveId: 'cleared-{timestamp}'` pattern
+9. **Snapshot inconsistencies** - `forceCleanup()`, `getAllSnapshotIds()` in MinimizedManager
+10. **Logging coverage** - `_logPrefix` with tab ID in UICoordinator and VisibilityHandler
 
-**v1.6.3.5-v6 Features (Retained):**
-- **Restore Trusts UICoordinator** - No DOM verification rollback
-- **closeAll Mutex** - `_closeAllInProgress` prevents duplicate closeAll
-- **window:created Event** - CreateHandler→UICoordinator coordination
-- **Promise-Based Sequencing** - `_delay()` helper for event→storage ordering
+**v1.6.3.5-v7 Fixes (Retained):**
+- Manager Empty List, Duplicate Window, Drag/Resize Persistence, State Logging
 
 **Deprecated (v1.6.3.5-v5):**
 - ⚠️ `window.js`: `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Bypass UpdateHandler
@@ -49,40 +53,9 @@
 
 ---
 
-## 🤖 CRITICAL: Agent Delegation Strategy
+## 🤖 Agent Delegation
 
-### DELEGATE MOST CODING TO SPECIALIST AGENTS
-
-Copilot main task is to **coordinate** and **delegate**, not code everything directly.
-
-### When to Delegate (ALWAYS for these tasks)
-
-| Task Type | Delegate To | When |
-|-----------|-------------|------|
-| Bug fixes | `bug-fixer` or `bug-architect` | Any bug in Quick Tabs or extension |
-| New features | `feature-builder` | Adding new functionality |
-| Refactoring | `refactor-specialist` | Large code reorganization |
-| Quick Tab issues | `quicktabs-unified-agent` | Anything Quick Tab related |
-| Cross-tab sync | `quicktabs-cross-tab-agent` | Sync, storage.onChanged, state |
-| Manager sidebar | `quicktabs-manager-agent` | Sidebar Quick Tabs Manager issues |
-| Single Quick Tab | `quicktabs-single-tab-agent` | Drag, resize, Solo/Mute UI |
-| Settings/UI | `ui-ux-settings-agent` | Settings page, appearance |
-| URL detection | `url-detection-agent` | Link detection, site handlers |
-| Copilot Docs Updater | `copilot-docs-updater` | Updating Copilot instructions and agent files |
-
-### Agent Selection Criteria
-
-**`bug-fixer`** - Clear repro steps, single file, surgical fix  
-**`bug-architect`** - Root cause unclear, multiple components  
-**`quicktabs-unified-agent`** - Complete lifecycle, cross-domain  
-**`quicktabs-cross-tab-agent`** - storage.onChanged, sync issues  
-**`copilot-docs-updater`** - Update instructions/agents, compress to <15KB
-
-### Delegation Template
-
-```
-@[agent-name] [task], Files: [list], run npm test/lint, commit with report_progress
-```
+**Delegate to specialists:** Bug fixes → `bug-fixer`/`bug-architect`, Features → `feature-builder`, Quick Tabs → `quicktabs-unified-agent`, Cross-tab → `quicktabs-cross-tab-agent`, Manager → `quicktabs-manager-agent`, Settings → `ui-ux-settings-agent`, Docs → `copilot-docs-updater`
 
 ---
 
@@ -90,14 +63,14 @@ Copilot main task is to **coordinate** and **delegate**, not code everything dir
 
 ### CRITICAL: Background-as-Coordinator + storage.onChanged
 
-**v1.6.3.5-v7 Message Types:**
+**Message Types:**
 - `QUICK_TAB_STATE_CHANGE` - Content script → Background for state changes
 - `QUICK_TAB_STATE_UPDATED` - Background → All contexts for broadcasts
 - `MANAGER_COMMAND` - Manager → Background for remote control
 - `EXECUTE_COMMAND` - Background → Content script for command execution
 - `CLEAR_ALL_QUICK_TABS` - Manager → Background for closeAll (Single Writer Model)
 
-**v1.6.3.5-v7 Events:**
+**Events:**
 - `window:created` - CreateHandler → UICoordinator to populate `renderedTabs` Map
 
 **Event Flow:**
@@ -115,9 +88,10 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 **Key Points:**
 - storage.onChanged does NOT fire in the tab that made the change
-- **v1.6.3.5-v7:** `canCurrentTabModifyQuickTab()` validates ownership before writes
-- **v1.6.3.5-v7:** Single Writer Model - Manager uses background-coordinated commands
-- **v1.6.3.5-v7:** Targeted tab messaging via `quickTabHostInfo` or `originTabId`
+- `canCurrentTabModifyQuickTab()` validates ownership before writes
+- Single Writer Model - Manager uses background-coordinated commands
+- Targeted tab messaging via `quickTabHostInfo` or `originTabId`
+- **v1.6.3.5-v8:** `_shouldRenderOnThisTab()` enforces strict per-tab scoping
 - Background script coordinates broadcasts, does NOT store state
 - Manager commands routed through background.js to host tabs
 
@@ -138,42 +112,46 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.5-v7 Architecture Features
+## 🆕 v1.6.3.5-v8 Architecture Features
 
-### Manager Empty List Fix (v1.6.3.5-v7)
+### New Manifest Permissions (v1.6.3.5-v8)
 
-MinimizedManager now has `onStoragePersistNeeded` callback that triggers storage persist after `clearSnapshot()`. This ensures Manager UI updates after minimize/restore operations.
+- **unlimitedStorage** - Prevents storage quota errors for Quick Tab state
+- **sessions** - Enables crash recovery and tab history features
+- **contextualIdentities** - Better container API integration
+- **Security Fix** - Removed `state-manager.js` from `web_accessible_resources`
 
-### Debounced Drag/Resize Persistence (v1.6.3.5-v7)
+### Per-Tab Scoping Fix (v1.6.3.5-v8)
 
-UpdateHandler has `_debouncedDragPersist()` with `_dragDebounceTimers` Map and 200ms `DRAG_DEBOUNCE_MS` constant. Enables live sync during drag/resize operations.
+UICoordinator now has `currentTabId` property and `_shouldRenderOnThisTab()` method that enforces strict per-tab scoping via originTabId check. Prevents Quick Tabs from appearing in wrong browser tabs.
 
-### Targeted Tab Messaging (v1.6.3.5-v7)
+### Coordinated Clear Operation (v1.6.3.5-v8)
 
-Manager now uses `quickTabHostInfo` or `originTabId` for targeted tab messaging, fixing cross-tab restore positioning issues.
+- `UICoordinator.clearAll()` - Coordinated global destruction path
+- `quickTabHostInfo` cleared on Close All in Manager
+- `quickTabHostTabs` cleared in background.js during coordinated clear
+- `saveId: 'cleared-{timestamp}'` pattern prevents storage thrashing
 
-### Enhanced State Logging (v1.6.3.5-v7)
+### Enhanced MinimizedManager (v1.6.3.5-v8)
 
-`StateManager.persistToStorage(source)` has comprehensive logging with timing, source, and state snapshot for debugging state transitions.
+- `forceCleanup()` - Atomic snapshot cleanup during clear operations
+- `getAllSnapshotIds()` - Enhanced logging support for debugging
+- `_updateLocalTimestamp()` - Accurate "Last sync" timestamp in Manager
 
-### Minimize State Preservation (v1.6.3.5-v7)
+### Orphaned Tab Recovery (v1.6.3.5-v8)
 
-VisibilityHandler sets `domVerified: false` explicitly when minimizing, ensuring state is preserved on page reload.
+UpdateHandler has `_emitOrphanedTabEvent()` that requests re-wiring when orphaned DOM is detected after restore operations. Fixes position/size issues.
 
-### Manager Sync Timestamp (v1.6.3.5-v7)
+### Enhanced Logging (v1.6.3.5-v8)
 
-`lastLocalUpdateTime` variable tracks actual UI update time for accurate "Last sync" display in Manager.
+`_logPrefix` with tab ID added to UICoordinator and VisibilityHandler for easier debugging of cross-tab issues.
 
-### Z-Index Persistence (v1.6.3.5-v7)
+### v1.6.3.5-v7 Features (Retained)
 
-Storage persistence added after `updateZIndex()` to prevent focus anomalies from z-index desync.
-
-### v1.6.3.5-v6 Features (Retained)
-
-- **Restore Trusts UICoordinator** - `_verifyRestoreAndEmit()` emits `isRestoreOperation: true`
+- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
+- **Debounced Drag/Resize** - `_debouncedDragPersist()` with 200ms debounce
 - **closeAll Mutex** - `_closeAllInProgress` with 2000ms cooldown
 - **window:created Event** - CreateHandler→UICoordinator coordination
-- **Promise-Based Sequencing** - `_delay()` helper for deterministic ordering
 
 ### Timing Constants
 
@@ -182,7 +160,7 @@ Storage persistence added after `updateZIndex()` to prevent focus anomalies from
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STORAGE_READ_DEBOUNCE_MS` | 50 | Fast UI updates |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
-| `DRAG_DEBOUNCE_MS` | 200 | Debounced drag/resize persistence (v1.6.3.5-v7) |
+| `DRAG_DEBOUNCE_MS` | 200 | Debounced drag/resize persistence |
 | `DOM_VERIFICATION_DELAY_MS` | 500 | DOM verify timing |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
 | `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message dedup |
@@ -190,7 +168,7 @@ Storage persistence added after `updateZIndex()` to prevent focus anomalies from
 
 ---
 
-## v1.6.3.5-v7 Architecture Classes
+## v1.6.3.5-v8 Architecture Classes
 
 ### QuickTabStateMachine
 States: UNKNOWN, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED  
@@ -202,23 +180,23 @@ Single entry point with rollback: `minimize()`, `restore()`, `destroy()`, `execu
 ### MapTransactionManager
 Atomic Map ops: `beginTransaction()`, `deleteEntry()`, `setEntry()`, `commitTransaction()`, `rollbackTransaction()`
 
-### MinimizedManager (v1.6.3.5-v7)
-`onStoragePersistNeeded` callback, `_triggerStoragePersist()` method for Manager sync
+### MinimizedManager (v1.6.3.5-v8)
+`onStoragePersistNeeded` callback, `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
 
-### UpdateHandler (v1.6.3.5-v7)
-`_debouncedDragPersist()`, `_dragDebounceTimers` Map, live event emissions during drag/resize
+### UpdateHandler (v1.6.3.5-v8)
+`_debouncedDragPersist()`, `_dragDebounceTimers` Map, `_emitOrphanedTabEvent()` for orphan recovery
 
-### StateManager (v1.6.3.5-v7)
-Enhanced `persistToStorage(source)` with comprehensive logging, timing, and state snapshot
+### UICoordinator (v1.6.3.5-v8)
+`currentTabId`, `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix`, `_registerCreatedWindow()`
+
+### VisibilityHandler (v1.6.3.5-v8)
+`_logPrefix` with tab ID, enhanced `_executeRestore()` increments z-index
 
 ### DestroyHandler
 `_closeAllInProgress` mutex, `_scheduleMutexRelease()` method for 2000ms cooldown
 
 ### CreateHandler
 `_emitWindowCreatedEvent()` emits `window:created` event for UICoordinator coordination
-
-### UICoordinator
-`_registerCreatedWindow()` listens for `window:created` events, `_verifyInvariant()`, `_lastRenderTime` Map
 
 ---
 
@@ -241,13 +219,16 @@ Enhanced `persistToStorage(source)` with comprehensive logging, timing, and stat
 ## 🏗️ Key Patterns
 
 - **Promise-Based Sequencing** - `_delay()` + async/await for event→storage ordering
-- **Debounced Drag Persistence** - `_debouncedDragPersist()` with separate timers (v1.6.3.5-v7)
+- **Debounced Drag Persistence** - `_debouncedDragPersist()` with separate timers
+- **Orphaned Tab Recovery** - `_emitOrphanedTabEvent()` requests re-wiring (v1.6.3.5-v8)
+- **Per-Tab Scoping** - `_shouldRenderOnThisTab()` prevents cross-tab rendering (v1.6.3.5-v8)
 - **Transaction Rollback** - `preRestoreState` captured via MapTransactionManager
 - **Active Timer IDs** - `_activeTimerIds` Set checks validity before executing
 - **State Machine** - `canTransition()` validates, `transition()` logs with source
 - **Map Transaction** - `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`
 - **Ownership Validation** - Only owner tabs persist via `persistStateToStorage()`
-- **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background (v1.6.3.5-v7)
+- **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
+- **Coordinated Clear** - `UICoordinator.clearAll()` + `quickTabHostTabs` reset (v1.6.3.5-v8)
 - **closeAll Mutex** - `_closeAllInProgress` prevents duplicate execution
 - **window:created Event** - CreateHandler→UICoordinator coordination
 
@@ -307,16 +288,16 @@ Enhanced `persistToStorage(source)` with comprehensive logging, timing, and stat
 - `src/features/quick-tabs/state-machine.js` - QuickTabStateMachine, States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - `src/features/quick-tabs/mediator.js` - QuickTabMediator, `minimize()`, `restore()`, `destroy()`, `executeWithRollback()`
 - `src/features/quick-tabs/map-transaction-manager.js` - MapTransactionManager with rollback
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - `_verifyInvariant()`, `_lastRenderTime` Map, `_registerCreatedWindow()` for `window:created`
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - `_delay()` helper, **v1.6.3.5-v7:** Sets `domVerified: false` on minimize
-- `src/features/quick-tabs/handlers/UpdateHandler.js` - **v1.6.3.5-v7:** `_debouncedDragPersist()`, `_dragDebounceTimers`, `DRAG_DEBOUNCE_MS`
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - **v1.6.3.5-v8:** `currentTabId`, `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix`
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - **v1.6.3.5-v8:** `_logPrefix`, enhanced `_executeRestore()` increments z-index
+- `src/features/quick-tabs/handlers/UpdateHandler.js` - **v1.6.3.5-v8:** `_emitOrphanedTabEvent()`, `_debouncedDragPersist()`, `_dragDebounceTimers`
 - `src/features/quick-tabs/handlers/DestroyHandler.js` - `_closeAllInProgress` mutex, `_scheduleMutexRelease()` method
 - `src/features/quick-tabs/handlers/CreateHandler.js` - `_emitWindowCreatedEvent()` emits `window:created` event
-- `src/features/quick-tabs/managers/StateManager.js` - **v1.6.3.5-v7:** Enhanced `persistToStorage(source)` with comprehensive logging
-- `src/features/quick-tabs/minimized-manager.js` - **v1.6.3.5-v7:** `onStoragePersistNeeded` callback, `_triggerStoragePersist()` method
+- `src/features/quick-tabs/managers/StateManager.js` - Enhanced `persistToStorage(source)` with comprehensive logging
+- `src/features/quick-tabs/minimized-manager.js` - **v1.6.3.5-v8:** `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
 - `src/features/quick-tabs/window.js` - `currentTabId` via constructor, `_getCurrentTabId()`, deprecated: `setPosition/setSize/updatePosition/updateSize`
 - `src/features/quick-tabs/index.js` - Deprecated `updateQuickTabPosition()`, `updateQuickTabSize()`
-- `sidebar/quick-tabs-manager.js` - **v1.6.3.5-v7:** `lastLocalUpdateTime`, targeted tab messaging, `inMemoryTabsCache`
+- `sidebar/quick-tabs-manager.js` - **v1.6.3.5-v8:** Clears `quickTabHostInfo` on Close All, enhanced logging with IDs
 
 ### Storage Key & Format
 
