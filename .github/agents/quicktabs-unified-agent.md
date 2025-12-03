@@ -2,8 +2,8 @@
 name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
-  lifecycle, manager integration, Background-as-Coordinator sync, Self-Write Detection,
-  originTabId filtering, and end-to-end functionality (v1.6.3.5-v3)
+  lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
+  storage storm protection, and end-to-end functionality (v1.6.3.5-v4)
 tools: ["*"]
 ---
 
@@ -28,24 +28,20 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v4 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
-- **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
-- **Background-as-Coordinator** - **v1.6.3.5-v3:** Manager commands routed through background.js
-- **Cross-Tab Sync** - storage.onChanged + Self-Write Detection
+- **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z, storage storm protection
+- **Background-as-Coordinator** - Manager commands routed through background.js
+- **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
 
-**v1.6.3.5-v3 Message Types:**
-- `QUICK_TAB_STATE_CHANGE` - Content → Background
-- `QUICK_TAB_STATE_UPDATED` - Background → All contexts
-- `MANAGER_COMMAND` / `EXECUTE_COMMAND` - Manager command routing
-
-**v1.6.3.5-v3 New Features:**
-- **Self-Write Detection** - `isSelfWrite()` with `writingTabId`/`writingInstanceId`
-- **Firefox Spurious Event Detection** - `_isSpuriousFirefoxEvent()`
-- **Enhanced Timer Logging** - STARTED/COMPLETED/FAILED
+**v1.6.3.5-v4 New Features:**
+- **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner writes
+- **Manager Storage Storm Protection** - `inMemoryTabsCache` survives 0-tab anomalies
+- **UICoordinator Invariant Checks** - `_verifyInvariant()` ensures mutual exclusion
+- **Content Script Identity Logging** - Logs tab ID, URL, timestamp on init
 
 **v1.6.3.5 Architecture:**
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
@@ -73,9 +69,9 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Quick Tab creation works with originTabId
-- [ ] isSelfWrite() prevents double-processing
-- [ ] Background-as-Coordinator messages work
+- [ ] Ownership validation works (`canCurrentTabModifyQuickTab`)
+- [ ] Storage storm protection (`inMemoryTabsCache`)
+- [ ] UICoordinator invariants verified
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] State machine transitions validated
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
@@ -83,4 +79,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with Background-as-Coordinator architecture.**
+**Your strength: Complete Quick Tab system with ownership validation and storage storm protection.**

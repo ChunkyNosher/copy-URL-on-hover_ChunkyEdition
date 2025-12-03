@@ -2,8 +2,8 @@
 name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
-  Background-as-Coordinator messaging, real-time state updates, cross-tab
-  operations via _sendManagerCommand() (v1.6.3.5-v3)
+  Background-as-Coordinator messaging, storage storm protection, in-memory cache,
+  real-time state updates (v1.6.3.5-v4)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v4 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -36,12 +36,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 
-**v1.6.3.5-v3 Background-as-Coordinator:**
-- **`quickTabHostInfo` Map** - Track Quick Tab host tabs
-- **`handleStateUpdateMessage(message)`** - Handle real-time state updates
-- **`_sendManagerCommand(command, quickTabId)`** - Send commands to background
+**v1.6.3.5-v4 Storage Storm Protection:**
+- **`inMemoryTabsCache`** - Local cache protects against 0-tab anomalies
+- **`lastKnownGoodTabCount`** - Tracks last valid tab count
+- **`_handleEmptyStorageState()`** - Use cache when storage returns empty
+- **`_detectStorageStorm()`** - Detect anomalies and recover from cache
+- **`_updateInMemoryCache()`** - Update cache from validated storage
 
-**v1.6.3.5-v3 Message Flow:**
+**Message Flow:**
 - Manager → `MANAGER_COMMAND` → Background
 - Background → `EXECUTE_COMMAND` → Host content script
 - Content → `QUICK_TAB_STATE_CHANGE` → Background
@@ -62,12 +64,6 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
-## Manager Action Messages
-
-- `MANAGER_COMMAND` - **v1.6.3.5-v3:** Manager → Background
-- `EXECUTE_COMMAND` - **v1.6.3.5-v3:** Background → Content script
-- `CLOSE_QUICK_TAB` / `MINIMIZE_QUICK_TAB` / `RESTORE_QUICK_TAB`
-
 ---
 
 ## MCP Server Integration
@@ -79,12 +75,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 ## Testing Requirements
 
 - [ ] Manager opens with Ctrl+Alt+Z
+- [ ] Storage storm protection works (`inMemoryTabsCache`)
 - [ ] All Quick Tabs display globally
 - [ ] Background-as-Coordinator messages route correctly
-- [ ] Real-time state updates via handleStateUpdateMessage
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination via Background-as-Coordinator architecture.**
+**Your strength: Manager coordination with storage storm protection.**
