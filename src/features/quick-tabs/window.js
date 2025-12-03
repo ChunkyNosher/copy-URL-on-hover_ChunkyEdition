@@ -9,6 +9,11 @@
  *   - Issue #4: onDestroy callback verified before invoke, with logging
  *   - Issue #6: Enhanced logging for callback wiring and restore operations
  * v1.6.3.4-v6 - FIX Issue #2: Add URL validation in constructor to reject malformed URLs
+ * v1.6.3.5-v5 - FIX Legacy Code Architecture Issues:
+ *   - Issue #1: Added deprecation warnings to setPosition/setSize/updatePosition/updateSize
+ *   - Issue #2: Added currentTabId as instance property (removed global access)
+ *   - Issue #4: Updated comments to reflect single-tab architecture
+ *   - Issue #6: Removed lastPositionUpdate/lastSizeUpdate (dead code)
  */
 
 import browser from 'webextension-polyfill';
@@ -79,12 +84,16 @@ export class QuickTabWindow {
 
   /**
    * Initialize visibility-related properties (minimized, solo, mute)
+   * v1.6.3.5-v5 - FIX Issue #2: Added currentTabId as instance property (removes global access)
    */
   _initializeVisibility(options) {
     this.minimized = options.minimized || false;
     // v1.5.9.13 - Replace pinnedToUrl with solo/mute arrays
     this.soloedOnTabs = options.soloedOnTabs || [];
     this.mutedOnTabs = options.mutedOnTabs || [];
+    // v1.6.3.5-v5 - FIX Issue #2: Store currentTabId as instance property
+    // This removes tight coupling to window.quickTabsManager.currentTabId
+    this.currentTabId = options.currentTabId ?? null;
   }
 
   /**
@@ -112,6 +121,7 @@ export class QuickTabWindow {
 
   /**
    * Initialize internal state properties
+   * v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate fields (dead code)
    */
   _initializeState() {
     this.container = null;
@@ -129,9 +139,9 @@ export class QuickTabWindow {
     // v1.6.0 Phase 2.9 - Controllers for drag and resize
     this.dragController = null;
     this.resizeController = null;
-    // v1.6.2.3 - Track update timestamps for cross-tab sync
-    this.lastPositionUpdate = null;
-    this.lastSizeUpdate = null;
+    // v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate (unused timestamp tracking)
+    // These fields were set during updatePosition/updateSize but never read by any code.
+    // They were intended for cross-tab sync conflict resolution which was removed in v1.6.3.
   }
 
   /**
@@ -825,27 +835,29 @@ export class QuickTabWindow {
 
   /**
    * v1.5.9.13 - Check if current tab is in solo list
+   * v1.6.3.5-v5 - FIX Issue #2: Use instance currentTabId instead of global access
    */
   isCurrentTabSoloed() {
+    const tabId = this._getCurrentTabId();
     return (
       this.soloedOnTabs &&
       this.soloedOnTabs.length > 0 &&
-      window.quickTabsManager &&
-      window.quickTabsManager.currentTabId &&
-      this.soloedOnTabs.includes(window.quickTabsManager.currentTabId)
+      tabId !== null &&
+      this.soloedOnTabs.includes(tabId)
     );
   }
 
   /**
    * v1.5.9.13 - Check if current tab is in mute list
+   * v1.6.3.5-v5 - FIX Issue #2: Use instance currentTabId instead of global access
    */
   isCurrentTabMuted() {
+    const tabId = this._getCurrentTabId();
     return (
       this.mutedOnTabs &&
       this.mutedOnTabs.length > 0 &&
-      window.quickTabsManager &&
-      window.quickTabsManager.currentTabId &&
-      this.mutedOnTabs.includes(window.quickTabsManager.currentTabId)
+      tabId !== null &&
+      this.mutedOnTabs.includes(tabId)
     );
   }
 
@@ -888,7 +900,36 @@ export class QuickTabWindow {
   }
 
   /**
+   * Get the current tab ID, preferring instance property over global fallback
+   * v1.6.3.5-v5 - FIX Issue #2: Helper for decoupled currentTabId access
+   * @private
+   * @returns {number|null} Current tab ID or null if unavailable
+   */
+  _getCurrentTabId() {
+    // Prefer instance property (set via constructor options or setCurrentTabId)
+    if (this.currentTabId !== null && this.currentTabId !== undefined) {
+      return this.currentTabId;
+    }
+    // Fallback to global for backward compatibility (with deprecation warning)
+    if (window.quickTabsManager?.currentTabId) {
+      console.warn('[QuickTabWindow] Using global quickTabsManager.currentTabId fallback. Pass currentTabId in constructor options instead.');
+      return window.quickTabsManager.currentTabId;
+    }
+    return null;
+  }
+
+  /**
+   * Set the current tab ID (for updating after construction)
+   * v1.6.3.5-v5 - FIX Issue #2: Allow updating currentTabId without global access
+   * @param {number} tabId - The new current tab ID
+   */
+  setCurrentTabId(tabId) {
+    this.currentTabId = tabId;
+  }
+
+  /**
    * Validate current tab ID availability
+   * v1.6.3.5-v5 - FIX Issue #2: Use instance method instead of global access
    * @private
    * @param {string} action - Action name for logging ('solo' or 'mute')
    * @returns {number|null} Current tab ID or null if unavailable
@@ -899,12 +940,13 @@ export class QuickTabWindow {
       this.id
     );
 
-    if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
-      console.warn(`[QuickTabWindow] Cannot toggle ${action} - no current tab ID`);
+    const tabId = this._getCurrentTabId();
+    if (tabId === null) {
+      console.warn(`[QuickTabWindow] Cannot toggle ${action} - no current tab ID available. Pass currentTabId in constructor or call setCurrentTabId().`);
       return null;
     }
 
-    return window.quickTabsManager.currentTabId;
+    return tabId;
   }
 
   /**
@@ -979,11 +1021,14 @@ export class QuickTabWindow {
   }
 
   /**
-   * Set position of Quick Tab window (v1.5.8.13 - for sync from other tabs)
+   * Set position of Quick Tab window
+   * @deprecated v1.6.3.5-v5 - FIX Issue #1: This method bypasses UpdateHandler.
+   * Use handlePositionChange/handlePositionChangeEnd through QuickTabsManager instead.
    * @param {number} left - X position
    * @param {number} top - Y position
    */
   setPosition(left, top) {
+    console.warn('[QuickTabWindow] DEPRECATED: setPosition() bypasses UpdateHandler. Use QuickTabsManager.handlePositionChange() instead.');
     this.left = left;
     this.top = top;
     if (this.container) {
@@ -993,11 +1038,14 @@ export class QuickTabWindow {
   }
 
   /**
-   * Set size of Quick Tab window (v1.5.8.13 - for sync from other tabs)
+   * Set size of Quick Tab window
+   * @deprecated v1.6.3.5-v5 - FIX Issue #1: This method bypasses UpdateHandler.
+   * Use handleSizeChange/handleSizeChangeEnd through QuickTabsManager instead.
    * @param {number} width - Width in pixels
    * @param {number} height - Height in pixels
    */
   setSize(width, height) {
+    console.warn('[QuickTabWindow] DEPRECATED: setSize() bypasses UpdateHandler. Use QuickTabsManager.handleSizeChange() instead.');
     this.width = width;
     this.height = height;
     if (this.container) {
@@ -1007,35 +1055,33 @@ export class QuickTabWindow {
   }
 
   /**
-   * Update position of Quick Tab window (Bug #3 Fix - UICoordinator compatibility)
-   * v1.6.2.3 - Added for cross-tab sync via UICoordinator.update()
-   *
-   * Note: This wraps setPosition() and adds timestamp tracking for sync.
-   * The difference from setPosition() is the timestamp which helps with
-   * conflict resolution in cross-tab synchronization.
+   * Update position of Quick Tab window
+   * @deprecated v1.6.3.5-v5 - FIX Issue #1: This method bypasses UpdateHandler.
+   * Use handlePositionChange/handlePositionChangeEnd through QuickTabsManager instead.
+   * Note: The timestamp tracking (lastPositionUpdate) was removed in v1.6.3.5-v5 as dead code.
    *
    * @param {number} left - X position in pixels
    * @param {number} top - Y position in pixels
    */
   updatePosition(left, top) {
+    console.warn('[QuickTabWindow] DEPRECATED: updatePosition() bypasses UpdateHandler. Use QuickTabsManager.handlePositionChange() instead.');
     this.setPosition(left, top);
-    this.lastPositionUpdate = Date.now();
+    // v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate timestamp tracking (dead code)
   }
 
   /**
-   * Update size of Quick Tab window (Bug #3 Fix - UICoordinator compatibility)
-   * v1.6.2.3 - Added for cross-tab sync via UICoordinator.update()
-   *
-   * Note: This wraps setSize() and adds timestamp tracking for sync.
-   * The difference from setSize() is the timestamp which helps with
-   * conflict resolution in cross-tab synchronization.
+   * Update size of Quick Tab window
+   * @deprecated v1.6.3.5-v5 - FIX Issue #1: This method bypasses UpdateHandler.
+   * Use handleSizeChange/handleSizeChangeEnd through QuickTabsManager instead.
+   * Note: The timestamp tracking (lastSizeUpdate) was removed in v1.6.3.5-v5 as dead code.
    *
    * @param {number} width - Width in pixels
    * @param {number} height - Height in pixels
    */
   updateSize(width, height) {
+    console.warn('[QuickTabWindow] DEPRECATED: updateSize() bypasses UpdateHandler. Use QuickTabsManager.handleSizeChange() instead.');
     this.setSize(width, height);
-    this.lastSizeUpdate = Date.now();
+    // v1.6.3.5-v5 - FIX Issue #6: Removed lastSizeUpdate timestamp tracking (dead code)
   }
 
   /**

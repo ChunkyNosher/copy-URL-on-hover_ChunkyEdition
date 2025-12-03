@@ -50,7 +50,10 @@ describe('VisibilityHandler', () => {
       left: 100,
       top: 100,
       width: 400,
-      height: 300
+      height: 300,
+      // v1.6.3.5-v5 - Add isRendered for DOM verification
+      isRendered: jest.fn(() => true),
+      container: { parentNode: document.body }
     };
 
     // Create mock Map
@@ -259,7 +262,11 @@ describe('VisibilityHandler', () => {
 
       visibilityHandler.handleRestore('qt-123');
       
-      // v1.6.3.4-v9 - Use runAllTimersAsync to handle async setTimeout inside _emitRestoreStateUpdate
+      // v1.6.3.5-v5 - New implementation uses _verifyRestoreAndEmit with promise-based delay
+      // Need to advance timers and flush promises multiple times
+      await jest.runAllTimersAsync();
+      // Also flush any pending promises
+      await Promise.resolve();
       await jest.runAllTimersAsync();
 
       // v1.6.3.4 - FIX Issue #6: Now includes source parameter in event data

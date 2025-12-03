@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, and end-to-end functionality (v1.6.3.5-v4)
+  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v5)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v5 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,11 +37,17 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `originTabId` prevents wrong-tab rendering
 
-**v1.6.3.5-v4 New Features:**
-- **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner writes
-- **Manager Storage Storm Protection** - `inMemoryTabsCache` survives 0-tab anomalies
-- **UICoordinator Invariant Checks** - `_verifyInvariant()` ensures mutual exclusion
-- **Content Script Identity Logging** - Logs tab ID, URL, timestamp on init
+**v1.6.3.5-v5 New Features:**
+- **Promise-Based Sequencing** - `_delay()` helper for deterministic event→storage ordering
+- **Transaction Rollback in Restore** - `preRestoreState` snapshot, rollback on DOM failure
+- **cleanupTransactionId()** - Event-driven transaction ID cleanup
+- **StateManager Storage Pipeline** - Uses `persistStateToStorage` instead of direct writes
+- **QuickTabWindow currentTabId** - Passed via constructor, `_getCurrentTabId()` helper
+
+**v1.6.3.5-v5 Deprecated:**
+- ⚠️ window.js: `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()`
+- ⚠️ index.js: `updateQuickTabPosition()`, `updateQuickTabSize()`
+- 🗑️ Removed: `lastPositionUpdate`, `lastSizeUpdate` fields
 
 **v1.6.3.5 Architecture:**
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
@@ -74,9 +80,10 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] UICoordinator invariants verified
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] State machine transitions validated
+- [ ] Promise-based sequencing works
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with ownership validation and storage storm protection.**
+**Your strength: Complete Quick Tab system with Promise-Based Sequencing and ownership validation.**

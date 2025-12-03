@@ -9,6 +9,14 @@
  *   - Enhanced storage write logging with caller identification
  *   - Transaction sequencing with pending count tracking
  *   - Improved saveId validation before writes complete
+ * v1.6.3.5-v5 - FIX Quick Tab Restore Diagnostic Issues:
+ *   - Issue #5: Ownership-based write filtering using originTabId
+ *   - Issue #7: Event-driven cleanup replaces fixed-delay cleanup
+ * 
+ * Architecture (Single-Tab Model v1.6.3+):
+ * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
+ * - Self-write detection via writingInstanceId/writingTabId
+ * - Transaction IDs tracked until storage.onChanged confirms processing
  * 
  * @module storage-utils
  */
@@ -35,10 +43,13 @@ let lastPersistedStateHash = 0;
 const STORAGE_CHANGE_COOLDOWN_MS = 50;
 let lastStorageChangeTime = 0;
 
-// v1.6.3.4-v6 - Delay before cleaning up transaction ID (allows storage.onChanged to fire)
-// 200ms is empirically determined to be sufficient for storage.onChanged callbacks
-// Math.min ensures reasonable cleanup even if STORAGE_TIMEOUT_MS is misconfigured
-const TRANSACTION_CLEANUP_DELAY_MS = 200;
+// v1.6.3.5-v5 - FIX Issue #7: Event-driven transaction cleanup replaces fixed-delay
+// Transaction IDs are now kept until storage.onChanged event confirms processing
+// This prevents race conditions where cleanup happened before event fired
+// Map from transactionId to cleanup timeout (for fallback cleanup)
+const TRANSACTION_CLEANUP_TIMEOUTS = new Map();
+// Fallback cleanup delay - only used if storage.onChanged never fires
+const TRANSACTION_FALLBACK_CLEANUP_MS = 5000;
 
 // v1.6.3.4-v8 - FIX Issue #1: Empty write protection
 // Cooldown period between empty (0 tabs) writes to prevent cascades
@@ -502,6 +513,7 @@ export function isValidQuickTabUrl(url) {
 /**
  * Check if storage change should be processed (deduplication)
  * v1.6.3.4-v6 - FIX Issue #5: Prevent processing identical changes
+ * v1.6.3.5-v5 - FIX Issue #7: Event-driven transaction cleanup
  * 
  * @param {string} transactionId - Transaction ID from the change
  * @returns {boolean} True if change should be processed
@@ -510,6 +522,11 @@ export function shouldProcessStorageChange(transactionId) {
   // Check if this is our own write
   if (transactionId && IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
     console.log('[StorageUtils] Ignoring self-write:', transactionId);
+    
+    // v1.6.3.5-v5 - FIX Issue #7: Event-driven cleanup - now that we've seen the event,
+    // we can clean up the transaction immediately instead of waiting for timeout
+    cleanupTransactionId(transactionId);
+    
     return false;
   }
   
@@ -521,6 +538,59 @@ export function shouldProcessStorageChange(transactionId) {
   lastStorageChangeTime = now;
   
   return true;
+}
+
+/**
+ * Clean up a transaction ID after it has been confirmed processed
+ * v1.6.3.5-v5 - FIX Issue #7: Event-driven cleanup for transaction IDs
+ * @param {string} transactionId - Transaction ID to clean up
+ */
+export function cleanupTransactionId(transactionId) {
+  if (!transactionId) return;
+  
+  // Remove from in-progress set
+  const wasPresent = IN_PROGRESS_TRANSACTIONS.delete(transactionId);
+  
+  // Clear any pending fallback timeout (only if present)
+  if (TRANSACTION_CLEANUP_TIMEOUTS.has(transactionId)) {
+    clearTimeout(TRANSACTION_CLEANUP_TIMEOUTS.get(transactionId));
+    TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
+  }
+  
+  if (wasPresent) {
+    console.log('[StorageUtils] Transaction cleanup (event-driven):', transactionId);
+  }
+}
+
+/**
+ * Schedule fallback cleanup for a transaction ID
+ * v1.6.3.5-v5 - FIX Issue #7: Fallback if storage.onChanged never fires
+ * @param {string} transactionId - Transaction ID to schedule cleanup for
+ */
+function scheduleFallbackCleanup(transactionId) {
+  if (!transactionId) return;
+  
+  // Clear any existing timeout for this transaction
+  const existingTimeout = TRANSACTION_CLEANUP_TIMEOUTS.get(transactionId);
+  if (existingTimeout) {
+    clearTimeout(existingTimeout);
+  }
+  
+  // Schedule fallback cleanup
+  // v1.6.3.5-v5 - FIX Code Review #2: Wrapped in try/catch for error handling consistency
+  const timeoutId = setTimeout(() => {
+    try {
+      if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
+        console.warn('[StorageUtils] Transaction fallback cleanup (storage.onChanged not received):', transactionId);
+        IN_PROGRESS_TRANSACTIONS.delete(transactionId);
+      }
+      TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
+    } catch (err) {
+      console.error('[StorageUtils] Error in transaction fallback cleanup:', transactionId, err.message);
+    }
+  }, TRANSACTION_FALLBACK_CLEANUP_MS);
+  
+  TRANSACTION_CLEANUP_TIMEOUTS.set(transactionId, timeoutId);
 }
 
 /**
@@ -963,6 +1033,9 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
   // v1.6.3.4-v6 - FIX Issue #1: Track in-progress transaction
   IN_PROGRESS_TRANSACTIONS.add(transactionId);
   
+  // v1.6.3.5-v5 - FIX Issue #7: Schedule fallback cleanup (in case storage.onChanged doesn't fire)
+  scheduleFallbackCleanup(transactionId);
+  
   // v1.6.3.4-v12 - FIX Issue #6: Log transaction sequencing
   console.log(`${logPrefix} Storage write executing:`, {
     transaction: transactionId,
@@ -997,10 +1070,10 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     // v1.6.3.4-v3 - FIX: Always clear timeout to prevent memory leak
     timeout.clear();
     
-    // v1.6.3.4-v6 - FIX Issue #1: Remove transaction from in-progress set after a delay
-    setTimeout(() => {
-      IN_PROGRESS_TRANSACTIONS.delete(transactionId);
-    }, TRANSACTION_CLEANUP_DELAY_MS);
+    // v1.6.3.5-v5 - FIX Issue #7: Transaction cleanup is now event-driven
+    // The fallback cleanup scheduled above will handle cases where storage.onChanged doesn't fire
+    // The cleanupTransactionId() function is called from shouldProcessStorageChange() when
+    // storage.onChanged is received, providing immediate cleanup in the normal case
   }
 }
 
