@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v7 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -61,29 +61,30 @@ const relevantMemories = await searchMemories({
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v7:** Background-as-Coordinator with Per-Tab Ownership Validation
+- **v1.6.3.5-v9:** Background-as-Coordinator with Per-Tab Ownership Validation
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v7 Fixes (8 Issues):**
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback in MinimizedManager
-- **Duplicate Window Prevention** - render() early return guard
-- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo`
-- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()`
-- **State Transition Logging** - Comprehensive `StateManager.persistToStorage()` logging
-- **Minimize State on Reload** - Set `domVerified: false` when minimizing
-- **Manager Sync Timestamp** - `lastLocalUpdateTime` tracks actual UI update time
-- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate on second minimize** - `__quickTabWindow` property for orphan recovery
+3. **Position/size updates stop after restore** - `DragController.updateElement()` method
+4. **Z-index/stacking after restore** - Enhanced `_applyZIndexAfterRestore()` with reflow
+5. **Continuous "Last Sync" updates** - Per-tab ownership validation
+6. **"Clear Quick Tab Storage" fix** - Coordinated `clearAll()` path
+7. **Duplicate Quick Tab windows** - `data-quicktab-id` attribute for DOM querying
 
-**v1.6.3.5-v7 Architecture:**
+**v1.6.3.5-v9 Architecture:**
 - **QuickTabStateMachine** - Explicit lifecycle state tracking
 - **QuickTabMediator** - Operation coordination with state validation and rollback
 - **MapTransactionManager** - Atomic Map operations with logging and rollback
-- **MinimizedManager** - `onStoragePersistNeeded` callback, `_triggerStoragePersist()` (v1.6.3.5-v7)
-- **UpdateHandler** - `_debouncedDragPersist()`, `_dragDebounceTimers` Map (v1.6.3.5-v7)
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
+- **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()`
 - **DestroyHandler** - `_closeAllInProgress` mutex, `_scheduleMutexRelease()` method
 - **CreateHandler** - `_emitWindowCreatedEvent()` for UICoordinator coordination
-- **UICoordinator** - `_registerCreatedWindow()` listens for `window:created`
+- **UICoordinator** - `_shouldRenderOnThisTab()`, `clearAll()`, `_applyZIndexAfterRestore()` with reflow
+- **DragController** - `updateElement()` method for re-render handling (v1.6.3.5-v9)
+- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id` attribute (v1.6.3.5-v9)
 
 ---
 
@@ -251,7 +252,7 @@ Only if:
 - Enforce cleanup patterns with `cleanupOrphanedQuickTabElements()`
 - Use debounced batch writes for destroy operations
 
-### Minimize/Restore Architecture (v1.6.3.5-v7)
+### Minimize/Restore Architecture (v1.6.3.5-v9)
 
 **Common Root Causes:**
 - State transition without validation
@@ -259,8 +260,9 @@ Only if:
 - Missing operation locks
 - Map corruption from untracked modifications
 - Position/size not persisted during drag/resize
+- Element reference stale after re-render
 
-**Architectural Solution (v1.6.3.5-v7):**
+**Architectural Solution (v1.6.3.5-v9):**
 - **State Machine:** QuickTabStateMachine validates all transitions
   - `canTransition()` before any operation
   - `transition()` logs every state change with source
@@ -272,13 +274,14 @@ Only if:
   - `beginTransaction()` captures snapshot
   - `commitTransaction()` validates expected state
   - `rollbackTransaction()` restores on failure
-- **Debounced Drag Persistence:** `_debouncedDragPersist()` with 200ms debounce (v1.6.3.5-v7)
-  - `_dragDebounceTimers` Map for live sync
-  - Storage persistence after `updateZIndex()` for z-index sync
-- **Manager Empty List Fix:** `onStoragePersistNeeded` callback in MinimizedManager (v1.6.3.5-v7)
+- **DOM Instance Lookup:** `__quickTabWindow` property on container (v1.6.3.5-v9)
+  - Enables orphan recovery via `domElement.__quickTabWindow`
+  - `data-quicktab-id` attribute for DOM querying
+- **DragController.updateElement():** Updates element reference after re-render (v1.6.3.5-v9)
+- **Reflow Forcing:** `_applyZIndexAfterRestore()` reads `container.offsetHeight` (v1.6.3.5-v9)
+- **Debounced Drag Persistence:** `_debouncedDragPersist()` with 200ms debounce
+- **Manager Empty List Fix:** `onStoragePersistNeeded` callback in MinimizedManager
 - **closeAll Mutex:** `_closeAllInProgress` flag in DestroyHandler
-  - `_scheduleMutexRelease()` releases after 2000ms cooldown
-- **Minimize State Preservation:** Set `domVerified: false` when minimizing (v1.6.3.5-v7)
 - **Restore Trusts UICoordinator:** No DOM verification rollback
 
 ### Sidebar Gesture Handling (v1.6.3.4)

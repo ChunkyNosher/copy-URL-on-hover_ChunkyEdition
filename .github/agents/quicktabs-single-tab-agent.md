@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,17 +38,19 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.5-v8 Fixes:**
-- **Per-Tab Scoping** - `_shouldRenderOnThisTab()` enforces strict originTabId filtering
-- **Orphaned Tab Recovery** - `_emitOrphanedTabEvent()` requests re-wiring after restore
-- **Z-Index on Restore** - `_executeRestore()` increments z-index
-- **Enhanced Logging** - `_logPrefix` with tab ID for debugging
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
+3. **Position/size stop after restore** - `DragController.updateElement()` method
+4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
+5. **Last Sync updates** - Per-tab ownership validation
+6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
+7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
 
-**v1.6.3.5-v7 Features (Retained):**
-- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()`
-- **window:created Event** - CreateHandler→UICoordinator coordination
-- **UICoordinator Invariant Checks** - `_verifyInvariant()` ensures mutual exclusion
-- **currentTabId via constructor** - `_getCurrentTabId()` helper for Solo/Mute methods
+**v1.6.3.5-v9 New Patterns:**
+- **`__quickTabWindow` Property** - Set on container for reverse instance lookup
+- **`data-quicktab-id` Attribute** - DOM attribute for querying Quick Tab elements
+- **`DragController.updateElement()`** - Updates element reference after re-render
 
 **Deprecated (v1.6.3.5-v5):**
 - ⚠️ `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Use UpdateHandler
@@ -65,17 +67,17 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8)
+- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8+)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] UICoordinator invariants verified (`_verifyInvariant`)
 - [ ] Global visibility correct (no container filtering)
 - [ ] originTabId set correctly on creation
 - [ ] window:created event fires
-- [ ] Orphaned tab recovery works (`_emitOrphanedTabEvent`) (v1.6.3.5-v8)
-- [ ] Enhanced logging visible (`_logPrefix`) (v1.6.3.5-v8)
+- [ ] DOM instance lookup works (`__quickTabWindow`) (v1.6.3.5-v9)
+- [ ] DragController.updateElement() works (v1.6.3.5-v9)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Individual Quick Tab isolation with UICoordinator invariants and per-tab scoping enforcement (v1.6.3.5-v8).**
+**Your strength: Individual Quick Tab isolation with UICoordinator invariants and per-tab scoping enforcement (v1.6.3.5-v9).**

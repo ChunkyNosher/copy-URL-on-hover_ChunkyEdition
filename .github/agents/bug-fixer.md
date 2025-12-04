@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v7 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -37,29 +37,28 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v7:** Background-as-Coordinator with Per-Tab Ownership Validation
+- **v1.6.3.5-v9:** Background-as-Coordinator with Per-Tab Ownership Validation
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v7 Fixes (8 Issues):**
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
-- **Duplicate Window Prevention** - render() early return guard
-- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo`
-- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()`
-- **State Logging** - Comprehensive `StateManager.persistToStorage()` logging
-- **Minimize State** - Set `domVerified: false` when minimizing
-- **Manager Sync** - `lastLocalUpdateTime` tracking
-- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
+3. **Position/size stop after restore** - `DragController.updateElement()` method
+4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
+5. **Last Sync updates** - Per-tab ownership validation
+6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
+7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
 
-**v1.6.3.5-v7 Modules:**
+**v1.6.3.5-v9 Modules:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
-- **MinimizedManager** - `onStoragePersistNeeded` callback (v1.6.3.5-v7)
-- **UpdateHandler** - `_debouncedDragPersist()` (v1.6.3.5-v7)
-- **DestroyHandler** - `_closeAllInProgress` mutex
-- **CreateHandler** - `_emitWindowCreatedEvent()` method
-- **UICoordinator** - `_registerCreatedWindow()` method
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()` (v1.6.3.5-v8+)
+- **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` (v1.6.3.5-v8+)
+- **UICoordinator** - `_shouldRenderOnThisTab()`, `_applyZIndexAfterRestore()` (v1.6.3.5-v9)
+- **DragController** - `updateElement()` method (v1.6.3.5-v9)
+- **QuickTabWindow** - `__quickTabWindow` property (v1.6.3.5-v9)
 
 ---
 
@@ -99,7 +98,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.5-v7 Fix Patterns
+## v1.6.3.5-v9 Fix Patterns
 
 ### State Machine Transitions
 ```javascript
@@ -124,7 +123,15 @@ txn.deleteEntry(id, 'reason');
 txn.commitTransaction();
 ```
 
-### Debounced Drag Persistence (v1.6.3.5-v7)
+### DragController.updateElement() (v1.6.3.5-v9)
+```javascript
+// After re-render, update drag controller's element reference
+if (this.dragController) {
+  this.dragController.updateElement(newContainer);
+}
+```
+
+### Debounced Drag Persistence (v1.6.3.5-v7+)
 ```javascript
 // UpdateHandler._debouncedDragPersist()
 if (this._dragDebounceTimers.has(id)) {

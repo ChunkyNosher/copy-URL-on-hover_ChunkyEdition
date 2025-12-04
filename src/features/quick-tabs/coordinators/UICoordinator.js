@@ -50,6 +50,9 @@
  *   - Issue #1: Enforce per-tab scoping via originTabId check
  *   - Issue #6: Coordinated clear path for Close All
  *   - Issue #10: Enhanced logging with tab context
+ * v1.6.3.5-v9 - FIX Diagnostic Report Issues #4, #7:
+ *   - Issue #4: Verify z-index stacking context after restore
+ *   - Issue #7: Use __quickTabWindow property from window.js for orphan recovery
  */
 
 import browser from 'webextension-polyfill';
@@ -975,6 +978,7 @@ export class UICoordinator {
   /**
    * Apply incremented z-index after restore render
    * v1.6.3.4-v11 - Extracted to reduce _renderRestoredWindow complexity
+   * v1.6.3.5-v9 - FIX Diagnostic Issue #4: Ensure stacking context by forcing reflow
    * @private
    * @param {QuickTabWindow} tabWindow - The window
    * @param {string} quickTabId - Quick Tab ID
@@ -985,10 +989,38 @@ export class UICoordinator {
     if (tabWindow.container) {
       tabWindow.zIndex = newZIndex;
       tabWindow.container.style.zIndex = newZIndex.toString();
+      
+      // v1.6.3.5-v9 - FIX Diagnostic Issue #4: Force browser reflow to ensure z-index takes effect
+      // When z-index is changed on elements that were recently added to the DOM (like restored
+      // Quick Tabs), the browser may batch style updates. Accessing offsetHeight forces a
+      // synchronous reflow, ensuring the z-index change is applied immediately before the
+      // element is painted. This prevents the "behind other tabs" bug where restored windows
+      // briefly appear behind other elements due to deferred style application.
+      // Reference: https://gist.github.com/paulirish/5d52fb081b3570c81e3a
+      // eslint-disable-next-line no-unused-expressions
+      tabWindow.container.offsetHeight;
+      
+      // v1.6.3.5-v9 - FIX Diagnostic Issue #4: Verify stacking context properties
+      const computedStyle = window.getComputedStyle(tabWindow.container);
+      const verifiedZIndex = parseInt(computedStyle.zIndex, 10);
+      
       console.log('[UICoordinator] Applied incremented z-index after restore render:', {
         id: quickTabId,
-        zIndex: newZIndex
+        zIndex: newZIndex,
+        verifiedZIndex,
+        position: computedStyle.position,
+        opacity: computedStyle.opacity,
+        transform: computedStyle.transform
       });
+      
+      // Warn if z-index verification fails
+      if (verifiedZIndex !== newZIndex) {
+        console.warn('[UICoordinator] ⚠️ z-index verification mismatch after restore:', {
+          id: quickTabId,
+          expected: newZIndex,
+          actual: verifiedZIndex
+        });
+      }
     }
   }
 

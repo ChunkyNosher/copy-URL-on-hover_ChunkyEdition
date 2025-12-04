@@ -28,35 +28,33 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z, storage storm protection
 - **Background-as-Coordinator** - Manager commands routed through background.js
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
-- **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping (v1.6.3.5-v8)
+- **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
 
-**v1.6.3.5-v8 Fixes (10 Issues):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` in UICoordinator
-2. **Manager minimize/restore** - Coordinated snapshots, renderedTabs, entity.minimized
-3. **Position/size after restore** - `_emitOrphanedTabEvent()` in UpdateHandler
-4. **Z-index/stacking** - `_executeRestore()` increments z-index
-5. **Last sync flicker** - Stabilized restore-related persistence
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
+3. **Position/size stop after restore** - `DragController.updateElement()` method
+4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
+5. **Last Sync updates** - Per-tab ownership validation
 6. **Clear Quick Tab Storage** - `UICoordinator.clearAll()`, clears `quickTabHostInfo`
-7. **Phantom Quick Tabs** - `quickTabHostTabs` cleared during coordinated clear
-8. **Storage thrashing** - `saveId: 'cleared-{timestamp}'` pattern
-9. **Snapshot inconsistencies** - `forceCleanup()`, `getAllSnapshotIds()` in MinimizedManager
-10. **Logging coverage** - `_logPrefix` with tab ID
+7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
 
-**v1.6.3.5-v8 Architecture:**
+**v1.6.3.5-v9 Architecture:**
 - **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - `minimize()`, `restore()`, `destroy()` with state validation
 - **MapTransactionManager** - Atomic Map ops with rollback
-- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()` (v1.6.3.5-v8)
-- **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()` (v1.6.3.5-v8)
-- **UICoordinator** - `currentTabId`, `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix` (v1.6.3.5-v8)
-- **VisibilityHandler** - `_logPrefix`, enhanced `_executeRestore()` (v1.6.3.5-v8)
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
+- **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()`
+- **UICoordinator** - `_shouldRenderOnThisTab()`, `clearAll()`, `_applyZIndexAfterRestore()` (v1.6.3.5-v9)
+- **DragController** - `updateElement()` method (v1.6.3.5-v9)
+- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id` attribute (v1.6.3.5-v9)
 - **DestroyHandler** - `_closeAllInProgress` mutex, `_scheduleMutexRelease()`
 - **CreateHandler** - `_emitWindowCreatedEvent()` emits `window:created`
 
@@ -81,7 +79,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8)
+- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8+)
 - [ ] Ownership validation works (`canCurrentTabModifyQuickTab`)
 - [ ] Storage storm protection (`inMemoryTabsCache`)
 - [ ] UICoordinator invariants verified
@@ -89,11 +87,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] State machine transitions validated
 - [ ] Promise-based sequencing works
 - [ ] closeAll mutex prevents duplicates
-- [ ] Coordinated clear works (`clearAll()` + `quickTabHostTabs` reset) (v1.6.3.5-v8)
-- [ ] Orphaned tab recovery works (`_emitOrphanedTabEvent`) (v1.6.3.5-v8)
+- [ ] DOM instance lookup works (`__quickTabWindow`) (v1.6.3.5-v9)
+- [ ] DragController.updateElement() works (v1.6.3.5-v9)
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.5-v8 fixes and Per-Tab Scoping via `_shouldRenderOnThisTab()`.**
+**Your strength: Complete Quick Tab system with v1.6.3.5-v9 fixes and Per-Tab Scoping via `_shouldRenderOnThisTab()`.**

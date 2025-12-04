@@ -50,7 +50,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v7 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.5-v9 - Two-Layer Sidebar Tab System ✅
 
 **Settings Sidebar Structure (Two-Layer System):**
 - **PRIMARY TABS (Layer 1):**
@@ -63,15 +63,14 @@ const relevantMemories = await searchMemories({
   - **Appearance Tab** - Dark mode, colors, borders, animations
   - **Advanced Tab** - Debug mode, storage management, logs, UID display
 
-**v1.6.3.5-v7 Fixes (8 Issues):**
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
-- **Duplicate Window Prevention** - render() early return guard
-- **Cross-Tab Restore** - Targeted tab messaging
-- **Drag/Resize Persistence** - 200ms debounced
-- **State Transition Logging** - Comprehensive logging
-- **Minimize State on Reload** - `domVerified: false`
-- **Manager Sync Timestamp** - `lastLocalUpdateTime`
-- **Z-Index Persistence** - Storage after `updateZIndex()`
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
+3. **Position/size stop after restore** - `DragController.updateElement()` method
+4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
+5. **Last Sync updates** - Per-tab ownership validation
+6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
+7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
 
 **Tab State Persistence:**
 - Primary tab: localStorage.getItem('sidebarActivePrimaryTab')

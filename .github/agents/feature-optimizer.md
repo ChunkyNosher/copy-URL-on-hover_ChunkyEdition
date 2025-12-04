@@ -52,29 +52,28 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.5-v7 Fixes (8 Issues):**
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
-- **Duplicate Window Prevention** - render() early return guard
-- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo`
-- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()`
-- **State Transition Logging** - Comprehensive `StateManager.persistToStorage()` logging
-- **Minimize State on Reload** - Set `domVerified: false` when minimizing
-- **Manager Sync Timestamp** - `lastLocalUpdateTime` tracking
-- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
+3. **Position/size stop after restore** - `DragController.updateElement()` method
+4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
+5. **Last Sync updates** - Per-tab ownership validation
+6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
+7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
 
-**v1.6.3.5-v7 Architecture:**
+**v1.6.3.5-v9 Architecture:**
 - **QuickTabStateMachine** - State tracking and validation
 - **QuickTabMediator** - Operation coordination
 - **MapTransactionManager** - Atomic Map operations
-- **MinimizedManager** - `onStoragePersistNeeded` callback (v1.6.3.5-v7)
-- **UpdateHandler** - `_debouncedDragPersist()` (v1.6.3.5-v7)
-- **DestroyHandler** - `_closeAllInProgress` mutex
-- **CreateHandler** - `_emitWindowCreatedEvent()` method
-- **UICoordinator** - `_registerCreatedWindow()` method
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()` (v1.6.3.5-v8+)
+- **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` (v1.6.3.5-v8+)
+- **UICoordinator** - `_shouldRenderOnThisTab()`, `_applyZIndexAfterRestore()` (v1.6.3.5-v9)
+- **DragController** - `updateElement()` method (v1.6.3.5-v9)
+- **QuickTabWindow** - `__quickTabWindow` property (v1.6.3.5-v9)
 
 **Performance Targets:**
 - Bundle size: content.js <500KB, background.js <300KB

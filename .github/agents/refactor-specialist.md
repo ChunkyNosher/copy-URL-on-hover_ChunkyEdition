@@ -52,30 +52,28 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v8 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.5-v8 Fixes (10 Issues):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` in UICoordinator
-2. **Manager minimize/restore** - Coordinated snapshots, renderedTabs, entity.minimized
-3. **Position/size after restore** - `_emitOrphanedTabEvent()` in UpdateHandler
-4. **Z-index/stacking** - `_executeRestore()` increments z-index
-5. **Last sync flicker** - Stabilized restore-related persistence
-6. **Clear Quick Tab Storage** - `UICoordinator.clearAll()`, clears `quickTabHostInfo`
-7. **Phantom Quick Tabs** - `quickTabHostTabs` cleared during coordinated clear
-8. **Storage thrashing** - `saveId: 'cleared-{timestamp}'` pattern
-9. **Snapshot inconsistencies** - `forceCleanup()`, `getAllSnapshotIds()` in MinimizedManager
-10. **Logging coverage** - `_logPrefix` with tab ID
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
+3. **Position/size stop after restore** - `DragController.updateElement()` method
+4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
+5. **Last Sync updates** - Per-tab ownership validation
+6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
+7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
 
-**v1.6.3.5-v8 Architecture:**
+**v1.6.3.5-v9 Architecture:**
 - **QuickTabStateMachine** - State tracking (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
-- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()` (v1.6.3.5-v8)
-- **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()` (v1.6.3.5-v8)
-- **UICoordinator** - `currentTabId`, `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix` (v1.6.3.5-v8)
-- **VisibilityHandler** - `_logPrefix`, enhanced `_executeRestore()` (v1.6.3.5-v8)
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
+- **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()`
+- **UICoordinator** - `_shouldRenderOnThisTab()`, `clearAll()`, `_applyZIndexAfterRestore()` (v1.6.3.5-v9)
+- **DragController** - `updateElement()` method (v1.6.3.5-v9)
+- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id` attribute (v1.6.3.5-v9)
 - **DestroyHandler** - `_closeAllInProgress` mutex
 - **CreateHandler** - `_emitWindowCreatedEvent()` method
 

@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v7 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.5-v9 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **URL Detection Features:**
 - **Hover Detection** - Track hovered links for Quick Tab creation
@@ -59,25 +59,24 @@ const relevantMemories = await searchMemories({
 - **URL Validation** - Ensure valid URLs before processing
 - **URL Normalization** - Clean and standardize URLs
 
-**v1.6.3.5-v7 Fixes (8 Issues):**
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
-- **Duplicate Window Prevention** - render() early return guard
-- **Cross-Tab Restore** - Targeted tab messaging
-- **Drag/Resize Persistence** - 200ms debounced
-- **State Transition Logging** - Comprehensive logging
-- **Minimize State on Reload** - `domVerified: false`
-- **Manager Sync Timestamp** - `lastLocalUpdateTime`
-- **Z-Index Persistence** - Storage after `updateZIndex()`
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
+3. **Position/size stop after restore** - `DragController.updateElement()` method
+4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
+5. **Last Sync updates** - Per-tab ownership validation
+6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
+7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
 
-**v1.6.3.5-v7 Architecture:**
+**v1.6.3.5-v9 Architecture:**
 - **QuickTabStateMachine** - State tracking for Quick Tab lifecycle
 - **QuickTabMediator** - Operation coordination
 - **MapTransactionManager** - Atomic operations
-- **MinimizedManager** - `onStoragePersistNeeded` callback (v1.6.3.5-v7)
-- **UpdateHandler** - `_debouncedDragPersist()` (v1.6.3.5-v7)
-- **DestroyHandler** - `_closeAllInProgress` mutex
-- **CreateHandler** - `_emitWindowCreatedEvent()` method
-- **UICoordinator** - `_registerCreatedWindow()` method
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()` (v1.6.3.5-v8+)
+- **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` (v1.6.3.5-v8+)
+- **UICoordinator** - `_shouldRenderOnThisTab()`, `_applyZIndexAfterRestore()` (v1.6.3.5-v9)
+- **DragController** - `updateElement()` method (v1.6.3.5-v9)
+- **QuickTabWindow** - `__quickTabWindow` property (v1.6.3.5-v9)
 
 ---
 
