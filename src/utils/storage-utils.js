@@ -979,6 +979,9 @@ function createTimeoutPromise(ms, operation) {
  * Check if empty write should be rejected (cooldown protection)
  * v1.6.3.4-v8 - FIX Issue #1: Prevent empty write cascades
  * v1.6.3.4-v11 - FIX Issue #8: Add explicit warning when forceEmpty is required
+ * v1.6.3.5-v10 - FIX Issue #4: Stricter empty write protection
+ *   - Tabs with 0 Quick Tabs should NEVER write unless forceEmpty=true
+ *   - This prevents non-owner tabs from overwriting valid state
  * @private
  * @param {number} tabCount - Number of tabs in state
  * @param {boolean} forceEmpty - Whether to force the empty write
@@ -991,20 +994,23 @@ function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)
     return false; // Not an empty write
   }
   
+  // v1.6.3.5-v10 - FIX Issue #4: Stricter empty write protection
+  // Tabs with 0 Quick Tabs should NEVER write unless forceEmpty=true (e.g., Close All action)
+  // This prevents storage corruption where non-owner tabs overwrite valid state
+  if (!forceEmpty) {
+    console.warn(`${logPrefix} BLOCKED: Empty write rejected (forceEmpty required) [${transactionId}]`);
+    console.warn(`${logPrefix} │ This prevents non-owner tabs from corrupting storage`);
+    console.warn(`${logPrefix} │ Use forceEmpty=true for intentional "Close All" operations`);
+    return true;
+  }
+  
   // v1.6.3.4-v8 - FIX Issue #1: Log WARNING when going from N tabs to 0
   if (previousTabCount > 0) {
     console.warn(`${logPrefix} ⚠️ WARNING: State going from ${previousTabCount} tabs → 0 tabs [${transactionId}]`);
     console.warn(`${logPrefix} Stack trace:`, new Error().stack);
   }
   
-  if (forceEmpty) {
-    console.log(`${logPrefix} Empty write allowed (forceEmpty=true) [${transactionId}]`);
-    return false;
-  }
-  
-  // v1.6.3.4-v11 - FIX Issue #8: Add explicit warning that forceEmpty is required
-  console.warn(`${logPrefix} ⚠️ Writing 0 tabs without forceEmpty flag [${transactionId}]`);
-  console.warn(`${logPrefix} Set forceEmpty=true if intentional (e.g., "Close All" action)`);
+  console.log(`${logPrefix} Empty write allowed (forceEmpty=true) [${transactionId}]`);
   
   const now = Date.now();
   if (now - lastEmptyWriteTime < EMPTY_WRITE_COOLDOWN_MS) {

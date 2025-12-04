@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v8)
+  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v10)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v10 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,26 +37,24 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
 
-**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
-3. **Position/size stop after restore** - `DragController.updateElement()` method
-4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
-5. **Last Sync updates** - Per-tab ownership validation
-6. **Clear Quick Tab Storage** - `UICoordinator.clearAll()`, clears `quickTabHostInfo`
-7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
+**v1.6.3.5-v10 Fixes:**
+1. **Callback wiring** - `setHandlers()` for deferred init, `_buildCallbackOptions()` for restore
+2. **Z-index after append** - `_applyZIndexAfterAppend()` forces reflow
+3. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` before Quick Tabs init
+4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
+5. **Diagnostic logging** - Enhanced init/message logging, `_broadcastQuickTabsClearedToTabs()`
 
-**v1.6.3.5-v9 Architecture:**
-- **QuickTabStateMachine** - States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
-- **QuickTabMediator** - `minimize()`, `restore()`, `destroy()` with state validation
-- **MapTransactionManager** - Atomic Map ops with rollback
-- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
-- **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()`
-- **UICoordinator** - `_shouldRenderOnThisTab()`, `clearAll()`, `_applyZIndexAfterRestore()` (v1.6.3.5-v9)
-- **DragController** - `updateElement()` method (v1.6.3.5-v9)
-- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id` attribute (v1.6.3.5-v9)
-- **DestroyHandler** - `_closeAllInProgress` mutex, `_scheduleMutexRelease()`
-- **CreateHandler** - `_emitWindowCreatedEvent()` emits `window:created`
+**v1.6.3.5-v10 Patterns:**
+- **`setHandlers()`** - Deferred handler init in UICoordinator
+- **`_buildCallbackOptions()`** - Callback wiring for restore path
+- **`_applyZIndexAfterAppend()`** - Re-applies z-index after appendChild
+- **`getCurrentTabIdFromBackground()`** - Tab ID retrieval before init
+- **`forceEmpty: true`** - Intentional empty writes for Close All
+
+**v1.6.3.5-v9 Features (Retained):**
+- `__quickTabWindow` property, `data-quicktab-id` attribute
+- `DragController.updateElement()` method
+- Reflow forcing via `container.offsetHeight`
 
 ---
 
@@ -79,19 +77,21 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8+)
+- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
+- [ ] `getCurrentTabIdFromBackground()` retrieves correct tab ID (v1.6.3.5-v10)
+- [ ] `setHandlers()` properly initializes handlers (v1.6.3.5-v10)
+- [ ] `_applyZIndexAfterAppend()` applies z-index correctly (v1.6.3.5-v10)
+- [ ] `forceEmpty` allows Close All empty writes (v1.6.3.5-v10)
 - [ ] Ownership validation works (`canCurrentTabModifyQuickTab`)
 - [ ] Storage storm protection (`inMemoryTabsCache`)
 - [ ] UICoordinator invariants verified
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] State machine transitions validated
-- [ ] Promise-based sequencing works
 - [ ] closeAll mutex prevents duplicates
-- [ ] DOM instance lookup works (`__quickTabWindow`) (v1.6.3.5-v9)
-- [ ] DragController.updateElement() works (v1.6.3.5-v9)
+- [ ] DOM instance lookup works (`__quickTabWindow`)
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.5-v9 fixes and Per-Tab Scoping via `_shouldRenderOnThisTab()`.**
+**Your strength: Complete Quick Tab system with v1.6.3.5-v10 callback wiring and Per-Tab Scoping.**

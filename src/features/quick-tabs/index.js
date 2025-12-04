@@ -7,6 +7,7 @@
  * v1.6.3.4 - FIX Issues #1, #8: Add state rehydration on startup with explicit logging
  * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
  * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
+ * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
@@ -84,8 +85,10 @@ class QuickTabsManager {
    *
    * @param {EventEmitter} eventBus - External event bus from content.js
    * @param {Object} Events - Event constants
+   * @param {Object} [options={}] - v1.6.3.5-v10: Initialization options
+   * @param {number} [options.currentTabId] - v1.6.3.5-v10: Pre-fetched tab ID from content script
    */
-  async init(eventBus, Events) {
+  async init(eventBus, Events, options = {}) {
     if (this.initialized) {
       console.log('[QuickTabsManager] Already initialized, skipping');
       return;
@@ -93,10 +96,19 @@ class QuickTabsManager {
 
     this.eventBus = eventBus;
     this.Events = Events;
+    
+    // v1.6.3.5-v10 - FIX Issue #3: Use pre-fetched currentTabId if provided
+    // This is critical for cross-tab scoping - content.js fetched this from background
+    // before calling init(), so we can use it immediately instead of detecting async
+    if (options.currentTabId !== null && options.currentTabId !== undefined) {
+      this.currentTabId = options.currentTabId;
+      console.log('[QuickTabsManager] Using pre-fetched currentTabId:', this.currentTabId);
+    }
+    
     console.log('[QuickTabsManager] Initializing facade...');
 
     try {
-      await this._initStep1_Context();
+      await this._initStep1_Context(options);
       this._initStep2_Managers();
       await this._initStep3_Handlers(); // v1.6.3.2 - Made async for CreateHandler settings
       this._initStep4_Coordinators();
@@ -121,17 +133,26 @@ class QuickTabsManager {
 
   /**
    * STEP 1: Detect context (container, tab ID)
+   * v1.6.3.5-v10 - FIX Issue #3: Accept options parameter for pre-fetched tab ID
    * @private
+   * @param {Object} [_options={}] - Options including pre-fetched currentTabId (unused, kept for API consistency)
    */
-  async _initStep1_Context() {
+  async _initStep1_Context(_options = {}) {
     console.log('[QuickTabsManager] STEP 1: Detecting container context...');
     const containerDetected = await this.detectContainerContext();
     if (!containerDetected) {
       console.warn('[QuickTabsManager] Container detection failed, using default container');
     }
-    console.log('[QuickTabsManager] STEP 1: Detecting tab ID...');
-    await this.detectCurrentTabId();
-    console.log('[QuickTabsManager] STEP 1 Complete');
+    
+    // v1.6.3.5-v10 - FIX Issue #3: Skip tab ID detection if already set from options
+    // Content.js now pre-fetches tab ID from background before calling init()
+    if (this.currentTabId !== null && this.currentTabId !== undefined) {
+      console.log('[QuickTabsManager] STEP 1: Tab ID already set (from options):', this.currentTabId);
+    } else {
+      console.log('[QuickTabsManager] STEP 1: Detecting tab ID (fallback)...');
+      await this.detectCurrentTabId();
+    }
+    console.log('[QuickTabsManager] STEP 1 Complete - currentTabId:', this.currentTabId);
   }
 
   /**
@@ -734,6 +755,7 @@ class QuickTabsManager {
    * Initialize coordinator components
    * v1.6.3 - Removed SyncCoordinator
    * v1.6.3.4 - Removed PanelManager (floating panel removed, sidebar-only)
+   * v1.6.3.5-v10 - FIX Issue #1-2: Pass currentTabId and set handlers after creation
    * @private
    */
   _initializeCoordinators() {
@@ -741,8 +763,17 @@ class QuickTabsManager {
       this.state,
       this.minimizedManager,
       null, // panelManager removed in v1.6.3.4
-      this.internalEventBus
+      this.internalEventBus,
+      this.currentTabId // v1.6.3.5-v10 - Pass currentTabId for cross-tab filtering
     );
+    
+    // v1.6.3.5-v10 - FIX Issue #1-2: Set handlers for callback wiring during _createWindow()
+    // Handlers are already initialized in _initStep3_Handlers before this step
+    this.uiCoordinator.setHandlers({
+      updateHandler: this.updateHandler,
+      visibilityHandler: this.visibilityHandler,
+      destroyHandler: this.destroyHandler
+    });
   }
 
   /**
@@ -1222,10 +1253,16 @@ let quickTabsManagerInstance = null;
  * @param {EventEmitter} eventBus - External event bus from content.js
  * @param {Object} Events - Event constants
  * @param {Object} options - Optional configuration (for testing)
+ * @param {number} [options.currentTabId] - v1.6.3.5-v10: Current tab ID from content script (pre-fetched from background)
  * @returns {QuickTabsManager} Initialized manager instance
  */
 export async function initQuickTabs(eventBus, Events, options = {}) {
   console.log('[QuickTabs] Initializing Quick Tabs feature module...');
+  console.log('[QuickTabs] Options received:', {
+    currentTabId: options.currentTabId,
+    forceNew: options.forceNew,
+    hasWindowFactory: !!options.windowFactory
+  });
   
   if (options.forceNew || !quickTabsManagerInstance) {
     console.log('[QuickTabs] Creating new QuickTabsManager instance with options:', options);
@@ -1235,7 +1272,9 @@ export async function initQuickTabs(eventBus, Events, options = {}) {
     quickTabsManagerInstance.windowFactory = options.windowFactory;
   }
   
-  await quickTabsManagerInstance.init(eventBus, Events);
+  // v1.6.3.5-v10 - FIX Issue #3: Pass currentTabId from options to init()
+  // This is already available from content.js which got it from background
+  await quickTabsManagerInstance.init(eventBus, Events, options);
   console.log('[QuickTabs] Quick Tabs feature module initialized');
   return quickTabsManagerInstance;
 }

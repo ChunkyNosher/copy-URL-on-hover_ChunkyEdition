@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,24 +62,22 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
-3. **Position/size stop after restore** - `DragController.updateElement()` method
-4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
-5. **Last Sync updates** - Per-tab ownership validation
-6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
-7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
+**v1.6.3.5-v10 Fixes:**
+1. **Callback wiring** - `setHandlers()` for deferred init, `_buildCallbackOptions()` for restore
+2. **Z-index after append** - `_applyZIndexAfterAppend()` forces reflow
+3. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` before Quick Tabs init
+4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
+5. **Diagnostic logging** - Enhanced init/message logging, `_broadcastQuickTabsClearedToTabs()`
 
-**v1.6.3.5-v9 Architecture:**
+**v1.6.3.5-v10 Architecture:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
 - **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()` (v1.6.3.5-v8+)
 - **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` (v1.6.3.5-v8+)
-- **UICoordinator** - `_shouldRenderOnThisTab()`, `_applyZIndexAfterRestore()` (v1.6.3.5-v9)
-- **DragController** - `updateElement()` method (v1.6.3.5-v9)
-- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id` attribute (v1.6.3.5-v9)
+- **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()` (v1.6.3.5-v10)
+- **DragController** - `updateElement()` method
+- **QuickTabWindow** - `__quickTabWindow` property, `_applyZIndexAfterAppend()` (v1.6.3.5-v10)
 
 **Storage Format:**
 ```javascript

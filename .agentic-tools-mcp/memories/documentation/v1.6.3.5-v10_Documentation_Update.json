@@ -1,0 +1,8 @@
+{
+  "id": "7f8af111-0620-4c27-a115-47a3c3ced735",
+  "title": "v1.6.3.5-v10 Documentation Update",
+  "details": "Updated Copilot instructions and agent files for v1.6.3.5-v10. Key documentation changes:\n\n1. **Callback Wiring Fix** - Documented `setHandlers()` pattern and `_buildCallbackOptions()` in UICoordinator\n2. **Z-Index Fix** - Documented `_applyZIndexAfterAppend()` method in window.js\n3. **Cross-Tab Scoping** - Documented `getCurrentTabIdFromBackground()` function\n4. **Storage Corruption Prevention** - Documented `forceEmpty` parameter in storage-utils.js\n5. **Diagnostic Logging** - Documented `_broadcastQuickTabsClearedToTabs()` in background.js\n\nFiles Updated:\n- .github/copilot-instructions.md (11KB)\n- .github/agents/quicktabs-unified-agent.md\n- .github/agents/quicktabs-cross-tab-agent.md\n- .github/agents/quicktabs-single-tab-agent.md\n- .github/agents/quicktabs-manager-agent.md\n- .github/agents/bug-fixer.md\n- .github/agents/bug-architect.md\n- .github/agents/feature-builder.md\n- .github/agents/copilot-docs-updater.md\n\nAll files verified under 15KB limit.",
+  "category": "documentation",
+  "dateCreated": "2025-12-04T07:08:46.050Z",
+  "dateUpdated": "2025-12-04T07:08:46.050Z"
+}

@@ -136,6 +136,10 @@ if (_shouldSkipInitialization) {
   throw new Error('[Content] Intentional halt - inside Quick Tab iframe');
 }
 
+// v1.6.3.5-v10 - FIX Issue #2: Content script initialization logging
+// Log immediately after iframe guard passes to confirm script loaded in this tab
+console.log('[Content] ✓ Content script loaded, starting initialization');
+
 // =============================================================================
 // End of Iframe Recursion Guard - Normal extension initialization below
 // =============================================================================
@@ -329,17 +333,52 @@ function logQuickTabsInitError(qtErr) {
 }
 
 /**
+ * Get current tab ID from background script
+ * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
+ * Must send message to background script which has access to sender.tab.id
+ * 
+ * @returns {Promise<number|null>} Current tab ID or null if unavailable
+ */
+async function getCurrentTabIdFromBackground() {
+  try {
+    const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
+    if (response?.success && typeof response.tabId === 'number') {
+      console.log('[Content] Got current tab ID from background:', response.tabId);
+      return response.tabId;
+    }
+    console.warn('[Content] Background returned invalid tab ID response:', response);
+    return null;
+  } catch (err) {
+    console.warn('[Content] Failed to get tab ID from background:', err.message);
+    return null;
+  }
+}
+
+/**
  * v1.6.0.3 - Helper to initialize Quick Tabs
+ * v1.6.3.5-v10 - FIX Issue #3: Get tab ID from background before initializing Quick Tabs
  */
 async function initializeQuickTabsFeature() {
   console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
-  quickTabsManager = await initQuickTabs(eventBus, Events);
+  
+  // v1.6.3.5-v10 - FIX Issue #3: Get tab ID FIRST from background script
+  // This is critical for cross-tab scoping - Quick Tabs should only render
+  // in the tab they were created in (originTabId must match currentTabId)
+  const currentTabId = await getCurrentTabIdFromBackground();
+  console.log('[Copy-URL-on-Hover] Current tab ID for Quick Tabs initialization:', currentTabId);
+  
+  // Pass currentTabId as option so UICoordinator can filter by originTabId
+  quickTabsManager = await initQuickTabs(eventBus, Events, { currentTabId });
 
   if (quickTabsManager) {
     console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
     console.log(
       '[Copy-URL-on-Hover] Manager has createQuickTab:',
       typeof quickTabsManager.createQuickTab
+    );
+    console.log(
+      '[Copy-URL-on-Hover] Manager currentTabId:',
+      quickTabsManager.currentTabId
     );
   } else {
     console.error('[Copy-URL-on-Hover] ✗ Quick Tabs manager is null after initialization!');
@@ -2157,18 +2196,36 @@ const TYPE_HANDLERS = {
 /**
  * Main message dispatcher
  * Routes messages to appropriate handler based on action or type
+ * v1.6.3.5-v10 - FIX Issue #3: Added entry/exit logging for message tracing
  * @private
  */
 function _dispatchMessage(message, _sender, sendResponse) {
+  // v1.6.3.5-v10 - FIX Issue #3: Log all incoming messages for diagnostic tracing
+  console.log('[Content] Message received:', { 
+    action: message.action || 'none',
+    type: message.type || 'none',
+    hasData: !!message.data
+  });
+
   // Check action-based handlers first
   if (message.action && ACTION_HANDLERS[message.action]) {
+    console.log('[Content] Dispatching to ACTION_HANDLERS:', message.action);
     return ACTION_HANDLERS[message.action](message, sendResponse);
   }
 
   // Check type-based handlers (test bridge)
   if (message.type && TYPE_HANDLERS[message.type]) {
+    console.log('[Content] Dispatching to TYPE_HANDLERS:', message.type);
     return TYPE_HANDLERS[message.type](message, sendResponse);
   }
+
+  // v1.6.3.5-v10 - FIX Issue #3: Warn about unknown messages with available handlers
+  console.warn('[Content] ⚠️ Unknown message - no handler found:', {
+    action: message.action,
+    type: message.type,
+    availableActions: Object.keys(ACTION_HANDLERS),
+    availableTypes: Object.keys(TYPE_HANDLERS).slice(0, 10) // First 10 to avoid noise
+  });
 
   // Message not handled by this listener
   return false;
@@ -2205,6 +2262,8 @@ if (!window._CUO_beforeunload_registered) {
 // Listen for log export requests from popup
 if (typeof browser !== 'undefined' && browser.runtime) {
   browser.runtime.onMessage.addListener(_dispatchMessage);
+  // v1.6.3.5-v10 - FIX Issue #2: Confirm message listener registration
+  console.log('[Content] ✓ Message listener registered');
 }
 // ==================== END LOG EXPORT MESSAGE HANDLER ====================
 
