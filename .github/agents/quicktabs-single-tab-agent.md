@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement (v1.6.3.5-v8)
+  window:created event coordination, per-tab scoping enforcement (v1.6.3.5-v10)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v10 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,19 +38,20 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
-3. **Position/size stop after restore** - `DragController.updateElement()` method
-4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
-5. **Last Sync updates** - Per-tab ownership validation
-6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
-7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
+**v1.6.3.5-v10 Fixes:**
+1. **Callback wiring** - `setHandlers()` for deferred init, `_buildCallbackOptions()` for restore
+2. **Z-index after append** - `_applyZIndexAfterAppend()` re-applies z-index after appendChild
+3. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` retrieves tab ID before init
+4. **Storage corruption** - `forceEmpty` parameter in `persistToStorage()`
 
-**v1.6.3.5-v9 New Patterns:**
-- **`__quickTabWindow` Property** - Set on container for reverse instance lookup
-- **`data-quicktab-id` Attribute** - DOM attribute for querying Quick Tab elements
-- **`DragController.updateElement()`** - Updates element reference after re-render
+**v1.6.3.5-v10 Patterns:**
+- **`setHandlers()`** - Deferred handler initialization
+- **`_buildCallbackOptions()`** - Callback wiring (onPositionChangeEnd, onSizeChangeEnd, etc.)
+- **`_applyZIndexAfterAppend()`** - Z-index fix via reflow
+
+**v1.6.3.5-v9 Features (Retained):**
+- `__quickTabWindow` property, `data-quicktab-id` attribute
+- `DragController.updateElement()`, `_removeListeners()` helper
 
 **Deprecated (v1.6.3.5-v5):**
 - ⚠️ `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Use UpdateHandler
@@ -67,17 +68,19 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8+)
+- [ ] `setHandlers()` properly initializes (v1.6.3.5-v10)
+- [ ] `_applyZIndexAfterAppend()` applies z-index (v1.6.3.5-v10)
+- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] UICoordinator invariants verified (`_verifyInvariant`)
 - [ ] Global visibility correct (no container filtering)
 - [ ] originTabId set correctly on creation
 - [ ] window:created event fires
-- [ ] DOM instance lookup works (`__quickTabWindow`) (v1.6.3.5-v9)
-- [ ] DragController.updateElement() works (v1.6.3.5-v9)
+- [ ] DOM instance lookup works (`__quickTabWindow`)
+- [ ] DragController.updateElement() works
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Individual Quick Tab isolation with UICoordinator invariants and per-tab scoping enforcement (v1.6.3.5-v9).**
+**Your strength: Individual Quick Tab isolation with v1.6.3.5-v10 callback wiring and z-index fixes.**

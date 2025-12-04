@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, Background-as-Coordinator messaging, Per-Tab Ownership Validation,
-  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.5-v8)
+  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.5-v10)
 tools: ["*"]
 ---
 
@@ -28,25 +28,24 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v10 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.5-v9 Sync Architecture:**
+**v1.6.3.5-v10 Sync Architecture:**
 - **storage.onChanged** - Primary sync (fires in ALL OTHER tabs)
 - **Background-as-Coordinator** - Routes manager commands via background.js
 - **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner writes
 - **Per-Tab Scoping** - `_shouldRenderOnThisTab()` enforces strict originTabId filtering
+- **Tab ID Retrieval** - `getCurrentTabIdFromBackground()` before Quick Tabs init
 - **Promise-Based Sequencing** - `_delay()` helper for deterministic event→storage ordering
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 - **Coordinated Clear** - `quickTabHostTabs` cleared in background.js during coordinated clear
 
-**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
-3. **Position/size stop after restore** - `DragController.updateElement()` method
-4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
-5. **Last Sync updates** - Per-tab ownership validation
-6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
-7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
+**v1.6.3.5-v10 Fixes:**
+1. **Callback wiring** - `setHandlers()` for deferred init, `_buildCallbackOptions()` for restore
+2. **Z-index after append** - `_applyZIndexAfterAppend()` forces reflow
+3. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` retrieves tab ID before init
+4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
+5. **Diagnostic logging** - `_broadcastQuickTabsClearedToTabs()` with per-tab success/failure
 
 **Ownership Functions:**
 - `canCurrentTabModifyQuickTab(tabData, currentTabId)` - Check ownership
@@ -73,16 +72,19 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8+)
+- [ ] `getCurrentTabIdFromBackground()` works (v1.6.3.5-v10)
+- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Ownership validation prevents non-owner writes
+- [ ] `forceEmpty` allows intentional empty writes (v1.6.3.5-v10)
 - [ ] storage.onChanged events processed correctly
 - [ ] Background-as-Coordinator messages route correctly
+- [ ] `_broadcastQuickTabsClearedToTabs()` logs correctly (v1.6.3.5-v10)
 - [ ] Promise-based sequencing works (event→storage order)
 - [ ] Coordinated clear works (`quickTabHostTabs` reset)
-- [ ] DOM instance lookup works (`__quickTabWindow`) (v1.6.3.5-v9)
+- [ ] DOM instance lookup works (`__quickTabWindow`)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.5-v9 fixes and Per-Tab Scoping via `_shouldRenderOnThisTab()`.**
+**Your strength: Reliable cross-tab sync with v1.6.3.5-v10 tab ID retrieval and enhanced diagnostics.**

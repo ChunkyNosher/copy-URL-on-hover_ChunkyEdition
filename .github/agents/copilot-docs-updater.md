@@ -99,17 +99,18 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.5-v9)
+- [ ] Version numbers match current release (1.6.3.5-v10)
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Cross-tab sync uses storage.onChanged + Background-as-Coordinator
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.5-v9:** `__quickTabWindow` property documented
-- [ ] **v1.6.3.5-v9:** `data-quicktab-id` attribute documented
-- [ ] **v1.6.3.5-v9:** `DragController.updateElement()` documented
-- [ ] **v1.6.3.5-v9:** Reflow forcing documented (`container.offsetHeight`)
+- [ ] **v1.6.3.5-v10:** `setHandlers()` pattern documented
+- [ ] **v1.6.3.5-v10:** `_buildCallbackOptions()` documented
+- [ ] **v1.6.3.5-v10:** `_applyZIndexAfterAppend()` documented
+- [ ] **v1.6.3.5-v10:** `getCurrentTabIdFromBackground()` documented
+- [ ] **v1.6.3.5-v10:** `forceEmpty` parameter documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -117,7 +118,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.5-v9
+- **Current Version:** 1.6.3.5-v10
 - **Architecture Status:** DDD with Background-as-Coordinator ✅
 - **Cross-Tab Sync:** storage.onChanged + Background-as-Coordinator
 - **Key Features:**
@@ -127,14 +128,12 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload
 - **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp, writingTabId, writingInstanceId }`
-- **v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-  1. Cross-tab rendering (`_shouldRenderOnThisTab`)
-  2. Yellow indicator + duplicate (`__quickTabWindow` property)
-  3. Position/size after restore (`DragController.updateElement()`)
-  4. Z-index stacking (`_applyZIndexAfterRestore()` with reflow)
-  5. Last Sync updates (per-tab ownership)
-  6. Clear Quick Tab Storage (`clearAll()` path)
-  7. Duplicate windows (`data-quicktab-id` attribute)
+- **v1.6.3.5-v10 Fixes:**
+  1. Callback wiring (`setHandlers()`, `_buildCallbackOptions()`)
+  2. Z-index after append (`_applyZIndexAfterAppend()`)
+  3. Cross-tab scoping (`getCurrentTabIdFromBackground()`)
+  4. Storage corruption (`forceEmpty` parameter)
+  5. Diagnostic logging (`_broadcastQuickTabsClearedToTabs()`)
 - **v1.6.3.5-v8 Manifest Changes:**
   - `unlimitedStorage`, `sessions`, `contextualIdentities` permissions
   - Security: Removed `state-manager.js` from `web_accessible_resources`
@@ -196,14 +195,14 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.5-v9)
+- Version numbers (1.6.3.5-v10)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Background-as-Coordinator)
 - Sync mechanism (storage.onChanged + Background-as-Coordinator)
 - Storage format (unified tabs array with originTabId, writingTabId, writingInstanceId)
 - New architecture classes (StateMachine, Mediator, MapTransactionManager)
-- **v1.6.3.5-v9:** `__quickTabWindow` property, `data-quicktab-id` attribute
-- **v1.6.3.5-v9:** `DragController.updateElement()`, reflow forcing
+- **v1.6.3.5-v10:** `setHandlers()`, `_buildCallbackOptions()`, `_applyZIndexAfterAppend()`
+- **v1.6.3.5-v10:** `getCurrentTabIdFromBackground()`, `forceEmpty` parameter
 - Single Writer Model (`CLEAR_ALL_QUICK_TABS` for Manager closeAll)
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
@@ -294,27 +293,26 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.5-v9)
+## Current Extension State (v1.6.3.5-v10)
 
 ### Architecture
 - **Status:** Background-as-Coordinator ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7)
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
-3. **Position/size after restore** - `DragController.updateElement()` method
-4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
-5. **Last Sync updates** - Per-tab ownership validation
-6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
-7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
+### v1.6.3.5-v10 Fixes
+1. **Callback wiring** - `setHandlers()` for deferred init, `_buildCallbackOptions()` for restore
+2. **Z-index after append** - `_applyZIndexAfterAppend()` forces reflow
+3. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` retrieves tab ID before init
+4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
+5. **Diagnostic logging** - Enhanced init/message logging, `_broadcastQuickTabsClearedToTabs()`
 
-### v1.6.3.5-v9 New Patterns
-- **`__quickTabWindow` Property** - Set on container for reverse instance lookup
-- **`data-quicktab-id` Attribute** - DOM attribute for querying Quick Tab elements
-- **`DragController.updateElement()`** - Updates element reference after re-render
-- **Reflow Forcing** - `container.offsetHeight` access forces browser layout recalculation
+### v1.6.3.5-v10 New Patterns
+- **`setHandlers()`** - Deferred handler initialization in UICoordinator
+- **`_buildCallbackOptions()`** - Builds callbacks for restore path
+- **`_applyZIndexAfterAppend()`** - Re-applies z-index after appendChild
+- **`getCurrentTabIdFromBackground()`** - Tab ID retrieval before init
+- **`forceEmpty: true`** - Allows intentional empty writes
 
 ### v1.6.3.5-v8 Manifest Changes (Retained)
 - `unlimitedStorage` - Prevents storage quota errors
@@ -341,7 +339,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.5-v8 or earlier | Update to 1.6.3.5-v9 |
+| v1.6.3.5-v9 or earlier | Update to 1.6.3.5-v10 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -353,13 +351,15 @@ await perplexity.research("documentation compression markdown");
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.5-v9
+- [ ] Version numbers updated to 1.6.3.5-v10
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged + Background-as-Coordinator documented
-- [ ] **v1.6.3.5-v9:** `__quickTabWindow` property documented
-- [ ] **v1.6.3.5-v9:** `DragController.updateElement()` documented
-- [ ] **v1.6.3.5-v9:** Reflow forcing documented
+- [ ] **v1.6.3.5-v10:** `setHandlers()` pattern documented
+- [ ] **v1.6.3.5-v10:** `_buildCallbackOptions()` documented
+- [ ] **v1.6.3.5-v10:** `_applyZIndexAfterAppend()` documented
+- [ ] **v1.6.3.5-v10:** `getCurrentTabIdFromBackground()` documented
+- [ ] **v1.6.3.5-v10:** `forceEmpty` parameter documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠

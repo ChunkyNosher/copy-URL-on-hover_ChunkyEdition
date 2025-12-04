@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5-v9  
+**Version:** 1.6.3.5-v10  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -24,25 +24,18 @@
 - `contextualIdentities` permission - Better container API integration
 - Security: Removed `state-manager.js` from `web_accessible_resources`
 
-**v1.6.3.5-v9 Architecture (Background-as-Coordinator):**
+**v1.6.3.5-v10 Fixes:**
+1. **Callback wiring** - `setHandlers()` for deferred initialization, `_buildCallbackOptions()` for restore path
+2. **Z-index after append** - `_applyZIndexAfterAppend()` forces reflow via `void container.offsetHeight`
+3. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` retrieves tab ID before Quick Tabs init
+4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
+5. **Diagnostic logging** - Enhanced init/message logging, `_broadcastQuickTabsClearedToTabs()`
 
 **Core Modules:**
-- **QuickTabStateMachine** (`state-machine.js`) - Explicit lifecycle state tracking
-- **QuickTabMediator** (`mediator.js`) - Operation coordination with rollback
-- **MapTransactionManager** (`map-transaction-manager.js`) - Atomic Map operations
-- **Background Script** - Coordinator for state broadcasts and manager commands
-
-**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate on second minimize** - Atomic storage + orphan cleanup
-3. **Position/size updates stop after restore** - `DragController.updateElement()` method added
-4. **Z-index/stacking after restore** - Enhanced `_applyZIndexAfterRestore()` with reflow
-5. **Continuous "Last Sync" updates** - Per-tab ownership validation eliminates thrash
-6. **"Clear Quick Tab Storage" fix** - Coordinated `clearAll()` path
-7. **Duplicate Quick Tab windows** - `__quickTabWindow` property + `data-quicktab-id` attribute
-
-**v1.6.3.5-v8 Fixes (Retained):**
-- Per-tab scoping via `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix` with tab ID
+- **QuickTabStateMachine** - Explicit lifecycle state tracking
+- **QuickTabMediator** - Operation coordination with rollback
+- **MapTransactionManager** - Atomic Map operations
+- **Background Script** - Coordinator for broadcasts and manager commands
 
 **Deprecated (v1.6.3.5-v5):**
 - ⚠️ `window.js`: `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Bypass UpdateHandler
@@ -109,46 +102,30 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.5-v9 Architecture Features
+## 🆕 v1.6.3.5-v10 Patterns
 
-### New v1.6.3.5-v9 Patterns
+- **`setHandlers()` Pattern** - Deferred handler initialization after UICoordinator construction
+- **`_buildCallbackOptions()`** - Builds callbacks (onPositionChangeEnd, onSizeChangeEnd, etc.) for restore
+- **`_applyZIndexAfterAppend()`** - Re-applies z-index AFTER appendChild with reflow forcing
+- **`getCurrentTabIdFromBackground()`** - Retrieves tab ID before Quick Tabs init
+- **`forceEmpty` Parameter** - Allows intentional empty writes in `persistToStorage()`
+- **Enhanced Diagnostics** - Entry/exit logging, `_broadcastQuickTabsClearedToTabs()` with summaries
 
-- **`__quickTabWindow` Property** - Set on container for reverse instance lookup from DOM
-- **`data-quicktab-id` Attribute** - DOM attribute for querying Quick Tab elements
-- **`DragController.updateElement()`** - Updates element reference after re-render
-- **`_removeListeners()` Helper** - Extracted method for listener cleanup
-- **Reflow Forcing** - `container.offsetHeight` access forces browser layout recalculation
+### v1.6.3.5-v9 Features (Retained)
 
-### Enhanced Z-Index Restore (v1.6.3.5-v9)
+- `__quickTabWindow` property, `data-quicktab-id` attribute for DOM querying
+- `DragController.updateElement()`, `_removeListeners()` helper
+- Reflow forcing via `container.offsetHeight`
 
-`_applyZIndexAfterRestore()` now forces browser reflow with explicit verification:
-- Reads `container.offsetHeight` to force layout recalculation
-- Verifies z-index was applied correctly after reflow
+### Per-Tab Scoping
 
-### Manifest Permissions (v1.6.3.5-v8)
+UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-tab scoping. Tab ID retrieved via `getCurrentTabIdFromBackground()` before init.
 
-- **unlimitedStorage** - Prevents storage quota errors for Quick Tab state
-- **sessions** - Enables crash recovery and tab history features
-- **contextualIdentities** - Better container API integration
-- **Security Fix** - Removed `state-manager.js` from `web_accessible_resources`
+### Coordinated Clear
 
-### Per-Tab Scoping (v1.6.3.5-v8+)
-
-UICoordinator has `currentTabId` property and `_shouldRenderOnThisTab()` method that enforces strict per-tab scoping via originTabId check. Prevents Quick Tabs from appearing in wrong tabs.
-
-### Coordinated Clear (v1.6.3.5-v8+)
-
-- `UICoordinator.clearAll()` - Coordinated global destruction path
-- `quickTabHostInfo` cleared on Close All in Manager
-- `quickTabHostTabs` cleared in background.js during coordinated clear
-- `saveId: 'cleared-{timestamp}'` pattern prevents storage thrashing
-
-### v1.6.3.5-v7 Features (Retained)
-
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
-- **Debounced Drag/Resize** - `_debouncedDragPersist()` with 200ms debounce
-- **closeAll Mutex** - `_closeAllInProgress` with 2000ms cooldown
-- **window:created Event** - CreateHandler→UICoordinator coordination
+- `UICoordinator.clearAll()` - Global destruction path
+- `forceEmpty: true` - Intentional empty writes
+- `saveId: 'cleared-{timestamp}'` - Prevents storage thrashing
 
 ### Timing Constants
 
@@ -165,41 +142,21 @@ UICoordinator has `currentTabId` property and `_shouldRenderOnThisTab()` method 
 
 ---
 
-## v1.6.3.5-v9 Architecture Classes
+## Architecture Classes
 
-### QuickTabStateMachine
-States: UNKNOWN, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED  
-Methods: `getState(id)`, `canTransition()`, `transition()`, `initialize()`, `getHistory()`
-
-### QuickTabMediator
-Single entry point with rollback: `minimize()`, `restore()`, `destroy()`, `executeWithRollback()`
-
-### MapTransactionManager
-Atomic Map ops: `beginTransaction()`, `deleteEntry()`, `setEntry()`, `commitTransaction()`, `rollbackTransaction()`
-
-### MinimizedManager (v1.6.3.5-v8+)
-`onStoragePersistNeeded` callback, `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
-
-### UpdateHandler (v1.6.3.5-v8+)
-`_debouncedDragPersist()`, `_dragDebounceTimers` Map, `_emitOrphanedTabEvent()` for orphan recovery
-
-### UICoordinator (v1.6.3.5-v9)
-`currentTabId`, `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix`, `_applyZIndexAfterRestore()` with reflow
-
-### VisibilityHandler (v1.6.3.5-v8+)
-`_logPrefix` with tab ID, enhanced `_executeRestore()` increments z-index
-
-### DragController (v1.6.3.5-v9)
-`updateElement()` - Updates element reference after re-render, `_removeListeners()` helper
-
-### QuickTabWindow (v1.6.3.5-v9)
-`__quickTabWindow` property on container, `data-quicktab-id` attribute for DOM querying
-
-### DestroyHandler
-`_closeAllInProgress` mutex, `_scheduleMutexRelease()` method for 2000ms cooldown
-
-### CreateHandler
-`_emitWindowCreatedEvent()` emits `window:created` event for UICoordinator coordination
+| Class | Key Methods/Properties |
+|-------|----------------------|
+| QuickTabStateMachine | `canTransition()`, `transition()`, `initialize()`, States: VISIBLE/MINIMIZING/MINIMIZED/RESTORING/DESTROYED |
+| QuickTabMediator | `minimize()`, `restore()`, `destroy()`, `executeWithRollback()` |
+| MapTransactionManager | `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()` |
+| MinimizedManager | `forceCleanup()`, `getAllSnapshotIds()`, `onStoragePersistNeeded` |
+| UpdateHandler | `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` |
+| UICoordinator | `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()`, `clearAll()` |
+| VisibilityHandler | `_executeRestore()`, `_logPrefix` |
+| DragController | `updateElement()`, `_removeListeners()` |
+| QuickTabWindow | `__quickTabWindow`, `data-quicktab-id`, `_applyZIndexAfterAppend()` |
+| DestroyHandler | `_closeAllInProgress` mutex, `_scheduleMutexRelease()` |
+| CreateHandler | `_emitWindowCreatedEvent()` |
 
 ---
 
@@ -211,7 +168,8 @@ Atomic Map ops: `beginTransaction()`, `deleteEntry()`, `setEntry()`, `commitTran
 | `canCurrentTabModifyQuickTab()` | Check tab ownership |
 | `validateOwnershipForWrite()` | Filter tabs by ownership |
 | `isSelfWrite(storageValue)` | Check if write from current tab |
-| `persistStateToStorage()` | Write with ownership validation |
+| `persistStateToStorage()` | Write with ownership validation, `forceEmpty` param |
+| `_shouldRejectEmptyWrite()` | Stricter check - ALWAYS rejects unless `forceEmpty=true` |
 | `cleanupTransactionId()` | Event-driven transaction cleanup |
 | `beginTransaction()`/`commitTransaction()`/`rollbackTransaction()` | Transaction lifecycle |
 
@@ -221,23 +179,18 @@ Atomic Map ops: `beginTransaction()`, `deleteEntry()`, `setEntry()`, `commitTran
 
 ## 🏗️ Key Patterns
 
-- **Promise-Based Sequencing** - `_delay()` + async/await for event→storage ordering
-- **Debounced Drag Persistence** - `_debouncedDragPersist()` with separate timers
-- **Orphaned Tab Recovery** - `_emitOrphanedTabEvent()` requests re-wiring (v1.6.3.5-v8+)
-- **Per-Tab Scoping** - `_shouldRenderOnThisTab()` prevents cross-tab rendering (v1.6.3.5-v8+)
-- **Transaction Rollback** - `preRestoreState` captured via MapTransactionManager
-- **Active Timer IDs** - `_activeTimerIds` Set checks validity before executing
-- **State Machine** - `canTransition()` validates, `transition()` logs with source
-- **Map Transaction** - `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`
-- **Ownership Validation** - Only owner tabs persist via `persistStateToStorage()`
-- **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
-- **Coordinated Clear** - `UICoordinator.clearAll()` + `quickTabHostTabs` reset (v1.6.3.5-v8+)
-- **closeAll Mutex** - `_closeAllInProgress` prevents duplicate execution
-- **window:created Event** - CreateHandler→UICoordinator coordination
-- **DOM Instance Lookup** - `__quickTabWindow` property enables reverse lookup (v1.6.3.5-v9)
-- **DOM Query Attribute** - `data-quicktab-id` attribute for element selection (v1.6.3.5-v9)
-- **Dynamic Element Update** - `DragController.updateElement()` after re-render (v1.6.3.5-v9)
-- **Reflow Forcing** - `container.offsetHeight` access for z-index (v1.6.3.5-v9)
+**v1.6.3.5-v10 Patterns:**
+- `setHandlers()` - Deferred handler init
+- `_buildCallbackOptions()` - Callback wiring
+- `getCurrentTabIdFromBackground()` - Tab ID retrieval
+- `forceEmpty` - Intentional empty writes
+- `_applyZIndexAfterAppend()` - Z-index with reflow
+
+**Core Patterns:**
+- Promise sequencing, debounced drag, orphan recovery, per-tab scoping
+- Transaction rollback, state machine, ownership validation, Single Writer Model
+- Coordinated clear, closeAll mutex, `window:created` event
+- DOM lookup (`__quickTabWindow`), `data-quicktab-id`, `DragController.updateElement()`
 
 ---
 
@@ -288,24 +241,16 @@ Atomic Map ops: `beginTransaction()`, `deleteEntry()`, `setEntry()`, `commitTran
 ## 📋 Quick Reference
 
 ### Key Files
-- `background.js` - Background-as-Coordinator with `handleQuickTabStateChange()`, `broadcastQuickTabStateUpdate()`, `handleManagerCommand()`, `quickTabHostTabs` Map
-- `src/content.js` - Identity logging on init, `QUICK_TAB_COMMAND_HANDLERS`, message deduplication (2000ms)
-- `src/core/config.js` - **`QUICK_TAB_SETTINGS_KEY`** constant for debug settings
-- `src/utils/storage-utils.js` - `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`, `cleanupTransactionId()`
-- `src/features/quick-tabs/state-machine.js` - QuickTabStateMachine, States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
-- `src/features/quick-tabs/mediator.js` - QuickTabMediator, `minimize()`, `restore()`, `destroy()`, `executeWithRollback()`
-- `src/features/quick-tabs/map-transaction-manager.js` - MapTransactionManager with rollback
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - **v1.6.3.5-v9:** `_applyZIndexAfterRestore()` with reflow forcing
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - **v1.6.3.5-v8+:** `_logPrefix`, enhanced `_executeRestore()`
-- `src/features/quick-tabs/handlers/UpdateHandler.js` - **v1.6.3.5-v8+:** `_emitOrphanedTabEvent()`, `_debouncedDragPersist()`
-- `src/features/quick-tabs/handlers/DestroyHandler.js` - `_closeAllInProgress` mutex, `_scheduleMutexRelease()` method
-- `src/features/quick-tabs/handlers/CreateHandler.js` - `_emitWindowCreatedEvent()` emits `window:created` event
-- `src/features/quick-tabs/managers/StateManager.js` - Enhanced `persistToStorage(source)` with comprehensive logging
-- `src/features/quick-tabs/minimized-manager.js` - **v1.6.3.5-v8+:** `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
-- `src/features/quick-tabs/window.js` - **v1.6.3.5-v9:** `__quickTabWindow` property, `data-quicktab-id` attribute
-- `src/features/quick-tabs/window/DragController.js` - **v1.6.3.5-v9:** `updateElement()` method
-- `src/features/quick-tabs/index.js` - Deprecated `updateQuickTabPosition()`, `updateQuickTabSize()`
-- `sidebar/quick-tabs-manager.js` - **v1.6.3.5-v8+:** Clears `quickTabHostInfo` on Close All, enhanced logging
+
+| File | Key Features (v1.6.3.5-v10) |
+|------|---------------------------|
+| `background.js` | `_broadcastQuickTabsClearedToTabs()`, coordinator |
+| `src/content.js` | `getCurrentTabIdFromBackground()`, enhanced logging |
+| `src/utils/storage-utils.js` | `_shouldRejectEmptyWrite()` with `forceEmpty` |
+| `UICoordinator.js` | `setHandlers()`, `_buildCallbackOptions()` |
+| `StateManager.js` | `persistToStorage(source, forceEmpty)` |
+| `window.js` | `_applyZIndexAfterAppend()` |
+| `index.js` | `initQuickTabs()` accepts `currentTabId`, calls `setHandlers()` |
 
 ### Storage Key & Format
 

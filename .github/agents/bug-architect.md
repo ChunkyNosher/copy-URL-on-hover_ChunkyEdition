@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.5-v10 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -61,20 +61,18 @@ const relevantMemories = await searchMemories({
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v9:** Background-as-Coordinator with Per-Tab Ownership Validation
+- **v1.6.3.5-v10:** Callback wiring via `setHandlers()`, z-index via `_applyZIndexAfterAppend()`
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate on second minimize** - `__quickTabWindow` property for orphan recovery
-3. **Position/size updates stop after restore** - `DragController.updateElement()` method
-4. **Z-index/stacking after restore** - Enhanced `_applyZIndexAfterRestore()` with reflow
-5. **Continuous "Last Sync" updates** - Per-tab ownership validation
-6. **"Clear Quick Tab Storage" fix** - Coordinated `clearAll()` path
-7. **Duplicate Quick Tab windows** - `data-quicktab-id` attribute for DOM querying
+**v1.6.3.5-v10 Fixes:**
+1. **Callback wiring** - `setHandlers()` for deferred init, `_buildCallbackOptions()` for restore
+2. **Z-index after append** - `_applyZIndexAfterAppend()` forces reflow
+3. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` before Quick Tabs init
+4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
+5. **Diagnostic logging** - Enhanced init/message logging, `_broadcastQuickTabsClearedToTabs()`
 
-**v1.6.3.5-v9 Architecture:**
+**v1.6.3.5-v10 Architecture:**
 - **QuickTabStateMachine** - Explicit lifecycle state tracking
 - **QuickTabMediator** - Operation coordination with state validation and rollback
 - **MapTransactionManager** - Atomic Map operations with logging and rollback
@@ -82,9 +80,9 @@ const relevantMemories = await searchMemories({
 - **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()`
 - **DestroyHandler** - `_closeAllInProgress` mutex, `_scheduleMutexRelease()` method
 - **CreateHandler** - `_emitWindowCreatedEvent()` for UICoordinator coordination
-- **UICoordinator** - `_shouldRenderOnThisTab()`, `clearAll()`, `_applyZIndexAfterRestore()` with reflow
-- **DragController** - `updateElement()` method for re-render handling (v1.6.3.5-v9)
-- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id` attribute (v1.6.3.5-v9)
+- **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()`, `clearAll()`
+- **DragController** - `updateElement()` for re-render handling
+- **QuickTabWindow** - `__quickTabWindow` property, `_applyZIndexAfterAppend()` (v1.6.3.5-v10)
 
 ---
 
