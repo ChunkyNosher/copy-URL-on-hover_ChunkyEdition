@@ -41,13 +41,15 @@ export class StateManager {
    *   This consolidates all persistence through one pipeline with consistent transaction
    *   tracking, validation, and queuing - preventing parallel persistence conflicts.
    * v1.6.3.5-v7 - FIX Issue #5: Add comprehensive logging with timing, source, and state snapshot
+   * v1.6.3.5-v10 - FIX Issue #4: Add forceEmpty parameter for intentional empty writes
    * 
    * Writes unified format (v1.6.2.2+):
    * { tabs: [...], saveId: '...', timestamp: ..., transactionId: ... }
    * 
    * @param {string} [source='unknown'] - Source of persist operation for logging
+   * @param {boolean} [forceEmpty=false] - Allow empty (0 tabs) writes (for Close All)
    */
-  async persistToStorage(source = 'unknown') {
+  async persistToStorage(source = 'unknown', forceEmpty = false) {
     const startTime = Date.now();
     
     try {
@@ -66,13 +68,15 @@ export class StateManager {
         minimizedCount: tabs.filter(t => t.minimized).length,
         activeCount: tabs.filter(t => !t.minimized).length,
         tabIds: tabs.map(t => t.id).slice(0, 5), // First 5 IDs for debugging
-        timestamp: state.timestamp
+        timestamp: state.timestamp,
+        forceEmpty // v1.6.3.5-v10
       });
 
       // v1.6.3.5-v5 - FIX Issue #3: Use centralized persistStateToStorage instead of direct write
       // This ensures all storage writes have transaction IDs, respect FIFO queue,
       // use hash deduplication, and validate ownership.
-      const success = await persistStateToStorage(state, '[StateManager]');
+      // v1.6.3.5-v10 - FIX Issue #4: Pass forceEmpty to allow intentional empty writes
+      const success = await persistStateToStorage(state, '[StateManager]', forceEmpty);
       
       const duration = Date.now() - startTime;
       
@@ -274,6 +278,7 @@ export class StateManager {
   /**
    * Clear all Quick Tabs
    * v1.6.3.1 - Persist to storage for cross-context sync
+   * v1.6.3.5-v10 - FIX Issue #4: Pass forceEmpty=true to allow empty write
    */
   clear() {
     const count = this.quickTabs.size;
@@ -284,7 +289,8 @@ export class StateManager {
     console.log(`[StateManager] Cleared ${count} Quick Tabs`);
 
     // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
-    this.persistToStorage().catch(() => { /* errors logged in persistToStorage */ });
+    // v1.6.3.5-v10 - FIX Issue #4: Pass forceEmpty=true since this is an intentional "Close All" action
+    this.persistToStorage('clear', true /* forceEmpty */).catch(() => { /* errors logged in persistToStorage */ });
   }
 
   /**

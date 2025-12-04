@@ -1328,6 +1328,40 @@ messageRouter.register('RESET_GLOBAL_QUICK_TAB_STATE', () => {
   return { success: true, message: 'Global Quick Tab state cache reset' };
 });
 
+/**
+ * v1.6.3.5-v10 - FIX Issue #1: Broadcast QUICK_TABS_CLEARED to all tabs with per-tab logging
+ * Extracted from COORDINATED_CLEAR_ALL_QUICK_TABS to reduce nesting depth
+ * @param {Array} tabs - Browser tabs to broadcast to
+ * @returns {Promise<Object>} - Broadcast result with success/fail counts
+ */
+async function _broadcastQuickTabsClearedToTabs(tabs) {
+  let successCount = 0;
+  let failCount = 0;
+  const failures = [];
+  
+  for (const tab of tabs) {
+    try {
+      await browser.tabs.sendMessage(tab.id, {
+        action: 'QUICK_TABS_CLEARED'  // Different message: clear local only, no storage write
+      });
+      successCount++;
+      console.log(`[Background] ✓ Notified tab ${tab.id}`);
+    } catch (err) {
+      failCount++;
+      failures.push({ tabId: tab.id, error: err.message });
+      console.log(`[Background] ✗ Failed tab ${tab.id}: ${err.message}`);
+    }
+  }
+  
+  // Log broadcast summary
+  console.log(`[Background] Broadcast summary: ${successCount} success, ${failCount} failed, ${tabs.length} total`);
+  if (failures.length > 0 && failures.length <= 10) {
+    console.log('[Background] First failures:', failures.slice(0, 10));
+  }
+  
+  return { successCount, failCount, totalTabs: tabs.length };
+}
+
 // v1.6.3.4 - FIX Bug #5: Coordinated clear handler to prevent storage write storm
 // Settings page sends this message instead of clearing storage + broadcasting to all tabs
 // Background clears storage ONCE, then broadcasts QUICK_TABS_CLEARED to all tabs
@@ -1359,17 +1393,12 @@ messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
     quickTabHostTabs.clear();
     
     // Step 4: Broadcast to all tabs to clear LOCAL state only (no storage write)
+    // v1.6.3.5-v10 - FIX Issue #1: Use extracted function for per-tab logging
     const tabs = await browser.tabs.query({});
-    for (const tab of tabs) {
-      browser.tabs.sendMessage(tab.id, {
-        action: 'QUICK_TABS_CLEARED'  // Different message: clear local only, no storage write
-      }).catch(() => {
-        // Content script might not be loaded in this tab
-      });
-    }
+    const result = await _broadcastQuickTabsClearedToTabs(tabs);
     
     console.log(`[Background] Coordinated clear complete: Notified ${tabs.length} tabs`);
-    return { success: true };
+    return { success: true, ...result };
   } catch (err) {
     console.error('[Background] Coordinated clear failed:', err);
     return { success: false, error: err.message };

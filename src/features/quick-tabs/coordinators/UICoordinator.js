@@ -53,6 +53,11 @@
  * v1.6.3.5-v9 - FIX Diagnostic Report Issues #4, #7:
  *   - Issue #4: Verify z-index stacking context after restore
  *   - Issue #7: Use __quickTabWindow property from window.js for orphan recovery
+ * v1.6.3.5-v10 - FIX Critical Quick Tab Restore Issues (Callback Wiring + Z-Index):
+ *   - Issue #1-2: Position/size updates stop after restore - callbacks now wired via handlers
+ *   - Issue #3: Z-index broken after restore - handled by window.js z-index fix
+ *   - Added setHandlers() method for deferred handler initialization
+ *   - Added _buildCallbackOptions() for callback wiring in _createWindow()
  */
 
 import browser from 'webextension-polyfill';
@@ -86,8 +91,12 @@ export class UICoordinator {
    * @param {PanelManager} panelManager - Panel manager instance
    * @param {EventEmitter} eventBus - Internal event bus
    * @param {number} [currentTabId=null] - Current browser tab ID for cross-tab filtering
+   * @param {Object} [handlers={}] - Handler references for callback wiring
+   * @param {Object} [handlers.updateHandler] - UpdateHandler for position/size callbacks
+   * @param {Object} [handlers.visibilityHandler] - VisibilityHandler for focus/minimize callbacks
+   * @param {Object} [handlers.destroyHandler] - DestroyHandler for close callback
    */
-  constructor(stateManager, minimizedManager, panelManager, eventBus, currentTabId = null) {
+  constructor(stateManager, minimizedManager, panelManager, eventBus, currentTabId = null, handlers = {}) {
     this.stateManager = stateManager;
     this.minimizedManager = minimizedManager;
     this.panelManager = panelManager;
@@ -111,6 +120,34 @@ export class UICoordinator {
     this._mapTxnManager = new MapTransactionManager(this.renderedTabs, 'renderedTabs');
     // v1.6.3.5-v4 - FIX Issue #4: Track last render time per tab to prevent rapid duplicates
     this._lastRenderTime = new Map(); // id -> timestamp
+    
+    // v1.6.3.5-v10 - FIX Issue #1-2: Store handler references for callback wiring during _createWindow()
+    // These handlers are needed to build proper callbacks when restoring Quick Tabs
+    this.updateHandler = handlers.updateHandler || null;
+    this.visibilityHandler = handlers.visibilityHandler || null;
+    this.destroyHandler = handlers.destroyHandler || null;
+  }
+  
+  /**
+   * Set handler references after construction (for deferred initialization)
+   * v1.6.3.5-v10 - FIX Issue #1-2: Allow setting handlers after UICoordinator is created
+   * @param {Object} handlers - Handler references
+   */
+  setHandlers(handlers) {
+    if (handlers.updateHandler) {
+      this.updateHandler = handlers.updateHandler;
+    }
+    if (handlers.visibilityHandler) {
+      this.visibilityHandler = handlers.visibilityHandler;
+    }
+    if (handlers.destroyHandler) {
+      this.destroyHandler = handlers.destroyHandler;
+    }
+    console.log(`${this._logPrefix} Handlers set:`, {
+      hasUpdateHandler: !!this.updateHandler,
+      hasVisibilityHandler: !!this.visibilityHandler,
+      hasDestroyHandler: !!this.destroyHandler
+    });
   }
   
   /**
@@ -2015,6 +2052,7 @@ export class UICoordinator {
    * v1.6.3.4-v3 - FIX TypeError: Add null safety checks for position/size access
    * v1.6.3.2 - Pass showDebugId setting to window
    * v1.6.3.4-v10 - FIX Issue #6A: Log entity property values before creating window
+   * v1.6.3.5-v10 - FIX Issue #1-2: Include lifecycle callbacks for position/size/focus
    * @private
    *
    * @param {QuickTab} quickTab - QuickTab domain entity
@@ -2026,15 +2064,27 @@ export class UICoordinator {
     const visibility = this._getSafeVisibility(quickTab);
     const zIndex = this._getSafeZIndex(quickTab);
     
+    // v1.6.3.5-v10 - FIX Issue #1-2: Build callback options from handler references
+    // These callbacks are CRITICAL for drag/resize persistence after restore
+    const callbackOptions = this._buildCallbackOptions(quickTab.id);
+    
     // v1.6.3.4-v10 - FIX Issue #6A: Log entity properties before creating window
-    console.log('[UICoordinator] Creating window from entity:', {
+    // v1.6.3.5-v10 - Also log callback status
+    console.log('[UICoordinator] Creating window from entity, zIndex =', zIndex, ':', {
       id: quickTab.id,
       rawPosition: quickTab.position,
       rawSize: quickTab.size,
       safePosition: position,
       safeSize: size,
       visibility,
-      zIndex
+      zIndex,
+      callbacksWired: {
+        onPositionChangeEnd: !!callbackOptions.onPositionChangeEnd,
+        onSizeChangeEnd: !!callbackOptions.onSizeChangeEnd,
+        onFocus: !!callbackOptions.onFocus,
+        onMinimize: !!callbackOptions.onMinimize,
+        onClose: !!callbackOptions.onClose
+      }
     });
 
     // Create QuickTabWindow using imported factory function from window.js
@@ -2051,7 +2101,112 @@ export class UICoordinator {
       zIndex: zIndex,
       soloedOnTabs: visibility.soloedOnTabs,
       mutedOnTabs: visibility.mutedOnTabs,
-      showDebugId: this.showDebugIdSetting // v1.6.3.2 - Pass debug ID display setting
+      showDebugId: this.showDebugIdSetting, // v1.6.3.2 - Pass debug ID display setting
+      currentTabId: this.currentTabId, // v1.6.3.5-v10 - Pass for Solo/Mute
+      // v1.6.3.5-v10 - FIX Issue #1-2: Include lifecycle callbacks
+      ...callbackOptions
     });
+  }
+  
+  /**
+   * Build callback options for window creation
+   * v1.6.3.5-v10 - FIX Issue #1-2: Extracted to reduce _createWindow complexity
+   * Callbacks are bound to handler methods if handlers are available
+   * @private
+   * @param {string} quickTabId - Quick Tab ID for logging
+   * @returns {Object} Callback options
+   */
+  _buildCallbackOptions(quickTabId) {
+    const callbacks = {};
+    
+    // Build callbacks from each handler
+    this._addUpdateHandlerCallbacks(callbacks);
+    this._addVisibilityHandlerCallbacks(callbacks);
+    this._addDestroyHandlerCallbacks(callbacks);
+    
+    // Log warnings for missing critical callbacks
+    this._logMissingCallbacks(callbacks, quickTabId);
+    
+    return callbacks;
+  }
+  
+  /**
+   * Add UpdateHandler callbacks to callbacks object
+   * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
+   * @private
+   * @param {Object} callbacks - Callbacks object to populate
+   */
+  _addUpdateHandlerCallbacks(callbacks) {
+    if (!this.updateHandler) return;
+    
+    const methods = [
+      ['handlePositionChangeEnd', 'onPositionChangeEnd'],
+      ['handleSizeChangeEnd', 'onSizeChangeEnd'],
+      ['handlePositionChange', 'onPositionChange'],
+      ['handleSizeChange', 'onSizeChange']
+    ];
+    
+    for (const [handlerMethod, callbackName] of methods) {
+      if (typeof this.updateHandler[handlerMethod] === 'function') {
+        callbacks[callbackName] = this.updateHandler[handlerMethod].bind(this.updateHandler);
+      }
+    }
+  }
+  
+  /**
+   * Add VisibilityHandler callbacks to callbacks object
+   * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
+   * @private
+   * @param {Object} callbacks - Callbacks object to populate
+   */
+  _addVisibilityHandlerCallbacks(callbacks) {
+    if (!this.visibilityHandler) return;
+    
+    if (typeof this.visibilityHandler.handleFocus === 'function') {
+      callbacks.onFocus = this.visibilityHandler.handleFocus.bind(this.visibilityHandler);
+    }
+    if (typeof this.visibilityHandler.handleMinimize === 'function') {
+      callbacks.onMinimize = (id) => this.visibilityHandler.handleMinimize(id, 'UI');
+    }
+  }
+  
+  /**
+   * Add DestroyHandler callbacks to callbacks object
+   * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
+   * @private
+   * @param {Object} callbacks - Callbacks object to populate
+   */
+  _addDestroyHandlerCallbacks(callbacks) {
+    if (!this.destroyHandler) return;
+    
+    if (typeof this.destroyHandler.handleDestroy === 'function') {
+      callbacks.onDestroy = (id) => this.destroyHandler.handleDestroy(id, 'UI');
+    } else if (typeof this.destroyHandler.closeById === 'function') {
+      callbacks.onDestroy = this.destroyHandler.closeById.bind(this.destroyHandler);
+    }
+  }
+  
+  /**
+   * Log warnings for missing critical callbacks
+   * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
+   * @private
+   * @param {Object} callbacks - Callbacks object to check
+   * @param {string} quickTabId - Quick Tab ID for logging
+   */
+  _logMissingCallbacks(callbacks, quickTabId) {
+    if (!callbacks.onPositionChangeEnd || !callbacks.onSizeChangeEnd) {
+      console.warn(`${this._logPrefix} WARNING: Position/Size callbacks not wired for ${quickTabId}:`, {
+        hasUpdateHandler: !!this.updateHandler,
+        onPositionChangeEnd: !!callbacks.onPositionChangeEnd,
+        onSizeChangeEnd: !!callbacks.onSizeChangeEnd
+      });
+    }
+    
+    if (!callbacks.onFocus) {
+      console.warn(`${this._logPrefix} WARNING: Focus callback not wired for ${quickTabId}:`, {
+        hasVisibilityHandler: !!this.visibilityHandler,
+        onFocus: !!callbacks.onFocus
+      });
+    }
   }
 }

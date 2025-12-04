@@ -17,6 +17,9 @@
  * v1.6.3.5-v9 - FIX Diagnostic Report Issues #3, #7:
  *   - Issue #3: Position/size updates stop after restore - callbacks verified after render
  *   - Issue #7: Add __quickTabWindow property and data-quicktab-id attribute for DOM recovery
+ * v1.6.3.5-v10 - FIX Critical Quick Tab Restore Issues (Z-Index):
+ *   - Issue #3: Z-index broken after restore - apply z-index AFTER appendChild with reflow
+ *   - Added _applyZIndexAfterAppend() method for proper stacking context
  */
 
 import browser from 'webextension-polyfill';
@@ -181,6 +184,7 @@ export class QuickTabWindow {
    * v1.6.3.4-v8 - FIX Issues #1, #6: Enhanced logging to verify correct dimensions are used
    * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification after container creation
    * v1.6.3.4-v11 - Refactored to extract helper methods for improved code health
+   * v1.6.3.5-v10 - FIX Issue #3: Apply z-index AFTER appendChild and force reflow
    */
   render() {
     if (this.container) {
@@ -207,6 +211,12 @@ export class QuickTabWindow {
     // Step 5: Add to document and mark as rendered
     document.body.appendChild(this.container);
     this.rendered = true;
+    
+    // v1.6.3.5-v10 - FIX Issue #3: Apply z-index AFTER appendChild
+    // When z-index is set before the element is in the DOM, the browser may not
+    // properly create a stacking context. Setting z-index after appendChild and
+    // forcing a reflow ensures the z-index takes effect immediately.
+    this._applyZIndexAfterAppend();
 
     // Step 6: Apply anti-flash positioning
     this._setupAntiFlashPositioning(dimensions);
@@ -218,6 +228,50 @@ export class QuickTabWindow {
 
     console.log('[QuickTabWindow] Rendered:', this.id);
     return this.container;
+  }
+  
+  /**
+   * Apply z-index after container is appended to DOM and force reflow
+   * v1.6.3.5-v10 - FIX Issue #3: Ensures proper stacking context creation
+   * 
+   * Setting z-index before appendChild may not create the stacking context
+   * correctly in all browsers. By setting it after the element is in the DOM
+   * and forcing a reflow (by reading offsetHeight), we ensure the browser
+   * has properly computed the stacking context.
+   * 
+   * @private
+   */
+  _applyZIndexAfterAppend() {
+    if (!this.container) return;
+    
+    // Re-apply z-index to ensure it takes effect after appendChild
+    this.container.style.zIndex = this.zIndex.toString();
+    
+    // Force browser reflow to ensure z-index is applied immediately
+    // Reading offsetHeight triggers a synchronous layout calculation
+    // Using void operator to explicitly indicate intentional side-effect
+    void this.container.offsetHeight;
+    
+    // Verify z-index was applied correctly (defensive check for test environment)
+    let verifiedZIndex = 'unknown';
+    if (typeof window !== 'undefined' && window.getComputedStyle) {
+      try {
+        const computedStyle = window.getComputedStyle(this.container);
+        verifiedZIndex = computedStyle.zIndex;
+      } catch (_e) {
+        // getComputedStyle may fail in test environments
+        verifiedZIndex = this.container.style.zIndex;
+      }
+    } else {
+      verifiedZIndex = this.container.style.zIndex;
+    }
+    
+    console.log('[QuickTabWindow] Z-index applied after appendChild:', {
+      id: this.id,
+      targetZIndex: this.zIndex,
+      verifiedZIndex,
+      position: this.container.style.position
+    });
   }
 
   /**
