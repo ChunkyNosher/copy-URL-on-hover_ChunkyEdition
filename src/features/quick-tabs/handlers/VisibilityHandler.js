@@ -28,6 +28,13 @@
  *   - Issue #4: Z-index sync after restore via dedicated z-index update
  *   - Issue #5: Stable restore persistence via skip-if-unchanged check
  *   - Issue #10: Enhanced logging with tab context
+ * v1.6.3.5-v11 - FIX Critical Quick Tab Bugs:
+ *   - Issue #2: Re-wire callbacks after restore using tabWindow.rewireCallbacks()
+ *   - Issue #4: Check tabWindow.isMinimizing/isRestoring flags instead of time-based suppression
+ *   - Issue #7: Z-index sync - ensure entity.zIndex is used, add validation
+ *   - Issue #8: Defensive checks in handleFocus() before updateZIndex()
+ *   - Issue #9: Comprehensive z-index operation logging
+ *   - Issue #10: Stale onFocus callback - part of callback re-wiring
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -44,7 +51,7 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  *
- * @version 1.6.3.5-v8
+ * @version 1.6.3.5-v11
  */
 
 import { buildStateForStorage, persistStateToStorage, validateStateForPersist, STATE_KEY, getBrowserStorageAPI } from '@utils/storage-utils.js';
@@ -302,6 +309,72 @@ export class VisibilityHandler {
     const lockKey = `${operation}-${id}`;
     this._operationLocks.delete(lockKey);
   }
+  
+  /**
+   * Check minimize preconditions
+   * v1.6.3.5-v11 - Extracted to reduce handleMinimize complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object|null} tabWindow - TabWindow instance
+   * @param {string} source - Source of action
+   * @returns {{ canProceed: boolean, result?: Object }}
+   */
+  _checkMinimizePreconditions(id, tabWindow, source) {
+    // Check operation-specific flag
+    if (tabWindow?.isMinimizing) {
+      console.log(`${this._logPrefix} Suppressing callback (tabWindow.isMinimizing=true, source: ${source}):`, id);
+      return { canProceed: false, result: { success: true, error: 'Suppressed - minimize in progress' } };
+    }
+    
+    // Check callback re-entry
+    const operationKey = `minimize-${id}`;
+    if (this._initiatedOperations.has(operationKey)) {
+      console.log(`${this._logPrefix} Suppressing callback re-entry for minimize (source: ${source}):`, id);
+      return { canProceed: false, result: { success: true, error: 'Suppressed callback' } };
+    }
+    
+    // Check mutex lock
+    if (!this._tryAcquireLock('minimize', id)) {
+      console.log(`${this._logPrefix} Ignoring duplicate minimize request (lock held, source: ${source}) for:`, id);
+      return { canProceed: false, result: { success: false, error: 'Operation lock held' } };
+    }
+    
+    // Check pending flag
+    if (this._pendingMinimize.has(id)) {
+      console.log(`${this._logPrefix} Ignoring duplicate minimize request (pending, source: ${source}) for:`, id);
+      this._releaseLock('minimize', id);
+      return { canProceed: false, result: { success: false, error: 'Operation pending' } };
+    }
+    
+    return { canProceed: true };
+  }
+  
+  /**
+   * Validate and get tabWindow instance for minimize
+   * v1.6.3.5-v11 - Extracted to reduce handleMinimize complexity
+   * @private
+   */
+  _validateMinimizeInstance(id, tabWindow, source) {
+    // Re-fetch tabWindow in case it wasn't available before
+    const tabWindowInstance = tabWindow || this.quickTabsMap.get(id);
+    if (!tabWindowInstance) {
+      console.warn(`${this._logPrefix} Tab not found for minimize (source: ${source}):`, id);
+      return { valid: false, result: { success: false, error: 'Tab not found' } };
+    }
+    
+    // Validate this is a real QuickTabWindow instance
+    if (typeof tabWindowInstance.minimize !== 'function') {
+      console.error(`${this._logPrefix} Invalid tab instance (not QuickTabWindow, source: ${source}):`, {
+        id,
+        type: tabWindowInstance.constructor?.name,
+        hasMinimize: typeof tabWindowInstance.minimize
+      });
+      this.quickTabsMap.delete(id);
+      return { valid: false, result: { success: false, error: 'Invalid tab instance (not QuickTabWindow)' } };
+    }
+    
+    return { valid: true, instance: tabWindowInstance };
+  }
 
   /**
    * Handle Quick Tab minimize
@@ -315,82 +388,59 @@ export class VisibilityHandler {
    * v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
    * v1.6.3.4-v7 - FIX Issues #3, #6: Instance validation and try/finally for lock cleanup
    * v1.6.3.4-v8 - FIX Issue #3: Suppress callbacks during handler-initiated operations
+   * v1.6.3.5-v11 - FIX Issue #4: Check tabWindow.isMinimizing flag for operation-specific suppression
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleMinimize(id, source = 'unknown') {
-    // v1.6.3.4-v8 - FIX Issue #3: Check if this is a callback from our own minimize() call
-    const operationKey = `minimize-${id}`;
-    if (this._initiatedOperations.has(operationKey)) {
-      console.log(`${this._logPrefix} Suppressing callback re-entry for minimize (source: ${source}):`, id);
-      return { success: true, error: 'Suppressed callback' };
-    }
+    const tabWindow = this.quickTabsMap.get(id);
     
-    // v1.6.3.2 - FIX Issue #2: Use mutex to prevent multiple sources triggering same operation
-    if (!this._tryAcquireLock('minimize', id)) {
-      console.log(`${this._logPrefix} Ignoring duplicate minimize request (lock held, source: ${source}) for:`, id);
-      return { success: false, error: 'Operation lock held' };
+    // v1.6.3.5-v11 - FIX Issue #4: Check preconditions
+    const preconditions = this._checkMinimizePreconditions(id, tabWindow, source);
+    if (!preconditions.canProceed) {
+      return preconditions.result;
     }
 
     // v1.6.3.4-v7 - FIX Issue #6: Use try/finally to ensure lock is ALWAYS released
     try {
-      // v1.6.3.4-v6 - FIX Issue #1: Prevent duplicate minimize operations
-      if (this._pendingMinimize.has(id)) {
-        console.log(`${this._logPrefix} Ignoring duplicate minimize request (pending, source: ${source}) for:`, id);
-        return { success: false, error: 'Operation pending' };
-      }
-      
-      // v1.6.3.4 - FIX Issue #1: Log at start to confirm button was clicked
-      // v1.6.3.4 - FIX Issue #6: Include source in log
-      // v1.6.3.5-v2 - FIX Report 1 Issue #7: Use Tab ID prefix
       console.log(`${this._logPrefix} Minimize button clicked (source: ${source}) for Quick Tab:`, id);
 
-      const tabWindow = this.quickTabsMap.get(id);
-      if (!tabWindow) {
-        console.warn(`${this._logPrefix} Tab not found for minimize (source: ${source}):`, id);
-        return { success: false, error: 'Tab not found' };
+      // Validate instance
+      const validation = this._validateMinimizeInstance(id, tabWindow, source);
+      if (!validation.valid) {
+        return validation.result;
       }
-      
-      // v1.6.3.4-v7 - FIX Issue #3: Validate this is a real QuickTabWindow instance
-      if (typeof tabWindow.minimize !== 'function') {
-        console.error(`${this._logPrefix} Invalid tab instance (not QuickTabWindow, source: ${source}):`, {
-          id,
-          type: tabWindow.constructor?.name,
-          hasMinimize: typeof tabWindow.minimize
-        });
-        // Remove invalid entry from map
-        this.quickTabsMap.delete(id);
-        return { success: false, error: 'Invalid tab instance (not QuickTabWindow)' };
-      }
+      const tabWindowInstance = validation.instance;
       
       // v1.6.3.4-v6 - FIX Issue #1: Mark as pending to prevent duplicate clicks
       this._pendingMinimize.add(id);
 
       // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = true FIRST (entity is source of truth)
-      // Note: tabWindow IS the entity in quickTabsMap - they reference the same object
-      // This must happen BEFORE calling minimizedManager.add() or tabWindow.minimize()
+      // Note: tabWindowInstance IS the entity in quickTabsMap - they reference the same object
+      // This must happen BEFORE calling minimizedManager.add() or tabWindowInstance.minimize()
       // so that all downstream reads see the correct state
       console.log(`${this._logPrefix} Updating entity.minimized = true (source: ${source}) for:`, id);
-      tabWindow.minimized = true;
+      tabWindowInstance.minimized = true;
       
       // v1.6.3.5-v7 - FIX Issue #6: Set domVerified: false when minimizing
       // This ensures minimize state is explicitly tracked and survives reload
-      tabWindow.domVerified = false;
+      tabWindowInstance.domVerified = false;
       console.log(`${this._logPrefix} Set domVerified = false for minimize (source: ${source}):`, id);
 
       // Add to minimized manager BEFORE calling minimize (to capture correct position/size)
       // v1.6.3.5-v2 - FIX Report 1 Issue #7: Log snapshot lifecycle
       console.log(`${this._logPrefix} Creating snapshot (source: ${source}) for:`, id);
-      this.minimizedManager.add(id, tabWindow);
+      this.minimizedManager.add(id, tabWindowInstance);
 
       // v1.6.3.4-v8 - FIX Issue #3: Mark this operation as initiated by handler to suppress callback
+      const operationKey = `minimize-${id}`;
       this._initiatedOperations.add(operationKey);
       try {
         // v1.6.3.4-v5 - FIX Bug #6: Actually minimize the window (hide it)
-        tabWindow.minimize();
-        console.log(`${this._logPrefix} Called tabWindow.minimize() (source: ${source}) for:`, id);
+        tabWindowInstance.minimize();
+        console.log(`${this._logPrefix} Called tabWindowInstance.minimize() (source: ${source}) for:`, id);
       } finally {
         // v1.6.3.4-v8 - Clear the suppression flag after short delay (allows any pending callbacks)
         setTimeout(() => this._initiatedOperations.delete(operationKey), CALLBACK_SUPPRESSION_DELAY_MS);
@@ -398,7 +448,7 @@ export class VisibilityHandler {
 
       // v1.6.3.4 - FIX Issue #5: Do NOT delete from Map during minimize
       // The tab still exists, it's just hidden. Map entry needed for restore.
-      // Note: tabWindow.minimize() already sets container = null, so isRendered() will be false
+      // Note: tabWindowInstance.minimize() already sets container = null, so isRendered() will be false
 
       // Emit minimize event for legacy handlers
       if (this.eventBus && this.Events) {
@@ -408,7 +458,7 @@ export class VisibilityHandler {
       // v1.6.3.1 - FIX Bug #7: Emit state:updated for panel to refresh
       // This allows PanelContentManager to update when Quick Tab is minimized from its window
       if (this.eventBus) {
-        const quickTabData = this._createQuickTabData(id, tabWindow, true);
+        const quickTabData = this._createQuickTabData(id, tabWindowInstance, true);
         quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
         quickTabData.domVerified = false; // v1.6.3.5-v7 - FIX Issue #6
         this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
@@ -584,6 +634,43 @@ export class VisibilityHandler {
     tabWindow.restore();
     console.log(`[VisibilityHandler] Called tabWindow.restore() (source: ${source}) for:`, id);
     this._ensureTabInMap(tabWindow, id, source);
+    
+    // v1.6.3.5-v11 - FIX Issue #2: Re-wire callbacks after restore to capture fresh context
+    // The original callbacks may reference stale closures from construction time
+    this._rewireCallbacksAfterRestore(tabWindow, id, source);
+  }
+  
+  /**
+   * Re-wire callbacks on tabWindow after restore
+   * v1.6.3.5-v11 - FIX Issue #2: Missing callback re-wiring after restore
+   * Creates fresh callback functions that capture CURRENT handler context
+   * @private
+   * @param {Object} tabWindow - QuickTabWindow instance
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of restore operation
+   */
+  _rewireCallbacksAfterRestore(tabWindow, id, source) {
+    if (!tabWindow?.rewireCallbacks) {
+      console.warn(`${this._logPrefix} tabWindow.rewireCallbacks not available (source: ${source}):`, id);
+      return;
+    }
+    
+    // Build fresh callbacks that capture current handler context
+    // These replace any stale closures from initial construction
+    const freshCallbacks = {
+      onMinimize: (tabId) => this.handleMinimize(tabId, 'UI'),
+      onFocus: (tabId) => this.handleFocus(tabId)
+    };
+    
+    // Note: Position/size callbacks are wired by UICoordinator via UpdateHandler
+    // We only re-wire minimize and focus callbacks here
+    
+    const rewired = tabWindow.rewireCallbacks(freshCallbacks);
+    console.log(`${this._logPrefix} Re-wired callbacks after restore (source: ${source}):`, {
+      id,
+      rewired,
+      callbacksProvided: Object.keys(freshCallbacks)
+    });
   }
 
   /**
@@ -591,11 +678,12 @@ export class VisibilityHandler {
    * v1.6.3.4-v7 - Helper for try/finally pattern in handleRestore
    * v1.6.3.4-v9 - FIX Issue #20: Add validation before proceeding
    * v1.6.3.5-v5 - FIX Issues #1, #6: DOM verification and transaction pattern with rollback
+   * v1.6.3.5-v11 - FIX Issue #7, #9: Z-index sync and logging during restore
    * Refactored: Extracted helpers to reduce complexity
    * @private
    */
   _executeRestore(id, source) {
-    console.log(`[VisibilityHandler] Handling restore (source: ${source}) for:`, id);
+    console.log(`${this._logPrefix}[_executeRestore] ENTRY (source: ${source}):`, { id });
 
     const tabWindow = this.quickTabsMap.get(id);
     
@@ -611,7 +699,8 @@ export class VisibilityHandler {
     // v1.6.3.5-v5 - FIX Issue #6: Capture pre-restore state for rollback
     // Note: Only capturing minimized state, as 'rendered' state is managed by UICoordinator
     const preRestoreState = tabWindow ? {
-      minimized: tabWindow.minimized
+      minimized: tabWindow.minimized,
+      zIndex: tabWindow.zIndex // v1.6.3.5-v11 - Also capture z-index
     } : null;
 
     // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = false FIRST
@@ -620,12 +709,16 @@ export class VisibilityHandler {
       tabWindow.minimized = false;
       
       // v1.6.3.5-v8 - FIX Issue #4: Ensure z-index is brought to front after restore
+      // v1.6.3.5-v11 - FIX Issue #7, #9: Enhanced z-index logging
       if (this.currentZIndex) {
+        const oldZIndex = tabWindow.zIndex;
         this.currentZIndex.value++;
         tabWindow.zIndex = this.currentZIndex.value;
-        console.log(`${this._logPrefix} Updated z-index for restored tab (source: ${source}):`, {
+        console.log(`${this._logPrefix}[_executeRestore] Z-index update (source: ${source}):`, {
           id,
-          newZIndex: tabWindow.zIndex
+          oldZIndex,
+          newZIndex: tabWindow.zIndex,
+          currentZIndexCounter: this.currentZIndex.value
         });
       }
     }
@@ -640,7 +733,7 @@ export class VisibilityHandler {
       return { success: true };
     }
 
-    // Perform restore on tabWindow
+    // Perform restore on tabWindow (includes callback re-wiring)
     this._performTabWindowRestore(tabWindow, id, source);
 
     // v1.6.3.5-v5 - FIX Issue #1: Verify DOM state after restore
@@ -651,6 +744,12 @@ export class VisibilityHandler {
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id, source });
     }
+    
+    console.log(`${this._logPrefix}[_executeRestore] EXIT (source: ${source}):`, {
+      id,
+      success: true,
+      newZIndex: tabWindow?.zIndex
+    });
     
     return { success: true };
   }
@@ -933,6 +1032,9 @@ export class VisibilityHandler {
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.4 - FIX Issue #3: Persist z-index to storage after focus
    * v1.6.3.4-v8 - FIX Issue #6: Debounce duplicate focus events (100ms)
+   * v1.6.3.5-v11 - FIX Issues #8, #9:
+   *   - Issue #8: Defensive checks for container existence and DOM attachment
+   *   - Issue #9: Comprehensive z-index operation logging
    *
    * @param {string} id - Quick Tab ID
    */
@@ -943,23 +1045,69 @@ export class VisibilityHandler {
     const lastFocus = this._lastFocusTime.get(id) || 0;
     
     if (now - lastFocus < FOCUS_DEBOUNCE_MS) {
-      console.log('[VisibilityHandler] Ignoring duplicate focus (within debounce window):', id);
+      console.log(`${this._logPrefix}[handleFocus] Ignoring duplicate focus (within debounce window):`, id);
       return;
     }
     this._lastFocusTime.set(id, now);
     
-    console.log('[VisibilityHandler] Bringing to front:', id);
+    // v1.6.3.5-v11 - FIX Issue #9: Log entry with current state
+    console.log(`${this._logPrefix}[handleFocus] ENTRY:`, {
+      id,
+      currentZIndex: this.currentZIndex?.value
+    });
 
     const tabWindow = this.quickTabsMap.get(id);
-    if (!tabWindow) return;
+    if (!tabWindow) {
+      console.warn(`${this._logPrefix}[handleFocus] Tab not found in quickTabsMap:`, id);
+      return;
+    }
+    
+    // v1.6.3.5-v11 - FIX Issue #8: Defensive checks before z-index update
+    const hasContainer = !!tabWindow.container;
+    const isAttachedToDOM = !!(tabWindow.container?.parentNode);
+    
+    console.log(`${this._logPrefix}[handleFocus] Container validation:`, {
+      id,
+      hasContainer,
+      isAttachedToDOM,
+      isRendered: tabWindow.isRendered?.() ?? 'N/A'
+    });
 
-    // Increment z-index and update tab UI
+    // Store old z-index for logging
+    const oldZIndex = tabWindow.zIndex;
+    
+    // Increment z-index counter and update entity
     this.currentZIndex.value++;
     const newZIndex = this.currentZIndex.value;
-    tabWindow.updateZIndex(newZIndex);
+    
+    // v1.6.3.5-v11 - FIX Issue #9: Log z-index increment details
+    console.log(`${this._logPrefix}[handleFocus] Z-index increment:`, {
+      id,
+      oldZIndex,
+      newZIndex,
+      counterValue: this.currentZIndex.value
+    });
     
     // v1.6.3.4 - FIX Issue #3: Store the new z-index on the tab for persistence
     tabWindow.zIndex = newZIndex;
+    
+    // v1.6.3.5-v11 - FIX Issue #8: Only call updateZIndex if container exists and is attached
+    if (hasContainer && isAttachedToDOM) {
+      tabWindow.updateZIndex(newZIndex);
+      console.log(`${this._logPrefix}[handleFocus] Called tabWindow.updateZIndex():`, {
+        id,
+        newZIndex,
+        domZIndex: tabWindow.container?.style?.zIndex
+      });
+    } else {
+      // v1.6.3.5-v11 - FIX Issue #8: Log warning but still store z-index on entity
+      console.warn(`${this._logPrefix}[handleFocus] Skipped updateZIndex - container not ready:`, {
+        id,
+        hasContainer,
+        isAttachedToDOM,
+        zIndexStoredOnEntity: newZIndex
+      });
+    }
 
     // Emit focus event
     if (this.eventBus && this.Events) {
@@ -968,6 +1116,12 @@ export class VisibilityHandler {
     
     // v1.6.3.4 - FIX Issue #3: Persist z-index change to storage (debounced)
     this._debouncedPersist(id, 'focus', 'UI');
+    
+    // v1.6.3.5-v11 - FIX Issue #9: Log completion
+    console.log(`${this._logPrefix}[handleFocus] EXIT:`, {
+      id,
+      finalZIndex: tabWindow.zIndex
+    });
   }
 
   /**

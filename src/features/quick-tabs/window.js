@@ -20,6 +20,11 @@
  * v1.6.3.5-v10 - FIX Critical Quick Tab Restore Issues (Z-Index):
  *   - Issue #3: Z-index broken after restore - apply z-index AFTER appendChild with reflow
  *   - Added _applyZIndexAfterAppend() method for proper stacking context
+ * v1.6.3.5-v11 - FIX Critical Quick Tab Bugs:
+ *   - Issue #1: Stale closure references - Add rewireCallbacks() method
+ *   - Issue #3: DOM event listener cleanup - Call controller cleanup() before DOM removal
+ *   - Issue #4: Operation-specific flags (isMinimizing, isRestoring) replace time-based suppression
+ *   - Issue #5: Enhanced logging in minimize(), restore(), updateZIndex()
  */
 
 import browser from 'webextension-polyfill';
@@ -124,10 +129,54 @@ export class QuickTabWindow {
       this[name] = options[name] || noop;
     });
   }
+  
+  /**
+   * Re-wire callbacks after restore to capture fresh execution context
+   * v1.6.3.5-v11 - FIX Issue #1: Stale closure references after restore
+   * 
+   * After browser restart with hydration OR minimize/restore cycle, the original
+   * callbacks may reference stale closure variables from construction time.
+   * This method allows replacing callbacks with fresh versions that capture
+   * the CURRENT handler context.
+   * 
+   * @param {Object} callbacks - Object containing fresh callback functions
+   * @returns {boolean} True if any callbacks were rewired
+   */
+  rewireCallbacks(callbacks) {
+    const callbackNames = [
+      'onDestroy',
+      'onMinimize',
+      'onFocus',
+      'onPositionChange',
+      'onPositionChangeEnd',
+      'onSizeChange',
+      'onSizeChangeEnd',
+      'onSolo',
+      'onMute'
+    ];
+    const rewired = [];
+    
+    callbackNames.forEach(name => {
+      if (callbacks[name] && typeof callbacks[name] === 'function') {
+        this[name] = callbacks[name];
+        rewired.push(name);
+      }
+    });
+    
+    console.log('[QuickTabWindow][rewireCallbacks] Re-wired callbacks:', {
+      id: this.id,
+      rewired,
+      rewiredCount: rewired.length,
+      totalCallbacks: callbackNames.length
+    });
+    
+    return rewired.length > 0;
+  }
 
   /**
    * Initialize internal state properties
    * v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate fields (dead code)
+   * v1.6.3.5-v11 - FIX Issue #4: Add isMinimizing, isRestoring operation-specific flags
    */
   _initializeState() {
     this.container = null;
@@ -148,6 +197,12 @@ export class QuickTabWindow {
     // v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate (unused timestamp tracking)
     // These fields were set during updatePosition/updateSize but never read by any code.
     // They were intended for cross-tab sync conflict resolution which was removed in v1.6.3.
+    
+    // v1.6.3.5-v11 - FIX Issue #4: Operation-specific flags replace time-based callback suppression
+    // These flags are checked by callbacks to determine if they should be suppressed
+    // instead of using a broad time-based window that suppresses ALL callbacks
+    this.isMinimizing = false;
+    this.isRestoring = false;
   }
 
   /**
@@ -702,44 +757,67 @@ export class QuickTabWindow {
    * Minimize the Quick Tab window
    * v1.6.3.4-v7 - FIX Issues #1, #2, #7: Properly remove DOM and cleanup event listeners
    * v1.6.3.2 - Feature: Pause media before removing DOM
+   * v1.6.3.5-v11 - FIX Issues #3, #4, #5:
+   *   - Issue #3: Call controller cleanup() BEFORE destroy to properly remove listeners
+   *   - Issue #4: Set isMinimizing flag for operation-specific callback suppression
+   *   - Issue #5: Enhanced logging throughout minimize operation
    *
    * This method now:
-   * 1. Pauses any playing media (video/audio)
-   * 2. Destroys drag controller (prevents ghost drag events)
-   * 3. Destroys resize controller (prevents ghost resize handles)
-   * 4. Removes container from DOM (prevents duplicate windows)
-   * 5. Clears references and sets rendered=false
-   * 6. Logs DOM removal for debugging
+   * 1. Sets isMinimizing flag (for callback suppression)
+   * 2. Pauses any playing media (video/audio)
+   * 3. Calls cleanup() on controllers (removes event listeners)
+   * 4. Destroys controllers (prevents ghost events)
+   * 5. Removes container from DOM (prevents duplicate windows)
+   * 6. Clears references and sets rendered=false
+   * 7. Clears isMinimizing flag
+   * 8. Calls onMinimize callback
    */
   minimize() {
+    // v1.6.3.5-v11 - FIX Issue #4: Set operation flag for callback suppression
+    this.isMinimizing = true;
     this.minimized = true;
 
     // Enhanced logging for console log export (Issue #1)
-    console.log(
-      `[Quick Tab] Minimizing - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
-    );
+    console.log('[QuickTabWindow][minimize] ENTRY:', {
+      id: this.id,
+      url: this.url,
+      title: this.title,
+      position: { left: this.left, top: this.top },
+      size: { width: this.width, height: this.height },
+      hasDragController: !!this.dragController,
+      hasResizeController: !!this.resizeController,
+      hasContainer: !!this.container
+    });
 
     // v1.6.3.2 - Feature: Pause media before removing DOM
     this._pauseMediaInIframe();
 
-    // v1.6.3.4-v7 - FIX Issue #2: Cleanup drag controller to prevent ghost drag events
+    // v1.6.3.5-v11 - FIX Issue #3: Cleanup controllers BEFORE destroy
+    // This properly removes event listeners while element is still in DOM
     if (this.dragController) {
+      if (this.dragController.cleanup) {
+        this.dragController.cleanup();
+        console.log('[QuickTabWindow][minimize] Called dragController.cleanup():', this.id);
+      }
       this.dragController.destroy();
       this.dragController = null;
-      console.log('[QuickTabWindow] Destroyed drag controller for minimize:', this.id);
+      console.log('[QuickTabWindow][minimize] Destroyed drag controller:', this.id);
     }
 
-    // v1.6.3.4-v7 - FIX Issue #2: Cleanup resize controller to prevent ghost resize handles
     if (this.resizeController) {
+      if (this.resizeController.cleanup) {
+        this.resizeController.cleanup();
+        console.log('[QuickTabWindow][minimize] Called resizeController.cleanup():', this.id);
+      }
       this.resizeController.detachAll();
       this.resizeController = null;
-      console.log('[QuickTabWindow] Destroyed resize controller for minimize:', this.id);
+      console.log('[QuickTabWindow][minimize] Destroyed resize controller:', this.id);
     }
 
     // v1.6.3.4-v7 - FIX Issue #1: Remove container from DOM instead of display:none
     if (this.container) {
       this.container.remove();
-      console.log('[QuickTabWindow] Removed DOM element for minimize:', this.id);
+      console.log('[QuickTabWindow][minimize] Removed DOM element:', this.id);
     }
 
     // v1.6.3.4-v7 - FIX Issue #1: Clear references and mark as not rendered
@@ -749,10 +827,16 @@ export class QuickTabWindow {
     this.soloButton = null;
     this.muteButton = null;
     this.rendered = false;
+    
+    // v1.6.3.5-v11 - FIX Issue #4: Clear operation flag
+    this.isMinimizing = false;
 
-    console.log(
-      `[Quick Tab] Minimized (DOM removed) - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}`
-    );
+    console.log('[QuickTabWindow][minimize] EXIT (DOM removed):', {
+      id: this.id,
+      url: this.url,
+      minimized: this.minimized,
+      rendered: this.rendered
+    });
 
     this.onMinimize(this.id);
   }
@@ -768,19 +852,30 @@ export class QuickTabWindow {
    * v1.6.3.4-v10 - FIX Issue #1: REMOVE ALL DOM manipulation from restore()
    *   UICoordinator is the SOLE rendering authority. restore() ONLY updates instance state.
    *   Removed the `if (this.container) { ... }` block that was directly manipulating DOM.
+   * v1.6.3.5-v11 - FIX Issue #4, #5:
+   *   - Issue #4: Set isRestoring flag for operation-specific callback suppression
+   *   - Issue #5: Enhanced logging throughout restore operation
    *
    * This method now:
-   * 1. Clears minimized flag
-   * 2. Logs dimensions for debugging (but does NOT manipulate DOM)
-   * 3. Does NOT call render() - UICoordinator handles rendering
-   * 4. Calls onFocus() callback to notify state change
+   * 1. Sets isRestoring flag (for callback suppression)
+   * 2. Clears minimized flag
+   * 3. Logs dimensions for debugging (but does NOT manipulate DOM)
+   * 4. Clears isRestoring flag
+   * 5. Calls onFocus() callback to notify state change
    */
   restore() {
+    // v1.6.3.5-v11 - FIX Issue #4: Set operation flag for callback suppression
+    this.isRestoring = true;
     this.minimized = false;
 
-    console.log(
-      `[QuickTabWindow] restore() called - ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
-    );
+    console.log('[QuickTabWindow][restore] ENTRY:', {
+      id: this.id,
+      position: { left: this.left, top: this.top },
+      size: { width: this.width, height: this.height },
+      hasContainer: !!this.container,
+      rendered: this.rendered,
+      zIndex: this.zIndex
+    });
 
     // v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call render() here!
     // UICoordinator is the single rendering authority.
@@ -793,22 +888,26 @@ export class QuickTabWindow {
     // When DOM was removed during minimize but instance still held stale container reference,
     // restore() would manipulate a detached element instead of deferring to UICoordinator.
     // Now UICoordinator is the SOLE authority for DOM manipulation.
-    console.log('[QuickTabWindow] Container state:', {
+    console.log('[QuickTabWindow][restore] Container state:', {
       id: this.id,
       hasContainer: !!this.container,
       containerAttached: !!this.container?.parentNode
     });
-    console.log('[QuickTabWindow] Dimensions to be used by UICoordinator:', {
+    console.log('[QuickTabWindow][restore] Dimensions to be used by UICoordinator:', {
       left: this.left,
       top: this.top,
       width: this.width,
       height: this.height
     });
 
-    // Enhanced logging for console log export
-    console.log(
-      `[QuickTabWindow] Restored (state updated, render deferred to UICoordinator) - ID: ${this.id}`
-    );
+    // v1.6.3.5-v11 - FIX Issue #4: Clear operation flag
+    this.isRestoring = false;
+
+    console.log('[QuickTabWindow][restore] EXIT (state updated, render deferred to UICoordinator):', {
+      id: this.id,
+      minimized: this.minimized,
+      isRestoring: this.isRestoring
+    });
 
     this.onFocus(this.id);
   }
@@ -818,18 +917,61 @@ export class QuickTabWindow {
   /**
    * Update z-index for stacking
    * v1.6.3.4-v5 - FIX Bug #4: Add null/undefined safety check for newZIndex
+   * v1.6.3.5-v11 - FIX Issue #8, #9:
+   *   - Issue #8: Defensive check for container existence and DOM attachment
+   *   - Issue #9: Comprehensive z-index operation logging
    */
   updateZIndex(newZIndex) {
+    const oldZIndex = this.zIndex;
+    
+    // v1.6.3.5-v11 - FIX Issue #9: Log entry with parameters
+    console.log('[QuickTabWindow][updateZIndex] ENTRY:', {
+      id: this.id,
+      oldZIndex,
+      newZIndex,
+      hasContainer: !!this.container,
+      containerAttached: !!this.container?.parentNode
+    });
+    
     // v1.6.3.4-v5 - FIX Bug #4: Guard against null/undefined to prevent TypeError
     if (newZIndex === undefined || newZIndex === null) {
-      console.warn('[QuickTabWindow] updateZIndex called with null/undefined, skipping');
+      console.warn('[QuickTabWindow][updateZIndex] Called with null/undefined, skipping:', {
+        id: this.id,
+        oldZIndex
+      });
       return;
     }
 
     this.zIndex = newZIndex;
-    if (this.container) {
-      this.container.style.zIndex = newZIndex.toString();
+    
+    // v1.6.3.5-v11 - FIX Issue #8: Defensive container check
+    if (!this.container) {
+      console.warn('[QuickTabWindow][updateZIndex] No container - z-index stored but not applied to DOM:', {
+        id: this.id,
+        newZIndex
+      });
+      return;
     }
+    
+    // v1.6.3.5-v11 - FIX Issue #8: Verify container is attached to DOM
+    if (!this.container.parentNode) {
+      console.warn('[QuickTabWindow][updateZIndex] Container not attached to DOM:', {
+        id: this.id,
+        newZIndex
+      });
+      // Still update the style in case container is re-attached later
+    }
+    
+    this.container.style.zIndex = newZIndex.toString();
+    
+    // v1.6.3.5-v11 - FIX Issue #9: Log completion and verify update
+    console.log('[QuickTabWindow][updateZIndex] EXIT:', {
+      id: this.id,
+      oldZIndex,
+      newZIndex,
+      domZIndex: this.container.style.zIndex,
+      verified: this.container.style.zIndex === newZIndex.toString()
+    });
   }
 
   /**

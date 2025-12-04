@@ -5,6 +5,11 @@
 //   - Issue #6: Clear quickTabHostInfo on Close All
 //   - Issue #7: Clear phantom Quick Tabs via coordinated clear
 //   - Issue #10: Enhanced logging with affected IDs
+// v1.6.3.5-v11 - FIX Issue #6: Manager list updates when last Quick Tab closed
+//   - Handle QUICK_TAB_DELETED message from background
+//   - Properly clear inMemoryTabsCache when tabs legitimately reach 0
+//   - Ensure renderUI() is called after deletion
+//   - Fix _isSuspiciousStorageDrop to recognize single-tab deletions as legitimate
 
 // Storage keys
 const STATE_KEY = 'quick_tabs_state_v2';
@@ -93,6 +98,7 @@ function computeStateHash(state) {
 }
 
 // v1.6.3.5-v3 - FIX Architecture Phase 1: Listen for state updates from background
+// v1.6.3.5-v11 - FIX Issue #6: Handle QUICK_TAB_DELETED message and deletion via QUICK_TAB_STATE_UPDATED
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'QUICK_TAB_STATE_UPDATED') {
     console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
@@ -101,8 +107,11 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       source: message.originalSource
     });
     
-    // Update local state cache
-    if (message.quickTabId && message.changes) {
+    // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
+    if (message.changes?.deleted === true || message.originalSource === 'destroy') {
+      handleStateDeletedMessage(message.quickTabId);
+    } else if (message.quickTabId && message.changes) {
+      // Update local state cache
       handleStateUpdateMessage(message.quickTabId, message.changes);
     }
     
@@ -111,6 +120,20 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ received: true });
     return true;
   }
+  
+  // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
+  if (message.type === 'QUICK_TAB_DELETED') {
+    console.log('[Manager] Received QUICK_TAB_DELETED:', {
+      quickTabId: message.quickTabId,
+      source: message.source
+    });
+    
+    handleStateDeletedMessage(message.quickTabId);
+    renderUI();
+    sendResponse({ received: true });
+    return true;
+  }
+  
   return false;
 });
 
@@ -150,6 +173,87 @@ function handleStateUpdateMessage(quickTabId, changes) {
   
   // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive state updates
   lastLocalUpdateTime = Date.now();
+}
+
+/**
+ * Handle state deleted message from background
+ * v1.6.3.5-v11 - FIX Issue #6: Remove deleted Quick Tab from local state and cache
+ *   This ensures Manager list updates when a Quick Tab is closed via UI or Manager command.
+ * @param {string} quickTabId - Quick Tab ID that was deleted
+ */
+function handleStateDeletedMessage(quickTabId) {
+  console.log('[Manager] Handling state:deleted for:', quickTabId);
+  
+  // Remove from quickTabsState
+  const wasRemoved = _removeTabFromState(quickTabId);
+  if (wasRemoved) {
+    _updateCacheAfterDeletion(quickTabId);
+  }
+  
+  // Remove from host info tracking
+  _removeFromHostInfo(quickTabId);
+  
+  // Update timestamp
+  quickTabsState.timestamp = Date.now();
+  lastLocalUpdateTime = Date.now();
+}
+
+/**
+ * Remove tab from quickTabsState
+ * v1.6.3.5-v11 - Extracted to reduce handleStateDeletedMessage nesting depth
+ * @param {string} quickTabId - Quick Tab ID to remove
+ * @returns {boolean} True if tab was removed
+ */
+function _removeTabFromState(quickTabId) {
+  if (!quickTabsState.tabs || !Array.isArray(quickTabsState.tabs)) {
+    return false;
+  }
+  
+  const beforeCount = quickTabsState.tabs.length;
+  quickTabsState.tabs = quickTabsState.tabs.filter(t => t.id !== quickTabId);
+  const afterCount = quickTabsState.tabs.length;
+  
+  if (beforeCount === afterCount) {
+    return false;
+  }
+  
+  console.log('[Manager] Removed tab from local state:', {
+    quickTabId,
+    beforeCount,
+    afterCount
+  });
+  return true;
+}
+
+/**
+ * Update cache after tab deletion
+ * v1.6.3.5-v11 - Extracted to reduce handleStateDeletedMessage nesting depth
+ * @param {string} quickTabId - Quick Tab ID that was removed
+ */
+function _updateCacheAfterDeletion(quickTabId) {
+  const afterCount = quickTabsState.tabs?.length ?? 0;
+  
+  if (afterCount === 0) {
+    console.log('[Manager] Last Quick Tab deleted - clearing cache');
+    inMemoryTabsCache = [];
+    lastKnownGoodTabCount = 0;
+  } else {
+    // Update cache to remove this tab
+    inMemoryTabsCache = inMemoryTabsCache.filter(t => t.id !== quickTabId);
+    lastKnownGoodTabCount = afterCount;
+  }
+}
+
+/**
+ * Remove from host info tracking
+ * v1.6.3.5-v11 - Extracted to reduce handleStateDeletedMessage nesting depth
+ * @param {string} quickTabId - Quick Tab ID to remove from tracking
+ */
+function _removeFromHostInfo(quickTabId) {
+  if (quickTabHostInfo.has(quickTabId)) {
+    quickTabHostInfo.delete(quickTabId);
+    console.log('[Manager] Removed from quickTabHostInfo:', quickTabId);
+  }
 }
 
 /**
@@ -356,13 +460,26 @@ async function checkStorageDebounce() {
 /**
  * Handle empty storage state
  * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
- * Sets quickTabsState and logs appropriately - used as flow control signal
+ * v1.6.3.5-v11 - FIX Issue #6: Clear cache when storage is legitimately empty
+ *   If storage is empty and cache has only 1 tab, this is a legitimate single-tab deletion.
+ *   Sets quickTabsState and logs appropriately - used as flow control signal
  */
 function _handleEmptyStorageState() {
-  if (inMemoryTabsCache.length > 0) {
+  // v1.6.3.5-v11 - FIX Issue #6: Check if this is a legitimate single-tab deletion
+  if (inMemoryTabsCache.length === 1) {
+    console.log('[Manager] Storage empty with single-tab cache - clearing cache (legitimate deletion)');
+    inMemoryTabsCache = [];
+    lastKnownGoodTabCount = 0;
+    quickTabsState = {};
+    return;
+  }
+  
+  // Multiple tabs in cache but storage empty - use cache (potential storm protection)
+  if (inMemoryTabsCache.length > 1) {
     console.log('[Manager] Storage returned empty but cache has', inMemoryTabsCache.length, 'tabs - using cache');
     quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
   } else {
+    // Cache is empty too - normal empty state
     quickTabsState = {};
     console.log('[Manager] Loaded Quick Tabs state: empty');
   }
@@ -371,15 +488,36 @@ function _handleEmptyStorageState() {
 /**
  * Detect and handle storage storm (0 tabs but cache has tabs)
  * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
+ * v1.6.3.5-v11 - FIX Issue #6: Allow legitimate single-tab deletions (cache=1, storage=0)
+ *   Storage storms are detected when MULTIPLE tabs vanish unexpectedly.
+ *   A single tab going to 0 is legitimate user action.
  * @param {Object} state - Storage state
  * @returns {boolean} True if storm detected and handled
  */
 function _detectStorageStorm(state) {
   const storageTabs = state.tabs || [];
-  if (storageTabs.length !== 0 || inMemoryTabsCache.length < MIN_TABS_FOR_CACHE_PROTECTION) {
+  
+  // No storm if storage has tabs
+  if (storageTabs.length !== 0) {
     return false;
   }
   
+  // No cache to protect - no storm possible
+  if (inMemoryTabsCache.length < MIN_TABS_FOR_CACHE_PROTECTION) {
+    return false;
+  }
+  
+  // v1.6.3.5-v11 - FIX Issue #6: Single tab deletion is legitimate, not a storm
+  // If cache has exactly 1 tab and storage has 0, user closed the last Quick Tab
+  if (inMemoryTabsCache.length === 1) {
+    console.log('[Manager] Single tab→0 transition detected - clearing cache (legitimate deletion)');
+    // Clear the cache to accept the new 0-tab state
+    inMemoryTabsCache = [];
+    lastKnownGoodTabCount = 0;
+    return false; // Not a storm - proceed with normal update
+  }
+  
+  // Multiple tabs vanished at once - this IS a storage storm
   console.warn('[Manager] ⚠️ Storage storm detected - 0 tabs in storage but', inMemoryTabsCache.length, 'in cache:', {
     storageTabCount: storageTabs.length,
     cacheTabCount: inMemoryTabsCache.length,
@@ -394,6 +532,8 @@ function _detectStorageStorm(state) {
 /**
  * Update in-memory cache with valid state
  * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
+ * v1.6.3.5-v11 - FIX Issue #6: Also update cache when tabs.length is 0 (legitimate deletion)
+ *   The cache must be cleared when tabs legitimately reach 0, not just updated when > 0.
  * @param {Array} tabs - Tabs array from storage
  */
 function _updateInMemoryCache(tabs) {
@@ -401,7 +541,14 @@ function _updateInMemoryCache(tabs) {
     inMemoryTabsCache = [...tabs];
     lastKnownGoodTabCount = tabs.length;
     console.log('[Manager] Updated in-memory cache:', { tabCount: tabs.length });
+  } else if (lastKnownGoodTabCount === 1) {
+    // v1.6.3.5-v11 - FIX Issue #6: Clear cache when going from 1→0 (single-tab deletion)
+    console.log('[Manager] Clearing in-memory cache (single-tab deletion detected)');
+    inMemoryTabsCache = [];
+    lastKnownGoodTabCount = 0;
   }
+  // Note: If lastKnownGoodTabCount > 1 and tabs.length === 0, we don't clear the cache
+  // because this might be a storage storm. _detectStorageStorm handles that case.
 }
 
 /**
@@ -1027,17 +1174,33 @@ function _handleStorageChange(change) {
 /**
  * Check if storage change is a suspicious drop (potential corruption)
  * v1.6.3.5-v2 - FIX Report 2 Issue #6: Better heuristics for corruption detection
+ * v1.6.3.5-v11 - FIX Issue #6: Recognize single-tab deletions as legitimate (N→0 where N=1)
+ *   A drop to 0 is only suspicious if:
+ *   - More than 1 tab existed before (sudden multi-tab wipe)
+ *   - It's not an explicit clear operation (reconciled/cleared saveId)
  * @param {number} oldTabCount - Previous tab count
  * @param {number} newTabCount - New tab count
  * @param {Object} newValue - New storage value
  * @returns {boolean} True if suspicious
  */
 function _isSuspiciousStorageDrop(oldTabCount, newTabCount, newValue) {
-  const isSuspiciousDrop = oldTabCount > 0 && newTabCount === 0;
+  // v1.6.3.5-v11 - FIX Issue #6: Only 1→0 is legitimate single-tab deletion
+  // Drops from 2+ tabs to 0 in one change are suspicious (possible corruption)
+  const isMultiTabDrop = oldTabCount > 1 && newTabCount === 0;
+  
+  // Single tab deletion (1→0) is always legitimate - user closed last Quick Tab
+  const isSingleTabDeletion = oldTabCount === 1 && newTabCount === 0;
+  if (isSingleTabDeletion) {
+    console.log('[Manager] Single tab deletion detected (1→0) - legitimate operation');
+    return false;
+  }
+  
+  // Check for explicit clear operations
   const isExplicitClear = newValue?.saveId?.includes(SAVEID_RECONCILED) || 
                           newValue?.saveId?.includes(SAVEID_CLEARED) ||
                           !newValue;
-  return isSuspiciousDrop && !isExplicitClear;
+  
+  return isMultiTabDrop && !isExplicitClear;
 }
 
 /**
