@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5-v8  
+**Version:** 1.6.3.5-v9  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -24,7 +24,7 @@
 - `contextualIdentities` permission - Better container API integration
 - Security: Removed `state-manager.js` from `web_accessible_resources`
 
-**v1.6.3.5-v8 Architecture (Background-as-Coordinator):**
+**v1.6.3.5-v9 Architecture (Background-as-Coordinator):**
 
 **Core Modules:**
 - **QuickTabStateMachine** (`state-machine.js`) - Explicit lifecycle state tracking
@@ -32,20 +32,17 @@
 - **MapTransactionManager** (`map-transaction-manager.js`) - Atomic Map operations
 - **Background Script** - Coordinator for state broadcasts and manager commands
 
-**v1.6.3.5-v8 Fixes (10 Issues):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` in UICoordinator enforces strict per-tab scoping
-2. **Manager minimize/restore** - Coordinated MinimizedManager snapshots, renderedTabs, entity.minimized
-3. **Position/size after restore** - `_emitOrphanedTabEvent()` in UpdateHandler for re-wiring
-4. **Z-index/stacking** - `_executeRestore()` increments z-index on restore
-5. **Last sync flicker** - Stabilized restore-related persistence, no duplicate writes
-6. **Clear Quick Tab Storage** - `clearAll()` in UICoordinator, clears `quickTabHostInfo`
-7. **Phantom Quick Tabs** - `quickTabHostTabs` cleared in background.js during coordinated clear
-8. **Storage thrashing** - Reset counters, `saveId: 'cleared-{timestamp}'` pattern
-9. **Snapshot inconsistencies** - `forceCleanup()`, `getAllSnapshotIds()` in MinimizedManager
-10. **Logging coverage** - `_logPrefix` with tab ID in UICoordinator and VisibilityHandler
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate on second minimize** - Atomic storage + orphan cleanup
+3. **Position/size updates stop after restore** - `DragController.updateElement()` method added
+4. **Z-index/stacking after restore** - Enhanced `_applyZIndexAfterRestore()` with reflow
+5. **Continuous "Last Sync" updates** - Per-tab ownership validation eliminates thrash
+6. **"Clear Quick Tab Storage" fix** - Coordinated `clearAll()` path
+7. **Duplicate Quick Tab windows** - `__quickTabWindow` property + `data-quicktab-id` attribute
 
-**v1.6.3.5-v7 Fixes (Retained):**
-- Manager Empty List, Duplicate Window, Drag/Resize Persistence, State Logging
+**v1.6.3.5-v8 Fixes (Retained):**
+- Per-tab scoping via `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix` with tab ID
 
 **Deprecated (v1.6.3.5-v5):**
 - ⚠️ `window.js`: `setPosition()`, `setSize()`, `updatePosition()`, `updateSize()` - Bypass UpdateHandler

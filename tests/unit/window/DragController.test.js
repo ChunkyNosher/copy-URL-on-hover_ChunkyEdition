@@ -523,4 +523,122 @@ describe('DragController - Pointer Events API', () => {
       expect(controller.currentPointerId).toBeNull();
     });
   });
+  
+  describe('updateElement - DOM Re-render Recovery', () => {
+    test('should update element reference and reattach listeners', () => {
+      const controller = new DragController(element, callbacks);
+      
+      // Create new element to switch to
+      const newElement = document.createElement('div');
+      newElement.setPointerCapture = jest.fn();
+      newElement.releasePointerCapture = jest.fn();
+      const newParent = document.createElement('div');
+      newParent.getBoundingClientRect = jest.fn(() => ({
+        left: 200,
+        top: 200,
+        width: 400,
+        height: 300
+      }));
+      newParent.appendChild(newElement);
+      document.body.appendChild(newParent);
+      
+      // Update element
+      const result = controller.updateElement(newElement);
+      
+      expect(result).toBe(true);
+      expect(controller.element).toBe(newElement);
+      
+      // Verify new element responds to drag events
+      const pointerDown = new PointerEvent('pointerdown', {
+        pointerId: 2,
+        clientX: 250,
+        clientY: 250,
+        bubbles: true
+      });
+      newElement.dispatchEvent(pointerDown);
+      
+      expect(controller.isDragging).toBe(true);
+      expect(callbacks.onDragStart).toHaveBeenCalled();
+    });
+    
+    test('should return false when called with null element', () => {
+      const controller = new DragController(element, callbacks);
+      
+      const result = controller.updateElement(null);
+      
+      expect(result).toBe(false);
+      expect(controller.element).toBe(element); // Original element unchanged
+    });
+    
+    test('should return false when called on destroyed controller', () => {
+      const controller = new DragController(element, callbacks);
+      controller.destroy();
+      
+      const newElement = document.createElement('div');
+      const result = controller.updateElement(newElement);
+      
+      expect(result).toBe(false);
+    });
+    
+    test('should remove listeners from old element', () => {
+      const controller = new DragController(element, callbacks);
+      const removeEventListenerSpy = jest.spyOn(element, 'removeEventListener');
+      
+      const newElement = document.createElement('div');
+      const newParent = document.createElement('div');
+      newParent.getBoundingClientRect = jest.fn(() => ({
+        left: 200,
+        top: 200,
+        width: 400,
+        height: 300
+      }));
+      newParent.appendChild(newElement);
+      document.body.appendChild(newParent);
+      
+      controller.updateElement(newElement);
+      
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('pointerdown', expect.any(Function));
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('pointermove', expect.any(Function));
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('pointerup', expect.any(Function));
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('pointercancel', expect.any(Function));
+    });
+    
+    test('should not respond to events on old element after update', () => {
+      // Create fresh callbacks for this test to avoid state from previous tests
+      const testCallbacks = {
+        onDragStart: jest.fn(),
+        onDrag: jest.fn(),
+        onDragEnd: jest.fn(),
+        onDragCancel: jest.fn()
+      };
+      const controller = new DragController(element, testCallbacks);
+      
+      const newElement = document.createElement('div');
+      newElement.setPointerCapture = jest.fn();
+      const newParent = document.createElement('div');
+      newParent.getBoundingClientRect = jest.fn(() => ({
+        left: 200,
+        top: 200,
+        width: 400,
+        height: 300
+      }));
+      newParent.appendChild(newElement);
+      document.body.appendChild(newParent);
+      
+      controller.updateElement(newElement);
+      
+      // Dispatch event on old element - should NOT trigger drag
+      const pointerDown = new PointerEvent('pointerdown', {
+        pointerId: 1,
+        clientX: 150,
+        clientY: 200,
+        bubbles: true
+      });
+      element.dispatchEvent(pointerDown);
+      
+      // Should not have started dragging from old element
+      // Only the initial setup would have called onDragStart (if any), not this event
+      expect(controller.isDragging).toBe(false);
+    });
+  });
 });

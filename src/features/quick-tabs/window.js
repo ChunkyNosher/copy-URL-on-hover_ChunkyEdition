@@ -14,6 +14,9 @@
  *   - Issue #2: Added currentTabId as instance property (removed global access)
  *   - Issue #4: Updated comments to reflect single-tab architecture
  *   - Issue #6: Removed lastPositionUpdate/lastSizeUpdate (dead code)
+ * v1.6.3.5-v9 - FIX Diagnostic Report Issues #3, #7:
+ *   - Issue #3: Position/size updates stop after restore - callbacks verified after render
+ *   - Issue #7: Add __quickTabWindow property and data-quicktab-id attribute for DOM recovery
  */
 
 import browser from 'webextension-polyfill';
@@ -256,6 +259,8 @@ export class QuickTabWindow {
   /**
    * Create the main container element
    * v1.6.3.4-v11 - Extracted from render() to reduce complexity
+   * v1.6.3.5-v9 - FIX Diagnostic Issue #7: Add __quickTabWindow property for DOM recovery
+   * v1.6.3.5-v9 - FIX Diagnostic Issue #7: Add data-quicktab-id attribute for DOM querying
    * @private
    * @param {{ width: number, height: number }} dimensions
    */
@@ -283,13 +288,24 @@ export class QuickTabWindow {
       }
     });
 
+    // v1.6.3.5-v9 - FIX Diagnostic Issue #7: Add data-quicktab-id attribute for DOM querying
+    // This allows UICoordinator to find orphaned DOM elements via querySelector
+    this.container.setAttribute('data-quicktab-id', this.id);
+    
+    // v1.6.3.5-v9 - FIX Diagnostic Issue #7: Store instance reference on container element
+    // This enables UICoordinator to recover orphaned windows instead of creating duplicates
+    // Pattern: DOM element → QuickTabWindow instance (reverse lookup)
+    this.container.__quickTabWindow = this;
+
     console.log('[QuickTabWindow] DOM dimensions AFTER createElement:', {
       id: this.id,
       'container.style.width': this.container.style.width,
       'container.style.height': this.container.style.height,
       'container.style.left': this.container.style.left,
       'container.style.top': this.container.style.top,
-      'container.style.zIndex': this.container.style.zIndex
+      'container.style.zIndex': this.container.style.zIndex,
+      'data-quicktab-id': this.container.getAttribute('data-quicktab-id'),
+      '__quickTabWindow': !!this.container.__quickTabWindow
     });
   }
 
