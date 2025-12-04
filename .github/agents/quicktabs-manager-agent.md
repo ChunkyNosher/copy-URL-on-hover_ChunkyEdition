@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -37,14 +37,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.5-v8 Fixes:**
-- **Empty List Fix** - `onStoragePersistNeeded` callback triggers after `clearSnapshot()`
-- **Sync Timestamp** - `_updateLocalTimestamp()` tracks actual UI update time
-- **Clear Quick Tab Storage** - Clears `quickTabHostInfo` on Close All
-- **Snapshot inconsistencies** - `forceCleanup()`, `getAllSnapshotIds()` for atomic cleanup
-- **Enhanced logging** - Affected IDs logged during operations
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
+3. **Position/size stop after restore** - `DragController.updateElement()` method
+4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
+5. **Last Sync updates** - Per-tab ownership validation
+6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path, clears `quickTabHostInfo`
+7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
 
-**Manager as Pure Consumer (v1.6.3.5-v8):**
+**Manager as Pure Consumer:**
 - `inMemoryTabsCache` is fallback protection only
 - All writes go through Background-as-Coordinator
 - `closeAllTabs()` uses `CLEAR_ALL_QUICK_TABS` message
@@ -60,8 +62,6 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Background → `EXECUTE_COMMAND` → Host content script
 - Content → `QUICK_TAB_STATE_CHANGE` → Background
 - Background → `QUICK_TAB_STATE_UPDATED` → Manager
-
-**Timing Constants:** `STORAGE_READ_DEBOUNCE_MS` (50ms), `DOM_VERIFICATION_DELAY_MS` (500ms)
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
@@ -92,12 +92,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] Background-as-Coordinator messages route correctly
 - [ ] UI logging visible in console
 - [ ] Empty list fix works after minimize/restore
-- [ ] Sync timestamp shows accurate time (`_updateLocalTimestamp`) (v1.6.3.5-v8)
-- [ ] Close All clears `quickTabHostInfo` (v1.6.3.5-v8)
-- [ ] Snapshot cleanup works (`forceCleanup`) (v1.6.3.5-v8)
+- [ ] Sync timestamp shows accurate time (`_updateLocalTimestamp`) (v1.6.3.5-v8+)
+- [ ] Close All clears `quickTabHostInfo` (v1.6.3.5-v8+)
+- [ ] Snapshot cleanup works (`forceCleanup`) (v1.6.3.5-v8+)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with storage storm protection, Single Writer Model, and v1.6.3.5-v8 snapshot cleanup.**
+**Your strength: Manager coordination with storage storm protection, Single Writer Model, and v1.6.3.5-v9 snapshot cleanup.**

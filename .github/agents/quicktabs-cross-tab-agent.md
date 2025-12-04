@@ -28,22 +28,25 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v9 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.5-v8 Sync Architecture:**
+**v1.6.3.5-v9 Sync Architecture:**
 - **storage.onChanged** - Primary sync (fires in ALL OTHER tabs)
 - **Background-as-Coordinator** - Routes manager commands via background.js
 - **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner writes
-- **Per-Tab Scoping** - `_shouldRenderOnThisTab()` enforces strict originTabId filtering (v1.6.3.5-v8)
+- **Per-Tab Scoping** - `_shouldRenderOnThisTab()` enforces strict originTabId filtering
 - **Promise-Based Sequencing** - `_delay()` helper for deterministic event→storage ordering
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
-- **Coordinated Clear** - `quickTabHostTabs` cleared in background.js during coordinated clear (v1.6.3.5-v8)
+- **Coordinated Clear** - `quickTabHostTabs` cleared in background.js during coordinated clear
 
-**v1.6.3.5-v8 Fixes:**
-- **Cross-tab rendering** - `_shouldRenderOnThisTab()` prevents wrong-tab rendering
-- **Position/size after restore** - `_emitOrphanedTabEvent()` requests re-wiring
-- **Z-index/stacking** - `_executeRestore()` increments z-index on restore
-- **Storage thrashing** - `saveId: 'cleared-{timestamp}'` pattern
+**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
+2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
+3. **Position/size stop after restore** - `DragController.updateElement()` method
+4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
+5. **Last Sync updates** - Per-tab ownership validation
+6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
+7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
 
 **Ownership Functions:**
 - `canCurrentTabModifyQuickTab(tabData, currentTabId)` - Check ownership
@@ -70,16 +73,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8)
+- [ ] Per-tab scoping works (`_shouldRenderOnThisTab`) (v1.6.3.5-v8+)
 - [ ] Ownership validation prevents non-owner writes
 - [ ] storage.onChanged events processed correctly
 - [ ] Background-as-Coordinator messages route correctly
 - [ ] Promise-based sequencing works (event→storage order)
-- [ ] Coordinated clear works (`quickTabHostTabs` reset) (v1.6.3.5-v8)
-- [ ] Storage thrashing prevented (`saveId: 'cleared-{timestamp}'`) (v1.6.3.5-v8)
+- [ ] Coordinated clear works (`quickTabHostTabs` reset)
+- [ ] DOM instance lookup works (`__quickTabWindow`) (v1.6.3.5-v9)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.5-v8 fixes and Per-Tab Scoping via `_shouldRenderOnThisTab()`.**
+**Your strength: Reliable cross-tab sync with v1.6.3.5-v9 fixes and Per-Tab Scoping via `_shouldRenderOnThisTab()`.**

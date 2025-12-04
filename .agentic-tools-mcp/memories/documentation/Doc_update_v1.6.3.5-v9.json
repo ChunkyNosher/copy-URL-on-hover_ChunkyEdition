@@ -1,0 +1,8 @@
+{
+  "id": "23cc4024-a8fe-4361-88df-fb0458aeaed0",
+  "title": "Doc update v1.6.3.5-v9",
+  "details": "Updated all Copilot documentation files for v1.6.3.5-v9 release on 2024-12-04.\n\nKey changes documented:\n1. `__quickTabWindow` property on container for reverse instance lookup\n2. `data-quicktab-id` attribute for DOM querying\n3. `DragController.updateElement()` method for re-render handling\n4. `_removeListeners()` helper extracted in DragController\n5. Reflow forcing via `container.offsetHeight` in `_applyZIndexAfterRestore()`\n\nFiles updated:\n- .github/copilot-instructions.md (14.9KB)\n- All 13 agent files in .github/agents/\n\nAll files verified under 15KB limit.",
+  "category": "documentation",
+  "dateCreated": "2025-12-04T02:39:07.350Z",
+  "dateUpdated": "2025-12-04T02:39:07.350Z"
+}
