@@ -45,7 +45,7 @@
 
 ## 🤖 Agent Delegation
 
-**Delegate to specialists:** Bug fixes → `bug-fixer`/`bug-architect`, Features → `feature-builder`, Quick Tabs → `quicktabs-unified-agent`, Cross-tab → `quicktabs-cross-tab-agent`, Manager → `quicktabs-manager-agent`, Settings → `ui-ux-settings-agent`, Docs → `copilot-docs-updater`
+**Delegate to specialists:** Bug fixes → `bug-fixer`/`bug-architect`, Features → `feature-builder`, Quick Tabs → `quicktabs-unified-agent`, Cross-tab → `quicktabs-cross-tab-agent`, Manager → `quicktabs-manager-agent`, Settings → `ui-ux-settings-agent`, Docs → `copilot-docs-updater`, Reading .md files → `md-diagnostics-analyst`
 
 ---
 
@@ -206,7 +206,7 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 | File | Max Size |
 |------|----------|
 | `copilot-instructions.md` | **15KB** |
-| `.github/agents/*.md` | **25KB** |
+| `.github/agents/*.md` | **15KB** |
 | README.md | **10KB** |
 
 **PROHIBITED:** `docs/manual/`, root markdown (except README.md)
