@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
-  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.5-v11)
+  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.5-v12)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v12 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -37,7 +37,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.5-v11 Fixes:**
+**v1.6.3.5-v12 Fixes:**
+1. **Z-Index Background Logging** - Sample z-index logging in `_logStorageChange()`
+2. **DOM Verification Invariants** - `_verifyRestoreAndEmit()` logs `hasMinimizedSnapshot`, `inQuickTabsMap`, `invariantHolds`
+
+**v1.6.3.5-v11 Fixes (Retained):**
 1. **Cache protection fix** - Recognizes legitimate single-tab deletions (1→0)
 2. **QUICK_TAB_DELETED message** - New message type for single deletions
 3. **handleStateDeletedMessage()** - Handler for QUICK_TAB_DELETED messages
@@ -88,8 +92,9 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] Storage storm protection works (`inMemoryTabsCache`)
-- [ ] `forceEmpty` allows Close All empty writes (v1.6.3.5-v11)
-- [ ] `_broadcastQuickTabsClearedToTabs()` logs correctly (v1.6.3.5-v11)
+- [ ] `forceEmpty` allows Close All empty writes (v1.6.3.5-v12)
+- [ ] `_broadcastQuickTabsClearedToTabs()` logs correctly (v1.6.3.5-v12)
+- [ ] `_logStorageChange()` sample z-index logging works (v1.6.3.5-v12)
 - [ ] All Quick Tabs display globally
 - [ ] Background-as-Coordinator messages route correctly
 - [ ] UI logging visible in console
@@ -102,4 +107,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.5-v11 enhanced diagnostics and storage corruption prevention.**
+**Your strength: Manager coordination with v1.6.3.5-v12 enhanced diagnostics and z-index background logging.**

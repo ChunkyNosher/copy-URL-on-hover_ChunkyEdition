@@ -282,6 +282,15 @@ export class QuickTabWindow {
     this.setupFocusHandlers();
 
     console.log('[QuickTabWindow] Rendered:', this.id);
+    
+    // v1.6.3.5-v12 - FIX Issue #3: Log render completion with full container state
+    console.log('[QuickTabWindow][render] Render completed - container established:', {
+      id: this.id,
+      hasContainer: !!this.container,
+      isAttachedToDOM: !!(this.container?.parentNode),
+      isRendered: this.isRendered()
+    });
+    
     return this.container;
   }
   
@@ -813,15 +822,37 @@ export class QuickTabWindow {
       this.resizeController = null;
       console.log('[QuickTabWindow][minimize] Destroyed resize controller:', this.id);
     }
+    
+    // v1.6.3.5-v12 - FIX Issue #3: Log controller destruction for lifecycle tracking
+    console.log('[QuickTabWindow][minimize] Controllers destroyed:', { id: this.id, operation: 'minimize' });
 
     // v1.6.3.4-v7 - FIX Issue #1: Remove container from DOM instead of display:none
-    if (this.container) {
+    // v1.6.3.5-v12 - FIX Issue #1: Add defensive DOM query fallback when container reference is lost
+    if (this.container && this.container.parentNode) {
       this.container.remove();
       console.log('[QuickTabWindow][minimize] Removed DOM element:', this.id);
+    } else {
+      // Container reference lost - try fallback DOM query
+      // v1.6.3.5-v12 - Code Review: Use more specific selector with class to avoid conflicts
+      const element = document.querySelector(`.quick-tab-window[data-quicktab-id="${CSS.escape(this.id)}"]`);
+      if (element) {
+        console.warn('[QuickTabWindow][minimize] Container reference lost, using fallback DOM removal:', this.id);
+        element.remove();
+      } else {
+        console.log('[QuickTabWindow][minimize] No container or fallback DOM element found:', this.id);
+      }
     }
 
     // v1.6.3.4-v7 - FIX Issue #1: Clear references and mark as not rendered
     this.container = null;
+    
+    // v1.6.3.5-v12 - FIX Issue #3: Log container reference nullification for lifecycle tracking
+    console.log('[QuickTabWindow][minimize] Container reference nullified:', {
+      id: this.id,
+      operation: 'minimize',
+      hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
+    });
+    
     this.iframe = null;
     this.titlebarBuilder = null;
     this.soloButton = null;
@@ -907,6 +938,16 @@ export class QuickTabWindow {
       id: this.id,
       minimized: this.minimized,
       isRestoring: this.isRestoring
+    });
+    
+    // v1.6.3.5-v12 - FIX Issue #3: Log restore completion with full instance state
+    console.log('[QuickTabWindow][restore] Restore completed - instance state:', {
+      id: this.id,
+      minimized: this.minimized,
+      hasContainer: !!this.container,
+      isRendered: this.isRendered(),
+      hasDragController: !!this.dragController,
+      hasResizeController: !!this.resizeController
     });
 
     this.onFocus(this.id);
@@ -1306,6 +1347,33 @@ export class QuickTabWindow {
    */
   isRendered() {
     return Boolean(this.rendered && this.container && this.container.parentNode);
+  }
+  
+  /**
+   * Log warning if rendered flag and container state are out of sync
+   * v1.6.3.5-v12 - FIX Issue E: Helper to detect and log state desync at key lifecycle points
+   * @param {string} operation - Name of the current operation for logging context
+   * @private
+   */
+  _logIfStateDesync(operation) {
+    if (this.rendered && (!this.container || !this.container.parentNode)) {
+      console.warn('[QuickTabWindow] State desync detected:', {
+        id: this.id,
+        operation,
+        rendered: this.rendered,
+        hasContainer: !!this.container,
+        containerAttached: !!(this.container?.parentNode)
+      });
+    }
+    if (!this.rendered && this.container && this.container.parentNode) {
+      console.warn('[QuickTabWindow] State desync detected:', {
+        id: this.id,
+        operation,
+        rendered: this.rendered,
+        hasContainer: true,
+        containerAttached: true
+      });
+    }
   }
 
   /**

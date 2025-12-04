@@ -1668,6 +1668,14 @@ function _logStorageChange(oldValue, newValue) {
   console.log('[Background] ┌─ storage.onChanged RECEIVED ─────────────────────────');
   console.log('[Background] │ tabs:', oldCount, '→', newCount);
   console.log('[Background] │ saveId:', oldValue?.saveId ?? 'none', '→', newValue?.saveId ?? 'none');
+  
+  // v1.6.3.5-v12 - FIX Issue B: Log sample z-index values for debugging
+  const sampleTab = newValue?.tabs?.[0];
+  console.log('[Background] Storage updated - sample tabs:', {
+    tabCount: newValue?.tabs?.length ?? 0,
+    sampleTab: sampleTab ? { id: sampleTab.id, zIndex: sampleTab.zIndex, minimized: sampleTab.minimized } : null
+  });
+  
   _logCorruptionWarning(oldCount, newCount);
   console.log('[Background] └──────────────────────────────────────────────────────');
 }

@@ -52,28 +52,30 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
-3. **Position/size stop after restore** - `DragController.updateElement()` method
-4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
-5. **Last Sync updates** - Per-tab ownership validation
-6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
-7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
+**v1.6.3.5-v12 Fixes (Diagnostic Report Issues #1-8):**
+1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()`
+2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
+3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
+4. **Focus Persistence Logging** - `isFocusOperation` flag in `_debouncedPersist()`
+5. **Z-Index Background Logging** - Sample z-index logging in `_logStorageChange()`
+6. **Transaction Fallback Clarity** - Enhanced `scheduleFallbackCleanup()` context
+7. **DOM Verification Invariants** - Invariant logging in `_verifyRestoreAndEmit()`
+8. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
 
-**v1.6.3.5-v9 Architecture:**
+**v1.6.3.5-v12 Architecture:**
 - **QuickTabStateMachine** - State tracking (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
 - **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
 - **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()`
-- **UICoordinator** - `_shouldRenderOnThisTab()`, `clearAll()`, `_applyZIndexAfterRestore()` (v1.6.3.5-v9)
-- **DragController** - `updateElement()` method (v1.6.3.5-v9)
-- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id` attribute (v1.6.3.5-v9)
+- **UICoordinator** - `_shouldRenderOnThisTab()`, `clearAll()`, `setHandlers()` (v1.6.3.5-v10)
+- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()` (v1.6.3.5-v12)
+- **DragController** - `updateElement()`, `cleanup()` method (v1.6.3.5-v11)
+- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id`, `_logIfStateDesync()` (v1.6.3.5-v12)
 - **DestroyHandler** - `_closeAllInProgress` mutex
 - **CreateHandler** - `_emitWindowCreatedEvent()` method
 

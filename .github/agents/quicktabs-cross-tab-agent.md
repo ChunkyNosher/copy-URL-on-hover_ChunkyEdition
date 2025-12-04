@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, Background-as-Coordinator messaging, Per-Tab Ownership Validation,
-  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.5-v11)
+  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.5-v12)
 tools: ["*"]
 ---
 
@@ -28,9 +28,9 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v12 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.5-v11 Sync Architecture:**
+**v1.6.3.5-v12 Sync Architecture:**
 - **storage.onChanged** - Primary sync (fires in ALL OTHER tabs)
 - **Background-as-Coordinator** - Routes manager commands via background.js
 - **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner writes
@@ -40,7 +40,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 - **Coordinated Clear** - `quickTabHostTabs` cleared in background.js during coordinated clear
 
-**v1.6.3.5-v11 Fixes:**
+**v1.6.3.5-v12 Fixes:**
+1. **Z-Index Background Logging** - Sample z-index logging in `_logStorageChange()`
+2. **Transaction Fallback Clarity** - Enhanced `scheduleFallbackCleanup()` with `{ transactionId, expectedEvent, elapsedMs, triggerModule }`
+3. **DOM Verification Invariants** - `_verifyRestoreAndEmit()` logs `hasMinimizedSnapshot`, `inQuickTabsMap`, `invariantHolds`
+
+**v1.6.3.5-v11 Fixes (Retained):**
 1. **Stale Closure References** - Added `rewireCallbacks()` for fresh callback context
 2. **Callback Re-Wiring** - `_rewireCallbacksAfterRestore()` in VisibilityHandler
 3. **DOM Event Listener Cleanup** - `cleanup()` methods in DragController, ResizeController, ResizeHandle
@@ -78,13 +83,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] `getCurrentTabIdFromBackground()` works (v1.6.3.5-v11)
+- [ ] `getCurrentTabIdFromBackground()` works (v1.6.3.5-v12)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Ownership validation prevents non-owner writes
-- [ ] `forceEmpty` allows intentional empty writes (v1.6.3.5-v11)
+- [ ] `forceEmpty` allows intentional empty writes (v1.6.3.5-v12)
 - [ ] storage.onChanged events processed correctly
 - [ ] Background-as-Coordinator messages route correctly
-- [ ] `_broadcastQuickTabsClearedToTabs()` logs correctly (v1.6.3.5-v11)
+- [ ] `_broadcastQuickTabsClearedToTabs()` logs correctly (v1.6.3.5-v12)
+- [ ] `scheduleFallbackCleanup()` enhanced logging works (v1.6.3.5-v12)
 - [ ] Promise-based sequencing works (event→storage order)
 - [ ] Coordinated clear works (`quickTabHostTabs` reset)
 - [ ] DOM instance lookup works (`__quickTabWindow`)
@@ -93,4 +99,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.5-v11 tab ID retrieval and enhanced diagnostics.**
+**Your strength: Reliable cross-tab sync with v1.6.3.5-v12 enhanced diagnostics and z-index logging.**

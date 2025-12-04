@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v11 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -62,26 +62,25 @@ const relevantMemories = await searchMemories({
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**v1.6.3.5-v11 Fixes:**
-1. **Stale Closure References** - Added `rewireCallbacks()` method to QuickTabWindow
-2. **Missing Callback Re-Wiring** - Added `_rewireCallbacksAfterRestore()` in VisibilityHandler
-3. **DOM Event Listener Cleanup** - Added `cleanup()` methods to DragController, ResizeController, ResizeHandle
-4. **Callback Suppression Fix** - Added `isMinimizing`/`isRestoring` operation flags
-5. **Manager List Updates** - Fixed cache protection, `QUICK_TAB_DELETED` message handling
-6. **Z-Index Fixes** - Enhanced z-index sync, defensive checks, comprehensive logging
+**v1.6.3.5-v12 Fixes:**
+1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()`
+2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
+3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
+4. **Focus Persistence Logging** - `isFocusOperation` flag in `_debouncedPersist()`
+5. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
 
-**v1.6.3.5-v11 Architecture:**
+**v1.6.3.5-v12 Architecture:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
 - **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()` (v1.6.3.5-v8+)
 - **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` (v1.6.3.5-v8+)
 - **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()` (v1.6.3.5-v10)
-- **VisibilityHandler** - `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()` (v1.6.3.5-v11)
+- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`, `isFocusOperation` (v1.6.3.5-v12)
 - **DragController** - `updateElement()`, `cleanup()` (v1.6.3.5-v11)
 - **ResizeController** - `cleanup()` (v1.6.3.5-v11)
 - **ResizeHandle** - `cleanup()`, `destroyed` flag (v1.6.3.5-v11)
-- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags (v1.6.3.5-v11)
+- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()` (v1.6.3.5-v12)
 
 **Storage Format:**
 ```javascript

@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v11 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.5-v12 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -61,22 +61,26 @@ const relevantMemories = await searchMemories({
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v11:** Callback re-wiring via `rewireCallbacks()`, z-index sync, `QUICK_TAB_DELETED` message
+- **v1.6.3.5-v12:** Defensive DOM query fallback, z-index helpers, state desync detection
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v11 Fixes:** (10 total)
+**v1.6.3.5-v12 Fixes:** (8 total)
+1-4: Defensive DOM query in `minimize()`, `_applyZIndexUpdate()`/`_applyZIndexViaFallback()`, lifecycle logging, `isFocusOperation` flag
+5-8: Z-index background logging, `scheduleFallbackCleanup()` context, DOM verification invariants, `_logIfStateDesync()`
+
+**v1.6.3.5-v11 Fixes (Retained):** (10 total)
 1-5: `rewireCallbacks()`, `_rewireCallbacksAfterRestore()`, `cleanup()` methods, `isMinimizing`/`isRestoring` flags, logging
 6-10: Manager cache protection, `QUICK_TAB_DELETED`, z-index sync/defensive checks/logging, stale onFocus fix
 
-**v1.6.3.5-v11 Architecture:**
+**v1.6.3.5-v12 Architecture:**
 - **QuickTabStateMachine** - Lifecycle states, **QuickTabMediator** - Coordination with rollback
 - **MapTransactionManager** - Atomic ops, **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`
 - **UpdateHandler** - `_debouncedDragPersist()`, **DestroyHandler** - `_notifyBackgroundOfDeletion()`
 - **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`, `clearAll()`
 - **DragController/ResizeController/ResizeHandle** - `cleanup()` for listener removal
-- **VisibilityHandler** - `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()`
-- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags
+- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`, `_verifyRestoreAndEmit()` invariants
+- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()`
 
 ---
 

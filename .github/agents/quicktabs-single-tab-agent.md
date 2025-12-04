@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement (v1.6.3.5-v11)
+  window:created event coordination, per-tab scoping enforcement (v1.6.3.5-v12)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v12 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,14 +38,18 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.5-v11 Fixes:**
-1. **Stale Closure References** - Added `rewireCallbacks()` method to QuickTabWindow
-2. **Missing Callback Re-Wiring** - Added `_rewireCallbacksAfterRestore()` in VisibilityHandler
-3. **DOM Event Listener Cleanup** - Added `cleanup()` methods to DragController, ResizeController, ResizeHandle
-4. **Callback Suppression Fix** - Added `isMinimizing`/`isRestoring` operation flags
-5. **Z-Index Sync** - Enhanced z-index sync during restore
+**v1.6.3.5-v12 Fixes:**
+1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()`
+2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
+3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
+4. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
 
-**v1.6.3.5-v11 Patterns:**
+**v1.6.3.5-v12 Patterns:**
+- **`_applyZIndexUpdate()`/`_applyZIndexViaFallback()`** - Defensive z-index application
+- **`_logIfStateDesync()`** - Logs warning when `rendered` and `container` disagree
+- **Defensive DOM query in `minimize()`** - Falls back to `document.querySelector`
+
+**v1.6.3.5-v11 Patterns (Retained):**
 - **`rewireCallbacks()`** - Re-wires callbacks after restore
 - **`_rewireCallbacksAfterRestore()`** - Calls rewireCallbacks in VisibilityHandler
 - **`cleanup()` Pattern** - Public cleanup methods for listener removal
@@ -75,8 +79,10 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] `setHandlers()` properly initializes (v1.6.3.5-v11)
-- [ ] `_applyZIndexAfterAppend()` applies z-index (v1.6.3.5-v11)
+- [ ] `setHandlers()` properly initializes (v1.6.3.5-v12)
+- [ ] `_applyZIndexAfterAppend()` applies z-index (v1.6.3.5-v12)
+- [ ] `_applyZIndexUpdate()`/`_applyZIndexViaFallback()` work (v1.6.3.5-v12)
+- [ ] `_logIfStateDesync()` detects state mismatch (v1.6.3.5-v12)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] UICoordinator invariants verified (`_verifyInvariant`)
@@ -90,4 +96,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.5-v11 callback wiring and z-index fixes.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.5-v12 defensive patterns and state desync detection.**
