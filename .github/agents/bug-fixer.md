@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v11 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.5-v12 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -37,34 +37,32 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v9:** Background-as-Coordinator with Per-Tab Ownership Validation
+- **v1.6.3.5-v12:** Defensive DOM query, z-index helpers, state desync detection
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v11 Fixes:**
-1. **Stale Closure References** - Added `rewireCallbacks()` method to QuickTabWindow
-2. **Missing Callback Re-Wiring** - Added `_rewireCallbacksAfterRestore()` in VisibilityHandler
-3. **DOM Event Listener Cleanup** - Added `cleanup()` methods to DragController, ResizeController, ResizeHandle
-4. **Callback Suppression Fix** - Added `isMinimizing`/`isRestoring` operation flags on tabWindow
-5. **Comprehensive Logging** - Added logging throughout callback paths
-6. **Manager List Updates** - Fixed cache protection, added `QUICK_TAB_DELETED` message handling
-7. **Z-Index Desync** - Enhanced z-index sync during restore
-8. **DOM Z-Index Updates** - Added defensive container checks in `handleFocus()`
-9. **Z-Index Logging** - Added comprehensive z-index operation logging
-10. **Stale onFocus Callback** - Fixed via callback re-wiring architecture
+**v1.6.3.5-v12 Fixes:**
+1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()` when `this.container` is null
+2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
+3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
+4. **Focus Persistence Logging** - `isFocusOperation` flag in `_debouncedPersist()`
+5. **Z-Index Background Logging** - Sample z-index logging in `_logStorageChange()`
+6. **Transaction Fallback Clarity** - Enhanced `scheduleFallbackCleanup()` context
+7. **DOM Verification Invariants** - Invariant logging in `_verifyRestoreAndEmit()`
+8. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
 
-**v1.6.3.5-v11 Modules:**
+**v1.6.3.5-v12 Modules:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
 - **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()` (v1.6.3.5-v8+)
 - **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` (v1.6.3.5-v8+)
 - **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()` (v1.6.3.5-v10+)
-- **VisibilityHandler** - `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()` (v1.6.3.5-v11)
+- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`, `isFocusOperation` (v1.6.3.5-v12)
 - **DragController** - `updateElement()`, `cleanup()` (v1.6.3.5-v11)
 - **ResizeController** - `cleanup()` for listener removal (v1.6.3.5-v11)
 - **ResizeHandle** - `cleanup()`, `destroyed` flag (v1.6.3.5-v11)
-- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags (v1.6.3.5-v11)
+- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()` (v1.6.3.5-v12)
 
 ---
 
@@ -129,7 +127,7 @@ txn.deleteEntry(id, 'reason');
 txn.commitTransaction();
 ```
 
-### setHandlers() and Callback Wiring (v1.6.3.5-v11)
+### setHandlers() and Callback Wiring (v1.6.3.5-v12)
 ```javascript
 // UICoordinator deferred handler initialization
 uiCoordinator.setHandlers(updateHandler, visibilityHandler, destroyHandler);
@@ -138,12 +136,38 @@ uiCoordinator.setHandlers(updateHandler, visibilityHandler, destroyHandler);
 const options = this._buildCallbackOptions(tabData);
 ```
 
-### _applyZIndexAfterAppend (v1.6.3.5-v11)
+### _applyZIndexAfterAppend (v1.6.3.5-v12)
 ```javascript
 // QuickTabWindow - re-apply z-index after appendChild
 _applyZIndexAfterAppend() {
   this.container.style.zIndex = String(this.zIndex);
   void this.container.offsetHeight; // Force reflow
+}
+```
+
+### Defensive DOM Query in minimize() (v1.6.3.5-v12)
+```javascript
+// Falls back to DOM query when this.container is null
+let container = this.container;
+if (!container) {
+  container = document.querySelector(`.quick-tab-window[data-quicktab-id="${CSS.escape(this.id)}"]`);
+}
+```
+
+### _applyZIndexUpdate() / _applyZIndexViaFallback() (v1.6.3.5-v12)
+```javascript
+// VisibilityHandler - defensive z-index application
+_applyZIndexUpdate(tabWindow) { /* helper for complexity reduction */ }
+_applyZIndexViaFallback(tabWindow) { /* DOM query when container null */ }
+```
+
+### _logIfStateDesync() (v1.6.3.5-v12)
+```javascript
+// QuickTabWindow - detect split-brain state
+_logIfStateDesync(operation) {
+  if (this.rendered !== !!this.container) {
+    console.warn(`[QuickTabWindow] State desync at ${operation}:`, { rendered: this.rendered, hasContainer: !!this.container });
+  }
 }
 ```
 
@@ -155,7 +179,7 @@ if (this.dragController) {
 }
 ```
 
-### rewireCallbacks() Pattern (v1.6.3.5-v11)
+### rewireCallbacks() Pattern (v1.6.3.5-v12)
 ```javascript
 // QuickTabWindow - re-wire callbacks after restore
 rewireCallbacks(callbacks) {
@@ -165,7 +189,7 @@ rewireCallbacks(callbacks) {
 }
 ```
 
-### cleanup() Pattern (v1.6.3.5-v11)
+### cleanup() Pattern (v1.6.3.5-v12)
 ```javascript
 // DragController/ResizeController/ResizeHandle - cleanup before DOM removal
 cleanup() {
@@ -174,7 +198,7 @@ cleanup() {
 }
 ```
 
-### Operation Flags (v1.6.3.5-v11)
+### Operation Flags (v1.6.3.5-v12)
 ```javascript
 // QuickTabWindow - prevent circular callback suppression
 tabWindow.isMinimizing = true;  // Before minimize

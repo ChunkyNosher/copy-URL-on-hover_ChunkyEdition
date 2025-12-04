@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5-v11  
+**Version:** 1.6.3.5-v12  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -31,17 +31,19 @@
 4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
 5. **Diagnostic logging** - Enhanced init/message logging, `_broadcastQuickTabsClearedToTabs()`
 
-**v1.6.3.5-v11 Fixes:**
-1. **Stale Closure References** - Added `rewireCallbacks()` method to QuickTabWindow
-2. **Missing Callback Re-Wiring** - Added `_rewireCallbacksAfterRestore()` in VisibilityHandler
-3. **DOM Event Listener Cleanup** - Added `cleanup()` methods to DragController, ResizeController, ResizeHandle
-4. **Callback Suppression Fix** - Added `isMinimizing`/`isRestoring` operation flags on tabWindow
-5. **Comprehensive Logging** - Added logging throughout callback paths
-6. **Manager List Updates** - Fixed cache protection, added `QUICK_TAB_DELETED` message handling
-7. **Z-Index Desync** - Enhanced z-index sync during restore
-8. **DOM Z-Index Updates** - Added defensive container checks in `handleFocus()`
-9. **Z-Index Logging** - Added comprehensive z-index operation logging
-10. **Stale onFocus Callback** - Fixed via callback re-wiring architecture
+**v1.6.3.5-v12 Fixes:**
+1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()` when `this.container` is null
+2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
+3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
+4. **Focus Persistence Logging** - `isFocusOperation` flag in `_debouncedPersist()`
+5. **Z-Index Background Logging** - Sample z-index logging in `_logStorageChange()`
+6. **Transaction Fallback Clarity** - Enhanced `scheduleFallbackCleanup()` context
+7. **DOM Verification Invariants** - Invariant logging in `_verifyRestoreAndEmit()`
+8. **State Desync Detection** - `_logIfStateDesync(operation)` helper to detect rendered/container mismatch
+
+**v1.6.3.5-v11 Fixes (Retained):**
+1-5: `rewireCallbacks()`, `_rewireCallbacksAfterRestore()`, `cleanup()` methods, `isMinimizing`/`isRestoring` flags, logging
+6-10: Manager cache protection, `QUICK_TAB_DELETED`, z-index sync/defensive checks/logging, stale onFocus fix
 
 **Core Modules:**
 - **QuickTabStateMachine** - Explicit lifecycle state tracking
@@ -115,29 +117,31 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.5-v11 Patterns
+## 🆕 v1.6.3.5-v12 Patterns
 
-- **`rewireCallbacks(callbacks)`** - Re-wires callbacks after restore to capture fresh execution context
-- **`_rewireCallbacksAfterRestore()`** - Calls rewireCallbacks with fresh callbacks in VisibilityHandler
-- **`cleanup()` Pattern** - Public cleanup methods in DragController, ResizeController, ResizeHandle for listener removal
-- **`isMinimizing`/`isRestoring` Flags** - Operation-specific flags on tabWindow to prevent circular callback suppression
-- **`QUICK_TAB_DELETED` Message** - Background → Manager notification for single deletions
-- **`handleStateDeletedMessage()`** - Manager handler for QUICK_TAB_DELETED messages
+- **`_applyZIndexUpdate()`/`_applyZIndexViaFallback()`** - Defensive z-index with DOM fallback
+- **`_logIfStateDesync()`** - Split-brain detection (rendered/container mismatch)
+- **Defensive DOM Query in `minimize()`** - Queries `.quick-tab-window[data-quicktab-id]` when container null
+- **`isFocusOperation` Flag** - Focus-only persist differentiation
+- **DOM Verification Invariants** - `_verifyRestoreAndEmit()` checks
+
+### v1.6.3.5-v11 Patterns (Retained)
+
+- `rewireCallbacks()` - Re-wires callbacks after restore
+- `_rewireCallbacksAfterRestore()` - Calls rewireCallbacks in VisibilityHandler
+- `cleanup()` Pattern - Public cleanup in DragController/ResizeController/ResizeHandle
+- `isMinimizing`/`isRestoring` - Operation flags prevent circular suppression
+- `QUICK_TAB_DELETED` - Background → Manager for single deletions
 
 ### v1.6.3.5-v10 Patterns (Retained)
 
-- **`setHandlers()` Pattern** - Deferred handler initialization after UICoordinator construction
-- **`_buildCallbackOptions()`** - Builds callbacks (onPositionChangeEnd, onSizeChangeEnd, etc.) for restore
-- **`_applyZIndexAfterAppend()`** - Re-applies z-index AFTER appendChild with reflow forcing
-- **`getCurrentTabIdFromBackground()`** - Retrieves tab ID before Quick Tabs init
-- **`forceEmpty` Parameter** - Allows intentional empty writes in `persistToStorage()`
-- **Enhanced Diagnostics** - Entry/exit logging, `_broadcastQuickTabsClearedToTabs()` with summaries
+- `setHandlers()` - Deferred handler init, `_buildCallbackOptions()` for restore
+- `_applyZIndexAfterAppend()` - Z-index with reflow, `getCurrentTabIdFromBackground()` for tab ID
+- `forceEmpty` parameter, `_broadcastQuickTabsClearedToTabs()` diagnostics
 
 ### v1.6.3.5-v9 Features (Retained)
 
-- `__quickTabWindow` property, `data-quicktab-id` attribute for DOM querying
-- `DragController.updateElement()`, `_removeListeners()` helper
-- Reflow forcing via `container.offsetHeight`
+- `__quickTabWindow`, `data-quicktab-id`, `DragController.updateElement()`, reflow forcing
 
 ### Per-Tab Scoping
 
@@ -174,11 +178,11 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 | MinimizedManager | `forceCleanup()`, `getAllSnapshotIds()`, `onStoragePersistNeeded` |
 | UpdateHandler | `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` |
 | UICoordinator | `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()`, `clearAll()` |
-| VisibilityHandler | `_executeRestore()`, `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()`, `_validateMinimizeInstance()` |
+| VisibilityHandler | `_executeRestore()`, `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()`, `_validateMinimizeInstance()`, `_applyZIndexUpdate()`, `_applyZIndexViaFallback()` |
 | DragController | `updateElement()`, `_removeListeners()`, `cleanup()` |
 | ResizeController | `cleanup()` |
 | ResizeHandle | `cleanup()`, `destroyed` flag, `_removeListeners()`, `_invokeCallbackWithLogging()` |
-| QuickTabWindow | `__quickTabWindow`, `data-quicktab-id`, `_applyZIndexAfterAppend()`, `rewireCallbacks()`, `isMinimizing`, `isRestoring` |
+| QuickTabWindow | `__quickTabWindow`, `data-quicktab-id`, `_applyZIndexAfterAppend()`, `rewireCallbacks()`, `isMinimizing`, `isRestoring`, `_logIfStateDesync()` |
 | DestroyHandler | `_closeAllInProgress` mutex, `_scheduleMutexRelease()`, `_notifyBackgroundOfDeletion()` |
 | CreateHandler | `_emitWindowCreatedEvent()` |
 
@@ -195,6 +199,7 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 | `persistStateToStorage()` | Write with ownership validation, `forceEmpty` param |
 | `_shouldRejectEmptyWrite()` | Stricter check - ALWAYS rejects unless `forceEmpty=true` |
 | `cleanupTransactionId()` | Event-driven transaction cleanup |
+| `scheduleFallbackCleanup()` | Enhanced with `{ transactionId, expectedEvent, elapsedMs, triggerModule }` |
 | `beginTransaction()`/`commitTransaction()`/`rollbackTransaction()` | Transaction lifecycle |
 
 **CRITICAL:** Always use `storage.local` for Quick Tab state, NOT `storage.sync`.
@@ -202,6 +207,13 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 ---
 
 ## 🏗️ Key Patterns
+
+**v1.6.3.5-v12 Patterns:**
+- `_applyZIndexUpdate()` / `_applyZIndexViaFallback()` - Defensive z-index application
+- `_logIfStateDesync()` - Split-brain state detection
+- Defensive DOM query fallback in `minimize()`
+- `isFocusOperation` flag for focus-only persist differentiation
+- DOM verification invariants in `_verifyRestoreAndEmit()`
 
 **v1.6.3.5-v11 Patterns:**
 - `rewireCallbacks()` - Fresh callback context after restore
@@ -272,15 +284,15 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 
 ### Key Files
 
-| File | Key Features (v1.6.3.5-v11) |
+| File | Key Features (v1.6.3.5-v12) |
 |------|---------------------------|
-| `background.js` | `_broadcastQuickTabsClearedToTabs()`, `QUICK_TAB_DELETED` notifications, coordinator |
+| `background.js` | `_broadcastQuickTabsClearedToTabs()`, `QUICK_TAB_DELETED` notifications, `_logStorageChange()` with sample z-index |
 | `src/content.js` | `getCurrentTabIdFromBackground()`, enhanced logging |
-| `src/utils/storage-utils.js` | `_shouldRejectEmptyWrite()` with `forceEmpty` |
+| `src/utils/storage-utils.js` | `_shouldRejectEmptyWrite()` with `forceEmpty`, `scheduleFallbackCleanup()` with enhanced context |
 | `UICoordinator.js` | `setHandlers()`, `_buildCallbackOptions()` |
 | `StateManager.js` | `persistToStorage(source, forceEmpty)` |
-| `window.js` | `_applyZIndexAfterAppend()`, `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags |
-| `VisibilityHandler.js` | `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()` |
+| `window.js` | `_applyZIndexAfterAppend()`, `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()`, defensive DOM query in `minimize()` |
+| `VisibilityHandler.js` | `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()`, `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`, `_verifyRestoreAndEmit()` invariants, `isFocusOperation` |
 | `DragController.js` | `updateElement()`, `cleanup()` |
 | `ResizeController.js` | `cleanup()` |
 | `ResizeHandle.js` | `cleanup()`, `destroyed` flag |
