@@ -11,6 +11,9 @@
  *
  * v1.6.3.2 - FIX Issue #5: Add destroyed flag to prevent ghost events after cleanup
  * v1.6.3.5-v9 - FIX Diagnostic Issue #3: Add updateElement() method for DOM re-render recovery
+ * v1.6.3.5-v11 - FIX Critical Quick Tab Bugs:
+ *   - Issue #3: Add public cleanup() method for DOM event listener cleanup before minimize
+ *   - Issue #5: Add comprehensive callback logging in handlePointerUp()
  *
  * @see docs/misc/v1.6.0-REFACTORING-PHASE3.4-NEXT-STEPS.md
  */
@@ -129,6 +132,7 @@ export class DragController {
   /**
    * Handle pointer up - end drag
    * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.5-v11 - FIX Issue #5: Add comprehensive callback logging
    * @param {PointerEvent} e
    */
   handlePointerUp(e) {
@@ -153,8 +157,26 @@ export class DragController {
     const finalX = e.clientX - this.offsetX;
     const finalY = e.clientY - this.offsetY;
 
+    // v1.6.3.5-v11 - FIX Issue #5: Comprehensive callback logging
     if (this.onDragEnd) {
-      this.onDragEnd(finalX, finalY);
+      console.log('[DragController][handlePointerUp] BEFORE calling onDragEnd:', {
+        finalX,
+        finalY,
+        callbackType: typeof this.onDragEnd
+      });
+      try {
+        this.onDragEnd(finalX, finalY);
+        console.log('[DragController][handlePointerUp] AFTER onDragEnd - success');
+      } catch (err) {
+        console.error('[DragController][handlePointerUp] onDragEnd callback FAILED:', {
+          error: err.message,
+          stack: err.stack,
+          finalX,
+          finalY
+        });
+      }
+    } else {
+      console.warn('[DragController][handlePointerUp] No onDragEnd callback available');
     }
   }
 
@@ -203,6 +225,29 @@ export class DragController {
 
     this.isDragging = false;
     this.currentPointerId = null;
+  }
+  
+  /**
+   * Public cleanup method for DOM event listener cleanup before minimize
+   * v1.6.3.5-v11 - FIX Issue #3: DOM event listeners not cleaned up on minimize
+   * Exposes _removeListeners() as a public method that can be called during minimize
+   * without fully destroying the controller
+   */
+  cleanup() {
+    if (this.destroyed) {
+      console.log('[DragController][cleanup] Already destroyed, skipping');
+      return;
+    }
+    
+    this._removeListeners();
+    
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    
+    this.isDragging = false;
+    console.log('[DragController][cleanup] Removed event listeners');
   }
   
   /**

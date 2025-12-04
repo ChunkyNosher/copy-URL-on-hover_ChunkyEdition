@@ -99,18 +99,22 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.5-v10)
+- [ ] Version numbers match current release (1.6.3.5-v11)
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Cross-tab sync uses storage.onChanged + Background-as-Coordinator
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.5-v10:** `setHandlers()` pattern documented
-- [ ] **v1.6.3.5-v10:** `_buildCallbackOptions()` documented
-- [ ] **v1.6.3.5-v10:** `_applyZIndexAfterAppend()` documented
-- [ ] **v1.6.3.5-v10:** `getCurrentTabIdFromBackground()` documented
-- [ ] **v1.6.3.5-v10:** `forceEmpty` parameter documented
+- [ ] **v1.6.3.5-v11:** `setHandlers()` pattern documented
+- [ ] **v1.6.3.5-v11:** `_buildCallbackOptions()` documented
+- [ ] **v1.6.3.5-v11:** `_applyZIndexAfterAppend()` documented
+- [ ] **v1.6.3.5-v11:** `getCurrentTabIdFromBackground()` documented
+- [ ] **v1.6.3.5-v11:** `forceEmpty` parameter documented
+- [ ] **v1.6.3.5-v11:** `rewireCallbacks()` documented
+- [ ] **v1.6.3.5-v11:** `cleanup()` pattern documented
+- [ ] **v1.6.3.5-v11:** `isMinimizing`/`isRestoring` flags documented
+- [ ] **v1.6.3.5-v11:** `QUICK_TAB_DELETED` message documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -118,7 +122,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.5-v10
+- **Current Version:** 1.6.3.5-v11
 - **Architecture Status:** DDD with Background-as-Coordinator ✅
 - **Cross-Tab Sync:** storage.onChanged + Background-as-Coordinator
 - **Key Features:**
@@ -128,12 +132,17 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload
 - **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp, writingTabId, writingInstanceId }`
-- **v1.6.3.5-v10 Fixes:**
-  1. Callback wiring (`setHandlers()`, `_buildCallbackOptions()`)
-  2. Z-index after append (`_applyZIndexAfterAppend()`)
-  3. Cross-tab scoping (`getCurrentTabIdFromBackground()`)
-  4. Storage corruption (`forceEmpty` parameter)
-  5. Diagnostic logging (`_broadcastQuickTabsClearedToTabs()`)
+- **v1.6.3.5-v11 Fixes:**
+  1. Stale Closure References (`rewireCallbacks()`)
+  2. Missing Callback Re-Wiring (`_rewireCallbacksAfterRestore()`)
+  3. DOM Event Listener Cleanup (`cleanup()` methods)
+  4. Callback Suppression Fix (`isMinimizing`/`isRestoring` flags)
+  5. Comprehensive Logging (callback paths)
+  6. Manager List Updates (`QUICK_TAB_DELETED` handling)
+  7. Z-Index Desync (enhanced sync during restore)
+  8. DOM Z-Index Updates (defensive container checks)
+  9. Z-Index Logging (comprehensive logging)
+  10. Stale onFocus Callback (callback re-wiring)
 - **v1.6.3.5-v8 Manifest Changes:**
   - `unlimitedStorage`, `sessions`, `contextualIdentities` permissions
   - Security: Removed `state-manager.js` from `web_accessible_resources`
@@ -195,12 +204,14 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.5-v10)
+- Version numbers (1.6.3.5-v11)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Background-as-Coordinator)
 - Sync mechanism (storage.onChanged + Background-as-Coordinator)
 - Storage format (unified tabs array with originTabId, writingTabId, writingInstanceId)
 - New architecture classes (StateMachine, Mediator, MapTransactionManager)
+- **v1.6.3.5-v11:** `rewireCallbacks()`, `cleanup()`, `isMinimizing`/`isRestoring` flags
+- **v1.6.3.5-v11:** `_rewireCallbacksAfterRestore()`, `QUICK_TAB_DELETED` message
 - **v1.6.3.5-v10:** `setHandlers()`, `_buildCallbackOptions()`, `_applyZIndexAfterAppend()`
 - **v1.6.3.5-v10:** `getCurrentTabIdFromBackground()`, `forceEmpty` parameter
 - Single Writer Model (`CLEAR_ALL_QUICK_TABS` for Manager closeAll)
@@ -293,21 +304,33 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.5-v10)
+## Current Extension State (v1.6.3.5-v11)
 
 ### Architecture
 - **Status:** Background-as-Coordinator ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### v1.6.3.5-v10 Fixes
-1. **Callback wiring** - `setHandlers()` for deferred init, `_buildCallbackOptions()` for restore
-2. **Z-index after append** - `_applyZIndexAfterAppend()` forces reflow
-3. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` retrieves tab ID before init
-4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
-5. **Diagnostic logging** - Enhanced init/message logging, `_broadcastQuickTabsClearedToTabs()`
+### v1.6.3.5-v11 Fixes
+1. **Stale Closure References** - Added `rewireCallbacks()` method to QuickTabWindow
+2. **Missing Callback Re-Wiring** - Added `_rewireCallbacksAfterRestore()` in VisibilityHandler
+3. **DOM Event Listener Cleanup** - Added `cleanup()` methods to DragController, ResizeController, ResizeHandle
+4. **Callback Suppression Fix** - Added `isMinimizing`/`isRestoring` operation flags
+5. **Comprehensive Logging** - Added logging throughout callback paths
+6. **Manager List Updates** - Fixed cache protection, added `QUICK_TAB_DELETED` message handling
+7. **Z-Index Desync** - Enhanced z-index sync during restore
+8. **DOM Z-Index Updates** - Added defensive container checks
+9. **Z-Index Logging** - Added comprehensive z-index operation logging
+10. **Stale onFocus Callback** - Fixed via callback re-wiring architecture
 
-### v1.6.3.5-v10 New Patterns
+### v1.6.3.5-v11 New Patterns
+- **`rewireCallbacks()`** - Re-wires callbacks after restore to capture fresh execution context
+- **`_rewireCallbacksAfterRestore()`** - Calls rewireCallbacks in VisibilityHandler
+- **`cleanup()` Pattern** - Public cleanup methods in DragController, ResizeController, ResizeHandle
+- **`isMinimizing`/`isRestoring` Flags** - Operation-specific flags to prevent circular suppression
+- **`QUICK_TAB_DELETED` Message** - Background → Manager notification for single deletions
+
+### v1.6.3.5-v10 Patterns (Retained)
 - **`setHandlers()`** - Deferred handler initialization in UICoordinator
 - **`_buildCallbackOptions()`** - Builds callbacks for restore path
 - **`_applyZIndexAfterAppend()`** - Re-applies z-index after appendChild
@@ -339,7 +362,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.5-v9 or earlier | Update to 1.6.3.5-v10 |
+| v1.6.3.5-v9 or earlier | Update to 1.6.3.5-v11 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -351,10 +374,14 @@ await perplexity.research("documentation compression markdown");
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.5-v10
+- [ ] Version numbers updated to 1.6.3.5-v11
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged + Background-as-Coordinator documented
+- [ ] **v1.6.3.5-v11:** `rewireCallbacks()` documented
+- [ ] **v1.6.3.5-v11:** `cleanup()` pattern documented
+- [ ] **v1.6.3.5-v11:** `isMinimizing`/`isRestoring` flags documented
+- [ ] **v1.6.3.5-v11:** `QUICK_TAB_DELETED` message documented
 - [ ] **v1.6.3.5-v10:** `setHandlers()` pattern documented
 - [ ] **v1.6.3.5-v10:** `_buildCallbackOptions()` documented
 - [ ] **v1.6.3.5-v10:** `_applyZIndexAfterAppend()` documented

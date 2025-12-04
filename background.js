@@ -2248,6 +2248,7 @@ const quickTabHostTabs = new Map();
 /**
  * Handle QUICK_TAB_STATE_CHANGE message from content scripts
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
+ * v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes (deleted: true) by removing from cache
  * Background becomes the coordinator, updating cache and broadcasting to other contexts
  * @param {Object} message - Message containing state change
  * @param {Object} sender - Sender info (includes tab.id)
@@ -2264,6 +2265,32 @@ async function handleQuickTabStateChange(message, sender) {
   });
   
   // Track which tab hosts this Quick Tab
+  _updateQuickTabHostTracking(quickTabId, sourceTabId);
+  
+  // v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes
+  // Note: We check both `changes.deleted === true` (explicit deletion flag) and `source === 'destroy'`
+  // (legacy source indication) for backward compatibility. The explicit flag is preferred for new code.
+  if (changes?.deleted === true || source === 'destroy') {
+    await _handleQuickTabDeletion(quickTabId, source, sourceTabId);
+    return { success: true };
+  }
+  
+  // Update globalQuickTabState cache
+  _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId);
+  
+  // Broadcast to all interested parties
+  await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
+  
+  return { success: true };
+}
+
+/**
+ * Update Quick Tab host tracking
+ * v1.6.3.5-v11 - Extracted from handleQuickTabStateChange to reduce complexity
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} sourceTabId - Source browser tab ID
+ */
+function _updateQuickTabHostTracking(quickTabId, sourceTabId) {
   if (quickTabId && sourceTabId) {
     quickTabHostTabs.set(quickTabId, sourceTabId);
     console.log('[Background] Updated quickTabHostTabs:', {
@@ -2272,30 +2299,59 @@ async function handleQuickTabStateChange(message, sender) {
       totalTracked: quickTabHostTabs.size
     });
   }
+}
+
+/**
+ * Handle Quick Tab deletion
+ * v1.6.3.5-v11 - Extracted from handleQuickTabStateChange to reduce complexity
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} source - Source of deletion
+ * @param {number} sourceTabId - Source browser tab ID
+ */
+async function _handleQuickTabDeletion(quickTabId, source, sourceTabId) {
+  console.log('[Background] Processing deletion for:', quickTabId);
+  const beforeCount = globalQuickTabState.tabs.length;
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(t => t.id !== quickTabId);
+  globalQuickTabState.lastUpdate = Date.now();
   
-  // Update globalQuickTabState cache
-  if (changes && quickTabId) {
-    const existingTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
-    if (existingTab) {
-      Object.assign(existingTab, changes);
-      globalQuickTabState.lastUpdate = Date.now();
-      console.log('[Background] Updated cache for:', quickTabId, changes);
-    } else if (changes.url) {
-      // New Quick Tab
-      globalQuickTabState.tabs.push({
-        id: quickTabId,
-        ...changes,
-        originTabId: sourceTabId
-      });
-      globalQuickTabState.lastUpdate = Date.now();
-      console.log('[Background] Added new tab to cache:', quickTabId);
-    }
+  // Remove from host tracking
+  quickTabHostTabs.delete(quickTabId);
+  
+  console.log('[Background] Removed tab from cache:', {
+    quickTabId,
+    beforeCount,
+    afterCount: globalQuickTabState.tabs.length
+  });
+  
+  // Broadcast deletion to Manager
+  await broadcastQuickTabStateUpdate(quickTabId, { deleted: true }, source, sourceTabId);
+}
+
+/**
+ * Update global Quick Tab state cache
+ * v1.6.3.5-v11 - Extracted from handleQuickTabStateChange to reduce complexity
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes
+ * @param {number} sourceTabId - Source browser tab ID
+ */
+function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId) {
+  if (!changes || !quickTabId) return;
+  
+  const existingTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
+  if (existingTab) {
+    Object.assign(existingTab, changes);
+    globalQuickTabState.lastUpdate = Date.now();
+    console.log('[Background] Updated cache for:', quickTabId, changes);
+  } else if (changes.url) {
+    // New Quick Tab
+    globalQuickTabState.tabs.push({
+      id: quickTabId,
+      ...changes,
+      originTabId: sourceTabId
+    });
+    globalQuickTabState.lastUpdate = Date.now();
+    console.log('[Background] Added new tab to cache:', quickTabId);
   }
-  
-  // Broadcast to all interested parties
-  await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
-  
-  return { success: true };
 }
 
 /**

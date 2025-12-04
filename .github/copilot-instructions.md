@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5-v10  
+**Version:** 1.6.3.5-v11  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -30,6 +30,18 @@
 3. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` retrieves tab ID before Quick Tabs init
 4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
 5. **Diagnostic logging** - Enhanced init/message logging, `_broadcastQuickTabsClearedToTabs()`
+
+**v1.6.3.5-v11 Fixes:**
+1. **Stale Closure References** - Added `rewireCallbacks()` method to QuickTabWindow
+2. **Missing Callback Re-Wiring** - Added `_rewireCallbacksAfterRestore()` in VisibilityHandler
+3. **DOM Event Listener Cleanup** - Added `cleanup()` methods to DragController, ResizeController, ResizeHandle
+4. **Callback Suppression Fix** - Added `isMinimizing`/`isRestoring` operation flags on tabWindow
+5. **Comprehensive Logging** - Added logging throughout callback paths
+6. **Manager List Updates** - Fixed cache protection, added `QUICK_TAB_DELETED` message handling
+7. **Z-Index Desync** - Enhanced z-index sync during restore
+8. **DOM Z-Index Updates** - Added defensive container checks in `handleFocus()`
+9. **Z-Index Logging** - Added comprehensive z-index operation logging
+10. **Stale onFocus Callback** - Fixed via callback re-wiring architecture
 
 **Core Modules:**
 - **QuickTabStateMachine** - Explicit lifecycle state tracking
@@ -59,6 +71,7 @@
 - `MANAGER_COMMAND` - Manager → Background for remote control
 - `EXECUTE_COMMAND` - Background → Content script for command execution
 - `CLEAR_ALL_QUICK_TABS` - Manager → Background for closeAll (Single Writer Model)
+- `QUICK_TAB_DELETED` - Background → Manager for single Quick Tab deletions (v1.6.3.5-v11)
 
 **Events:**
 - `window:created` - CreateHandler → UICoordinator to populate `renderedTabs` Map
@@ -102,7 +115,16 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.5-v10 Patterns
+## 🆕 v1.6.3.5-v11 Patterns
+
+- **`rewireCallbacks(callbacks)`** - Re-wires callbacks after restore to capture fresh execution context
+- **`_rewireCallbacksAfterRestore()`** - Calls rewireCallbacks with fresh callbacks in VisibilityHandler
+- **`cleanup()` Pattern** - Public cleanup methods in DragController, ResizeController, ResizeHandle for listener removal
+- **`isMinimizing`/`isRestoring` Flags** - Operation-specific flags on tabWindow to prevent circular callback suppression
+- **`QUICK_TAB_DELETED` Message** - Background → Manager notification for single deletions
+- **`handleStateDeletedMessage()`** - Manager handler for QUICK_TAB_DELETED messages
+
+### v1.6.3.5-v10 Patterns (Retained)
 
 - **`setHandlers()` Pattern** - Deferred handler initialization after UICoordinator construction
 - **`_buildCallbackOptions()`** - Builds callbacks (onPositionChangeEnd, onSizeChangeEnd, etc.) for restore
@@ -152,10 +174,12 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 | MinimizedManager | `forceCleanup()`, `getAllSnapshotIds()`, `onStoragePersistNeeded` |
 | UpdateHandler | `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` |
 | UICoordinator | `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()`, `clearAll()` |
-| VisibilityHandler | `_executeRestore()`, `_logPrefix` |
-| DragController | `updateElement()`, `_removeListeners()` |
-| QuickTabWindow | `__quickTabWindow`, `data-quicktab-id`, `_applyZIndexAfterAppend()` |
-| DestroyHandler | `_closeAllInProgress` mutex, `_scheduleMutexRelease()` |
+| VisibilityHandler | `_executeRestore()`, `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()`, `_validateMinimizeInstance()` |
+| DragController | `updateElement()`, `_removeListeners()`, `cleanup()` |
+| ResizeController | `cleanup()` |
+| ResizeHandle | `cleanup()`, `destroyed` flag, `_removeListeners()`, `_invokeCallbackWithLogging()` |
+| QuickTabWindow | `__quickTabWindow`, `data-quicktab-id`, `_applyZIndexAfterAppend()`, `rewireCallbacks()`, `isMinimizing`, `isRestoring` |
+| DestroyHandler | `_closeAllInProgress` mutex, `_scheduleMutexRelease()`, `_notifyBackgroundOfDeletion()` |
 | CreateHandler | `_emitWindowCreatedEvent()` |
 
 ---
@@ -178,6 +202,12 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 ---
 
 ## 🏗️ Key Patterns
+
+**v1.6.3.5-v11 Patterns:**
+- `rewireCallbacks()` - Fresh callback context after restore
+- `cleanup()` - Public listener removal in DragController/ResizeController/ResizeHandle
+- `isMinimizing`/`isRestoring` - Operation flags prevent circular suppression
+- `_notifyBackgroundOfDeletion()` - Background notification for deletions
 
 **v1.6.3.5-v10 Patterns:**
 - `setHandlers()` - Deferred handler init
@@ -242,14 +272,20 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 
 ### Key Files
 
-| File | Key Features (v1.6.3.5-v10) |
+| File | Key Features (v1.6.3.5-v11) |
 |------|---------------------------|
-| `background.js` | `_broadcastQuickTabsClearedToTabs()`, coordinator |
+| `background.js` | `_broadcastQuickTabsClearedToTabs()`, `QUICK_TAB_DELETED` notifications, coordinator |
 | `src/content.js` | `getCurrentTabIdFromBackground()`, enhanced logging |
 | `src/utils/storage-utils.js` | `_shouldRejectEmptyWrite()` with `forceEmpty` |
 | `UICoordinator.js` | `setHandlers()`, `_buildCallbackOptions()` |
 | `StateManager.js` | `persistToStorage(source, forceEmpty)` |
-| `window.js` | `_applyZIndexAfterAppend()` |
+| `window.js` | `_applyZIndexAfterAppend()`, `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags |
+| `VisibilityHandler.js` | `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()` |
+| `DragController.js` | `updateElement()`, `cleanup()` |
+| `ResizeController.js` | `cleanup()` |
+| `ResizeHandle.js` | `cleanup()`, `destroyed` flag |
+| `DestroyHandler.js` | `_notifyBackgroundOfDeletion()` |
+| `quick-tabs-manager.js` | `handleStateDeletedMessage()`, cache protection fix |
 | `index.js` | `initQuickTabs()` accepts `currentTabId`, calls `setHandlers()` |
 
 ### Storage Key & Format
@@ -281,6 +317,7 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 - `QUICK_TAB_STATE_UPDATED` - Background → All contexts for broadcasts
 - `MANAGER_COMMAND` - Manager → Background for remote control
 - `EXECUTE_COMMAND` - Background → Content script for command execution
+- `QUICK_TAB_DELETED` - Background → Manager for single Quick Tab deletions (v1.6.3.5-v11)
 - `CLOSE_QUICK_TAB` / `MINIMIZE_QUICK_TAB` / `RESTORE_QUICK_TAB` - Legacy messages
 
 ---

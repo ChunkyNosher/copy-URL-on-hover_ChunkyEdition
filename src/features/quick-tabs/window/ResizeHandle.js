@@ -4,6 +4,10 @@
  *
  * This demonstrates the table-driven configuration pattern from the refactoring plan.
  * Reduces complexity from cc=25 to cc=3 by eliminating directional conditionals.
+ * 
+ * v1.6.3.5-v11 - FIX Critical Quick Tab Bugs:
+ *   - Issue #3: Add public cleanup() method for DOM event listener cleanup before minimize
+ *   - Issue #5: Add comprehensive callback logging in handlePointerUp()
  */
 
 import { createElement } from '../../../utils/dom.js';
@@ -76,6 +80,8 @@ export class ResizeHandle {
     this.config = RESIZE_CONFIGS[direction];
     this.minWidth = options.minWidth || 400;
     this.minHeight = options.minHeight || 300;
+    // v1.6.3.5-v11 - FIX Issue #3: Track destroyed state for cleanup
+    this.destroyed = false;
 
     if (!this.config) {
       throw new Error(`Invalid resize direction: ${direction}`);
@@ -84,6 +90,12 @@ export class ResizeHandle {
     this.element = null;
     this.isResizing = false;
     this.startState = null;
+    
+    // v1.6.3.5-v11 - FIX Issue #3: Store bound handlers for cleanup
+    this._boundHandlePointerDown = this.handlePointerDown.bind(this);
+    this._boundHandlePointerMove = this.handlePointerMove.bind(this);
+    this._boundHandlePointerUp = this.handlePointerUp.bind(this);
+    this._boundHandlePointerCancel = this.handlePointerCancel.bind(this);
   }
 
   /**
@@ -119,12 +131,13 @@ export class ResizeHandle {
 
   /**
    * Attach pointer event listeners
+   * v1.6.3.5-v11 - FIX Issue #3: Use stored bound handlers for cleanup
    */
   attachEventListeners() {
-    this.element.addEventListener('pointerdown', this.handlePointerDown.bind(this));
-    this.element.addEventListener('pointermove', this.handlePointerMove.bind(this));
-    this.element.addEventListener('pointerup', this.handlePointerUp.bind(this));
-    this.element.addEventListener('pointercancel', this.handlePointerCancel.bind(this));
+    this.element.addEventListener('pointerdown', this._boundHandlePointerDown);
+    this.element.addEventListener('pointermove', this._boundHandlePointerMove);
+    this.element.addEventListener('pointerup', this._boundHandlePointerUp);
+    this.element.addEventListener('pointercancel', this._boundHandlePointerCancel);
   }
 
   /**
@@ -239,10 +252,45 @@ export class ResizeHandle {
   }
 
   /**
+   * Safely invoke a callback with logging
+   * v1.6.3.5-v11 - Helper to reduce nesting depth in handlePointerUp
+   * @private
+   * @param {Function|null} callback - Callback to invoke
+   * @param {string} callbackName - Name for logging
+   * @param {Array} args - Arguments to pass to callback
+   * @param {Object} logContext - Additional context for logging
+   */
+  _invokeCallbackWithLogging(callback, callbackName, args, logContext) {
+    if (!callback) {
+      console.warn(`[ResizeHandle][handlePointerUp] No ${callbackName} callback available`);
+      return;
+    }
+    
+    console.log(`[ResizeHandle][handlePointerUp] BEFORE calling ${callbackName}:`, {
+      direction: this.direction,
+      ...logContext,
+      callbackType: typeof callback
+    });
+    
+    try {
+      callback(...args);
+      console.log(`[ResizeHandle][handlePointerUp] AFTER ${callbackName} - success`);
+    } catch (err) {
+      console.error(`[ResizeHandle][handlePointerUp] ${callbackName} callback FAILED:`, {
+        error: err.message,
+        stack: err.stack,
+        ...logContext
+      });
+    }
+  }
+
+  /**
    * End resize operation
+   * v1.6.3.5-v11 - FIX Issue #5: Add comprehensive callback logging
    */
   handlePointerUp(e) {
     if (!this.isResizing) return;
+    if (this.destroyed) return;
 
     this.isResizing = false;
     this.element.releasePointerCapture(e.pointerId);
@@ -251,11 +299,23 @@ export class ResizeHandle {
     e.preventDefault();
     e.stopPropagation();
 
-    // Final save callbacks
-    this.window.onSizeChangeEnd?.(this.window.id, this.window.width, this.window.height);
+    // v1.6.3.5-v11 - FIX Issue #5: Comprehensive callback logging for size
+    this._invokeCallbackWithLogging(
+      this.window.onSizeChangeEnd,
+      'onSizeChangeEnd',
+      [this.window.id, this.window.width, this.window.height],
+      { id: this.window.id, width: this.window.width, height: this.window.height }
+    );
 
-    if (this.window.left !== this.startState.left || this.window.top !== this.startState.top) {
-      this.window.onPositionChangeEnd?.(this.window.id, this.window.left, this.window.top);
+    // v1.6.3.5-v11 - FIX Issue #5: Comprehensive callback logging for position
+    const positionChanged = this.window.left !== this.startState.left || this.window.top !== this.startState.top;
+    if (positionChanged) {
+      this._invokeCallbackWithLogging(
+        this.window.onPositionChangeEnd,
+        'onPositionChangeEnd',
+        [this.window.id, this.window.left, this.window.top],
+        { id: this.window.id, left: this.window.left, top: this.window.top }
+      );
     }
 
     this.startState = null;
@@ -263,9 +323,11 @@ export class ResizeHandle {
 
   /**
    * Handle resize cancellation
+   * v1.6.3.5-v11 - FIX Issue #3: Check destroyed flag
    */
   handlePointerCancel(_e) {
     if (!this.isResizing) return;
+    if (this.destroyed) return;
 
     this.isResizing = false;
 
@@ -275,11 +337,43 @@ export class ResizeHandle {
 
     this.startState = null;
   }
+  
+  /**
+   * Remove event listeners from current element
+   * v1.6.3.5-v11 - FIX Issue #3: Support cleanup before DOM removal
+   * @private
+   */
+  _removeListeners() {
+    if (!this.element) return;
+    
+    this.element.removeEventListener('pointerdown', this._boundHandlePointerDown);
+    this.element.removeEventListener('pointermove', this._boundHandlePointerMove);
+    this.element.removeEventListener('pointerup', this._boundHandlePointerUp);
+    this.element.removeEventListener('pointercancel', this._boundHandlePointerCancel);
+  }
+  
+  /**
+   * Public cleanup method for DOM event listener cleanup before minimize
+   * v1.6.3.5-v11 - FIX Issue #3: DOM event listeners not cleaned up on minimize
+   * Removes event listeners without removing the element from DOM
+   */
+  cleanup() {
+    if (this.destroyed) return;
+    
+    this._removeListeners();
+    this.isResizing = false;
+    this.startState = null;
+    console.log('[ResizeHandle][cleanup] Removed event listeners for direction:', this.direction);
+  }
 
   /**
    * Cleanup event listeners
+   * v1.6.3.5-v11 - FIX Issue #3: Set destroyed flag and use _removeListeners
    */
   destroy() {
+    this.destroyed = true;
+    this._removeListeners();
+    
     if (this.element) {
       this.element.remove();
       this.element = null;

@@ -9,6 +9,7 @@
  * v1.6.3.2 - FIX Issue #6: Add batch mode flag to prevent storage write storm during closeAll
  * v1.6.3.4 - FIX Issues #4, #6, #7: Add source tracking, consolidate all destroy logic
  * v1.6.3.5-v6 - FIX Diagnostic Issue #3: Add closeAll mutex to prevent duplicate executions
+ * v1.6.3.5-v11 - FIX Issue #6: Notify background of deletions for immediate Manager update
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -17,10 +18,11 @@
  * - Cleanup minimized manager references
  * - Reset z-index when all tabs closed
  * - Emit destruction events
+ * - Notify background of deletions for Manager sidebar update
  * - Persist state to storage after destruction (debounced to prevent write storms)
  * - Log all destroy operations with source indication
  *
- * @version 1.6.3.5-v6
+ * @version 1.6.3.5-v11
  */
 
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
@@ -181,6 +183,7 @@ export class DestroyHandler {
    * Emit state:deleted event for panel sync
    * v1.6.3.2 - FIX Bug #4: Panel listens for this event to update its display
    * v1.6.3.4 - FIX Issue #6: Add source to event data
+   * v1.6.3.5-v11 - FIX Issue #6: Also notify background for Manager sidebar update
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Quick Tab window instance (may be undefined)
@@ -196,6 +199,35 @@ export class DestroyHandler {
 
     this.eventBus.emit('state:deleted', { id, quickTab: quickTabData, source });
     console.log(`[DestroyHandler] Emitted state:deleted (source: ${source}):`, id);
+    
+    // v1.6.3.5-v11 - FIX Issue #6: Notify background about deletion for Manager update
+    // This ensures the Manager sidebar gets immediate notification, not just via storage.onChanged
+    this._notifyBackgroundOfDeletion(id, source).catch(err => {
+      console.warn(`[DestroyHandler] Failed to notify background (source: ${source}):`, err.message);
+    });
+  }
+  
+  /**
+   * Notify background about Quick Tab deletion
+   * v1.6.3.5-v11 - FIX Issue #6: Send message to background for immediate Manager update
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   * @returns {Promise<void>}
+   */
+  async _notifyBackgroundOfDeletion(id, source) {
+    try {
+      await browser.runtime.sendMessage({
+        type: 'QUICK_TAB_STATE_CHANGE',
+        quickTabId: id,
+        changes: { deleted: true },
+        source: source || 'destroy'
+      });
+      console.log(`[DestroyHandler] Notified background of deletion (source: ${source}):`, id);
+    } catch (err) {
+      // Background may not be available - this is expected in some edge cases
+      console.debug('[DestroyHandler] Could not notify background:', err.message);
+    }
   }
 
   /**
