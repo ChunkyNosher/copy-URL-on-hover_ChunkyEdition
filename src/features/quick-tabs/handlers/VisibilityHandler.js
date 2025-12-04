@@ -775,6 +775,20 @@ export class VisibilityHandler {
       // v1.6.3.5-v6 - FIX Issue #1: Log DOM state but do NOT rollback
       // Trust UICoordinator to handle rendering via event-driven architecture
       const isDOMRendered = this._isDOMRendered(tabWindow);
+      
+      // v1.6.3.5-v12 - FIX Issue D: Add invariant logging for restore verification
+      const hasMinimizedSnapshot = this.minimizedManager?.hasSnapshot?.(id) ?? false;
+      const inQuickTabsMap = this.quickTabsMap?.has?.(id) ?? false;
+      const invariantHolds = isDOMRendered && !hasMinimizedSnapshot && inQuickTabsMap;
+      
+      console.log('[VisibilityHandler] Restore verification:', {
+        id,
+        isDOMRendered,
+        hasMinimizedSnapshot,
+        inQuickTabsMap,
+        invariantHolds
+      });
+      
       console.log(`[VisibilityHandler] Restore state check (source: ${source}):`, {
         id,
         isDOMRendered,
@@ -1028,6 +1042,68 @@ export class VisibilityHandler {
   }
 
   /**
+   * Apply z-index update to tabWindow or use fallback DOM query
+   * v1.6.3.5-v12 - Extracted to reduce handleFocus complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Tab window instance
+   * @param {number} newZIndex - New z-index value
+   * @param {boolean} hasContainer - Whether tabWindow has container
+   * @param {boolean} isAttachedToDOM - Whether container is attached to DOM
+   */
+  _applyZIndexUpdate(id, tabWindow, newZIndex, hasContainer, isAttachedToDOM) {
+    if (hasContainer && isAttachedToDOM) {
+      tabWindow.updateZIndex(newZIndex);
+      console.log(`${this._logPrefix}[handleFocus] Called tabWindow.updateZIndex():`, {
+        id,
+        newZIndex,
+        domZIndex: tabWindow.container?.style?.zIndex
+      });
+      return;
+    }
+    
+    // v1.6.3.5-v12 - FIX Issue #2: Try fallback DOM query if tab should be visible
+    if (!hasContainer && !tabWindow.minimized) {
+      this._applyZIndexViaFallback(id, tabWindow, newZIndex, hasContainer, isAttachedToDOM);
+      return;
+    }
+    
+    // v1.6.3.5-v11 - FIX Issue #8: Log warning but still store z-index on entity
+    console.warn(`${this._logPrefix}[handleFocus] Skipped updateZIndex - container not ready:`, {
+      id,
+      hasContainer,
+      isAttachedToDOM,
+      zIndexStoredOnEntity: newZIndex
+    });
+  }
+  
+  /**
+   * Apply z-index via fallback DOM query
+   * v1.6.3.5-v12 - Extracted to reduce _applyZIndexUpdate complexity (max-depth fix)
+   * v1.6.3.5-v12 - Code Review: Use more specific selector with class to avoid conflicts
+   * @private
+   */
+  _applyZIndexViaFallback(id, tabWindow, newZIndex, hasContainer, isAttachedToDOM) {
+    const element = document.querySelector(`.quick-tab-window[data-quicktab-id="${CSS.escape(tabWindow.id)}"]`);
+    if (element) {
+      element.style.zIndex = newZIndex.toString();
+      console.warn(`${this._logPrefix}[handleFocus] Applied z-index via fallback DOM query:`, {
+        id,
+        newZIndex,
+        fallbackUsed: true
+      });
+    } else {
+      console.warn(`${this._logPrefix}[handleFocus] Skipped updateZIndex - no container or fallback:`, {
+        id,
+        hasContainer,
+        isAttachedToDOM,
+        isMinimized: tabWindow.minimized,
+        zIndexStoredOnEntity: newZIndex
+      });
+    }
+  }
+
+  /**
    * Handle Quick Tab focus (bring to front)
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.4 - FIX Issue #3: Persist z-index to storage after focus
@@ -1035,6 +1111,7 @@ export class VisibilityHandler {
    * v1.6.3.5-v11 - FIX Issues #8, #9:
    *   - Issue #8: Defensive checks for container existence and DOM attachment
    *   - Issue #9: Comprehensive z-index operation logging
+   * v1.6.3.5-v12 - FIX Issue #2: Add fallback DOM query for z-index update
    *
    * @param {string} id - Quick Tab ID
    */
@@ -1091,23 +1168,8 @@ export class VisibilityHandler {
     // v1.6.3.4 - FIX Issue #3: Store the new z-index on the tab for persistence
     tabWindow.zIndex = newZIndex;
     
-    // v1.6.3.5-v11 - FIX Issue #8: Only call updateZIndex if container exists and is attached
-    if (hasContainer && isAttachedToDOM) {
-      tabWindow.updateZIndex(newZIndex);
-      console.log(`${this._logPrefix}[handleFocus] Called tabWindow.updateZIndex():`, {
-        id,
-        newZIndex,
-        domZIndex: tabWindow.container?.style?.zIndex
-      });
-    } else {
-      // v1.6.3.5-v11 - FIX Issue #8: Log warning but still store z-index on entity
-      console.warn(`${this._logPrefix}[handleFocus] Skipped updateZIndex - container not ready:`, {
-        id,
-        hasContainer,
-        isAttachedToDOM,
-        zIndexStoredOnEntity: newZIndex
-      });
-    }
+    // v1.6.3.5-v12 - Apply z-index via helper (reduces complexity)
+    this._applyZIndexUpdate(id, tabWindow, newZIndex, hasContainer, isAttachedToDOM);
 
     // Emit focus event
     if (this.eventBus && this.Events) {
@@ -1166,9 +1228,10 @@ export class VisibilityHandler {
    *   1. Check if its ID is still in _activeTimerIds Set
    *   2. If yes, remove it and execute cleanup/persist
    *   3. If no, skip (timer was cancelled by newer operation)
+   * v1.6.3.5-v12 - FIX Issue A: Added isFocusOnlyChange flag for diagnostic logging
    * @private
    * @param {string} id - Quick Tab ID that triggered the persist
-   * @param {string} operation - 'minimize' or 'restore'
+   * @param {string} operation - 'minimize', 'restore', or 'focus'
    * @param {string} source - Source of action
    */
   _debouncedPersist(id, operation, source = 'unknown') {
@@ -1178,6 +1241,17 @@ export class VisibilityHandler {
     
     // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Track schedule time for accurate delay measurement
     const timerScheduleTime = Date.now();
+    
+    // v1.6.3.5-v12 - FIX Issue A: Log whether this is a focus operation persist
+    // Code Review: Renamed from isFocusOnlyChange to isFocusOperation for accuracy
+    const isFocusOperation = operation === 'focus';
+    
+    console.log('[VisibilityHandler] Persist triggered:', {
+      id,
+      source,
+      trigger: operation,
+      isFocusOperation
+    });
     
     console.log(`[VisibilityHandler] _debouncedPersist scheduling (source: ${source}):`, {
       id,

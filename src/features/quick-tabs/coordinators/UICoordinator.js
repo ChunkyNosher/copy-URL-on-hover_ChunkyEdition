@@ -747,6 +747,13 @@ export class UICoordinator {
         mapSizeAfter: this.renderedTabs.size
       });
       
+      // v1.6.3.5-v12 - FIX Issue #3: Log orphaned window recovery completion
+      console.log('[UICoordinator] Orphaned window recovery completed:', {
+        id: quickTab.id,
+        beforeRecovery: { inMap: false, inDOM: true },
+        afterRecovery: { inMap: true, hasContainer: !!(recoveredWindow?.container) }
+      });
+      
       // Start DOM monitoring
       this._startDOMMonitoring(quickTab.id, recoveredWindow);
       

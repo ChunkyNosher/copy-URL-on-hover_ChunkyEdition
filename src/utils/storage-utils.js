@@ -578,10 +578,18 @@ function scheduleFallbackCleanup(transactionId) {
   
   // Schedule fallback cleanup
   // v1.6.3.5-v5 - FIX Code Review #2: Wrapped in try/catch for error handling consistency
+  // v1.6.3.5-v12 - FIX Issue C: Enhanced transaction fallback warning with more context
+  const scheduleTime = Date.now();
   const timeoutId = setTimeout(() => {
     try {
       if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
-        console.warn('[StorageUtils] Transaction fallback cleanup (storage.onChanged not received):', transactionId);
+        const elapsedMs = Date.now() - scheduleTime;
+        console.warn('[StorageUtils] Transaction fallback cleanup:', {
+          transactionId,
+          expectedEvent: 'storage.onChanged',
+          elapsedMs,
+          triggerModule: 'storage-utils (fallback timer)'
+        });
         IN_PROGRESS_TRANSACTIONS.delete(transactionId);
       }
       TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
