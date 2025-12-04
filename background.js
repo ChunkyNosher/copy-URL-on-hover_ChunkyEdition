@@ -1335,6 +1335,12 @@ messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
   console.log('[Background] Coordinated clear: Clearing Quick Tab storage once');
   
   try {
+    // v1.6.3.5-v8 - FIX Issue #8: Reset zero-tab tracking to prevent thrashing
+    // Mark as "intentionally cleared" by setting counter to threshold value
+    // This tells storage.onChanged to accept zero-tab states as valid
+    consecutiveZeroTabReads = ZERO_TAB_CLEAR_THRESHOLD; // Intentionally cleared marker
+    lastNonEmptyStateTimestamp = 0; // Allow immediate clear
+    
     // Step 1: Clear storage once (single write instead of N writes from N tabs)
     await browser.storage.local.remove('quick_tabs_state_v2');
     
@@ -1346,8 +1352,11 @@ messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
     // Step 3: Reset background's cache
     globalQuickTabState.tabs = [];
     globalQuickTabState.lastUpdate = Date.now();
-    globalQuickTabState.saveId = null;
+    globalQuickTabState.saveId = `cleared-${Date.now()}`;
     lastBroadcastedStateHash = 0;
+    
+    // v1.6.3.5-v8 - FIX Issue #7: Clear quickTabHostTabs to prevent phantom Quick Tabs
+    quickTabHostTabs.clear();
     
     // Step 4: Broadcast to all tabs to clear LOCAL state only (no storage write)
     const tabs = await browser.tabs.query({});

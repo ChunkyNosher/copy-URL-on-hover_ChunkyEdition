@@ -367,8 +367,13 @@ describe('MinimizedManager', () => {
     test('should log clearing', () => {
       manager.clear();
 
-      // v1.6.3.5 - Updated log message to reflect clearing restore locks too
-      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Cleared all minimized tabs, pending snapshots, and restore locks');
+      // v1.6.3.5-v8 - Updated log message to include detailed clear counts
+      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] clear() complete:', expect.objectContaining({
+        minimizedCleared: expect.any(Number),
+        pendingCleared: expect.any(Number),
+        restoreLocksCleared: expect.any(Number),
+        clearedIds: expect.any(Array)
+      }));
     });
 
     test('should handle clearing when already empty', () => {

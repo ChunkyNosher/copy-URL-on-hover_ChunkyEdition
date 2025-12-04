@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
-  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.5-v7)
+  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.5-v8)
 tools: ["*"]
 ---
 
@@ -28,22 +28,23 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v7 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.5-v8 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
-- **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background (v1.6.3.5-v7)
+- **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.5-v7 Fixes:**
+**v1.6.3.5-v8 Fixes:**
 - **Empty List Fix** - `onStoragePersistNeeded` callback triggers after `clearSnapshot()`
-- **Sync Timestamp** - `lastLocalUpdateTime` tracks actual UI update time
-- **Targeted Tab Messaging** - Uses `quickTabHostInfo` or `originTabId` for cross-tab restore
-- **State Logging** - Comprehensive logging for storage.onChanged and UI changes
+- **Sync Timestamp** - `_updateLocalTimestamp()` tracks actual UI update time
+- **Clear Quick Tab Storage** - Clears `quickTabHostInfo` on Close All
+- **Snapshot inconsistencies** - `forceCleanup()`, `getAllSnapshotIds()` for atomic cleanup
+- **Enhanced logging** - Affected IDs logged during operations
 
-**Manager as Pure Consumer (v1.6.3.5-v7):**
+**Manager as Pure Consumer (v1.6.3.5-v8):**
 - `inMemoryTabsCache` is fallback protection only
 - All writes go through Background-as-Coordinator
 - `closeAllTabs()` uses `CLEAR_ALL_QUICK_TABS` message
@@ -53,7 +54,6 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **`lastKnownGoodTabCount`** - Tracks last valid tab count
 - **`_handleEmptyStorageState()`** - Use cache when storage returns empty
 - **`_detectStorageStorm()`** - Detect anomalies and recover from cache
-- **`_updateInMemoryCache()`** - Update cache from validated storage
 
 **Message Flow:**
 - Manager → `MANAGER_COMMAND` → Background
@@ -91,11 +91,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] All Quick Tabs display globally
 - [ ] Background-as-Coordinator messages route correctly
 - [ ] UI logging visible in console
-- [ ] Empty list fix works after minimize/restore (v1.6.3.5-v7)
-- [ ] Sync timestamp shows accurate time (v1.6.3.5-v7)
+- [ ] Empty list fix works after minimize/restore
+- [ ] Sync timestamp shows accurate time (`_updateLocalTimestamp`) (v1.6.3.5-v8)
+- [ ] Close All clears `quickTabHostInfo` (v1.6.3.5-v8)
+- [ ] Snapshot cleanup works (`forceCleanup`) (v1.6.3.5-v8)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with storage storm protection, Single Writer Model, and accurate sync timestamps (v1.6.3.5-v7).**
+**Your strength: Manager coordination with storage storm protection, Single Writer Model, and v1.6.3.5-v8 snapshot cleanup.**

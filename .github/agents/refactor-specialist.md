@@ -52,29 +52,32 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.5-v8 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.5-v7 Fixes (8 Issues):**
-- **Manager Empty List Fix** - `onStoragePersistNeeded` callback
-- **Duplicate Window Prevention** - render() early return guard
-- **Cross-Tab Restore** - Targeted tab messaging via `quickTabHostInfo`
-- **Drag/Resize Persistence** - 200ms debounced via `_debouncedDragPersist()`
-- **State Transition Logging** - Comprehensive `StateManager.persistToStorage()` logging
-- **Minimize State on Reload** - Set `domVerified: false` when minimizing
-- **Manager Sync Timestamp** - `lastLocalUpdateTime` tracking
-- **Z-Index Persistence** - Storage persistence after `updateZIndex()`
+**v1.6.3.5-v8 Fixes (10 Issues):**
+1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` in UICoordinator
+2. **Manager minimize/restore** - Coordinated snapshots, renderedTabs, entity.minimized
+3. **Position/size after restore** - `_emitOrphanedTabEvent()` in UpdateHandler
+4. **Z-index/stacking** - `_executeRestore()` increments z-index
+5. **Last sync flicker** - Stabilized restore-related persistence
+6. **Clear Quick Tab Storage** - `UICoordinator.clearAll()`, clears `quickTabHostInfo`
+7. **Phantom Quick Tabs** - `quickTabHostTabs` cleared during coordinated clear
+8. **Storage thrashing** - `saveId: 'cleared-{timestamp}'` pattern
+9. **Snapshot inconsistencies** - `forceCleanup()`, `getAllSnapshotIds()` in MinimizedManager
+10. **Logging coverage** - `_logPrefix` with tab ID
 
-**v1.6.3.5-v7 Architecture:**
+**v1.6.3.5-v8 Architecture:**
 - **QuickTabStateMachine** - State tracking (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
-- **MinimizedManager** - `onStoragePersistNeeded` callback (v1.6.3.5-v7)
-- **UpdateHandler** - `_debouncedDragPersist()` (v1.6.3.5-v7)
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()` (v1.6.3.5-v8)
+- **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()` (v1.6.3.5-v8)
+- **UICoordinator** - `currentTabId`, `_shouldRenderOnThisTab()`, `clearAll()`, `_logPrefix` (v1.6.3.5-v8)
+- **VisibilityHandler** - `_logPrefix`, enhanced `_executeRestore()` (v1.6.3.5-v8)
 - **DestroyHandler** - `_closeAllInProgress` mutex
 - **CreateHandler** - `_emitWindowCreatedEvent()` method
-- **UICoordinator** - `_registerCreatedWindow()` method
 
 **Refactoring Goals:**
 - Eliminate technical debt
