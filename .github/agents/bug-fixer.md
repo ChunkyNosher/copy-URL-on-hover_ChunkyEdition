@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v2 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -41,7 +41,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.6 Fixes:**
+**v1.6.3.6-v2 Fixes:**
+1. **Storage Write Infinite Loop Fixed** - Triple-source entropy `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` self-write detection
+2. **Loop Detection Logging** - STORAGE WRITE BACKLOG warnings (`pendingWriteCount > 5/10`), `saveIdWriteTracker` for duplicate detection
+3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set, empty writes require `forceEmpty=true` AND ownership history
+
+**v1.6.3.6 Fixes (Retained):**
 1. **Cross-Tab Filtering** - Added cross-tab filtering to `_handleRestoreQuickTab()` and `_handleMinimizeQuickTab()` in content.js
 2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
 3. **Button Handler Logging** - Added comprehensive logging to `closeAllTabs()` in quick-tabs-manager.js
@@ -103,7 +108,64 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.6 Fix Patterns
+## v1.6.3.6-v2 Fix Patterns
+
+### Triple-Source Entropy (v1.6.3.6-v2)
+```javascript
+// storage-utils.js - WRITING_INSTANCE_ID generation
+const WRITING_INSTANCE_ID = (() => {
+  const perfPart = typeof performance !== 'undefined' && performance.now ? 
+    performance.now().toString(36) : Math.random().toString(36);
+  const randomPart = Math.random().toString(36);
+  const cryptoPart = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
+  return `${perfPart}-${randomPart}-${cryptoPart}`;
+})();
+let writeCounter = 0; // Module-level counter incremented each write
+```
+
+### Deterministic Self-Write Detection (v1.6.3.6-v2)
+```javascript
+let lastWrittenTransactionId = null;
+
+// In isSelfWrite()
+function isSelfWrite(storageValue) {
+  // Check if transaction ID matches our last write
+  if (lastWrittenTransactionId && 
+      storageValue.transactionId === lastWrittenTransactionId) {
+    return true;
+  }
+  // ... other checks
+}
+```
+
+### Ownership History for Empty Writes (v1.6.3.6-v2)
+```javascript
+const previouslyOwnedTabIds = new Set();
+
+function _handleEmptyWriteValidation(tabId, forceEmpty) {
+  if (!forceEmpty) return { valid: false, reason: 'forceEmpty required' };
+  if (!previouslyOwnedTabIds.has(tabId)) {
+    return { valid: false, reason: 'no ownership history' };
+  }
+  return { valid: true };
+}
+```
+
+### Loop Detection Logging (v1.6.3.6-v2)
+```javascript
+const saveIdWriteTracker = new Map();
+const DUPLICATE_SAVEID_WINDOW_MS = 1000;
+const DUPLICATE_SAVEID_THRESHOLD = 2;
+
+// Backlog warnings
+if (pendingWriteCount > 10) {
+  console.error('[STORAGE] ⚠️ CRITICAL STORAGE WRITE BACKLOG:', pendingWriteCount);
+} else if (pendingWriteCount > 5) {
+  console.warn('[STORAGE] ⚠️ STORAGE WRITE BACKLOG:', pendingWriteCount);
+}
+```
+
+## v1.6.3.6 Fix Patterns (Retained)
 
 ### Cross-Tab Filtering (v1.6.3.6)
 ```javascript

@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, Background-as-Coordinator messaging, Per-Tab Ownership Validation,
-  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.6)
+  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.6-v2)
 tools: ["*"]
 ---
 
@@ -28,46 +28,34 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v2 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6 Sync Architecture:**
+**v1.6.3.6-v2 Sync Architecture:**
 - **storage.onChanged** - Primary sync (fires in ALL OTHER tabs)
-- **Background-as-Coordinator** - Routes manager commands via background.js
+- **Background-as-Coordinator** - Routes manager commands via background.js (simplified `_isTransactionSelfWrite()`)
+- **Triple-Source Entropy** - `WRITING_INSTANCE_ID` uses `performance.now()` + `Math.random()` + `crypto.getRandomValues()` + `writeCounter`
+- **Deterministic Self-Write** - `lastWrittenTransactionId` for reliable `isSelfWrite()` detection
+- **Ownership History** - `previouslyOwnedTabIds` Set tracks tabs that have created Quick Tabs
+- **Loop Detection** - `saveIdWriteTracker` Map, backlog warnings at `pendingWriteCount > 5/10`
 - **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check ownership before processing
 - **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner writes
 - **Per-Tab Scoping** - `_shouldRenderOnThisTab()` enforces strict originTabId filtering
 - **Tab ID Retrieval** - `getCurrentTabIdFromBackground()` before Quick Tabs init
-- **Promise-Based Sequencing** - `_delay()` helper for deterministic event→storage ordering
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
-- **Coordinated Clear** - `quickTabHostTabs` cleared in background.js during coordinated clear
 
-**v1.6.3.6 Fixes (CRITICAL for cross-tab):**
-1. **Cross-Tab Filtering Fix** - `_handleRestoreQuickTab()` and `_handleMinimizeQuickTab()` now check if Quick Tab exists in this tab's `quickTabsMap` or `minimizedManager` before processing broadcast messages - **prevents ghost Quick Tabs on non-owning tabs**
-2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` reduced from 5000ms to 2000ms
-3. **Transaction Fallback Cleanup** - `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
-4. **Button Handler Logging** - Added comprehensive logging to `closeAllTabs()` in quick-tabs-manager.js
+**v1.6.3.6-v2 Fixes (CRITICAL for cross-tab):**
+1. **Storage Write Infinite Loop Fixed** - Triple-source entropy + `lastWrittenTransactionId` + removed `_isSpuriousFirefoxEvent()`/`_isAnySelfWrite()` from background.js
+2. **Loop Detection Logging** - STORAGE WRITE BACKLOG warnings, `saveIdWriteTracker` for duplicate detection, transaction timeout `console.error`
+3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set, empty writes require `forceEmpty=true` AND ownership history, `_handleEmptyWriteValidation()` helper
 
-**v1.6.3.5-v12 Fixes (Retained):**
-1. **Z-Index Background Logging** - Sample z-index logging in `_logStorageChange()`
-2. **Transaction Fallback Clarity** - Enhanced `scheduleFallbackCleanup()` with `{ transactionId, expectedEvent, elapsedMs, triggerModule }`
-3. **DOM Verification Invariants** - `_verifyRestoreAndEmit()` logs `hasMinimizedSnapshot`, `inQuickTabsMap`, `invariantHolds`
-
-**v1.6.3.5-v11 Fixes (Retained):**
-1. **Stale Closure References** - Added `rewireCallbacks()` for fresh callback context
-2. **Callback Re-Wiring** - `_rewireCallbacksAfterRestore()` in VisibilityHandler
-3. **DOM Event Listener Cleanup** - `cleanup()` methods in DragController, ResizeController, ResizeHandle
-4. **Callback Suppression Fix** - `isMinimizing`/`isRestoring` operation flags
-5. **QUICK_TAB_DELETED message** - Background → Manager for single deletions
-6. **Z-Index Sync** - Enhanced z-index sync during restore with defensive checks
-
-**v1.6.3.5-v10 Fixes (Retained):**
-1. **Cross-tab scoping** - `getCurrentTabIdFromBackground()` retrieves tab ID before init
-2. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
-3. **Diagnostic logging** - `_broadcastQuickTabsClearedToTabs()` with per-tab success/failure
+**v1.6.3.6 Fixes (Retained):**
+1. **Cross-Tab Filtering Fix** - Handlers check `quickTabsMap`/`minimizedManager` before processing - prevents ghost Quick Tabs
+2. **Transaction Timeouts** - `STORAGE_TIMEOUT_MS`/`TRANSACTION_FALLBACK_CLEANUP_MS` = 2000ms
 
 **Ownership Functions:**
 - `canCurrentTabModifyQuickTab(tabData, currentTabId)` - Check ownership
-- `validateOwnershipForWrite(tabs, currentTabId)` - Filter tabs before write
+- `validateOwnershipForWrite(tabs, currentTabId, forceEmpty)` - Filter tabs (v1.6.3.6-v2: accepts `forceEmpty`)
+- `_handleEmptyWriteValidation(tabId, forceEmpty)` - Validates empty writes (v1.6.3.6-v2)
 
 **Storage Format:**
 ```javascript
@@ -90,23 +78,22 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] `getCurrentTabIdFromBackground()` works (v1.6.3.6)
-- [ ] Cross-tab filtering works (`_handleRestoreQuickTab`/`_handleMinimizeQuickTab` check ownership)
+- [ ] Triple-source entropy generates unique IDs (v1.6.3.6-v2)
+- [ ] `lastWrittenTransactionId` self-write detection works (v1.6.3.6-v2)
+- [ ] `previouslyOwnedTabIds` tracks ownership history (v1.6.3.6-v2)
+- [ ] Loop detection warnings appear at `pendingWriteCount > 5` (v1.6.3.6-v2)
+- [ ] `saveIdWriteTracker` detects duplicate saveId writes (v1.6.3.6-v2)
+- [ ] Empty writes blocked without `forceEmpty=true` AND ownership (v1.6.3.6-v2)
+- [ ] Cross-tab filtering works (`_handleRestoreQuickTab`/`_handleMinimizeQuickTab`)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Ownership validation prevents non-owner writes
-- [ ] `forceEmpty` allows intentional empty writes (v1.6.3.6)
 - [ ] storage.onChanged events processed correctly
 - [ ] Background-as-Coordinator messages route correctly
-- [ ] `_broadcastQuickTabsClearedToTabs()` logs correctly (v1.6.3.6)
-- [ ] `scheduleFallbackCleanup()` enhanced logging works (v1.6.3.6)
-- [ ] Transaction timeout is 2000ms (reduced from 5000ms in v1.6.3.6)
-- [ ] Promise-based sequencing works (event→storage order)
-- [ ] Coordinated clear works (`quickTabHostTabs` reset)
-- [ ] DOM instance lookup works (`__quickTabWindow`)
-- [ ] Ghost Quick Tabs prevented on non-owning tabs (v1.6.3.6)
+- [ ] Transaction timeout is 2000ms
+- [ ] Ghost Quick Tabs prevented on non-owning tabs
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.6 cross-tab filtering and reduced transaction timeouts.**
+**Your strength: Reliable cross-tab sync with v1.6.3.6-v2 triple-source entropy, ownership history, and loop detection.**
