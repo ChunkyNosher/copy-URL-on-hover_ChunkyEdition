@@ -56,9 +56,15 @@ let lastStorageChangeTime = 0;
 // This prevents race conditions where cleanup happened before event fired
 // Map from transactionId to cleanup timeout (for fallback cleanup)
 const TRANSACTION_CLEANUP_TIMEOUTS = new Map();
+// Map for escalation warning timeouts (separate from main cleanup timeouts)
+const TRANSACTION_WARNING_TIMEOUTS = new Map();
 // v1.6.3.6 - FIX Issue #4: Reduced from 5000ms to 2000ms to prevent transaction backlog
+// v1.6.3.6-v3 - FIX Issue #5: Reduced from 2000ms to 500ms for faster loop detection
 // Fallback cleanup delay - only used if storage.onChanged never fires
-const TRANSACTION_FALLBACK_CLEANUP_MS = 2000;
+// Normal writes complete in 50-100ms; 500ms catches loops before browser freezes
+const TRANSACTION_FALLBACK_CLEANUP_MS = 500;
+// v1.6.3.6-v3 - FIX Issue #3: Intermediate warning at 250ms (half of TRANSACTION_FALLBACK_CLEANUP_MS)
+const ESCALATION_WARNING_MS = 250;
 
 // v1.6.3.4-v8 - FIX Issue #1: Empty write protection
 // Cooldown period between empty (0 tabs) writes to prevent cascades
@@ -132,7 +138,9 @@ const previouslyOwnedTabIds = new Set();
 // Map of saveId → { count, firstTimestamp }
 const saveIdWriteTracker = new Map();
 const DUPLICATE_SAVEID_WINDOW_MS = 1000; // Track duplicates within 1 second
-const DUPLICATE_SAVEID_THRESHOLD = 2; // Warn if same saveId written more than this
+// v1.6.3.6-v3 - FIX Issue #3: Reduced from 2 to 1 for faster loop detection
+// Warn if same saveId written more than once
+const DUPLICATE_SAVEID_THRESHOLD = 1;
 
 // Current tab ID for self-write detection (initialized lazily)
 let currentWritingTabId = null;
@@ -694,6 +702,7 @@ export function shouldProcessStorageChange(transactionId) {
 /**
  * Clean up a transaction ID after it has been confirmed processed
  * v1.6.3.5-v5 - FIX Issue #7: Event-driven cleanup for transaction IDs
+ * v1.6.3.6-v3 - FIX Issue #3: Also clean up escalation warning timeout
  * @param {string} transactionId - Transaction ID to clean up
  */
 export function cleanupTransactionId(transactionId) {
@@ -708,6 +717,12 @@ export function cleanupTransactionId(transactionId) {
     TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
   }
   
+  // v1.6.3.6-v3 - FIX Issue #3: Clear any pending escalation warning timeout
+  if (TRANSACTION_WARNING_TIMEOUTS.has(transactionId)) {
+    clearTimeout(TRANSACTION_WARNING_TIMEOUTS.get(transactionId));
+    TRANSACTION_WARNING_TIMEOUTS.delete(transactionId);
+  }
+  
   if (wasPresent) {
     console.log('[StorageUtils] Transaction cleanup (event-driven):', transactionId);
   }
@@ -716,6 +731,7 @@ export function cleanupTransactionId(transactionId) {
 /**
  * Schedule fallback cleanup for a transaction ID
  * v1.6.3.5-v5 - FIX Issue #7: Fallback if storage.onChanged never fires
+ * v1.6.3.6-v3 - FIX Issue #3: Add intermediate escalation warning at 250ms
  * @param {string} transactionId - Transaction ID to schedule cleanup for
  */
 function scheduleFallbackCleanup(transactionId) {
@@ -727,13 +743,46 @@ function scheduleFallbackCleanup(transactionId) {
     clearTimeout(existingTimeout);
   }
   
+  // v1.6.3.6-v3 - FIX Issue #3: Clear any existing warning timeout for this transaction
+  const existingWarningTimeout = TRANSACTION_WARNING_TIMEOUTS.get(transactionId);
+  if (existingWarningTimeout) {
+    clearTimeout(existingWarningTimeout);
+  }
+  
+  const scheduleTime = Date.now();
+  
+  // v1.6.3.6-v3 - FIX Issue #3: Add intermediate warning at 250ms
+  const warningTimeoutId = setTimeout(() => {
+    try {
+      if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
+        const elapsedMs = Date.now() - scheduleTime;
+        console.warn('[StorageUtils] ⚠️ TRANSACTION STALE WARNING:', {
+          transactionId,
+          elapsedMs,
+          warning: `storage.onChanged has not fired in ${ESCALATION_WARNING_MS}ms`,
+          suggestion: 'Transaction may be stuck - monitoring for timeout'
+        });
+      }
+    } catch (err) {
+      console.warn('[StorageUtils] Error in escalation warning:', err.message);
+    }
+  }, ESCALATION_WARNING_MS);
+  
+  TRANSACTION_WARNING_TIMEOUTS.set(transactionId, warningTimeoutId);
+  
   // Schedule fallback cleanup
   // v1.6.3.5-v5 - FIX Code Review #2: Wrapped in try/catch for error handling consistency
   // v1.6.3.5-v12 - FIX Issue C: Enhanced transaction fallback warning with more context
   // v1.6.3.6-v2 - FIX Issue #2: Change from console.warn to console.error with explicit loop warning
-  const scheduleTime = Date.now();
+  // v1.6.3.6-v3 - FIX Issue #5: Reduced from 2000ms to 500ms for faster loop detection
   const timeoutId = setTimeout(() => {
     try {
+      // v1.6.3.6-v3: Clear the warning timeout if it hasn't been cleaned up yet
+      if (TRANSACTION_WARNING_TIMEOUTS.has(transactionId)) {
+        clearTimeout(TRANSACTION_WARNING_TIMEOUTS.get(transactionId));
+        TRANSACTION_WARNING_TIMEOUTS.delete(transactionId);
+      }
+      
       if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
         const elapsedMs = Date.now() - scheduleTime;
         console.error('[StorageUtils] ⚠️ TRANSACTION TIMEOUT - possible infinite loop:', {
