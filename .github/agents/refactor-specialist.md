@@ -52,32 +52,23 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.6 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.5-v12 Fixes (Diagnostic Report Issues #1-8):**
-1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()`
-2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
-3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
-4. **Focus Persistence Logging** - `isFocusOperation` flag in `_debouncedPersist()`
-5. **Z-Index Background Logging** - Sample z-index logging in `_logStorageChange()`
-6. **Transaction Fallback Clarity** - Enhanced `scheduleFallbackCleanup()` context
-7. **DOM Verification Invariants** - Invariant logging in `_verifyRestoreAndEmit()`
-8. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
+**v1.6.3.6 Fixes:**
+1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing
+2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
+3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action state, dispatch, response, cleanup, timing
 
-**v1.6.3.5-v12 Architecture:**
+**v1.6.3.6 Architecture:**
 - **QuickTabStateMachine** - State tracking (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
 - **QuickTabMediator** - Operation coordination with rollback
-- **MapTransactionManager** - Atomic Map operations with logging
-- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`, `_updateLocalTimestamp()`
-- **UpdateHandler** - `_emitOrphanedTabEvent()`, `_debouncedDragPersist()`
-- **UICoordinator** - `_shouldRenderOnThisTab()`, `clearAll()`, `setHandlers()` (v1.6.3.5-v10)
-- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()` (v1.6.3.5-v12)
-- **DragController** - `updateElement()`, `cleanup()` method (v1.6.3.5-v11)
-- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id`, `_logIfStateDesync()` (v1.6.3.5-v12)
-- **DestroyHandler** - `_closeAllInProgress` mutex
-- **CreateHandler** - `_emitWindowCreatedEvent()` method
+- **MapTransactionManager** - Atomic Map operations (2000ms timeout)
+- **Content.js** - Cross-tab filtering in `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()`
+- **UICoordinator** - `_shouldRenderOnThisTab()`, `clearAll()`, `setHandlers()`
+- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`
+- **QuickTabWindow** - `__quickTabWindow` property, `data-quicktab-id`, `_logIfStateDesync()`
 
 **Refactoring Goals:**
 - Eliminate technical debt
