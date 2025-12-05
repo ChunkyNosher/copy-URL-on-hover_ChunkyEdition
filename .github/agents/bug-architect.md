@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v2 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -65,14 +65,17 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.6 Fixes:**
+**v1.6.3.6-v2 Fixes:**
+1. **Storage Write Infinite Loop Fixed** - Triple-source entropy `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` self-write detection
+2. **Loop Detection Logging** - STORAGE WRITE BACKLOG warnings (`pendingWriteCount > 5/10`), `saveIdWriteTracker` for duplicate detection
+3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set, empty writes require `forceEmpty=true` AND ownership history
+
+**v1.6.3.6 Fixes (Retained):**
 1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing
 2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
 3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action state, dispatch, response, cleanup, timing
 
-**v1.6.3.5-v12 Fixes (Retained):**
-1-4: Defensive DOM query in `minimize()`, `_applyZIndexUpdate()`/`_applyZIndexViaFallback()`, lifecycle logging, `isFocusOperation` flag
-5-8: Z-index background logging, `scheduleFallbackCleanup()` context, DOM verification invariants, `_logIfStateDesync()`
+**v1.6.3.5-v12 Fixes:** Defensive DOM query, z-index helpers, lifecycle logging, `_logIfStateDesync()`
 
 **v1.6.3.6 Architecture:**
 - **QuickTabStateMachine** - Lifecycle states, **QuickTabMediator** - Coordination with rollback
