@@ -10,6 +10,8 @@
 //   - Properly clear inMemoryTabsCache when tabs legitimately reach 0
 //   - Ensure renderUI() is called after deletion
 //   - Fix _isSuspiciousStorageDrop to recognize single-tab deletions as legitimate
+// v1.6.3.6 - FIX Issue #3: Added comprehensive logging to Close All button handler
+//   - Logs button click, action dispatch, response, and completion timing
 
 // Storage keys
 const STATE_KEY = 'quick_tabs_state_v2';
@@ -1540,35 +1542,61 @@ function filterMinimizedFromContainerFormat(state) {
  *   to background which handles the single storage write and broadcasts to all tabs.
  *   This prevents multi-writer race conditions.
  * v1.6.3.5-v8 - FIX Issue #6, #10: Enhanced logging with affected IDs
+ * v1.6.3.6 - FIX Issue #3: Added comprehensive logging for button handlers
  */
 async function closeAllTabs() {
+  const startTime = Date.now();
+  
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ Close All button clicked');
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+  
   try {
     // v1.6.3.5-v8 - FIX Issue #10: Log IDs being cleared
     const clearedIds = quickTabsState?.tabs?.map(t => t.id) || [];
-    console.log('[Manager] Close All: Starting coordinated clear:', {
+    const originTabIds = quickTabsState?.tabs?.map(t => t.originTabId).filter(Boolean) || [];
+    
+    // v1.6.3.6 - FIX Issue #3: Comprehensive pre-action logging
+    console.log('[Manager] Close All: Pre-action state:', {
       tabCount: clearedIds.length,
       ids: clearedIds,
-      cacheCount: inMemoryTabsCache.length
+      originTabIds: [...new Set(originTabIds)], // Unique origin tab IDs
+      cacheCount: inMemoryTabsCache.length,
+      hostInfoCount: quickTabHostInfo.size,
+      timestamp: Date.now()
     });
+    
+    // v1.6.3.6 - FIX Issue #3: Log button action dispatch
+    console.log('[Manager] Close All: Dispatching COORDINATED_CLEAR_ALL_QUICK_TABS to background...');
     
     // v1.6.3.5-v6 - Use background-coordinated clear (single-writer architecture)
     const response = await browser.runtime.sendMessage({
       action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
     });
     
+    // v1.6.3.6 - FIX Issue #3: Log response details
+    console.log('[Manager] Close All: Background response:', {
+      success: response?.success,
+      response,
+      durationMs: Date.now() - startTime
+    });
+    
     if (response?.success) {
-      console.log('[Manager] Coordinated clear successful');
+      console.log('[Manager] Close All: Coordinated clear successful');
     } else {
-      console.warn('[Manager] Coordinated clear returned:', response);
+      console.warn('[Manager] Close All: Coordinated clear returned non-success:', response);
     }
 
     // v1.6.3.5-v8 - FIX Issue #6: Clear quickTabHostInfo to prevent phantom Quick Tabs
+    const hostInfoBeforeClear = quickTabHostInfo.size;
     quickTabHostInfo.clear();
     
-    // v1.6.3.5-v8 - FIX Issue #10: Log completion with details
-    console.log('[Manager] Close All complete:', {
+    // v1.6.3.6 - FIX Issue #3: Log completion with timing and details
+    console.log('[Manager] Close All: Post-action cleanup:', {
       clearedIds,
-      clearedCount: clearedIds.length
+      clearedCount: clearedIds.length,
+      hostInfoCleared: hostInfoBeforeClear,
+      totalDurationMs: Date.now() - startTime
     });
 
     // Update UI immediately
@@ -1577,8 +1605,14 @@ async function closeAllTabs() {
     lastKnownGoodTabCount = 0;
     lastLocalUpdateTime = Date.now();
     renderUI();
+    
+    console.log('[Manager] Close All: UI updated, operation complete');
   } catch (err) {
-    console.error('[Manager] Error closing all tabs:', err);
+    console.error('[Manager] Close All: ERROR:', {
+      message: err.message,
+      stack: err.stack,
+      durationMs: Date.now() - startTime
+    });
   }
 }
 

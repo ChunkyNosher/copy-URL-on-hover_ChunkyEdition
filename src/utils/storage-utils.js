@@ -12,6 +12,9 @@
  * v1.6.3.5-v5 - FIX Quick Tab Restore Diagnostic Issues:
  *   - Issue #5: Ownership-based write filtering using originTabId
  *   - Issue #7: Event-driven cleanup replaces fixed-delay cleanup
+ * v1.6.3.6 - FIX Critical Quick Tab Restore Bugs:
+ *   - Issue #2, #4: Reduced transaction timeout from 5s to 2s to prevent backlog
+ *   - Transaction confirmation is decoupled from rendering
  * 
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
@@ -27,7 +30,8 @@ import { CONSTANTS } from '../core/config.js';
 export const STATE_KEY = 'quick_tabs_state_v2';
 
 // v1.6.3.4-v2 - FIX Bug #1: Timeout for storage operations (5 seconds)
-const STORAGE_TIMEOUT_MS = 5000;
+// v1.6.3.6 - FIX Issue #2: Reduced from 5000ms to 2000ms to prevent transaction backlog
+const STORAGE_TIMEOUT_MS = 2000;
 
 // v1.6.3.4 - FIX Issue #3: Use CONSTANTS.QUICK_TAB_BASE_Z_INDEX for consistency
 const DEFAULT_ZINDEX = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
@@ -48,8 +52,9 @@ let lastStorageChangeTime = 0;
 // This prevents race conditions where cleanup happened before event fired
 // Map from transactionId to cleanup timeout (for fallback cleanup)
 const TRANSACTION_CLEANUP_TIMEOUTS = new Map();
+// v1.6.3.6 - FIX Issue #4: Reduced from 5000ms to 2000ms to prevent transaction backlog
 // Fallback cleanup delay - only used if storage.onChanged never fires
-const TRANSACTION_FALLBACK_CLEANUP_MS = 5000;
+const TRANSACTION_FALLBACK_CLEANUP_MS = 2000;
 
 // v1.6.3.4-v8 - FIX Issue #1: Empty write protection
 // Cooldown period between empty (0 tabs) writes to prevent cascades

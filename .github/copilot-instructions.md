@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.5-v12  
+**Version:** 1.6.3.6  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -31,7 +31,12 @@
 4. **Storage corruption** - `forceEmpty` parameter, stricter `_shouldRejectEmptyWrite()`
 5. **Diagnostic logging** - Enhanced init/message logging, `_broadcastQuickTabsClearedToTabs()`
 
-**v1.6.3.5-v12 Fixes:**
+**v1.6.3.6 Fixes:**
+1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing
+2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
+3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action state, dispatch, response, cleanup, timing
+
+**v1.6.3.5-v12 Fixes (Retained):**
 1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()` when `this.container` is null
 2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
 3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
@@ -117,31 +122,21 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.5-v12 Patterns
+## 🆕 v1.6.3.6 Patterns
 
-- **`_applyZIndexUpdate()`/`_applyZIndexViaFallback()`** - Defensive z-index with DOM fallback
-- **`_logIfStateDesync()`** - Split-brain detection (rendered/container mismatch)
-- **Defensive DOM Query in `minimize()`** - Queries `.quick-tab-window[data-quicktab-id]` when container null
-- **`isFocusOperation` Flag** - Focus-only persist differentiation
-- **DOM Verification Invariants** - `_verifyRestoreAndEmit()` checks
+- **Cross-Tab Filtering** - Handlers check `quickTabsMap`/`minimizedManager` before processing broadcast messages
+- **Reduced Timeouts** - 2000ms (down from 5000ms) for faster first restore (<500ms vs 2-3s)
+- **Button Handler Logging** - `closeAllTabs()` logs full operation lifecycle with timing
 
-### v1.6.3.5-v11 Patterns (Retained)
+### Prior Version Patterns (v1.6.3.5-v9 to v12)
 
-- `rewireCallbacks()` - Re-wires callbacks after restore
-- `_rewireCallbacksAfterRestore()` - Calls rewireCallbacks in VisibilityHandler
-- `cleanup()` Pattern - Public cleanup in DragController/ResizeController/ResizeHandle
-- `isMinimizing`/`isRestoring` - Operation flags prevent circular suppression
-- `QUICK_TAB_DELETED` - Background → Manager for single deletions
-
-### v1.6.3.5-v10 Patterns (Retained)
-
-- `setHandlers()` - Deferred handler init, `_buildCallbackOptions()` for restore
-- `_applyZIndexAfterAppend()` - Z-index with reflow, `getCurrentTabIdFromBackground()` for tab ID
-- `forceEmpty` parameter, `_broadcastQuickTabsClearedToTabs()` diagnostics
-
-### v1.6.3.5-v9 Features (Retained)
-
-- `__quickTabWindow`, `data-quicktab-id`, `DragController.updateElement()`, reflow forcing
+- `_applyZIndexUpdate()`/`_applyZIndexViaFallback()` - Defensive z-index with DOM fallback (v12)
+- `_logIfStateDesync()` - Split-brain detection, `isFocusOperation` flag (v12)
+- `rewireCallbacks()`, `_rewireCallbacksAfterRestore()`, `cleanup()` methods (v11)
+- `isMinimizing`/`isRestoring` flags, `QUICK_TAB_DELETED` message (v11)
+- `setHandlers()`, `_buildCallbackOptions()`, `_applyZIndexAfterAppend()` (v10)
+- `getCurrentTabIdFromBackground()`, `forceEmpty` parameter (v10)
+- `__quickTabWindow`, `data-quicktab-id`, `DragController.updateElement()` (v9)
 
 ### Per-Tab Scoping
 
@@ -165,6 +160,8 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
 | `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message dedup |
 | `CLOSE_ALL_MUTEX_RELEASE_MS` | 2000 | closeAll mutex cooldown |
+| `STORAGE_TIMEOUT_MS` | 2000 | Storage operation timeout (v1.6.3.6: reduced from 5000) |
+| `TRANSACTION_FALLBACK_CLEANUP_MS` | 2000 | Transaction cleanup timeout (v1.6.3.6: reduced from 5000) |
 
 ---
 
@@ -208,31 +205,12 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 
 ## 🏗️ Key Patterns
 
-**v1.6.3.5-v12 Patterns:**
-- `_applyZIndexUpdate()` / `_applyZIndexViaFallback()` - Defensive z-index application
-- `_logIfStateDesync()` - Split-brain state detection
-- Defensive DOM query fallback in `minimize()`
-- `isFocusOperation` flag for focus-only persist differentiation
-- DOM verification invariants in `_verifyRestoreAndEmit()`
-
-**v1.6.3.5-v11 Patterns:**
-- `rewireCallbacks()` - Fresh callback context after restore
-- `cleanup()` - Public listener removal in DragController/ResizeController/ResizeHandle
-- `isMinimizing`/`isRestoring` - Operation flags prevent circular suppression
-- `_notifyBackgroundOfDeletion()` - Background notification for deletions
-
-**v1.6.3.5-v10 Patterns:**
-- `setHandlers()` - Deferred handler init
-- `_buildCallbackOptions()` - Callback wiring
-- `getCurrentTabIdFromBackground()` - Tab ID retrieval
-- `forceEmpty` - Intentional empty writes
-- `_applyZIndexAfterAppend()` - Z-index with reflow
-
 **Core Patterns:**
 - Promise sequencing, debounced drag, orphan recovery, per-tab scoping
 - Transaction rollback, state machine, ownership validation, Single Writer Model
 - Coordinated clear, closeAll mutex, `window:created` event
 - DOM lookup (`__quickTabWindow`), `data-quicktab-id`, `DragController.updateElement()`
+- Cross-tab filtering in handlers prevents ghost Quick Tabs (v1.6.3.6)
 
 ---
 
@@ -284,11 +262,11 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 
 ### Key Files
 
-| File | Key Features (v1.6.3.5-v12) |
+| File | Key Features (v1.6.3.6) |
 |------|---------------------------|
 | `background.js` | `_broadcastQuickTabsClearedToTabs()`, `QUICK_TAB_DELETED` notifications, `_logStorageChange()` with sample z-index |
-| `src/content.js` | `getCurrentTabIdFromBackground()`, enhanced logging |
-| `src/utils/storage-utils.js` | `_shouldRejectEmptyWrite()` with `forceEmpty`, `scheduleFallbackCleanup()` with enhanced context |
+| `src/content.js` | `getCurrentTabIdFromBackground()`, cross-tab filtering in `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` |
+| `src/utils/storage-utils.js` | `_shouldRejectEmptyWrite()` with `forceEmpty`, reduced timeouts (2000ms) |
 | `UICoordinator.js` | `setHandlers()`, `_buildCallbackOptions()` |
 | `StateManager.js` | `persistToStorage(source, forceEmpty)` |
 | `window.js` | `_applyZIndexAfterAppend()`, `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()`, defensive DOM query in `minimize()` |
@@ -297,7 +275,7 @@ UICoordinator uses `currentTabId` + `_shouldRenderOnThisTab()` for strict per-ta
 | `ResizeController.js` | `cleanup()` |
 | `ResizeHandle.js` | `cleanup()`, `destroyed` flag |
 | `DestroyHandler.js` | `_notifyBackgroundOfDeletion()` |
-| `quick-tabs-manager.js` | `handleStateDeletedMessage()`, cache protection fix |
+| `quick-tabs-manager.js` | `handleStateDeletedMessage()`, `closeAllTabs()` with comprehensive logging |
 | `index.js` | `initQuickTabs()` accepts `currentTabId`, calls `setHandlers()` |
 
 ### Storage Key & Format

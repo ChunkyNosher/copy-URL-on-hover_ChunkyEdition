@@ -168,6 +168,11 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * v1.6.2.3 Changes:
  * - Added critical iframe recursion guard at top of file (Bug #2 fix)
  * - Prevents browser crashes from infinite Quick Tab nesting
+ * 
+ * v1.6.3.6 Changes:
+ * - FIX Issue #1: Added cross-tab filtering to RESTORE_QUICK_TAB and MINIMIZE_QUICK_TAB handlers
+ * - Quick Tabs now only respond to operations from the tab that owns them (originTabId match)
+ * - Prevents ghost Quick Tabs from appearing when Manager broadcasts to all tabs
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -1409,13 +1414,44 @@ function _handleCloseQuickTab(quickTabId, sendResponse) {
   _handleManagerAction(quickTabId, 'Closed', id => quickTabsManager.destroyHandler.closeById(id, 'Manager'), sendResponse);
 }
 
+/**
+ * Handle MINIMIZE_QUICK_TAB message with cross-tab filtering
+ * v1.6.3.6 - FIX Issue #1: Add cross-tab filtering to prevent operations on non-owned Quick Tabs
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to minimize
+ * @param {Function} sendResponse - Response callback
+ */
 function _handleMinimizeQuickTab(quickTabId, sendResponse) {
+  // v1.6.3.6 - FIX Issue #1: Cross-tab filtering for minimize requests
+  const hasInMap = quickTabsManager?.tabs?.has(quickTabId);
+  const currentTabId = quickTabsManager?.currentTabId;
+  
+  if (!hasInMap) {
+    console.log('[Content] MINIMIZE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
+      quickTabId,
+      currentTabId,
+      hasInMap,
+      reason: 'cross-tab filtering'
+    });
+    sendResponse({ 
+      success: false, 
+      error: 'Quick Tab not owned by this tab',
+      quickTabId,
+      currentTabId,
+      reason: 'cross-tab-filtered'
+    });
+    return;
+  }
+  
   _handleManagerAction(quickTabId, 'Minimized', id => quickTabsManager.minimizeById(id, 'Manager'), sendResponse);
 }
 
 /**
- * Handle RESTORE_QUICK_TAB message with deduplication
+ * Handle RESTORE_QUICK_TAB message with deduplication and cross-tab filtering
  * v1.6.3.4-v11 - FIX Issue #2: Prevent duplicate restore processing
+ * v1.6.3.6 - FIX Issue #1: Add cross-tab filtering to prevent ghost Quick Tabs
+ *   Check if Quick Tab belongs to this tab before attempting restore.
+ *   Quick Tabs should only render in the tab that created them (originTabId).
  * @private
  * @param {string} quickTabId - Quick Tab ID to restore
  * @param {Function} sendResponse - Response callback
@@ -1431,6 +1467,38 @@ function _handleRestoreQuickTab(quickTabId, sendResponse) {
     });
     return;
   }
+  
+  // v1.6.3.6 - FIX Issue #1: Cross-tab filtering for restore requests
+  // Check if the Quick Tab exists in this tab's minimized manager or quickTabsMap
+  // If not, this broadcast came from Manager but the Quick Tab belongs to another tab
+  const hasInMap = quickTabsManager?.tabs?.has(quickTabId);
+  const hasSnapshot = quickTabsManager?.minimizedManager?.hasSnapshot?.(quickTabId);
+  const currentTabId = quickTabsManager?.currentTabId;
+  
+  if (!hasInMap && !hasSnapshot) {
+    console.log('[Content] RESTORE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
+      quickTabId,
+      currentTabId,
+      hasInMap,
+      hasSnapshot,
+      reason: 'cross-tab filtering'
+    });
+    sendResponse({ 
+      success: false, 
+      error: 'Quick Tab not owned by this tab',
+      quickTabId,
+      currentTabId,
+      reason: 'cross-tab-filtered'
+    });
+    return;
+  }
+  
+  console.log('[Content] RESTORE_QUICK_TAB: Processing - Quick Tab is owned by this tab:', {
+    quickTabId,
+    currentTabId,
+    hasInMap,
+    hasSnapshot
+  });
   
   _handleManagerAction(quickTabId, 'Restored', id => quickTabsManager.restoreById(id, 'Manager'), sendResponse);
 }

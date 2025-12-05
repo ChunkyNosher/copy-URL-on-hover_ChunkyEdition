@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
-  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.5-v12)
+  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.6)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v12 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -37,7 +37,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.5-v12 Fixes:**
+**v1.6.3.6 Fixes:**
+1. **Cross-Tab Filtering** - Added cross-tab filtering in content.js handlers
+2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` 5000ms → 2000ms, `TRANSACTION_FALLBACK_CLEANUP_MS` 5000ms → 2000ms
+3. **Button Handler Logging** - Comprehensive logging in `closeAllTabs()`: button click, pre-action state, action dispatch, background response, post-action cleanup, completion timing
+
+**v1.6.3.5-v12 Fixes (Retained):**
 1. **Z-Index Background Logging** - Sample z-index logging in `_logStorageChange()`
 2. **DOM Verification Invariants** - `_verifyRestoreAndEmit()` logs `hasMinimizedSnapshot`, `inQuickTabsMap`, `invariantHolds`
 
@@ -82,6 +87,27 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
+## v1.6.3.6 Timing Constants
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `STORAGE_TIMEOUT_MS` | 2000ms | Storage operation timeout (was 5000ms) |
+| `TRANSACTION_FALLBACK_CLEANUP_MS` | 2000ms | Transaction fallback cleanup (was 5000ms) |
+
+---
+
+## v1.6.3.6 Button Handler Logging
+
+**`closeAllTabs()` comprehensive logging pattern:**
+1. **Button Click** - Logs entry point with visual separator
+2. **Pre-Action State** - Logs `tabCount`, `ids`, `originTabIds`, `cacheCount`, `hostInfoCount`
+3. **Action Dispatch** - Logs `COORDINATED_CLEAR_ALL_QUICK_TABS` dispatch
+4. **Background Response** - Logs `success`, `response`, `durationMs`
+5. **Post-Action Cleanup** - Logs `clearedIds`, `clearedCount`, `hostInfoCleared`, `totalDurationMs`
+6. **Completion** - Logs UI update completion
+
+---
+
 ## MCP Server Integration
 
 **MANDATORY:** Context7, Perplexity, ESLint, CodeScene, Agentic-Tools
@@ -92,9 +118,9 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] Storage storm protection works (`inMemoryTabsCache`)
-- [ ] `forceEmpty` allows Close All empty writes (v1.6.3.5-v12)
-- [ ] `_broadcastQuickTabsClearedToTabs()` logs correctly (v1.6.3.5-v12)
-- [ ] `_logStorageChange()` sample z-index logging works (v1.6.3.5-v12)
+- [ ] `forceEmpty` allows Close All empty writes
+- [ ] `_broadcastQuickTabsClearedToTabs()` logs correctly
+- [ ] `_logStorageChange()` sample z-index logging works
 - [ ] All Quick Tabs display globally
 - [ ] Background-as-Coordinator messages route correctly
 - [ ] UI logging visible in console
@@ -102,9 +128,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] Sync timestamp shows accurate time (`_updateLocalTimestamp`)
 - [ ] Close All clears `quickTabHostInfo`
 - [ ] Snapshot cleanup works (`forceCleanup`)
+- [ ] **v1.6.3.6:** `closeAllTabs()` logs all 6 logging stages
+- [ ] **v1.6.3.6:** Cross-tab filtering works in content handlers
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.5-v12 enhanced diagnostics and z-index background logging.**
+**Your strength: Manager coordination with v1.6.3.6 button handler logging and reduced transaction timeouts.**

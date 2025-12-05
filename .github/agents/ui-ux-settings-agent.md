@@ -50,7 +50,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v9 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.6 - Two-Layer Sidebar Tab System ✅
 
 **Settings Sidebar Structure (Two-Layer System):**
 - **PRIMARY TABS (Layer 1):**
@@ -63,14 +63,10 @@ const relevantMemories = await searchMemories({
   - **Appearance Tab** - Dark mode, colors, borders, animations
   - **Advanced Tab** - Debug mode, storage management, logs, UID display
 
-**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
-3. **Position/size stop after restore** - `DragController.updateElement()` method
-4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
-5. **Last Sync updates** - Per-tab ownership validation
-6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
-7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
+**v1.6.3.6 Fixes:**
+1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing
+2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
+3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action state, dispatch, response, cleanup, timing
 
 **Tab State Persistence:**
 - Primary tab: localStorage.getItem('sidebarActivePrimaryTab')

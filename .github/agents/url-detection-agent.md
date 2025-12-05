@@ -51,7 +51,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.5-v9 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.6 - Domain-Driven Design (Phase 1 Complete ✅)
 
 **URL Detection Features:**
 - **Hover Detection** - Track hovered links for Quick Tab creation
@@ -59,24 +59,18 @@ const relevantMemories = await searchMemories({
 - **URL Validation** - Ensure valid URLs before processing
 - **URL Normalization** - Clean and standardize URLs
 
-**v1.6.3.5-v9 Fixes (Diagnostic Report Issues #1-7):**
-1. **Cross-tab rendering** - `_shouldRenderOnThisTab()` + `originTabId` check
-2. **Yellow indicator + duplicate** - `__quickTabWindow` property for orphan recovery
-3. **Position/size stop after restore** - `DragController.updateElement()` method
-4. **Z-index after restore** - `_applyZIndexAfterRestore()` with reflow forcing
-5. **Last Sync updates** - Per-tab ownership validation
-6. **Clear Quick Tab Storage** - Coordinated `clearAll()` path
-7. **Duplicate windows** - `data-quicktab-id` attribute for DOM querying
+**v1.6.3.6 Fixes:**
+1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing
+2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
+3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action state, dispatch, response, cleanup, timing
 
-**v1.6.3.5-v9 Architecture:**
+**v1.6.3.6 Architecture:**
 - **QuickTabStateMachine** - State tracking for Quick Tab lifecycle
 - **QuickTabMediator** - Operation coordination
-- **MapTransactionManager** - Atomic operations
-- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()` (v1.6.3.5-v8+)
-- **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` (v1.6.3.5-v8+)
-- **UICoordinator** - `_shouldRenderOnThisTab()`, `_applyZIndexAfterRestore()` (v1.6.3.5-v9)
-- **DragController** - `updateElement()` method (v1.6.3.5-v9)
-- **QuickTabWindow** - `__quickTabWindow` property (v1.6.3.5-v9)
+- **MapTransactionManager** - Atomic operations (2000ms timeout)
+- **Content.js** - Cross-tab filtering in `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()`
+- **UICoordinator** - `_shouldRenderOnThisTab()`, `setHandlers()`
+- **QuickTabWindow** - `__quickTabWindow` property
 
 ---
 

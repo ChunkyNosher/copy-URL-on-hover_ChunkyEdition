@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v12 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -37,32 +37,33 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.5-v12:** Defensive DOM query, z-index helpers, state desync detection
+- **v1.6.3.6:** Cross-tab filtering, reduced timeouts, enhanced logging
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.5-v12 Fixes:**
-1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()` when `this.container` is null
-2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
-3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
-4. **Focus Persistence Logging** - `isFocusOperation` flag in `_debouncedPersist()`
-5. **Z-Index Background Logging** - Sample z-index logging in `_logStorageChange()`
-6. **Transaction Fallback Clarity** - Enhanced `scheduleFallbackCleanup()` context
-7. **DOM Verification Invariants** - Invariant logging in `_verifyRestoreAndEmit()`
-8. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
+**v1.6.3.6 Fixes:**
+1. **Cross-Tab Filtering** - Added cross-tab filtering to `_handleRestoreQuickTab()` and `_handleMinimizeQuickTab()` in content.js
+2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
+3. **Button Handler Logging** - Added comprehensive logging to `closeAllTabs()` in quick-tabs-manager.js
 
-**v1.6.3.5-v12 Modules:**
+**v1.6.3.5-v12 Fixes (Retained):**
+1. **Defensive DOM Query** - Fallback in `minimize()` when `this.container` is null
+2. **Z-Index Helpers** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()`
+3. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
+
+**Key Modules:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
-- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()` (v1.6.3.5-v8+)
-- **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()` (v1.6.3.5-v8+)
-- **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()` (v1.6.3.5-v10+)
-- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`, `isFocusOperation` (v1.6.3.5-v12)
-- **DragController** - `updateElement()`, `cleanup()` (v1.6.3.5-v11)
-- **ResizeController** - `cleanup()` for listener removal (v1.6.3.5-v11)
-- **ResizeHandle** - `cleanup()`, `destroyed` flag (v1.6.3.5-v11)
-- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()` (v1.6.3.5-v12)
+- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`
+- **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()`
+- **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()`
+- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`, `isFocusOperation`
+- **DragController** - `updateElement()`, `cleanup()`
+- **ResizeController** - `cleanup()` for listener removal
+- **ResizeHandle** - `cleanup()`, `destroyed` flag
+- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()`
+- **content.js** - `_handleRestoreQuickTab()`, `_handleMinimizeQuickTab()` with cross-tab filtering (v1.6.3.6)
 
 ---
 
@@ -102,7 +103,43 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.5-v9 Fix Patterns
+## v1.6.3.6 Fix Patterns
+
+### Cross-Tab Filtering (v1.6.3.6)
+```javascript
+// content.js - Check if Quick Tab exists in this tab before processing
+function _handleRestoreQuickTab(quickTabId, sendResponse) {
+  // Check if Quick Tab exists in this tab's quickTabsMap or minimizedManager
+  const hasInMap = quickTabsManager?.tabs?.has(quickTabId);
+  const hasSnapshot = quickTabsManager?.minimizedManager?.hasSnapshot?.(quickTabId);
+  
+  if (!hasInMap && !hasSnapshot) {
+    // Quick Tab not on this tab, skip processing
+    return;
+  }
+  // Process restore...
+}
+```
+
+### Timeout Constants (v1.6.3.6)
+```javascript
+// Reduced from 5000ms to 2000ms for faster recovery
+const STORAGE_TIMEOUT_MS = 2000;
+const TRANSACTION_FALLBACK_CLEANUP_MS = 2000;
+```
+
+### Manager closeAllTabs Logging (v1.6.3.6)
+```javascript
+// quick-tabs-manager.js - Comprehensive logging
+async function closeAllTabs() {
+  console.log('[Manager] │ Close All button clicked');
+  console.log('[Manager] Close All: Pre-action state:', { tabCount, ids, ... });
+  console.log('[Manager] Close All: Dispatching COORDINATED_CLEAR_ALL_QUICK_TABS...');
+  // ... implementation with detailed logging
+}
+```
+
+## Legacy Fix Patterns
 
 ### State Machine Transitions
 ```javascript
@@ -225,7 +262,7 @@ if (this._closeAllInProgress) {
   return;
 }
 this._closeAllInProgress = true;
-this._scheduleMutexRelease(); // Releases after 2000ms
+this._scheduleMutexRelease(); // Releases after 2000ms (v1.6.3.6)
 ```
 
 ---
