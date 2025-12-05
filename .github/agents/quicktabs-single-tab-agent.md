@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement (v1.6.3.5-v12)
+  window:created event coordination, per-tab scoping enforcement (v1.6.3.6)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v12 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,13 +38,22 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.5-v12 Fixes:**
+**v1.6.3.6 Fixes:**
+1. **Cross-Tab Filtering Fix** - Added cross-tab filtering to `_handleRestoreQuickTab()` and `_handleMinimizeQuickTab()` in content.js (prevents ghost Quick Tabs)
+2. **Transaction Timeout Reduction** - Reduced `STORAGE_TIMEOUT_MS` from 5000ms to 2000ms, reduced `TRANSACTION_FALLBACK_CLEANUP_MS` from 5000ms to 2000ms
+3. **Button Handler Logging Fix** - Added comprehensive logging to `closeAllTabs()` in quick-tabs-manager.js
+
+**v1.6.3.6 Patterns:**
+- **Cross-tab filtering in message handlers** - Filter by `originTabId` before restore/minimize operations
+- **Reduced transaction timeouts** - 2000ms for faster failure detection
+
+**v1.6.3.5-v12 Fixes (Retained):**
 1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()`
 2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
 3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
 4. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
 
-**v1.6.3.5-v12 Patterns:**
+**v1.6.3.5-v12 Patterns (Retained):**
 - **`_applyZIndexUpdate()`/`_applyZIndexViaFallback()`** - Defensive z-index application
 - **`_logIfStateDesync()`** - Logs warning when `rendered` and `container` disagree
 - **Defensive DOM query in `minimize()`** - Falls back to `document.querySelector`

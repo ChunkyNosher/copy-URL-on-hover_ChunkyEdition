@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.5-v12)
+  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.6)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.5-v12 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,14 +37,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
 
-**v1.6.3.5-v12 Fixes:**
-1. **Second Minimize DOM Removal** - Defensive DOM query fallback in `minimize()`
-2. **Z-Index After Restore** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()` helpers
-3. **Lifecycle Logging** - Enhanced logging at render/minimize/restore completion
-4. **Focus Persistence Logging** - `isFocusOperation` flag in `_debouncedPersist()`
-5. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
+**v1.6.3.6 Fixes:**
+1. **Cross-Tab Filtering** - Added filtering in `_handleRestoreQuickTab()` and `_handleMinimizeQuickTab()` to check quickTabsMap/minimizedManager before processing
+2. **Transaction Timeout Reduction** - Reduced `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` from 5000ms to 2000ms
+3. **Button Handler Logging** - Added comprehensive logging to `closeAllTabs()` in quick-tabs-manager.js
 
-**v1.6.3.5-v12 Patterns:**
+**v1.6.3.6 Patterns:**
+- **Cross-tab filtering in handlers** - Check existence before processing broadcast messages
+- **Reduced timeouts** - 2000ms for storage and transaction cleanup (was 5000ms)
+
+**v1.6.3.5-v12 Patterns (Retained):**
 - **`_applyZIndexUpdate()`/`_applyZIndexViaFallback()`** - Defensive z-index application
 - **`_logIfStateDesync()`** - Split-brain state detection
 - **Defensive DOM query in `minimize()`** - Falls back to `document.querySelector`
@@ -91,12 +93,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 ## Testing Requirements
 
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
-- [ ] `getCurrentTabIdFromBackground()` retrieves correct tab ID (v1.6.3.5-v12)
-- [ ] `setHandlers()` properly initializes handlers (v1.6.3.5-v12)
-- [ ] `_applyZIndexAfterAppend()` applies z-index correctly (v1.6.3.5-v12)
-- [ ] `_applyZIndexUpdate()`/`_applyZIndexViaFallback()` work (v1.6.3.5-v12)
-- [ ] `_logIfStateDesync()` detects state mismatch (v1.6.3.5-v12)
-- [ ] `forceEmpty` allows Close All empty writes (v1.6.3.5-v12)
+- [ ] Cross-tab filtering in `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` (v1.6.3.6)
+- [ ] Transaction timeouts at 2000ms (v1.6.3.6)
+- [ ] `getCurrentTabIdFromBackground()` retrieves correct tab ID
+- [ ] `setHandlers()` properly initializes handlers
+- [ ] `_applyZIndexAfterAppend()` applies z-index correctly
+- [ ] `_applyZIndexUpdate()`/`_applyZIndexViaFallback()` work
+- [ ] `_logIfStateDesync()` detects state mismatch
+- [ ] `forceEmpty` allows Close All empty writes
 - [ ] Ownership validation works (`canCurrentTabModifyQuickTab`)
 - [ ] Storage storm protection (`inMemoryTabsCache`)
 - [ ] UICoordinator invariants verified
@@ -109,4 +113,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.5-v12 defensive patterns and state desync detection.**
+**Your strength: Complete Quick Tab system with v1.6.3.6 cross-tab filtering and reduced transaction timeouts.**
