@@ -1698,19 +1698,23 @@ function _logCorruptionWarning(oldCount, newCount) {
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
  * v1.6.3.5-v3 - FIX Diagnostic Issue #1: Add writingInstanceId/writingTabId detection
  * v1.6.3.5-v3 - FIX Diagnostic Issue #8: Check for Firefox spurious events (no data change)
+ * v1.6.3.6-v2 - FIX Issue #1: Removed _isSpuriousFirefoxEvent check - causes false negatives during loops
+ *              Content scripts handle self-write detection via isSelfWrite(), background just updates cache
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {boolean} True if change should be ignored
  */
 function _shouldIgnoreStorageChange(newValue, oldValue) {
-  // v1.6.3.5-v3 - FIX Diagnostic Issue #8: Check for Firefox spurious events
-  if (_isSpuriousFirefoxEvent(newValue, oldValue)) {
-    console.log('[Background] Firefox spurious onChanged - no data change detected');
-    return true;
-  }
+  // v1.6.3.6-v2 - FIX Issue #1: REMOVED _isSpuriousFirefoxEvent check
+  // This was creating false negatives during rapid writes (loops), where legitimate
+  // writes were being incorrectly classified as spurious because they had matching
+  // saveId/tab counts. Content scripts handle their own self-write detection via
+  // isSelfWrite() function - background should not attempt to re-filter.
+  // See: v1.6.3.5-comprehensive-diagnostic-report.md Issue #1, Failure mode 3
 
-  // Check if this is a self-write via various detection methods
-  if (_isAnySelfWrite(newValue)) {
+  // Check if this is a self-write via transaction ID only (most reliable method)
+  // We only check transaction ID, not writingInstanceId, to avoid false negatives
+  if (_isTransactionSelfWrite(newValue)) {
     return true;
   }
 
@@ -1721,30 +1725,16 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 }
 
 /**
- * Check if this is a self-write via any detection method
- * v1.6.3.5-v3 - Extracted to reduce _shouldIgnoreStorageChange complexity
+ * Check if this is a self-write via transaction ID
+ * v1.6.3.6-v2 - FIX Issue #1: Simplified from _isAnySelfWrite to only check transaction ID
+ * Other self-write detection methods are handled by content scripts
  * @param {Object} newValue - New storage value
  * @returns {boolean} True if self-write
  */
-function _isAnySelfWrite(newValue) {
-  // Check transaction ID
+function _isTransactionSelfWrite(newValue) {
+  // Check transaction ID - the most deterministic method
   if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
     console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
-    return true;
-  }
-  
-  // Check writingInstanceId (content script self-write)
-  if (newValue?.writingInstanceId && _isRecentlyProcessedInstanceWrite(newValue.writingInstanceId, newValue.saveId)) {
-    console.log('[Background] Ignoring recently processed instance write:', {
-      instanceId: newValue.writingInstanceId,
-      saveId: newValue.saveId
-    });
-    return true;
-  }
-
-  // Check legacy self-write method
-  if (_isSelfWrite(newValue, quickTabHandler)) {
-    console.log('[Background] Ignoring self-write:', newValue.writeSourceId);
     return true;
   }
   
