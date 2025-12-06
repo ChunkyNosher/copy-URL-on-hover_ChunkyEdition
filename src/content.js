@@ -1450,16 +1450,31 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
  * v1.6.3.7 - FIX Issue #3: Handle broadcasts from background
  *   When source is 'background-broadcast', do local cleanup without re-broadcasting.
  *   When source is 'Manager' or other, use standard closeById() path.
+ * v1.6.3.6-v5 - FIX Issue #4e: Added deletion receipt logging with correlation ID
  * @private
  * @param {string} quickTabId - Quick Tab ID to close
  * @param {Function} sendResponse - Response callback
  * @param {string} source - Source of the close request ('Manager', 'background-broadcast', etc.)
+ * @param {string} correlationId - Correlation ID for end-to-end tracing (optional)
  */
-function _handleCloseQuickTab(quickTabId, sendResponse, source = 'Manager') {
+function _handleCloseQuickTab(quickTabId, sendResponse, source = 'Manager', correlationId = null) {
   // v1.6.3.7 - Check if Quick Tab exists in this tab
   const hasInMap = quickTabsManager?.tabs?.has(quickTabId);
   const hasSnapshot = quickTabsManager?.minimizedManager?.hasSnapshot?.(quickTabId);
   const currentTabId = quickTabsManager?.currentTabId;
+  
+  // v1.6.3.6-v5 - FIX Issue #4e: Log deletion receipt
+  if (correlationId) {
+    console.log('[Content] 🗑️ DELETION RECEIVED:', {
+      correlationId,
+      quickTabId,
+      receiverTabId: currentTabId,
+      hasInMap,
+      hasSnapshot,
+      source,
+      timestamp: Date.now()
+    });
+  }
   
   if (!hasInMap && !hasSnapshot) {
     // Quick Tab not owned by this tab - skip silently for background broadcasts
@@ -1497,6 +1512,17 @@ function _handleCloseQuickTab(quickTabId, sendResponse, source = 'Manager') {
         // handleDestroy only cleans up local state without re-notifying background
         if (quickTabsManager?.destroyHandler?.handleDestroy) {
           quickTabsManager.destroyHandler.handleDestroy(id, 'background-broadcast');
+        }
+        
+        // v1.6.3.6-v5 - Log state applied
+        if (correlationId) {
+          console.log('[Content] 🗑️ DELETION APPLIED:', {
+            correlationId,
+            quickTabId,
+            receiverTabId: currentTabId,
+            stateApplied: true,
+            timestamp: Date.now()
+          });
         }
       }, 
       sendResponse
@@ -2166,9 +2192,11 @@ const ACTION_HANDLERS = {
   },
   'CLOSE_QUICK_TAB': (message, sendResponse) => {
     // v1.6.3.7 - FIX Issue #3: Pass source parameter for cross-tab broadcast handling
+    // v1.6.3.6-v5 - FIX Issue #4e: Pass correlationId for deletion tracing
     const source = message.source || 'Manager';
-    console.log('[Content] Received CLOSE_QUICK_TAB request:', { quickTabId: message.quickTabId, source });
-    _handleCloseQuickTab(message.quickTabId, sendResponse, source);
+    const correlationId = message.correlationId || null;
+    console.log('[Content] Received CLOSE_QUICK_TAB request:', { quickTabId: message.quickTabId, source, correlationId });
+    _handleCloseQuickTab(message.quickTabId, sendResponse, source, correlationId);
     return true;
   },
   'MINIMIZE_QUICK_TAB': (message, sendResponse) => {
