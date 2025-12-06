@@ -1,14 +1,41 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.2.0** - A feature-rich **Firefox/Chrome/Chromium** extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **Firefox Container isolation**, and Persistent Floating Panel Manager.
+**Version 1.6.3.6-v5** - A feature-rich **Firefox/Chrome/Chromium** extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **Per-Tab Isolation**, and Persistent Floating Panel Manager.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave, Opera, and other Chromium-based browsers using Manifest v2 with webextension-polyfill.
 
-**🔧 v1.6.2 Status:** Cross-tab sync now uses storage.onChanged exclusively ✅ (BroadcastChannel removed)
+**🔧 v1.6.3.6-v5 Status:** Critical stability fixes for cross-tab isolation, deletion loops, and logging infrastructure ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.0.11
+## 🎉 What's New in v1.6.3.6-v5
+
+**🔧 Critical Stability Fixes (December 6, 2025) ✅**
+
+Major fixes for cross-tab isolation, deletion handling, and logging infrastructure:
+
+- ✅ **Cross-Tab State Contamination Fixed** - Quick Tabs no longer leak between browser tabs
+  - `_shouldRenderOnThisTab()` now strictly rejects Quick Tabs with null/undefined `originTabId`
+  - Added `_checkTabScopeWithReason()` for unified tab scope validation
+  - Structured init logging shows total/validated/filtered counts
+- ✅ **Deletion Loop / Log Explosion Fixed** - Single deletion now produces single log sequence
+  - Deletion state machine prevents cascading loops
+  - DestroyHandler is now the single authoritative deletion path
+  - `_destroyedIds` Set prevents duplicate destruction
+- ✅ **Inconsistent UI Delete Behavior Fixed** - UI button and Manager close now behave identically
+  - Added `initiateDestruction()` unified entry point
+  - Both paths route through background-coordinated broadcasts
+  - Sender tab filtering prevents echo loops
+- ✅ **Logging Infrastructure Improved** - Full observability for storage and messaging
+  - Storage operation logging with timing and status (no payloads)
+  - Cross-tab message logging with correlation IDs
+  - Deletion propagation tracking end-to-end
+
+**Why This Matters:** The previous implementation had critical bugs where Quick Tabs would appear in wrong tabs, closing a Quick Tab would trigger infinite log spam, and deletion behavior differed between UI button and Manager. These issues are now fully resolved.
+
+---
+
+## 🎉 Previous Release: v1.6.0.11
 
 **🎯 Console Filter Integration & UI Polish (November 21, 2025) ✅**
 
@@ -406,4 +433,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Version 1.6.0.10** | [Changelog](docs/CHANGELOG.md) | [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) | [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
+**Version 1.6.3.6-v5** | [Changelog](docs/CHANGELOG.md) | [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) | [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
