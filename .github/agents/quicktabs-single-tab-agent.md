@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement (v1.6.3.6-v4)
+  window:created event coordination, per-tab scoping enforcement (v1.6.3.6-v5)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v5 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,12 +38,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.6-v4 Fixes:**
-1. **Storage Write Infinite Loop Fixed** - Triple-source entropy `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` for self-write detection
-2. **Loop Detection Logging** - Backlog warnings at `pendingWriteCount > 5/10`, duplicate saveId detection
-3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set, requires `forceEmpty=true` AND ownership history
+**v1.6.3.6-v5 Fixes:**
+1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
+2. **Deletion State Machine** - DestroyHandler._destroyedIds prevents deletion loops
+3. **Unified Deletion Path** - `initiateDestruction()` is single entry point
+4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with correlation IDs
 
-**v1.6.3.6 Patterns (Retained):**
+**v1.6.3.6-v4 Patterns (Retained):**
 - **Cross-tab filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check ownership
 - **Reduced timeouts** - 2000ms for storage/transaction cleanup
 
@@ -65,6 +66,8 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
+- [ ] Deletion state machine prevents loops (v1.6.3.6-v5)
 - [ ] Triple-source entropy generates unique IDs (v1.6.3.6-v4)
 - [ ] `lastWrittenTransactionId` self-write detection works (v1.6.3.6-v4)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
@@ -77,4 +80,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.6-v4 storage sync fixes and state management.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.6-v5 strict tab scoping and deletion state machine.**

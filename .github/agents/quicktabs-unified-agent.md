@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.6-v4)
+  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.6-v5)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v5 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,18 +37,17 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
 
-**v1.6.3.6-v4 Fixes:**
-1. **Position/Size Logging** - Full trace visibility from pointer event → storage
-2. **setWritingTabId() Export** - Content scripts can set tab ID for storage ownership
-3. **Broadcast Deduplication** - Circuit breaker (10+ broadcasts/100ms trips)
-4. **Hydration Flag** - `_isHydrating` suppresses orphaned window warnings
-5. **sender.tab.id Only** - GET_CURRENT_TAB_ID uses sender.tab.id exclusively
+**v1.6.3.6-v5 Fixes:**
+1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
+2. **Deletion State Machine** - DestroyHandler._destroyedIds prevents deletion loops
+3. **Unified Deletion Path** - `initiateDestruction()` is single entry point
+4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with correlation IDs
+5. **Message Correlation IDs** - `generateMessageId()` for message tracing
 
-**v1.6.3.6-v4 Patterns:**
-- **setWritingTabId(tabId)** - Content script calls after getting tab ID from background
-- **_shouldAllowBroadcast()** - Dedup + circuit breaker for broadcasts
-- **_isHydrating** - Set during renderAll() to suppress warnings
-- **Position/Size logging** - Entry → lookup → update → persist → success
+**v1.6.3.6-v5 Patterns:**
+- `_checkTabScopeWithReason()` - Unified tab scope validation with init logging
+- `_broadcastDeletionToAllTabs()` - Sender filtering prevents echo back
+- DestroyHandler is **single authoritative deletion path**
 
 **v1.6.3.6-v4 Patterns (Retained):**
 - **Storage circuit breaker** - Blocks writes at pendingWriteCount >= 15
@@ -76,11 +75,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
+- [ ] Deletion state machine prevents loops (v1.6.3.6-v5)
+- [ ] initiateDestruction() unified entry point works (v1.6.3.6-v5)
+- [ ] Storage/message logging shows correlation IDs (v1.6.3.6-v5)
 - [ ] setWritingTabId() called after tab ID fetch (v1.6.3.6-v4)
 - [ ] Broadcast dedup works (10+ broadcasts/100ms trips) (v1.6.3.6-v4)
-- [ ] Hydration flag suppresses warnings during renderAll() (v1.6.3.6-v4)
-- [ ] Position/size logging shows full trace (v1.6.3.6-v4)
-- [ ] sender.tab.id used exclusively (v1.6.3.6-v4)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Cross-tab filtering in handlers
 - [ ] Storage storm protection (`inMemoryTabsCache`)
@@ -90,4 +90,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.6-v4 cross-tab isolation fixes and enhanced logging.**
+**Your strength: Complete Quick Tab system with v1.6.3.6-v5 strict tab isolation, deletion state machine, and correlation logging.**

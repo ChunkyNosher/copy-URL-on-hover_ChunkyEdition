@@ -52,7 +52,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.6-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 

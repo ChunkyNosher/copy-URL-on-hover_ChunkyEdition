@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v4 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v5 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -40,14 +40,21 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.6-v4 Fixes:**
+**v1.6.3.6-v5 Fixes:**
+1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
+2. **Deletion State Machine** - DestroyHandler._destroyedIds prevents deletion loops
+3. **Unified Deletion Path** - `initiateDestruction()` is single entry point
+4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with correlation IDs
+5. **Message Correlation IDs** - `generateMessageId()` for message tracing
+
+**v1.6.3.6-v4 Fixes (Retained):**
 1. **Position/Size Logging** - Full trace visibility from pointer event → storage
 2. **setWritingTabId() Export** - Content scripts can set tab ID for storage ownership
 3. **Broadcast Deduplication** - Circuit breaker in background.js (10+ broadcasts/100ms trips)
 4. **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned window warnings
 5. **sender.tab.id Only** - GET_CURRENT_TAB_ID uses sender.tab.id, removed active tab fallback
 
-**v1.6.3.6-v4 Fixes (Retained):**
+**v1.6.3.6-v4 Fixes (Storage Retained):**
 1. **Storage Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`
 2. **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks when `tabId === null`
 3. **Enhanced Loop Detection** - Escalation warning at 250ms
@@ -104,6 +111,72 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 ❌ **Bad Fix:** Masks symptom, complex workaround, violates architecture, race conditions
 
 ---
+
+## v1.6.3.6-v5 Fix Patterns
+
+### Strict Tab Isolation Pattern (v1.6.3.6-v5)
+```javascript
+// UICoordinator.js - REJECT Quick Tabs with null/undefined originTabId
+_shouldRenderOnThisTab(tabData) {
+  const { shouldRender, reason } = this._checkTabScopeWithReason(tabData);
+  if (!shouldRender) {
+    console.log(`[UICoordinator] Skipping render: ${reason}`);
+  }
+  return shouldRender;
+}
+
+_checkTabScopeWithReason(tabData) {
+  if (!tabData.originTabId) {
+    return { shouldRender: false, reason: 'Missing originTabId' };
+  }
+  return { shouldRender: true, reason: 'Passed all checks' };
+}
+```
+
+### Deletion State Machine Pattern (v1.6.3.6-v5)
+```javascript
+// DestroyHandler.js - Prevent deletion loops with state tracking
+class DestroyHandler {
+  constructor() {
+    this._destroyedIds = new Set();
+  }
+
+  async initiateDestruction(quickTabId) {
+    if (this._destroyedIds.has(quickTabId)) {
+      return; // Already destroyed - breaks loops
+    }
+    this._destroyedIds.add(quickTabId);
+    // ... proceed with destruction
+  }
+}
+```
+
+### Unified Deletion Path Pattern (v1.6.3.6-v5)
+```javascript
+// background.js - Broadcast deletion with sender filtering
+function _broadcastDeletionToAllTabs(quickTabId, senderTabId) {
+  browser.tabs.query({}).then(tabs => {
+    tabs.forEach(tab => {
+      if (tab.id !== senderTabId) { // Filter sender
+        browser.tabs.sendMessage(tab.id, {
+          type: 'QUICK_TAB_DELETED',
+          quickTabId,
+          correlationId: generateMessageId()
+        });
+      }
+    });
+  });
+}
+```
+
+### Message Correlation IDs Pattern (v1.6.3.6-v5)
+```javascript
+// background.js - Generate unique correlation IDs
+let messageIdCounter = 0;
+function generateMessageId() {
+  return `msg-${Date.now()}-${++messageIdCounter}`;
+}
+```
 
 ## v1.6.3.6-v4 Fix Patterns
 
@@ -244,98 +317,18 @@ const CIRCUIT_BREAKER_THRESHOLD = 15;  // NEW - block all writes threshold
 const CIRCUIT_BREAKER_RESET_THRESHOLD = 10;  // NEW - auto-reset threshold
 ```
 
-## v1.6.3.6-v2 Fix Patterns (Retained)
+## v1.6.3.6-v2 Fix Patterns (Summary)
 
-### Triple-Source Entropy (v1.6.3.6-v2)
-```javascript
-// storage-utils.js - WRITING_INSTANCE_ID generation
-const WRITING_INSTANCE_ID = (() => {
-  const perfPart = typeof performance !== 'undefined' && performance.now ? 
-    performance.now().toString(36) : Math.random().toString(36);
-  const randomPart = Math.random().toString(36);
-  const cryptoPart = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
-  return `${perfPart}-${randomPart}-${cryptoPart}`;
-})();
-let writeCounter = 0; // Module-level counter incremented each write
-```
+**Triple-Source Entropy:** `WRITING_INSTANCE_ID` from `performance.now()`, `Math.random()`, `crypto.getRandomValues()`  
+**Self-Write Detection:** `lastWrittenTransactionId` tracks last written transaction  
+**Ownership History:** `previouslyOwnedTabIds` Set validates empty writes  
+**Loop Detection:** `saveIdWriteTracker`, `pendingWriteCount` backlog warnings
 
-### Deterministic Self-Write Detection (v1.6.3.6-v2)
-```javascript
-let lastWrittenTransactionId = null;
+## v1.6.3.6 Fix Patterns (Summary)
 
-// In isSelfWrite()
-function isSelfWrite(storageValue) {
-  // Check if transaction ID matches our last write
-  if (lastWrittenTransactionId && 
-      storageValue.transactionId === lastWrittenTransactionId) {
-    return true;
-  }
-  // ... other checks
-}
-```
-
-### Ownership History for Empty Writes (v1.6.3.6-v2)
-```javascript
-const previouslyOwnedTabIds = new Set();
-
-function _handleEmptyWriteValidation(tabId, forceEmpty) {
-  if (!forceEmpty) return { valid: false, reason: 'forceEmpty required' };
-  if (!previouslyOwnedTabIds.has(tabId)) {
-    return { valid: false, reason: 'no ownership history' };
-  }
-  return { valid: true };
-}
-```
-
-### Loop Detection Logging (v1.6.3.6-v2)
-```javascript
-const saveIdWriteTracker = new Map();
-const DUPLICATE_SAVEID_WINDOW_MS = 1000;
-const DUPLICATE_SAVEID_THRESHOLD = 2;
-
-// Backlog warnings
-if (pendingWriteCount > 10) {
-  console.error('[STORAGE] ⚠️ CRITICAL STORAGE WRITE BACKLOG:', pendingWriteCount);
-} else if (pendingWriteCount > 5) {
-  console.warn('[STORAGE] ⚠️ STORAGE WRITE BACKLOG:', pendingWriteCount);
-}
-```
-
-## v1.6.3.6 Fix Patterns (Retained)
-
-### Cross-Tab Filtering (v1.6.3.6)
-```javascript
-// content.js - Check if Quick Tab exists in this tab before processing
-function _handleRestoreQuickTab(quickTabId, sendResponse) {
-  // Check if Quick Tab exists in this tab's quickTabsMap or minimizedManager
-  const hasInMap = quickTabsManager?.tabs?.has(quickTabId);
-  const hasSnapshot = quickTabsManager?.minimizedManager?.hasSnapshot?.(quickTabId);
-  
-  if (!hasInMap && !hasSnapshot) {
-    // Quick Tab not on this tab, skip processing
-    return;
-  }
-  // Process restore...
-}
-```
-
-### Timeout Constants (v1.6.3.6)
-```javascript
-// Reduced from 5000ms to 2000ms for faster recovery
-const STORAGE_TIMEOUT_MS = 2000;
-const TRANSACTION_FALLBACK_CLEANUP_MS = 2000;
-```
-
-### Manager closeAllTabs Logging (v1.6.3.6)
-```javascript
-// quick-tabs-manager.js - Comprehensive logging
-async function closeAllTabs() {
-  console.log('[Manager] │ Close All button clicked');
-  console.log('[Manager] Close All: Pre-action state:', { tabCount, ids, ... });
-  console.log('[Manager] Close All: Dispatching COORDINATED_CLEAR_ALL_QUICK_TABS...');
-  // ... implementation with detailed logging
-}
-```
+**Cross-Tab Filtering:** Check `quickTabsMap`/`minimizedManager` before processing broadcasts  
+**Timeout Constants:** `STORAGE_TIMEOUT_MS` = 2000ms (down from 5000ms)  
+**Manager Logging:** `closeAllTabs()` logs full operation lifecycle
 
 ## Legacy Fix Patterns (Summary)
 
