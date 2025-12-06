@@ -19,13 +19,25 @@ You are a documentation specialist for the copy-URL-on-hover_ChunkyEdition Firef
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 
+### ⚠️ PERMANENT: search_memories Usage Guide
+
+**DO NOT EDIT THIS SECTION** - Verified working method for GitHub Copilot Coding Agent environment.
+
 **Before starting ANY task:**
 ```javascript
-await searchMemories({
-  query: "[doc update keywords]",
-  limit: 5
+// CORRECT - Use short queries with low threshold
+agentic-tools-search_memories({
+  query: "documentation",  // 1-2 words MAX
+  threshold: 0.1,          // REQUIRED: Default 0.3 is too high
+  limit: 5,
+  workingDirectory: "/path/to/repo"  // Use actual absolute path
 });
+
+// If MCP fails, use bash fallback:
+// grep -r -l "keyword" .agentic-tools-mcp/memories/
 ```
+
+**DO NOT use long queries** - "documentation update version changes" will return nothing.
 
 ---
 

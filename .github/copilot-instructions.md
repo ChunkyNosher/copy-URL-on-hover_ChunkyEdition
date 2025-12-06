@@ -262,9 +262,45 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 ## 🧠 Memory (Agentic-Tools MCP)
 
 **End of task:** `git add .agentic-tools-mcp/`, commit with `report_progress`  
-**Start of task:** `searchMemories({ query: "keywords", limit: 5 })`
+**Start of task:** Search for relevant memories before starting work
 
-**DO NOT USE** `store_memory` tool - use agentic-tools MCP instead.
+### ⚠️ PERMANENT: search_memories Usage Guide
+
+**DO NOT EDIT THIS SECTION** - Verified working method for GitHub Copilot Coding Agent environment.
+
+**Optimal search_memories Parameters:**
+```javascript
+agentic-tools-search_memories({
+  query: "single keyword",  // Use 1-2 words MAX, NOT long phrases
+  threshold: 0.1,           // REQUIRED: Default 0.3 is too high, use 0.1
+  limit: 5,                 // 5-10 results is optimal
+  workingDirectory: "/full/path/to/repo"  // Always use absolute path
+})
+```
+
+**Working Examples:**
+- ✅ `query: "storage"` - Finds storage-related memories
+- ✅ `query: "Quick Tab"` - Finds Quick Tab memories
+- ✅ `query: "bug"` - Finds bug fix memories
+- ✅ `query: "cross-tab"` - Finds cross-tab sync memories
+- ❌ `query: "deletion bug fix"` - Too many words, returns nothing
+- ❌ `query: "Quick Tab Manager synchronization issues"` - Too long
+
+**Bash Fallback (if search_memories fails):**
+```bash
+# Search memory file names and content
+grep -r -l "keyword" .agentic-tools-mcp/memories/ 2>/dev/null
+# View specific memory file
+cat .agentic-tools-mcp/memories/category/filename.json
+```
+
+**Key Rules:**
+1. Always use `threshold: 0.1` (critical - default is too high)
+2. Use single words or 2-word phrases only
+3. If compound query fails, try individual words separately
+4. Use bash grep as fallback for complex searches
+
+**DO NOT USE** `store_memory` tool - use agentic-tools MCP create_memory instead.
 
 ---
 
