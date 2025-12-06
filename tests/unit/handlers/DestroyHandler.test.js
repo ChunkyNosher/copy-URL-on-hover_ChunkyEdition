@@ -117,6 +117,30 @@ describe('DestroyHandler', () => {
         destroyHandler.handleDestroy('qt-999');
       }).not.toThrow();
     });
+
+    // v1.6.3.6-v5 - FIX Deletion Loop: Test that duplicate calls are prevented
+    test('should skip if ID was already destroyed (prevents deletion loop)', () => {
+      const eventSpy = jest.fn();
+      mockEventBus.on('state:deleted', eventSpy);
+
+      // First call should process normally
+      destroyHandler.handleDestroy('qt-123', 'UI');
+      expect(eventSpy).toHaveBeenCalledTimes(1);
+
+      // Second call should skip (ID already in _destroyedIds)
+      destroyHandler.handleDestroy('qt-123', 'UICoordinator');
+      
+      // state:deleted should NOT be emitted again
+      expect(eventSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test('wasRecentlyDestroyed() should return true after handleDestroy()', () => {
+      expect(destroyHandler.wasRecentlyDestroyed('qt-123')).toBe(false);
+      
+      destroyHandler.handleDestroy('qt-123');
+      
+      expect(destroyHandler.wasRecentlyDestroyed('qt-123')).toBe(true);
+    });
   });
 
   describe('closeById()', () => {

@@ -1,0 +1,8 @@
+{
+  "id": "a5c70449-63f7-4d68-948c-8a0eea65803d",
+  "title": "Deletion Loop Prevention Pattern",
+  "details": "## Deletion Loop Prevention Pattern (v1.6.3.6-v5)\n\n**Problem:** Closing a Quick Tab triggers massive log spam from deletion loop.\n\n**Root Cause:**\n1. DestroyHandler.handleDestroy() emits `state:deleted`\n2. UICoordinator listens and calls UICoordinator.destroy()\n3. UICoordinator.destroy() was calling tabWindow.destroy()\n4. tabWindow.destroy() triggers onDestroy callback → DestroyHandler → loop\n\n**Fix Pattern:**\n1. **DestroyHandler.handleDestroy()** - Check `_destroyedIds.has(id)` at START, return early if true\n2. **UICoordinator.destroy()** - DO NOT call tabWindow.destroy() - only handle Map cleanup\n3. **Authority Model:** DestroyHandler is the single authority for deletion (emits state:deleted)\n   UICoordinator is just a cleanup listener for state:deleted events\n\n**Key Rule:** Only ONE path should emit state:deleted event per Quick Tab deletion.",
+  "category": "fix-patterns",
+  "dateCreated": "2025-12-06T17:42:13.609Z",
+  "dateUpdated": "2025-12-06T17:49:59.780Z"
+}

@@ -51,6 +51,80 @@ let lastPersistedStateHash = 0;
 const STORAGE_CHANGE_COOLDOWN_MS = 50;
 let lastStorageChangeTime = 0;
 
+// v1.6.3.6-v5 - FIX Issue #4b: Storage operation logging infrastructure
+// Unique operation ID counter for tracing storage I/O
+let storageOperationCounter = 0;
+
+/**
+ * Generate unique storage operation ID
+ * v1.6.3.6-v5 - FIX Issue #4b: Track storage operations for debugging
+ * @returns {string} Unique operation ID
+ */
+function generateStorageOperationId() {
+  storageOperationCounter++;
+  return `op-${Date.now()}-${storageOperationCounter}`;
+}
+
+/**
+ * Log storage read operation (pre and post)
+ * v1.6.3.6-v5 - FIX Issue #4b: Storage access visibility
+ * Logs key, status, size (no payloads) and timing
+ * @param {string} operationId - Unique operation ID
+ * @param {string} key - Storage key being read
+ * @param {string} phase - 'start' or 'complete'
+ * @param {Object} details - Additional details (size, success, duration)
+ */
+function logStorageRead(operationId, key, phase, details = {}) {
+  if (phase === 'start') {
+    console.log('[StorageUtils] 📖 storage.get START:', {
+      operationId,
+      key,
+      timestamp: Date.now()
+    });
+  } else if (phase === 'complete') {
+    console.log('[StorageUtils] 📖 storage.get COMPLETE:', {
+      operationId,
+      key,
+      success: details.success,
+      dataFound: details.dataFound,
+      tabCount: details.tabCount ?? 'N/A',
+      durationMs: details.durationMs,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Log storage write operation (pre and post)
+ * v1.6.3.6-v5 - FIX Issue #4b: Storage access visibility
+ * Logs operation ID, size, completion status, timing (no payloads)
+ * @param {string} operationId - Unique operation ID
+ * @param {string} key - Storage key being written
+ * @param {string} phase - 'start' or 'complete'
+ * @param {Object} details - Additional details (size, success, duration)
+ */
+function logStorageWrite(operationId, key, phase, details = {}) {
+  if (phase === 'start') {
+    console.log('[StorageUtils] 📝 storage.set START:', {
+      operationId,
+      key,
+      tabCount: details.tabCount ?? 'N/A',
+      transactionId: details.transactionId ?? 'N/A',
+      timestamp: Date.now()
+    });
+  } else if (phase === 'complete') {
+    console.log('[StorageUtils] 📝 storage.set COMPLETE:', {
+      operationId,
+      key,
+      success: details.success,
+      tabCount: details.tabCount ?? 'N/A',
+      durationMs: details.durationMs,
+      transactionId: details.transactionId ?? 'N/A',
+      timestamp: Date.now()
+    });
+  }
+}
+
 // v1.6.3.5-v5 - FIX Issue #7: Event-driven transaction cleanup replaces fixed-delay
 // Transaction IDs are now kept until storage.onChanged event confirms processing
 // This prevents race conditions where cleanup happened before event fired
@@ -466,6 +540,7 @@ export function setOwnershipValidationEnabled(enabled) {
 /**
  * Capture current storage state as a snapshot for potential rollback
  * v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern implementation
+ * v1.6.3.6-v5 - FIX Issue #4b: Added storage read logging
  * 
  * @param {string} logPrefix - Prefix for log messages
  * @returns {Promise<Object|null>} Captured state snapshot or null on error
@@ -477,15 +552,42 @@ export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
     return null;
   }
   
+  const operationId = generateStorageOperationId();
+  const startTime = Date.now();
+  
+  // v1.6.3.6-v5 - Log storage read start
+  logStorageRead(operationId, STATE_KEY, 'start');
+  
   try {
     const result = await browserAPI.storage.local.get(STATE_KEY);
+    const durationMs = Date.now() - startTime;
+    
     stateSnapshot = result?.[STATE_KEY] || { tabs: [], timestamp: 0 };
+    const tabCount = stateSnapshot.tabs?.length || 0;
+    
+    // v1.6.3.6-v5 - Log storage read complete
+    logStorageRead(operationId, STATE_KEY, 'complete', {
+      success: true,
+      dataFound: !!result?.[STATE_KEY],
+      tabCount,
+      durationMs
+    });
+    
     console.log(`${logPrefix} State snapshot captured:`, {
-      tabCount: stateSnapshot.tabs?.length || 0,
+      tabCount,
       timestamp: stateSnapshot.timestamp
     });
     return stateSnapshot;
   } catch (err) {
+    const durationMs = Date.now() - startTime;
+    
+    // v1.6.3.6-v5 - Log storage read failure
+    logStorageRead(operationId, STATE_KEY, 'complete', {
+      success: false,
+      dataFound: false,
+      durationMs
+    });
+    
     console.error(`${logPrefix} Failed to capture state snapshot:`, err);
     return null;
   }
@@ -1303,6 +1405,7 @@ function _trackDuplicateSaveIdWrite(saveId, transactionId, _logPrefix) {
  * v1.6.3.4-v8 - FIX Issue #7: Extracted for queue implementation
  * v1.6.3.4-v12 - FIX Issue #1, #6: Enhanced logging with transaction sequencing
  * v1.6.3.6-v2 - FIX Issue #1, #2: Update lastWrittenTransactionId, add duplicate saveId tracking
+ * v1.6.3.6-v5 - FIX Issue #4b: Added storage write operation logging
  * @private
  */
 async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId) {
@@ -1325,6 +1428,16 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
   // v1.6.3.5-v5 - FIX Issue #7: Schedule fallback cleanup (in case storage.onChanged doesn't fire)
   scheduleFallbackCleanup(transactionId);
   
+  // v1.6.3.6-v5 - FIX Issue #4b: Generate operation ID for storage write logging
+  const operationId = generateStorageOperationId();
+  const startTime = Date.now();
+  
+  // v1.6.3.6-v5 - Log storage write start
+  logStorageWrite(operationId, STATE_KEY, 'start', {
+    tabCount,
+    transactionId
+  });
+  
   // v1.6.3.4-v12 - FIX Issue #6: Log transaction sequencing
   console.log(`${logPrefix} Storage write executing:`, {
     transaction: transactionId,
@@ -1341,6 +1454,8 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     const storagePromise = browserAPI.storage.local.set({ [STATE_KEY]: stateWithTxn });
     
     await Promise.race([storagePromise, timeout.promise]);
+    
+    const durationMs = Date.now() - startTime;
     
     // v1.6.3.4-v8 - Update previous tab count after successful write
     previousTabCount = tabCount;
@@ -1361,10 +1476,29 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
       console.log(`[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`);
     }
     
+    // v1.6.3.6-v5 - Log storage write complete (success)
+    logStorageWrite(operationId, STATE_KEY, 'complete', {
+      success: true,
+      tabCount,
+      durationMs,
+      transactionId
+    });
+    
     console.log(`${logPrefix} Storage write COMPLETED [${transactionId}] (${tabCount} tabs)`);
     return true;
   } catch (err) {
+    const durationMs = Date.now() - startTime;
+    
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
+    
+    // v1.6.3.6-v5 - Log storage write complete (failure)
+    logStorageWrite(operationId, STATE_KEY, 'complete', {
+      success: false,
+      tabCount,
+      durationMs,
+      transactionId
+    });
+    
     console.error(`${logPrefix} Storage write FAILED [${transactionId}]:`, err.message || err);
     return false;
   } finally {

@@ -10,10 +10,13 @@
  * v1.6.3.4 - FIX Issues #4, #6, #7: Add source tracking, consolidate all destroy logic
  * v1.6.3.5-v6 - FIX Diagnostic Issue #3: Add closeAll mutex to prevent duplicate executions
  * v1.6.3.5-v11 - FIX Issue #6: Notify background of deletions for immediate Manager update
+ * v1.6.3.6-v5 - FIX Deletion Loop: Early return if ID already destroyed
+ * v1.6.3.7 - FIX Issue #3: Add initiateDestruction() for unified deletion path
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
  * - Close Quick Tabs via closeById (calls tab.destroy())
+ * - Unified destruction via initiateDestruction() (cross-tab sync)
  * - Close all Quick Tabs via closeAll (with mutex protection)
  * - Cleanup minimized manager references
  * - Reset z-index when all tabs closed
@@ -21,8 +24,9 @@
  * - Notify background of deletions for Manager sidebar update
  * - Persist state to storage after destruction (debounced to prevent write storms)
  * - Log all destroy operations with source indication
+ * - Prevent deletion loops via _destroyedIds tracking
  *
- * @version 1.6.3.5-v11
+ * @version 1.6.3.7
  */
 
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
@@ -98,6 +102,13 @@ export class DestroyHandler {
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    */
   handleDestroy(id, source = 'unknown') {
+    // v1.6.3.6-v5 - FIX Deletion Loop: Early return if already destroyed
+    // This prevents the loop: UICoordinator.destroy() → state:deleted → DestroyHandler → loop
+    if (this._destroyedIds.has(id)) {
+      console.log(`[DestroyHandler] SKIPPED: ID already destroyed (source: ${source}):`, id);
+      return;
+    }
+
     // v1.6.3.4 - FIX Issue #6: Log with source indication
     console.log(`[DestroyHandler] Handling destroy for: ${id} (source: ${source})`);
 
@@ -300,6 +311,68 @@ export class DestroyHandler {
       console.warn(`[DestroyHandler] Tab not found for closeById (source: ${source}):`, id);
       // Still call handleDestroy to clean up any orphaned state
       this.handleDestroy(id, source);
+    }
+  }
+
+  /**
+   * Unified entry point for Quick Tab destruction
+   * v1.6.3.7 - FIX Issue #3: Unify UI and Manager deletion paths
+   * 
+   * This method provides a single authoritative deletion path that both UI button
+   * and Manager close button should use. It ensures:
+   * 1. Local cleanup via handleDestroy()
+   * 2. Background notification for cross-tab sync (with broadcast flag)
+   * 3. Storage persistence
+   * 
+   * @param {string} id - Quick Tab ID to destroy
+   * @param {string} source - Source of action ('UI', 'Manager', 'background', etc.)
+   * @param {boolean} broadcast - Whether to broadcast deletion to other tabs (default: true)
+   * @returns {Promise<void>}
+   */
+  async initiateDestruction(id, source = 'unknown', broadcast = true) {
+    console.log(`[DestroyHandler] initiateDestruction (source: ${source}, broadcast: ${broadcast}):`, id);
+    
+    // v1.6.3.7 - Check if already destroyed to prevent duplicate processing
+    if (this._destroyedIds.has(id)) {
+      console.log('[DestroyHandler] initiateDestruction SKIPPED - already destroyed:', id);
+      return;
+    }
+    
+    // Step 1: Local cleanup - handleDestroy handles Map, minimizedManager, DOM, and events
+    // Note: handleDestroy also calls _notifyBackgroundOfDeletion and _debouncedPersistToStorage
+    this.handleDestroy(id, source);
+    
+    // Step 2: If broadcast flag is true, explicitly request cross-tab broadcast
+    // This is redundant with handleDestroy's _notifyBackgroundOfDeletion, but ensures
+    // the broadcast flag is honored for cases where we need to suppress cross-tab sync
+    if (broadcast) {
+      await this._requestCrossTabBroadcast(id, source);
+    }
+    
+    console.log(`[DestroyHandler] initiateDestruction complete (source: ${source}):`, id);
+  }
+  
+  /**
+   * Request cross-tab broadcast of deletion via background script
+   * v1.6.3.7 - FIX Issue #3: Explicit cross-tab broadcast request
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of deletion
+   * @returns {Promise<void>}
+   */
+  async _requestCrossTabBroadcast(id, source) {
+    try {
+      await browser.runtime.sendMessage({
+        type: 'QUICK_TAB_STATE_CHANGE',
+        quickTabId: id,
+        changes: { deleted: true },
+        source: source || 'destroy',
+        requestBroadcast: true  // Explicit flag to request cross-tab broadcast
+      });
+      console.log(`[DestroyHandler] Requested cross-tab broadcast for deletion (source: ${source}):`, id);
+    } catch (err) {
+      // Background may not be available
+      console.debug('[DestroyHandler] Could not request cross-tab broadcast:', err.message);
     }
   }
 

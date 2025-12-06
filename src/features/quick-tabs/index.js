@@ -240,32 +240,95 @@ class QuickTabsManager {
   /**
    * Hydrate tabs from stored state
    * v1.6.3.4 - Helper to reduce complexity
+   * v1.6.3.6-v5 - FIX Cross-Tab State Contamination: Add comprehensive init logging
    * @private
    * @param {Array} tabs - Array of tab data from storage
    * @returns {number} Count of successfully hydrated tabs
    */
   _hydrateTabsFromStorage(tabs) {
+    // v1.6.3.6-v5 - FIX: Track validation results for comprehensive logging
+    const filterReasons = {
+      invalidData: 0,
+      noOriginTabId: 0,
+      noCurrentTabId: 0,
+      differentTab: 0,
+      alreadyExists: 0,
+      noHandler: 0,
+      error: 0
+    };
+
     let hydratedCount = 0;
     for (const tabData of tabs) {
-      const success = this._safeHydrateTab(tabData);
-      if (success) hydratedCount++;
+      const result = this._safeHydrateTabWithReason(tabData, filterReasons);
+      if (result.success) {
+        hydratedCount++;
+      }
     }
+
+    // v1.6.3.6-v5 - FIX: Comprehensive init logging (single structured log)
+    console.log('[QuickTabsManager] TAB SCOPE ISOLATION VALIDATION:', {
+      total: tabs.length,
+      passed: hydratedCount,
+      filtered: tabs.length - hydratedCount,
+      currentTabId: this.currentTabId,
+      filterReasons
+    });
+
     return hydratedCount;
   }
 
   /**
-   * Safely hydrate a single tab with error handling
-   * v1.6.3.4 - Helper to reduce nesting depth
+   * Safely hydrate a single tab with error handling and reason tracking
+   * v1.6.3.6-v5 - FIX: Added reason tracking for comprehensive logging
    * @private
    * @param {Object} tabData - Tab data from storage
-   * @returns {boolean} True if successful
+   * @param {Object} filterReasons - Object to track filter reasons
+   * @returns {{success: boolean, reason: string}} Result with success flag and reason
    */
-  _safeHydrateTab(tabData) {
+  _safeHydrateTabWithReason(tabData, filterReasons) {
     try {
-      return this._hydrateTab(tabData);
+      // Validate required fields
+      if (!this._isValidTabData(tabData)) {
+        filterReasons.invalidData++;
+        return { success: false, reason: 'invalidData' };
+      }
+
+      // Check tab scope validation with reason tracking
+      const skipResult = this._checkTabScopeWithReason(tabData);
+      if (skipResult.skip) {
+        filterReasons[skipResult.reason]++;
+        return { success: false, reason: skipResult.reason };
+      }
+
+      // Skip if tab already exists
+      if (this.tabs.has(tabData.id)) {
+        console.log('[QuickTabsManager] Tab already exists, skipping hydration:', tabData.id);
+        filterReasons.alreadyExists++;
+        return { success: false, reason: 'alreadyExists' };
+      }
+
+      // Skip if no createHandler available
+      if (!this.createHandler) {
+        console.warn('[QuickTabsManager] No createHandler available for hydration');
+        filterReasons.noHandler++;
+        return { success: false, reason: 'noHandler' };
+      }
+
+      // Perform hydration
+      console.log(`[QuickTabsManager] Hydrating tab: ${tabData.id} (minimized: ${tabData.minimized})`);
+      const options = this._buildHydrationOptions(tabData);
+      const optionsWithCallbacks = this._addHydrationCallbacks(options);
+
+      if (options.minimized) {
+        this._hydrateMinimizedTab(optionsWithCallbacks);
+      } else {
+        this._hydrateVisibleTab(optionsWithCallbacks);
+      }
+      return { success: true, reason: 'hydrated' };
     } catch (tabError) {
       console.error('[QuickTabsManager] Error hydrating individual tab:', tabData?.id, tabError);
-      return false;
+      filterReasons.error++;
+      return { success: false, reason: 'error' };
     }
   }
 
@@ -430,19 +493,40 @@ class QuickTabsManager {
   }
 
   /**
-   * Check if tab should be filtered by originTabId
+   * Check if tab should be filtered by originTabId (unified implementation with reason tracking)
    * v1.6.3.5-v2 - Extracted to reduce _hydrateTab complexity
+   * v1.6.3.6-v5 - FIX Cross-Tab State Contamination: STRICT filtering - reject missing originTabId
+   *              Consolidated to single implementation that tracks reasons
    * @private
    * @param {Object} tabData - Stored tab data
-   * @returns {boolean} True if tab should be skipped (filtered out)
+   * @returns {{skip: boolean, reason: string}} Result with skip flag and reason
    */
-  _shouldSkipDueToOriginTab(tabData) {
-    // Only filter if both originTabId and currentTabId are defined
+  _checkTabScopeWithReason(tabData) {
     const hasOriginTabId = tabData.originTabId !== null && tabData.originTabId !== undefined;
     const hasCurrentTabId = this.currentTabId !== null && this.currentTabId !== undefined;
     
-    if (!hasOriginTabId || !hasCurrentTabId) {
-      return false; // Can't filter without both IDs
+    // v1.6.3.6-v5 - FIX: If we don't have currentTabId, we CANNOT safely filter
+    // Reject all tabs until we know our tab ID to prevent cross-tab contamination
+    if (!hasCurrentTabId) {
+      console.warn('[QuickTabsManager] HYDRATION BLOCKED - No currentTabId set, cannot verify ownership:', {
+        id: tabData.id,
+        originTabId: tabData.originTabId,
+        reason: 'currentTabId is null/undefined'
+      });
+      return { skip: true, reason: 'noCurrentTabId' };
+    }
+    
+    // v1.6.3.6-v5 - FIX Cross-Tab State Contamination: Reject tabs with missing originTabId
+    // Previously, missing originTabId allowed tabs to render on ALL browser tabs
+    if (!hasOriginTabId) {
+      console.warn('[QuickTabsManager] HYDRATION BLOCKED - Orphaned Quick Tab has no originTabId:', {
+        id: tabData.id,
+        originTabId: tabData.originTabId,
+        currentTabId: this.currentTabId,
+        url: tabData.url,
+        reason: 'originTabId is null/undefined - cannot verify ownership'
+      });
+      return { skip: true, reason: 'noOriginTabId' };
     }
     
     const shouldRender = this._shouldRenderOnThisTab(tabData);
@@ -452,9 +536,20 @@ class QuickTabsManager {
         originTabId: tabData.originTabId,
         currentTabId: this.currentTabId
       });
-      return true;
+      return { skip: true, reason: 'differentTab' };
     }
-    return false;
+    return { skip: false, reason: 'passed' };
+  }
+
+  /**
+   * Check if tab should be filtered by originTabId (boolean wrapper for legacy compatibility)
+   * v1.6.3.6-v5 - Now wraps _checkTabScopeWithReason to avoid duplication
+   * @private
+   * @param {Object} tabData - Stored tab data
+   * @returns {boolean} True if tab should be skipped (filtered out)
+   */
+  _shouldSkipDueToOriginTab(tabData) {
+    return this._checkTabScopeWithReason(tabData).skip;
   }
 
   /**

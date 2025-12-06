@@ -58,6 +58,10 @@
  *   - Issue #3: Z-index broken after restore - handled by window.js z-index fix
  *   - Added setHandlers() method for deferred handler initialization
  *   - Added _buildCallbackOptions() for callback wiring in _createWindow()
+ * v1.6.3.6-v5 - FIX Deletion Loop (Issue 2 from v1636-diagnostics.md):
+ *   - destroy() method no longer calls tabWindow.destroy() - only handles Map cleanup
+ *   - DestroyHandler is the authoritative deletion path (emits state:deleted)
+ *   - UICoordinator.destroy() is just a cleanup listener for state:deleted events
  */
 
 import browser from 'webextension-polyfill';
@@ -626,36 +630,38 @@ export class UICoordinator {
    * Check if Quick Tab should be rendered on this tab (cross-tab scoping)
    * v1.6.3.5-v8 - FIX Issue #1: Enforce strict per-tab scoping
    * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #2: Stricter null originTabId handling
+   * v1.6.3.6-v5 - FIX Cross-Tab State Contamination: REJECT null originTabId instead of allowing
    *   Quick Tabs should only render in the browser tab that created them.
-   *   If originTabId is null, we now LOG A WARNING but still allow render for backward compat.
+   *   If originTabId is null/undefined, we now REJECT the render to prevent cross-tab leakage.
    * @private
    * @param {Object} quickTab - Quick Tab entity with originTabId property
    * @returns {boolean} True if Quick Tab should render on this tab
    */
   _shouldRenderOnThisTab(quickTab) {
-    // If we don't know our tab ID, allow rendering (backwards compatibility)
-    // TODO v1.6.3.6-v4: Remove this fallback once all tabs reliably have currentTabId set
-    if (this.currentTabId === null) {
-      console.warn(`${this._logPrefix} No currentTabId set - cross-tab filtering disabled:`, {
+    // If we don't know our tab ID, REJECT rendering to prevent cross-tab contamination
+    // v1.6.3.6-v5 - FIX: Changed from allowing to rejecting when currentTabId is null
+    if (this.currentTabId === null || this.currentTabId === undefined) {
+      console.warn(`${this._logPrefix} CROSS-TAB BLOCKED: No currentTabId set - cannot verify ownership:`, {
         quickTabId: quickTab.id,
-        reason: 'currentTabId is null'
+        originTabId: quickTab.originTabId,
+        reason: 'currentTabId is null/undefined - cannot perform ownership check'
       });
-      return true;
+      return false;
     }
     
-    // If Quick Tab has no originTabId, LOG WARNING and allow rendering (backwards compatibility)
-    // v1.6.3.6-v4 - FIX Issue #2: This is the root cause of cross-tab leakage
-    // Quick Tabs with null originTabId bypass filtering and appear on ALL tabs
+    // If Quick Tab has no originTabId, REJECT rendering to prevent cross-tab leakage
+    // v1.6.3.6-v5 - FIX Cross-Tab State Contamination: This is the root cause fix
+    // Quick Tabs with null originTabId previously bypassed filtering and appeared on ALL tabs
     const originTabId = quickTab.originTabId;
     if (originTabId === null || originTabId === undefined) {
-      console.warn(`${this._logPrefix} Quick Tab has null/undefined originTabId - cross-tab filtering BYPASSED:`, {
+      console.warn(`${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab has null/undefined originTabId - REJECTED:`, {
         quickTabId: quickTab.id,
         originTabId,
         currentTabId: this.currentTabId,
         url: quickTab.url,
-        WARNING: 'This Quick Tab will render on ALL tabs! Fix: ensure originTabId is set during creation'
+        reason: 'Orphaned Quick Tab - originTabId must be set during creation'
       });
-      return true;
+      return false;
     }
     
     // Only render if this is the origin tab
@@ -1715,6 +1721,11 @@ export class UICoordinator {
    * v1.6.3.4-v5 - FIX Bug #3: Verify DOM cleanup after destroy
    * v1.6.3.4-v10 - FIX Issue #5: Stop DOM monitoring on destroy
    * v1.6.3.4-v11 - FIX Issue #5: Enhanced Map lifecycle logging
+   * v1.6.3.6-v5 - FIX Deletion Loop: DO NOT call tabWindow.destroy() here
+   *   This method is called via state:deleted event from DestroyHandler.
+   *   If we call tabWindow.destroy() here, it triggers onDestroy callback back to
+   *   DestroyHandler, creating a loop. UICoordinator should only handle Map cleanup.
+   *   DestroyHandler is the authoritative deletion path.
    *
    * @param {string} quickTabId - ID of tab to destroy
    */
@@ -1735,18 +1746,19 @@ export class UICoordinator {
       return;
     }
 
-    console.log('[UICoordinator] Destroying tab:', quickTabId);
+    console.log('[UICoordinator] Cleaning up tab from Map (state:deleted handler):', quickTabId);
 
-    // Call tab's destroy method if it exists
-    if (tabWindow.destroy) {
-      tabWindow.destroy();
-    }
+    // v1.6.3.6-v5 - FIX Deletion Loop: DO NOT call tabWindow.destroy() here
+    // This method is invoked via the state:deleted event listener.
+    // DestroyHandler has already called tabWindow.destroy() and emitted state:deleted.
+    // Calling destroy() again would re-trigger onDestroy callback → DestroyHandler → loop.
+    // UICoordinator only handles Map cleanup - DestroyHandler is the authoritative deletion path.
 
     // Remove from map
     // v1.6.3.4-v11 - FIX Issue #5: Log Map removal with before/after sizes
     console.log('[UICoordinator] renderedTabs.delete():', {
       id: quickTabId,
-      reason: 'destroy',
+      reason: 'state:deleted event cleanup',
       mapSizeBefore,
       mapSizeAfter: mapSizeBefore - 1
     });
@@ -1762,7 +1774,7 @@ export class UICoordinator {
       this.minimizedManager.clearSnapshot(quickTabId);
     }
 
-    console.log(`${this._logPrefix} Tab destroyed:`, quickTabId, '| mapSize:', this.renderedTabs.size);
+    console.log(`${this._logPrefix} Tab cleanup complete:`, quickTabId, '| mapSize:', this.renderedTabs.size);
   }
 
   /**

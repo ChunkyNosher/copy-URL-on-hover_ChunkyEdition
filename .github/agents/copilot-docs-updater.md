@@ -19,13 +19,25 @@ You are a documentation specialist for the copy-URL-on-hover_ChunkyEdition Firef
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 
+### ⚠️ PERMANENT: search_memories Usage Guide
+
+**DO NOT EDIT THIS SECTION** - Verified working method for GitHub Copilot Coding Agent environment.
+
 **Before starting ANY task:**
 ```javascript
-await searchMemories({
-  query: "[doc update keywords]",
-  limit: 5
+// CORRECT - Use short queries with low threshold
+agentic-tools-search_memories({
+  query: "documentation",  // 1-2 words MAX
+  threshold: 0.1,          // REQUIRED: Default 0.3 is too high
+  limit: 5,
+  workingDirectory: "/path/to/repo"  // Use actual absolute path
 });
+
+// If MCP fails, use bash fallback:
+// grep -r -l "keyword" .agentic-tools-mcp/memories/
 ```
+
+**DO NOT use long queries** - "documentation update version changes" will return nothing.
 
 ---
 
@@ -99,13 +111,18 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.6-v4)
+- [ ] Version numbers match current release (1.6.3.6-v5)
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Cross-tab sync uses storage.onChanged + Background-as-Coordinator
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
+- [ ] **v1.6.3.6-v5:** Strict tab isolation documented
+- [ ] **v1.6.3.6-v5:** Deletion state machine documented
+- [ ] **v1.6.3.6-v5:** Unified deletion path documented
+- [ ] **v1.6.3.6-v5:** Storage operation logging documented
+- [ ] **v1.6.3.6-v5:** Message correlation IDs documented
 - [ ] **v1.6.3.6-v4:** Position/Size Logging documented
 - [ ] **v1.6.3.6-v4:** setWritingTabId() documented
 - [ ] **v1.6.3.6-v4:** Broadcast deduplication documented
@@ -118,7 +135,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.6-v4
+- **Current Version:** 1.6.3.6-v5
 - **Architecture Status:** DDD with Background-as-Coordinator ✅
 - **Cross-Tab Sync:** storage.onChanged + Background-as-Coordinator
 - **Key Features:**
@@ -128,7 +145,13 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload
 - **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp, writingTabId, writingInstanceId }`
-- **v1.6.3.6-v4 Fixes:**
+- **v1.6.3.6-v5 Fixes:**
+  1. Strict Tab Isolation - `_shouldRenderOnThisTab()` REJECTS null originTabId
+  2. Deletion State Machine - DestroyHandler._destroyedIds prevents loops
+  3. Unified Deletion Path - `initiateDestruction()` is single entry point
+  4. Storage Operation Logging - `logStorageRead()`, `logStorageWrite()` with correlation IDs
+  5. Message Correlation IDs - `generateMessageId()` for message tracing
+- **v1.6.3.6-v4 Fixes (Retained):**
   1. Position/Size Logging - full trace visibility
   2. setWritingTabId() Export - for content scripts
   3. Broadcast Deduplication - circuit breaker (10+ broadcasts/100ms)
@@ -191,7 +214,7 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.6-v4)
+- Version numbers (1.6.3.6-v5)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Background-as-Coordinator)
 - Sync mechanism (storage.onChanged + Background-as-Coordinator)
@@ -287,12 +310,24 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.6-v4)
+## Current Extension State (v1.6.3.6-v5)
 
 ### Architecture
 - **Status:** Background-as-Coordinator ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
+
+### v1.6.3.6-v5 Fixes
+1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
+2. **Deletion State Machine** - DestroyHandler._destroyedIds prevents deletion loops/log explosion
+3. **Unified Deletion Path** - `initiateDestruction()` is single entry point; UI button and Manager close identical
+4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with correlation IDs
+5. **Message Correlation IDs** - `generateMessageId()`, `logMessageDispatch()`, `logMessageReceipt()`
+
+### v1.6.3.6-v5 Patterns
+- `_checkTabScopeWithReason()` - Unified tab scope validation with init logging
+- `_broadcastDeletionToAllTabs()` - Sender filtering prevents echo back
+- DestroyHandler is **single authoritative deletion path**
 
 ### v1.6.3.6 Fixes
 1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing
@@ -327,7 +362,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.5-v9 or earlier | Update to 1.6.3.5-v11 |
+| v1.6.3.5-v9 or earlier | Update to 1.6.3.6-v5 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -339,10 +374,14 @@ await perplexity.research("documentation compression markdown");
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.6-v4
+- [ ] Version numbers updated to 1.6.3.6-v5
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged + Background-as-Coordinator documented
+- [ ] **v1.6.3.6-v5:** Strict tab isolation documented
+- [ ] **v1.6.3.6-v5:** Deletion state machine documented
+- [ ] **v1.6.3.6-v5:** Unified deletion path documented
+- [ ] **v1.6.3.6-v5:** Storage/message correlation logging documented
 - [ ] **v1.6.3.6:** Cross-tab filtering documented
 - [ ] **v1.6.3.6:** Transaction timeout reduction documented (2000ms)
 - [ ] **v1.6.3.6:** Button handler logging documented

@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, Background-as-Coordinator messaging, Per-Tab Ownership Validation,
-  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.6-v4)
+  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.6-v5)
 tools: ["*"]
 ---
 
@@ -28,14 +28,14 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v5 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6-v4 Cross-Tab Fixes (CRITICAL):**
-1. **sender.tab.id Only** - `handleGetCurrentTabId()` MUST use sender.tab.id, NOT fallback to active tab
-2. **setWritingTabId()** - New export for content scripts to set tab ID for storage ownership
-3. **Broadcast Deduplication** - Circuit breaker in background.js (10+ broadcasts/100ms trips)
-4. **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned window warnings
-5. **Position/Size Logging** - Full trace visibility for debugging
+**v1.6.3.6-v5 Cross-Tab Fixes (CRITICAL):**
+1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
+2. **Unified Deletion Path** - `initiateDestruction()` is single entry point
+3. **_broadcastDeletionToAllTabs()** - Sender filtering prevents echo back to initiator
+4. **Message Correlation IDs** - `generateMessageId()`, `logMessageDispatch()`, `logMessageReceipt()`
+5. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` track all ops
 
 **v1.6.3.6-v4 Sync Architecture (Retained):**
 - **storage.onChanged** - Primary sync (fires in ALL OTHER tabs)
@@ -49,9 +49,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
 **Key Functions:**
+- `_checkTabScopeWithReason(tabData)` - Unified tab scope validation (v1.6.3.6-v5)
+- `initiateDestruction(id)` - Single unified deletion entry point (v1.6.3.6-v5)
+- `_broadcastDeletionToAllTabs(quickTabId, senderTabId)` - Sender filtering (v1.6.3.6-v5)
+- `generateMessageId()` - Creates unique correlation IDs (v1.6.3.6-v5)
+- `logStorageRead()`/`logStorageWrite()` - Storage operation logging (v1.6.3.6-v5)
 - `setWritingTabId(tabId)` - Content script sets tab ID (v1.6.3.6-v4)
 - `handleGetCurrentTabId(_msg, sender)` - Returns sender.tab.id ONLY (v1.6.3.6-v4)
-- `_shouldAllowBroadcast(quickTabId, changes)` - Broadcast dedup (v1.6.3.6-v4)
 - `canCurrentTabModifyQuickTab(tabData, currentTabId)` - Check ownership
 - `validateOwnershipForWrite(tabs, currentTabId, forceEmpty)` - Filter tabs
 
@@ -76,10 +80,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
+- [ ] _broadcastDeletionToAllTabs() filters sender (v1.6.3.6-v5)
+- [ ] Message correlation IDs show full trace (v1.6.3.6-v5)
+- [ ] Storage operation logging works (v1.6.3.6-v5)
 - [ ] sender.tab.id used exclusively (no active tab fallback) (v1.6.3.6-v4)
 - [ ] setWritingTabId() called after tab ID fetch (v1.6.3.6-v4)
-- [ ] Broadcast dedup works (10+ broadcasts/100ms trips breaker) (v1.6.3.6-v4)
-- [ ] Hydration flag suppresses warnings during renderAll() (v1.6.3.6-v4)
 - [ ] Storage circuit breaker trips at `pendingWriteCount >= 15`
 - [ ] Cross-tab filtering works (`_handleRestoreQuickTab`/`_handleMinimizeQuickTab`)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
@@ -90,4 +96,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.6-v4 sender.tab.id fix, broadcast deduplication, and setWritingTabId().**
+**Your strength: Reliable cross-tab sync with v1.6.3.6-v5 strict tab isolation, unified deletion, and message correlation.**

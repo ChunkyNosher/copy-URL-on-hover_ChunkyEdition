@@ -5,6 +5,17 @@ import { QuickTab } from '../../../src/domain/QuickTab.js';
 import { UICoordinator } from '../../../src/features/quick-tabs/coordinators/UICoordinator.js';
 /* eslint-enable import/order */
 
+// v1.6.3.6-v5 - FIX: Helper to create QuickTab with originTabId for cross-tab filtering tests
+// QuickTab.create() doesn't support originTabId, so we add it as a runtime property
+// This mimics the behavior of CreateHandler which sets originTabId during creation
+const createQuickTabWithOriginTabId = (params) => {
+  // Extract originTabId from params (it's not supported by QuickTab.create)
+  const { originTabId, ...quickTabParams } = params;
+  const quickTab = QuickTab.create(quickTabParams);
+  quickTab.originTabId = originTabId;
+  return quickTab;
+};
+
 // Mock dependencies
 const createMockStateManager = () => ({
   getVisible: jest.fn(() => []),
@@ -79,12 +90,16 @@ describe('UICoordinator', () => {
   });
 
   describe('init()', () => {
+    // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
+    const MOCK_TAB_ID = 12345;
+    
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
         mockMinimizedManager,
         mockPanelManager,
-        mockEventBus
+        mockEventBus,
+        MOCK_TAB_ID
       );
     });
 
@@ -97,10 +112,11 @@ describe('UICoordinator', () => {
     });
 
     test('should render all visible tabs', async () => {
-      const mockQuickTab = QuickTab.create({
+      const mockQuickTab = createQuickTabWithOriginTabId({
         id: 'qt-1',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       mockStateManager.getVisible.mockReturnValue([mockQuickTab]);
@@ -122,25 +138,31 @@ describe('UICoordinator', () => {
   });
 
   describe('render()', () => {
+    // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
+    const MOCK_TAB_ID = 12345;
+    
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
         mockMinimizedManager,
         mockPanelManager,
-        mockEventBus
+        mockEventBus,
+        MOCK_TAB_ID // v1.6.3.6-v5 - Pass currentTabId for cross-tab filtering
       );
     });
 
     test('should create QuickTabWindow from QuickTab entity', () => {
       // v1.6.2.2 - Container field removed
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId to match currentTabId
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
         left: 100,
         top: 200,
         width: 400,
         height: 300,
-        title: 'Test Tab'
+        title: 'Test Tab',
+        originTabId: MOCK_TAB_ID
       });
 
       const result = uiCoordinator.render(quickTab);
@@ -161,9 +183,11 @@ describe('UICoordinator', () => {
     });
 
     test('should add tab to renderedTabs map', () => {
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
-        url: 'https://example.com'
+        url: 'https://example.com',
+        originTabId: MOCK_TAB_ID
       });
 
       uiCoordinator.render(quickTab);
@@ -172,9 +196,11 @@ describe('UICoordinator', () => {
     });
 
     test('should skip if already rendered', () => {
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
-        url: 'https://example.com'
+        url: 'https://example.com',
+        originTabId: MOCK_TAB_ID
       });
 
       const firstResult = uiCoordinator.render(quickTab);
@@ -187,10 +213,12 @@ describe('UICoordinator', () => {
     });
 
     test('should include visibility properties', () => {
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       // Note: solo() and mute() are mutually exclusive in QuickTab
@@ -210,17 +238,20 @@ describe('UICoordinator', () => {
     });
 
     test('should include mute visibility properties', () => {
+      // v1.6.3.6-v5 - FIX: Recreate with currentTabId for cross-tab filtering
       uiCoordinator = new UICoordinator(
         mockStateManager,
         mockMinimizedManager,
         mockPanelManager,
-        mockEventBus
+        mockEventBus,
+        MOCK_TAB_ID
       );
 
-      const quickTab = QuickTab.create({
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-124',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       quickTab.mute(200);
@@ -237,10 +268,12 @@ describe('UICoordinator', () => {
     });
 
     test('should include z-index', () => {
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       // QuickTab uses default zIndex=1000
@@ -255,20 +288,26 @@ describe('UICoordinator', () => {
   });
 
   describe('update()', () => {
+    // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
+    const MOCK_TAB_ID = 12345;
+    
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
         mockMinimizedManager,
         mockPanelManager,
-        mockEventBus
+        mockEventBus,
+        MOCK_TAB_ID
       );
     });
 
     test('should update existing tab window', () => {
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       // Render first
@@ -291,10 +330,12 @@ describe('UICoordinator', () => {
     });
 
     test('should render tab if not yet rendered', () => {
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       const spy = jest.spyOn(uiCoordinator, 'render');
@@ -305,10 +346,12 @@ describe('UICoordinator', () => {
     });
 
     test('should handle non-existent tab gracefully', () => {
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-nonexistent',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       expect(() => uiCoordinator.update(quickTab)).not.toThrow();
@@ -316,20 +359,28 @@ describe('UICoordinator', () => {
   });
 
   describe('destroy()', () => {
+    // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
+    const MOCK_TAB_ID = 12345;
+    
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
         mockMinimizedManager,
         mockPanelManager,
-        mockEventBus
+        mockEventBus,
+        MOCK_TAB_ID
       );
     });
 
-    test('should call tab destroy method', () => {
-      const quickTab = QuickTab.create({
+    test('should NOT call tab destroy method - UICoordinator handles Map cleanup only', () => {
+      // v1.6.3.6-v5 - FIX Deletion Loop: UICoordinator.destroy() no longer calls tabWindow.destroy()
+      // DestroyHandler is the authoritative deletion path. UICoordinator.destroy() is invoked
+      // via state:deleted event and should only handle Map cleanup - not re-trigger destruction.
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       uiCoordinator.render(quickTab);
@@ -339,14 +390,18 @@ describe('UICoordinator', () => {
 
       uiCoordinator.destroy('qt-123');
 
-      expect(tabWindow.destroy).toHaveBeenCalled();
+      // v1.6.3.6-v5 - FIX: UICoordinator should NOT call tabWindow.destroy()
+      // This prevents the deletion loop: UICoordinator → tabWindow.destroy() → onDestroy → DestroyHandler → loop
+      expect(tabWindow.destroy).not.toHaveBeenCalled();
     });
 
     test('should remove tab from renderedTabs map', () => {
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       uiCoordinator.render(quickTab);
@@ -362,10 +417,12 @@ describe('UICoordinator', () => {
     });
 
     test('should handle tab without destroy method', () => {
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       uiCoordinator.render(quickTab);
@@ -380,25 +437,32 @@ describe('UICoordinator', () => {
   });
 
   describe('renderAll()', () => {
+    // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
+    const MOCK_TAB_ID = 12345;
+    
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
         mockMinimizedManager,
         mockPanelManager,
-        mockEventBus
+        mockEventBus,
+        MOCK_TAB_ID
       );
     });
 
     test('should render all visible tabs from state', async () => {
-      const tab1 = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const tab1 = createQuickTabWithOriginTabId({
         id: 'qt-1',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
-      const tab2 = QuickTab.create({
+      const tab2 = createQuickTabWithOriginTabId({
         id: 'qt-2',
         url: 'https://test.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       mockStateManager.getVisible.mockReturnValue([tab1, tab2]);
@@ -422,12 +486,16 @@ describe('UICoordinator', () => {
   });
 
   describe('setupStateListeners()', () => {
+    // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
+    const MOCK_TAB_ID = 12345;
+    
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
         mockMinimizedManager,
         mockPanelManager,
-        mockEventBus
+        mockEventBus,
+        MOCK_TAB_ID
       );
     });
 
@@ -435,10 +503,12 @@ describe('UICoordinator', () => {
       uiCoordinator.setupStateListeners();
       const spy = jest.spyOn(uiCoordinator, 'render');
 
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-1',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
       mockEventBus.emit('state:added', { quickTab });
 
@@ -449,10 +519,12 @@ describe('UICoordinator', () => {
       uiCoordinator.setupStateListeners();
       const spy = jest.spyOn(uiCoordinator, 'update');
 
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-1',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
       mockEventBus.emit('state:updated', { quickTab });
 
@@ -471,18 +543,24 @@ describe('UICoordinator', () => {
   });
 
   describe('Integration', () => {
+    // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
+    const MOCK_TAB_ID = 12345;
+    
     test('should handle full lifecycle', async () => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
         mockMinimizedManager,
         mockPanelManager,
-        mockEventBus
+        mockEventBus,
+        MOCK_TAB_ID
       );
 
-      const quickTab = QuickTab.create({
+      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+      const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
-        container: 'firefox-default'
+        container: 'firefox-default',
+        originTabId: MOCK_TAB_ID
       });
 
       mockStateManager.getVisible.mockReturnValue([quickTab]);

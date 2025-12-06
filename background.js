@@ -2236,6 +2236,101 @@ if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAc
 // Phase 1: Message handlers (non-breaking, parallel with storage events)
 // Phase 2-3: Content script state changes via messages + Manager remote control
 
+// ==================== v1.6.3.6-v5 MESSAGE LOGGING INFRASTRUCTURE ====================
+// FIX Issue #4c: Cross-tab message broadcast logging
+// Provides visibility into message dispatch and receipt
+
+/**
+ * Unique message ID counter for tracing message flow
+ * v1.6.3.6-v5 - FIX Issue #4c: Track message flow across tabs
+ */
+let messageIdCounter = 0;
+
+/**
+ * Generate unique message ID for correlation
+ * v1.6.3.6-v5 - FIX Issue #4c: Correlation IDs for message tracing
+ * @returns {string} Unique message ID
+ */
+function generateMessageId() {
+  messageIdCounter++;
+  return `msg-${Date.now()}-${messageIdCounter}`;
+}
+
+/**
+ * Log message dispatch (outgoing)
+ * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message broadcast logging
+ * Logs sender tab ID, message type, timestamp (no payloads)
+ * @param {string} messageId - Unique message ID for correlation
+ * @param {string} messageType - Type of message being sent
+ * @param {number} senderTabId - Sender tab ID
+ * @param {string} target - Target description ('broadcast', 'sidebar', or specific tab ID)
+ */
+function logMessageDispatch(messageId, messageType, senderTabId, target) {
+  console.log('[Background] 📤 MESSAGE DISPATCH:', {
+    messageId,
+    messageType,
+    senderTabId,
+    target,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log message receipt (incoming)
+ * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message logging
+ * Logs receiver context, message type, timestamp
+ * @param {string} messageId - Unique message ID for correlation (if available)
+ * @param {string} messageType - Type of message received
+ * @param {number} senderTabId - Sender tab ID
+ */
+function logMessageReceipt(messageId, messageType, senderTabId) {
+  console.log('[Background] 📥 MESSAGE RECEIPT:', {
+    messageId: messageId || 'N/A',
+    messageType,
+    senderTabId,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log deletion event propagation
+ * v1.6.3.6-v5 - FIX Issue #4e: State deletion propagation logging
+ * Logs when deletion event is submitted and received
+ * @param {string} correlationId - Unique ID for end-to-end tracing
+ * @param {string} phase - 'submit' or 'received'
+ * @param {string} quickTabId - Quick Tab ID being deleted
+ * @param {Object} details - Additional context (source, target tabs, etc.)
+ */
+function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) {
+  if (phase === 'submit') {
+    console.log('[Background] 🗑️ DELETION SUBMIT:', {
+      correlationId,
+      quickTabId,
+      source: details.source,
+      excludeTabId: details.excludeTabId,
+      timestamp: Date.now()
+    });
+  } else if (phase === 'received') {
+    console.log('[Background] 🗑️ DELETION RECEIVED:', {
+      correlationId,
+      quickTabId,
+      receiverTabId: details.receiverTabId,
+      stateApplied: details.stateApplied,
+      timestamp: Date.now()
+    });
+  } else if (phase === 'broadcast-complete') {
+    console.log('[Background] 🗑️ DELETION BROADCAST COMPLETE:', {
+      correlationId,
+      quickTabId,
+      totalTabs: details.totalTabs,
+      successCount: details.successCount,
+      timestamp: Date.now()
+    });
+  }
+}
+
+// ==================== END MESSAGE LOGGING INFRASTRUCTURE ====================
+
 /**
  * Track which tab hosts each Quick Tab
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Enable Manager remote control
@@ -2247,6 +2342,7 @@ const quickTabHostTabs = new Map();
  * Handle QUICK_TAB_STATE_CHANGE message from content scripts
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
  * v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes (deleted: true) by removing from cache
+ * v1.6.3.6-v5 - FIX Issue #4c: Added message receipt logging
  * Background becomes the coordinator, updating cache and broadcasting to other contexts
  * @param {Object} message - Message containing state change
  * @param {Object} sender - Sender info (includes tab.id)
@@ -2254,6 +2350,10 @@ const quickTabHostTabs = new Map();
 async function handleQuickTabStateChange(message, sender) {
   const { quickTabId, changes, source } = message;
   const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
+  
+  // v1.6.3.6-v5 - FIX Issue #4c: Log message receipt
+  const messageId = message.messageId || generateMessageId();
+  logMessageReceipt(messageId, 'QUICK_TAB_STATE_CHANGE', sourceTabId);
   
   console.log('[Background] QUICK_TAB_STATE_CHANGE received:', {
     quickTabId,
@@ -2302,11 +2402,21 @@ function _updateQuickTabHostTracking(quickTabId, sourceTabId) {
 /**
  * Handle Quick Tab deletion
  * v1.6.3.5-v11 - Extracted from handleQuickTabStateChange to reduce complexity
+ * v1.6.3.6-v5 - FIX Issue #4e: Added deletion propagation logging
  * @param {string} quickTabId - Quick Tab ID
  * @param {string} source - Source of deletion
  * @param {number} sourceTabId - Source browser tab ID
  */
 async function _handleQuickTabDeletion(quickTabId, source, sourceTabId) {
+  // v1.6.3.6-v5 - FIX Issue #4e: Generate correlation ID for deletion tracing
+  const correlationId = `del-${Date.now()}-${quickTabId.substring(0, 8)}`;
+  
+  // v1.6.3.6-v5 - Log deletion submission
+  logDeletionPropagation(correlationId, 'submit', quickTabId, {
+    source,
+    excludeTabId: sourceTabId
+  });
+  
   console.log('[Background] Processing deletion for:', quickTabId);
   const beforeCount = globalQuickTabState.tabs.length;
   globalQuickTabState.tabs = globalQuickTabState.tabs.filter(t => t.id !== quickTabId);
@@ -2318,11 +2428,12 @@ async function _handleQuickTabDeletion(quickTabId, source, sourceTabId) {
   console.log('[Background] Removed tab from cache:', {
     quickTabId,
     beforeCount,
-    afterCount: globalQuickTabState.tabs.length
+    afterCount: globalQuickTabState.tabs.length,
+    correlationId
   });
   
-  // Broadcast deletion to Manager
-  await broadcastQuickTabStateUpdate(quickTabId, { deleted: true }, source, sourceTabId);
+  // Broadcast deletion to Manager (with correlation ID for tracing)
+  await broadcastQuickTabStateUpdate(quickTabId, { deleted: true, correlationId }, source, sourceTabId);
 }
 
 /**
@@ -2419,6 +2530,8 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * Broadcast QUICK_TAB_STATE_UPDATED to Manager and other tabs
  * v1.6.3.5-v3 - FIX Architecture Phase 1: Background broadcasts state changes
  * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
+ * v1.6.3.6-v5 - FIX Issue #4c: Added message dispatch logging
+ * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
@@ -2436,14 +2549,21 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     return;
   }
   
+  // v1.6.3.6-v5 - FIX Issue #4c: Generate message ID for correlation
+  const messageId = generateMessageId();
+  
   const message = {
     type: 'QUICK_TAB_STATE_UPDATED',
+    messageId, // v1.6.3.6-v5: Include message ID for tracing
     quickTabId,
     changes,
     source: 'background',
     originalSource: source,
     timestamp: Date.now()
   };
+  
+  // v1.6.3.6-v5 - FIX Issue #4c: Log message dispatch to sidebar
+  logMessageDispatch(messageId, 'QUICK_TAB_STATE_UPDATED', excludeTabId, 'sidebar');
   
   // v1.6.3.6-v4 - FIX Issue #4: Log trigger source before broadcast
   console.log('[Background] Broadcasting QUICK_TAB_STATE_UPDATED:', {
@@ -2462,10 +2582,107 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     // Sidebar may not be open - ignore
   }
   
-  // Note: We don't broadcast to other content scripts here because:
-  // 1. storage.onChanged handles cross-tab sync
-  // 2. Adding tab broadcasts could cause feedback loops
-  // In Phase 4, this will be the primary sync mechanism
+  // v1.6.3.7 - FIX Issue #3: For deletions, broadcast to ALL tabs (except sender)
+  // This ensures UI button and Manager button produce identical cross-tab results
+  if (changes?.deleted === true) {
+    // v1.6.3.6-v5 - FIX Issue #4e: Pass correlation ID for deletion tracing
+    await _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, changes.correlationId);
+  }
+}
+
+/**
+ * Send deletion message to a single tab
+ * v1.6.3.7 - FIX Issue #3: Extracted to reduce _broadcastDeletionToAllTabs nesting depth
+ * v1.6.3.6-v5 - FIX Issue #4e: Added correlationId for end-to-end tracing
+ * @private
+ * @param {number} tabId - Tab ID to send message to
+ * @param {string} quickTabId - Quick Tab ID being deleted
+ * @param {string} correlationId - Correlation ID for tracing
+ * @returns {Promise<boolean>} True if message was sent successfully
+ */
+async function _sendDeletionToTab(tabId, quickTabId, correlationId) {
+  try {
+    await browser.tabs.sendMessage(tabId, {
+      action: 'CLOSE_QUICK_TAB',
+      quickTabId,
+      source: 'background-broadcast',
+      correlationId // v1.6.3.6-v5: Pass correlation ID for deletion tracing
+    });
+    return true;
+  } catch (_err) {
+    // Content script may not be loaded in this tab - ignore
+    return false;
+  }
+}
+
+/**
+ * Process single tab for deletion broadcast
+ * v1.6.3.7 - Extracted to reduce nesting depth in _broadcastDeletionToAllTabs
+ * v1.6.3.6-v5 - FIX Issue #4e: Added correlationId for end-to-end tracing
+ * @private
+ * @param {Object} tab - Browser tab object
+ * @param {string} quickTabId - Quick Tab ID being deleted
+ * @param {number} excludeTabId - Tab to exclude from broadcast
+ * @param {string} correlationId - Correlation ID for tracing
+ * @returns {Promise<{ sent: boolean, skipped: boolean }>}
+ */
+async function _processDeletionForTab(tab, quickTabId, excludeTabId, correlationId) {
+  // Skip the sender tab to prevent echo/loop
+  if (tab.id === excludeTabId) {
+    return { sent: false, skipped: true };
+  }
+  
+  const success = await _sendDeletionToTab(tab.id, quickTabId, correlationId);
+  return { sent: success, skipped: false };
+}
+
+/**
+ * Broadcast deletion event to all content scripts except the sender tab
+ * v1.6.3.7 - FIX Issue #3: Unified deletion behavior across UI and Manager paths
+ * v1.6.3.6-v5 - FIX Issue #4e: Added deletion propagation logging with correlation IDs
+ * @private
+ * @param {string} quickTabId - Quick Tab ID being deleted
+ * @param {string} source - Source of deletion
+ * @param {number} excludeTabId - Tab to exclude from broadcast (the source tab)
+ * @param {string} correlationId - Correlation ID for end-to-end tracing
+ */
+async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, correlationId) {
+  // v1.6.3.6-v5 - FIX Issue #4e: Use provided correlation ID or generate one
+  const corrId = correlationId || `del-${Date.now()}-${quickTabId.substring(0, 8)}`;
+  
+  console.log('[Background] Broadcasting deletion to all tabs:', {
+    quickTabId,
+    source,
+    excludeTabId,
+    correlationId: corrId
+  });
+  
+  try {
+    const tabs = await browser.tabs.query({});
+    const results = await Promise.all(
+      tabs.map(tab => _processDeletionForTab(tab, quickTabId, excludeTabId, corrId))
+    );
+    
+    const successCount = results.filter(r => r.sent).length;
+    const skipCount = results.filter(r => r.skipped).length;
+    
+    // v1.6.3.6-v5 - FIX Issue #4e: Log deletion broadcast complete with correlation ID
+    logDeletionPropagation(corrId, 'broadcast-complete', quickTabId, {
+      totalTabs: tabs.length,
+      successCount,
+      skipCount
+    });
+    
+    console.log('[Background] Deletion broadcast complete:', {
+      quickTabId,
+      totalTabs: tabs.length,
+      successCount,
+      skipCount,
+      correlationId: corrId
+    });
+  } catch (err) {
+    console.error('[Background] Error broadcasting deletion:', err.message);
+  }
 }
 
 /**

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.6-v4  
+**Version:** 1.6.3.6-v5  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -22,18 +22,23 @@
 
 **v1.6.3.5-v10 Fixes:** Callback wiring (`setHandlers()`, `_buildCallbackOptions()`), z-index after append, cross-tab scoping, storage corruption (`forceEmpty`)
 
-**v1.6.3.6-v4 Fixes:**
-1. **Position/Size Logging** - Full trace visibility from pointer event → background → storage
-2. **setWritingTabId() Export** - Content scripts can set tab ID for storage ownership
-3. **Broadcast Deduplication** - Circuit breaker in background.js (10+ broadcasts/100ms trips)
-4. **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned window warnings
-5. **sender.tab.id Only** - GET_CURRENT_TAB_ID uses sender.tab.id, removed active tab fallback
+**v1.6.3.6-v5 Fixes:**
+1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS Quick Tabs with null/undefined originTabId
+2. **Deletion State Machine** - DestroyHandler._destroyedIds prevents deletion loops/log explosion
+3. **Unified Deletion Path** - `initiateDestruction()` is single entry point; UI button and Manager close produce identical behavior
+4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with correlation IDs in storage-utils.js
+5. **Message Correlation IDs** - `generateMessageId()`, `logMessageDispatch()`, `logMessageReceipt()` in background.js
+
+**v1.6.3.6-v5 Patterns:**
+- `_checkTabScopeWithReason()` - Unified tab scope validation with structured init logging
+- `_broadcastDeletionToAllTabs()` - Sender filtering prevents echo back to initiator
+- DestroyHandler is the **single authoritative deletion path** (UICoordinator.destroy() only handles Map cleanup)
 
 **v1.6.3.6-v4 Fixes (Retained):**
 1. **Circuit Breaker Pattern** - Blocks ALL writes when `pendingWriteCount >= 15`, auto-resets below 10
 2. **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks when `tabId === null`
-3. **Enhanced Loop Detection** - Escalation warning at 250ms, `DUPLICATE_SAVEID_THRESHOLD` = 1
-4. **Faster Transaction Cleanup** - `TRANSACTION_FALLBACK_CLEANUP_MS` = 500ms
+3. **Position/Size Logging** - Full trace visibility from pointer event → storage
+4. **Broadcast Deduplication** - Circuit breaker in background.js (10+ broadcasts/100ms trips)
 
 **v1.6.3.6 Fixes (Retained):**
 1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager
@@ -112,13 +117,25 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.6-v4 Patterns
+## 🆕 v1.6.3.6-v5 Patterns
 
-- **setWritingTabId()** - New export from `storage-utils.js` for content scripts to set tab ID
-- **Broadcast Deduplication** - Circuit breaker in background.js trips at 10+ broadcasts/100ms
-- **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned window warnings
-- **Position/Size Logging** - Full trace: `handlePositionUpdate()` → `updateQuickTabProperty()` → `saveStateToStorage()`
-- **sender.tab.id Only** - GET_CURRENT_TAB_ID MUST use sender.tab.id, NOT cached/fallback values
+- **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId (rejects instead of accepts)
+- **_checkTabScopeWithReason()** - Unified validation with structured init logging (total/validated/filtered counts)
+- **Deletion State Machine** - DestroyHandler._destroyedIds Set prevents deletion loops
+- **initiateDestruction()** - Single unified entry point for all deletions
+- **_broadcastDeletionToAllTabs()** - Sender filtering prevents echo back to deletion initiator
+- **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` track all storage ops
+- **Message Correlation IDs** - `generateMessageId()` creates unique IDs for message tracing
+
+### v1.6.3.6-v5 Key Files
+
+| File | New Features (v1.6.3.6-v5) |
+|------|---------------------------|
+| `UICoordinator.js` | `_checkTabScopeWithReason()`, strict null originTabId rejection |
+| `DestroyHandler.js` | `_destroyedIds` Set, `initiateDestruction()`, single authority |
+| `background.js` | `_broadcastDeletionToAllTabs()`, `generateMessageId()`, `logMessageDispatch()` |
+| `storage-utils.js` | `logStorageRead()`, `logStorageWrite()`, operation correlation IDs |
+| `content.js` | `logMessageReceipt()` with correlation IDs |
 
 ### v1.6.3.6-v4 Patterns (Retained)
 
@@ -181,7 +198,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | UICoordinator | `setHandlers()`, `_buildCallbackOptions()`, `clearAll()` |
 | VisibilityHandler | `_executeRestore()`, `_applyZIndexUpdate()` |
 | QuickTabWindow | `rewireCallbacks()`, `_logIfStateDesync()` |
-| DestroyHandler | `_closeAllInProgress` mutex |
+| DestroyHandler | `_closeAllInProgress` mutex, `_destroyedIds` Set, `initiateDestruction()` |
 
 ---
 
@@ -191,7 +208,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 |--------|-------------|
 | `STATE_KEY` | Storage key (`quick_tabs_state_v2`) |
 | `WRITING_INSTANCE_ID` | Triple-source entropy unique ID |
-| `setWritingTabId(tabId)` | Set tab ID for content scripts (v1.6.3.6-v4) |
+| `logStorageRead()`, `logStorageWrite()` | Storage operation logging with correlation IDs (v1.6.3.6-v5) |
 | `canCurrentTabModifyQuickTab()` | Check tab ownership |
 | `validateOwnershipForWrite(tabs, tabId, forceEmpty)` | Filter tabs by ownership |
 | `isSelfWrite(storageValue)` | Check if write from current tab |
@@ -210,8 +227,8 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 - Coordinated clear, closeAll mutex, `window:created` event
 - DOM lookup (`__quickTabWindow`), `data-quicktab-id`, `DragController.updateElement()`
 - Cross-tab filtering in handlers prevents ghost Quick Tabs
+- **v1.6.3.6-v5:** Strict tab isolation, deletion state machine, unified deletion path, storage/message logging
 - **v1.6.3.6-v4:** setWritingTabId(), broadcast dedup, hydration flag, position/size logging
-- **v1.6.3.6-v4:** Storage circuit breaker, fail-closed tab ID validation, escalation warnings
 
 ---
 
@@ -245,9 +262,45 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 ## 🧠 Memory (Agentic-Tools MCP)
 
 **End of task:** `git add .agentic-tools-mcp/`, commit with `report_progress`  
-**Start of task:** `searchMemories({ query: "keywords", limit: 5 })`
+**Start of task:** Search for relevant memories before starting work
 
-**DO NOT USE** `store_memory` tool - use agentic-tools MCP instead.
+### ⚠️ PERMANENT: search_memories Usage Guide
+
+**DO NOT EDIT THIS SECTION** - Verified working method for GitHub Copilot Coding Agent environment.
+
+**Optimal search_memories Parameters:**
+```javascript
+agentic-tools-search_memories({
+  query: "single keyword",  // Use 1-2 words MAX, NOT long phrases
+  threshold: 0.1,           // REQUIRED: Default 0.3 is too high, use 0.1
+  limit: 5,                 // 5-10 results is optimal
+  workingDirectory: "/full/path/to/repo"  // Always use absolute path
+})
+```
+
+**Working Examples:**
+- ✅ `query: "storage"` - Finds storage-related memories
+- ✅ `query: "Quick Tab"` - Finds Quick Tab memories
+- ✅ `query: "bug"` - Finds bug fix memories
+- ✅ `query: "cross-tab"` - Finds cross-tab sync memories
+- ❌ `query: "deletion bug fix"` - Too many words, returns nothing
+- ❌ `query: "Quick Tab Manager synchronization issues"` - Too long
+
+**Bash Fallback (if search_memories fails):**
+```bash
+# Search memory file names and content
+grep -r -l "keyword" .agentic-tools-mcp/memories/ 2>/dev/null
+# View specific memory file
+cat .agentic-tools-mcp/memories/category/filename.json
+```
+
+**Key Rules:**
+1. Always use `threshold: 0.1` (critical - default is too high)
+2. Use single words or 2-word phrases only
+3. If compound query fails, try individual words separately
+4. Use bash grep as fallback for complex searches
+
+**DO NOT USE** `store_memory` tool - use agentic-tools MCP create_memory instead.
 
 ---
 
@@ -263,13 +316,13 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ### Key Files
 
-| File | Key Features (v1.6.3.6-v4) |
+| File | Key Features (v1.6.3.6-v5) |
 |------|---------------------------|
-| `background.js` | Broadcast dedup, circuit breaker (10+/100ms), `_shouldAllowBroadcast()` |
-| `src/content.js` | `setWritingTabId()` call after tab ID fetch, cross-tab filtering |
-| `src/utils/storage-utils.js` | `setWritingTabId()` export, circuit breaker, fail-closed validation |
-| `QuickTabHandler.js` | sender.tab.id ONLY, position/size logging, `handleGetCurrentTabId()` |
-| `UICoordinator.js` | `_isHydrating` flag, `setHandlers()`, `_buildCallbackOptions()` |
+| `background.js` | `_broadcastDeletionToAllTabs()`, `generateMessageId()`, message correlation |
+| `src/content.js` | `logMessageReceipt()` with correlation IDs, cross-tab filtering |
+| `src/utils/storage-utils.js` | `logStorageRead()`, `logStorageWrite()`, operation logging |
+| `UICoordinator.js` | `_checkTabScopeWithReason()`, strict null originTabId rejection |
+| `DestroyHandler.js` | `_destroyedIds` Set, `initiateDestruction()`, single authority path |
 | `CreateHandler.js` | `_getOriginTabId()`, `_logOriginTabIdAssignment()` extraction |
 | `UpdateHandler.js` | `_doPersist()` logging, success confirmation |
 | `window.js` | `rewireCallbacks()`, operation flags, `_logIfStateDesync()` |
