@@ -626,36 +626,38 @@ export class UICoordinator {
    * Check if Quick Tab should be rendered on this tab (cross-tab scoping)
    * v1.6.3.5-v8 - FIX Issue #1: Enforce strict per-tab scoping
    * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #2: Stricter null originTabId handling
+   * v1.6.3.6-v5 - FIX Cross-Tab State Contamination: REJECT null originTabId instead of allowing
    *   Quick Tabs should only render in the browser tab that created them.
-   *   If originTabId is null, we now LOG A WARNING but still allow render for backward compat.
+   *   If originTabId is null/undefined, we now REJECT the render to prevent cross-tab leakage.
    * @private
    * @param {Object} quickTab - Quick Tab entity with originTabId property
    * @returns {boolean} True if Quick Tab should render on this tab
    */
   _shouldRenderOnThisTab(quickTab) {
-    // If we don't know our tab ID, allow rendering (backwards compatibility)
-    // TODO v1.6.3.6-v4: Remove this fallback once all tabs reliably have currentTabId set
-    if (this.currentTabId === null) {
-      console.warn(`${this._logPrefix} No currentTabId set - cross-tab filtering disabled:`, {
+    // If we don't know our tab ID, REJECT rendering to prevent cross-tab contamination
+    // v1.6.3.6-v5 - FIX: Changed from allowing to rejecting when currentTabId is null
+    if (this.currentTabId === null || this.currentTabId === undefined) {
+      console.warn(`${this._logPrefix} CROSS-TAB BLOCKED: No currentTabId set - cannot verify ownership:`, {
         quickTabId: quickTab.id,
-        reason: 'currentTabId is null'
+        originTabId: quickTab.originTabId,
+        reason: 'currentTabId is null/undefined - cannot perform ownership check'
       });
-      return true;
+      return false;
     }
     
-    // If Quick Tab has no originTabId, LOG WARNING and allow rendering (backwards compatibility)
-    // v1.6.3.6-v4 - FIX Issue #2: This is the root cause of cross-tab leakage
-    // Quick Tabs with null originTabId bypass filtering and appear on ALL tabs
+    // If Quick Tab has no originTabId, REJECT rendering to prevent cross-tab leakage
+    // v1.6.3.6-v5 - FIX Cross-Tab State Contamination: This is the root cause fix
+    // Quick Tabs with null originTabId previously bypassed filtering and appeared on ALL tabs
     const originTabId = quickTab.originTabId;
     if (originTabId === null || originTabId === undefined) {
-      console.warn(`${this._logPrefix} Quick Tab has null/undefined originTabId - cross-tab filtering BYPASSED:`, {
+      console.warn(`${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab has null/undefined originTabId - REJECTED:`, {
         quickTabId: quickTab.id,
         originTabId,
         currentTabId: this.currentTabId,
         url: quickTab.url,
-        WARNING: 'This Quick Tab will render on ALL tabs! Fix: ensure originTabId is set during creation'
+        reason: 'Orphaned Quick Tab - originTabId must be set during creation'
       });
-      return true;
+      return false;
     }
     
     // Only render if this is the origin tab

@@ -1,0 +1,8 @@
+{
+  "id": "a8851747-416d-4da5-833a-63d3642a5370",
+  "title": "Cross-Tab Scope Fix v1.6.3.6-v5",
+  "details": "## Fix for Cross-Tab State Contamination (Issue 1)\n\n**Problem:** Quick Tabs created in Tab 1 appeared in newly-opened Tab 2 due to insufficient tab scope isolation.\n\n**Root Cause:**\n1. `_shouldRenderOnThisTab()` in UICoordinator ALLOWED rendering when `originTabId` was null/undefined (backward compatibility)\n2. Hydration logic allowed tabs without `originTabId` to bypass filtering\n\n**Solution (v1.6.3.6-v5):**\n1. **UICoordinator.js**: Made `_shouldRenderOnThisTab()` STRICT - REJECT Quick Tabs with null/undefined `originTabId`\n2. **index.js**: Added `_checkTabScopeWithReason()` for unified tab scope validation with reason tracking, refactored hydration to use single structured log output\n3. **UICoordinator.test.js**: Added `createQuickTabWithOriginTabId()` helper function, updated all tests to use proper `originTabId` and `currentTabId`\n\n**Key Patterns:**\n- ALWAYS reject Quick Tabs with null `originTabId` (fail-closed)\n- ALWAYS reject when `currentTabId` is null (cannot verify ownership)\n- Only render if `originTabId === currentTabId`\n- Use structured logging: `console.log('[QuickTabsManager] TAB SCOPE ISOLATION VALIDATION:', { total, passed, filtered, currentTabId, filterReasons })`",
+  "category": "cross_tab_sync",
+  "dateCreated": "2025-12-06T17:38:25.304Z",
+  "dateUpdated": "2025-12-06T17:38:25.304Z"
+}
