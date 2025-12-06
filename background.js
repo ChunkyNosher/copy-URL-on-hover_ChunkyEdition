@@ -2419,6 +2419,7 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * Broadcast QUICK_TAB_STATE_UPDATED to Manager and other tabs
  * v1.6.3.5-v3 - FIX Architecture Phase 1: Background broadcasts state changes
  * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
+ * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
@@ -2462,10 +2463,87 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     // Sidebar may not be open - ignore
   }
   
-  // Note: We don't broadcast to other content scripts here because:
-  // 1. storage.onChanged handles cross-tab sync
-  // 2. Adding tab broadcasts could cause feedback loops
-  // In Phase 4, this will be the primary sync mechanism
+  // v1.6.3.7 - FIX Issue #3: For deletions, broadcast to ALL tabs (except sender)
+  // This ensures UI button and Manager button produce identical cross-tab results
+  if (changes?.deleted === true) {
+    await _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId);
+  }
+}
+
+/**
+ * Send deletion message to a single tab
+ * v1.6.3.7 - FIX Issue #3: Extracted to reduce _broadcastDeletionToAllTabs nesting depth
+ * @private
+ * @param {number} tabId - Tab ID to send message to
+ * @param {string} quickTabId - Quick Tab ID being deleted
+ * @returns {Promise<boolean>} True if message was sent successfully
+ */
+async function _sendDeletionToTab(tabId, quickTabId) {
+  try {
+    await browser.tabs.sendMessage(tabId, {
+      action: 'CLOSE_QUICK_TAB',
+      quickTabId,
+      source: 'background-broadcast'
+    });
+    return true;
+  } catch (_err) {
+    // Content script may not be loaded in this tab - ignore
+    return false;
+  }
+}
+
+/**
+ * Process single tab for deletion broadcast
+ * v1.6.3.7 - Extracted to reduce nesting depth in _broadcastDeletionToAllTabs
+ * @private
+ * @param {Object} tab - Browser tab object
+ * @param {string} quickTabId - Quick Tab ID being deleted
+ * @param {number} excludeTabId - Tab to exclude from broadcast
+ * @returns {Promise<{ sent: boolean, skipped: boolean }>}
+ */
+async function _processDeletionForTab(tab, quickTabId, excludeTabId) {
+  // Skip the sender tab to prevent echo/loop
+  if (tab.id === excludeTabId) {
+    return { sent: false, skipped: true };
+  }
+  
+  const success = await _sendDeletionToTab(tab.id, quickTabId);
+  return { sent: success, skipped: false };
+}
+
+/**
+ * Broadcast deletion event to all content scripts except the sender tab
+ * v1.6.3.7 - FIX Issue #3: Unified deletion behavior across UI and Manager paths
+ * @private
+ * @param {string} quickTabId - Quick Tab ID being deleted
+ * @param {string} source - Source of deletion
+ * @param {number} excludeTabId - Tab to exclude from broadcast (the source tab)
+ */
+async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId) {
+  console.log('[Background] Broadcasting deletion to all tabs:', {
+    quickTabId,
+    source,
+    excludeTabId
+  });
+  
+  try {
+    const tabs = await browser.tabs.query({});
+    const results = await Promise.all(
+      tabs.map(tab => _processDeletionForTab(tab, quickTabId, excludeTabId))
+    );
+    
+    const successCount = results.filter(r => r.sent).length;
+    const skipCount = results.filter(r => r.skipped).length;
+    
+    console.log('[Background] Deletion broadcast complete:', {
+      quickTabId,
+      totalTabs: tabs.length,
+      successCount,
+      skipCount
+    });
+  } catch (err) {
+    console.error('[Background] Error broadcasting deletion:', err.message);
+  }
 }
 
 /**

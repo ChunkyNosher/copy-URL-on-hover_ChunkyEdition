@@ -173,6 +173,11 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * - FIX Issue #1: Added cross-tab filtering to RESTORE_QUICK_TAB and MINIMIZE_QUICK_TAB handlers
  * - Quick Tabs now only respond to operations from the tab that owns them (originTabId match)
  * - Prevents ghost Quick Tabs from appearing when Manager broadcasts to all tabs
+ * 
+ * v1.6.3.7 Changes:
+ * - FIX Issue #3: Unified deletion behavior between UI button and Manager close button
+ * - CLOSE_QUICK_TAB handler now accepts 'source' parameter for cross-tab broadcast handling
+ * - Background broadcasts deletion to all tabs, content scripts filter by ownership
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -1440,8 +1445,67 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
   }
 }
 
-function _handleCloseQuickTab(quickTabId, sendResponse) {
-  _handleManagerAction(quickTabId, 'Closed', id => quickTabsManager.destroyHandler.closeById(id, 'Manager'), sendResponse);
+/**
+ * Handle CLOSE_QUICK_TAB message
+ * v1.6.3.7 - FIX Issue #3: Handle broadcasts from background
+ *   When source is 'background-broadcast', do local cleanup without re-broadcasting.
+ *   When source is 'Manager' or other, use standard closeById() path.
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to close
+ * @param {Function} sendResponse - Response callback
+ * @param {string} source - Source of the close request ('Manager', 'background-broadcast', etc.)
+ */
+function _handleCloseQuickTab(quickTabId, sendResponse, source = 'Manager') {
+  // v1.6.3.7 - Check if Quick Tab exists in this tab
+  const hasInMap = quickTabsManager?.tabs?.has(quickTabId);
+  const hasSnapshot = quickTabsManager?.minimizedManager?.hasSnapshot?.(quickTabId);
+  const currentTabId = quickTabsManager?.currentTabId;
+  
+  if (!hasInMap && !hasSnapshot) {
+    // Quick Tab not owned by this tab - skip silently for background broadcasts
+    if (source === 'background-broadcast') {
+      console.log('[Content] CLOSE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
+        quickTabId,
+        currentTabId,
+        source
+      });
+      sendResponse({ 
+        success: true, 
+        message: 'Quick Tab not present in this tab',
+        quickTabId,
+        reason: 'not-present'
+      });
+      return;
+    }
+  }
+  
+  // v1.6.3.7 - FIX Issue #3: For background broadcasts, use handleDestroy directly
+  // This prevents re-broadcasting back to background (which would cause a loop)
+  if (source === 'background-broadcast') {
+    console.log('[Content] CLOSE_QUICK_TAB: Processing background broadcast:', {
+      quickTabId,
+      currentTabId,
+      hasInMap,
+      hasSnapshot
+    });
+    
+    _handleManagerAction(
+      quickTabId, 
+      'Closed (from broadcast)', 
+      id => {
+        // Use handleDestroy directly with broadcast=false to prevent loop
+        // handleDestroy only cleans up local state without re-notifying background
+        if (quickTabsManager?.destroyHandler?.handleDestroy) {
+          quickTabsManager.destroyHandler.handleDestroy(id, 'background-broadcast');
+        }
+      }, 
+      sendResponse
+    );
+    return;
+  }
+  
+  // Standard path: closeById() which triggers tab.destroy() -> onDestroy callback -> handleDestroy
+  _handleManagerAction(quickTabId, 'Closed', id => quickTabsManager.destroyHandler.closeById(id, source), sendResponse);
 }
 
 /**
@@ -2101,8 +2165,10 @@ const ACTION_HANDLERS = {
     return true;
   },
   'CLOSE_QUICK_TAB': (message, sendResponse) => {
-    console.log('[Content] Received CLOSE_QUICK_TAB request:', message.quickTabId);
-    _handleCloseQuickTab(message.quickTabId, sendResponse);
+    // v1.6.3.7 - FIX Issue #3: Pass source parameter for cross-tab broadcast handling
+    const source = message.source || 'Manager';
+    console.log('[Content] Received CLOSE_QUICK_TAB request:', { quickTabId: message.quickTabId, source });
+    _handleCloseQuickTab(message.quickTabId, sendResponse, source);
     return true;
   },
   'MINIMIZE_QUICK_TAB': (message, sendResponse) => {
