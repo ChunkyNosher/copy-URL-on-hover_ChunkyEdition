@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v2 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v3 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -41,10 +41,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.6-v2 Fixes:**
-1. **Storage Write Infinite Loop Fixed** - Triple-source entropy `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` self-write detection
-2. **Loop Detection Logging** - STORAGE WRITE BACKLOG warnings (`pendingWriteCount > 5/10`), `saveIdWriteTracker` for duplicate detection
-3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set, empty writes require `forceEmpty=true` AND ownership history
+**v1.6.3.6-v3 Fixes:**
+1. **Circuit Breaker Pattern** - Blocks ALL writes when `pendingWriteCount >= 15`, auto-resets below 10
+2. **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks when `tabId === null`
+3. **Enhanced Loop Detection** - Escalation warning at 250ms, `DUPLICATE_SAVEID_THRESHOLD` = 1
+4. **Faster Transaction Cleanup** - `TRANSACTION_FALLBACK_CLEANUP_MS` = 500ms
+
+**v1.6.3.6-v2 Fixes (Retained):**
+1. **Triple-Source Entropy** - `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` self-write detection
+2. **Loop Detection Logging** - STORAGE WRITE BACKLOG warnings (`pendingWriteCount > 5/10`)
+3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set, `forceEmpty=true` required
 
 **v1.6.3.6 Fixes (Retained):**
 1. **Cross-Tab Filtering** - Added cross-tab filtering to `_handleRestoreQuickTab()` and `_handleMinimizeQuickTab()` in content.js
@@ -108,7 +114,73 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.6-v2 Fix Patterns
+## v1.6.3.6-v3 Fix Patterns
+
+### Circuit Breaker Pattern (v1.6.3.6-v3)
+```javascript
+// storage-utils.js - Block writes when queue exceeds threshold
+const CIRCUIT_BREAKER_THRESHOLD = 15;
+const CIRCUIT_BREAKER_RESET_THRESHOLD = 10;
+let circuitBreakerTripped = false;
+
+// In queueStorageWrite() - check BEFORE incrementing pendingWriteCount
+if (circuitBreakerTripped || pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
+  console.error('[STORAGE] ⛔ CIRCUIT BREAKER: Storage write blocked');
+  return; // Block new writes
+}
+
+// In _executeStorageWrite() - auto-reset when queue drains
+if (circuitBreakerTripped && pendingWriteCount < CIRCUIT_BREAKER_RESET_THRESHOLD) {
+  circuitBreakerTripped = false;
+  console.log('[STORAGE] ✅ Circuit breaker reset');
+}
+```
+
+### Fail-Closed Tab ID Validation (v1.6.3.6-v3)
+```javascript
+// storage-utils.js - Block writes when tab ID unknown
+function validateOwnershipForWrite(tabs, tabId, forceEmpty) {
+  if (tabId === null) {
+    // FAIL-CLOSED: Block write during async init (50-200ms window)
+    return { shouldWrite: false, ownedTabs: [], reason: 'Tab ID not yet known' };
+  }
+  // ... ownership validation
+}
+```
+
+### Escalation Warning (v1.6.3.6-v3)
+```javascript
+// storage-utils.js - 250ms intermediate warning
+const ESCALATION_WARNING_MS = 250;
+const TRANSACTION_WARNING_TIMEOUTS = new Map();
+
+function scheduleFallbackCleanup(transactionId, ...) {
+  // Fire warning at 250ms if still pending
+  const warningTimeout = setTimeout(() => {
+    console.warn('[STORAGE] ⏰ Transaction still pending at 250ms:', transactionId);
+  }, ESCALATION_WARNING_MS);
+  TRANSACTION_WARNING_TIMEOUTS.set(transactionId, warningTimeout);
+  // ... existing 500ms timeout
+}
+
+function cleanupTransactionId(transactionId) {
+  // Also clean up warning timeout
+  const warningTimeout = TRANSACTION_WARNING_TIMEOUTS.get(transactionId);
+  if (warningTimeout) clearTimeout(warningTimeout);
+  // ... existing cleanup
+}
+```
+
+### Updated Timeout Constants (v1.6.3.6-v3)
+```javascript
+const DUPLICATE_SAVEID_THRESHOLD = 1;  // Was 2 - faster loop detection
+const TRANSACTION_FALLBACK_CLEANUP_MS = 500;  // Was 2000 - faster recovery
+const ESCALATION_WARNING_MS = 250;  // NEW - intermediate warning
+const CIRCUIT_BREAKER_THRESHOLD = 15;  // NEW - block all writes threshold
+const CIRCUIT_BREAKER_RESET_THRESHOLD = 10;  // NEW - auto-reset threshold
+```
+
+## v1.6.3.6-v2 Fix Patterns (Retained)
 
 ### Triple-Source Entropy (v1.6.3.6-v2)
 ```javascript

@@ -53,7 +53,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v2 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v3 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -65,25 +65,25 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.6-v2 Fixes:**
-1. **Storage Write Infinite Loop Fixed** - Triple-source entropy `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` self-write detection
-2. **Loop Detection Logging** - STORAGE WRITE BACKLOG warnings (`pendingWriteCount > 5/10`), `saveIdWriteTracker` for duplicate detection
-3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set, empty writes require `forceEmpty=true` AND ownership history
+**v1.6.3.6-v3 Fixes:**
+1. **Circuit Breaker Pattern** - Blocks ALL writes when `pendingWriteCount >= 15`, auto-resets when queue drains below 10
+2. **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks writes when `tabId === null`
+3. **Enhanced Loop Detection** - Escalation warning at 250ms, `DUPLICATE_SAVEID_THRESHOLD` = 1
+4. **Faster Transaction Cleanup** - `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 2000ms to 500ms
+
+**v1.6.3.6-v2 Fixes (Retained):**
+1. **Triple-Source Entropy** - `WRITING_INSTANCE_ID` for self-write detection
+2. **Deterministic Self-Write** - `lastWrittenTransactionId`
+3. **Ownership History** - `previouslyOwnedTabIds` Set, empty writes require `forceEmpty=true`
 
 **v1.6.3.6 Fixes (Retained):**
-1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing
-2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
-3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action state, dispatch, response, cleanup, timing
+1. **Cross-Tab Filtering** - Handlers check quickTabsMap/minimizedManager before processing
+2. **Reduced Timeouts** - `STORAGE_TIMEOUT_MS` = 2000ms
+3. **Button Handler Logging** - `closeAllTabs()` comprehensive logging
 
-**v1.6.3.5-v12 Fixes:** Defensive DOM query, z-index helpers, lifecycle logging, `_logIfStateDesync()`
+**v1.6.3.5-v12 Fixes:** Defensive DOM query, z-index helpers, `_logIfStateDesync()`
 
-**v1.6.3.6 Architecture:**
-- **QuickTabStateMachine** - Lifecycle states, **QuickTabMediator** - Coordination with rollback
-- **MapTransactionManager** - Atomic ops (2000ms timeout), **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`
-- **UpdateHandler** - `_debouncedDragPersist()`, **DestroyHandler** - `_notifyBackgroundOfDeletion()`
-- **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`, `clearAll()`
-- **Content.js** - Cross-tab filtering in `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()`
-- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()`
+**Architecture:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager, UICoordinator
 
 ---
 

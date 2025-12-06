@@ -15,6 +15,10 @@
  * v1.6.3.6 - FIX Critical Quick Tab Restore Bugs:
  *   - Issue #2, #4: Reduced transaction timeout from 5s to 2s to prevent backlog
  *   - Transaction confirmation is decoupled from rendering
+ * v1.6.3.6-v3 - FIX Critical Storage Loop Issues:
+ *   - Issue #1: Async Tab ID Race - Block writes with unknown tab ID instead of allowing
+ *   - Issue #2: Circuit breaker to block all writes when pendingWriteCount > 15
+ *   - Issue #4: Empty state corruption fixed by Issue #1's fail-closed approach
  * 
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
@@ -52,9 +56,15 @@ let lastStorageChangeTime = 0;
 // This prevents race conditions where cleanup happened before event fired
 // Map from transactionId to cleanup timeout (for fallback cleanup)
 const TRANSACTION_CLEANUP_TIMEOUTS = new Map();
+// Map for escalation warning timeouts (separate from main cleanup timeouts)
+const TRANSACTION_WARNING_TIMEOUTS = new Map();
 // v1.6.3.6 - FIX Issue #4: Reduced from 5000ms to 2000ms to prevent transaction backlog
+// v1.6.3.6-v3 - FIX Issue #5: Reduced from 2000ms to 500ms for faster loop detection
 // Fallback cleanup delay - only used if storage.onChanged never fires
-const TRANSACTION_FALLBACK_CLEANUP_MS = 2000;
+// Normal writes complete in 50-100ms; 500ms catches loops before browser freezes
+const TRANSACTION_FALLBACK_CLEANUP_MS = 500;
+// v1.6.3.6-v3 - FIX Issue #3: Intermediate warning at 250ms (half of TRANSACTION_FALLBACK_CLEANUP_MS)
+const ESCALATION_WARNING_MS = 250;
 
 // v1.6.3.4-v8 - FIX Issue #1: Empty write protection
 // Cooldown period between empty (0 tabs) writes to prevent cascades
@@ -73,6 +83,13 @@ let storageWriteQueuePromise = Promise.resolve();
 // v1.6.3.4-v12 - FIX Issue #1, #6: Track pending write count for logging
 let pendingWriteCount = 0;
 let lastCompletedTransactionId = null;
+
+// v1.6.3.6-v3 - FIX Issue #2: Circuit breaker to prevent infinite storage write loops
+// When pendingWriteCount exceeds this threshold, ALL new writes are blocked
+const CIRCUIT_BREAKER_THRESHOLD = 15;
+const CIRCUIT_BREAKER_RESET_THRESHOLD = 10; // Auto-reset when queue drains below this
+let circuitBreakerTripped = false;
+let circuitBreakerTripTime = null;
 
 // v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern with rollback capability
 // Stores state snapshots for rollback on failure
@@ -121,7 +138,9 @@ const previouslyOwnedTabIds = new Set();
 // Map of saveId → { count, firstTimestamp }
 const saveIdWriteTracker = new Map();
 const DUPLICATE_SAVEID_WINDOW_MS = 1000; // Track duplicates within 1 second
-const DUPLICATE_SAVEID_THRESHOLD = 2; // Warn if same saveId written more than this
+// v1.6.3.6-v3 - FIX Issue #3: Reduced from 2 to 1 for faster loop detection
+// Warn if same saveId written more than once
+const DUPLICATE_SAVEID_THRESHOLD = 1;
 
 // Current tab ID for self-write detection (initialized lazily)
 let currentWritingTabId = null;
@@ -368,9 +387,18 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
   
   const tabId = currentTabId ?? currentWritingTabId;
   
-  // If we don't know our tab ID, allow write
+  // v1.6.3.6-v3 - FIX Issue #1: Block writes with unknown tab ID (fail-closed approach)
+  // Previously this allowed writes with unknown tab ID, which caused:
+  // - Self-write detection to fail (isSelfWrite returns false)
+  // - Empty state corruption from non-owner tabs
+  // Now we block writes until tab ID is initialized
   if (tabId === null) {
-    return { shouldWrite: true, ownedTabs: tabs, reason: 'unknown tab ID' };
+    console.warn('[StorageUtils] Storage write BLOCKED - unknown tab ID (initialization race?):', {
+      tabCount: tabs.length,
+      forceEmpty,
+      suggestion: 'Pass tabId parameter to persistStateToStorage() or wait for initWritingTabId() to complete'
+    });
+    return { shouldWrite: false, ownedTabs: [], reason: 'unknown tab ID - blocked for safety' };
   }
   
   // Filter to only tabs owned by this tab
@@ -674,6 +702,7 @@ export function shouldProcessStorageChange(transactionId) {
 /**
  * Clean up a transaction ID after it has been confirmed processed
  * v1.6.3.5-v5 - FIX Issue #7: Event-driven cleanup for transaction IDs
+ * v1.6.3.6-v3 - FIX Issue #3: Also clean up escalation warning timeout
  * @param {string} transactionId - Transaction ID to clean up
  */
 export function cleanupTransactionId(transactionId) {
@@ -688,6 +717,12 @@ export function cleanupTransactionId(transactionId) {
     TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
   }
   
+  // v1.6.3.6-v3 - FIX Issue #3: Clear any pending escalation warning timeout
+  if (TRANSACTION_WARNING_TIMEOUTS.has(transactionId)) {
+    clearTimeout(TRANSACTION_WARNING_TIMEOUTS.get(transactionId));
+    TRANSACTION_WARNING_TIMEOUTS.delete(transactionId);
+  }
+  
   if (wasPresent) {
     console.log('[StorageUtils] Transaction cleanup (event-driven):', transactionId);
   }
@@ -696,6 +731,7 @@ export function cleanupTransactionId(transactionId) {
 /**
  * Schedule fallback cleanup for a transaction ID
  * v1.6.3.5-v5 - FIX Issue #7: Fallback if storage.onChanged never fires
+ * v1.6.3.6-v3 - FIX Issue #3: Add intermediate escalation warning at 250ms
  * @param {string} transactionId - Transaction ID to schedule cleanup for
  */
 function scheduleFallbackCleanup(transactionId) {
@@ -707,13 +743,46 @@ function scheduleFallbackCleanup(transactionId) {
     clearTimeout(existingTimeout);
   }
   
+  // v1.6.3.6-v3 - FIX Issue #3: Clear any existing warning timeout for this transaction
+  const existingWarningTimeout = TRANSACTION_WARNING_TIMEOUTS.get(transactionId);
+  if (existingWarningTimeout) {
+    clearTimeout(existingWarningTimeout);
+  }
+  
+  const scheduleTime = Date.now();
+  
+  // v1.6.3.6-v3 - FIX Issue #3: Add intermediate warning at 250ms
+  const warningTimeoutId = setTimeout(() => {
+    try {
+      if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
+        const elapsedMs = Date.now() - scheduleTime;
+        console.warn('[StorageUtils] ⚠️ TRANSACTION STALE WARNING:', {
+          transactionId,
+          elapsedMs,
+          warning: `storage.onChanged has not fired in ${ESCALATION_WARNING_MS}ms`,
+          suggestion: 'Transaction may be stuck - monitoring for timeout'
+        });
+      }
+    } catch (err) {
+      console.warn('[StorageUtils] Error in escalation warning:', err.message);
+    }
+  }, ESCALATION_WARNING_MS);
+  
+  TRANSACTION_WARNING_TIMEOUTS.set(transactionId, warningTimeoutId);
+  
   // Schedule fallback cleanup
   // v1.6.3.5-v5 - FIX Code Review #2: Wrapped in try/catch for error handling consistency
   // v1.6.3.5-v12 - FIX Issue C: Enhanced transaction fallback warning with more context
   // v1.6.3.6-v2 - FIX Issue #2: Change from console.warn to console.error with explicit loop warning
-  const scheduleTime = Date.now();
+  // v1.6.3.6-v3 - FIX Issue #5: Reduced from 2000ms to 500ms for faster loop detection
   const timeoutId = setTimeout(() => {
     try {
+      // v1.6.3.6-v3: Clear the warning timeout if it hasn't been cleaned up yet
+      if (TRANSACTION_WARNING_TIMEOUTS.has(transactionId)) {
+        clearTimeout(TRANSACTION_WARNING_TIMEOUTS.get(transactionId));
+        TRANSACTION_WARNING_TIMEOUTS.delete(transactionId);
+      }
+      
       if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
         const elapsedMs = Date.now() - scheduleTime;
         console.error('[StorageUtils] ⚠️ TRANSACTION TIMEOUT - possible infinite loop:', {
@@ -1256,6 +1325,14 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
     
+    // v1.6.3.6-v3 - FIX Issue #2: Reset circuit breaker if queue has drained below threshold
+    if (circuitBreakerTripped && pendingWriteCount < CIRCUIT_BREAKER_RESET_THRESHOLD) {
+      const tripDuration = Date.now() - circuitBreakerTripTime;
+      circuitBreakerTripped = false;
+      circuitBreakerTripTime = null;
+      console.log(`[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`);
+    }
+    
     console.log(`${logPrefix} Storage write COMPLETED [${transactionId}] (${tabCount} tabs)`);
     return true;
   } catch (err) {
@@ -1284,12 +1361,29 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
  *   Note: New parameters are optional with defaults for backward compatibility
  * v1.6.3.5 - FIX Issue #5: Enhanced queue reset logging with dropped writes count
  * v1.6.3.6-v2 - FIX Issue #2: Add backlog warnings when pendingWriteCount > 5 or >10
+ * v1.6.3.6-v3 - FIX Issue #2: Circuit breaker blocks ALL writes when queue exceeds threshold
  * @param {Function} writeOperation - Async function to execute
  * @param {string} [logPrefix='[StorageUtils]'] - Prefix for logging (optional)
  * @param {string} [transactionId=''] - Transaction ID for logging (optional)
  * @returns {Promise<boolean>} Result of the write operation
  */
 export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', transactionId = '') {
+  // v1.6.3.6-v3 - FIX Issue #2: Circuit breaker check BEFORE incrementing pendingWriteCount
+  // This prevents infinite storage write loops from overwhelming the system
+  if (pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
+    if (!circuitBreakerTripped) {
+      circuitBreakerTripped = true;
+      circuitBreakerTripTime = Date.now();
+      console.error('[StorageUtils] ⚠️⚠️⚠️ CIRCUIT BREAKER TRIPPED - INFINITE LOOP DETECTED');
+      console.error(`[StorageUtils] Blocking ALL new storage writes (threshold: ${CIRCUIT_BREAKER_THRESHOLD})`);
+      console.error('[StorageUtils] Current queue depth:', pendingWriteCount);
+      console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
+      console.error('[StorageUtils] To recover: Close tabs using this extension, then go to about:addons, disable and re-enable the extension');
+    }
+    console.error(`[StorageUtils] Write BLOCKED by circuit breaker [${transactionId}]`);
+    return Promise.resolve(false);
+  }
+  
   // v1.6.3.4-v12 - FIX Issue #6: Log queue state with previous transaction
   pendingWriteCount++;
   console.log(`${logPrefix} Storage write queued:`, {

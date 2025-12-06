@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.6-v2)
+  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.6-v3)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v2 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v3 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,12 +37,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
 
-**v1.6.3.6-v2 Fixes:**
+**v1.6.3.6-v3 Fixes:**
 1. **Storage Write Infinite Loop Fixed** - Triple-source entropy `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` for deterministic self-write detection
 2. **Loop Detection Logging** - STORAGE WRITE BACKLOG warnings (`pendingWriteCount > 5/10`), `saveIdWriteTracker` for duplicate saveId detection
 3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set tracks ownership history, empty writes require `forceEmpty=true` AND ownership
 
-**v1.6.3.6-v2 Patterns:**
+**v1.6.3.6-v3 Patterns:**
 - **Triple-source entropy** - `performance.now()` + `Math.random()` + `crypto.getRandomValues()` + `writeCounter`
 - **Deterministic self-write** - `lastWrittenTransactionId` tracks last transaction
 - **Ownership history** - `previouslyOwnedTabIds` Set for empty write validation
@@ -73,10 +73,10 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Triple-source entropy generates unique IDs (v1.6.3.6-v2)
-- [ ] `lastWrittenTransactionId` self-write detection works (v1.6.3.6-v2)
-- [ ] `previouslyOwnedTabIds` tracks ownership history (v1.6.3.6-v2)
-- [ ] Loop detection warnings appear correctly (v1.6.3.6-v2)
+- [ ] Triple-source entropy generates unique IDs (v1.6.3.6-v3)
+- [ ] `lastWrittenTransactionId` self-write detection works (v1.6.3.6-v3)
+- [ ] `previouslyOwnedTabIds` tracks ownership history (v1.6.3.6-v3)
+- [ ] Loop detection warnings appear correctly (v1.6.3.6-v3)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Cross-tab filtering in `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()`
 - [ ] Transaction timeouts at 2000ms
@@ -89,4 +89,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.6-v2 storage sync fixes and loop detection.**
+**Your strength: Complete Quick Tab system with v1.6.3.6-v3 storage sync fixes and loop detection.**

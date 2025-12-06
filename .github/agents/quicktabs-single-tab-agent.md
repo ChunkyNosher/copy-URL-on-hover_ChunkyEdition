@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement (v1.6.3.6-v2)
+  window:created event coordination, per-tab scoping enforcement (v1.6.3.6-v3)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v2 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v3 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
@@ -38,7 +38,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
-**v1.6.3.6-v2 Fixes:**
+**v1.6.3.6-v3 Fixes:**
 1. **Storage Write Infinite Loop Fixed** - Triple-source entropy `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` for self-write detection
 2. **Loop Detection Logging** - Backlog warnings at `pendingWriteCount > 5/10`, duplicate saveId detection
 3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set, requires `forceEmpty=true` AND ownership history
@@ -65,8 +65,8 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Triple-source entropy generates unique IDs (v1.6.3.6-v2)
-- [ ] `lastWrittenTransactionId` self-write detection works (v1.6.3.6-v2)
+- [ ] Triple-source entropy generates unique IDs (v1.6.3.6-v3)
+- [ ] `lastWrittenTransactionId` self-write detection works (v1.6.3.6-v3)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] Global visibility correct (no container filtering)
@@ -77,4 +77,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.6-v2 storage sync fixes and state management.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.6-v3 storage sync fixes and state management.**
