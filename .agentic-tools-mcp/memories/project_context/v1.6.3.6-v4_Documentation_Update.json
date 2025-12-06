@@ -1,0 +1,8 @@
+{
+  "id": "61ead539-5525-4431-829a-22cf2c58250b",
+  "title": "v1.6.3.6-v4 Documentation Update",
+  "details": "Updated documentation for v1.6.3.6-v4 release which includes:\n\n**v1.6.3.6-v4 New Features:**\n1. Position/Size Logging - Full trace visibility from pointer event → background → storage\n2. setWritingTabId() Export - Content scripts can set tab ID for storage ownership\n3. Broadcast Deduplication - Circuit breaker in background.js (10+ broadcasts/100ms trips)\n4. Hydration Flag - `_isHydrating` in UICoordinator suppresses orphaned window warnings\n5. sender.tab.id Only - GET_CURRENT_TAB_ID uses sender.tab.id exclusively, removed active tab fallback\n\n**Key Files Changed:**\n- QuickTabHandler.js: handleGetCurrentTabId() uses sender.tab.id ONLY\n- storage-utils.js: New setWritingTabId() export\n- content.js: Calls setWritingTabId() after getting tab ID\n- UICoordinator.js: _isHydrating flag for hydration phase\n- background.js: _shouldAllowBroadcast() for broadcast dedup\n- CreateHandler.js: _getOriginTabId() and _logOriginTabIdAssignment()\n- UpdateHandler.js: _doPersist() logging\n\n**Documentation Files Updated:**\n- .github/copilot-instructions.md (13KB)\n- All .github/agents/*.md files (version references)\n\n**Key Timing Constants Added:**\n- BROADCAST_HISTORY_WINDOW_MS = 100\n- BROADCAST_CIRCUIT_BREAKER_LIMIT = 10",
+  "category": "project_context",
+  "dateCreated": "2025-12-06T05:32:47.554Z",
+  "dateUpdated": "2025-12-06T05:32:47.554Z"
+}

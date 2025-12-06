@@ -225,6 +225,8 @@ import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
 import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
+// v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
+import { setWritingTabId } from './utils/storage-utils.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -341,20 +343,37 @@ function logQuickTabsInitError(qtErr) {
  * Get current tab ID from background script
  * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
  * Must send message to background script which has access to sender.tab.id
+ * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
  * 
  * @returns {Promise<number|null>} Current tab ID or null if unavailable
  */
 async function getCurrentTabIdFromBackground() {
   try {
+    console.log('[Content] Requesting current tab ID from background...');
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
+    
+    // v1.6.3.6-v4 - FIX Issue #1: Enhanced validation logging
     if (response?.success && typeof response.tabId === 'number') {
-      console.log('[Content] Got current tab ID from background:', response.tabId);
+      console.log('[Content] Got current tab ID from background:', {
+        tabId: response.tabId,
+        success: response.success
+      });
       return response.tabId;
     }
-    console.warn('[Content] Background returned invalid tab ID response:', response);
+    
+    // v1.6.3.6-v4 - Log detailed error information
+    console.warn('[Content] Background returned invalid tab ID response:', {
+      response,
+      success: response?.success,
+      tabId: response?.tabId,
+      error: response?.error
+    });
     return null;
   } catch (err) {
-    console.warn('[Content] Failed to get tab ID from background:', err.message);
+    console.warn('[Content] Failed to get tab ID from background:', {
+      error: err.message,
+      stack: err.stack
+    });
     return null;
   }
 }
@@ -362,6 +381,7 @@ async function getCurrentTabIdFromBackground() {
 /**
  * v1.6.0.3 - Helper to initialize Quick Tabs
  * v1.6.3.5-v10 - FIX Issue #3: Get tab ID from background before initializing Quick Tabs
+ * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
  */
 async function initializeQuickTabsFeature() {
   console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
@@ -371,6 +391,16 @@ async function initializeQuickTabsFeature() {
   // in the tab they were created in (originTabId must match currentTabId)
   const currentTabId = await getCurrentTabIdFromBackground();
   console.log('[Copy-URL-on-Hover] Current tab ID for Quick Tabs initialization:', currentTabId);
+  
+  // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
+  // This is CRITICAL: content scripts cannot use browser.tabs.getCurrent(), so they must
+  // explicitly set the tab ID for storage-utils to validate ownership during writes
+  if (currentTabId !== null) {
+    setWritingTabId(currentTabId);
+    console.log('[Copy-URL-on-Hover] Set writing tab ID for storage ownership:', currentTabId);
+  } else {
+    console.warn('[Copy-URL-on-Hover] WARNING: Could not set writing tab ID - storage writes may fail ownership validation');
+  }
   
   // Pass currentTabId as option so UICoordinator can filter by originTabId
   quickTabsManager = await initQuickTabs(eventBus, Events, { currentTabId });

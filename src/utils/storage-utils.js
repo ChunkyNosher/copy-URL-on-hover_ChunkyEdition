@@ -188,6 +188,34 @@ export function getWritingTabId() {
 }
 
 /**
+ * Explicitly set the writing tab ID
+ * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Allow content scripts to set tab ID
+ * Content scripts cannot use browser.tabs.getCurrent(), so they need to
+ * get the tab ID from background script and pass it here.
+ * 
+ * @param {number} tabId - The browser tab ID to use for ownership tracking (must be positive integer)
+ */
+export function setWritingTabId(tabId) {
+  // Validate that tabId is a positive integer (browser tab IDs are always positive)
+  if (typeof tabId !== 'number' || !Number.isInteger(tabId) || tabId <= 0) {
+    console.warn('[StorageUtils] setWritingTabId called with invalid tabId:', {
+      tabId,
+      type: typeof tabId,
+      isInteger: Number.isInteger(tabId),
+      isPositive: tabId > 0
+    });
+    return;
+  }
+  
+  const oldTabId = currentWritingTabId;
+  currentWritingTabId = tabId;
+  console.log('[StorageUtils] Writing tab ID set explicitly:', {
+    oldTabId,
+    newTabId: tabId
+  });
+}
+
+/**
  * Get the instance ID for self-write detection
  * @returns {string} Unique instance ID for this tab load
  */

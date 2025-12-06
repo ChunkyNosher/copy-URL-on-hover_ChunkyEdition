@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
-  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.6-v3)
+  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.6-v4)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v4 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -37,7 +37,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.6-v3 Fixes:**
+**v1.6.3.6-v4 Fixes:**
 1. **Storage Write Infinite Loop Fixed** - Background.js now uses simplified `_isTransactionSelfWrite()`, content scripts handle full self-write detection via `isSelfWrite()`
 2. **Loop Detection Logging** - Transaction timeout now `console.error` with "TRANSACTION TIMEOUT - possible infinite loop" message
 3. **Empty State Corruption Fixed** - Empty writes require `forceEmpty=true` AND ownership history in `previouslyOwnedTabIds`
@@ -89,4 +89,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.6-v3 storage sync fixes and comprehensive logging.**
+**Your strength: Manager coordination with v1.6.3.6-v4 storage sync fixes and comprehensive logging.**

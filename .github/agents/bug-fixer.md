@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v3 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v4 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -37,44 +37,35 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **v1.6.3.6:** Cross-tab filtering, reduced timeouts, enhanced logging
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.6-v3 Fixes:**
-1. **Circuit Breaker Pattern** - Blocks ALL writes when `pendingWriteCount >= 15`, auto-resets below 10
+**v1.6.3.6-v4 Fixes:**
+1. **Position/Size Logging** - Full trace visibility from pointer event → storage
+2. **setWritingTabId() Export** - Content scripts can set tab ID for storage ownership
+3. **Broadcast Deduplication** - Circuit breaker in background.js (10+ broadcasts/100ms trips)
+4. **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned window warnings
+5. **sender.tab.id Only** - GET_CURRENT_TAB_ID uses sender.tab.id, removed active tab fallback
+
+**v1.6.3.6-v4 Fixes (Retained):**
+1. **Storage Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`
 2. **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks when `tabId === null`
-3. **Enhanced Loop Detection** - Escalation warning at 250ms, `DUPLICATE_SAVEID_THRESHOLD` = 1
+3. **Enhanced Loop Detection** - Escalation warning at 250ms
 4. **Faster Transaction Cleanup** - `TRANSACTION_FALLBACK_CLEANUP_MS` = 500ms
 
-**v1.6.3.6-v2 Fixes (Retained):**
-1. **Triple-Source Entropy** - `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` self-write detection
-2. **Loop Detection Logging** - STORAGE WRITE BACKLOG warnings (`pendingWriteCount > 5/10`)
-3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set, `forceEmpty=true` required
-
 **v1.6.3.6 Fixes (Retained):**
-1. **Cross-Tab Filtering** - Added cross-tab filtering to `_handleRestoreQuickTab()` and `_handleMinimizeQuickTab()` in content.js
-2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
-3. **Button Handler Logging** - Added comprehensive logging to `closeAllTabs()` in quick-tabs-manager.js
-
-**v1.6.3.5-v12 Fixes (Retained):**
-1. **Defensive DOM Query** - Fallback in `minimize()` when `this.container` is null
-2. **Z-Index Helpers** - `_applyZIndexUpdate()` and `_applyZIndexViaFallback()`
-3. **State Desync Detection** - `_logIfStateDesync(operation)` helper method
+1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check ownership
+2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` = 2000ms
+3. **Button Handler Logging** - `closeAllTabs()` comprehensive logging
 
 **Key Modules:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
-- **MinimizedManager** - `forceCleanup()`, `getAllSnapshotIds()`
-- **UpdateHandler** - `_debouncedDragPersist()`, `_emitOrphanedTabEvent()`
-- **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`, `_shouldRenderOnThisTab()`
-- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`, `isFocusOperation`
-- **DragController** - `updateElement()`, `cleanup()`
-- **ResizeController** - `cleanup()` for listener removal
-- **ResizeHandle** - `cleanup()`, `destroyed` flag
-- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()`
-- **content.js** - `_handleRestoreQuickTab()`, `_handleMinimizeQuickTab()` with cross-tab filtering (v1.6.3.6)
+- **UICoordinator** - `setHandlers()`, `_isHydrating`, `_shouldRenderOnThisTab()`
+- **QuickTabHandler** - `handleGetCurrentTabId()` sender.tab.id only
+- **UpdateHandler** - `_doPersist()` logging, `handlePositionUpdate()`, `handleSizeUpdate()`
+- **CreateHandler** - `_getOriginTabId()`, `_logOriginTabIdAssignment()`
 
 ---
 
@@ -114,9 +105,82 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.6-v3 Fix Patterns
+## v1.6.3.6-v4 Fix Patterns
 
-### Circuit Breaker Pattern (v1.6.3.6-v3)
+### setWritingTabId() Pattern (v1.6.3.6-v4)
+```javascript
+// storage-utils.js - Allow content scripts to set tab ID
+export function setWritingTabId(tabId) {
+  if (typeof tabId !== 'number' || !Number.isInteger(tabId) || tabId <= 0) {
+    console.warn('[StorageUtils] setWritingTabId called with invalid tabId:', tabId);
+    return;
+  }
+  currentWritingTabId = tabId;
+}
+
+// content.js - Call after getting tab ID from background
+const tabId = await getCurrentTabIdFromBackground();
+if (tabId) {
+  setWritingTabId(tabId);
+}
+```
+
+### sender.tab.id Only Pattern (v1.6.3.6-v4)
+```javascript
+// QuickTabHandler.js - NEVER fallback to active tab query
+handleGetCurrentTabId(_message, sender) {
+  if (sender.tab && typeof sender.tab.id === 'number') {
+    return { success: true, tabId: sender.tab.id };
+  }
+  // REMOVED: tabs.query({ active: true }) fallback - causes cross-tab leakage
+  return { success: false, tabId: null, error: 'sender.tab not available' };
+}
+```
+
+### Broadcast Deduplication Pattern (v1.6.3.6-v4)
+```javascript
+// background.js - Circuit breaker for broadcasts
+const BROADCAST_HISTORY_WINDOW_MS = 100;
+const BROADCAST_CIRCUIT_BREAKER_LIMIT = 10;
+
+function _shouldAllowBroadcast(quickTabId, changes) {
+  // Check if circuit breaker tripped
+  if (_circuitBreakerTripped) return { allowed: false, reason: 'circuit breaker' };
+  
+  // Check for duplicate broadcasts within window
+  const now = Date.now();
+  const recentBroadcasts = _broadcastHistory.filter(b => now - b.time < BROADCAST_HISTORY_WINDOW_MS);
+  if (recentBroadcasts.length >= BROADCAST_CIRCUIT_BREAKER_LIMIT) {
+    _circuitBreakerTripped = true;
+    return { allowed: false, reason: 'rate limit' };
+  }
+  return { allowed: true };
+}
+```
+
+### Hydration Flag Pattern (v1.6.3.6-v4)
+```javascript
+// UICoordinator.js - Suppress warnings during hydration
+this._isHydrating = false;
+
+async renderAll(tabsToRender) {
+  this._isHydrating = true;  // Start hydration
+  try {
+    // ... render tabs
+  } finally {
+    this._isHydrating = false;  // End hydration
+  }
+}
+
+_logOrphanedWindowWarning(id) {
+  if (this._isHydrating) return;  // Suppress during hydration
+  console.warn('[UICoordinator] Orphaned window:', id);
+}
+```
+
+## v1.6.3.6-v4 Fix Patterns (Retained)
+
+### Circuit Breaker Pattern (v1.6.3.6-v4)
 ```javascript
 // storage-utils.js - Block writes when queue exceeds threshold
 const CIRCUIT_BREAKER_THRESHOLD = 15;
@@ -136,7 +200,7 @@ if (circuitBreakerTripped && pendingWriteCount < CIRCUIT_BREAKER_RESET_THRESHOLD
 }
 ```
 
-### Fail-Closed Tab ID Validation (v1.6.3.6-v3)
+### Fail-Closed Tab ID Validation (v1.6.3.6-v4)
 ```javascript
 // storage-utils.js - Block writes when tab ID unknown
 function validateOwnershipForWrite(tabs, tabId, forceEmpty) {
@@ -148,7 +212,7 @@ function validateOwnershipForWrite(tabs, tabId, forceEmpty) {
 }
 ```
 
-### Escalation Warning (v1.6.3.6-v3)
+### Escalation Warning (v1.6.3.6-v4)
 ```javascript
 // storage-utils.js - 250ms intermediate warning
 const ESCALATION_WARNING_MS = 250;
@@ -171,7 +235,7 @@ function cleanupTransactionId(transactionId) {
 }
 ```
 
-### Updated Timeout Constants (v1.6.3.6-v3)
+### Updated Timeout Constants (v1.6.3.6-v4)
 ```javascript
 const DUPLICATE_SAVEID_THRESHOLD = 1;  // Was 2 - faster loop detection
 const TRANSACTION_FALLBACK_CLEANUP_MS = 500;  // Was 2000 - faster recovery
@@ -273,131 +337,20 @@ async function closeAllTabs() {
 }
 ```
 
-## Legacy Fix Patterns
+## Legacy Fix Patterns (Summary)
 
-### State Machine Transitions
-```javascript
-const sm = getStateMachine();
-if (!sm.canTransition(id, QuickTabState.MINIMIZING)) {
-  console.warn('Invalid transition - check state first');
-  return;
-}
-```
-
-### Mediator Operations
-```javascript
-const result = getMediator().minimize(id, 'user-action');
-if (!result.success) console.error(result.error);
-```
-
-### Map Transactions
-```javascript
-const txn = new MapTransactionManager(map, 'myMap');
-txn.beginTransaction('operation');
-txn.deleteEntry(id, 'reason');
-txn.commitTransaction();
-```
-
-### setHandlers() and Callback Wiring (v1.6.3.5-v12)
-```javascript
-// UICoordinator deferred handler initialization
-uiCoordinator.setHandlers(updateHandler, visibilityHandler, destroyHandler);
-
-// Build callback options for restore
-const options = this._buildCallbackOptions(tabData);
-```
-
-### _applyZIndexAfterAppend (v1.6.3.5-v12)
-```javascript
-// QuickTabWindow - re-apply z-index after appendChild
-_applyZIndexAfterAppend() {
-  this.container.style.zIndex = String(this.zIndex);
-  void this.container.offsetHeight; // Force reflow
-}
-```
-
-### Defensive DOM Query in minimize() (v1.6.3.5-v12)
-```javascript
-// Falls back to DOM query when this.container is null
-let container = this.container;
-if (!container) {
-  container = document.querySelector(`.quick-tab-window[data-quicktab-id="${CSS.escape(this.id)}"]`);
-}
-```
-
-### _applyZIndexUpdate() / _applyZIndexViaFallback() (v1.6.3.5-v12)
-```javascript
-// VisibilityHandler - defensive z-index application
-_applyZIndexUpdate(tabWindow) { /* helper for complexity reduction */ }
-_applyZIndexViaFallback(tabWindow) { /* DOM query when container null */ }
-```
-
-### _logIfStateDesync() (v1.6.3.5-v12)
-```javascript
-// QuickTabWindow - detect split-brain state
-_logIfStateDesync(operation) {
-  if (this.rendered !== !!this.container) {
-    console.warn(`[QuickTabWindow] State desync at ${operation}:`, { rendered: this.rendered, hasContainer: !!this.container });
-  }
-}
-```
-
-### DragController.updateElement() (v1.6.3.5-v9+)
-```javascript
-// After re-render, update drag controller's element reference
-if (this.dragController) {
-  this.dragController.updateElement(newContainer);
-}
-```
-
-### rewireCallbacks() Pattern (v1.6.3.5-v12)
-```javascript
-// QuickTabWindow - re-wire callbacks after restore
-rewireCallbacks(callbacks) {
-  if (callbacks.onPositionChangeEnd) this.onPositionChangeEnd = callbacks.onPositionChangeEnd;
-  if (callbacks.onSizeChangeEnd) this.onSizeChangeEnd = callbacks.onSizeChangeEnd;
-  if (callbacks.onFocus) this.onFocus = callbacks.onFocus;
-}
-```
-
-### cleanup() Pattern (v1.6.3.5-v12)
-```javascript
-// DragController/ResizeController/ResizeHandle - cleanup before DOM removal
-cleanup() {
-  this._removeListeners();
-  this.destroyed = true;
-}
-```
-
-### Operation Flags (v1.6.3.5-v12)
-```javascript
-// QuickTabWindow - prevent circular callback suppression
-tabWindow.isMinimizing = true;  // Before minimize
-tabWindow.isRestoring = true;   // Before restore
-// Check in callbacks to skip during operation
-if (tabWindow.isMinimizing || tabWindow.isRestoring) return;
-```
-
-### Debounced Drag Persistence (v1.6.3.5-v7+)
-```javascript
-// UpdateHandler._debouncedDragPersist()
-if (this._dragDebounceTimers.has(id)) {
-  clearTimeout(this._dragDebounceTimers.get(id));
-}
-this._dragDebounceTimers.set(id, setTimeout(() => {
-  this._persistDragState(id);
-}, DRAG_DEBOUNCE_MS)); // 200ms
-```
-
-### closeAll Mutex
-```javascript
-if (this._closeAllInProgress) {
-  console.log('[DestroyHandler] closeAll already in progress, skipping');
-  return;
-}
-this._closeAllInProgress = true;
-this._scheduleMutexRelease(); // Releases after 2000ms (v1.6.3.6)
-```
+**State Machine:** `canTransition()` before operations, `transition()` logs all changes  
+**Mediator:** Single entry point for minimize/restore/destroy with rollback  
+**Map Transactions:** `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`  
+**Callback Wiring:** `setHandlers()`, `_buildCallbackOptions()`, `rewireCallbacks()`  
+**Z-Index:** `_applyZIndexAfterAppend()`, `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`  
+**DOM Lookup:** Defensive query when `this.container` is null  
+**State Desync:** `_logIfStateDesync(operation)` detects split-brain  
+**Element Update:** `DragController.updateElement()` after re-render  
+**Cleanup:** `cleanup()` removes listeners before DOM removal  
+**Operation Flags:** `isMinimizing`/`isRestoring` prevent circular callbacks  
+**Debounced Drag:** `_debouncedDragPersist()` with 200ms debounce  
+**closeAll Mutex:** `_closeAllInProgress` flag, 2000ms release
 
 ---
 
