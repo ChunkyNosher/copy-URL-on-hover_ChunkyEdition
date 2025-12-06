@@ -99,16 +99,18 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.6-v3)
+- [ ] Version numbers match current release (1.6.3.6-v4)
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Cross-tab sync uses storage.onChanged + Background-as-Coordinator
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
-- [ ] **v1.6.3.6:** Cross-tab filtering documented
-- [ ] **v1.6.3.6:** Transaction timeout reduction documented (2000ms)
-- [ ] **v1.6.3.6:** Button handler logging documented
+- [ ] **v1.6.3.6-v4:** Position/Size Logging documented
+- [ ] **v1.6.3.6-v4:** setWritingTabId() documented
+- [ ] **v1.6.3.6-v4:** Broadcast deduplication documented
+- [ ] **v1.6.3.6-v4:** Hydration flag documented
+- [ ] **v1.6.3.6-v4:** sender.tab.id only documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -116,7 +118,7 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.6-v3
+- **Current Version:** 1.6.3.6-v4
 - **Architecture Status:** DDD with Background-as-Coordinator ✅
 - **Cross-Tab Sync:** storage.onChanged + Background-as-Coordinator
 - **Key Features:**
@@ -126,14 +128,12 @@ stat -c%s .github/copilot-instructions.md
   - Direct local creation pattern
   - State hydration on page reload
 - **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp, writingTabId, writingInstanceId }`
-- **v1.6.3.6 Fixes:**
-  1. Cross-Tab Filtering (`_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()`)
-  2. Transaction Timeout Reduction (5000ms → 2000ms)
-  3. Button Handler Logging (`closeAllTabs()`)
-- **v1.6.3.5-v8 Manifest Changes:**
-  - `unlimitedStorage`, `sessions`, `contextualIdentities` permissions
-  - Security: Removed `state-manager.js` from `web_accessible_resources`
-- **Manager Actions:** CLOSE/MINIMIZE/RESTORE_QUICK_TAB messages
+- **v1.6.3.6-v4 Fixes:**
+  1. Position/Size Logging - full trace visibility
+  2. setWritingTabId() Export - for content scripts
+  3. Broadcast Deduplication - circuit breaker (10+ broadcasts/100ms)
+  4. Hydration Flag - `_isHydrating` suppresses warnings
+  5. sender.tab.id Only - removed active tab fallback
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
 - **Testing:** npm test, npm run lint
@@ -191,7 +191,7 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.6-v3)
+- Version numbers (1.6.3.6-v4)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Background-as-Coordinator)
 - Sync mechanism (storage.onChanged + Background-as-Coordinator)
@@ -287,7 +287,7 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.6-v3)
+## Current Extension State (v1.6.3.6-v4)
 
 ### Architecture
 - **Status:** Background-as-Coordinator ✅
@@ -339,7 +339,7 @@ await perplexity.research("documentation compression markdown");
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.6-v3
+- [ ] Version numbers updated to 1.6.3.6-v4
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged + Background-as-Coordinator documented

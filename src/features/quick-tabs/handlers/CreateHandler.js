@@ -299,22 +299,64 @@ export class CreateHandler {
   }
 
   /**
+   * Get the originTabId from options with fallbacks
+   * v1.6.3.6-v4 - FIX Issue #2: Extracted to reduce _buildVisibilityOptions complexity
+   * @private
+   * @param {Object} options - Creation options
+   * @param {Object} defaults - Default values
+   * @returns {number|null} The originTabId
+   */
+  _getOriginTabId(options, defaults) {
+    return options.originTabId ?? options.activeTabId ?? defaults.originTabId;
+  }
+  
+  /**
+   * Log originTabId assignment with appropriate severity
+   * v1.6.3.6-v4 - FIX Issue #2: Extracted to reduce _buildVisibilityOptions complexity
+   * @private
+   * @param {number|null} originTabId - The assigned originTabId
+   * @param {Object} options - Creation options
+   * @param {Object} defaults - Default values
+   */
+  _logOriginTabIdAssignment(originTabId, options, defaults) {
+    // Check for both null and undefined with single comparison
+    if (originTabId == null) {
+      console.error('[CreateHandler] WARNING: originTabId is null/undefined!', {
+        optionsOriginTabId: options.originTabId,
+        optionsActiveTabId: options.activeTabId,
+        defaultsOriginTabId: defaults.originTabId,
+        currentTabId: options.currentTabId,
+        url: options.url
+      });
+    } else {
+      const source = options.originTabId ? 'options.originTabId' 
+        : options.activeTabId ? 'options.activeTabId' : 'defaults';
+      console.log('[CreateHandler] originTabId set:', { originTabId, source });
+    }
+  }
+
+  /**
    * Build visibility-related options (minimized, solo, mute, debug)
    * v1.6.3.2 - Extracted to reduce _buildTabOptions complexity
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Include originTabId
    *   activeTabId is used as fallback because older code may set activeTabId
    *   to track which browser tab contains the Quick Tab
+   * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #2: Add logging when originTabId is null
+   *   Extracted helpers to reduce complexity
    * @private
    */
   _buildVisibilityOptions(options, defaults) {
+    const originTabId = this._getOriginTabId(options, defaults);
+    this._logOriginTabIdAssignment(originTabId, options, defaults);
+    
     return {
       minimized: options.minimized ?? defaults.minimized,
       soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
       mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs,
       showDebugId: options.showDebugId ?? this.showDebugIdSetting,
-      // originTabId tracks which browser tab created this Quick Tab
-      // Use activeTabId as fallback for backward compatibility
-      originTabId: options.originTabId ?? options.activeTabId ?? defaults.originTabId
+      originTabId,
+      // v1.6.3.6-v4 - FIX Issue #2: Also pass currentTabId to window for operations
+      currentTabId: options.currentTabId
     };
   }
 

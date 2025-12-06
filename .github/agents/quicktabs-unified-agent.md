@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.6-v3)
+  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.6-v4)
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v4 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,20 +37,23 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
 
-**v1.6.3.6-v3 Fixes:**
-1. **Storage Write Infinite Loop Fixed** - Triple-source entropy `WRITING_INSTANCE_ID`, `lastWrittenTransactionId` for deterministic self-write detection
-2. **Loop Detection Logging** - STORAGE WRITE BACKLOG warnings (`pendingWriteCount > 5/10`), `saveIdWriteTracker` for duplicate saveId detection
-3. **Empty State Corruption Fixed** - `previouslyOwnedTabIds` Set tracks ownership history, empty writes require `forceEmpty=true` AND ownership
+**v1.6.3.6-v4 Fixes:**
+1. **Position/Size Logging** - Full trace visibility from pointer event → storage
+2. **setWritingTabId() Export** - Content scripts can set tab ID for storage ownership
+3. **Broadcast Deduplication** - Circuit breaker (10+ broadcasts/100ms trips)
+4. **Hydration Flag** - `_isHydrating` suppresses orphaned window warnings
+5. **sender.tab.id Only** - GET_CURRENT_TAB_ID uses sender.tab.id exclusively
 
-**v1.6.3.6-v3 Patterns:**
-- **Triple-source entropy** - `performance.now()` + `Math.random()` + `crypto.getRandomValues()` + `writeCounter`
-- **Deterministic self-write** - `lastWrittenTransactionId` tracks last transaction
-- **Ownership history** - `previouslyOwnedTabIds` Set for empty write validation
-- **Loop detection** - `saveIdWriteTracker` Map, backlog warnings
+**v1.6.3.6-v4 Patterns:**
+- **setWritingTabId(tabId)** - Content script calls after getting tab ID from background
+- **_shouldAllowBroadcast()** - Dedup + circuit breaker for broadcasts
+- **_isHydrating** - Set during renderAll() to suppress warnings
+- **Position/Size logging** - Entry → lookup → update → persist → success
 
-**v1.6.3.6 Patterns (Retained):**
-- **Cross-tab filtering in handlers** - Check existence before processing broadcast messages
-- **Reduced timeouts** - 2000ms for storage and transaction cleanup
+**v1.6.3.6-v4 Patterns (Retained):**
+- **Storage circuit breaker** - Blocks writes at pendingWriteCount >= 15
+- **Cross-tab filtering** - Check existence before processing broadcasts
+- **Reduced timeouts** - 2000ms for storage, 500ms for transactions
 
 ---
 
@@ -59,7 +62,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 | Method | Description |
 |--------|-------------|
 | `closeById(id)` | Close a single Quick Tab by ID |
-| `closeAll()` | Close all Quick Tabs, uses `CLEAR_ALL_QUICK_TABS` via background (Single Writer Model) |
+| `closeAll()` | Close all Quick Tabs, uses `CLEAR_ALL_QUICK_TABS` via background |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
@@ -73,15 +76,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Triple-source entropy generates unique IDs (v1.6.3.6-v3)
-- [ ] `lastWrittenTransactionId` self-write detection works (v1.6.3.6-v3)
-- [ ] `previouslyOwnedTabIds` tracks ownership history (v1.6.3.6-v3)
-- [ ] Loop detection warnings appear correctly (v1.6.3.6-v3)
+- [ ] setWritingTabId() called after tab ID fetch (v1.6.3.6-v4)
+- [ ] Broadcast dedup works (10+ broadcasts/100ms trips) (v1.6.3.6-v4)
+- [ ] Hydration flag suppresses warnings during renderAll() (v1.6.3.6-v4)
+- [ ] Position/size logging shows full trace (v1.6.3.6-v4)
+- [ ] sender.tab.id used exclusively (v1.6.3.6-v4)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
-- [ ] Cross-tab filtering in `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()`
-- [ ] Transaction timeouts at 2000ms
-- [ ] `forceEmpty` allows Close All empty writes
-- [ ] Ownership validation works (`canCurrentTabModifyQuickTab`)
+- [ ] Cross-tab filtering in handlers
 - [ ] Storage storm protection (`inMemoryTabsCache`)
 - [ ] Solo/Mute mutually exclusive (arrays)
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
@@ -89,4 +90,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.6-v3 storage sync fixes and loop detection.**
+**Your strength: Complete Quick Tab system with v1.6.3.6-v4 cross-tab isolation fixes and enhanced logging.**

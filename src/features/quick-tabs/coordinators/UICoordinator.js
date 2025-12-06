@@ -120,6 +120,8 @@ export class UICoordinator {
     this._mapTxnManager = new MapTransactionManager(this.renderedTabs, 'renderedTabs');
     // v1.6.3.5-v4 - FIX Issue #4: Track last render time per tab to prevent rapid duplicates
     this._lastRenderTime = new Map(); // id -> timestamp
+    // v1.6.3.6-v4 - FIX Issue #5: Track hydration phase to suppress orphaned window warnings
+    this._isHydrating = false;
     
     // v1.6.3.5-v10 - FIX Issue #1-2: Store handler references for callback wiring during _createWindow()
     // These handlers are needed to build proper callbacks when restoring Quick Tabs
@@ -418,15 +420,23 @@ export class UICoordinator {
 
   /**
    * Render all visible Quick Tabs from state
+   * v1.6.3.6-v4 - FIX Issue #5: Set hydration flag to suppress orphaned window warnings
    */
   renderAll() {
     console.log('[UICoordinator] Rendering all visible tabs');
+
+    // v1.6.3.6-v4 - FIX Issue #5: Mark as hydrating to suppress orphaned window warnings
+    // During hydration, it's expected that DOM elements may exist before Map is populated
+    this._isHydrating = true;
 
     const visibleTabs = this.stateManager.getVisible();
 
     for (const quickTab of visibleTabs) {
       this.render(quickTab);
     }
+
+    // v1.6.3.6-v4 - FIX Issue #5: Clear hydration flag after all tabs are rendered
+    this._isHydrating = false;
 
     console.log(`[UICoordinator] Rendered ${visibleTabs.length} tabs`);
   }
@@ -615,24 +625,36 @@ export class UICoordinator {
   /**
    * Check if Quick Tab should be rendered on this tab (cross-tab scoping)
    * v1.6.3.5-v8 - FIX Issue #1: Enforce strict per-tab scoping
-   * Quick Tabs should only render in the browser tab that created them
+   * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #2: Stricter null originTabId handling
+   *   Quick Tabs should only render in the browser tab that created them.
+   *   If originTabId is null, we now LOG A WARNING but still allow render for backward compat.
    * @private
    * @param {Object} quickTab - Quick Tab entity with originTabId property
    * @returns {boolean} True if Quick Tab should render on this tab
    */
   _shouldRenderOnThisTab(quickTab) {
     // If we don't know our tab ID, allow rendering (backwards compatibility)
-    // TODO v1.6.4: Remove this fallback once all tabs reliably have currentTabId set
+    // TODO v1.6.3.6-v4: Remove this fallback once all tabs reliably have currentTabId set
     if (this.currentTabId === null) {
-      console.log(`${this._logPrefix} No currentTabId set, allowing render:`, quickTab.id);
+      console.warn(`${this._logPrefix} No currentTabId set - cross-tab filtering disabled:`, {
+        quickTabId: quickTab.id,
+        reason: 'currentTabId is null'
+      });
       return true;
     }
     
-    // If Quick Tab has no originTabId, allow rendering (backwards compatibility)
-    // TODO v1.6.4: Remove this fallback once all Quick Tabs have originTabId from creation
+    // If Quick Tab has no originTabId, LOG WARNING and allow rendering (backwards compatibility)
+    // v1.6.3.6-v4 - FIX Issue #2: This is the root cause of cross-tab leakage
+    // Quick Tabs with null originTabId bypass filtering and appear on ALL tabs
     const originTabId = quickTab.originTabId;
     if (originTabId === null || originTabId === undefined) {
-      console.log(`${this._logPrefix} No originTabId on Quick Tab, allowing render:`, quickTab.id);
+      console.warn(`${this._logPrefix} Quick Tab has null/undefined originTabId - cross-tab filtering BYPASSED:`, {
+        quickTabId: quickTab.id,
+        originTabId,
+        currentTabId: this.currentTabId,
+        url: quickTab.url,
+        WARNING: 'This Quick Tab will render on ALL tabs! Fix: ensure originTabId is set during creation'
+      });
       return true;
     }
     
@@ -641,6 +663,12 @@ export class UICoordinator {
     
     if (!shouldRender) {
       console.log(`${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab belongs to different tab:`, {
+        id: quickTab.id,
+        originTabId,
+        currentTabId: this.currentTabId
+      });
+    } else {
+      console.log(`${this._logPrefix} Cross-tab check PASSED:`, {
         id: quickTab.id,
         originTabId,
         currentTabId: this.currentTabId
@@ -672,6 +700,7 @@ export class UICoordinator {
   /**
    * Handle orphaned DOM element - try to recover or remove
    * v1.6.3.4-v12 - Extracted to reduce render() complexity
+   * v1.6.3.6-v4 - FIX Issue #5: Suppress warning during hydration phase
    * @private
    * @returns {QuickTabWindow|null} Recovered window if found, null otherwise
    */
@@ -679,7 +708,13 @@ export class UICoordinator {
     const existingDOMElement = this._findDOMElementById(quickTab.id);
     if (!existingDOMElement) return null;
     
-    console.warn('[UICoordinator] Orphaned window detected:', { id: quickTab.id, inMap: false, inDOM: true });
+    // v1.6.3.6-v4 - FIX Issue #5: Suppress warning during hydration phase
+    // During hydration, it's expected that DOM elements may exist before Map is populated
+    if (this._isHydrating) {
+      console.log('[UICoordinator] DOM element found during hydration (expected):', { id: quickTab.id });
+    } else {
+      console.warn('[UICoordinator] Orphaned window detected:', { id: quickTab.id, inMap: false, inDOM: true });
+    }
     
     const recoveredWindow = this._tryRecoverWindowFromDOM(existingDOMElement, quickTab);
     if (recoveredWindow) return recoveredWindow;

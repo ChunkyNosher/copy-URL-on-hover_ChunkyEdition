@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.6-v3  
+**Version:** 1.6.3.6-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -22,25 +22,23 @@
 
 **v1.6.3.5-v10 Fixes:** Callback wiring (`setHandlers()`, `_buildCallbackOptions()`), z-index after append, cross-tab scoping, storage corruption (`forceEmpty`)
 
-**v1.6.3.6-v3 Fixes:**
-1. **Circuit Breaker Pattern** - Blocks ALL writes when `pendingWriteCount >= 15`, auto-resets when queue drains below 10
-2. **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks writes when `tabId === null` (prevents async init race)
-3. **Enhanced Loop Detection** - Escalation warning at 250ms, reduced `DUPLICATE_SAVEID_THRESHOLD` to 1
-4. **Faster Transaction Cleanup** - `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 2000ms to 500ms
+**v1.6.3.6-v4 Fixes:**
+1. **Position/Size Logging** - Full trace visibility from pointer event → background → storage
+2. **setWritingTabId() Export** - Content scripts can set tab ID for storage ownership
+3. **Broadcast Deduplication** - Circuit breaker in background.js (10+ broadcasts/100ms trips)
+4. **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned window warnings
+5. **sender.tab.id Only** - GET_CURRENT_TAB_ID uses sender.tab.id, removed active tab fallback
 
-**v1.6.3.6-v2 Fixes (Retained):**
-1. **Triple-Source Entropy** - `WRITING_INSTANCE_ID` uses `performance.now()` + `Math.random()` + `crypto.getRandomValues()` + `writeCounter`
-2. **Deterministic Self-Write** - `lastWrittenTransactionId` for `isSelfWrite()` detection
-3. **Ownership History** - `previouslyOwnedTabIds` Set, empty writes require `forceEmpty=true` AND ownership
+**v1.6.3.6-v4 Fixes (Retained):**
+1. **Circuit Breaker Pattern** - Blocks ALL writes when `pendingWriteCount >= 15`, auto-resets below 10
+2. **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks when `tabId === null`
+3. **Enhanced Loop Detection** - Escalation warning at 250ms, `DUPLICATE_SAVEID_THRESHOLD` = 1
+4. **Faster Transaction Cleanup** - `TRANSACTION_FALLBACK_CLEANUP_MS` = 500ms
 
 **v1.6.3.6 Fixes (Retained):**
-1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing
-2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
-3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action state, dispatch, response, cleanup, timing
-
-**v1.6.3.5-v10 thru v12 Fixes (Retained):**
-- Callback wiring (`setHandlers()`, `_buildCallbackOptions()`), z-index (`_applyZIndexAfterAppend()`, `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`)
-- Cross-tab scoping (`getCurrentTabIdFromBackground()`), storage corruption (`forceEmpty`), `_logIfStateDesync()`, `rewireCallbacks()`, operation flags
+1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager
+2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` = 2000ms
+3. **Button Handler Logging** - `closeAllTabs()` logs full operation lifecycle
 
 **Core Modules:**
 - **QuickTabStateMachine** - Explicit lifecycle state tracking
@@ -114,18 +112,20 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.6-v3 Patterns
+## 🆕 v1.6.3.6-v4 Patterns
 
-- **Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`, logs recovery instructions, auto-resets at `< 10`
+- **setWritingTabId()** - New export from `storage-utils.js` for content scripts to set tab ID
+- **Broadcast Deduplication** - Circuit breaker in background.js trips at 10+ broadcasts/100ms
+- **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned window warnings
+- **Position/Size Logging** - Full trace: `handlePositionUpdate()` → `updateQuickTabProperty()` → `saveStateToStorage()`
+- **sender.tab.id Only** - GET_CURRENT_TAB_ID MUST use sender.tab.id, NOT cached/fallback values
+
+### v1.6.3.6-v4 Patterns (Retained)
+
+- **Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`, auto-resets at `< 10`
 - **Fail-Closed Validation** - `validateOwnershipForWrite()` returns `shouldWrite: false` when `tabId === null`
 - **Escalation Warning** - `scheduleFallbackCleanup()` fires warning at 250ms if transaction still pending
 - **Faster Loop Detection** - `DUPLICATE_SAVEID_THRESHOLD = 1`, `TRANSACTION_FALLBACK_CLEANUP_MS = 500ms`
-
-### v1.6.3.6-v2 Patterns (Retained)
-
-- **Triple-Source Entropy** - `WRITING_INSTANCE_ID` uses multiple entropy sources + `writeCounter`
-- **Deterministic Self-Write** - `lastWrittenTransactionId` for `isSelfWrite()` detection
-- **Ownership History** - `previouslyOwnedTabIds` Set, `saveIdWriteTracker` for loop detection
 
 ### v1.6.3.6 Patterns (Retained)
 
@@ -152,19 +152,21 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 |----------|-------|---------|
 | `CALLBACK_SUPPRESSION_DELAY_MS` | 50 | Suppress circular callbacks |
 | `STORAGE_READ_DEBOUNCE_MS` | 50 | Fast UI updates |
+| `BROADCAST_HISTORY_WINDOW_MS` | 100 | Broadcast dedup window (v1.6.3.6-v4) |
 | `STATE_EMIT_DELAY_MS` | 100 | State event fires first |
 | `DRAG_DEBOUNCE_MS` | 200 | Debounced drag/resize persistence |
-| `ESCALATION_WARNING_MS` | 250 | Intermediate stale transaction warning (v1.6.3.6-v3) |
+| `ESCALATION_WARNING_MS` | 250 | Intermediate stale transaction warning |
 | `DOM_VERIFICATION_DELAY_MS` | 500 | DOM verify timing |
-| `TRANSACTION_FALLBACK_CLEANUP_MS` | 500 | Transaction cleanup timeout (v1.6.3.6-v3: reduced from 2000) |
+| `TRANSACTION_FALLBACK_CLEANUP_MS` | 500 | Transaction cleanup timeout |
+| `BROADCAST_CIRCUIT_BREAKER_LIMIT` | 10 | Trips after 10+ broadcasts/100ms (v1.6.3.6-v4) |
 | `DUPLICATE_SAVEID_WINDOW_MS` | 1000 | Duplicate saveId detection window |
-| `DUPLICATE_SAVEID_THRESHOLD` | 1 | Max same saveId writes before warning (v1.6.3.6-v3: reduced from 2) |
+| `DUPLICATE_SAVEID_THRESHOLD` | 1 | Max same saveId writes before warning |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
 | `STORAGE_TIMEOUT_MS` | 2000 | Storage operation timeout |
 | `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message dedup |
 | `CLOSE_ALL_MUTEX_RELEASE_MS` | 2000 | closeAll mutex cooldown |
-| `CIRCUIT_BREAKER_THRESHOLD` | 15 | Block ALL writes when queue exceeds this (v1.6.3.6-v3) |
-| `CIRCUIT_BREAKER_RESET_THRESHOLD` | 10 | Auto-reset circuit breaker when below this (v1.6.3.6-v3) |
+| `CIRCUIT_BREAKER_THRESHOLD` | 15 | Block ALL writes when queue exceeds this |
+| `CIRCUIT_BREAKER_RESET_THRESHOLD` | 10 | Auto-reset circuit breaker below this |
 
 ---
 
@@ -189,28 +191,12 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 |--------|-------------|
 | `STATE_KEY` | Storage key (`quick_tabs_state_v2`) |
 | `WRITING_INSTANCE_ID` | Triple-source entropy unique ID |
+| `setWritingTabId(tabId)` | Set tab ID for content scripts (v1.6.3.6-v4) |
 | `canCurrentTabModifyQuickTab()` | Check tab ownership |
-| `validateOwnershipForWrite(tabs, tabId, forceEmpty)` | Filter tabs by ownership (v1.6.3.6-v3: blocks when `tabId === null`) |
-| `isSelfWrite(storageValue)` | Check if write from current tab (uses `lastWrittenTransactionId`) |
-| `persistStateToStorage()` | Write with ownership validation, `forceEmpty` param |
-| `queueStorageWrite()` | Queue writes with circuit breaker check (v1.6.3.6-v3) |
-| `_shouldRejectEmptyWrite()` | ALWAYS rejects unless `forceEmpty=true` AND ownership history |
-| `_handleEmptyWriteValidation(tabId, forceEmpty)` | Validates empty writes with `previouslyOwnedTabIds` |
-| `_trackDuplicateSaveIdWrite(saveId, transactionId)` | Tracks duplicate saveId writes for loop detection |
-| `cleanupTransactionId()` | Event-driven transaction cleanup (also cleans warning timeouts) |
-| `scheduleFallbackCleanup()` | Enhanced with 250ms escalation warning (v1.6.3.6-v3) |
-| `beginTransaction()`/`commitTransaction()`/`rollbackTransaction()` | Transaction lifecycle |
-
-**v1.6.3.6-v3 Module Variables:**
-- `circuitBreakerTripped` - Boolean flag, blocks ALL writes when true
-- `circuitBreakerTripTime` - Timestamp when circuit breaker tripped
-- `TRANSACTION_WARNING_TIMEOUTS` - Map tracking 250ms warning timeouts
-
-**v1.6.3.6-v2 Module Variables (Retained):**
-- `writeCounter` - Module-level counter for unique transaction IDs
-- `lastWrittenTransactionId` - Tracks last transaction for deterministic self-write detection
-- `previouslyOwnedTabIds` - Set tracking tabs with ownership history
-- `saveIdWriteTracker` - Map for duplicate saveId detection (`DUPLICATE_SAVEID_WINDOW_MS=1000`, `DUPLICATE_SAVEID_THRESHOLD=1`)
+| `validateOwnershipForWrite(tabs, tabId, forceEmpty)` | Filter tabs by ownership |
+| `isSelfWrite(storageValue)` | Check if write from current tab |
+| `persistStateToStorage()` | Write with ownership validation |
+| `queueStorageWrite()` | Queue writes with circuit breaker check |
 
 **CRITICAL:** Always use `storage.local` for Quick Tab state, NOT `storage.sync`.
 
@@ -223,9 +209,9 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 - Transaction rollback, state machine, ownership validation, Single Writer Model
 - Coordinated clear, closeAll mutex, `window:created` event
 - DOM lookup (`__quickTabWindow`), `data-quicktab-id`, `DragController.updateElement()`
-- Cross-tab filtering in handlers prevents ghost Quick Tabs (v1.6.3.6)
-- **v1.6.3.6-v3:** Circuit breaker pattern, fail-closed tab ID validation, 250ms escalation warnings
-- **v1.6.3.6-v2:** Triple-source entropy, `lastWrittenTransactionId`, `previouslyOwnedTabIds`, loop detection logging
+- Cross-tab filtering in handlers prevents ghost Quick Tabs
+- **v1.6.3.6-v4:** setWritingTabId(), broadcast dedup, hydration flag, position/size logging
+- **v1.6.3.6-v4:** Storage circuit breaker, fail-closed tab ID validation, escalation warnings
 
 ---
 
@@ -277,21 +263,18 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ### Key Files
 
-| File | Key Features (v1.6.3.6-v3) |
+| File | Key Features (v1.6.3.6-v4) |
 |------|---------------------------|
-| `background.js` | `_isTransactionSelfWrite()` (simplified), `_broadcastQuickTabsClearedToTabs()`, `QUICK_TAB_DELETED` notifications |
-| `src/content.js` | `getCurrentTabIdFromBackground()`, cross-tab filtering in `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` |
-| `src/utils/storage-utils.js` | Circuit breaker (`circuitBreakerTripped`), fail-closed validation, 250ms escalation warnings, `TRANSACTION_FALLBACK_CLEANUP_MS=500` |
-| `UICoordinator.js` | `setHandlers()`, `_buildCallbackOptions()` |
-| `StateManager.js` | `persistToStorage(source, forceEmpty)` |
-| `window.js` | `_applyZIndexAfterAppend()`, `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags, `_logIfStateDesync()`, defensive DOM query in `minimize()` |
-| `VisibilityHandler.js` | `_rewireCallbacksAfterRestore()`, `_checkMinimizePreconditions()`, `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`, `_verifyRestoreAndEmit()` invariants, `isFocusOperation` |
-| `DragController.js` | `updateElement()`, `cleanup()` |
-| `ResizeController.js` | `cleanup()` |
-| `ResizeHandle.js` | `cleanup()`, `destroyed` flag |
-| `DestroyHandler.js` | `_notifyBackgroundOfDeletion()` |
-| `quick-tabs-manager.js` | `handleStateDeletedMessage()`, `closeAllTabs()` with comprehensive logging |
-| `index.js` | `initQuickTabs()` accepts `currentTabId`, calls `setHandlers()` |
+| `background.js` | Broadcast dedup, circuit breaker (10+/100ms), `_shouldAllowBroadcast()` |
+| `src/content.js` | `setWritingTabId()` call after tab ID fetch, cross-tab filtering |
+| `src/utils/storage-utils.js` | `setWritingTabId()` export, circuit breaker, fail-closed validation |
+| `QuickTabHandler.js` | sender.tab.id ONLY, position/size logging, `handleGetCurrentTabId()` |
+| `UICoordinator.js` | `_isHydrating` flag, `setHandlers()`, `_buildCallbackOptions()` |
+| `CreateHandler.js` | `_getOriginTabId()`, `_logOriginTabIdAssignment()` extraction |
+| `UpdateHandler.js` | `_doPersist()` logging, success confirmation |
+| `window.js` | `rewireCallbacks()`, operation flags, `_logIfStateDesync()` |
+| `VisibilityHandler.js` | `_rewireCallbacksAfterRestore()`, `_applyZIndexUpdate()` |
+| `quick-tabs-manager.js` | `closeAllTabs()` comprehensive logging |
 
 ### Storage Key & Format
 

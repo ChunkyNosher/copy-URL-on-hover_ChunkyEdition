@@ -2352,15 +2352,90 @@ function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId) {
   }
 }
 
+// v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #4: Broadcast deduplication and circuit breaker
+// Track recent broadcasts to prevent storms
+const _broadcastHistory = [];
+// 100ms window chosen based on typical user interaction timing - broadcasts within this window
+// are likely duplicates from the same user action (e.g., drag event fires multiple times)
+const BROADCAST_HISTORY_WINDOW_MS = 100;
+// Limit of 10 broadcasts per window based on empirical observation that legitimate operations
+// rarely generate more than 2-3 broadcasts per 100ms. 10 provides safety margin while catching loops.
+const BROADCAST_CIRCUIT_BREAKER_LIMIT = 10;
+let _circuitBreakerTripped = false;
+let _lastCircuitBreakerReset = 0;
+
+/**
+ * Check if broadcast should be allowed (circuit breaker + deduplication)
+ * v1.6.3.6-v4 - FIX Issue #4: Prevent broadcast storms
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes
+ * @returns {{ allowed: boolean, reason: string }}
+ */
+function _shouldAllowBroadcast(quickTabId, changes) {
+  const now = Date.now();
+  
+  // Reset circuit breaker after 1 second
+  if (_circuitBreakerTripped && (now - _lastCircuitBreakerReset) > 1000) {
+    _circuitBreakerTripped = false;
+    console.log('[Background] Broadcast circuit breaker RESET');
+  }
+  
+  // Check if circuit breaker is tripped
+  if (_circuitBreakerTripped) {
+    return { allowed: false, reason: 'circuit breaker tripped' };
+  }
+  
+  // Clean up old history entries
+  while (_broadcastHistory.length > 0 && (now - _broadcastHistory[0].time) > BROADCAST_HISTORY_WINDOW_MS) {
+    _broadcastHistory.shift();
+  }
+  
+  // Check for duplicate broadcast (same quickTabId and changes hash within window)
+  const changesHash = JSON.stringify(changes);
+  const isDuplicate = _broadcastHistory.some(entry => 
+    entry.quickTabId === quickTabId && entry.changesHash === changesHash
+  );
+  
+  if (isDuplicate) {
+    return { allowed: false, reason: 'duplicate broadcast within window' };
+  }
+  
+  // Check circuit breaker limit
+  if (_broadcastHistory.length >= BROADCAST_CIRCUIT_BREAKER_LIMIT) {
+    _circuitBreakerTripped = true;
+    _lastCircuitBreakerReset = now;
+    console.error('[Background] ⚠️ BROADCAST CIRCUIT BREAKER TRIPPED - too many broadcasts within', BROADCAST_HISTORY_WINDOW_MS, 'ms');
+    console.error('[Background] Broadcasts in window:', _broadcastHistory.length);
+    return { allowed: false, reason: 'circuit breaker limit exceeded' };
+  }
+  
+  // Add to history
+  _broadcastHistory.push({ time: now, quickTabId, changesHash });
+  
+  return { allowed: true, reason: 'ok' };
+}
+
 /**
  * Broadcast QUICK_TAB_STATE_UPDATED to Manager and other tabs
  * v1.6.3.5-v3 - FIX Architecture Phase 1: Background broadcasts state changes
+ * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
  * @param {number} excludeTabId - Tab to exclude from broadcast (the source tab)
  */
 async function broadcastQuickTabStateUpdate(quickTabId, changes, source, excludeTabId) {
+  // v1.6.3.6-v4 - FIX Issue #4: Check broadcast limits
+  const broadcastCheck = _shouldAllowBroadcast(quickTabId, changes);
+  if (!broadcastCheck.allowed) {
+    console.log('[Background] Broadcast BLOCKED:', {
+      quickTabId,
+      reason: broadcastCheck.reason,
+      source
+    });
+    return;
+  }
+  
   const message = {
     type: 'QUICK_TAB_STATE_UPDATED',
     quickTabId,
@@ -2370,11 +2445,13 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     timestamp: Date.now()
   };
   
+  // v1.6.3.6-v4 - FIX Issue #4: Log trigger source before broadcast
   console.log('[Background] Broadcasting QUICK_TAB_STATE_UPDATED:', {
     quickTabId,
     changes,
     source,
-    excludeTabId
+    excludeTabId,
+    triggerSource: source
   });
   
   // Broadcast to Manager sidebar (if open)

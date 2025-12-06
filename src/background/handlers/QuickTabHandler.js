@@ -123,29 +123,63 @@ export class QuickTabHandler {
    * Helper method to update Quick Tab properties
    * Reduces duplication across update handlers
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.3.6-v4 - FIX Issue #1: Added diagnostic logging for tab lookup and update confirmation
    * @param {Object} message - Message with id and properties to update
    * @param {Function} updateFn - Function to update tab properties
    * @param {boolean} shouldSave - Whether to save to storage immediately
    * @returns {Object} Success response
    */
   async updateQuickTabProperty(message, updateFn, shouldSave = true) {
+    // v1.6.3.6-v4 - FIX Issue #1: Log entry with parameters
+    console.log('[QuickTabHandler] updateQuickTabProperty ENTRY:', {
+      messageId: message.id,
+      shouldSave,
+      isInitialized: this.isInitialized,
+      tabCount: this.globalState.tabs?.length ?? 0,
+      timestamp: Date.now()
+    });
+    
     if (!this.isInitialized) {
+      console.log('[QuickTabHandler] Not initialized, calling initializeFn...');
       await this.initializeFn();
     }
 
     // v1.6.2.2 - Use unified tabs array instead of container-based lookup
     const tab = this.globalState.tabs.find(t => t.id === message.id);
     if (!tab) {
+      // v1.6.3.6-v4 - FIX Issue #1: Log warning when tab not found (silent failure before)
+      console.warn('[QuickTabHandler] updateQuickTabProperty: Tab NOT FOUND in globalState:', {
+        searchId: message.id,
+        availableIds: this.globalState.tabs.map(t => t.id).slice(0, 10), // First 10 IDs for debugging
+        totalTabs: this.globalState.tabs.length
+      });
       return { success: true };
     }
+    
+    // v1.6.3.6-v4 - FIX Issue #1: Log successful tab lookup
+    console.log('[QuickTabHandler] updateQuickTabProperty: Tab FOUND:', {
+      id: tab.id,
+      currentPosition: { left: tab.left, top: tab.top },
+      currentSize: { width: tab.width, height: tab.height }
+    });
 
     updateFn(tab, message);
     this.globalState.lastUpdate = Date.now();
 
     if (shouldSave) {
+      // v1.6.3.6-v4 - FIX Issue #1: Log before calling saveStateToStorage
+      console.log('[QuickTabHandler] updateQuickTabProperty: Calling saveStateToStorage (shouldSave=true)');
       await this.saveStateToStorage();
+    } else {
+      console.log('[QuickTabHandler] updateQuickTabProperty: Skipping storage save (shouldSave=false)');
     }
 
+    // v1.6.3.6-v4 - FIX Issue #1: Log successful completion
+    console.log('[QuickTabHandler] updateQuickTabProperty EXIT:', {
+      id: message.id,
+      shouldSave,
+      lastUpdate: this.globalState.lastUpdate
+    });
     return { success: true };
   }
 
@@ -264,14 +298,35 @@ export class QuickTabHandler {
 
   /**
    * Handle position update
+   * v1.6.3.6-v4 - FIX Issue #1: Added entry logging similar to handlePinUpdate()
    */
   handlePositionUpdate(message, _sender) {
     const shouldSave = message.action === 'UPDATE_QUICK_TAB_POSITION_FINAL';
+    
+    // v1.6.3.6-v4 - FIX Issue #1: Entry logging for position updates
+    console.log('[QuickTabHandler] Position Update:', {
+      action: message.action,
+      quickTabId: message.id,
+      left: message.left,
+      top: message.top,
+      cookieStoreId: message.cookieStoreId || 'firefox-default',
+      shouldSave,
+      timestamp: Date.now()
+    });
+    
     return this.updateQuickTabProperty(
       message,
       (tab, msg) => {
+        const oldLeft = tab.left;
+        const oldTop = tab.top;
         tab.left = msg.left;
         tab.top = msg.top;
+        // v1.6.3.6-v4 - FIX Issue #1: Log old vs new values
+        console.log('[QuickTabHandler] Position applied:', {
+          quickTabId: msg.id,
+          oldPosition: { left: oldLeft, top: oldTop },
+          newPosition: { left: tab.left, top: tab.top }
+        });
       },
       shouldSave
     );
@@ -279,14 +334,35 @@ export class QuickTabHandler {
 
   /**
    * Handle size update
+   * v1.6.3.6-v4 - FIX Issue #1: Added entry logging similar to handlePinUpdate()
    */
   handleSizeUpdate(message, _sender) {
     const shouldSave = message.action === 'UPDATE_QUICK_TAB_SIZE_FINAL';
+    
+    // v1.6.3.6-v4 - FIX Issue #1: Entry logging for size updates
+    console.log('[QuickTabHandler] Size Update:', {
+      action: message.action,
+      quickTabId: message.id,
+      width: message.width,
+      height: message.height,
+      cookieStoreId: message.cookieStoreId || 'firefox-default',
+      shouldSave,
+      timestamp: Date.now()
+    });
+    
     return this.updateQuickTabProperty(
       message,
       (tab, msg) => {
+        const oldWidth = tab.width;
+        const oldHeight = tab.height;
         tab.width = msg.width;
         tab.height = msg.height;
+        // v1.6.3.6-v4 - FIX Issue #1: Log old vs new values
+        console.log('[QuickTabHandler] Size applied:', {
+          quickTabId: msg.id,
+          oldSize: { width: oldWidth, height: oldHeight },
+          newSize: { width: tab.width, height: tab.height }
+        });
       },
       shouldSave
     );
@@ -388,32 +464,43 @@ export class QuickTabHandler {
   /**
    * Get current tab ID
    * v1.6.2.4 - FIX Issue #4: Add fallback when sender.tab is unavailable
-   * Content scripts during initialization may not have sender.tab populated
+   * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: ALWAYS prioritize sender.tab.id
+   *   The fallback to tabs.query({ active: true }) was causing cross-tab isolation failures
+   *   because when user switches tabs before content script initializes, the "active" tab
+   *   is different from the requesting tab. This returns the WRONG tab ID.
+   *   
+   *   Now: We ONLY use sender.tab.id (which is the actual requesting tab).
+   *   If sender.tab is unavailable, we return null with a clear error instead of
+   *   returning a potentially wrong tab ID from the active tab query.
+   *   
+   *   Note: Removed async since we no longer use await.
+   * 
+   * @param {Object} _message - Message object (unused, required by message router signature)
+   * @param {Object} sender - Message sender object containing tab information
+   * @returns {{ success: boolean, tabId: number|null, error?: string }}
    */
-  async handleGetCurrentTabId(_message, sender) {
-    // Primary: Use sender.tab if available
+  handleGetCurrentTabId(_message, sender) {
+    // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id - this is the ACTUAL requesting tab
+    // sender.tab is populated by Firefox for all messages from content scripts
     if (sender.tab && typeof sender.tab.id === 'number') {
-      console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning ${sender.tab.id} from sender.tab`);
+      console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id} (actual requesting tab)`);
       return { success: true, tabId: sender.tab.id };
     }
 
-    // Fallback: Query active tab in current window
-    // This handles cases where sender.tab is not populated during initialization
-    console.log('[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available, querying active tab...');
+    // v1.6.3.6-v4 - REMOVED: Fallback to tabs.query({ active: true })
+    // This fallback was causing cross-tab isolation failures because:
+    // 1. User opens Wikipedia Tab 1 (tabId=13)
+    // 2. User opens Wikipedia Tab 2 (tabId=14) and switches to it
+    // 3. Tab 2's content script sends GET_CURRENT_TAB_ID
+    // 4. If sender.tab.id is unavailable, fallback returned tabId=14 (active tab)
+    //    but Tab 1's content script might still be initializing and get wrong ID
+    //
+    // Instead: Return null if sender.tab is unavailable - this is a clear error
+    // that the caller can handle, rather than silently returning wrong data.
     
-    try {
-      const tabs = await this.browserAPI.tabs.query({ active: true, currentWindow: true });
-      if (tabs && tabs.length > 0 && typeof tabs[0].id === 'number') {
-        console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning ${tabs[0].id} from tabs.query`);
-        return { success: true, tabId: tabs[0].id };
-      }
-      
-      console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Could not determine tab ID - no active tab found');
-      return { success: false, tabId: null };
-    } catch (err) {
-      console.error('[QuickTabHandler] GET_CURRENT_TAB_ID: Error querying tabs:', err);
-      return { success: false, tabId: null, error: err.message };
-    }
+    console.error('[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available - cannot determine requesting tab ID');
+    console.error('[QuickTabHandler] This should not happen for content scripts. Check if message came from non-tab context.');
+    return { success: false, tabId: null, error: 'sender.tab not available - cannot identify requesting tab' };
   }
 
   /**
@@ -561,15 +648,25 @@ export class QuickTabHandler {
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.3.6-v4 - FIX Issue #1: Added success confirmation logging
    */
   async saveStateToStorage() {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
     const writeSourceId = this._generateWriteSourceId();
+    const tabCount = this.globalState.tabs?.length ?? 0;
+    const saveTimestamp = Date.now();
+
+    // v1.6.3.6-v4 - FIX Issue #1: Log before storage write
+    console.log('[QuickTabHandler] saveStateToStorage ENTRY:', {
+      writeSourceId,
+      tabCount,
+      timestamp: saveTimestamp
+    });
 
     // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
       tabs: this.globalState.tabs,
-      timestamp: Date.now(),
+      timestamp: saveTimestamp,
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
 
@@ -578,6 +675,14 @@ export class QuickTabHandler {
       // v1.6.1.6 - FIX: Only write to local storage (removed session storage to prevent double events)
       await this.browserAPI.storage.local.set({
         quick_tabs_state_v2: stateToSave
+      });
+      
+      // v1.6.3.6-v4 - FIX Issue #1: Log successful completion (was missing before!)
+      console.log('[QuickTabHandler] saveStateToStorage SUCCESS:', {
+        writeSourceId,
+        tabCount,
+        timestamp: saveTimestamp,
+        tabIds: this.globalState.tabs.map(t => t.id).slice(0, 10) // First 10 IDs
       });
     } catch (err) {
       // DOMException and browser-native errors don't serialize properly

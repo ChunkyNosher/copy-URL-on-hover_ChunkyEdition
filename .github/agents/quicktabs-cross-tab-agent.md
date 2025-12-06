@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, Background-as-Coordinator messaging, Per-Tab Ownership Validation,
-  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.6-v2)
+  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.6-v4)
 tools: ["*"]
 ---
 
@@ -28,40 +28,32 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v4 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6-v3 Sync Architecture:**
+**v1.6.3.6-v4 Cross-Tab Fixes (CRITICAL):**
+1. **sender.tab.id Only** - `handleGetCurrentTabId()` MUST use sender.tab.id, NOT fallback to active tab
+2. **setWritingTabId()** - New export for content scripts to set tab ID for storage ownership
+3. **Broadcast Deduplication** - Circuit breaker in background.js (10+ broadcasts/100ms trips)
+4. **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned window warnings
+5. **Position/Size Logging** - Full trace visibility for debugging
+
+**v1.6.3.6-v4 Sync Architecture (Retained):**
 - **storage.onChanged** - Primary sync (fires in ALL OTHER tabs)
 - **Background-as-Coordinator** - Routes manager commands via background.js
-- **Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`, auto-resets at `< 10`
-- **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks when `tabId === null` (prevents async init race)
-- **Escalation Warning** - `scheduleFallbackCleanup()` fires 250ms warning if transaction pending
-- **Faster Loop Detection** - `DUPLICATE_SAVEID_THRESHOLD = 1`, `TRANSACTION_FALLBACK_CLEANUP_MS = 500ms`
-- **Triple-Source Entropy** - `WRITING_INSTANCE_ID` uses multiple entropy sources + `writeCounter`
-- **Deterministic Self-Write** - `lastWrittenTransactionId` for reliable `isSelfWrite()` detection
-- **Ownership History** - `previouslyOwnedTabIds` Set tracks tabs that have created Quick Tabs
-- **Loop Detection** - `saveIdWriteTracker` Map, backlog warnings at `pendingWriteCount > 5/10`
+- **Storage Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`
+- **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks when `tabId === null`
 - **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check ownership
 - **Per-Tab Ownership Validation** - `canCurrentTabModifyQuickTab()` prevents non-owner writes
 - **Per-Tab Scoping** - `_shouldRenderOnThisTab()` enforces strict originTabId filtering
 - **Tab ID Retrieval** - `getCurrentTabIdFromBackground()` before Quick Tabs init
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.6-v3 Fixes (CRITICAL for cross-tab):**
-1. **Circuit Breaker** - Prevents runaway writes from crashing browser
-2. **Fail-Closed Validation** - Unknown tab ID blocks writes during 50-200ms async init
-3. **Escalation Warning** - Early detection of stale transactions at 250ms
-4. **Faster Recovery** - 500ms transaction timeout catches loops before freeze
-
-**v1.6.3.6 Fixes (Retained):**
-1. **Cross-Tab Filtering Fix** - Handlers check `quickTabsMap`/`minimizedManager` before processing
-2. **Transaction Timeouts** - `STORAGE_TIMEOUT_MS` = 2000ms
-
-**Ownership Functions:**
+**Key Functions:**
+- `setWritingTabId(tabId)` - Content script sets tab ID (v1.6.3.6-v4)
+- `handleGetCurrentTabId(_msg, sender)` - Returns sender.tab.id ONLY (v1.6.3.6-v4)
+- `_shouldAllowBroadcast(quickTabId, changes)` - Broadcast dedup (v1.6.3.6-v4)
 - `canCurrentTabModifyQuickTab(tabData, currentTabId)` - Check ownership
-- `validateOwnershipForWrite(tabs, currentTabId, forceEmpty)` - Filter tabs (v1.6.3.6-v3: blocks when `tabId === null`)
-- `queueStorageWrite()` - Queue writes with circuit breaker check (v1.6.3.6-v3)
-- `_handleEmptyWriteValidation(tabId, forceEmpty)` - Validates empty writes
+- `validateOwnershipForWrite(tabs, currentTabId, forceEmpty)` - Filter tabs
 
 **Storage Format:**
 ```javascript
@@ -84,25 +76,18 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Circuit breaker trips at `pendingWriteCount >= 15` (v1.6.3.6-v3)
-- [ ] Circuit breaker auto-resets when queue below 10 (v1.6.3.6-v3)
-- [ ] `validateOwnershipForWrite()` blocks when `tabId === null` (v1.6.3.6-v3)
-- [ ] Escalation warning at 250ms for pending transactions (v1.6.3.6-v3)
-- [ ] `TRANSACTION_FALLBACK_CLEANUP_MS` = 500ms (v1.6.3.6-v3)
-- [ ] `DUPLICATE_SAVEID_THRESHOLD` = 1 (v1.6.3.6-v3)
-- [ ] Triple-source entropy generates unique IDs
-- [ ] `lastWrittenTransactionId` self-write detection works
-- [ ] `previouslyOwnedTabIds` tracks ownership history
-- [ ] Loop detection warnings appear at `pendingWriteCount > 5`
-- [ ] Empty writes blocked without `forceEmpty=true` AND ownership
+- [ ] sender.tab.id used exclusively (no active tab fallback) (v1.6.3.6-v4)
+- [ ] setWritingTabId() called after tab ID fetch (v1.6.3.6-v4)
+- [ ] Broadcast dedup works (10+ broadcasts/100ms trips breaker) (v1.6.3.6-v4)
+- [ ] Hydration flag suppresses warnings during renderAll() (v1.6.3.6-v4)
+- [ ] Storage circuit breaker trips at `pendingWriteCount >= 15`
 - [ ] Cross-tab filtering works (`_handleRestoreQuickTab`/`_handleMinimizeQuickTab`)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Ownership validation prevents non-owner writes
-- [ ] storage.onChanged events processed correctly
 - [ ] Ghost Quick Tabs prevented on non-owning tabs
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.6-v3 circuit breaker, fail-closed validation, and 250ms escalation warnings.**
+**Your strength: Reliable cross-tab sync with v1.6.3.6-v4 sender.tab.id fix, broadcast deduplication, and setWritingTabId().**

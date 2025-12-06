@@ -332,10 +332,18 @@ export class UpdateHandler {
    * v1.6.3.4 - FIX Issue #2: Only writes if state actually changed
    * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
    * v1.6.3.4-v10 - FIX Issue #5: Compare both parts of 64-bit hash
+   * v1.6.3.6-v4 - FIX Issue #1: Added success confirmation logging
    * @private
    * @returns {Promise<void>}
    */
   async _doPersist() {
+    // v1.6.3.6-v4 - FIX Issue #1: Log entry
+    console.log('[UpdateHandler] _doPersist ENTRY:', {
+      mapSize: this.quickTabsMap?.size ?? 0,
+      hasMinimizedManager: !!this.minimizedManager,
+      timestamp: Date.now()
+    });
+    
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
     
     // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
@@ -368,7 +376,14 @@ export class UpdateHandler {
     // Update hash and persist
     this._lastStateHash = newHash;
     const success = await persistStateToStorage(state, '[UpdateHandler]');
-    if (!success) {
+    
+    // v1.6.3.6-v4 - FIX Issue #1: Log result
+    if (success) {
+      console.log('[UpdateHandler] _doPersist SUCCESS:', {
+        tabCount: state.tabs?.length,
+        timestamp: Date.now()
+      });
+    } else {
       console.error('[UpdateHandler] Storage persist failed or timed out');
     }
   }
