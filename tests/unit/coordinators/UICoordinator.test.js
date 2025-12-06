@@ -372,8 +372,10 @@ describe('UICoordinator', () => {
       );
     });
 
-    test('should call tab destroy method', () => {
-      // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
+    test('should NOT call tab destroy method - UICoordinator handles Map cleanup only', () => {
+      // v1.6.3.6-v5 - FIX Deletion Loop: UICoordinator.destroy() no longer calls tabWindow.destroy()
+      // DestroyHandler is the authoritative deletion path. UICoordinator.destroy() is invoked
+      // via state:deleted event and should only handle Map cleanup - not re-trigger destruction.
       const quickTab = createQuickTabWithOriginTabId({
         id: 'qt-123',
         url: 'https://example.com',
@@ -388,7 +390,9 @@ describe('UICoordinator', () => {
 
       uiCoordinator.destroy('qt-123');
 
-      expect(tabWindow.destroy).toHaveBeenCalled();
+      // v1.6.3.6-v5 - FIX: UICoordinator should NOT call tabWindow.destroy()
+      // This prevents the deletion loop: UICoordinator → tabWindow.destroy() → onDestroy → DestroyHandler → loop
+      expect(tabWindow.destroy).not.toHaveBeenCalled();
     });
 
     test('should remove tab from renderedTabs map', () => {

@@ -58,6 +58,10 @@
  *   - Issue #3: Z-index broken after restore - handled by window.js z-index fix
  *   - Added setHandlers() method for deferred handler initialization
  *   - Added _buildCallbackOptions() for callback wiring in _createWindow()
+ * v1.6.3.6-v5 - FIX Deletion Loop (Issue 2 from v1636-diagnostics.md):
+ *   - destroy() method no longer calls tabWindow.destroy() - only handles Map cleanup
+ *   - DestroyHandler is the authoritative deletion path (emits state:deleted)
+ *   - UICoordinator.destroy() is just a cleanup listener for state:deleted events
  */
 
 import browser from 'webextension-polyfill';
@@ -1717,6 +1721,11 @@ export class UICoordinator {
    * v1.6.3.4-v5 - FIX Bug #3: Verify DOM cleanup after destroy
    * v1.6.3.4-v10 - FIX Issue #5: Stop DOM monitoring on destroy
    * v1.6.3.4-v11 - FIX Issue #5: Enhanced Map lifecycle logging
+   * v1.6.3.6-v5 - FIX Deletion Loop: DO NOT call tabWindow.destroy() here
+   *   This method is called via state:deleted event from DestroyHandler.
+   *   If we call tabWindow.destroy() here, it triggers onDestroy callback back to
+   *   DestroyHandler, creating a loop. UICoordinator should only handle Map cleanup.
+   *   DestroyHandler is the authoritative deletion path.
    *
    * @param {string} quickTabId - ID of tab to destroy
    */
@@ -1737,18 +1746,19 @@ export class UICoordinator {
       return;
     }
 
-    console.log('[UICoordinator] Destroying tab:', quickTabId);
+    console.log('[UICoordinator] Cleaning up tab from Map (state:deleted handler):', quickTabId);
 
-    // Call tab's destroy method if it exists
-    if (tabWindow.destroy) {
-      tabWindow.destroy();
-    }
+    // v1.6.3.6-v5 - FIX Deletion Loop: DO NOT call tabWindow.destroy() here
+    // This method is invoked via the state:deleted event listener.
+    // DestroyHandler has already called tabWindow.destroy() and emitted state:deleted.
+    // Calling destroy() again would re-trigger onDestroy callback → DestroyHandler → loop.
+    // UICoordinator only handles Map cleanup - DestroyHandler is the authoritative deletion path.
 
     // Remove from map
     // v1.6.3.4-v11 - FIX Issue #5: Log Map removal with before/after sizes
     console.log('[UICoordinator] renderedTabs.delete():', {
       id: quickTabId,
-      reason: 'destroy',
+      reason: 'state:deleted event cleanup',
       mapSizeBefore,
       mapSizeAfter: mapSizeBefore - 1
     });
@@ -1764,7 +1774,7 @@ export class UICoordinator {
       this.minimizedManager.clearSnapshot(quickTabId);
     }
 
-    console.log(`${this._logPrefix} Tab destroyed:`, quickTabId, '| mapSize:', this.renderedTabs.size);
+    console.log(`${this._logPrefix} Tab cleanup complete:`, quickTabId, '| mapSize:', this.renderedTabs.size);
   }
 
   /**

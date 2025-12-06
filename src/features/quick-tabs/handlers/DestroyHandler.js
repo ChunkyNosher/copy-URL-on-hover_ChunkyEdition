@@ -10,6 +10,7 @@
  * v1.6.3.4 - FIX Issues #4, #6, #7: Add source tracking, consolidate all destroy logic
  * v1.6.3.5-v6 - FIX Diagnostic Issue #3: Add closeAll mutex to prevent duplicate executions
  * v1.6.3.5-v11 - FIX Issue #6: Notify background of deletions for immediate Manager update
+ * v1.6.3.6-v5 - FIX Deletion Loop: Early return if ID already destroyed
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -21,8 +22,9 @@
  * - Notify background of deletions for Manager sidebar update
  * - Persist state to storage after destruction (debounced to prevent write storms)
  * - Log all destroy operations with source indication
+ * - Prevent deletion loops via _destroyedIds tracking
  *
- * @version 1.6.3.5-v11
+ * @version 1.6.3.6-v5
  */
 
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
@@ -98,6 +100,13 @@ export class DestroyHandler {
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    */
   handleDestroy(id, source = 'unknown') {
+    // v1.6.3.6-v5 - FIX Deletion Loop: Early return if already destroyed
+    // This prevents the loop: UICoordinator.destroy() → state:deleted → DestroyHandler → loop
+    if (this._destroyedIds.has(id)) {
+      console.log(`[DestroyHandler] SKIPPED: ID already destroyed (source: ${source}):`, id);
+      return;
+    }
+
     // v1.6.3.4 - FIX Issue #6: Log with source indication
     console.log(`[DestroyHandler] Handling destroy for: ${id} (source: ${source})`);
 
