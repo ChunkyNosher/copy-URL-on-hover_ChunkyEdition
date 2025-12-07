@@ -3,7 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  storage storm protection, Promise-Based Sequencing, and end-to-end functionality (v1.6.3.6-v5)
+  storage storm protection, Promise-Based Sequencing, originTabId preservation (v1.6.4),
+  and end-to-end functionality (v1.6.4)
 tools: ["*"]
 ---
 
@@ -28,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.4 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -36,6 +37,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Background-as-Coordinator** - Manager commands routed through background.js
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
+
+**v1.6.4 Fixes:**
+1. **originTabId Snapshot Preservation** - MinimizedManager includes `savedOriginTabId` in snapshots
+2. **originTabId Restore Application** - UICoordinator applies originTabId from snapshot
+3. **originTabId Restore Logging** - VisibilityHandler logs originTabId in restore flow
 
 **v1.6.3.6-v5 Fixes:**
 1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
@@ -75,6 +81,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] originTabId preserved in minimize/restore cycle (v1.6.4)
 - [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
 - [ ] Deletion state machine prevents loops (v1.6.3.6-v5)
 - [ ] initiateDestruction() unified entry point works (v1.6.3.6-v5)
@@ -90,4 +97,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.6-v5 strict tab isolation, deletion state machine, and correlation logging.**
+**Your strength: Complete Quick Tab system with v1.6.4 originTabId preservation in minimize/restore cycles, v1.6.3.6-v5 strict tab isolation, deletion state machine, and correlation logging.**

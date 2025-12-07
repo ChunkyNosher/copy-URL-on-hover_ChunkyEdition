@@ -58,12 +58,14 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
 
       // v1.6.3.4-v4 - Updated: Logs include snapshot details
+      // v1.6.4 - Updated: Logs now include savedOriginTabId
       expect(console.log).toHaveBeenCalledWith(
         '[MinimizedManager] Added minimized tab with snapshot:',
         {
           id: 'test-tab-1',
           savedPosition: { left: 100, top: 200 },
-          savedSize: { width: 800, height: 600 }
+          savedSize: { width: 800, height: 600 },
+          savedOriginTabId: null
         }
       );
     });

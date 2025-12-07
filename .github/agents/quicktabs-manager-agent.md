@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
-  real-time state updates, comprehensive UI logging, Single Writer Model (v1.6.3.6-v5)
+  real-time state updates, comprehensive UI logging, Single Writer Model, v1.6.4 restore fix
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.4 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -36,6 +36,11 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
+
+**v1.6.4 Fixes:**
+1. **originTabId Snapshot Preservation** - MinimizedManager includes `savedOriginTabId` in snapshots
+2. **originTabId Restore Application** - UICoordinator applies originTabId from snapshot during restore
+3. **Restore with Manager Open** - Fixed CROSS-TAB BLOCKED rejection when restoring minimized Quick Tabs
 
 **v1.6.3.6-v5 Fixes:**
 1. **Unified Deletion Path** - `initiateDestruction()` is single entry point; Manager close identical to UI button
@@ -85,9 +90,10 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - [ ] `closeAllTabs()` logs all stages (v1.6.3.6)
 - [ ] Cross-tab filtering works in content handlers (v1.6.3.6)
 - [ ] Transaction timeout is 2000ms (v1.6.3.6)
+- [ ] Minimized Quick Tabs restore correctly with Manager open (v1.6.4)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.6-v5 unified deletion path and message correlation logging.**
+**Your strength: Manager coordination with v1.6.4 restore fix, v1.6.3.6-v5 unified deletion path and message correlation logging.**

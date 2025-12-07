@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.6-v5  
+**Version:** 1.6.4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -28,6 +28,11 @@
 3. **Unified Deletion Path** - `initiateDestruction()` is single entry point; UI button and Manager close produce identical behavior
 4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with correlation IDs in storage-utils.js
 5. **Message Correlation IDs** - `generateMessageId()`, `logMessageDispatch()`, `logMessageReceipt()` in background.js
+
+**v1.6.4 Fixes:**
+1. **originTabId Snapshot Preservation** - MinimizedManager now includes `savedOriginTabId` in snapshots
+2. **originTabId Restore Application** - UICoordinator `_tryApplySnapshotFromManager()` applies originTabId from snapshot
+3. **originTabId Restore Logging** - VisibilityHandler logs originTabId throughout restore flow
 
 **v1.6.3.6-v5 Patterns:**
 - `_checkTabScopeWithReason()` - Unified tab scope validation with structured init logging
@@ -127,6 +132,14 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 - **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` track all storage ops
 - **Message Correlation IDs** - `generateMessageId()` creates unique IDs for message tracing
 
+### v1.6.4 Key Files
+
+| File | New Features (v1.6.4) |
+|------|----------------------|
+| `minimized-manager.js` | `savedOriginTabId` in snapshots, originTabId restore application |
+| `UICoordinator.js` | `_tryApplySnapshotFromManager()` applies originTabId from snapshot |
+| `VisibilityHandler.js` | originTabId logging in `_performTabWindowRestore()`, `_verifyRestoreAndEmit()` |
+
 ### v1.6.3.6-v5 Key Files
 
 | File | New Features (v1.6.3.6-v5) |
@@ -194,8 +207,8 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | QuickTabStateMachine | `canTransition()`, `transition()` |
 | QuickTabMediator | `minimize()`, `restore()`, `destroy()` |
 | MapTransactionManager | `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()` |
-| MinimizedManager | `forceCleanup()`, `getAllSnapshotIds()` |
-| UICoordinator | `setHandlers()`, `_buildCallbackOptions()`, `clearAll()` |
+| MinimizedManager | `forceCleanup()`, `getAllSnapshotIds()`, `savedOriginTabId` snapshots |
+| UICoordinator | `setHandlers()`, `_buildCallbackOptions()`, `clearAll()`, `_tryApplySnapshotFromManager()` |
 | VisibilityHandler | `_executeRestore()`, `_applyZIndexUpdate()` |
 | QuickTabWindow | `rewireCallbacks()`, `_logIfStateDesync()` |
 | DestroyHandler | `_closeAllInProgress` mutex, `_destroyedIds` Set, `initiateDestruction()` |
@@ -227,6 +240,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 - Coordinated clear, closeAll mutex, `window:created` event
 - DOM lookup (`__quickTabWindow`), `data-quicktab-id`, `DragController.updateElement()`
 - Cross-tab filtering in handlers prevents ghost Quick Tabs
+- **v1.6.4:** originTabId snapshot preservation, restore application, restore logging
 - **v1.6.3.6-v5:** Strict tab isolation, deletion state machine, unified deletion path, storage/message logging
 - **v1.6.3.6-v4:** setWritingTabId(), broadcast dedup, hydration flag, position/size logging
 
@@ -316,17 +330,18 @@ cat .agentic-tools-mcp/memories/category/filename.json
 
 ### Key Files
 
-| File | Key Features (v1.6.3.6-v5) |
-|------|---------------------------|
+| File | Key Features |
+|------|-------------|
 | `background.js` | `_broadcastDeletionToAllTabs()`, `generateMessageId()`, message correlation |
 | `src/content.js` | `logMessageReceipt()` with correlation IDs, cross-tab filtering |
 | `src/utils/storage-utils.js` | `logStorageRead()`, `logStorageWrite()`, operation logging |
-| `UICoordinator.js` | `_checkTabScopeWithReason()`, strict null originTabId rejection |
+| `UICoordinator.js` | `_checkTabScopeWithReason()`, `_tryApplySnapshotFromManager()` originTabId |
 | `DestroyHandler.js` | `_destroyedIds` Set, `initiateDestruction()`, single authority path |
 | `CreateHandler.js` | `_getOriginTabId()`, `_logOriginTabIdAssignment()` extraction |
 | `UpdateHandler.js` | `_doPersist()` logging, success confirmation |
 | `window.js` | `rewireCallbacks()`, operation flags, `_logIfStateDesync()` |
-| `VisibilityHandler.js` | `_rewireCallbacksAfterRestore()`, `_applyZIndexUpdate()` |
+| `VisibilityHandler.js` | `_rewireCallbacksAfterRestore()`, originTabId restore logging |
+| `minimized-manager.js` | `savedOriginTabId` snapshots, originTabId restore (v1.6.4) |
 | `quick-tabs-manager.js` | `closeAllTabs()` comprehensive logging |
 
 ### Storage Key & Format

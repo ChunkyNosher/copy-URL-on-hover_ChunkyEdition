@@ -14,6 +14,10 @@
  * v1.6.3.4-v12 - FIX Diagnostic Report Issue #5, #6:
  *   - State validation logging for entity.minimized vs Map consistency
  *   - Atomic snapshot clear with validation after clear
+ * v1.6.4 - FIX Minimize/Restore Bug:
+ *   - Include originTabId in snapshot to preserve cross-tab ownership
+ *   - Apply originTabId during restore to pass UICoordinator validation
+ *   - Enhanced logging for snapshot lifecycle with originTabId tracking
  */
 
 // Default values for position/size when not provided
@@ -71,6 +75,7 @@ export class MinimizedManager {
 
     // v1.6.3.4-v4 - FIX Issue #4: Store immutable snapshot of position/size
     // This prevents corruption if a duplicate window overwrites the original's properties
+    // v1.6.4 - FIX: Include originTabId for cross-tab validation during restore
     const snapshot = {
       window: tabWindow,
       savedPosition: {
@@ -80,13 +85,16 @@ export class MinimizedManager {
       savedSize: {
         width: tabWindow.width ?? DEFAULT_SIZE_WIDTH,
         height: tabWindow.height ?? DEFAULT_SIZE_HEIGHT
-      }
+      },
+      // v1.6.4 - FIX: Include originTabId for cross-tab validation during restore
+      savedOriginTabId: tabWindow.originTabId ?? null
     };
     this.minimizedTabs.set(id, snapshot);
     console.log('[MinimizedManager] Added minimized tab with snapshot:', {
       id,
       savedPosition: snapshot.savedPosition,
-      savedSize: snapshot.savedSize
+      savedSize: snapshot.savedSize,
+      savedOriginTabId: snapshot.savedOriginTabId
     });
   }
 
@@ -160,6 +168,8 @@ export class MinimizedManager {
         window: existingSnapshot.window,
         position: { left: existingSnapshot.savedPosition.left, top: existingSnapshot.savedPosition.top },
         size: { width: existingSnapshot.savedSize.width, height: existingSnapshot.savedSize.height },
+        // v1.6.4 - FIX: Include originTabId for cross-tab validation during restore
+        originTabId: existingSnapshot.savedOriginTabId ?? null,
         duplicate: true
       };
     }
@@ -222,18 +232,22 @@ export class MinimizedManager {
     const savedTop = snapshot.savedPosition.top;
     const savedWidth = snapshot.savedSize.width;
     const savedHeight = snapshot.savedSize.height;
+    // v1.6.4 - FIX: Retrieve saved originTabId for cross-tab validation
+    const savedOriginTabId = snapshot.savedOriginTabId ?? null;
     
     // Log snapshot source and dimensions
     console.log('[MinimizedManager] restore() snapshot lookup:', {
       id, source: snapshotSource,
       savedPosition: { left: savedLeft, top: savedTop },
-      savedSize: { width: savedWidth, height: savedHeight }
+      savedSize: { width: savedWidth, height: savedHeight },
+      savedOriginTabId
     });
     
     // Log dimensions before applying
     console.log('[MinimizedManager] Instance dimensions BEFORE snapshot application:', {
       id, left: tabWindow.left, top: tabWindow.top,
-      width: tabWindow.width, height: tabWindow.height
+      width: tabWindow.width, height: tabWindow.height,
+      originTabId: tabWindow.originTabId
     });
 
     // Apply snapshot to instance
@@ -241,19 +255,31 @@ export class MinimizedManager {
     tabWindow.top = savedTop;
     tabWindow.width = savedWidth;
     tabWindow.height = savedHeight;
+    
+    // v1.6.4 - FIX: Apply originTabId to tabWindow for UICoordinator validation
+    if (savedOriginTabId !== null && savedOriginTabId !== undefined) {
+      tabWindow.originTabId = savedOriginTabId;
+      console.log('[MinimizedManager] Restored originTabId:', {
+        id,
+        originTabId: savedOriginTabId
+      });
+    }
 
     // Verify application
     this._verifySnapshotApplication(id, tabWindow, savedLeft, savedTop, savedWidth, savedHeight);
 
     console.log('[MinimizedManager] Snapshot applied:', {
       id, position: { left: savedLeft, top: savedTop },
-      size: { width: savedWidth, height: savedHeight }
+      size: { width: savedWidth, height: savedHeight },
+      originTabId: savedOriginTabId
     });
 
     return {
       window: tabWindow,
       position: { left: savedLeft, top: savedTop },
-      size: { width: savedWidth, height: savedHeight }
+      size: { width: savedWidth, height: savedHeight },
+      // v1.6.4 - FIX: Include originTabId in return value for cross-tab validation
+      originTabId: savedOriginTabId
     };
   }
   
@@ -406,11 +432,15 @@ export class MinimizedManager {
       console.log('[MinimizedManager] getSnapshot found for:', id, {
         source: this.minimizedTabs.has(id) ? 'minimizedTabs' : 'pendingClearSnapshots',
         position: snapshot.savedPosition,
-        size: snapshot.savedSize
+        size: snapshot.savedSize,
+        // v1.6.4 - FIX: Include originTabId in logging
+        originTabId: snapshot.savedOriginTabId ?? null
       });
       return {
         position: { left: snapshot.savedPosition.left, top: snapshot.savedPosition.top },
-        size: { width: snapshot.savedSize.width, height: snapshot.savedSize.height }
+        size: { width: snapshot.savedSize.width, height: snapshot.savedSize.height },
+        // v1.6.4 - FIX: Include originTabId for cross-tab validation
+        originTabId: snapshot.savedOriginTabId ?? null
       };
     }
     console.log('[MinimizedManager] getSnapshot not found for:', id);

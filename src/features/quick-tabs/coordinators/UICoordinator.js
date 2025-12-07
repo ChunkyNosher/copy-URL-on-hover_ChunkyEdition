@@ -49,6 +49,10 @@
  * v1.6.3.5-v8 - FIX Diagnostic Issues #1, #6, #10:
  *   - Issue #1: Enforce per-tab scoping via originTabId check
  *   - Issue #6: Coordinated clear path for Close All
+ * v1.6.4 - FIX Restore Bug:
+ *   - Apply originTabId from MinimizedManager snapshot during restore
+ *   - Enhanced logging to include originTabId in all snapshot operations
+ *   - Fixes CROSS-TAB BLOCKED rejection after minimize/restore cycle
  *   - Issue #10: Enhanced logging with tab context
  * v1.6.3.5-v9 - FIX Diagnostic Report Issues #4, #7:
  *   - Issue #4: Verify z-index stacking context after restore
@@ -853,10 +857,21 @@ export class UICoordinator {
     console.log('[UICoordinator] Restoring from snapshot (from minimizedManager):', {
       id: quickTab.id,
       position: snapshot.position,
-      size: snapshot.size
+      size: snapshot.size,
+      originTabId: snapshot.originTabId
     });
     quickTab.position = snapshot.position;
     quickTab.size = snapshot.size;
+
+    // v1.6.4 - FIX Restore Bug: Apply originTabId from snapshot for cross-tab validation
+    // Without this, _shouldRenderOnThisTab() will reject rendering with CROSS-TAB BLOCKED
+    if (snapshot.originTabId !== null && snapshot.originTabId !== undefined) {
+      quickTab.originTabId = snapshot.originTabId;
+      console.log('[UICoordinator] Restored originTabId from snapshot:', {
+        id: quickTab.id,
+        originTabId: snapshot.originTabId
+      });
+    }
     
     // v1.6.3.4-v10 - Only call restore() if still in active minimizedTabs
     // This applies the snapshot to the instance (for tabWindow dimensions)
@@ -925,7 +940,8 @@ export class UICoordinator {
     console.log('[UICoordinator] _applySnapshotForRestore - entity dimensions BEFORE:', {
       id: quickTab.id,
       position: quickTab.position,
-      size: quickTab.size
+      size: quickTab.size,
+      originTabId: quickTab.originTabId  // v1.6.4 - FIX: Include originTabId in logging
     });
     
     // First try to get snapshot from minimizedManager
@@ -934,7 +950,8 @@ export class UICoordinator {
       console.log('[UICoordinator] _applySnapshotForRestore - entity dimensions AFTER (from manager):', {
         id: quickTab.id,
         position: quickTab.position,
-        size: quickTab.size
+        size: quickTab.size,
+        originTabId: quickTab.originTabId  // v1.6.4 - FIX: Include originTabId in logging
       });
       return;
     }
@@ -945,7 +962,8 @@ export class UICoordinator {
       console.log('[UICoordinator] _applySnapshotForRestore - entity dimensions AFTER (from instance):', {
         id: quickTab.id,
         position: quickTab.position,
-        size: quickTab.size
+        size: quickTab.size,
+        originTabId: quickTab.originTabId  // v1.6.4 - FIX: Include originTabId in logging
       });
       return;
     }
@@ -977,7 +995,8 @@ export class UICoordinator {
       console.log('[UICoordinator] Snapshot applied from MinimizedManager:', {
         id: quickTabId,
         position: restoreResult.position,
-        size: restoreResult.size
+        size: restoreResult.size,
+        originTabId: restoreResult.originTabId  // v1.6.4 - FIX: Include originTabId in logging
       });
       // v1.6.3.2 - Now call restore() on the window (which updates minimized flag but does NOT render)
       tabWindow.restore();

@@ -35,6 +35,10 @@
  *   - Issue #8: Defensive checks in handleFocus() before updateZIndex()
  *   - Issue #9: Comprehensive z-index operation logging
  *   - Issue #10: Stale onFocus callback - part of callback re-wiring
+ * v1.6.4 - FIX Restore Bug: Enhanced originTabId logging in restore flow
+ *   - Log originTabId in _performTabWindowRestore() before and after restore
+ *   - Log originTabId in _verifyRestoreAndEmit() verification
+ *   - Log originTabId in _emitRestoreStateUpdateSync() event payload
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -631,8 +635,21 @@ export class VisibilityHandler {
       return;
     }
     
+    // v1.6.4 - FIX: Log originTabId before restore to verify it's available
+    console.log(`${this._logPrefix}[_performTabWindowRestore] originTabId BEFORE restore:`, {
+      id,
+      originTabId: tabWindow.originTabId,
+      source
+    });
+
     tabWindow.restore();
-    console.log(`[VisibilityHandler] Called tabWindow.restore() (source: ${source}) for:`, id);
+
+    // v1.6.4 - FIX: Log originTabId after restore to verify it persists
+    console.log(`${this._logPrefix}[_performTabWindowRestore] AFTER restore (source: ${source}):`, {
+      id,
+      originTabId: tabWindow.originTabId,
+      minimized: tabWindow.minimized
+    });
     this._ensureTabInMap(tabWindow, id, source);
     
     // v1.6.3.5-v11 - FIX Issue #2: Re-wire callbacks after restore to capture fresh context
@@ -745,10 +762,12 @@ export class VisibilityHandler {
       this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id, source });
     }
     
+    // v1.6.4 - FIX: Include originTabId in exit log for debugging
     console.log(`${this._logPrefix}[_executeRestore] EXIT (source: ${source}):`, {
       id,
       success: true,
-      newZIndex: tabWindow?.zIndex
+      newZIndex: tabWindow?.zIndex,
+      originTabId: tabWindow?.originTabId ?? 'N/A'
     });
     
     return { success: true };
@@ -781,12 +800,14 @@ export class VisibilityHandler {
       const inQuickTabsMap = this.quickTabsMap?.has?.(id) ?? false;
       const invariantHolds = isDOMRendered && !hasMinimizedSnapshot && inQuickTabsMap;
       
+      // v1.6.4 - FIX: Include originTabId in verification log
       console.log('[VisibilityHandler] Restore verification:', {
         id,
         isDOMRendered,
         hasMinimizedSnapshot,
         inQuickTabsMap,
-        invariantHolds
+        invariantHolds,
+        originTabId: tabWindow?.originTabId ?? 'N/A'
       });
       
       console.log(`[VisibilityHandler] Restore state check (source: ${source}):`, {
@@ -893,9 +914,11 @@ export class VisibilityHandler {
     }
     
     this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
+    // v1.6.4 - FIX: Include originTabId in emission log for debugging cross-tab validation
     console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { 
       domVerified: isDOMRendered, 
-      isRestoreOperation: true 
+      isRestoreOperation: true,
+      originTabId: tabWindow?.originTabId ?? 'N/A'
     });
   }
 
