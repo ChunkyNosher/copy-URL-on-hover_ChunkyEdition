@@ -2222,6 +2222,7 @@ const ACTION_HANDLERS = {
 /**
  * Command handler lookup table
  * v1.6.3.5-v3 - Extracted to reduce _executeQuickTabCommand complexity
+ * v1.6.3.6-v7 - FIX Issue #5: Enhanced logging at restoration pipeline stages
  * @private
  */
 const QUICK_TAB_COMMAND_HANDLERS = {
@@ -2232,10 +2233,41 @@ const QUICK_TAB_COMMAND_HANDLERS = {
     return { success: true, action: 'minimized' };
   },
   'RESTORE_QUICK_TAB': (quickTabId, source) => {
+    // v1.6.3.6-v7 - FIX Issue #5: Stage 1 logging - Command received by content script
+    console.log('[Content] RESTORE_QUICK_TAB command - Stage 1 (received):', {
+      quickTabId,
+      source,
+      hasVisibilityHandler: !!quickTabsManager?.visibilityHandler,
+      currentTabId: quickTabsManager?.currentTabId,
+      timestamp: Date.now()
+    });
+    
     const handler = quickTabsManager?.visibilityHandler?.handleRestore;
-    if (!handler) return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
-    handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
-    return { success: true, action: 'restored' };
+    if (!handler) {
+      console.warn('[Content] RESTORE_QUICK_TAB command - Handler not available:', {
+        quickTabId,
+        hasManager: !!quickTabsManager,
+        hasVisibilityHandler: !!quickTabsManager?.visibilityHandler
+      });
+      return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
+    }
+    
+    // v1.6.3.6-v7 - FIX Issue #5: Stage 2 logging - Invoking handleRestore
+    console.log('[Content] RESTORE_QUICK_TAB command - Stage 2 (invoking handler):', {
+      quickTabId,
+      source: source || 'manager'
+    });
+    
+    const result = handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
+    
+    // v1.6.3.6-v7 - FIX Issue #5: Stage 3 logging - Handler result
+    console.log('[Content] RESTORE_QUICK_TAB command - Stage 3 (handler complete):', {
+      quickTabId,
+      result,
+      timestamp: Date.now()
+    });
+    
+    return { success: true, action: 'restored', handlerResult: result };
   },
   'CLOSE_QUICK_TAB': (quickTabId, _source) => {
     const handler = quickTabsManager?.closeById;

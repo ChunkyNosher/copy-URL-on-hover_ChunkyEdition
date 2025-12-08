@@ -49,7 +49,7 @@
  * v1.6.3.5-v8 - FIX Diagnostic Issues #1, #6, #10:
  *   - Issue #1: Enforce per-tab scoping via originTabId check
  *   - Issue #6: Coordinated clear path for Close All
- * v1.6.4 - FIX Restore Bug:
+ * v1.6.3.6-v6 - FIX Restore Bug:
  *   - Apply originTabId from MinimizedManager snapshot during restore
  *   - Enhanced logging to include originTabId in all snapshot operations
  *   - Fixes CROSS-TAB BLOCKED rejection after minimize/restore cycle
@@ -634,16 +634,18 @@ export class UICoordinator {
    * Check if Quick Tab should be rendered on this tab (cross-tab scoping)
    * v1.6.3.5-v8 - FIX Issue #1: Enforce strict per-tab scoping
    * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #2: Stricter null originTabId handling
-   * v1.6.3.6-v5 - FIX Cross-Tab State Contamination: REJECT null originTabId instead of allowing
+   * v1.6.3.6-v6 - FIX Cross-Tab State Contamination: REJECT null originTabId instead of allowing
    *   Quick Tabs should only render in the browser tab that created them.
    *   If originTabId is null/undefined, we now REJECT the render to prevent cross-tab leakage.
+   * v1.6.3.6-v7 - FIX Issue #2: Add fallback to extract tab ID from Quick Tab ID pattern
+   *   when originTabId is null but ID pattern matches current tab (Manager restore case)
    * @private
    * @param {Object} quickTab - Quick Tab entity with originTabId property
    * @returns {boolean} True if Quick Tab should render on this tab
    */
   _shouldRenderOnThisTab(quickTab) {
     // If we don't know our tab ID, REJECT rendering to prevent cross-tab contamination
-    // v1.6.3.6-v5 - FIX: Changed from allowing to rejecting when currentTabId is null
+    // v1.6.3.6-v6 - FIX: Changed from allowing to rejecting when currentTabId is null
     if (this.currentTabId === null || this.currentTabId === undefined) {
       console.warn(`${this._logPrefix} CROSS-TAB BLOCKED: No currentTabId set - cannot verify ownership:`, {
         quickTabId: quickTab.id,
@@ -653,17 +655,38 @@ export class UICoordinator {
       return false;
     }
     
-    // If Quick Tab has no originTabId, REJECT rendering to prevent cross-tab leakage
-    // v1.6.3.6-v5 - FIX Cross-Tab State Contamination: This is the root cause fix
-    // Quick Tabs with null originTabId previously bypassed filtering and appeared on ALL tabs
+    // If Quick Tab has no originTabId, try to recover from ID pattern
+    // v1.6.3.6-v7 - FIX Issue #2: Manager restore can lose originTabId during serialization
     const originTabId = quickTab.originTabId;
     if (originTabId === null || originTabId === undefined) {
+      const extractedTabId = this._extractTabIdFromQuickTabId(quickTab.id);
+      
+      console.log(`${this._logPrefix} RENDER RECOVERY - Attempting tab ID extraction:`, {
+        id: quickTab.id,
+        extractedTabId,
+        currentTabId: this.currentTabId,
+        willRecover: extractedTabId === this.currentTabId
+      });
+      
+      if (extractedTabId === this.currentTabId) {
+        // v1.6.3.6-v7 - Recovery successful: ID pattern matches current tab
+        // Patch the originTabId so subsequent operations have correct value
+        quickTab.originTabId = extractedTabId;
+        console.log(`${this._logPrefix} RENDER RECOVERED - originTabId patched from ID pattern:`, {
+          id: quickTab.id,
+          patchedOriginTabId: extractedTabId
+        });
+        return true;
+      }
+      
+      // v1.6.3.6-v6 - FIX Cross-Tab State Contamination: Reject if recovery failed
       console.warn(`${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab has null/undefined originTabId - REJECTED:`, {
         quickTabId: quickTab.id,
         originTabId,
+        extractedTabId,
         currentTabId: this.currentTabId,
         url: quickTab.url,
-        reason: 'Orphaned Quick Tab - originTabId must be set during creation'
+        reason: 'Orphaned Quick Tab - originTabId null and ID pattern does not match current tab'
       });
       return false;
     }
@@ -686,6 +709,20 @@ export class UICoordinator {
     }
     
     return shouldRender;
+  }
+  
+  /**
+   * Extract browser tab ID from Quick Tab ID pattern
+   * v1.6.3.6-v7 - FIX Issue #2: Fallback for Manager restore with null originTabId
+   * Quick Tab ID format: qt-{tabId}-{timestamp}-{random}
+   * @private
+   * @param {string} quickTabId - Quick Tab ID to parse
+   * @returns {number|null} Extracted tab ID or null if invalid format
+   */
+  _extractTabIdFromQuickTabId(quickTabId) {
+    if (!quickTabId || typeof quickTabId !== 'string') return null;
+    const match = quickTabId.match(/^qt-(\d+)-/);
+    return match ? parseInt(match[1], 10) : null;
   }
   
   /**
@@ -863,7 +900,7 @@ export class UICoordinator {
     quickTab.position = snapshot.position;
     quickTab.size = snapshot.size;
 
-    // v1.6.4 - FIX Restore Bug: Apply originTabId from snapshot for cross-tab validation
+    // v1.6.3.6-v6 - FIX Restore Bug: Apply originTabId from snapshot for cross-tab validation
     // Without this, _shouldRenderOnThisTab() will reject rendering with CROSS-TAB BLOCKED
     if (snapshot.originTabId !== null && snapshot.originTabId !== undefined) {
       quickTab.originTabId = snapshot.originTabId;
@@ -941,7 +978,7 @@ export class UICoordinator {
       id: quickTab.id,
       position: quickTab.position,
       size: quickTab.size,
-      originTabId: quickTab.originTabId  // v1.6.4 - FIX: Include originTabId in logging
+      originTabId: quickTab.originTabId  // v1.6.3.6-v6 - FIX: Include originTabId in logging
     });
     
     // First try to get snapshot from minimizedManager
@@ -951,7 +988,7 @@ export class UICoordinator {
         id: quickTab.id,
         position: quickTab.position,
         size: quickTab.size,
-        originTabId: quickTab.originTabId  // v1.6.4 - FIX: Include originTabId in logging
+        originTabId: quickTab.originTabId  // v1.6.3.6-v6 - FIX: Include originTabId in logging
       });
       return;
     }
@@ -963,7 +1000,7 @@ export class UICoordinator {
         id: quickTab.id,
         position: quickTab.position,
         size: quickTab.size,
-        originTabId: quickTab.originTabId  // v1.6.4 - FIX: Include originTabId in logging
+        originTabId: quickTab.originTabId  // v1.6.3.6-v6 - FIX: Include originTabId in logging
       });
       return;
     }
@@ -996,7 +1033,7 @@ export class UICoordinator {
         id: quickTabId,
         position: restoreResult.position,
         size: restoreResult.size,
-        originTabId: restoreResult.originTabId  // v1.6.4 - FIX: Include originTabId in logging
+        originTabId: restoreResult.originTabId  // v1.6.3.6-v6 - FIX: Include originTabId in logging
       });
       // v1.6.3.2 - Now call restore() on the window (which updates minimized flag but does NOT render)
       tabWindow.restore();

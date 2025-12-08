@@ -35,7 +35,7 @@
  *   - Issue #8: Defensive checks in handleFocus() before updateZIndex()
  *   - Issue #9: Comprehensive z-index operation logging
  *   - Issue #10: Stale onFocus callback - part of callback re-wiring
- * v1.6.4 - FIX Restore Bug: Enhanced originTabId logging in restore flow
+ * v1.6.3.6-v6 - FIX Restore Bug: Enhanced originTabId logging in restore flow
  *   - Log originTabId in _performTabWindowRestore() before and after restore
  *   - Log originTabId in _verifyRestoreAndEmit() verification
  *   - Log originTabId in _emitRestoreStateUpdateSync() event payload
@@ -635,7 +635,7 @@ export class VisibilityHandler {
       return;
     }
     
-    // v1.6.4 - FIX: Log originTabId before restore to verify it's available
+    // v1.6.3.6-v6 - FIX: Log originTabId before restore to verify it's available
     console.log(`${this._logPrefix}[_performTabWindowRestore] originTabId BEFORE restore:`, {
       id,
       originTabId: tabWindow.originTabId,
@@ -644,7 +644,7 @@ export class VisibilityHandler {
 
     tabWindow.restore();
 
-    // v1.6.4 - FIX: Log originTabId after restore to verify it persists
+    // v1.6.3.6-v6 - FIX: Log originTabId after restore to verify it persists
     console.log(`${this._logPrefix}[_performTabWindowRestore] AFTER restore (source: ${source}):`, {
       id,
       originTabId: tabWindow.originTabId,
@@ -762,7 +762,7 @@ export class VisibilityHandler {
       this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id, source });
     }
     
-    // v1.6.4 - FIX: Include originTabId in exit log for debugging
+    // v1.6.3.6-v6 - FIX: Include originTabId in exit log for debugging
     console.log(`${this._logPrefix}[_executeRestore] EXIT (source: ${source}):`, {
       id,
       success: true,
@@ -800,7 +800,7 @@ export class VisibilityHandler {
       const inQuickTabsMap = this.quickTabsMap?.has?.(id) ?? false;
       const invariantHolds = isDOMRendered && !hasMinimizedSnapshot && inQuickTabsMap;
       
-      // v1.6.4 - FIX: Include originTabId in verification log
+      // v1.6.3.6-v6 - FIX: Include originTabId in verification log
       console.log('[VisibilityHandler] Restore verification:', {
         id,
         isDOMRendered,
@@ -914,7 +914,7 @@ export class VisibilityHandler {
     }
     
     this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
-    // v1.6.4 - FIX: Include originTabId in emission log for debugging cross-tab validation
+    // v1.6.3.6-v6 - FIX: Include originTabId in emission log for debugging cross-tab validation
     console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { 
       domVerified: isDOMRendered, 
       isRestoreOperation: true,

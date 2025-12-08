@@ -493,10 +493,26 @@ class QuickTabsManager {
   }
 
   /**
+   * Extract browser tab ID from Quick Tab ID pattern
+   * v1.6.3.6-v7 - FIX Issue #1: Fallback for orphaned Quick Tabs with null originTabId
+   * Quick Tab ID format: qt-{tabId}-{timestamp}-{random}
+   * @private
+   * @param {string} quickTabId - Quick Tab ID to parse
+   * @returns {number|null} Extracted tab ID or null if invalid format
+   */
+  _extractTabIdFromQuickTabId(quickTabId) {
+    if (!quickTabId || typeof quickTabId !== 'string') return null;
+    const match = quickTabId.match(/^qt-(\d+)-/);
+    return match ? parseInt(match[1], 10) : null;
+  }
+
+  /**
    * Check if tab should be filtered by originTabId (unified implementation with reason tracking)
    * v1.6.3.5-v2 - Extracted to reduce _hydrateTab complexity
    * v1.6.3.6-v5 - FIX Cross-Tab State Contamination: STRICT filtering - reject missing originTabId
    *              Consolidated to single implementation that tracks reasons
+   * v1.6.3.6-v7 - FIX Issue #1: Add fallback to extract tab ID from Quick Tab ID pattern
+   *              when originTabId is null but ID pattern matches current tab
    * @private
    * @param {Object} tabData - Stored tab data
    * @returns {{skip: boolean, reason: string}} Result with skip flag and reason
@@ -516,15 +532,38 @@ class QuickTabsManager {
       return { skip: true, reason: 'noCurrentTabId' };
     }
     
-    // v1.6.3.6-v5 - FIX Cross-Tab State Contamination: Reject tabs with missing originTabId
-    // Previously, missing originTabId allowed tabs to render on ALL browser tabs
+    // v1.6.3.6-v7 - FIX Issue #1: If originTabId is missing, try to extract from Quick Tab ID
+    // This recovers orphaned Quick Tabs that lost their originTabId but have it embedded in ID
     if (!hasOriginTabId) {
-      console.warn('[QuickTabsManager] HYDRATION BLOCKED - Orphaned Quick Tab has no originTabId:', {
+      const extractedTabId = this._extractTabIdFromQuickTabId(tabData.id);
+      
+      console.log('[QuickTabsManager] HYDRATION RECOVERY - Attempting tab ID extraction:', {
+        id: tabData.id,
+        extractedTabId,
+        currentTabId: this.currentTabId,
+        willRecover: extractedTabId === this.currentTabId
+      });
+      
+      if (extractedTabId === this.currentTabId) {
+        // v1.6.3.6-v7 - Recovery successful: ID pattern matches current tab
+        // Patch the originTabId in-place so subsequent operations have correct value
+        tabData.originTabId = extractedTabId;
+        console.log('[QuickTabsManager] HYDRATION RECOVERED - originTabId patched from ID pattern:', {
+          id: tabData.id,
+          patchedOriginTabId: extractedTabId
+        });
+        return { skip: false, reason: 'recoveredFromIdPattern' };
+      }
+      
+      // v1.6.3.6-v5 - FIX Cross-Tab State Contamination: Reject tabs with missing originTabId
+      // that can't be recovered from ID pattern
+      console.warn('[QuickTabsManager] HYDRATION BLOCKED - Orphaned Quick Tab, recovery failed:', {
         id: tabData.id,
         originTabId: tabData.originTabId,
+        extractedTabId,
         currentTabId: this.currentTabId,
         url: tabData.url,
-        reason: 'originTabId is null/undefined - cannot verify ownership'
+        reason: 'originTabId null and ID pattern does not match current tab'
       });
       return { skip: true, reason: 'noOriginTabId' };
     }

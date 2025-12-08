@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v5 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v7 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
@@ -39,6 +39,17 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
+
+**v1.6.3.6-v7 Fixes:**
+1. **ID Pattern Recovery** - `_extractTabIdFromQuickTabId()` extracts tab ID from `qt-{tabId}-{timestamp}-{random}`
+2. **Orphan Recovery Fallback** - `_checkTabScopeWithReason()` recovers orphaned tabs when ID matches
+3. **Manager Restore Recovery** - `_shouldRenderOnThisTab()` patches originTabId in-place
+4. **3-Stage Restoration Logging** - RESTORE_QUICK_TAB logs receipt, invocation, completion
+
+**v1.6.3.6-v6 Fixes (renamed from v1.6.4):**
+1. **originTabId Snapshot Preservation** - MinimizedManager includes `savedOriginTabId` in snapshots
+2. **originTabId Restore Application** - UICoordinator applies originTabId from snapshot
+3. **originTabId Restore Logging** - VisibilityHandler logs originTabId in restore flow
 
 **v1.6.3.6-v5 Fixes:**
 1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
@@ -109,6 +120,52 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ✅ **Good Fix:** Addresses root cause, minimal changes, no new debt, respects boundaries
 ❌ **Bad Fix:** Masks symptom, complex workaround, violates architecture, race conditions
+
+---
+
+## v1.6.3.6-v7 Fix Patterns
+
+### ID Pattern Recovery (v1.6.3.6-v7)
+```javascript
+// index.js / UICoordinator.js - Extract tab ID from Quick Tab ID pattern
+function _extractTabIdFromQuickTabId(quickTabId) {
+  // Format: qt-{tabId}-{timestamp}-{random}
+  const match = quickTabId?.match(/^qt-(\d+)-/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+// _checkTabScopeWithReason() - Recovery fallback when originTabId is null
+_checkTabScopeWithReason(tabData) {
+  if (!tabData.originTabId) {
+    // Try to recover from Quick Tab ID pattern
+    const extractedTabId = this._extractTabIdFromQuickTabId(tabData.id);
+    if (extractedTabId === this._currentTabId) {
+      // Patch originTabId in-place for subsequent operations
+      tabData.originTabId = extractedTabId;
+      return { shouldRender: true, reason: 'Recovered via ID pattern' };
+    }
+    return { shouldRender: false, reason: 'Missing originTabId, no recovery' };
+  }
+  // ... existing checks
+}
+```
+
+### 3-Stage Restoration Logging (v1.6.3.6-v7)
+```javascript
+// content.js - Track RESTORE_QUICK_TAB flow
+case 'RESTORE_QUICK_TAB': {
+  // Stage 1: Command received
+  console.log('[Content] RESTORE_QUICK_TAB received', { quickTabId, correlationId });
+  
+  // Stage 2: Invoking handler
+  console.log('[Content] Invoking handleRestore', { quickTabId });
+  const result = await handleRestore(message);
+  
+  // Stage 3: Handler completion
+  console.log('[Content] handleRestore completed', { quickTabId, success: result?.success });
+  return result;
+}
+```
 
 ---
 

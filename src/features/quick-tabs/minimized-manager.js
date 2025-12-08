@@ -14,7 +14,7 @@
  * v1.6.3.4-v12 - FIX Diagnostic Report Issue #5, #6:
  *   - State validation logging for entity.minimized vs Map consistency
  *   - Atomic snapshot clear with validation after clear
- * v1.6.4 - FIX Minimize/Restore Bug:
+ * v1.6.3.6-v6 - FIX Minimize/Restore Bug:
  *   - Include originTabId in snapshot to preserve cross-tab ownership
  *   - Apply originTabId during restore to pass UICoordinator validation
  *   - Enhanced logging for snapshot lifecycle with originTabId tracking
@@ -75,7 +75,7 @@ export class MinimizedManager {
 
     // v1.6.3.4-v4 - FIX Issue #4: Store immutable snapshot of position/size
     // This prevents corruption if a duplicate window overwrites the original's properties
-    // v1.6.4 - FIX: Include originTabId for cross-tab validation during restore
+    // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation during restore
     const snapshot = {
       window: tabWindow,
       savedPosition: {
@@ -86,7 +86,7 @@ export class MinimizedManager {
         width: tabWindow.width ?? DEFAULT_SIZE_WIDTH,
         height: tabWindow.height ?? DEFAULT_SIZE_HEIGHT
       },
-      // v1.6.4 - FIX: Include originTabId for cross-tab validation during restore
+      // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation during restore
       savedOriginTabId: tabWindow.originTabId ?? null
     };
     this.minimizedTabs.set(id, snapshot);
@@ -168,7 +168,7 @@ export class MinimizedManager {
         window: existingSnapshot.window,
         position: { left: existingSnapshot.savedPosition.left, top: existingSnapshot.savedPosition.top },
         size: { width: existingSnapshot.savedSize.width, height: existingSnapshot.savedSize.height },
-        // v1.6.4 - FIX: Include originTabId for cross-tab validation during restore
+        // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation during restore
         originTabId: existingSnapshot.savedOriginTabId ?? null,
         duplicate: true
       };
@@ -232,7 +232,7 @@ export class MinimizedManager {
     const savedTop = snapshot.savedPosition.top;
     const savedWidth = snapshot.savedSize.width;
     const savedHeight = snapshot.savedSize.height;
-    // v1.6.4 - FIX: Retrieve saved originTabId for cross-tab validation
+    // v1.6.3.6-v6 - FIX: Retrieve saved originTabId for cross-tab validation
     const savedOriginTabId = snapshot.savedOriginTabId ?? null;
     
     // Log snapshot source and dimensions
@@ -256,7 +256,7 @@ export class MinimizedManager {
     tabWindow.width = savedWidth;
     tabWindow.height = savedHeight;
     
-    // v1.6.4 - FIX: Apply originTabId to tabWindow for UICoordinator validation
+    // v1.6.3.6-v6 - FIX: Apply originTabId to tabWindow for UICoordinator validation
     if (savedOriginTabId !== null && savedOriginTabId !== undefined) {
       tabWindow.originTabId = savedOriginTabId;
       console.log('[MinimizedManager] Restored originTabId:', {
@@ -278,7 +278,7 @@ export class MinimizedManager {
       window: tabWindow,
       position: { left: savedLeft, top: savedTop },
       size: { width: savedWidth, height: savedHeight },
-      // v1.6.4 - FIX: Include originTabId in return value for cross-tab validation
+      // v1.6.3.6-v6 - FIX: Include originTabId in return value for cross-tab validation
       originTabId: savedOriginTabId
     };
   }
@@ -433,13 +433,13 @@ export class MinimizedManager {
         source: this.minimizedTabs.has(id) ? 'minimizedTabs' : 'pendingClearSnapshots',
         position: snapshot.savedPosition,
         size: snapshot.savedSize,
-        // v1.6.4 - FIX: Include originTabId in logging
+        // v1.6.3.6-v6 - FIX: Include originTabId in logging
         originTabId: snapshot.savedOriginTabId ?? null
       });
       return {
         position: { left: snapshot.savedPosition.left, top: snapshot.savedPosition.top },
         size: { width: snapshot.savedSize.width, height: snapshot.savedSize.height },
-        // v1.6.4 - FIX: Include originTabId for cross-tab validation
+        // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation
         originTabId: snapshot.savedOriginTabId ?? null
       };
     }
