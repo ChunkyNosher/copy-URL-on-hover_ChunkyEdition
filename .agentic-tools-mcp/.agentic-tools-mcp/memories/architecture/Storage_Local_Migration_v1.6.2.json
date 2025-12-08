@@ -1,8 +1,0 @@
-{
-  "id": "2cdc60a2-cc7e-4499-9609-702e45cb4485",
-  "title": "Storage Local Migration v1.6.2",
-  "details": "## Storage Local Migration (v1.6.2)\n\n### Summary\nMigrated cross-tab synchronization from dual API (browser.storage.sync + BroadcastChannel) to single API (browser.storage.local + storage.onChanged).\n\n### Key Changes\n1. **BroadcastManager.js DELETED** - No longer using BroadcastChannel for cross-tab sync\n2. **StorageManager.js** - Updated to use storage.local exclusively\n   - Circuit breaker thresholds: failureThreshold=10, resetTimeoutMs=5000\n   - Removed session storage fallback\n   - Only listens to 'local' storage area changes\n3. **SyncCoordinator.js** - Handles storage.onChanged events exclusively\n4. **All Handlers** - Write directly to storage via background script\n\n### New Cross-Tab Sync Pattern\n```\nContent Script (Tab A)\n    ↓ (modify state)\nbrowser.runtime.sendMessage → background.js\n    ↓ \nbrowser.storage.local.set({ quickTabs: newState })\n    ↓ (automatic)\nstorage.onChanged fires in ALL OTHER TABS\n    ↓\nTab B, Tab C, Tab D receive change notification\n```\n\n### Critical Implementation Notes\n- storage.onChanged does NOT fire in the tab that made the change\n- Local UI must be updated IMMEDIATELY before storage write\n- Background script is the authoritative source for state\n- Circuit breaker protects against rapid error storms\n\n### Testing Notes\n- BroadcastManager unit tests deleted (7 files)\n- BroadcastManagerMock.js created for backward compatibility\n- Integration tests need updates to test storage.onChanged behavior",
-  "category": "architecture",
-  "dateCreated": "2025-11-25T03:13:05.677Z",
-  "dateUpdated": "2025-11-25T03:13:05.677Z"
-}
