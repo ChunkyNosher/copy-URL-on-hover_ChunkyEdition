@@ -1,8 +1,0 @@
-{
-  "id": "0d91cda5-47d0-4f90-9a43-0cb1311207d7",
-  "title": "Unused Code Removal v1.6.2.2",
-  "details": "Completed unused code removal for copy-URL-on-hover extension v1.6.2.2:\n\n## Phase 1 - Safe Deletions:\n- Deleted `src/utils/browser-api.js` (duplicate of src/core/browser-api.js, no imports)\n- Deleted `src/utils/Logger.js` (uppercase, old implementation - lowercase logger.js is used)\n- Deleted `src/features/quick-tabs/index.js.backup` (development backup)\n- Deleted `src/features/quick-tabs/panel.js.backup-phase2.10` (development backup)\n- Deleted `tests/unit/utils/Logger.test.js` (orphaned test for deleted file)\n- Added backup patterns to .gitignore: *.backup, *.backup-*, *.bak\n\n## Phase 2 - Config Cleanup:\nRemoved from DEFAULT_CONFIG in src/core/config.js:\n- `quickTabCloseOnOpen` (never implemented)\n- `quickTabUpdateRate` (obsolete - now uses Pointer Events)\n- `quickTabCustomX` (unused)\n- `quickTabCustomY` (unused)\n\n## NOT Removed (has active imports):\n- `src/utils/dom.js` - Imported by window.js, ResizeHandle.js, TitlebarBuilder.js\n\n## Results:\n- ~3,788 lines removed\n- All tests pass (78 suites, 2174 tests)\n- Build succeeds\n- CodeScene health: 9.68/10\n- CodeQL: No alerts",
-  "category": "refactoring",
-  "dateCreated": "2025-11-26T17:39:26.502Z",
-  "dateUpdated": "2025-11-26T17:39:26.502Z"
-}

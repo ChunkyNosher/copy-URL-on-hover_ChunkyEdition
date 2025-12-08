@@ -1,8 +1,0 @@
-{
-  "id": "bea1121c-e40e-4f92-b948-5b4437ce74e7",
-  "title": "v1.6.3.5-v5 Architecture",
-  "details": "v1.6.3.5-v5 Architecture Changes (Dec 2025):\n\nDEPRECATED METHODS (log warnings):\n- QuickTabWindow: setPosition(), setSize(), updatePosition(), updateSize() - bypass UpdateHandler\n- QuickTabsManager: updateQuickTabPosition(), updateQuickTabSize() - use handlePositionChange/handleSizeChange\n\nREMOVED FIELDS:\n- QuickTabWindow: lastPositionUpdate, lastSizeUpdate (unused cross-tab sync timestamps)\n\nNEW PATTERNS:\n1. Promise-Based Sequencing - _delay() helper replaces setTimeout for deterministic ordering\n2. Transaction Rollback - preRestoreState captured in _executeRestore for rollback on DOM verification failure\n3. Event-Driven Transaction Cleanup - cleanupTransactionId() export in storage-utils.js\n\nKEY CHANGES:\n- QuickTabWindow accepts currentTabId in constructor, uses _getCurrentTabId() instead of window.quickTabsManager.currentTabId\n- StateManager.persistToStorage() routes through storage-utils.persistStateToStorage\n- DOM verification checks isConnected property for proper document attachment\n- All setTimeout callbacks wrapped in try/catch with context markers",
-  "category": "architecture",
-  "dateCreated": "2025-12-03T06:32:32.595Z",
-  "dateUpdated": "2025-12-03T06:32:32.595Z"
-}

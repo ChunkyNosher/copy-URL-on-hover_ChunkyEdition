@@ -1,8 +1,0 @@
-{
-  "id": "1b2ac29f-f7e3-4817-b415-f7e07265b23f",
-  "title": "Quick Tab Manager UI Patterns",
-  "details": "Quick Tabs Manager sidebar displays tabs with metadata including position. Format: \"800×600 at (250, 150)\". Button colors: restore button uses green (#4caf50), close button uses light gray (#999) turning red on hover. CSS data-action selectors are used for button styling: [data-action=\"restore\"] and [data-action=\"close\"]. Position display uses _formatSizePosition helper function in quick-tabs-manager.js.",
-  "category": "ui-patterns",
-  "dateCreated": "2025-11-29T00:32:44.860Z",
-  "dateUpdated": "2025-11-29T00:32:44.860Z"
-}

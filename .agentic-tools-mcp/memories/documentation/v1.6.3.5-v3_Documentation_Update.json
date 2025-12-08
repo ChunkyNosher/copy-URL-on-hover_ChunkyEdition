@@ -1,8 +1,0 @@
-{
-  "id": "fd78ba8a-b77f-4df9-a95e-0f3898cbda87",
-  "title": "v1.6.3.5-v3 Documentation Update",
-  "details": "Updated Copilot instructions and agent files for v1.6.3.5-v3 release.\n\nKey v1.6.3.5-v3 features documented:\n- Self-Write Detection: WRITING_INSTANCE_ID, getWritingTabId(), getWritingInstanceId(), isSelfWrite()\n- Background-as-Coordinator Architecture with new message types:\n  - QUICK_TAB_STATE_CHANGE - Content script → Background\n  - QUICK_TAB_STATE_UPDATED - Background → All contexts\n  - MANAGER_COMMAND - Manager → Background\n  - EXECUTE_COMMAND - Background → Content script\n- New functions in background.js: handleQuickTabStateChange(), broadcastQuickTabStateUpdate(), handleManagerCommand(), executeManagerCommand(), quickTabHostTabs Map\n- New functions in sidebar/quick-tabs-manager.js: quickTabHostInfo Map, handleStateUpdateMessage(), _sendManagerCommand()\n- New in src/content.js: QUICK_TAB_COMMAND_HANDLERS, _executeQuickTabCommand()\n- Firefox Spurious Event Detection: _isSpuriousFirefoxEvent(), _hasMatchingSaveIdAndTabCount()\n- Enhanced Timer Logging: STARTED/COMPLETED/FAILED\n\nFiles updated:\n- .github/copilot-instructions.md (15,187 bytes, under 15KB limit)\n- .github/agents/quicktabs-*.md (all 4 files)\n- .github/agents/copilot-docs-updater.md\n- .github/agents/bug-fixer.md\n- .github/agents/bug-architect.md",
-  "category": "documentation",
-  "dateCreated": "2025-12-03T02:04:07.594Z",
-  "dateUpdated": "2025-12-03T02:04:07.594Z"
-}

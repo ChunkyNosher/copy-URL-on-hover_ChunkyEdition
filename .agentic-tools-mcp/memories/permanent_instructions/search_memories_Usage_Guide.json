@@ -1,8 +1,0 @@
-{
-  "id": "d21b2ce7-6eba-47bc-afbb-3cdf904510d4",
-  "title": "search_memories Usage Guide",
-  "details": "## search_memories Function Usage Guide (Verified Working)\n\n### Problem\nThe agentic-tools-search_memories function often returns no results because:\n1. Default threshold of 0.3 is too high\n2. Long multi-word queries fail to match\n\n### Solution (Verified December 6, 2025)\n\n**Optimal Parameters:**\n```javascript\nagentic-tools-search_memories({\n  query: \"single keyword\",    // 1-2 words ONLY\n  threshold: 0.1,             // CRITICAL: Use 0.1, not default 0.3\n  limit: 5,                   // 5-10 is optimal\n  workingDirectory: \"/full/path/to/repo\"\n})\n```\n\n**Working Query Examples:**\n- ✅ \"storage\" - Finds all storage-related memories\n- ✅ \"Quick Tab\" - Finds Quick Tab memories\n- ✅ \"bug\" - Finds bug fix memories\n- ✅ \"cross-tab\" - Finds sync-related memories\n\n**Failing Query Examples:**\n- ❌ \"deletion bug fix\" - Too many words\n- ❌ \"Quick Tab Manager synchronization\" - Too long\n\n### Bash Fallback\nIf search_memories returns nothing:\n```bash\ngrep -r -l \"keyword\" .agentic-tools-mcp/memories/\ncat .agentic-tools-mcp/memories/category/filename.json\n```\n\n### Key Rules\n1. ALWAYS use `threshold: 0.1`\n2. Use 1-2 word queries only\n3. Break compound queries into individual searches\n4. Use bash grep as fallback for complex searches\n\n**DO NOT EDIT** - This is a permanent instruction verified through testing.",
-  "category": "permanent_instructions",
-  "dateCreated": "2025-12-06T20:10:22.411Z",
-  "dateUpdated": "2025-12-06T20:10:22.411Z"
-}

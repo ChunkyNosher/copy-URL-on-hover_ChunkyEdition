@@ -1,8 +1,0 @@
-{
-  "id": "c14cc904-93c6-49ea-b63f-562a6d87e0c9",
-  "title": "State Object Replacement Race Condition",
-  "details": "**Bug Pattern: State Object Replacement Race Condition**\n\nWhen a state object has multiple properties managed by different methods, replacing the entire object can cause race conditions where one update overwrites another.\n\n**Problem:**\n```javascript\n// BAD - Creates new object, can overwrite isOpen set by another method\nthis.panelState = {\n  left: Math.round(rect.left),\n  isOpen: this.panelState.isOpen  // ← Can be stale\n};\n```\n\n**Solution:**\n```javascript\n// GOOD - Update properties directly, preserves other properties\nthis.panelState.left = Math.round(rect.left);\n// Note: isOpen NOT touched - only setIsOpen() should modify it\n```\n\n**Key Principle:** Separation of concerns - different aspects of state (position/size vs visibility) should be updated independently.",
-  "category": "bug_patterns",
-  "dateCreated": "2025-11-28T18:13:24.619Z",
-  "dateUpdated": "2025-11-28T18:13:24.619Z"
-}

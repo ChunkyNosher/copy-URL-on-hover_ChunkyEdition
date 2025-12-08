@@ -1,8 +1,0 @@
-{
-  "id": "c5726c5a-d8c3-4424-a9d1-80b42c8b0255",
-  "title": "UICoordinator uses ES module import",
-  "details": "UICoordinator.js properly imports createQuickTabWindow from '../window.js' as an ES module. The previous /* global createQuickTabWindow */ comment was just a JSLint directive that didn't actually import anything - it was replaced with proper import in Issue #35 fix. Tests should use jest.mock() to mock the window.js module rather than setting global.createQuickTabWindow.",
-  "category": "architecture",
-  "dateCreated": "2025-11-25T20:35:52.531Z",
-  "dateUpdated": "2025-11-25T20:35:52.531Z"
-}

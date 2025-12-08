@@ -1,8 +1,0 @@
-{
-  "id": "6f13ca5b-1cfe-4558-af08-9c5465736086",
-  "title": "Container Filtering Fix",
-  "details": "Fixed mass rendering issue where ALL Quick Tabs from ALL containers were rendering in every tab. Root cause: _hydrateState() in QuickTabsManager called storage.loadAll() which returns ALL Quick Tabs from ALL containers, then passed them all to hydrate() without filtering. Fix: Added container filtering in _hydrateState() BEFORE passing to hydrate(). Also added safety check in UICoordinator.render() to refuse rendering Quick Tabs from wrong container. Additionally, added early detection in content.js to skip initialization when running inside Quick Tab Window iframes (prevents nesting issues).",
-  "category": "bugfix",
-  "dateCreated": "2025-11-26T00:46:23.296Z",
-  "dateUpdated": "2025-11-26T00:46:23.296Z"
-}

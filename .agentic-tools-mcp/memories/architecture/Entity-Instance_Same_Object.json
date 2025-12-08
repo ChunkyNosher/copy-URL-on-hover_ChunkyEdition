@@ -1,8 +1,0 @@
-{
-  "id": "a3b11250-9b4f-46ac-84da-30ee87a9ee91",
-  "title": "Entity-Instance Same Object",
-  "details": "## Entity-Instance State Pattern\n\nIn VisibilityHandler, the tabWindow and entity are the SAME OBJECT:\n- `const tabWindow = this.quickTabsMap.get(id);`\n- `tabWindow` IS the entity stored in quickTabsMap\n- No need for separate `const entity = this.quickTabsMap.get(id);`\n\nWhen updating entity state, directly use tabWindow:\n```javascript\n// GOOD - use tabWindow directly\ntabWindow.minimized = true;\n\n// BAD - redundant Map lookup\nconst entity = this.quickTabsMap.get(id);\nentity.minimized = true;\n```\n\nThis is important because:\n1. Reduces duplicate Map lookups\n2. Makes it clearer that tabWindow IS the entity\n3. Simplifies code and removes confusion about \"entity vs instance\"",
-  "category": "architecture",
-  "dateCreated": "2025-12-01T03:50:05.837Z",
-  "dateUpdated": "2025-12-01T03:50:05.837Z"
-}

@@ -1,8 +1,0 @@
-{
-  "id": "d44776a2-4a60-474e-8cc8-8406cedea043",
-  "title": "Chrome SidePanel API MV3 Requirement",
-  "details": "CRITICAL FINDING: Chrome DOES have a sidebar API called chrome.sidePanel, but it REQUIRES Manifest V3.\n\nCurrent Extension Status:\n- Firefox manifest.json: Manifest V2 with sidebar_action\n- Chrome manifest.chrome.json: Manifest V2 with default_popup\n\nChrome sidePanel API Details:\n- API Name: chrome.sidePanel (NOT sidebarAction)\n- Manifest Key: \"side_panel\" (NOT \"sidebar_action\")\n- Manifest Version: REQUIRES Manifest V3 (released May 2023)\n- Permission: \"sidePanel\"\n\nKey Differences from Firefox:\n- Firefox uses browser.sidebarAction in MV2\n- Chrome uses chrome.sidePanel in MV3 only\n- API methods are similar but incompatible\n- Chrome: side_panel manifest key\n- Firefox: sidebar_action manifest key\n\nImplementation Options:\n1. Create separate manifest.chrome.v3.json with sidePanel support\n2. Migrate entire extension to Manifest V3 for both browsers\n3. Keep current approach (Chrome popup, Firefox sidebar)\n\nCode Example for Chrome MV3:\n```json\n{\n  \"manifest_version\": 3,\n  \"side_panel\": {\n    \"default_path\": \"sidebar/settings.html\"\n  },\n  \"permissions\": [\"sidePanel\"]\n}\n```\n\n```javascript\n// Open side panel on action click\nchrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });\n\n// Programmatically open\nchrome.sidePanel.open({ windowId: tab.windowId });\n```\n\nDocumentation Sources:\n- Chrome Developers: developer.chrome.com/docs/extensions/reference/api/sidePanel\n- Released: May 2023\n- Requires: Chrome 114+ with MV3",
-  "category": "technical",
-  "dateCreated": "2025-11-24T03:19:38.411Z",
-  "dateUpdated": "2025-11-24T03:19:38.411Z"
-}

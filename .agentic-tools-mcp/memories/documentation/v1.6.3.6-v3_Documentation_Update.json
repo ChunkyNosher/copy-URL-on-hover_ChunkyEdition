@@ -1,8 +1,0 @@
-{
-  "id": "b881ac80-11d4-4610-b919-161b80b89314",
-  "title": "v1.6.3.6-v3 Documentation Update",
-  "details": "Updated Copilot instructions and agent files to v1.6.3.6-v3 with new patterns:\n\n## v1.6.3.6-v3 Key Changes\n1. Circuit Breaker Pattern - CIRCUIT_BREAKER_THRESHOLD=15, CIRCUIT_BREAKER_RESET_THRESHOLD=10\n2. Fail-Closed Tab ID Validation - validateOwnershipForWrite() blocks when tabId === null\n3. Enhanced Loop Detection - ESCALATION_WARNING_MS=250, DUPLICATE_SAVEID_THRESHOLD=1\n4. Faster Transaction Cleanup - TRANSACTION_FALLBACK_CLEANUP_MS=500ms (was 2000ms)\n\n## New Module Variables (storage-utils.js)\n- circuitBreakerTripped - Boolean flag\n- circuitBreakerTripTime - Timestamp when tripped\n- TRANSACTION_WARNING_TIMEOUTS - Map for 250ms warnings\n\n## Files Updated\n- .github/copilot-instructions.md\n- All .github/agents/*.md files\n\nAll files verified under 15KB limit.",
-  "category": "documentation",
-  "dateCreated": "2025-12-05T22:02:26.439Z",
-  "dateUpdated": "2025-12-05T22:02:26.439Z"
-}

@@ -1,8 +1,0 @@
-{
-  "id": "86814cd7-371a-4f1c-a2dd-acd6fa3bcd92",
-  "title": "Panel visibility detection fix v1.6.3.4",
-  "details": "Fixed Bug #1 in PanelContentManager: The _getIsOpen() method now checks actual DOM visibility using getComputedStyle() before falling back to PanelStateManager state. This prevents stale cached state from blocking panel content updates when the panel is visible to the user.\n\nFixed Bug #6 in UICoordinator: The update() method now checks quickTab.visibility.minimized before attempting to render. This prevents re-rendering minimized tabs which should remain hidden.\n\nCode clarity improvement: Renamed eventBus to internalEventBus in panel.js and PanelContentManager.js for clarity. PanelContentManager now supports both old and new property names for backward compatibility.\n\nAdded missing event bridges in index.js: state:hydrated and state:cleared events are now bridged from internal to external event bus.",
-  "category": "project_context",
-  "dateCreated": "2025-11-28T17:16:54.425Z",
-  "dateUpdated": "2025-11-28T17:16:54.425Z"
-}

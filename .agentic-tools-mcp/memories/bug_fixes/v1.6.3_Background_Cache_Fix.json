@@ -1,8 +1,0 @@
-{
-  "id": "8e75b2e2-074a-4672-a9f0-d9f36b58ffe7",
-  "title": "v1.6.3 Background Cache Fix",
-  "details": "The background.js hash-based deduplication was causing bugs #1, #2, #6.\n\nFIX: computeStateHash() now includes saveId in hash calculation. The _clearCacheForEmptyStorage() helper always clears cache when tabs array is empty, regardless of hash comparison.\n\nKEY INSIGHT: Hash comparison should NEVER prevent cache updates for empty state. Different saveId = different write = must be acknowledged.",
-  "category": "bug_fixes",
-  "dateCreated": "2025-11-28T08:39:44.981Z",
-  "dateUpdated": "2025-11-28T08:39:44.981Z"
-}

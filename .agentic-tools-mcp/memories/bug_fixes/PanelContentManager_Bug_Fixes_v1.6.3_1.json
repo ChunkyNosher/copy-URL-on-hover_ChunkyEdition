@@ -1,8 +1,0 @@
-{
-  "id": "9f70371e-f003-40a1-aa34-4b31d6c6d564",
-  "title": "PanelContentManager Bug Fixes v1.6.3",
-  "details": "## Bug Fixes Applied (November 2025)\n\n### Root Cause: All panel update bugs traced to `forceRefresh: false` in state event handlers\n\n**Bug #12 (ROOT CAUSE)** - Panel Never Updates When Open:\n- Changed ALL state event handlers in `setupStateListeners()` to use `forceRefresh: true`\n- Affected handlers: addedHandler, updatedHandler, deletedHandler, hydratedHandler\n- clearedHandler was already using `forceRefresh: true`\n\n**Bug #20** - Panel Opens with Wrong State:\n- Changed `setIsOpen()` to ALWAYS call `updateContent({ forceRefresh: true })` when panel opens\n- Removed dependency on `stateChangedWhileClosed` flag\n\n**Bug #15** - Storage Listener:\n- Changed storage.onChanged listener to use `forceRefresh: true`\n\n### Key Insight\nThe `updateContent()` method has an early exit when `!options.forceRefresh && !isCurrentlyOpen`.\nWhen panel is \"open\" but `_getIsOpen()` returns stale `false`, updates were blocked.\nUsing `forceRefresh: true` bypasses this check and ensures updates always proceed.",
-  "category": "bug_fixes",
-  "dateCreated": "2025-11-28T20:44:20.654Z",
-  "dateUpdated": "2025-11-28T20:44:20.654Z"
-}

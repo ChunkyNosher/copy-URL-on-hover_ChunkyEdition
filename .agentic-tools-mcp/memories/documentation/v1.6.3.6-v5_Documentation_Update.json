@@ -1,8 +1,0 @@
-{
-  "id": "9b6a1483-7a7d-4a3a-836b-0c945d4fb0ba",
-  "title": "v1.6.3.6-v5 Documentation Update",
-  "details": "## v1.6.3.6-v5 Documentation Update Complete\n\n### Four Critical Fixes Documented:\n1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId\n   - Added `_checkTabScopeWithReason()` for unified tab scope validation\n   - Structured init logging shows total/validated/filtered counts\n\n2. **Deletion State Machine** - DestroyHandler._destroyedIds prevents loops\n   - Early return if ID is in `_destroyedIds` breaks deletion loops\n   - UICoordinator.destroy() only handles Map cleanup, NOT tabWindow.destroy()\n\n3. **Unified Deletion Path** - `initiateDestruction()` is single entry point\n   - `_broadcastDeletionToAllTabs()` with sender filtering\n   - UI button and Manager close now produce identical behavior\n\n4. **Logging Infrastructure** - Correlation IDs\n   - `logStorageRead()`, `logStorageWrite()` in storage-utils.js\n   - `generateMessageId()`, `logMessageDispatch()`, `logMessageReceipt()` in background.js\n\n### Files Updated (15 total):\n- .github/copilot-instructions.md\n- 14 agent files in .github/agents/\n\n### All files verified under 15KB limit",
-  "category": "documentation",
-  "dateCreated": "2025-12-06T20:05:19.741Z",
-  "dateUpdated": "2025-12-06T20:05:19.741Z"
-}

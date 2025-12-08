@@ -1,8 +1,0 @@
-{
-  "id": "871e2b7b-fc82-4a79-a29d-a4188eb47de0",
-  "title": "v1.6.3.6-v2 Doc Update",
-  "details": "v1.6.3.6-v2 Documentation Update Summary:\n\n## Storage Sync Fixes Documented\n\n### Issue 1: Storage Write Infinite Loop Fixed\n- Triple-source entropy for WRITING_INSTANCE_ID: performance.now() + Math.random() + crypto.getRandomValues() + writeCounter\n- Added lastWrittenTransactionId for deterministic self-write detection\n- Removed _isSpuriousFirefoxEvent() and _isAnySelfWrite() from background.js\n- Content scripts now handle self-write detection via isSelfWrite()\n\n### Issue 2: Loop Detection Logging Added\n- STORAGE WRITE BACKLOG warnings at pendingWriteCount > 5 (warn) or > 10 (critical)\n- saveIdWriteTracker Map for duplicate saveId detection (>2 in 1000ms)\n- Transaction timeout changed to console.error with \"TRANSACTION TIMEOUT - possible infinite loop\"\n\n### Issue 3: Empty State Corruption Fixed\n- Added previouslyOwnedTabIds Set to track ownership history\n- validateOwnershipForWrite() now accepts forceEmpty parameter\n- Empty writes require forceEmpty=true AND ownership history\n- Added _handleEmptyWriteValidation() helper\n\n## Key New Exports/Variables in storage-utils.js\n- writeCounter (module-level counter)\n- lastWrittenTransactionId\n- previouslyOwnedTabIds (Set)\n- saveIdWriteTracker (Map)\n- DUPLICATE_SAVEID_WINDOW_MS = 1000\n- DUPLICATE_SAVEID_THRESHOLD = 2\n\n## Files Updated\n- .github/copilot-instructions.md\n- All 13 agent files in .github/agents/",
-  "category": "documentation",
-  "dateCreated": "2025-12-05T07:20:43.202Z",
-  "dateUpdated": "2025-12-05T07:20:43.202Z"
-}

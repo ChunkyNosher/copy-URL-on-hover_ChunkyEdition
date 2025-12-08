@@ -1,8 +1,0 @@
-{
-  "id": "6eadecac-ee7e-44d1-a78d-85ff7052b0bf",
-  "title": "Position/Size Persistence Logging",
-  "details": "Quick Tab position/size updates flow through two paths:\n\n**Content Script Path (local updates):**\n1. DragController/ResizeHandle → window.js callbacks (onPositionChangeEnd, onSizeChangeEnd)\n2. → UpdateHandler.handlePositionChangeEnd() / handleSizeChangeEnd()\n3. → _persistToStorage() → _doPersist()\n4. → storage-utils.js persistStateToStorage()\n5. → browser.storage.local.set()\n\n**Background Script Path (message-based):**\n1. browser.runtime.sendMessage() with UPDATE_QUICK_TAB_POSITION_FINAL / UPDATE_QUICK_TAB_SIZE_FINAL\n2. → background.js messageRouter\n3. → QuickTabHandler.handlePositionUpdate() / handleSizeUpdate()\n4. → updateQuickTabProperty()\n5. → saveStateToStorage()\n6. → browser.storage.local.set()\n\nBoth paths have comprehensive logging added in v1.6.4 for debugging persistence issues.",
-  "category": "project_context",
-  "dateCreated": "2025-12-06T04:58:05.339Z",
-  "dateUpdated": "2025-12-06T04:58:05.339Z"
-}

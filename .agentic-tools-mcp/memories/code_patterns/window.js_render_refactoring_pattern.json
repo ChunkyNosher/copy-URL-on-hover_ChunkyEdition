@@ -1,8 +1,0 @@
-{
-  "id": "0ec21170-5b53-444e-ad28-a0f6affe2ffc",
-  "title": "window.js render refactoring pattern",
-  "details": "When refactoring large render() methods in window.js (or similar), extract to these helper method patterns:\n1. _validateAndNormalizeDimensions() - return dimensions object\n2. _createContainer(dimensions) - set this.container\n3. _createTitlebar() - return titlebar element\n4. _createIframe() - set this.iframe\n5. _setupAntiFlashPositioning(dimensions) - requestAnimationFrame wrapper\n6. _setupDragController(titlebar) - with callback handlers: _handleDragStart, _handleDrag, _handleDragEnd, _handleDragCancel\n7. _setupResizeController() - setup resize controller\n\nFor media pause, extract:\n1. _pauseSameOriginMedia() - return boolean for success\n2. _pauseVideoElements(doc) - loop through videos\n3. _pauseAudioElements(doc) - loop through audios\n4. _pauseYouTubeViaPostMessage() - cross-origin fallback\n\nThis pattern brought CodeScene score from 8.72 to 10.0 for window.js in v1.6.4.11.",
-  "category": "code_patterns",
-  "dateCreated": "2025-12-01T00:50:09.673Z",
-  "dateUpdated": "2025-12-01T00:50:09.673Z"
-}

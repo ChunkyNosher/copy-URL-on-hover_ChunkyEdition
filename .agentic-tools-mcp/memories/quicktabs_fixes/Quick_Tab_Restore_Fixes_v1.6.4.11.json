@@ -1,8 +1,0 @@
-{
-  "id": "b82214a5-2757-4112-b2c4-b80713bc72a2",
-  "title": "Quick Tab Restore Fixes v1.6.4.11",
-  "details": "## 6 Critical Quick Tab Restore Issues Fixed\n\n### Issue #1 &amp; #2: Source-Aware Map Cleanup\n- UICoordinator.update() now accepts source and isRestoreOperation parameters\n- When `source='Manager'` AND `entityMinimized` AND `!domAttached`, Map entry is immediately deleted\n- Prevents stale renderedTabs entries that cause duplicate 400x300 windows\n\n### Issue #3: Enhanced Snapshot Logging\n- MinimizedManager.restore() logs saved snapshot values before applying\n- Logs \"✓ Snapshot application VERIFIED\" on success\n- UICoordinator._applySnapshotForRestore() logs entity dimensions before/after\n\n### Issue #4: DOM Dimension Verification\n- QuickTabWindow.render() logs container.style.* after createElement()\n- Also logs final dimensions after requestAnimationFrame position correction\n\n### Issue #5: isRestoreOperation Flag\n- VisibilityHandler._emitRestoreStateUpdate() adds isRestoreOperation: true\n- UICoordinator uses this flag to correctly route restore even when both entity and instance have minimized=false\n\n### Issue #6: Source Parameter Flow\n- setupStateListeners() extracts source from event\n- update() accepts source parameter and logs all source-based decisions\n\n### Key Method Signature Change\n```javascript\n// OLD: update(quickTab)\n// NEW: update(quickTab, source = 'unknown', isRestoreOperation = false)\n```\n\nThis is backward compatible due to default parameters.",
-  "category": "quicktabs_fixes",
-  "dateCreated": "2025-11-30T20:48:30.644Z",
-  "dateUpdated": "2025-11-30T20:48:30.644Z"
-}

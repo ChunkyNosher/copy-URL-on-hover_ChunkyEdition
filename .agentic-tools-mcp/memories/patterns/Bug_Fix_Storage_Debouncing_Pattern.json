@@ -1,8 +1,0 @@
-{
-  "id": "094688bf-1746-497a-afad-e087b43dd4d9",
-  "title": "Bug Fix: Storage Debouncing Pattern",
-  "details": "When adding debouncing to storage.onChanged listeners in PanelContentManager.js:\n\n1. Use `this._storageChangeTimeout` (instance property) instead of local variable\n2. Initialize at start of setupEventListeners(): `this._storageChangeTimeout = null;`\n3. Clear and set inside listener: `clearTimeout(this._storageChangeTimeout);` then `this._storageChangeTimeout = setTimeout(...)`\n4. Clean up in destroy(): `if (this._storageChangeTimeout) { clearTimeout(this._storageChangeTimeout); this._storageChangeTimeout = null; }`\n5. Use 50ms debounce period (STORAGE_DEBOUNCE_MS)\n\nBug fixed: Multiple content script instances in iframes caused listener spam (17 executions per storage write).",
-  "category": "patterns",
-  "dateCreated": "2025-11-28T19:29:25.470Z",
-  "dateUpdated": "2025-11-28T19:29:25.470Z"
-}

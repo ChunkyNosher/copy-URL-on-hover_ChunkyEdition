@@ -1,8 +1,0 @@
-{
-  "id": "b27a3821-1476-42b6-8a78-66b95f0eff80",
-  "title": "Issue #6: Manager list deletion fix",
-  "details": "Fixed Issue #6 where Manager panel list doesn't update when last Quick Tab closed.\n\nRoot cause: Cache protection logic (_isSuspiciousStorageDrop, _detectStorageStorm) was treating 1→0 tab transitions as storage corruption instead of legitimate deletions.\n\nFix approach:\n1. Updated _isSuspiciousStorageDrop() to recognize single-tab deletions (1→0) as legitimate\n2. Updated _detectStorageStorm() to clear cache for legitimate single-tab deletions\n3. Updated _handleEmptyStorageState() and _updateInMemoryCache() to properly clear cache\n4. Added handleStateDeletedMessage() in Manager to handle deletion messages from background\n5. Updated DestroyHandler to notify background via QUICK_TAB_STATE_CHANGE with deleted:true\n6. Updated background.js handleQuickTabStateChange() to process deletion changes\n\nKey files: sidebar/quick-tabs-manager.js, background.js, src/features/quick-tabs/handlers/DestroyHandler.js",
-  "category": "bug_fixes",
-  "dateCreated": "2025-12-04T15:49:41.103Z",
-  "dateUpdated": "2025-12-04T15:49:41.103Z"
-}

@@ -1,8 +1,0 @@
-{
-  "id": "34b431b8-3df8-4c7d-8999-02d39a39f28d",
-  "title": "Quick Tab slot system v1.6.3",
-  "details": "## Quick Tab Global Slot Assignment (v1.6.3)\n\n### Added slot property to QuickTab domain entity:\n- Located in `src/domain/QuickTab.js`\n- `slot` property is a positive integer (1, 2, 3...)\n- \"Quick Tab 1\" always refers to slot=1 across all tabs\n\n### StateManager slot assignment:\n- `assignGlobalSlot()` method scans all existing slots and returns lowest available\n- `getBySlot(slot)` for slot-based lookup\n- `assignGlobalSlotFromTabs(tabs)` static method for pre-state assignment\n- Slots auto-assigned in `add()` and `addSilent()` if not provided\n\n### Storage format includes slot:\n- Serialized in `QuickTab.serialize()`\n- Restored from storage via `QuickTab.fromStorage()`\n- SyncCoordinator preserves slots during cross-tab sync\n\n### Clear Storage Fix (v1.6.3):\n- `handleCloseAll()` and `handleClearStorage()` now clear in-memory state\n- Emit `state:cleared` event for proper UI updates\n- PanelContentManager listens for `state:cleared` to re-render",
-  "category": "quick-tabs-architecture",
-  "dateCreated": "2025-11-26T23:56:00.220Z",
-  "dateUpdated": "2025-11-26T23:56:00.220Z"
-}

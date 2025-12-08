@@ -1,8 +1,0 @@
-{
-  "id": "21c60c16-d7bc-4c71-ab72-e0fa40ac29ca",
-  "title": "v1.6.3.4 Quick Tab Bug Fixes",
-  "details": "v1.6.3.4 implemented fixes for all 10 issues from the Quick Tabs Multi-Issue Report:\n\n1. Issue 1: Added state hydration from storage via _hydrateStateFromStorage() in index.js\n2. Issue 2: DOM/Map cleanup with proper isRendered() live DOM checks\n3. Issue 3: Z-index persistence added to storage-utils.js and UpdateHandler hash\n4. Issue 4: UI close button now routes through DestroyHandler with proper storage persistence\n5. Issue 5: Explicit Map deletion logging with wasInMap flag\n6. Issue 6: Source parameter added to all handler methods (UI, Manager, automation, background)\n7. Issue 7: Enhanced DestroyHandler logging with source indication\n8. Issue 8: WARNING log when hydration is skipped\n\nKey patterns:\n- All handler methods now accept source parameter with default 'unknown'\n- Events include source in payload for tracing\n- Storage hydration happens in _initStep6_Hydrate() during initialization\n- Minimized tabs are hydrated to minimizedManager without DOM rendering",
-  "category": "quick-tabs",
-  "dateCreated": "2025-11-30T19:21:46.713Z",
-  "dateUpdated": "2025-11-30T19:21:46.713Z"
-}

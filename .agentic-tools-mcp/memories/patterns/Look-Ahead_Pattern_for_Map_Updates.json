@@ -1,8 +1,0 @@
-{
-  "id": "88a66463-b1bd-4b44-a6a4-1ab9a5878b83",
-  "title": "Look-Ahead Pattern for Map Updates",
-  "details": "UICoordinator._handleDetachedDOMUpdate() uses look-ahead pattern: determine final state (willRender) BEFORE modifying Map. Only delete from renderedTabs when final state is minimized. This prevents the 'deleted but about to recreate' intermediate state that caused 73-second log gaps. Pattern: const willRender = !entityMinimized &amp;&amp; (!instanceMinimized || isRestoreOperation);",
-  "category": "patterns",
-  "dateCreated": "2025-12-02T02:50:22.642Z",
-  "dateUpdated": "2025-12-02T02:50:22.642Z"
-}

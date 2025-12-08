@@ -1,8 +1,0 @@
-{
-  "id": "4a1f3dd8-e9b7-4eff-9e28-07e0e7b93936",
-  "title": "Quick Tab Storage Location v1.6.0.12+",
-  "details": "Since v1.6.0.12, Quick Tab state is stored in browser.storage.local (not storage.sync) to avoid quota errors. The storage key is 'quick_tabs_state_v2'. When clearing Quick Tab storage from popup.js:\n1. Must clear from storage.local (primary)\n2. Should also clear storage.sync for backward compatibility\n3. Must send RESET_GLOBAL_QUICK_TAB_STATE to background to reset globalQuickTabState cache\n4. Must send CLEAR_ALL_QUICK_TABS to content scripts to destroy DOM elements\nThe background script handler resets globalQuickTabState.tabs = [], globalQuickTabState.lastUpdate, and lastBroadcastedStateHash.",
-  "category": "project_context",
-  "dateCreated": "2025-11-27T06:33:36.121Z",
-  "dateUpdated": "2025-11-27T06:33:36.121Z"
-}

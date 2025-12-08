@@ -1,8 +1,0 @@
-{
-  "id": "8a9914b1-d08c-4266-b087-7dc35f9552a6",
-  "title": "v1.6.3.4-v10 8 Critical Fixes",
-  "details": "v1.6.3.4-v10 fixes 8 critical Quick Tab issues:\n1. QuickTabWindow.restore() - Only updates state, no DOM manipulation\n2. VisibilityHandler - Generation counter pattern for debounce timers\n3. UICoordinator - Look-ahead pattern determines final state before Map modifications\n4. MinimizedManager - Atomic snapshot clearing with local variables\n5. UpdateHandler - 64-bit hash using djb2+sdbm returning {lo, hi}\n6. DestroyHandler - _batchOperationIds Set replaces _batchMode boolean\n7. storage-utils - queueStorageWrite resets queue on failure\n8. All files - Comprehensive logging at decision branches",
-  "category": "version_history",
-  "dateCreated": "2025-12-02T02:50:22.642Z",
-  "dateUpdated": "2025-12-02T02:50:22.642Z"
-}

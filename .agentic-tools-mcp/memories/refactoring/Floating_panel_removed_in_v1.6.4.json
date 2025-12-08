@@ -1,8 +1,0 @@
-{
-  "id": "685f4c33-7624-4197-a78d-4f0a2e4637e0",
-  "title": "Floating panel removed in v1.6.4",
-  "details": "In v1.6.4, the floating Quick Tabs Manager panel was completely removed. The extension now uses sidebar-only Quick Tab management.\n\nKey changes:\n- Deleted src/features/quick-tabs/panel.js and entire panel/ directory\n- Both Ctrl+Alt+Z and Alt+Shift+Z now open the sidebar Manager tab\n- panelManager property removed from QuickTabsManager\n- Sidebar Quick Tabs Manager is in sidebar/quick-tabs-manager.js\n- Test handlers for floating panel return deprecation notices\n\nFiles affected:\n- background.js (removed _toggleQuickTabsPanel, both commands open sidebar)\n- src/content.js (removed TOGGLE_QUICK_TABS_PANEL handler)\n- src/features/quick-tabs/index.js (removed PanelManager import and init)\n- manifest.json (updated version and descriptions)",
-  "category": "refactoring",
-  "dateCreated": "2025-11-28T21:05:30.855Z",
-  "dateUpdated": "2025-11-28T21:05:30.855Z"
-}

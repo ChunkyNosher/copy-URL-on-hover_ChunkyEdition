@@ -1,8 +1,0 @@
-{
-  "id": "26f814a3-ee8e-4007-b33f-3596feb3000b",
-  "title": "v1.6.3.4-v8 State Sync Fixes",
-  "details": "## v1.6.3.4-v8 State Synchronization Fixes Summary\n\n### Key Changes\n\n1. **Empty Write Protection (Issue #1)**\n   - `_shouldRejectEmptyWrite()` in storage-utils.js\n   - `forceEmpty` parameter in `persistStateToStorage(state, logPrefix, forceEmpty)`\n   - `EMPTY_WRITE_COOLDOWN_MS = 1000` prevents cascades\n   - Logs WARNING + stack trace when going N → 0 tabs\n\n2. **FIFO Storage Write Queue (Issue #7)**\n   - `queueStorageWrite(writeOperation)` export\n   - `storageWriteQueuePromise` Promise chain serializes all writes\n\n3. **Callback Suppression (Issue #3)**\n   - `_initiatedOperations` Set in VisibilityHandler\n   - `CALLBACK_SUPPRESSION_DELAY_MS = 50`\n\n4. **Focus Debounce (Issue #6)**\n   - `_lastFocusTime` Map in VisibilityHandler\n   - 100ms threshold prevents duplicate focus\n\n5. **Safe Map Deletion (Issue #5)**\n   - `_safeDeleteFromRenderedTabs()` in UICoordinator\n   - Checks has() before delete()\n\n6. **Enhanced Logging (Issue #8)**\n   - `_logStorageChange()` and `_logCorruptionWarning()` in background.js\n\n### MinimizedManager API\n- `getAll()` - returns array of window instances\n- `getCount()` - returns minimized tab count\n- `isMinimized(id)` - check if specific tab is minimized\n- ❌ `getAllMinimized()` - DOES NOT EXIST (was a bug)",
-  "category": "version_changes",
-  "dateCreated": "2025-12-01T19:08:57.326Z",
-  "dateUpdated": "2025-12-01T19:08:57.326Z"
-}

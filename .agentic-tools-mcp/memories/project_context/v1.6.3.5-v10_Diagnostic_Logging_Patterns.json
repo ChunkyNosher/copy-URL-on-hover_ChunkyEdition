@@ -1,8 +1,0 @@
-{
-  "id": "95dc20aa-bedc-45a3-8521-96859080516f",
-  "title": "v1.6.3.5-v10 Diagnostic Logging Patterns",
-  "details": "## v1.6.3.5-v10 Diagnostic Logging Implementation\n\n### Content Script Initialization Logging (src/content.js)\n1. **After Iframe Guard**: `[Content] ✓ Content script loaded, starting initialization`\n2. **After Message Listener Registration**: `[Content] ✓ Message listener registered`\n\n### Message Dispatcher Logging (src/content.js - _dispatchMessage)\n1. **On every message**: Logs action, type, and hasData\n2. **Handler dispatch**: Logs which handler is being used (ACTION_HANDLERS or TYPE_HANDLERS)\n3. **Unknown messages**: Warns with available handlers list\n\n### Background Clear Broadcast Logging (background.js)\n1. **Per-tab results**: `[Background] ✓ Notified tab X` or `[Background] ✗ Failed tab X: reason`\n2. **Broadcast summary**: `[Background] Broadcast summary: X success, Y failed, Z total`\n3. **First failures**: Shows up to 10 failure details if any\n\n### Helper Function Pattern\nWhen ESLint max-depth is violated, extract logic to helper function:\n- `_broadcastQuickTabsClearedToTabs(tabs)` handles per-tab messaging to avoid nested for/try blocks\n\n### Key Console Log Prefixes\n- `[Content]` - Content script logs\n- `[Background]` - Background script logs\n- `✓` - Success indicator\n- `✗` - Failure indicator\n- `⚠️` - Warning indicator",
-  "category": "project_context",
-  "dateCreated": "2025-12-04T06:30:11.756Z",
-  "dateUpdated": "2025-12-04T06:30:11.756Z"
-}

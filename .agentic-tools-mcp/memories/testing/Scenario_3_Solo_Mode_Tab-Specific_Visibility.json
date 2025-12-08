@@ -1,8 +1,0 @@
-{
-  "id": "83b26eff-2e44-49fd-ad85-189ae9dc24f5",
-  "title": "Scenario 3: Solo Mode Tab-Specific Visibility",
-  "details": "Issue #47 Scenario 3: Solo Mode (Pin to Specific Tab)\n\n**Purpose:** Verify Solo mode functionality where a Quick Tab appears only on designated browser tab(s), not globally.\n\n**Test Location:** tests/extension/issue-47-scenarios.spec.js\n\n**Key Test Steps:**\n1. Create Quick Tab in global mode\n2. Toggle Solo mode for Quick Tab\n3. Verify Quick Tab only visible on current tab\n4. Switch to second tab - verify Quick Tab hidden\n5. Switch back to first tab - verify Quick Tab visible\n6. Unsolo - verify Quick Tab becomes global again\n\n**Test Bridge Methods Used:**\n- createQuickTab(url)\n- getQuickTabs()\n- toggleSolo(id, tabId) - NEW METHOD\n- getVisibilityState(tabId) - NEW METHOD\n\n**Expected Behavior:**\n- Solo mode restricts Quick Tab to specific tab\n- Quick Tab hidden on all other tabs\n- Unsolo restores global visibility\n- Solo button state indicator changes (🎯 when active)\n\n**Implementation Status:** ✅ Implemented with new test bridge methods\n\n**Test Pattern:**\n```javascript\nawait helper1.createQuickTab('https://github.com');\nconst tabs = await helper1.getQuickTabs();\n\nawait helper1.toggleSolo(tabs[0].id);\nconst visState = await helper1.getVisibilityState();\nexpect(visState.success).toBe(true);\n\n// On second tab, Quick Tab should not appear\nconst tabs2 = await helper2.getQuickTabs();\n// Verify solo Quick Tab not in global list\n```\n\n**Dependencies:** Solo/mute state manager, visibility controller",
-  "category": "testing",
-  "dateCreated": "2025-11-22T09:07:00.401Z",
-  "dateUpdated": "2025-11-22T09:07:00.401Z"
-}

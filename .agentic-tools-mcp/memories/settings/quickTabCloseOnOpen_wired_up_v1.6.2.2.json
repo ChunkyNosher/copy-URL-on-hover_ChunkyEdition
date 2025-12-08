@@ -1,8 +1,0 @@
-{
-  "id": "d4191a5f-c00c-4fb7-83d0-29b457d77bcb",
-  "title": "quickTabCloseOnOpen wired up v1.6.2.2",
-  "details": "The quickTabCloseOnOpen setting was wired up in v1.6.2.2. The setting already existed in the UI (popup.html/settings.html) and was being saved/loaded, but the window.js code wasn't reading it.\n\nFixed in src/features/quick-tabs/window.js by:\n1. Making onOpenInTab callback async\n2. Awaiting the openTab message\n3. Reading quickTabCloseOnOpen from browser.storage.local\n4. Calling this.destroy() if the setting is enabled\n\nThis allows users to automatically close the Quick Tab when opening its content in a new browser tab.",
-  "category": "settings",
-  "dateCreated": "2025-11-27T02:43:36.426Z",
-  "dateUpdated": "2025-11-27T02:43:36.426Z"
-}

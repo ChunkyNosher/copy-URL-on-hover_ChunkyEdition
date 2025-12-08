@@ -1,8 +1,0 @@
-{
-  "id": "754eaf2d-189b-4ecb-b9df-6d009e123e97",
-  "title": "Dependency Injection Pattern for DOM Testing",
-  "details": "Added dependency injection support to QuickTabsManager to enable testing the full UI layer without requiring real DOM elements.\n\n**Pattern Implemented:**\n- CreateHandler accepts optional windowFactory parameter in constructor\n- QuickTabsManager stores windowFactory in options\n- initQuickTabs() passes windowFactory through to manager\n- Tests can inject mock factory: initQuickTabs(eventBus, Events, { windowFactory: mockFn })\n\n**Files Modified:**\n- src/features/quick-tabs/handlers/CreateHandler.js\n- src/features/quick-tabs/index.js\n\n**Benefits:**\n- Clean architecture (dependency injection)\n- Backward compatible (factory is optional)\n- Enables DOM-layer testing without JSDOM\n- More maintainable than Jest module mocking\n\n**Test File:**\n- tests/integration/scenarios/scenario-01-basic-cross-tab-sync-DOM.test.js\n- Uses mockWindowFactory injected via initQuickTabs options\n- Tests full QuickTabsManager facade with mocked window creation\n\n**Status:** Framework complete, debugging initialization flow (commit be76c35)",
-  "category": "architecture",
-  "dateCreated": "2025-11-23T18:46:00.386Z",
-  "dateUpdated": "2025-11-23T18:46:00.386Z"
-}

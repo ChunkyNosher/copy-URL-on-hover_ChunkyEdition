@@ -1,8 +1,0 @@
-{
-  "id": "02c69973-e08c-42a2-b5f0-6300f4e79302",
-  "title": "v1.6.3.4-v6 Storage Race Fixes",
-  "details": "Version 1.6.3.4-v6 added 6 key fixes for storage race conditions:\n\n1. **Transactional Storage Pattern** - IN_PROGRESS_TRANSACTIONS Set in storage-utils.js and background.js tracks active writes to prevent storage.onChanged handlers from processing mid-write states.\n\n2. **URL Validation** - isValidQuickTabUrl() in storage-utils.js validates URLs before window creation. QuickTabWindow constructor throws error for invalid URLs.\n\n3. **Debounced Storage Reads** - STORAGE_READ_DEBOUNCE_MS = 300ms in quick-tabs-manager.js prevents reading mid-write states.\n\n4. **Restore Operation Locks** - RESTORE_IN_PROGRESS Set and _renderTimestamps Map in UICoordinator.js prevent duplicate renders within 1 second.\n\n5. **Write Deduplication** - computeStateHash() and hasStateChanged() in storage-utils.js prevent unchanged data from triggering events.\n\n6. **State Validation** - validateStateForPersist() checks required properties, minimized count consistency, no undefined URLs, no duplicate IDs before persist.\n\nKey timing constants:\n- STORAGE_READ_DEBOUNCE_MS = 300 (Manager reads)\n- STORAGE_COOLDOWN_MS = 50 (background.js processing)\n- RENDER_COOLDOWN_MS = 1000 (UICoordinator duplicate prevention)\n- TRANSACTION_CLEANUP_DELAY_MS = 200 (storage-utils.js)",
-  "category": "architecture",
-  "dateCreated": "2025-12-01T05:56:40.063Z",
-  "dateUpdated": "2025-12-01T05:56:40.063Z"
-}

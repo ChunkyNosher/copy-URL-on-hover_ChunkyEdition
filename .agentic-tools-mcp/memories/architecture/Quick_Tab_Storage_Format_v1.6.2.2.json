@@ -1,8 +1,0 @@
-{
-  "id": "71279480-7b86-4e8f-869c-7ac136987aa4",
-  "title": "Quick Tab Storage Format v1.6.2.2",
-  "details": "The extension uses a unified storage format (v1.6.2.2) for Quick Tabs:\n\n**Storage Format:**\n```javascript\n{\n  quick_tabs_state_v2: {\n    tabs: [...],  // ALL Quick Tabs in one array\n    saveId: 'timestamp-random',\n    timestamp: timestamp\n  }\n}\n```\n\n**Key Files Updated:**\n1. `QuickTabHandler.js` - Uses `globalState.tabs` array instead of `globalState.containers[cookieStoreId]`\n2. `PanelContentManager.js` - Shows all Quick Tabs globally (no container filtering)\n3. `QuickTabsManager (index.js)` - `_hydrateState()` loads all Quick Tabs for global visibility\n4. `SyncStorageAdapter.js` - Returns `null` when tabs array is empty\n\n**Old Format (for backward compatibility):**\n```javascript\n{\n  quick_tabs_state_v2: {\n    containers: {\n      'firefox-default': { tabs: [...], lastUpdate: timestamp }\n    }\n  }\n}\n```\n\nAll components now support both formats for backward compatibility.",
-  "category": "architecture",
-  "dateCreated": "2025-11-26T06:33:18.493Z",
-  "dateUpdated": "2025-11-26T06:33:18.493Z"
-}

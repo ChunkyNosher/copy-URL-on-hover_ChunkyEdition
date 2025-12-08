@@ -1,8 +1,0 @@
-{
-  "id": "fddbeee8-e4b6-462d-bcf4-957bcdbaa93c",
-  "title": "v1.6.3.5-v3 State Sync Architecture",
-  "details": "Version 1.6.3.5-v3 implements comprehensive Quick Tab state synchronization fixes:\n\n**Issue #1 - Self-Write Detection:**\n- Added `writingInstanceId` (unique per tab load using crypto.getRandomValues) and `writingTabId` to all storage writes\n- Added `isSelfWrite()` function in storage-utils.js to detect and skip self-writes\n- Uses `_recentlyProcessedWrites` Map in background.js to prevent double-processing\n\n**Issue #8 - Firefox Spurious Events:**\n- Added `_isSpuriousFirefoxEvent()` in background.js\n- Detects when saveId, tabCount, and timestamp all match (no actual data change)\n- Uses `_hasMatchingSaveIdAndTabCount()` helper to reduce complexity\n\n**Message Infrastructure (Phases 1-3):**\n- QUICK_TAB_STATE_CHANGE: Content script → Background for state changes\n- QUICK_TAB_STATE_UPDATED: Background → Sidebar/Content scripts for broadcasts\n- EXECUTE_COMMAND: Background → Content script for remote control\n- MANAGER_COMMAND: Sidebar → Background for remote Quick Tab control\n- `quickTabHostTabs` Map tracks which browser tab hosts each Quick Tab\n\n**Timer Callback Logging:**\n- Enhanced VisibilityHandler with timer callback STARTED/COMPLETED/FAILED logs\n- Tracks scheduledDelayMs vs actualDelayMs for debugging timing issues\n- Extracted `_executeDebouncedPersistCallback()` method for cleaner code",
-  "category": "architecture",
-  "dateCreated": "2025-12-03T01:52:34.394Z",
-  "dateUpdated": "2025-12-03T01:52:34.394Z"
-}

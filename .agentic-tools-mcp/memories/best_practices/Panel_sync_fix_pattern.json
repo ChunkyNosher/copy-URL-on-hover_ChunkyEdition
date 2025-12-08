@@ -1,8 +1,0 @@
-{
-  "id": "d933ef93-0787-43fd-b1c1-9546a47cbf19",
-  "title": "Panel sync fix pattern",
-  "details": "When fixing panel sync issues:\n1. Track state changes while panel is closed with a flag (stateChangedWhileClosed)\n2. Refresh content on open if flag is set\n3. Add storage.onChanged listener for cross-tab sync (check areaName === 'local' and key === 'quick_tabs_state_v2')\n4. Remove setTimeout race conditions - rely on event listeners\n5. Add defensive checks before calling manager methods\n6. Always cleanup listeners in destroy()",
-  "category": "best_practices",
-  "dateCreated": "2025-11-25T20:59:59.057Z",
-  "dateUpdated": "2025-11-25T20:59:59.057Z"
-}

@@ -1,8 +1,0 @@
-{
-  "id": "8fd55f2f-c179-40a2-89d5-6188447d1273",
-  "title": "Quick Tab Restore Callback Wiring",
-  "details": "## v1.6.3.5-v10 Fix: Quick Tab Restore Callback Wiring\n\n### Issue\nAfter restoring a minimized Quick Tab, position/size updates stop working because callbacks (onPositionChangeEnd, onSizeChangeEnd, onFocus) are not wired during _createWindow() in UICoordinator.\n\n### Root Cause\nUICoordinator._createWindow() creates QuickTabWindow instances but doesn't have access to UpdateHandler, VisibilityHandler, or DestroyHandler to wire callbacks.\n\n### Solution Pattern\n1. UICoordinator constructor accepts handlers parameter with updateHandler, visibilityHandler, destroyHandler\n2. setHandlers() method allows deferred initialization after handlers are created\n3. _buildCallbackOptions(quickTabId) constructs callbacks from handler methods\n4. Helper methods reduce complexity: _addUpdateHandlerCallbacks(), _addVisibilityHandlerCallbacks(), _addDestroyHandlerCallbacks()\n5. QuickTabsManager._initializeCoordinators() passes handlers after they're created\n\n### Files\n- src/features/quick-tabs/coordinators/UICoordinator.js\n- src/features/quick-tabs/index.js\n\n### Related Issue\nZ-index after restore fixed in window.js via _applyZIndexAfterAppend() which applies z-index AFTER appendChild and forces reflow.",
-  "category": "project_context",
-  "dateCreated": "2025-12-04T06:05:43.760Z",
-  "dateUpdated": "2025-12-04T06:05:43.760Z"
-}

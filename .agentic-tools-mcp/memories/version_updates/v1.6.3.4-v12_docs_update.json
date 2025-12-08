@@ -1,8 +1,0 @@
-{
-  "id": "8d4d0636-365f-4c95-b0b0-e67ca7d6a69d",
-  "title": "v1.6.3.4-v12 docs update",
-  "details": "v1.6.3.4-v12 documentation update completed. Key changes documented:\n1. Storage Corruption Fix - pendingWriteCount, lastCompletedTransactionId\n2. Manager List Clears Fix - _safeClearRenderedTabs(userInitiated), _verifyAllTabsDOMDetached()\n3. Position/Size Updates Fix - _checkDOMExists() in UpdateHandler\n4. Duplicate Quick Tabs Fix - _findDOMElementById(), _tryRecoverWindowFromDOM(), render() refactoring\n5. Yellow Indicator Fix - validateStateConsistency(), clearSnapshotAtomic()\n6. Enhanced Diagnostic Logging - Transaction sequencing, Map operations logs\n\nFiles updated: copilot-instructions.md and all 4 quicktabs-*.md agent files, plus version updates in 8 other agent files.",
-  "category": "version_updates",
-  "dateCreated": "2025-12-02T06:36:28.921Z",
-  "dateUpdated": "2025-12-02T06:36:28.921Z"
-}

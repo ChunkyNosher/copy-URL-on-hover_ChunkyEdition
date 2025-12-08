@@ -1,8 +1,0 @@
-{
-  "id": "f5bc9d29-698b-44d5-be96-dfad3df3166c",
-  "title": "v1.6.4.2 TypeError Fix for undefined position",
-  "details": "Bug Fix: Manager Minimize Button TypeError - position undefined\n\nRoot Cause: UICoordinator and storage code accessed quickTab.position.left without checking if position exists. Storage can return Quick Tabs with missing position data.\n\nFix Strategy:\n1. UICoordinator.js: Added _getSafePosition(), _getSafeSize(), _getSafeVisibility() helper methods to provide safe defaults\n2. storage-utils.js: Added _getNumericValue() and _getArrayValue() helpers to handle both flat (tab.left) and nested (tab.position.left) formats\n3. quick-tabs-manager.js: Added _getValue() helper for the same purpose\n\nKey Insight: Quick Tab data can come in two formats:\n- Flat: tab.left, tab.top, tab.width, tab.height\n- Nested: tab.position.left, tab.position.top, tab.size.width, tab.size.height\n\nAlways use nullish coalescing (??) to check both formats with fallback defaults.",
-  "category": "bug_fixes",
-  "dateCreated": "2025-11-29T03:58:41.396Z",
-  "dateUpdated": "2025-11-29T03:58:41.396Z"
-}

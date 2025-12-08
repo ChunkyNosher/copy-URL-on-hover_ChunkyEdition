@@ -1,8 +1,0 @@
-{
-  "id": "d8585113-0194-463a-8a07-e6db92a898af",
-  "title": "Scenario 2: Multiple Quick Tabs Global Sync",
-  "details": "Issue #47 Scenario 2: Multiple Quick Tabs and Global Synchronization\n\n**Purpose:** Verify that multiple Quick Tabs can coexist, each maintains independent state, and all sync correctly across tabs.\n\n**Test Location:** tests/extension/issue-47-scenarios.spec.js\n\n**Key Test Steps:**\n1. Create 3 Quick Tabs on first page\n2. Verify all 3 appear on first page\n3. Open second browser tab\n4. Verify all 3 Quick Tabs sync to second tab\n5. Verify each Quick Tab has independent position/size state\n\n**Test Bridge Methods Used:**\n- createQuickTab(url, options) - called 3 times\n- getQuickTabs()\n- waitForQuickTabCount(expectedCount, timeout)\n- clearAllQuickTabs()\n\n**Expected Behavior:**\n- All Quick Tabs created successfully\n- Each Quick Tab has unique ID\n- All sync to second tab independently\n- Position/size maintained independently for each\n\n**Implementation Status:** ✅ Implemented and tested\n\n**Test Pattern:**\n```javascript\nawait helper1.createQuickTab('https://wikipedia.org');\nawait helper1.createQuickTab('https://youtube.com');\nawait helper1.createQuickTab('https://github.com');\n\nconst tabs1 = await helper1.getQuickTabs();\nexpect(tabs1).toHaveLength(3);\n\nawait helper2.waitForQuickTabCount(3, 5000);\nconst tabs2 = await helper2.getQuickTabs();\nexpect(tabs2).toHaveLength(3);\n```\n\n**Dependencies:** BroadcastChannel API, state manager",
-  "category": "testing",
-  "dateCreated": "2025-11-22T09:07:00.399Z",
-  "dateUpdated": "2025-11-22T09:07:00.399Z"
-}

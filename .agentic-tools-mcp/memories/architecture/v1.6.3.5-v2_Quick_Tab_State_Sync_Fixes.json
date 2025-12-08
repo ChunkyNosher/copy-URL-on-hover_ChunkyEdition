@@ -1,8 +1,0 @@
-{
-  "id": "19382feb-ea5e-42de-8b06-d12e99434795",
-  "title": "v1.6.3.5-v2 Quick Tab State Sync Fixes",
-  "details": "Version 1.6.3.5-v2 fixed 16 critical Quick Tab state synchronization bugs:\n\nKEY ARCHITECTURE CHANGES:\n1. originTabId - Each Quick Tab now tracks which browser tab created it. This prevents cross-tab contamination where Quick Tabs would appear on wrong tabs. The storage.onChanged listener filters by originTabId before rendering.\n\n2. STORAGE_READ_DEBOUNCE_MS - Reduced from 300ms to 50ms for faster UI updates.\n\n3. DOM Verification - Restore operations now verify DOM presence before updating UI indicators. Uses DOM_VERIFICATION_DELAY_MS (500ms) constant.\n\n4. Tab ID Logging - All logs now include [Tab ID] prefix via _logPrefix property in VisibilityHandler.\n\nFILES CHANGED:\n- manifest.json (version 1.6.3.5-v2)\n- sidebar/quick-tabs-manager.js (debounce, origin filtering, DOM verification)\n- src/utils/storage-utils.js (originTabId serialization)\n- src/features/quick-tabs/handlers/CreateHandler.js (originTabId support)\n- src/features/quick-tabs/index.js (cross-tab filtering helpers)\n- src/features/quick-tabs/handlers/VisibilityHandler.js (Tab ID logging)\n\nCRITICAL PATTERNS:\n- _shouldRenderOnThisTab() checks originTabId before rendering\n- serializeTabForStorage() includes originTabId field\n- Restore operations use pendingClearSnapshots for atomic snapshot clearing",
-  "category": "architecture",
-  "dateCreated": "2025-12-02T18:52:39.199Z",
-  "dateUpdated": "2025-12-02T18:52:39.199Z"
-}

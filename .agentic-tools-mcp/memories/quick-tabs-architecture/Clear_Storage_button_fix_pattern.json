@@ -1,8 +1,0 @@
-{
-  "id": "e6f02276-9627-47a5-abdb-bb77936689e8",
-  "title": "Clear Storage button fix pattern",
-  "details": "v1.6.3 fixes Clear Storage button issues:\n\n1. handleClearStorage() and handleCloseAll() now:\n   - Get count before clearing for logging\n   - Call quickTabsManager.closeAll() to destroy DOM elements FIRST\n   - Call liveStateManager.clear() to clear in-memory state\n   - Clear persistent storage\n   - Emit state:cleared event via eventBus\n\n2. PanelContentManager listens for state:cleared event:\n   - Added clearedHandler in setupStateListeners()\n   - Always sets stateChangedWhileClosed = true\n   - Updates content if panel is open\n   - Cleans up handler in destroy() method\n\n3. StateManager.clear() emits state:cleared event with count of cleared tabs\n\nThis ensures both in-memory state and DOM elements are cleared properly, and the panel updates to show empty state.",
-  "category": "quick-tabs-architecture",
-  "dateCreated": "2025-11-26T23:51:30.397Z",
-  "dateUpdated": "2025-11-26T23:51:30.397Z"
-}

@@ -1,8 +1,0 @@
-{
-  "id": "b6745e01-de2a-4224-ba47-5ea5a36624cb",
-  "title": "v1.6.4.5 Multi-Issue QT Fixes",
-  "details": "Fixed multi-issue Quick Tabs Manager bugs in v1.6.4.5:\n\n1. **Issue 1 &amp; 2: Minimize Event Storm** - Added debounce mechanism in VisibilityHandler.js:\n   - `_pendingMinimize` and `_pendingRestore` Sets track pending operations\n   - `_debounceTimers` Map manages debounce timers per tab\n   - `_debouncedPersist()` batches storage writes (150ms debounce)\n   - Prevents 200+ duplicate events, reduces to 1 per click\n\n2. **Issue 3: Duplicate at (100,100) on Restore** - UICoordinator.js refactored:\n   - `_hasMinimizedManager()` helper for safe manager access\n   - `_applySnapshotForRestore()` applies saved position/size from snapshot\n   - `_restoreExistingWindow()` uses snapshot data, never creates duplicate DOM\n\n3. **Issue 4: Close Minimized Not Removing DOM** - quick-tabs-manager.js:\n   - Collect minimized tab IDs BEFORE filtering state\n   - Send `CLOSE_QUICK_TAB` to ALL browser tabs for each ID\n   - Ensures content.js calls `closeById()` for full DOM cleanup\n\n4. **Key Patterns Used:**\n   - Debounce pattern for preventing event storms\n   - Snapshot pattern from MinimizedManager for restore data\n   - Early collection of IDs before state mutation",
-  "category": "bug_fixes",
-  "dateCreated": "2025-11-29T17:31:04.603Z",
-  "dateUpdated": "2025-11-29T17:31:04.603Z"
-}

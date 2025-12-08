@@ -1,8 +1,0 @@
-{
-  "id": "af4038fa-d49c-4674-910e-c1d975b3d60e",
-  "title": "v1.6.3.5-v12 Lifecycle Fixes",
-  "details": "Quick Tab lifecycle fixes for container reference loss after minimize/restore cycles:\n1. Issue #1: minimize() fallback DOM query using `.quick-tab-window[data-quicktab-id=\"...\"]` selector\n2. Issue #2: handleFocus() z-index fallback via _applyZIndexUpdate() and _applyZIndexViaFallback() helpers\n3. Issue #3: Comprehensive lifecycle logging at render/minimize/restore completion\n4. Issue E: _logIfStateDesync() helper for detecting rendered/container state mismatches\n5. Issue A: isFocusOperation flag in _debouncedPersist() for focus-only persist logging\n6. Issue B: Sample z-index logging in background.js storage.onChanged handler\n7. Issue C: Enhanced transaction fallback clarity with elapsedMs and triggerModule context\n8. Issue D: DOM verification invariants logging in _verifyRestoreAndEmit()\n\nKey patterns: CSS.escape() for safe selectors, extracting helpers to reduce complexity.",
-  "category": "project_context",
-  "dateCreated": "2025-12-04T17:24:53.903Z",
-  "dateUpdated": "2025-12-04T17:24:53.903Z"
-}

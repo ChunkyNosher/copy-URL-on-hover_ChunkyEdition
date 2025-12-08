@@ -1,8 +1,0 @@
-{
-  "id": "a95bc4de-ef9a-4d56-af26-c2d04f98ae34",
-  "title": "Storage listener spam from multiple frames",
-  "details": "When content scripts run in iframes AND the main page, each iframe creates its own PanelContentManager with its own storage.onChanged listener. A single storage write triggers ALL listeners (1 per frame), causing log spam and redundant processing.\n\nPROBLEM: Wikipedia pages have 15-20 iframes, resulting in 17+ \"Storage changed\" logs per write.\n\nSOLUTION 1: Add debouncing (implemented in v1.6.3.5):\n```javascript\nthis._storageChangeTimeout = null;\nconst STORAGE_DEBOUNCE_MS = 50;\n\nconst storageListener = (changes, areaName) => {\n  if (changes.quick_tabs_state_v2) {\n    clearTimeout(this._storageChangeTimeout);\n    this._storageChangeTimeout = setTimeout(() => {\n      // Handle change\n    }, STORAGE_DEBOUNCE_MS);\n  }\n};\n```\n\nSOLUTION 2: Only initialize managers in top frame:\n```javascript\nif (window.top !== window.self) {\n  console.log('[Content Script] Running in iframe - skipping initialization');\n  return;\n}\n```\n\nFixed in v1.6.3.5 (Bug #9 in PanelContentManager.js lines 631-660).",
-  "category": "bug_patterns",
-  "dateCreated": "2025-11-28T19:34:36.621Z",
-  "dateUpdated": "2025-11-28T19:34:36.621Z"
-}

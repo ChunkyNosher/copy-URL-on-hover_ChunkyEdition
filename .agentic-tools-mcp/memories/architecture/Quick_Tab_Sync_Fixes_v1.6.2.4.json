@@ -1,8 +1,0 @@
-{
-  "id": "b00ff246-6712-44df-8c36-19befd3661ec",
-  "title": "Quick Tab Sync Fixes v1.6.2.4",
-  "details": "## Critical Quick Tab Sync Bug Fixes\n\n### Issue 1 & 5: Ghost Quick Tab Syndrome\n- **Root Cause:** StateManager._processDeletedQuickTabs() incorrectly deleted Quick Tabs not in incoming sync array\n- **Fix:** Made hydrate() additive by default (skipDeletions=true). Quick Tabs only deleted on explicit close events.\n- **File:** src/features/quick-tabs/managers/StateManager.js\n\n### Issue 2 & 6: Position Updates Lost\n- **Root Cause:** UpdateHandler.applyPendingUpdates() never called after Quick Tab creation\n- **Fix:** UICoordinator now accepts updateHandler and calls applyPendingUpdates(id) after render\n- **Files:** UICoordinator.js, index.js\n\n### Issue 4: Duplicate CREATE Messages\n- **Root Cause:** Same CREATE_QUICK_TAB sent twice within 8ms\n- **Fix:** Added message deduplication in QuickTabHandler (100ms window)\n- **File:** src/background/handlers/QuickTabHandler.js\n\n### Key Patterns\n- Additive hydration prevents cross-tab sync from deleting local Quick Tabs\n- UpdateHandler pending queue needs explicit application after window creation\n- Message deduplication uses action+id key with timestamp tracking",
-  "category": "architecture",
-  "dateCreated": "2025-11-27T02:22:50.972Z",
-  "dateUpdated": "2025-11-27T02:22:50.972Z"
-}

@@ -1,8 +1,0 @@
-{
-  "id": "a554da67-6b99-404d-9a07-7342b46bb1f4",
-  "title": "v1.6.4.5 Quick Tab Debounce Patterns",
-  "details": "Multi-issue Quick Tabs Manager fixes in v1.6.4.5:\n\n1. VisibilityHandler Debounce Pattern:\n- Use _pendingMinimize/_pendingRestore Sets to track pending operations\n- Use _debounceTimers Map for per-tab 150ms debounce\n- Prevents 200+ duplicate minimize events per click\n- Always call _debouncedPersist() after minimize/restore\n\n2. UICoordinator Restore Pattern:\n- Use _applySnapshotForRestore() to apply saved position/size before rendering\n- Get snapshot from minimizedManager.getSnapshot(id)\n- Prevents duplicate DOM elements at default (100,100) position\n\n3. closeMinimizedTabs Pattern (sidebar):\n- Collect minimized tab IDs BEFORE filtering state\n- Send CLOSE_QUICK_TAB to ALL browser tabs for each minimized ID\n- Ensures content.js calls closeById() for full DOM cleanup\n\nKey: storage.onChanged is primary sync mechanism - storage writes MUST complete for Manager to update indicators.",
-  "category": "project_context",
-  "dateCreated": "2025-11-29T17:46:13.046Z",
-  "dateUpdated": "2025-11-29T17:46:13.046Z"
-}

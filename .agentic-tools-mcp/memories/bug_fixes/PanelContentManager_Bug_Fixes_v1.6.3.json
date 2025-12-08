@@ -1,8 +1,0 @@
-{
-  "id": "fd19ce5e-8176-4fe7-bade-de3829cd6c53",
-  "title": "PanelContentManager Bug Fixes v1.6.3",
-  "details": "Fixed critical bugs in PanelContentManager.js (Bug #12, #15, #20):\n\nBug #12 (ROOT CAUSE): Panel never updates when open\n- Changed ALL state event handlers to use forceRefresh: true\n- addedHandler, updatedHandler, deletedHandler, hydratedHandler, clearedHandler\n\nBug #15: Storage listener doesn't update panel\n- Storage listener now uses forceRefresh: true instead of checking isOpen\n\nBug #20: Panel opens with wrong state  \n- setIsOpen() now ALWAYS calls updateContent({ forceRefresh: true }) when panel opens\n- Removed the stateChangedWhileClosed condition check\n\nKey patterns:\n- Always use forceRefresh: true for state events\n- Panel should update immediately on any state change\n- Debug logging uses debug() helper, not console.log for frequent events",
-  "category": "bug_fixes",
-  "dateCreated": "2025-11-28T20:36:51.759Z",
-  "dateUpdated": "2025-11-28T20:36:51.759Z"
-}

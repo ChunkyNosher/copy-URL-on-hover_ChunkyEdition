@@ -1,8 +1,0 @@
-{
-  "id": "2167a5cc-37fa-47a0-9585-26da4d68ba45",
-  "title": "Issue #51 cross-tab sync pattern",
-  "details": "Issue #51 fix: Position/size/zIndex changes sync across tabs via storage.onChanged\n\nSolution:\n1. StateManager.hydrate() accepts options.detectChanges flag\n2. When detectChanges=true, hydrate compares previous vs current position/size/zIndex\n3. Emits state:quicktab:changed event for detected changes: { quickTab, changes: { position, size, zIndex } }\n4. UICoordinator listens for state:quicktab:changed and calls update() on already-rendered tabs\n5. SyncCoordinator.handleStorageChange() passes detectChanges: true to hydrate\n\nEvent flow:\nTab A changes position → storage.local.set → storage.onChanged fires in Tab B\n→ SyncCoordinator.handleStorageChange() → StateManager.hydrate(tabs, {detectChanges:true})\n→ emits state:quicktab:changed → UICoordinator.update() → DOM updated in Tab B",
-  "category": "architecture",
-  "dateCreated": "2025-11-25T20:46:53.800Z",
-  "dateUpdated": "2025-11-25T20:46:53.800Z"
-}

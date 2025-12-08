@@ -1,8 +1,0 @@
-{
-  "id": "8bf10ee1-9817-420c-b9b7-707942e22e1d",
-  "title": "YouTube Autoplay Prevention Implementation",
-  "details": "Implemented YouTube autoplay prevention for Quick Tabs feature in v1.6.1.5.\n\nSolution: Multi-layered defense-in-depth approach\n1. URL Parameter Control: Added _processUrlForAutoplay() method in QuickTabWindow class that detects YouTube URLs (youtube.com or youtu.be) and adds/sets &autoplay=0 parameter\n2. Iframe Allow Attribute: Added 'allow' attribute with 'picture-in-picture; fullscreen' (explicitly excluding autoplay permission)\n3. Maintained existing sandbox attribute for security\n\nImplementation Details:\n- File: src/features/quick-tabs/window.js\n- Method: _processUrlForAutoplay(url) - safely parses URL and sets autoplay=0\n- Iframe creation updated to use processed URL\n- Error handling: Returns original URL if processing fails\n\nWhy This Works:\n- YouTube respects &autoplay=0 parameter for both /watch and /embed URLs\n- Browser 'allow' attribute without autoplay blocks cross-origin autoplay\n- Defense-in-depth: Both mechanisms work independently\n- Firefox enforces allow attribute restrictions\n\nTested: All 2212 unit/integration tests pass\nESLint: Clean (only pre-existing max-lines-per-function warning)\n\nCross-Tab Impact: Fix applies to all Quick Tab instances across all tabs due to URL being stored in state and processed during render() call.",
-  "category": "technical",
-  "dateCreated": "2025-11-24T18:50:21.654Z",
-  "dateUpdated": "2025-11-24T18:50:21.654Z"
-}

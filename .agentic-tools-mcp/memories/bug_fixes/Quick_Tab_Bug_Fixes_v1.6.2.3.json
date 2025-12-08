@@ -1,8 +1,0 @@
-{
-  "id": "900251a6-c592-4337-9db7-bf7b46fd5c3d",
-  "title": "Quick Tab Bug Fixes v1.6.2.3",
-  "details": "Fixed 3 critical Quick Tab bugs in v1.6.2.3:\n\n1. **Auto-Restore Bug (Bug #1)**: Added StateManager.addSilent() and hydrateSilent() for lazy rendering. QuickTabsManager._hydrateState() now uses hydrateSilent() to load Quick Tabs into memory WITHOUT rendering.\n\n2. **Iframe Recursion Bug (Bug #2)**: Added iframe guard at TOP of content.js with helper functions (_isQuickTabParentFrame, _checkShouldSkipInitialization) to prevent browser crashes from infinite nesting.\n\n3. **Manager Sync Bug (Bug #3)**: Added QuickTabWindow.updatePosition() and updateSize() methods (wrap setPosition/setSize with timestamps). Added UpdateHandler pending updates queue for Quick Tabs not yet rendered.",
-  "category": "bug_fixes",
-  "dateCreated": "2025-11-26T17:23:20.328Z",
-  "dateUpdated": "2025-11-26T17:23:20.328Z"
-}

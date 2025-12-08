@@ -1,8 +1,0 @@
-{
-  "id": "f0d689d9-4cc0-4665-adeb-da8c5cfda853",
-  "title": "Keyboard shortcut toggle behavior",
-  "details": "## Keyboard Shortcut Toggle Implementation (v1.6.4.1)\n\n### Alt+Shift+S - Open to Settings Tab\n- `_execute_sidebar_action` command is handled by `_handleOpenToSettingsTab()`\n- Opens sidebar if closed, then switches to Settings tab\n- Uses `_sendSettingsTabMessage()` with retry logic\n\n### Ctrl+Alt+Z - Toggle Manager Tab  \n- `toggle-quick-tabs-manager` command is handled by `_handleToggleQuickTabsManager()`\n- Uses `browser.sidebarAction.isOpen({})` to check if sidebar is open\n- If Manager is showing: closes sidebar with `browser.sidebarAction.close()`\n- If Settings is showing: switches to Manager tab\n- If sidebar is closed: opens and switches to Manager\n\n### Message Types\n- `SWITCH_TO_SETTINGS_TAB` - Switch sidebar to Settings tab\n- `SWITCH_TO_MANAGER_TAB` - Switch sidebar to Manager tab\n- `GET_CURRENT_PRIMARY_TAB` - Query current tab state (returns { primaryTab: 'settings' | 'manager' })\n\n### Key APIs Used\n- `browser.sidebarAction.isOpen({})` - Returns Promise<boolean>\n- `browser.sidebarAction.open()` - Opens sidebar\n- `browser.sidebarAction.close()` - Closes sidebar\n- `browser.runtime.sendMessage()` - Bidirectional messaging with sidebar\n\n### Files Modified\n- `background.js` - Command handlers and helper functions\n- `sidebar/settings.js` - Message listeners in `initializeTabSwitching()`",
-  "category": "implementation",
-  "dateCreated": "2025-11-29T02:09:01.590Z",
-  "dateUpdated": "2025-11-29T02:09:01.590Z"
-}

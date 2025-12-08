@@ -1,8 +1,0 @@
-{
-  "id": "43920e12-9453-4f5f-a7dd-f11af7b0ba16",
-  "title": "Storage Loop Circuit Breaker Pattern",
-  "details": "v1.6.3.6-v3 introduced a circuit breaker pattern in storage-utils.js to prevent infinite storage write loops:\n\n1. CIRCUIT_BREAKER_THRESHOLD = 15: When pendingWriteCount exceeds this, ALL new writes are blocked\n2. CIRCUIT_BREAKER_RESET_THRESHOLD = 10: Auto-reset when queue drains below this\n3. circuitBreakerTripped and circuitBreakerTripTime track state\n\nThe circuit breaker check happens at START of queueStorageWrite() BEFORE incrementing pendingWriteCount.\nReset happens in _executeStorageWrite() after successful writes when queue drains.\n\nAlso: validateOwnershipForWrite() now blocks writes with unknown tab ID (fail-closed) instead of allowing them.\nThis prevents self-write detection failures during the 50-200ms async initialization window.",
-  "category": "technical_decisions",
-  "dateCreated": "2025-12-05T21:43:13.134Z",
-  "dateUpdated": "2025-12-05T21:43:13.134Z"
-}

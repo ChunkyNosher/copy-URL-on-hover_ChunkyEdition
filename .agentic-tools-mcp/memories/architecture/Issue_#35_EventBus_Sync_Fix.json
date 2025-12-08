@@ -1,8 +1,0 @@
-{
-  "id": "1335af78-5c31-4bb6-b4bb-6b067fca9737",
-  "title": "Issue #35 EventBus Sync Fix",
-  "details": "Cross-tab Quick Tab sync uses storage.onChanged exclusively (v1.6.2+). The event flow is:\n\n1. StorageManager._onStorageChanged() - detects browser storage.onChanged event\n2. StorageManager.scheduleStorageSync() - debounces and emits 'storage:changed' on EventBus\n3. SyncCoordinator.handleStorageChange() - receives event, extracts Quick Tabs\n4. StateManager.hydrate() - emits state:added/updated/deleted events\n5. UICoordinator - listens to state events, renders Quick Tabs\n\nCRITICAL: All components (StorageManager, SyncCoordinator, StateManager, UICoordinator) MUST share the same EventBus instance (internalEventBus from QuickTabsManager).\n\nTo verify event flow, check logs for:\n- [StorageManager] listenerCount should be 1+\n- [SyncCoordinator] *** RECEIVED storage:changed EVENT ***\n- [StateManager] ✓ Hydrate complete\n\nIf listenerCount is 0, EventBus instances don't match.",
-  "category": "architecture",
-  "dateCreated": "2025-11-25T19:11:10.838Z",
-  "dateUpdated": "2025-11-25T19:11:10.838Z"
-}

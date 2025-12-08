@@ -1,8 +1,0 @@
-{
-  "id": "c1f31801-ae77-4670-9a01-f6c784e105fc",
-  "title": "v1.6.3.2+ Documentation Patterns",
-  "details": "Updated Copilot instructions and agent files for v1.6.3.2+ with new architectural patterns:\n\n1. UICoordinator DOM Verification: _verifyDOMAfterRender() with DOM_VERIFICATION_DELAY_MS = 150\n2. VisibilityHandler Delayed Emit: STATE_EMIT_DELAY_MS = 100 for DOM verification before emit\n3. CreateHandler Async Init: async init() loads quickTabShowDebugId from QUICK_TAB_SETTINGS_KEY\n4. QuickTabWindow Defaults: DEFAULT_WIDTH = 400, DEFAULT_HEIGHT = 300, DEFAULT_LEFT = 100, DEFAULT_TOP = 100\n5. MinimizedManager dimension logging: BEFORE/AFTER snapshot application\n\nStorage Keys:\n- State: quick_tabs_state_v2 (storage.local)\n- Settings: quick_tab_settings (storage.sync) with quickTabShowDebugId boolean",
-  "category": "documentation",
-  "dateCreated": "2025-11-30T00:37:04.856Z",
-  "dateUpdated": "2025-11-30T00:37:04.856Z"
-}

@@ -1,8 +1,0 @@
-{
-  "id": "4ad197be-c7b1-4ad6-909a-967308e0a52a",
-  "title": "Quick Tab Restore Fix Pattern v1.6.4.7",
-  "details": "Fixed 8 critical Quick Tab restore failures in v1.6.4.7:\n\n1. Use tabWindow.minimized (instance state) instead of entity.minimized in UICoordinator.update() - entity state may be stale during restore transition\n\n2. When DOM is detached AND instance is NOT minimized, ALWAYS call render() regardless of entity state\n\n3. Add DOM verification with delayed check (150ms) after render() to detect detachment\n\n4. Delay state:updated emit (100ms) until DOM verification confirms rendering\n\n5. Enhanced logging at every step of dimension flow: MinimizedManager → UICoordinator → window.render()\n\n6. render() explicitly validates width/height and uses constants for defaults\n\nKey files: UICoordinator.js, window.js, minimized-manager.js, VisibilityHandler.js\n\nConstants added: DOM_VERIFICATION_DELAY_MS, STATE_EMIT_DELAY_MS, DEFAULT_WIDTH/HEIGHT/LEFT/TOP",
-  "category": "code_patterns",
-  "dateCreated": "2025-11-30T00:07:53.116Z",
-  "dateUpdated": "2025-11-30T00:07:53.116Z"
-}

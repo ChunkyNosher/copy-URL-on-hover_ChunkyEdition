@@ -1,8 +1,0 @@
-{
-  "id": "cbe2f3f7-222c-4291-9fc8-d93fab5c4fa3",
-  "title": "v1.6.4.10 Documentation Update",
-  "details": "Updated all Copilot instructions and agent files for v1.6.4.10.\n\nKey v1.6.4.10 changes documented:\n1. UICoordinator Map cleanup for stale entries when DOM detached AND entity minimized\n2. z-index applied AFTER DOM render completes via requestAnimationFrame\n3. Manager sends minimize/restore to ALL browser tabs (not just active)\n4. isRendered() returns strict Boolean() instead of truthy {}\n5. UID display settings complete: checkbox in Advanced tab, storage.local with key 'quickTabShowDebugId'\n\nStorage key change: quickTabShowDebugId is now individual key in storage.local (not nested in quick_tab_settings)",
-  "category": "documentation",
-  "dateCreated": "2025-11-30T06:47:20.977Z",
-  "dateUpdated": "2025-11-30T06:47:20.977Z"
-}

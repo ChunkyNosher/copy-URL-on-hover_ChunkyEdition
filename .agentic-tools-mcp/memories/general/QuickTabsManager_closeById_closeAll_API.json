@@ -1,8 +1,0 @@
-{
-  "id": "a8a57b8e-2157-4c3c-a84f-bc5ffdef6f27",
-  "title": "QuickTabsManager closeById/closeAll API",
-  "details": "**Bug Pattern:** Non-existent method called on QuickTabsManager\n\n**Root Cause:** Code in content.js was calling `quickTabsManager.closeQuickTab(id)` which does not exist.\n\n**Actual Available Methods (QuickTabsManager):**\n- `closeById(id)` - Close a single Quick Tab by ID (delegates to destroyHandler.closeById)\n- `closeAll()` - Close all Quick Tabs (delegates to destroyHandler.closeAll)\n\n**Fix Applied:**\n1. For clearing all Quick Tabs: Use `closeAll()` directly instead of looping with individual calls\n2. For closing single Quick Tab: Use `closeById(id)` instead of non-existent `closeQuickTab(id)`\n\n**Files Affected:**\n- `src/content.js` - Message handlers for CLEAR_ALL_QUICK_TABS and test bridge handlers\n\n**Prevention:** Always check `src/features/quick-tabs/index.js` for actual available public methods on QuickTabsManager class before using them.",
-  "category": "general",
-  "dateCreated": "2025-11-28T04:55:57.282Z",
-  "dateUpdated": "2025-11-28T04:55:57.282Z"
-}

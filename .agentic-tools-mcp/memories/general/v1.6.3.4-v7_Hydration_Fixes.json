@@ -1,8 +1,0 @@
-{
-  "id": "072433c4-db6a-4d6a-a846-4b008b9ce9ac",
-  "title": "v1.6.3.4-v7 Hydration Fixes",
-  "details": "v1.6.3.4-v7 added critical hydration architecture fixes:\n1. Real QuickTabWindow Hydration - _hydrateMinimizedTab() creates actual instances via createQuickTabWindow() factory\n2. Instance Validation Pattern - Check typeof tabWindow.render === 'function' before operations\n3. URL Validation in Render - UICoordinator validates URL before _createWindow()\n4. Try/Finally Lock Pattern - Guaranteed lock cleanup in VisibilityHandler\n5. Handler Return Objects - handleMinimize/handleRestore return { success, error }\n6. State Events on Hydration - emit state:added for hydrated tabs\n7. RENDER_COOLDOWN_MS = 1000 constant in UICoordinator prevents duplicate renders",
-  "category": "general",
-  "dateCreated": "2025-12-01T07:04:46.089Z",
-  "dateUpdated": "2025-12-01T07:04:46.089Z"
-}

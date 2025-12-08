@@ -1,8 +1,0 @@
-{
-  "id": "656f3338-2687-40ec-bec1-3cbc0e3d0b25",
-  "title": "Panel Real-Time Updates via EventBus",
-  "details": "v1.6.2.3 fix: Quick Tabs Manager panel now updates in real-time via EventBus listeners instead of 2-second polling.\n\nKey changes:\n1. PanelManager passes eventBus, liveStateManager, minimizedManager to PanelContentManager\n2. PanelContentManager.setupStateListeners() subscribes to state:added, state:updated, state:deleted, state:hydrated events\n3. updateContent() queries live state from StateManager instead of browser.storage.sync\n4. Polling interval reduced from 2000ms to 10000ms as backup mechanism\n5. Statistics display shows \"X active, Y minimized\" instead of static \"Last sync\" timestamp\n\nEventBus events used:\n- state:added - Quick Tab created\n- state:updated - Quick Tab minimized/restored/position changed  \n- state:deleted - Quick Tab closed\n- state:hydrated - Cross-tab sync completed",
-  "category": "quick-tabs",
-  "dateCreated": "2025-11-25T19:21:38.280Z",
-  "dateUpdated": "2025-11-25T19:21:38.280Z"
-}

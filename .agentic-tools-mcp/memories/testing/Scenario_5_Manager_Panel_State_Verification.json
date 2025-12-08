@@ -1,8 +1,0 @@
-{
-  "id": "764ac08e-e85a-4937-97b9-7eed58d51262",
-  "title": "Scenario 5: Manager Panel State Verification",
-  "details": "Issue #47 Scenario 5: Manager Panel with Content Verification\n\n**Purpose:** Verify Quick Tabs Manager Panel displays correctly with accurate state information.\n\n**Test Location:** tests/extension/issue-47-scenarios.spec.js\n\n**Key Test Steps:**\n1. Create multiple Quick Tabs\n2. Minimize one Quick Tab\n3. Get Manager Panel state\n4. Verify minimized count matches\n5. Verify manager state is accurate\n\n**Test Bridge Methods Used:**\n- createQuickTab(url) - multiple calls\n- getQuickTabs()\n- minimizeQuickTab(id)\n- getManagerState() - NEW METHOD\n\n**Expected Behavior:**\n- Manager state contains visible, position, size properties\n- Minimized tabs count is accurate\n- Manager panel lists all Quick Tabs with correct status\n\n**Implementation Status:** ✅ Implemented with new test bridge methods\n\n**Test Pattern:**\n```javascript\nawait helper1.createQuickTab('https://wikipedia.org');\nawait helper1.createQuickTab('https://youtube.com');\n\nconst tabs = await helper1.getQuickTabs();\nawait helper1.minimizeQuickTab(tabs[0].id);\n\nconst managerState = await helper1.getManagerState();\nexpect(managerState.success).toBe(true);\n\nconst minimizedCount = tabs.filter(t => t.minimized).length;\nexpect(minimizedCount).toBe(1);\n```\n\n**Dependencies:** Quick Tabs Manager Panel, panelManager instance",
-  "category": "testing",
-  "dateCreated": "2025-11-22T09:07:00.404Z",
-  "dateUpdated": "2025-11-22T09:07:00.404Z"
-}

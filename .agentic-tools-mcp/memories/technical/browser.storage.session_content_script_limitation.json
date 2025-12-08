@@ -1,8 +1,0 @@
-{
-  "id": "9da9fbbc-e63c-4a99-a2b9-8d121e24d704",
-  "title": "browser.storage.session content script limitation",
-  "details": "**Critical Firefox Extension Limitation:**\n\n`browser.storage.session` API is ONLY available in background scripts. It is NOT available in content scripts.\n\n**Error when accessed in content scripts:**\n```\n\"can't access property \\\"get\\\", e.storage.session is undefined\"\n```\n\n**Solution Pattern:**\nAlways check for availability before using session storage in code that may run in both contexts:\n```javascript\nconst browserAPI = (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome);\n\nif (browserAPI?.storage?.session) {\n  // Safe to use session storage\n  containerData = await sessionAdapter.load(cookieStoreId);\n}\n```\n\n**Files affected:**\n- `src/features/quick-tabs/managers/StorageManager.js` - `loadAll()` method\n\n**Related scenarios:**\n- When Quick Tab state refresh happens after tab visibility change, content scripts try to load state but can't use session storage fallback",
-  "category": "technical",
-  "dateCreated": "2025-11-24T23:04:43.051Z",
-  "dateUpdated": "2025-11-24T23:04:43.051Z"
-}

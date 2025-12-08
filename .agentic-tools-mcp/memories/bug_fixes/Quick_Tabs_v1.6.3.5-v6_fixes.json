@@ -1,8 +1,0 @@
-{
-  "id": "1287d0ec-f629-4ce7-bc93-e331b0f9433c",
-  "title": "Quick Tabs v1.6.3.5-v6 fixes",
-  "details": "## v1.6.3.5-v6 Critical Bug Fixes\n\n### Issue #1: Restore Infinite Rollback Deadlock\n- **Problem**: DOM verification in VisibilityHandler caused rollback which deadlocked with UICoordinator\n- **Fix**: Removed rollback logic in `_verifyRestoreAndEmit()`, now trusts UICoordinator via events\n- **Key Change**: `_handleDOMVerificationFailure()` is deprecated - only logs warning now\n\n### Issue #3: DestroyHandler closeAll Multi-Execute\n- **Problem**: closeAll() executed 2-3 times per button click\n- **Fix**: Added `_closeAllInProgress` mutex flag with 2000ms cooldown via `_scheduleMutexRelease()`\n\n### Issue #4: UICoordinator Map Never Populated\n- **Problem**: renderedTabs Map not updated during creation\n- **Fix**: CreateHandler emits `window:created` event, UICoordinator listens and calls `_registerCreatedWindow()`\n\n### Issue #5: Manager UI Logging\n- **Fix**: Added comprehensive logging in quick-tabs-manager.js for storage.onChanged, UI list changes, Last sync updates\n\n### Key Patterns\n- Use event-driven architecture (window:created) instead of direct Map manipulation\n- Mutex with cooldown for duplicate prevention (2000ms CLOSE_ALL_COOLDOWN_MS)\n- Trust UICoordinator for rendering - don't rollback from other handlers",
-  "category": "bug_fixes",
-  "dateCreated": "2025-12-03T08:11:50.322Z",
-  "dateUpdated": "2025-12-03T08:11:50.322Z"
-}

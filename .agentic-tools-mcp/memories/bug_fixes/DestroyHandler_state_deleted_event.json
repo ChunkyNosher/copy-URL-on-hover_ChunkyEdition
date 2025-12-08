@@ -1,8 +1,0 @@
-{
-  "id": "510382ab-c116-40ad-9341-3212e4d9cae6",
-  "title": "DestroyHandler state:deleted event",
-  "details": "BUG FIX v1.6.3.2: DestroyHandler now emits state:deleted event for manager panel sync.\n\nRoot cause: DestroyHandler.handleDestroy() only emitted QUICK_TAB_CLOSED event (legacy), but PanelContentManager listens for state:deleted event.\n\nFix in DestroyHandler.js:\nAdded _emitStateDeletedEvent() method that emits state:deleted event with { id, quickTab: { id, url, title } }\n\nThis allows the manager panel to update when Quick Tabs are closed from anywhere (not just the panel).",
-  "category": "bug_fixes",
-  "dateCreated": "2025-11-28T08:27:04.007Z",
-  "dateUpdated": "2025-11-28T08:27:04.007Z"
-}
