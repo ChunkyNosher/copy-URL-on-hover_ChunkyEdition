@@ -198,6 +198,28 @@ export class VisibilityHandler {
   }
 
   /**
+   * Extract position from tabWindow
+   * @private
+   * @param {Object} tabWindow - Quick Tab window instance
+   * @returns {{ left: number, top: number }|null}
+   */
+  _extractPosition(tabWindow) {
+    if (!tabWindow) return null;
+    return { left: tabWindow.left, top: tabWindow.top };
+  }
+
+  /**
+   * Extract size from tabWindow
+   * @private
+   * @param {Object} tabWindow - Quick Tab window instance
+   * @returns {{ width: number, height: number }|null}
+   */
+  _extractSize(tabWindow) {
+    if (!tabWindow) return null;
+    return { width: tabWindow.width, height: tabWindow.height };
+  }
+
+  /**
    * Create minimal Quick Tab data object for state:updated events
    * v1.6.3.1 - Helper to reduce code duplication
    * v1.6.3.4-v9 - FIX Issue #14: Include complete entity data (url, position, size, title, container)
@@ -213,12 +235,48 @@ export class VisibilityHandler {
       minimized,
       url: tabWindow?.url,
       title: tabWindow?.title,
-      // v1.6.3.4-v9 - FIX Issue #14: Include position, size, container
-      position: tabWindow ? { left: tabWindow.left, top: tabWindow.top } : null,
-      size: tabWindow ? { width: tabWindow.width, height: tabWindow.height } : null,
+      position: this._extractPosition(tabWindow),
+      size: this._extractSize(tabWindow),
       container: tabWindow?.cookieStoreId || tabWindow?.container || null,
       zIndex: tabWindow?.zIndex
     };
+  }
+
+  /**
+   * Get browser storage API with validation
+   * @private
+   * @returns {Object|null} Browser storage API or null if unavailable
+   */
+  _getStorageAPI() {
+    const browserAPI = getBrowserStorageAPI();
+    if (!browserAPI?.storage?.local) {
+      console.warn('[VisibilityHandler] Storage API not available for entity fetch');
+      return null;
+    }
+    return browserAPI.storage.local;
+  }
+
+  /**
+   * Find entity by ID in state tabs array
+   * @private
+   * @param {Object} state - Storage state object
+   * @param {string} id - Quick Tab ID to find
+   * @returns {Object|null} Entity or null if not found
+   */
+  _findEntityInState(state, id) {
+    if (!state?.tabs || !Array.isArray(state.tabs)) {
+      console.log('[VisibilityHandler] No state found in storage for entity fetch');
+      return null;
+    }
+    
+    const entity = state.tabs.find(tab => tab.id === id);
+    if (!entity) {
+      console.log('[VisibilityHandler] Entity not found in storage:', id);
+      return null;
+    }
+    
+    console.log('[VisibilityHandler] Fetched entity from storage:', { id, url: entity.url });
+    return entity;
   }
 
   /**
@@ -230,28 +288,11 @@ export class VisibilityHandler {
    */
   async _fetchEntityFromStorage(id) {
     try {
-      const browserAPI = getBrowserStorageAPI();
-      if (!browserAPI?.storage?.local) {
-        console.warn('[VisibilityHandler] Storage API not available for entity fetch');
-        return null;
-      }
+      const storageAPI = this._getStorageAPI();
+      if (!storageAPI) return null;
       
-      const result = await browserAPI.storage.local.get(STATE_KEY);
-      const state = result?.[STATE_KEY];
-      
-      if (!state?.tabs || !Array.isArray(state.tabs)) {
-        console.log('[VisibilityHandler] No state found in storage for entity fetch');
-        return null;
-      }
-      
-      const entity = state.tabs.find(tab => tab.id === id);
-      if (!entity) {
-        console.log('[VisibilityHandler] Entity not found in storage:', id);
-        return null;
-      }
-      
-      console.log('[VisibilityHandler] Fetched entity from storage:', { id, url: entity.url });
-      return entity;
+      const result = await storageAPI.get(STATE_KEY);
+      return this._findEntityInState(result?.[STATE_KEY], id);
     } catch (err) {
       console.error('[VisibilityHandler] Error fetching entity from storage:', err);
       return null;
@@ -594,6 +635,19 @@ export class VisibilityHandler {
   }
 
   /**
+   * Check if tab has valid restore context (is minimized or has snapshot)
+   * @private
+   * @param {Object} tabWindow - Tab window instance
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if tab can be restored
+   */
+  _hasValidRestoreContext(tabWindow, id) {
+    const hasSnapshot = this.minimizedManager?.hasSnapshot?.(id) ?? false;
+    const isEntityMinimized = tabWindow?.minimized === true;
+    return isEntityMinimized || hasSnapshot;
+  }
+
+  /**
    * Validate restore preconditions
    * v1.6.3.4-v9 - FIX Issue #20: Extracted to reduce _executeRestore complexity
    * @private
@@ -609,14 +663,11 @@ export class VisibilityHandler {
     }
     
     // v1.6.3.4-v9 - FIX Issue #20: Validate tab is actually minimized before restore
-    const hasSnapshot = this.minimizedManager?.hasSnapshot?.(id);
-    const isEntityMinimized = tabWindow?.minimized === true;
-    
-    if (tabWindow && !isEntityMinimized && !hasSnapshot) {
+    if (tabWindow && !this._hasValidRestoreContext(tabWindow, id)) {
       console.warn(`[VisibilityHandler] Restore validation FAILED (source: ${source}): Tab is not minimized:`, {
         id,
         entityMinimized: tabWindow?.minimized,
-        hasSnapshot
+        hasSnapshot: this.minimizedManager?.hasSnapshot?.(id) ?? false
       });
       return { valid: false, error: 'Tab is not minimized - cannot restore' };
     }
@@ -691,6 +742,56 @@ export class VisibilityHandler {
   }
 
   /**
+   * Update entity state for restore (set minimized=false and update z-index)
+   * @private
+   * @param {Object} tabWindow - Tab window instance
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   */
+  _updateEntityStateForRestore(tabWindow, id, source) {
+    console.log(`${this._logPrefix} Updating entity.minimized = false (source: ${source}) for:`, id);
+    tabWindow.minimized = false;
+    
+    // v1.6.3.5-v8 - FIX Issue #4: Ensure z-index is brought to front after restore
+    if (this.currentZIndex) {
+      const oldZIndex = tabWindow.zIndex;
+      this.currentZIndex.value++;
+      tabWindow.zIndex = this.currentZIndex.value;
+      console.log(`${this._logPrefix}[_executeRestore] Z-index update (source: ${source}):`, {
+        id,
+        oldZIndex,
+        newZIndex: tabWindow.zIndex,
+        currentZIndexCounter: this.currentZIndex.value
+      });
+    }
+  }
+
+  /**
+   * Handle case when tab is not in minimized manager
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Tab window instance
+   * @param {string} source - Source of action
+   */
+  _handleNotInMinimizedManager(id, tabWindow, source) {
+    console.warn(`${this._logPrefix} Tab not found in minimized manager (source: ${source}):`, id);
+    void this._emitRestoreStateUpdate(id, tabWindow, source);
+    this._debouncedPersist(id, 'restore', source);
+  }
+
+  /**
+   * Emit QUICK_TAB_RESTORED event for legacy handlers
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   */
+  _emitLegacyRestoredEvent(id, source) {
+    if (this.eventBus && this.Events) {
+      this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id, source });
+    }
+  }
+
+  /**
    * Execute restore operation (extracted to reduce handleRestore complexity)
    * v1.6.3.4-v7 - Helper for try/finally pattern in handleRestore
    * v1.6.3.4-v9 - FIX Issue #20: Add validation before proceeding
@@ -710,59 +811,32 @@ export class VisibilityHandler {
       return { success: false, error: validation.error };
     }
     
-    // v1.6.3.4-v6 - FIX Issue #2: Mark as pending to prevent duplicate operations
+    // Mark as pending to prevent duplicate operations
     this._pendingRestore.add(id);
 
-    // v1.6.3.5-v5 - FIX Issue #6: Capture pre-restore state for rollback
-    // Note: Only capturing minimized state, as 'rendered' state is managed by UICoordinator
-    const preRestoreState = tabWindow ? {
-      minimized: tabWindow.minimized,
-      zIndex: tabWindow.zIndex // v1.6.3.5-v11 - Also capture z-index
-    } : null;
+    // Capture pre-restore state
+    const preRestoreState = tabWindow ? { minimized: tabWindow.minimized, zIndex: tabWindow.zIndex } : null;
 
-    // v1.6.3.4-v5 - FIX Issue #7: Update entity.minimized = false FIRST
+    // Update entity state FIRST
     if (tabWindow) {
-      console.log(`${this._logPrefix} Updating entity.minimized = false (source: ${source}) for:`, id);
-      tabWindow.minimized = false;
-      
-      // v1.6.3.5-v8 - FIX Issue #4: Ensure z-index is brought to front after restore
-      // v1.6.3.5-v11 - FIX Issue #7, #9: Enhanced z-index logging
-      if (this.currentZIndex) {
-        const oldZIndex = tabWindow.zIndex;
-        this.currentZIndex.value++;
-        tabWindow.zIndex = this.currentZIndex.value;
-        console.log(`${this._logPrefix}[_executeRestore] Z-index update (source: ${source}):`, {
-          id,
-          oldZIndex,
-          newZIndex: tabWindow.zIndex,
-          currentZIndexCounter: this.currentZIndex.value
-        });
-      }
+      this._updateEntityStateForRestore(tabWindow, id, source);
     }
 
     // Restore from minimized manager
-    const restored = this.minimizedManager.restore(id);
-    if (!restored) {
-      console.warn(`${this._logPrefix} Tab not found in minimized manager (source: ${source}):`, id);
-      // Fire-and-forget: Event emission runs async but doesn't block return
-      void this._emitRestoreStateUpdate(id, tabWindow, source);
-      this._debouncedPersist(id, 'restore', source);
+    if (!this.minimizedManager.restore(id)) {
+      this._handleNotInMinimizedManager(id, tabWindow, source);
       return { success: true };
     }
 
     // Perform restore on tabWindow (includes callback re-wiring)
     this._performTabWindowRestore(tabWindow, id, source);
 
-    // v1.6.3.5-v5 - FIX Issue #1: Verify DOM state after restore
-    // Use promise-based verification instead of fire-and-forget
+    // Verify DOM state after restore
     this._verifyRestoreAndEmit(id, tabWindow, source, preRestoreState);
 
     // Emit restore event for legacy handlers
-    if (this.eventBus && this.Events) {
-      this.eventBus.emit(this.Events.QUICK_TAB_RESTORED, { id, source });
-    }
+    this._emitLegacyRestoredEvent(id, source);
     
-    // v1.6.3.6-v6 - FIX: Include originTabId in exit log for debugging
     console.log(`${this._logPrefix}[_executeRestore] EXIT (source: ${source}):`, {
       id,
       success: true,
@@ -771,6 +845,38 @@ export class VisibilityHandler {
     });
     
     return { success: true };
+  }
+
+  /**
+   * Log restore verification status
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Tab window instance
+   * @param {string} source - Source of action
+   * @returns {boolean} Whether DOM is rendered
+   */
+  _logRestoreVerification(id, tabWindow, source) {
+    const isDOMRendered = this._isDOMRendered(tabWindow);
+    const hasMinimizedSnapshot = this.minimizedManager?.hasSnapshot?.(id) ?? false;
+    const inQuickTabsMap = this.quickTabsMap?.has?.(id) ?? false;
+    const invariantHolds = isDOMRendered && !hasMinimizedSnapshot && inQuickTabsMap;
+    
+    console.log('[VisibilityHandler] Restore verification:', {
+      id,
+      isDOMRendered,
+      hasMinimizedSnapshot,
+      inQuickTabsMap,
+      invariantHolds,
+      originTabId: tabWindow?.originTabId ?? 'N/A'
+    });
+    
+    console.log(`[VisibilityHandler] Restore state check (source: ${source}):`, {
+      id,
+      isDOMRendered,
+      rollbackEnabled: false
+    });
+    
+    return isDOMRendered;
   }
 
   /**
@@ -791,31 +897,8 @@ export class VisibilityHandler {
       // v1.6.3.5-v6 - FIX Issue #1: Short delay for event sequencing only (no rollback)
       await this._delay(DOM_VERIFICATION_DELAY_MS);
       
-      // v1.6.3.5-v6 - FIX Issue #1: Log DOM state but do NOT rollback
-      // Trust UICoordinator to handle rendering via event-driven architecture
-      const isDOMRendered = this._isDOMRendered(tabWindow);
-      
-      // v1.6.3.5-v12 - FIX Issue D: Add invariant logging for restore verification
-      const hasMinimizedSnapshot = this.minimizedManager?.hasSnapshot?.(id) ?? false;
-      const inQuickTabsMap = this.quickTabsMap?.has?.(id) ?? false;
-      const invariantHolds = isDOMRendered && !hasMinimizedSnapshot && inQuickTabsMap;
-      
-      // v1.6.3.6-v6 - FIX: Include originTabId in verification log
-      console.log('[VisibilityHandler] Restore verification:', {
-        id,
-        isDOMRendered,
-        hasMinimizedSnapshot,
-        inQuickTabsMap,
-        invariantHolds,
-        originTabId: tabWindow?.originTabId ?? 'N/A'
-      });
-      
-      console.log(`[VisibilityHandler] Restore state check (source: ${source}):`, {
-        id,
-        isDOMRendered,
-        // v1.6.3.5-v6: Rollback removed - we trust UICoordinator
-        rollbackEnabled: false
-      });
+      // Log verification status (extracted helper)
+      this._logRestoreVerification(id, tabWindow, source);
       
       // v1.6.3.5-v5 - FIX Issue #3: Synchronous event emission followed by persist
       this._emitRestoreStateUpdateSync(id, tabWindow, source);
@@ -923,125 +1006,130 @@ export class VisibilityHandler {
   }
 
   /**
-   * Emit state:updated event for restore
-   * v1.6.3.2 - Helper to reduce handleRestore complexity
-   * v1.6.3.4-v8 - FIX Issue #4: Verify DOM is rendered before emitting state:updated
-   *   Manager was showing green indicator based on entity state, not actual DOM presence.
-   * v1.6.3.3 - FIX Bug #3: Remove spurious warnings that fire during successful operations
-   * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
-   * v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag to event payload
-   * v1.6.3.4-v9 - FIX Issue #14: Fetch complete entity from storage when tabWindow is null
-   * v1.6.3.5-v5 - FIX Issue #4: Wrap timer callback in try/catch with context markers
+   * Build quick tab data from storage entity
    * @private
    * @param {string} id - Quick Tab ID
-   * @param {Object} tabWindow - Quick Tab window instance
+   * @param {Object} entity - Storage entity
    * @param {string} source - Source of action
+   * @returns {Object} Quick Tab data for event emission
    */
-  async _emitRestoreStateUpdate(id, tabWindow, source = 'unknown') {
-    if (!this.eventBus) {
-      return;
+  _buildQuickTabDataFromEntity(id, entity, source) {
+    return {
+      id,
+      minimized: false,
+      domVerified: false,
+      source,
+      isRestoreOperation: true,
+      url: entity.url,
+      title: entity.title,
+      position: { left: entity.left, top: entity.top },
+      size: { width: entity.width, height: entity.height },
+      container: entity.container || entity.cookieStoreId || null,
+      zIndex: entity.zIndex
+    };
+  }
+
+  /**
+   * Emit state:updated from storage entity (when tabWindow is null)
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   * @returns {Promise<boolean>} True if emitted, false otherwise
+   */
+  async _emitRestoreFromStorage(id, source) {
+    console.log(`[VisibilityHandler] No tabWindow for restore event (source: ${source}), fetching from storage:`, id);
+    
+    const entity = await this._fetchEntityFromStorage(id);
+    if (!entity) {
+      console.error(`[VisibilityHandler] REJECTED: Cannot emit state:updated without entity data (source: ${source}):`, id);
+      return false;
     }
     
-    // v1.6.3.3 - FIX Bug #3: tabWindow may be null if not in quickTabsMap initially
-    // v1.6.3.4-v9 - FIX Issue #14: Fetch complete entity from storage
-    if (!tabWindow) {
-      console.log(`[VisibilityHandler] No tabWindow for restore event (source: ${source}), fetching from storage:`, id);
+    const quickTabData = this._buildQuickTabDataFromEntity(id, entity, source);
+    
+    const validation = this._validateEventPayload(quickTabData);
+    if (!validation.valid) {
+      console.error(`[VisibilityHandler] REJECTED: Event payload missing required fields (source: ${source}):`, {
+        id,
+        missingFields: validation.missingFields
+      });
+      return false;
+    }
+    
+    this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
+    console.log(`[VisibilityHandler] Emitted state:updated for restore from storage (source: ${source}):`, id);
+    return true;
+  }
+
+  /**
+   * Timer callback for delayed state:updated emission
+   * @private
+   */
+  _emitRestoreStateDelayedCallback(id, tabWindow, source, timerScheduleTime) {
+    try {
+      const actualDelay = Date.now() - timerScheduleTime;
+      console.log(`${this._logPrefix} state:updated emit timer FIRED (id: ${id}, scheduledDelay: ${STATE_EMIT_DELAY_MS}ms, actualDelay: ${actualDelay}ms, source: ${source})`);
       
-      // Fetch complete entity from storage
-      const entity = await this._fetchEntityFromStorage(id);
+      const isDOMRendered = this._isDOMRendered(tabWindow);
       
-      if (!entity) {
-        // v1.6.3.4-v9 - FIX Issue #14: Cannot emit incomplete event
-        console.error(`[VisibilityHandler] REJECTED: Cannot emit state:updated without entity data (source: ${source}):`, id);
-        return;
+      if (!isDOMRendered) {
+        console.log(`[VisibilityHandler] DOM not yet rendered after restore (source: ${source}), expected during transition:`, id);
+      } else {
+        console.log(`[VisibilityHandler] DOM verified rendered after restore (source: ${source}):`, id);
       }
       
-      // Build complete payload from storage entity
-      const quickTabData = {
-        id,
-        minimized: false,
-        domVerified: false,
-        source,
-        isRestoreOperation: true,
-        url: entity.url,
-        title: entity.title,
-        position: { left: entity.left, top: entity.top },
-        size: { width: entity.width, height: entity.height },
-        container: entity.container || entity.cookieStoreId || null,
-        zIndex: entity.zIndex
-      };
+      const quickTabData = this._createQuickTabData(id, tabWindow, false);
+      quickTabData.domVerified = isDOMRendered;
+      quickTabData.source = source;
+      quickTabData.isRestoreOperation = true;
       
-      // Validate payload before emitting
       const validation = this._validateEventPayload(quickTabData);
       if (!validation.valid) {
         console.error(`[VisibilityHandler] REJECTED: Event payload missing required fields (source: ${source}):`, {
           id,
           missingFields: validation.missingFields
         });
+        console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: rejected, reason: invalid payload, duration: ${Date.now() - timerScheduleTime}ms)`);
         return;
       }
       
       this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
-      console.log(`[VisibilityHandler] Emitted state:updated for restore from storage (source: ${source}):`, id);
+      console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { domVerified: isDOMRendered, isRestoreOperation: true });
+      console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: success, duration: ${Date.now() - timerScheduleTime}ms)`);
+    } catch (err) {
+      console.error(`[VisibilityHandler] ERROR in state:updated emit timer (id: ${id}, source: ${source}):`, {
+        error: err.message,
+        stack: err.stack,
+        duration: Date.now() - timerScheduleTime
+      });
+    }
+  }
+
+  /**
+   * Emit state:updated event for restore
+   * v1.6.3.2 - Helper to reduce handleRestore complexity
+   * v1.6.3.4-v8 - FIX Issue #4: Verify DOM is rendered before emitting state:updated
+   * v1.6.3.4-v9 - FIX Issue #14: Fetch complete entity from storage when tabWindow is null
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Quick Tab window instance
+   * @param {string} source - Source of action
+   */
+  async _emitRestoreStateUpdate(id, tabWindow, source = 'unknown') {
+    if (!this.eventBus) return;
+    
+    // Handle case when tabWindow is null - fetch from storage
+    if (!tabWindow) {
+      await this._emitRestoreFromStorage(id, source);
       return;
     }
     
-    // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Track timer scheduling for logging
+    // Delay emit until we can verify DOM is rendered
     const timerScheduleTime = Date.now();
-    
-    // v1.6.3.4-v8 - FIX Issue #4: Delay emit until we can verify DOM is rendered
-    // This prevents Manager from showing green indicator when window isn't actually visible
-    setTimeout(() => {
-      // v1.6.3.5-v5 - FIX Issue #4: Wrap entire callback in try/catch to prevent silent failures
-      try {
-        // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback entry with timing info
-        const actualDelay = Date.now() - timerScheduleTime;
-        console.log(`${this._logPrefix} state:updated emit timer FIRED (id: ${id}, scheduledDelay: ${STATE_EMIT_DELAY_MS}ms, actualDelay: ${actualDelay}ms, source: ${source})`);
-        
-        // v1.6.3.5-v5 - Use extracted helper for DOM verification
-        const isDOMRendered = this._isDOMRendered(tabWindow);
-        
-        // v1.6.3.3 - FIX Bug #3: Don't warn if DOM not rendered - this is expected during restore
-        // UICoordinator will handle rendering, we just report the current state
-        if (!isDOMRendered) {
-          console.log(`[VisibilityHandler] DOM not yet rendered after restore (source: ${source}), expected during transition:`, id);
-        } else {
-          console.log(`[VisibilityHandler] DOM verified rendered after restore (source: ${source}):`, id);
-        }
-        
-        const quickTabData = this._createQuickTabData(id, tabWindow, false);
-        // v1.6.3.4-v8 - Add DOM verification result to event data
-        quickTabData.domVerified = isDOMRendered;
-        quickTabData.source = source; // v1.6.3.4 - FIX Issue #6: Add source
-        // v1.6.3.4-v2 - FIX Issue #5: Add isRestoreOperation flag so UICoordinator routes correctly
-        quickTabData.isRestoreOperation = true;
-        
-        // v1.6.3.4-v9 - FIX Issue #14: Validate payload before emitting
-        const validation = this._validateEventPayload(quickTabData);
-        if (!validation.valid) {
-          console.error(`[VisibilityHandler] REJECTED: Event payload missing required fields (source: ${source}):`, {
-            id,
-            missingFields: validation.missingFields
-          });
-          // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback exit on rejection
-          console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: rejected, reason: invalid payload, duration: ${Date.now() - timerScheduleTime}ms)`);
-          return;
-        }
-        
-        this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
-        console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, { domVerified: isDOMRendered, isRestoreOperation: true });
-        
-        // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback exit on success
-        console.log(`${this._logPrefix} state:updated emit timer COMPLETED (outcome: success, duration: ${Date.now() - timerScheduleTime}ms)`);
-      } catch (err) {
-        // v1.6.3.5-v5 - FIX Issue #4: Log errors in timer callback with context
-        console.error(`[VisibilityHandler] ERROR in state:updated emit timer (id: ${id}, source: ${source}):`, {
-          error: err.message,
-          stack: err.stack,
-          duration: Date.now() - timerScheduleTime
-        });
-      }
-    }, STATE_EMIT_DELAY_MS);
+    setTimeout(
+      () => this._emitRestoreStateDelayedCallback(id, tabWindow, source, timerScheduleTime),
+      STATE_EMIT_DELAY_MS
+    );
   }
 
   /**
@@ -1069,12 +1157,15 @@ export class VisibilityHandler {
    * v1.6.3.5-v12 - Extracted to reduce handleFocus complexity
    * @private
    * @param {string} id - Quick Tab ID
-   * @param {Object} tabWindow - Tab window instance
-   * @param {number} newZIndex - New z-index value
-   * @param {boolean} hasContainer - Whether tabWindow has container
-   * @param {boolean} isAttachedToDOM - Whether container is attached to DOM
+   * @param {Object} options - Z-index update options
+   * @param {Object} options.tabWindow - Tab window instance
+   * @param {number} options.newZIndex - New z-index value
+   * @param {boolean} options.hasContainer - Whether tabWindow has container
+   * @param {boolean} options.isAttachedToDOM - Whether container is attached to DOM
    */
-  _applyZIndexUpdate(id, tabWindow, newZIndex, hasContainer, isAttachedToDOM) {
+  _applyZIndexUpdate(id, options) {
+    const { tabWindow, newZIndex, hasContainer, isAttachedToDOM } = options;
+    
     if (hasContainer && isAttachedToDOM) {
       tabWindow.updateZIndex(newZIndex);
       console.log(`${this._logPrefix}[handleFocus] Called tabWindow.updateZIndex():`, {
@@ -1087,7 +1178,7 @@ export class VisibilityHandler {
     
     // v1.6.3.5-v12 - FIX Issue #2: Try fallback DOM query if tab should be visible
     if (!hasContainer && !tabWindow.minimized) {
-      this._applyZIndexViaFallback(id, tabWindow, newZIndex, hasContainer, isAttachedToDOM);
+      this._applyZIndexViaFallback(id, options);
       return;
     }
     
@@ -1105,8 +1196,15 @@ export class VisibilityHandler {
    * v1.6.3.5-v12 - Extracted to reduce _applyZIndexUpdate complexity (max-depth fix)
    * v1.6.3.5-v12 - Code Review: Use more specific selector with class to avoid conflicts
    * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} options - Fallback options
+   * @param {Object} options.tabWindow - Tab window instance
+   * @param {number} options.newZIndex - New z-index value
+   * @param {boolean} options.hasContainer - Whether tabWindow has container
+   * @param {boolean} options.isAttachedToDOM - Whether container is attached to DOM
    */
-  _applyZIndexViaFallback(id, tabWindow, newZIndex, hasContainer, isAttachedToDOM) {
+  _applyZIndexViaFallback(id, options) {
+    const { tabWindow, newZIndex, hasContainer, isAttachedToDOM } = options;
     const element = document.querySelector(`.quick-tab-window[data-quicktab-id="${CSS.escape(tabWindow.id)}"]`);
     if (element) {
       element.style.zIndex = newZIndex.toString();
@@ -1127,6 +1225,51 @@ export class VisibilityHandler {
   }
 
   /**
+   * Check if focus event should be debounced
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if focus should be ignored (debounced)
+   */
+  _shouldDebounceFocus(id) {
+    const FOCUS_DEBOUNCE_MS = 100;
+    const now = Date.now();
+    const lastFocus = this._lastFocusTime.get(id) || 0;
+    
+    if (now - lastFocus < FOCUS_DEBOUNCE_MS) {
+      console.log(`${this._logPrefix}[handleFocus] Ignoring duplicate focus (within debounce window):`, id);
+      return true;
+    }
+    this._lastFocusTime.set(id, now);
+    return false;
+  }
+
+  /**
+   * Validate tab window for focus and get container info
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @returns {{ valid: boolean, tabWindow?: Object, hasContainer?: boolean, isAttachedToDOM?: boolean }}
+   */
+  _validateFocusTarget(id) {
+    const tabWindow = this.quickTabsMap.get(id);
+    if (!tabWindow) {
+      console.warn(`${this._logPrefix}[handleFocus] Tab not found in quickTabsMap:`, id);
+      return { valid: false };
+    }
+    
+    const hasContainer = !!tabWindow.container;
+    const isAttachedToDOM = !!(tabWindow.container?.parentNode);
+    
+    console.log(`${this._logPrefix}[handleFocus] Container validation:`, {
+      id,
+      hasContainer,
+      isAttachedToDOM,
+      isRendered: tabWindow.isRendered?.() ?? 'N/A'
+    });
+    
+    return { valid: true, tabWindow, hasContainer, isAttachedToDOM };
+  }
+
+  /**
    * Handle Quick Tab focus (bring to front)
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.4 - FIX Issue #3: Persist z-index to storage after focus
@@ -1139,39 +1282,19 @@ export class VisibilityHandler {
    * @param {string} id - Quick Tab ID
    */
   handleFocus(id) {
-    // v1.6.3.4-v8 - FIX Issue #6: Debounce focus events to prevent duplicates
-    const FOCUS_DEBOUNCE_MS = 100;
-    const now = Date.now();
-    const lastFocus = this._lastFocusTime.get(id) || 0;
+    // Check debounce
+    if (this._shouldDebounceFocus(id)) return;
     
-    if (now - lastFocus < FOCUS_DEBOUNCE_MS) {
-      console.log(`${this._logPrefix}[handleFocus] Ignoring duplicate focus (within debounce window):`, id);
-      return;
-    }
-    this._lastFocusTime.set(id, now);
-    
-    // v1.6.3.5-v11 - FIX Issue #9: Log entry with current state
     console.log(`${this._logPrefix}[handleFocus] ENTRY:`, {
       id,
       currentZIndex: this.currentZIndex?.value
     });
 
-    const tabWindow = this.quickTabsMap.get(id);
-    if (!tabWindow) {
-      console.warn(`${this._logPrefix}[handleFocus] Tab not found in quickTabsMap:`, id);
-      return;
-    }
+    // Validate target
+    const validation = this._validateFocusTarget(id);
+    if (!validation.valid) return;
     
-    // v1.6.3.5-v11 - FIX Issue #8: Defensive checks before z-index update
-    const hasContainer = !!tabWindow.container;
-    const isAttachedToDOM = !!(tabWindow.container?.parentNode);
-    
-    console.log(`${this._logPrefix}[handleFocus] Container validation:`, {
-      id,
-      hasContainer,
-      isAttachedToDOM,
-      isRendered: tabWindow.isRendered?.() ?? 'N/A'
-    });
+    const { tabWindow, hasContainer, isAttachedToDOM } = validation;
 
     // Store old z-index for logging
     const oldZIndex = tabWindow.zIndex;
@@ -1180,7 +1303,6 @@ export class VisibilityHandler {
     this.currentZIndex.value++;
     const newZIndex = this.currentZIndex.value;
     
-    // v1.6.3.5-v11 - FIX Issue #9: Log z-index increment details
     console.log(`${this._logPrefix}[handleFocus] Z-index increment:`, {
       id,
       oldZIndex,
@@ -1188,21 +1310,19 @@ export class VisibilityHandler {
       counterValue: this.currentZIndex.value
     });
     
-    // v1.6.3.4 - FIX Issue #3: Store the new z-index on the tab for persistence
     tabWindow.zIndex = newZIndex;
     
-    // v1.6.3.5-v12 - Apply z-index via helper (reduces complexity)
-    this._applyZIndexUpdate(id, tabWindow, newZIndex, hasContainer, isAttachedToDOM);
+    // Apply z-index via helper
+    this._applyZIndexUpdate(id, { tabWindow, newZIndex, hasContainer, isAttachedToDOM });
 
     // Emit focus event
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_FOCUSED, { id });
     }
     
-    // v1.6.3.4 - FIX Issue #3: Persist z-index change to storage (debounced)
+    // Persist z-index change to storage (debounced)
     this._debouncedPersist(id, 'focus', 'UI');
     
-    // v1.6.3.5-v11 - FIX Issue #9: Log completion
     console.log(`${this._logPrefix}[handleFocus] EXIT:`, {
       id,
       finalZIndex: tabWindow.zIndex
@@ -1308,8 +1428,9 @@ export class VisibilityHandler {
     this._activeTimerIds.add(timerId);
     
     // Set new debounce timer with timer ID check
+    const callbackOptions = { operation, source, timerId, timerScheduleTime };
     const timeoutId = setTimeout(
-      () => this._executeDebouncedPersistCallback(id, operation, source, timerId, timerScheduleTime),
+      () => this._executeDebouncedPersistCallback(id, callbackOptions),
       MINIMIZE_DEBOUNCE_MS
     );
     
@@ -1321,8 +1442,16 @@ export class VisibilityHandler {
    * Execute the debounced persist callback
    * v1.6.3.5-v3 - Extracted to reduce _debouncedPersist complexity
    * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} options - Callback options
+   * @param {string} options.operation - Operation type ('minimize', 'restore', 'focus')
+   * @param {string} options.source - Source of action
+   * @param {string} options.timerId - Unique timer ID
+   * @param {number} options.timerScheduleTime - Timestamp when timer was scheduled
    */
-  async _executeDebouncedPersistCallback(id, operation, source, timerId, timerScheduleTime) {
+  async _executeDebouncedPersistCallback(id, options) {
+    const { operation, source, timerId, timerScheduleTime } = options;
+    
     // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Calculate actual delay for logging
     const actualDelay = Date.now() - timerScheduleTime;
     

@@ -112,18 +112,53 @@ const ZERO_TAB_CLEAR_THRESHOLD = 2; // Require 2 consecutive 0-tab reads
 const NON_EMPTY_STATE_COOLDOWN_MS = 1000; // Don't clear within 1 second of last non-empty state
 
 /**
+ * Valid URL protocols for Quick Tab creation
+ * @private
+ */
+const VALID_QUICKTAB_PROTOCOLS = ['http://', 'https://', 'moz-extension://', 'chrome-extension://'];
+
+/**
+ * Check if URL is null, undefined, or empty
+ * @private
+ * @param {*} url - URL to check
+ * @returns {boolean} True if URL is empty or undefined
+ */
+function _isUrlNullOrEmpty(url) {
+  return url === undefined || url === null || url === '';
+}
+
+/**
+ * Check if URL contains undefined string literals
+ * @private
+ * @param {*} url - URL to check
+ * @returns {boolean} True if URL is corrupted with 'undefined'
+ */
+function _isUrlCorruptedWithUndefined(url) {
+  if (url === 'undefined' || String(url) === 'undefined') return true;
+  return String(url).includes('/undefined');
+}
+
+/**
+ * Check if URL starts with a valid protocol
+ * @private
+ * @param {string} urlStr - URL string to check
+ * @returns {boolean} True if URL has valid protocol
+ */
+function _hasValidProtocol(urlStr) {
+  return VALID_QUICKTAB_PROTOCOLS.some(proto => urlStr.startsWith(proto));
+}
+
+/**
  * Check if a URL is valid for Quick Tab creation
  * v1.6.3.4-v6 - FIX Issue #2: Filter corrupted tabs before broadcast
+ * v1.6.4.8 - Refactored: Extracted helpers to reduce complex conditionals
  * @param {*} url - URL to validate
  * @returns {boolean} True if URL is valid
  */
 function isValidQuickTabUrl(url) {
-  if (url === undefined || url === null || url === '') return false;
-  if (url === 'undefined' || String(url) === 'undefined') return false;
-  const urlStr = String(url);
-  if (urlStr.includes('/undefined')) return false;
-  const validProtocols = ['http://', 'https://', 'moz-extension://', 'chrome-extension://'];
-  return validProtocols.some(proto => urlStr.startsWith(proto));
+  if (_isUrlNullOrEmpty(url)) return false;
+  if (_isUrlCorruptedWithUndefined(url)) return false;
+  return _hasValidProtocol(String(url));
 }
 
 /**
@@ -1531,17 +1566,12 @@ function _isSelfWrite(newValue, handler) {
 }
 
 /**
- * Helper: Clear cache when storage is empty
- * v1.6.3.2 - Extracted from _handleQuickTabStateChange to reduce complexity
- * v1.6.3.4 - FIX Bug #7: Reset saveId when cache is cleared
- * v1.6.3.4-v11 - FIX Issue #1, #8: Add cooldown and consecutive read validation
- * @param {Object} newValue - New storage value
- * @returns {boolean} True if cache was cleared, false if rejected
+ * Check if cache clear is within cooldown period
+ * @private
+ * @param {number} now - Current timestamp
+ * @returns {boolean} True if within cooldown (should reject clear)
  */
-function _clearCacheForEmptyStorage(newValue) {
-  const now = Date.now();
-  
-  // v1.6.3.4-v11 - FIX Issue #1: Check cooldown period
+function _isWithinClearCooldown(now) {
   const timeSinceNonEmpty = now - lastNonEmptyStateTimestamp;
   if (timeSinceNonEmpty < NON_EMPTY_STATE_COOLDOWN_MS) {
     console.warn('[Background] │ ⚠️ REJECTED: Clear within cooldown period:', {
@@ -1549,18 +1579,33 @@ function _clearCacheForEmptyStorage(newValue) {
       cooldownMs: NON_EMPTY_STATE_COOLDOWN_MS,
       reason: 'May be intermediate transaction state'
     });
-    return false;
+    return true;
   }
-  
-  // v1.6.3.4-v11 - FIX Issue #8: Check consecutive zero-tab reads
+  return false;
+}
+
+/**
+ * Check if enough consecutive zero-tab reads have occurred
+ * @private
+ * @returns {boolean} True if threshold not met (should defer clear)
+ */
+function _shouldDeferClearForConfirmation() {
   consecutiveZeroTabReads++;
   if (consecutiveZeroTabReads < ZERO_TAB_CLEAR_THRESHOLD) {
     console.warn('[Background] │ ⚠️ DEFERRED: Zero-tab read', consecutiveZeroTabReads, '/', ZERO_TAB_CLEAR_THRESHOLD);
     console.warn('[Background] │ Waiting for confirmation before clearing cache');
-    return false;
+    return true;
   }
-  
-  // v1.6.3.4-v11 - FIX Issue #1: Log WARNING when clearing
+  return false;
+}
+
+/**
+ * Execute the actual cache clear operation
+ * @private
+ * @param {Object} newValue - New storage value
+ */
+function _executeCacheClear(newValue) {
+  const timeSinceNonEmpty = Date.now() - lastNonEmptyStateTimestamp;
   console.warn('[Background] ⚠️ WARNING: Clearing cache with 0 tabs:', {
     consecutiveReads: consecutiveZeroTabReads,
     timeSinceNonEmpty,
@@ -1570,12 +1615,27 @@ function _clearCacheForEmptyStorage(newValue) {
   console.log('[Background] Storage cleared (empty/missing tabs), clearing cache');
   globalQuickTabState.tabs = [];
   globalQuickTabState.lastUpdate = newValue?.timestamp || Date.now();
-  // v1.6.3.4 - FIX Bug #7: Reset saveId when cache is cleared
   globalQuickTabState.saveId = newValue?.saveId || null;
   lastBroadcastedStateHash = computeStateHash(newValue);
-  
-  // Reset consecutive counter after successful clear
   consecutiveZeroTabReads = 0;
+}
+
+/**
+ * Helper: Clear cache when storage is empty
+ * v1.6.3.2 - Extracted from _handleQuickTabStateChange to reduce complexity
+ * v1.6.3.4 - FIX Bug #7: Reset saveId when cache is cleared
+ * v1.6.3.4-v11 - FIX Issue #1, #8: Add cooldown and consecutive read validation
+ * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
+ * @param {Object} newValue - New storage value
+ * @returns {boolean} True if cache was cleared, false if rejected
+ */
+function _clearCacheForEmptyStorage(newValue) {
+  const now = Date.now();
+  
+  if (_isWithinClearCooldown(now)) return false;
+  if (_shouldDeferClearForConfirmation()) return false;
+  
+  _executeCacheClear(newValue);
   return true;
 }
 
@@ -1656,24 +1716,54 @@ function _handleQuickTabStateChange(changes) {
 }
 
 /**
+ * Extract tab count from storage value safely
+ * @private
+ * @param {Object} value - Storage value
+ * @returns {number} Tab count or 0
+ */
+function _getTabCount(value) {
+  return value?.tabs?.length ?? 0;
+}
+
+/**
+ * Get saveId from storage value or 'none' placeholder
+ * @private
+ * @param {Object} value - Storage value
+ * @returns {string} SaveId or 'none'
+ */
+function _getSaveIdOrNone(value) {
+  return value?.saveId ?? 'none';
+}
+
+/**
+ * Build sample tab info for logging
+ * @private
+ * @param {Object} newValue - New storage value
+ * @returns {Object|null} Sample tab info or null
+ */
+function _buildSampleTabInfo(newValue) {
+  const sampleTab = newValue?.tabs?.[0];
+  if (!sampleTab) return null;
+  return { id: sampleTab.id, zIndex: sampleTab.zIndex, minimized: sampleTab.minimized };
+}
+
+/**
  * Log storage change with comprehensive details for debugging
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
+ * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
  * @param {Object} oldValue - Previous storage value
  * @param {Object} newValue - New storage value
  */
 function _logStorageChange(oldValue, newValue) {
-  const oldCount = oldValue?.tabs?.length ?? 0;
-  const newCount = newValue?.tabs?.length ?? 0;
+  const oldCount = _getTabCount(oldValue);
+  const newCount = _getTabCount(newValue);
   
   console.log('[Background] ┌─ storage.onChanged RECEIVED ─────────────────────────');
   console.log('[Background] │ tabs:', oldCount, '→', newCount);
-  console.log('[Background] │ saveId:', oldValue?.saveId ?? 'none', '→', newValue?.saveId ?? 'none');
-  
-  // v1.6.3.5-v12 - FIX Issue B: Log sample z-index values for debugging
-  const sampleTab = newValue?.tabs?.[0];
+  console.log('[Background] │ saveId:', _getSaveIdOrNone(oldValue), '→', _getSaveIdOrNone(newValue));
   console.log('[Background] Storage updated - sample tabs:', {
-    tabCount: newValue?.tabs?.length ?? 0,
-    sampleTab: sampleTab ? { id: sampleTab.id, zIndex: sampleTab.zIndex, minimized: sampleTab.minimized } : null
+    tabCount: newCount,
+    sampleTab: _buildSampleTabInfo(newValue)
   });
   
   _logCorruptionWarning(oldCount, newCount);
@@ -1742,27 +1832,49 @@ function _isTransactionSelfWrite(newValue) {
 }
 
 /**
- * Update cooldown tracking and log the storage change
- * v1.6.3.5-v3 - Extracted to reduce _shouldIgnoreStorageChange complexity
- * @param {Object} newValue - New storage value
- * @param {Object} oldValue - Previous storage value
+ * Check and log if storage change is within cooldown period
+ * @private
+ * @param {number} now - Current timestamp
+ * @returns {boolean} True if within cooldown
  */
-function _updateCooldownAndLogChange(newValue, oldValue) {
-  const now = Date.now();
-  if (now - lastStorageChangeProcessed < STORAGE_CHANGE_COOLDOWN_MS) {
+function _checkAndLogCooldown(now) {
+  const isWithinCooldown = (now - lastStorageChangeProcessed) < STORAGE_CHANGE_COOLDOWN_MS;
+  if (isWithinCooldown) {
     console.log('[Background] Storage change within cooldown, may skip');
   }
   lastStorageChangeProcessed = now;
+  return isWithinCooldown;
+}
 
-  console.log('[Background] Storage change comparison:', {
-    oldTabCount: oldValue?.tabs?.length ?? 0,
-    newTabCount: newValue?.tabs?.length ?? 0,
+/**
+ * Build storage change comparison object for logging
+ * @private
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ * @returns {Object} Comparison object
+ */
+function _buildStorageChangeComparison(newValue, oldValue) {
+  return {
+    oldTabCount: _getTabCount(oldValue),
+    newTabCount: _getTabCount(newValue),
     oldSaveId: oldValue?.saveId,
     newSaveId: newValue?.saveId,
     transactionId: newValue?.transactionId,
     writingInstanceId: newValue?.writingInstanceId,
     writingTabId: newValue?.writingTabId
-  });
+  };
+}
+
+/**
+ * Update cooldown tracking and log the storage change
+ * v1.6.3.5-v3 - Extracted to reduce _shouldIgnoreStorageChange complexity
+ * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ */
+function _updateCooldownAndLogChange(newValue, oldValue) {
+  _checkAndLogCooldown(Date.now());
+  console.log('[Background] Storage change comparison:', _buildStorageChangeComparison(newValue, oldValue));
 }
 
 /**
@@ -1789,39 +1901,76 @@ function _computeQuickTabContentKey(value) {
 }
 
 /**
+ * Check if both values exist (non-null/undefined)
+ * @private
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ * @returns {boolean} True if both values exist
+ */
+function _bothValuesExist(newValue, oldValue) {
+  return newValue && oldValue;
+}
+
+/**
+ * Check if tab contents differ between old and new values
+ * @private
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ * @returns {boolean} True if contents differ
+ */
+function _tabContentsDiffer(newValue, oldValue) {
+  const oldContentKey = _computeQuickTabContentKey(oldValue);
+  const newContentKey = _computeQuickTabContentKey(newValue);
+  return oldContentKey !== newContentKey;
+}
+
+/**
+ * Check if timestamps match exactly
+ * @private
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ * @returns {boolean} True if timestamps match
+ */
+function _timestampsMatch(newValue, oldValue) {
+  return newValue.timestamp && oldValue.timestamp && newValue.timestamp === oldValue.timestamp;
+}
+
+/**
+ * Log spurious event detection result
+ * @private
+ * @param {boolean} sameTimestamp - Whether timestamps match
+ * @param {Object} newValue - New storage value
+ */
+function _logSpuriousEventDetection(sameTimestamp, newValue) {
+  if (sameTimestamp) {
+    console.log('[Background] Spurious event detected (same saveId, tabCount, timestamp, content)');
+  } else {
+    console.log('[Background] Probable spurious event (same saveId, tabCount, content):', {
+      saveId: newValue.saveId,
+      tabCount: _getTabCount(newValue)
+    });
+  }
+}
+
+/**
  * Check if this is a Firefox spurious storage.onChanged event (no actual data change)
  * v1.6.3.5-v3 - FIX Diagnostic Issue #8: Firefox fires onChanged even without data change
+ * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
  * NOTE: We use multiple criteria to avoid false positives from saveId collisions
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {boolean} True if this is a spurious event
  */
 function _isSpuriousFirefoxEvent(newValue, oldValue) {
-  // If either is null/undefined, it's a real change
-  if (!newValue || !oldValue) return false;
-  
-  // Check if saveIds and tab counts match - likely spurious
+  if (!_bothValuesExist(newValue, oldValue)) return false;
   if (!_hasMatchingSaveIdAndTabCount(newValue, oldValue)) return false;
   
-  // v1.6.3.5-v3 - FIX Code Review: Also verify tab contents actually match
-  const oldContentKey = _computeQuickTabContentKey(oldValue);
-  const newContentKey = _computeQuickTabContentKey(newValue);
-  if (oldContentKey !== newContentKey) {
-    // Content differs - this is NOT spurious despite matching saveId/count
+  if (_tabContentsDiffer(newValue, oldValue)) {
     console.log('[Background] Not spurious - tab content differs despite matching saveId/count');
     return false;
   }
   
-  // Extra validation: check if timestamp is also the same (very high confidence)
-  const sameTimestamp = newValue.timestamp && oldValue.timestamp && newValue.timestamp === oldValue.timestamp;
-  if (sameTimestamp) {
-    console.log('[Background] Spurious event detected (same saveId, tabCount, timestamp, content)');
-  } else {
-    console.log('[Background] Probable spurious event (same saveId, tabCount, content):', {
-      saveId: newValue.saveId,
-      tabCount: newValue.tabs?.length ?? 0
-    });
-  }
+  _logSpuriousEventDetection(_timestampsMatch(newValue, oldValue), newValue);
   return true;
 }
 
@@ -2476,8 +2625,59 @@ let _circuitBreakerTripped = false;
 let _lastCircuitBreakerReset = 0;
 
 /**
+ * Try to reset circuit breaker if cooldown elapsed
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _tryResetCircuitBreaker(now) {
+  if (_circuitBreakerTripped && (now - _lastCircuitBreakerReset) > 1000) {
+    _circuitBreakerTripped = false;
+    console.log('[Background] Broadcast circuit breaker RESET');
+  }
+}
+
+/**
+ * Clean up expired entries from broadcast history
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _cleanupBroadcastHistory(now) {
+  while (_broadcastHistory.length > 0 && (now - _broadcastHistory[0].time) > BROADCAST_HISTORY_WINDOW_MS) {
+    _broadcastHistory.shift();
+  }
+}
+
+/**
+ * Check if broadcast is a duplicate within the dedup window
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} changesHash - Hash of changes object
+ * @returns {boolean} True if duplicate
+ */
+function _isDuplicateBroadcast(quickTabId, changesHash) {
+  return _broadcastHistory.some(entry => 
+    entry.quickTabId === quickTabId && entry.changesHash === changesHash
+  );
+}
+
+/**
+ * Trip the circuit breaker and return blocked response
+ * @private
+ * @param {number} now - Current timestamp
+ * @returns {{ allowed: boolean, reason: string }}
+ */
+function _tripCircuitBreaker(now) {
+  _circuitBreakerTripped = true;
+  _lastCircuitBreakerReset = now;
+  console.error('[Background] ⚠️ BROADCAST CIRCUIT BREAKER TRIPPED - too many broadcasts within', BROADCAST_HISTORY_WINDOW_MS, 'ms');
+  console.error('[Background] Broadcasts in window:', _broadcastHistory.length);
+  return { allowed: false, reason: 'circuit breaker limit exceeded' };
+}
+
+/**
  * Check if broadcast should be allowed (circuit breaker + deduplication)
  * v1.6.3.6-v4 - FIX Issue #4: Prevent broadcast storms
+ * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @returns {{ allowed: boolean, reason: string }}
@@ -2485,44 +2685,23 @@ let _lastCircuitBreakerReset = 0;
 function _shouldAllowBroadcast(quickTabId, changes) {
   const now = Date.now();
   
-  // Reset circuit breaker after 1 second
-  if (_circuitBreakerTripped && (now - _lastCircuitBreakerReset) > 1000) {
-    _circuitBreakerTripped = false;
-    console.log('[Background] Broadcast circuit breaker RESET');
-  }
-  
-  // Check if circuit breaker is tripped
+  _tryResetCircuitBreaker(now);
   if (_circuitBreakerTripped) {
     return { allowed: false, reason: 'circuit breaker tripped' };
   }
   
-  // Clean up old history entries
-  while (_broadcastHistory.length > 0 && (now - _broadcastHistory[0].time) > BROADCAST_HISTORY_WINDOW_MS) {
-    _broadcastHistory.shift();
-  }
+  _cleanupBroadcastHistory(now);
   
-  // Check for duplicate broadcast (same quickTabId and changes hash within window)
   const changesHash = JSON.stringify(changes);
-  const isDuplicate = _broadcastHistory.some(entry => 
-    entry.quickTabId === quickTabId && entry.changesHash === changesHash
-  );
-  
-  if (isDuplicate) {
+  if (_isDuplicateBroadcast(quickTabId, changesHash)) {
     return { allowed: false, reason: 'duplicate broadcast within window' };
   }
   
-  // Check circuit breaker limit
   if (_broadcastHistory.length >= BROADCAST_CIRCUIT_BREAKER_LIMIT) {
-    _circuitBreakerTripped = true;
-    _lastCircuitBreakerReset = now;
-    console.error('[Background] ⚠️ BROADCAST CIRCUIT BREAKER TRIPPED - too many broadcasts within', BROADCAST_HISTORY_WINDOW_MS, 'ms');
-    console.error('[Background] Broadcasts in window:', _broadcastHistory.length);
-    return { allowed: false, reason: 'circuit breaker limit exceeded' };
+    return _tripCircuitBreaker(now);
   }
   
-  // Add to history
   _broadcastHistory.push({ time: now, quickTabId, changesHash });
-  
   return { allowed: true, reason: 'ok' };
 }
 

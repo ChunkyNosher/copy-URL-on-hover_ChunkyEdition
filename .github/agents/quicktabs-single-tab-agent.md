@@ -3,7 +3,8 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement (v1.6.3.6-v5)
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.6-v10
+  build optimizations, CodeScene analysis, UI/UX patterns
 tools: ["*"]
 ---
 
@@ -28,7 +29,13 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v10 - Domain-Driven Design with Background-as-Coordinator
+
+**v1.6.3.6-v10 Build & Analysis (NEW):**
+- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod), tree-shaking, Rollup cache, npm-run-all
+- **CodeScene Analysis:** `VisibilityHandler.js` 7.41 (needs refactoring), `index.js` 8.69 (close to target)
+- **UI/UX Patterns:** Smooth animations (0.35s), structured confirmations `{ success, quickTabId, action }`
+- **Timing Constants:** `ANIMATION_DURATION_MS=350`, `RESTORE_CONFIRMATION_TIMEOUT_MS=500`
 
 **Key Quick Tab Features:**
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)

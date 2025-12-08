@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Build configuration for copy-URL-on-hover_ChunkyEdition",
+  "bundleSizeLimits": {
+    "content.js": {
+      "maxBytes": 512000,
+      "description": "Content script bundle - max 500KB"
+    },
+    "background.js": {
+      "maxBytes": 307200,
+      "description": "Background script bundle - max 300KB"
+    },
+    "popup.js": {
+      "maxBytes": 102400,
+      "description": "Popup script - max 100KB"
+    }
+  },
+  "terser": {
+    "production": {
+      "compress": {
+        "drop_console": false,
+        "passes": 3,
+        "pure_funcs": [],
+        "dead_code": true,
+        "unused": true
+      },
+      "mangle": {
+        "properties": false,
+        "toplevel": false
+      },
+      "format": {
+        "beautify": false,
+        "comments": false,
+        "max_line_len": 0
+      }
+    },
+    "development": {
+      "compress": {
+        "drop_console": false,
+        "passes": 1
+      },
+      "mangle": false,
+      "format": {
+        "beautify": true,
+        "indent_level": 2,
+        "comments": "some",
+        "max_line_len": 120
+      }
+    }
+  },
+  "treeshake": {
+    "preset": "recommended",
+    "moduleSideEffects": true,
+    "propertyReadSideEffects": true,
+    "tryCatchDeoptimization": true
+  },
+  "cache": {
+    "enabled": true,
+    "directory": "node_modules/.cache/rollup"
+  }
+}

@@ -176,6 +176,7 @@ html {
 
 .quick-tabs-list {
   /* No padding - items have their own spacing */
+  padding: 0;
 }
 
 .quick-tab-item {
@@ -344,12 +345,19 @@ html {
   border-bottom: none;
 }
 
-/* Issue #7: Fading out animation class */
+/* Issue #7: Fading out animation class - smooth removal */
 .tab-group.removing {
   opacity: 0;
   max-height: 0;
   overflow: hidden;
   pointer-events: none;
+  /* Issue #7: Smoother fade with scale effect */
+  transform: translateX(-10px);
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-width: 0;
 }
 
 /* Clickable summary with hover states */
@@ -370,15 +378,17 @@ html {
   display: none; /* Remove default marker in Chrome/Safari */
 }
 
-/* Issue #4: Larger, smoother arrow animation */
+/* Issue #4: Larger, smoother arrow animation - synchronized with content */
 .tab-group-header::before {
   content: '▼';
   font-size: 12px; /* Issue #4: Increased from 10px */
   color: var(--text-secondary);
-  transition: transform var(--animation-duration) var(--animation-timing);
+  transition: transform var(--animation-duration) var(--animation-timing),
+              color 0.2s ease; /* Issue #4: Also animate color */
   flex-shrink: 0;
   width: 14px;
   text-align: center;
+  transform-origin: center center; /* Issue #4: Ensure smooth rotation */
 }
 
 .tab-group:not([open]) .tab-group-header::before {
@@ -433,69 +443,111 @@ html {
   opacity: 0.8;
 }
 
-/* Issue #6: Closed tab stronger styling */
+/* Issue #6: Closed tab stronger styling - strikethrough, distinct background */
 .tab-group-title.closed-tab {
   font-style: italic;
   color: var(--closed-text);
-  text-decoration: line-through;
+  text-decoration: line-through; /* Issue #6: Strikethrough for emphasis */
+  text-decoration-color: var(--red-danger);
   opacity: 0.7;
 }
 
-/* Issue #6: Closed tab group header background */
+/* Issue #6: Closed tab group header background - more distinct */
 .tab-group.closed-tab-group .tab-group-header {
   background: var(--closed-bg);
+  border-left: 3px solid var(--closed-text); /* Issue #6: Left border indicator */
 }
 
-/* Issue #6: Closed tab badge */
+/* Issue #6: Closed tab badge - more prominent */
 .closed-tab-badge {
   font-size: 10px;
   color: var(--red-danger);
-  background: rgba(244, 67, 54, 0.1);
-  padding: 2px 6px;
+  background: rgba(244, 67, 54, 0.15); /* Issue #6: Slightly more visible */
+  padding: 2px 8px; /* Issue #6: More padding */
   border-radius: 4px;
   flex-shrink: 0;
   margin-left: 4px;
+  border: 1px solid rgba(244, 67, 54, 0.3); /* Issue #6: Subtle border */
+  font-weight: 500;
 }
 
-/* Issue #2: Enhanced Quick Tab count badge */
+/* Issue #6: Closed tab content area styling */
+.tab-group.closed-tab-group .tab-group-content {
+  background: rgba(0, 0, 0, 0.02);
+  border-left-color: var(--closed-text);
+}
+
+/* Issue #6: Items in closed tab groups */
+.tab-group.closed-tab-group .quick-tab-item {
+  opacity: 0.6;
+}
+
+.tab-group.closed-tab-group .quick-tab-item .tab-title {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-secondary);
+}
+
+/* Issue #2: Enhanced Quick Tab count badge - more prominent styling */
 .tab-group-count {
   font-size: 11px;
   color: var(--count-badge-text);
-  font-weight: 600; /* Issue #2: Bolder */
+  font-weight: 600; /* Issue #2: Bolder font weight */
   flex-shrink: 0;
-  padding: 3px 8px; /* Issue #2: More padding */
+  padding: 4px 10px; /* Issue #2: More padding for prominence */
   background: var(--count-badge-bg);
   border-radius: 10px;
   min-width: 20px;
   text-align: center;
+  /* Issue #10: Subtle transition for count updates */
+  transition: transform 0.2s ease, background-color 0.2s ease;
 }
 
-/* Issue #3: Visual hierarchy - Indented Quick Tab list */
+/* Issue #10: Visual feedback when count changes */
+.tab-group-count.updated {
+  transform: scale(1.1);
+  background-color: var(--blue-primary);
+  color: white;
+}
+
+/* Issue #3: Visual hierarchy - Indented Quick Tab list with container effect */
 .tab-group-content {
   padding-left: 28px; /* Issue #3: Slightly more indentation */
+  padding-top: 8px; /* Issue #3: Top padding for breathing room */
+  padding-bottom: 8px; /* Issue #3: Bottom padding for breathing room */
   border-top: 1px solid var(--border-color);
-  border-left: 2px solid var(--group-content-border); /* Issue #3: Left border for container effect */
+  border-left: 3px solid var(--group-content-border); /* Issue #3: Left border (3px) for container effect */
   margin-left: 14px; /* Issue #3: Align with arrow */
   background: var(--group-content-bg); /* Issue #3: Subtle background */
+  /* Issue #3: Border radius for softer look */
+  border-bottom-left-radius: 4px;
   /* Issue #12: Animation support */
   overflow: hidden;
   transition: max-height var(--animation-duration) var(--animation-timing),
-              opacity var(--animation-duration) var(--animation-timing);
+              opacity var(--animation-duration) var(--animation-timing),
+              padding var(--animation-duration) var(--animation-timing);
 }
 
-/* Issue #12: Collapsed state */
+/* Issue #12: Collapsed state - smooth transition */
 .tab-group:not([open]) .tab-group-content {
   max-height: 0;
   opacity: 0;
   border-top: none;
   padding-top: 0;
   padding-bottom: 0;
+  /* Issue #12: Ensure all properties transition together */
+  transition: max-height var(--animation-duration) var(--animation-timing),
+              opacity var(--animation-duration) var(--animation-timing),
+              padding var(--animation-duration) var(--animation-timing);
 }
 
 /* Issue #12: Expanded state with animation */
 .tab-group[open] .tab-group-content {
   opacity: 1;
   /* max-height managed by JS for smooth animation */
+  /* Issue #12: Delay opacity slightly for stagger effect */
+  transition: max-height var(--animation-duration) var(--animation-timing),
+              opacity var(--animation-duration) var(--animation-timing) 0.05s,
+              padding var(--animation-duration) var(--animation-timing);
 }
 
 /* Issue #12: Item entrance animation */
@@ -520,11 +572,11 @@ html {
   border-bottom: none;
 }
 
-/* Issue #8: Divider between active and minimized tabs */
+/* Issue #8: Divider between active and minimized tabs - enhanced styling */
 .section-divider {
   height: 1px;
-  background: var(--divider-color);
-  margin: 8px 0;
+  background: linear-gradient(to right, transparent, var(--divider-color), transparent);
+  margin: 12px 0; /* Issue #8: More spacing */
   position: relative;
 }
 
@@ -534,28 +586,33 @@ html {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  background: var(--group-content-bg);
-  padding: 0 8px;
+  background: var(--primary-bg); /* Issue #8: Match page background */
+  padding: 0 10px;
   font-size: 9px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
-/* Issue #8: Section sub-headers */
+/* Issue #8: Section sub-headers - more prominent */
 .section-header {
   font-size: 10px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 6px 12px 4px;
+  padding: 8px 12px 6px; /* Issue #8: More padding */
   font-weight: 600;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 4px;
 }
 
-/* Issue #5: Orphaned tabs styling */
+/* Issue #5: Orphaned tabs styling - tinted background, reduced opacity, warning icon */
 .tab-group.orphaned .tab-group-header {
   background: var(--orphaned-bg);
+  /* Issue #5: Slightly reduced opacity for header */
+  opacity: 0.9;
 }
 
 .tab-group.orphaned .tab-group-title {
@@ -568,23 +625,31 @@ html {
   color: white;
 }
 
-/* Issue #5: Orphaned warning badge */
+/* Issue #5: Orphaned warning badge - more prominent */
 .orphaned-badge {
   font-size: 10px;
   color: var(--warning-color);
   background: rgba(255, 152, 0, 0.15);
-  padding: 2px 6px;
+  padding: 2px 8px; /* Issue #5: Slightly more padding */
   border-radius: 4px;
   flex-shrink: 0;
+  border: 1px solid var(--warning-color); /* Issue #5: Border for emphasis */
+  font-weight: 500;
 }
 
-/* Issue #5: Items within orphaned groups */
+/* Issue #5: Items within orphaned groups - reduced opacity */
 .tab-group.orphaned .quick-tab-item {
-  opacity: 0.7;
+  opacity: 0.65; /* Issue #5: More noticeable reduced opacity */
 }
 
 .tab-group.orphaned .quick-tab-item .tab-title {
   font-style: italic;
+}
+
+/* Issue #5: Orphaned content area has tinted background */
+.tab-group.orphaned .tab-group-content {
+  background: rgba(255, 152, 0, 0.05);
+  border-left-color: var(--warning-color);
 }
 
 /* ======================================== */
@@ -608,6 +673,33 @@ html {
   .tab-group-tab-id {
     display: none; /* Hide tab ID on smaller widths */
   }
+  
+  /* Issue #11: Reduce badge padding at this breakpoint */
+  .tab-group-count {
+    padding: 3px 8px;
+  }
+}
+
+/* Issue #11: 350px breakpoint - intermediate size */
+@media (max-width: 350px) {
+  .tab-group-header {
+    padding: 7px 10px;
+  }
+  
+  .tab-group-content {
+    padding-left: 18px;
+    margin-left: 8px;
+  }
+  
+  .tab-group-title {
+    font-size: 12px;
+  }
+  
+  .orphaned-badge,
+  .closed-tab-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+  }
 }
 
 /* Narrow sidebar (<300px) */
@@ -625,11 +717,13 @@ html {
   .tab-group-content {
     padding-left: 16px;
     margin-left: 8px;
-    border-left-width: 1px;
+    border-left-width: 2px; /* Issue #11: Thinner border */
   }
   
   .tab-group-content .quick-tab-item {
     padding-left: 8px;
+    padding-top: 8px;
+    padding-bottom: 8px;
   }
   
   .tab-group-title {
@@ -638,7 +732,7 @@ html {
   
   .tab-group-count {
     font-size: 10px;
-    padding: 2px 5px;
+    padding: 2px 6px; /* Issue #11: Smaller padding */
     min-width: 16px;
   }
   
@@ -653,6 +747,7 @@ html {
   .orphaned-badge {
     font-size: 9px;
     padding: 1px 4px;
+    border-width: 0; /* Issue #11: Remove border at small sizes */
   }
   
   /* Issue #11: Reduce button size */
@@ -669,10 +764,17 @@ html {
   
   .section-divider::after {
     font-size: 8px;
+    padding: 0 6px;
+  }
+  
+  /* Issue #11: Smaller section headers */
+  .section-header {
+    font-size: 9px;
+    padding: 6px 10px 4px;
   }
 }
 
-/* Very narrow sidebar (<250px) */
+/* Very narrow sidebar (<250px) - Issue #11: Hide favicons, minimize metadata */
 @media (max-width: 250px) {
   .tab-group-header {
     padding: 5px 8px;
@@ -681,20 +783,45 @@ html {
   .tab-group-content {
     padding-left: 12px;
     margin-left: 6px;
+    padding-top: 4px;
+    padding-bottom: 4px;
   }
   
   .tab-favicon,
-  .tab-favicon-fallback {
-    display: none; /* Hide favicon on very narrow */
+  .tab-favicon-fallback,
+  .tab-favicon-container {
+    display: none !important; /* Issue #11: Hide favicon on very narrow */
   }
   
   .tab-group-count {
     padding: 1px 4px;
+    font-size: 9px;
   }
   
   .closed-tab-badge,
   .orphaned-badge {
-    display: none; /* Hide badges on very narrow */
+    display: none; /* Issue #11: Hide badges on very narrow */
+  }
+  
+  /* Issue #11: Smaller title */
+  .tab-group-title {
+    font-size: 11px;
+  }
+  
+  /* Issue #11: Smaller arrow */
+  .tab-group-header::before {
+    font-size: 9px;
+    width: 10px;
+  }
+  
+  /* Issue #11: Hide section headers */
+  .section-header {
+    display: none;
+  }
+  
+  /* Issue #11: Simpler divider */
+  .section-divider::after {
+    display: none;
   }
 }
 

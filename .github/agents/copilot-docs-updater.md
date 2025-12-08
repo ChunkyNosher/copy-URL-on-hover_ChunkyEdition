@@ -111,20 +111,19 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.6-v8)
+- [ ] Version numbers match current release (1.6.3.6-v10)
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Cross-tab sync uses storage.onChanged + Background-as-Coordinator
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
+- [ ] **v1.6.3.6-v10:** Build optimizations documented
+- [ ] **v1.6.3.6-v10:** Manager UI/UX Issues #1-12 documented
+- [ ] **v1.6.3.6-v10:** CodeScene code health scores documented
+- [ ] **v1.6.3.6-v10:** New timing constants documented
 - [ ] **v1.6.3.6-v8:** Multi-layer ID recovery documented
 - [ ] **v1.6.3.6-v8:** Cross-tab grouping UI documented
-- [ ] **v1.6.3.6-v8:** Tab metadata caching documented
-- [ ] **v1.6.3.6-v8:** Collapse state persistence documented
-- [ ] **v1.6.3.6-v8:** Emoji diagnostic logging documented
-- [ ] **v1.6.3.6-v5:** Strict tab isolation documented
-- [ ] **v1.6.3.6-v5:** Deletion state machine documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -132,26 +131,28 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.6-v8
+- **Current Version:** 1.6.3.6-v10
 - **Architecture Status:** DDD with Background-as-Coordinator ✅
 - **Cross-Tab Sync:** storage.onChanged + Background-as-Coordinator
+- **v1.6.3.6-v10 Build Optimizations:**
+  - `.buildconfig.json` - Centralized configuration
+  - Terser minification: dev vs prod configs
+  - Tree-shaking in BOTH dev and production
+  - Rollup cache, npm-run-all parallel tasks
+  - Version extraction via Node.js JSON parsing
+- **v1.6.3.6-v10 Manager UI/UX Issues #1-12:**
+  - Enhanced headers, orphan detection, smooth animations, responsive design
+- **v1.6.3.6-v10 CodeScene Analysis:**
+  - `quick-tabs-manager.js` 5.34 (needs 8.75+)
+  - `storage-utils.js` 7.23, `background.js` 7.66, `content.js` 7.76
 - **Key Features:**
-  - Solo/Mute tab-specific visibility (soloedOnTabs/mutedOnTabs arrays)
-  - Global Quick Tab visibility (Container isolation REMOVED)
-  - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-  - Cross-Tab Grouping UI (v1.6.3.6-v8)
-  - Direct local creation pattern
-  - State hydration on page reload
-- **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp, writingTabId, writingInstanceId }`
-- **v1.6.3.6-v8 Fixes:**
-  1. Multi-layer ID recovery (CreateHandler, hydration, snapshots)
-  2. Cross-tab grouping UI - `groupQuickTabsByOriginTab()`
-  3. Tab metadata caching - `fetchBrowserTabInfo()` with 30s TTL
-  4. Collapse state persistence - `quickTabsManagerCollapseState`
-  5. Emoji diagnostic logging
+  - Solo/Mute tab-specific visibility
+  - Global Quick Tab visibility
+  - Sidebar Quick Tabs Manager (Ctrl+Alt+Z)
+- **Timing Constants:** `ANIMATION_DURATION_MS=350`, `FAVICON_LOAD_TIMEOUT_MS=2000`
+- **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp }`
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
-- **Testing:** npm test, npm run lint
 - **Memory Persistence:** Commit .agentic-tools-mcp/
 
 ### 3. Update Agent Files
@@ -206,11 +207,12 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.6-v8)
+- Version numbers (1.6.3.6-v10)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Background-as-Coordinator)
 - Sync mechanism (storage.onChanged + Background-as-Coordinator)
-- Storage format (unified tabs array with originTabId, writingTabId, writingInstanceId)
+- Storage format (unified tabs array with originTabId)
+- **v1.6.3.6-v10:** Build optimizations, CodeScene scores, UI/UX issues #1-12, timing constants
 - **v1.6.3.6-v8:** Multi-layer ID recovery, cross-tab grouping UI, tab metadata caching
 - Single Writer Model (`CLEAR_ALL_QUICK_TABS` for Manager closeAll)
 - Manager action messages
@@ -302,23 +304,46 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.6-v8)
+## Current Extension State (v1.6.3.6-v10)
 
 ### Architecture
 - **Status:** Background-as-Coordinator ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### v1.6.3.6-v8 Fixes
-1. **originTabId Initialization** - CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback
-2. **Hydration Recovery** - `_checkTabScopeWithReason()` patches originTabId from ID pattern into entity
-3. **Snapshot Capture** - MinimizedManager.add() extracts originTabId from ID pattern when null
-4. **Manager Restore Validation** - Triple ownership check (snapshot, ID pattern, global/null permission)
-5. **Cross-Tab Grouping UI** - `groupQuickTabsByOriginTab()` groups Quick Tabs by originTabId
-6. **Tab Metadata Caching** - `fetchBrowserTabInfo()` with 30s TTL cache
-7. **Emoji Diagnostics** - `📸`, `📍`, `🔄` prefixed logging
+### v1.6.3.6-v10 Build Optimizations
+- **`.buildconfig.json`** - Centralized bundle size thresholds
+- **Terser Minification:** Dev (beautify, 2 passes) vs Prod (no beautify, 3 passes)
+- **Tree-shaking:** Active in BOTH dev and production builds
+- **Rollup Cache:** Faster watch mode rebuilds
+- **npm-run-all:** Parallel build tasks (`npm run build:dev`)
+- **Version Extraction:** release.yml uses Node.js JSON parsing
 
-### v1.6.3.6-v8 Patterns
+### v1.6.3.6-v10 Manager UI/UX Issues #1-12
+1. Removed "All Quick Tabs" global header
+2. Enhanced group headers (Tab ID #123 format)
+3. Improved visual hierarchy (left border, backgrounds)
+4. Smooth collapse/expand animations (0.35s)
+5. Orphaned tabs visual differentiation
+6. Stronger closed tab indication
+7. Smooth empty group removal
+8. Active/minimized visual divider
+9. Favicon loading (2s timeout, fallback)
+10. Enhanced count badge styling
+11. Responsive design (250-500px breakpoints)
+12. JavaScript-driven smooth height animations
+
+### v1.6.3.6-v10 CodeScene Analysis
+| File | Score | Status |
+|------|-------|--------|
+| `quick-tabs-manager.js` | 5.34 | ⚠️ Needs refactoring |
+| `storage-utils.js` | 7.23 | ⚠️ Needs refactoring |
+| `VisibilityHandler.js` | 7.41 | ⚠️ Needs refactoring |
+| `background.js` | 7.66 | ⚠️ Needs refactoring |
+| `content.js` | 7.76 | Close to target |
+| `index.js` | 8.69 | Close to target |
+
+### v1.6.3.6-v8 Patterns (Retained)
 - **Multi-Layer ID Recovery** - CreateHandler, hydration, snapshot capture all use ID pattern fallback
 - **Triple Ownership Check** - Manager restore validates snapshot → ID pattern → global/null permission
 - **Cross-Tab Grouping** - `groupQuickTabsByOriginTab()` groups Quick Tabs by originTabId
@@ -350,11 +375,13 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.6-v7 or earlier | Update to 1.6.3.6-v8 |
+| v1.6.3.6-v9 or earlier | Update to 1.6.3.6-v10 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
 | Files >15KB | Apply compression |
+| Missing build optimizations | Document `.buildconfig.json`, Terser, tree-shaking |
+| Missing CodeScene scores | Add code health analysis table |
 
 ---
 
@@ -362,15 +389,15 @@ await perplexity.research("documentation compression markdown");
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.6-v8
+- [ ] Version numbers updated to 1.6.3.6-v10
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged + Background-as-Coordinator documented
+- [ ] **v1.6.3.6-v10:** Build optimizations documented
+- [ ] **v1.6.3.6-v10:** Manager UI/UX Issues #1-12 documented
+- [ ] **v1.6.3.6-v10:** CodeScene code health scores documented
+- [ ] **v1.6.3.6-v10:** New timing constants documented
 - [ ] **v1.6.3.6-v8:** Multi-layer ID recovery documented
-- [ ] **v1.6.3.6-v8:** Cross-tab grouping UI documented
-- [ ] **v1.6.3.6-v8:** Tab metadata caching documented
-- [ ] **v1.6.3.6-v8:** Collapse state persistence documented
-- [ ] **v1.6.3.6-v8:** Emoji diagnostic logging documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠

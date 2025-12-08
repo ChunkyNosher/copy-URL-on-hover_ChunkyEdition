@@ -52,9 +52,19 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.6-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
+
+**v1.6.3.6-v10 Build & Analysis (NEW):**
+- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod), tree-shaking (both modes), Rollup cache, npm-run-all
+- **CodeScene Analysis - Refactoring Targets:**
+  - `quick-tabs-manager.js` 5.34 (HIGH PRIORITY - needs 8.75+)
+  - `storage-utils.js` 7.23 (needs refactoring)
+  - `VisibilityHandler.js` 7.41 (needs refactoring)
+  - `background.js` 7.66 (needs refactoring)
+  - `content.js` 7.76 (close to target)
+  - `index.js` 8.69 (close to target)
 
 **v1.6.3.6 Fixes:**
 1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing

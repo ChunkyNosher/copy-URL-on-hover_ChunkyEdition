@@ -4,7 +4,7 @@ description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
   real-time state updates, comprehensive UI logging, Single Writer Model,
-  v1.6.3.6-v9 orphan adoption/tab switch detection/smooth animations
+  v1.6.3.6-v10 build optimizations/UI-UX issues #1-12/CodeScene analysis
 tools: ["*"]
 ---
 
@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v10 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -39,16 +39,15 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.6-v9 Fixes (NEW):**
-1. **Enhanced Group Headers** - 16x16 favicon, tab ID display, prominent count badge
-2. **Orphan Detection & Adoption** - ⚠️ icon, warning colors, `adoptQuickTabToCurrentTab()` button
-3. **Closed Tab Indication** - Strikethrough title, 🚫 badge for closed browser tabs
-4. **Tab Switch Detection** - `browser.tabs.onActivated` listener auto-refreshes Manager
-5. **Smooth Animations** - 0.35s collapse/expand, scroll-into-view, height animations via `animate()` API
-6. **Favicon Loading** - `loadFavicon()` with 2s timeout and fallback icon
-7. **Active/Minimized Divider** - Section headers distinguish tab states visually
-8. **Responsive Design** - Media queries at 250/300/400/500px breakpoints
-9. **Structured Confirmations** - Restore/minimize return `{ success, quickTabId, action }` responses
+**v1.6.3.6-v10 Build & UI/UX (NEW):**
+- **Build Optimizations:** `.buildconfig.json`, Terser minification (dev vs prod), tree-shaking, Rollup cache, npm-run-all
+- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34 (needs refactoring to 8.75+)
+- **UI/UX Issues #1-12:** Enhanced headers, orphan detection, closed tab indication, smooth animations (0.35s), favicon loading (2s timeout), responsive design (250/300/400/500px)
+
+**v1.6.3.6-v9 Fixes (Retained):**
+1. **Orphan Detection & Adoption** - ⚠️ icon, `adoptQuickTabToCurrentTab()` button
+2. **Tab Switch Detection** - `browser.tabs.onActivated` auto-refresh
+3. **Structured Confirmations** - `{ success, quickTabId, action }` responses
 
 **v1.6.3.6-v8 Fixes (Retained):**
 1. **Cross-Tab Grouping UI** - `groupQuickTabsByOriginTab()` groups Quick Tabs by originTabId

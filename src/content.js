@@ -1410,10 +1410,60 @@ function _cleanupOldRestoreEntries(now) {
 }
 
 /**
+ * Build error response for manager action
+ * v1.6.4.8 - Extracted for code health, uses options object to reduce args
+ * @private
+ * @param {Object} options - Error response options
+ * @param {string} options.action - Action name
+ * @param {string} options.quickTabId - Quick Tab ID
+ * @param {number|null} options.currentTabId - Current tab ID
+ * @param {string} options.error - Error message
+ * @param {string} options.reason - Error reason code
+ * @param {Object} [options.extra] - Additional properties to include
+ */
+function _buildActionErrorResponse(options) {
+  const { action, quickTabId, currentTabId, error, reason, extra = {} } = options;
+  return { 
+    success: false, action, quickTabId,
+    originTabId: currentTabId,
+    error, reason,
+    completedAt: Date.now(),
+    ...extra
+  };
+}
+
+/**
+ * Build success response for manager action
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ */
+function _buildActionSuccessResponse(action, quickTabId, currentTabId, durationMs) {
+  return { 
+    success: true, action, quickTabId,
+    originTabId: currentTabId,
+    durationMs,
+    completedAt: Date.now()
+  };
+}
+
+/**
+ * Validate manager action prerequisites
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ * @returns {string|null} Error message if validation fails, null if valid
+ */
+function _validateManagerAction(quickTabId) {
+  if (!quickTabsManager) return 'QuickTabsManager not initialized';
+  if (!quickTabId) return 'Missing quickTabId';
+  return null;
+}
+
+/**
  * Generic manager action handler wrapper
  * v1.6.3.4-v7 - FIX Issue #3: Check result from handler and send proper error responses
  * v1.6.3.7-v1 - FIX ISSUE #3 & #6: Enhanced confirmation response with structured format
  *   Response includes: success, action, quickTabId, originTabId, reason, completedAt
+ * v1.6.4.8 - Refactored to reduce LoC from 70 to <50
  * @private
  */
 function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
@@ -1421,80 +1471,129 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
   const currentTabId = quickTabsManager?.currentTabId;
   
   try {
-    if (!quickTabsManager) {
-      console.warn('[Content] QuickTabsManager not initialized');
-      sendResponse({ 
-        success: false, 
-        action,
-        quickTabId,
-        originTabId: currentTabId,
-        error: 'QuickTabsManager not initialized',
-        reason: 'manager_not_ready',
-        completedAt: Date.now()
-      });
+    // Validate prerequisites
+    const validationError = _validateManagerAction(quickTabId);
+    if (validationError) {
+      const reason = !quickTabsManager ? 'manager_not_ready' : 'invalid_params';
+      if (!quickTabsManager) console.warn('[Content] QuickTabsManager not initialized');
+      sendResponse(_buildActionErrorResponse({ action, quickTabId, currentTabId, error: validationError, reason }));
       return;
     }
 
-    if (!quickTabId) {
-      sendResponse({ 
-        success: false, 
-        action,
-        quickTabId: null,
-        originTabId: currentTabId,
-        error: 'Missing quickTabId',
-        reason: 'invalid_params',
-        completedAt: Date.now()
-      });
-      return;
-    }
-
-    // v1.6.3.4-v7 - FIX Issue #3: Get result from handler and check for errors
+    // Execute action and check result
     const result = actionFn(quickTabId);
     
-    // Check if handler returned failure
     if (_isActionFailure(result)) {
       console.warn(`[Content] ${action} Quick Tab failed (source: Manager): ${quickTabId}`, result);
-      sendResponse({ 
-        success: false, 
-        action,
-        quickTabId,
-        originTabId: currentTabId,
-        error: _getActionError(result),
-        reason: 'handler_failed',
-        handlerResult: result,
-        completedAt: Date.now()
-      });
+      sendResponse(_buildActionErrorResponse({ action, quickTabId, currentTabId, error: _getActionError(result), reason: 'handler_failed', extra: { handlerResult: result } }));
       return;
     }
     
-    // v1.6.3.7-v1 - FIX ISSUE #3: Log successful operation with timing
+    // Success
     const durationMs = Date.now() - startTime;
-    console.log(`[Content] ✅ ${action} Quick Tab (source: Manager): ${quickTabId}`, {
-      durationMs,
-      originTabId: currentTabId
-    });
-    
-    // v1.6.3.7-v1 - FIX ISSUE #6: Send structured confirmation response
-    sendResponse({ 
-      success: true, 
-      action,
-      quickTabId,
-      originTabId: currentTabId,
-      durationMs,
-      completedAt: Date.now()
-    });
+    console.log(`[Content] ✅ ${action} Quick Tab (source: Manager): ${quickTabId}`, { durationMs, originTabId: currentTabId });
+    sendResponse(_buildActionSuccessResponse(action, quickTabId, currentTabId, durationMs));
   } catch (error) {
     console.error(`[Content] Error ${action.toLowerCase()} Quick Tab:`, error);
-    sendResponse({ 
-      success: false, 
-      action,
-      quickTabId,
-      originTabId: currentTabId,
-      error: error.message,
-      reason: 'exception',
-      completedAt: Date.now()
-    });
+    sendResponse(_buildActionErrorResponse({ action, quickTabId, currentTabId, error: error.message, reason: 'exception' }));
   }
+}
+
+/**
+ * Check if Quick Tab is owned by current tab
+ * v1.6.4.8 - Extracted predicate for code health
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to check
+ * @returns {{ hasInMap: boolean, hasSnapshot: boolean, currentTabId: number|null }} Ownership info
+ */
+function _getQuickTabOwnership(quickTabId) {
+  return {
+    hasInMap: quickTabsManager?.tabs?.has(quickTabId) ?? false,
+    hasSnapshot: quickTabsManager?.minimizedManager?.hasSnapshot?.(quickTabId) ?? false,
+    currentTabId: quickTabsManager?.currentTabId ?? null
+  };
+}
+
+/**
+ * Log deletion receipt with correlation ID
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ */
+function _logDeletionReceipt(correlationId, quickTabId, ownership, source) {
+  if (!correlationId) return;
+  console.log('[Content] 🗑️ DELETION RECEIVED:', {
+    correlationId,
+    quickTabId,
+    receiverTabId: ownership.currentTabId,
+    hasInMap: ownership.hasInMap,
+    hasSnapshot: ownership.hasSnapshot,
+    source,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log deletion applied with correlation ID
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ */
+function _logDeletionApplied(correlationId, quickTabId, currentTabId) {
+  if (!correlationId) return;
+  console.log('[Content] 🗑️ DELETION APPLIED:', {
+    correlationId,
+    quickTabId,
+    receiverTabId: currentTabId,
+    stateApplied: true,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle close for Quick Tab not present in this tab
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ */
+function _handleCloseNotPresent(quickTabId, sendResponse, source, ownership) {
+  if (source !== 'background-broadcast') return false;
+  
+  console.log('[Content] CLOSE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
+    quickTabId,
+    currentTabId: ownership.currentTabId,
+    source
+  });
+  sendResponse({ 
+    success: true, 
+    message: 'Quick Tab not present in this tab',
+    quickTabId,
+    reason: 'not-present'
+  });
+  return true;
+}
+
+/**
+ * Handle close via background broadcast (direct destroy, no re-broadcast)
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ */
+function _handleCloseFromBroadcast(quickTabId, sendResponse, correlationId, ownership) {
+  console.log('[Content] CLOSE_QUICK_TAB: Processing background broadcast:', {
+    quickTabId,
+    currentTabId: ownership.currentTabId,
+    hasInMap: ownership.hasInMap,
+    hasSnapshot: ownership.hasSnapshot
+  });
+  
+  _handleManagerAction(
+    quickTabId, 
+    'Closed (from broadcast)', 
+    id => {
+      if (quickTabsManager?.destroyHandler?.handleDestroy) {
+        quickTabsManager.destroyHandler.handleDestroy(id, 'background-broadcast');
+      }
+      _logDeletionApplied(correlationId, quickTabId, ownership.currentTabId);
+    }, 
+    sendResponse
+  );
 }
 
 /**
@@ -1503,6 +1602,7 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
  *   When source is 'background-broadcast', do local cleanup without re-broadcasting.
  *   When source is 'Manager' or other, use standard closeById() path.
  * v1.6.3.6-v5 - FIX Issue #4e: Added deletion receipt logging with correlation ID
+ * v1.6.4.8 - Refactored to reduce complexity (cc=16 -> cc<9)
  * @private
  * @param {string} quickTabId - Quick Tab ID to close
  * @param {Function} sendResponse - Response callback
@@ -1510,79 +1610,22 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
  * @param {string} correlationId - Correlation ID for end-to-end tracing (optional)
  */
 function _handleCloseQuickTab(quickTabId, sendResponse, source = 'Manager', correlationId = null) {
-  // v1.6.3.7 - Check if Quick Tab exists in this tab
-  const hasInMap = quickTabsManager?.tabs?.has(quickTabId);
-  const hasSnapshot = quickTabsManager?.minimizedManager?.hasSnapshot?.(quickTabId);
-  const currentTabId = quickTabsManager?.currentTabId;
+  const ownership = _getQuickTabOwnership(quickTabId);
   
-  // v1.6.3.6-v5 - FIX Issue #4e: Log deletion receipt
-  if (correlationId) {
-    console.log('[Content] 🗑️ DELETION RECEIVED:', {
-      correlationId,
-      quickTabId,
-      receiverTabId: currentTabId,
-      hasInMap,
-      hasSnapshot,
-      source,
-      timestamp: Date.now()
-    });
+  _logDeletionReceipt(correlationId, quickTabId, ownership, source);
+  
+  // Guard: Quick Tab not present - handle for background broadcasts
+  if (!ownership.hasInMap && !ownership.hasSnapshot) {
+    if (_handleCloseNotPresent(quickTabId, sendResponse, source, ownership)) return;
   }
   
-  if (!hasInMap && !hasSnapshot) {
-    // Quick Tab not owned by this tab - skip silently for background broadcasts
-    if (source === 'background-broadcast') {
-      console.log('[Content] CLOSE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
-        quickTabId,
-        currentTabId,
-        source
-      });
-      sendResponse({ 
-        success: true, 
-        message: 'Quick Tab not present in this tab',
-        quickTabId,
-        reason: 'not-present'
-      });
-      return;
-    }
-  }
-  
-  // v1.6.3.7 - FIX Issue #3: For background broadcasts, use handleDestroy directly
-  // This prevents re-broadcasting back to background (which would cause a loop)
+  // Background broadcast path: direct destroy without re-broadcast
   if (source === 'background-broadcast') {
-    console.log('[Content] CLOSE_QUICK_TAB: Processing background broadcast:', {
-      quickTabId,
-      currentTabId,
-      hasInMap,
-      hasSnapshot
-    });
-    
-    _handleManagerAction(
-      quickTabId, 
-      'Closed (from broadcast)', 
-      id => {
-        // Use handleDestroy directly with broadcast=false to prevent loop
-        // handleDestroy only cleans up local state without re-notifying background
-        if (quickTabsManager?.destroyHandler?.handleDestroy) {
-          quickTabsManager.destroyHandler.handleDestroy(id, 'background-broadcast');
-        }
-        
-        // v1.6.3.6-v5 - Log state applied
-        if (correlationId) {
-          console.log('[Content] 🗑️ DELETION APPLIED:', {
-            correlationId,
-            quickTabId,
-            receiverTabId: currentTabId,
-            stateApplied: true,
-            timestamp: Date.now()
-          });
-        }
-      }, 
-      sendResponse
-    );
+    _handleCloseFromBroadcast(quickTabId, sendResponse, correlationId, ownership);
     return;
   }
   
-  // Standard path: closeById() which triggers tab.destroy() -> onDestroy callback -> handleDestroy
+  // Standard path: closeById() triggers full destroy flow
   _handleManagerAction(quickTabId, 'Closed', id => quickTabsManager.destroyHandler.closeById(id, source), sendResponse);
 }
 
@@ -1636,6 +1679,50 @@ function _extractTabIdFromQuickTabId(quickTabId) {
 }
 
 /**
+ * Build restore ownership info with ID pattern fallback
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to check
+ * @returns {Object} Ownership details including ID pattern match
+ */
+function _getRestoreOwnership(quickTabId) {
+  const ownership = _getQuickTabOwnership(quickTabId);
+  const extractedTabId = _extractTabIdFromQuickTabId(quickTabId);
+  const matchesIdPattern = extractedTabId !== null && extractedTabId === ownership.currentTabId;
+  
+  return {
+    ...ownership,
+    extractedTabId,
+    matchesIdPattern,
+    ownsQuickTab: ownership.hasInMap || ownership.hasSnapshot || matchesIdPattern
+  };
+}
+
+/**
+ * Send cross-tab filtered rejection response
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ */
+function _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnership) {
+  console.log('[Content] RESTORE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
+    quickTabId,
+    currentTabId: restoreOwnership.currentTabId,
+    hasInMap: restoreOwnership.hasInMap,
+    hasSnapshot: restoreOwnership.hasSnapshot,
+    extractedTabId: restoreOwnership.extractedTabId,
+    matchesIdPattern: restoreOwnership.matchesIdPattern,
+    reason: 'cross-tab filtering'
+  });
+  sendResponse({ 
+    success: false, 
+    error: 'Quick Tab not owned by this tab',
+    quickTabId,
+    currentTabId: restoreOwnership.currentTabId,
+    reason: 'cross-tab-filtered'
+  });
+}
+
+/**
  * Handle RESTORE_QUICK_TAB message with deduplication and cross-tab filtering
  * v1.6.3.4-v11 - FIX Issue #2: Prevent duplicate restore processing
  * v1.6.3.6 - FIX Issue #1: Add cross-tab filtering to prevent ghost Quick Tabs
@@ -1645,73 +1732,41 @@ function _extractTabIdFromQuickTabId(quickTabId) {
  *   When a Quick Tab is minimized and the page is reloaded, quickTabsMap and 
  *   minimizedManager may be empty - but the Quick Tab still belongs to this tab.
  *   Use the tab ID embedded in the Quick Tab ID pattern as a fallback check.
+ * v1.6.4.8 - Refactored to reduce complexity (cc=12 -> cc<9)
  * @private
  * @param {string} quickTabId - Quick Tab ID to restore
  * @param {Function} sendResponse - Response callback
  */
 function _handleRestoreQuickTab(quickTabId, sendResponse) {
-  // v1.6.3.4-v11 - FIX Issue #2: Check for duplicate restore within dedup window
+  // Guard: Deduplicate restore within window
   if (_isDuplicateRestoreMessage(quickTabId)) {
-    sendResponse({ 
-      success: false, 
-      error: 'Duplicate restore request rejected',
-      quickTabId,
-      reason: 'deduplication'
-    });
+    sendResponse({ success: false, error: 'Duplicate restore request rejected', quickTabId, reason: 'deduplication' });
     return;
   }
   
-  // v1.6.3.6 - FIX Issue #1: Cross-tab filtering for restore requests
-  // Check if the Quick Tab exists in this tab's minimized manager or quickTabsMap
-  // If not, this broadcast came from Manager but the Quick Tab belongs to another tab
-  const hasInMap = quickTabsManager?.tabs?.has(quickTabId);
-  const hasSnapshot = quickTabsManager?.minimizedManager?.hasSnapshot?.(quickTabId);
-  const currentTabId = quickTabsManager?.currentTabId;
-  
-  // v1.6.3.6-v8 - FIX Issue #4: Also check if Quick Tab ID pattern matches current tab
-  // This handles the case where page was reloaded and local state is empty,
-  // but the Quick Tab still belongs to this tab based on the ID pattern
-  const extractedTabId = _extractTabIdFromQuickTabId(quickTabId);
-  const matchesIdPattern = extractedTabId !== null && extractedTabId === currentTabId;
-  
-  // v1.6.3.6-v8 - FIX Issue #4: Accept restore if ANY ownership check passes
-  const ownsQuickTab = hasInMap || hasSnapshot || matchesIdPattern;
+  const restoreOwnership = _getRestoreOwnership(quickTabId);
   
   console.log('[Content] RESTORE_QUICK_TAB: Ownership check:', {
     quickTabId,
-    currentTabId,
-    hasInMap,
-    hasSnapshot,
-    extractedTabId,
-    matchesIdPattern,
-    ownsQuickTab
+    currentTabId: restoreOwnership.currentTabId,
+    hasInMap: restoreOwnership.hasInMap,
+    hasSnapshot: restoreOwnership.hasSnapshot,
+    extractedTabId: restoreOwnership.extractedTabId,
+    matchesIdPattern: restoreOwnership.matchesIdPattern,
+    ownsQuickTab: restoreOwnership.ownsQuickTab
   });
   
-  if (!ownsQuickTab) {
-    console.log('[Content] RESTORE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
-      quickTabId,
-      currentTabId,
-      hasInMap,
-      hasSnapshot,
-      extractedTabId,
-      matchesIdPattern,
-      reason: 'cross-tab filtering'
-    });
-    sendResponse({ 
-      success: false, 
-      error: 'Quick Tab not owned by this tab',
-      quickTabId,
-      currentTabId,
-      reason: 'cross-tab-filtered'
-    });
+  // Guard: Cross-tab filtering
+  if (!restoreOwnership.ownsQuickTab) {
+    _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnership);
     return;
   }
   
   console.log('[Content] RESTORE_QUICK_TAB: Processing - Quick Tab is owned by this tab:', {
     quickTabId,
-    currentTabId,
-    hasInMap,
-    hasSnapshot
+    currentTabId: restoreOwnership.currentTabId,
+    hasInMap: restoreOwnership.hasInMap,
+    hasSnapshot: restoreOwnership.hasSnapshot
   });
   
   _handleManagerAction(quickTabId, 'Restored', id => quickTabsManager.restoreById(id, 'Manager'), sendResponse);
@@ -2319,6 +2374,53 @@ const ACTION_HANDLERS = {
  * v1.6.3.6-v7 - FIX Issue #5: Enhanced logging at restoration pipeline stages
  * @private
  */
+/**
+ * Log restore command stages for diagnostics
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ */
+function _logRestoreStage(stage, quickTabId, source, extra = {}) {
+  const stageLabels = {
+    1: 'received',
+    2: 'invoking handler',
+    3: 'handler complete'
+  };
+  console.log(`[Content] RESTORE_QUICK_TAB command - Stage ${stage} (${stageLabels[stage]}):`, {
+    quickTabId,
+    source: source || 'manager',
+    timestamp: Date.now(),
+    ...extra
+  });
+}
+
+/**
+ * Execute restore via visibility handler
+ * v1.6.4.8 - Extracted for code health
+ * @private
+ */
+function _executeRestoreCommand(quickTabId, source) {
+  _logRestoreStage(1, quickTabId, source, {
+    hasVisibilityHandler: !!quickTabsManager?.visibilityHandler,
+    currentTabId: quickTabsManager?.currentTabId
+  });
+  
+  const handler = quickTabsManager?.visibilityHandler?.handleRestore;
+  if (!handler) {
+    console.warn('[Content] RESTORE_QUICK_TAB command - Handler not available:', {
+      quickTabId,
+      hasManager: !!quickTabsManager,
+      hasVisibilityHandler: !!quickTabsManager?.visibilityHandler
+    });
+    return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
+  }
+  
+  _logRestoreStage(2, quickTabId, source);
+  const result = handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
+  _logRestoreStage(3, quickTabId, source, { result });
+  
+  return { success: true, action: 'restored', handlerResult: result };
+}
+
 const QUICK_TAB_COMMAND_HANDLERS = {
   'MINIMIZE_QUICK_TAB': (quickTabId, source) => {
     const handler = quickTabsManager?.visibilityHandler?.handleMinimize;
@@ -2326,43 +2428,7 @@ const QUICK_TAB_COMMAND_HANDLERS = {
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
     return { success: true, action: 'minimized' };
   },
-  'RESTORE_QUICK_TAB': (quickTabId, source) => {
-    // v1.6.3.6-v7 - FIX Issue #5: Stage 1 logging - Command received by content script
-    console.log('[Content] RESTORE_QUICK_TAB command - Stage 1 (received):', {
-      quickTabId,
-      source,
-      hasVisibilityHandler: !!quickTabsManager?.visibilityHandler,
-      currentTabId: quickTabsManager?.currentTabId,
-      timestamp: Date.now()
-    });
-    
-    const handler = quickTabsManager?.visibilityHandler?.handleRestore;
-    if (!handler) {
-      console.warn('[Content] RESTORE_QUICK_TAB command - Handler not available:', {
-        quickTabId,
-        hasManager: !!quickTabsManager,
-        hasVisibilityHandler: !!quickTabsManager?.visibilityHandler
-      });
-      return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
-    }
-    
-    // v1.6.3.6-v7 - FIX Issue #5: Stage 2 logging - Invoking handleRestore
-    console.log('[Content] RESTORE_QUICK_TAB command - Stage 2 (invoking handler):', {
-      quickTabId,
-      source: source || 'manager'
-    });
-    
-    const result = handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
-    
-    // v1.6.3.6-v7 - FIX Issue #5: Stage 3 logging - Handler result
-    console.log('[Content] RESTORE_QUICK_TAB command - Stage 3 (handler complete):', {
-      quickTabId,
-      result,
-      timestamp: Date.now()
-    });
-    
-    return { success: true, action: 'restored', handlerResult: result };
-  },
+  'RESTORE_QUICK_TAB': (quickTabId, source) => _executeRestoreCommand(quickTabId, source),
   'CLOSE_QUICK_TAB': (quickTabId, _source) => {
     const handler = quickTabsManager?.closeById;
     if (!handler) return { success: false, error: 'Quick Tabs manager not initialized - closeById not available' };

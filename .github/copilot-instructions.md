@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.6-v9  
+**Version:** 1.6.3.6-v10  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -18,21 +18,27 @@
 - **Promise-Based Sequencing** (v1.6.3.5-v5)
 - Direct local creation pattern, State hydration on page reload
 
-**v1.6.3.5-v8 Manifest:** `unlimitedStorage`, `sessions`, `contextualIdentities` permissions; removed `state-manager.js` from `web_accessible_resources`
+**v1.6.3.6-v10 Build Optimizations:**
+- `.buildconfig.json` - Centralized build configuration
+- Terser minification: dev vs prod configs (prod: no beautify, 3 passes)
+- Tree-shaking in BOTH dev and production builds
+- Rollup cache for faster watch mode rebuilds
+- Parallel build tasks via npm-run-all (`npm run build:dev`)
+- Version extraction in release.yml uses Node.js JSON parsing
 
-**v1.6.3.5-v10 Fixes:** Callback wiring (`setHandlers()`, `_buildCallbackOptions()`), z-index after append, cross-tab scoping, storage corruption (`forceEmpty`)
-
-**v1.6.3.6-v9 Fixes:**
-1. **Enhanced Group Headers** - 16x16 favicon, tab ID display, prominent count badge
-2. **Orphaned Tab Detection** - ⚠️ icon, warning colors, "Adopt" button with `adoptQuickTabToCurrentTab()`
-3. **Closed Tab Indication** - Strikethrough title, 🚫 badge for closed browser tabs
-4. **Tab Switch Detection** - `browser.tabs.onActivated` listener triggers refresh
-5. **Structured Confirmations** - VisibilityHandler returns `{ success, quickTabId, action }` responses
-6. **Position/Size Update Logging** - `_identifyChangedTabs()` helper, source tracking (`sourceTabId`, `sourceContext`)
-7. **Smooth Animations** - 0.35s collapse/expand, height animations via JavaScript `animate()` API
-8. **Responsive Design** - Media queries at 250/300/400/500px breakpoints
-9. **Favicon Loading** - 2s timeout with fallback icon
-10. **Active/Minimized Divider** - Section headers distinguish tab states
+**v1.6.3.6-v10 Manager UI/UX (Issues #1-12):**
+1. Issue #1: Removed "All Quick Tabs" global header
+2. Issue #2: Enhanced group headers (Tab ID #123 format, better count badge)
+3. Issue #3: Improved visual hierarchy (left border, background colors)
+4. Issue #4: Smooth collapse/expand animations (0.35s), scroll-into-view
+5. Issue #5: Orphaned tabs visual differentiation (warning styling, badge)
+6. Issue #6: Stronger closed tab indication (strikethrough, 🚫 badge)
+7. Issue #7: Smooth empty group removal animation
+8. Issue #8: Visual divider between active/minimized tabs
+9. Issue #9: Favicon loading with 2s timeout and fallback
+10. Issue #10: Enhanced count badge styling
+11. Issue #11: Responsive design (250/300/350/400/500px breakpoints)
+12. Issue #12: JavaScript-driven smooth height animations (`animate()` API)
 
 **v1.6.3.6-v8 Fixes (Retained):**
 1. **originTabId Initialization** - CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback

@@ -119,16 +119,26 @@ class QuickTabsManager {
       this.initialized = true;
       console.log('[QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓');
     } catch (err) {
-      console.error('[QuickTabsManager] ❌❌❌ INITIALIZATION FAILED ❌❌❌');
-      console.error('[QuickTabsManager] Error details:', {
-        message: err?.message,
-        name: err?.name,
-        stack: err?.stack,
-        type: typeof err,
-        error: err
-      });
+      this._logInitializationError(err);
       throw err;
     }
+  }
+
+  /**
+   * Log initialization error with detailed context
+   * v1.6.3.6-v10 - Extracted to reduce init() complexity
+   * @private
+   * @param {Error} err - Error that occurred during initialization
+   */
+  _logInitializationError(err) {
+    console.error('[QuickTabsManager] ❌❌❌ INITIALIZATION FAILED ❌❌❌');
+    console.error('[QuickTabsManager] Error details:', {
+      message: err?.message,
+      name: err?.name,
+      stack: err?.stack,
+      type: typeof err,
+      error: err
+    });
   }
 
   /**
@@ -333,15 +343,38 @@ class QuickTabsManager {
   }
 
   /**
+   * Check if browser storage API is available
+   * v1.6.3.6-v10 - Extracted to reduce _hydrateStateFromStorage complexity
+   * @private
+   * @returns {boolean} True if storage API is available
+   */
+  _isStorageApiAvailable() {
+    return typeof browser !== 'undefined' && browser?.storage?.local;
+  }
+
+  /**
+   * Emit hydrated event if tabs were restored
+   * v1.6.3.6-v10 - Extracted to reduce _hydrateStateFromStorage complexity
+   * @private
+   * @param {number} hydratedCount - Number of tabs hydrated
+   */
+  _emitHydratedEventIfNeeded(hydratedCount) {
+    if (hydratedCount > 0 && this.internalEventBus) {
+      this.internalEventBus.emit('state:hydrated', { count: hydratedCount });
+    }
+  }
+
+  /**
    * Hydrate Quick Tab state from browser.storage.local
    * v1.6.3.4 - FIX Issue #1: Restore Quick Tabs after page reload
    * v1.6.3.4-v8 - Extracted logging to reduce complexity
+   * v1.6.3.6-v10 - Refactored: Extracted helpers to reduce cc from 9 to 6
    * @private
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
   async _hydrateStateFromStorage() {
     // Check if browser storage API is available
-    if (typeof browser === 'undefined' || !browser?.storage?.local) {
+    if (!this._isStorageApiAvailable()) {
       return { success: false, count: 0, reason: 'Storage API unavailable' };
     }
 
@@ -360,9 +393,7 @@ class QuickTabsManager {
       const hydratedCount = this._hydrateTabsFromStorage(storedState.tabs);
 
       // Emit hydrated event for UICoordinator to render restored tabs
-      if (hydratedCount > 0 && this.internalEventBus) {
-        this.internalEventBus.emit('state:hydrated', { count: hydratedCount });
-      }
+      this._emitHydratedEventIfNeeded(hydratedCount);
 
       return { success: true, count: hydratedCount, reason: 'Success' };
     } catch (error) {
@@ -987,6 +1018,17 @@ class QuickTabsManager {
   }
 
   /**
+   * Check if container response is valid
+   * v1.6.3.6-v10 - Extracted to reduce complex conditional
+   * @private
+   * @param {Object} response - Response from background script
+   * @returns {boolean} True if response has valid container data
+   */
+  _isValidContainerResponse(response) {
+    return response && response.success && response.cookieStoreId;
+  }
+
+  /**
    * Detect Firefox container context
    */
   async detectContainerContext() {
@@ -995,7 +1037,7 @@ class QuickTabsManager {
         action: 'GET_CONTAINER_CONTEXT'
       });
 
-      if (response && response.success && response.cookieStoreId) {
+      if (this._isValidContainerResponse(response)) {
         this.cookieStoreId = response.cookieStoreId;
         console.log('[QuickTabsManager] Detected container:', this.cookieStoreId);
         return true;
@@ -1023,7 +1065,7 @@ class QuickTabsManager {
         action: 'GET_CONTAINER_CONTEXT'
       });
 
-      if (response && response.success && response.cookieStoreId) {
+      if (this._isValidContainerResponse(response)) {
         return response.cookieStoreId;
       }
       return this.cookieStoreId || 'firefox-default';
@@ -1321,8 +1363,57 @@ class QuickTabsManager {
   // ============================================================================
 
   /**
+   * Stop MemoryGuard monitoring during teardown
+   * v1.6.3.6-v10 - Extracted to reduce destroy() complexity
+   * @private
+   */
+  _destroyStep1_StopMemoryGuard() {
+    if (this.memoryGuard?.stopMonitoring) {
+      console.log('[QuickTabsManager] Stopping MemoryGuard monitoring');
+      this.memoryGuard.stopMonitoring();
+    }
+  }
+
+  /**
+   * Remove storage listener via CreateHandler during teardown
+   * v1.6.3.6-v10 - Extracted to reduce destroy() complexity
+   * @private
+   */
+  _destroyStep2_RemoveStorageListener() {
+    if (this.createHandler?.destroy) {
+      console.log('[QuickTabsManager] Calling createHandler.destroy() to remove storage listener');
+      this.createHandler.destroy();
+    }
+  }
+
+  /**
+   * Close all Quick Tabs during teardown
+   * v1.6.3.6-v10 - Extracted to reduce destroy() complexity
+   * @private
+   */
+  _destroyStep3_CloseAllTabs() {
+    if (this.tabs.size > 0) {
+      console.log(`[QuickTabsManager] Closing ${this.tabs.size} Quick Tab(s)`);
+      this.closeAll();
+    }
+  }
+
+  /**
+   * Remove all event listeners during teardown
+   * v1.6.3.6-v10 - Extracted to reduce destroy() complexity
+   * @private
+   */
+  _destroyStep4_RemoveEventListeners() {
+    if (this.internalEventBus?.removeAllListeners) {
+      console.log('[QuickTabsManager] Removing all event listeners from internalEventBus');
+      this.internalEventBus.removeAllListeners();
+    }
+  }
+
+  /**
    * Cleanup and teardown the QuickTabsManager
    * v1.6.3.4-v11 - FIX Issue #1, #2, #3: Proper resource cleanup to prevent memory leaks
+   * v1.6.3.6-v10 - Refactored: Extracted steps to helper methods to reduce cc from 9 to 2
    * 
    * This method:
    * - Stops MemoryGuard monitoring
@@ -1344,29 +1435,10 @@ class QuickTabsManager {
 
     console.log('[QuickTabsManager] Starting cleanup/teardown...');
 
-    // Step 1: Stop MemoryGuard monitoring
-    if (this.memoryGuard?.stopMonitoring) {
-      console.log('[QuickTabsManager] Stopping MemoryGuard monitoring');
-      this.memoryGuard.stopMonitoring();
-    }
-
-    // Step 2: Remove storage listener via CreateHandler.destroy()
-    if (this.createHandler?.destroy) {
-      console.log('[QuickTabsManager] Calling createHandler.destroy() to remove storage listener');
-      this.createHandler.destroy();
-    }
-
-    // Step 3: Close all Quick Tabs (DOM cleanup)
-    if (this.tabs.size > 0) {
-      console.log(`[QuickTabsManager] Closing ${this.tabs.size} Quick Tab(s)`);
-      this.closeAll();
-    }
-
-    // Step 4: Remove all event listeners from internalEventBus
-    if (this.internalEventBus?.removeAllListeners) {
-      console.log('[QuickTabsManager] Removing all event listeners from internalEventBus');
-      this.internalEventBus.removeAllListeners();
-    }
+    this._destroyStep1_StopMemoryGuard();
+    this._destroyStep2_RemoveStorageListener();
+    this._destroyStep3_CloseAllTabs();
+    this._destroyStep4_RemoveEventListeners();
 
     // Step 5: Mark as uninitialized
     this.initialized = false;

@@ -50,7 +50,15 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v5 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.6-v10 - Two-Layer Sidebar Tab System ✅
+
+**v1.6.3.6-v10 Build & UI/UX (NEW):**
+- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod), tree-shaking, Rollup cache
+- **Manager UI/UX Issues #1-12 (Reference for Settings UI):**
+  - Enhanced visual hierarchy (left border, background colors)
+  - Smooth animations (0.35s), responsive design (250-500px breakpoints)
+  - Favicon loading with 2s timeout and fallback
+- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34 (UI patterns to avoid)
 
 **Settings Sidebar Structure (Two-Layer System):**
 - **PRIMARY TABS (Layer 1):**

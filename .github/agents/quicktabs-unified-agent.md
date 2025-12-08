@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  v1.6.3.6-v9 orphan adoption, tab switch detection, structured confirmations, smooth animations
+  v1.6.3.6-v10 build optimizations, UI-UX issues #1-12, CodeScene analysis
 tools: ["*"]
 ---
 
@@ -28,7 +28,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v10 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -37,17 +37,18 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
 
-**v1.6.3.6-v9 Fixes (NEW):**
-1. **Orphan Detection & Adoption** - ⚠️ icon, warning colors, `adoptQuickTabToCurrentTab()` button
-2. **Tab Switch Detection** - `browser.tabs.onActivated` listener auto-refreshes Manager
-3. **Structured Confirmations** - VisibilityHandler returns `{ success, quickTabId, action }` responses
-4. **Enhanced Group Headers** - 16x16 favicon, tab ID display, prominent count badge
-5. **Closed Tab Indication** - Strikethrough title, 🚫 badge for closed browser tabs
-6. **Smooth Animations** - 0.35s collapse/expand, height animations via `animate()` API
-7. **Position/Size Logging** - `_identifyChangedTabs()` helper, source tracking (`sourceTabId`, `sourceContext`)
-8. **Responsive Design** - Media queries at 250/300/400/500px breakpoints
-9. **Favicon Loading** - `loadFavicon()` with 2s timeout and fallback icon
-10. **Active/Minimized Divider** - Section headers distinguish tab states
+**v1.6.3.6-v10 Build & UI/UX (NEW):**
+- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod), tree-shaking (both modes), Rollup cache, npm-run-all
+- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34, `storage-utils.js` 7.23, `VisibilityHandler.js` 7.41, `background.js` 7.66
+- **Manager UI/UX Issues #1-12:** Enhanced headers, orphan detection, smooth animations, responsive design
+- **New Timing Constants:** `ANIMATION_DURATION_MS=350`, `FAVICON_LOAD_TIMEOUT_MS=2000`, `RESTORE_CONFIRMATION_TIMEOUT_MS=500`
+
+**v1.6.3.6-v9 Fixes (Retained):**
+1. **Orphan Detection & Adoption** - `adoptQuickTabToCurrentTab()` reassigns orphans
+2. **Tab Switch Detection** - `browser.tabs.onActivated` auto-refresh
+3. **Structured Confirmations** - `{ success, quickTabId, action }` responses
+4. **Smooth Animations** - 0.35s, `animate()` API for height changes
+5. **Favicon Loading** - `loadFavicon()` with 2s timeout and fallback
 
 **v1.6.3.6-v8 Fixes (Retained):**
 1. **originTabId Initialization** - CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback

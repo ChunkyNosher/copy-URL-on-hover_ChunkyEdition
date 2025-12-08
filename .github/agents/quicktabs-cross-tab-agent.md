@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, Background-as-Coordinator messaging, Per-Tab Ownership Validation,
-  originTabId filtering, Promise-Based Sequencing, v1.6.3.6-v9 structured confirmations,
-  tab switch detection, source tracking, position/size update logging
+  originTabId filtering, Promise-Based Sequencing, v1.6.3.6-v10 build optimizations,
+  CodeScene analysis, tab switch detection, structured confirmations
 tools: ["*"]
 ---
 
@@ -29,16 +29,18 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v10 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6-v9 Cross-Tab Fixes (NEW):**
-1. **Tab Switch Detection** - `browser.tabs.onActivated` listener triggers Manager refresh
-2. **Structured Confirmations** - VisibilityHandler returns `{ success, quickTabId, action }` responses
-3. **Restore Confirmation Tracking** - 500ms timeout for confirmation responses
-4. **Position/Size Update Logging** - `_identifyChangedTabs()` helper shows which tabs changed
-5. **Source Tracking** - `sourceTabId`, `sourceContext` identify origin of storage changes
-6. **quickTabHostInfo Map Updates** - `_updateQuickTabHostInfo()` on ALL state changes
-7. **Orphan Detection & Adoption** - `adoptQuickTabToCurrentTab()` reassigns orphaned Quick Tabs
+**v1.6.3.6-v10 Build & Analysis (NEW):**
+- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod), tree-shaking, Rollup cache, npm-run-all
+- **CodeScene Analysis:** `background.js` 7.66 (needs refactoring), `storage-utils.js` 7.23, `content.js` 7.76
+- **Timing Constants:** `ANIMATION_DURATION_MS=350`, `FAVICON_LOAD_TIMEOUT_MS=2000`, `RESTORE_CONFIRMATION_TIMEOUT_MS=500`
+
+**v1.6.3.6-v9 Cross-Tab Fixes (Retained):**
+1. **Tab Switch Detection** - `browser.tabs.onActivated` triggers Manager refresh
+2. **Structured Confirmations** - `{ success, quickTabId, action }` responses
+3. **Source Tracking** - `sourceTabId`, `sourceContext` identify storage changes
+4. **Orphan Detection & Adoption** - `adoptQuickTabToCurrentTab()` reassigns orphans
 
 **v1.6.3.6-v8 Cross-Tab Fixes (Retained):**
 1. **Multi-Layer ID Recovery** - CreateHandler, hydration, snapshot capture all use ID pattern fallback

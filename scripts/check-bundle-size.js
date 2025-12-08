@@ -4,11 +4,24 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const MAX_BUNDLE_SIZES = {
-  'content.js': 500 * 1024, // 500KB max
-  'background.js': 300 * 1024, // 300KB max
-  'popup.js': 100 * 1024 // 100KB max
-};
+// Load bundle size limits from .buildconfig.json
+const buildConfigPath = path.join(__dirname, '..', '.buildconfig.json');
+let MAX_BUNDLE_SIZES;
+
+try {
+  const buildConfig = JSON.parse(fs.readFileSync(buildConfigPath, 'utf-8'));
+  MAX_BUNDLE_SIZES = Object.fromEntries(
+    Object.entries(buildConfig.bundleSizeLimits).map(([file, config]) => [file, config.maxBytes])
+  );
+  console.log('📦 Loaded bundle size limits from .buildconfig.json');
+} catch (error) {
+  console.warn('⚠️  Could not load .buildconfig.json, using defaults');
+  MAX_BUNDLE_SIZES = {
+    'content.js': 500 * 1024, // 500KB max
+    'background.js': 300 * 1024, // 300KB max
+    'popup.js': 100 * 1024 // 100KB max
+  };
+}
 
 let failed = false;
 
@@ -27,7 +40,8 @@ for (const [file, maxSize] of Object.entries(MAX_BUNDLE_SIZES)) {
     console.error(`❌ ${file}: ${sizeMB}KB exceeds limit of ${maxMB}KB`);
     failed = true;
   } else {
-    console.log(`✅ ${file}: ${sizeMB}KB (limit: ${maxMB}KB)`);
+    const percentage = ((stats.size / maxSize) * 100).toFixed(1);
+    console.log(`✅ ${file}: ${sizeMB}KB (limit: ${maxMB}KB) [${percentage}% used]`);
   }
 }
 

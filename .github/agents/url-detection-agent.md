@@ -51,7 +51,11 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v5 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.6-v10 - Domain-Driven Design (Phase 1 Complete ✅)
+
+**v1.6.3.6-v10 Build & Analysis (NEW):**
+- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod), tree-shaking, Rollup cache
+- **CodeScene Analysis:** `content.js` 7.76 (close to target 8.75)
 
 **URL Detection Features:**
 - **Hover Detection** - Track hovered links for Quick Tab creation

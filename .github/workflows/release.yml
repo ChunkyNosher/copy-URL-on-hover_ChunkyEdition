@@ -71,7 +71,8 @@ jobs:
       - name: Get version from manifest
         id: get_version
         run: |
-          VERSION=$(grep -oP '(?<="version": ")[^"]*' dist/manifest.json)
+          # Use Node.js for robust JSON parsing instead of fragile grep
+          VERSION=$(node -p "require('./dist/manifest.json').version")
           if [ -z "$VERSION" ]; then
             echo "❌ Failed to extract version from manifest"
             exit 1
