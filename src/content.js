@@ -1567,11 +1567,32 @@ function _handleMinimizeQuickTab(quickTabId, sendResponse) {
 }
 
 /**
+ * Extract tab ID from Quick Tab ID pattern
+ * v1.6.3.6-v8 - FIX Issue #4: Fallback extraction from ID pattern for Manager restore
+ * Quick Tab IDs follow pattern: qt-{tabId}-{timestamp}-{random}
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {number|null} Extracted tab ID or null
+ */
+function _extractTabIdFromQuickTabId(quickTabId) {
+  if (!quickTabId || typeof quickTabId !== 'string') return null;
+  const match = quickTabId.match(/^qt-(\d+)-/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  return null;
+}
+
+/**
  * Handle RESTORE_QUICK_TAB message with deduplication and cross-tab filtering
  * v1.6.3.4-v11 - FIX Issue #2: Prevent duplicate restore processing
  * v1.6.3.6 - FIX Issue #1: Add cross-tab filtering to prevent ghost Quick Tabs
  *   Check if Quick Tab belongs to this tab before attempting restore.
  *   Quick Tabs should only render in the tab that created them (originTabId).
+ * v1.6.3.6-v8 - FIX Issue #4: Add ID pattern extraction fallback for Manager restore
+ *   When a Quick Tab is minimized and the page is reloaded, quickTabsMap and 
+ *   minimizedManager may be empty - but the Quick Tab still belongs to this tab.
+ *   Use the tab ID embedded in the Quick Tab ID pattern as a fallback check.
  * @private
  * @param {string} quickTabId - Quick Tab ID to restore
  * @param {Function} sendResponse - Response callback
@@ -1595,12 +1616,33 @@ function _handleRestoreQuickTab(quickTabId, sendResponse) {
   const hasSnapshot = quickTabsManager?.minimizedManager?.hasSnapshot?.(quickTabId);
   const currentTabId = quickTabsManager?.currentTabId;
   
-  if (!hasInMap && !hasSnapshot) {
+  // v1.6.3.6-v8 - FIX Issue #4: Also check if Quick Tab ID pattern matches current tab
+  // This handles the case where page was reloaded and local state is empty,
+  // but the Quick Tab still belongs to this tab based on the ID pattern
+  const extractedTabId = _extractTabIdFromQuickTabId(quickTabId);
+  const matchesIdPattern = extractedTabId !== null && extractedTabId === currentTabId;
+  
+  // v1.6.3.6-v8 - FIX Issue #4: Accept restore if ANY ownership check passes
+  const ownsQuickTab = hasInMap || hasSnapshot || matchesIdPattern;
+  
+  console.log('[Content] RESTORE_QUICK_TAB: Ownership check:', {
+    quickTabId,
+    currentTabId,
+    hasInMap,
+    hasSnapshot,
+    extractedTabId,
+    matchesIdPattern,
+    ownsQuickTab
+  });
+  
+  if (!ownsQuickTab) {
     console.log('[Content] RESTORE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
       quickTabId,
       currentTabId,
       hasInMap,
       hasSnapshot,
+      extractedTabId,
+      matchesIdPattern,
       reason: 'cross-tab filtering'
     });
     sendResponse({ 

@@ -111,23 +111,20 @@ stat -c%s .github/copilot-instructions.md
 
 **Audit Checklist:**
 - [ ] All files under 15KB
-- [ ] Version numbers match current release (1.6.3.6-v5)
+- [ ] Version numbers match current release (1.6.3.6-v8)
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Cross-tab sync uses storage.onChanged + Background-as-Coordinator
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
 - [ ] Unified storage format documented (tabs array with originTabId)
 - [ ] Storage area correct (storage.local for state AND UID setting)
+- [ ] **v1.6.3.6-v8:** Multi-layer ID recovery documented
+- [ ] **v1.6.3.6-v8:** Cross-tab grouping UI documented
+- [ ] **v1.6.3.6-v8:** Tab metadata caching documented
+- [ ] **v1.6.3.6-v8:** Collapse state persistence documented
+- [ ] **v1.6.3.6-v8:** Emoji diagnostic logging documented
 - [ ] **v1.6.3.6-v5:** Strict tab isolation documented
 - [ ] **v1.6.3.6-v5:** Deletion state machine documented
-- [ ] **v1.6.3.6-v5:** Unified deletion path documented
-- [ ] **v1.6.3.6-v5:** Storage operation logging documented
-- [ ] **v1.6.3.6-v5:** Message correlation IDs documented
-- [ ] **v1.6.3.6-v4:** Position/Size Logging documented
-- [ ] **v1.6.3.6-v4:** setWritingTabId() documented
-- [ ] **v1.6.3.6-v4:** Broadcast deduplication documented
-- [ ] **v1.6.3.6-v4:** Hydration flag documented
-- [ ] **v1.6.3.6-v4:** sender.tab.id only documented
 - [ ] MCP tools listed correctly
 - [ ] Keyboard shortcuts current
 
@@ -135,28 +132,23 @@ stat -c%s .github/copilot-instructions.md
 
 **copilot-instructions.md must include:**
 
-- **Current Version:** 1.6.3.6-v5
+- **Current Version:** 1.6.3.6-v8
 - **Architecture Status:** DDD with Background-as-Coordinator ✅
 - **Cross-Tab Sync:** storage.onChanged + Background-as-Coordinator
 - **Key Features:**
   - Solo/Mute tab-specific visibility (soloedOnTabs/mutedOnTabs arrays)
   - Global Quick Tab visibility (Container isolation REMOVED)
   - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
+  - Cross-Tab Grouping UI (v1.6.3.6-v8)
   - Direct local creation pattern
   - State hydration on page reload
 - **Storage Format:** `{ tabs: [{ id, originTabId, ... }], saveId, timestamp, writingTabId, writingInstanceId }`
-- **v1.6.3.6-v5 Fixes:**
-  1. Strict Tab Isolation - `_shouldRenderOnThisTab()` REJECTS null originTabId
-  2. Deletion State Machine - DestroyHandler._destroyedIds prevents loops
-  3. Unified Deletion Path - `initiateDestruction()` is single entry point
-  4. Storage Operation Logging - `logStorageRead()`, `logStorageWrite()` with correlation IDs
-  5. Message Correlation IDs - `generateMessageId()` for message tracing
-- **v1.6.3.6-v4 Fixes (Retained):**
-  1. Position/Size Logging - full trace visibility
-  2. setWritingTabId() Export - for content scripts
-  3. Broadcast Deduplication - circuit breaker (10+ broadcasts/100ms)
-  4. Hydration Flag - `_isHydrating` suppresses warnings
-  5. sender.tab.id Only - removed active tab fallback
+- **v1.6.3.6-v8 Fixes:**
+  1. Multi-layer ID recovery (CreateHandler, hydration, snapshots)
+  2. Cross-tab grouping UI - `groupQuickTabsByOriginTab()`
+  3. Tab metadata caching - `fetchBrowserTabInfo()` with 30s TTL
+  4. Collapse state persistence - `quickTabsManagerCollapseState`
+  5. Emoji diagnostic logging
 - **MCP Tool List:** Context7, Perplexity, CodeScene, ESLint, Agentic-Tools
 - **File Size Limits:** 15KB for instructions/agents
 - **Testing:** npm test, npm run lint
@@ -214,12 +206,12 @@ tools: ["*"]
 ### 4. Ensure Cross-File Consistency
 
 **Verify consistency across:**
-- Version numbers (1.6.3.6-v5)
+- Version numbers (1.6.3.6-v8)
 - Feature names (Solo/Mute, NOT "Pin to Page")
 - Architecture status (Background-as-Coordinator)
 - Sync mechanism (storage.onChanged + Background-as-Coordinator)
 - Storage format (unified tabs array with originTabId, writingTabId, writingInstanceId)
-- **v1.6.3.6:** Cross-tab filtering, transaction timeout reduction (2000ms), button handler logging
+- **v1.6.3.6-v8:** Multi-layer ID recovery, cross-tab grouping UI, tab metadata caching
 - Single Writer Model (`CLEAR_ALL_QUICK_TABS` for Manager closeAll)
 - Manager action messages
 - Global visibility (Container isolation REMOVED)
@@ -310,38 +302,34 @@ await perplexity.research("documentation compression markdown");
 
 ---
 
-## Current Extension State (v1.6.3.6-v5)
+## Current Extension State (v1.6.3.6-v8)
 
 ### Architecture
 - **Status:** Background-as-Coordinator ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### v1.6.3.6-v5 Fixes
-1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
-2. **Deletion State Machine** - DestroyHandler._destroyedIds prevents deletion loops/log explosion
-3. **Unified Deletion Path** - `initiateDestruction()` is single entry point; UI button and Manager close identical
-4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with correlation IDs
-5. **Message Correlation IDs** - `generateMessageId()`, `logMessageDispatch()`, `logMessageReceipt()`
+### v1.6.3.6-v8 Fixes
+1. **originTabId Initialization** - CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback
+2. **Hydration Recovery** - `_checkTabScopeWithReason()` patches originTabId from ID pattern into entity
+3. **Snapshot Capture** - MinimizedManager.add() extracts originTabId from ID pattern when null
+4. **Manager Restore Validation** - Triple ownership check (snapshot, ID pattern, global/null permission)
+5. **Cross-Tab Grouping UI** - `groupQuickTabsByOriginTab()` groups Quick Tabs by originTabId
+6. **Tab Metadata Caching** - `fetchBrowserTabInfo()` with 30s TTL cache
+7. **Emoji Diagnostics** - `📸`, `📍`, `🔄` prefixed logging
 
-### v1.6.3.6-v5 Patterns
-- `_checkTabScopeWithReason()` - Unified tab scope validation with init logging
-- `_broadcastDeletionToAllTabs()` - Sender filtering prevents echo back
-- DestroyHandler is **single authoritative deletion path**
+### v1.6.3.6-v8 Patterns
+- **Multi-Layer ID Recovery** - CreateHandler, hydration, snapshot capture all use ID pattern fallback
+- **Triple Ownership Check** - Manager restore validates snapshot → ID pattern → global/null permission
+- **Cross-Tab Grouping** - `groupQuickTabsByOriginTab()` groups Quick Tabs by originTabId
+- **Tab Metadata Caching** - `fetchBrowserTabInfo()` caches results (30s TTL)
+- **Collapse State Persistence** - `quickTabsManagerCollapseState` in storage.local
 
-### v1.6.3.6 Fixes
-1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check quickTabsMap/minimizedManager before processing
-2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
-3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action state, dispatch, response, cleanup, timing
-
-### v1.6.3.6 Patterns
-- **Cross-Tab Filtering** - Handlers check `quickTabsMap`/`minimizedManager` before processing broadcast messages
-- **Reduced Timeouts** - 2000ms (down from 5000ms) for faster first restore (<500ms vs 2-3s)
-- **Button Handler Logging** - `closeAllTabs()` logs full operation lifecycle with timing
-
-### v1.6.3.5 Patterns (Retained)
-- `rewireCallbacks()`, `cleanup()` methods, `isMinimizing`/`isRestoring` flags
-- `setHandlers()`, `_buildCallbackOptions()`, `_applyZIndexAfterAppend()`
+### v1.6.3.6-v7 Patterns (Retained)
+- **ID Pattern Recovery** - `_extractTabIdFromQuickTabId()` extracts tab ID
+- **Orphan Recovery Fallback** - `_checkTabScopeWithReason()` recovers when originTabId is null
+- **In-Place Patching** - Patches originTabId for subsequent operations
+- **3-Stage Restoration Logging** - Command receipt, handler invocation, completion
 
 ### Features
 - **Solo/Mute:** Tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
@@ -362,7 +350,7 @@ await perplexity.research("documentation compression markdown");
 
 | Error | Fix |
 |-------|-----|
-| v1.6.3.5-v9 or earlier | Update to 1.6.3.6-v5 |
+| v1.6.3.6-v7 or earlier | Update to 1.6.3.6-v8 |
 | "Pin to Page" | Use "Solo/Mute" |
 | BroadcastChannel | Use storage.onChanged |
 | Container refs | Remove (global visibility) |
@@ -374,17 +362,15 @@ await perplexity.research("documentation compression markdown");
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.6-v5
+- [ ] Version numbers updated to 1.6.3.6-v8
 - [ ] No "Pin to Page" references
 - [ ] No BroadcastChannel (except removal notes)
 - [ ] storage.onChanged + Background-as-Coordinator documented
-- [ ] **v1.6.3.6-v5:** Strict tab isolation documented
-- [ ] **v1.6.3.6-v5:** Deletion state machine documented
-- [ ] **v1.6.3.6-v5:** Unified deletion path documented
-- [ ] **v1.6.3.6-v5:** Storage/message correlation logging documented
-- [ ] **v1.6.3.6:** Cross-tab filtering documented
-- [ ] **v1.6.3.6:** Transaction timeout reduction documented (2000ms)
-- [ ] **v1.6.3.6:** Button handler logging documented
+- [ ] **v1.6.3.6-v8:** Multi-layer ID recovery documented
+- [ ] **v1.6.3.6-v8:** Cross-tab grouping UI documented
+- [ ] **v1.6.3.6-v8:** Tab metadata caching documented
+- [ ] **v1.6.3.6-v8:** Collapse state persistence documented
+- [ ] **v1.6.3.6-v8:** Emoji diagnostic logging documented
 - [ ] MCP tool lists consistent
 - [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
 - [ ] Memory files committed (.agentic-tools-mcp/) 🧠

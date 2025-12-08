@@ -3,7 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, Background-as-Coordinator messaging, Per-Tab Ownership Validation,
-  originTabId filtering, Promise-Based Sequencing, and state consistency (v1.6.3.6-v5)
+  originTabId filtering, Promise-Based Sequencing, state consistency (v1.6.3.6-v5),
+  ID pattern recovery (v1.6.3.6-v7), multi-layer recovery (v1.6.3.6-v8)
 tools: ["*"]
 ---
 
@@ -28,9 +29,20 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v8 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6-v5 Cross-Tab Fixes (CRITICAL):**
+**v1.6.3.6-v8 Cross-Tab Fixes (NEW):**
+1. **Multi-Layer ID Recovery** - CreateHandler, hydration, snapshot capture all use ID pattern fallback
+2. **Hydration Recovery** - `_checkTabScopeWithReason()` patches originTabId from ID pattern into entity
+3. **Triple Ownership Check** - Manager restore validates snapshot → ID pattern → global/null permission
+4. **Emoji Diagnostics** - `📍 ORIGIN_TAB_ID_RESOLUTION`, `🔄 RESTORE_REQUEST` logging
+
+**v1.6.3.6-v7 Fixes (Retained):**
+1. **ID Pattern Recovery** - `_extractTabIdFromQuickTabId()` extracts tab ID from `qt-{tabId}-{timestamp}-{random}`
+2. **Orphan Recovery Fallback** - `_checkTabScopeWithReason()` recovers when originTabId is null
+3. **In-Place Patching** - Patches originTabId for subsequent operations
+
+**v1.6.3.6-v5 Cross-Tab Fixes (Retained):**
 1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
 2. **Unified Deletion Path** - `initiateDestruction()` is single entry point
 3. **_broadcastDeletionToAllTabs()** - Sender filtering prevents echo back to initiator
@@ -80,12 +92,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Multi-layer ID recovery works across CreateHandler, hydration, snapshots (v1.6.3.6-v8)
+- [ ] Hydration recovery patches originTabId into entity (v1.6.3.6-v8)
+- [ ] Triple ownership check validates Manager restore requests (v1.6.3.6-v8)
+- [ ] Emoji diagnostic logging visible in console (v1.6.3.6-v8)
+- [ ] ID pattern recovery extracts tab ID from Quick Tab ID (v1.6.3.6-v7)
+- [ ] In-place patching updates entity for subsequent operations (v1.6.3.6-v7)
 - [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
 - [ ] _broadcastDeletionToAllTabs() filters sender (v1.6.3.6-v5)
 - [ ] Message correlation IDs show full trace (v1.6.3.6-v5)
 - [ ] Storage operation logging works (v1.6.3.6-v5)
-- [ ] sender.tab.id used exclusively (no active tab fallback) (v1.6.3.6-v4)
-- [ ] setWritingTabId() called after tab ID fetch (v1.6.3.6-v4)
 - [ ] Storage circuit breaker trips at `pendingWriteCount >= 15`
 - [ ] Cross-tab filtering works (`_handleRestoreQuickTab`/`_handleMinimizeQuickTab`)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
@@ -96,4 +112,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.6-v5 strict tab isolation, unified deletion, and message correlation.**
+**Your strength: Reliable cross-tab sync with v1.6.3.6-v8 multi-layer ID recovery, v1.6.3.6-v7 ID pattern recovery, v1.6.3.6-v5 strict tab isolation, and message correlation.**

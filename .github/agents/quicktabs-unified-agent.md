@@ -4,7 +4,7 @@ description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
   storage storm protection, Promise-Based Sequencing, originTabId preservation (v1.6.3.6-v6),
-  ID pattern recovery (v1.6.3.6-v7), and end-to-end functionality
+  ID pattern recovery (v1.6.3.6-v7), multi-layer recovery and cross-tab grouping (v1.6.3.6-v8)
 tools: ["*"]
 ---
 
@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v7 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v8 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
@@ -38,7 +38,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
 
-**v1.6.3.6-v7 Fixes:**
+**v1.6.3.6-v8 Fixes:**
+1. **originTabId Initialization** - CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback
+2. **Hydration Recovery** - `_checkTabScopeWithReason()` patches originTabId from ID pattern into entity
+3. **Snapshot Capture** - MinimizedManager.add() extracts originTabId from ID pattern when null
+4. **Manager Restore Validation** - Triple ownership check (snapshot, ID pattern, global/null permission)
+5. **Cross-Tab Grouping UI** - Manager groups Quick Tabs by originTabId in collapsible sections
+6. **Tab Metadata Caching** - `fetchBrowserTabInfo()` with 30s TTL cache
+7. **Emoji Diagnostics** - `📸 SNAPSHOT_CAPTURED`, `📍 ORIGIN_TAB_ID_RESOLUTION`, `🔄 RESTORE_REQUEST`
+
+**v1.6.3.6-v7 Fixes (Retained):**
 1. **ID Pattern Recovery** - `_extractTabIdFromQuickTabId()` extracts tab ID from `qt-{tabId}-{timestamp}-{random}`
 2. **Orphan Recovery Fallback** - `_checkTabScopeWithReason()` recovers orphaned tabs when ID matches
 3. **Manager Restore Recovery** - `_shouldRenderOnThisTab()` patches originTabId in-place
@@ -87,17 +96,17 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback (v1.6.3.6-v8)
+- [ ] Hydration recovery patches originTabId into entity (v1.6.3.6-v8)
+- [ ] MinimizedManager.add() extracts originTabId from ID pattern (v1.6.3.6-v8)
+- [ ] Manager restore validates via triple ownership check (v1.6.3.6-v8)
+- [ ] Cross-tab grouping UI groups Quick Tabs by originTabId (v1.6.3.6-v8)
+- [ ] Tab metadata caching works with 30s TTL (v1.6.3.6-v8)
+- [ ] Emoji diagnostic logging visible in console (v1.6.3.6-v8)
 - [ ] ID pattern recovery extracts tab ID from Quick Tab ID (v1.6.3.6-v7)
-- [ ] Orphaned Quick Tabs recovered via ID pattern matching (v1.6.3.6-v7)
-- [ ] Manager restore patches originTabId in-place (v1.6.3.6-v7)
-- [ ] 3-stage RESTORE_QUICK_TAB logging works (v1.6.3.6-v7)
 - [ ] originTabId preserved in minimize/restore cycle (v1.6.3.6-v6)
 - [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
 - [ ] Deletion state machine prevents loops (v1.6.3.6-v5)
-- [ ] initiateDestruction() unified entry point works (v1.6.3.6-v5)
-- [ ] Storage/message logging shows correlation IDs (v1.6.3.6-v5)
-- [ ] setWritingTabId() called after tab ID fetch (v1.6.3.6-v4)
-- [ ] Broadcast dedup works (10+ broadcasts/100ms trips) (v1.6.3.6-v4)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Cross-tab filtering in handlers
 - [ ] Storage storm protection (`inMemoryTabsCache`)
@@ -107,4 +116,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.6-v7 ID pattern recovery for orphaned tabs, v1.6.3.6-v6 originTabId preservation in minimize/restore cycles, v1.6.3.6-v5 strict tab isolation, deletion state machine, and correlation logging.**
+**Your strength: Complete Quick Tab system with v1.6.3.6-v8 multi-layer ID recovery, cross-tab grouping UI, v1.6.3.6-v7 ID pattern recovery, v1.6.3.6-v6 originTabId preservation, and v1.6.3.6-v5 strict tab isolation.**

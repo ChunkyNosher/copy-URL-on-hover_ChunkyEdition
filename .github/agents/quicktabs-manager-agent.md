@@ -4,7 +4,7 @@ description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
   real-time state updates, comprehensive UI logging, Single Writer Model, v1.6.3.6-v6 restore fix,
-  v1.6.3.6-v7 ID pattern recovery
+  v1.6.3.6-v7 ID pattern recovery, v1.6.3.6-v8 cross-tab grouping UI
 tools: ["*"]
 ---
 
@@ -29,16 +29,26 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v7 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v8 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
+- **Cross-Tab Grouping UI** - Groups Quick Tabs by originTabId in collapsible sections (v1.6.3.6-v8)
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.6-v7 Fixes:**
+**v1.6.3.6-v8 Fixes:**
+1. **Cross-Tab Grouping UI** - `groupQuickTabsByOriginTab()` groups Quick Tabs by originTabId
+2. **Browser Tab Metadata** - `fetchBrowserTabInfo()` uses `browser.tabs.get()` with 30s TTL cache
+3. **Collapse State Persistence** - Saves to `quickTabsManagerCollapseState` in storage.local
+4. **HTML Structure** - Uses `<details>` with `<summary>` for collapsible groups
+5. **CSS Styling** - `.tab-group`, `.tab-group-header`, `.tab-group-content` classes
+6. **Triple Ownership Check** - Manager restore validates snapshot → ID pattern → global/null permission
+7. **Emoji Diagnostics** - `🔄 RESTORE_REQUEST` logging
+
+**v1.6.3.6-v7 Fixes (Retained):**
 1. **ID Pattern Recovery** - `_extractTabIdFromQuickTabId()` extracts tab ID from Quick Tab ID
 2. **Manager Restore Recovery** - `_shouldRenderOnThisTab()` patches originTabId when ID matches
 3. **3-Stage Restoration Logging** - RESTORE_QUICK_TAB logs receipt, invocation, completion
@@ -88,14 +98,16 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Cross-tab grouping UI displays Quick Tabs grouped by originTabId (v1.6.3.6-v8)
+- [ ] `fetchBrowserTabInfo()` caches tab metadata with 30s TTL (v1.6.3.6-v8)
+- [ ] Collapse state persists across Manager reloads (v1.6.3.6-v8)
+- [ ] Orphaned Quick Tabs shown in separate group (v1.6.3.6-v8)
+- [ ] Triple ownership check validates restore requests (v1.6.3.6-v8)
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] Storage storm protection works (`inMemoryTabsCache`)
 - [ ] `forceEmpty` allows Close All empty writes
 - [ ] All Quick Tabs display globally
 - [ ] Background-as-Coordinator messages route correctly
-- [ ] `closeAllTabs()` logs all stages (v1.6.3.6)
-- [ ] Cross-tab filtering works in content handlers (v1.6.3.6)
-- [ ] Transaction timeout is 2000ms (v1.6.3.6)
 - [ ] ID pattern recovery works in Manager restore (v1.6.3.6-v7)
 - [ ] Minimized Quick Tabs restore correctly with Manager open (v1.6.3.6-v6)
 - [ ] ESLint passes ⭐
@@ -103,4 +115,4 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.6-v7 ID pattern recovery, v1.6.3.6-v6 originTabId restore fix, and v1.6.3.6-v5 unified deletion path.**
+**Your strength: Manager coordination with v1.6.3.6-v8 cross-tab grouping UI, tab metadata caching, collapse state persistence, v1.6.3.6-v7 ID pattern recovery, and v1.6.3.6-v6 originTabId restore fix.**

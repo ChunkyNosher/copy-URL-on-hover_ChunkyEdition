@@ -18,6 +18,7 @@
  *   - Include originTabId in snapshot to preserve cross-tab ownership
  *   - Apply originTabId during restore to pass UICoordinator validation
  *   - Enhanced logging for snapshot lifecycle with originTabId tracking
+ * v1.6.3.6-v8 - FIX Issue #3: Extract originTabId from ID pattern when null
  */
 
 // Default values for position/size when not provided
@@ -28,6 +29,22 @@ const DEFAULT_SIZE_HEIGHT = 300;
 
 // v1.6.3.5 - FIX Issue #3: Restore lock duration (matches SNAPSHOT_CLEAR_DELAY_MS)
 const RESTORE_LOCK_DURATION_MS = 500;
+
+/**
+ * Extract tab ID from Quick Tab ID pattern
+ * v1.6.3.6-v8 - FIX Issue #3: Fallback extraction from ID pattern
+ * Quick Tab IDs follow pattern: qt-{tabId}-{timestamp}-{random}
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {number|null} Extracted tab ID or null
+ */
+function extractTabIdFromQuickTabId(quickTabId) {
+  if (!quickTabId || typeof quickTabId !== 'string') return null;
+  const match = quickTabId.match(/^qt-(\d+)-/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  return null;
+}
 
 /**
  * MinimizedManager class - Tracks and manages minimized Quick Tabs
@@ -60,6 +77,7 @@ export class MinimizedManager {
   /**
    * Add a minimized Quick Tab with immutable position/size snapshot
    * v1.6.3.4-v4 - FIX Issue #4: Store position/size as immutable snapshot to prevent corruption
+   * v1.6.3.6-v8 - FIX Issue #3: Extract originTabId from ID pattern when null
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - QuickTabWindow instance
    */
@@ -73,9 +91,29 @@ export class MinimizedManager {
       return;
     }
 
+    // v1.6.3.6-v8 - FIX Issue #3: Resolve originTabId with fallback to ID pattern
+    let resolvedOriginTabId = tabWindow.originTabId;
+    if (resolvedOriginTabId === null || resolvedOriginTabId === undefined) {
+      const extractedTabId = extractTabIdFromQuickTabId(id);
+      if (extractedTabId !== null) {
+        console.warn('[MinimizedManager] ⚠️ ORIGIN_TAB_ID_RECOVERY: Extracted from ID pattern:', {
+          quickTabId: id,
+          extractedTabId,
+          originalOriginTabId: tabWindow.originTabId
+        });
+        resolvedOriginTabId = extractedTabId;
+      } else {
+        console.error('[MinimizedManager] ❌ ORIGIN_TAB_ID_NULL: Could not resolve originTabId:', {
+          quickTabId: id,
+          tabWindowOriginTabId: tabWindow.originTabId
+        });
+      }
+    }
+
     // v1.6.3.4-v4 - FIX Issue #4: Store immutable snapshot of position/size
     // This prevents corruption if a duplicate window overwrites the original's properties
     // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation during restore
+    // v1.6.3.6-v8 - FIX Issue #3: Use resolved originTabId (may be from ID pattern)
     const snapshot = {
       window: tabWindow,
       savedPosition: {
@@ -87,14 +125,18 @@ export class MinimizedManager {
         height: tabWindow.height ?? DEFAULT_SIZE_HEIGHT
       },
       // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation during restore
-      savedOriginTabId: tabWindow.originTabId ?? null
+      // v1.6.3.6-v8 - FIX Issue #3: Use resolved originTabId from ID pattern fallback
+      savedOriginTabId: resolvedOriginTabId
     };
     this.minimizedTabs.set(id, snapshot);
-    console.log('[MinimizedManager] Added minimized tab with snapshot:', {
+    
+    // v1.6.3.6-v8 - FIX Issue #3: Diagnostic logging for snapshot capture
+    console.log('[MinimizedManager] 📸 SNAPSHOT_CAPTURED:', {
       id,
       savedPosition: snapshot.savedPosition,
       savedSize: snapshot.savedSize,
-      savedOriginTabId: snapshot.savedOriginTabId
+      savedOriginTabId: snapshot.savedOriginTabId,
+      wasRecoveredFromIdPattern: resolvedOriginTabId !== tabWindow.originTabId
     });
   }
 

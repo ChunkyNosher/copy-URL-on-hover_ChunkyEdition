@@ -269,6 +269,7 @@ export class CreateHandler {
    * Build options for createQuickTabWindow
    * v1.6.3.2 - Added showDebugId setting for Debug ID display feature
    * v1.6.3.2 - Refactored to reduce complexity by extracting geometry options
+   * v1.6.3.6-v8 - FIX Issue #1: Pass id to _buildVisibilityOptions for pattern extraction
    * @private
    */
   _buildTabOptions(id, cookieStoreId, options, defaults) {
@@ -278,7 +279,7 @@ export class CreateHandler {
       cookieStoreId,
       zIndex: this.currentZIndex.value,
       ...this._buildGeometryOptions(options, defaults),
-      ...this._buildVisibilityOptions(options, defaults),
+      ...this._buildVisibilityOptions(options, defaults, id),
       ...this._extractCallbacks(options)
     };
   }
@@ -299,15 +300,55 @@ export class CreateHandler {
   }
 
   /**
+   * Extract tab ID from Quick Tab ID pattern
+   * v1.6.3.6-v8 - FIX Issue #1: Fallback extraction from ID pattern
+   * Quick Tab IDs follow pattern: qt-{tabId}-{timestamp}-{random}
+   * @private
+   * @param {string} quickTabId - Quick Tab ID
+   * @returns {number|null} Extracted tab ID or null
+   */
+  _extractTabIdFromQuickTabId(quickTabId) {
+    if (!quickTabId || typeof quickTabId !== 'string') return null;
+    const match = quickTabId.match(/^qt-(\d+)-/);
+    if (match) {
+      const tabId = parseInt(match[1], 10);
+      console.log('[CreateHandler] 🔧 Extracted originTabId from ID pattern:', {
+        quickTabId,
+        extractedTabId: tabId
+      });
+      return tabId;
+    }
+    return null;
+  }
+
+  /**
    * Get the originTabId from options with fallbacks
    * v1.6.3.6-v4 - FIX Issue #2: Extracted to reduce _buildVisibilityOptions complexity
+   * v1.6.3.6-v8 - FIX Issue #1: Added ID pattern extraction as final fallback
    * @private
    * @param {Object} options - Creation options
    * @param {Object} defaults - Default values
+   * @param {string} quickTabId - Quick Tab ID for pattern extraction fallback
    * @returns {number|null} The originTabId
    */
-  _getOriginTabId(options, defaults) {
-    return options.originTabId ?? options.activeTabId ?? defaults.originTabId;
+  _getOriginTabId(options, defaults, quickTabId = null) {
+    // Priority: options.originTabId > options.activeTabId > defaults.originTabId > ID pattern
+    const fromOptions = options.originTabId ?? options.activeTabId ?? defaults.originTabId;
+    if (fromOptions !== null && fromOptions !== undefined) {
+      return fromOptions;
+    }
+    // v1.6.3.6-v8 - FIX Issue #1: Extract from ID pattern as last resort
+    if (quickTabId) {
+      const fromPattern = this._extractTabIdFromQuickTabId(quickTabId);
+      if (fromPattern !== null) {
+        console.warn('[CreateHandler] ⚠️ originTabId recovered from ID pattern (was null in options):', {
+          quickTabId,
+          recoveredTabId: fromPattern
+        });
+        return fromPattern;
+      }
+    }
+    return null;
   }
   
   /**
@@ -343,10 +384,28 @@ export class CreateHandler {
    *   to track which browser tab contains the Quick Tab
    * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #2: Add logging when originTabId is null
    *   Extracted helpers to reduce complexity
+   * v1.6.3.6-v8 - FIX Issue #1: Pass quickTabId to _getOriginTabId for pattern extraction
    * @private
+   * @param {Object} options - Creation options
+   * @param {Object} defaults - Default values  
+   * @param {string} quickTabId - Quick Tab ID for pattern extraction fallback
    */
-  _buildVisibilityOptions(options, defaults) {
-    const originTabId = this._getOriginTabId(options, defaults);
+  _buildVisibilityOptions(options, defaults, quickTabId = null) {
+    const originTabId = this._getOriginTabId(options, defaults, quickTabId);
+    
+    // v1.6.3.6-v8 - FIX Issue #1: Critical diagnostic logging
+    console.log('[CreateHandler] 📍 ORIGIN_TAB_ID_RESOLUTION:', {
+      quickTabId,
+      resolvedOriginTabId: originTabId,
+      source: originTabId === options.originTabId ? 'options.originTabId' :
+              originTabId === options.activeTabId ? 'options.activeTabId' :
+              originTabId === defaults.originTabId ? 'defaults.originTabId' :
+              'ID pattern extraction',
+      optionsOriginTabId: options.originTabId,
+      optionsActiveTabId: options.activeTabId,
+      defaultsOriginTabId: defaults.originTabId
+    });
+    
     this._logOriginTabIdAssignment(originTabId, options, defaults);
     
     return {
