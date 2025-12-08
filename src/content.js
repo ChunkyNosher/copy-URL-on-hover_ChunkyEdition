@@ -1412,18 +1412,39 @@ function _cleanupOldRestoreEntries(now) {
 /**
  * Generic manager action handler wrapper
  * v1.6.3.4-v7 - FIX Issue #3: Check result from handler and send proper error responses
+ * v1.6.3.7-v1 - FIX ISSUE #3 & #6: Enhanced confirmation response with structured format
+ *   Response includes: success, action, quickTabId, originTabId, reason, completedAt
  * @private
  */
 function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
+  const startTime = Date.now();
+  const currentTabId = quickTabsManager?.currentTabId;
+  
   try {
     if (!quickTabsManager) {
       console.warn('[Content] QuickTabsManager not initialized');
-      sendResponse({ success: false, error: 'QuickTabsManager not initialized' });
+      sendResponse({ 
+        success: false, 
+        action,
+        quickTabId,
+        originTabId: currentTabId,
+        error: 'QuickTabsManager not initialized',
+        reason: 'manager_not_ready',
+        completedAt: Date.now()
+      });
       return;
     }
 
     if (!quickTabId) {
-      sendResponse({ success: false, error: 'Missing quickTabId' });
+      sendResponse({ 
+        success: false, 
+        action,
+        quickTabId: null,
+        originTabId: currentTabId,
+        error: 'Missing quickTabId',
+        reason: 'invalid_params',
+        completedAt: Date.now()
+      });
       return;
     }
 
@@ -1433,15 +1454,46 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
     // Check if handler returned failure
     if (_isActionFailure(result)) {
       console.warn(`[Content] ${action} Quick Tab failed (source: Manager): ${quickTabId}`, result);
-      sendResponse({ success: false, error: _getActionError(result), quickTabId });
+      sendResponse({ 
+        success: false, 
+        action,
+        quickTabId,
+        originTabId: currentTabId,
+        error: _getActionError(result),
+        reason: 'handler_failed',
+        handlerResult: result,
+        completedAt: Date.now()
+      });
       return;
     }
     
-    console.log(`[Content] ${action} Quick Tab (source: Manager): ${quickTabId}`);
-    sendResponse({ success: true, quickTabId });
+    // v1.6.3.7-v1 - FIX ISSUE #3: Log successful operation with timing
+    const durationMs = Date.now() - startTime;
+    console.log(`[Content] ✅ ${action} Quick Tab (source: Manager): ${quickTabId}`, {
+      durationMs,
+      originTabId: currentTabId
+    });
+    
+    // v1.6.3.7-v1 - FIX ISSUE #6: Send structured confirmation response
+    sendResponse({ 
+      success: true, 
+      action,
+      quickTabId,
+      originTabId: currentTabId,
+      durationMs,
+      completedAt: Date.now()
+    });
   } catch (error) {
     console.error(`[Content] Error ${action.toLowerCase()} Quick Tab:`, error);
-    sendResponse({ success: false, error: error.message });
+    sendResponse({ 
+      success: false, 
+      action,
+      quickTabId,
+      originTabId: currentTabId,
+      error: error.message,
+      reason: 'exception',
+      completedAt: Date.now()
+    });
   }
 }
 

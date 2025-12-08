@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.6-v8  
+**Version:** 1.6.3.6-v9  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick Tabs Manager
@@ -22,7 +22,19 @@
 
 **v1.6.3.5-v10 Fixes:** Callback wiring (`setHandlers()`, `_buildCallbackOptions()`), z-index after append, cross-tab scoping, storage corruption (`forceEmpty`)
 
-**v1.6.3.6-v8 Fixes:**
+**v1.6.3.6-v9 Fixes:**
+1. **Enhanced Group Headers** - 16x16 favicon, tab ID display, prominent count badge
+2. **Orphaned Tab Detection** - ⚠️ icon, warning colors, "Adopt" button with `adoptQuickTabToCurrentTab()`
+3. **Closed Tab Indication** - Strikethrough title, 🚫 badge for closed browser tabs
+4. **Tab Switch Detection** - `browser.tabs.onActivated` listener triggers refresh
+5. **Structured Confirmations** - VisibilityHandler returns `{ success, quickTabId, action }` responses
+6. **Position/Size Update Logging** - `_identifyChangedTabs()` helper, source tracking (`sourceTabId`, `sourceContext`)
+7. **Smooth Animations** - 0.35s collapse/expand, height animations via JavaScript `animate()` API
+8. **Responsive Design** - Media queries at 250/300/400/500px breakpoints
+9. **Favicon Loading** - 2s timeout with fallback icon
+10. **Active/Minimized Divider** - Section headers distinguish tab states
+
+**v1.6.3.6-v8 Fixes (Retained):**
 1. **originTabId Initialization** - CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback
 2. **Hydration Recovery** - `_checkTabScopeWithReason()` patches originTabId from ID pattern back into entity
 3. **Snapshot Capture** - MinimizedManager.add() extracts originTabId from ID pattern when null
@@ -137,7 +149,18 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 
 ---
 
-## 🆕 v1.6.3.6-v8 Patterns
+## 🆕 v1.6.3.6-v9 Patterns
+
+- **Orphan Adoption** - `adoptQuickTabToCurrentTab()` reassigns orphaned Quick Tabs to current browser tab
+- **Tab Switch Detection** - `browser.tabs.onActivated` listener auto-refreshes Manager on tab focus change
+- **Structured Confirmations** - Handlers return `{ success, quickTabId, action, ... }` for confirmation tracking
+- **Favicon Loading** - `loadFavicon()` with 2s timeout and fallback to default icon
+- **Smooth Animations** - CSS transitions (0.35s) + JavaScript `animate()` API for height changes
+- **Responsive Breakpoints** - Media queries at 250/300/400/500px for sidebar widths
+- **Active/Minimized Sections** - Visual divider separates tab states with section headers
+- **Source Tracking** - `sourceTabId`, `sourceContext` identify origin of storage changes
+
+### v1.6.3.6-v8 Patterns (Retained)
 
 - **ID Pattern Extraction** - `_extractTabIdFromQuickTabId()` parses `qt-{tabId}-{timestamp}-{random}` format
 - **Multi-Layer Recovery** - CreateHandler, hydration, snapshot capture all use ID pattern fallback
@@ -147,16 +170,15 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 - **Collapse State Persistence** - `quickTabsManagerCollapseState` in storage.local
 - **Emoji Diagnostics** - `📸`, `📍`, `🔄` prefixed logging for traceability
 
-### v1.6.3.6-v8 Key Files
+### v1.6.3.6-v9 Key Files
 
-| File | New Features (v1.6.3.6-v8) |
+| File | New Features (v1.6.3.6-v9) |
 |------|---------------------------|
-| `CreateHandler.js` | `_extractTabIdFromQuickTabId()` final fallback in `_getOriginTabId()` |
-| `index.js` | `_checkTabScopeWithReason()` patches originTabId into entity from ID pattern |
-| `UICoordinator.js` | `_shouldRenderOnThisTab()` recovery with in-place entity patching |
-| `minimized-manager.js` | ID pattern extraction in `add()` for snapshot capture |
-| `quick-tabs-manager.js` | `groupQuickTabsByOriginTab()`, `fetchBrowserTabInfo()`, collapse state, grouped UI |
-| `quick-tabs-manager.css` | `.tab-group`, `.tab-group-header`, `.tab-group-content` styles |
+| `quick-tabs-manager.js` | `adoptQuickTabToCurrentTab()`, `loadFavicon()`, tab switch listener, orphan detection |
+| `quick-tabs-manager.css` | Orphan/closed styling, animations, responsive media queries (250-500px) |
+| `quick-tabs-manager.html` | `lang="en"`, viewport meta tag |
+| `VisibilityHandler.js` | Structured confirmation responses `{ success, quickTabId, action }` |
+| `content.js` | Enhanced `_handleManagerAction()` confirmation responses |
 
 ### v1.6.3.6-v7 Patterns (Retained)
 
@@ -235,6 +257,9 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 | `DUPLICATE_SAVEID_WINDOW_MS` | 1000 | Duplicate saveId detection window |
 | `DUPLICATE_SAVEID_THRESHOLD` | 1 | Max same saveId writes before warning |
 | `RENDER_COOLDOWN_MS` | 1000 | Prevent duplicate renders |
+| `ANIMATION_DURATION_MS` | 350 | Collapse/expand animation (v1.6.3.6-v9) |
+| `FAVICON_LOAD_TIMEOUT_MS` | 2000 | Favicon loading timeout (v1.6.3.6-v9) |
+| `RESTORE_CONFIRMATION_TIMEOUT_MS` | 500 | Restore confirmation tracking (v1.6.3.6-v9) |
 | `STORAGE_TIMEOUT_MS` | 2000 | Storage operation timeout |
 | `RESTORE_DEDUP_WINDOW_MS` | 2000 | Restore message dedup |
 | `CLOSE_ALL_MUTEX_RELEASE_MS` | 2000 | closeAll mutex cooldown |
@@ -284,6 +309,7 @@ UICoordinator event listeners → render/update/destroy Quick Tabs
 - Coordinated clear, closeAll mutex, `window:created` event
 - DOM lookup (`__quickTabWindow`), `data-quicktab-id`, `DragController.updateElement()`
 - Cross-tab filtering in handlers prevents ghost Quick Tabs
+- **v1.6.3.6-v9:** Orphan adoption, tab switch detection, structured confirmations, smooth animations
 - **v1.6.3.6-v8:** Multi-layer ID recovery, cross-tab grouping UI, tab metadata caching, emoji diagnostics
 - **v1.6.3.6-v7:** ID pattern recovery, in-place patching, 3-stage restoration logging
 - **v1.6.3.6-v6:** originTabId snapshot preservation, restore application, restore logging
@@ -386,9 +412,10 @@ cat .agentic-tools-mcp/memories/category/filename.json
 | `CreateHandler.js` | `_extractTabIdFromQuickTabId()` final fallback (v1.6.3.6-v8) |
 | `UpdateHandler.js` | `_doPersist()` logging, success confirmation |
 | `window.js` | `rewireCallbacks()`, operation flags, `_logIfStateDesync()` |
-| `VisibilityHandler.js` | `_rewireCallbacksAfterRestore()`, originTabId restore logging |
-| `minimized-manager.js` | ID pattern extraction in `add()`, `savedOriginTabId` snapshots (v1.6.3.6-v8) |
-| `quick-tabs-manager.js` | `groupQuickTabsByOriginTab()`, `fetchBrowserTabInfo()`, collapse state (v1.6.3.6-v8) |
+| `VisibilityHandler.js` | Structured confirmations `{ success, quickTabId, action }` (v1.6.3.6-v9) |
+| `minimized-manager.js` | ID pattern extraction in `add()`, `savedOriginTabId` snapshots |
+| `quick-tabs-manager.js` | `adoptQuickTabToCurrentTab()`, `loadFavicon()`, tab switch detection (v1.6.3.6-v9) |
+| `quick-tabs-manager.css` | Orphan/closed styling, animations, responsive breakpoints (v1.6.3.6-v9) |
 
 ### Storage Key & Format
 

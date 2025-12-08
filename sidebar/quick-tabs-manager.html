@@ -1,7 +1,8 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quick Tabs Manager</title>
     <link rel="stylesheet" href="quick-tabs-manager.css" />
   </head>
@@ -24,7 +25,8 @@
     </div>
 
     <div id="containersList" class="containers-list">
-      <!-- Dynamically populated by quick-tabs-manager.js -->
+      <!-- v1.6.4.10 - Groups rendered directly by quick-tabs-manager.js
+           Structure: .tab-groups-container > details.tab-group > summary.tab-group-header + .tab-group-content -->
     </div>
 
     <div id="emptyState" class="empty-state" style="display: none">

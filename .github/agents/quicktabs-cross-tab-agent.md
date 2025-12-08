@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles storage.onChanged
   events, Background-as-Coordinator messaging, Per-Tab Ownership Validation,
-  originTabId filtering, Promise-Based Sequencing, state consistency (v1.6.3.6-v5),
-  ID pattern recovery (v1.6.3.6-v7), multi-layer recovery (v1.6.3.6-v8)
+  originTabId filtering, Promise-Based Sequencing, v1.6.3.6-v9 structured confirmations,
+  tab switch detection, source tracking, position/size update logging
 tools: ["*"]
 ---
 
@@ -29,9 +29,18 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v9 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6-v8 Cross-Tab Fixes (NEW):**
+**v1.6.3.6-v9 Cross-Tab Fixes (NEW):**
+1. **Tab Switch Detection** - `browser.tabs.onActivated` listener triggers Manager refresh
+2. **Structured Confirmations** - VisibilityHandler returns `{ success, quickTabId, action }` responses
+3. **Restore Confirmation Tracking** - 500ms timeout for confirmation responses
+4. **Position/Size Update Logging** - `_identifyChangedTabs()` helper shows which tabs changed
+5. **Source Tracking** - `sourceTabId`, `sourceContext` identify origin of storage changes
+6. **quickTabHostInfo Map Updates** - `_updateQuickTabHostInfo()` on ALL state changes
+7. **Orphan Detection & Adoption** - `adoptQuickTabToCurrentTab()` reassigns orphaned Quick Tabs
+
+**v1.6.3.6-v8 Cross-Tab Fixes (Retained):**
 1. **Multi-Layer ID Recovery** - CreateHandler, hydration, snapshot capture all use ID pattern fallback
 2. **Hydration Recovery** - `_checkTabScopeWithReason()` patches originTabId from ID pattern into entity
 3. **Triple Ownership Check** - Manager restore validates snapshot → ID pattern → global/null permission
@@ -92,24 +101,24 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Tab switch detection triggers Manager refresh (v1.6.3.6-v9)
+- [ ] Structured confirmations return `{ success, quickTabId, action }` (v1.6.3.6-v9)
+- [ ] Restore confirmation tracking times out at 500ms (v1.6.3.6-v9)
+- [ ] `_identifyChangedTabs()` logs position/size changes (v1.6.3.6-v9)
+- [ ] Source tracking (`sourceTabId`, `sourceContext`) visible in storage handler (v1.6.3.6-v9)
+- [ ] `_updateQuickTabHostInfo()` updates Map on state changes (v1.6.3.6-v9)
+- [ ] `adoptQuickTabToCurrentTab()` reassigns orphans (v1.6.3.6-v9)
 - [ ] Multi-layer ID recovery works across CreateHandler, hydration, snapshots (v1.6.3.6-v8)
 - [ ] Hydration recovery patches originTabId into entity (v1.6.3.6-v8)
 - [ ] Triple ownership check validates Manager restore requests (v1.6.3.6-v8)
-- [ ] Emoji diagnostic logging visible in console (v1.6.3.6-v8)
 - [ ] ID pattern recovery extracts tab ID from Quick Tab ID (v1.6.3.6-v7)
-- [ ] In-place patching updates entity for subsequent operations (v1.6.3.6-v7)
 - [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
-- [ ] _broadcastDeletionToAllTabs() filters sender (v1.6.3.6-v5)
 - [ ] Message correlation IDs show full trace (v1.6.3.6-v5)
-- [ ] Storage operation logging works (v1.6.3.6-v5)
 - [ ] Storage circuit breaker trips at `pendingWriteCount >= 15`
-- [ ] Cross-tab filtering works (`_handleRestoreQuickTab`/`_handleMinimizeQuickTab`)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
-- [ ] Ownership validation prevents non-owner writes
-- [ ] Ghost Quick Tabs prevented on non-owning tabs
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.6-v8 multi-layer ID recovery, v1.6.3.6-v7 ID pattern recovery, v1.6.3.6-v5 strict tab isolation, and message correlation.**
+**Your strength: Reliable cross-tab sync with v1.6.3.6-v9 structured confirmations, tab switch detection, source tracking, and v1.6.3.6-v8 multi-layer ID recovery.**

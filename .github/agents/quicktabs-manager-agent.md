@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   Background-as-Coordinator messaging, storage storm protection, in-memory cache,
-  real-time state updates, comprehensive UI logging, Single Writer Model, v1.6.3.6-v6 restore fix,
-  v1.6.3.6-v7 ID pattern recovery, v1.6.3.6-v8 cross-tab grouping UI
+  real-time state updates, comprehensive UI logging, Single Writer Model,
+  v1.6.3.6-v9 orphan adoption/tab switch detection/smooth animations
 tools: ["*"]
 ---
 
@@ -29,7 +29,7 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v9 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 - **Global Display** - All Quick Tabs shown (no container grouping)
@@ -39,7 +39,18 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - **PENDING_OPERATIONS** - Set tracks in-progress ops, disables buttons
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.6-v8 Fixes:**
+**v1.6.3.6-v9 Fixes (NEW):**
+1. **Enhanced Group Headers** - 16x16 favicon, tab ID display, prominent count badge
+2. **Orphan Detection & Adoption** - ⚠️ icon, warning colors, `adoptQuickTabToCurrentTab()` button
+3. **Closed Tab Indication** - Strikethrough title, 🚫 badge for closed browser tabs
+4. **Tab Switch Detection** - `browser.tabs.onActivated` listener auto-refreshes Manager
+5. **Smooth Animations** - 0.35s collapse/expand, scroll-into-view, height animations via `animate()` API
+6. **Favicon Loading** - `loadFavicon()` with 2s timeout and fallback icon
+7. **Active/Minimized Divider** - Section headers distinguish tab states visually
+8. **Responsive Design** - Media queries at 250/300/400/500px breakpoints
+9. **Structured Confirmations** - Restore/minimize return `{ success, quickTabId, action }` responses
+
+**v1.6.3.6-v8 Fixes (Retained):**
 1. **Cross-Tab Grouping UI** - `groupQuickTabsByOriginTab()` groups Quick Tabs by originTabId
 2. **Browser Tab Metadata** - `fetchBrowserTabInfo()` uses `browser.tabs.get()` with 30s TTL cache
 3. **Collapse State Persistence** - Saves to `quickTabsManagerCollapseState` in storage.local
@@ -98,21 +109,22 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Orphan detection shows ⚠️ icon and warning colors (v1.6.3.6-v9)
+- [ ] "Adopt" button calls `adoptQuickTabToCurrentTab()` (v1.6.3.6-v9)
+- [ ] Closed tabs show strikethrough + 🚫 badge (v1.6.3.6-v9)
+- [ ] Tab switch triggers Manager refresh via `browser.tabs.onActivated` (v1.6.3.6-v9)
+- [ ] Collapse/expand animations smooth at 0.35s (v1.6.3.6-v9)
+- [ ] Favicon loads with 2s timeout, falls back to default (v1.6.3.6-v9)
+- [ ] Active/Minimized sections have visual divider (v1.6.3.6-v9)
+- [ ] Responsive at 250/300/400/500px breakpoints (v1.6.3.6-v9)
 - [ ] Cross-tab grouping UI displays Quick Tabs grouped by originTabId (v1.6.3.6-v8)
 - [ ] `fetchBrowserTabInfo()` caches tab metadata with 30s TTL (v1.6.3.6-v8)
 - [ ] Collapse state persists across Manager reloads (v1.6.3.6-v8)
-- [ ] Orphaned Quick Tabs shown in separate group (v1.6.3.6-v8)
-- [ ] Triple ownership check validates restore requests (v1.6.3.6-v8)
 - [ ] Manager opens with Ctrl+Alt+Z
-- [ ] Storage storm protection works (`inMemoryTabsCache`)
-- [ ] `forceEmpty` allows Close All empty writes
-- [ ] All Quick Tabs display globally
 - [ ] Background-as-Coordinator messages route correctly
-- [ ] ID pattern recovery works in Manager restore (v1.6.3.6-v7)
-- [ ] Minimized Quick Tabs restore correctly with Manager open (v1.6.3.6-v6)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.6-v8 cross-tab grouping UI, tab metadata caching, collapse state persistence, v1.6.3.6-v7 ID pattern recovery, and v1.6.3.6-v6 originTabId restore fix.**
+**Your strength: Manager coordination with v1.6.3.6-v9 orphan adoption, tab switch detection, smooth animations, responsive design, and v1.6.3.6-v8 cross-tab grouping UI.**

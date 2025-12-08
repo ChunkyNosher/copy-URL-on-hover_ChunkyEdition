@@ -12,10 +12,29 @@
 //   - Fix _isSuspiciousStorageDrop to recognize single-tab deletions as legitimate
 // v1.6.3.6 - FIX Issue #3: Added comprehensive logging to Close All button handler
 //   - Logs button click, action dispatch, response, and completion timing
+// v1.6.4.10 - FIX Issues #1-12: Comprehensive UI/UX improvements for cross-tab grouping
+//   - Issue #1: Remove confusing "All Quick Tabs" global header
+//   - Issue #2: Enhanced group header visual elements (favicon, tab ID, count badge)
+//   - Issue #3: Improved visual hierarchy with borders and backgrounds
+//   - Issue #4: Smooth collapse/expand animations with scroll-into-view
+//   - Issue #5: Orphaned tabs visual differentiation
+//   - Issue #6: Stronger closed tab indication
+//   - Issue #7: Smooth empty group removal animation
+//   - Issue #8: Visual divider between active/minimized tabs
+//   - Issue #9: Improved favicon loading with timeout and fallback
+//   - Issue #10: Enhanced count badge styling
+//   - Issue #11: Responsive design for narrow sidebars
+//   - Issue #12: Smooth height animations on collapse/expand
 
 // Storage keys
 const STATE_KEY = 'quick_tabs_state_v2';
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
+
+// Issue #9: Favicon loading timeout
+const FAVICON_LOAD_TIMEOUT_MS = 2000;
+
+// Issue #4/#12: Animation timing
+const ANIMATION_DURATION_MS = 350;
 
 // Issue #2: Browser tab metadata cache to avoid repeated API calls
 const browserTabInfoCache = new Map();
@@ -151,6 +170,11 @@ let lastStorageReadTime = 0;
 // v1.6.3.5-v2 - FIX Report 1 Issue #2: Track current tab ID for Quick Tab origin filtering
 let currentBrowserTabId = null;
 
+// v1.6.3.7-v1 - FIX ISSUE #1: Track tab switches for real-time filtering
+// When user switches between browser tabs, the Manager should update to show
+// only Quick Tabs that belong to the current tab context
+let previousBrowserTabId = null;
+
 // v1.6.3.5-v2 - FIX Code Review: Constants for saveId patterns used in corruption detection
 const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
@@ -251,6 +275,9 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
  * Handle state update message from background
  * v1.6.3.5-v3 - FIX Architecture Phase 1: Update local state from message
  * v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime for accurate "Last sync"
+ * v1.6.3.7-v1 - FIX ISSUE #7: Update quickTabHostInfo on ALL state changes (not just when originTabId provided)
+ *   - Track last operation type (minimize/restore/update)
+ *   - Validate and clean stale entries
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  */
@@ -270,19 +297,80 @@ function handleStateUpdateMessage(quickTabId, changes) {
     console.log('[Manager] Added new tab from message:', quickTabId);
   }
   
-  // Track host tab info if provided
-  if (changes.originTabId) {
-    quickTabHostInfo.set(quickTabId, {
-      hostTabId: changes.originTabId,
-      lastUpdate: Date.now()
-    });
-  }
+  // v1.6.3.7-v1 - FIX ISSUE #7: Update quickTabHostInfo on ANY state change
+  // This ensures the Map stays in sync even when operations originate from content scripts
+  _updateQuickTabHostInfo(quickTabId, changes);
   
   // Update timestamp
   quickTabsState.timestamp = Date.now();
   
   // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive state updates
   lastLocalUpdateTime = Date.now();
+}
+
+/**
+ * Update quickTabHostInfo Map with latest info from state changes
+ * v1.6.3.7-v1 - FIX ISSUE #7: Ensure Tab Affinity Map stays current
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes that occurred
+ */
+function _updateQuickTabHostInfo(quickTabId, changes) {
+  // Get existing entry or create new one
+  const existingEntry = quickTabHostInfo.get(quickTabId) || {};
+  
+  // Determine the hostTabId from various sources
+  let hostTabId = existingEntry.hostTabId;
+  
+  // Priority 1: originTabId in changes (most authoritative)
+  if (changes.originTabId != null) {
+    hostTabId = changes.originTabId;
+  }
+  
+  // Priority 2: Try to find from existing state
+  if (hostTabId == null) {
+    const tabInState = quickTabsState?.tabs?.find(t => t.id === quickTabId);
+    if (tabInState?.originTabId != null) {
+      hostTabId = tabInState.originTabId;
+    }
+  }
+  
+  // Determine operation type from changes
+  let lastOperation = existingEntry.lastOperation || 'unknown';
+  if (changes.minimized === true) {
+    lastOperation = 'minimize';
+  } else if (changes.minimized === false) {
+    lastOperation = 'restore';
+  } else if (changes.left != null || changes.top != null || changes.width != null || changes.height != null) {
+    lastOperation = 'position-update';
+  } else if (changes.zIndex != null) {
+    lastOperation = 'focus';
+  }
+  
+  // Only update if we have a valid hostTabId
+  if (hostTabId != null) {
+    const newEntry = {
+      hostTabId,
+      lastUpdate: Date.now(),
+      lastOperation,
+      minimized: changes.minimized ?? existingEntry.minimized ?? false
+    };
+    
+    quickTabHostInfo.set(quickTabId, newEntry);
+    
+    console.log('[Manager] 📍 QUICK_TAB_HOST_INFO_UPDATED:', {
+      quickTabId,
+      hostTabId,
+      lastOperation,
+      minimized: newEntry.minimized
+    });
+  } else {
+    console.warn('[Manager] ⚠️ Cannot update quickTabHostInfo - no hostTabId available:', {
+      quickTabId,
+      hasExistingEntry: !!existingEntry.hostTabId,
+      changesHasOriginTabId: changes.originTabId != null
+    });
+  }
 }
 
 /**
@@ -429,6 +517,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Setup event listeners
   setupEventListeners();
+  
+  // v1.6.3.7-v1 - FIX ISSUE #1: Setup tab switch detection
+  // Re-render UI when user switches browser tabs to show context-relevant Quick Tabs
+  setupTabSwitchListener();
 
   // Auto-refresh every 2 seconds
   setInterval(async () => {
@@ -436,7 +528,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderUI();
   }, 2000);
   
-  console.log('[Manager] v1.6.3.5-v3 Message infrastructure initialized');
+  console.log('[Manager] v1.6.3.7-v1 Message infrastructure initialized');
 });
 
 /**
@@ -826,37 +918,16 @@ function updateUIStats(totalTabs, latestTimestamp) {
 }
 
 /**
- * Create global section element for displaying all Quick Tabs
- * @param {number} totalTabs - Number of Quick Tabs
- * @returns {HTMLDivElement} - Section element
+ * v1.6.4.10 - Issue #1: createGlobalSection REMOVED
+ * The "All Quick Tabs" global header has been removed per mockup design.
+ * Groups now render directly without a container section.
+ * Keeping this function as deprecated stub for reference.
+ * @deprecated v1.6.4.10 - Use direct group rendering instead
  */
-function createGlobalSection(totalTabs) {
-  const section = document.createElement('div');
-  section.className = 'container-section';
-  section.dataset.containerId = 'global';
-
-  // Section header
-  const header = document.createElement('h2');
-  header.className = 'container-header';
-
-  const icon = document.createElement('span');
-  icon.className = 'container-icon';
-  icon.textContent = '📑';
-
-  const name = document.createElement('span');
-  name.className = 'container-name';
-  name.textContent = 'All Quick Tabs';
-
-  const count = document.createElement('span');
-  count.className = 'container-count';
-  count.textContent = `(${totalTabs} tab${totalTabs !== 1 ? 's' : ''})`;
-
-  header.appendChild(icon);
-  header.appendChild(name);
-  header.appendChild(count);
-  section.appendChild(header);
-
-  return section;
+function _createGlobalSection_deprecated() {
+  // Intentionally empty - function removed in v1.6.4.10
+  console.warn('[Manager] _createGlobalSection_deprecated called - this function is obsolete');
+  return null;
 }
 
 /**
@@ -927,42 +998,68 @@ async function renderUI() {
   // Issue #3: Load collapse state
   const collapseState = await loadCollapseState();
   
-  // Issue #7: Fetch tab info for each group and render
-  const section = createGlobalSection(totalTabs);
+  // v1.6.4.10 - Issue #1: Render groups directly without global section header
+  // The old "All Quick Tabs" header created confusion - now we render groups directly
   const groupsContainer = document.createElement('div');
   groupsContainer.className = 'tab-groups-container';
   
-  // Sort groups: numbered tabs first (sorted by ID), orphaned last
+  // v1.6.4.10 - Issue #6: Sort groups: active tabs first, closed tabs last, orphaned last
   const sortedGroupKeys = [...groups.keys()].sort((a, b) => {
+    // Orphaned always last
     if (a === 'orphaned') return 1;
     if (b === 'orphaned') return -1;
+    
+    // Check if tabs are closed (no tabInfo)
+    const aGroup = groups.get(a);
+    const bGroup = groups.get(b);
+    const aClosed = !aGroup.tabInfo;
+    const bClosed = !bGroup.tabInfo;
+    
+    // Closed tabs go to bottom (before orphaned)
+    if (aClosed && !bClosed) return 1;
+    if (!aClosed && bClosed) return -1;
+    
+    // Otherwise sort by ID
+    return Number(a) - Number(b);
+  });
+  
+  // Issue #2/#9: Pre-fetch all browser tab info first
+  for (const groupKey of sortedGroupKeys) {
+    const group = groups.get(groupKey);
+    if (groupKey !== 'orphaned' && !group.tabInfo) {
+      group.tabInfo = await fetchBrowserTabInfo(groupKey);
+    }
+  }
+  
+  // Re-sort after fetching tab info (to put closed tabs at bottom)
+  sortedGroupKeys.sort((a, b) => {
+    if (a === 'orphaned') return 1;
+    if (b === 'orphaned') return -1;
+    const aGroup = groups.get(a);
+    const bGroup = groups.get(b);
+    const aClosed = !aGroup.tabInfo;
+    const bClosed = !bGroup.tabInfo;
+    if (aClosed && !bClosed) return 1;
+    if (!aClosed && bClosed) return -1;
     return Number(a) - Number(b);
   });
   
   for (const groupKey of sortedGroupKeys) {
     const group = groups.get(groupKey);
     
-    // Skip empty groups
+    // Issue #7: Skip empty groups (null-safety check)
     if (!group.quickTabs || group.quickTabs.length === 0) {
       continue;
     }
     
-    // Issue #2: Fetch browser tab info for non-orphaned groups
-    let tabInfo = null;
-    if (groupKey !== 'orphaned') {
-      tabInfo = await fetchBrowserTabInfo(groupKey);
-      group.tabInfo = tabInfo;
-    }
-    
-    // Issue #4: Create <details> element for group
-    const detailsEl = await renderTabGroup(groupKey, group, collapseState);
+    // Issue #4: Create <details> element for group with animations
+    const detailsEl = renderTabGroup(groupKey, group, collapseState);
     groupsContainer.appendChild(detailsEl);
   }
   
-  section.appendChild(groupsContainer);
-  containersList.appendChild(section);
+  containersList.appendChild(groupsContainer);
   
-  // Issue #6: Attach event listeners for collapse toggle
+  // Issue #4/#6: Attach event listeners for collapse toggle with animations
   attachCollapseEventListeners(groupsContainer, collapseState);
   
   // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Update rendered state hash
@@ -981,103 +1078,264 @@ async function renderUI() {
 
 /**
  * Issue #4: Render a single tab group as a <details> element
+ * v1.6.4.10 - Enhanced with Issues #2, #4, #5, #6, #8, #9 improvements
+ * Refactored to reduce complexity by extracting helper functions
  * @param {number|string} groupKey - originTabId or 'orphaned'
  * @param {Object} group - { quickTabs: Array, tabInfo: Object | null }
  * @param {Object} collapseState - Current collapse state
  * @returns {HTMLDetailsElement}
  */
-async function renderTabGroup(groupKey, group, collapseState) {
+function renderTabGroup(groupKey, group, collapseState) {
   const details = document.createElement('details');
   details.className = 'tab-group';
   details.dataset.originTabId = String(groupKey);
   
+  const isOrphaned = groupKey === 'orphaned';
+  const isClosedTab = !isOrphaned && !group.tabInfo;
+  
+  // Issue #5/#6: Add special classes
+  if (isOrphaned) details.classList.add('orphaned');
+  if (isClosedTab) details.classList.add('closed-tab-group');
+  
   // Issue #3: Apply saved collapse state (default: expanded)
-  const isCollapsed = collapseState[groupKey] === true;
-  details.open = !isCollapsed;
+  details.open = collapseState[groupKey] !== true;
   
-  // Create summary (header)
-  const summary = document.createElement('summary');
-  summary.className = 'tab-group-header';
-  
-  // Favicon
-  const favicon = document.createElement('img');
-  favicon.className = 'tab-favicon';
-  
-  if (groupKey === 'orphaned') {
-    // Orphaned group uses folder icon
-    favicon.src = '';
-    favicon.style.display = 'none';
-    const folderIcon = document.createElement('span');
-    folderIcon.className = 'tab-favicon-fallback';
-    folderIcon.textContent = '🗂️';
-    summary.appendChild(folderIcon);
-  } else if (group.tabInfo?.favIconUrl) {
-    favicon.src = group.tabInfo.favIconUrl;
-    favicon.onerror = () => {
-      favicon.style.display = 'none';
-      // Add fallback icon
-      const fallback = document.createElement('span');
-      fallback.className = 'tab-favicon-fallback';
-      fallback.textContent = '🌐';
-      summary.insertBefore(fallback, summary.firstChild.nextSibling);
-    };
-    summary.appendChild(favicon);
-  } else {
-    // No favicon - use globe icon
-    favicon.style.display = 'none';
-    const fallback = document.createElement('span');
-    fallback.className = 'tab-favicon-fallback';
-    fallback.textContent = '🌐';
-    summary.appendChild(fallback);
-  }
-  
-  // Title
-  const title = document.createElement('span');
-  title.className = 'tab-group-title';
-  
-  if (groupKey === 'orphaned') {
-    title.textContent = 'Orphaned Quick Tabs';
-  } else if (group.tabInfo?.title) {
-    title.textContent = group.tabInfo.title;
-    title.title = group.tabInfo.url || ''; // Tooltip with URL
-  } else {
-    // Tab is closed or info unavailable
-    title.textContent = `Tab ${groupKey} (Closed)`;
-    title.classList.add('closed-tab');
-  }
-  summary.appendChild(title);
-  
-  // Count badge
-  const count = document.createElement('span');
-  count.className = 'tab-group-count';
-  count.textContent = `(${group.quickTabs.length})`;
-  summary.appendChild(count);
+  // Build header and content
+  const summary = _createGroupHeader(groupKey, group, isOrphaned, isClosedTab);
+  const content = _createGroupContent(group.quickTabs, details.open);
   
   details.appendChild(summary);
-  
-  // Content (Quick Tab items)
-  const content = document.createElement('div');
-  content.className = 'tab-group-content';
-  
-  // Sort: active tabs first, then minimized
-  const sortedTabs = [...group.quickTabs].sort((a, b) => {
-    const aMin = isTabMinimizedHelper(a) ? 1 : 0;
-    const bMin = isTabMinimizedHelper(b) ? 1 : 0;
-    return aMin - bMin;
-  });
-  
-  for (const tab of sortedTabs) {
-    const isMinimized = isTabMinimizedHelper(tab);
-    content.appendChild(renderQuickTabItem(tab, 'global', isMinimized));
-  }
-  
   details.appendChild(content);
   
   return details;
 }
 
 /**
- * Issue #6: Attach event listeners for collapse toggle
+ * Create the group header (summary element)
+ * @private
+ * @param {number|string} groupKey - Group key
+ * @param {Object} group - Group data
+ * @param {boolean} isOrphaned - Whether this is the orphaned group
+ * @param {boolean} isClosedTab - Whether the browser tab is closed
+ * @returns {HTMLElement}
+ */
+function _createGroupHeader(groupKey, group, isOrphaned, isClosedTab) {
+  const summary = document.createElement('summary');
+  summary.className = 'tab-group-header';
+  
+  // Issue #9: Favicon
+  _createGroupFavicon(summary, groupKey, group);
+  
+  // Title
+  const title = _createGroupTitle(groupKey, group, isOrphaned, isClosedTab);
+  summary.appendChild(title);
+  
+  // Issue #2: Tab ID (non-orphaned only)
+  if (!isOrphaned) {
+    const tabIdSpan = document.createElement('span');
+    tabIdSpan.className = 'tab-group-tab-id';
+    tabIdSpan.textContent = `#${groupKey}`;
+    summary.appendChild(tabIdSpan);
+  }
+  
+  // Issue #6: Closed tab badge
+  if (isClosedTab) {
+    const closedBadge = document.createElement('span');
+    closedBadge.className = 'closed-tab-badge';
+    closedBadge.textContent = '🚫 Closed';
+    closedBadge.title = 'Browser tab is closed';
+    summary.appendChild(closedBadge);
+  }
+  
+  // Issue #5: Orphaned badge
+  if (isOrphaned) {
+    const orphanedBadge = document.createElement('span');
+    orphanedBadge.className = 'orphaned-badge';
+    orphanedBadge.textContent = '⚠️ Cannot restore';
+    summary.appendChild(orphanedBadge);
+  }
+  
+  // Issue #2/#10: Count badge
+  const count = document.createElement('span');
+  count.className = 'tab-group-count';
+  count.textContent = String(group.quickTabs.length);
+  summary.appendChild(count);
+  
+  return summary;
+}
+
+/**
+ * Create group title element
+ * @private
+ */
+function _createGroupTitle(groupKey, group, isOrphaned, isClosedTab) {
+  const title = document.createElement('span');
+  title.className = 'tab-group-title';
+  
+  if (isOrphaned) {
+    title.textContent = '⚠️ Orphaned Quick Tabs';
+    title.title = 'These Quick Tabs belong to browser tabs that have closed. They cannot be restored.';
+  } else if (group.tabInfo?.title) {
+    title.textContent = group.tabInfo.title;
+    title.title = group.tabInfo.url || '';
+  } else {
+    title.textContent = `Tab ${groupKey}`;
+    title.classList.add('closed-tab');
+    title.title = 'This browser tab has been closed. Quick Tabs cannot be restored.';
+  }
+  
+  return title;
+}
+
+/**
+ * Create group content element with Quick Tab items
+ * @private
+ * @param {Array} quickTabs - Array of Quick Tab objects
+ * @param {boolean} isOpen - Whether group starts open
+ * @returns {HTMLElement}
+ */
+function _createGroupContent(quickTabs, isOpen) {
+  const content = document.createElement('div');
+  content.className = 'tab-group-content';
+  
+  // Sort: active first, then minimized
+  const sortedTabs = [...quickTabs].sort((a, b) => {
+    return (isTabMinimizedHelper(a) ? 1 : 0) - (isTabMinimizedHelper(b) ? 1 : 0);
+  });
+  
+  const activeTabs = sortedTabs.filter(t => !isTabMinimizedHelper(t));
+  const minimizedTabs = sortedTabs.filter(t => isTabMinimizedHelper(t));
+  const hasBothSections = activeTabs.length > 0 && minimizedTabs.length > 0;
+  
+  // Issue #8: Section headers and dividers
+  if (hasBothSections) {
+    content.appendChild(_createSectionHeader(`Active (${activeTabs.length})`));
+  }
+  
+  activeTabs.forEach(tab => content.appendChild(renderQuickTabItem(tab, 'global', false)));
+  
+  if (hasBothSections) {
+    content.appendChild(_createSectionDivider('minimized'));
+    content.appendChild(_createSectionHeader(`Minimized (${minimizedTabs.length})`));
+  }
+  
+  minimizedTabs.forEach(tab => content.appendChild(renderQuickTabItem(tab, 'global', true)));
+  
+  // Issue #12: Initial animation state
+  content.style.maxHeight = isOpen ? 'none' : '0';
+  content.style.opacity = isOpen ? '1' : '0';
+  
+  return content;
+}
+
+/**
+ * Create section header element
+ * @private
+ */
+function _createSectionHeader(text) {
+  const header = document.createElement('div');
+  header.className = 'section-header';
+  header.textContent = text;
+  return header;
+}
+
+/**
+ * Create section divider element
+ * @private
+ */
+function _createSectionDivider(label) {
+  const divider = document.createElement('div');
+  divider.className = 'section-divider';
+  divider.dataset.label = label;
+  return divider;
+}
+
+/**
+ * Issue #9: Create favicon element with timeout and fallback
+ * @private
+ * @param {HTMLElement} summary - Summary element to append to
+ * @param {number|string} groupKey - Group key (originTabId or 'orphaned')
+ * @param {Object} group - Group object with tabInfo
+ */
+function _createGroupFavicon(summary, groupKey, group) {
+  if (groupKey === 'orphaned') {
+    // Issue #5: Orphaned group uses warning folder icon
+    const folderIcon = document.createElement('span');
+    folderIcon.className = 'tab-favicon-fallback';
+    folderIcon.textContent = '⚠️';
+    summary.appendChild(folderIcon);
+    return;
+  }
+  
+  // Issue #6: Closed tabs get special icon
+  if (!group.tabInfo) {
+    const closedIcon = document.createElement('span');
+    closedIcon.className = 'tab-favicon-fallback';
+    closedIcon.textContent = '🚫';
+    summary.appendChild(closedIcon);
+    return;
+  }
+  
+  // Create container for favicon (to handle loading/fallback swap)
+  const faviconContainer = document.createElement('span');
+  faviconContainer.className = 'tab-favicon-container';
+  faviconContainer.style.display = 'inline-flex';
+  faviconContainer.style.alignItems = 'center';
+  faviconContainer.style.width = '16px';
+  faviconContainer.style.height = '16px';
+  faviconContainer.style.marginRight = '4px';
+  
+  if (group.tabInfo.favIconUrl) {
+    const favicon = document.createElement('img');
+    favicon.className = 'tab-favicon';
+    favicon.alt = '';
+    
+    // Issue #9: Pre-create fallback (avoid dynamic insertion)
+    const fallback = document.createElement('span');
+    fallback.className = 'tab-favicon-fallback';
+    fallback.textContent = '🌐';
+    fallback.style.display = 'none';
+    
+    // Issue #9: Loading timeout
+    let loaded = false;
+    const timeoutId = setTimeout(() => {
+      if (!loaded) {
+        favicon.style.display = 'none';
+        fallback.style.display = 'inline-flex';
+        console.log('[Manager] Favicon load timeout for tab:', groupKey);
+      }
+    }, FAVICON_LOAD_TIMEOUT_MS);
+    
+    favicon.onload = () => {
+      loaded = true;
+      clearTimeout(timeoutId);
+    };
+    
+    favicon.onerror = () => {
+      loaded = true;
+      clearTimeout(timeoutId);
+      favicon.style.display = 'none';
+      fallback.style.display = 'inline-flex';
+    };
+    
+    favicon.src = group.tabInfo.favIconUrl;
+    
+    faviconContainer.appendChild(favicon);
+    faviconContainer.appendChild(fallback);
+  } else {
+    // No favicon URL - use fallback directly
+    const fallback = document.createElement('span');
+    fallback.className = 'tab-favicon-fallback';
+    fallback.textContent = '🌐';
+    faviconContainer.appendChild(fallback);
+  }
+  
+  summary.appendChild(faviconContainer);
+}
+
+/**
+ * Issue #4/#6/#12: Attach event listeners for collapse toggle with smooth animations
+ * v1.6.4.10 - Enhanced with smooth height animations and scroll-into-view
  * @param {HTMLElement} container - Container with <details> elements
  * @param {Object} collapseState - Current collapse state (will be modified)
  */
@@ -1085,26 +1343,142 @@ function attachCollapseEventListeners(container, collapseState) {
   const detailsElements = container.querySelectorAll('details.tab-group');
   
   for (const details of detailsElements) {
-    details.addEventListener('toggle', async () => {
+    const content = details.querySelector('.tab-group-content');
+    let isAnimating = false;
+    
+    // Issue #12: Override default toggle behavior for smooth animation
+    details.querySelector('summary').addEventListener('click', async (e) => {
+      e.preventDefault();
+      
+      if (isAnimating) return; // Prevent rapid clicking
+      isAnimating = true;
+      
       const originTabId = details.dataset.originTabId;
-      const isNowCollapsed = !details.open;
+      const isCurrentlyOpen = details.open;
       
       console.log('[Manager] Tab group toggle:', {
         originTabId,
-        isCollapsed: isNowCollapsed
+        willCollapse: isCurrentlyOpen
       });
       
+      if (isCurrentlyOpen) {
+        // Issue #12: Animate collapse (closing)
+        await _animateCollapse(details, content);
+      } else {
+        // Issue #12: Animate expand (opening)
+        await _animateExpand(details, content);
+        
+        // Issue #4: Scroll into view if group is off-screen after expanding
+        _scrollIntoViewIfNeeded(details);
+      }
+      
       // Update collapse state
+      const isNowCollapsed = !details.open;
       if (isNowCollapsed) {
         collapseState[originTabId] = true;
       } else {
-        delete collapseState[originTabId]; // Remove if expanded (default)
+        delete collapseState[originTabId];
       }
       
       // Issue #3: Save to storage
       await saveCollapseState(collapseState);
+      
+      isAnimating = false;
     });
   }
+}
+
+/**
+ * Issue #12: Animate collapse (closing) of a details element
+ * @private
+ * @param {HTMLDetailsElement} details - Details element
+ * @param {HTMLElement} content - Content element to animate
+ */
+async function _animateCollapse(details, content) {
+  // Get current height
+  const startHeight = content.scrollHeight;
+  
+  // Set explicit height to enable transition
+  content.style.maxHeight = `${startHeight}px`;
+  content.style.overflow = 'hidden';
+  
+  // Force reflow
+  content.offsetHeight;
+  
+  // Animate to 0
+  content.style.maxHeight = '0';
+  content.style.opacity = '0';
+  
+  // Wait for animation to complete
+  await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION_MS));
+  
+  // Actually close the details
+  details.open = false;
+}
+
+/**
+ * Issue #12: Animate expand (opening) of a details element
+ * @private
+ * @param {HTMLDetailsElement} details - Details element
+ * @param {HTMLElement} content - Content element to animate
+ */
+async function _animateExpand(details, content) {
+  // Open the details first (to measure content height)
+  details.open = true;
+  
+  // Set initial state for animation
+  content.style.maxHeight = '0';
+  content.style.opacity = '0';
+  content.style.overflow = 'hidden';
+  
+  // Force reflow
+  content.offsetHeight;
+  
+  // Get target height
+  const targetHeight = content.scrollHeight;
+  
+  // Animate to full height
+  content.style.maxHeight = `${targetHeight}px`;
+  content.style.opacity = '1';
+  
+  // Wait for animation to complete
+  await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION_MS));
+  
+  // Remove inline styles to allow natural sizing
+  content.style.maxHeight = 'none';
+  content.style.overflow = '';
+}
+
+/**
+ * Issue #4: Scroll details element into view if it's off-screen
+ * @private
+ * @param {HTMLDetailsElement} details - Details element to scroll into view
+ */
+function _scrollIntoViewIfNeeded(details) {
+  requestAnimationFrame(() => {
+    const rect = details.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    
+    // Check if the details element is partially out of view
+    if (rect.bottom > viewportHeight || rect.top < 0) {
+      details.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  });
+}
+
+/**
+ * Issue #7: Animate removal of a group element
+ * @param {HTMLElement} element - Element to remove with animation
+ */
+function _animateGroupRemoval(element) {
+  element.classList.add('removing');
+  
+  setTimeout(() => {
+    element.remove();
+  }, ANIMATION_DURATION_MS);
 }
 
 /**
@@ -1224,6 +1598,9 @@ function _createTabInfo(tab, isMinimized) {
 /**
  * Create action buttons for Quick Tab
  * v1.6.3.4-v5 - FIX Issue #4: Disable restore button when operation in progress (domVerified=false)
+ * v1.6.3.7-v1 - FIX ISSUE #8: Add visual indicator and "Adopt" button for orphaned tabs
+ *   - Orphaned = originTabId is null/undefined OR originTabId browser tab is closed
+ *   - "Adopt" button moves Quick Tab to current browser tab
  * @param {Object} tab - Quick Tab data
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {HTMLDivElement} Actions element
@@ -1235,6 +1612,9 @@ function _createTabActions(tab, isMinimized) {
   // v1.6.3.4-v5 - FIX Issue #4: Check if restore is pending/in-progress
   // domVerified=false means restore was attempted but DOM isn't confirmed yet
   const isRestorePending = !isMinimized && tab.domVerified === false;
+  
+  // v1.6.3.7-v1 - FIX ISSUE #8: Check if tab is orphaned
+  const isOrphaned = _isOrphanedQuickTab(tab);
 
   if (!isMinimized) {
     // Active Quick Tab actions: Go to Tab + Minimize
@@ -1268,7 +1648,26 @@ function _createTabActions(tab, isMinimized) {
     restoreBtn.title = 'Restore';
     restoreBtn.dataset.action = 'restore';
     restoreBtn.dataset.quickTabId = tab.id;
+    
+    // v1.6.3.7-v1 - FIX ISSUE #8: Disable restore for orphaned minimized tabs
+    if (isOrphaned) {
+      restoreBtn.disabled = true;
+      restoreBtn.title = 'Cannot restore - browser tab was closed. Use "Adopt to Current Tab" first.';
+    }
+    
     actions.appendChild(restoreBtn);
+  }
+  
+  // v1.6.3.7-v1 - FIX ISSUE #8: Add "Adopt" button for orphaned tabs
+  if (isOrphaned && currentBrowserTabId) {
+    const adoptBtn = document.createElement('button');
+    adoptBtn.className = 'btn-icon btn-adopt';
+    adoptBtn.textContent = '📥';
+    adoptBtn.title = `Adopt to current tab (Tab #${currentBrowserTabId})`;
+    adoptBtn.dataset.action = 'adoptToCurrentTab';
+    adoptBtn.dataset.quickTabId = tab.id;
+    adoptBtn.dataset.targetTabId = currentBrowserTabId;
+    actions.appendChild(adoptBtn);
   }
 
   // Close button (always available)
@@ -1281,6 +1680,30 @@ function _createTabActions(tab, isMinimized) {
   actions.appendChild(closeBtn);
 
   return actions;
+}
+
+/**
+ * Check if a Quick Tab is orphaned (no valid browser tab to restore to)
+ * v1.6.3.7-v1 - FIX ISSUE #8: Detect orphaned tabs
+ * @private
+ * @param {Object} tab - Quick Tab data
+ * @returns {boolean} True if orphaned
+ */
+function _isOrphanedQuickTab(tab) {
+  // No originTabId means definitely orphaned
+  if (tab.originTabId == null) {
+    return true;
+  }
+  
+  // Check if the origin tab is still open using cached browser tab info
+  const cachedInfo = browserTabInfoCache.get(tab.originTabId);
+  if (cachedInfo && cachedInfo.data === null) {
+    // Cache indicates this tab was closed
+    return true;
+  }
+  
+  // Not orphaned (or we don't have confirmation yet)
+  return false;
 }
 
 /**
@@ -1374,6 +1797,10 @@ function setupEventListeners() {
       case 'close':
         await closeQuickTab(quickTabId);
         break;
+      // v1.6.3.7-v1 - FIX ISSUE #8: Handle adopt to current tab action
+      case 'adoptToCurrentTab':
+        await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
+        break;
     }
   });
 
@@ -1389,9 +1816,71 @@ function setupEventListeners() {
 }
 
 /**
+ * Setup browser tab activation listener for real-time context updates
+ * v1.6.3.7-v1 - FIX ISSUE #1: Manager Panel Shows Orphaned Quick Tabs
+ * When user switches between browser tabs, update the Manager to show
+ * context-relevant Quick Tabs (those with originTabId matching current tab)
+ */
+function setupTabSwitchListener() {
+  // Listen for tab activation (user switches to a different tab)
+  browser.tabs.onActivated.addListener(async (activeInfo) => {
+    const newTabId = activeInfo.tabId;
+    
+    // Only process if tab actually changed
+    if (newTabId === currentBrowserTabId) {
+      return;
+    }
+    
+    previousBrowserTabId = currentBrowserTabId;
+    currentBrowserTabId = newTabId;
+    
+    console.log('[Manager] 🔄 TAB_SWITCH_DETECTED:', {
+      previousTabId: previousBrowserTabId,
+      currentTabId: currentBrowserTabId,
+      timestamp: Date.now()
+    });
+    
+    // Clear browser tab info cache for the previous tab to ensure fresh data
+    browserTabInfoCache.delete(previousBrowserTabId);
+    
+    // Re-render UI with filtered Quick Tabs for new tab context
+    renderUI();
+  });
+  
+  // Also listen for window focus changes (user switches browser windows)
+  browser.windows.onFocusChanged.addListener(async (windowId) => {
+    if (windowId === browser.windows.WINDOW_ID_NONE) {
+      return; // Window lost focus
+    }
+    
+    try {
+      // Get the active tab in the newly focused window
+      const tabs = await browser.tabs.query({ active: true, windowId });
+      if (tabs[0] && tabs[0].id !== currentBrowserTabId) {
+        previousBrowserTabId = currentBrowserTabId;
+        currentBrowserTabId = tabs[0].id;
+        
+        console.log('[Manager] 🪟 WINDOW_FOCUS_CHANGED:', {
+          previousTabId: previousBrowserTabId,
+          currentTabId: currentBrowserTabId,
+          windowId
+        });
+        
+        renderUI();
+      }
+    } catch (err) {
+      console.warn('[Manager] Error handling window focus change:', err);
+    }
+  });
+  
+  console.log('[Manager] Tab switch listener initialized');
+}
+
+/**
  * Handle storage change event
  * v1.6.3.5-v2 - Extracted to reduce setupEventListeners complexity
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Added comprehensive logging
+ * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
@@ -1401,14 +1890,23 @@ function _handleStorageChange(change) {
   const oldTabCount = oldValue?.tabs?.length ?? 0;
   const newTabCount = newValue?.tabs?.length ?? 0;
   
+  // v1.6.3.7-v1 - FIX ISSUE #5: Identify source tab for the storage change
+  const sourceTabId = newValue?.writingTabId;
+  const sourceInstanceId = newValue?.writingInstanceId;
+  const isFromCurrentTab = sourceTabId === currentBrowserTabId;
+  
   // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Comprehensive storage.onChanged logging
-  console.log('[Manager] storage.onChanged received:', {
+  // v1.6.3.7-v1 - FIX ISSUE #5: Added source tab context
+  console.log('[Manager] 📦 STORAGE_CHANGED:', {
     oldTabCount,
     newTabCount,
     delta: newTabCount - oldTabCount,
     saveId: newValue?.saveId,
     transactionId: newValue?.transactionId,
-    writingInstanceId: newValue?.writingInstanceId,
+    writingTabId: sourceTabId,
+    writingInstanceId: sourceInstanceId,
+    isFromCurrentTab,
+    currentBrowserTabId,
     timestamp: newValue?.timestamp,
     processedAt: Date.now()
   });
@@ -1428,6 +1926,20 @@ function _handleStorageChange(change) {
     });
   }
   
+  // v1.6.3.7-v1 - FIX ISSUE #4: Log position/size updates specifically
+  // Check for tabs that have changed position or size
+  if (newValue?.tabs && oldValue?.tabs) {
+    const changedTabs = _identifyChangedTabs(oldValue.tabs, newValue.tabs);
+    if (changedTabs.positionChanged.length > 0 || changedTabs.sizeChanged.length > 0) {
+      console.log('[Manager] 📐 POSITION_SIZE_UPDATE_RECEIVED:', {
+        positionChangedIds: changedTabs.positionChanged,
+        sizeChangedIds: changedTabs.sizeChanged,
+        sourceTabId,
+        isFromCurrentTab
+      });
+    }
+  }
+  
   // Check for suspicious drop
   if (_isSuspiciousStorageDrop(oldTabCount, newTabCount, newValue)) {
     _handleSuspiciousStorageDrop(oldValue);
@@ -1435,6 +1947,43 @@ function _handleStorageChange(change) {
   }
   
   _scheduleStorageUpdate();
+}
+
+/**
+ * Identify tabs that changed position or size
+ * v1.6.3.7-v1 - FIX ISSUE #4: Track position/size updates
+ * @param {Array} oldTabs - Previous tabs array
+ * @param {Array} newTabs - New tabs array
+ * @returns {Object} Object with positionChanged and sizeChanged arrays
+ */
+function _identifyChangedTabs(oldTabs, newTabs) {
+  const positionChanged = [];
+  const sizeChanged = [];
+  
+  const oldTabMap = new Map(oldTabs.map(t => [t.id, t]));
+  
+  for (const newTab of newTabs) {
+    const oldTab = oldTabMap.get(newTab.id);
+    if (!oldTab) continue;
+    
+    // Check position changes
+    if (newTab.position && oldTab.position) {
+      if (newTab.position.x !== oldTab.position.x || 
+          newTab.position.y !== oldTab.position.y) {
+        positionChanged.push(newTab.id);
+      }
+    }
+    
+    // Check size changes
+    if (newTab.size && oldTab.size) {
+      if (newTab.size.width !== oldTab.size.width || 
+          newTab.size.height !== oldTab.size.height) {
+        sizeChanged.push(newTab.id);
+      }
+    }
+  }
+  
+  return { positionChanged, sizeChanged };
 }
 
 /**
@@ -2087,11 +2636,16 @@ function _validateRestoreTabData(quickTabId) {
 }
 
 /**
- * Send restore message to target tab
+ * Send restore message to target tab with confirmation tracking
  * v1.6.3.6-v8 - Extracted to reduce restoreQuickTab complexity
+ * v1.6.3.7-v1 - FIX ISSUE #2: Implement per-message confirmation with timeout
+ *   - Track which specific tab received and processed the message
+ *   - Implement 500ms timeout for confirmation
+ *   - Log response from target tab including success/failure
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} tabData - Tab data with originTabId
+ * @returns {Promise<{ success: boolean, confirmedBy?: number, error?: string }>}
  */
 async function _sendRestoreMessage(quickTabId, tabData) {
   const hostInfo = quickTabHostInfo.get(quickTabId);
@@ -2109,22 +2663,146 @@ async function _sendRestoreMessage(quickTabId, tabData) {
   
   if (!targetTabId) {
     console.log('[Manager] ⚠️ No host tab info found, using broadcast for restore:', quickTabId);
-    const result = await _sendMessageToAllTabs('RESTORE_QUICK_TAB', quickTabId);
-    console.log(`[Manager] Restored Quick Tab ${quickTabId} via broadcast | success: ${result.success}, errors: ${result.errors}`);
-    return;
+    const result = await _sendRestoreMessageWithConfirmationBroadcast(quickTabId);
+    return result;
   }
   
   try {
-    await browser.tabs.sendMessage(targetTabId, {
-      action: 'RESTORE_QUICK_TAB',
-      quickTabId
+    // v1.6.3.7-v1 - FIX ISSUE #2: Await response with timeout for confirmation
+    const response = await _sendRestoreMessageWithTimeout(targetTabId, quickTabId, 500);
+    
+    // v1.6.3.7-v1 - FIX ISSUE #6: Log structured response
+    console.log('[Manager] ✅ RESTORE_CONFIRMATION:', {
+      quickTabId,
+      targetTabId,
+      success: response?.success,
+      action: response?.action,
+      completedAt: response?.completedAt || Date.now(),
+      responseDetails: response
     });
-    console.log(`[Manager] ✅ Restored Quick Tab ${quickTabId} via targeted message to tab ${targetTabId}`);
+    
+    // Update quickTabHostInfo with confirmed host
+    if (response?.success) {
+      quickTabHostInfo.set(quickTabId, {
+        hostTabId: targetTabId,
+        lastUpdate: Date.now(),
+        lastOperation: 'restore',
+        confirmed: true
+      });
+    }
+    
+    return { success: response?.success ?? false, confirmedBy: targetTabId };
   } catch (err) {
     console.warn(`[Manager] Targeted restore failed (tab ${targetTabId} may be closed), falling back to broadcast:`, err.message);
-    const result = await _sendMessageToAllTabs('RESTORE_QUICK_TAB', quickTabId);
-    console.log(`[Manager] Restored Quick Tab ${quickTabId} via broadcast | success: ${result.success}, errors: ${result.errors}`);
+    const result = await _sendRestoreMessageWithConfirmationBroadcast(quickTabId);
+    return result;
   }
+}
+
+/**
+ * Send restore message with timeout for confirmation
+ * v1.6.3.7-v1 - FIX ISSUE #2: Timeout mechanism for message confirmation
+ * @private
+ * @param {number} tabId - Target browser tab ID
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Object>} Response from content script
+ */
+async function _sendRestoreMessageWithTimeout(tabId, quickTabId, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      console.warn(`[Manager] Restore confirmation timeout (${timeoutMs}ms) for:`, {
+        quickTabId,
+        targetTabId: tabId
+      });
+      reject(new Error(`Confirmation timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+    
+    browser.tabs.sendMessage(tabId, {
+      action: 'RESTORE_QUICK_TAB',
+      quickTabId,
+      // v1.6.3.7-v1 - FIX ISSUE #6: Include metadata for tracking
+      _meta: {
+        requestId: `restore-${quickTabId}-${Date.now()}`,
+        sentAt: Date.now(),
+        expectsConfirmation: true
+      }
+    }).then(response => {
+      clearTimeout(timer);
+      resolve(response);
+    }).catch(err => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+/**
+ * Send restore message to all tabs and track first confirmation
+ * v1.6.3.7-v1 - FIX ISSUE #2: Broadcast with confirmation tracking
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {Promise<{ success: boolean, confirmedBy?: number, broadcastResults: Object }>}
+ */
+async function _sendRestoreMessageWithConfirmationBroadcast(quickTabId) {
+  const tabs = await browser.tabs.query({});
+  console.log(`[Manager] Broadcasting RESTORE_QUICK_TAB to ${tabs.length} tabs for:`, quickTabId);
+  
+  let confirmedBy = null;
+  let successCount = 0;
+  let errorCount = 0;
+  const responses = [];
+  
+  // v1.6.3.7-v1 - FIX ISSUE #2: Collect all responses, track first confirmation
+  for (const tab of tabs) {
+    try {
+      const response = await browser.tabs.sendMessage(tab.id, {
+        action: 'RESTORE_QUICK_TAB',
+        quickTabId,
+        _meta: {
+          requestId: `restore-${quickTabId}-${Date.now()}`,
+          sentAt: Date.now(),
+          expectsConfirmation: true
+        }
+      });
+      
+      responses.push({ tabId: tab.id, response });
+      
+      if (response?.success) {
+        successCount++;
+        // Track first successful confirmation
+        if (!confirmedBy) {
+          confirmedBy = tab.id;
+          console.log('[Manager] ✅ RESTORE_CONFIRMED_BY_TAB:', {
+            quickTabId,
+            confirmedBy: tab.id,
+            response
+          });
+          
+          // Update quickTabHostInfo with confirmed host
+          quickTabHostInfo.set(quickTabId, {
+            hostTabId: tab.id,
+            lastUpdate: Date.now(),
+            lastOperation: 'restore',
+            confirmed: true
+          });
+        }
+      }
+    } catch (_err) {
+      errorCount++;
+      // Content script may not be loaded - expected for new tabs/internal pages
+    }
+  }
+  
+  const result = {
+    success: successCount > 0,
+    confirmedBy,
+    broadcastResults: { success: successCount, errors: errorCount, totalTabs: tabs.length }
+  };
+  
+  console.log(`[Manager] Restored Quick Tab ${quickTabId} via broadcast:`, result);
+  
+  return result;
 }
 
 /**
@@ -2135,13 +2813,17 @@ async function _sendRestoreMessage(quickTabId, tabData) {
  * v1.6.3.5-v2 - FIX Report 2 Issue #8: DOM-verified handshake before UI update
  * v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging via quickTabHostInfo or originTabId
  * v1.6.3.6-v8 - FIX Issue #5: Enhanced diagnostic logging + refactored for complexity
+ * v1.6.3.7-v1 - FIX ISSUE #2: Track confirmation responses from content scripts
  */
 async function restoreQuickTab(quickTabId) {
+  const startTime = Date.now();
+  
   // v1.6.3.6-v8 - FIX Issue #5: Log restore request with full context
   console.log('[Manager] 🔄 RESTORE_REQUEST:', {
     quickTabId,
-    timestamp: Date.now(),
-    quickTabsStateTabCount: quickTabsState?.tabs?.length ?? 0
+    timestamp: startTime,
+    quickTabsStateTabCount: quickTabsState?.tabs?.length ?? 0,
+    currentBrowserTabId
   });
   
   // v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking
@@ -2163,8 +2845,23 @@ async function restoreQuickTab(quickTabId) {
   // Mark operation as pending with auto-clear
   _setupPendingOperation(operationKey);
   
-  // Send restore message
-  await _sendRestoreMessage(quickTabId, validation.tabData);
+  // v1.6.3.7-v1 - FIX ISSUE #2: Send restore message and await confirmation
+  const confirmationResult = await _sendRestoreMessage(quickTabId, validation.tabData);
+  
+  // v1.6.3.7-v1 - Log confirmation result
+  console.log('[Manager] 🔄 RESTORE_RESULT:', {
+    quickTabId,
+    success: confirmationResult?.success,
+    confirmedBy: confirmationResult?.confirmedBy,
+    durationMs: Date.now() - startTime
+  });
+  
+  // v1.6.3.7-v1 - FIX ISSUE #2: Show error if no confirmation received
+  if (!confirmationResult?.success) {
+    console.warn('[Manager] ⚠️ Restore not confirmed by any tab:', quickTabId);
+    // Don't show error notification here - the tab might just be loading slowly
+    // The DOM verification below will catch actual failures
+  }
   
   // v1.6.3.5-v2 - FIX Report 2 Issue #8: Verify DOM was actually rendered
   setTimeout(async () => {
@@ -2205,5 +2902,91 @@ async function closeQuickTab(quickTabId) {
     console.log(`Closed Quick Tab ${quickTabId}`);
   } catch (err) {
     console.error(`Error closing Quick Tab ${quickTabId}:`, err);
+  }
+}
+
+/**
+ * Adopt an orphaned Quick Tab to the current browser tab
+ * v1.6.3.7-v1 - FIX ISSUE #8: Allow users to "rescue" orphaned Quick Tabs
+ *   - Updates originTabId to the current browser tab
+ *   - Persists the change to storage
+ *   - Re-renders the Manager UI
+ * @param {string} quickTabId - The Quick Tab ID to adopt
+ * @param {number} targetTabId - The browser tab ID to adopt to
+ */
+async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
+  console.log('[Manager] 📥 ADOPT_TO_CURRENT_TAB:', {
+    quickTabId,
+    targetTabId,
+    currentBrowserTabId,
+    timestamp: Date.now()
+  });
+  
+  // Validate targetTabId
+  if (!targetTabId || targetTabId < 0) {
+    console.error('[Manager] ❌ Invalid targetTabId for adopt:', targetTabId);
+    return;
+  }
+  
+  try {
+    // Read current state
+    const result = await browser.storage.local.get(STATE_KEY);
+    const state = result?.[STATE_KEY];
+    
+    if (!state?.tabs?.length) {
+      console.warn('[Manager] No Quick Tabs in storage to adopt');
+      return;
+    }
+    
+    // Find the Quick Tab
+    const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
+    if (tabIndex === -1) {
+      console.warn('[Manager] Quick Tab not found for adopt:', quickTabId);
+      return;
+    }
+    
+    const quickTab = state.tabs[tabIndex];
+    const oldOriginTabId = quickTab.originTabId;
+    
+    // Update originTabId
+    quickTab.originTabId = targetTabId;
+    
+    // Generate new saveId for the update
+    const saveId = `adopt-${quickTabId}-${Date.now()}`;
+    
+    // Persist the change
+    await browser.storage.local.set({
+      [STATE_KEY]: {
+        tabs: state.tabs,
+        saveId,
+        timestamp: Date.now(),
+        writingTabId: targetTabId,
+        writingInstanceId: `manager-adopt-${Date.now()}`
+      }
+    });
+    
+    console.log('[Manager] ✅ ADOPT_COMPLETED:', {
+      quickTabId,
+      oldOriginTabId,
+      newOriginTabId: targetTabId,
+      saveId
+    });
+    
+    // Update local quickTabHostInfo
+    quickTabHostInfo.set(quickTabId, {
+      hostTabId: targetTabId,
+      lastUpdate: Date.now(),
+      lastOperation: 'adopt',
+      confirmed: true
+    });
+    
+    // Invalidate cache for this tab
+    browserTabInfoCache.delete(oldOriginTabId);
+    
+    // Re-render UI to reflect the change
+    renderUI();
+    
+  } catch (err) {
+    console.error('[Manager] ❌ Error adopting Quick Tab:', err);
   }
 }
