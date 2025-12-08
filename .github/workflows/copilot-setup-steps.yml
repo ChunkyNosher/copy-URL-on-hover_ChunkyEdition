@@ -52,72 +52,6 @@ jobs:
         env:
           NODE_ENV: development
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: |
-            ~/.cache/ms-playwright
-          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            playwright-browsers-${{ runner.os }}-
-
-      # ====================================================================
-      # NEW STEP 4.5: Install Playwright Browsers (CRITICAL)
-      # ====================================================================
-      - name: Install Playwright browsers
-        run: |
-          echo "=========================================="
-          echo "Installing Playwright Browsers"
-          echo "=========================================="
-          
-          # Install Firefox (required for Firefox tests)
-          npx playwright install firefox --with-deps
-          
-          if [ -d "$HOME/.cache/ms-playwright/firefox-"* ]; then
-            FIREFOX_VERSION=$(ls -d $HOME/.cache/ms-playwright/firefox-* | head -1 | sed 's/.*firefox-//')
-            echo "✓ Firefox $FIREFOX_VERSION installed"
-          else
-            echo "✗ Firefox installation failed"
-            exit 1
-          fi
-          
-          echo "=========================================="
-          echo "✓ All browsers installed successfully!"
-          echo "=========================================="
-
-      # ====================================================================
-      # NEW STEP: Pre-Install Playwright MCP Package
-      # ====================================================================
-      - name: Pre-install Playwright MCP package
-        run: |
-          echo "=========================================="
-          echo "Pre-installing Playwright MCP Package"
-          echo "=========================================="
-          
-          # Install @playwright/mcp globally to cache it
-          npm install -g @playwright/mcp@latest
-          
-          # Verify installation
-          if npm list -g @playwright/mcp --depth=0 > /dev/null 2>&1; then
-            VERSION=$(npm list -g @playwright/mcp --depth=0 | grep @playwright/mcp@ | sed 's/.*@playwright\/mcp@//' | cut -d' ' -f1)
-            echo "✓ @playwright/mcp@$VERSION installed globally"
-          else
-            echo "✗ Failed to install @playwright/mcp"
-            exit 1
-          fi
-          
-          # Verify npx can find the package instantly
-          if npx @playwright/mcp --version > /dev/null 2>&1; then
-            echo "✓ npx can execute @playwright/mcp instantly (cached)"
-          else
-            echo "⚠ npx execution verification failed (non-critical)"
-          fi
-          
-          echo "=========================================="
-          echo "✓ Playwright MCP pre-installed and cached"
-          echo "=========================================="
-
       # ====================================================================
       # NEW STEP: Verify npm Cache State
       # ====================================================================
@@ -136,34 +70,6 @@ jobs:
             CACHE_SIZE=$(du -sh "$NPM_CACHE_DIR" 2>/dev/null | cut -f1)
             echo "Cache size: $CACHE_SIZE"
           fi
-          
-          # Check if @playwright/mcp is cached
-          if npm list -g @playwright/mcp --depth=0 > /dev/null 2>&1; then
-            echo "✓ @playwright/mcp found in global packages"
-            
-            # Show where npx will find it
-            NPX_PATH=$(which npx)
-            echo "npx location: $NPX_PATH"
-            
-            # Test instant execution
-            TIME_START=$(date +%s%N)
-            npx @playwright/mcp --version > /dev/null 2>&1 || true
-            TIME_END=$(date +%s%N)
-            TIME_DIFF=$(( (TIME_END - TIME_START) / 1000000 ))  # Convert to milliseconds
-            
-            echo "npx execution time: ${TIME_DIFF}ms"
-            
-            if [ $TIME_DIFF -lt 5000 ]; then
-              echo "✓ npx executes instantly (<5 seconds) - cache working"
-            else
-              echo "⚠ npx execution slow (${TIME_DIFF}ms) - cache may not be effective"
-            fi
-          else
-            echo "✗ @playwright/mcp NOT found in cache"
-            exit 1
-          fi
-          
-          echo "=========================================="
 
       # ====================================================================
       # NEW STEP: Restore Memory from Previous Runs
@@ -556,34 +462,6 @@ jobs:
       - name: Run ESLint
         run: npm run lint
         continue-on-error: true
-
-      - name: Verify Playwright browsers before tests
-        run: |
-          echo "=========================================="
-          echo "Verifying Playwright Browser Availability"
-          echo "=========================================="
-          
-          # Check Firefox
-          FIREFOX_PATH="$HOME/.cache/ms-playwright/firefox-*/firefox/firefox"
-          if ls $FIREFOX_PATH 1> /dev/null 2>&1; then
-            echo "✓ Firefox executable found"
-            ls -lh $FIREFOX_PATH | head -1
-          else
-            echo "✗ Firefox executable NOT found"
-            echo "Expected location: $FIREFOX_PATH"
-            exit 1
-          fi
-          
-          # Test Playwright can detect browsers
-          if npx playwright install --dry-run 2>&1 | grep -q "is already installed"; then
-            echo "✓ Playwright recognizes installed browsers"
-          else
-            echo "⚠ Playwright may need to re-download browsers"
-          fi
-          
-          echo "=========================================="
-          echo "✓ All browsers verified and ready!"
-          echo "=========================================="
 
       # ====================================================================
       # STEP 9: Run Tests
