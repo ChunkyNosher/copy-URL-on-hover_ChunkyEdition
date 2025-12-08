@@ -474,47 +474,6 @@ jobs:
         continue-on-error: true
 
       # ====================================================================
-      # STEP 10: Generate Coverage
-      # ====================================================================
-      - name: Generate test coverage report
-        run: npm run test:coverage
-        continue-on-error: true
-
-      # ====================================================================
-      # STEP 11: Display Coverage
-      # ====================================================================
-      - name: Display coverage summary
-        if: always()
-        run: |
-          echo "=========================================="
-          echo "Test Coverage Summary"
-          echo "=========================================="
-          if [ -f "coverage/coverage-summary.json" ]; then
-            node -e "
-              const summary = require('./coverage/coverage-summary.json');
-              const total = summary.total;
-              console.log('Lines:      ' + total.lines.pct + '%');
-              console.log('Statements: ' + total.statements.pct + '%');
-              console.log('Functions:  ' + total.functions.pct + '%');
-              console.log('Branches:   ' + total.branches.pct + '%');
-            "
-          else
-            echo "Coverage report not found"
-          fi
-          echo "=========================================="
-
-      # ====================================================================
-      # STEP 12: Upload Coverage
-      # ====================================================================
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-report
-          path: coverage/
-          retention-days: 7
-
-      # ====================================================================
       # STEP 13: Build Extension
       # ====================================================================
       - name: Build extension (production with test mode)
