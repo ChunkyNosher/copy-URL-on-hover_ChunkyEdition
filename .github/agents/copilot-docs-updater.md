@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.6-v12.
+  documentation. Current version: v1.6.3.7.
 tools: ['*']
 ---
 
@@ -69,9 +69,17 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.6-v12)
+## Current Extension State (v1.6.3.7)
 
-### v1.6.3.6-v12 Lifecycle Resilience (Issues #1-8)
+### v1.6.3.7 Features (NEW)
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **UI Performance** - Debounced renderUI (300ms), `_analyzeStorageChange()` for differential updates
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
+- **Package Optimization** - ZIP -9 for Firefox (~40% smaller), -6 for Chrome
+
+### v1.6.3.6-v12 Lifecycle Resilience (Retained)
 
 - **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
   exponential backoff retry
@@ -85,7 +93,7 @@ nothing.
   ordered deletion
 - **Architectural Resilience** - Coordinator is optimization, not requirement
 
-### v1.6.3.6-v12 Port-Based Messaging (Issues #10-21)
+### v1.6.3.6-v12 Port-Based Messaging (Retained)
 
 - **Port Registry** - Background maintains
   `{ portId -> { port, origin, tabId, type, ... } }`
@@ -97,14 +105,14 @@ nothing.
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
 - **Isolated State Machine** - Background maintains state, tabs are consumers
 
-### v1.6.3.6-v12 Animation/Logging (Issues #1-9)
+### v1.6.3.6-v12 Animation/Logging (Retained)
 
 - **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
   ERROR)
 - **State Constants** - `STATE_OPEN`, `STATE_CLOSED`
 - **Adoption Verification** - 2-second timeout
 
-### v1.6.3.6-v12 Build Optimization
+### v1.6.3.6-v12 Build Optimization (Retained)
 
 - **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
 - **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
@@ -136,12 +144,11 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.6-v12
-- [ ] **v1.6.3.6-v12:** Lifecycle resilience documented
-- [ ] **v1.6.3.6-v12:** Heartbeat mechanism documented
-- [ ] **v1.6.3.6-v12:** Port-based messaging documented
-- [ ] **v1.6.3.6-v12:** Animation lifecycle phases documented
-- [ ] **v1.6.3.6-v12:** Build optimization documented
+- [ ] Version numbers match 1.6.3.7
+- [ ] **v1.6.3.7:** Keepalive mechanism documented
+- [ ] **v1.6.3.7:** Circuit breaker pattern documented
+- [ ] **v1.6.3.7:** UI performance (debounced renderUI) documented
+- [ ] **v1.6.3.7:** originTabId validation documented
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
@@ -154,14 +161,14 @@ nothing.
 
 | Error                        | Fix                                            |
 | ---------------------------- | ---------------------------------------------- |
-| v1.6.3.6-v12 or earlier      | Update to 1.6.3.6-v12                          |
+| v1.6.3.6-v12 or earlier      | Update to 1.6.3.7                              |
 | "Pin to Page"                | Use "Solo/Mute"                                |
 | BroadcastChannel             | Use storage.onChanged + port-based             |
 | Container refs               | Remove (global visibility)                     |
 | Files >15KB                  | Apply compression                              |
-| Missing lifecycle resilience | Document heartbeat, init guard, cache reconcil |
-| Missing port-based messaging | Document port registry, message types          |
-| Missing animation lifecycle  | Document START/CALC/TRANSITION/COMPLETE phases |
+| Missing keepalive            | Document `_startKeepalive()`, 20s interval     |
+| Missing circuit breaker      | Document closed/open/half-open, backoff        |
+| Missing renderUI debounce    | Document RENDER_DEBOUNCE_MS = 300              |
 
 ---
 
@@ -169,12 +176,11 @@ nothing.
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.6-v12
-- [ ] **v1.6.3.6-v12:** Lifecycle resilience documented
-- [ ] **v1.6.3.6-v12:** Heartbeat mechanism documented
-- [ ] **v1.6.3.6-v12:** Port-based messaging documented
-- [ ] **v1.6.3.6-v12:** Animation lifecycle documented
-- [ ] **v1.6.3.6-v12:** Build optimization documented
+- [ ] Version numbers updated to 1.6.3.7
+- [ ] **v1.6.3.7:** Keepalive mechanism documented
+- [ ] **v1.6.3.7:** Circuit breaker documented
+- [ ] **v1.6.3.7:** UI performance documented
+- [ ] **v1.6.3.7:** originTabId validation documented
 - [ ] No "Pin to Page" references
 - [ ] storage.onChanged + port-based messaging documented
 - [ ] MCP tool lists consistent

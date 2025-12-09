@@ -38,9 +38,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6-v12 Port-Based Messaging (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **UI Performance** - Debounced renderUI (300ms), `_analyzeStorageChange()` for differential updates
+
+**v1.6.3.6-v12 Port-Based Messaging (Retained):**
 
 - **Port Registry** - Background maintains
   `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount } }`
@@ -55,14 +61,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Periodic Cleanup** - Removes stale port entries
 - **Isolated State Machine** - Background maintains state, tabs are consumers
 
-**v1.6.3.6-v12 Atomic Operations (NEW):**
+**v1.6.3.6-v12 Atomic Operations (Retained):**
 
 - **Storage Write Verification** - Read-back after write to verify success
 - **Atomic Adoption** - Single storage write for adoption operations
 - **Visibility Sync Broadcasts** - All ports receive visibility updates
 - **Adoption Verification** - 2-second timeout for adoption confirmation
 
-**v1.6.3.6-v12 Build Optimization (NEW):**
+**v1.6.3.6-v12 Build Optimization (Retained):**
 
 - **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
 - **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
@@ -138,16 +144,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Background keepalive keeps Firefox background alive (v1.6.3.7)
+- [ ] Circuit breaker handles port disconnections with backoff (v1.6.3.7)
+- [ ] `_analyzeStorageChange()` detects differential updates (v1.6.3.7)
 - [ ] Port connections established via `browser.runtime.onConnect`
-      (v1.6.3.6-v12)
-- [ ] Port cleanup on `browser.tabs.onRemoved` (v1.6.3.6-v12)
-- [ ] Message acknowledgments include correlationId (v1.6.3.6-v12)
-- [ ] Storage write verification reads back after write (v1.6.3.6-v12)
-- [ ] Atomic adoption uses single storage write (v1.6.3.6-v12)
-- [ ] Visibility sync broadcasts to all ports (v1.6.3.6-v12)
+- [ ] Port cleanup on `browser.tabs.onRemoved`
+- [ ] Message acknowledgments include correlationId
+- [ ] Storage write verification reads back after write
+- [ ] Atomic adoption uses single storage write
+- [ ] Visibility sync broadcasts to all ports
 - [ ] Tab switch detection triggers Manager refresh
-- [ ] Structured confirmations return `{ success, quickTabId, action }`
-- [ ] Multi-layer ID recovery works across CreateHandler, hydration, snapshots
 - [ ] Strict tab isolation rejects null originTabId
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] ESLint passes ⭐
@@ -155,5 +161,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.6-v12 port-based messaging,
-atomic operations, and storage write verification.**
+**Your strength: Reliable cross-tab sync with v1.6.3.7 keepalive, circuit breaker,
+differential storage updates, and v12 port-based messaging.**

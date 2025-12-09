@@ -35,7 +35,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
@@ -43,12 +43,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z, storage storm
   protection
 - **Port-Based Messaging** - Persistent connections via
-  `browser.runtime.onConnect` (v1.6.3.6-v12)
+  `browser.runtime.onConnect`
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 - **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab
   scoping
 
-**v1.6.3.6-v12 Port-Based Messaging (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **UI Performance** - Debounced renderUI (300ms), `_analyzeStorageChange()` for differential updates
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers only
+
+**v1.6.3.6-v12 Port-Based Messaging (Retained):**
 
 - **Message Protocol** -
   `{ type, action, correlationId, source, timestamp, payload, metadata }`
@@ -59,7 +66,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
 - **Isolated State Machine** - Background maintains state, tabs are consumers
 
-**v1.6.3.6-v12 Animation/Logging (NEW):**
+**v1.6.3.6-v12 Animation/Logging (Retained):**
 
 - **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
   ERROR)
@@ -67,14 +74,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **CSS-Only Styling** - No inline maxHeight, rely on CSS defaults
 - **Section Header Logging** - Logs count of active/minimized tabs
 
-**v1.6.3.6-v12 Atomic Operations (NEW):**
+**v1.6.3.6-v12 Atomic Operations (Retained):**
 
 - **Storage Write Verification** - Read-back after write
 - **Atomic Adoption** - Single storage write for `adoptQuickTabToCurrentTab()`
 - **Adoption Verification** - 2-second timeout for confirmation
 - **Visibility Sync Broadcasts** - All ports receive visibility updates
 
-**v1.6.3.6-v12 Build Optimization (NEW):**
+**v1.6.3.6-v12 Build Optimization (Retained):**
 
 - **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
 - **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
@@ -126,23 +133,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Background keepalive keeps Firefox background alive (v1.6.3.7)
+- [ ] Circuit breaker handles port disconnections with backoff (v1.6.3.7)
+- [ ] Debounced renderUI prevents excessive renders (v1.6.3.7)
+- [ ] `_isValidOriginTabId()` validates positive integers (v1.6.3.7)
 - [ ] Port connections established via `browser.runtime.onConnect`
-      (v1.6.3.6-v12)
 - [ ] Port lifecycle logged with `[Manager] PORT_LIFECYCLE` prefix
-      (v1.6.3.6-v12)
-- [ ] Animation lifecycle logs START/CALC/TRANSITION/COMPLETE (v1.6.3.6-v12)
-- [ ] Storage write verification reads back after write (v1.6.3.6-v12)
-- [ ] Atomic adoption uses single storage write (v1.6.3.6-v12)
-- [ ] Adoption verification times out at 2 seconds (v1.6.3.6-v12)
+- [ ] Animation lifecycle logs START/CALC/TRANSITION/COMPLETE
+- [ ] Storage write verification reads back after write
+- [ ] Atomic adoption uses single storage write
 - [ ] Orphan detection shows ⚠️ icon and warning colors
-- [ ] `adoptQuickTabToCurrentTab()` reassigns orphaned Quick Tabs
-- [ ] CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback
-- [ ] Cross-tab grouping UI groups Quick Tabs by originTabId
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.6-v12 port-based
-messaging, animation lifecycle logging, and atomic adoption operations.**
+**Your strength: Complete Quick Tab system with v1.6.3.7 keepalive, circuit
+breaker, debounced UI, and v12 port-based messaging.**

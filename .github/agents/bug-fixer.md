@@ -37,11 +37,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v12 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.6-v12 Lifecycle Resilience (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+
+**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
 
 - **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
   exponential backoff
@@ -62,14 +68,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
 - **Storage Write Verification** - Read-back after write to verify success
 
-**v1.6.3.6-v12 Animation/Logging (NEW):**
+**v1.6.3.6-v12 Animation/Logging (Retained):**
 
 - **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
   ERROR)
 - **State Constants** - `STATE_OPEN`, `STATE_CLOSED`
 - **Adoption Verification** - 2-second timeout for adoption confirmation
 
-**v1.6.3.6-v12 Build Optimization (NEW):**
+**v1.6.3.6-v12 Build Optimization (Retained):**
 
 - **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
 - **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
@@ -136,7 +142,44 @@ architecture, race conditions
 
 ---
 
-## v1.6.3.6-v12 Fix Patterns
+## v1.6.3.7 Fix Patterns
+
+### Background Keepalive Pattern
+
+```javascript
+// Firefox 30-second timeout workaround
+function _startKeepalive() {
+  setInterval(() => {
+    browser.runtime.sendMessage({ type: 'KEEPALIVE_PING' }).catch(() => {});
+    browser.tabs.query({ active: true }).catch(() => {});
+  }, 20000); // Every 20 seconds
+}
+```
+
+### Port Circuit Breaker Pattern
+
+```javascript
+// Circuit breaker states: 'closed', 'open', 'half-open'
+const circuitBreaker = {
+  state: 'closed',
+  failures: 0,
+  lastFailure: null,
+  backoffMs: 100 // Initial backoff, max 10000ms
+};
+
+function handlePortError() {
+  circuitBreaker.failures++;
+  if (circuitBreaker.failures >= 3) {
+    circuitBreaker.state = 'open';
+    setTimeout(() => {
+      circuitBreaker.state = 'half-open';
+    }, circuitBreaker.backoffMs);
+    circuitBreaker.backoffMs = Math.min(circuitBreaker.backoffMs * 2, 10000);
+  }
+}
+```
+
+### Prior Version Fix Patterns (Retained)
 
 ### Port-Based Messaging Pattern
 

@@ -60,12 +60,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.7 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.6-v12 Lifecycle Resilience (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
+- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+
+**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
 
 - **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()`
 - **Heartbeat** - Keep background alive, 25s interval, 5s timeout
@@ -91,30 +97,12 @@ UI)
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
 
-**v1.6.3.6 Fixes:**
+**Key Classes:**
 
-1. **Cross-Tab Filtering** -
-   `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check
-   quickTabsMap/minimizedManager before processing
-2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and
-   `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
-3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action
-   state, dispatch, response, cleanup, timing
-
-**v1.6.3.6 Architecture:**
-
-- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING,
-  DESTROYED
+- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations (2000ms timeout)
-- **Content.js** - Cross-tab filtering in
-  `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()`
-- **UICoordinator** - `setHandlers()`, `_buildCallbackOptions()`,
-  `_shouldRenderOnThisTab()`
-- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`,
-  `isFocusOperation`
-- **QuickTabWindow** - `rewireCallbacks()`, `isMinimizing`/`isRestoring` flags,
-  `_logIfStateDesync()`
+- **UICoordinator** - `setHandlers()`, `_shouldRenderOnThisTab()`
 
 **Storage Format:**
 

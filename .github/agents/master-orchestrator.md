@@ -60,12 +60,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.7 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.6-v12 Lifecycle Resilience (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
+- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+
+**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
 
 - **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()`
 - **Heartbeat** - Keep background alive (25s interval, 5s timeout)

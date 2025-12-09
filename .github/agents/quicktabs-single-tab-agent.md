@@ -37,9 +37,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6-v12 Features (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
+- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
+
+**v1.6.3.6-v12 Features (Retained):**
 
 - **Port-Based Messaging** - Persistent connections via
   `browser.runtime.onConnect`
@@ -79,11 +85,13 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Port connections established (v1.6.3.6-v12)
-- [ ] Message acknowledgments include correlationId (v1.6.3.6-v12)
-- [ ] Animation lifecycle logged correctly (v1.6.3.6-v12)
-- [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
-- [ ] Deletion state machine prevents loops (v1.6.3.6-v5)
+- [ ] Circuit breaker handles port disconnections (v1.6.3.7)
+- [ ] `_isValidOriginTabId()` validates positive integers (v1.6.3.7)
+- [ ] Port connections established
+- [ ] Message acknowledgments include correlationId
+- [ ] Animation lifecycle logged correctly
+- [ ] Strict tab isolation rejects null originTabId
+- [ ] Deletion state machine prevents loops
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] Global visibility correct (no container filtering)
@@ -93,5 +101,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.6-v12 port-based
-messaging and animation lifecycle.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.7 circuit breaker,
+originTabId validation, and v12 port-based messaging.**
