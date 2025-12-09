@@ -71,10 +71,13 @@ const relevantMemories = await searchMemories({
 
 **v1.6.3.7 Features (NEW):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
+  idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
+  (100ms→10s)
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive
+  integers
 
 **v1.6.3.6-v12 Lifecycle Resilience (Retained):**
 
@@ -82,8 +85,8 @@ const relevantMemories = await searchMemories({
   exponential backoff retry
 - **Heartbeat** - Sidebar sends `HEARTBEAT` every 25s, background responds with
   `HEARTBEAT_ACK`, 5s timeout
-- **Storage Deduplication** - Multi-method dedup: transactionId, saveId+timestamp,
-  content hash
+- **Storage Deduplication** - Multi-method dedup: transactionId,
+  saveId+timestamp, content hash
 - **Cache Reconciliation** - `_triggerCacheReconciliation()` queries content
   scripts for state recovery
 - **Deletion Acks** - `handleDeletionAck()`, `_waitForDeletionAcks()` for
@@ -115,7 +118,8 @@ const relevantMemories = await searchMemories({
 
 **Key Fixes (Summary):**
 
-- **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
+- **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined
+  originTabId
 - **Deletion State Machine** - DestroyHandler.\_destroyedIds prevents loops
 - **Storage Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`
 - **Unified Deletion Path** - `initiateDestruction()` is single entry point

@@ -135,6 +135,17 @@ const _CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000; // 10s cooldown in "open" state
 // FIX Issue #7: Enhanced logging state tracking
 let _lastCacheUpdateLog = null; // Track last cache state for before/after logging
 
+// ==================== v1.6.3.7-v3 ALARM CONSTANTS ====================
+// API #4: browser.alarms - Scheduled cleanup tasks
+const ALARM_CLEANUP_ORPHANED = 'cleanup-orphaned';
+const ALARM_SYNC_SESSION_STATE = 'sync-session-state';
+const ALARM_DIAGNOSTIC_SNAPSHOT = 'diagnostic-snapshot';
+
+// Alarm intervals in minutes
+const ALARM_CLEANUP_INTERVAL_MIN = 60; // Hourly orphan cleanup
+const ALARM_SYNC_INTERVAL_MIN = 5; // Every 5 minutes sync
+const ALARM_DIAGNOSTIC_INTERVAL_MIN = 120; // Every 2 hours diagnostic
+
 // ==================== v1.6.3.7 KEEPALIVE MECHANISM ====================
 // FIX Issue #1: Firefox 117+ Bug 1851373 - runtime.Port does NOT reset the idle timer
 // Use runtime.sendMessage periodically as it DOES reset the idle timer
@@ -148,14 +159,14 @@ function startKeepalive() {
   if (keepaliveIntervalId) {
     clearInterval(keepaliveIntervalId);
   }
-  
+
   // Immediate ping to register activity
   triggerIdleReset();
-  
+
   keepaliveIntervalId = setInterval(() => {
     triggerIdleReset();
   }, KEEPALIVE_INTERVAL_MS);
-  
+
   console.log('[Background] v1.6.3.7 Keepalive started (every', KEEPALIVE_INTERVAL_MS / 1000, 's)');
 }
 
@@ -167,7 +178,7 @@ async function triggerIdleReset() {
   try {
     // Method 1: browser.tabs.query triggers event handlers which reset idle timer
     const tabs = await browser.tabs.query({});
-    
+
     // Method 2: Self-send a message (this resets the idle timer)
     // Note: This will be caught by our own listener but that's fine
     try {
@@ -175,7 +186,7 @@ async function triggerIdleReset() {
     } catch (_err) {
       // Expected to fail if no listener, but the message send itself resets the timer
     }
-    
+
     console.log('[Background] KEEPALIVE: idle timer reset via tabs.query + sendMessage', {
       tabCount: tabs.length,
       timestamp: Date.now()
@@ -199,6 +210,236 @@ function _stopKeepalive() {
 
 // Start keepalive on script load
 startKeepalive();
+
+// ==================== v1.6.3.7-v3 ALARMS MECHANISM ====================
+// API #4: browser.alarms - Scheduled cleanup tasks
+
+/**
+ * Initialize browser.alarms for scheduled cleanup tasks
+ * v1.6.3.7-v3 - API #4: Create alarms on extension startup
+ */
+async function initializeAlarms() {
+  console.log('[Background] v1.6.3.7-v3 Initializing browser.alarms...');
+
+  try {
+    // Create cleanup-orphaned alarm - runs hourly
+    await browser.alarms.create(ALARM_CLEANUP_ORPHANED, {
+      delayInMinutes: 30, // First run after 30 minutes
+      periodInMinutes: ALARM_CLEANUP_INTERVAL_MIN
+    });
+    console.log(
+      '[Background] Created alarm:',
+      ALARM_CLEANUP_ORPHANED,
+      '(every',
+      ALARM_CLEANUP_INTERVAL_MIN,
+      'min)'
+    );
+
+    // Create sync-session-state alarm - runs every 5 minutes
+    await browser.alarms.create(ALARM_SYNC_SESSION_STATE, {
+      delayInMinutes: 1, // First run after 1 minute
+      periodInMinutes: ALARM_SYNC_INTERVAL_MIN
+    });
+    console.log(
+      '[Background] Created alarm:',
+      ALARM_SYNC_SESSION_STATE,
+      '(every',
+      ALARM_SYNC_INTERVAL_MIN,
+      'min)'
+    );
+
+    // Create diagnostic-snapshot alarm - runs every 2 hours
+    await browser.alarms.create(ALARM_DIAGNOSTIC_SNAPSHOT, {
+      delayInMinutes: 60, // First run after 1 hour
+      periodInMinutes: ALARM_DIAGNOSTIC_INTERVAL_MIN
+    });
+    console.log(
+      '[Background] Created alarm:',
+      ALARM_DIAGNOSTIC_SNAPSHOT,
+      '(every',
+      ALARM_DIAGNOSTIC_INTERVAL_MIN,
+      'min)'
+    );
+
+    console.log('[Background] v1.6.3.7-v3 All alarms initialized successfully');
+  } catch (err) {
+    console.error('[Background] Failed to initialize alarms:', err.message);
+  }
+}
+
+/**
+ * Handle alarm events
+ * v1.6.3.7-v3 - API #4: Route alarms to appropriate handlers
+ * @param {Object} alarm - Alarm info object
+ */
+async function handleAlarm(alarm) {
+  console.log('[Background] ALARM_FIRED:', alarm.name, 'at', new Date().toISOString());
+
+  switch (alarm.name) {
+    case ALARM_CLEANUP_ORPHANED:
+      await cleanupOrphanedQuickTabs();
+      break;
+
+    case ALARM_SYNC_SESSION_STATE:
+      await syncSessionState();
+      break;
+
+    case ALARM_DIAGNOSTIC_SNAPSHOT:
+      logDiagnosticSnapshot();
+      break;
+
+    default:
+      console.warn('[Background] Unknown alarm:', alarm.name);
+  }
+}
+
+/**
+ * Cleanup orphaned Quick Tabs whose origin tabs no longer exist
+ * v1.6.3.7-v3 - API #4: Hourly orphan cleanup
+ */
+async function cleanupOrphanedQuickTabs() {
+  console.log('[Background] Running orphaned Quick Tab cleanup...');
+
+  const initGuard = checkInitializationGuard('cleanupOrphanedQuickTabs');
+  if (!initGuard.initialized) {
+    console.warn('[Background] Skipping cleanup - not initialized');
+    return;
+  }
+
+  try {
+    // Get all open browser tabs
+    const openTabs = await browser.tabs.query({});
+    const openTabIds = new Set(openTabs.map(t => t.id));
+
+    // Find orphaned Quick Tabs (their origin tab no longer exists)
+    const orphanedTabs = globalQuickTabState.tabs.filter(qt => {
+      const originTabId = qt.originTabId;
+      // Quick Tab is orphaned if it has an originTabId that is no longer open
+      return originTabId != null && !openTabIds.has(originTabId);
+    });
+
+    if (orphanedTabs.length === 0) {
+      console.log('[Background] No orphaned Quick Tabs found');
+      return;
+    }
+
+    console.log(
+      '[Background] Found',
+      orphanedTabs.length,
+      'orphaned Quick Tabs:',
+      orphanedTabs.map(t => ({ id: t.id, originTabId: t.originTabId }))
+    );
+
+    // Mark as orphaned in state instead of deleting (for user review in Manager)
+    for (const orphan of orphanedTabs) {
+      orphan.orphaned = true;
+    }
+
+    // Update global state
+    globalQuickTabState.lastUpdate = Date.now();
+
+    // Save to storage
+    const saveId = `cleanup-${Date.now()}`;
+    await browser.storage.local.set({
+      quick_tabs_state_v2: {
+        tabs: globalQuickTabState.tabs,
+        saveId,
+        timestamp: Date.now()
+      }
+    });
+
+    console.log('[Background] Marked', orphanedTabs.length, 'Quick Tabs as orphaned');
+  } catch (err) {
+    console.error('[Background] Orphan cleanup failed:', err.message);
+  }
+}
+
+/**
+ * Sync session state between storage layers
+ * v1.6.3.7-v3 - API #4: Periodic session state validation
+ */
+async function syncSessionState() {
+  console.log('[Background] Running session state sync...');
+
+  const initGuard = checkInitializationGuard('syncSessionState');
+  if (!initGuard.initialized) {
+    console.warn('[Background] Skipping sync - not initialized');
+    return;
+  }
+
+  // Early exit if session storage not available
+  if (typeof browser.storage.session === 'undefined') {
+    console.log('[Background] Session storage not available, skipping sync');
+    return;
+  }
+
+  try {
+    await _performSessionSync();
+  } catch (err) {
+    console.error('[Background] Session sync failed:', err.message);
+  }
+}
+
+/**
+ * Perform the actual session sync operation
+ * v1.6.3.7-v3 - API #4: Extracted to reduce max-depth in syncSessionState
+ * @private
+ */
+async function _performSessionSync() {
+  const sessionResult = await browser.storage.session.get('quick_tabs_session');
+  const localResult = await browser.storage.local.get('quick_tabs_state_v2');
+
+  const sessionTabs = sessionResult?.quick_tabs_session?.tabs || [];
+  const localTabs = localResult?.quick_tabs_state_v2?.tabs || [];
+
+  console.log('[Background] Session sync check:', {
+    sessionTabCount: sessionTabs.length,
+    localTabCount: localTabs.length,
+    cacheTabCount: globalQuickTabState.tabs?.length || 0
+  });
+
+  // If session storage has fewer tabs than local, re-sync
+  if (sessionTabs.length < localTabs.length) {
+    console.log('[Background] Session storage out of sync - re-syncing from local');
+    await browser.storage.session.set({
+      quick_tabs_session: {
+        tabs: localTabs,
+        timestamp: Date.now()
+      }
+    });
+  }
+}
+
+/**
+ * Log diagnostic snapshot of current state
+ * v1.6.3.7-v3 - API #4: Periodic diagnostic logging
+ */
+function logDiagnosticSnapshot() {
+  console.log('[Background] ==================== DIAGNOSTIC SNAPSHOT ====================');
+  console.log('[Background] Timestamp:', new Date().toISOString());
+  console.log('[Background] Cache state:', {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    lastUpdate: globalQuickTabState.lastUpdate,
+    saveId: globalQuickTabState.saveId,
+    isInitialized
+  });
+  console.log('[Background] Port registry:', {
+    connectedPorts: portRegistry.size,
+    portIds: [...portRegistry.keys()]
+  });
+  console.log('[Background] Quick Tab host tracking:', {
+    trackedQuickTabs: quickTabHostTabs.size
+  });
+  console.log('[Background] =================================================================');
+}
+
+// Register alarm listener
+browser.alarms.onAlarm.addListener(handleAlarm);
+
+// Initialize alarms on script load
+initializeAlarms();
+
+// ==================== END ALARMS MECHANISM ====================
 
 /**
  * Valid URL protocols for Quick Tab creation
@@ -439,10 +680,14 @@ async function initializeGlobalState() {
     if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
       initializationRetryCount++;
       const backoffMs = Math.pow(2, initializationRetryCount) * 500; // 1s, 2s, 4s
-      console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
+      console.log(
+        `[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`
+      );
       setTimeout(() => initializeGlobalState(), backoffMs);
     } else {
-      console.error('[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state');
+      console.error(
+        '[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state'
+      );
       // Fall back to empty state after max retries
       globalQuickTabState.tabs = [];
       globalQuickTabState.lastUpdate = Date.now();
@@ -3390,8 +3635,8 @@ async function handleCloseMinimizedTabsCommand() {
   }
 
   // Find minimized tabs
-  const minimizedTabs = globalQuickTabState.tabs.filter(tab =>
-    tab.minimized === true || tab.visibility?.minimized === true
+  const minimizedTabs = globalQuickTabState.tabs.filter(
+    tab => tab.minimized === true || tab.visibility?.minimized === true
   );
 
   if (minimizedTabs.length === 0) {
@@ -3410,8 +3655,8 @@ async function handleCloseMinimizedTabsCommand() {
   await _broadcastCloseManyToAllTabs(closedIds);
 
   // Remove minimized tabs from state
-  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(tab =>
-    !(tab.minimized === true || tab.visibility?.minimized === true)
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(
+    tab => !(tab.minimized === true || tab.visibility?.minimized === true)
   );
   globalQuickTabState.lastUpdate = Date.now();
 
@@ -3474,13 +3719,15 @@ async function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
  */
 function _sendCloseMessageToTabs(tabs, quickTabId) {
   for (const tab of tabs) {
-    browser.tabs.sendMessage(tab.id, {
-      action: 'CLOSE_QUICK_TAB',
-      quickTabId,
-      source: 'background-command'
-    }).catch(() => {
-      // Content script may not be loaded
-    });
+    browser.tabs
+      .sendMessage(tab.id, {
+        action: 'CLOSE_QUICK_TAB',
+        quickTabId,
+        source: 'background-command'
+      })
+      .catch(() => {
+        // Content script may not be loaded
+      });
   }
 }
 
@@ -3495,12 +3742,17 @@ async function writeStateWithVerificationAndRetry(operation) {
   let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
 
   for (let attempt = 1; attempt <= STORAGE_WRITE_MAX_RETRIES; attempt++) {
-    const result = await _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs);
-    
+    const result = await _attemptStorageWriteWithVerification(
+      operation,
+      saveId,
+      attempt,
+      backoffMs
+    );
+
     if (result.success && result.verified) {
       return result;
     }
-    
+
     if (result.needsRetry && attempt < STORAGE_WRITE_MAX_RETRIES) {
       await new Promise(resolve => setTimeout(resolve, backoffMs));
       backoffMs *= 2; // Exponential backoff
@@ -3535,7 +3787,13 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
-    return await _verifyStorageWrite(operation, saveId, stateToWrite.tabs.length, attempt, backoffMs);
+    return await _verifyStorageWrite(
+      operation,
+      saveId,
+      stateToWrite.tabs.length,
+      attempt,
+      backoffMs
+    );
   } catch (err) {
     console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
     return { success: false, verified: false, needsRetry: true };
@@ -3561,13 +3819,16 @@ async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoff
     return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
-  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
-    operation,
-    expectedSaveId: saveId,
-    actualSaveId: readBack?.saveId,
-    backoffMs
-  });
-  
+  console.warn(
+    `[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`,
+    {
+      operation,
+      expectedSaveId: saveId,
+      actualSaveId: readBack?.saveId,
+      backoffMs
+    }
+  );
+
   return { success: false, verified: false, needsRetry: true };
 }
 
@@ -4151,9 +4412,7 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
     const tabs = await browser.tabs.query({});
 
     // v1.6.3.6-v12 - FIX Issue #6: Track pending acknowledgments
-    const pendingTabs = new Set(
-      tabs.filter(t => t.id !== excludeTabId).map(t => t.id)
-    );
+    const pendingTabs = new Set(tabs.filter(t => t.id !== excludeTabId).map(t => t.id));
 
     // Set up acknowledgment tracking with timeout
     const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);
@@ -4362,3 +4621,412 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 console.log('[Background] v1.6.3.5-v3 Message infrastructure registered');
 // ==================== END MESSAGE INFRASTRUCTURE ====================
+
+// ==================== v1.6.3.7-v3 CONTEXT MENUS ====================
+// API #7: Enhanced contextMenus for Quick Tab grouping options
+
+/**
+ * Context menu IDs for Quick Tab grouping
+ * v1.6.3.7-v3 - API #7: Context menu constants
+ */
+const CONTEXT_MENU_IDS = {
+  GROUPING_SUBMENU: 'qt-grouping-submenu',
+  CREATE_NEW_GROUP: 'create-new-group',
+  ADD_TO_GROUP: 'add-to-group'
+};
+
+/**
+ * Initialize context menus for Quick Tab grouping
+ * v1.6.3.7-v3 - API #7: Creates submenu with grouping options
+ */
+function initializeContextMenus() {
+  console.log('[Background] v1.6.3.7-v3 Initializing context menus...');
+
+  try {
+    // Create main submenu for Quick Tab Grouping
+    browser.contextMenus.create({
+      id: CONTEXT_MENU_IDS.GROUPING_SUBMENU,
+      title: 'Quick Tab Grouping',
+      contexts: ['page', 'link']
+    });
+
+    // Create "Create new group..." option
+    browser.contextMenus.create({
+      id: CONTEXT_MENU_IDS.CREATE_NEW_GROUP,
+      parentId: CONTEXT_MENU_IDS.GROUPING_SUBMENU,
+      title: 'Create new Quick Tab group...',
+      contexts: ['page', 'link']
+    });
+
+    // Create "Add to group..." option
+    browser.contextMenus.create({
+      id: CONTEXT_MENU_IDS.ADD_TO_GROUP,
+      parentId: CONTEXT_MENU_IDS.GROUPING_SUBMENU,
+      title: 'Add to group...',
+      contexts: ['page', 'link']
+    });
+
+    console.log('[Background] v1.6.3.7-v3 Context menus created successfully');
+  } catch (err) {
+    console.error('[Background] Failed to create context menus:', err.message);
+  }
+}
+
+/**
+ * Handle context menu click events
+ * v1.6.3.7-v3 - API #7: Route menu clicks to appropriate handlers
+ * @param {Object} info - Click info (menuItemId, linkUrl, pageUrl, etc.)
+ * @param {Object} tab - Tab where the menu was clicked
+ */
+async function handleContextMenuClick(info, tab) {
+  const { menuItemId, linkUrl, pageUrl } = info;
+  const tabId = tab?.id;
+
+  console.log('[Background] Context menu clicked:', {
+    menuItemId,
+    linkUrl,
+    pageUrl,
+    tabId
+  });
+
+  switch (menuItemId) {
+    case CONTEXT_MENU_IDS.CREATE_NEW_GROUP:
+      await handleCreateNewGroup(linkUrl || pageUrl, tabId);
+      break;
+
+    case CONTEXT_MENU_IDS.ADD_TO_GROUP:
+      await handleAddToGroup(linkUrl || pageUrl, tabId);
+      break;
+
+    default:
+      console.log('[Background] Unknown context menu item:', menuItemId);
+  }
+}
+
+/**
+ * Handle "Create new Quick Tab group..." menu action
+ * v1.6.3.7-v3 - API #7: Creates group with current tab
+ * @param {string} url - URL from context menu
+ * @param {number} tabId - Current tab ID
+ */
+async function handleCreateNewGroup(url, tabId) {
+  console.log('[Background] Creating new Quick Tab group:', { url, tabId });
+
+  // Check if tabs.group API is available (Firefox 138+)
+  if (typeof browser.tabs.group !== 'function') {
+    console.warn('[Background] tabs.group API not available (requires Firefox 138+)');
+    // Show notification about unavailable feature
+    await notifyGroupingUnavailable();
+    return;
+  }
+
+  try {
+    // Create group with current tab
+    const groupId = await browser.tabs.group({
+      tabIds: [tabId],
+      createProperties: {
+        windowId: browser.windows.WINDOW_ID_CURRENT
+      }
+    });
+
+    // Store group metadata
+    const metadata = {
+      groupId,
+      name: `Quick Tab Group ${groupId}`,
+      tabIds: [tabId],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    await saveQuickTabGroupMetadata(metadata);
+
+    console.log('[Background] Quick Tab group created:', metadata);
+
+    // Notify user of success
+    await notifyGroupCreated(metadata.name);
+  } catch (err) {
+    console.error('[Background] Failed to create Quick Tab group:', err.message);
+  }
+}
+
+/**
+ * Handle "Add to group..." menu action
+ * v1.6.3.7-v3 - API #7: Shows prompt to select group
+ * @param {string} url - URL from context menu
+ * @param {number} tabId - Current tab ID
+ */
+async function handleAddToGroup(url, tabId) {
+  console.log('[Background] Add to group requested:', { url, tabId });
+
+  // Check if tabs.group API is available (Firefox 138+)
+  if (typeof browser.tabs.group !== 'function') {
+    console.warn('[Background] tabs.group API not available (requires Firefox 138+)');
+    await notifyGroupingUnavailable();
+    return;
+  }
+
+  // For now, log the request - full UI would require popup/sidebar interaction
+  console.log('[Background] Add to group: Feature requires group selection UI (coming soon)');
+
+  // Notify user that this feature is coming
+  await notifyFeatureComingSoon('Add to group');
+}
+
+/**
+ * Save Quick Tab group metadata to storage
+ * v1.6.3.7-v3 - API #7: Persist group data
+ * @param {Object} metadata - Group metadata
+ */
+async function saveQuickTabGroupMetadata(metadata) {
+  try {
+    const result = await browser.storage.local.get('quickTabGroups');
+    const groups = result.quickTabGroups || [];
+    groups.push(metadata);
+    await browser.storage.local.set({ quickTabGroups: groups });
+    console.log('[Background] Group metadata saved:', metadata.groupId);
+  } catch (err) {
+    console.error('[Background] Failed to save group metadata:', err.message);
+  }
+}
+
+// Register context menu click listener
+browser.contextMenus.onClicked.addListener(handleContextMenuClick);
+
+// Initialize context menus on script load
+initializeContextMenus();
+
+console.log('[Background] v1.6.3.7-v3 Context menus initialized');
+// ==================== END CONTEXT MENUS ====================
+
+// ==================== v1.6.3.7-v3 NOTIFICATIONS API ====================
+// API #6: browser.notifications for user feedback
+
+/**
+ * Notification icon path
+ * v1.6.3.7-v3 - API #6: Notification constants
+ */
+const NOTIFICATION_ICON_PATH = '/icons/icon-48.png';
+
+/**
+ * Auto-clear timeout for notifications (ms)
+ * v1.6.3.7-v3 - API #6: 5 second auto-clear
+ */
+const NOTIFICATION_AUTO_CLEAR_MS = 5000;
+
+/**
+ * Check if notifications API is available
+ * v1.6.3.7-v3 - API #6: Feature detection
+ * @returns {boolean} True if available
+ */
+function isNotificationsAvailable() {
+  return (
+    typeof browser.notifications !== 'undefined' &&
+    typeof browser.notifications.create === 'function'
+  );
+}
+
+/**
+ * Notify when Quick Tab is created
+ * v1.6.3.7-v3 - API #6: User feedback for creation
+ * @param {Object} quickTab - Quick Tab data { id, title, url }
+ */
+async function notifyQuickTabCreated(quickTab) {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-created-${quickTab.id}`;
+    const title = quickTab.title || 'Quick Tab';
+    const truncatedTitle = title.length > 50 ? title.substring(0, 47) + '...' : title;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Quick Tab Created',
+      message: `"${truncatedTitle}" is now a Quick Tab`,
+      priority: 1
+    });
+
+    // Auto-clear after timeout
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS);
+
+    console.log('[Background] Quick Tab created notification sent:', notificationId);
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Notify about storage warning
+ * v1.6.3.7-v3 - API #6: Storage issue alerts
+ * @param {string} message - Warning message
+ */
+async function notifyStorageWarning(message) {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-storage-warning-${Date.now()}`;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Quick Tabs Storage Issue',
+      message: message || 'A storage issue was detected',
+      priority: 2
+    });
+
+    // Auto-clear after longer timeout for warnings
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS * 2);
+
+    console.log('[Background] Storage warning notification sent:', notificationId);
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send warning notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Notify that grouping is unavailable (Firefox < 138)
+ * v1.6.3.7-v3 - API #6: Feature unavailable notification
+ */
+async function notifyGroupingUnavailable() {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-grouping-unavailable-${Date.now()}`;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Tab Grouping Unavailable',
+      message: 'Tab grouping requires Firefox 138 or newer',
+      priority: 1
+    });
+
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS);
+
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Notify that Quick Tab group was created
+ * v1.6.3.7-v3 - API #6: Group creation success notification
+ * @param {string} groupName - Name of the created group
+ */
+async function notifyGroupCreated(groupName) {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-group-created-${Date.now()}`;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Quick Tab Group Created',
+      message: `Group "${groupName}" created successfully`,
+      priority: 1
+    });
+
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS);
+
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Notify that a feature is coming soon
+ * v1.6.3.7-v3 - API #6: Coming soon notification
+ * @param {string} featureName - Name of the feature
+ */
+async function notifyFeatureComingSoon(featureName) {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-coming-soon-${Date.now()}`;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Feature Coming Soon',
+      message: `"${featureName}" will be available in a future update`,
+      priority: 1
+    });
+
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS);
+
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Check if sidebar can be opened
+ * v1.6.3.7-v3 - Extracted to reduce nesting depth
+ * @returns {boolean} True if sidebarAction.open is available
+ */
+function canOpenSidebar() {
+  return typeof browser.sidebarAction?.open === 'function';
+}
+
+/**
+ * Handle notification click events
+ * v1.6.3.7-v3 - API #6: Notification click handler
+ * @param {string} notificationId - ID of clicked notification
+ */
+async function handleNotificationClick(notificationId) {
+  console.log('[Background] Notification clicked:', notificationId);
+
+  try {
+    // If it's a Quick Tab created notification, open the sidebar
+    const isQuickTabNotification = notificationId.startsWith('qt-created-');
+    if (isQuickTabNotification && canOpenSidebar()) {
+      await browser.sidebarAction.open();
+      console.log('[Background] Sidebar opened from notification click');
+    }
+
+    // Clear the notification after handling
+    await browser.notifications.clear(notificationId);
+  } catch (err) {
+    console.error('[Background] Error handling notification click:', err.message);
+  }
+}
+
+// Register notification click listener if available
+if (isNotificationsAvailable() && browser.notifications.onClicked) {
+  browser.notifications.onClicked.addListener(handleNotificationClick);
+  console.log('[Background] v1.6.3.7-v3 Notification click listener registered');
+}
+
+console.log('[Background] v1.6.3.7-v3 Notifications API initialized');
+// ==================== END NOTIFICATIONS API ====================

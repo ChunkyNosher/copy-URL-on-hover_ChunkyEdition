@@ -60,35 +60,34 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.7-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7 Features (NEW):**
+**v1.6.3.7-v3 Features (NEW):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **storage.session API** - Session Quick Tabs (`permanent: false`)
+- **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates`)
+- **sessions API** - Per-tab state management (TabStateManager.js)
+- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
+  `sync-session-state`)
+- **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
+- **notifications API** - System notifications (NotificationManager.js)
+- **DOM Reconciliation** - `_itemElements` Map for differential updates
+
+**v1.6.3.7-v2 Features (Retained):**
+
+- **Single Writer Authority** - Manager sends commands to background
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash deduplication
+- **Orphaned Tab Recovery** - `orphaned: true` flag preservation
+
+**v1.6.3.7-v1 Features (Retained):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
+  idle timer
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
-
-**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
-
-- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()`
-- **Heartbeat** - Keep background alive, 25s interval, 5s timeout
-- **Storage Deduplication** - Multi-method dedup
-- **Cache Reconciliation** - `_triggerCacheReconciliation()`
-- **Architectural Resilience** - Coordinator is optimization, not requirement
-
-**v1.6.3.6-v10 Build & Analysis (Retained):**
-
-- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
-  tree-shaking (both modes), Rollup cache, npm-run-all
-- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34, `storage-utils.js` 7.23,
-  `index.js` 8.69
-- **Manager UI/UX Issues #1-12:** Enhanced headers, smooth animations,
-  responsive design
-- **Timing Constants:** `ANIMATION_DURATION_MS=350`,
-  `FAVICON_LOAD_TIMEOUT_MS=2000`
 
 **Key Architecture Layers:**
 
@@ -99,7 +98,8 @@ UI)
 
 **Key Classes:**
 
-- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
+- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING,
+  DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations (2000ms timeout)
 - **UICoordinator** - `setHandlers()`, `_shouldRenderOnThisTab()`
@@ -164,122 +164,17 @@ architecture
 
 ### Phase 3: Implementation
 
-**Layer-by-Layer Approach:**
+**Layer-by-Layer Approach:** Domain → Storage → Feature → UI
 
-**1. Domain Layer (if needed):**
-
-```javascript
-// Pure business logic, no dependencies
-class FeatureEntity {
-  constructor(data) {
-    this.validate(data);
-    this.data = data;
-  }
-
-  validate(data) {
-    // Enforce invariants
-  }
-
-  businessMethod() {
-    // Pure logic
-  }
-}
-```
-
-**2. Storage Layer (if needed):**
-
-```javascript
-// Persistence abstraction
-class FeatureStorage {
-  async save(entity) {
-    await this.adapter.set(this.key, entity.toJSON());
-  }
-
-  async load() {
-    const data = await this.adapter.get(this.key);
-    return new FeatureEntity(data);
-  }
-}
-```
-
-**3. Feature Layer:**
-
-```javascript
-// Use case implementation
-class FeatureManager {
-  constructor(storage, eventBus) {
-    this.storage = storage;
-    this.eventBus = eventBus;
-  }
-
-  async executeFeature(params) {
-    // 1. Load state
-    // 2. Apply business logic
-    // 3. Save state
-    // 4. Emit events
-  }
-}
-```
-
-**4. UI Layer:**
-
-```javascript
-// Browser extension interface
-async function handleFeatureRequest(request) {
-  const manager = new FeatureManager(storage, eventBus);
-  return await manager.executeFeature(request.params);
-}
-```
-
-**Implementation Guidelines:**
-
-✅ **DO:**
-
-- Follow existing patterns in codebase
-- Use dependency injection
-- Make code testable
-- Add defensive checks
-- Document complex logic
-
-❌ **DON'T:**
-
-- Mix layers (domain calling UI, etc.)
-- Use global state
-- Hardcode values
-- Skip error handling
-- Leave TODOs in production code
+**Implementation Guidelines:** ✅ Follow existing patterns, use dependency
+injection, make code testable ❌ Don't mix layers, use global state, skip error
+handling
 
 ### Phase 4: Testing
 
-**Test Pyramid:**
-
-1. **Unit Tests (70%)** - Test each component in isolation
-
-   ```javascript
-   test('FeatureEntity validates data', () => {
-     expect(() => new FeatureEntity(invalidData)).toThrow('Validation error');
-   });
-   ```
-
-2. **Integration Tests (20%)** - Test component interactions
-
-   ```javascript
-   test('FeatureManager saves to storage', async () => {
-     await manager.executeFeature(params);
-     expect(storage.save).toHaveBeenCalled();
-   });
-   ```
-
-3. **End-to-End Tests (10%)** - Test full user workflows
-   ```javascript
-   test('feature workflow completes successfully', async () => {
-     // Test complete feature from UI to storage
-   });
-   ```
+**Test Pyramid:** Unit (70%) → Integration (20%) → E2E (10%)
 
 **Coverage Target:** 80% minimum, 90%+ for critical paths
-
-**Use Jest unit tests:** Test browser-specific functionality
 
 ### Phase 5: Documentation
 
@@ -355,220 +250,37 @@ async function handleFeatureRequest(request) {
 
 ### Solo/Mute Feature Pattern (v1.6.3+)
 
-**Example of clean feature implementation:**
+See QuickTab domain for Solo/Mute implementation patterns.
 
-**Domain Layer:**
-
-```javascript
-class QuickTab {
-  toggleSolo(tabId) {
-    if (this.soloedOnTabs.includes(tabId)) {
-      this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== tabId);
-    } else {
-      this.soloedOnTabs.push(tabId);
-      this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== tabId);
-    }
-  }
-}
-```
-
-**Feature Layer:**
+### BroadcastChannel Pattern (v1.6.3.7-v3)
 
 ```javascript
-class SoloMuteManager {
-  async setTabSolo(quickTabId, tabId) {
-    const quickTab = await this.storage.load(quickTabId);
-    quickTab.toggleSolo(tabId);
-    await this.storage.save(quickTab);
-    this.eventBus.emit('solo-changed', { quickTabId, tabId });
-  }
-}
-```
-
-**UI Layer:**
-
-```javascript
-document.getElementById('solo-btn').addEventListener('click', async () => {
-  await soloMuteManager.setTabSolo(quickTabId, currentTabId);
+const channel = new BroadcastChannel('quick-tabs-updates');
+channel.postMessage({
+  type: 'quick-tab-created',
+  quickTabId: id,
+  timestamp: Date.now()
 });
 ```
 
-### Cross-Tab Sync Pattern (v1.6.2+)
-
-**Use storage.onChanged for real-time sync:**
+### Storage Routing Pattern (v1.6.3.7-v3)
 
 ```javascript
-class SyncedFeature {
-  constructor() {
-    // Listen for storage changes from other tabs
-    browser.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === 'local' && changes.quick_tabs_state_v2) {
-        this.handleSync(changes.quick_tabs_state_v2.newValue);
-      }
-    });
-  }
-
-  async updateState(state) {
-    // Save to storage - triggers storage.onChanged in other tabs
-    await browser.storage.local.set({
-      quick_tabs_state_v2: {
-        tabs: state.tabs,
-        saveId: generateId(),
-        timestamp: Date.now()
-      }
-    });
-  }
-}
+// Session: permanent: false → storage.session
+// Permanent: permanent: true → storage.local
+const storage =
+  quickTab.permanent === false
+    ? browser.storage.session
+    : browser.storage.local;
 ```
 
 ---
 
-## Firefox/Zen Browser Specifics
+## Testing & Quality
 
-**WebExtensions API Usage:**
-
-**Use Context7 MCP** for current API documentation
-
-**Storage:**
-
-```javascript
-// Prefer sync.storage for user settings
-await browser.storage.sync.set({ setting: value });
-
-// Use local.storage for large data
-await browser.storage.local.set({ largeData: data });
-```
-
-**Tabs:**
-
-```javascript
-// Get current tab
-const tab = await browser.tabs.get(tabId);
-// Use tab.id for Solo/Mute arrays
-```
-
-**Messages:**
-
-```javascript
-// Validate sender
-browser.runtime.onMessage.addListener((msg, sender) => {
-  if (!sender.id || sender.id !== browser.runtime.id) {
-    return Promise.reject(new Error('Unauthorized'));
-  }
-  // Handle message
-});
-```
-
----
-
-## Testing Requirements
-
-**For Every New Feature:**
-
-- [ ] Unit tests for all business logic (100% coverage)
-- [ ] Integration tests for component interactions (80%+ coverage)
-- [ ] End-to-end tests for user workflows
-- [ ] Edge case tests (null, undefined, empty, large values)
-- [ ] Error handling tests
-- [ ] Solo/Mute tests (soloedOnTabs/mutedOnTabs arrays)
-- [ ] Global visibility tests
-- [ ] Cross-tab sync tests via storage.onChanged (if applicable)
-
-**Test File Organization:**
-
-```
-tests/
-  unit/
-    domain/       # Pure business logic
-    storage/      # Persistence layer
-    features/     # Use cases
-  integration/    # Component interactions
-  e2e/            # Full workflows
-```
-
----
-
-## Code Quality Standards
-
-**Every feature must:**
-
-- [ ] Pass ESLint with zero errors ⭐
-- [ ] Follow existing code patterns
-- [ ] Have 80%+ test coverage
-- [ ] Include JSDoc comments on public APIs
-- [ ] Handle all error cases
-- [ ] Respect architecture boundaries
-- [ ] Use dependency injection
-- [ ] Be fully documented
-
----
-
-## Before Every Commit Checklist
-
-**Pre-Implementation:**
-
-- [ ] Searched memories for patterns 🧠
-- [ ] Playwright Firefox/Chrome: Tested BEFORE changes ⭐
-
-**Implementation:**
-
-- [ ] Context7: Verified API usage ⭐
-- [ ] Perplexity: Verified approach (pasted code) ⭐
-- [ ] Feature implemented following DDD
-- [ ] Context7: Double-checked implementation ⭐
-- [ ] Perplexity: Verified best practice ⭐
-- [ ] Architecture boundaries respected
-
-**Code Quality:**
-
-- [ ] ESLint: Linted all changes ⭐
-- [ ] CodeScene: Checked code health ⭐
-
-**Testing:**
-
-- [ ] Unit tests written (80%+ coverage)
-- [ ] Integration tests written
-- [ ] End-to-end tests written (if applicable)
-- [ ] All tests passing (npm run test, test:extension) ⭐
-- [ ] Playwright Firefox/Chrome: Tested AFTER changes ⭐
-- [ ] Codecov: Verified coverage ⭐
-
-**Documentation:**
-
-- [ ] Code documented
-- [ ] README updated (if user-facing)
-- [ ] Documentation under 20KB 📏
-- [ ] No docs in docs/manual/ 📏
-- [ ] Agent file under 25KB 📏
+- [ ] Pass ESLint ⭐
+- [ ] 80%+ test coverage
+- [ ] All tests pass (`npm test`) ⭐
 - [ ] Memory files committed 🧠
-
----
-
-## Common Pitfalls to Avoid
-
-❌ **Mixing architecture layers** → Keep domain pure, features orchestrating, UI
-presenting
-
-❌ **Skipping tests** → Tests are non-negotiable for new features
-
-❌ **Hardcoding values** → Use configuration, constants, or parameters
-
-❌ **Ignoring edge cases** → Test null, undefined, empty, and boundary values
-
-❌ **Poor error handling** → Every async operation needs error handling
-
----
-
-## Success Metrics
-
-**Successful Feature:**
-
-- ✅ Meets all acceptance criteria
-- ✅ Follows clean architecture
-- ✅ 80%+ test coverage
-- ✅ Zero ESLint errors
-- ✅ Fully documented
-- ✅ No technical debt introduced
-- ✅ Easy to maintain and extend
 
 **Your strength: Building features that last.**

@@ -43,7 +43,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive
+  integers
 
 **v1.6.3.6-v12 Features (Retained):**
 

@@ -556,12 +556,12 @@ export function isTabMinimized(tab) {
  * v1.6.3.7 - FIX Issue #1, #5: Validate originTabId is a valid positive integer
  * Only classify as orphaned if: (1) no originTabId field, (2) not a valid integer
  * Note: We cannot check for browser tab existence here (async), that's done in fetchBrowserTabInfo
- * 
+ *
  * Tab IDs in Firefox/Chrome are always positive integers (1, 2, 3, ...).
  * An ID of 0 or negative is invalid because:
  * - browser.tabs.get(0) throws an error
  * - Tab IDs are assigned by the browser starting from 1
- * 
+ *
  * @private
  * @param {*} originTabId - The originTabId value to validate
  * @returns {boolean} True if originTabId is a valid positive integer
@@ -571,15 +571,15 @@ function _isValidOriginTabId(originTabId) {
   if (originTabId === null || originTabId === undefined) {
     return false;
   }
-  
+
   // Convert to number if string
   const numericId = Number(originTabId);
-  
+
   // Must be a valid positive integer (Tab IDs are always >= 1 in Firefox/Chrome)
   if (isNaN(numericId) || !Number.isInteger(numericId) || numericId <= 0) {
     return false;
   }
-  
+
   return true;
 }
 
@@ -607,10 +607,10 @@ export function groupQuickTabsByOriginTab(quickTabs) {
 
   for (const tab of quickTabs) {
     const originTabId = tab.originTabId;
-    
+
     // v1.6.3.7 - FIX Issue #1: Use validator to determine if originTabId is valid
     const isValid = _isValidOriginTabId(originTabId);
-    
+
     // v1.6.3.7 - FIX Issue #1, #5: Log each tab's originTabId extraction and grouping decision
     console.log('[Manager] GROUPING_TAB:', {
       quickTabId: tab.id,

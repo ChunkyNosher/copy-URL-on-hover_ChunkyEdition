@@ -37,49 +37,34 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.7-v3 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7 Features (NEW):**
+**v1.6.3.7-v3 Features (NEW):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **storage.session API** - Session Quick Tabs (`permanent: false`)
+- **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates`)
+- **sessions API** - Per-tab state management (TabStateManager.js)
+- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
+  `sync-session-state`)
+- **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
+- **DOM Reconciliation** - `_itemElements` Map for differential updates
+- **originTabId Fix** - Initialization in window.js `_initializeVisibility()`
+
+**v1.6.3.7-v2 Features (Retained):**
+
+- **Single Writer Authority** - Manager sends commands to background
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash deduplication
+- **Orphaned Tab Recovery** - `orphaned: true` flag preservation
+
+**v1.6.3.7-v1 Features (Retained):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
+  idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
+  (100ms→10s)
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
-
-**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
-
-- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
-  exponential backoff
-- **Heartbeat** - `HEARTBEAT` every 25s, `HEARTBEAT_ACK` response, 5s timeout
-- **Storage Deduplication** - transactionId, saveId+timestamp, content hash
-- **Cache Reconciliation** - `_triggerCacheReconciliation()`
-- **Deletion Acks** - `handleDeletionAck()`, `_waitForDeletionAcks()`
-- **Architectural Resilience** - Coordinator is optimization, not requirement
-
-**v1.6.3.6-v12 Port-Based Messaging (Retained):**
-
-- **Port Registry** -
-  `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount } }`
-- **Message Protocol** -
-  `{ type, action, correlationId, source, timestamp, payload, metadata }`
-- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`,
-  `ERROR`, `BROADCAST`
-- **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
-- **Storage Write Verification** - Read-back after write to verify success
-
-**v1.6.3.6-v12 Animation/Logging (Retained):**
-
-- **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
-  ERROR)
-- **State Constants** - `STATE_OPEN`, `STATE_CLOSED`
-- **Adoption Verification** - 2-second timeout for adoption confirmation
-
-**v1.6.3.6-v12 Build Optimization (Retained):**
-
-- **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
-- **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
-- **sideEffects: false** - In package.json
 
 **Key Features:**
 
@@ -142,7 +127,58 @@ architecture, race conditions
 
 ---
 
-## v1.6.3.7 Fix Patterns
+## v1.6.3.7-v3 Fix Patterns
+
+### BroadcastChannel Pattern
+
+```javascript
+// Real-time cross-tab messaging
+const updateChannel = new BroadcastChannel('quick-tabs-updates');
+updateChannel.postMessage({
+  type: 'quick-tab-created|updated|deleted|minimized|restored',
+  quickTabId: id,
+  data: quickTab,
+  timestamp: Date.now()
+});
+```
+
+### DOM Reconciliation Pattern
+
+```javascript
+// Track existing elements by ID for differential updates
+_itemElements = new Map(); // quickTabId → DOM element
+
+function reconcileDOM(newTabs) {
+  const newIds = new Set(newTabs.map(t => t.id));
+  // Remove deleted
+  for (const [id, el] of _itemElements) {
+    if (!newIds.has(id)) {
+      el.remove();
+      _itemElements.delete(id);
+    }
+  }
+  // Add/update existing
+  for (const tab of newTabs) {
+    if (!_itemElements.has(tab.id)) {
+      /* create new element */
+    } else {
+      /* update existing */
+    }
+  }
+}
+```
+
+### Storage Routing Pattern
+
+```javascript
+// Session vs Permanent routing
+const storage =
+  quickTab.permanent === false
+    ? browser.storage.session
+    : browser.storage.local;
+```
+
+## v1.6.3.7-v1/v2 Fix Patterns (Retained)
 
 ### Background Keepalive Pattern
 

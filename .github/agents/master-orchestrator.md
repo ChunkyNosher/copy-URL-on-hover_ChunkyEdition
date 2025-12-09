@@ -67,7 +67,8 @@ UI)
 
 **v1.6.3.7 Features (NEW):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
+  idle timer
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
 

@@ -1019,6 +1019,7 @@ Since you're maintaining one codebase for both browsers:
    ```
 
 4. **Use CI/CD to test both:**
+
    ```yaml
    # .github/workflows/test.yml
    jobs:

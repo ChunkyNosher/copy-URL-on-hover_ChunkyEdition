@@ -1,0 +1,8 @@
+{
+  "id": "6b05c281-5dde-4da4-aa83-5ff0c0d17e81",
+  "title": "v1.6.3.7-v3 API implementations",
+  "details": "Implemented three new Firefox APIs in v1.6.3.7-v3:\n\n1. **QuickTabGroupManager** (`src/features/quick-tabs/QuickTabGroupManager.js`):\n   - Uses `browser.tabs.group()` API (Firefox 138+)\n   - Static methods: `createGroup()`, `addToGroup()`, `removeFromGroup()`, `getGroupMembers()`, `getAllGroups()`, `deleteGroup()`\n   - Feature detection via `isTabsGroupAvailable()`\n   - Persists group metadata in `quickTabGroups` storage key\n   - Graceful fallback for older Firefox versions\n\n2. **Enhanced Context Menus** (in `background.js`):\n   - Added \"Quick Tab Grouping\" submenu with `page` and `link` contexts\n   - Options: \"Create new Quick Tab group...\" and \"Add to group...\"\n   - Requires `menus` permission in Firefox Manifest V2\n\n3. **NotificationManager** (`src/features/notifications/NotificationManager.js`):\n   - Uses `browser.notifications` API\n   - Methods: `notifyQuickTabCreated()`, `notifyStorageWarning()`, `notify()`, `clear()`\n   - Auto-clear after 5 seconds\n   - Click handler opens sidebar for Quick Tab notifications\n   - Requires `notifications` permission (already in manifest)",
+  "category": "project_context",
+  "dateCreated": "2025-12-09T19:14:14.445Z",
+  "dateUpdated": "2025-12-09T19:14:14.445Z"
+}
