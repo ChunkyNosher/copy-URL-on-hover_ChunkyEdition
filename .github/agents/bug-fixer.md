@@ -29,15 +29,26 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v10 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v11 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.6-v10 Build & Analysis (NEW):**
-- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod), tree-shaking, Rollup cache, npm-run-all
-- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34, `storage-utils.js` 7.23, `background.js` 7.66
-- **Manager UI/UX Issues #1-12:** Enhanced headers, orphan detection, smooth animations, responsive design
-- **Timing Constants:** `ANIMATION_DURATION_MS=350`, `FAVICON_LOAD_TIMEOUT_MS=2000`
+**v1.6.3.6-v11 Port-Based Messaging (NEW):**
+- **Port Registry** - `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount } }`
+- **Message Protocol** - `{ type, action, correlationId, source, timestamp, payload, metadata }`
+- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`, `ERROR`, `BROADCAST`
+- **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
+- **Storage Write Verification** - Read-back after write to verify success
+
+**v1.6.3.6-v11 Animation/Logging (NEW):**
+- **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or ERROR)
+- **State Constants** - `STATE_OPEN`, `STATE_CLOSED`
+- **Adoption Verification** - 2-second timeout for adoption confirmation
+
+**v1.6.3.6-v11 Build Optimization (NEW):**
+- **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
+- **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
+- **sideEffects: false** - In package.json
 
 **Key Features:**
 - Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
@@ -46,50 +57,12 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.6-v7 Fixes:**
-1. **ID Pattern Recovery** - `_extractTabIdFromQuickTabId()` extracts tab ID from `qt-{tabId}-{timestamp}-{random}`
-2. **Orphan Recovery Fallback** - `_checkTabScopeWithReason()` recovers orphaned tabs when ID matches
-3. **Manager Restore Recovery** - `_shouldRenderOnThisTab()` patches originTabId in-place
-4. **3-Stage Restoration Logging** - RESTORE_QUICK_TAB logs receipt, invocation, completion
-
-**v1.6.3.6-v6 Fixes (renamed from v1.6.4):**
-1. **originTabId Snapshot Preservation** - MinimizedManager includes `savedOriginTabId` in snapshots
-2. **originTabId Restore Application** - UICoordinator applies originTabId from snapshot
-3. **originTabId Restore Logging** - VisibilityHandler logs originTabId in restore flow
-
-**v1.6.3.6-v5 Fixes:**
-1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
-2. **Deletion State Machine** - DestroyHandler._destroyedIds prevents deletion loops
-3. **Unified Deletion Path** - `initiateDestruction()` is single entry point
-4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with correlation IDs
-5. **Message Correlation IDs** - `generateMessageId()` for message tracing
-
-**v1.6.3.6-v4 Fixes (Retained):**
-1. **Position/Size Logging** - Full trace visibility from pointer event → storage
-2. **setWritingTabId() Export** - Content scripts can set tab ID for storage ownership
-3. **Broadcast Deduplication** - Circuit breaker in background.js (10+ broadcasts/100ms trips)
-4. **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned window warnings
-5. **sender.tab.id Only** - GET_CURRENT_TAB_ID uses sender.tab.id, removed active tab fallback
-
-**v1.6.3.6-v4 Fixes (Storage Retained):**
-1. **Storage Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`
-2. **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks when `tabId === null`
-3. **Enhanced Loop Detection** - Escalation warning at 250ms
-4. **Faster Transaction Cleanup** - `TRANSACTION_FALLBACK_CLEANUP_MS` = 500ms
-
-**v1.6.3.6 Fixes (Retained):**
-1. **Cross-Tab Filtering** - `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check ownership
-2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` = 2000ms
-3. **Button Handler Logging** - `closeAllTabs()` comprehensive logging
-
 **Key Modules:**
 - **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations with logging
 - **UICoordinator** - `setHandlers()`, `_isHydrating`, `_shouldRenderOnThisTab()`
-- **QuickTabHandler** - `handleGetCurrentTabId()` sender.tab.id only
-- **UpdateHandler** - `_doPersist()` logging, `handlePositionUpdate()`, `handleSizeUpdate()`
-- **CreateHandler** - `_getOriginTabId()`, `_logOriginTabIdAssignment()`
+- **DestroyHandler** - `initiateDestruction()`, `_destroyedIds` Set
 
 ---
 
@@ -129,284 +102,60 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ---
 
-## v1.6.3.6-v7 Fix Patterns
+## v1.6.3.6-v11 Fix Patterns
 
-### ID Pattern Recovery (v1.6.3.6-v7)
+### Port-Based Messaging Pattern
 ```javascript
-// index.js / UICoordinator.js - Extract tab ID from Quick Tab ID pattern
-function _extractTabIdFromQuickTabId(quickTabId) {
-  // Format: qt-{tabId}-{timestamp}-{random}
-  const match = quickTabId?.match(/^qt-(\d+)-/);
-  return match ? parseInt(match[1], 10) : null;
+// Message protocol with correlationId
+{
+  type: 'ACTION_REQUEST',
+  action: 'TOGGLE_GROUP',
+  correlationId: generateMessageId(),
+  source: 'sidebar',
+  timestamp: Date.now(),
+  payload: { groupId, newState }
 }
 
-// _checkTabScopeWithReason() - Recovery fallback when originTabId is null
-_checkTabScopeWithReason(tabData) {
-  if (!tabData.originTabId) {
-    // Try to recover from Quick Tab ID pattern
-    const extractedTabId = this._extractTabIdFromQuickTabId(tabData.id);
-    if (extractedTabId === this._currentTabId) {
-      // Patch originTabId in-place for subsequent operations
-      tabData.originTabId = extractedTabId;
-      return { shouldRender: true, reason: 'Recovered via ID pattern' };
-    }
-    return { shouldRender: false, reason: 'Missing originTabId, no recovery' };
-  }
-  // ... existing checks
-}
+// Port registry in background.js
+const portRegistry = {
+  // portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount }
+};
 ```
 
-### 3-Stage Restoration Logging (v1.6.3.6-v7)
+### Animation Lifecycle Pattern
 ```javascript
-// content.js - Track RESTORE_QUICK_TAB flow
-case 'RESTORE_QUICK_TAB': {
-  // Stage 1: Command received
-  console.log('[Content] RESTORE_QUICK_TAB received', { quickTabId, correlationId });
-  
-  // Stage 2: Invoking handler
-  console.log('[Content] Invoking handleRestore', { quickTabId });
-  const result = await handleRestore(message);
-  
-  // Stage 3: Handler completion
-  console.log('[Content] handleRestore completed', { quickTabId, success: result?.success });
-  return result;
+// Consistent state logging
+const STATE_OPEN = 'open';
+const STATE_CLOSED = 'closed';
+
+function logStateTransition(phase, details) {
+  console.log(`[Manager] ANIMATION_${phase}:`, details);
+}
+
+// Phases: START, CALC, TRANSITION, COMPLETE, ERROR
+```
+
+### Storage Write Verification Pattern
+```javascript
+// Write with read-back verification
+async function verifiedStorageWrite(key, value) {
+  await browser.storage.local.set({ [key]: value });
+  const readBack = await browser.storage.local.get(key);
+  if (JSON.stringify(readBack[key]) !== JSON.stringify(value)) {
+    console.error('[Storage] Write verification FAILED');
+  }
 }
 ```
 
 ---
 
-## v1.6.3.6-v5 Fix Patterns
+## Prior Version Fix Patterns (Summary)
 
-### Strict Tab Isolation Pattern (v1.6.3.6-v5)
-```javascript
-// UICoordinator.js - REJECT Quick Tabs with null/undefined originTabId
-_shouldRenderOnThisTab(tabData) {
-  const { shouldRender, reason } = this._checkTabScopeWithReason(tabData);
-  if (!shouldRender) {
-    console.log(`[UICoordinator] Skipping render: ${reason}`);
-  }
-  return shouldRender;
-}
-
-_checkTabScopeWithReason(tabData) {
-  if (!tabData.originTabId) {
-    return { shouldRender: false, reason: 'Missing originTabId' };
-  }
-  return { shouldRender: true, reason: 'Passed all checks' };
-}
-```
-
-### Deletion State Machine Pattern (v1.6.3.6-v5)
-```javascript
-// DestroyHandler.js - Prevent deletion loops with state tracking
-class DestroyHandler {
-  constructor() {
-    this._destroyedIds = new Set();
-  }
-
-  async initiateDestruction(quickTabId) {
-    if (this._destroyedIds.has(quickTabId)) {
-      return; // Already destroyed - breaks loops
-    }
-    this._destroyedIds.add(quickTabId);
-    // ... proceed with destruction
-  }
-}
-```
-
-### Unified Deletion Path Pattern (v1.6.3.6-v5)
-```javascript
-// background.js - Broadcast deletion with sender filtering
-function _broadcastDeletionToAllTabs(quickTabId, senderTabId) {
-  browser.tabs.query({}).then(tabs => {
-    tabs.forEach(tab => {
-      if (tab.id !== senderTabId) { // Filter sender
-        browser.tabs.sendMessage(tab.id, {
-          type: 'QUICK_TAB_DELETED',
-          quickTabId,
-          correlationId: generateMessageId()
-        });
-      }
-    });
-  });
-}
-```
-
-### Message Correlation IDs Pattern (v1.6.3.6-v5)
-```javascript
-// background.js - Generate unique correlation IDs
-let messageIdCounter = 0;
-function generateMessageId() {
-  return `msg-${Date.now()}-${++messageIdCounter}`;
-}
-```
-
-## v1.6.3.6-v4 Fix Patterns
-
-### setWritingTabId() Pattern (v1.6.3.6-v4)
-```javascript
-// storage-utils.js - Allow content scripts to set tab ID
-export function setWritingTabId(tabId) {
-  if (typeof tabId !== 'number' || !Number.isInteger(tabId) || tabId <= 0) {
-    console.warn('[StorageUtils] setWritingTabId called with invalid tabId:', tabId);
-    return;
-  }
-  currentWritingTabId = tabId;
-}
-
-// content.js - Call after getting tab ID from background
-const tabId = await getCurrentTabIdFromBackground();
-if (tabId) {
-  setWritingTabId(tabId);
-}
-```
-
-### sender.tab.id Only Pattern (v1.6.3.6-v4)
-```javascript
-// QuickTabHandler.js - NEVER fallback to active tab query
-handleGetCurrentTabId(_message, sender) {
-  if (sender.tab && typeof sender.tab.id === 'number') {
-    return { success: true, tabId: sender.tab.id };
-  }
-  // REMOVED: tabs.query({ active: true }) fallback - causes cross-tab leakage
-  return { success: false, tabId: null, error: 'sender.tab not available' };
-}
-```
-
-### Broadcast Deduplication Pattern (v1.6.3.6-v4)
-```javascript
-// background.js - Circuit breaker for broadcasts
-const BROADCAST_HISTORY_WINDOW_MS = 100;
-const BROADCAST_CIRCUIT_BREAKER_LIMIT = 10;
-
-function _shouldAllowBroadcast(quickTabId, changes) {
-  // Check if circuit breaker tripped
-  if (_circuitBreakerTripped) return { allowed: false, reason: 'circuit breaker' };
-  
-  // Check for duplicate broadcasts within window
-  const now = Date.now();
-  const recentBroadcasts = _broadcastHistory.filter(b => now - b.time < BROADCAST_HISTORY_WINDOW_MS);
-  if (recentBroadcasts.length >= BROADCAST_CIRCUIT_BREAKER_LIMIT) {
-    _circuitBreakerTripped = true;
-    return { allowed: false, reason: 'rate limit' };
-  }
-  return { allowed: true };
-}
-```
-
-### Hydration Flag Pattern (v1.6.3.6-v4)
-```javascript
-// UICoordinator.js - Suppress warnings during hydration
-this._isHydrating = false;
-
-async renderAll(tabsToRender) {
-  this._isHydrating = true;  // Start hydration
-  try {
-    // ... render tabs
-  } finally {
-    this._isHydrating = false;  // End hydration
-  }
-}
-
-_logOrphanedWindowWarning(id) {
-  if (this._isHydrating) return;  // Suppress during hydration
-  console.warn('[UICoordinator] Orphaned window:', id);
-}
-```
-
-## v1.6.3.6-v4 Fix Patterns (Retained)
-
-### Circuit Breaker Pattern (v1.6.3.6-v4)
-```javascript
-// storage-utils.js - Block writes when queue exceeds threshold
-const CIRCUIT_BREAKER_THRESHOLD = 15;
-const CIRCUIT_BREAKER_RESET_THRESHOLD = 10;
-let circuitBreakerTripped = false;
-
-// In queueStorageWrite() - check BEFORE incrementing pendingWriteCount
-if (circuitBreakerTripped || pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
-  console.error('[STORAGE] ⛔ CIRCUIT BREAKER: Storage write blocked');
-  return; // Block new writes
-}
-
-// In _executeStorageWrite() - auto-reset when queue drains
-if (circuitBreakerTripped && pendingWriteCount < CIRCUIT_BREAKER_RESET_THRESHOLD) {
-  circuitBreakerTripped = false;
-  console.log('[STORAGE] ✅ Circuit breaker reset');
-}
-```
-
-### Fail-Closed Tab ID Validation (v1.6.3.6-v4)
-```javascript
-// storage-utils.js - Block writes when tab ID unknown
-function validateOwnershipForWrite(tabs, tabId, forceEmpty) {
-  if (tabId === null) {
-    // FAIL-CLOSED: Block write during async init (50-200ms window)
-    return { shouldWrite: false, ownedTabs: [], reason: 'Tab ID not yet known' };
-  }
-  // ... ownership validation
-}
-```
-
-### Escalation Warning (v1.6.3.6-v4)
-```javascript
-// storage-utils.js - 250ms intermediate warning
-const ESCALATION_WARNING_MS = 250;
-const TRANSACTION_WARNING_TIMEOUTS = new Map();
-
-function scheduleFallbackCleanup(transactionId, ...) {
-  // Fire warning at 250ms if still pending
-  const warningTimeout = setTimeout(() => {
-    console.warn('[STORAGE] ⏰ Transaction still pending at 250ms:', transactionId);
-  }, ESCALATION_WARNING_MS);
-  TRANSACTION_WARNING_TIMEOUTS.set(transactionId, warningTimeout);
-  // ... existing 500ms timeout
-}
-
-function cleanupTransactionId(transactionId) {
-  // Also clean up warning timeout
-  const warningTimeout = TRANSACTION_WARNING_TIMEOUTS.get(transactionId);
-  if (warningTimeout) clearTimeout(warningTimeout);
-  // ... existing cleanup
-}
-```
-
-### Updated Timeout Constants (v1.6.3.6-v4)
-```javascript
-const DUPLICATE_SAVEID_THRESHOLD = 1;  // Was 2 - faster loop detection
-const TRANSACTION_FALLBACK_CLEANUP_MS = 500;  // Was 2000 - faster recovery
-const ESCALATION_WARNING_MS = 250;  // NEW - intermediate warning
-const CIRCUIT_BREAKER_THRESHOLD = 15;  // NEW - block all writes threshold
-const CIRCUIT_BREAKER_RESET_THRESHOLD = 10;  // NEW - auto-reset threshold
-```
-
-## v1.6.3.6-v2 Fix Patterns (Summary)
-
-**Triple-Source Entropy:** `WRITING_INSTANCE_ID` from `performance.now()`, `Math.random()`, `crypto.getRandomValues()`  
-**Self-Write Detection:** `lastWrittenTransactionId` tracks last written transaction  
-**Ownership History:** `previouslyOwnedTabIds` Set validates empty writes  
-**Loop Detection:** `saveIdWriteTracker`, `pendingWriteCount` backlog warnings
-
-## v1.6.3.6 Fix Patterns (Summary)
-
-**Cross-Tab Filtering:** Check `quickTabsMap`/`minimizedManager` before processing broadcasts  
-**Timeout Constants:** `STORAGE_TIMEOUT_MS` = 2000ms (down from 5000ms)  
-**Manager Logging:** `closeAllTabs()` logs full operation lifecycle
-
-## Legacy Fix Patterns (Summary)
-
-**State Machine:** `canTransition()` before operations, `transition()` logs all changes  
-**Mediator:** Single entry point for minimize/restore/destroy with rollback  
-**Map Transactions:** `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`  
-**Callback Wiring:** `setHandlers()`, `_buildCallbackOptions()`, `rewireCallbacks()`  
-**Z-Index:** `_applyZIndexAfterAppend()`, `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`  
-**DOM Lookup:** Defensive query when `this.container` is null  
-**State Desync:** `_logIfStateDesync(operation)` detects split-brain  
-**Element Update:** `DragController.updateElement()` after re-render  
-**Cleanup:** `cleanup()` removes listeners before DOM removal  
-**Operation Flags:** `isMinimizing`/`isRestoring` prevent circular callbacks  
-**Debounced Drag:** `_debouncedDragPersist()` with 200ms debounce  
-**closeAll Mutex:** `_closeAllInProgress` flag, 2000ms release
+**v1.6.3.6-v10:** Orphan adoption, tab switch detection, smooth animations (0.35s), responsive design
+**v1.6.3.6-v8:** Multi-layer ID recovery, `_extractTabIdFromQuickTabId()`, cross-tab grouping UI
+**v1.6.3.6-v7:** ID pattern recovery, orphan recovery fallback, 3-stage restoration logging
+**v1.6.3.6-v5:** Strict tab isolation, deletion state machine, unified deletion path
+**v1.6.3.6-v4:** Storage circuit breaker (15+ writes blocked), fail-closed tab ID validation, broadcast deduplication
 
 ---
 

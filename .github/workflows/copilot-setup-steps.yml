@@ -48,10 +48,9 @@ jobs:
           echo "=========================================="
 
       - name: Install npm dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
         env:
           NODE_ENV: development
-        continue-on-error: true
 
       # ====================================================================
       # NEW STEP: Verify npm Cache State
