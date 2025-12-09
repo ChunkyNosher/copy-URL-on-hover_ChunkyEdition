@@ -51,6 +51,7 @@ jobs:
         run: npm ci
         env:
           NODE_ENV: development
+        continue-on-error: true
 
       # ====================================================================
       # NEW STEP: Verify npm Cache State
