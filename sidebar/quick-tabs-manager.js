@@ -73,6 +73,15 @@ const SAVEID_CLEARED = 'cleared';
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
 
+// ==================== v1.6.3.7 CONSTANTS ====================
+// FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
+const RENDER_DEBOUNCE_MS = 300;
+// FIX Issue #5: Port Reconnect Circuit Breaker
+const RECONNECT_BACKOFF_INITIAL_MS = 100;
+const RECONNECT_BACKOFF_MAX_MS = 10000;
+const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
+const CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000;
+
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
 
@@ -192,6 +201,24 @@ let lastHeartbeatResponse = Date.now();
 let consecutiveHeartbeatFailures = 0;
 const MAX_HEARTBEAT_FAILURES = 2;
 
+// ==================== v1.6.3.7 CIRCUIT BREAKER STATE ====================
+// FIX Issue #5: Port Reconnect Circuit Breaker to prevent thundering herd
+/**
+ * Circuit breaker state
+ * v1.6.3.7 - FIX Issue #5: Prevent thundering herd on reconnect
+ * States: 'closed' (connected), 'open' (not trying), 'half-open' (attempting)
+ */
+let circuitBreakerState = 'closed';
+let circuitBreakerOpenTime = 0;
+let reconnectAttempts = 0;
+let reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+
+// ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
+// FIX Issue #3: UI Flicker Prevention
+let renderDebounceTimer = null;
+let lastRenderedHash = 0;
+let pendingRenderUI = false;
+
 /**
  * Generate correlation ID for message acknowledgment
  * v1.6.3.6-v11 - FIX Issue #10: Correlation tracking
@@ -220,8 +247,23 @@ function logPortLifecycle(event, details = {}) {
  * Connect to background script via persistent port
  * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
  * v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat on connect
+ * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
  */
 function connectToBackground() {
+  // v1.6.3.7 - FIX Issue #5: Check circuit breaker state
+  if (circuitBreakerState === 'open') {
+    const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
+    if (timeSinceOpen < CIRCUIT_BREAKER_OPEN_DURATION_MS) {
+      console.log('[Manager] Circuit breaker OPEN - skipping reconnect', {
+        timeRemainingMs: CIRCUIT_BREAKER_OPEN_DURATION_MS - timeSinceOpen
+      });
+      return;
+    }
+    // Transition to half-open state
+    circuitBreakerState = 'half-open';
+    console.log('[Manager] Circuit breaker HALF-OPEN - attempting reconnect');
+  }
+
   try {
     backgroundPort = browser.runtime.connect({
       name: 'quicktabs-sidebar'
@@ -241,9 +283,14 @@ function connectToBackground() {
       // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
       stopHeartbeat();
 
-      // Attempt reconnection after delay
-      setTimeout(connectToBackground, 1000);
+      // v1.6.3.7 - FIX Issue #5: Implement exponential backoff reconnection
+      scheduleReconnect();
     });
+
+    // v1.6.3.7 - FIX Issue #5: Reset circuit breaker on successful connect
+    circuitBreakerState = 'closed';
+    reconnectAttempts = 0;
+    reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
 
     // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
     startHeartbeat();
@@ -252,7 +299,78 @@ function connectToBackground() {
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
     logPortLifecycle('error', { error: err.message });
+    
+    // v1.6.3.7 - FIX Issue #5: Handle connection failure
+    handleConnectionFailure();
   }
+}
+
+/**
+ * Schedule reconnection with exponential backoff
+ * v1.6.3.7 - FIX Issue #5: Exponential backoff for port reconnection
+ */
+function scheduleReconnect() {
+  reconnectAttempts++;
+  
+  console.log('[Manager] RECONNECT_SCHEDULED:', {
+    attempt: reconnectAttempts,
+    backoffMs: reconnectBackoffMs,
+    circuitBreakerState,
+    maxFailures: CIRCUIT_BREAKER_FAILURE_THRESHOLD
+  });
+  
+  // Check if we should trip the circuit breaker
+  if (reconnectAttempts >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
+    tripCircuitBreaker();
+    return;
+  }
+  
+  // Schedule reconnect with current backoff
+  setTimeout(() => {
+    console.log('[Manager] Attempting reconnect (attempt', reconnectAttempts, ')');
+    connectToBackground();
+  }, reconnectBackoffMs);
+  
+  // Calculate next backoff with exponential increase, capped at max
+  reconnectBackoffMs = Math.min(reconnectBackoffMs * 2, RECONNECT_BACKOFF_MAX_MS);
+}
+
+/**
+ * Handle connection failure
+ * v1.6.3.7 - FIX Issue #5: Track failures for circuit breaker
+ */
+function handleConnectionFailure() {
+  // Note: scheduleReconnect() handles the increment, so we don't double-count here
+  if (reconnectAttempts >= CIRCUIT_BREAKER_FAILURE_THRESHOLD - 1) {
+    // One more failure will trip the breaker, call scheduleReconnect to handle it
+    scheduleReconnect();
+  } else {
+    scheduleReconnect();
+  }
+}
+
+/**
+ * Trip the circuit breaker to "open" state
+ * v1.6.3.7 - FIX Issue #5: Stop reconnection attempts for cooldown period
+ */
+function tripCircuitBreaker() {
+  circuitBreakerState = 'open';
+  circuitBreakerOpenTime = Date.now();
+  
+  console.warn('[Manager] CIRCUIT_BREAKER_TRIPPED:', {
+    attempts: reconnectAttempts,
+    cooldownMs: CIRCUIT_BREAKER_OPEN_DURATION_MS,
+    reopenAt: new Date(circuitBreakerOpenTime + CIRCUIT_BREAKER_OPEN_DURATION_MS).toISOString()
+  });
+  
+  // Schedule attempt to reopen circuit breaker
+  setTimeout(() => {
+    console.log('[Manager] Circuit breaker cooldown expired - transitioning to HALF-OPEN');
+    circuitBreakerState = 'half-open';
+    reconnectAttempts = 0;
+    reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+    connectToBackground();
+  }, CIRCUIT_BREAKER_OPEN_DURATION_MS);
 }
 
 // ==================== v1.6.3.6-v12 HEARTBEAT FUNCTIONS ====================
@@ -288,14 +406,18 @@ function stopHeartbeat() {
 /**
  * Send heartbeat message to background
  * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat with timeout detection
+ * v1.6.3.7 - FIX Issue #2: Enhanced logging for port state transitions
  */
 async function sendHeartbeat() {
   if (!backgroundPort) {
-    console.warn('[Manager] v1.6.3.6-v12 Cannot send heartbeat - port not connected');
+    console.warn('[Manager] v1.6.3.6-v12 Cannot send heartbeat - port not connected', {
+      circuitBreakerState,
+      reconnectAttempts
+    });
     consecutiveHeartbeatFailures++;
     if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - reconnecting');
-      connectToBackground();
+      console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
+      scheduleReconnect();
     }
     return;
   }
@@ -303,7 +425,7 @@ async function sendHeartbeat() {
   const timestamp = Date.now();
 
   try {
-    // Send heartbeat with timeout
+    // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
     const response = await sendPortMessageWithTimeout({
       type: 'HEARTBEAT',
       timestamp,
@@ -317,21 +439,33 @@ async function sendHeartbeat() {
     console.log('[Manager] PORT_HEARTBEAT: success', {
       roundTripMs: Date.now() - timestamp,
       backgroundAlive: response?.backgroundAlive,
-      isInitialized: response?.isInitialized
+      isInitialized: response?.isInitialized,
+      circuitBreakerState
     });
   } catch (err) {
     consecutiveHeartbeatFailures++;
+    
+    // v1.6.3.7 - FIX Issue #2: Enhanced failure logging
     console.warn('[Manager] v1.6.3.6-v12 Heartbeat FAILED:', {
       error: err.message,
       failures: consecutiveHeartbeatFailures,
-      maxFailures: MAX_HEARTBEAT_FAILURES
+      maxFailures: MAX_HEARTBEAT_FAILURES,
+      timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
+      circuitBreakerState
     });
+
+    // v1.6.3.6-v12 - FIX Issue #4: Treat port as dead after timeout
+    if (err.message === 'Heartbeat timeout') {
+      console.error('[Manager] v1.6.3.7 Port appears dead (heartbeat timeout) - treating as zombie');
+      backgroundPort = null;
+    }
 
     // v1.6.3.6-v12 - FIX Issue #4: Reconnect on repeated failures
     if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      console.error('[Manager] v1.6.3.6-v12 Background unresponsive - reconnecting');
+      console.error('[Manager] v1.6.3.6-v12 Background unresponsive - triggering reconnect');
       backgroundPort = null;
-      connectToBackground();
+      stopHeartbeat();
+      scheduleReconnect();
     }
   }
 }
@@ -1435,9 +1569,68 @@ function updateUIStats(totalTabs, latestTimestamp) {
 }
 
 /**
- * Render the Quick Tabs Manager UI
+ * Render the Quick Tabs Manager UI (debounced)
+ * v1.6.3.7 - FIX Issue #3: Debounced to max once per 300ms to prevent UI flicker
+ * This is the public API - all callers should use this function.
  */
-async function renderUI() {
+function renderUI() {
+  // v1.6.3.7 - FIX Issue #3: Set flag indicating render is pending
+  pendingRenderUI = true;
+  
+  // Clear any existing debounce timer
+  if (renderDebounceTimer) {
+    clearTimeout(renderDebounceTimer);
+  }
+  
+  // Schedule the actual render
+  renderDebounceTimer = setTimeout(() => {
+    renderDebounceTimer = null;
+    
+    // Only render if still pending (wasn't cancelled)
+    if (!pendingRenderUI) {
+      console.log('[Manager] Skipping debounced render - no longer pending');
+      return;
+    }
+    
+    pendingRenderUI = false;
+    
+    // Check if state actually changed before rebuilding DOM
+    const currentHash = computeStateHash(quickTabsState);
+    if (currentHash === lastRenderedHash) {
+      console.log('[Manager] Skipping render - state hash unchanged', {
+        hash: currentHash,
+        tabCount: quickTabsState?.tabs?.length ?? 0
+      });
+      return;
+    }
+    
+    // Synchronize DOM mutation with requestAnimationFrame
+    requestAnimationFrame(() => {
+      _renderUIImmediate();
+    });
+  }, RENDER_DEBOUNCE_MS);
+}
+
+/**
+ * Force immediate render (bypasses debounce)
+ * v1.6.3.7 - FIX Issue #3: Use for critical updates that can't wait
+ */
+function _renderUIImmediate_force() {
+  pendingRenderUI = false;
+  if (renderDebounceTimer) {
+    clearTimeout(renderDebounceTimer);
+    renderDebounceTimer = null;
+  }
+  requestAnimationFrame(() => {
+    _renderUIImmediate();
+  });
+}
+
+/**
+ * Internal render function - performs actual DOM manipulation
+ * v1.6.3.7 - FIX Issue #3: Renamed from renderUI, now called via debounce wrapper
+ */
+async function _renderUIImmediate() {
   const renderStartTime = Date.now();
   const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
 
@@ -1467,7 +1660,9 @@ async function renderUI() {
   containersList.appendChild(groupsContainer);
   attachCollapseEventListeners(groupsContainer, collapseState);
 
-  lastRenderedStateHash = computeStateHash(quickTabsState);
+  // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
+  lastRenderedHash = computeStateHash(quickTabsState);
+  lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
   _logRenderComplete(allTabs, groups, renderStartTime);
 }
 
@@ -1485,7 +1680,7 @@ function _logRenderStart(allTabs) {
     minimizedCount: minimizedTabs.length,
     cacheCount: inMemoryTabsCache.length,
     lastRenderedHash: lastRenderedStateHash,
-    trigger: 'renderUI()',
+    trigger: '_renderUIImmediate()',
     timestamp: Date.now()
   });
 

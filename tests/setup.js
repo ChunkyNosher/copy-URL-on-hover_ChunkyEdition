@@ -1,6 +1,20 @@
 // Jest setup file for browser extension testing
 // This file runs before each test suite
 
+// v1.6.3.7 - Mock requestAnimationFrame to run synchronously in tests
+// This is needed because our ResizeHandle now uses rAF for throttling
+// We run the callback immediately (synchronously) to allow tests to work without async handling
+let rafIdCounter = 0;
+global.requestAnimationFrame = callback => {
+  const id = ++rafIdCounter;
+  // Run immediately/synchronously for tests
+  callback(performance.now());
+  return id;
+};
+global.cancelAnimationFrame = _id => {
+  // No-op since callback already executed
+};
+
 // Mock browser API
 global.browser = {
   storage: {
