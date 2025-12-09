@@ -2,18 +2,24 @@
 
 **Repository:** copy-URL-on-hover_ChunkyEdition  
 **Date:** November 21, 2025  
-**Audit Focus:** Comprehensive analysis of agentic workflow optimization opportunities
+**Audit Focus:** Comprehensive analysis of agentic workflow optimization
+opportunities
 
 ---
 
 ## Executive Summary
 
-After cross-referencing the official agentic-tools-mcp documentation with your current GitHub Copilot workflow configuration, I've identified **15 major optimization opportunities** across 5 categories. Your current setup utilizes only ~40% of the available agentic-tools MCP capabilities.
+After cross-referencing the official agentic-tools-mcp documentation with your
+current GitHub Copilot workflow configuration, I've identified **15 major
+optimization opportunities** across 5 categories. Your current setup utilizes
+only ~40% of the available agentic-tools MCP capabilities.
 
 **Current State:** ✅ Basic memory persistence configured  
-**Potential Impact:** 🚀 **3-5x workflow efficiency improvement** by implementing advanced features
+**Potential Impact:** 🚀 **3-5x workflow efficiency improvement** by
+implementing advanced features
 
 **Quick Wins (Implement First):**
+
 1. Advanced Task Management System (unlimited hierarchy)
 2. Intelligent Task Recommendations
 3. PRD Parsing Automation
@@ -30,11 +36,14 @@ After cross-referencing the official agentic-tools-mcp documentation with your c
 
 **What You're Missing:**
 
-The agentic-tools MCP provides a **complete project and task management system** with unlimited hierarchy that Copilot can use autonomously. This is a GAME-CHANGER for complex development workflows.
+The agentic-tools MCP provides a **complete project and task management system**
+with unlimited hierarchy that Copilot can use autonomously. This is a
+GAME-CHANGER for complex development workflows.
 
 **Available Tools (Currently Unused):**
 
 #### Project Management
+
 - `create_project` - Organize work into projects
 - `list_projects` - View all projects
 - `get_project` - Get project details
@@ -42,6 +51,7 @@ The agentic-tools MCP provides a **complete project and task management system**
 - `delete_project` - Remove projects
 
 #### Task Management with Unlimited Hierarchy
+
 - `create_task` - Create tasks at any level (unlimited nesting)
 - `list_tasks` - View hierarchical task tree
 - `get_task` - Get task details with full metadata
@@ -50,6 +60,7 @@ The agentic-tools MCP provides a **complete project and task management system**
 - `move_task` - Reorganize task hierarchy
 
 **Rich Task Metadata (All Levels):**
+
 - `priority` (1-10 scale)
 - `complexity` (1-10 scale)
 - `status` (pending, in-progress, blocked, done)
@@ -67,48 +78,48 @@ The agentic-tools MCP provides a **complete project and task management system**
 // 1. Create project
 await createProject({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  name: "Container Isolation Refactor",
-  description: "Complete refactor of Firefox container isolation system"
+  name: 'Container Isolation Refactor',
+  description: 'Complete refactor of Firefox container isolation system'
 });
 
 // 2. Create main tasks with metadata
 await createTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  name: "Refactor state-manager.js",
-  details: "Extract container-specific logic into dedicated module",
+  projectId: '[project-id]',
+  name: 'Refactor state-manager.js',
+  details: 'Extract container-specific logic into dedicated module',
   priority: 9,
   complexity: 7,
-  status: "pending",
-  tags: ["refactor", "architecture", "high-priority"],
+  status: 'pending',
+  tags: ['refactor', 'architecture', 'high-priority'],
   estimatedHours: 16
 });
 
 // 3. Break down into subtasks (unlimited depth)
 await createTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  parentId: "[parent-task-id]",
-  name: "Extract container state tracking",
-  details: "Create ContainerStateManager class",
+  projectId: '[project-id]',
+  parentId: '[parent-task-id]',
+  name: 'Extract container state tracking',
+  details: 'Create ContainerStateManager class',
   priority: 8,
   complexity: 5,
-  status: "pending",
-  tags: ["refactor", "state-management"],
+  status: 'pending',
+  tags: ['refactor', 'state-management'],
   estimatedHours: 4
 });
 
 // 4. Create sub-subtasks (infinite nesting!)
 await createTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  parentId: "[subtask-id]",
-  name: "Add unit tests for ContainerStateManager",
-  details: "Cover all state mutation methods",
+  projectId: '[project-id]',
+  parentId: '[subtask-id]',
+  name: 'Add unit tests for ContainerStateManager',
+  details: 'Cover all state mutation methods',
   priority: 7,
   complexity: 3,
-  status: "pending",
-  tags: ["testing", "unit-tests"],
+  status: 'pending',
+  tags: ['testing', 'unit-tests'],
   estimatedHours: 2
 });
 ```
@@ -117,7 +128,8 @@ await createTask({
 
 ✅ **Copilot tracks its own progress** across multi-day work  
 ✅ **Complex projects broken into manageable subtasks** automatically  
-✅ **Dependencies prevent out-of-order work** (can't test before implementation)  
+✅ **Dependencies prevent out-of-order work** (can't test before
+implementation)  
 ✅ **Priority-based work ordering** (high-priority tasks first)  
 ✅ **Time estimates for project planning** (management visibility)  
 ✅ **Git-trackable task data** (team collaboration via version control)
@@ -128,10 +140,11 @@ await createTask({
 
 Add new section after "Memory Storage Tool Usage":
 
-```markdown
+````markdown
 ### Task Management System (Agentic-Tools MCP)
 
 **When to Use Task Management:**
+
 - Multi-step features requiring planning
 - Complex refactors spanning multiple files
 - Projects with dependencies between tasks
@@ -140,78 +153,86 @@ Add new section after "Memory Storage Tool Usage":
 **Creating a Project Plan:**
 
 1. **Start with project creation:**
+
 ```javascript
 await createProject({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  name: "Feature Name",
-  description: "High-level overview of feature goals"
+  name: 'Feature Name',
+  description: 'High-level overview of feature goals'
 });
 ```
+````
 
 2. **Break down into tasks:**
+
 ```javascript
 await createTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  name: "Task name",
-  details: "Detailed task description",
-  priority: 8,        // 1-10 (10 = highest)
-  complexity: 6,      // 1-10 (10 = most complex)
-  status: "pending",  // pending | in-progress | blocked | done
-  tags: ["refactor", "architecture"],
+  projectId: '[project-id]',
+  name: 'Task name',
+  details: 'Detailed task description',
+  priority: 8, // 1-10 (10 = highest)
+  complexity: 6, // 1-10 (10 = most complex)
+  status: 'pending', // pending | in-progress | blocked | done
+  tags: ['refactor', 'architecture'],
   estimatedHours: 8
 });
 ```
 
 3. **Create subtasks for task breakdown:**
+
 ```javascript
 await createTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  parentId: "[parent-task-id]",  // Creates subtask
-  name: "Subtask name",
+  projectId: '[project-id]',
+  parentId: '[parent-task-id]', // Creates subtask
+  name: 'Subtask name'
   // ... same metadata as parent tasks
 });
 ```
 
 4. **Track progress:**
+
 ```javascript
 // Update task status as you work
 await updateTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  taskId: "[task-id]",
-  status: "in-progress",
-  actualHours: 3  // Track time spent
+  taskId: '[task-id]',
+  status: 'in-progress',
+  actualHours: 3 // Track time spent
 });
 
 // Mark complete
 await updateTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  taskId: "[task-id]",
-  status: "done",
+  taskId: '[task-id]',
+  status: 'done',
   completed: true,
   actualHours: 8
 });
 ```
 
 **Task Dependencies:**
+
 ```javascript
 await createTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  name: "Write integration tests",
-  dependsOn: ["[implementation-task-id]"],  // Can't start until implementation done
+  projectId: '[project-id]',
+  name: 'Write integration tests',
+  dependsOn: ['[implementation-task-id]'], // Can't start until implementation done
   priority: 7,
   complexity: 4
 });
 ```
 
 **Workflow Integration:**
+
 - Create tasks at start of complex features
 - Update status as you work through PR
 - Mark tasks complete before final commit
 - Commit `.agentic-tools-mcp/tasks/` with code changes
-```
+
+````
 
 2. **Add to "Before Every Commit Checklist":**
 
@@ -220,7 +241,7 @@ await createTask({
 - [ ] Task status updated to reflect current progress 📋
 - [ ] Completed tasks marked as "done" 📋
 - [ ] Task data committed (`.agentic-tools-mcp/tasks/`) 📋
-```
+````
 
 **Expected Benefits:**
 
@@ -229,7 +250,8 @@ await createTask({
 - ✅ Clearer progress visibility for code reviewers
 - ✅ Better time estimation accuracy over time
 
-**Source:** [GitHub: Pimzino/agentic-tools-mcp - Task Management](https://github.com/Pimzino/agentic-tools-mcp#-advanced-task-management-system-with-unlimited-hierarchy-v180)
+**Source:**
+[GitHub: Pimzino/agentic-tools-mcp - Task Management](https://github.com/Pimzino/agentic-tools-mcp#-advanced-task-management-system-with-unlimited-hierarchy-v180)
 
 ---
 
@@ -241,11 +263,14 @@ await createTask({
 
 **What You're Missing:**
 
-The `get_next_task_recommendation` tool provides **AI-powered task prioritization** based on dependencies, priorities, and complexity. This is like having an autonomous project manager built into Copilot.
+The `get_next_task_recommendation` tool provides **AI-powered task
+prioritization** based on dependencies, priorities, and complexity. This is like
+having an autonomous project manager built into Copilot.
 
 **Tool:** `get_next_task_recommendation`
 
 **What It Does:**
+
 - Analyzes all tasks in project
 - Considers dependencies (can't work on blocked tasks)
 - Weighs priority vs complexity
@@ -257,7 +282,7 @@ The `get_next_task_recommendation` tool provides **AI-powered task prioritizatio
 // At start of work session
 const recommendation = await getNextTaskRecommendation({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]"
+  projectId: '[project-id]'
 });
 
 // Returns:
@@ -273,7 +298,8 @@ const recommendation = await getNextTaskRecommendation({
 
 **Why This Matters:**
 
-✅ **Copilot autonomously chooses optimal next task** (no human guidance needed)  
+✅ **Copilot autonomously chooses optimal next task** (no human guidance
+needed)  
 ✅ **Respects dependency ordering** (never works on blocked tasks)  
 ✅ **Balances priority and complexity** (high-value, achievable work first)  
 ✅ **Reduces decision paralysis** (clear next action)
@@ -287,6 +313,7 @@ const recommendation = await getNextTaskRecommendation({
 **Tool:** `analyze_task_complexity`
 
 **What It Does:**
+
 - Analyzes task complexity scores
 - Identifies tasks that are too complex (score > 8)
 - **Automatically suggests breakdown into subtasks**
@@ -298,7 +325,7 @@ const recommendation = await getNextTaskRecommendation({
 // Copilot checks if current task is too complex
 const analysis = await analyzeTaskComplexity({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  taskId: "[task-id]"
+  taskId: '[task-id]'
 });
 
 // If complexity > 8, returns:
@@ -317,11 +344,11 @@ const analysis = await analyzeTaskComplexity({
 for (const subtask of analysis.suggestedSubtasks) {
   await createTask({
     workingDirectory: process.env.GITHUB_WORKSPACE,
-    projectId: "[project-id]",
-    parentId: "[complex-task-id]",
+    projectId: '[project-id]',
+    parentId: '[complex-task-id]',
     name: subtask,
     priority: 7,
-    complexity: 4  // Broken down tasks are less complex
+    complexity: 4 // Broken down tasks are less complex
   });
 }
 ```
@@ -342,6 +369,7 @@ for (const subtask of analysis.suggestedSubtasks) {
 **Tool:** `parse_prd`
 
 **What It Does:**
+
 - Parses Product Requirements Documents (PRDs) or feature specs
 - **Automatically generates structured task breakdown**
 - Creates project + tasks + subtasks from documentation
@@ -375,7 +403,7 @@ const prdContent = `
 await parsePRD({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   prdContent: prdContent,
-  projectName: "Enhanced Console Log Filtering"
+  projectName: 'Enhanced Console Log Filtering'
 });
 
 // Result: Complete project created with:
@@ -402,29 +430,34 @@ await parsePRD({
 
 Add to Copilot instructions:
 
-```markdown
+````markdown
 ### PRD Parsing (Automatic Task Generation)
 
 **When to Use:**
+
 - Starting new features with written requirements
 - Converting GitHub issues into task plans
 - Breaking down large feature requests
 
 **Usage:**
+
 ```javascript
 await parsePRD({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  prdContent: "[paste PRD or feature spec]",
-  projectName: "Feature Name"
+  prdContent: '[paste PRD or feature spec]',
+  projectName: 'Feature Name'
 });
 ```
+````
 
 **PRD Format Tips:**
+
 - Use clear headings for sections
 - Mark priorities (HIGH/MEDIUM/LOW)
 - Include time estimates
 - List dependencies explicitly
-```
+
+````
 
 **Expected Benefits:**
 
@@ -479,7 +512,7 @@ if (progress.confidence > 0.8) {
     completed: true
   });
 }
-```
+````
 
 **Why This Matters:**
 
@@ -499,12 +532,14 @@ if (progress.confidence > 0.8) {
 **What They Do:**
 
 **`research_task`:**
+
 - Guides Copilot to perform comprehensive web research
 - **Automatically stores research findings as memories**
 - Integrates search results with memory system
 - Provides structured research workflow
 
 **`generate_research_queries`:**
+
 - Generates intelligent, targeted search queries
 - Optimizes query phrasing for better results
 - Creates multiple query variations for comprehensive coverage
@@ -515,8 +550,8 @@ if (progress.confidence > 0.8) {
 // Copilot needs to research best practices for feature
 const queries = await generateResearchQueries({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  topic: "Firefox WebExtension container isolation best practices",
-  context: "Implementing per-container state management"
+  topic: 'Firefox WebExtension container isolation best practices',
+  context: 'Implementing per-container state management'
 });
 
 // Returns optimized queries:
@@ -529,10 +564,10 @@ const queries = await generateResearchQueries({
 // Copilot performs research and stores findings
 await researchTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  taskId: "[task-id]",
+  taskId: '[task-id]',
   researchQueries: queries,
   storeAsMemory: true,
-  memoryCategory: "research"
+  memoryCategory: 'research'
 });
 
 // Result: Memories created automatically:
@@ -552,42 +587,48 @@ await researchTask({
 
 Your repo already has Perplexity MCP configured! Combine it with research tools:
 
-```markdown
+````markdown
 ### Research Workflow (Combined Perplexity + Agentic-Tools)
 
 1. **Generate research queries:**
+
 ```javascript
 const queries = await generateResearchQueries({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  topic: "[research topic]"
+  topic: '[research topic]'
 });
 ```
+````
 
 2. **Perform research with Perplexity:**
+
 ```javascript
 const results = await perplexity_reason({
   queries: queries,
-  model: "sonar-reasoning-pro"
+  model: 'sonar-reasoning-pro'
 });
 ```
 
 3. **Store findings as memories:**
+
 ```javascript
 await createMemory({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  title: "Research: [Topic]",
+  title: 'Research: [Topic]',
   content: results.answer,
-  category: "research",
+  category: 'research',
   metadata: {
     sources: results.citations,
     researchDate: new Date().toISOString(),
-    relatedTask: "[task-id]"
+    relatedTask: '[task-id]'
   }
 });
 ```
 
-**Best Practice:** Always research before implementing unfamiliar patterns or APIs.
-```
+**Best Practice:** Always research before implementing unfamiliar patterns or
+APIs.
+
+````
 
 **Expected Benefits:**
 
@@ -660,19 +701,20 @@ const relevantMemories = await searchMemories({
 // ]
 
 // Copilot now has context from past work!
-```
+````
 
 **Implementation:**
 
 Add to Copilot instructions **before "Memory Storage Tool Usage"**:
 
-```markdown
+````markdown
 ### Memory Search (ALWAYS DO THIS FIRST)
 
-**CRITICAL WORKFLOW RULE:**
-Before starting ANY task, search memories for relevant context.
+**CRITICAL WORKFLOW RULE:** Before starting ANY task, search memories for
+relevant context.
 
 **When to Search:**
+
 - Before implementing new features
 - Before refactoring existing code
 - Before researching topics (check if already researched)
@@ -681,22 +723,26 @@ Before starting ANY task, search memories for relevant context.
 **Search Workflow:**
 
 1. **Start every task with memory search:**
+
 ```javascript
 const relevantMemories = await searchMemories({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  query: "[keywords about task/feature/component]",
+  query: '[keywords about task/feature/component]',
   limit: 5,
   threshold: 0.3
 });
 ```
+````
 
 2. **Review results for context:**
+
 - Check if similar work was done before
 - Review past architectural decisions
 - Look for related research findings
 - Find relevant patterns or best practices
 
 3. **Reference memories in implementation:**
+
 ```javascript
 // Example: Found memory about container isolation pattern
 // Apply that pattern to current work
@@ -705,12 +751,14 @@ const relevantMemories = await searchMemories({
 ```
 
 **Search Query Tips:**
+
 - Use specific component names ("state-manager", "container")
 - Include action words ("isolation", "tracking", "persistence")
 - Try multiple queries with different keywords
 - Use category filter when relevant (category: "architecture")
 
 **Memory Search Response Format:**
+
 ```javascript
 {
   id: string,          // Memory ID for get_memory if need details
@@ -721,14 +769,15 @@ const relevantMemories = await searchMemories({
   metadata: object     // Additional context
 }
 ```
-```
+
+````
 
 2. **Add to "Before Every Commit Checklist":**
 
 ```markdown
 - [ ] Searched memories before starting work 🧠🔍
 - [ ] Referenced relevant memories in implementation 🧠
-```
+````
 
 **Expected Benefits:**
 
@@ -741,41 +790,43 @@ const relevantMemories = await searchMemories({
 
 ### ⚠️ UNDERUTILIZED: Memory Categorization Strategy
 
-**Current Status:** 🟡 Category parameter mentioned but **no clear categorization strategy**
+**Current Status:** 🟡 Category parameter mentioned but **no clear
+categorization strategy**
 
 **What You're Missing:**
 
-Memories should be **systematically categorized** for efficient retrieval. Current instructions don't define category conventions.
+Memories should be **systematically categorized** for efficient retrieval.
+Current instructions don't define category conventions.
 
 **Recommended Category Structure:**
 
 ```javascript
 // Architecture & Design Patterns
-category: "architecture"
+category: 'architecture';
 // Examples: "Container Isolation Pattern", "State Management Architecture"
 
 // Technical Implementation Details
-category: "technical"
+category: 'technical';
 // Examples: "CookieStoreId API Usage", "BroadcastChannel Implementation"
 
 // Best Practices & Standards
-category: "best-practices"
+category: 'best-practices';
 // Examples: "ESLint Configuration Standards", "Testing Patterns"
 
 // User Preferences & Style
-category: "preferences"
+category: 'preferences';
 // Examples: "Code Style Preferences", "Documentation Requirements"
 
 // Research Findings
-category: "research"
+category: 'research';
 // Examples: "WebExtension Performance Research", "Browser API Compatibility"
 
 // Known Issues & Solutions
-category: "troubleshooting"
+category: 'troubleshooting';
 // Examples: "Container State Race Condition Fix", "Memory Leak Solution"
 
 // Project-Specific Context
-category: "project-context"
+category: 'project-context';
 // Examples: "Repository Structure", "Build Pipeline Configuration"
 ```
 
@@ -783,41 +834,45 @@ category: "project-context"
 
 Add to Copilot instructions after memory examples:
 
-```markdown
+````markdown
 ### Memory Categorization Standards
 
 **Use consistent categories for efficient retrieval:**
 
-| Category | Use For | Examples |
-|----------|---------|----------|
-| `architecture` | Design patterns, system architecture | "Container Isolation Pattern" |
-| `technical` | Implementation details, API usage | "CookieStoreId API Usage" |
-| `best-practices` | Standards, conventions, patterns | "ESLint Configuration Standards" |
-| `preferences` | User preferences, style guides | "Code Style Preferences" |
-| `research` | Research findings, external resources | "WebExtension Performance Research" |
-| `troubleshooting` | Known issues, solutions, fixes | "Container State Race Condition Fix" |
-| `project-context` | Repo structure, build config | "Repository Structure" |
+| Category          | Use For                               | Examples                             |
+| ----------------- | ------------------------------------- | ------------------------------------ |
+| `architecture`    | Design patterns, system architecture  | "Container Isolation Pattern"        |
+| `technical`       | Implementation details, API usage     | "CookieStoreId API Usage"            |
+| `best-practices`  | Standards, conventions, patterns      | "ESLint Configuration Standards"     |
+| `preferences`     | User preferences, style guides        | "Code Style Preferences"             |
+| `research`        | Research findings, external resources | "WebExtension Performance Research"  |
+| `troubleshooting` | Known issues, solutions, fixes        | "Container State Race Condition Fix" |
+| `project-context` | Repo structure, build config          | "Repository Structure"               |
 
 **Category Selection Guidelines:**
+
 - Architecture > Technical (if both apply)
 - Specific > General (prefer more specific category)
 - Use metadata for additional tags
 
 **Example with proper categorization:**
+
 ```javascript
 await createMemory({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  title: "Container Isolation Architecture Pattern",
-  content: "...",
-  category: "architecture",  // Primary category
+  title: 'Container Isolation Architecture Pattern',
+  content: '...',
+  category: 'architecture', // Primary category
   metadata: {
-    components: ["state-manager", "background"],
-    relatedIssues: ["#123"],
-    importance: "critical"
+    components: ['state-manager', 'background'],
+    relatedIssues: ['#123'],
+    importance: 'critical'
   }
 });
 ```
-```
+````
+
+````
 
 **Expected Benefits:**
 
@@ -846,35 +901,35 @@ await createMemory({
   metadata: {
     // Component references
     components: ["state-manager.js", "background.js"],
-    
+
     // Related files
     relatedFiles: [
       "src/state-manager.js",
       "src/background.js"
     ],
-    
+
     // Related issues/PRs
     relatedIssues: ["#123"],
     relatedPRs: ["#456"],
-    
+
     // Importance level
     importance: "critical",  // critical | high | medium | low
-    
+
     // Tags for additional context
     tags: ["container", "isolation", "state-management"],
-    
+
     // Source of information
     source: "implementation",  // implementation | research | documentation | conversation
-    
+
     // Date context
     implementedDate: "2025-11-21",
     lastVerified: "2025-11-21",
-    
+
     // Confidence level
     confidence: 0.9  // 0-1 scale
   }
 });
-```
+````
 
 **Expected Benefits:**
 
@@ -882,7 +937,8 @@ await createMemory({
 - ✅ Better memory filtering (by metadata fields)
 - ✅ Improved search relevance (metadata boosts scores)
 
-**Source:** [GitHub: Pimzino/agentic-tools-mcp - Agent Memories System](https://github.com/Pimzino/agentic-tools-mcp#-agent-memories-system)
+**Source:**
+[GitHub: Pimzino/agentic-tools-mcp - Agent Memories System](https://github.com/Pimzino/agentic-tools-mcp#-agent-memories-system)
 
 ---
 
@@ -894,7 +950,8 @@ await createMemory({
 
 **What You're Missing:**
 
-Your GitHub Actions workflows could **automatically update task status** based on CI/CD events.
+Your GitHub Actions workflows could **automatically update task status** based
+on CI/CD events.
 
 **Current Problem:**
 
@@ -914,7 +971,7 @@ Add to `.github/workflows/copilot-setup-steps.yml`:
     echo "=========================================="
     echo "Updating Agentic Task Status"
     echo "=========================================="
-    
+
     # Check if there are tasks marked as "in-progress"
     if [ -f ".agentic-tools-mcp/tasks/tasks.json" ]; then
       # Get in-progress tasks
@@ -935,7 +992,7 @@ Add to `.github/workflows/copilot-setup-steps.yml`:
     else
       echo "No task data found"
     fi
-    
+
     echo "=========================================="
   continue-on-error: true
 ```
@@ -963,7 +1020,7 @@ Add to `.github/workflows/copilot-setup-steps.yml`:
     echo "=========================================="
     echo "Memory Quality Check"
     echo "=========================================="
-    
+
     if [ -d ".agentic-tools-mcp/memories" ]; then
       # Count memories by category
       echo "Memories by category:"
@@ -1004,7 +1061,7 @@ Add to `.github/workflows/copilot-setup-steps.yml`:
         exit 1
       fi
     fi
-    
+
     echo "=========================================="
 ```
 
@@ -1020,17 +1077,19 @@ Add to `.github/workflows/copilot-setup-steps.yml`:
 
 ### ⚠️ MISSING: Concrete Workflow Examples
 
-**Current Status:** 🟡 Tool documentation exists but **no end-to-end workflow examples**
+**Current Status:** 🟡 Tool documentation exists but **no end-to-end workflow
+examples**
 
 **What You're Missing:**
 
-Copilot learns best from **concrete examples**. Your instructions lack full workflow demonstrations.
+Copilot learns best from **concrete examples**. Your instructions lack full
+workflow demonstrations.
 
 **Recommended Addition:**
 
 Add to `.github/copilot-instructions.md`:
 
-```markdown
+````markdown
 ## Complete Workflow Examples
 
 ### Example 1: Complex Feature with Task Management
@@ -1038,34 +1097,37 @@ Add to `.github/copilot-instructions.md`:
 **Scenario:** Implementing "Enhanced Console Log Filtering" feature
 
 **Step 1: Search existing memories**
+
 ```javascript
 const memories = await searchMemories({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  query: "console log filtering implementation",
+  query: 'console log filtering implementation',
   limit: 5
 });
 // Check if similar feature was implemented before
 ```
+````
 
 **Step 2: Create project and tasks**
+
 ```javascript
 // Create project
 const project = await createProject({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  name: "Enhanced Console Log Filtering",
-  description: "Add granular log filtering with export capabilities"
+  name: 'Enhanced Console Log Filtering',
+  description: 'Add granular log filtering with export capabilities'
 });
 
 // Create main tasks
 const task1 = await createTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   projectId: project.id,
-  name: "Implement log level filtering",
-  details: "Add UI for filtering by error/warn/info/debug",
+  name: 'Implement log level filtering',
+  details: 'Add UI for filtering by error/warn/info/debug',
   priority: 9,
   complexity: 6,
-  status: "pending",
-  tags: ["ui", "filtering"],
+  status: 'pending',
+  tags: ['ui', 'filtering'],
   estimatedHours: 8
 });
 
@@ -1074,7 +1136,7 @@ await createTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   projectId: project.id,
   parentId: task1.id,
-  name: "Create filter UI components",
+  name: 'Create filter UI components',
   priority: 8,
   complexity: 4,
   estimatedHours: 4
@@ -1082,6 +1144,7 @@ await createTask({
 ```
 
 **Step 3: Get next task recommendation**
+
 ```javascript
 const recommendation = await getNextTaskRecommendation({
   workingDirectory: process.env.GITHUB_WORKSPACE,
@@ -1091,10 +1154,11 @@ const recommendation = await getNextTaskRecommendation({
 ```
 
 **Step 4: Research if needed**
+
 ```javascript
 const queries = await generateResearchQueries({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  topic: "browser console filtering patterns"
+  topic: 'browser console filtering patterns'
 });
 
 // Use Perplexity MCP for research
@@ -1105,9 +1169,9 @@ const research = await perplexity_reason({
 // Store findings as memory
 await createMemory({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  title: "Console Filtering Patterns Research",
+  title: 'Console Filtering Patterns Research',
   content: research.answer,
-  category: "research",
+  category: 'research',
   metadata: {
     sources: research.citations,
     relatedTask: task1.id
@@ -1116,12 +1180,13 @@ await createMemory({
 ```
 
 **Step 5: Implement and track progress**
+
 ```javascript
 // Update task status
 await updateTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   taskId: task1.id,
-  status: "in-progress",
+  status: 'in-progress',
   actualHours: 2
 });
 
@@ -1131,28 +1196,31 @@ await updateTask({
 await updateTask({
   workingDirectory: process.env.GITHUB_WORKSPACE,
   taskId: task1.id,
-  status: "done",
+  status: 'done',
   completed: true,
   actualHours: 7
 });
 ```
 
 **Step 6: Create architectural memory**
+
 ```javascript
 await createMemory({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  title: "Console Log Filtering Architecture",
-  content: "Filter implementation uses event delegation with data attributes for efficient DOM updates. Filter state stored per-tab using browser.storage.local with cookieStoreId keys.",
-  category: "architecture",
+  title: 'Console Log Filtering Architecture',
+  content:
+    'Filter implementation uses event delegation with data attributes for efficient DOM updates. Filter state stored per-tab using browser.storage.local with cookieStoreId keys.',
+  category: 'architecture',
   metadata: {
-    components: ["console-filter.js"],
-    importance: "high",
+    components: ['console-filter.js'],
+    importance: 'high',
     implementedDate: new Date().toISOString()
   }
 });
 ```
 
 **Step 7: Commit everything**
+
 ```bash
 git add .agentic-tools-mcp/
 git add src/
@@ -1165,7 +1233,8 @@ git commit -m "feat: implement enhanced console log filtering
 Tasks completed: #task-123
 Memories created: Console Log Filtering Architecture"
 ```
-```
+
+````
 
 **Expected Benefits:**
 
@@ -1204,7 +1273,7 @@ Memories created: Console Log Filtering Architecture"
 | 🟢 P3 | Concrete Workflow Examples | 🟡 MEDIUM | 🟠 HIGH | 4 hours |
 | 🟢 P3 | Advanced Metadata Schema | 🟡 LOW | 🟢 LOW | 1 hour |
 
-**Total Quick Wins Implementation Time:** ~6.5 hours  
+**Total Quick Wins Implementation Time:** ~6.5 hours
 **Expected Productivity Increase:** 3-5x for complex multi-step features
 
 ---
@@ -1318,15 +1387,16 @@ git checkout -b test/memory-search
 # Verify results
 
 # Test task management
-git checkout -b test/task-management  
+git checkout -b test/task-management
 # Add task docs to instructions
 # Have Copilot create project + tasks
 # Verify `.agentic-tools-mcp/tasks/` structure
-```
+````
 
 ### 3. **Rollback Plan**
 
 Each feature can be disabled independently:
+
 - Remove documentation section from instructions
 - Delete task/memory data if needed
 - No code changes required
@@ -1334,6 +1404,7 @@ Each feature can be disabled independently:
 ### 4. **Team Training**
 
 If multiple people use this repo:
+
 1. Share this audit document
 2. Demonstrate memory search workflow
 3. Show task management UI (if using VS Code extension)
@@ -1345,12 +1416,18 @@ If multiple people use this repo:
 
 All recommendations based on official sources:
 
-1. **Main Repository:** [https://github.com/Pimzino/agentic-tools-mcp](https://github.com/Pimzino/agentic-tools-mcp)
-2. **Task Management:** [Advanced Task Management System](https://github.com/Pimzino/agentic-tools-mcp#-advanced-task-management-system-with-unlimited-hierarchy-v180)
-3. **AI Agent Tools:** [Advanced AI Agent Tools](https://github.com/Pimzino/agentic-tools-mcp#advanced-task-management-ai-agent-tools)
-4. **Memory System:** [Agent Memories System](https://github.com/Pimzino/agentic-tools-mcp#-agent-memories-system)
-5. **Storage Structure:** [Data Storage](https://github.com/Pimzino/agentic-tools-mcp#data-storage)
-6. **Best Practices:** [MCP Directory - GitHub Actions Automation](https://mcpdirectory.app/docs/github-actions)
+1. **Main Repository:**
+   [https://github.com/Pimzino/agentic-tools-mcp](https://github.com/Pimzino/agentic-tools-mcp)
+2. **Task Management:**
+   [Advanced Task Management System](https://github.com/Pimzino/agentic-tools-mcp#-advanced-task-management-system-with-unlimited-hierarchy-v180)
+3. **AI Agent Tools:**
+   [Advanced AI Agent Tools](https://github.com/Pimzino/agentic-tools-mcp#advanced-task-management-ai-agent-tools)
+4. **Memory System:**
+   [Agent Memories System](https://github.com/Pimzino/agentic-tools-mcp#-agent-memories-system)
+5. **Storage Structure:**
+   [Data Storage](https://github.com/Pimzino/agentic-tools-mcp#data-storage)
+6. **Best Practices:**
+   [MCP Directory - GitHub Actions Automation](https://mcpdirectory.app/docs/github-actions)
 
 ---
 
@@ -1387,14 +1464,19 @@ All recommendations based on official sources:
 
 ## Conclusion
 
-Your current agentic-tools MCP setup is **functionally correct** but utilizing only **~40% of available capabilities**. By implementing the recommended enhancements, you can achieve:
+Your current agentic-tools MCP setup is **functionally correct** but utilizing
+only **~40% of available capabilities**. By implementing the recommended
+enhancements, you can achieve:
 
 🚀 **3-5x productivity increase** on complex multi-step features  
 🧠 **90% reduction** in context loss between sessions  
 📋 **Autonomous project planning** via PRD parsing  
 🔍 **Intelligent context retrieval** via memory search  
-⚡ **Automated status tracking** via progress inference  
+⚡ **Automated status tracking** via progress inference
 
-The **quick wins** (6.5 hours implementation) will provide immediate value, while **advanced features** (10 hours additional) enable fully autonomous agentic workflows.
+The **quick wins** (6.5 hours implementation) will provide immediate value,
+while **advanced features** (10 hours additional) enable fully autonomous
+agentic workflows.
 
-**Your agentic-tools MCP is already configured and working—now it's time to unlock its full potential!** 🚀
+**Your agentic-tools MCP is already configured and working—now it's time to
+unlock its full potential!** 🚀

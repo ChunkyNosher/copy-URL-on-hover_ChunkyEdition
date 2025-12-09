@@ -9,10 +9,13 @@
 
 ## Problem Statement
 
-Quick Tabs were not persisting across tab switches in v1.6.0.3, causing a major regression from v1.5.9. Specifically:
+Quick Tabs were not persisting across tab switches in v1.6.0.3, causing a major
+regression from v1.5.9. Specifically:
 
-1. **Issue #35:** Quick Tabs don't persist across tabs - disappeared when switching to a different tab
-2. **Issue #51:** Position/size updates not syncing between tabs - changes made in Tab A not reflected in Tab B
+1. **Issue #35:** Quick Tabs don't persist across tabs - disappeared when
+   switching to a different tab
+2. **Issue #51:** Position/size updates not syncing between tabs - changes made
+   in Tab A not reflected in Tab B
 
 ### Root Causes Identified
 
@@ -20,8 +23,11 @@ After analyzing console logs and code flow, three critical bugs were identified:
 
 #### Bug #1: Error Logging Shows Empty Objects `{}`
 
-**Location:** `SessionStorageAdapter.js`, `SyncStorageAdapter.js`, `QuickTabHandler.js`  
-**Root Cause:** DOMException and browser-native errors don't serialize properly with `JSON.stringify()`. When logged directly, they appear as empty objects `{}`, hiding the actual error message.
+**Location:** `SessionStorageAdapter.js`, `SyncStorageAdapter.js`,
+`QuickTabHandler.js`  
+**Root Cause:** DOMException and browser-native errors don't serialize properly
+with `JSON.stringify()`. When logged directly, they appear as empty objects
+`{}`, hiding the actual error message.
 
 **Evidence from logs:**
 
@@ -33,7 +39,11 @@ After analyzing console logs and code flow, three critical bugs were identified:
 #### Bug #2: Content Scripts Hydrating with 0 Quick Tabs
 
 **Location:** `StorageManager.js`  
-**Root Cause:** Content scripts were loading directly from `browser.storage` instead of requesting the authoritative state from the background script. When a new tab loaded or an existing tab was reactivated, `StorageManager.loadAll()` returned 0 Quick Tabs because the background script's in-memory `globalQuickTabState` was not being accessed.
+**Root Cause:** Content scripts were loading directly from `browser.storage`
+instead of requesting the authoritative state from the background script. When a
+new tab loaded or an existing tab was reactivated, `StorageManager.loadAll()`
+returned 0 Quick Tabs because the background script's in-memory
+`globalQuickTabState` was not being accessed.
 
 **Evidence from logs:**
 
@@ -45,7 +55,10 @@ After analyzing console logs and code flow, three critical bugs were identified:
 #### Bug #3: Position/Size Updates Not Syncing Across Tabs
 
 **Location:** `EventManager.js`, `SyncCoordinator.js`  
-**Root Cause:** No mechanism to refresh state when switching to a different tab. BroadcastChannel only syncs to currently loaded content scripts. When switching to Tab B after updating Quick Tab position in Tab A, Tab B loaded stale state because it never requested fresh state on activation.
+**Root Cause:** No mechanism to refresh state when switching to a different tab.
+BroadcastChannel only syncs to currently loaded content scripts. When switching
+to Tab B after updating Quick Tab position in Tab A, Tab B loaded stale state
+because it never requested fresh state on activation.
 
 ---
 
@@ -59,8 +72,7 @@ After analyzing console logs and code flow, three critical bugs were identified:
 - `src/storage/SyncStorageAdapter.js`
 - `src/background/handlers/QuickTabHandler.js`
 
-**Changes:**
-Replace direct error logging with explicit property extraction:
+**Changes:** Replace direct error logging with explicit property extraction:
 
 ```javascript
 // BEFORE (shows empty {})
@@ -82,7 +94,9 @@ console.error('[QuickTabHandler] Error saving state:', {
 
 ### Phase 2: Add State Hydration from Background ✅
 
-**Architectural Decision:** Background script maintains the single source of truth (`globalQuickTabState`). Content scripts MUST request state from background instead of loading from storage directly.
+**Architectural Decision:** Background script maintains the single source of
+truth (`globalQuickTabState`). Content scripts MUST request state from
+background instead of loading from storage directly.
 
 **Files Modified:**
 
@@ -184,13 +198,15 @@ Content Script Initialization
             └─> UICoordinator renders Quick Tabs
 ```
 
-**Impact:** Content scripts now always load the latest state from the authoritative source, eliminating the "hydrated 0 Quick Tabs" issue.
+**Impact:** Content scripts now always load the latest state from the
+authoritative source, eliminating the "hydrated 0 Quick Tabs" issue.
 
 ---
 
 ### Phase 3: Add Tab Activation Sync ✅
 
-**Architectural Decision:** When a tab becomes visible, refresh state from background to capture any updates made in other tabs.
+**Architectural Decision:** When a tab becomes visible, refresh state from
+background to capture any updates made in other tabs.
 
 **Files Modified:**
 
@@ -204,7 +220,9 @@ Content Script Initialization
 this.boundHandlers.visibilityChange = () => {
   if (document.hidden && this.quickTabsMap.size > 0) {
     console.log('[EventManager] Tab hidden - triggering emergency save');
-    this.eventBus?.emit('event:emergency-save', { trigger: 'visibilitychange' });
+    this.eventBus?.emit('event:emergency-save', {
+      trigger: 'visibilitychange'
+    });
   }
 };
 
@@ -214,7 +232,9 @@ this.boundHandlers.visibilityChange = () => {
     // Tab hidden - save current state
     if (this.quickTabsMap.size > 0) {
       console.log('[EventManager] Tab hidden - triggering emergency save');
-      this.eventBus?.emit('event:emergency-save', { trigger: 'visibilitychange' });
+      this.eventBus?.emit('event:emergency-save', {
+        trigger: 'visibilitychange'
+      });
     }
   } else {
     // Tab visible - refresh state from background
@@ -282,7 +302,8 @@ User Switches to Tab B
                     └─> UICoordinator re-renders with updated positions/sizes
 ```
 
-**Impact:** Quick Tabs now appear in their latest positions/sizes when switching tabs, fixing Issue #51.
+**Impact:** Quick Tabs now appear in their latest positions/sizes when switching
+tabs, fixing Issue #51.
 
 ---
 
@@ -290,11 +311,13 @@ User Switches to Tab B
 
 ### Unit Tests
 
-**Test Suite:** `tests/unit/managers/EventManager.test.js`, `tests/unit/managers/StorageManager.test.js`
+**Test Suite:** `tests/unit/managers/EventManager.test.js`,
+`tests/unit/managers/StorageManager.test.js`
 
 **Changes Required:**
 
-1. Updated EventManager test to expect `event:tab-visible` emission when tab becomes visible
+1. Updated EventManager test to expect `event:tab-visible` emission when tab
+   becomes visible
 2. Added browser.runtime.sendMessage mock to StorageManager tests
 3. All 1725 unit tests passing
 
@@ -372,7 +395,8 @@ test('should emit event:tab-visible when document becomes visible', () => {
 
 **Why This Matters:**
 
-- If background script crashes/restarts, content scripts can still load from storage
+- If background script crashes/restarts, content scripts can still load from
+  storage
 - Graceful degradation ensures extension remains functional
 - No breaking changes to existing storage format
 
@@ -381,8 +405,10 @@ test('should emit event:tab-visible when document becomes visible', () => {
 ## Known Limitations
 
 1. **Initial page load latency:** +10-15ms due to message round-trip
-2. **Background script dependency:** If background crashes before content init, will fall back to stale storage
-3. **No proactive push:** Background doesn't push updates to tabs; tabs pull on activation
+2. **Background script dependency:** If background crashes before content init,
+   will fall back to stale storage
+3. **No proactive push:** Background doesn't push updates to tabs; tabs pull on
+   activation
 
 **Future Enhancements:**
 
@@ -462,16 +488,19 @@ async handleGetQuickTabsState(message, _sender) {
 
 ## Conclusion
 
-This implementation fixes the critical regression where Quick Tabs were not persisting across tab switches. The solution follows the principle of "fix root causes, not symptoms" by:
+This implementation fixes the critical regression where Quick Tabs were not
+persisting across tab switches. The solution follows the principle of "fix root
+causes, not symptoms" by:
 
 1. Making background script the single source of truth
 2. Adding explicit state refresh on tab activation
 3. Fixing error logging to enable future debugging
 
-The changes are minimal, well-tested, and maintain backward compatibility while eliminating the entire class of "stale state on tab switch" bugs.
+The changes are minimal, well-tested, and maintain backward compatibility while
+eliminating the entire class of "stale state on tab switch" bugs.
 
-**Success Criteria Met:**
-✅ Quick Tabs persist across all tabs in same container  
+**Success Criteria Met:** ✅ Quick Tabs persist across all tabs in same
+container  
 ✅ Position/size updates sync immediately (<10ms with BroadcastChannel)  
 ✅ Switching to any tab shows all Quick Tabs in latest positions  
 ✅ Container isolation maintained  
@@ -483,5 +512,6 @@ The changes are minimal, well-tested, and maintain backward compatibility while 
 **Related Issues:**
 
 - Fixes #35 - Quick Tabs don't persist across tabs
-- Fixes #51 - Quick Tabs' Size and Position are Unable to Update and Transfer Over Between Tabs
+- Fixes #51 - Quick Tabs' Size and Position are Unable to Update and Transfer
+  Over Between Tabs
 - Related to #47 - Expected behavior documentation for Quick Tabs

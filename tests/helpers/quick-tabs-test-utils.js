@@ -1,8 +1,8 @@
 /**
  * Quick Tabs Test Utilities
- * 
+ *
  * Common utilities for testing Quick Tab behaviors
- * 
+ *
  * Related Documentation:
  * - docs/manual/comprehensive-unit-testing-strategy.md (Section 8.3)
  */
@@ -20,7 +20,7 @@ export async function waitForBroadcast(broadcastChannel, expectedAction, timeout
       reject(new Error(`Timeout waiting for broadcast action: ${expectedAction}`));
     }, timeout);
 
-    const listener = (event) => {
+    const listener = event => {
       if (event.data && event.data.action === expectedAction) {
         clearTimeout(timeoutId);
         broadcastChannel.removeEventListener('message', listener);
@@ -71,7 +71,9 @@ export function assertQuickTabState(qt, expectedState) {
   // Check position
   if (expectedState.position) {
     if (qt.position.left !== expectedState.position.left) {
-      errors.push(`position.left: expected ${expectedState.position.left}, got ${qt.position.left}`);
+      errors.push(
+        `position.left: expected ${expectedState.position.left}, got ${qt.position.left}`
+      );
     }
     if (qt.position.top !== expectedState.position.top) {
       errors.push(`position.top: expected ${expectedState.position.top}, got ${qt.position.top}`);
@@ -178,7 +180,7 @@ export async function waitForBroadcastCount(broadcastChannel, count, timeout = 1
       reject(new Error(`Timeout: expected ${count} broadcasts, got ${messages.length}`));
     }, timeout);
 
-    const listener = (event) => {
+    const listener = event => {
       messages.push(event.data);
       if (messages.length >= count) {
         clearTimeout(timeoutId);
@@ -258,11 +260,13 @@ export function assertContainerIsolation(qt, expectedContainer, tabs) {
     const message = shouldBeVisible
       ? `QT should be visible in container ${tab.containerId}`
       : `QT should NOT be visible in container ${tab.containerId}`;
-    
+
     // This would be checked by actual rendering logic
     // For tests, we verify the cookieStoreId matches
     if (shouldBeVisible && qt.cookieStoreId !== tab.containerId) {
-      throw new Error(`${message} (cookieStoreId mismatch: ${qt.cookieStoreId} !== ${tab.containerId})`);
+      throw new Error(
+        `${message} (cookieStoreId mismatch: ${qt.cookieStoreId} !== ${tab.containerId})`
+      );
     }
   });
 }

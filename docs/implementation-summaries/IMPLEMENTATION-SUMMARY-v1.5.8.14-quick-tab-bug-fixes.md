@@ -51,7 +51,10 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
     // v1.5.8.14 FIX: Ignore own saves
     if (newValue && newValue.saveId === this.currentSaveId) {
-      console.log('[QuickTabsManager] Ignoring own save operation:', newValue.saveId);
+      console.log(
+        '[QuickTabsManager] Ignoring own save operation:',
+        newValue.saveId
+      );
       return; // Prevents self-destruction!
     }
 
@@ -244,7 +247,9 @@ document.addEventListener('visibilitychange', () => {
 // Save before page unload
 window.addEventListener('beforeunload', () => {
   if (this.tabs.size > 0) {
-    console.log('[QuickTabsManager] Page unloading - triggering emergency save');
+    console.log(
+      '[QuickTabsManager] Page unloading - triggering emergency save'
+    );
     this.saveCurrentStateToBackground();
   }
 });

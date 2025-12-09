@@ -1,21 +1,29 @@
 # Infrastructure & Testing Changes for Extension Refactoring
+
 ## Supporting the Modular Architecture Transformation
 
-**Context**: This report details necessary changes to CI/CD workflows, build tooling, test infrastructure, and developer tooling to support the refactoring plan outlined in the main document.
+**Context**: This report details necessary changes to CI/CD workflows, build
+tooling, test infrastructure, and developer tooling to support the refactoring
+plan outlined in the main document.
 
 ---
 
 ## Executive Summary
 
-Your current infrastructure is **partially configured** for modular development but will require **significant updates** to support the refactored architecture. Key gaps:
+Your current infrastructure is **partially configured** for modular development
+but will require **significant updates** to support the refactored architecture.
+Key gaps:
 
-1. **Build system** (Rollup) only bundles `content.js` - needs to handle 20+ new modules
+1. **Build system** (Rollup) only bundles `content.js` - needs to handle 20+ new
+   modules
 2. **Jest configuration** assumes flat structure - needs module path mapping
 3. **CI/CD workflows** validate monolithic structure - need module-aware checks
 4. **No unit test infrastructure** - only integration tests exist
-5. **ESLint/Prettier** configured for flat files - need rule updates for modular patterns
+5. **ESLint/Prettier** configured for flat files - need rule updates for modular
+   patterns
 
 **Impact**: Without infrastructure updates, you'll face:
+
 - Build failures when importing new modules
 - Test discovery issues (Jest won't find new test files)
 - CI/CD failures on module boundaries
@@ -28,6 +36,7 @@ Your current infrastructure is **partially configured** for modular development 
 ### 1. Build System (Rollup)
 
 **Current State** (`rollup.config.js`):
+
 ```javascript
 export default [
   {
@@ -43,8 +52,11 @@ export default [
 ```
 
 **Problems**:
-- ❌ Only bundles `content.js` - ignores new modules in `src/domain/`, `src/storage/`, etc.
-- ❌ Single entry point - can't handle multiple outputs (background.js, popup.js will need bundling too)
+
+- ❌ Only bundles `content.js` - ignores new modules in `src/domain/`,
+  `src/storage/`, etc.
+- ❌ Single entry point - can't handle multiple outputs (background.js, popup.js
+  will need bundling too)
 - ❌ No tree-shaking configuration (will bloat bundle with unused code)
 - ❌ No module aliasing (@domain, @storage) for clean imports
 
@@ -55,16 +67,18 @@ export default [
 ### 2. Test Infrastructure (Jest)
 
 **Current State** (`jest.config.cjs`):
+
 ```javascript
 module.exports = {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
-  
+
   moduleNameMapper: {
-    '^webextension-polyfill$': '<rootDir>/tests/__mocks__/webextension-polyfill.js'
+    '^webextension-polyfill$':
+      '<rootDir>/tests/__mocks__/webextension-polyfill.js'
   },
-  
+
   collectCoverageFrom: [
     'src/**/*.js',
     '!src/**/*.test.js',
@@ -75,16 +89,21 @@ module.exports = {
 ```
 
 **Problems**:
+
 - ❌ No module path aliases (@domain/QuickTab → src/domain/QuickTab.js)
-- ❌ Coverage exclusions don't account for new structure (facades, handlers, coordinators)
+- ❌ Coverage exclusions don't account for new structure (facades, handlers,
+  coordinators)
 - ❌ No mock setup for new storage adapters
-- ❌ Missing test patterns for new module hierarchy (src/features/quick-tabs/managers/*.test.js)
+- ❌ Missing test patterns for new module hierarchy
+  (src/features/quick-tabs/managers/\*.test.js)
 
 **Existing Tests**:
+
 - `tests/example.test.js` (32KB) - Integration test (likely for old structure)
 - `tests/quick-tabs-creation.test.js` (18KB) - Feature test
 
-**Gap**: **Zero unit tests** for domain logic, storage adapters, or handlers. All tests are integration-level.
+**Gap**: **Zero unit tests** for domain logic, storage adapters, or handlers.
+All tests are integration-level.
 
 **Required Changes**: See Section 4 below.
 
@@ -93,6 +112,7 @@ module.exports = {
 ### 3. CI/CD Workflows
 
 **Current Workflows**:
+
 1. **code-quality.yml** - ESLint + Prettier + Build + web-ext lint
 2. **test-coverage.yml** - Jest with Codecov upload
 3. **auto-format.yml** - Auto-format on push
@@ -103,20 +123,24 @@ module.exports = {
 **Problems**:
 
 **code-quality.yml**:
+
 ```yaml
 # Checks for key classes in dist/content.js
-grep -q "ConfigManager" dist/content.js && echo "✓ ConfigManager found"
-grep -q "StateManager" dist/content.js && echo "✓ StateManager found"
-grep -q "EventBus" dist/content.js && echo "✓ EventBus found"
+grep -q "ConfigManager" dist/content.js && echo "✓ ConfigManager found" grep -q
+"StateManager" dist/content.js && echo "✓ StateManager found" grep -q "EventBus"
+dist/content.js && echo "✓ EventBus found"
 ```
+
 - ❌ Hardcoded class names from old structure
 - ❌ No checks for new modules (StorageManager, BroadcastManager, etc.)
 - ❌ Doesn't validate module boundaries (domain shouldn't import from features)
 
 **test-coverage.yml**:
+
 ```yaml
 run: npm run test:coverage
 ```
+
 - ❌ Will fail when no unit tests exist for new modules
 - ❌ No minimum coverage threshold enforcement (should be 80% for domain layer)
 
@@ -127,6 +151,7 @@ run: npm run test:coverage
 ### 4. Linting & Formatting
 
 **Current ESLint** (`.eslintrc.cjs`):
+
 ```javascript
 module.exports = {
   env: {
@@ -145,7 +170,9 @@ module.exports = {
 ```
 
 **Problems**:
-- ❌ No rules for class complexity (max-lines-per-function, complexity, max-depth)
+
+- ❌ No rules for class complexity (max-lines-per-function, complexity,
+  max-depth)
 - ❌ No import/export order rules (domain imports should come first)
 - ❌ No architecture boundary enforcement (eslint-plugin-boundaries)
 - ❌ Missing rules for async/await patterns (require-await, no-return-await)
@@ -157,6 +184,7 @@ module.exports = {
 ### 5. Package Dependencies
 
 **Current** (`package.json`):
+
 ```json
 {
   "dependencies": {
@@ -170,13 +198,14 @@ module.exports = {
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "rollup": "^3.29.0",
+    "rollup": "^3.29.0"
     // ... more
   }
 }
 ```
 
 **Analysis**:
+
 - ✅ `eventemitter3` - Good for EventBus pattern (used in refactoring)
 - ✅ `webextension-polyfill` - Correct for Firefox
 - ❌ `zustand` - State management library **NOT used anywhere** (can remove)
@@ -196,6 +225,7 @@ module.exports = {
 **Goal**: Support multiple entry points, module aliasing, and tree-shaking
 
 **New `rollup.config.js`**:
+
 ```javascript
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
@@ -224,15 +254,16 @@ const commonPlugins = [
     preferBuiltins: false
   }),
   commonjs(),
-  production && terser({
-    compress: {
-      drop_console: false, // Keep console for extension debugging
-      passes: 2
-    },
-    mangle: {
-      properties: false // Don't mangle browser API properties
-    }
-  })
+  production &&
+    terser({
+      compress: {
+        drop_console: false, // Keep console for extension debugging
+        passes: 2
+      },
+      mangle: {
+        properties: false // Don't mangle browser API properties
+      }
+    })
 ];
 
 export default [
@@ -252,7 +283,7 @@ export default [
     plugins: commonPlugins,
     treeshake: production
   },
-  
+
   // Background script bundle (if needed after refactoring)
   {
     input: 'background.js',
@@ -264,7 +295,7 @@ export default [
     },
     plugins: commonPlugins
   },
-  
+
   // Popup script bundle
   {
     input: 'popup.js',
@@ -280,6 +311,7 @@ export default [
 ```
 
 **New package.json dependencies**:
+
 ```json
 {
   "devDependencies": {
@@ -290,6 +322,7 @@ export default [
 ```
 
 **Validation**: Add to `package.json` scripts:
+
 ```json
 {
   "scripts": {
@@ -300,14 +333,15 @@ export default [
 ```
 
 **New `scripts/check-bundle-size.js`**:
+
 ```javascript
 import fs from 'fs';
 import path from 'path';
 
 const MAX_BUNDLE_SIZES = {
-  'content.js': 500 * 1024,  // 500KB max
+  'content.js': 500 * 1024, // 500KB max
   'background.js': 300 * 1024, // 300KB max
-  'popup.js': 100 * 1024      // 100KB max
+  'popup.js': 100 * 1024 // 100KB max
 };
 
 let failed = false;
@@ -315,11 +349,11 @@ let failed = false;
 for (const [file, maxSize] of Object.entries(MAX_BUNDLE_SIZES)) {
   const filePath = path.join('dist', file);
   if (!fs.existsSync(filePath)) continue;
-  
+
   const stats = fs.statSync(filePath);
   const sizeMB = (stats.size / 1024).toFixed(2);
   const maxMB = (maxSize / 1024).toFixed(2);
-  
+
   if (stats.size > maxSize) {
     console.error(`❌ ${file}: ${sizeMB}KB exceeds limit of ${maxMB}KB`);
     failed = true;
@@ -329,7 +363,9 @@ for (const [file, maxSize] of Object.entries(MAX_BUNDLE_SIZES)) {
 }
 
 if (failed) {
-  console.error('\n⚠️  Bundle size check failed. Consider code splitting or tree-shaking.');
+  console.error(
+    '\n⚠️  Bundle size check failed. Consider code splitting or tree-shaking.'
+  );
   process.exit(1);
 }
 
@@ -343,6 +379,7 @@ console.log('\n✅ All bundle sizes within limits.');
 **Enable clean imports in refactored code**:
 
 **Before** (relative imports):
+
 ```javascript
 // src/features/quick-tabs/QuickTabsManager.js
 import { QuickTab } from '../../domain/QuickTab.js';
@@ -351,6 +388,7 @@ import { EventEmitter } from '../../utils/EventEmitter.js';
 ```
 
 **After** (aliased imports):
+
 ```javascript
 // src/features/quick-tabs/QuickTabsManager.js
 import { QuickTab } from '@domain/QuickTab.js';
@@ -367,6 +405,7 @@ import { EventEmitter } from '@utils/EventEmitter.js';
 #### 4.1 Enhanced Jest Configuration
 
 **New `jest.config.cjs`**:
+
 ```javascript
 module.exports = {
   // Test environment
@@ -376,10 +415,7 @@ module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
 
   // Test file patterns
-  testMatch: [
-    '**/__tests__/**/*.js',
-    '**/?(*.)+(spec|test).js'
-  ],
+  testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
 
   // Module aliasing (must match Rollup aliases)
   moduleNameMapper: {
@@ -388,7 +424,8 @@ module.exports = {
     '^@features/(.*)$': '<rootDir>/src/features/$1',
     '^@utils/(.*)$': '<rootDir>/src/utils/$1',
     '^@core/(.*)$': '<rootDir>/src/core/$1',
-    '^webextension-polyfill$': '<rootDir>/tests/__mocks__/webextension-polyfill.js'
+    '^webextension-polyfill$':
+      '<rootDir>/tests/__mocks__/webextension-polyfill.js'
   },
 
   // Transform ES modules
@@ -401,19 +438,19 @@ module.exports = {
   collectCoverageFrom: [
     // Domain layer - require 100% coverage
     'src/domain/**/*.js',
-    
+
     // Storage layer - require 90% coverage
     'src/storage/**/*.js',
-    
+
     // Feature modules - require 80% coverage
     'src/features/**/*.js',
-    
+
     // Utils - require 90% coverage
     'src/utils/**/*.js',
-    
+
     // Core - require 85% coverage
     'src/core/**/*.js',
-    
+
     // Exclusions
     '!src/**/*.test.js',
     '!src/**/*.spec.js',
@@ -422,7 +459,7 @@ module.exports = {
     '!**/node_modules/**',
     '!**/dist/**'
   ],
-  
+
   // Coverage thresholds by directory
   coverageThreshold: {
     // Domain layer must have perfect coverage (pure logic)
@@ -432,7 +469,7 @@ module.exports = {
       lines: 100,
       statements: 100
     },
-    
+
     // Storage adapters (I/O) - allow some uncovered branches
     './src/storage/': {
       branches: 85,
@@ -440,7 +477,7 @@ module.exports = {
       lines: 90,
       statements: 90
     },
-    
+
     // Feature modules (UI interaction) - realistic targets
     './src/features/': {
       branches: 75,
@@ -448,7 +485,7 @@ module.exports = {
       lines: 80,
       statements: 80
     },
-    
+
     // Global threshold
     global: {
       branches: 80,
@@ -487,13 +524,14 @@ module.exports = {
 
   // Verbose output
   verbose: true,
-  
+
   // Test timeout (increase for async operations)
   testTimeout: 10000
 };
 ```
 
 **Key Changes**:
+
 1. ✅ Module aliasing matches Rollup config
 2. ✅ Coverage thresholds enforced per layer (domain=100%, features=80%)
 3. ✅ Exclusions for test files and mocks
@@ -504,6 +542,7 @@ module.exports = {
 #### 4.2 New Test Structure
 
 **Refactored test directory**:
+
 ```
 tests/
 ├── unit/                           # Unit tests (new)
@@ -555,6 +594,7 @@ tests/
 #### 4.3 Example Unit Test (Domain Layer)
 
 **New `tests/unit/domain/QuickTab.test.js`**:
+
 ```javascript
 import { QuickTab } from '@domain/QuickTab.js';
 import { quickTabBuilder } from '../../helpers/test-builders.js';
@@ -563,33 +603,27 @@ describe('QuickTab Domain Entity', () => {
   describe('Visibility Logic', () => {
     test('should be visible by default', () => {
       const quickTab = quickTabBuilder().build();
-      
+
       expect(quickTab.shouldBeVisible(123)).toBe(true);
     });
 
     test('should not be visible when minimized', () => {
-      const quickTab = quickTabBuilder()
-        .minimized(true)
-        .build();
-      
+      const quickTab = quickTabBuilder().minimized(true).build();
+
       expect(quickTab.shouldBeVisible(123)).toBe(false);
     });
 
     test('should only be visible on soloed tabs', () => {
-      const quickTab = quickTabBuilder()
-        .soloedOnTabs([100, 200])
-        .build();
-      
+      const quickTab = quickTabBuilder().soloedOnTabs([100, 200]).build();
+
       expect(quickTab.shouldBeVisible(100)).toBe(true);
       expect(quickTab.shouldBeVisible(200)).toBe(true);
       expect(quickTab.shouldBeVisible(300)).toBe(false);
     });
 
     test('should not be visible on muted tabs', () => {
-      const quickTab = quickTabBuilder()
-        .mutedOnTabs([100, 200])
-        .build();
-      
+      const quickTab = quickTabBuilder().mutedOnTabs([100, 200]).build();
+
       expect(quickTab.shouldBeVisible(100)).toBe(false);
       expect(quickTab.shouldBeVisible(200)).toBe(false);
       expect(quickTab.shouldBeVisible(300)).toBe(true);
@@ -600,7 +634,7 @@ describe('QuickTab Domain Entity', () => {
         .soloedOnTabs([100])
         .mutedOnTabs([200])
         .build();
-      
+
       expect(quickTab.shouldBeVisible(100)).toBe(true);
       expect(quickTab.shouldBeVisible(200)).toBe(false);
     });
@@ -609,39 +643,33 @@ describe('QuickTab Domain Entity', () => {
   describe('State Transitions', () => {
     test('solo() adds tab to solo list', () => {
       const quickTab = quickTabBuilder().build();
-      
+
       quickTab.solo(100);
-      
+
       expect(quickTab.visibility.soloedOnTabs).toContain(100);
     });
 
     test('solo() does not add duplicate', () => {
-      const quickTab = quickTabBuilder()
-        .soloedOnTabs([100])
-        .build();
-      
+      const quickTab = quickTabBuilder().soloedOnTabs([100]).build();
+
       quickTab.solo(100);
-      
+
       expect(quickTab.visibility.soloedOnTabs).toEqual([100]);
     });
 
     test('unsolo() removes tab from solo list', () => {
-      const quickTab = quickTabBuilder()
-        .soloedOnTabs([100, 200])
-        .build();
-      
+      const quickTab = quickTabBuilder().soloedOnTabs([100, 200]).build();
+
       quickTab.unsolo(100);
-      
+
       expect(quickTab.visibility.soloedOnTabs).toEqual([200]);
     });
 
     test('mute() clears solo list', () => {
-      const quickTab = quickTabBuilder()
-        .soloedOnTabs([100])
-        .build();
-      
+      const quickTab = quickTabBuilder().soloedOnTabs([100]).build();
+
       quickTab.mute(200);
-      
+
       expect(quickTab.visibility.soloedOnTabs).toEqual([]);
       expect(quickTab.visibility.mutedOnTabs).toContain(200);
     });
@@ -650,6 +678,7 @@ describe('QuickTab Domain Entity', () => {
 ```
 
 **New `tests/helpers/test-builders.js`**:
+
 ```javascript
 // Fluent builder pattern for test data
 export function quickTabBuilder() {
@@ -702,6 +731,7 @@ export function quickTabBuilder() {
 ```
 
 **Benefits**:
+
 - ✅ **100% domain logic coverage** with minimal setup
 - ✅ **Fluent builder** makes tests readable
 - ✅ **No browser mocks needed** (pure logic)
@@ -712,6 +742,7 @@ export function quickTabBuilder() {
 #### 4.4 Example Integration Test (Storage Layer)
 
 **New `tests/integration/storage-sync.test.js`**:
+
 ```javascript
 import { SyncStorageAdapter } from '@storage/SyncStorageAdapter.js';
 import { QuickTab } from '@domain/QuickTab.js';
@@ -771,7 +802,13 @@ describe('Storage Sync Integration', () => {
         containers: {
           'firefox-default': {
             tabs: [
-              { id: 'qt-1', url: 'https://example.com', position: {}, size: {}, visibility: {} }
+              {
+                id: 'qt-1',
+                url: 'https://example.com',
+                position: {},
+                size: {},
+                visibility: {}
+              }
             ],
             lastUpdate: Date.now()
           }
@@ -789,9 +826,7 @@ describe('Storage Sync Integration', () => {
   test('load() handles legacy format migration', async () => {
     browser.storage.sync.get.mockResolvedValue({
       quick_tabs_state_v2: {
-        tabs: [
-          { id: 'qt-1', url: 'https://example.com' }
-        ],
+        tabs: [{ id: 'qt-1', url: 'https://example.com' }],
         timestamp: Date.now()
       }
     });
@@ -907,13 +942,13 @@ jobs:
       - name: Validate module boundaries
         run: |
           echo "Checking for domain layer isolation..."
-          
+
           # Domain layer should not import from features
           if grep -q "features/" dist/content.js | grep -q "domain/"; then
             echo "ERROR: Domain layer has circular dependency with features"
             exit 1
           fi
-          
+
           echo "✓ Module boundaries validated"
 
       # NEW: Check for new refactored classes
@@ -968,12 +1003,12 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:unit
-        
+
       - name: Enforce coverage thresholds
         run: |
           echo "Checking domain layer coverage (must be 100%)..."
           npm run test:coverage -- --collectCoverageFrom='src/domain/**/*.js'
-          
+
   # JOB 5: Web extension lint
   web-ext-lint:
     name: Firefox Extension Validator
@@ -1001,6 +1036,7 @@ jobs:
 ```
 
 **Key Additions**:
+
 1. ✅ Module boundary validation (domain doesn't depend on features)
 2. ✅ Bundle size checks (prevent bloat)
 3. ✅ New class detection (StorageManager, BroadcastManager)
@@ -1011,6 +1047,7 @@ jobs:
 #### 5.2 New Unit Test Script
 
 **Add to `package.json`**:
+
 ```json
 {
   "scripts": {
@@ -1029,6 +1066,7 @@ jobs:
 #### 6.1 Architecture Boundary Enforcement
 
 **New `.eslintrc.cjs`**:
+
 ```javascript
 module.exports = {
   env: {
@@ -1055,9 +1093,12 @@ module.exports = {
     'prefer-const': 'warn',
 
     // NEW: Complexity rules (align with CodeScene targets)
-    'complexity': ['error', 9], // cc ≤ 9
+    complexity: ['error', 9], // cc ≤ 9
     'max-depth': ['error', 2], // nesting ≤ 2 levels
-    'max-lines-per-function': ['warn', { max: 70, skipBlankLines: true, skipComments: true }],
+    'max-lines-per-function': [
+      'warn',
+      { max: 70, skipBlankLines: true, skipComments: true }
+    ],
     'max-nested-callbacks': ['error', 3],
 
     // NEW: Async/await rules
@@ -1066,59 +1107,65 @@ module.exports = {
     'prefer-promise-reject-errors': 'error',
 
     // NEW: Import ordering
-    'import/order': ['error', {
-      'groups': [
-        ['builtin', 'external'], // Node built-ins and npm packages first
-        ['internal'],             // @domain, @storage aliases
-        ['parent', 'sibling'],    // Relative imports
-        ['index', 'object']
-      ],
-      'pathGroups': [
-        {
-          pattern: '@domain/**',
-          group: 'internal',
-          position: 'before'
-        },
-        {
-          pattern: '@storage/**',
-          group: 'internal',
-          position: 'before'
-        },
-        {
-          pattern: '@features/**',
-          group: 'internal'
+    'import/order': [
+      'error',
+      {
+        groups: [
+          ['builtin', 'external'], // Node built-ins and npm packages first
+          ['internal'], // @domain, @storage aliases
+          ['parent', 'sibling'], // Relative imports
+          ['index', 'object']
+        ],
+        pathGroups: [
+          {
+            pattern: '@domain/**',
+            group: 'internal',
+            position: 'before'
+          },
+          {
+            pattern: '@storage/**',
+            group: 'internal',
+            position: 'before'
+          },
+          {
+            pattern: '@features/**',
+            group: 'internal'
+          }
+        ],
+        pathGroupsExcludedImportTypes: ['builtin'],
+        'newlines-between': 'always',
+        alphabetize: {
+          order: 'asc',
+          caseInsensitive: true
         }
-      ],
-      'pathGroupsExcludedImportTypes': ['builtin'],
-      'newlines-between': 'always',
-      'alphabetize': {
-        'order': 'asc',
-        'caseInsensitive': true
       }
-    }],
+    ],
 
     // NEW: Architecture boundaries
-    'import/no-restricted-paths': ['error', {
-      zones: [
-        // Domain layer cannot import from features or storage
-        {
-          target: './src/domain',
-          from: './src/features',
-          message: 'Domain layer must not depend on features'
-        },
-        {
-          target: './src/domain',
-          from: './src/storage',
-          message: 'Domain layer must not depend on storage infrastructure'
-        },
-        // Storage layer cannot import from features
-        {
-          target: './src/storage',
-          from: './src/features',
-          message: 'Storage layer must not depend on features'
-        }
-      ]
-    }]
+    'import/no-restricted-paths': [
+      'error',
+      {
+        zones: [
+          // Domain layer cannot import from features or storage
+          {
+            target: './src/domain',
+            from: './src/features',
+            message: 'Domain layer must not depend on features'
+          },
+          {
+            target: './src/domain',
+            from: './src/storage',
+            message: 'Domain layer must not depend on storage infrastructure'
+          },
+          // Storage layer cannot import from features
+          {
+            target: './src/storage',
+            from: './src/features',
+            message: 'Storage layer must not depend on features'
+          }
+        ]
+      }
+    ]
   },
   overrides: [
     {
@@ -1132,7 +1179,7 @@ module.exports = {
       rules: {
         // Relax complexity rules for tests
         'max-lines-per-function': 'off',
-        'complexity': 'off'
+        complexity: 'off'
       }
     }
   ],
@@ -1141,6 +1188,7 @@ module.exports = {
 ```
 
 **New dependency**:
+
 ```json
 {
   "devDependencies": {
@@ -1150,6 +1198,7 @@ module.exports = {
 ```
 
 **Benefits**:
+
 - ✅ Enforces cc ≤ 9 (aligns with refactoring goals)
 - ✅ Prevents domain layer from importing features (architectural boundary)
 - ✅ Import ordering keeps domain imports at top (visibility)
@@ -1162,15 +1211,17 @@ module.exports = {
 #### 7.1 Remove Unused Dependencies
 
 **Current `zustand` is unused** - remove:
+
 ```json
 {
   "dependencies": {
-    "zustand": "^5.0.8"  // ❌ REMOVE - not used anywhere
+    "zustand": "^5.0.8" // ❌ REMOVE - not used anywhere
   }
 }
 ```
 
 **Verification**:
+
 ```bash
 grep -r "zustand" src/
 # No results = safe to remove
@@ -1181,22 +1232,24 @@ grep -r "zustand" src/
 #### 7.2 Add Test Utilities
 
 **New test dependencies**:
+
 ```json
 {
   "devDependencies": {
-    "@testing-library/dom": "^10.4.1",          // Existing
-    "@testing-library/jest-dom": "^6.9.1",      // Existing
-    "@testing-library/user-event": "^14.6.1",   // Existing
-    
+    "@testing-library/dom": "^10.4.1", // Existing
+    "@testing-library/jest-dom": "^6.9.1", // Existing
+    "@testing-library/user-event": "^14.6.1", // Existing
+
     // NEW: Test utilities
-    "jest-mock-extended": "^4.0.0",            // Type-safe mocks
-    "flush-promises": "^1.0.2",                // Async test helper
-    "jest-extended": "^4.0.2"                  // Extended matchers
+    "jest-mock-extended": "^4.0.0", // Type-safe mocks
+    "flush-promises": "^1.0.2", // Async test helper
+    "jest-extended": "^4.0.2" // Extended matchers
   }
 }
 ```
 
 **Usage in tests**:
+
 ```javascript
 import { mockDeep } from 'jest-mock-extended';
 import flushPromises from 'flush-promises';
@@ -1213,6 +1266,7 @@ await flushPromises();
 ### Section 8: New npm Scripts
 
 **Add to `package.json`**:
+
 ```json
 {
   "scripts": {
@@ -1221,13 +1275,13 @@ await flushPromises();
     "build:prod": "npm run clean && rollup -c --environment BUILD:production && npm run copy-assets",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    
+
     // NEW: Modular build scripts
     "build:content": "rollup -c --input src/content.js --output dist/content.js",
     "build:background": "rollup -c --input background.js --output dist/background.js",
     "build:analyze": "rollup -c --environment BUILD:production --plugin visualizer",
     "build:check-size": "node scripts/check-bundle-size.js",
-    
+
     // NEW: Modular test scripts
     "test:unit": "jest --testPathPattern=tests/unit",
     "test:integration": "jest --testPathPattern=tests/integration",
@@ -1236,16 +1290,16 @@ await flushPromises();
     "test:storage": "jest --testPathPattern=tests/unit/storage --coverage",
     "test:watch:unit": "jest --testPathPattern=tests/unit --watch",
     "test:watch:integration": "jest --testPathPattern=tests/integration --watch",
-    
+
     // NEW: Coverage by layer
     "coverage:domain": "jest --testPathPattern=tests/unit/domain --coverage --collectCoverageFrom='src/domain/**/*.js'",
     "coverage:storage": "jest --testPathPattern=tests/unit/storage --coverage --collectCoverageFrom='src/storage/**/*.js'",
     "coverage:features": "jest --testPathPattern=tests/unit --coverage --collectCoverageFrom='src/features/**/*.js'",
-    
+
     // NEW: Validation scripts
     "validate:architecture": "node scripts/validate-architecture.js",
     "validate:imports": "eslint src/ --rule 'import/no-restricted-paths: error'",
-    
+
     // NEW: CI scripts
     "ci:lint": "npm run lint && npm run format:check",
     "ci:test": "npm run test:unit && npm run test:integration",
@@ -1260,6 +1314,7 @@ await flushPromises();
 ### Section 9: Architecture Validation Script
 
 **New `scripts/validate-architecture.js`**:
+
 ```javascript
 import fs from 'fs';
 import path from 'path';
@@ -1275,10 +1330,16 @@ const rules = [
       const domainFiles = getAllJsFiles(path.join(srcDir, 'domain'));
       for (const file of domainFiles) {
         const content = fs.readFileSync(file, 'utf-8');
-        
+
         // Check for imports from features or storage
-        if (content.includes('@features/') || content.includes('../features/')) {
-          return { pass: false, message: `${file} imports from features layer` };
+        if (
+          content.includes('@features/') ||
+          content.includes('../features/')
+        ) {
+          return {
+            pass: false,
+            message: `${file} imports from features layer`
+          };
         }
         if (content.includes('@storage/') || content.includes('../storage/')) {
           return { pass: false, message: `${file} imports from storage layer` };
@@ -1287,33 +1348,42 @@ const rules = [
       return { pass: true };
     }
   },
-  
+
   {
     name: 'Storage layer does not depend on features',
     check: () => {
       const storageFiles = getAllJsFiles(path.join(srcDir, 'storage'));
       for (const file of storageFiles) {
         const content = fs.readFileSync(file, 'utf-8');
-        
-        if (content.includes('@features/') || content.includes('../features/')) {
-          return { pass: false, message: `${file} imports from features layer` };
+
+        if (
+          content.includes('@features/') ||
+          content.includes('../features/')
+        ) {
+          return {
+            pass: false,
+            message: `${file} imports from features layer`
+          };
         }
       }
       return { pass: true };
     }
   },
-  
+
   {
     name: 'Facades exist in correct location',
     check: () => {
-      const facadePath = path.join(srcDir, 'features/quick-tabs/QuickTabsManager.js');
+      const facadePath = path.join(
+        srcDir,
+        'features/quick-tabs/QuickTabsManager.js'
+      );
       if (!fs.existsSync(facadePath)) {
         return { pass: false, message: 'QuickTabsManager facade not found' };
       }
       return { pass: true };
     }
   },
-  
+
   {
     name: 'All managers are in managers/ directory',
     check: () => {
@@ -1321,8 +1391,12 @@ const rules = [
       if (!fs.existsSync(managersDir)) {
         return { pass: false, message: 'managers/ directory not found' };
       }
-      
-      const requiredManagers = ['StorageManager.js', 'BroadcastManager.js', 'StateManager.js'];
+
+      const requiredManagers = [
+        'StorageManager.js',
+        'BroadcastManager.js',
+        'StateManager.js'
+      ];
       for (const manager of requiredManagers) {
         if (!fs.existsSync(path.join(managersDir, manager))) {
           return { pass: false, message: `${manager} not found in managers/` };
@@ -1335,21 +1409,21 @@ const rules = [
 
 function getAllJsFiles(dir) {
   const files = [];
-  
+
   if (!fs.existsSync(dir)) return files;
-  
+
   const items = fs.readdirSync(dir);
   for (const item of items) {
     const fullPath = path.join(dir, item);
     const stat = fs.statSync(fullPath);
-    
+
     if (stat.isDirectory()) {
       files.push(...getAllJsFiles(fullPath));
     } else if (item.endsWith('.js') && !item.endsWith('.test.js')) {
       files.push(fullPath);
     }
   }
-  
+
   return files;
 }
 
@@ -1374,7 +1448,9 @@ for (const rule of rules) {
 console.log(`\n📊 Results: ${passed} passed, ${failed} failed\n`);
 
 if (failed > 0) {
-  console.error('⚠️  Architecture validation failed. Please fix the issues above.');
+  console.error(
+    '⚠️  Architecture validation failed. Please fix the issues above.'
+  );
   process.exit(1);
 }
 
@@ -1382,6 +1458,7 @@ console.log('✅ Architecture validation passed!');
 ```
 
 **Add to CI workflow** (`.github/workflows/code-quality.yml`):
+
 ```yaml
 - name: Validate architecture
   run: npm run validate:architecture
@@ -1420,6 +1497,7 @@ console.log('✅ Architecture validation passed!');
 7. **Commit** - CI will validate all checks pass
 
 **Example (Phase 1 - Domain Entity)**:
+
 ```bash
 # 1. Write tests
 touch tests/unit/domain/QuickTab.test.js
@@ -1446,20 +1524,21 @@ git push  # CI runs all checks
 
 ### Immediate Actions (Before Refactoring)
 
-| Item | File | Change | Priority |
-|------|------|--------|----------|
-| **Rollup config** | `rollup.config.js` | Add module aliases, multiple entry points, tree-shaking | 🔴 Critical |
-| **Jest config** | `jest.config.cjs` | Add module mappers, coverage thresholds by layer | 🔴 Critical |
-| **ESLint rules** | `.eslintrc.cjs` | Add complexity rules, import boundaries, async/await rules | 🟡 High |
-| **npm scripts** | `package.json` | Add modular test/build scripts | 🟡 High |
-| **Test structure** | `tests/` | Create unit/, integration/, e2e/, helpers/ directories | 🔴 Critical |
-| **CI workflows** | `.github/workflows/code-quality.yml` | Add module validation, bundle size checks | 🟡 High |
-| **Dependencies** | `package.json` | Remove zustand, add test utilities | 🟢 Medium |
-| **Scripts** | `scripts/` | Add bundle size checker, architecture validator | 🟢 Medium |
+| Item               | File                                 | Change                                                     | Priority    |
+| ------------------ | ------------------------------------ | ---------------------------------------------------------- | ----------- |
+| **Rollup config**  | `rollup.config.js`                   | Add module aliases, multiple entry points, tree-shaking    | 🔴 Critical |
+| **Jest config**    | `jest.config.cjs`                    | Add module mappers, coverage thresholds by layer           | 🔴 Critical |
+| **ESLint rules**   | `.eslintrc.cjs`                      | Add complexity rules, import boundaries, async/await rules | 🟡 High     |
+| **npm scripts**    | `package.json`                       | Add modular test/build scripts                             | 🟡 High     |
+| **Test structure** | `tests/`                             | Create unit/, integration/, e2e/, helpers/ directories     | 🔴 Critical |
+| **CI workflows**   | `.github/workflows/code-quality.yml` | Add module validation, bundle size checks                  | 🟡 High     |
+| **Dependencies**   | `package.json`                       | Remove zustand, add test utilities                         | 🟢 Medium   |
+| **Scripts**        | `scripts/`                           | Add bundle size checker, architecture validator            | 🟢 Medium   |
 
 ### Per-Phase Actions (During Refactoring)
 
 **For each module created:**
+
 1. ✅ Write unit tests first (TDD)
 2. ✅ Ensure coverage thresholds met (domain=100%, features=80%)
 3. ✅ Run architecture validation (`npm run validate:architecture`)
@@ -1472,18 +1551,19 @@ git push  # CI runs all checks
 
 ### Quantitative Improvements
 
-| Metric | Before | After | Evidence |
-|--------|--------|-------|----------|
+| Metric                   | Before                 | After                            | Evidence                    |
+| ------------------------ | ---------------------- | -------------------------------- | --------------------------- |
 | **Test execution speed** | ~2s (integration only) | <500ms (unit), ~2s (integration) | Unit tests run in isolation |
-| **Test coverage** | ~40% (integration) | 80%+ overall, 100% domain | Layer-specific thresholds |
-| **Bundle size** | Unmeasured | <500KB content.js | Automated size checks |
-| **CI runtime** | ~5min | ~7min (includes unit tests) | Parallel jobs |
-| **Module import errors** | Manual detection | Caught at lint time | ESLint boundaries |
+| **Test coverage**        | ~40% (integration)     | 80%+ overall, 100% domain        | Layer-specific thresholds   |
+| **Bundle size**          | Unmeasured             | <500KB content.js                | Automated size checks       |
+| **CI runtime**           | ~5min                  | ~7min (includes unit tests)      | Parallel jobs               |
+| **Module import errors** | Manual detection       | Caught at lint time              | ESLint boundaries           |
 
 ### Qualitative Improvements
 
 1. **Fast feedback loop**: Unit tests run in <1s vs integration tests ~10s
-2. **Confidence in refactoring**: 100% domain coverage = safe to change infrastructure
+2. **Confidence in refactoring**: 100% domain coverage = safe to change
+   infrastructure
 3. **Architecture enforcement**: Can't accidentally break module boundaries
 4. **Bundle optimization**: Tree-shaking removes unused code automatically
 5. **Developer experience**: Module aliases make imports clean and relocatable
@@ -1492,16 +1572,21 @@ git push  # CI runs all checks
 
 ## Conclusion
 
-Your current infrastructure is **60% ready** for the refactoring. The critical missing pieces are:
+Your current infrastructure is **60% ready** for the refactoring. The critical
+missing pieces are:
 
 1. **Module-aware build system** (Rollup needs multiple entry points + aliasing)
-2. **Unit test infrastructure** (need test helpers, builders, and layer-specific coverage)
+2. **Unit test infrastructure** (need test helpers, builders, and layer-specific
+   coverage)
 3. **Architecture validation** (automated boundary enforcement)
 
-**Recommendation**: Spend **1 week (Week 0)** setting up infrastructure before starting Phase 1 refactoring. This upfront investment will:
+**Recommendation**: Spend **1 week (Week 0)** setting up infrastructure before
+starting Phase 1 refactoring. This upfront investment will:
+
 - Prevent build failures mid-refactoring
 - Enable TDD workflow (write tests first)
 - Catch architectural mistakes early (via ESLint)
 - Provide fast feedback loop (unit tests run in <1s)
 
-**Timeline**: Infrastructure setup (Week 0) + 10 weeks refactoring = **11 weeks total** with robust safety nets at every step.
+**Timeline**: Infrastructure setup (Week 0) + 10 weeks refactoring = **11 weeks
+total** with robust safety nets at every step.

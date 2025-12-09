@@ -137,7 +137,10 @@ export class TitlebarBuilder {
     // Skip if already present or no controls container
     if (this.debugIdElement || !this.controlsContainer) {
       if (!this.controlsContainer) {
-        console.log('[TitlebarBuilder] Cannot add debug ID - no controls container:', this.config.id);
+        console.log(
+          '[TitlebarBuilder] Cannot add debug ID - no controls container:',
+          this.config.id
+        );
       }
       return;
     }
@@ -145,7 +148,10 @@ export class TitlebarBuilder {
     this.debugIdElement = this._createDebugIdElement();
     if (!this.debugIdElement) {
       // Can happen if config.id is missing or empty
-      console.log('[TitlebarBuilder] Debug ID element not created (no ID in config):', this.config.id);
+      console.log(
+        '[TitlebarBuilder] Debug ID element not created (no ID in config):',
+        this.config.id
+      );
       return;
     }
 

@@ -2,13 +2,13 @@
 
 /**
  * Helper script to load the extension in Chrome for testing with Playwright MCP
- * 
+ *
  * This script launches Chrome/Chromium with the extension pre-loaded from the
  * dist/ directory, making it available for interactive testing with Playwright MCP.
- * 
+ *
  * Usage:
  *   node scripts/load-extension-chrome.js
- * 
+ *
  * Prerequisites:
  *   - Extension must be built in dist/ directory
  *   - Chrome or Chromium must be installed
@@ -57,28 +57,28 @@ function findLinuxChrome() {
     '/usr/bin/chromium-browser',
     '/snap/bin/chromium'
   ];
-  
+
   for (const chromePath of chromePaths) {
     if (fs.existsSync(chromePath)) {
       return chromePath;
     }
   }
-  
+
   return 'google-chrome';
 }
 
 // Determine Chrome executable based on platform
 function getChromePath() {
   const os = platform();
-  
+
   if (os === 'darwin') {
     return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
   }
-  
+
   if (os === 'win32') {
     return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
   }
-  
+
   return findLinuxChrome();
 }
 
@@ -100,27 +100,31 @@ console.log('   To stop: Close Chrome or press Ctrl+C in this terminal');
 console.log('');
 
 // Launch Chrome with extension
-const chrome = spawn(chromePath, [
-  `--disable-extensions-except=${distPath}`,
-  `--load-extension=${distPath}`,
-  `--user-data-dir=${profilePath}`,
-  '--no-first-run',
-  '--no-default-browser-check',
-  '--disable-blink-features=AutomationControlled',
-  'chrome://extensions/'
-], {
-  stdio: 'inherit',
-  detached: false
-});
+const chrome = spawn(
+  chromePath,
+  [
+    `--disable-extensions-except=${distPath}`,
+    `--load-extension=${distPath}`,
+    `--user-data-dir=${profilePath}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-blink-features=AutomationControlled',
+    'chrome://extensions/'
+  ],
+  {
+    stdio: 'inherit',
+    detached: false
+  }
+);
 
-chrome.on('error', (err) => {
+chrome.on('error', err => {
   console.error('❌ Error launching Chrome:', err.message);
   console.error('   Make sure Chrome is installed and the path is correct');
   console.error(`   Tried path: ${chromePath}`);
   process.exit(1);
 });
 
-chrome.on('close', (code) => {
+chrome.on('close', code => {
   if (code !== 0 && code !== null) {
     console.error(`❌ Chrome exited with code ${code}`);
   } else {

@@ -140,7 +140,9 @@ browser.webRequest.onHeadersReceived.addListener(
 
       // Remove X-Frame-Options header
       if (headerName === 'x-frame-options') {
-        console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${details.url}`);
+        console.log(
+          `[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${details.url}`
+        );
         modifiedUrls.add(details.url);
         return false; // Remove this header
       }
@@ -170,7 +172,9 @@ browser.webRequest.onHeadersReceived.addListener(
       if (headerName === 'cross-origin-resource-policy') {
         const value = header.value.toLowerCase();
         if (value === 'same-origin' || value === 'same-site') {
-          console.log(`[Quick Tabs] ✓ Removed CORP: ${header.value} from ${details.url}`);
+          console.log(
+            `[Quick Tabs] ✓ Removed CORP: ${header.value} from ${details.url}`
+          );
           modifiedUrls.add(details.url);
           return false;
         }
@@ -415,7 +419,9 @@ Detect browser capabilities at runtime:
 ```javascript
 // In background.js
 const hasBlockingWebRequest =
-  typeof browser !== 'undefined' && browser.webRequest && browser.webRequest.onHeadersReceived;
+  typeof browser !== 'undefined' &&
+  browser.webRequest &&
+  browser.webRequest.onHeadersReceived;
 
 if (hasBlockingWebRequest) {
   // Firefox - use blocking webRequest

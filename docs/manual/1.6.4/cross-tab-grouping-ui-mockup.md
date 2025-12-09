@@ -76,12 +76,15 @@
 
 ### Key Changes
 
-1. **Tab Headers (New)**: Thin section headers showing which browser tab owns the Quick Tabs
-   - Format: `▼/▸ 🔗 [Page Title] (Tab {id})` or `▼/▸ 🔗 [Page Title] - [Domain] (Tab {id})`
+1. **Tab Headers (New)**: Thin section headers showing which browser tab owns
+   the Quick Tabs
+   - Format: `▼/▸ 🔗 [Page Title] (Tab {id})` or
+     `▼/▸ 🔗 [Page Title] - [Domain] (Tab {id})`
    - Include Quick Tab count: `[2 Quick Tabs]`
    - Clickable to collapse/expand (using `<details>` element)
 
-2. **Tab Grouping**: All Quick Tabs within a browser tab grouped under its header
+2. **Tab Grouping**: All Quick Tabs within a browser tab grouped under its
+   header
    - Visual hierarchy makes ownership clear
    - No separate "All Quick Tabs" section
 
@@ -109,7 +112,7 @@
       <span class="tab-id">(Tab 42)</span>
       <span class="quick-tab-count">[2 Quick Tabs]</span>
     </summary>
-    
+
     <div class="quick-tabs-list">
       <!-- Quick Tab items here, indented -->
       <div class="quick-tab-item grouped">...</div>
@@ -126,7 +129,7 @@
       <span class="tab-id">(Tab 14)</span>
       <span class="quick-tab-count">[3 Quick Tabs]</span>
     </summary>
-    
+
     <div class="quick-tabs-list">
       <div class="quick-tab-item grouped">...</div>
       <div class="quick-tab-item grouped">...</div>
@@ -143,7 +146,7 @@
       <span class="tab-id">(Tab 8)</span>
       <span class="quick-tab-count">[1 Quick Tab]</span>
     </summary>
-    
+
     <div class="quick-tabs-list">
       <!-- Hidden when collapsed -->
     </div>
@@ -182,7 +185,8 @@
    - Track which tab groups are expanded/collapsed
    - Store in `sessionStorage` or Manager's local state
    - Restore on page load
-   - Key: `manager_tab_group_states` with value like `{"42": true, "14": true, "8": false}`
+   - Key: `manager_tab_group_states` with value like
+     `{"42": true, "14": true, "8": false}`
 
 3. **Tab Title Resolution**:
    - For each group, need the browser tab's title/URL
@@ -255,8 +259,10 @@ Storage Update (all Quick Tabs)
 
 ### Browser Support
 
-- `<details>` and `<summary>` elements: Supported in all modern browsers (Firefox 49+, Chrome 12+, Safari 6+)
-- No JavaScript required for basic collapse/expand functionality (native browser support)
+- `<details>` and `<summary>` elements: Supported in all modern browsers
+  (Firefox 49+, Chrome 12+, Safari 6+)
+- No JavaScript required for basic collapse/expand functionality (native browser
+  support)
 - JavaScript only needed for state persistence
 
 ### Accessibility
@@ -271,17 +277,21 @@ Storage Update (all Quick Tabs)
 ## Missing Components for Implementation
 
 ### Data Requirements
-- Browser tab title/URL for each group header (need to look up via `browser.tabs.get()`)
+
+- Browser tab title/URL for each group header (need to look up via
+  `browser.tabs.get()`)
 - Tab ID extraction from Quick Tab's `originTabId` field
 - Collapse state persistence mechanism
 
 ### UI Components
+
 - Tab group header styling (thinner than Quick Tab items)
 - Nested Quick Tab item styling (indented/visually distinct)
 - `<details>` element styling and animations
 - Collapse/expand arrow styling
 
 ### JavaScript Functions
+
 - `groupQuickTabsByOriginTabId(quickTabs)` - Group data
 - `getTitleForTabId(tabId)` - Look up browser tab title
 - `loadCollapseState()` - Restore from sessionStorage
@@ -290,11 +300,13 @@ Storage Update (all Quick Tabs)
 - `renderUI()` - Refactored to use grouping
 
 ### Event Listeners
+
 - `details.addEventListener('toggle', ...)` - Save collapse state
 - Tab closure detection (update groups if a tab closes)
 - Real-time updates when new Quick Tabs created in different tabs
 
 ### Edge Cases
+
 - Quick Tab in closed browser tab (orphaned)
 - No Quick Tabs in manager (empty state)
 - Very long list of browser tabs

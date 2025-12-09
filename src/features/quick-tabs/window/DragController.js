@@ -226,7 +226,7 @@ export class DragController {
     this.isDragging = false;
     this.currentPointerId = null;
   }
-  
+
   /**
    * Public cleanup method for DOM event listener cleanup before minimize
    * v1.6.3.5-v11 - FIX Issue #3: DOM event listeners not cleaned up on minimize
@@ -238,18 +238,18 @@ export class DragController {
       console.log('[DragController][cleanup] Already destroyed, skipping');
       return;
     }
-    
+
     this._removeListeners();
-    
+
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
-    
+
     this.isDragging = false;
     console.log('[DragController][cleanup] Removed event listeners');
   }
-  
+
   /**
    * Remove all event listeners from current element
    * v1.6.3.5-v9 - Extracted to reduce code duplication between destroy() and updateElement()
@@ -257,21 +257,21 @@ export class DragController {
    */
   _removeListeners() {
     if (!this.element) return;
-    
+
     this.element.removeEventListener('pointerdown', this.boundHandlePointerDown);
     this.element.removeEventListener('pointermove', this.boundHandlePointerMove);
     this.element.removeEventListener('pointerup', this.boundHandlePointerUp);
     this.element.removeEventListener('pointercancel', this.boundHandlePointerCancel);
   }
-  
+
   /**
    * Update the element reference after DOM re-render (e.g., after restore)
    * v1.6.3.5-v9 - FIX Diagnostic Issue #3: Position/size updates stop after restore
-   * 
+   *
    * After minimize/restore, the DOM is destroyed and recreated. The DragController
    * holds a reference to the old (now detached) element. This method allows updating
    * the element reference to the new DOM element so events fire correctly.
-   * 
+   *
    * @param {HTMLElement} newElement - The new DOM element to attach listeners to
    * @returns {boolean} True if update succeeded, false if invalid element
    */
@@ -280,30 +280,30 @@ export class DragController {
       console.warn('[DragController] updateElement called with null/undefined element');
       return false;
     }
-    
+
     // If destroyed, don't allow updates
     if (this.destroyed) {
       console.warn('[DragController] Cannot update element - controller is destroyed');
       return false;
     }
-    
+
     // Remove listeners from old element using shared method
     this._removeListeners();
     console.log('[DragController] Removed listeners from old element');
-    
+
     // Update element reference
     this.element = newElement;
-    
+
     // Attach listeners to new element
     this.attach();
-    
+
     console.log('[DragController] Updated element reference and reattached listeners:', {
       hasElement: !!this.element,
       elementTagName: this.element?.tagName,
       isDragging: this.isDragging,
       destroyed: this.destroyed
     });
-    
+
     return true;
   }
 }

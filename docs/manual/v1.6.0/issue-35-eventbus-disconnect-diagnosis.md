@@ -2,9 +2,11 @@
 
 **Date:** November 25, 2025  
 **Extension Version:** v1.6.2.0  
-**Test Scenario:** Created 3 Quick Tabs in Wikipedia Tab 1, switched to Wikipedia Tab 2  
+**Test Scenario:** Created 3 Quick Tabs in Wikipedia Tab 1, switched to
+Wikipedia Tab 2  
 **Result:** ❌ Quick Tabs DO NOT appear in Tab 2 automatically  
-**Root Cause:** Storage events fire and are detected, but debounced sync scheduling prevents immediate UI updates
+**Root Cause:** Storage events fire and are detected, but debounced sync
+scheduling prevents immediate UI updates
 
 ---
 
@@ -13,6 +15,7 @@
 ### What Your Logs Reveal (GOOD NEWS)
 
 **✅ Storage listeners ARE working correctly:**
+
 ```
 [StorageManager] *** LISTENER FIRED *** {
   "context": "content-script",
@@ -24,6 +27,7 @@
 ```
 
 **✅ Storage changes ARE being detected:**
+
 ```
 [StorageManager] Storage changed: {
   "context": "content-script",
@@ -33,6 +37,7 @@
 ```
 
 **✅ Storage changes ARE being processed:**
+
 ```
 [StorageManager] Processing storage change: {
   "context": "content-script",
@@ -46,9 +51,9 @@
 
 **BUT - The critical missing piece:**
 
-❌ **NO logs showing SyncCoordinator.handleStorageChange() being called**
-❌ **NO logs showing StateManager.hydrate() being called**
-❌ **NO logs showing UICoordinator rendering new Quick Tabs**
+❌ **NO logs showing SyncCoordinator.handleStorageChange() being called** ❌
+**NO logs showing StateManager.hydrate() being called** ❌ **NO logs showing
+UICoordinator rendering new Quick Tabs**
 
 ---
 
@@ -57,6 +62,7 @@
 ### Log Evidence Comparison
 
 **When Tab Becomes Visible (WORKS):**
+
 ```
 [EventManager] Tab visible - triggering state refresh
 [SyncCoordinator] Tab became visible - refreshing state from storage
@@ -68,6 +74,7 @@
 ```
 
 **When Storage Changes (DOESN'T WORK):**
+
 ```
 [StorageManager] *** LISTENER FIRED ***
 [StorageManager] Storage changed
@@ -81,11 +88,13 @@
 ### The Smoking Gun
 
 **From StorageManager.js logs:**
+
 ```javascript
 "willScheduleSync": true
 ```
 
-This means StorageManager is **scheduling** a debounced sync, but the scheduled callback **never executes**.
+This means StorageManager is **scheduling** a debounced sync, but the scheduled
+callback **never executes**.
 
 ---
 
@@ -94,18 +103,21 @@ This means StorageManager is **scheduling** a debounced sync, but the scheduled 
 ### Problem: Event Bus Disconnect
 
 **StorageManager schedules sync:**
+
 ```javascript
 // StorageManager._onStorageChanged()
 this.scheduleStorageSync(changes.quick_tabs_state_v2.newValue);
 ```
 
 **scheduleStorageSync emits event:**
+
 ```javascript
 // StorageManager.scheduleStorageSync()
 this.eventBus?.emit('storage:changed', { state: newValue });
 ```
 
 **SyncCoordinator should receive event:**
+
 ```javascript
 // SyncCoordinator.setupListeners()
 this.eventBus.on('storage:changed', ({ state }) => {
@@ -117,6 +129,7 @@ this.eventBus.on('storage:changed', ({ state }) => {
 **BUT - The SyncCoordinator listener NEVER fires!**
 
 Your logs show:
+
 - ✅ StorageManager emits `'storage:changed'` event
 - ❌ SyncCoordinator NEVER logs "Received storage:changed event"
 - ❌ handleStorageChange() NEVER executes
@@ -129,9 +142,11 @@ Your logs show:
 
 ### Hypothesis 1: EventBus Instance Mismatch (MOST LIKELY)
 
-**The problem:** StorageManager and SyncCoordinator are using **different EventBus instances**.
+**The problem:** StorageManager and SyncCoordinator are using **different
+EventBus instances**.
 
 **Evidence from logs:**
+
 - StorageManager successfully logs event emission
 - But SyncCoordinator's listener never fires
 - This is classic symptom of event bus instance mismatch
@@ -148,21 +163,25 @@ this.syncCoordinator = new SyncCoordinator(..., this.internalEventBus);  // Uses
 ```
 
 If there's ANY code path where:
+
 - StorageManager gets one EventEmitter instance
 - SyncCoordinator gets a different EventEmitter instance
 - Events emitted on Instance A won't be heard by listeners on Instance B
 
 ### Hypothesis 2: Listener Setup Order (POSSIBLE)
 
-**The problem:** SyncCoordinator.setupListeners() might be called BEFORE StorageManager.setupStorageListeners().
+**The problem:** SyncCoordinator.setupListeners() might be called BEFORE
+StorageManager.setupStorageListeners().
 
 **If this happens:**
+
 1. SyncCoordinator registers listener for 'storage:changed'
 2. BUT StorageManager hasn't started listening to browser.storage.onChanged yet
 3. Storage changes happen but never emit events
 4. OR events are emitted before listener exists (timing issue)
 
 **Check initialization order in QuickTabsManager.js:**
+
 ```javascript
 // Step 6 - Setup components
 _setupComponents() {
@@ -180,11 +199,13 @@ Order looks correct (storage first, then sync), BUT...
 **The problem:** StorageManager's debounce queue fills up and stops processing.
 
 StorageManager logs show:
+
 ```
 "willScheduleSync": true
 ```
 
 This means it's trying to schedule, but if:
+
 - Debounce function has bug
 - Queue never drains
 - Sync callback never executes
@@ -198,45 +219,49 @@ Then events pile up but never process.
 ### StorageManager Event Flow
 
 **From logs, this DOES execute:**
+
 ```javascript
 // StorageManager._onStorageChanged()
 _onStorageChanged(changes, areaName) {
   console.log('[StorageManager] *** LISTENER FIRED ***');  // ✅ Appears in logs
   console.log('[StorageManager] Storage changed');          // ✅ Appears in logs
-  
+
   if (areaName === 'local' && changes.quick_tabs_state_v2) {
     console.log('[StorageManager] Processing storage change', {
       willScheduleSync: true  // ✅ Appears in logs
     });
-    
+
     this.scheduleStorageSync(changes.quick_tabs_state_v2.newValue);
   }
 }
 ```
 
 **Then this SHOULD execute:**
+
 ```javascript
 // StorageManager.scheduleStorageSync()
 scheduleStorageSync(newValue) {
   // Debounce logic here...
-  
+
   // Eventually should emit:
   this.eventBus?.emit('storage:changed', { state: newValue });
 }
 ```
 
 **But this NEVER shows in logs:**
+
 ```javascript
 // SyncCoordinator.setupListeners()
 this.eventBus.on('storage:changed', ({ state }) => {
-  console.log('[SyncCoordinator] Received storage:changed event');  // ❌ NEVER appears
-  this.handleStorageChange(state);  // ❌ NEVER executes
+  console.log('[SyncCoordinator] Received storage:changed event'); // ❌ NEVER appears
+  this.handleStorageChange(state); // ❌ NEVER executes
 });
 ```
 
 ### Missing Log Pattern
 
 **Expected log sequence:**
+
 ```
 [StorageManager] *** LISTENER FIRED ***
 [StorageManager] Storage changed
@@ -250,6 +275,7 @@ this.eventBus.on('storage:changed', ({ state }) => {
 ```
 
 **Actual log sequence:**
+
 ```
 [StorageManager] *** LISTENER FIRED ***
 [StorageManager] Storage changed
@@ -275,17 +301,17 @@ scheduleStorageSync(newValue) {
     newValue: !!newValue,
     timestamp: Date.now()
   });
-  
+
   // Debounce logic...
-  
+
   // When emitting event:
   console.log('[StorageManager] Emitting storage:changed event', {
     hasState: !!newValue,
     eventBusListenerCount: this.eventBus?.listenerCount?.('storage:changed') || 'unknown'
   });
-  
+
   this.eventBus?.emit('storage:changed', { state: newValue });
-  
+
   console.log('[StorageManager] ✓ Event emitted');
 }
 ```
@@ -299,17 +325,17 @@ setupListeners() {
     eventBusType: this.eventBus?.constructor?.name,
     timestamp: Date.now()
   });
-  
+
   this.eventBus.on('storage:changed', ({ state }) => {
     console.log('[SyncCoordinator] *** RECEIVED storage:changed EVENT ***', {
       context: typeof window !== 'undefined' ? 'content-script' : 'background',
       hasState: !!state,
       timestamp: Date.now()
     });
-    
+
     this.handleStorageChange(state);
   });
-  
+
   console.log('[SyncCoordinator] ✓ Listener registered', {
     listenerCount: this.eventBus.listenerCount?.('storage:changed') || 'unknown'
   });
@@ -317,17 +343,16 @@ setupListeners() {
 ```
 
 **Test:** Create Quick Tab in Tab 1, check logs in Tab 2. You should see:
+
 - `[StorageManager] scheduleStorageSync called`
 - `[StorageManager] Emitting storage:changed event`
 - `[SyncCoordinator] *** RECEIVED storage:changed EVENT ***`
 
-**If you DON'T see the third log:**
-→ EventBus instance mismatch (different instances)
-→ OR debounce callback never executes
+**If you DON'T see the third log:** → EventBus instance mismatch (different
+instances) → OR debounce callback never executes
 
-**If you see "eventBusListenerCount: 0":**
-→ Listener not registered yet
-→ OR registered on different EventBus instance
+**If you see "eventBusListenerCount: 0":** → Listener not registered yet → OR
+registered on different EventBus instance
 
 ### Solution 2: Verify EventBus Instance in QuickTabsManager
 
@@ -344,12 +369,12 @@ async _setupComponents() {
     same: this.storage.eventBus === this.syncCoordinator.eventBus,
     timestamp: Date.now()
   });
-  
+
   this.storage.setupStorageListeners();
   this.events.setupEmergencySaveHandlers();
   this.syncCoordinator.setupListeners();
   await this.uiCoordinator.init();
-  
+
   console.log('[QuickTabsManager] AFTER setup - Listener counts:', {
     storageChangedListeners: this.internalEventBus.listenerCount('storage:changed'),
     tabVisibleListeners: this.internalEventBus.listenerCount('event:tab-visible'),
@@ -359,12 +384,12 @@ async _setupComponents() {
 ```
 
 **Test:** Check logs during initialization. You should see:
+
 - `same: true` (all components use same EventBus)
 - `storageChangedListeners: 1` (SyncCoordinator registered)
 
-**If you see `same: false`:**
-→ Components are using different EventBus instances
-→ CRITICAL BUG - need to fix instance passing
+**If you see `same: false`:** → Components are using different EventBus
+instances → CRITICAL BUG - need to fix instance passing
 
 ### Solution 3: Bypass Debounce for Testing
 
@@ -375,13 +400,13 @@ async _setupComponents() {
 ```javascript
 scheduleStorageSync(newValue) {
   console.log('[StorageManager] scheduleStorageSync - TESTING WITHOUT DEBOUNCE');
-  
+
   // BYPASS DEBOUNCE FOR TESTING
   // Emit immediately instead of scheduling
   console.log('[StorageManager] Emitting storage:changed event IMMEDIATELY');
   this.eventBus?.emit('storage:changed', { state: newValue });
   console.log('[StorageManager] ✓ Event emitted (no debounce)');
-  
+
   // Original debounce logic commented out:
   // if (this.syncScheduled) {
   //   clearTimeout(this.syncTimeout);
@@ -392,13 +417,11 @@ scheduleStorageSync(newValue) {
 
 **Test:** Create Quick Tab in Tab 1, check if it appears in Tab 2 immediately.
 
-**If Quick Tabs appear:**
-→ Debounce is the problem (callback never executes)
-→ Need to fix debounce implementation
+**If Quick Tabs appear:** → Debounce is the problem (callback never executes) →
+Need to fix debounce implementation
 
-**If Quick Tabs still DON'T appear:**
-→ EventBus issue (events not reaching SyncCoordinator)
-→ OR SyncCoordinator.handleStorageChange() has bug
+**If Quick Tabs still DON'T appear:** → EventBus issue (events not reaching
+SyncCoordinator) → OR SyncCoordinator.handleStorageChange() has bug
 
 ### Solution 4: Add Fallback Direct Call (Temporary Workaround)
 
@@ -418,10 +441,10 @@ constructor(eventBus, cookieStoreId, syncCoordinator = null) {
 // In scheduleStorageSync()
 scheduleStorageSync(newValue) {
   console.log('[StorageManager] scheduleStorageSync called');
-  
+
   // Emit event (primary mechanism)
   this.eventBus?.emit('storage:changed', { state: newValue });
-  
+
   // FALLBACK: Call SyncCoordinator directly if event bus fails
   if (this.syncCoordinator) {
     console.log('[StorageManager] FALLBACK: Calling SyncCoordinator.handleStorageChange directly');
@@ -444,13 +467,14 @@ _initializeManagers() {
 
 _initializeCoordinators() {
   this.syncCoordinator = new SyncCoordinator(/* ... */);
-  
+
   // Set reference for fallback
   this.storage.syncCoordinator = this.syncCoordinator;
 }
 ```
 
-**This is a WORKAROUND, not a fix.** It ensures Quick Tabs sync even if EventBus fails, but you should still fix the root cause.
+**This is a WORKAROUND, not a fix.** It ensures Quick Tabs sync even if EventBus
+fails, but you should still fix the root cause.
 
 ---
 
@@ -459,6 +483,7 @@ _initializeCoordinators() {
 ### Step 1: Add All Diagnostic Logging (30 minutes)
 
 Implement Solution 1 - add comprehensive logging to:
+
 - `StorageManager.scheduleStorageSync()`
 - `SyncCoordinator.setupListeners()`
 - `SyncCoordinator.handleStorageChange()`
@@ -482,15 +507,18 @@ Implement Solution 3 - bypass debounce temporarily.
 Based on findings:
 
 **If EventBus mismatch:**
+
 - Fix component initialization to use single EventBus
 - Verify all components receive correct instance
 
 **If debounce issue:**
+
 - Fix debounce implementation
 - Ensure callback executes
 - Add proper error handling
 
 **If listener order issue:**
+
 - Adjust setup sequence
 - Add ready state checking
 - Ensure listeners exist before events emit
@@ -498,6 +526,7 @@ Based on findings:
 ### Step 5: Verify Fix (30 minutes)
 
 **Test scenarios:**
+
 1. Create Quick Tab in Tab A → Should appear in Tab B immediately
 2. Move Quick Tab in Tab A → Should update position in Tab B
 3. Close Quick Tab in Tab A → Should disappear from Tab B
@@ -511,6 +540,7 @@ Based on findings:
 ### Scenario: Create Quick Tab in Tab A
 
 **Tab A (where created):**
+
 ```
 [QuickTabsManager] createQuickTab called
 [CreateHandler] Quick Tab created
@@ -520,6 +550,7 @@ Based on findings:
 ```
 
 **Tab B (automatic sync):**
+
 ```
 [StorageManager] *** LISTENER FIRED ***
 [StorageManager] Storage changed
@@ -538,6 +569,7 @@ Based on findings:
 ## 🔍 Why Tab Visibility Workaround Works
 
 **From your logs:**
+
 ```
 [EventManager] Tab visible - triggering state refresh
 [SyncCoordinator] Tab became visible - refreshing state from storage
@@ -546,12 +578,14 @@ Based on findings:
 ```
 
 **This works because:**
+
 1. Event system uses different event: `'event:tab-visible'`
 2. SyncCoordinator.handleTabVisible() directly calls storageManager.loadAll()
 3. Bypasses the broken `'storage:changed'` event pipeline
 4. Manually loads from storage and hydrates state
 
 **This proves:**
+
 - ✅ Storage data IS correct
 - ✅ SyncCoordinator CAN process storage data
 - ✅ UICoordinator CAN render Quick Tabs
@@ -568,7 +602,8 @@ After implementing fixes, verify:
 - ✅ Logs show `[SyncCoordinator] *** PROCESSING STORAGE CHANGE ***`
 - ✅ Logs show `[StateManager] Hydrate: added qt-xxx`
 - ✅ Logs show `[UICoordinator] Rendering tab: qt-xxx`
-- ✅ Quick Tab created in Tab A appears immediately in Tab B (no tab switch needed)
+- ✅ Quick Tab created in Tab A appears immediately in Tab B (no tab switch
+  needed)
 - ✅ Quick Tab moved in Tab A updates position in Tab B
 - ✅ Quick Tab closed in Tab A disappears from Tab B
 - ✅ Works across 3+ tabs simultaneously
@@ -579,17 +614,20 @@ After implementing fixes, verify:
 ## 🏁 Conclusion
 
 **The good news:**
+
 - ✅ storage.onChanged listeners ARE working
 - ✅ Storage changes ARE detected correctly
 - ✅ Content scripts CAN render Quick Tabs (proven by tab visibility)
 - ✅ The sync architecture is sound
 
 **The problem:**
+
 - ❌ Event pipeline from StorageManager to SyncCoordinator is broken
 - ❌ Events emitted but never received
 - ❌ Most likely: EventBus instance mismatch OR debounce callback never executes
 
 **The fix:**
+
 1. Add diagnostic logging to pinpoint exact failure point
 2. Verify EventBus instances match across all components
 3. Fix debounce implementation if that's the issue
@@ -614,4 +652,5 @@ After implementing fixes, verify:
 **Document Version:** 1.0  
 **Status:** Ready for Implementation  
 **Next Action:** Start with Step 1 (Add diagnostic logging)  
-**Expected Outcome:** Event pipeline fixed, Quick Tabs sync between tabs in real-time
+**Expected Outcome:** Event pipeline fixed, Quick Tabs sync between tabs in
+real-time

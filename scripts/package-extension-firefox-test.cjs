@@ -2,10 +2,10 @@
 
 /**
  * Package Extension for Firefox Playwright Testing
- * 
+ *
  * Creates a temporary XPI package for loading the extension in Firefox tests.
  * Uses web-ext to build the extension and places it in a known location.
- * 
+ *
  * @see docs/issue-47-revised-scenarios.md
  */
 
@@ -35,23 +35,23 @@ if (fs.existsSync(xpiPath)) {
 // Build XPI using web-ext
 try {
   console.log('[Package Firefox Extension] Building XPI with web-ext...');
-  
+
   // web-ext build creates artifacts in web-ext-artifacts/ by default
   execSync(
     `npx web-ext build --source-dir="${DIST_DIR}" --artifacts-dir="${TEST_ARTIFACTS_DIR}" --overwrite-dest`,
-    { 
+    {
       stdio: 'inherit',
       cwd: path.join(__dirname, '..')
     }
   );
-  
+
   // Find the generated XPI file (web-ext names it with version)
   const files = fs.readdirSync(TEST_ARTIFACTS_DIR);
   const xpiFile = files.find(f => f.endsWith('.zip'));
-  
+
   if (xpiFile) {
     const generatedXpiPath = path.join(TEST_ARTIFACTS_DIR, xpiFile);
-    
+
     // Rename to standard name for tests
     fs.renameSync(generatedXpiPath, xpiPath);
     console.log(`[Package Firefox Extension] ✓ XPI created: ${xpiPath}`);

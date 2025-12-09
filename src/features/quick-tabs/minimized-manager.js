@@ -60,7 +60,7 @@ export class MinimizedManager {
    * @type {Function|null}
    */
   onStoragePersistNeeded = null;
-  
+
   constructor() {
     // v1.6.3.4-v4 - FIX Issue #4: Store snapshot objects instead of direct references
     // Each entry: { window: QuickTabWindow, savedPosition: {left, top}, savedSize: {width, height} }
@@ -129,7 +129,7 @@ export class MinimizedManager {
       savedOriginTabId: resolvedOriginTabId
     };
     this.minimizedTabs.set(id, snapshot);
-    
+
     // v1.6.3.6-v8 - FIX Issue #3: Diagnostic logging for snapshot capture
     console.log('[MinimizedManager] 📸 SNAPSHOT_CAPTURED:', {
       id,
@@ -175,26 +175,26 @@ export class MinimizedManager {
     // v1.6.3.5 - FIX Issue #3: Check restore-in-progress lock
     const duplicateResult = this._handleDuplicateRestore(id);
     if (duplicateResult !== null) return duplicateResult;
-    
+
     // Find snapshot from available sources
     const { snapshot, snapshotSource } = this._findSnapshot(id);
     if (!snapshot) {
       console.log('[MinimizedManager] No snapshot found for restore:', id);
       return false;
     }
-    
+
     // Set restore-in-progress lock
     this._setRestoreLock(id);
-    
+
     // Move snapshot to pending (clear-on-first-use)
     this._moveSnapshotToPending(id, snapshot, snapshotSource);
-    
+
     // Apply snapshot and verify
     const result = this._applyAndVerifySnapshot(id, snapshot, snapshotSource);
-    
+
     return result;
   }
-  
+
   /**
    * Handle duplicate restore attempts
    * v1.6.3.5 - Extracted to reduce restore() complexity
@@ -202,14 +202,20 @@ export class MinimizedManager {
    */
   _handleDuplicateRestore(id) {
     if (!this._restoreInProgress.has(id)) return null;
-    
+
     console.log('[MinimizedManager] Restore already in progress, rejecting duplicate:', id);
     const existingSnapshot = this.minimizedTabs.get(id) || this.pendingClearSnapshots.get(id);
     if (existingSnapshot) {
       return {
         window: existingSnapshot.window,
-        position: { left: existingSnapshot.savedPosition.left, top: existingSnapshot.savedPosition.top },
-        size: { width: existingSnapshot.savedSize.width, height: existingSnapshot.savedSize.height },
+        position: {
+          left: existingSnapshot.savedPosition.left,
+          top: existingSnapshot.savedPosition.top
+        },
+        size: {
+          width: existingSnapshot.savedSize.width,
+          height: existingSnapshot.savedSize.height
+        },
         // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation during restore
         originTabId: existingSnapshot.savedOriginTabId ?? null,
         duplicate: true
@@ -217,7 +223,7 @@ export class MinimizedManager {
     }
     return false;
   }
-  
+
   /**
    * Find snapshot from minimizedTabs or pendingClearSnapshots
    * v1.6.3.5 - Extracted to reduce restore() complexity
@@ -226,7 +232,7 @@ export class MinimizedManager {
   _findSnapshot(id) {
     let snapshot = this.minimizedTabs.get(id);
     let snapshotSource = 'minimizedTabs';
-    
+
     if (!snapshot) {
       snapshot = this.pendingClearSnapshots.get(id);
       snapshotSource = 'pendingClearSnapshots';
@@ -234,10 +240,10 @@ export class MinimizedManager {
         console.log('[MinimizedManager] Using pending-clear snapshot for re-entry:', id);
       }
     }
-    
+
     return { snapshot, snapshotSource };
   }
-  
+
   /**
    * Set restore-in-progress lock with timeout
    * v1.6.3.5 - Extracted to reduce restore() complexity
@@ -247,7 +253,7 @@ export class MinimizedManager {
     this._restoreInProgress.add(id);
     setTimeout(() => this._restoreInProgress.delete(id), RESTORE_LOCK_DURATION_MS);
   }
-  
+
   /**
    * Move snapshot from minimizedTabs to pendingClear (clear-on-first-use)
    * v1.6.3.5 - Extracted to reduce restore() complexity
@@ -255,12 +261,15 @@ export class MinimizedManager {
    */
   _moveSnapshotToPending(id, snapshot, snapshotSource) {
     if (snapshotSource !== 'minimizedTabs') return;
-    
+
     this.minimizedTabs.delete(id);
     this.pendingClearSnapshots.set(id, snapshot);
-    console.log('[MinimizedManager] Atomically moved snapshot to pendingClear (clear-on-first-use):', id);
+    console.log(
+      '[MinimizedManager] Atomically moved snapshot to pendingClear (clear-on-first-use):',
+      id
+    );
   }
-  
+
   /**
    * Apply snapshot to tabWindow and verify application
    * v1.6.3.5 - Extracted to reduce restore() complexity
@@ -276,19 +285,23 @@ export class MinimizedManager {
     const savedHeight = snapshot.savedSize.height;
     // v1.6.3.6-v6 - FIX: Retrieve saved originTabId for cross-tab validation
     const savedOriginTabId = snapshot.savedOriginTabId ?? null;
-    
+
     // Log snapshot source and dimensions
     console.log('[MinimizedManager] restore() snapshot lookup:', {
-      id, source: snapshotSource,
+      id,
+      source: snapshotSource,
       savedPosition: { left: savedLeft, top: savedTop },
       savedSize: { width: savedWidth, height: savedHeight },
       savedOriginTabId
     });
-    
+
     // Log dimensions before applying
     console.log('[MinimizedManager] Instance dimensions BEFORE snapshot application:', {
-      id, left: tabWindow.left, top: tabWindow.top,
-      width: tabWindow.width, height: tabWindow.height,
+      id,
+      left: tabWindow.left,
+      top: tabWindow.top,
+      width: tabWindow.width,
+      height: tabWindow.height,
       originTabId: tabWindow.originTabId
     });
 
@@ -297,7 +310,7 @@ export class MinimizedManager {
     tabWindow.top = savedTop;
     tabWindow.width = savedWidth;
     tabWindow.height = savedHeight;
-    
+
     // v1.6.3.6-v6 - FIX: Apply originTabId to tabWindow for UICoordinator validation
     if (savedOriginTabId !== null && savedOriginTabId !== undefined) {
       tabWindow.originTabId = savedOriginTabId;
@@ -311,7 +324,8 @@ export class MinimizedManager {
     this._verifySnapshotApplication(id, tabWindow, savedLeft, savedTop, savedWidth, savedHeight);
 
     console.log('[MinimizedManager] Snapshot applied:', {
-      id, position: { left: savedLeft, top: savedTop },
+      id,
+      position: { left: savedLeft, top: savedTop },
       size: { width: savedWidth, height: savedHeight },
       originTabId: savedOriginTabId
     });
@@ -324,23 +338,31 @@ export class MinimizedManager {
       originTabId: savedOriginTabId
     };
   }
-  
+
   /**
    * Verify snapshot values were correctly applied to tabWindow
    * v1.6.3.5 - Extracted to reduce complexity
    * @private
    */
   _verifySnapshotApplication(id, tabWindow, savedLeft, savedTop, savedWidth, savedHeight) {
-    const verified = tabWindow.left === savedLeft && tabWindow.top === savedTop &&
-                     tabWindow.width === savedWidth && tabWindow.height === savedHeight;
-    
+    const verified =
+      tabWindow.left === savedLeft &&
+      tabWindow.top === savedTop &&
+      tabWindow.width === savedWidth &&
+      tabWindow.height === savedHeight;
+
     if (verified) {
       console.log('[MinimizedManager] ✓ Snapshot application VERIFIED:', id);
     } else {
       console.error('[MinimizedManager] CRITICAL: Snapshot verification FAILED!', {
         id,
         expected: { left: savedLeft, top: savedTop, width: savedWidth, height: savedHeight },
-        actual: { left: tabWindow.left, top: tabWindow.top, width: tabWindow.width, height: tabWindow.height }
+        actual: {
+          left: tabWindow.left,
+          top: tabWindow.top,
+          width: tabWindow.width,
+          height: tabWindow.height
+        }
       });
     }
   }
@@ -362,12 +384,12 @@ export class MinimizedManager {
     // v1.6.3.4-v8 - FIX Issue #8: Log caller for debugging
     const stackLines = new Error().stack?.split('\n') || [];
     const caller = (stackLines.length > 2 ? stackLines[2]?.trim() : null) || 'unknown';
-    
+
     // v1.6.3.4-v10 - FIX Issue #4: Capture state atomically in local variables BEFORE any modifications
     // This prevents race conditions where timer moves snapshot between Maps mid-operation
     const inMinimizedTabs = this.minimizedTabs.has(id);
     const inPendingClear = this.pendingClearSnapshots.has(id);
-    
+
     console.log('[MinimizedManager] clearSnapshot() called:', {
       id,
       caller,
@@ -376,17 +398,20 @@ export class MinimizedManager {
       minimizedTabsSize: this.minimizedTabs.size,
       pendingSize: this.pendingClearSnapshots.size
     });
-    
+
     let cleared = false;
-    
+
     // v1.6.3.4-v10 - FIX Issue #4: Use captured state for atomic decision
     // First check minimizedTabs (where snapshot stays during restore)
     if (inMinimizedTabs) {
       this.minimizedTabs.delete(id);
-      console.log('[MinimizedManager] Cleared snapshot from minimizedTabs after successful render:', {
-        id,
-        remainingMinimizedTabs: this.minimizedTabs.size
-      });
+      console.log(
+        '[MinimizedManager] Cleared snapshot from minimizedTabs after successful render:',
+        {
+          id,
+          remainingMinimizedTabs: this.minimizedTabs.size
+        }
+      );
       cleared = true;
     } else if (inPendingClear) {
       // Then check pendingClearSnapshots (legacy path)
@@ -397,7 +422,7 @@ export class MinimizedManager {
       });
       cleared = true;
     }
-    
+
     // v1.6.3.5-v7 - FIX Issue #1: Trigger storage persistence if snapshot was cleared
     if (cleared) {
       this.lastLocalUpdateTime = Date.now();
@@ -410,10 +435,10 @@ export class MinimizedManager {
         pendingClearIds: Array.from(this.pendingClearSnapshots.keys())
       });
     }
-    
+
     return cleared;
   }
-  
+
   /**
    * Trigger storage persistence via callback
    * v1.6.3.5-v7 - FIX Issue #1: Helper to notify QuickTabsManager to save state
@@ -427,7 +452,7 @@ export class MinimizedManager {
       console.log('[MinimizedManager] No storage persist callback registered');
     }
   }
-  
+
   /**
    * Update local timestamp to track when state was last modified
    * v1.6.3.5-v8 - Helper for consistent timestamp updates across state-modifying operations
@@ -464,12 +489,12 @@ export class MinimizedManager {
   getSnapshot(id) {
     // Check active minimized tabs first
     let snapshot = this.minimizedTabs.get(id);
-    
+
     // v1.6.3.4-v10 - FIX Issue #1: Also check pending clear snapshots
     if (!snapshot) {
       snapshot = this.pendingClearSnapshots.get(id);
     }
-    
+
     if (snapshot && snapshot.savedPosition && snapshot.savedSize) {
       console.log('[MinimizedManager] getSnapshot found for:', id, {
         source: this.minimizedTabs.has(id) ? 'minimizedTabs' : 'pendingClearSnapshots',
@@ -522,7 +547,7 @@ export class MinimizedManager {
   hasSnapshot(id) {
     return this.minimizedTabs.has(id) || this.pendingClearSnapshots.has(id);
   }
-  
+
   /**
    * Validate state consistency between entity.minimized flag and Map contents
    * v1.6.3.4-v12 - FIX Diagnostic Issue #5, #6: State validation logging
@@ -533,23 +558,26 @@ export class MinimizedManager {
   validateStateConsistency(id, entityMinimizedFlag) {
     const inMap = this.minimizedTabs.has(id);
     const inPending = this.pendingClearSnapshots.has(id);
-    
+
     // State is consistent if:
     // - entity.minimized=true AND in minimizedTabs (normal minimized state)
     // - entity.minimized=false AND NOT in minimizedTabs (normal visible state)
     // - entity.minimized=false AND in pendingClear (restore in progress - acceptable)
-    
-    const isConsistent = (entityMinimizedFlag && inMap) || 
-                         (!entityMinimizedFlag && !inMap) ||
-                         (!entityMinimizedFlag && inPending);
-    
+
+    const isConsistent =
+      (entityMinimizedFlag && inMap) ||
+      (!entityMinimizedFlag && !inMap) ||
+      (!entityMinimizedFlag && inPending);
+
     if (!isConsistent) {
       console.warn('[MinimizedManager] ⚠️ State desync detected:', {
         id,
         entityMinimized: entityMinimizedFlag,
         inMinimizedTabs: inMap,
         inPendingClear: inPending,
-        expected: entityMinimizedFlag ? 'should be in minimizedTabs' : 'should NOT be in minimizedTabs'
+        expected: entityMinimizedFlag
+          ? 'should be in minimizedTabs'
+          : 'should NOT be in minimizedTabs'
       });
     } else {
       console.log('[MinimizedManager] State consistency check passed:', {
@@ -558,10 +586,10 @@ export class MinimizedManager {
         inMinimizedTabs: inMap
       });
     }
-    
+
     return isConsistent;
   }
-  
+
   /**
    * Atomically clear snapshot and update entity.minimized flag
    * v1.6.3.4-v12 - FIX Diagnostic Issue #5: Ensure atomic update
@@ -572,13 +600,13 @@ export class MinimizedManager {
   clearSnapshotAtomic(id, entity = null) {
     // Clear the snapshot
     const cleared = this.clearSnapshot(id);
-    
+
     // Update entity.minimized if provided
     if (entity && typeof entity === 'object') {
       entity.minimized = false;
       console.log('[MinimizedManager] Snapshot cleared, entity.minimized updated to false:', id);
     }
-    
+
     // Validate after clear
     const stillHasSnapshot = this.hasSnapshot(id);
     if (stillHasSnapshot) {
@@ -589,13 +617,13 @@ export class MinimizedManager {
       });
       return false;
     }
-    
+
     console.log('[MinimizedManager] Snapshot cleared atomically, validated:', {
       id,
       cleared,
       hasSnapshotAfterClear: stillHasSnapshot
     });
-    
+
     return cleared;
   }
 
@@ -609,18 +637,18 @@ export class MinimizedManager {
     const minimizedCount = this.minimizedTabs.size;
     const pendingCount = this.pendingClearSnapshots.size;
     const restoreCount = this._restoreInProgress.size;
-    
+
     // Log IDs being cleared for debugging
     const clearedIds = [
       ...Array.from(this.minimizedTabs.keys()),
       ...Array.from(this.pendingClearSnapshots.keys())
     ];
-    
+
     this.minimizedTabs.clear();
     this.pendingClearSnapshots.clear();
     this._restoreInProgress.clear();
     this._updateLocalTimestamp();
-    
+
     console.log('[MinimizedManager] clear() complete:', {
       minimizedCleared: minimizedCount,
       pendingCleared: pendingCount,
@@ -628,7 +656,7 @@ export class MinimizedManager {
       clearedIds
     });
   }
-  
+
   /**
    * Force cleanup a specific snapshot from all Maps
    * v1.6.3.5-v8 - FIX Issue #9: Ensure atomic cleanup across all collections
@@ -641,13 +669,13 @@ export class MinimizedManager {
       console.warn('[MinimizedManager] forceCleanup called with invalid id:', id);
       return false;
     }
-    
+
     const wasInMinimized = this.minimizedTabs.delete(id);
     const wasInPending = this.pendingClearSnapshots.delete(id);
     const wasRestoreInProgress = this._restoreInProgress.delete(id);
-    
+
     const cleaned = wasInMinimized || wasInPending || wasRestoreInProgress;
-    
+
     if (cleaned) {
       console.log('[MinimizedManager] forceCleanup:', {
         id,
@@ -658,10 +686,10 @@ export class MinimizedManager {
       this._updateLocalTimestamp();
       this._triggerStoragePersist();
     }
-    
+
     return cleaned;
   }
-  
+
   /**
    * Get all snapshot IDs (from both minimizedTabs and pendingClearSnapshots)
    * v1.6.3.5-v8 - FIX Issue #10: Enhanced logging support

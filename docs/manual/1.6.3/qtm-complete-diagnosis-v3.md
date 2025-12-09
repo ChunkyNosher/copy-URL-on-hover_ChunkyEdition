@@ -10,11 +10,15 @@
 
 ## Executive Summary
 
-**ALL user-reported bugs trace to a single root cause:** The `updateContent()` method in `PanelContentManager.js` checks if panel is open BEFORE updating, but this check is INVERTED - it updates when closed, skips when open.
+**ALL user-reported bugs trace to a single root cause:** The `updateContent()`
+method in `PanelContentManager.js` checks if panel is open BEFORE updating, but
+this check is INVERTED - it updates when closed, skips when open.
 
-**Critical Finding:** Event listeners ARE firing, events ARE being received, but UI updates are BLOCKED by the `isOpen` check.
+**Critical Finding:** Event listeners ARE firing, events ARE being received, but
+UI updates are BLOCKED by the `isOpen` check.
 
 **Priority Fixes:**
+
 1. **CRITICAL:** Fix `isOpen` logic inversion in `updateContent()`
 2. **CRITICAL:** Add missing error logging throughout event chains
 3. **HIGH:** Enhance button click logging for debugging
@@ -41,6 +45,7 @@
 ### User-Visible Symptom
 
 When Quick Tab Manager is OPEN:
+
 - Closing a Quick Tab via X button → Panel list doesn't update
 - Minimizing a Quick Tab → Indicator stays green instead of yellow
 - Clicking "Clear Storage" → Panel still shows tabs
@@ -57,23 +62,25 @@ When Quick Tab Manager is OPEN:
 ```javascript
 async updateContent(options = { forceRefresh: false }) {
   const isCurrentlyOpen = this._getIsOpen();  // Line 145
-  
+
   // v1.6.3 - FIX Issue #1: If forceRefresh is true, skip isOpen check
   if (!options.forceRefresh && !isCurrentlyOpen) {  // Line 148 ← BUG IS HERE
     debug(`[PanelContentManager] updateContent skipped: panel=${!!this.panel}, isOpen=${isCurrentlyOpen}`);
     this.stateChangedWhileClosed = true;
     return;  // ← Exits BEFORE updating when panel is closed
   }
-  
+
   // ... rest of update logic
 }
 ```
 
 **The Problem:** This condition says:
+
 - "IF NOT forceRefresh AND NOT open → skip update"
 - Translated: "Only update when panel is OPEN"
 
 **BUT logs show:**
+
 ```
 [PanelContentManager] updateContent skipped: panel=true, isOpen=false
 ```
@@ -91,13 +98,13 @@ _getIsOpen() {
   if (!stateManagerAvailable) {
     return this.isOpen;  // Fallback to local cached state
   }
-  
+
   const state = this.stateManager.getState();
   const hasAuthoritativeState = typeof state.isOpen === 'boolean';
   if (!hasAuthoritativeState) {
     return this.isOpen;
   }
-  
+
   // Sync local state if it differs (for logging purposes)
   if (this.isOpen !== state.isOpen) {
     debug(`[PanelContentManager] Syncing isOpen: local=${this.isOpen}, stateManager=${state.isOpen}`);
@@ -107,21 +114,26 @@ _getIsOpen() {
 }
 ```
 
-**The ACTUAL bug:** `PanelStateManager.getState()` is returning stale state OR panel is actually closed when events fire!
+**The ACTUAL bug:** `PanelStateManager.getState()` is returning stale state OR
+panel is actually closed when events fire!
 
 **Evidence from logs:**
+
 ```
 [PanelContentManager] state:updated received for qt-121-1764360044908-1a4qad71t7mf0m
 [PanelContentManager] updateContent skipped: panel=true, isOpen=false
 ```
 
-**This proves:** When `state:updated` event fires, `_getIsOpen()` returns `false`, so update is skipped.
+**This proves:** When `state:updated` event fires, `_getIsOpen()` returns
+`false`, so update is skipped.
 
 ### What Needs to Be Fixed
 
-**Problem #1:** `updateContent()` should UPDATE IMMEDIATELY when panel is open, regardless of events
+**Problem #1:** `updateContent()` should UPDATE IMMEDIATELY when panel is open,
+regardless of events
 
-**Problem #2:** When panel is closed and events fire, should set `stateChangedWhileClosed = true` and update when re-opened
+**Problem #2:** When panel is closed and events fire, should set
+`stateChangedWhileClosed = true` and update when re-opened
 
 **Problem #3:** `forceRefresh` option exists but is NEVER USED by event handlers
 
@@ -133,18 +145,18 @@ _getIsOpen() {
 **Current Code (Lines 668-688):**
 
 ```javascript
-const updatedHandler = (data) => {
+const updatedHandler = data => {
   try {
     const quickTab = data?.quickTab || data;
     debug(`[PanelContentManager] state:updated received for ${quickTab?.id}`);
-    
+
     // v1.6.3 - Only mark state changed if panel is closed
     if (!this._getIsOpen()) {
       this.stateChangedWhileClosed = true;
     }
-    
+
     // v1.6.3 - Try to update content - it will handle isOpen internally
-    this.updateContent({ forceRefresh: false });  // ← BUG: Should be true!
+    this.updateContent({ forceRefresh: false }); // ← BUG: Should be true!
   } catch (err) {
     console.error('[PanelContentManager] Error handling state:updated:', err);
   }
@@ -154,6 +166,7 @@ const updatedHandler = (data) => {
 **Required Change:**
 
 Change `forceRefresh: false` to `forceRefresh: true` in ALL event handlers:
+
 - `addedHandler` (line 656)
 - `updatedHandler` (line 679)
 - `deletedHandler` (line 693)
@@ -162,25 +175,27 @@ Change `forceRefresh: false` to `forceRefresh: true` in ALL event handlers:
 
 **Solution #2: Alternative - Invert the Logic**
 
-Instead of changing all handlers, change `updateContent()` to ALWAYS update when panel is open:
+Instead of changing all handlers, change `updateContent()` to ALWAYS update when
+panel is open:
 
 ```javascript
 async updateContent(options = { forceRefresh: false }) {
   const isCurrentlyOpen = this._getIsOpen();
-  
+
   // NEW LOGIC: Only skip if panel is closed AND forceRefresh is false
   if (!isCurrentlyOpen && !options.forceRefresh) {
     debug(`[PanelContentManager] Panel closed, deferring update`);
     this.stateChangedWhileClosed = true;
     return;
   }
-  
+
   // If panel is open OR forceRefresh, proceed with update
   // ... rest of update logic
 }
 ```
 
 **This makes the logic clearer:**
+
 - Panel open → ALWAYS update
 - Panel closed + no forceRefresh → Defer update
 - Panel closed + forceRefresh → Force update anyway
@@ -197,6 +212,7 @@ async updateContent(options = { forceRefresh: false }) {
 **Verification:**
 
 Check logs for:
+
 - ✅ `[PanelContentManager] state:updated received`
 - ✅ `[PanelContentManager] Panel opened OR forceRefresh, updating...` (new log)
 - ❌ **Current:** `updateContent skipped: isOpen=false`
@@ -208,6 +224,7 @@ Check logs for:
 ### User-Visible Symptom
 
 When clicking minimize button on Quick Tab:
+
 - Quick Tab minimizes correctly ✅
 - `state:updated` event IS emitted ✅
 - PanelContentManager receives event ✅
@@ -215,7 +232,8 @@ When clicking minimize button on Quick Tab:
 
 ### Root Cause
 
-**Same as Bug #12** - `updateContent()` is skipped because panel is open but `_getIsOpen()` returns false.
+**Same as Bug #12** - `updateContent()` is skipped because panel is open but
+`_getIsOpen()` returns false.
 
 **Evidence from logs:**
 
@@ -228,6 +246,7 @@ When clicking minimize button on Quick Tab:
 ```
 
 **The chain IS working:**
+
 1. User clicks minimize → Handler fires
 2. QuickTab minimizes → `state:updated` emitted
 3. PanelContentManager receives event → Calls `updateContent()`
@@ -235,7 +254,8 @@ When clicking minimize button on Quick Tab:
 
 ### What Needs to Be Fixed
 
-**Apply Solution #1 from Bug #12:** Pass `forceRefresh: true` in `updatedHandler`
+**Apply Solution #1 from Bug #12:** Pass `forceRefresh: true` in
+`updatedHandler`
 
 OR
 
@@ -254,6 +274,7 @@ OR
 **Verification:**
 
 Check logs for:
+
 - ✅ `[VisibilityHandler] Handling minimize`
 - ✅ `[PanelContentManager] state:updated received`
 - ✅ `[PanelContentManager] Updating content...` (NOT "skipped")
@@ -266,6 +287,7 @@ Check logs for:
 ### User-Visible Symptom
 
 When clicking X button on Quick Tab:
+
 - Quick Tab closes (DOM removed) ✅
 - `state:deleted` event IS emitted ✅
 - **BUT:** Panel doesn't remove tab from list ❌
@@ -285,6 +307,7 @@ When clicking X button on Quick Tab:
 **MISSING:** `[PanelContentManager] state:deleted received` log
 
 **This means:** Either:
+
 1. EventBus isn't emitting `state:deleted` properly
 2. EventBus is emitting but PanelContentManager's listener isn't attached
 3. EventBus is emitting but listener is throwing error silently
@@ -293,9 +316,11 @@ When clicking X button on Quick Tab:
 
 **File:** Check where `DestroyHandler` emits `state:deleted`
 
-**Probable location:** `src/features/quick-tabs/handlers/DestroyHandler.js` or similar
+**Probable location:** `src/features/quick-tabs/handlers/DestroyHandler.js` or
+similar
 
 **Need to verify:**
+
 1. Is `this.eventBus.emit('state:deleted', {...})` actually called?
 2. Is the data structure correct? (expects `{ id, quickTab }`)
 3. Is there a try-catch swallowing errors?
@@ -305,10 +330,11 @@ When clicking X button on Quick Tab:
 **Problem #1:** Verify EventBus emission in DestroyHandler
 
 Check that destroy logic includes:
+
 ```javascript
 this.eventBus.emit('state:deleted', {
   id: quickTabId,
-  quickTab: quickTabData  // May be optional
+  quickTab: quickTabData // May be optional
 });
 ```
 
@@ -319,17 +345,18 @@ Once events are received, they must trigger `updateContent()` immediately.
 **Problem #3:** Add error handling in deletedHandler
 
 Current code (lines 688-702):
+
 ```javascript
-const deletedHandler = (data) => {
+const deletedHandler = data => {
   try {
     const id = data?.id || data?.quickTab?.id;
     debug(`[PanelContentManager] state:deleted received for ${id}`);
-    
+
     if (!this._getIsOpen()) {
       this.stateChangedWhileClosed = true;
     }
-    
-    this.updateContent({ forceRefresh: false });  // ← Should be true
+
+    this.updateContent({ forceRefresh: false }); // ← Should be true
   } catch (err) {
     console.error('[PanelContentManager] Error handling state:deleted:', err);
   }
@@ -337,8 +364,9 @@ const deletedHandler = (data) => {
 ```
 
 **Add logging BEFORE the try-catch:**
+
 ```javascript
-const deletedHandler = (data) => {
+const deletedHandler = data => {
   console.log('[PanelContentManager] deletedHandler INVOKED with data:', data);
   try {
     // ... existing code
@@ -362,6 +390,7 @@ const deletedHandler = (data) => {
 **Verification:**
 
 Check logs for:
+
 - ✅ `[DestroyHandler] Emitted state:deleted`
 - ✅ `[PanelContentManager] deletedHandler INVOKED` (new log)
 - ✅ `[PanelContentManager] state:deleted received for qt-...`
@@ -375,6 +404,7 @@ Check logs for:
 ### User-Visible Symptom
 
 When clicking "Clear Storage" button:
+
 - Confirmation dialog appears ✅
 - User confirms ✅
 - Storage IS cleared ✅
@@ -405,30 +435,38 @@ When clicking "Clear Storage" button:
 3. `handleClearStorage()` clears storage ✅
 4. `handleClearStorage()` emits `state:cleared` ✅
 5. Storage listener detects change ✅
-6. **BUT:** Storage listener thinks panel is closed, so sets `stateChangedWhileClosed` flag instead of updating
+6. **BUT:** Storage listener thinks panel is closed, so sets
+   `stateChangedWhileClosed` flag instead of updating
 
-**The bug:** Storage listener uses DIFFERENT code path than state event listeners!
+**The bug:** Storage listener uses DIFFERENT code path than state event
+listeners!
 
 ### What Needs to Be Fixed
 
 **File:** `PanelContentManager.js`  
-**Location:** Lines 593-612 (storage.onChanged listener in `setupEventListeners()`)
+**Location:** Lines 593-612 (storage.onChanged listener in
+`setupEventListeners()`)
 
 **Current Code:**
 
 ```javascript
 const storageListener = (changes, areaName) => {
   if (areaName !== 'local') return;
-  
+
   if (changes.quick_tabs_state_v2) {
-    debug('[PanelContentManager] Storage changed from another tab - updating content');
-    
+    debug(
+      '[PanelContentManager] Storage changed from another tab - updating content'
+    );
+
     // v1.6.2.4 - FIX: Use _getIsOpen() for authoritative state check
-    if (this._getIsOpen()) {  // ← SAME BUG as state event handlers
+    if (this._getIsOpen()) {
+      // ← SAME BUG as state event handlers
       this.updateContent();
     } else {
       this.stateChangedWhileClosed = true;
-      debug('[PanelContentManager] Storage changed while panel closed - will update on open');
+      debug(
+        '[PanelContentManager] Storage changed while panel closed - will update on open'
+      );
     }
   }
 };
@@ -441,10 +479,12 @@ Change to always call `updateContent({ forceRefresh: true })`:
 ```javascript
 const storageListener = (changes, areaName) => {
   if (areaName !== 'local') return;
-  
+
   if (changes.quick_tabs_state_v2) {
-    console.log('[PanelContentManager] Storage changed from another tab - force updating content');
-    
+    console.log(
+      '[PanelContentManager] Storage changed from another tab - force updating content'
+    );
+
     // Always update, let updateContent() decide whether to defer
     this.updateContent({ forceRefresh: true });
   }
@@ -461,18 +501,20 @@ OR apply the inverted logic fix from Bug #12.
 **Current Code:**
 
 ```javascript
-const clearedHandler = (data) => {
+const clearedHandler = data => {
   try {
-    debug(`[PanelContentManager] state:cleared received, ${data?.count ?? 0} tabs cleared`);
-    
+    debug(
+      `[PanelContentManager] state:cleared received, ${data?.count ?? 0} tabs cleared`
+    );
+
     // Mark state changed if panel is closed
     if (!this._getIsOpen()) {
       this.stateChangedWhileClosed = true;
     }
-    
+
     // v1.6.3 - FIX Issue #6: Force refresh to update immediately
-    this.updateContent({ forceRefresh: true });  // ✅ This one is correct!
-    
+    this.updateContent({ forceRefresh: true }); // ✅ This one is correct!
+
     debug('[PanelContentManager] State cleared - panel updated');
   } catch (err) {
     console.error('[PanelContentManager] Error handling state:cleared:', err);
@@ -507,6 +549,7 @@ const clearedHandler = (data) => {
 **Verification:**
 
 Check logs for:
+
 - ✅ `[PanelContentManager] handleClearStorage starting...`
 - ✅ `[PanelContentManager] Destroying all Quick Tab DOM elements...`
 - ✅ `[PanelContentManager] Forcing in-memory state clear...`
@@ -522,6 +565,7 @@ Check logs for:
 ### User-Visible Symptom
 
 When clicking buttons in panel list (minimize, restore, close):
+
 - Button appears to click (visual feedback) ✅
 - **BUT:** Nothing happens ❌
 - No logs appear ❌
@@ -534,6 +578,7 @@ When clicking buttons in panel list (minimize, restore, close):
 **Possibility #1: Event Delegation Not Working**
 
 Event delegation is set up on `#panel-containersList` (lines 565-590), but:
+
 - Container may not exist when listener is attached
 - Container may be replaced during updates, losing listener
 - Selector `button[data-action]` may not match rendered buttons
@@ -541,6 +586,7 @@ Event delegation is set up on `#panel-containersList` (lines 565-590), but:
 **Possibility #2: Buttons Not Being Rendered**
 
 `PanelUIBuilder.renderQuickTabItem()` creates buttons, but:
+
 - Data attributes may be missing
 - Button elements may be malformed
 - Event delegation selector doesn't match
@@ -582,6 +628,7 @@ static _createButton(text, title, action, data) {
 ```
 
 **This looks correct.** Button SHOULD have:
+
 - `class="panel-btn-icon"`
 - `data-action="minimize"`
 - `data-quick-tab-id="qt-..."`
@@ -605,9 +652,11 @@ if (containersList) {
     const action = button.dataset.action;
     const quickTabId = button.dataset.quickTabId;
     const tabId = button.dataset.tabId;
-    
+
     // v1.6.3 - FIX Bug #2 & #3: Log button click for debugging
-    console.log(`[PanelContentManager] Button clicked: action=${action}, quickTabId=${quickTabId}, tabId=${tabId}`);
+    console.log(
+      `[PanelContentManager] Button clicked: action=${action}, quickTabId=${quickTabId}, tabId=${tabId}`
+    );
 
     await this._handleQuickTabAction(action, quickTabId, tabId);
   };
@@ -619,14 +668,17 @@ if (containersList) {
 **This looks correct too.**
 
 **BUT:** Notice the dataset property access uses **camelCase**:
+
 - `button.dataset.quickTabId`
 - `button.dataset.tabId`
 
 **HTML data attributes use kebab-case:**
+
 - `data-quick-tab-id`
 - `data-tab-id`
 
-**JavaScript automatically converts kebab-case to camelCase** when accessing via `dataset`, so this should work.
+**JavaScript automatically converts kebab-case to camelCase** when accessing via
+`dataset`, so this should work.
 
 **Check #3: Is containersList found?**
 
@@ -641,7 +693,9 @@ if (containersList) {
 **WAIT!** That log is at line 588:
 
 ```javascript
-console.log('[PanelContentManager] ✓ Delegated action listener attached to #panel-containersList');
+console.log(
+  '[PanelContentManager] ✓ Delegated action listener attached to #panel-containersList'
+);
 ```
 
 **But this log ONLY appears if `containersList` is truthy.**
@@ -652,10 +706,13 @@ console.log('[PanelContentManager] ✓ Delegated action listener attached to #pa
 
 **If listener is attached AND buttons exist, but clicks don't work, then:**
 
-1. **Buttons are rendered AFTER listener is attached** (listener attached to empty container)
-2. **Event delegation breaks** when container is replaced during `updateContent()`
+1. **Buttons are rendered AFTER listener is attached** (listener attached to
+   empty container)
+2. **Event delegation breaks** when container is replaced during
+   `updateContent()`
 
-**Evidence:** `updateContent()` calls `renderContainerSectionFromData()` which does:
+**Evidence:** `updateContent()` calls `renderContainerSectionFromData()` which
+does:
 
 ```javascript
 containersList.innerHTML = '';  // ← WIPES OUT ENTIRE CONTAINER
@@ -663,15 +720,19 @@ const section = PanelUIBuilder.renderContainerSection(...);
 containersList.appendChild(section);  // ← REPLACES WITH NEW CONTENT
 ```
 
-**Event delegation on `containersList` itself should still work** because we're listening on the container, not the children.
+**Event delegation on `containersList` itself should still work** because we're
+listening on the container, not the children.
 
-**BUT:** If `updateContent()` is NEVER called (Bug #12), then buttons are NEVER rendered!
+**BUT:** If `updateContent()` is NEVER called (Bug #12), then buttons are NEVER
+rendered!
 
 ### What Needs to Be Fixed
 
-**Primary Fix:** Fix Bug #12 - Once `updateContent()` works, buttons will be rendered and clickable.
+**Primary Fix:** Fix Bug #12 - Once `updateContent()` works, buttons will be
+rendered and clickable.
 
-**Secondary Fix:** Add extensive logging to button click handler to diagnose why clicks don't register:
+**Secondary Fix:** Add extensive logging to button click handler to diagnose why
+clicks don't register:
 
 **File:** `PanelContentManager.js`  
 **Location:** Lines 565-590
@@ -681,19 +742,29 @@ containersList.appendChild(section);  // ← REPLACES WITH NEW CONTENT
 ```javascript
 const containersList = this.panel.querySelector('#panel-containersList');
 if (containersList) {
-  console.log('[PanelContentManager] Setting up click delegation on #panel-containersList');
-  
+  console.log(
+    '[PanelContentManager] Setting up click delegation on #panel-containersList'
+  );
+
   const actionHandler = async e => {
     console.log('[PanelContentManager] Click detected on containersList');
     console.log('[PanelContentManager] Event target:', e.target);
-    console.log('[PanelContentManager] Event target class:', e.target.className);
-    console.log('[PanelContentManager] Event target data-action:', e.target.dataset?.action);
-    
+    console.log(
+      '[PanelContentManager] Event target class:',
+      e.target.className
+    );
+    console.log(
+      '[PanelContentManager] Event target data-action:',
+      e.target.dataset?.action
+    );
+
     const button = e.target.closest('button[data-action]');
     console.log('[PanelContentManager] Closest button found:', button);
-    
+
     if (!button) {
-      console.log('[PanelContentManager] No button with data-action found, ignoring click');
+      console.log(
+        '[PanelContentManager] No button with data-action found, ignoring click'
+      );
       return;
     }
 
@@ -702,24 +773,30 @@ if (containersList) {
     const action = button.dataset.action;
     const quickTabId = button.dataset.quickTabId;
     const tabId = button.dataset.tabId;
-    
-    console.log(`[PanelContentManager] Button clicked: action=${action}, quickTabId=${quickTabId}, tabId=${tabId}`);
+
+    console.log(
+      `[PanelContentManager] Button clicked: action=${action}, quickTabId=${quickTabId}, tabId=${tabId}`
+    );
     console.log(`[PanelContentManager] Calling _handleQuickTabAction...`);
 
     await this._handleQuickTabAction(action, quickTabId, tabId);
-    
+
     console.log(`[PanelContentManager] _handleQuickTabAction completed`);
   };
-  
+
   containersList.addEventListener('click', actionHandler);
   this.eventListeners.push({
     element: containersList,
     type: 'click',
     handler: actionHandler
   });
-  console.log('[PanelContentManager] ✓ Click delegation attached to #panel-containersList');
+  console.log(
+    '[PanelContentManager] ✓ Click delegation attached to #panel-containersList'
+  );
 } else {
-  console.error('[PanelContentManager] #panel-containersList NOT FOUND - buttons will not work!');
+  console.error(
+    '[PanelContentManager] #panel-containersList NOT FOUND - buttons will not work!'
+  );
 }
 ```
 
@@ -737,6 +814,7 @@ if (containersList) {
 **Verification:**
 
 Check logs for:
+
 - ✅ `[PanelContentManager] Setting up click delegation`
 - ✅ `[PanelContentManager] ✓ Click delegation attached`
 - ✅ `[PanelContentManager] Click detected on containersList`
@@ -751,6 +829,7 @@ Check logs for:
 ### User-Visible Symptom
 
 When pressing keyboard shortcut (Alt+Shift+Z or whatever is configured):
+
 - Opens a POPUP menu instead of sidebar ❌
 - OR opens floating panel instead of sidebar ❌
 - User expects sidebar to open
@@ -760,11 +839,13 @@ When pressing keyboard shortcut (Alt+Shift+Z or whatever is configured):
 **File:** `manifest.json` (keyboard command configuration)
 
 **Probable issue:** Keyboard shortcut is mapped to wrong action:
+
 - `_execute_browser_action` → Opens popup.html
 - `toggle-quick-tabs-manager` → Opens floating panel
 - `_execute_sidebar_action` → Opens sidebar
 
-**Need to check manifest.json** to see which command is assigned to which shortcut.
+**Need to check manifest.json** to see which command is assigned to which
+shortcut.
 
 ### What Needs to Be Fixed
 
@@ -815,7 +896,8 @@ When pressing keyboard shortcut (Alt+Shift+Z or whatever is configured):
 **OR:** Redirect `toggle-quick-tabs-manager` to open sidebar instead of panel:
 
 **File:** `background.js`  
-**Location:** Keyboard command handler (search for `commands.onCommand.addListener`)
+**Location:** Keyboard command handler (search for
+`commands.onCommand.addListener`)
 
 **Change floating panel open to sidebar open:**
 
@@ -840,6 +922,7 @@ browser.commands.onCommand.addListener(async command => {
 **Verification:**
 
 Check logs for:
+
 - ✅ `[Background] Command received: toggle-quick-tabs-manager`
 - ✅ `[Background] Opening sidebar...`
 - ✅ `[Sidebar] Sidebar opened`
@@ -851,6 +934,7 @@ Check logs for:
 ### User-Visible Symptom
 
 When opening Quick Tab Manager:
+
 - Shows "0 tabs, 0 minimized" ❌
 - **BUT:** There ARE tabs (minimized from previous session) ❌
 - Panel has stale/incorrect state
@@ -888,7 +972,7 @@ When opening Quick Tab Manager:
 setIsOpen(isOpen) {
   const wasOpen = this.isOpen;
   this.isOpen = isOpen;
-  
+
   // v1.6.2.x - Update content if panel was just opened and state changed while closed
   if (isOpen && !wasOpen && this.stateChangedWhileClosed) {
     debug('[PanelContentManager] Panel opened after state changes - updating content');
@@ -906,7 +990,7 @@ ALWAYS update when panel opens, not just when `stateChangedWhileClosed`:
 setIsOpen(isOpen) {
   const wasOpen = this.isOpen;
   this.isOpen = isOpen;
-  
+
   // v1.6.3 - ALWAYS update when panel opens to load current state
   if (isOpen && !wasOpen) {
     console.log('[PanelContentManager] Panel opened - loading current state');
@@ -916,7 +1000,8 @@ setIsOpen(isOpen) {
 }
 ```
 
-**This ensures:** Panel ALWAYS shows correct state when opened, even if no events fired while closed.
+**This ensures:** Panel ALWAYS shows correct state when opened, even if no
+events fired while closed.
 
 ### Testing After Fix
 
@@ -933,6 +1018,7 @@ setIsOpen(isOpen) {
 **Verification:**
 
 Check logs for:
+
 - ✅ `[PanelContentManager] Panel opened - loading current state`
 - ✅ `[PanelContentManager] Updating content...` (NOT "skipped")
 - ✅ `[PanelContentManager] Live state: X tabs, Y minimized`
@@ -960,10 +1046,12 @@ const closeMinimizedHandler = async e => {
   e.stopPropagation();
   console.log('[PanelContentManager] ✦ Close Minimized button CLICKED');
   console.log('[PanelContentManager] ✦ handleCloseMinimized STARTING...');
-  
+
   try {
     await this.handleCloseMinimized();
-    console.log('[PanelContentManager] ✦ handleCloseMinimized COMPLETED successfully');
+    console.log(
+      '[PanelContentManager] ✦ handleCloseMinimized COMPLETED successfully'
+    );
   } catch (err) {
     console.error('[PanelContentManager] ✦ handleCloseMinimized FAILED:', err);
     console.error('[PanelContentManager] ✦ Error stack:', err.stack);
@@ -983,10 +1071,12 @@ const closeAllHandler = async e => {
   e.stopPropagation();
   console.log('[PanelContentManager] ✦ Close All button CLICKED');
   console.log('[PanelContentManager] ✦ handleCloseAll STARTING...');
-  
+
   try {
     await this.handleCloseAll();
-    console.log('[PanelContentManager] ✦ handleCloseAll COMPLETED successfully');
+    console.log(
+      '[PanelContentManager] ✦ handleCloseAll COMPLETED successfully'
+    );
   } catch (err) {
     console.error('[PanelContentManager] ✦ handleCloseAll FAILED:', err);
     console.error('[PanelContentManager] ✦ Error stack:', err.stack);
@@ -1007,10 +1097,12 @@ const clearStorageHandler = async e => {
   console.log('[PanelContentManager] ✦ Clear Storage button CLICKED');
   console.log('[PanelContentManager] ✦ User confirmation dialog showing...');
   console.log('[PanelContentManager] ✦ handleClearStorage STARTING...');
-  
+
   try {
     await this.handleClearStorage();
-    console.log('[PanelContentManager] ✦ handleClearStorage COMPLETED successfully');
+    console.log(
+      '[PanelContentManager] ✦ handleClearStorage COMPLETED successfully'
+    );
   } catch (err) {
     console.error('[PanelContentManager] ✦ handleClearStorage FAILED:', err);
     console.error('[PanelContentManager] ✦ Error stack:', err.stack);
@@ -1020,7 +1112,8 @@ const clearStorageHandler = async e => {
 
 ### 2. Individual Quick Tab Button Logging
 
-**Purpose:** Track clicks on minimize/restore/close buttons for individual tabs in panel list
+**Purpose:** Track clicks on minimize/restore/close buttons for individual tabs
+in panel list
 
 **File:** `PanelContentManager.js`  
 **Location:** Lines 739-790 (`_handleQuickTabAction()` and individual handlers)
@@ -1032,7 +1125,7 @@ const clearStorageHandler = async e => {
 ```javascript
 async _handleQuickTabAction(action, quickTabId, tabId) {
   console.log(`[PanelContentManager] ⚡ Quick Tab action DISPATCHED: action=${action}, quickTabId=${quickTabId}, tabId=${tabId}`);
-  
+
   try {
     switch (action) {
       case 'goToTab':
@@ -1069,12 +1162,12 @@ async _handleQuickTabAction(action, quickTabId, tabId) {
 ```javascript
 handleMinimizeTab(quickTabId) {
   console.log(`[PanelContentManager] ⚡ handleMinimizeTab CALLED for ${quickTabId}`);
-  
+
   if (!this.quickTabsManager) {
     console.error('[PanelContentManager] ⚡ CANNOT minimize - quickTabsManager not available');
     return;
   }
-  
+
   console.log(`[PanelContentManager] ⚡ Calling quickTabsManager.minimizeById(${quickTabId})`);
   this.quickTabsManager.minimizeById(quickTabId);
   console.log(`[PanelContentManager] ⚡ quickTabsManager.minimizeById COMPLETED`);
@@ -1096,16 +1189,16 @@ handleMinimizeTab(quickTabId) {
 setIsOpen(isOpen) {
   const wasOpen = this.isOpen;
   const stateChanged = wasOpen !== isOpen;
-  
+
   console.log(`[PanelContentManager] ◈ setIsOpen called: wasOpen=${wasOpen}, newOpen=${isOpen}, stateChanged=${stateChanged}`);
   console.log(`[PanelContentManager] ◈ stateChangedWhileClosed flag: ${this.stateChangedWhileClosed}`);
-  
+
   this.isOpen = isOpen;
-  
+
   if (isOpen && !wasOpen) {
     console.log(`[PanelContentManager] ◈ PANEL OPENED - loading current state`);
     this.stateChangedWhileClosed = false;
-    
+
     console.log(`[PanelContentManager] ◈ Calling updateContent({ forceRefresh: true })...`);
     this.updateContent({ forceRefresh: true });
     console.log(`[PanelContentManager] ◈ updateContent call completed`);
@@ -1119,7 +1212,8 @@ setIsOpen(isOpen) {
 
 ### 4. Update Content Call Logging
 
-**Purpose:** Track every time `updateContent()` is called and why it succeeds/fails
+**Purpose:** Track every time `updateContent()` is called and why it
+succeeds/fails
 
 **File:** `PanelContentManager.js`  
 **Location:** Lines 143-165 (`updateContent()` method)
@@ -1130,28 +1224,28 @@ setIsOpen(isOpen) {
 async updateContent(options = { forceRefresh: false }) {
   const callTimestamp = Date.now();
   const callStack = new Error().stack;  // Capture call stack for debugging
-  
+
   console.log(`[PanelContentManager] ► updateContent CALLED at ${callTimestamp}`);
   console.log(`[PanelContentManager] ► Options:`, options);
   console.log(`[PanelContentManager] ► Called from:`, callStack.split('\n')[2].trim());
-  
+
   const isCurrentlyOpen = this._getIsOpen();
   console.log(`[PanelContentManager] ► Panel state: isOpen=${isCurrentlyOpen}, forceRefresh=${options.forceRefresh}`);
-  
+
   if (!options.forceRefresh && !isCurrentlyOpen) {
     console.warn(`[PanelContentManager] ► UPDATE SKIPPED: panel closed and forceRefresh=false`);
     this.stateChangedWhileClosed = true;
     console.log(`[PanelContentManager] ► stateChangedWhileClosed flag SET`);
     return;
   }
-  
+
   if (!this.panel) {
     console.error(`[PanelContentManager] ► UPDATE FAILED: panel DOM element not initialized`);
     return;
   }
-  
+
   console.log(`[PanelContentManager] ► UPDATE PROCEEDING...`);
-  
+
   try {
     // ... existing update logic
     console.log(`[PanelContentManager] ► UPDATE COMPLETED successfully in ${Date.now() - callTimestamp}ms`);
@@ -1177,9 +1271,9 @@ setupEventListeners() {
   console.log('[PanelContentManager] ◉ Panel element:', this.panel);
   console.log('[PanelContentManager] ◉ EventBus available:', !!this.eventBus);
   console.log('[PanelContentManager] ◉ QuickTabsManager available:', !!this.quickTabsManager);
-  
+
   // ... existing code
-  
+
   console.log('[PanelContentManager] ◉ setupEventListeners COMPLETED');
   console.log('[PanelContentManager] ◉ Total DOM listeners:', this.eventListeners.length);
 }
@@ -1192,19 +1286,29 @@ setupEventListeners() {
 debug('[PanelContentManager] ◉ Close button (.panel-close) listener attached');
 
 // After minimizeBtn listener
-debug('[PanelContentManager] ◉ Minimize button (.panel-minimize) listener attached');
+debug(
+  '[PanelContentManager] ◉ Minimize button (.panel-minimize) listener attached'
+);
 
 // After closeMinimizedBtn listener
-debug('[PanelContentManager] ◉ Close Minimized button (#panel-closeMinimized) listener attached');
+debug(
+  '[PanelContentManager] ◉ Close Minimized button (#panel-closeMinimized) listener attached'
+);
 
 // After closeAllBtn listener
-debug('[PanelContentManager] ◉ Close All button (#panel-closeAll) listener attached');
+debug(
+  '[PanelContentManager] ◉ Close All button (#panel-closeAll) listener attached'
+);
 
 // After clearStorageBtn listener
-debug('[PanelContentManager] ◉ Clear Storage button (#panel-clearStorage) listener attached');
+debug(
+  '[PanelContentManager] ◉ Clear Storage button (#panel-clearStorage) listener attached'
+);
 
 // After containersList delegation
-console.log('[PanelContentManager] ◉ Delegated action listener attached to #panel-containersList');
+console.log(
+  '[PanelContentManager] ◉ Delegated action listener attached to #panel-containersList'
+);
 ```
 
 ### 6. State Event Listener Logging
@@ -1219,16 +1323,16 @@ console.log('[PanelContentManager] ◉ Delegated action listener attached to #pa
 ```javascript
 setupStateListeners() {
   console.log('[PanelContentManager] ◉ setupStateListeners STARTING...');
-  
+
   if (!this.eventBus) {
     console.error('[PanelContentManager] ◉ CANNOT setup state listeners - eventBus not available!');
     return;
   }
-  
+
   console.log('[PanelContentManager] ◉ EventBus available, attaching state listeners...');
-  
+
   // ... existing code
-  
+
   console.log('[PanelContentManager] ◉ setupStateListeners COMPLETED');
   console.log('[PanelContentManager] ◉ State listeners registered:', Object.keys(this._stateHandlers));
 }
@@ -1293,7 +1397,7 @@ try {
   console.error('[Component] ✗ Error type:', err.name);
   console.error('[Component] ✗ Full error:', err);
   console.error('[Component] ✗ Stack trace:', err.stack);
-  
+
   // Re-throw if critical
   throw err;
 }
@@ -1324,21 +1428,21 @@ try {
 ```javascript
 async _fetchQuickTabsFromStorage() {
   console.log('[PanelContentManager] ◐ Fetching Quick Tabs from storage...');
-  
+
   try {
     const result = await browser.storage.local.get('quick_tabs_state_v2');
     console.log('[PanelContentManager] ◐ Storage read result:', result);
-    
+
     if (!result?.quick_tabs_state_v2) {
       console.warn('[PanelContentManager] ◐ No storage data found (key missing or empty)');
       return null;
     }
-    
+
     const state = result.quick_tabs_state_v2;
     console.log('[PanelContentManager] ◐ Storage format:', state.tabs ? 'unified' : state.containers ? 'container' : 'unknown');
-    
+
     // ... rest of logic
-    
+
   } catch (err) {
     console.error('[PanelContentManager] ◐ Storage read FAILED:', err);
     console.error('[PanelContentManager] ◐ Error stack:', err.stack);
@@ -1505,19 +1609,22 @@ Failures (if any):
 
 **File:** `PanelContentManager.js` (lines 143-165)
 
-**Change:** Pass `forceRefresh: true` in ALL event handlers OR invert the `isOpen` check logic
+**Change:** Pass `forceRefresh: true` in ALL event handlers OR invert the
+`isOpen` check logic
 
 **2. Fix setIsOpen() to Always Update on Open**
 
 **File:** `PanelContentManager.js` (lines 131-141)
 
-**Change:** Remove `stateChangedWhileClosed` condition, always call `updateContent({ forceRefresh: true })` when panel opens
+**Change:** Remove `stateChangedWhileClosed` condition, always call
+`updateContent({ forceRefresh: true })` when panel opens
 
 **3. Verify EventBus Emissions**
 
 **Files:** Search for `DestroyHandler.js` or wherever `state:deleted` is emitted
 
-**Change:** Ensure `eventBus.emit('state:deleted', { id, quickTab })` is called correctly
+**Change:** Ensure `eventBus.emit('state:deleted', { id, quickTab })` is called
+correctly
 
 ### High Priority (Enhanced Logging)
 
@@ -1559,7 +1666,8 @@ Failures (if any):
 
 **Root Cause Summary:**
 
-ALL user-reported bugs trace to the `updateContent()` method's `isOpen` check blocking updates when panel is open. This is because:
+ALL user-reported bugs trace to the `updateContent()` method's `isOpen` check
+blocking updates when panel is open. This is because:
 
 1. Event handlers call `updateContent({ forceRefresh: false })`
 2. `updateContent()` checks if panel is open via `_getIsOpen()`
@@ -1568,7 +1676,8 @@ ALL user-reported bugs trace to the `updateContent()` method's `isOpen` check bl
 
 **Primary Fix:**
 
-Change ALL event handlers to pass `forceRefresh: true` OR invert the logic in `updateContent()` to ALWAYS update when panel is open.
+Change ALL event handlers to pass `forceRefresh: true` OR invert the logic in
+`updateContent()` to ALWAYS update when panel is open.
 
 **Secondary Fixes:**
 
@@ -1587,6 +1696,7 @@ Change ALL event handlers to pass `forceRefresh: true` OR invert the logic in `u
 **Expected Outcome:**
 
 After fixes:
+
 - ✅ Panel updates immediately when Quick Tabs change
 - ✅ Minimize indicator turns yellow instantly
 - ✅ Close button removes tab from list
@@ -1594,4 +1704,5 @@ After fixes:
 - ✅ Panel buttons work correctly
 - ✅ Panel shows correct state on open
 
-**All bugs should be resolved** with the `updateContent()` logic fix + enhanced logging for future debugging.
+**All bugs should be resolved** with the `updateContent()` logic fix + enhanced
+logging for future debugging.

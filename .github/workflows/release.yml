@@ -101,7 +101,7 @@ jobs:
             echo "ERROR: Firefox package seems too small ($XPI_SIZE bytes)!"
             exit 1
           fi
-          
+
           # Verify Firefox manifest has browser_specific_settings
           unzip -p firefox-extension-v${{ steps.get_version.outputs.version }}.xpi manifest.json | grep -q "browser_specific_settings"
           if [ $? -eq 0 ]; then
@@ -116,14 +116,14 @@ jobs:
           set -e
           [ -f "manifest.chrome.json" ] || { echo "❌ manifest.chrome.json not found"; exit 1; }
           echo "📦 Packaging Chrome extension..."
-          
+
           # Create dist-chrome directory
           rm -rf dist-chrome
           mkdir -p dist-chrome
-          
+
           # Copy dist contents to dist-chrome
           cp -r dist/* dist-chrome/
-          
+
           # Copy and process Chrome-specific manifest
           node -e "
           const fs = require('fs');
@@ -147,7 +147,7 @@ jobs:
             process.exit(1);
           }
           "
-          
+
           # Package Chrome extension
           cd dist-chrome
           zip -r -1 -FS ../chrome-extension-v${{ steps.get_version.outputs.version }}.zip . -x '*.DS_Store' -x '*.map'
@@ -165,7 +165,7 @@ jobs:
             echo "ERROR: Chrome package seems too small ($ZIP_SIZE bytes)!"
             exit 1
           fi
-          
+
           # Verify Chrome manifest does NOT have browser_specific_settings
           # grep -q returns 0 if pattern IS found, 1 if NOT found
           if unzip -p chrome-extension-v${{ steps.get_version.outputs.version }}.zip manifest.json | grep -q "browser_specific_settings"; then

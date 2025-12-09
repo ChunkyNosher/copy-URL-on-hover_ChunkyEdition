@@ -1,20 +1,30 @@
 # Quick Tabs Debug UID Display Feature: Implementation Guide
 
-**Extension Version:** v1.6.x | **Date:** 2025-11-29 | **Scope:** Add toggleable UID display to Quick Tab UI titlebar
+**Extension Version:** v1.6.x | **Date:** 2025-11-29 | **Scope:** Add toggleable
+UID display to Quick Tab UI titlebar
 
 ---
 
 ## Problem Summary
 
-Debugging Quick Tab lifecycle issues (creation, state sync, position persistence, cross-tab visibility) requires verifying which UID is associated with each Quick Tab window. Currently, no UI component displays the UID, forcing developers to check console logs or manually inspect DOM element IDs. This feature adds a toggleable debug display showing the Quick Tab UID directly in the titlebar (top-right corner, left of existing buttons).
+Debugging Quick Tab lifecycle issues (creation, state sync, position
+persistence, cross-tab visibility) requires verifying which UID is associated
+with each Quick Tab window. Currently, no UI component displays the UID, forcing
+developers to check console logs or manually inspect DOM element IDs. This
+feature adds a toggleable debug display showing the Quick Tab UID directly in
+the titlebar (top-right corner, left of existing buttons).
 
 ---
 
 ## Root Cause
 
-No existing mechanism displays Quick Tab UIDs in the UI. The UID is stored in `QuickTabWindow.id` and used throughout the codebase for identification, but never rendered visually. Debug workflows require cross-referencing console logs with Quick Tab windows manually.
+No existing mechanism displays Quick Tab UIDs in the UI. The UID is stored in
+`QuickTabWindow.id` and used throughout the codebase for identification, but
+never rendered visually. Debug workflows require cross-referencing console logs
+with Quick Tab windows manually.
 
 **Files Involved:**
+
 - `src/features/quick-tabs/window/TitlebarBuilder.js` (builds titlebar UI)
 - `src/features/quick-tabs/window.js` (QuickTabWindow instance holds UID)
 - `sidebar/settings.html` (contains Quick Tabs settings toggle controls)
@@ -27,10 +37,10 @@ No existing mechanism displays Quick Tab UIDs in the UI. The UID is stored in `Q
 - Settings page HTML/JS (add toggle for debug UID display)
 
 **Do NOT Modify:**
+
 - `src/features/quick-tabs/index.js` (QuickTabsManager core logic)
 - `background.js` (no background script changes needed)
-- Storage schema (uses existing settings storage pattern)
-</scope>
+- Storage schema (uses existing settings storage pattern) </scope>
 
 ---
 
@@ -39,16 +49,20 @@ No existing mechanism displays Quick Tab UIDs in the UI. The UID is stored in `Q
 ### User-Facing Behavior
 
 **Settings Toggle:**
-- Location: Extension settings page → Quick Tabs tab → "Debug Options" section (create if not exists)
+
+- Location: Extension settings page → Quick Tabs tab → "Debug Options" section
+  (create if not exists)
 - Label: "Show Quick Tab UIDs (Debug Mode)"
 - Default: OFF (unchecked)
 - Storage: `browser.storage.local` key: `quickTabShowDebugIds` (boolean)
 
 **Visual Display:**
-- Position: Top-right corner of Quick Tab titlebar, immediately LEFT of the first button (Open in Tab button)
+
+- Position: Top-right corner of Quick Tab titlebar, immediately LEFT of the
+  first button (Open in Tab button)
 - Format: Small monospace text showing truncated UID
 - Example: `[qt-123-17…]` (show first ~15 characters with ellipsis if longer)
-- Styling: 
+- Styling:
   - Font: `monospace, 10px`
   - Color: `#888` (subtle gray, non-intrusive)
   - Padding: `2px 6px`
@@ -57,9 +71,11 @@ No existing mechanism displays Quick Tab UIDs in the UI. The UID is stored in `Q
 - Behavior:
   - Always visible when setting enabled, regardless of Quick Tab state
   - Updates if UID changes (unlikely, but graceful handling)
-  - Tooltip on hover: Full UID string (e.g., `qt-123-1717281240000-x3j4vq7w82u1`)
+  - Tooltip on hover: Full UID string (e.g.,
+    `qt-123-1717281240000-x3j4vq7w82u1`)
 
 **When Disabled:**
+
 - UID display element not rendered at all (no hidden element)
 - No performance impact (conditional creation only)
 
@@ -77,7 +93,7 @@ Add toggle control to Quick Tabs settings section:
 <!-- Add to Quick Tabs settings section -->
 <div class="setting-row">
   <label>
-    <input type="checkbox" id="quickTabShowDebugIds">
+    <input type="checkbox" id="quickTabShowDebugIds" />
     Show Quick Tab UIDs (Debug Mode)
   </label>
   <div class="setting-help">
@@ -86,7 +102,9 @@ Add toggle control to Quick Tabs settings section:
 </div>
 ```
 
-Load/save setting using existing pattern (e.g., `loadSettings()` and `saveSettings()` functions). Follow pattern from other Quick Tab boolean settings like `quickTabCloseOnOpen`.
+Load/save setting using existing pattern (e.g., `loadSettings()` and
+`saveSettings()` functions). Follow pattern from other Quick Tab boolean
+settings like `quickTabCloseOnOpen`.
 
 ### Step 2: Pass Setting to QuickTabWindow
 
@@ -121,7 +139,7 @@ this.titlebarBuilder = new TitlebarBuilder(
   },
   {
     onClose: () => this.destroy(),
-    onMinimize: () => this.minimize(),
+    onMinimize: () => this.minimize()
     // ... other callbacks
   }
 );
@@ -150,9 +168,9 @@ build() {
   }
 
   // Existing title element creation...
-  
+
   // Existing buttons creation...
-  
+
   return titlebar;
 }
 ```
@@ -168,8 +186,8 @@ Add helper method to create UID display:
  */
 _createUidDisplay() {
   const fullUid = this.config.id;
-  const truncatedUid = fullUid.length > 15 
-    ? `${fullUid.substring(0, 15)}…` 
+  const truncatedUid = fullUid.length > 15
+    ? `${fullUid.substring(0, 15)}…`
     : fullUid;
 
   const uidDisplay = createElement('div', {
@@ -193,7 +211,10 @@ _createUidDisplay() {
 }
 ```
 
-**Note on Positioning:** The `marginLeft: 'auto'` CSS property pushes the UID display to the right side of the titlebar. The `marginRight: '8px'` ensures spacing before the button group. Since buttons are typically added after this element, the UID appears LEFT of buttons naturally.
+**Note on Positioning:** The `marginLeft: 'auto'` CSS property pushes the UID
+display to the right side of the titlebar. The `marginRight: '8px'` ensures
+spacing before the button group. Since buttons are typically added after this
+element, the UID appears LEFT of buttons naturally.
 
 ### Step 4: Load Setting When Creating Quick Tab
 
@@ -212,7 +233,7 @@ async _createNewTab(id, cookieStoreId, options) {
 
   const defaults = this._getDefaults();
   const tabOptions = this._buildTabOptions(id, cookieStoreId, options, defaults);
-  
+
   // Add debug setting to options
   tabOptions.showDebugId = showDebugId;
 
@@ -222,37 +243,45 @@ async _createNewTab(id, cookieStoreId, options) {
 }
 ```
 
-**Why this approach:** Loading setting at creation time ensures each Quick Tab reflects current user preference. If user toggles setting, existing Quick Tabs won't update until they're recreated or page reloads (acceptable for debug feature).
+**Why this approach:** Loading setting at creation time ensures each Quick Tab
+reflects current user preference. If user toggles setting, existing Quick Tabs
+won't update until they're recreated or page reloads (acceptable for debug
+feature).
 
 ---
 
-<acceptance_criteria>
-**Settings UI:**
+<acceptance_criteria> **Settings UI:**
+
 - [ ] Toggle appears in Quick Tabs settings section
-- [ ] Setting persists to `browser.storage.local` as `quickTabShowDebugIds` (boolean)
+- [ ] Setting persists to `browser.storage.local` as `quickTabShowDebugIds`
+      (boolean)
 - [ ] Setting loads correctly on settings page open
 
 **Quick Tab Display:**
+
 - [ ] When enabled, UID display appears in titlebar top-right, LEFT of buttons
 - [ ] Display shows truncated UID format: `[qt-123-17…]`
 - [ ] Hover tooltip shows full UID string
 - [ ] Text is selectable/copyable (for pasting into logs)
 
 **When Disabled:**
+
 - [ ] UID display element not created (no hidden element)
 - [ ] No console errors or warnings
 
 **Edge Cases:**
+
 - [ ] Handles very long UIDs gracefully (truncation + tooltip)
 - [ ] Works with minimized/restored Quick Tabs
 - [ ] Persists across browser restarts
 
 **Manual Test:**
+
 1. Enable "Show Quick Tab UIDs" in settings → Save
 2. Create Quick Tab → UID displays in titlebar
 3. Hover over UID → Full UID appears in tooltip
 4. Disable setting → Reload page → Create new Quick Tab → No UID displayed
-</acceptance_criteria>
+   </acceptance_criteria>
 
 ---
 
@@ -261,23 +290,28 @@ async _createNewTab(id, cookieStoreId, options) {
 **Color Scheme Options:**
 
 Light themes:
+
 - Text: `#666` or `#888`
 - Background: `transparent` or `rgba(0,0,0,0.05)`
 
 Dark themes (recommended):
+
 - Text: `#888` or `#aaa`
 - Background: `transparent` or `rgba(255,255,255,0.05)`
 
 **Truncation Strategy:**
 
 Show first 15 characters plus ellipsis:
+
 - Full: `qt-123-1717281240000-x3j4vq7w82u1`
 - Truncated: `qt-123-1717281…`
-- Rationale: Includes prefix, tab ID, and partial timestamp (enough for quick visual identification)
+- Rationale: Includes prefix, tab ID, and partial timestamp (enough for quick
+  visual identification)
 
 **Font Choice:**
 
-Use `monospace` family for technical readability. Fallback: `'Consolas', 'Monaco', 'Courier New', monospace`
+Use `monospace` family for technical readability. Fallback:
+`'Consolas', 'Monaco', 'Courier New', monospace`
 
 ---
 
@@ -285,15 +319,20 @@ Use `monospace` family for technical readability. Fallback: `'Consolas', 'Monaco
 
 ### Alternative 1: Display in Window Footer
 
-**Why rejected:** Quick Tabs have no footer. Adding footer increases vertical space usage and complexity. Titlebar is standard location for debug info in windowing systems.
+**Why rejected:** Quick Tabs have no footer. Adding footer increases vertical
+space usage and complexity. Titlebar is standard location for debug info in
+windowing systems.
 
 ### Alternative 2: Console-Only Toggle
 
-**Why rejected:** Requires opening DevTools and filtering console. Visual display is faster for debugging multi-tab sync issues where developers need to track multiple Quick Tabs simultaneously.
+**Why rejected:** Requires opening DevTools and filtering console. Visual
+display is faster for debugging multi-tab sync issues where developers need to
+track multiple Quick Tabs simultaneously.
 
 ### Alternative 3: Always-On Display (No Toggle)
 
-**Why rejected:** Clutters UI for non-developers. Debug features should be opt-in. Production users don't need to see UIDs.
+**Why rejected:** Clutters UI for non-developers. Debug features should be
+opt-in. Production users don't need to see UIDs.
 
 ---
 
@@ -317,7 +356,8 @@ Use `monospace` family for technical readability. Fallback: `'Consolas', 'Monaco
 4. **Multi-Tab Scenario:**
    - Open 3 tabs, create Quick Tab in each
    - Verify each shows different UID
-   - Cross-reference UIDs with console logs (`[QuickTabsManager] createQuickTab called with: { id: "..." }`)
+   - Cross-reference UIDs with console logs
+     (`[QuickTabsManager] createQuickTab called with: { id: "..." }`)
 
 5. **Copy Functionality:**
    - Select UID text → Copy → Paste into text editor → Verify copied correctly
@@ -330,6 +370,7 @@ Use `monospace` family for technical readability. Fallback: `'Consolas', 'Monaco
 <summary>Current TitlebarBuilder Structure</summary>
 
 `TitlebarBuilder.js` creates titlebar with this general structure:
+
 ```
 Titlebar (flex container)
 ├── Drag handle (left)
@@ -344,6 +385,7 @@ Titlebar (flex container)
 ```
 
 The UID display should be inserted BETWEEN title and button group:
+
 ```
 Titlebar (flex container)
 ├── Drag handle (left)
@@ -353,7 +395,9 @@ Titlebar (flex container)
 └── Button group (right)
 ```
 
-Using `marginLeft: 'auto'` on UID display pushes it to the right edge, immediately before buttons.
+Using `marginLeft: 'auto'` on UID display pushes it to the right edge,
+immediately before buttons.
+
 </details>
 
 <details>
@@ -370,9 +414,12 @@ Example: `qt-123-1717281240000-x3j4vq7w82u1`
 
 Total length: ~35-45 characters
 
-Truncation at 15 chars captures: `qt-{tabId}-{part}` which is sufficient for visual debugging.
+Truncation at 15 chars captures: `qt-{tabId}-{part}` which is sufficient for
+visual debugging.
+
 </details>
 
 ---
 
-**Priority:** Low (Debug/Developer Feature) | **Dependencies:** None | **Complexity:** Low
+**Priority:** Low (Debug/Developer Feature) | **Dependencies:** None |
+**Complexity:** Low

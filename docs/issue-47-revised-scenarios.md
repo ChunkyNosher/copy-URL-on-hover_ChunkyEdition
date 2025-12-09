@@ -8,43 +8,55 @@
 
 ## Abbreviation Guide
 
-| Code | Meaning               | Example Usage                    |
-|------|-----------------------|----------------------------------|
-| WP   | Wikipedia             | WP 1 (Wikipedia Tab 1)          |
-| YT   | YouTube               | YT 1 (YouTube Tab 1)            |
-| GH   | GitHub                | GH 1 (GitHub Tab 1)             |
-| TW   | Twitter/X             | TW 1 (Twitter Tab 1)            |
-| AM   | Amazon                | AM 1 (Amazon Tab 1)             |
-| QT   | Quick Tab             | WP QT 1 (Quick Tab 1)           |
-| PM   | Quick Tabs Manager    | PM (Manager Panel)              |
-| FX   | Firefox Container     | FX 1 (Container 1)              |
+| Code | Meaning            | Example Usage          |
+| ---- | ------------------ | ---------------------- |
+| WP   | Wikipedia          | WP 1 (Wikipedia Tab 1) |
+| YT   | YouTube            | YT 1 (YouTube Tab 1)   |
+| GH   | GitHub             | GH 1 (GitHub Tab 1)    |
+| TW   | Twitter/X          | TW 1 (Twitter Tab 1)   |
+| AM   | Amazon             | AM 1 (Amazon Tab 1)    |
+| QT   | Quick Tab          | WP QT 1 (Quick Tab 1)  |
+| PM   | Quick Tabs Manager | PM (Manager Panel)     |
+| FX   | Firefox Container  | FX 1 (Container 1)     |
 
 ---
 
 ## Notation Guide
 
 **Tab Notation:**
-- **"WP 1"** = Wikipedia browser tab number 1 (a regular browser tab, NOT a Quick Tab)
+
+- **"WP 1"** = Wikipedia browser tab number 1 (a regular browser tab, NOT a
+  Quick Tab)
 - **"YT 2"** = YouTube browser tab number 2
 
 **Quick Tab Notation:**
-- **"WP QT 1"** = Quick Tab number 1 (the URL content inside may be any site; "WP" here is just the label/ID)
+
+- **"WP QT 1"** = Quick Tab number 1 (the URL content inside may be any site;
+  "WP" here is just the label/ID)
 - **"QT 2"** = Quick Tab number 2 (generic, content unspecified)
 - The URL inside a Quick Tab is usually not material unless specifically stated
 
 **Action Notation:**
-- **"Open WP QT 1 in WP 1"** = While viewing Wikipedia Tab 1, create Quick Tab 1 (content may vary)
-- **"Open YT 1"** = Open a new browser tab, navigate to YouTube (this is the FIRST YouTube tab opened, so it's YT 1, NOT YT 2)
+
+- **"Open WP QT 1 in WP 1"** = While viewing Wikipedia Tab 1, create Quick Tab 1
+  (content may vary)
+- **"Open YT 1"** = Open a new browser tab, navigate to YouTube (this is the
+  FIRST YouTube tab opened, so it's YT 1, NOT YT 2)
 - **"Switch to GH 1"** = Change focus to GitHub Tab 1
 - **"Solo QT 1"** = Set Quick Tab 1 to Solo mode (visible only on specific tab)
 - **"Mute QT 2"** = Set Quick Tab 2 to Mute mode (hidden only on specific tab)
 
 **Important Clarifications:**
-- If you open WP 1, then open YT (a new tab), that YouTube tab is **YT 1**, NOT YT 2
-- Tab numbering is per-domain and sequential: first WP tab = WP 1, second WP tab = WP 2, first YT tab = YT 1, etc.
-- Quick Tab numbering is sequential across all QTs regardless of content: first QT opened = QT 1, second = QT 2, etc.
+
+- If you open WP 1, then open YT (a new tab), that YouTube tab is **YT 1**, NOT
+  YT 2
+- Tab numbering is per-domain and sequential: first WP tab = WP 1, second WP tab
+  = WP 2, first YT tab = YT 1, etc.
+- Quick Tab numbering is sequential across all QTs regardless of content: first
+  QT opened = QT 1, second = QT 2, etc.
 
 **Symbols:**
+
 - **⇨** = Action leads to expected result
 - **Solo (🎯)** = Quick Tab only appears on specific browser tab(s)
 - **Mute (🔇)** = Quick Tab is hidden only on specific browser tab(s)
@@ -54,7 +66,8 @@
 
 ## Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync
 
-**Purpose:** Verify that Quick Tabs are created correctly, persist across different browser tabs, and maintain consistent position/size state globally.
+**Purpose:** Verify that Quick Tabs are created correctly, persist across
+different browser tabs, and maintain consistent position/size state globally.
 
 ### Steps:
 
@@ -63,13 +76,16 @@
    - Expected: WP 1 loads successfully
 
 2. **Open WP QT 1 in WP 1**
-   - Action: While viewing WP 1, press Q (or use keyboard shortcut) to create Quick Tab
-   - Expected: WP QT 1 appears as floating window in WP 1 with default position (configurable in settings)
+   - Action: While viewing WP 1, press Q (or use keyboard shortcut) to create
+     Quick Tab
+   - Expected: WP QT 1 appears as floating window in WP 1 with default position
+     (configurable in settings)
    - Note: Quick Tab content URL doesn't matter for this test
 
 3. **Verify QT 1 appears in WP 1**
    - Action: Observe Quick Tab state
-   - Expected: QT 1 is visible, draggable, resizable, with toolbar showing all controls (back, forward, reload, solo, mute, minimize, close)
+   - Expected: QT 1 is visible, draggable, resizable, with toolbar showing all
+     controls (back, forward, reload, solo, mute, minimize, close)
 
 4. **Switch to YT 1** (open new tab)
    - Action: Open new browser tab, navigate to YouTube
@@ -78,7 +94,8 @@
 
 5. **Verify QT 1 appears in YT 1 at same position/size**
    - Action: Observe Quick Tab state in YT 1
-   - Expected: WP QT 1 automatically appears in YT 1 at exact same position and size as in WP 1
+   - Expected: WP QT 1 automatically appears in YT 1 at exact same position and
+     size as in WP 1
    - Cross-tab sync latency: <100ms via BroadcastChannel
 
 6. **Move/resize QT 1 in YT 1**
@@ -87,14 +104,16 @@
 
 7. **Switch back to WP 1**
    - Action: Click on WP 1 tab to bring it to focus
-   - Expected: QT 1 now appears at bottom-right corner with 500px × 400px size (synchronized from YT 1)
+   - Expected: QT 1 now appears at bottom-right corner with 500px × 400px size
+     (synchronized from YT 1)
    - Position/size persistence confirmed across tabs
 
 ---
 
 ## Scenario 2: Multiple Quick Tabs with Cross-Tab Sync
 
-**Purpose:** Verify that multiple Quick Tabs can coexist, each maintains independent state, and all sync correctly across tabs.
+**Purpose:** Verify that multiple Quick Tabs can coexist, each maintains
+independent state, and all sync correctly across tabs.
 
 ### Steps:
 
@@ -118,14 +137,16 @@
 
 5. **Verify both QTs in YT 1**
    - Action: Observe Quick Tab state
-   - Expected: Both QT 1 and QT 2 are visible in YT 1, each with independent position/size
+   - Expected: Both QT 1 and QT 2 are visible in YT 1, each with independent
+     position/size
 
 6. **Switch to WP 1**
    - Action: Click WP 1 tab
    - Expected: Both QT 1 and QT 2 now appear in WP 1 (QT 2 synced from YT 1)
 
 7. **Move QT 1 to top-left, QT 2 to bottom-right in WP 1**
-   - Action: Drag QT 1 to (20px, 20px), drag QT 2 to (calc(100vw - 520px), calc(100vh - 420px))
+   - Action: Drag QT 1 to (20px, 20px), drag QT 2 to (calc(100vw - 520px),
+     calc(100vh - 420px))
    - Expected: Both QTs move to specified positions
 
 8. **Switch to YT 1**
@@ -137,7 +158,8 @@
 
 ## Scenario 3: Solo Mode (Pin to Specific Tab)
 
-**Purpose:** Verify Solo mode functionality where a Quick Tab appears only on designated browser tab(s), not globally.
+**Purpose:** Verify Solo mode functionality where a Quick Tab appears only on
+designated browser tab(s), not globally.
 
 ### Steps:
 
@@ -151,7 +173,8 @@
 
 3. **Solo QT 1 (pin to WP 1)**
    - Action: Click Solo button (🎯) in QT 1 toolbar
-   - Expected: Solo button state changes to active (highlighted), indicator changes to 🎯
+   - Expected: Solo button state changes to active (highlighted), indicator
+     changes to 🎯
    - Broadcast message sent to all tabs: "QT 1 is now solo on WP 1"
 
 4. **Verify QT 1 visible only in WP 1**
@@ -182,7 +205,8 @@
 
 ## Scenario 4: Mute Mode (Hide on Specific Tab)
 
-**Purpose:** Verify Mute mode functionality where a Quick Tab is hidden only on designated browser tab(s) but visible everywhere else.
+**Purpose:** Verify Mute mode functionality where a Quick Tab is hidden only on
+designated browser tab(s) but visible everywhere else.
 
 ### Steps:
 
@@ -227,7 +251,8 @@
 
 ## Scenario 5: Manager Panel - Minimize/Restore Quick Tabs
 
-**Purpose:** Verify Quick Tabs Manager Panel opens correctly, displays all Quick Tabs grouped by container, and can minimize/restore tabs.
+**Purpose:** Verify Quick Tabs Manager Panel opens correctly, displays all Quick
+Tabs grouped by container, and can minimize/restore tabs.
 
 ### Steps:
 
@@ -241,12 +266,15 @@
 
 3. **Press Ctrl+Alt+Z to open PM**
    - Action: Press keyboard shortcut for Manager Panel
-   - Expected: PM appears as draggable floating panel (default position: top-right, 350px × 500px)
-   - Panel shows "Default Container" section with QT 1 listed (green 🟢 active indicator)
+   - Expected: PM appears as draggable floating panel (default position:
+     top-right, 350px × 500px)
+   - Panel shows "Default Container" section with QT 1 listed (green 🟢 active
+     indicator)
 
 4. **Minimize QT 1 via Manager**
    - Action: Click minimize button (➖) next to QT 1 in Manager Panel
-   - Expected: QT 1 window minimizes (disappears from viewport), indicator changes to yellow 🟡
+   - Expected: QT 1 window minimizes (disappears from viewport), indicator
+     changes to yellow 🟡
    - QT 1 remains in Manager list with "Restore" button visible
 
 5. **Verify minimized state persists across tabs**
@@ -259,7 +287,8 @@
 
 7. **Restore QT 1 from Manager in YT 1**
    - Action: Click restore button (↑) next to QT 1 in Manager
-   - Expected: QT 1 window reappears at last known position in YT 1, indicator changes to green 🟢
+   - Expected: QT 1 window reappears at last known position in YT 1, indicator
+     changes to green 🟢
 
 8. **Switch to WP 1**
    - Action: Click WP 1 tab
@@ -269,7 +298,8 @@
 
 ## Scenario 6: Cross-Tab Manager Sync
 
-**Purpose:** Verify Manager Panel state syncs across all browser tabs and operations in one tab affect all tabs.
+**Purpose:** Verify Manager Panel state syncs across all browser tabs and
+operations in one tab affect all tabs.
 
 ### Steps:
 
@@ -309,13 +339,15 @@
 
 ## Scenario 7: Position/Size Persistence Across Tabs
 
-**Purpose:** Verify that moving and resizing Quick Tabs in one tab correctly syncs position/size to all other tabs.
+**Purpose:** Verify that moving and resizing Quick Tabs in one tab correctly
+syncs position/size to all other tabs.
 
 ### Steps:
 
 1. **Open WP 1, open WP QT 1**
    - Action: Navigate to Wikipedia, press Q
-   - Expected: QT 1 appears at default position (e.g., 100px, 100px, 800px × 600px)
+   - Expected: QT 1 appears at default position (e.g., 100px, 100px, 800px ×
+     600px)
 
 2. **Move QT 1 to top-left corner (20px, 20px)**
    - Action: Drag QT 1 title bar to top-left
@@ -345,13 +377,15 @@
 
 8. **Reload WP 1 (hard refresh)**
    - Action: Press Ctrl+Shift+R
-   - Expected: After page reload, QT 1 reappears at bottom-right with 700px × 500px (persistence confirmed)
+   - Expected: After page reload, QT 1 reappears at bottom-right with 700px ×
+     500px (persistence confirmed)
 
 ---
 
 ## Scenario 8: Container-Aware Grouping & Isolation
 
-**Purpose:** Verify that Quick Tabs respect Firefox Container boundaries and are properly isolated/grouped by container in Manager Panel.
+**Purpose:** Verify that Quick Tabs respect Firefox Container boundaries and are
+properly isolated/grouped by container in Manager Panel.
 
 ### Steps:
 
@@ -364,7 +398,8 @@
    - Expected: QT 1 created in default container context
 
 3. **Open WP 2 in FX 2 (Personal container)**
-   - Action: Right-click new tab button → "Personal" container, navigate to Wikipedia
+   - Action: Right-click new tab button → "Personal" container, navigate to
+     Wikipedia
    - Expected: WP 2 loads in Personal container (different from FX 1)
 
 4. **Open WP QT 2 in FX 2**
@@ -387,14 +422,16 @@
 
 8. **Open Manager in FX 2**
    - Action: Press Ctrl+Alt+Z in WP 2
-   - Expected: PM shows same two sections, QT 1 in "Default Container", QT 2 in "Personal Container"
+   - Expected: PM shows same two sections, QT 1 in "Default Container", QT 2 in
+     "Personal Container"
    - Manager state syncs across containers but QTs respect boundaries
 
 ---
 
 ## Scenario 9: Close All Quick Tabs via Manager
 
-**Purpose:** Verify "Close All" button in Manager Panel closes all Quick Tabs across all containers and tabs.
+**Purpose:** Verify "Close All" button in Manager Panel closes all Quick Tabs
+across all containers and tabs.
 
 ### Steps:
 
@@ -416,7 +453,8 @@
 
 5. **Click "Close All" button in Manager**
    - Action: Click "Close All" button at top of Manager Panel
-   - Expected: All QTs immediately close, Manager Panel shows "No Quick Tabs" message
+   - Expected: All QTs immediately close, Manager Panel shows "No Quick Tabs"
+     message
 
 6. **Verify all QTs closed in GH 1**
    - Action: Observe viewport
@@ -434,12 +472,14 @@
 
 ## Scenario 10: Quick Tab Limit Enforcement
 
-**Purpose:** Verify that the maximum Quick Tab limit (configured in settings) is properly enforced with user-friendly notification.
+**Purpose:** Verify that the maximum Quick Tab limit (configured in settings) is
+properly enforced with user-friendly notification.
 
 ### Steps:
 
 1. **Set max Quick Tabs to 2 in settings**
-   - Action: Open extension popup → Quick Tabs tab → Set "Max windows" to 2 → Save
+   - Action: Open extension popup → Quick Tabs tab → Set "Max windows" to 2 →
+     Save
    - Expected: Setting saved successfully
 
 2. **Open WP 1, open WP QT 1**
@@ -475,7 +515,8 @@
 
 ## Scenario 11: Emergency Position/Size Save on Tab Switch
 
-**Purpose:** Verify that Quick Tab position/size is saved even during rapid tab switching (emergency save mechanism).
+**Purpose:** Verify that Quick Tab position/size is saved even during rapid tab
+switching (emergency save mechanism).
 
 ### Steps:
 
@@ -516,7 +557,8 @@
 
 ## Scenario 12: Close Minimized Quick Tabs Only
 
-**Purpose:** Verify "Close Minimized" button in Manager Panel closes only minimized Quick Tabs while preserving visible ones.
+**Purpose:** Verify "Close Minimized" button in Manager Panel closes only
+minimized Quick Tabs while preserving visible ones.
 
 ### Steps:
 
@@ -559,7 +601,8 @@
 
 ## Scenario 13: Solo/Mute Mutual Exclusion
 
-**Purpose:** Verify that Solo and Mute modes are mutually exclusive - enabling one disables the other.
+**Purpose:** Verify that Solo and Mute modes are mutually exclusive - enabling
+one disables the other.
 
 ### Steps:
 
@@ -599,7 +642,8 @@
 
 ## Scenario 14: State Persistence Across Browser Restart
 
-**Purpose:** Verify that Quick Tab state (position, size, solo/mute status, minimized state) persists after browser is closed and reopened.
+**Purpose:** Verify that Quick Tab state (position, size, solo/mute status,
+minimized state) persists after browser is closed and reopened.
 
 ### Steps:
 
@@ -625,7 +669,8 @@
 
 6. **Reopen browser, navigate to WP 1**
    - Action: Launch browser, go to Wikipedia
-   - Expected: QT 1 automatically restored at (100px, 200px) with 650px × 450px size
+   - Expected: QT 1 automatically restored at (100px, 200px) with 650px × 450px
+     size
    - Solo mode active (only visible in WP 1)
 
 7. **Open YT 1**
@@ -642,7 +687,8 @@
 
 ## Scenario 15: Manager Panel Position/Size Persistence
 
-**Purpose:** Verify that Manager Panel's own position and size persist across browser sessions and tab switches.
+**Purpose:** Verify that Manager Panel's own position and size persist across
+browser sessions and tab switches.
 
 ### Steps:
 
@@ -668,7 +714,8 @@
 
 6. **Open Manager Panel in YT 1**
    - Action: Press Ctrl+Alt+Z
-   - Expected: PM appears at bottom-left with 450px × 600px size (position/size synced)
+   - Expected: PM appears at bottom-left with 450px × 600px size (position/size
+     synced)
 
 7. **Close browser, reopen**
    - Action: Quit browser, relaunch
@@ -676,18 +723,21 @@
 
 8. **Navigate to GH 1, open Manager**
    - Action: Go to GitHub, press Ctrl+Alt+Z
-   - Expected: PM appears at bottom-left with 450px × 600px (persisted across restart)
+   - Expected: PM appears at bottom-left with 450px × 600px (persisted across
+     restart)
 
 ---
 
 ## Scenario 16: Slot Numbering in Debug Mode
 
-**Purpose:** Verify that debug mode slot numbering works correctly, reuses freed slots, and displays accurate labels.
+**Purpose:** Verify that debug mode slot numbering works correctly, reuses freed
+slots, and displays accurate labels.
 
 ### Steps:
 
 1. **Enable debug mode in settings**
-   - Action: Open extension popup → Advanced tab → Check "Enable debug mode" → Save
+   - Action: Open extension popup → Advanced tab → Check "Enable debug mode" →
+     Save
    - Expected: Debug mode enabled
 
 2. **Open WP 1, open WP QT 1**
@@ -726,17 +776,20 @@
 
 ## Scenario 17: Multi-Direction Resize Operations
 
-**Purpose:** Verify that Quick Tabs can be resized from all 8 directions (4 edges + 4 corners) and size persists.
+**Purpose:** Verify that Quick Tabs can be resized from all 8 directions (4
+edges + 4 corners) and size persists.
 
 ### Steps:
 
 1. **Open WP 1, open WP QT 1 at center (400px, 300px, 800px × 600px)**
-   - Action: Navigate to Wikipedia, press Q, drag to center, resize to 800px × 600px
+   - Action: Navigate to Wikipedia, press Q, drag to center, resize to 800px ×
+     600px
    - Expected: QT 1 positioned and sized correctly
 
 2. **Resize from top edge (decrease height by 100px)**
    - Action: Drag top edge handle downward
-   - Expected: Height becomes 500px, top edge moves down, bottom edge stays fixed
+   - Expected: Height becomes 500px, top edge moves down, bottom edge stays
+     fixed
 
 3. **Resize from right edge (increase width by 100px)**
    - Action: Drag right edge handle to the right
@@ -756,17 +809,20 @@
 
 7. **Verify final size persists across tabs**
    - Action: Switch to YT 1 (new tab)
-   - Expected: QT 1 appears at (400px, 300px) with 800px × 450px size (all resize operations persisted)
+   - Expected: QT 1 appears at (400px, 300px) with 800px × 450px size (all
+     resize operations persisted)
 
 8. **Reload page**
    - Action: Press F5 in YT 1
-   - Expected: After reload, QT 1 reappears with same position/size (persistence confirmed)
+   - Expected: After reload, QT 1 reappears with same position/size (persistence
+     confirmed)
 
 ---
 
 ## Scenario 18: Z-Index Management & Layering
 
-**Purpose:** Verify that Quick Tabs use proper z-index layering, with Manager Panel always on top, and clicking brings QTs to front.
+**Purpose:** Verify that Quick Tabs use proper z-index layering, with Manager
+Panel always on top, and clicking brings QTs to front.
 
 ### Steps:
 
@@ -800,13 +856,15 @@
 
 8. **Verify z-index order: PM > QT (clicked) > QT (not clicked)**
    - Action: Reopen PM, click QT 2, observe layering
-   - Expected: Manager Panel always highest, clicked QTs brought to front within QT layer
+   - Expected: Manager Panel always highest, clicked QTs brought to front within
+     QT layer
 
 ---
 
 ## Scenario 19: Container Isolation - No Cross-Container Migration
 
-**Purpose:** Verify that Quick Tabs cannot migrate between Firefox containers and remain isolated to their original container.
+**Purpose:** Verify that Quick Tabs cannot migrate between Firefox containers
+and remain isolated to their original container.
 
 ### Steps:
 
@@ -820,7 +878,8 @@
 
 3. **Open Manager in FX 2**
    - Action: Press Ctrl+Alt+Z in WP 2
-   - Expected: PM shows "Default Container" section with QT 1, "Personal Container" section empty
+   - Expected: PM shows "Default Container" section with QT 1, "Personal
+     Container" section empty
 
 4. **Attempt to drag QT 1 from FX 1 to FX 2** (conceptual test)
    - Action: Try to force QT 1 to appear in FX 2 context
@@ -848,7 +907,8 @@
 
 ## Scenario 20: Container Clean-Up After All Tabs Closed
 
-**Purpose:** Verify that when all tabs in a specific container are closed, all associated Quick Tabs and Manager state are properly cleaned up.
+**Purpose:** Verify that when all tabs in a specific container are closed, all
+associated Quick Tabs and Manager state are properly cleaned up.
 
 ### Steps:
 
@@ -891,7 +951,8 @@
 
 ### Test Bridge API Usage
 
-All scenarios can be tested programmatically using the Test Bridge API (`window.__COPILOT_TEST_BRIDGE__`) with `TEST_MODE=true`:
+All scenarios can be tested programmatically using the Test Bridge API
+(`window.__COPILOT_TEST_BRIDGE__`) with `TEST_MODE=true`:
 
 ```javascript
 // Example test code for Scenario 1
@@ -912,7 +973,8 @@ const page2 = await context.newPage();
 
 ### Container Testing
 
-Firefox containers require specific profile configuration in Playwright fixtures to properly test container isolation.
+Firefox containers require specific profile configuration in Playwright fixtures
+to properly test container isolation.
 
 ### Timing Considerations
 
@@ -927,4 +989,5 @@ Firefox containers require specific profile configuration in Playwright fixtures
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Review Date:** November 22, 2025
+**Last
+Review Date:** November 22, 2025

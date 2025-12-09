@@ -2,14 +2,14 @@
 
 /**
  * Helper script to load the extension in Firefox for testing with Playwright MCP
- * 
+ *
  * This script uses web-ext to launch Firefox with the extension pre-loaded,
  * which is necessary because Firefox doesn't support loading extensions via
  * command-line args in the same way Chrome does.
- * 
+ *
  * Usage:
  *   node scripts/load-extension-firefox.js
- * 
+ *
  * Prerequisites:
  *   - Extension must be built in dist/ directory
  *   - web-ext must be installed (npm install -g web-ext)
@@ -63,26 +63,30 @@ console.log('   To stop: Press Ctrl+C in this terminal');
 console.log('');
 
 // Launch Firefox with web-ext
-const webExt = spawn('web-ext', [
-  'run',
-  `--source-dir=${distPath}`,
-  '--firefox=firefox',
-  `--firefox-profile=${profilePath}`,
-  '--keep-profile-changes',
-  '--no-reload',
-  '--url=about:debugging#/runtime/this-firefox'
-], {
-  stdio: 'inherit',
-  cwd: projectRoot
-});
+const webExt = spawn(
+  'web-ext',
+  [
+    'run',
+    `--source-dir=${distPath}`,
+    '--firefox=firefox',
+    `--firefox-profile=${profilePath}`,
+    '--keep-profile-changes',
+    '--no-reload',
+    '--url=about:debugging#/runtime/this-firefox'
+  ],
+  {
+    stdio: 'inherit',
+    cwd: projectRoot
+  }
+);
 
-webExt.on('error', (err) => {
+webExt.on('error', err => {
   console.error('❌ Error launching Firefox:', err.message);
   console.error('   Make sure web-ext is installed: npm install -g web-ext');
   process.exit(1);
 });
 
-webExt.on('close', (code) => {
+webExt.on('close', code => {
   if (code !== 0) {
     console.error(`❌ Firefox exited with code ${code}`);
     process.exit(code);

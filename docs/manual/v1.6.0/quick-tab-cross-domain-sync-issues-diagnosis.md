@@ -3,19 +3,27 @@
 **Document Version:** 1.0  
 **Extension Version:** v1.6.1.4  
 **Date:** November 24, 2025  
-**Issue References:** #51, User-reported domain sync issue, User-reported new tab hydration issue
+**Issue References:** #51, User-reported domain sync issue, User-reported new
+tab hydration issue
 
 ---
 
 ## Executive Summary
 
-This document analyzes three critical Quick Tab synchronization bugs affecting cross-tab state management in the latest version (v1.6.1.4) of the copy-URL-on-hover extension:
+This document analyzes three critical Quick Tab synchronization bugs affecting
+cross-tab state management in the latest version (v1.6.1.4) of the
+copy-URL-on-hover extension:
 
-1. **Domain-Specific Visibility Bug**: Quick Tabs only appear in tabs of the same domain (e.g., Wikipedia → Wikipedia) instead of syncing across all domains globally
-2. **New Tab Hydration Failure**: Quick Tabs don't appear in newly loaded tabs that weren't open when the Quick Tab was created
-3. **Position/Size Persistence Failure** (Issue #51): Changes to Quick Tab position and size don't transfer between tabs
+1. **Domain-Specific Visibility Bug**: Quick Tabs only appear in tabs of the
+   same domain (e.g., Wikipedia → Wikipedia) instead of syncing across all
+   domains globally
+2. **New Tab Hydration Failure**: Quick Tabs don't appear in newly loaded tabs
+   that weren't open when the Quick Tab was created
+3. **Position/Size Persistence Failure** (Issue #51): Changes to Quick Tab
+   position and size don't transfer between tabs
 
-All three issues stem from fundamental problems in the state synchronization architecture introduced during the v1.6.0 refactoring.
+All three issues stem from fundamental problems in the state synchronization
+architecture introduced during the v1.6.0 refactoring.
 
 ---
 
@@ -23,7 +31,8 @@ All three issues stem from fundamental problems in the state synchronization arc
 
 ### Observed Behavior
 
-- User opens Quick Tab in Wikipedia tab → Quick Tab appears only in other Wikipedia tabs
+- User opens Quick Tab in Wikipedia tab → Quick Tab appears only in other
+  Wikipedia tabs
 - Quick Tab does NOT appear in YouTube, GitHub, or other domain tabs
 - Expected: Quick Tabs should sync globally across ALL tabs regardless of domain
 
@@ -37,7 +46,8 @@ From attached logs (`copy-url-extension-logs_v1.6.1.4_2025-11-24T18-16-36.txt`):
 [StateManager] Hydrated 0 Quick Tabs
 ```
 
-**Key Problem**: Despite successful broadcast, newly visible tabs hydrate 0 Quick Tabs from storage.
+**Key Problem**: Despite successful broadcast, newly visible tabs hydrate 0
+Quick Tabs from storage.
 
 ### Root Cause Diagnosis
 
@@ -49,17 +59,18 @@ From attached logs (`copy-url-extension-logs_v1.6.1.4_2025-11-24T18-16-36.txt`):
 
 **The Issue:**
 
-The `handleTabVisible()` method is triggered when switching to a tab, but the implementation contains a critical flaw:
+The `handleTabVisible()` method is triggered when switching to a tab, but the
+implementation contains a critical flaw:
 
 ```javascript
 async handleTabVisible() {
   console.log('[SyncCoordinator] Tab became visible - refreshing state from background');
-  
+
   try {
     // Re-hydrate state from storage (which will call background first)
     const quickTabs = await this.storageManager.loadAll();
     this.stateManager.hydrate(quickTabs);
-    
+
     // ... rest of method
   }
 }
@@ -67,13 +78,18 @@ async handleTabVisible() {
 
 **What's Broken:**
 
-1. **Storage returns empty**: `storageManager.loadAll()` likely returns an empty array for tabs that weren't open during Quick Tab creation
-2. **State gets overwritten**: `stateManager.hydrate([])` replaces existing in-memory state with empty array
-3. **Broadcast messages ignored**: Previously received CREATE broadcasts are wiped out
+1. **Storage returns empty**: `storageManager.loadAll()` likely returns an empty
+   array for tabs that weren't open during Quick Tab creation
+2. **State gets overwritten**: `stateManager.hydrate([])` replaces existing
+   in-memory state with empty array
+3. **Broadcast messages ignored**: Previously received CREATE broadcasts are
+   wiped out
 
 **Why This Happens:**
 
-The storage layer (browser.storage.sync or browser.storage.local) operates at the container level, NOT the global tab level. When a new tab loads in a different domain:
+The storage layer (browser.storage.sync or browser.storage.local) operates at
+the container level, NOT the global tab level. When a new tab loads in a
+different domain:
 
 - The tab's content script initializes fresh
 - It tries to load Quick Tabs from storage
@@ -96,13 +112,18 @@ setupBroadcastChannel() {
 }
 ```
 
-**What's Correct:** Container scoping is intentional for Firefox Multi-Account Containers feature.
+**What's Correct:** Container scoping is intentional for Firefox Multi-Account
+Containers feature.
 
-**What's Broken:** The broadcast message handling doesn't properly distinguish between:
+**What's Broken:** The broadcast message handling doesn't properly distinguish
+between:
+
 - Domain-specific visibility (BUG)
 - Container-specific isolation (INTENDED)
 
-The logs show broadcast messages are being sent and received correctly within the same container, but the receiving tabs are not properly updating their visual DOM when the domain differs.
+The logs show broadcast messages are being sent and received correctly within
+the same container, but the receiving tabs are not properly updating their
+visual DOM when the domain differs.
 
 #### Problem Location 3: UICoordinator State Refresh
 
@@ -111,7 +132,10 @@ The logs show broadcast messages are being sent and received correctly within th
 
 **The Issue:**
 
-When `SyncCoordinator` emits `'state:refreshed'` event after tab visibility change, the UICoordinator should re-render all Quick Tabs. However, if the hydrated state is empty (due to storage load failure), no Quick Tabs are rendered.
+When `SyncCoordinator` emits `'state:refreshed'` event after tab visibility
+change, the UICoordinator should re-render all Quick Tabs. However, if the
+hydrated state is empty (due to storage load failure), no Quick Tabs are
+rendered.
 
 **Root Cause Chain:**
 
@@ -135,19 +159,23 @@ User sees no Quick Tabs in YouTube tab
 
 ### Solution Approach
 
-**DO NOT overwrite state on tab visibility if broadcasts have already populated it.**
+**DO NOT overwrite state on tab visibility if broadcasts have already populated
+it.**
 
 #### Fix 1: Make Tab Visibility Refresh Additive, Not Destructive
 
-**Location:** `src/features/quick-tabs/coordinators/SyncCoordinator.js` → `handleTabVisible()`
+**Location:** `src/features/quick-tabs/coordinators/SyncCoordinator.js` →
+`handleTabVisible()`
 
 **Current Behavior (WRONG):**
+
 ```javascript
 const quickTabs = await this.storageManager.loadAll();
 this.stateManager.hydrate(quickTabs); // Replaces entire state
 ```
 
 **Required Behavior:**
+
 ```javascript
 const quickTabs = await this.storageManager.loadAll();
 
@@ -161,15 +189,20 @@ this.stateManager.hydrate(mergedState);
 ```
 
 **Merge Logic:**
-- If Quick Tab exists in memory (from broadcast) but not in storage → KEEP in-memory version (it's newer)
-- If Quick Tab exists in storage but not in memory → ADD from storage (user may have created it before this tab loaded)
+
+- If Quick Tab exists in memory (from broadcast) but not in storage → KEEP
+  in-memory version (it's newer)
+- If Quick Tab exists in storage but not in memory → ADD from storage (user may
+  have created it before this tab loaded)
 - If Quick Tab exists in both → Use storage version ONLY if timestamp is newer
 
 #### Fix 2: Add Timestamp Tracking to Quick Tab State
 
-**Location:** `src/features/quick-tabs/managers/StateManager.js` and storage schema
+**Location:** `src/features/quick-tabs/managers/StateManager.js` and storage
+schema
 
 **Add to Each Quick Tab Object:**
+
 ```javascript
 {
   id: 'qt-1234',
@@ -177,22 +210,24 @@ this.stateManager.hydrate(mergedState);
   left: 100,
   top: 200,
   // ... other properties
-  
+
   // NEW: Track when this state was last modified
   lastModified: 1732470996123, // Unix timestamp
-  
+
   // NEW: Track which tab modified it last
   lastModifiedBy: 'tab-sender-id-abc123'
 }
 ```
 
 **Update on Every State Change:**
+
 - Quick Tab creation → set lastModified = now
 - Position update → set lastModified = now
 - Size update → set lastModified = now
 - Minimize/restore → set lastModified = now
 
 **Use in Merge Logic:**
+
 - When merging in-memory vs storage states, compare lastModified timestamps
 - Always keep the version with the most recent lastModified value
 
@@ -200,16 +235,21 @@ this.stateManager.hydrate(mergedState);
 
 **Location:** `src/features/quick-tabs/coordinators/SyncCoordinator.js`
 
-**Problem:** Broadcast messages arrive instantly (<10ms), but storage writes are async (50-200ms). Tab visibility refresh racing with storage can cause state loss.
+**Problem:** Broadcast messages arrive instantly (<10ms), but storage writes are
+async (50-200ms). Tab visibility refresh racing with storage can cause state
+loss.
 
 **Solution:** Maintain two separate state sources:
 
 1. **Hot State** (in-memory): Populated by broadcast messages, never cleared
-2. **Cold State** (storage): Loaded only on initialization and merged with hot state
+2. **Cold State** (storage): Loaded only on initialization and merged with hot
+   state
 
 **Implementation:**
+
 - When broadcast CREATE received → Add to hot state immediately
-- When tab becomes visible → Load from storage, merge with hot state (hot takes precedence if conflict)
+- When tab becomes visible → Load from storage, merge with hot state (hot takes
+  precedence if conflict)
 - When storage save completes → Update cold state (but don't touch hot state)
 
 ---
@@ -218,8 +258,10 @@ this.stateManager.hydrate(mergedState);
 
 ### Observed Behavior
 
-- User opens Quick Tab in Wikipedia tab while Wikipedia and YouTube tabs are both open → Quick Tab appears in both tabs ✓
-- User then opens a NEW tab (GitHub) that wasn't loaded before → Quick Tab does NOT appear in GitHub tab ✗
+- User opens Quick Tab in Wikipedia tab while Wikipedia and YouTube tabs are
+  both open → Quick Tab appears in both tabs ✓
+- User then opens a NEW tab (GitHub) that wasn't loaded before → Quick Tab does
+  NOT appear in GitHub tab ✗
 - Expected: Quick Tab should appear in all tabs, including newly opened ones
 
 ### Log Evidence
@@ -231,7 +273,8 @@ this.stateManager.hydrate(mergedState);
 [StateManager] Hydrated 0 Quick Tabs
 ```
 
-**Key Problem**: Storage returns 0 Quick Tabs for newly loaded tabs, even though Quick Tabs exist in other tabs.
+**Key Problem**: Storage returns 0 Quick Tabs for newly loaded tabs, even though
+Quick Tabs exist in other tabs.
 
 ### Root Cause Diagnosis
 
@@ -259,10 +302,12 @@ async _initStep7_Hydrate() {
 **Race Condition:**
 
 1. **Tab A** (Wikipedia): Quick Tab created → Saved to storage → Broadcast sent
-2. **Tab B** (YouTube, already open): Receives broadcast → Shows Quick Tab immediately
+2. **Tab B** (YouTube, already open): Receives broadcast → Shows Quick Tab
+   immediately
 3. **Tab C** (GitHub, newly opened): Content script initializes
 4. **Tab C** calls `storage.loadAll()` to hydrate state
-5. **Storage write from Tab A may not have completed yet** → `loadAll()` returns empty
+5. **Storage write from Tab A may not have completed yet** → `loadAll()` returns
+   empty
 6. **Tab C** hydrates with empty array → No Quick Tabs displayed
 7. **Tab C** misses the original CREATE broadcast (it wasn't listening yet)
 
@@ -287,9 +332,11 @@ async _initStep7_Hydrate() {
 
 **The Issue:**
 
-BroadcastChannel is a **fire-and-forget** pub/sub system. Messages are NOT queued for late-joining subscribers.
+BroadcastChannel is a **fire-and-forget** pub/sub system. Messages are NOT
+queued for late-joining subscribers.
 
 **What Happens:**
+
 - Tab A creates Quick Tab at T=0, sends broadcast
 - Tab B receives broadcast at T=0.01 (already listening)
 - Tab C starts listening at T=2 (2 seconds later when page loads)
@@ -297,23 +344,27 @@ BroadcastChannel is a **fire-and-forget** pub/sub system. Messages are NOT queue
 
 **Missing Architecture:**
 
-The extension needs a **persistent message store** or **state recovery mechanism** for newly initialized tabs.
+The extension needs a **persistent message store** or **state recovery
+mechanism** for newly initialized tabs.
 
 ### Solution Approach
 
-**Implement a reliable state recovery mechanism that doesn't depend on storage timing.**
+**Implement a reliable state recovery mechanism that doesn't depend on storage
+timing.**
 
 #### Fix 1: Add Broadcast Message Persistence
 
 **Location:** `src/features/quick-tabs/managers/BroadcastManager.js`
 
-**Solution:** Use `browser.storage.local` as a message queue for late-joining tabs.
+**Solution:** Use `browser.storage.local` as a message queue for late-joining
+tabs.
 
 **Implementation:**
 
 1. **When broadcasting a message:**
    - Send via BroadcastChannel (for real-time sync to already-listening tabs)
-   - ALSO write to `browser.storage.local` with key `quicktabs-broadcast-history-{containerID}`
+   - ALSO write to `browser.storage.local` with key
+     `quicktabs-broadcast-history-{containerID}`
    - Store last 50 messages with timestamps
 
 2. **When tab initializes:**
@@ -323,6 +374,7 @@ The extension needs a **persistent message store** or **state recovery mechanism
    - This catches any broadcasts that were sent while the tab was loading
 
 3. **Message structure:**
+
 ```javascript
 {
   "quicktabs-broadcast-history-firefox-default": {
@@ -350,6 +402,7 @@ The extension needs a **persistent message store** or **state recovery mechanism
 **Location:** `src/features/quick-tabs/handlers/CreateHandler.js`
 
 **Current Behavior (WRONG):**
+
 ```javascript
 // Create Quick Tab
 const tabWindow = new QuickTabWindow(...);
@@ -362,6 +415,7 @@ this.broadcast.notifyCreate(tabData);
 ```
 
 **Required Behavior:**
+
 ```javascript
 // Create Quick Tab
 const tabWindow = new QuickTabWindow(...);
@@ -373,24 +427,27 @@ await this.saveToStorage(tabData);
 await this.broadcast.notifyCreate(tabData);
 ```
 
-**Critical:** Use `await` on storage saves to ensure durability before broadcasting. This prevents newly loading tabs from reading empty storage.
+**Critical:** Use `await` on storage saves to ensure durability before
+broadcasting. This prevents newly loading tabs from reading empty storage.
 
 #### Fix 3: Add State Verification After Hydration
 
 **Location:** `src/features/quick-tabs/index.js` → `_initStep7_Hydrate()`
 
-**Solution:** After hydrating from storage, query background script for authoritative state.
+**Solution:** After hydrating from storage, query background script for
+authoritative state.
 
 **Implementation:**
+
 ```javascript
 async _initStep7_Hydrate() {
   // Load from storage (may be empty due to timing)
   const quickTabs = await this.storage.loadAll();
   this.state.hydrate(quickTabs);
-  
+
   // NEW: Verify against background script's authoritative state
   const verifiedState = await this._verifyStateWithBackground();
-  
+
   if (verifiedState.length > quickTabs.length) {
     console.warn('[QuickTabsManager] Storage incomplete, using background state');
     this.state.hydrate(verifiedState);
@@ -399,6 +456,7 @@ async _initStep7_Hydrate() {
 ```
 
 **Background Script Role:**
+
 - Maintain authoritative state of all Quick Tabs across all tabs
 - Content scripts query background on initialization
 - Background responds with complete current state
@@ -411,7 +469,8 @@ async _initStep7_Hydrate() {
 ### Observed Behavior
 
 - User opens Quick Tab in Tab 1, moves it to right corner, resizes to 500x400
-- User switches to Tab 2 → Quick Tab appears at ORIGINAL position/size, NOT the updated position/size
+- User switches to Tab 2 → Quick Tab appears at ORIGINAL position/size, NOT the
+  updated position/size
 - Expected: Position and size changes should transfer to all tabs
 
 ### Log Evidence
@@ -425,7 +484,8 @@ async _initStep7_Hydrate() {
 [Tab-2] [StateManager] State NOT found for qt-123 ← CRITICAL PROBLEM
 ```
 
-**Key Problem**: When Tab 2 receives the UPDATE_POSITION broadcast, it can't find the Quick Tab in its StateManager, so the update is silently ignored.
+**Key Problem**: When Tab 2 receives the UPDATE_POSITION broadcast, it can't
+find the Quick Tab in its StateManager, so the update is silently ignored.
 
 ### Root Cause Diagnosis
 
@@ -436,7 +496,10 @@ async _initStep7_Hydrate() {
 
 **The Issue:**
 
-Position/size updates are sent as separate broadcast messages from the initial CREATE message. If a tab receives UPDATE_POSITION before it has processed the CREATE message (or failed to process it due to Issue #1/#2), the update is ignored.
+Position/size updates are sent as separate broadcast messages from the initial
+CREATE message. If a tab receives UPDATE_POSITION before it has processed the
+CREATE message (or failed to process it due to Issue #1/#2), the update is
+ignored.
 
 **Sequence:**
 
@@ -452,7 +515,9 @@ Tab 3: Loads from storage → Gets Quick Tab at ORIGINAL position (update was lo
 
 **The Core Problem:**
 
-Updates are applied **only to in-memory state**, not persisted to storage reliably. When a new tab loads, it reads the old position/size from storage because:
+Updates are applied **only to in-memory state**, not persisted to storage
+reliably. When a new tab loads, it reads the old position/size from storage
+because:
 
 1. Storage writes are async and slow (50-200ms)
 2. Position updates happen rapidly (every 50ms during drag)
@@ -470,13 +535,13 @@ Updates are applied **only to in-memory state**, not persisted to storage reliab
 handlePositionChangeEnd(id, left, top) {
   // Update in-memory state
   this.updateState(id, { left, top });
-  
+
   // Broadcast to other tabs
   this.broadcast.notifyPositionUpdate(id, left, top);
-  
+
   // Save to storage (async, no await)
   this.storage.save(id, { left, top });
-  
+
   // Problem: Broadcast arrives at other tabs BEFORE storage write completes
 }
 ```
@@ -500,18 +565,20 @@ T=151ms:  Tab 3 has wrong position forever (until next update)
 
 **The Issue:**
 
-When a Quick Tab doesn't exist in state and an update arrives, the update is simply ignored instead of being queued for when the Quick Tab is created.
+When a Quick Tab doesn't exist in state and an update arrives, the update is
+simply ignored instead of being queued for when the Quick Tab is created.
 
 **Code Pattern:**
+
 ```javascript
 updateQuickTab(id, updates) {
   const quickTab = this.getQuickTab(id);
-  
+
   if (!quickTab) {
     console.warn('Quick Tab not found, ignoring update');
     return; // ← PROBLEM: Update lost forever
   }
-  
+
   // Apply update
   Object.assign(quickTab, updates);
 }
@@ -519,19 +586,21 @@ updateQuickTab(id, updates) {
 
 **Missing Feature:**
 
-The system needs a **pending updates queue** for Quick Tabs that haven't been created yet in the current tab's state.
+The system needs a **pending updates queue** for Quick Tabs that haven't been
+created yet in the current tab's state.
 
 **Required Behavior:**
+
 ```javascript
 updateQuickTab(id, updates) {
   const quickTab = this.getQuickTab(id);
-  
+
   if (!quickTab) {
     // Queue update for when Quick Tab is created
     this.queuePendingUpdate(id, updates);
     return;
   }
-  
+
   // Apply update
   Object.assign(quickTab, updates);
 }
@@ -539,7 +608,7 @@ updateQuickTab(id, updates) {
 // When Quick Tab is created later:
 addQuickTab(quickTabData) {
   this.quickTabs.set(quickTabData.id, quickTabData);
-  
+
   // Apply any pending updates
   const pendingUpdates = this.getPendingUpdates(quickTabData.id);
   if (pendingUpdates.length > 0) {
@@ -550,13 +619,15 @@ addQuickTab(quickTabData) {
 
 ### Solution Approach
 
-**Ensure position/size updates are persisted reliably and applied even when tabs load late.**
+**Ensure position/size updates are persisted reliably and applied even when tabs
+load late.**
 
 #### Fix 1: Serialize Position/Size Updates with Storage Writes
 
 **Location:** `src/features/quick-tabs/handlers/UpdateHandler.js`
 
-**Solution:** Use `await` on storage saves and implement write coalescing to prevent overwhelming storage.
+**Solution:** Use `await` on storage saves and implement write coalescing to
+prevent overwhelming storage.
 
 **Implementation:**
 
@@ -564,28 +635,30 @@ addQuickTab(quickTabData) {
 async handlePositionChangeEnd(id, left, top) {
   const saveId = this.generateSaveId();
   this.trackPendingSave(saveId);
-  
+
   try {
     // Update in-memory state
     this.updateState(id, { left, top, lastModified: Date.now() });
-    
+
     // WAIT for storage write to complete
     await this.storage.save(id, { left, top, lastModified: Date.now() });
-    
+
     // THEN broadcast (guarantees storage is updated)
     await this.broadcast.notifyPositionUpdate(id, left, top);
-    
+
   } finally {
     this.releasePendingSave(saveId);
   }
 }
 ```
 
-**Key Change:** `await` on storage.save() ensures position is persisted BEFORE broadcast is sent.
+**Key Change:** `await` on storage.save() ensures position is persisted BEFORE
+broadcast is sent.
 
 **Performance Optimization:**
 
 If user drags rapidly, coalesce writes:
+
 - Queue position updates during drag
 - Only write to storage on drag END (current behavior is correct)
 - Use broadcast for real-time updates during drag (fast)
@@ -605,49 +678,49 @@ class StateManager {
     this.quickTabs = new Map();
     this.pendingUpdates = new Map(); // id -> Array of updates
   }
-  
+
   queuePendingUpdate(id, update) {
     if (!this.pendingUpdates.has(id)) {
       this.pendingUpdates.set(id, []);
     }
-    
+
     this.pendingUpdates.get(id).push({
       ...update,
       timestamp: Date.now()
     });
-    
+
     // Emit event for debugging
     this.eventBus.emit('state:update-queued', { id, update });
   }
-  
+
   applyPendingUpdates(id) {
     const updates = this.pendingUpdates.get(id);
     if (!updates || updates.length === 0) {
       return;
     }
-    
+
     // Sort by timestamp
     updates.sort((a, b) => a.timestamp - b.timestamp);
-    
+
     // Apply all updates in order
     const quickTab = this.quickTabs.get(id);
     for (const update of updates) {
       Object.assign(quickTab, update);
     }
-    
+
     // Clear pending updates
     this.pendingUpdates.delete(id);
-    
+
     // Emit event
     this.eventBus.emit('state:pending-applied', { id, count: updates.length });
   }
-  
+
   addQuickTab(quickTabData) {
     this.quickTabs.set(quickTabData.id, quickTabData);
-    
+
     // Apply any pending updates
     this.applyPendingUpdates(quickTabData.id);
-    
+
     this.eventBus.emit('state:added', quickTabData);
   }
 }
@@ -671,21 +744,21 @@ class StateManager {
 class BroadcastManager {
   setupBroadcastChannel() {
     // ... existing setup
-    
+
     // NEW: Broadcast full state snapshot every 5 seconds
     this.snapshotInterval = setInterval(() => {
       this.broadcastStateSnapshot();
     }, 5000);
   }
-  
+
   async broadcastStateSnapshot() {
     // Get all Quick Tabs from StateManager
     const allQuickTabs = this.stateManager.getAll();
-    
+
     if (allQuickTabs.length === 0) {
       return; // No state to broadcast
     }
-    
+
     // Broadcast as special SNAPSHOT message
     await this.broadcast('SNAPSHOT', {
       quickTabs: allQuickTabs,
@@ -705,14 +778,15 @@ handleBroadcastMessage(type, data) {
     this.stateManager.mergeSnapshot(data.quickTabs);
     return;
   }
-  
+
   // ... handle other message types
 }
 ```
 
 **Benefit:**
 
-- New tabs that missed CREATE/UPDATE broadcasts will receive full state within 5 seconds
+- New tabs that missed CREATE/UPDATE broadcasts will receive full state within 5
+  seconds
 - Provides self-healing mechanism for state divergence
 - Minimal overhead (5-second interval)
 
@@ -724,11 +798,13 @@ handleBroadcastMessage(type, data) {
 
 **Priority P0:**
 
-1. **Make tab visibility refresh additive, not destructive** (SyncCoordinator.js)
+1. **Make tab visibility refresh additive, not destructive**
+   (SyncCoordinator.js)
    - Change `hydrate()` to merge with existing state instead of replacing
    - Add timestamp-based conflict resolution
 
-2. **Serialize storage writes before broadcasts** (UpdateHandler.js, CreateHandler.js)
+2. **Serialize storage writes before broadcasts** (UpdateHandler.js,
+   CreateHandler.js)
    - Add `await` on all storage.save() calls before broadcasting
    - Ensures storage is up-to-date when broadcasts arrive
 
@@ -745,7 +821,8 @@ handleBroadcastMessage(type, data) {
    - Replay messages from last 30 seconds on tab initialization
    - Provides reliable state recovery for late-joining tabs
 
-5. **Implement state verification with background script** (index.js, background script)
+5. **Implement state verification with background script** (index.js, background
+   script)
    - Background script maintains authoritative state
    - Content scripts verify against background on initialization
    - Fallback when storage/broadcast mechanisms fail
@@ -866,8 +943,10 @@ handleBroadcastMessage(type, data) {
 
 ### GitHub Issues
 
-- **Issue #51**: "Quick Tabs' Size and Position are Unable to Update and Transfer Over Between Tabs"
-  - URL: https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues/51
+- **Issue #51**: "Quick Tabs' Size and Position are Unable to Update and
+  Transfer Over Between Tabs"
+  - URL:
+    https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues/51
   - Created: 2025-11-10
   - Status: Open
   - This document addresses this issue comprehensively
@@ -875,22 +954,29 @@ handleBroadcastMessage(type, data) {
 ### Related Components
 
 - **BroadcastChannel API**: Real-time cross-tab messaging
-- **browser.storage.sync**: Persistent state storage (may be hitting quota limits)
+- **browser.storage.sync**: Persistent state storage (may be hitting quota
+  limits)
 - **browser.storage.local**: Fallback and broadcast history storage
 - **StateManager**: In-memory state tracking
 - **SyncCoordinator**: Orchestrates storage ↔ broadcast sync
 
 ### Known Limitations
 
-1. **BroadcastChannel not available**: Falls back to storage-based messaging (slower, ~50-200ms latency)
-2. **Storage quota limits**: browser.storage.sync has 100KB limit per key, 1MB total
-3. **Container isolation**: Quick Tabs are container-specific (Firefox Multi-Account Containers)
+1. **BroadcastChannel not available**: Falls back to storage-based messaging
+   (slower, ~50-200ms latency)
+2. **Storage quota limits**: browser.storage.sync has 100KB limit per key, 1MB
+   total
+3. **Container isolation**: Quick Tabs are container-specific (Firefox
+   Multi-Account Containers)
 
 ---
 
 ## Conclusion
 
-All three reported Quick Tab synchronization issues stem from a common architectural flaw: **the assumption that storage writes complete before broadcasts arrive at other tabs**. This assumption is violated in practice due to:
+All three reported Quick Tab synchronization issues stem from a common
+architectural flaw: **the assumption that storage writes complete before
+broadcasts arrive at other tabs**. This assumption is violated in practice due
+to:
 
 1. Async storage writes (50-200ms)
 2. Instant broadcast delivery (<10ms)
@@ -905,7 +991,9 @@ All three reported Quick Tab synchronization issues stem from a common architect
 5. **Adding state verification with background** (robust recovery)
 6. **Adding periodic state snapshots** (self-healing)
 
-These changes will ensure Quick Tabs sync reliably across all tabs regardless of:
+These changes will ensure Quick Tabs sync reliably across all tabs regardless
+of:
+
 - When tabs are loaded
 - What domains tabs are viewing
 - The timing of user interactions

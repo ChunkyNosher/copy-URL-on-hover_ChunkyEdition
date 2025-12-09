@@ -41,10 +41,13 @@ function getTerserConfig() {
       dead_code: config.compress.dead_code ?? true,
       unused: config.compress.unused ?? true
     },
-    mangle: config.mangle === false ? false : {
-      properties: config.mangle?.properties ?? false,
-      toplevel: config.mangle?.toplevel ?? false
-    },
+    mangle:
+      config.mangle === false
+        ? false
+        : {
+            properties: config.mangle?.properties ?? false,
+            toplevel: config.mangle?.toplevel ?? false
+          },
     format: {
       beautify: config.format.beautify,
       comments: config.format.comments,

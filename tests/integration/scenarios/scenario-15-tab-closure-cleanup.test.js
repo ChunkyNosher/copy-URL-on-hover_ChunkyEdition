@@ -68,11 +68,11 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
     // Connect channels to simulate cross-tab delivery
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
-        
+
         setTimeout(() => {
           channels.forEach((targetChannel, targetIndex) => {
             if (sourceIndex !== targetIndex && targetChannel.onmessage) {
@@ -85,7 +85,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
 
     // Wire up broadcast handlers for DESTROY messages
     eventBuses.forEach((bus, index) => {
-      bus.on('broadcast:received', (message) => {
+      bus.on('broadcast:received', message => {
         if (message.type === 'DESTROY') {
           const qt = stateManagers[index].get(message.data.id);
           if (qt) {
@@ -180,13 +180,14 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
   describe('State Consistency', () => {
     test('Quick Tab count updates correctly after closure', async () => {
       // Create 3 Quick Tabs
-      const qts = [1, 2, 3].map(i => 
-        new QuickTab({
-          id: `qt-count-${i}`,
-          url: `https://example${i}.com`,
-          position: { left: i * 100, top: i * 100 },
-          size: { width: 800, height: 600 }
-        })
+      const qts = [1, 2, 3].map(
+        i =>
+          new QuickTab({
+            id: `qt-count-${i}`,
+            url: `https://example${i}.com`,
+            position: { left: i * 100, top: i * 100 },
+            size: { width: 800, height: 600 }
+          })
       );
 
       // Add all to all tabs
@@ -254,7 +255,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       // Create event buses
       const eventBus1 = new EventEmitter();
       const eventBus2 = new EventEmitter();
-      
+
       // Create managers for different containers
       const container1Managers = [
         new StateManager(eventBus1, 1001),
@@ -265,19 +266,19 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
         new StateManager(eventBus2, 1002),
         new BroadcastManager(eventBus2, 'firefox-container-1')
       ];
-      
+
       // Setup broadcast channels
       container1Managers[1].setupBroadcastChannel();
       container2Managers[1].setupBroadcastChannel();
-      
+
       // Wire up handlers
-      eventBus1.on('broadcast:received', (message) => {
+      eventBus1.on('broadcast:received', message => {
         if (message.type === 'DESTROY') {
           container1Managers[0].delete(message.data.id);
         }
       });
 
-      eventBus2.on('broadcast:received', (message) => {
+      eventBus2.on('broadcast:received', message => {
         if (message.type === 'DESTROY') {
           container2Managers[0].delete(message.data.id);
         }
@@ -321,13 +322,14 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
   describe('Concurrent Closures', () => {
     test('multiple Quick Tabs can be closed simultaneously', async () => {
       // Create 5 Quick Tabs
-      const qts = [1, 2, 3, 4, 5].map(i =>
-        new QuickTab({
-          id: `qt-concurrent-${i}`,
-          url: `https://example${i}.com`,
-          position: { left: i * 100, top: i * 100 },
-          size: { width: 800, height: 600 }
-        })
+      const qts = [1, 2, 3, 4, 5].map(
+        i =>
+          new QuickTab({
+            id: `qt-concurrent-${i}`,
+            url: `https://example${i}.com`,
+            position: { left: i * 100, top: i * 100 },
+            size: { width: 800, height: 600 }
+          })
       );
 
       // Add all to all tabs
@@ -339,7 +341,7 @@ describe('Scenario 15: Tab Closure Cleanup Protocol', () => {
       stateManagers[0].delete(qts[0].id);
       stateManagers[0].delete(qts[2].id);
       stateManagers[0].delete(qts[4].id);
-      
+
       await Promise.all([
         broadcastManagers[0].broadcast('DESTROY', { id: qts[0].id, container: qts[0].container }),
         broadcastManagers[0].broadcast('DESTROY', { id: qts[2].id, container: qts[2].container }),

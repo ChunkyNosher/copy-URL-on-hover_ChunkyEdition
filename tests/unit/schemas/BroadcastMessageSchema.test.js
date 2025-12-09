@@ -1,6 +1,6 @@
 /**
  * BroadcastMessageSchema Unit Tests
- * 
+ *
  * Tests message validation, sanitization, and error handling
  * Related: Gap 3 - Malformed Message Validation
  */
@@ -201,7 +201,7 @@ describe('BroadcastMessageSchema', () => {
   });
 
   describe('Simple Message Types (MINIMIZE, RESTORE, CLOSE)', () => {
-    test.each(['MINIMIZE', 'RESTORE', 'CLOSE'])('validates %s message', (type) => {
+    test.each(['MINIMIZE', 'RESTORE', 'CLOSE'])('validates %s message', type => {
       const message = {
         type,
         data: {
@@ -214,7 +214,7 @@ describe('BroadcastMessageSchema', () => {
       expect(result.sanitizedData).toEqual({ id: 'qt-123' });
     });
 
-    test.each(['MINIMIZE', 'RESTORE', 'CLOSE'])('rejects %s message without id', (type) => {
+    test.each(['MINIMIZE', 'RESTORE', 'CLOSE'])('rejects %s message without id', type => {
       const message = {
         type,
         data: {}

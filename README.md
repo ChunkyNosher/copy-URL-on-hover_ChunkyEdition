@@ -1,37 +1,54 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.6-v5** - A feature-rich **Firefox/Chrome/Chromium** extension for quick URL copying and advanced Quick Tab management with **Solo/Mute visibility control**, **Per-Tab Isolation**, and Persistent Floating Panel Manager.
+**Version 1.6.3.6-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
+for quick URL copying and advanced Quick Tab management with **Solo/Mute
+visibility control**, **Per-Tab Isolation**, and Persistent Floating Panel
+Manager.
 
-**🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave, Opera, and other Chromium-based browsers using Manifest v2 with webextension-polyfill.
+**🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
+Opera, and other Chromium-based browsers using Manifest v2 with
+webextension-polyfill.
 
-**🔧 v1.6.3.6-v5 Status:** Critical stability fixes for cross-tab isolation, deletion loops, and logging infrastructure ✅
+**🔧 v1.6.3.6-v5 Status:** Critical stability fixes for cross-tab isolation,
+deletion loops, and logging infrastructure ✅
 
-This is a complete, customizable Firefox extension that allows you to copy URLs or link text by pressing keyboard shortcuts while hovering over links, plus powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+This is a complete, customizable Firefox extension that allows you to copy URLs
+or link text by pressing keyboard shortcuts while hovering over links, plus
+powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ## 🎉 What's New in v1.6.3.6-v5
 
 **🔧 Critical Stability Fixes (December 6, 2025) ✅**
 
-Major fixes for cross-tab isolation, deletion handling, and logging infrastructure:
+Major fixes for cross-tab isolation, deletion handling, and logging
+infrastructure:
 
-- ✅ **Cross-Tab State Contamination Fixed** - Quick Tabs no longer leak between browser tabs
-  - `_shouldRenderOnThisTab()` now strictly rejects Quick Tabs with null/undefined `originTabId`
+- ✅ **Cross-Tab State Contamination Fixed** - Quick Tabs no longer leak between
+  browser tabs
+  - `_shouldRenderOnThisTab()` now strictly rejects Quick Tabs with
+    null/undefined `originTabId`
   - Added `_checkTabScopeWithReason()` for unified tab scope validation
   - Structured init logging shows total/validated/filtered counts
-- ✅ **Deletion Loop / Log Explosion Fixed** - Single deletion now produces single log sequence
+- ✅ **Deletion Loop / Log Explosion Fixed** - Single deletion now produces
+  single log sequence
   - Deletion state machine prevents cascading loops
   - DestroyHandler is now the single authoritative deletion path
   - `_destroyedIds` Set prevents duplicate destruction
-- ✅ **Inconsistent UI Delete Behavior Fixed** - UI button and Manager close now behave identically
+- ✅ **Inconsistent UI Delete Behavior Fixed** - UI button and Manager close now
+  behave identically
   - Added `initiateDestruction()` unified entry point
   - Both paths route through background-coordinated broadcasts
   - Sender tab filtering prevents echo loops
-- ✅ **Logging Infrastructure Improved** - Full observability for storage and messaging
+- ✅ **Logging Infrastructure Improved** - Full observability for storage and
+  messaging
   - Storage operation logging with timing and status (no payloads)
   - Cross-tab message logging with correlation IDs
   - Deletion propagation tracking end-to-end
 
-**Why This Matters:** The previous implementation had critical bugs where Quick Tabs would appear in wrong tabs, closing a Quick Tab would trigger infinite log spam, and deletion behavior differed between UI button and Manager. These issues are now fully resolved.
+**Why This Matters:** The previous implementation had critical bugs where Quick
+Tabs would appear in wrong tabs, closing a Quick Tab would trigger infinite log
+spam, and deletion behavior differed between UI button and Manager. These issues
+are now fully resolved.
 
 ---
 
@@ -53,93 +70,134 @@ Major improvements to filter workflow and UI consistency based on user feedback:
 - ✅ **Architectural Improvements** - Better code organization
   - Added `gatherFilterSettings()` for unified filter collection
   - Modified `saveSettings()` to be async and handle filters
-  - Removed redundant `saveFilterSettings()` and `resetFilterSettings()` functions
+  - Removed redundant `saveFilterSettings()` and `resetFilterSettings()`
+    functions
   - Buttons aligned with title text baseline (not geometric center)
   - Increased spacing between count and buttons (+25px)
   - Reduced vertical spacing in category lists (-10px)
   - Replaced emoji button labels with clear text ("Select All" / "Deselect All")
 
-**Why This Matters:** The previous implementation logged every keystroke to the console, making debugging impossible. Now only actual shortcut executions are logged, providing clean, actionable debug output.
+**Why This Matters:** The previous implementation logged every keystroke to the
+console, making debugging impossible. Now only actual shortcut executions are
+logged, providing clean, actionable debug output.
 
-**Documentation:** [Implementation Analysis](docs/manual/v1.6.0/v1.6.0.9-debug-console-filter-and-ui-issues-comprehensive-analysis.md)
+**Documentation:**
+[Implementation Analysis](docs/manual/v1.6.0/v1.6.0.9-debug-console-filter-and-ui-issues-comprehensive-analysis.md)
 
 ---
 
 ## 🎯 Firefox Sidebar Integration (v1.6.2) - UPDATED!
 
-**Unified Settings Sidebar for Firefox** - All settings and Quick Tabs Manager now in the sidebar!
+**Unified Settings Sidebar for Firefox** - All settings and Quick Tabs Manager
+now in the sidebar!
 
 ### Firefox Users (Native Sidebar Experience)
-- **🔧 Complete Settings in Sidebar** - Click the toolbar button OR press `Alt+Shift+S` to open
+
+- **🔧 Complete Settings in Sidebar** - Click the toolbar button OR press
+  `Alt+Shift+S` to open
 - **📑 5 Tabs** - Copy URL, Quick Tabs, Appearance, Advanced, and Manager tabs
-- **🪟 Integrated Quick Tabs Manager** - View all active Quick Tabs in the Manager tab
+- **🪟 Integrated Quick Tabs Manager** - View all active Quick Tabs in the
+  Manager tab
 - **🔄 Real-time Sync** - Settings changes sync across all tabs instantly
-- **💾 All Settings Features** - Full Quick Tabs configuration, console log filtering, debug tools
+- **💾 All Settings Features** - Full Quick Tabs configuration, console log
+  filtering, debug tools
 
 ### Chrome/Edge/Brave Users (Popup Compatibility)
-- **📦 Traditional Popup** - Toolbar button opens the standard settings popup (unchanged)
+
+- **📦 Traditional Popup** - Toolbar button opens the standard settings popup
+  (unchanged)
 - **⚙️ Settings Page** - Access via Extensions page → Extension Options
 - **✅ Full Feature Parity** - All features work identically to Firefox
 
 ### Keyboard Shortcuts
-- **Firefox Sidebar Settings:** `Alt+Shift+S` - Toggle complete settings sidebar (NEW!)
-- **Quick Tabs Manager:** `Alt+Shift+Z` - Toggle floating Quick Tabs Manager panel (UPDATED!)
+
+- **Firefox Sidebar Settings:** `Alt+Shift+S` - Toggle complete settings sidebar
+  (NEW!)
+- **Quick Tabs Manager:** `Alt+Shift+Z` - Toggle floating Quick Tabs Manager
+  panel (UPDATED!)
 
 ### Why This Matters
-Firefox's sidebar API provides a persistent, always-accessible interface for ALL settings without leaving your current page. The complete popup UI has been migrated to the sidebar, including all 4 settings tabs PLUS the Quick Tabs Manager. Chrome/Chromium browsers don't support sidebars, so they continue using the traditional popup approach.
 
-**Cross-Browser Note:** This extension intelligently detects browser capabilities and provides the best user experience for each platform. Firefox users get the complete settings experience in a native sidebar, while Chrome users keep the familiar popup interface.
+Firefox's sidebar API provides a persistent, always-accessible interface for ALL
+settings without leaving your current page. The complete popup UI has been
+migrated to the sidebar, including all 4 settings tabs PLUS the Quick Tabs
+Manager. Chrome/Chromium browsers don't support sidebars, so they continue using
+the traditional popup approach.
+
+**Cross-Browser Note:** This extension intelligently detects browser
+capabilities and provides the best user experience for each platform. Firefox
+users get the complete settings experience in a native sidebar, while Chrome
+users keep the familiar popup interface.
 
 ---
 
-**Previous Release: v1.6.0.8 - Live Console Output & Export Filtering (November 21, 2025)**
+**Previous Release: v1.6.0.8 - Live Console Output & Export Filtering (November
+21, 2025)**
 
-Granular control over console log output to reduce noise and improve debugging experience:
+Granular control over console log output to reduce noise and improve debugging
+experience:
 
-- ✅ **Live Console Filtering** - Control what appears in browser console in real-time
-  - 16 log categories organized into 3 groups (User Actions, System Operations, Diagnostics)
-  - Disable noisy categories (Hover, URL Detection) by default for cleaner console
+- ✅ **Live Console Filtering** - Control what appears in browser console in
+  real-time
+  - 16 log categories organized into 3 groups (User Actions, System Operations,
+    Diagnostics)
+  - Disable noisy categories (Hover, URL Detection) by default for cleaner
+    console
   - Independent settings for each category
 - ✅ **Export Log Filtering** - Control what gets included in .txt export files
   - Separate filter settings for live console vs export (maximum flexibility)
   - All categories enabled by default for comprehensive debugging
   - Export metadata shows which filters were applied
-- ✅ **Collapsible Filter UI** - Space-efficient accordion groups in Advanced tab
+- ✅ **Collapsible Filter UI** - Space-efficient accordion groups in Advanced
+  tab
   - Expandable/collapsible category groups
   - Select All / Deselect All buttons per group
   - Visual category icons for easy identification
 
-**Why This Matters:** Hover and URL Detection events can generate hundreds of logs, flooding the console and making Quick Tab debugging difficult. With filtering, you can disable noisy categories while keeping important logs visible.
+**Why This Matters:** Hover and URL Detection events can generate hundreds of
+logs, flooding the console and making Quick Tab debugging difficult. With
+filtering, you can disable noisy categories while keeping important logs
+visible.
 
 **Usage:** Extension popup → Advanced tab → Console Log Filters section
 
-**Documentation:** [Implementation Guide](docs/manual/v1.6.0/live-console-and-export-filtering-guide.md)
+**Documentation:**
+[Implementation Guide](docs/manual/v1.6.0/live-console-and-export-filtering-guide.md)
 
 ---
 
 **Previous Release: v1.6.0.3 - Critical Bug Fixes (November 20, 2025)**
 
-- ✅ **Quick Tabs Not Rendering** - Fixed PanelManager initialization race condition
-- ✅ **Quick Tab Manager Panel Not Opening** - Keyboard shortcut (Ctrl+Alt+Z) now works
+- ✅ **Quick Tabs Not Rendering** - Fixed PanelManager initialization race
+  condition
+- ✅ **Quick Tab Manager Panel Not Opening** - Keyboard shortcut (Ctrl+Alt+Z)
+  now works
 - ✅ **Copy Text Keyboard Shortcut Failing** - Enhanced error logging
 
-**Documentation:** [Bug Diagnosis Report](docs/manual/v1.6.0.3-bug-diagnosis-and-fix-report.md) | [Release Summary](docs/misc/v1.6.0.3-RELEASE-SUMMARY.md)
+**Documentation:**
+[Bug Diagnosis Report](docs/manual/v1.6.0.3-bug-diagnosis-and-fix-report.md) |
+[Release Summary](docs/misc/v1.6.0.3-RELEASE-SUMMARY.md)
 
 ---
 
 **🏗️ v1.6.0 Architecture Refactoring - Domain-Driven Design**
 
-v1.6.0 represents a comprehensive architectural transformation to reduce technical debt and improve maintainability following evidence-based patterns from Mozilla, Chrome, and industry best practices.
+v1.6.0 represents a comprehensive architectural transformation to reduce
+technical debt and improve maintainability following evidence-based patterns
+from Mozilla, Chrome, and industry best practices.
 
 **Phase 1: Domain Layer + Storage Abstraction (100% COMPLETE ✅)**
 
-- ✅ **QuickTab Domain Entity** - Pure business logic (100% test coverage, 49 tests)
+- ✅ **QuickTab Domain Entity** - Pure business logic (100% test coverage, 49
+  tests)
   - Solo/Mute visibility rules
   - Position/size/z-index management
   - Dead tab cleanup
   - Container isolation
-- ✅ **Container Domain Entity** - Firefox container support (100% coverage, 34 tests)
-- ✅ **Storage Abstraction Layer** - Async-first adapters (92% coverage, 76 tests)
+- ✅ **Container Domain Entity** - Firefox container support (100% coverage, 34
+  tests)
+- ✅ **Storage Abstraction Layer** - Async-first adapters (92% coverage, 76
+  tests)
   - SyncStorageAdapter with quota management
   - SessionStorageAdapter for temporary storage
   - Automatic fallback to local storage
@@ -152,7 +210,8 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 - Architecture boundaries enforced by ESLint
 - Bundle size monitoring (content.js <500KB, background.js <300KB)
 
-**Status:** Phase 1 COMPLETE. Next: Phase 2.1 (QuickTabsManager decomposition). See [Phase 1 Complete Report](docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md)
+**Status:** Phase 1 COMPLETE. Next: Phase 2.1 (QuickTabsManager decomposition).
+See [Phase 1 Complete Report](docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md)
 
 ---
 
@@ -162,8 +221,10 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 
 ✓ Quick URL Copying with keyboard shortcuts  
 ✓ Quick Tabs - Floating, draggable, resizable iframe windows  
-✓ **Solo/Mute Visibility Control** - Tab-specific Quick Tab visibility (v1.5.9.13)  
-✓ **Firefox Container Isolation** - Complete container boundary respect (v1.5.9.12)  
+✓ **Solo/Mute Visibility Control** - Tab-specific Quick Tab visibility
+(v1.5.9.13)  
+✓ **Firefox Container Isolation** - Complete container boundary respect
+(v1.5.9.12)  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
 ✓ **Cross-Tab Sync via storage.onChanged (v1.6.2+)**  
 ✓ Z-Index Management - Smart layering based on interaction  
@@ -196,17 +257,20 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 
 ### Firefox/Zen Browser (Recommended)
 
-1. Go to [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+1. Go to
+   [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
 2. Download latest `firefox-extension-vX.X.X.xpi` file
 3. Open Firefox/Zen Browser → `about:addons`
 4. Click gear icon (⚙️) → "Install Add-on From File..."
 5. Select the `.xpi` file and confirm
 
-**Auto-updates enabled** - Extension will notify you of new versions automatically.
+**Auto-updates enabled** - Extension will notify you of new versions
+automatically.
 
 ### Chrome/Edge/Brave/Opera
 
-1. Go to [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+1. Go to
+   [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
 2. Download latest `chrome-extension-vX.X.X.zip` file
 3. Extract the ZIP file to a permanent folder (don't delete after installation!)
 4. Open browser extensions page:
@@ -217,18 +281,23 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 5. Enable "Developer mode" (toggle in top-right corner)
 6. Click "Load unpacked" and select the extracted folder
 
-**Note:** Chrome/Chromium-based browsers don't support auto-updates for manually installed extensions. Check the [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases) page for updates.
+**Note:** Chrome/Chromium-based browsers don't support auto-updates for manually
+installed extensions. Check the
+[Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
+page for updates.
 
 ### Manual Installation (Development)
 
 **Firefox:**
+
 1. Navigate to `about:debugging` in Firefox
 2. Click "This Firefox" → "Load Temporary Add-on"
 3. Select `manifest.json` from the extension folder
 4. Extension loaded (removed on browser restart)
 
 **Chrome/Chromium:**
-1. Navigate to `chrome://extensions/` 
+
+1. Navigate to `chrome://extensions/`
 2. Enable "Developer mode" (top-right toggle)
 3. Click "Load unpacked"
 4. Select the extension's `dist/` directory
@@ -236,28 +305,32 @@ v1.6.0 represents a comprehensive architectural transformation to reduce technic
 ## 🌐 Browser Compatibility
 
 ### Fully Supported
+
 ✅ **Firefox** - All features including Firefox Container isolation  
 ✅ **Zen Browser** - Full Firefox-based feature set  
-✅ **Chrome/Chromium** - Core features (containers degrade to single default container)  
+✅ **Chrome/Chromium** - Core features (containers degrade to single default
+container)  
 ✅ **Edge** - Chrome-compatible, all core features work  
 ✅ **Brave** - Chrome-compatible, all core features work  
 ✅ **Opera** - Chrome-compatible, all core features work
 
 ### Feature Matrix
 
-| Feature | Firefox/Zen | Chrome/Edge/Brave/Opera |
-|---------|-------------|------------------------|
-| Copy URL (Y key) | ✅ | ✅ |
-| Copy Text (X key) | ✅ | ✅ |
-| Quick Tabs | ✅ | ✅ |
-| Solo/Mute | ✅ | ✅ (global only) |
-| Container Isolation | ✅ | ⚠️ Single default container |
-| Quick Tabs Manager | ✅ | ✅ |
-| Settings Persistence | ✅ | ✅ |
-| **Sidebar Settings UI** | ✅ Native sidebar | ⚠️ Traditional popup |
-| **Keyboard Shortcut** | ✅ Ctrl+Shift+S | ⚠️ Via extensions menu |
+| Feature                 | Firefox/Zen       | Chrome/Edge/Brave/Opera     |
+| ----------------------- | ----------------- | --------------------------- |
+| Copy URL (Y key)        | ✅                | ✅                          |
+| Copy Text (X key)       | ✅                | ✅                          |
+| Quick Tabs              | ✅                | ✅                          |
+| Solo/Mute               | ✅                | ✅ (global only)            |
+| Container Isolation     | ✅                | ⚠️ Single default container |
+| Quick Tabs Manager      | ✅                | ✅                          |
+| Settings Persistence    | ✅                | ✅                          |
+| **Sidebar Settings UI** | ✅ Native sidebar | ⚠️ Traditional popup        |
+| **Keyboard Shortcut**   | ✅ Ctrl+Shift+S   | ⚠️ Via extensions menu      |
 
-**Note:** Firefox Containers are a Firefox-exclusive feature. On Chrome/Chromium browsers, all tabs are treated as a single "default" container, and Solo/Mute works globally rather than per-container.
+**Note:** Firefox Containers are a Firefox-exclusive feature. On Chrome/Chromium
+browsers, all tabs are treated as a single "default" container, and Solo/Mute
+works globally rather than per-container.
 
 ## 📖 Usage
 
@@ -338,27 +411,36 @@ Access settings by clicking the extension icon.
 
 ## 🔒 Security Notice
 
-**Manifest v2 Required:** Uses `webRequestBlocking` permission to modify X-Frame-Options and CSP headers for Quick Tabs iframe display.
+**Manifest v2 Required:** Uses `webRequestBlocking` permission to modify
+X-Frame-Options and CSP headers for Quick Tabs iframe display.
 
-**X-Frame-Options Bypass:** Removes headers to allow any website in iframes. Removes clickjacking protection for iframed content.
+**X-Frame-Options Bypass:** Removes headers to allow any website in iframes.
+Removes clickjacking protection for iframed content.
 
-**Firefox Container Isolation (v1.5.9.12+):** Quick Tabs respect Firefox Container boundaries for additional isolation.
+**Firefox Container Isolation (v1.5.9.12+):** Quick Tabs respect Firefox
+Container boundaries for additional isolation.
 
 **Use at your own discretion.** Only open Quick Tabs from trusted websites.
 
 ## 🐛 Known Limitations
 
-1. **Quick Tab Focus:** Clicking inside iframe captures keyboard focus. Click main page to restore shortcuts.
-2. **Nested Quick Tabs:** Only works for same-origin iframes. Use "Open in New Tab" for cross-origin.
-3. **Zen Browser Themes:** Cannot detect Zen workspace themes. Use built-in dark mode.
+1. **Quick Tab Focus:** Clicking inside iframe captures keyboard focus. Click
+   main page to restore shortcuts.
+2. **Nested Quick Tabs:** Only works for same-origin iframes. Use "Open in New
+   Tab" for cross-origin.
+3. **Zen Browser Themes:** Cannot detect Zen workspace themes. Use built-in dark
+   mode.
 4. **Manifest v2:** Must remain on v2 for `webRequestBlocking` support.
 
 ## 📚 Documentation
 
-- **Changelog:** See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
+- **Changelog:** See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version
+  history
 - **Architecture:** See `/docs/manual/` for architecture documentation
-- **Refactoring Plan:** [copy-url-on-hover-refactoring-plan-v2-evidence-based.md](docs/manual/1.5.9%20docs/copy-url-on-hover-refactoring-plan-v2-evidence-based.md)
-- **Phase 1 Complete:** [v1.6.0-REFACTORING-PHASE1-COMPLETE.md](docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md)
+- **Refactoring Plan:**
+  [copy-url-on-hover-refactoring-plan-v2-evidence-based.md](docs/manual/1.5.9%20docs/copy-url-on-hover-refactoring-plan-v2-evidence-based.md)
+- **Phase 1 Complete:**
+  [v1.6.0-REFACTORING-PHASE1-COMPLETE.md](docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md)
 
 ## 🛠️ Development
 
@@ -381,7 +463,8 @@ npm run test:watch      # Watch mode
 
 ### Interactive Browser Testing with Playwright MCP
 
-Test the extension in a live browser using Playwright MCP for interactive debugging:
+Test the extension in a live browser using Playwright MCP for interactive
+debugging:
 
 ```bash
 npm run build:prod      # Build extension first
@@ -389,7 +472,9 @@ npm run mcp:chrome      # Launch Chrome with extension
 npm run mcp:firefox     # Launch Firefox with extension
 ```
 
-See [docs/PLAYWRIGHT_MCP_TESTING.md](docs/PLAYWRIGHT_MCP_TESTING.md) for complete testing guide including:
+See [docs/PLAYWRIGHT_MCP_TESTING.md](docs/PLAYWRIGHT_MCP_TESTING.md) for
+complete testing guide including:
+
 - MCP server configuration
 - Testing Quick Tabs features interactively
 - Keyboard shortcut testing
@@ -412,7 +497,8 @@ npm run ci:full   # Complete CI (lint, test, build, validate)
 
 ## 🌐 Supported Websites (100+)
 
-See [docs/manual/supported-sites.md](docs/manual/supported-sites.md) for the complete list of optimized websites including:
+See [docs/manual/supported-sites.md](docs/manual/supported-sites.md) for the
+complete list of optimized websites including:
 
 - Social media (Twitter, LinkedIn, Facebook, Instagram)
 - Code repositories (GitHub, GitLab, Bitbucket)
@@ -429,8 +515,11 @@ See [docs/manual/supported-sites.md](docs/manual/supported-sites.md) for the com
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
+for details.
 
 ---
 
-**Version 1.6.3.6-v5** | [Changelog](docs/CHANGELOG.md) | [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) | [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
+**Version 1.6.3.6-v5** | [Changelog](docs/CHANGELOG.md) |
+[GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
+[Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

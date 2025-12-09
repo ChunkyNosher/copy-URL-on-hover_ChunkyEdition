@@ -8,9 +8,14 @@
 
 ## Executive Summary
 
-Fixed critical bug where Quick Tabs failed to initialize due to improper use of privileged browser APIs (`browser.tabs`) in content script context. Also fixed Copy Text functionality to properly validate and handle empty text. All instances of `browser.tabs` usage in content-accessible code have been replaced with message passing to background script.
+Fixed critical bug where Quick Tabs failed to initialize due to improper use of
+privileged browser APIs (`browser.tabs`) in content script context. Also fixed
+Copy Text functionality to properly validate and handle empty text. All
+instances of `browser.tabs` usage in content-accessible code have been replaced
+with message passing to background script.
 
-**Result:** Quick Tabs now initialize correctly, panel opens on Ctrl+Alt+Z, Quick Tabs can be created, and Copy Text properly validates input.
+**Result:** Quick Tabs now initialize correctly, panel opens on Ctrl+Alt+Z,
+Quick Tabs can be created, and Copy Text properly validates input.
 
 ---
 
@@ -18,7 +23,9 @@ Fixed critical bug where Quick Tabs failed to initialize due to improper use of 
 
 ### 1. Quick Tabs Initialization Failure (CRITICAL)
 
-**Root Cause:** Content scripts attempted to directly call `browser.tabs.query()` and `browser.tabs.update()`, which are not available in content script context per Firefox WebExtension security model.
+**Root Cause:** Content scripts attempted to directly call
+`browser.tabs.query()` and `browser.tabs.update()`, which are not available in
+content script context per Firefox WebExtension security model.
 
 **Impact:**
 
@@ -29,16 +36,21 @@ Fixed critical bug where Quick Tabs failed to initialize due to improper use of 
 
 **Files Affected:**
 
-- `src/features/quick-tabs/index.js` - `detectContainerContext()`, `getCurrentContainer()`
+- `src/features/quick-tabs/index.js` - `detectContainerContext()`,
+  `getCurrentContainer()`
 - `src/features/quick-tabs/panel.js` - `detectContainerContext()`
-- `src/features/quick-tabs/panel/PanelStateManager.js` - `detectContainerContext()`
+- `src/features/quick-tabs/panel/PanelStateManager.js` -
+  `detectContainerContext()`
 - `src/features/quick-tabs/panel/PanelContentManager.js` - `handleGoToTab()`
 
-**Solution:** Replaced all direct `browser.tabs` API calls with message passing to background script which has full API access.
+**Solution:** Replaced all direct `browser.tabs` API calls with message passing
+to background script which has full API access.
 
 ### 2. Copy Text Failure
 
-**Root Cause:** `getLinkText()` could return empty strings, and `copyToClipboard()` didn't validate input, causing clipboard API to fail silently.
+**Root Cause:** `getLinkText()` could return empty strings, and
+`copyToClipboard()` didn't validate input, causing clipboard API to fail
+silently.
 
 **Impact:**
 
@@ -80,7 +92,8 @@ Background Script → returns result → Content Script
 
 **File:** `src/background/handlers/QuickTabHandler.js`
 
-**Purpose:** Provides container context (cookieStoreId, tabId) to content scripts
+**Purpose:** Provides container context (cookieStoreId, tabId) to content
+scripts
 
 **Request:**
 
@@ -423,7 +436,8 @@ npm run build:prod
 
 ### Content Script API Restrictions
 
-Per [MDN Documentation](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#webextension_apis):
+Per
+[MDN Documentation](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#webextension_apis):
 
 **Available in Content Scripts:**
 
@@ -440,7 +454,8 @@ Per [MDN Documentation](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons
 - ❌ `commands`
 - ❌ `contextMenus`
 
-**Solution:** Content scripts must use `runtime.sendMessage()` to request privileged operations from background script.
+**Solution:** Content scripts must use `runtime.sendMessage()` to request
+privileged operations from background script.
 
 ---
 
@@ -448,13 +463,16 @@ Per [MDN Documentation](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons
 
 ### 1. Always Check API Availability
 
-When moving code between contexts (background → content script), verify each API is available in the target context.
+When moving code between contexts (background → content script), verify each API
+is available in the target context.
 
 **Pattern to use:**
 
 ```javascript
 // In content script - use message passing
-const response = await browser.runtime.sendMessage({ action: 'DO_PRIVILEGED_THING' });
+const response = await browser.runtime.sendMessage({
+  action: 'DO_PRIVILEGED_THING'
+});
 
 // In background script - use privileged API
 messageRouter.register('DO_PRIVILEGED_THING', async (msg, sender) => {
@@ -465,7 +483,8 @@ messageRouter.register('DO_PRIVILEGED_THING', async (msg, sender) => {
 
 ### 2. Validate Input Early
 
-Always validate input at the earliest possible point to provide clear error messages.
+Always validate input at the earliest possible point to provide clear error
+messages.
 
 **Pattern to use:**
 
@@ -485,7 +504,8 @@ async function handleAction(input) {
 
 ### 3. Test Context Boundaries
 
-When refactoring across different execution contexts, ensure tests properly mock the cross-context communication.
+When refactoring across different execution contexts, ensure tests properly mock
+the cross-context communication.
 
 **Pattern to use:**
 
@@ -536,14 +556,20 @@ global.browser = {
 
 ## Related Documentation
 
-- **Original diagnosis:** `docs/manual/v1.6.0/quick-tabs-init-failure-diagnosis.md`
-- **Firefox API docs:** [MDN: Content scripts](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts)
-- **Message passing:** [MDN: Content script communication](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#communication_with_other_scripts)
+- **Original diagnosis:**
+  `docs/manual/v1.6.0/quick-tabs-init-failure-diagnosis.md`
+- **Firefox API docs:**
+  [MDN: Content scripts](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts)
+- **Message passing:**
+  [MDN: Content script communication](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#communication_with_other_scripts)
 
 ---
 
 ## Conclusion
 
-All instances of privileged browser API usage in content scripts have been fixed. The extension now properly uses message passing architecture to request privileged operations from the background script. Quick Tabs functionality is fully restored, and Copy Text properly validates input.
+All instances of privileged browser API usage in content scripts have been
+fixed. The extension now properly uses message passing architecture to request
+privileged operations from the background script. Quick Tabs functionality is
+fully restored, and Copy Text properly validates input.
 
 **Status:** ✅ COMPLETE AND VERIFIED

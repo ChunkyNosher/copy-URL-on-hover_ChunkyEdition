@@ -32,10 +32,7 @@ describe('UpdateHandler', () => {
     mockEventBus = new EventEmitter();
 
     // Create handler
-    updateHandler = new UpdateHandler(
-      mockQuickTabsMap,
-      mockEventBus
-    );
+    updateHandler = new UpdateHandler(mockQuickTabsMap, mockEventBus);
   });
 
   describe('Constructor', () => {

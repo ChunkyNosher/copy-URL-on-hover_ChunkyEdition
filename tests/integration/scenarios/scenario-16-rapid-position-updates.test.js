@@ -70,11 +70,11 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
     // Connect channels to simulate cross-tab delivery
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
-        
+
         setTimeout(() => {
           channels.forEach((targetChannel, targetIndex) => {
             if (sourceIndex !== targetIndex && targetChannel.onmessage) {
@@ -87,7 +87,7 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
 
     // Wire up broadcast handlers for each tab
     eventBuses.forEach((bus, tabIndex) => {
-      bus.on('broadcast:received', (message) => {
+      bus.on('broadcast:received', message => {
         if (message.type === 'CREATE') {
           const existingQt = stateManagers[tabIndex].get(message.data.id);
           if (!existingQt) {
@@ -152,18 +152,18 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
       for (let i = 1; i <= 10; i++) {
         const left = i * 10;
         const top = i * 10;
-        
+
         // Update in Tab A's state
         const qtInA = stateManagers[0].get(qt.id);
         qtInA.updatePosition(left, top);
-        
+
         // Broadcast to other tabs
         broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
           left: left,
           top: top
         });
-        
+
         // Small delay between updates to avoid overwhelming debounce
         await wait(60);
       }
@@ -203,7 +203,7 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         width: qt.size.width,
         height: qt.size.height
       });
-      
+
       await wait(150); // Wait for cross-tab sync
 
       const startTime = Date.now();
@@ -254,7 +254,7 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         width: qt.size.width,
         height: qt.size.height
       });
-      
+
       await wait(150); // Wait for cross-tab sync
 
       // Random rapid updates
@@ -306,7 +306,7 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         width: qt.size.width,
         height: qt.size.height
       });
-      
+
       await wait(150); // Wait for cross-tab sync
 
       // Tab A updates position
@@ -443,9 +443,9 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         width: qt.size.width,
         height: qt.size.height
       });
-      
+
       await wait(150); // Wait for cross-tab sync
-      
+
       // Update size handler is already set up in beforeEach
 
       // Interleave position and size updates
@@ -522,7 +522,7 @@ describe('Scenario 16: Rapid Position Updates Protocol', () => {
         width: qt.size.width,
         height: qt.size.height
       });
-      
+
       await wait(150); // Wait for cross-tab sync
 
       // Perform 100 rapid updates

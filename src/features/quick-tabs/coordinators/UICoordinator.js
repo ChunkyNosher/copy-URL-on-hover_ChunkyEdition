@@ -104,7 +104,14 @@ export class UICoordinator {
    * @param {Object} [handlers.visibilityHandler] - VisibilityHandler for focus/minimize callbacks
    * @param {Object} [handlers.destroyHandler] - DestroyHandler for close callback
    */
-  constructor(stateManager, minimizedManager, panelManager, eventBus, currentTabId = null, handlers = {}) {
+  constructor(
+    stateManager,
+    minimizedManager,
+    panelManager,
+    eventBus,
+    currentTabId = null,
+    handlers = {}
+  ) {
     this.stateManager = stateManager;
     this.minimizedManager = minimizedManager;
     this.panelManager = panelManager;
@@ -130,14 +137,14 @@ export class UICoordinator {
     this._lastRenderTime = new Map(); // id -> timestamp
     // v1.6.3.6-v4 - FIX Issue #5: Track hydration phase to suppress orphaned window warnings
     this._isHydrating = false;
-    
+
     // v1.6.3.5-v10 - FIX Issue #1-2: Store handler references for callback wiring during _createWindow()
     // These handlers are needed to build proper callbacks when restoring Quick Tabs
     this.updateHandler = handlers.updateHandler || null;
     this.visibilityHandler = handlers.visibilityHandler || null;
     this.destroyHandler = handlers.destroyHandler || null;
   }
-  
+
   /**
    * Set handler references after construction (for deferred initialization)
    * v1.6.3.5-v10 - FIX Issue #1-2: Allow setting handlers after UICoordinator is created
@@ -159,7 +166,7 @@ export class UICoordinator {
       hasDestroyHandler: !!this.destroyHandler
     });
   }
-  
+
   /**
    * Verify invariant: tab cannot be in both renderedTabs AND minimizedManager simultaneously
    * v1.6.3.5-v4 - FIX Diagnostic Issue #4: Strengthen invariants
@@ -171,28 +178,33 @@ export class UICoordinator {
   _verifyInvariant(id, operation) {
     const inRenderedTabs = this.renderedTabs.has(id);
     const inMinimizedManager = this._hasMinimizedManager() && this.minimizedManager.isMinimized(id);
-    
+
     // Tab should NOT be in both simultaneously (except during transitions)
     // During restore: briefly in both as we're moving from minimized to rendered
     const violatesInvariant = inRenderedTabs && inMinimizedManager;
-    
+
     if (violatesInvariant) {
       const tabWindow = this.renderedTabs.get(id);
       const isRenderedDOM = tabWindow?.isRendered?.() ?? false;
-      
-      console.error('[UICoordinator] ⛔ INVARIANT VIOLATION: Tab in both renderedTabs AND minimizedManager:', {
-        id,
-        operation,
-        inRenderedTabs,
-        inMinimizedManager,
-        isRenderedDOM,
-        renderedTabsSize: this.renderedTabs.size,
-        minimizedCount: this.minimizedManager?.getCount?.() ?? 0
-      });
-      
+
+      console.error(
+        '[UICoordinator] ⛔ INVARIANT VIOLATION: Tab in both renderedTabs AND minimizedManager:',
+        {
+          id,
+          operation,
+          inRenderedTabs,
+          inMinimizedManager,
+          isRenderedDOM,
+          renderedTabsSize: this.renderedTabs.size,
+          minimizedCount: this.minimizedManager?.getCount?.() ?? 0
+        }
+      );
+
       // Auto-fix: if DOM is not rendered, remove from renderedTabs
       if (!isRenderedDOM) {
-        console.warn('[UICoordinator] Auto-fixing invariant violation: removing from renderedTabs (no DOM)');
+        console.warn(
+          '[UICoordinator] Auto-fixing invariant violation: removing from renderedTabs (no DOM)'
+        );
         this.renderedTabs.delete(id);
         return { valid: true, inRenderedTabs: false, inMinimizedManager };
       }
@@ -204,10 +216,10 @@ export class UICoordinator {
         inMinimizedManager
       });
     }
-    
+
     return { valid: !violatesInvariant, inRenderedTabs, inMinimizedManager };
   }
-  
+
   /**
    * Get detailed logging info for Map operations (Issue #2 fix)
    * v1.6.3.5 - FIX Issue #2: Capture Map state for comprehensive logging
@@ -226,7 +238,7 @@ export class UICoordinator {
       stackDepth: stackLines.length
     };
   }
-  
+
   /**
    * Safely delete from renderedTabs Map with logging and validation
    * v1.6.3.4-v8 - FIX Issue #5: Prevent double deletion and Map corruption
@@ -239,7 +251,7 @@ export class UICoordinator {
   _safeDeleteFromRenderedTabs(id, reason) {
     // v1.6.3.5 - FIX Issue #2: Log Map contents before operation
     const logInfo = this._getMapLogInfo('delete', id);
-    
+
     if (!this.renderedTabs.has(id)) {
       console.warn('[UICoordinator] WARNING: Attempted to delete non-existent Map entry:', {
         ...logInfo,
@@ -247,10 +259,10 @@ export class UICoordinator {
       });
       return false;
     }
-    
+
     const mapSizeBefore = this.renderedTabs.size;
     this.renderedTabs.delete(id);
-    
+
     // v1.6.3.5 - FIX Issue #2: Log Map contents after operation
     console.log('[UICoordinator] renderedTabs.delete():', {
       ...logInfo,
@@ -259,7 +271,7 @@ export class UICoordinator {
       mapSizeAfter: this.renderedTabs.size,
       mapKeysAfter: Array.from(this.renderedTabs.keys())
     });
-    
+
     // v1.6.3.4-v8 - FIX Issue #5: Sanity check - size should never unexpectedly go to zero
     if (mapSizeBefore > 1 && this.renderedTabs.size === 0) {
       console.error('[UICoordinator] CRITICAL: Map unexpectedly empty after single delete!', {
@@ -269,10 +281,10 @@ export class UICoordinator {
         mapKeysBefore: logInfo.mapKeys
       });
     }
-    
+
     return true;
   }
-  
+
   /**
    * Safely clear all entries from renderedTabs Map with logging
    * v1.6.3.4-v11 - FIX Issue #4: Ensure ALL Map.clear() operations are logged
@@ -290,49 +302,52 @@ export class UICoordinator {
     // v1.6.3.5 - FIX Issue #2: Log Map contents before operation
     const logInfo = this._getMapLogInfo('clear', 'all');
     const mapSizeBefore = this.renderedTabs.size;
-    
+
     if (mapSizeBefore === 0) {
-      console.log('[UICoordinator] renderedTabs already empty, nothing to clear:', { 
-        ...logInfo,
-        reason, 
-        source 
-      });
-      return true;
-    }
-    
-    // v1.6.3.4-v12 - FIX Issue #2: Only clear if user-initiated or DOM verification passes
-    if (!userInitiated && !this._verifyAllTabsDOMDetached()) {
-      console.error('[UICoordinator] ⛔ BLOCKED: renderedTabs.clear() rejected - DOM elements still exist:', {
+      console.log('[UICoordinator] renderedTabs already empty, nothing to clear:', {
         ...logInfo,
         reason,
         source
       });
+      return true;
+    }
+
+    // v1.6.3.4-v12 - FIX Issue #2: Only clear if user-initiated or DOM verification passes
+    if (!userInitiated && !this._verifyAllTabsDOMDetached()) {
+      console.error(
+        '[UICoordinator] ⛔ BLOCKED: renderedTabs.clear() rejected - DOM elements still exist:',
+        {
+          ...logInfo,
+          reason,
+          source
+        }
+      );
       return false;
     }
-    
+
     console.warn('[UICoordinator] ⚠️ renderedTabs.clear() called:', {
       ...logInfo,
-      reason, 
-      source, 
-      userInitiated, 
+      reason,
+      source,
+      userInitiated,
       mapSizeBefore
     });
-    
+
     // Stop all DOM monitoring timers and clear
     for (const id of this.renderedTabs.keys()) {
       this._stopDOMMonitoring(id);
     }
     this.renderedTabs.clear();
-    
-    console.log('[UICoordinator] renderedTabs cleared:', { 
-      mapSizeAfter: this.renderedTabs.size, 
-      reason, 
+
+    console.log('[UICoordinator] renderedTabs cleared:', {
+      mapSizeAfter: this.renderedTabs.size,
+      reason,
       source,
       timestamp: Date.now()
     });
     return true;
   }
-  
+
   /**
    * Verify all tracked tabs have detached DOM
    * v1.6.3.4-v12 - Helper to reduce _safeClearRenderedTabs complexity
@@ -342,15 +357,20 @@ export class UICoordinator {
   _verifyAllTabsDOMDetached() {
     for (const [id, tabWindow] of this.renderedTabs) {
       const domElement = this._findDOMElementById(id);
-      const isRendered = tabWindow && typeof tabWindow.isRendered === 'function' && tabWindow.isRendered();
+      const isRendered =
+        tabWindow && typeof tabWindow.isRendered === 'function' && tabWindow.isRendered();
       if (domElement || isRendered) {
-        console.log('[UICoordinator] Tab still has DOM:', { id, hasDOMElement: !!domElement, isRendered });
+        console.log('[UICoordinator] Tab still has DOM:', {
+          id,
+          hasDOMElement: !!domElement,
+          isRendered
+        });
         return false;
       }
     }
     return true;
   }
-  
+
   /**
    * Check if a DOM element exists for a Quick Tab ID
    * v1.6.3.4-v12 - FIX Issue #4: Detect orphaned DOM elements before creating duplicates
@@ -361,7 +381,8 @@ export class UICoordinator {
   _findDOMElementById(quickTabId) {
     try {
       // v1.6.3.4-v12 - FIX Security: Escape ID to prevent CSS injection
-      const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(quickTabId) : quickTabId;
+      const escapedId =
+        typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(quickTabId) : quickTabId;
       const element = document.querySelector(`[data-quicktab-id="${escapedId}"]`);
       if (element) {
         console.log('[UICoordinator] Found existing DOM element for Quick Tab:', {
@@ -375,7 +396,7 @@ export class UICoordinator {
       return null;
     }
   }
-  
+
   /**
    * Get next z-index for a new or restored window
    * v1.6.3.3 - FIX Bug #4: Ensures restored windows stack correctly
@@ -418,7 +439,10 @@ export class UICoordinator {
     try {
       const result = await browser.storage.local.get('quickTabShowDebugId');
       this.showDebugIdSetting = result.quickTabShowDebugId ?? false;
-      console.log('[UICoordinator] Loaded showDebugId from storage.local:', this.showDebugIdSetting);
+      console.log(
+        '[UICoordinator] Loaded showDebugId from storage.local:',
+        this.showDebugIdSetting
+      );
     } catch (err) {
       console.warn('[UICoordinator] Failed to load showDebugId setting:', err.message);
       this.showDebugIdSetting = false;
@@ -461,7 +485,7 @@ export class UICoordinator {
     if (!this.renderedTabs.has(quickTab.id)) {
       return null; // Not in map, needs fresh render
     }
-    
+
     const existingWindow = this.renderedTabs.get(quickTab.id);
 
     // v1.6.3.4-v7 - FIX Issue #3: Validate DOM is actually attached
@@ -474,7 +498,7 @@ export class UICoordinator {
     this._safeDeleteFromRenderedTabs(quickTab.id, 'DOM detached, re-rendering');
     // v1.6.3.4-v10 - FIX Issue #5: Clear any monitoring timer for this tab
     this._stopDOMMonitoring(quickTab.id);
-    
+
     return null; // Needs fresh render
   }
 
@@ -493,12 +517,12 @@ export class UICoordinator {
     if (!invariantCheck.valid) {
       console.warn('[UICoordinator] Invariant violation before render - auto-fixed');
     }
-    
+
     // Store in map
     // v1.6.3.4-v11 - FIX Issue #5: Log Map addition with before/after sizes
     const mapSizeAfterDelete = this.renderedTabs.size;
     this.renderedTabs.set(quickTab.id, tabWindow);
-    
+
     // v1.6.3.4-v10 - FIX Issue #6C: Log Map entry creation with isRendered() status
     // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Enhanced logging with full Map keys
     const isRenderedNow = tabWindow.isRendered();
@@ -512,14 +536,14 @@ export class UICoordinator {
 
     // v1.6.3.4-v9 - FIX Issue #5: Verify DOM is attached after render
     this._verifyDOMAfterRender(tabWindow, quickTab.id);
-    
+
     // v1.6.3.4-v5 - FIX Issue #5: DELAY snapshot clearing to allow for double-clicks
     // Old behavior: clear immediately after render (no tolerance for spam-clicks)
     // New behavior: delay clearing by SNAPSHOT_CLEAR_DELAY_MS (400ms) grace period
     if (isRenderedNow && this._hasMinimizedManager()) {
       this._scheduleSnapshotClearing(quickTab.id);
     }
-    
+
     // v1.6.3.4-v10 - FIX Issue #5: Start periodic DOM monitoring
     this._startDOMMonitoring(quickTab.id, tabWindow);
   }
@@ -540,7 +564,7 @@ export class UICoordinator {
     if (existingTimer) {
       clearTimeout(existingTimer);
     }
-    
+
     // v1.6.3.4-v11 - FIX Issue #7: Clear snapshot IMMEDIATELY to prevent second restore from using it
     // The snapshot was already extracted and used by _applySnapshotForRestore() before this call
     // We clear it now to prevent race conditions with rapid successive restores
@@ -550,7 +574,7 @@ export class UICoordinator {
         console.log('[UICoordinator] Snapshot cleared atomically (first-use pattern):', quickTabId);
       }
     }
-    
+
     // Schedule a delayed verification to ensure cleanup
     // This is now just for safety/logging, not the primary clearing mechanism
     const timer = setTimeout(() => {
@@ -564,9 +588,12 @@ export class UICoordinator {
         }
       }
     }, SNAPSHOT_CLEAR_DELAY_MS);
-    
+
     this._pendingSnapshotClears.set(quickTabId, timer);
-    console.log(`[UICoordinator] Scheduled snapshot verification in ${SNAPSHOT_CLEAR_DELAY_MS}ms:`, quickTabId);
+    console.log(
+      `[UICoordinator] Scheduled snapshot verification in ${SNAPSHOT_CLEAR_DELAY_MS}ms:`,
+      quickTabId
+    );
   }
 
   /**
@@ -593,20 +620,20 @@ export class UICoordinator {
     if (!this._validateRenderUrl(quickTab)) {
       return null;
     }
-    
+
     // v1.6.3.5-v8 - FIX Issue #1: Check cross-tab scoping
     if (!this._shouldRenderOnThisTab(quickTab)) {
       return null;
     }
-    
+
     // Check for duplicate render within lock period
     const duplicateCheck = this._checkDuplicateRender(quickTab);
     if (duplicateCheck) return duplicateCheck;
-    
+
     // Check for existing valid window in Map
     const existingWindow = this._handleExistingWindowInRender(quickTab, this.renderedTabs.size);
     if (existingWindow) return existingWindow;
-    
+
     // Check for orphaned DOM element and try to recover
     const recoveredWindow = this._handleOrphanedDOMElement(quickTab);
     if (recoveredWindow) return recoveredWindow;
@@ -614,7 +641,7 @@ export class UICoordinator {
     // Create new window
     return this._createAndFinalizeWindow(quickTab);
   }
-  
+
   /**
    * Validate URL for render
    * v1.6.3.4-v12 - Extracted to reduce render() complexity
@@ -623,13 +650,14 @@ export class UICoordinator {
   _validateRenderUrl(quickTab) {
     if (!quickTab.url) {
       console.error(`${this._logPrefix} REJECTED: Cannot render Quick Tab with undefined URL:`, {
-        id: quickTab.id, url: quickTab.url
+        id: quickTab.id,
+        url: quickTab.url
       });
       return false;
     }
     return true;
   }
-  
+
   /**
    * Check if Quick Tab should be rendered on this tab (cross-tab scoping)
    * v1.6.3.5-v8 - FIX Issue #1: Enforce strict per-tab scoping
@@ -647,27 +675,30 @@ export class UICoordinator {
     // If we don't know our tab ID, REJECT rendering to prevent cross-tab contamination
     // v1.6.3.6-v6 - FIX: Changed from allowing to rejecting when currentTabId is null
     if (this.currentTabId === null || this.currentTabId === undefined) {
-      console.warn(`${this._logPrefix} CROSS-TAB BLOCKED: No currentTabId set - cannot verify ownership:`, {
-        quickTabId: quickTab.id,
-        originTabId: quickTab.originTabId,
-        reason: 'currentTabId is null/undefined - cannot perform ownership check'
-      });
+      console.warn(
+        `${this._logPrefix} CROSS-TAB BLOCKED: No currentTabId set - cannot verify ownership:`,
+        {
+          quickTabId: quickTab.id,
+          originTabId: quickTab.originTabId,
+          reason: 'currentTabId is null/undefined - cannot perform ownership check'
+        }
+      );
       return false;
     }
-    
+
     // If Quick Tab has no originTabId, try to recover from ID pattern
     // v1.6.3.6-v7 - FIX Issue #2: Manager restore can lose originTabId during serialization
     const originTabId = quickTab.originTabId;
     if (originTabId === null || originTabId === undefined) {
       const extractedTabId = this._extractTabIdFromQuickTabId(quickTab.id);
-      
+
       console.log(`${this._logPrefix} RENDER RECOVERY - Attempting tab ID extraction:`, {
         id: quickTab.id,
         extractedTabId,
         currentTabId: this.currentTabId,
         willRecover: extractedTabId === this.currentTabId
       });
-      
+
       if (extractedTabId === this.currentTabId) {
         // v1.6.3.6-v7 - Recovery successful: ID pattern matches current tab
         // Patch the originTabId so subsequent operations have correct value
@@ -678,22 +709,25 @@ export class UICoordinator {
         });
         return true;
       }
-      
+
       // v1.6.3.6-v6 - FIX Cross-Tab State Contamination: Reject if recovery failed
-      console.warn(`${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab has null/undefined originTabId - REJECTED:`, {
-        quickTabId: quickTab.id,
-        originTabId,
-        extractedTabId,
-        currentTabId: this.currentTabId,
-        url: quickTab.url,
-        reason: 'Orphaned Quick Tab - originTabId null and ID pattern does not match current tab'
-      });
+      console.warn(
+        `${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab has null/undefined originTabId - REJECTED:`,
+        {
+          quickTabId: quickTab.id,
+          originTabId,
+          extractedTabId,
+          currentTabId: this.currentTabId,
+          url: quickTab.url,
+          reason: 'Orphaned Quick Tab - originTabId null and ID pattern does not match current tab'
+        }
+      );
       return false;
     }
-    
+
     // Only render if this is the origin tab
     const shouldRender = originTabId === this.currentTabId;
-    
+
     if (!shouldRender) {
       console.log(`${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab belongs to different tab:`, {
         id: quickTab.id,
@@ -707,10 +741,10 @@ export class UICoordinator {
         currentTabId: this.currentTabId
       });
     }
-    
+
     return shouldRender;
   }
-  
+
   /**
    * Extract browser tab ID from Quick Tab ID pattern
    * v1.6.3.6-v7 - FIX Issue #2: Fallback for Manager restore with null originTabId
@@ -724,7 +758,7 @@ export class UICoordinator {
     const match = quickTabId.match(/^qt-(\d+)-/);
     return match ? parseInt(match[1], 10) : null;
   }
-  
+
   /**
    * Check for duplicate render within lock period
    * v1.6.3.4-v12 - Extracted to reduce render() complexity
@@ -734,7 +768,7 @@ export class UICoordinator {
   _checkDuplicateRender(quickTab) {
     const lastRenderTime = this._renderTimestamps.get(quickTab.id);
     const now = Date.now();
-    if (lastRenderTime && (now - lastRenderTime) < RESTORE_LOCK_MS) {
+    if (lastRenderTime && now - lastRenderTime < RESTORE_LOCK_MS) {
       const existing = this.renderedTabs.get(quickTab.id);
       if (existing && existing.isRendered()) {
         console.log('[UICoordinator] Duplicate render blocked:', { id: quickTab.id });
@@ -743,7 +777,7 @@ export class UICoordinator {
     }
     return null;
   }
-  
+
   /**
    * Handle orphaned DOM element - try to recover or remove
    * v1.6.3.4-v12 - Extracted to reduce render() complexity
@@ -754,23 +788,32 @@ export class UICoordinator {
   _handleOrphanedDOMElement(quickTab) {
     const existingDOMElement = this._findDOMElementById(quickTab.id);
     if (!existingDOMElement) return null;
-    
+
     // v1.6.3.6-v4 - FIX Issue #5: Suppress warning during hydration phase
     // During hydration, it's expected that DOM elements may exist before Map is populated
     if (this._isHydrating) {
-      console.log('[UICoordinator] DOM element found during hydration (expected):', { id: quickTab.id });
+      console.log('[UICoordinator] DOM element found during hydration (expected):', {
+        id: quickTab.id
+      });
     } else {
-      console.warn('[UICoordinator] Orphaned window detected:', { id: quickTab.id, inMap: false, inDOM: true });
+      console.warn('[UICoordinator] Orphaned window detected:', {
+        id: quickTab.id,
+        inMap: false,
+        inDOM: true
+      });
     }
-    
+
     const recoveredWindow = this._tryRecoverWindowFromDOM(existingDOMElement, quickTab);
     if (recoveredWindow) return recoveredWindow;
-    
-    console.log('[UICoordinator] Could not recover window, removing orphaned element:', quickTab.id);
+
+    console.log(
+      '[UICoordinator] Could not recover window, removing orphaned element:',
+      quickTab.id
+    );
     existingDOMElement.remove();
     return null;
   }
-  
+
   /**
    * Create new window and finalize render
    * v1.6.3.4-v12 - Extracted to reduce render() complexity
@@ -784,7 +827,10 @@ export class UICoordinator {
     try {
       tabWindow = this._createWindow(quickTab);
     } catch (err) {
-      console.error('[UICoordinator] Failed to create QuickTabWindow:', { id: quickTab.id, error: err.message });
+      console.error('[UICoordinator] Failed to create QuickTabWindow:', {
+        id: quickTab.id,
+        error: err.message
+      });
       this._renderTimestamps.delete(quickTab.id);
       return null;
     }
@@ -793,16 +839,16 @@ export class UICoordinator {
     console.log('[UICoordinator] Tab rendered:', quickTab.id);
     return tabWindow;
   }
-  
+
   /**
    * Try to recover a QuickTabWindow from an orphaned DOM element
    * v1.6.3.4-v12 - FIX Issue #4: Reuse existing window instead of creating duplicate
-   * 
+   *
    * Note: Uses __quickTabWindow property on DOM elements which is set by window.js
    * during render(). This is a common pattern for associating data with DOM elements
    * in browser extensions. If window.js doesn't set this property, recovery will
    * gracefully fail and a new window will be created.
-   * 
+   *
    * @private
    * @param {Element} domElement - The existing DOM element
    * @param {QuickTab} quickTab - QuickTab domain entity
@@ -812,36 +858,39 @@ export class UICoordinator {
     // The window reference might be stored on the element by window.js render()
     // If not present, recovery fails gracefully and caller creates a new window
     const recoveredWindow = domElement.__quickTabWindow;
-    
+
     if (recoveredWindow && typeof recoveredWindow.isRendered === 'function') {
-      console.log('[UICoordinator] DOM element found but not in Map - reusing existing window:', quickTab.id);
-      
+      console.log(
+        '[UICoordinator] DOM element found but not in Map - reusing existing window:',
+        quickTab.id
+      );
+
       // Restore the window
       if (typeof recoveredWindow.restore === 'function') {
         recoveredWindow.restore();
       }
-      
+
       // Re-add to renderedTabs Map
       this.renderedTabs.set(quickTab.id, recoveredWindow);
-      
+
       console.log('[UICoordinator] Re-added recovered window to Map:', {
         id: quickTab.id,
         mapSizeAfter: this.renderedTabs.size
       });
-      
+
       // v1.6.3.5-v12 - FIX Issue #3: Log orphaned window recovery completion
       console.log('[UICoordinator] Orphaned window recovery completed:', {
         id: quickTab.id,
         beforeRecovery: { inMap: false, inDOM: true },
-        afterRecovery: { inMap: true, hasContainer: !!(recoveredWindow?.container) }
+        afterRecovery: { inMap: true, hasContainer: !!recoveredWindow?.container }
       });
-      
+
       // Start DOM monitoring
       this._startDOMMonitoring(quickTab.id, recoveredWindow);
-      
+
       return recoveredWindow;
     }
-    
+
     return null;
   }
 
@@ -868,29 +917,32 @@ export class UICoordinator {
       console.log('[UICoordinator] No minimizedManager available for snapshot check:', quickTab.id);
       return false;
     }
-    
+
     // v1.6.3.4-v10 - FIX Issue #1: Use hasSnapshot() to check both active and pending-clear snapshots
     // isMinimized() only checks active minimizedTabs, missing pending-clear snapshots
     const hasAnySnapshot = this.minimizedManager.hasSnapshot(quickTab.id);
     const isActivelyMinimized = this.minimizedManager.isMinimized(quickTab.id);
-    
+
     // v1.6.3.4-v10 - FIX Issue #6B: Log WHERE snapshot check happens and WHAT it finds
     console.log('[UICoordinator] Checking MinimizedManager for snapshot:', {
       id: quickTab.id,
       hasSnapshot: hasAnySnapshot,
       isMinimized: isActivelyMinimized
     });
-    
+
     if (!hasAnySnapshot) {
       return false;
     }
-    
+
     const snapshot = this.minimizedManager.getSnapshot(quickTab.id);
     if (!snapshot) {
-      console.log('[UICoordinator] hasSnapshot returned true but getSnapshot returned null:', quickTab.id);
+      console.log(
+        '[UICoordinator] hasSnapshot returned true but getSnapshot returned null:',
+        quickTab.id
+      );
       return false;
     }
-    
+
     console.log('[UICoordinator] Restoring from snapshot (from minimizedManager):', {
       id: quickTab.id,
       position: snapshot.position,
@@ -909,7 +961,7 @@ export class UICoordinator {
         originTabId: snapshot.originTabId
       });
     }
-    
+
     // v1.6.3.4-v10 - Only call restore() if still in active minimizedTabs
     // This applies the snapshot to the instance (for tabWindow dimensions)
     if (isActivelyMinimized) {
@@ -946,11 +998,11 @@ export class UICoordinator {
     if (!tabWindow || tabWindow.minimized) {
       return false;
     }
-    
+
     if (!this._hasValidDimensions(tabWindow)) {
       return false;
     }
-    
+
     console.log('[UICoordinator] Restoring from tabWindow instance dimensions:', {
       id: quickTab.id,
       left: tabWindow.left,
@@ -978,30 +1030,36 @@ export class UICoordinator {
       id: quickTab.id,
       position: quickTab.position,
       size: quickTab.size,
-      originTabId: quickTab.originTabId  // v1.6.3.6-v6 - FIX: Include originTabId in logging
+      originTabId: quickTab.originTabId // v1.6.3.6-v6 - FIX: Include originTabId in logging
     });
-    
+
     // First try to get snapshot from minimizedManager
     if (this._tryApplySnapshotFromManager(quickTab)) {
       // v1.6.3.4-v2 - FIX Issue #3: Log entity dimensions AFTER snapshot application
-      console.log('[UICoordinator] _applySnapshotForRestore - entity dimensions AFTER (from manager):', {
-        id: quickTab.id,
-        position: quickTab.position,
-        size: quickTab.size,
-        originTabId: quickTab.originTabId  // v1.6.3.6-v6 - FIX: Include originTabId in logging
-      });
+      console.log(
+        '[UICoordinator] _applySnapshotForRestore - entity dimensions AFTER (from manager):',
+        {
+          id: quickTab.id,
+          position: quickTab.position,
+          size: quickTab.size,
+          originTabId: quickTab.originTabId // v1.6.3.6-v6 - FIX: Include originTabId in logging
+        }
+      );
       return;
     }
     // v1.6.3.4-v9 - FIX Entity-Instance Sync Gap: If minimizedManager doesn't have it,
     // try to read from the existing tabWindow instance (which may have had snapshot applied)
     if (this._tryApplyDimensionsFromInstance(quickTab)) {
       // v1.6.3.4-v2 - FIX Issue #3: Log entity dimensions AFTER instance application
-      console.log('[UICoordinator] _applySnapshotForRestore - entity dimensions AFTER (from instance):', {
-        id: quickTab.id,
-        position: quickTab.position,
-        size: quickTab.size,
-        originTabId: quickTab.originTabId  // v1.6.3.6-v6 - FIX: Include originTabId in logging
-      });
+      console.log(
+        '[UICoordinator] _applySnapshotForRestore - entity dimensions AFTER (from instance):',
+        {
+          id: quickTab.id,
+          position: quickTab.position,
+          size: quickTab.size,
+          originTabId: quickTab.originTabId // v1.6.3.6-v6 - FIX: Include originTabId in logging
+        }
+      );
       return;
     }
     console.log('[UICoordinator] No snapshot available for:', quickTab.id);
@@ -1021,10 +1079,10 @@ export class UICoordinator {
       console.log('[UICoordinator] Restored tab directly (no snapshot):', quickTabId);
       return;
     }
-    
+
     // v1.6.3.4-v2 - FIX Issue #3: Log that we're about to apply snapshot from manager
     console.log('[UICoordinator] Applying snapshot from MinimizedManager for:', quickTabId);
-    
+
     // MinimizedManager.restore() applies snapshot to instance but does NOT render
     const restoreResult = this.minimizedManager.restore(quickTabId);
     if (restoreResult) {
@@ -1033,7 +1091,7 @@ export class UICoordinator {
         id: quickTabId,
         position: restoreResult.position,
         size: restoreResult.size,
-        originTabId: restoreResult.originTabId  // v1.6.3.6-v6 - FIX: Include originTabId in logging
+        originTabId: restoreResult.originTabId // v1.6.3.6-v6 - FIX: Include originTabId in logging
       });
       // v1.6.3.2 - Now call restore() on the window (which updates minimized flag but does NOT render)
       tabWindow.restore();
@@ -1050,10 +1108,10 @@ export class UICoordinator {
    */
   _renderRestoredWindow(tabWindow, quickTabId) {
     console.log('[UICoordinator] DOM not attached after restore, rendering:', quickTabId);
-    
+
     // v1.6.3.3 - FIX Bug #2 (UID Disappears): Ensure showDebugId is current before render
     tabWindow.showDebugId = this.showDebugIdSetting;
-    
+
     // v1.6.3.4-v2 - FIX Issue #3: Log dimensions about to be used for render
     console.log('[UICoordinator] Dimensions being passed to render():', {
       id: quickTabId,
@@ -1062,28 +1120,28 @@ export class UICoordinator {
       width: tabWindow.width,
       height: tabWindow.height
     });
-    
+
     tabWindow.render();
     this.renderedTabs.set(quickTabId, tabWindow);
-    
+
     // v1.6.3.4-v11 - FIX Issue #5: Verify callbacks are properly wired after restore
     this._verifyCallbacksAfterRestore(tabWindow, quickTabId);
-    
+
     // Apply incremented z-index for proper stacking
     this._applyZIndexAfterRestore(tabWindow, quickTabId);
-    
+
     // v1.6.3.4-v8 - FIX Issue #5: Verify DOM is attached after render
     this._verifyDOMAfterRender(tabWindow, quickTabId);
-    
+
     // v1.6.3.4-v5 - FIX Issue #5: Use delayed snapshot clearing (see _scheduleSnapshotClearing)
     if (tabWindow.isRendered() && this._hasMinimizedManager()) {
       this._scheduleSnapshotClearing(quickTabId);
     }
-    
+
     // v1.6.3.4-v10 - FIX Issue #5: Start periodic DOM monitoring
     this._startDOMMonitoring(quickTabId, tabWindow);
   }
-  
+
   /**
    * Verify that callbacks are properly wired after restore render
    * v1.6.3.4-v11 - FIX Issue #5: Restored Window Callback Failures
@@ -1100,11 +1158,11 @@ export class UICoordinator {
       onMinimize: typeof tabWindow.onMinimize === 'function',
       onClose: typeof tabWindow.onClose === 'function'
     };
-    
+
     const missingCallbacks = Object.entries(callbackStatus)
       .filter(([key, value]) => key !== 'id' && !value)
       .map(([key]) => key);
-    
+
     if (missingCallbacks.length > 0) {
       console.warn('[UICoordinator] ⚠️ Missing callbacks after restore:', {
         id: quickTabId,
@@ -1130,7 +1188,7 @@ export class UICoordinator {
     if (tabWindow.container) {
       tabWindow.zIndex = newZIndex;
       tabWindow.container.style.zIndex = newZIndex.toString();
-      
+
       // v1.6.3.5-v9 - FIX Diagnostic Issue #4: Force browser reflow to ensure z-index takes effect
       // When z-index is changed on elements that were recently added to the DOM (like restored
       // Quick Tabs), the browser may batch style updates. Accessing offsetHeight forces a
@@ -1140,11 +1198,11 @@ export class UICoordinator {
       // Reference: https://gist.github.com/paulirish/5d52fb081b3570c81e3a
       // eslint-disable-next-line no-unused-expressions
       tabWindow.container.offsetHeight;
-      
+
       // v1.6.3.5-v9 - FIX Diagnostic Issue #4: Verify stacking context properties
       const computedStyle = window.getComputedStyle(tabWindow.container);
       const verifiedZIndex = parseInt(computedStyle.zIndex, 10);
-      
+
       console.log('[UICoordinator] Applied incremented z-index after restore render:', {
         id: quickTabId,
         zIndex: newZIndex,
@@ -1153,7 +1211,7 @@ export class UICoordinator {
         opacity: computedStyle.opacity,
         transform: computedStyle.transform
       });
-      
+
       // Warn if z-index verification fails
       if (verifiedZIndex !== newZIndex) {
         console.warn('[UICoordinator] ⚠️ z-index verification mismatch after restore:', {
@@ -1182,7 +1240,7 @@ export class UICoordinator {
    */
   _restoreExistingWindow(tabWindow, quickTabId) {
     console.log('[UICoordinator] Tab is being restored from minimized state:', quickTabId);
-    
+
     // v1.6.3.4-v8 - FIX Issue #6: Log dimensions BEFORE restore for debugging
     console.log('[UICoordinator] Pre-restore instance dimensions:', {
       id: quickTabId,
@@ -1194,7 +1252,7 @@ export class UICoordinator {
 
     // Apply snapshot and restore window state
     this._applySnapshotAndRestore(tabWindow, quickTabId);
-    
+
     // v1.6.3.4-v2 - FIX Issue #3: Log dimensions AFTER restore/snapshot application
     console.log('[UICoordinator] Post-restore instance dimensions (before render):', {
       id: quickTabId,
@@ -1213,7 +1271,7 @@ export class UICoordinator {
 
     return tabWindow;
   }
-  
+
   /**
    * Verify DOM is attached after render with delayed check
    * v1.6.3.4-v8 - FIX Issue #5: Proactive DOM detachment detection
@@ -1228,11 +1286,14 @@ export class UICoordinator {
       console.error('[UICoordinator] Immediate DOM verification FAILED for:', quickTabId);
       return;
     }
-    
+
     // v1.6.3.4-v8 - FIX Issue #5: Delayed verification
     setTimeout(() => {
       if (!tabWindow.isRendered()) {
-        console.error(`[UICoordinator] Delayed DOM verification FAILED (detached within ${DOM_VERIFICATION_DELAY_MS}ms):`, quickTabId);
+        console.error(
+          `[UICoordinator] Delayed DOM verification FAILED (detached within ${DOM_VERIFICATION_DELAY_MS}ms):`,
+          quickTabId
+        );
         // Remove stale reference
         this.renderedTabs.delete(quickTabId);
         // Stop monitoring
@@ -1246,7 +1307,7 @@ export class UICoordinator {
       }
     }, DOM_VERIFICATION_DELAY_MS);
   }
-  
+
   /**
    * Start periodic DOM monitoring for a rendered tab
    * v1.6.3.4-v10 - FIX Issue #5: Proactive DOM detachment detection between events
@@ -1258,22 +1319,22 @@ export class UICoordinator {
   _startDOMMonitoring(quickTabId, tabWindow) {
     // Clear any existing timer
     this._stopDOMMonitoring(quickTabId);
-    
+
     // v1.6.3.4-v10 - FIX Issue #5: Set up periodic check every 500ms
     // This catches detachment that happens between events (the 73-second gap issue)
     let checkCount = 0;
     const maxChecks = 10; // Monitor for 5 seconds max (10 * 500ms)
-    
+
     const timerId = setInterval(() => {
       checkCount++;
-      
+
       // v1.6.3.3 - FIX Bug #8: Check if window was minimized (expected detachment)
       if (tabWindow.minimized) {
         console.log('[UICoordinator] DOM monitoring: tab minimized, stopping:', quickTabId);
         this._stopDOMMonitoring(quickTabId);
         return;
       }
-      
+
       if (!tabWindow.isRendered()) {
         console.warn('[UICoordinator] Periodic DOM check detected UNEXPECTED detachment:', {
           id: quickTabId,
@@ -1282,27 +1343,27 @@ export class UICoordinator {
           minimized: tabWindow.minimized,
           destroyed: tabWindow.destroyed
         });
-        
+
         // v1.6.3.3 - FIX Bug #8: Attempt re-render if tab is still active
         const reRenderSucceeded = this._attemptReRenderDetachedTab(tabWindow, quickTabId);
         if (reRenderSucceeded) return; // Successfully re-rendered, continue monitoring
-        
+
         // Clean up if re-render failed, not attempted, or tab was destroyed
         this.renderedTabs.delete(quickTabId);
         this._stopDOMMonitoring(quickTabId);
         return;
       }
-      
+
       // Stop monitoring after maxChecks (5 seconds) - if still attached, it's stable
       if (checkCount >= maxChecks) {
         console.log('[UICoordinator] DOM monitoring completed (stable):', quickTabId);
         this._stopDOMMonitoring(quickTabId);
       }
     }, DOM_MONITORING_INTERVAL_MS);
-    
+
     this._domMonitoringTimers.set(quickTabId, timerId);
   }
-  
+
   /**
    * Stop periodic DOM monitoring for a tab
    * v1.6.3.4-v10 - FIX Issue #5: Cleanup monitoring timer
@@ -1329,7 +1390,7 @@ export class UICoordinator {
     if (tabWindow.minimized || tabWindow.destroyed) {
       return false; // Not eligible for re-render
     }
-    
+
     console.log('[UICoordinator] Attempting to re-render detached tab:', quickTabId);
     try {
       tabWindow.render();
@@ -1452,23 +1513,29 @@ export class UICoordinator {
    */
   _handleManagerMinimize(ctx) {
     const { quickTab, tabWindow, entityMinimized, source, mapSizeBefore } = ctx;
-    
+
     if (source !== 'Manager' || !entityMinimized) {
       return null; // Not a Manager minimize, continue processing
     }
-    
+
     if (tabWindow) {
-      console.log('[UICoordinator] renderedTabs.delete() - Manager minimize cleanup (early path):', {
-        id: quickTab.id,
-        reason: 'Manager minimize with entity.minimized=true',
-        source,
-        mapSizeBefore,
-        mapSizeAfter: mapSizeBefore - 1
-      });
+      console.log(
+        '[UICoordinator] renderedTabs.delete() - Manager minimize cleanup (early path):',
+        {
+          id: quickTab.id,
+          reason: 'Manager minimize with entity.minimized=true',
+          source,
+          mapSizeBefore,
+          mapSizeAfter: mapSizeBefore - 1
+        }
+      );
       this.renderedTabs.delete(quickTab.id);
       this._stopDOMMonitoring(quickTab.id);
     }
-    console.log('[UICoordinator] Update decision: skip (Manager minimize, cleanup complete):', quickTab.id);
+    console.log(
+      '[UICoordinator] Update decision: skip (Manager minimize, cleanup complete):',
+      quickTab.id
+    );
     return undefined; // Handled, return early
   }
 
@@ -1484,24 +1551,24 @@ export class UICoordinator {
    */
   _handleRestoreOperation(ctx) {
     const { quickTab, entityMinimized, isRestoreOperation } = ctx;
-    
+
     if (!isRestoreOperation || entityMinimized) {
       return null; // Not a restore operation, continue processing
     }
-    
+
     // v1.6.3.4-v6 - FIX Issue #4: Check if restore is already in progress
     if (RESTORE_IN_PROGRESS.has(quickTab.id)) {
       console.log('[UICoordinator] Restore already in progress, skipping:', quickTab.id);
       return this.renderedTabs.get(quickTab.id) || null;
     }
-    
+
     // v1.6.3.4-v6 - FIX Issue #4: Lock restore operation
     RESTORE_IN_PROGRESS.add(quickTab.id);
     setTimeout(() => RESTORE_IN_PROGRESS.delete(quickTab.id), RESTORE_LOCK_MS);
-    
+
     return this._executeRestoreWithTransaction(ctx);
   }
-  
+
   /**
    * Execute restore with transaction wrapper
    * v1.6.3.5 - Extracted to reduce _handleRestoreOperation complexity
@@ -1512,20 +1579,26 @@ export class UICoordinator {
   _executeRestoreWithTransaction(ctx) {
     const { quickTab, tabWindow, source, mapSizeBefore } = ctx;
     const transactionStarted = this._mapTxnManager.beginTransaction('restore operation');
-    
+
     try {
-      this._cleanupTabWindowForRestore(quickTab.id, tabWindow, transactionStarted, source, mapSizeBefore);
-      
+      this._cleanupTabWindowForRestore(
+        quickTab.id,
+        tabWindow,
+        transactionStarted,
+        source,
+        mapSizeBefore
+      );
+
       console.log('[UICoordinator] Update decision: restore via unified fresh render path:', {
         id: quickTab.id,
         source,
         isRestoreOperation: true,
         inTransaction: transactionStarted
       });
-      
+
       this._applySnapshotForRestore(quickTab);
       const result = this.render(quickTab);
-      
+
       this._commitRestoreTransaction(transactionStarted);
       return result;
     } catch (err) {
@@ -1536,7 +1609,7 @@ export class UICoordinator {
       return null;
     }
   }
-  
+
   /**
    * Clean up existing tabWindow for restore operation
    * v1.6.3.5 - Extracted to reduce nesting depth
@@ -1544,7 +1617,7 @@ export class UICoordinator {
    */
   _cleanupTabWindowForRestore(id, tabWindow, transactionStarted, source, mapSizeBefore) {
     if (!tabWindow) return;
-    
+
     const logInfo = this._getMapLogInfo('delete-before-restore', id);
     console.log('[UICoordinator] renderedTabs.delete() - restore operation cleanup:', {
       ...logInfo,
@@ -1553,7 +1626,7 @@ export class UICoordinator {
       mapSizeBefore,
       mapSizeAfter: mapSizeBefore - 1
     });
-    
+
     if (transactionStarted) {
       this._mapTxnManager.deleteEntry(id, 'restore operation cleanup');
     } else {
@@ -1561,7 +1634,7 @@ export class UICoordinator {
     }
     this._stopDOMMonitoring(id);
   }
-  
+
   /**
    * Commit restore transaction if started
    * v1.6.3.5 - Extracted to reduce nesting depth
@@ -1569,7 +1642,7 @@ export class UICoordinator {
    */
   _commitRestoreTransaction(transactionStarted) {
     if (!transactionStarted) return;
-    
+
     const commitResult = this._mapTxnManager.commitTransaction();
     if (!commitResult.success) {
       console.error('[UICoordinator] Transaction commit failed:', commitResult.error);
@@ -1586,7 +1659,7 @@ export class UICoordinator {
    */
   _handleNotInMap(ctx) {
     const { quickTab, entityMinimized, source, mapSizeBefore } = ctx;
-    
+
     console.log('[UICoordinator] Update decision:', {
       id: quickTab.id,
       inMap: false,
@@ -1595,7 +1668,7 @@ export class UICoordinator {
       mapSize: mapSizeBefore,
       action: entityMinimized ? 'skip (minimized)' : 'render (not in map)'
     });
-    
+
     if (entityMinimized) {
       console.log('[UICoordinator] Tab is minimized (no window), skipping render:', quickTab.id);
       return;
@@ -1615,8 +1688,11 @@ export class UICoordinator {
    */
   _handleStateMismatchRestore(ctx) {
     const { quickTab, source, mapSizeBefore } = ctx;
-    
-    console.log('[UICoordinator] Update decision: restore (instance minimized, entity not):', quickTab.id);
+
+    console.log(
+      '[UICoordinator] Update decision: restore (instance minimized, entity not):',
+      quickTab.id
+    );
     console.log('[UICoordinator] renderedTabs.delete() - restore via instance state mismatch:', {
       id: quickTab.id,
       reason: 'instance.minimized=true but entity.minimized=false',
@@ -1689,8 +1765,15 @@ export class UICoordinator {
    * @returns {QuickTabWindow|undefined} Rendered window or undefined
    */
   _handleDetachedDOMUpdate(ctx) {
-    const { quickTab, entityMinimized, instanceMinimized, source, isRestoreOperation, mapSizeBefore } = ctx;
-    
+    const {
+      quickTab,
+      entityMinimized,
+      instanceMinimized,
+      source,
+      isRestoreOperation,
+      mapSizeBefore
+    } = ctx;
+
     // v1.6.3.4-v10 - FIX Issue #3: Log transition state BEFORE any modifications
     // This helps diagnose the 73-second gaps in logs
     console.log('[UICoordinator] _handleDetachedDOMUpdate - transition state:', {
@@ -1706,15 +1789,19 @@ export class UICoordinator {
     // v1.6.3.4-v10 - FIX Issue #3: Determine final action BEFORE modifying Map
     // This prevents the "deleted but about to recreate" intermediate state
     const willRender = !entityMinimized && (!instanceMinimized || isRestoreOperation);
-    
+
     // v1.6.3.4-v10 - FIX Issue #8: Use helper for readable transition reason
-    const transitionReason = this._getTransitionReason(entityMinimized, instanceMinimized, isRestoreOperation);
+    const transitionReason = this._getTransitionReason(
+      entityMinimized,
+      instanceMinimized,
+      isRestoreOperation
+    );
     console.log('[UICoordinator] Transition decision:', {
       id: quickTab.id,
       willRender,
       reason: transitionReason
     });
-    
+
     // v1.6.3.4-v10 - FIX Issue #3: Only delete from Map AFTER we know final state
     // If we're going to render, we can skip the delete entirely since we'll set() after render
     if (!willRender) {
@@ -1730,7 +1817,7 @@ export class UICoordinator {
       });
       this._safeDeleteFromRenderedTabs(quickTab.id, 'DOM detached - final state minimized');
       this._stopDOMMonitoring(quickTab.id);
-      
+
       console.log('[UICoordinator] DOM detached + will not render, cleanup complete:', {
         id: quickTab.id,
         source,
@@ -1744,7 +1831,7 @@ export class UICoordinator {
     // The existing Map entry (if any) will be overwritten by render()
     // So we can clean up DOM monitoring but defer Map deletion
     this._stopDOMMonitoring(quickTab.id);
-    
+
     // Log that we're keeping the Map entry until render() overwrites it
     if (this.renderedTabs.has(quickTab.id)) {
       console.log('[UICoordinator] Keeping Map entry until render() completes:', {
@@ -1762,13 +1849,13 @@ export class UICoordinator {
       action: 'render'
     });
     this._applySnapshotForRestore(quickTab);
-    
+
     // Now delete just before render so the render path is clean
     // This minimizes the async gap window
     if (this.renderedTabs.has(quickTab.id)) {
       this._safeDeleteFromRenderedTabs(quickTab.id, 'DOM detached - preparing for re-render');
     }
-    
+
     return this.render(quickTab);
   }
 
@@ -1787,10 +1874,10 @@ export class UICoordinator {
    */
   destroy(quickTabId) {
     const mapSizeBefore = this.renderedTabs.size;
-    
+
     // v1.6.3.4-v10 - FIX Issue #5: Stop monitoring first
     this._stopDOMMonitoring(quickTabId);
-    
+
     const tabWindow = this.renderedTabs.get(quickTabId);
 
     if (!tabWindow) {
@@ -1824,13 +1911,18 @@ export class UICoordinator {
     if (removeQuickTabElement(quickTabId)) {
       console.log('[UICoordinator] Removed orphaned DOM element for:', quickTabId);
     }
-    
+
     // v1.6.3.4-v10 - Also clear any pending snapshot
     if (this._hasMinimizedManager()) {
       this.minimizedManager.clearSnapshot(quickTabId);
     }
 
-    console.log(`${this._logPrefix} Tab cleanup complete:`, quickTabId, '| mapSize:', this.renderedTabs.size);
+    console.log(
+      `${this._logPrefix} Tab cleanup complete:`,
+      quickTabId,
+      '| mapSize:',
+      this.renderedTabs.size
+    );
   }
 
   /**
@@ -1844,14 +1936,14 @@ export class UICoordinator {
       renderedTabsCount: this.renderedTabs.size,
       hasMinimizedManager: this._hasMinimizedManager()
     });
-    
+
     const clearedIds = [];
-    
+
     // Stop all DOM monitoring timers
     for (const id of this._domMonitoringTimers.keys()) {
       this._stopDOMMonitoring(id);
     }
-    
+
     // Destroy all rendered tabs
     for (const [id, tabWindow] of this.renderedTabs) {
       clearedIds.push(id);
@@ -1861,31 +1953,31 @@ export class UICoordinator {
       // Remove DOM element
       removeQuickTabElement(id);
     }
-    
+
     // Clear the Map
     this.renderedTabs.clear();
-    
+
     // Clear minimized manager
     if (this._hasMinimizedManager()) {
       this.minimizedManager.clear();
     }
-    
+
     // Clear pending snapshot timers
     for (const timer of this._pendingSnapshotClears.values()) {
       clearTimeout(timer);
     }
     this._pendingSnapshotClears.clear();
-    
+
     // Clear render timestamps
     this._renderTimestamps.clear();
     this._lastRenderTime.clear();
-    
+
     // Reset z-index
     this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
-    
+
     // Final DOM cleanup using shared utility
     cleanupOrphanedQuickTabElements(null);
-    
+
     console.log(`${this._logPrefix} clearAll() complete (source: ${source}):`, {
       clearedIds,
       clearedCount: clearedIds.length
@@ -1913,10 +2005,10 @@ export class UICoordinator {
       const eventSource = source || quickTab.source || 'unknown';
       // v1.6.3.4-v2 - FIX Issue #5: Extract isRestoreOperation flag if present
       const isRestoreOperation = quickTab.isRestoreOperation || false;
-      console.log('[UICoordinator] Received state:updated event', { 
+      console.log('[UICoordinator] Received state:updated event', {
         quickTabId: quickTab.id,
         source: eventSource,
-        isRestoreOperation 
+        isRestoreOperation
       });
       this.update(quickTab, eventSource, isRestoreOperation);
     });
@@ -1954,13 +2046,13 @@ export class UICoordinator {
       console.warn('[UICoordinator] Invalid window:created event - missing id or tabWindow');
       return;
     }
-    
+
     // Check if already in Map to avoid overwriting
     if (this.renderedTabs.has(id)) {
       console.log('[UICoordinator] Window already in renderedTabs Map:', id);
       return;
     }
-    
+
     // Register window in Map
     this.renderedTabs.set(id, tabWindow);
     console.log('[UICoordinator] Registered window in renderedTabs from window:created:', {
@@ -1968,7 +2060,7 @@ export class UICoordinator {
       mapSizeAfter: this.renderedTabs.size,
       allMapKeys: Array.from(this.renderedTabs.keys())
     });
-    
+
     // Start DOM monitoring for the newly registered window
     this._startDOMMonitoring(id, tabWindow);
   }
@@ -2173,11 +2265,11 @@ export class UICoordinator {
     const size = this._getSafeSize(quickTab);
     const visibility = this._getSafeVisibility(quickTab);
     const zIndex = this._getSafeZIndex(quickTab);
-    
+
     // v1.6.3.5-v10 - FIX Issue #1-2: Build callback options from handler references
     // These callbacks are CRITICAL for drag/resize persistence after restore
     const callbackOptions = this._buildCallbackOptions(quickTab.id);
-    
+
     // v1.6.3.4-v10 - FIX Issue #6A: Log entity properties before creating window
     // v1.6.3.5-v10 - Also log callback status
     console.log('[UICoordinator] Creating window from entity, zIndex =', zIndex, ':', {
@@ -2217,7 +2309,7 @@ export class UICoordinator {
       ...callbackOptions
     });
   }
-  
+
   /**
    * Build callback options for window creation
    * v1.6.3.5-v10 - FIX Issue #1-2: Extracted to reduce _createWindow complexity
@@ -2228,18 +2320,18 @@ export class UICoordinator {
    */
   _buildCallbackOptions(quickTabId) {
     const callbacks = {};
-    
+
     // Build callbacks from each handler
     this._addUpdateHandlerCallbacks(callbacks);
     this._addVisibilityHandlerCallbacks(callbacks);
     this._addDestroyHandlerCallbacks(callbacks);
-    
+
     // Log warnings for missing critical callbacks
     this._logMissingCallbacks(callbacks, quickTabId);
-    
+
     return callbacks;
   }
-  
+
   /**
    * Add UpdateHandler callbacks to callbacks object
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
@@ -2248,21 +2340,21 @@ export class UICoordinator {
    */
   _addUpdateHandlerCallbacks(callbacks) {
     if (!this.updateHandler) return;
-    
+
     const methods = [
       ['handlePositionChangeEnd', 'onPositionChangeEnd'],
       ['handleSizeChangeEnd', 'onSizeChangeEnd'],
       ['handlePositionChange', 'onPositionChange'],
       ['handleSizeChange', 'onSizeChange']
     ];
-    
+
     for (const [handlerMethod, callbackName] of methods) {
       if (typeof this.updateHandler[handlerMethod] === 'function') {
         callbacks[callbackName] = this.updateHandler[handlerMethod].bind(this.updateHandler);
       }
     }
   }
-  
+
   /**
    * Add VisibilityHandler callbacks to callbacks object
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
@@ -2271,15 +2363,15 @@ export class UICoordinator {
    */
   _addVisibilityHandlerCallbacks(callbacks) {
     if (!this.visibilityHandler) return;
-    
+
     if (typeof this.visibilityHandler.handleFocus === 'function') {
       callbacks.onFocus = this.visibilityHandler.handleFocus.bind(this.visibilityHandler);
     }
     if (typeof this.visibilityHandler.handleMinimize === 'function') {
-      callbacks.onMinimize = (id) => this.visibilityHandler.handleMinimize(id, 'UI');
+      callbacks.onMinimize = id => this.visibilityHandler.handleMinimize(id, 'UI');
     }
   }
-  
+
   /**
    * Add DestroyHandler callbacks to callbacks object
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
@@ -2288,14 +2380,14 @@ export class UICoordinator {
    */
   _addDestroyHandlerCallbacks(callbacks) {
     if (!this.destroyHandler) return;
-    
+
     if (typeof this.destroyHandler.handleDestroy === 'function') {
-      callbacks.onDestroy = (id) => this.destroyHandler.handleDestroy(id, 'UI');
+      callbacks.onDestroy = id => this.destroyHandler.handleDestroy(id, 'UI');
     } else if (typeof this.destroyHandler.closeById === 'function') {
       callbacks.onDestroy = this.destroyHandler.closeById.bind(this.destroyHandler);
     }
   }
-  
+
   /**
    * Log warnings for missing critical callbacks
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
@@ -2305,13 +2397,16 @@ export class UICoordinator {
    */
   _logMissingCallbacks(callbacks, quickTabId) {
     if (!callbacks.onPositionChangeEnd || !callbacks.onSizeChangeEnd) {
-      console.warn(`${this._logPrefix} WARNING: Position/Size callbacks not wired for ${quickTabId}:`, {
-        hasUpdateHandler: !!this.updateHandler,
-        onPositionChangeEnd: !!callbacks.onPositionChangeEnd,
-        onSizeChangeEnd: !!callbacks.onSizeChangeEnd
-      });
+      console.warn(
+        `${this._logPrefix} WARNING: Position/Size callbacks not wired for ${quickTabId}:`,
+        {
+          hasUpdateHandler: !!this.updateHandler,
+          onPositionChangeEnd: !!callbacks.onPositionChangeEnd,
+          onSizeChangeEnd: !!callbacks.onSizeChangeEnd
+        }
+      );
     }
-    
+
     if (!callbacks.onFocus) {
       console.warn(`${this._logPrefix} WARNING: Focus callback not wired for ${quickTabId}:`, {
         hasVisibilityHandler: !!this.visibilityHandler,

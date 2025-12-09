@@ -151,7 +151,12 @@ export class ReactiveQuickTab {
         const value = obj[prop];
 
         // Recursively proxy nested plain objects (not arrays or special objects)
-        if (value && typeof value === 'object' && !Array.isArray(value) && !self._isSpecialObject(value)) {
+        if (
+          value &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          !self._isSpecialObject(value)
+        ) {
           return self._createProxy(value, depth + 1);
         }
 
@@ -251,13 +256,13 @@ export class ReactiveQuickTab {
    * @private
    */
   static _validators = {
-    position: (v) => typeof v === 'number' && v >= 0 && v < 10000,
-    size: (v) => typeof v === 'number' && v >= 100 && v < 5000,
-    zIndex: (v) => typeof v === 'number' && v >= 0,
-    boolean: (v) => typeof v === 'boolean',
-    tabArray: (v) => Array.isArray(v) && v.every(id => typeof id === 'number'),
-    string: (v) => typeof v === 'string',
-    timestamp: (v) => typeof v === 'number' && v >= 0
+    position: v => typeof v === 'number' && v >= 0 && v < 10000,
+    size: v => typeof v === 'number' && v >= 100 && v < 5000,
+    zIndex: v => typeof v === 'number' && v >= 0,
+    boolean: v => typeof v === 'boolean',
+    tabArray: v => Array.isArray(v) && v.every(id => typeof id === 'number'),
+    string: v => typeof v === 'string',
+    timestamp: v => typeof v === 'number' && v >= 0
   };
 
   /**
@@ -406,7 +411,7 @@ export class ReactiveQuickTab {
    */
   _captureAffectedComputedValues(changedProp) {
     const capturedValues = new Map();
-    
+
     for (const [computedProp, deps] of this._dependencies.entries()) {
       if (deps.has(changedProp)) {
         // Get current value (compute if not cached)
@@ -416,7 +421,7 @@ export class ReactiveQuickTab {
         capturedValues.set(computedProp, currentValue);
       }
     }
-    
+
     return capturedValues;
   }
 

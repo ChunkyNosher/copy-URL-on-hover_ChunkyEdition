@@ -30,11 +30,10 @@ try {
   // Package from dist/ directory
   // Using -1 for fastest compression since we want speed over size
   // -FS for synchronized file system to ensure proper file handling
-  execSync(
-    `cd dist && zip -r -1 -FS ../${outputFile} * -x '*.DS_Store' -x '*.map'`,
-    { stdio: 'inherit' }
-  );
-  
+  execSync(`cd dist && zip -r -1 -FS ../${outputFile} * -x '*.DS_Store' -x '*.map'`, {
+    stdio: 'inherit'
+  });
+
   const stats = fs.statSync(outputFile);
   console.log(`✅ Firefox package created: ${outputFile}`);
   console.log(`   Size: ${(stats.size / 1024).toFixed(2)} KB`);

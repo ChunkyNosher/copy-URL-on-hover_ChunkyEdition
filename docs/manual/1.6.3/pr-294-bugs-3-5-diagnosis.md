@@ -11,9 +11,12 @@
 
 ## 🚨 Executive Summary
 
-The GitHub Copilot agent claimed that **Bug #3** (Manager Panel Action Buttons Don't Work) and **Bug #5** (Minimizing Doesn't Update Manager Panel) were "already fixed" in the codebase. **This claim is INCORRECT.**
+The GitHub Copilot agent claimed that **Bug #3** (Manager Panel Action Buttons
+Don't Work) and **Bug #5** (Minimizing Doesn't Update Manager Panel) were
+"already fixed" in the codebase. **This claim is INCORRECT.**
 
 After analyzing the PR branch, I can confirm:
+
 - ✅ **Bug #3 IS ACTUALLY FIXED** - Buttons now have `data-action` attributes
 - ❌ **Bug #5 IS NOT FIXED** - The fix exists but uses **wrong event name**
 
@@ -23,15 +26,19 @@ After analyzing the PR branch, I can confirm:
 
 ### **Original Diagnosis (from v1-6-3-critical-bugs-diagnosis.md)**
 
-**Problem:** Manager Panel close/minimize buttons have no `data-action` attributes, so event handler can't detect clicks.
+**Problem:** Manager Panel close/minimize buttons have no `data-action`
+attributes, so event handler can't detect clicks.
 
 **Required Fix:**
+
 ```html
 <!-- Before (broken): -->
 <button class="panel-btn-icon">✕</button>
 
 <!-- After (fixed): -->
-<button class="panel-btn-icon" data-action="close" data-quick-tab-id="qt-XXX">✕</button>
+<button class="panel-btn-icon" data-action="close" data-quick-tab-id="qt-XXX">
+  ✕
+</button>
 ```
 
 ### **Verification in PR Branch**
@@ -40,6 +47,7 @@ After analyzing the PR branch, I can confirm:
 **Method:** `_createButton()` (line ~585)
 
 **Code in PR Branch:**
+
 ```javascript
 static _createButton(text, title, action, data) {
   const button = document.createElement('button');
@@ -58,16 +66,17 @@ static _createButton(text, title, action, data) {
 ```
 
 **Example Button Creation (line ~563):**
+
 ```javascript
 // Close button
 const closeBtn = PanelUIBuilder._createButton('✕', 'Close', 'close', {
-  quickTabId: tab.id  // ✅ Sets data-quick-tab-id
+  quickTabId: tab.id // ✅ Sets data-quick-tab-id
 });
 actions.appendChild(closeBtn);
 
 // Minimize button
 const minBtn = PanelUIBuilder._createButton('➖', 'Minimize', 'minimize', {
-  quickTabId: tab.id  // ✅ Sets data-quick-tab-id
+  quickTabId: tab.id // ✅ Sets data-quick-tab-id
 });
 actions.appendChild(minBtn);
 ```
@@ -75,6 +84,7 @@ actions.appendChild(minBtn);
 ### **Verification Result: ✅ FIXED**
 
 The PR **correctly implements** the required fix:
+
 1. ✅ `button.dataset.action = action` sets `data-action` attribute
 2. ✅ `data-quick-tab-id` is set via the `data` parameter
 3. ✅ All button types (close, minimize, restore, goToTab) have attributes
@@ -87,15 +97,18 @@ The PR **correctly implements** the required fix:
 
 ### **Original Diagnosis (from v1-6-3-critical-bugs-diagnosis.md)**
 
-**Problem:** When user minimizes a Quick Tab from its window (not from panel), the Manager Panel doesn't update to show the tab moved to "Minimized" section.
+**Problem:** When user minimizes a Quick Tab from its window (not from panel),
+the Manager Panel doesn't update to show the tab moved to "Minimized" section.
 
-**Root Cause:** VisibilityHandler doesn't emit `state:updated` event when minimize happens.
+**Root Cause:** VisibilityHandler doesn't emit `state:updated` event when
+minimize happens.
 
 **Required Fix:**
+
 ```javascript
 handleMinimize(id) {
   // ... minimize logic ...
-  
+
   // 🔧 ADD THIS: Emit state:updated event
   if (this.eventBus) {
     this.eventBus.emit('state:updated', { quickTab: { id, minimized: true } });
@@ -109,6 +122,7 @@ handleMinimize(id) {
 **Method:** `handleMinimize()` (line ~117)
 
 **Code in PR Branch:**
+
 ```javascript
 handleMinimize(id) {
   console.log('[VisibilityHandler] Handling minimize for:', id);
@@ -150,7 +164,8 @@ this.eventBus.emit('state:updated', { quickTab: quickTabData });
 
 Let me check what event the panel is listening for...
 
-**File:** `src/features/quick-tabs/panel/PanelContentManager.js` (from main branch)  
+**File:** `src/features/quick-tabs/panel/PanelContentManager.js` (from main
+branch)  
 **Expected Listener Setup:**
 
 ```javascript
@@ -178,7 +193,7 @@ Let me trace the event flow more carefully...
 constructor(options = {}) {
   // Internal event bus for component communication
   this.internalEventBus = new EventEmitter();  // ❌ INTERNAL BUS
-  
+
   // Legacy fields for backward compatibility (KEEP - required by old code)
   this.eventBus = null;  // External event bus from content.js
   this.Events = null;
@@ -186,11 +201,12 @@ constructor(options = {}) {
 ```
 
 **In `_initializeHandlers()`:**
+
 ```javascript
 this.visibilityHandler = new VisibilityHandler({
   quickTabsMap: this.tabs,
   minimizedManager: this.minimizedManager,
-  eventBus: this.internalEventBus,  // ❌ USES INTERNAL BUS
+  eventBus: this.internalEventBus, // ❌ USES INTERNAL BUS
   currentZIndex: this.currentZIndex,
   currentTabId: this.currentTabId,
   Events: this.Events
@@ -198,12 +214,13 @@ this.visibilityHandler = new VisibilityHandler({
 ```
 
 **In `_initializeCoordinators()`:**
+
 ```javascript
 this.uiCoordinator = new UICoordinator(
   this.state,
   this.minimizedManager,
   this.panelManager,
-  this.internalEventBus  // ❌ USES INTERNAL BUS
+  this.internalEventBus // ❌ USES INTERNAL BUS
 );
 ```
 
@@ -214,7 +231,7 @@ this.uiCoordinator = new UICoordinator(
 ```javascript
 async init() {
   // ... initialization ...
-  
+
   // Pass external event bus to content manager
   this.contentManager = new PanelContentManager(
     this.panel,
@@ -227,9 +244,12 @@ async init() {
 
 ### **The Bug Explained**
 
-1. **VisibilityHandler emits on:** `this.internalEventBus` (QuickTabsManager's internal bus)
-2. **PanelContentManager listens on:** `this.eventBus` (external bus from content.js)
-3. **Result:** Event is emitted, but panel never hears it because they're listening to different buses!
+1. **VisibilityHandler emits on:** `this.internalEventBus` (QuickTabsManager's
+   internal bus)
+2. **PanelContentManager listens on:** `this.eventBus` (external bus from
+   content.js)
+3. **Result:** Event is emitted, but panel never hears it because they're
+   listening to different buses!
 
 **This is a classic "two ships passing in the night" bug.**
 
@@ -248,13 +268,15 @@ if (this.eventBus) {
 }
 ```
 
-The comment says "FIX Bug #7" but the original diagnosis document called it "Bug #5". This suggests the Copilot agent got confused about bug numbering.
+The comment says "FIX Bug #7" but the original diagnosis document called it "Bug
+#5". This suggests the Copilot agent got confused about bug numbering.
 
 **More importantly:** The event IS emitted, but on the **wrong event bus**.
 
 ### **Why the Copilot Agent Thought It Was Fixed**
 
 Looking at the code, the fix LOOKS correct:
+
 - ✅ Event name is correct: `state:updated`
 - ✅ Event payload is correct: `{ quickTab: { id, minimized: true, ... } }`
 - ✅ Log statement confirms emission
@@ -287,12 +309,15 @@ _initializeHandlers() {
 ```
 
 **Pros:**
+
 - ✅ Simple one-line change
 - ✅ Panel will immediately hear the event
 - ✅ No changes needed to VisibilityHandler
 
 **Cons:**
-- ❌ May break internal event coordination (if other components rely on internalEventBus)
+
+- ❌ May break internal event coordination (if other components rely on
+  internalEventBus)
 - ❌ Mixes internal and external event concerns
 
 ---
@@ -313,7 +338,7 @@ _setupEventBridge() {
       console.log('[QuickTabsManager] Bridged state:updated to external bus');
     }
   });
-  
+
   // Bridge other critical events
   this.internalEventBus.on('state:deleted', (data) => {
     if (this.eventBus) {
@@ -328,23 +353,25 @@ Call this in `_setupComponents()`:
 ```javascript
 async _setupComponents() {
   console.log('[QuickTabsManager] _setupComponents starting...');
-  
+
   this.events.setupEmergencySaveHandlers();
   await this.uiCoordinator.init();
-  
+
   // 🔧 ADD THIS: Bridge internal events to external bus
   this._setupEventBridge();
-  
+
   // ... rest of setup ...
 }
 ```
 
 **Pros:**
+
 - ✅ Preserves internal event architecture
 - ✅ Explicit event flow (easy to debug)
 - ✅ Can selectively bridge only needed events
 
 **Cons:**
+
 - ❌ More code
 - ❌ Extra event listener overhead
 
@@ -360,10 +387,10 @@ Remove `internalEventBus` entirely:
 ```javascript
 constructor(options = {}) {
   // ... other fields ...
-  
+
   // ❌ REMOVE THIS:
   // this.internalEventBus = new EventEmitter();
-  
+
   // ✅ USE EXTERNAL BUS EVERYWHERE:
   this.eventBus = null;  // Set during init()
 }
@@ -401,11 +428,13 @@ _initializeCoordinators() {
 ```
 
 **Pros:**
+
 - ✅ Simplest architecture (one event bus)
 - ✅ No event bridging needed
 - ✅ All components hear all events
 
 **Cons:**
+
 - ❌ Large refactoring (changes multiple files)
 - ❌ May break existing internal event coordination
 - ❌ Requires thorough testing
@@ -417,17 +446,20 @@ _initializeCoordinators() {
 **Best Approach:** **Option 2 - Add Event Bridge**
 
 **Rationale:**
+
 1. Minimal risk - doesn't change existing architecture
 2. Easy to implement - ~10 lines of code
 3. Easy to debug - explicit event forwarding with logs
 4. Flexible - can bridge only the events that need to be external
 
 **Implementation Location:**
+
 - **File:** `src/features/quick-tabs/index.js`
 - **Method:** Add `_setupEventBridge()` private method
 - **Call from:** `_setupComponents()` method (after `uiCoordinator.init()`)
 
 **Events to Bridge:**
+
 - `state:updated` (for Bug #5)
 - `state:deleted` (for Bug #4, already fixed in PR)
 - `state:created` (if panel needs it)
@@ -439,7 +471,8 @@ _initializeCoordinators() {
 After implementing the fix, verify:
 
 1. ✅ User minimizes Quick Tab from its window
-2. ✅ Log shows: `[VisibilityHandler] Emitted state:updated for minimize: qt-XXX`
+2. ✅ Log shows:
+   `[VisibilityHandler] Emitted state:updated for minimize: qt-XXX`
 3. ✅ Log shows: `[QuickTabsManager] Bridged state:updated to external bus`
 4. ✅ Log shows: `[PanelContentManager] state:updated received for qt-XXX`
 5. ✅ Manager Panel updates immediately (tab moves to Minimized section)
@@ -486,6 +519,7 @@ After implementing the fix, verify:
 **End of Diagnosis Report**
 
 **Next Steps:**
+
 1. Implement Option 2 (Event Bridge)
 2. Add integration test for minimize → panel update flow
 3. Verify all other state events are bridged correctly

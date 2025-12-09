@@ -4,21 +4,33 @@
 **Date:** November 28, 2025  
 **Branch:** `copilot/fix-critical-bugs-and-robustness` (PR #294)  
 **Extension Version:** v1.6.3  
-**Analysis Source:** Extension logs + Codebase inspection + User testing + Screenshot verification
+**Analysis Source:** Extension logs + Codebase inspection + User testing +
+Screenshot verification
 
 ---
 
 ## Executive Summary
 
-After comprehensive analysis including log analysis, code inspection, and user screenshot verification, I have identified **MULTIPLE CRITICAL BUGS** affecting the Quick Tab Manager. The issues are split into two categories:
+After comprehensive analysis including log analysis, code inspection, and user
+screenshot verification, I have identified **MULTIPLE CRITICAL BUGS** affecting
+the Quick Tab Manager. The issues are split into two categories:
 
-1. **Panel State Synchronization Bugs** - Panel appears open visually but `isOpen` flag is `false`, blocking all updates
-2. **UI Architecture Confusion** - User has TWO different manager UIs (sidebar vs floating panel) causing testing confusion
-3. **Keyboard Shortcut Bug** - Floating panel toggle command is not defined in manifest
-4. **Event Listener Bug** - `state:deleted` events are not reaching PanelContentManager
+1. **Panel State Synchronization Bugs** - Panel appears open visually but
+   `isOpen` flag is `false`, blocking all updates
+2. **UI Architecture Confusion** - User has TWO different manager UIs (sidebar
+   vs floating panel) causing testing confusion
+3. **Keyboard Shortcut Bug** - Floating panel toggle command is not defined in
+   manifest
+4. **Event Listener Bug** - `state:deleted` events are not reaching
+   PanelContentManager
 
 **Critical Finding:**
-> The extension has **TWO SEPARATE Quick Tab Manager UIs**: a Firefox **sidebar** (opened by clicking icon) and a **floating panel** (opened by keyboard shortcut). The user has been testing the sidebar, not the floating panel, which is why logs show `isOpen=false` despite the UI appearing open. Both UIs have bugs that need fixing.
+
+> The extension has **TWO SEPARATE Quick Tab Manager UIs**: a Firefox
+> **sidebar** (opened by clicking icon) and a **floating panel** (opened by
+> keyboard shortcut). The user has been testing the sidebar, not the floating
+> panel, which is why logs show `isOpen=false` despite the UI appearing open.
+> Both UIs have bugs that need fixing.
 
 ---
 
@@ -39,6 +51,7 @@ After comprehensive analysis including log analysis, code inspection, and user s
 ### User-Visible Symptoms
 
 When the Quick Tab Manager **floating panel** is open:
+
 - ❌ Closing a Quick Tab via its ✕ button doesn't remove it from the panel list
 - ❌ Minimizing a Quick Tab doesn't turn its indicator yellow
 - ❌ Clicking panel buttons (Minimize/Restore/Close) appears to do nothing
@@ -49,9 +62,11 @@ When the Quick Tab Manager **floating panel** is open:
 ### Root Cause
 
 **File:** `src/features/quick-tabs/panel/PanelStateManager.js`  
-**Methods:** `savePanelState()` (Lines 152-166) and `savePanelStateLocal()` (Lines 176-189)
+**Methods:** `savePanelState()` (Lines 152-166) and `savePanelStateLocal()`
+(Lines 176-189)
 
-Both methods **create a new object and replace** `this.panelState`, which **overwrites** the `isOpen` flag with stale values.
+Both methods **create a new object and replace** `this.panelState`, which
+**overwrites** the `isOpen` flag with stale values.
 
 **Current Code Pattern:**
 
@@ -80,18 +95,24 @@ async savePanelState(panel) {
 1. `PanelManager.open()` is called (line 258 in panel.js)
 2. Line 264: `this.panel.style.display = 'flex'` ✅ Panel shows visually
 3. Line 265: `this.isOpen = true` ✅ PanelManager flag set
-4. Line 266: `this.stateManager.setIsOpen(true)` ✅ PanelStateManager flag set to `true`
-5. Line 272: `this.contentManager.setIsOpen(true)` ✅ PanelContentManager flag set
+4. Line 266: `this.stateManager.setIsOpen(true)` ✅ PanelStateManager flag set
+   to `true`
+5. Line 272: `this.contentManager.setIsOpen(true)` ✅ PanelContentManager flag
+   set
 6. Line 273: `this.contentManager.updateContent()` ✅ First update executes
 7. **Line 282: `this.stateManager.savePanelState(this.panel)` ❌ THE BUG!**
 
 **What happens at step 7:**
+
 - `savePanelState()` creates a **brand new object**
 - The new object copies `isOpen: this.panelState.isOpen`
-- **But** due to JavaScript event loop timing, `this.panelState.isOpen` might still be the **OLD value** from storage (`false`)
-- The new object **replaces** the entire state, overwriting the `isOpen=true` that was just set
+- **But** due to JavaScript event loop timing, `this.panelState.isOpen` might
+  still be the **OLD value** from storage (`false`)
+- The new object **replaces** the entire state, overwriting the `isOpen=true`
+  that was just set
 - All subsequent `_getIsOpen()` calls return `false`
-- Guard clause blocks updates: `if (!forceRefresh && !isOpen)` → `true` → skip update
+- Guard clause blocks updates: `if (!forceRefresh && !isOpen)` → `true` → skip
+  update
 
 ### Evidence from Logs
 
@@ -103,6 +124,7 @@ async savePanelState(panel) {
 ```
 
 **Pattern repeats for EVERY event:**
+
 - Events ARE being received ✅
 - Updates are blocked by guard clause ❌
 - `isOpen` returns `false` despite panel being open visually ❌
@@ -115,9 +137,11 @@ async savePanelState(panel) {
 
 **Current approach:** Creates new object and replaces `this.panelState`
 
-**Required change:** Update properties directly on existing object without replacement
+**Required change:** Update properties directly on existing object without
+replacement
 
 **Specifically:**
+
 1. Update `this.panelState.left` directly
 2. Update `this.panelState.top` directly
 3. Update `this.panelState.width` directly
@@ -126,11 +150,13 @@ async savePanelState(panel) {
 
 **Method #2:** `savePanelStateLocal()` (Lines 176-189)
 
-**Same issue, same fix:** Update properties directly instead of object replacement
+**Same issue, same fix:** Update properties directly instead of object
+replacement
 
 ### Why This Causes ALL Reported Bugs
 
 Once `isOpen` is incorrectly set to `false`:
+
 1. ❌ `updateContent()` guard clause blocks ALL updates
 2. ❌ Minimize events received but updates skipped
 3. ❌ Close events received but updates skipped
@@ -145,7 +171,9 @@ Once `isOpen` is incorrectly set to `false`:
 
 ### User-Visible Symptom
 
-Pressing the keyboard shortcut (e.g., Ctrl+Alt+Z) to open the Quick Tab Manager **floating panel** does nothing. The shortcut only works if you configure it to a command that exists.
+Pressing the keyboard shortcut (e.g., Ctrl+Alt+Z) to open the Quick Tab Manager
+**floating panel** does nothing. The shortcut only works if you configure it to
+a command that exists.
 
 ### Root Cause
 
@@ -175,7 +203,8 @@ Pressing the keyboard shortcut (e.g., Ctrl+Alt+Z) to open the Quick Tab Manager 
 The code in `background.js` (line 1422) listens for:
 
 ```javascript
-if (command === 'toggle-quick-tabs-manager') {  // ← THIS COMMAND DOESN'T EXIST IN MANIFEST
+if (command === 'toggle-quick-tabs-manager') {
+  // ← THIS COMMAND DOESN'T EXIST IN MANIFEST
   await _toggleQuickTabsPanel();
 }
 ```
@@ -189,7 +218,8 @@ The extension has **TWO** Quick Tab Manager UIs:
 1. **Sidebar** - Firefox native sidebar with Settings + Manager tabs
 2. **Floating Panel** - Custom in-page DOM overlay
 
-The manifest only defines shortcuts for the **sidebar**, not the **floating panel**.
+The manifest only defines shortcuts for the **sidebar**, not the **floating
+panel**.
 
 ### What Needs to Be Fixed
 
@@ -208,7 +238,8 @@ The manifest only defines shortcuts for the **sidebar**, not the **floating pane
 }
 ```
 
-**Result:** Users will be able to use Ctrl+Alt+Z to toggle the floating panel on/off.
+**Result:** Users will be able to use Ctrl+Alt+Z to toggle the floating panel
+on/off.
 
 ---
 
@@ -216,7 +247,8 @@ The manifest only defines shortcuts for the **sidebar**, not the **floating pane
 
 ### User-Visible Symptom
 
-When a Quick Tab is closed via the ✕ button on the **Quick Tab window** (not the panel), the Quick Tab Manager panel does NOT update to remove it from the list.
+When a Quick Tab is closed via the ✕ button on the **Quick Tab window** (not the
+panel), the Quick Tab Manager panel does NOT update to remove it from the list.
 
 ### Evidence from Logs
 
@@ -243,14 +275,15 @@ When a Quick Tab is closed via the ✕ button on the **Quick Tab window** (not t
 
 **Comparison:**
 
-| Event Type | Emitted? | Received by PanelContentManager? | Result |
-|------------|----------|----------------------------------|--------|
-| `state:updated` | ✅ Yes | ✅ Yes | Update skipped (due to Bug #1) |
-| `state:deleted` | ✅ Yes | ❌ NO | Event never reaches listener |
+| Event Type      | Emitted? | Received by PanelContentManager? | Result                         |
+| --------------- | -------- | -------------------------------- | ------------------------------ |
+| `state:updated` | ✅ Yes   | ✅ Yes                           | Update skipped (due to Bug #1) |
+| `state:deleted` | ✅ Yes   | ❌ NO                            | Event never reaches listener   |
 
 **The Issue:**
 
-The `state:deleted` event is being emitted by `DestroyHandler` but is **NOT being received** by `PanelContentManager`'s listener.
+The `state:deleted` event is being emitted by `DestroyHandler` but is **NOT
+being received** by `PanelContentManager`'s listener.
 
 ### Investigation Required
 
@@ -261,8 +294,10 @@ The `state:deleted` event is being emitted by `DestroyHandler` but is **NOT bein
 **Check:**
 
 1. Is there a listener registered for `state:deleted`?
-2. Is the listener attached to the correct event bus (`this.eventBus` which is actually `internalEventBus`)?
-3. Is the event being emitted on a different bus than where the listener is attached?
+2. Is the listener attached to the correct event bus (`this.eventBus` which is
+   actually `internalEventBus`)?
+3. Is the event being emitted on a different bus than where the listener is
+   attached?
 
 **File:** `src/features/quick-tabs/core/handlers/DestroyHandler.js`
 
@@ -275,6 +310,7 @@ The `state:deleted` event is being emitted by `DestroyHandler` but is **NOT bein
 ### What Needs to Be Fixed
 
 **Likely Issue:** The `state:deleted` listener is either:
+
 1. Not registered at all
 2. Registered on the wrong event bus
 3. Being removed/cleaned up before the event is received
@@ -284,20 +320,23 @@ The `state:deleted` event is being emitted by `DestroyHandler` but is **NOT bein
 1. Verify listener exists in `setupStateListeners()`
 2. Ensure listener is on same bus as emission (`internalEventBus`)
 3. Add debug logging to confirm event is emitted and received
-4. If listener doesn't exist, add it following the same pattern as `state:updated`
+4. If listener doesn't exist, add it following the same pattern as
+   `state:updated`
 
 **Expected pattern:**
 
 ```javascript
-const deletedHandler = (data) => {
+const deletedHandler = data => {
   try {
-    debug(`[PanelContentManager] state:deleted received for ${data?.quickTabId}`);
-    
+    debug(
+      `[PanelContentManager] state:deleted received for ${data?.quickTabId}`
+    );
+
     // Only mark state changed if panel is closed
     if (!this._getIsOpen()) {
       this.stateChangedWhileClosed = true;
     }
-    
+
     // Trigger update
     this.updateContent({ forceRefresh: false });
   } catch (err) {
@@ -314,7 +353,8 @@ this._stateHandlers.push({ event: 'state:deleted', handler: deletedHandler });
 
 ### The Problem
 
-The extension has **TWO SEPARATE** Quick Tab Manager UIs that look similar but are implemented differently:
+The extension has **TWO SEPARATE** Quick Tab Manager UIs that look similar but
+are implemented differently:
 
 #### **UI #1: Firefox Sidebar**
 
@@ -337,12 +377,14 @@ The extension has **TWO SEPARATE** Quick Tab Manager UIs that look similar but a
 ### Why This Caused Confusion
 
 **User's Testing:**
+
 1. Clicked extension icon → Opened **sidebar** ✅
 2. Clicked "Quick Tab Manager" tab in sidebar → Switched to Manager tab ✅
 3. Saw Manager UI and assumed it was the floating panel ❌
 4. Reported bugs while looking at **sidebar**, not floating panel ❌
 
 **Logs showed:**
+
 ```
 [Sidebar] Opened sidebar and switched to Manager tab
 [PanelContentManager] updateContent skipped: panel=true, isOpen=false
@@ -351,21 +393,26 @@ The extension has **TWO SEPARATE** Quick Tab Manager UIs that look similar but a
 **First log:** Sidebar opened (different UI)  
 **Second log:** Floating panel state check (different UI)
 
-**Result:** User tested sidebar, bugs affect floating panel, logs show floating panel state.
+**Result:** User tested sidebar, bugs affect floating panel, logs show floating
+panel state.
 
 ### What Needs to Be Clarified
 
 **For User:**
 
-1. **Sidebar** = Firefox's built-in sidebar UI (permanent, docked to browser window)
-2. **Floating Panel** = Custom overlay on web pages (movable, resizable, can be closed)
+1. **Sidebar** = Firefox's built-in sidebar UI (permanent, docked to browser
+   window)
+2. **Floating Panel** = Custom overlay on web pages (movable, resizable, can be
+   closed)
 3. These are **TWO DIFFERENT IMPLEMENTATIONS** of the same feature
 
 **For Developers:**
 
 Document that:
+
 - Sidebar uses `sidebar/settings.html` (separate runtime environment)
-- Floating panel uses `src/features/quick-tabs/panel.js` (content script environment)
+- Floating panel uses `src/features/quick-tabs/panel.js` (content script
+  environment)
 - Sidebar state is managed by Firefox
 - Floating panel state is managed by `PanelStateManager`
 - Bugs in one don't necessarily affect the other
@@ -373,11 +420,15 @@ Document that:
 ### What Needs to Be Fixed
 
 **Immediate:**
+
 - Fix Bug #2 so users can actually open the floating panel
-- Add visual distinction between sidebar and floating panel (different titles/icons)
+- Add visual distinction between sidebar and floating panel (different
+  titles/icons)
 
 **Long-term consideration:**
-- Unify the two UIs into a single implementation (sidebar OR floating panel, not both)
+
+- Unify the two UIs into a single implementation (sidebar OR floating panel, not
+  both)
 - Or clearly document when to use each one
 
 ---
@@ -386,7 +437,8 @@ Document that:
 
 ### User-Visible Symptom
 
-When pressing keyboard shortcut to open sidebar (Alt+Shift+Z or Alt+Shift+S), sometimes error appears in logs:
+When pressing keyboard shortcut to open sidebar (Alt+Shift+Z or Alt+Shift+S),
+sometimes error appears in logs:
 
 ```
 [ERROR] [Sidebar] Error opening sidebar: {}
@@ -406,24 +458,25 @@ But the error object is empty, making it impossible to diagnose the issue.
 async function _openSidebarAndSwitchToManager() {
   try {
     const isOpen = await browser.sidebarAction.isOpen({});
-    
+
     if (!isOpen) {
       await browser.sidebarAction.open();
       await new Promise(resolve => setTimeout(resolve, 300));
     }
-    
+
     await _sendManagerTabMessage();
-    
+
     console.log('[Sidebar] Opened sidebar and switched to Manager tab');
   } catch (error) {
-    console.error('[Sidebar] Error opening sidebar:', error);  // ← LOGS OBJECT
+    console.error('[Sidebar] Error opening sidebar:', error); // ← LOGS OBJECT
   }
 }
 ```
 
 **The Issue:**
 
-When an error occurs, the error object is logged directly. If the error doesn't have a proper `message` or `stack` property, it logs as `{}`.
+When an error occurs, the error object is logged directly. If the error doesn't
+have a proper `message` or `stack` property, it logs as `{}`.
 
 ### What Needs to Be Fixed
 
@@ -432,6 +485,7 @@ When an error occurs, the error object is logged directly. If the error doesn't 
 **Location:** Line 1374 (error logging)
 
 **Current:**
+
 ```javascript
 console.error('[Sidebar] Error opening sidebar:', error);
 ```
@@ -452,11 +506,15 @@ console.error('[Sidebar] Error opening sidebar:', {
 **Or simpler:**
 
 ```javascript
-console.error('[Sidebar] Error opening sidebar:', error?.message || error?.toString() || 'Unknown error');
+console.error(
+  '[Sidebar] Error opening sidebar:',
+  error?.message || error?.toString() || 'Unknown error'
+);
 console.error('[Sidebar] Error stack:', error?.stack);
 ```
 
-**Impact:** Future errors will have useful diagnostic information instead of empty objects.
+**Impact:** Future errors will have useful diagnostic information instead of
+empty objects.
 
 ---
 
@@ -599,24 +657,31 @@ All subsequent updates blocked by guard clause ❌
 **Fix #1: Stop Replacing State Object in PanelStateManager**
 
 - **Files:** `src/features/quick-tabs/panel/PanelStateManager.js`
-- **Methods:** `savePanelState()` (lines 152-166), `savePanelStateLocal()` (lines 176-189)
-- **Change:** Update properties `left`, `top`, `width`, `height` directly on `this.panelState` without creating new object
+- **Methods:** `savePanelState()` (lines 152-166), `savePanelStateLocal()`
+  (lines 176-189)
+- **Change:** Update properties `left`, `top`, `width`, `height` directly on
+  `this.panelState` without creating new object
 - **Do NOT:** Create new object and assign to `this.panelState`
 - **Do NOT:** Touch `this.panelState.isOpen` in these methods
-- **Impact:** Fixes ALL panel update bugs by preventing `isOpen` from being overwritten
+- **Impact:** Fixes ALL panel update bugs by preventing `isOpen` from being
+  overwritten
 
 **Fix #2: Add Missing Keyboard Shortcut to Manifest**
 
 - **File:** `manifest.json`
 - **Location:** Inside `"commands"` object
-- **Change:** Add `"toggle-quick-tabs-manager"` command with shortcut (e.g., `"Ctrl+Alt+Z"`)
+- **Change:** Add `"toggle-quick-tabs-manager"` command with shortcut (e.g.,
+  `"Ctrl+Alt+Z"`)
 - **Impact:** Users can open/close floating panel with keyboard
 
 **Fix #3: Fix state:deleted Event Listener**
 
-- **Files:** `src/features/quick-tabs/panel/PanelContentManager.js` (check listener), `src/features/quick-tabs/core/handlers/DestroyHandler.js` (check emission)
+- **Files:** `src/features/quick-tabs/panel/PanelContentManager.js` (check
+  listener), `src/features/quick-tabs/core/handlers/DestroyHandler.js` (check
+  emission)
 - **Investigation:** Determine why `state:deleted` is emitted but not received
-- **Likely fix:** Add or fix event listener registration in `setupStateListeners()`
+- **Likely fix:** Add or fix event listener registration in
+  `setupStateListeners()`
 - **Impact:** Panel updates immediately when Quick Tabs are closed
 
 ### Priority 2 - High (Code Quality)
@@ -630,8 +695,10 @@ All subsequent updates blocked by guard clause ❌
 
 **Fix #5: Add UI Distinction**
 
-- **Files:** `sidebar/settings.html`, `src/features/quick-tabs/panel/PanelUIBuilder.js`
-- **Change:** Add visual indicators (different titles, icons, or colors) to distinguish sidebar from floating panel
+- **Files:** `sidebar/settings.html`,
+  `src/features/quick-tabs/panel/PanelUIBuilder.js`
+- **Change:** Add visual indicators (different titles, icons, or colors) to
+  distinguish sidebar from floating panel
 - **Impact:** Users can easily tell which UI they're using
 
 ### Priority 3 - Medium (Documentation)
@@ -639,7 +706,8 @@ All subsequent updates blocked by guard clause ❌
 **Fix #6: Document Dual-UI Architecture**
 
 - **Files:** README.md, developer documentation
-- **Change:** Clarify that extension has TWO Quick Tab Manager UIs (sidebar vs floating panel)
+- **Change:** Clarify that extension has TWO Quick Tab Manager UIs (sidebar vs
+  floating panel)
 - **Impact:** Prevents future confusion for users and developers
 
 ---
@@ -650,12 +718,18 @@ All subsequent updates blocked by guard clause ❌
 
 - [ ] **Test #1:** Press Ctrl+Alt+Z → Panel opens
 - [ ] **Test #2:** Press Ctrl+Alt+Z again → Panel closes
-- [ ] **Test #3:** Open panel → Create Quick Tab → Panel shows new tab immediately
-- [ ] **Test #4:** Panel open → Minimize Quick Tab via window button → Indicator turns yellow immediately
-- [ ] **Test #5:** Panel open → Close Quick Tab via window ✕ → Tab disappears from panel immediately
-- [ ] **Test #6:** Panel open → Click "Minimize" in panel → Quick Tab minimizes immediately
-- [ ] **Test #7:** Panel open → Click "Restore" in panel → Quick Tab restores immediately
-- [ ] **Test #8:** Panel open → Click "Close" in panel → Quick Tab closes and disappears immediately
+- [ ] **Test #3:** Open panel → Create Quick Tab → Panel shows new tab
+      immediately
+- [ ] **Test #4:** Panel open → Minimize Quick Tab via window button → Indicator
+      turns yellow immediately
+- [ ] **Test #5:** Panel open → Close Quick Tab via window ✕ → Tab disappears
+      from panel immediately
+- [ ] **Test #6:** Panel open → Click "Minimize" in panel → Quick Tab minimizes
+      immediately
+- [ ] **Test #7:** Panel open → Click "Restore" in panel → Quick Tab restores
+      immediately
+- [ ] **Test #8:** Panel open → Click "Close" in panel → Quick Tab closes and
+      disappears immediately
 - [ ] **Test #9:** Panel open → Drag panel → Position persists after page reload
 - [ ] **Test #10:** Panel open → Resize panel → Size persists after page reload
 
@@ -688,11 +762,13 @@ All subsequent updates blocked by guard clause ❌
 ```
 
 **Interpretation:**
+
 - `panel=true` → Panel DOM element exists
 - `isOpen=false` → PanelStateManager.getState().isOpen returns false
 - **Conclusion:** State desynchronization confirmed
 
-**Pattern:** This appears **repeatedly** for EVERY state change event (minimize, update, etc.)
+**Pattern:** This appears **repeatedly** for EVERY state change event (minimize,
+update, etc.)
 
 ### Evidence of Bug #3 (state:deleted Not Received)
 
@@ -711,6 +787,7 @@ All subsequent updates blocked by guard clause ❌
 ```
 
 **Interpretation:**
+
 - Event is emitted correctly
 - Event is NOT received by listener
 - **Conclusion:** Listener is missing, on wrong bus, or being removed
@@ -726,6 +803,7 @@ All subsequent updates blocked by guard clause ❌
 ```
 
 **Interpretation:**
+
 - Two failed attempts to open sidebar (keyboard shortcut tried)
 - Third attempt succeeded (different method - probably clicking icon)
 - Errors are empty objects (Bug #5 - poor error logging)
@@ -756,30 +834,40 @@ All subsequent updates blocked by guard clause ❌
 ### Key Code Locations
 
 **Panel open sequence:**
+
 - `src/features/quick-tabs/panel.js` lines 258-282 (`open()` method)
 
 **State check that fails:**
-- `src/features/quick-tabs/panel/PanelContentManager.js` lines 64-86 (`_getIsOpen()` method)
+
+- `src/features/quick-tabs/panel/PanelContentManager.js` lines 64-86
+  (`_getIsOpen()` method)
 
 **Guard clause that blocks updates:**
-- `src/features/quick-tabs/panel/PanelContentManager.js` lines 131-144 (`updateContent()` method)
+
+- `src/features/quick-tabs/panel/PanelContentManager.js` lines 131-144
+  (`updateContent()` method)
 
 **Keyboard command handler:**
+
 - `background.js` lines 1421-1433 (`browser.commands.onCommand` listener)
 
 ---
 
 ## Conclusion
 
-**Root Cause Identified:** The panel state object replacement bug (Bug #1) is the PRIMARY cause of all panel update failures. Once `isOpen` is incorrectly set to `false`, the guard clause blocks ALL updates.
+**Root Cause Identified:** The panel state object replacement bug (Bug #1) is
+the PRIMARY cause of all panel update failures. Once `isOpen` is incorrectly set
+to `false`, the guard clause blocks ALL updates.
 
 **Secondary Issues:**
+
 - Bug #2 prevents users from even opening the floating panel via keyboard
 - Bug #3 prevents panel from updating when tabs are closed
 - Bug #4 caused testing confusion (user tested wrong UI)
 - Bug #5 hinders debugging of sidebar issues
 
 **Fix Priority:**
+
 1. Fix Bug #1 (state object replacement) - **CRITICAL**
 2. Fix Bug #2 (keyboard shortcut) - **CRITICAL**
 3. Fix Bug #3 (state:deleted listener) - **HIGH**
@@ -787,6 +875,7 @@ All subsequent updates blocked by guard clause ❌
 5. Fix Bug #4 (UI distinction) - **LOW** (documentation/UX improvement)
 
 **Expected Outcome After Fixes:**
+
 - Floating panel opens/closes with keyboard shortcut
 - Panel state stays synchronized with visual display
 - Panel updates immediately when Quick Tabs change state
@@ -798,4 +887,6 @@ All subsequent updates blocked by guard clause ❌
 **Report Generated By:** Perplexity AI Analysis  
 **For:** ChunkyNosher/copy-URL-on-hover_ChunkyEdition Complete Bug Diagnosis  
 **Branch Analyzed:** `copilot/fix-critical-bugs-and-robustness` (PR #294)  
-**Key Finding:** State object replacement creates race condition that desynchronizes panel `isOpen` flag, blocking all updates. Keyboard shortcut missing from manifest prevents users from opening floating panel.
+**Key Finding:** State object replacement creates race condition that
+desynchronizes panel `isOpen` flag, blocking all updates. Keyboard shortcut
+missing from manifest prevents users from opening floating panel.

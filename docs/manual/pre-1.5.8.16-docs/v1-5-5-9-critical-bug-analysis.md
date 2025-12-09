@@ -114,11 +114,15 @@ CREATE_QUICK_TAB, the flag is false in content script.
 
 ```javascript
 // BEFORE (BROKEN):
-const tabInStorage = newValue.tabs.find(t => t.url === iframeSrc && !t.minimized);
+const tabInStorage = newValue.tabs.find(
+  t => t.url === iframeSrc && !t.minimized
+);
 
 // AFTER (FIXED):
 const quickTabId = container.dataset.quickTabId;
-const tabInStorage = newValue.tabs.find(t => t.id === quickTabId && !t.minimized);
+const tabInStorage = newValue.tabs.find(
+  t => t.id === quickTabId && !t.minimized
+);
 ```
 
 **Solution 2: Add Timestamp-Based Conflict Resolution**
@@ -605,7 +609,9 @@ function createQuickTabWindow(
     });
 
     if (existingContainer) {
-      debug(`Quick Tab with ID ${quickTabId} already exists, updating position instead`);
+      debug(
+        `Quick Tab with ID ${quickTabId} already exists, updating position instead`
+      );
       existingContainer.style.left = left + 'px';
       existingContainer.style.top = top + 'px';
       return; // Don't create duplicate

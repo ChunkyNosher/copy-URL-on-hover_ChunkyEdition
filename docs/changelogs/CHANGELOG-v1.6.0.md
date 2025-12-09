@@ -7,7 +7,10 @@
 
 ## Overview
 
-Version 1.6.0 represents the beginning of a comprehensive architectural refactoring to reduce technical debt and improve maintainability. This release completes **Phase 0: Infrastructure Setup**, establishing the foundation for the modular architecture transformation.
+Version 1.6.0 represents the beginning of a comprehensive architectural
+refactoring to reduce technical debt and improve maintainability. This release
+completes **Phase 0: Infrastructure Setup**, establishing the foundation for the
+modular architecture transformation.
 
 ---
 
@@ -17,7 +20,8 @@ Version 1.6.0 represents the beginning of a comprehensive architectural refactor
 
 **Module Aliasing System**
 
-- Added path aliases for clean imports: `@domain`, `@storage`, `@features`, `@utils`, `@core`, `@ui`
+- Added path aliases for clean imports: `@domain`, `@storage`, `@features`,
+  `@utils`, `@core`, `@ui`
 - Integrated `@rollup/plugin-alias` for module resolution
 - Configured `@rollup/plugin-terser` for production optimizations
 - Enabled tree-shaking for bundle size reduction
@@ -69,8 +73,10 @@ tests/
 
 **ESLint Architectural Rules**
 
-- Complexity limits: `complexity ≤ 9`, `max-depth ≤ 2`, `max-lines-per-function ≤ 70`
-- Async/await rules: `require-await`, `no-return-await`, `prefer-promise-reject-errors`
+- Complexity limits: `complexity ≤ 9`, `max-depth ≤ 2`,
+  `max-lines-per-function ≤ 70`
+- Async/await rules: `require-await`, `no-return-await`,
+  `prefer-promise-reject-errors`
 - Import ordering: domain → storage → features → internal → relative
 - Architecture boundaries enforced:
   - Domain layer cannot import from features or storage
@@ -202,7 +208,8 @@ None in this release (infrastructure focus).
 
 ### New Documentation
 
-- `docs/implementation-summaries/IMPLEMENTATION-SUMMARY-v1.6.0-infrastructure.md` - Complete infrastructure summary
+- `docs/implementation-summaries/IMPLEMENTATION-SUMMARY-v1.6.0-infrastructure.md` -
+  Complete infrastructure summary
 - `docs/changelogs/CHANGELOG-v1.6.0.md` - This changelog
 
 ### Updated Documentation
@@ -283,7 +290,8 @@ src/
 
 ## 💬 Notes
 
-The infrastructure is now production-ready and can support the full refactoring. All scaffolding is in place:
+The infrastructure is now production-ready and can support the full refactoring.
+All scaffolding is in place:
 
 - ✅ Module aliasing system
 - ✅ Test infrastructure with helpers and mocks

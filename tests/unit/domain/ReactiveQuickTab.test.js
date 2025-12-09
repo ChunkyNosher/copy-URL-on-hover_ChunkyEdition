@@ -117,10 +117,13 @@ describe('ReactiveQuickTab Domain Entity', () => {
 
     test('should not trigger sync for equal arrays', () => {
       const onSync = jest.fn();
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123',
-        soloedOnTabs: [1, 2, 3]
-      }, onSync);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123',
+          soloedOnTabs: [1, 2, 3]
+        },
+        onSync
+      );
 
       reactive.state.soloedOnTabs = [1, 2, 3]; // Same array
 
@@ -168,66 +171,94 @@ describe('ReactiveQuickTab Domain Entity', () => {
       });
 
       test('should be false when minimized', () => {
-        const reactive = new ReactiveQuickTab({
-          id: 'qt-123',
-          minimized: true
-        }, null, 12345);
+        const reactive = new ReactiveQuickTab(
+          {
+            id: 'qt-123',
+            minimized: true
+          },
+          null,
+          12345
+        );
 
         expect(reactive.state.isVisible).toBe(false);
       });
 
       test('should be true when soloed on current tab', () => {
-        const reactive = new ReactiveQuickTab({
-          id: 'qt-123',
-          soloedOnTabs: [12345, 67890]
-        }, null, 12345);
+        const reactive = new ReactiveQuickTab(
+          {
+            id: 'qt-123',
+            soloedOnTabs: [12345, 67890]
+          },
+          null,
+          12345
+        );
 
         expect(reactive.state.isVisible).toBe(true);
       });
 
       test('should be false when soloed on different tab', () => {
-        const reactive = new ReactiveQuickTab({
-          id: 'qt-123',
-          soloedOnTabs: [67890]
-        }, null, 12345);
+        const reactive = new ReactiveQuickTab(
+          {
+            id: 'qt-123',
+            soloedOnTabs: [67890]
+          },
+          null,
+          12345
+        );
 
         expect(reactive.state.isVisible).toBe(false);
       });
 
       test('should be false when muted on current tab', () => {
-        const reactive = new ReactiveQuickTab({
-          id: 'qt-123',
-          mutedOnTabs: [12345]
-        }, null, 12345);
+        const reactive = new ReactiveQuickTab(
+          {
+            id: 'qt-123',
+            mutedOnTabs: [12345]
+          },
+          null,
+          12345
+        );
 
         expect(reactive.state.isVisible).toBe(false);
       });
 
       test('should be true when muted on different tab', () => {
-        const reactive = new ReactiveQuickTab({
-          id: 'qt-123',
-          mutedOnTabs: [67890]
-        }, null, 12345);
+        const reactive = new ReactiveQuickTab(
+          {
+            id: 'qt-123',
+            mutedOnTabs: [67890]
+          },
+          null,
+          12345
+        );
 
         expect(reactive.state.isVisible).toBe(true);
       });
 
       test('minimized takes precedence over solo', () => {
-        const reactive = new ReactiveQuickTab({
-          id: 'qt-123',
-          minimized: true,
-          soloedOnTabs: [12345]
-        }, null, 12345);
+        const reactive = new ReactiveQuickTab(
+          {
+            id: 'qt-123',
+            minimized: true,
+            soloedOnTabs: [12345]
+          },
+          null,
+          12345
+        );
 
         expect(reactive.state.isVisible).toBe(false);
       });
 
       test('solo takes precedence over mute', () => {
-        const reactive = new ReactiveQuickTab({
-          id: 'qt-123',
-          soloedOnTabs: [12345],
-          mutedOnTabs: [12345]
-        }, null, 12345);
+        const reactive = new ReactiveQuickTab(
+          {
+            id: 'qt-123',
+            soloedOnTabs: [12345],
+            mutedOnTabs: [12345]
+          },
+          null,
+          12345
+        );
 
         // Solo is checked first - if soloed on current tab, visible
         expect(reactive.state.isVisible).toBe(true);
@@ -256,19 +287,27 @@ describe('ReactiveQuickTab Domain Entity', () => {
 
     describe('isMuted', () => {
       test('should be false when not muted on current tab', () => {
-        const reactive = new ReactiveQuickTab({
-          id: 'qt-123',
-          mutedOnTabs: [67890]
-        }, null, 12345);
+        const reactive = new ReactiveQuickTab(
+          {
+            id: 'qt-123',
+            mutedOnTabs: [67890]
+          },
+          null,
+          12345
+        );
 
         expect(reactive.state.isMuted).toBe(false);
       });
 
       test('should be true when muted on current tab', () => {
-        const reactive = new ReactiveQuickTab({
-          id: 'qt-123',
-          mutedOnTabs: [12345]
-        }, null, 12345);
+        const reactive = new ReactiveQuickTab(
+          {
+            id: 'qt-123',
+            mutedOnTabs: [12345]
+          },
+          null,
+          12345
+        );
 
         expect(reactive.state.isMuted).toBe(true);
       });
@@ -288,10 +327,14 @@ describe('ReactiveQuickTab Domain Entity', () => {
     });
 
     test('should invalidate cache when dependency changes', () => {
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123',
-        minimized: false
-      }, null, 12345);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123',
+          minimized: false
+        },
+        null,
+        12345
+      );
 
       expect(reactive.state.isVisible).toBe(true);
 
@@ -301,10 +344,14 @@ describe('ReactiveQuickTab Domain Entity', () => {
     });
 
     test('should invalidate isVisible when soloedOnTabs changes', () => {
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123',
-        soloedOnTabs: []
-      }, null, 12345);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123',
+          soloedOnTabs: []
+        },
+        null,
+        12345
+      );
 
       expect(reactive.state.isVisible).toBe(true);
 
@@ -314,10 +361,14 @@ describe('ReactiveQuickTab Domain Entity', () => {
     });
 
     test('should invalidate isVisible when mutedOnTabs changes', () => {
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123',
-        mutedOnTabs: []
-      }, null, 12345);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123',
+          mutedOnTabs: []
+        },
+        null,
+        12345
+      );
 
       expect(reactive.state.isVisible).toBe(true);
 
@@ -340,10 +391,14 @@ describe('ReactiveQuickTab Domain Entity', () => {
     });
 
     test('should invalidate isMuted when mutedOnTabs changes', () => {
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123',
-        mutedOnTabs: []
-      }, null, 12345);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123',
+          mutedOnTabs: []
+        },
+        null,
+        12345
+      );
 
       expect(reactive.state.isMuted).toBe(false);
 
@@ -389,10 +444,14 @@ describe('ReactiveQuickTab Domain Entity', () => {
     });
 
     test('should support watching computed properties', () => {
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123',
-        minimized: false
-      }, null, 12345);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123',
+          minimized: false
+        },
+        null,
+        12345
+      );
       const watcher = jest.fn();
 
       reactive.watch('isVisible', watcher);
@@ -745,10 +804,14 @@ describe('ReactiveQuickTab Domain Entity', () => {
     });
 
     test('should invalidate visibility computation', () => {
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123',
-        soloedOnTabs: [12345]
-      }, null, 12345);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123',
+          soloedOnTabs: [12345]
+        },
+        null,
+        12345
+      );
 
       expect(reactive.state.isVisible).toBe(true);
 
@@ -758,10 +821,14 @@ describe('ReactiveQuickTab Domain Entity', () => {
     });
 
     test('should notify isVisible watchers on change', () => {
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123',
-        soloedOnTabs: [12345]
-      }, null, 12345);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123',
+          soloedOnTabs: [12345]
+        },
+        null,
+        12345
+      );
       const watcher = jest.fn();
 
       reactive.watch('isVisible', watcher);
@@ -771,9 +838,13 @@ describe('ReactiveQuickTab Domain Entity', () => {
     });
 
     test('should not notify if visibility unchanged', () => {
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123' // Global mode - visible everywhere
-      }, null, 12345);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123' // Global mode - visible everywhere
+        },
+        null,
+        12345
+      );
       const watcher = jest.fn();
 
       reactive.watch('isVisible', watcher);
@@ -853,10 +924,14 @@ describe('ReactiveQuickTab Domain Entity', () => {
     });
 
     test('should handle empty currentTabId for isMuted', () => {
-      const reactive = new ReactiveQuickTab({
-        id: 'qt-123',
-        mutedOnTabs: [12345]
-      }, null, null);
+      const reactive = new ReactiveQuickTab(
+        {
+          id: 'qt-123',
+          mutedOnTabs: [12345]
+        },
+        null,
+        null
+      );
 
       expect(reactive.state.isMuted).toBe(false);
     });

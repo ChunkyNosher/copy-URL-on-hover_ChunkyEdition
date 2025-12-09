@@ -19,7 +19,7 @@ jobs:
       NODE_ENV: development
       DEBUG: 'jest:*'
       BABEL_ENV: test
-      MCP_CLIENT_TIMEOUT_MS: 120000 
+      MCP_CLIENT_TIMEOUT_MS: 120000
 
     steps:
       # ====================================================================
@@ -60,11 +60,11 @@ jobs:
           echo "=========================================="
           echo "npm Cache Verification"
           echo "=========================================="
-          
+
           # Display cache location
           NPM_CACHE_DIR=$(npm config get cache)
           echo "npm cache directory: $NPM_CACHE_DIR"
-          
+
           # Check cache size
           if [ -d "$NPM_CACHE_DIR" ]; then
             CACHE_SIZE=$(du -sh "$NPM_CACHE_DIR" 2>/dev/null | cut -f1)
@@ -80,7 +80,7 @@ jobs:
           echo "=========================================="
           echo "Agent Memory Status"
           echo "=========================================="
-          
+
           # Check Agentic-Tools MCP memories (individual JSON files)
           if [ -d ".agentic-tools-mcp/memories" ] && [ "$(ls -A .agentic-tools-mcp/memories 2>/dev/null)" ]; then
             MEMORY_COUNT=$(find .agentic-tools-mcp/memories -name "*.json" 2>/dev/null | wc -l)
@@ -95,9 +95,9 @@ jobs:
           else
             echo "⚠ No Agentic-Tools memories (first run or empty)"
           fi
-          
+
           echo ""
-          
+
           # Check Agentic-Tools MCP tasks
           if [ -d ".agentic-tools-mcp/tasks" ] && [ -f ".agentic-tools-mcp/tasks/tasks.json" ]; then
             echo "✓ Agentic-Tools tasks database found"
@@ -106,9 +106,9 @@ jobs:
           else
             echo "⚠ No Agentic-Tools tasks (first run or empty)"
           fi
-          
+
           echo "=========================================="
-      
+
       # ====================================================================
       # STEP 5: Verify ALL Testing Libraries (UPDATED)
       # ====================================================================
@@ -446,7 +446,7 @@ jobs:
           # Run the integration test
           npx jest tests/temp-integration-test.test.js --verbose --no-coverage
           rm ./tests/temp-integration-test.test.js  # Clean up
-          
+
           if [ $? -eq 0 ]; then
             echo "=========================================="
             echo "✓ All libraries integrate correctly!"
@@ -489,27 +489,27 @@ jobs:
           echo "=========================================="
           echo "Injecting Test Bridge for Autonomous Testing"
           echo "=========================================="
-          
+
           # Set TEST_MODE environment variable
           echo "TEST_MODE=true" >> $GITHUB_ENV
           echo "✓ TEST_MODE=true set in environment"
-          
+
           # Copy test bridge to dist directory
           if [ ! -f "src/test-bridge.js" ]; then
             echo "✗ ERROR: src/test-bridge.js not found"
             exit 0
           fi
-          
+
           cp src/test-bridge.js dist/test-bridge.js
           echo "✓ Copied test-bridge.js to dist/"
-          
+
           # Append test bridge to background.js
           echo "" >> dist/background.js
           echo "// ==================== TEST BRIDGE (Autonomous Testing) ====================" >> dist/background.js
           cat dist/test-bridge.js >> dist/background.js
           echo "// ==================== END TEST BRIDGE ====================" >> dist/background.js
           echo "✓ Appended test-bridge.js to dist/background.js"
-          
+
           # Update manifest.json to add test-bridge.js to web_accessible_resources
           node -e "
             const fs = require('fs');
@@ -533,7 +533,7 @@ jobs:
             fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
             console.log('✓ Updated manifest.json');
           "
-          
+
           # Verify test bridge was injected
           if grep -q "COPILOT_TEST_BRIDGE" dist/background.js; then
             echo "✓ Test bridge verified in dist/background.js"
@@ -541,7 +541,7 @@ jobs:
             echo "✗ ERROR: Test bridge not found in dist/background.js"
             exit 1
           fi
-          
+
           # Verify manifest was updated
           if grep -q "test-bridge.js" dist/manifest.json; then
             echo "✓ Manifest updated with test-bridge.js"
@@ -549,12 +549,12 @@ jobs:
             echo "✗ ERROR: test-bridge.js not found in manifest.json"
             exit 1
           fi
-          
+
           echo "=========================================="
           echo "✓✓✓ Test Bridge Injection Complete ✓✓✓"
           echo "=========================================="
         continue-on-error: true
-    
+
       # ====================================================================
       # STEP 14: Verify Build Output
       # ====================================================================
@@ -671,7 +671,7 @@ jobs:
           echo "=========================================="
           echo "Agentic Task Status Validation"
           echo "=========================================="
-          
+
           # Check if there are tasks
           if [ -f ".agentic-tools-mcp/tasks/tasks.json" ]; then
             echo "✓ Task database found"
@@ -719,7 +719,7 @@ jobs:
             echo "ℹ️ No task database found (first run or no tasks created yet)"
             echo "Tasks are optional but recommended for complex features"
           fi
-          
+
           echo "=========================================="
         continue-on-error: true
 
@@ -731,7 +731,7 @@ jobs:
           echo "=========================================="
           echo "Memory Quality Check"
           echo "=========================================="
-          
+
           if [ -d ".agentic-tools-mcp/memories" ]; then
             # Count memories by category
             echo "Memories by category:"
@@ -791,7 +791,7 @@ jobs:
           else
             echo "ℹ️ No memories directory found (first run or no memories created yet)"
           fi
-          
+
           echo "=========================================="
 
       # ====================================================================

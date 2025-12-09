@@ -1,8 +1,8 @@
 /**
  * Quick Tabs Test Fixtures
- * 
+ *
  * Standard test data fixtures for Quick Tab testing
- * 
+ *
  * Related Documentation:
  * - docs/manual/comprehensive-unit-testing-strategy.md (Section 8.2)
  */
@@ -240,14 +240,14 @@ export const corruptedStorageEntries = {
     cookieStoreId: 'firefox-default',
     createdAt: Date.now()
   },
-  
+
   // Missing required fields
   'qt_firefox-default_missing-fields': {
     id: 'missing-fields',
     url: 'https://example.com'
     // Missing position, size, etc.
   },
-  
+
   // Invalid position data
   'qt_firefox-default_invalid-position': {
     id: 'invalid-position',
@@ -261,7 +261,7 @@ export const corruptedStorageEntries = {
     cookieStoreId: 'firefox-default',
     createdAt: Date.now()
   },
-  
+
   // Invalid size data
   'qt_firefox-default_invalid-size': {
     id: 'invalid-size',
@@ -275,7 +275,7 @@ export const corruptedStorageEntries = {
     cookieStoreId: 'firefox-default',
     createdAt: Date.now()
   },
-  
+
   // Completely invalid JSON structure
   'qt_firefox-default_invalid-json': 'not-a-json-object'
 };
@@ -299,7 +299,7 @@ export const broadcastMessages = {
       createdAt: Date.now()
     }
   },
-  
+
   updatePosition: {
     action: 'UPDATE_POSITION',
     data: {
@@ -307,7 +307,7 @@ export const broadcastMessages = {
       position: { left: 200, top: 200 }
     }
   },
-  
+
   updateSize: {
     action: 'UPDATE_SIZE',
     data: {
@@ -315,7 +315,7 @@ export const broadcastMessages = {
       size: { width: 900, height: 700 }
     }
   },
-  
+
   solo: {
     action: 'SOLO',
     data: {
@@ -323,7 +323,7 @@ export const broadcastMessages = {
       soloTabId: 123
     }
   },
-  
+
   mute: {
     action: 'MUTE',
     data: {
@@ -331,21 +331,21 @@ export const broadcastMessages = {
       tabId: 456
     }
   },
-  
+
   minimize: {
     action: 'MINIMIZE',
     data: {
       id: 'qt-broadcast-1'
     }
   },
-  
+
   restore: {
     action: 'RESTORE',
     data: {
       id: 'qt-broadcast-1'
     }
   },
-  
+
   close: {
     action: 'CLOSE',
     data: {

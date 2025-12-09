@@ -99,7 +99,10 @@ loading/initialization.**
 - In `src/content.js`, at the very top, add:
 
 ```js
-console.log('[Copy-URL-on-Hover] Content script loaded at:', new Date().toISOString());
+console.log(
+  '[Copy-URL-on-Hover] Content script loaded at:',
+  new Date().toISOString()
+);
 ```
 
 Load the extension, open Ctrl+Shift+J or Ctrl+Shift+K (browser console), and

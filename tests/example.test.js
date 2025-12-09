@@ -75,12 +75,7 @@ describe('Manifest Validation', () => {
    * NOTE: contextualIdentities removed for Chrome compatibility (Firefox-only feature)
    */
   test('should have all required permissions', () => {
-    const requiredPermissions = [
-      'storage',
-      'tabs',
-      'webRequest',
-      'webRequestBlocking'
-    ];
+    const requiredPermissions = ['storage', 'tabs', 'webRequest', 'webRequestBlocking'];
 
     requiredPermissions.forEach(permission => {
       expect(manifest.permissions).toContain(permission);

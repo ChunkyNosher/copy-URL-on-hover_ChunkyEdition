@@ -9,7 +9,10 @@
 
 ## Overview
 
-This implementation fixes the critical Firefox security policy issue where log export would fail with "Access denied for URL data:text/..." error. Firefox intentionally blocks data: URLs in the `downloads.download()` API for security reasons, so we switched to Blob URLs which Firefox allows.
+This implementation fixes the critical Firefox security policy issue where log
+export would fail with "Access denied for URL data:text/..." error. Firefox
+intentionally blocks data: URLs in the `downloads.download()` API for security
+reasons, so we switched to Blob URLs which Firefox allows.
 
 ---
 
@@ -26,7 +29,9 @@ This implementation fixes the critical Firefox security policy issue where log e
 
 ### Why v1.5.9.4 Failed
 
-v1.5.9.4 used a sophisticated TextEncoder + Base64 encoding approach with data: URLs. While the encoding was perfect, Firefox's security policy blocked the download regardless of format correctness.
+v1.5.9.4 used a sophisticated TextEncoder + Base64 encoding approach with data:
+URLs. While the encoding was perfect, Firefox's security policy blocked the
+download regardless of format correctness.
 
 **v1.5.9.4 Implementation (FAILED):**
 
@@ -376,23 +381,28 @@ setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 
 ### 1. Security Policy Trumps Format Correctness
 
-Even with perfectly formatted data: URLs, Firefox will reject them by design. No amount of encoding fixes will work - you must switch to Blob URLs.
+Even with perfectly formatted data: URLs, Firefox will reject them by design. No
+amount of encoding fixes will work - you must switch to Blob URLs.
 
 ### 2. Simpler is Often Better
 
-The v1.5.9.4 approach was technically sophisticated but unnecessary. Blob URLs are simpler AND more performant.
+The v1.5.9.4 approach was technically sophisticated but unnecessary. Blob URLs
+are simpler AND more performant.
 
 ### 3. Read Browser Documentation Carefully
 
-Firefox's MDN documentation clearly states that Blob URLs are preferred for downloads. Always check official docs first.
+Firefox's MDN documentation clearly states that Blob URLs are preferred for
+downloads. Always check official docs first.
 
 ### 4. Memory Management Matters
 
-Blob URLs require manual revocation, but this is actually a benefit - you have explicit control over when memory is freed.
+Blob URLs require manual revocation, but this is actually a benefit - you have
+explicit control over when memory is freed.
 
 ### 5. Performance Gains from Simplification
 
-Removing unnecessary encoding not only simplified the code but also made it 21x faster.
+Removing unnecessary encoding not only simplified the code but also made it 21x
+faster.
 
 ---
 
@@ -433,7 +443,9 @@ This change is fully backwards compatible:
 
 ## Conclusion
 
-The switch from data: URLs to Blob URLs in v1.5.9.5 successfully resolves the Firefox security policy issue while also improving performance, reducing code complexity, and providing better memory management.
+The switch from data: URLs to Blob URLs in v1.5.9.5 successfully resolves the
+Firefox security policy issue while also improving performance, reducing code
+complexity, and providing better memory management.
 
 **Key Takeaways:**
 

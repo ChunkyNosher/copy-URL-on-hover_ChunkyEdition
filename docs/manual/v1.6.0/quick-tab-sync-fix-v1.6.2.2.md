@@ -9,14 +9,22 @@
 
 ## Executive Summary
 
-The Quick Tabs feature currently exhibits a **critical state synchronization bug** where Quick Tabs created in one browser tab fail to properly sync their **state** (position, size, visibility) to newly loaded or switched-to tabs. While the Quick Tab **entities themselves** sync correctly (they appear across tabs), their **position and size changes** do not persist across tab switches.
+The Quick Tabs feature currently exhibits a **critical state synchronization
+bug** where Quick Tabs created in one browser tab fail to properly sync their
+**state** (position, size, visibility) to newly loaded or switched-to tabs.
+While the Quick Tab **entities themselves** sync correctly (they appear across
+tabs), their **position and size changes** do not persist across tab switches.
 
 ### Current Behavior (Bug)
+
 1. Open Quick Tab in Wikipedia Page 1 → Resize and move to right corner ✓
-2. Switch to new tab (any domain) → **Quick Tab appears in DEFAULT position/size** ❌
-3. The Quick Tab is **duplicated at default position** rather than **tracking actual state** ❌
+2. Switch to new tab (any domain) → **Quick Tab appears in DEFAULT
+   position/size** ❌
+3. The Quick Tab is **duplicated at default position** rather than **tracking
+   actual state** ❌
 
 ### Expected Behavior
+
 1. Open Quick Tab in Wikipedia Page 1 → Resize and move to right corner ✓
 2. Switch to new tab → **Quick Tab appears in SAME position/size** ✓
 3. Move Quick Tab in new tab → **Changes sync back to all tabs** ✓
@@ -27,7 +35,8 @@ The Quick Tabs feature currently exhibits a **critical state synchronization bug
 
 ### Issue #51: State Not Properly Tracked or Synced
 
-Based on the log analysis and source code review, the problem has **multiple layers**:
+Based on the log analysis and source code review, the problem has **multiple
+layers**:
 
 #### 1. **Lazy Rendering + Stale State Loading**
 
@@ -37,7 +46,10 @@ Based on the log analysis and source code review, the problem has **multiple lay
 [2025-11-26T19:09:11.704Z] [StateManager] ✓ HydrateSilent complete (no Quick Tabs rendered)
 ```
 
-**Problem:** When a new content script loads (new page/tab), it calls `hydrateSilent()` which loads Quick Tabs into memory **without emitting `state:added` events**. This means:
+**Problem:** When a new content script loads (new page/tab), it calls
+`hydrateSilent()` which loads Quick Tabs into memory **without emitting
+`state:added` events**. This means:
+
 - Quick Tabs exist in `StateManager.quickTabs` Map
 - But `UICoordinator` never receives `state:added` events
 - So Quick Tabs are **not rendered** until `storage:changed` fires
@@ -48,7 +60,8 @@ Based on the log analysis and source code review, the problem has **multiple lay
 
 #### 2. **Storage Change Handler Extracts Empty State**
 
-When switching tabs, the `storage.onChanged` event fires in the newly active tab:
+When switching tabs, the `storage.onChanged` event fires in the newly active
+tab:
 
 ```log
 [2025-11-26T19:09:13.691Z] [StorageManager] *** LISTENER FIRED ***
@@ -64,7 +77,9 @@ When switching tabs, the `storage.onChanged` event fires in the newly active tab
 }
 ```
 
-**Problem:** `SyncCoordinator.handleStorageChange()` calls `_extractQuickTabsFromStorage()` which returns **0 Quick Tabs** even though storage contains 1 Quick Tab.
+**Problem:** `SyncCoordinator.handleStorageChange()` calls
+`_extractQuickTabsFromStorage()` which returns **0 Quick Tabs** even though
+storage contains 1 Quick Tab.
 
 **Why?** The storage format changed in v1.6.2.2:
 
@@ -86,7 +101,8 @@ When switching tabs, the `storage.onChanged` event fires in the newly active tab
 }
 ```
 
-**But `SyncCoordinator._extractQuickTabsFromStorage()` still checks for OLD format first:**
+**But `SyncCoordinator._extractQuickTabsFromStorage()` still checks for OLD
+format first:**
 
 ```javascript
 // src/features/quick-tabs/coordinators/SyncCoordinator.js:144-156
@@ -105,27 +121,29 @@ _extractQuickTabsFromStorage(storageValue) {
 }
 ```
 
-**The method is missing the check for the NEW unified format** (`storageValue.tabs`).
+**The method is missing the check for the NEW unified format**
+(`storageValue.tabs`).
 
 ---
 
 #### 3. **Empty Hydration Clears Rendered Quick Tabs**
 
-When `SyncCoordinator` extracts 0 Quick Tabs and calls `StateManager.hydrate([])`:
+When `SyncCoordinator` extracts 0 Quick Tabs and calls
+`StateManager.hydrate([])`:
 
 ```javascript
 // src/features/quick-tabs/managers/StateManager.js:167-184
 hydrate(quickTabs, options = {}) {
   // Process adds and updates
   const result = this._processIncomingQuickTabs(quickTabs, existingIds, detectChanges);
-  
+
   // ❌ DETECT AND EMIT DELETIONS
   const deletedCount = this._processDeletedQuickTabs(existingIds, result.incomingIds);
 }
 
 _processDeletedQuickTabs(existingIds, incomingIds) {
   let deletedCount = 0;
-  
+
   for (const existingId of existingIds) {
     if (!incomingIds.has(existingId)) {
       // ❌ EXISTING QUICK TAB NOT IN INCOMING SET → DELETE IT
@@ -134,17 +152,22 @@ _processDeletedQuickTabs(existingIds, incomingIds) {
       this.eventBus?.emit('state:deleted', { id: existingId, quickTab: deletedQuickTab });
     }
   }
-  
+
   return deletedCount;
 }
 ```
 
 **Problem:** When `hydrate([])` is called with empty array:
-- `existingIds` = Set of Quick Tabs already in memory (loaded via `hydrateSilent()`)
-- `incomingIds` = Empty Set (because `_extractQuickTabsFromStorage()` returned [])
-- **Result:** All existing Quick Tabs are treated as "deleted" and removed from state
 
-**This is why Quick Tabs appear at default position** — they're being **deleted and recreated** instead of **having their state updated**.
+- `existingIds` = Set of Quick Tabs already in memory (loaded via
+  `hydrateSilent()`)
+- `incomingIds` = Empty Set (because `_extractQuickTabsFromStorage()` returned
+  [])
+- **Result:** All existing Quick Tabs are treated as "deleted" and removed from
+  state
+
+**This is why Quick Tabs appear at default position** — they're being **deleted
+and recreated** instead of **having their state updated**.
 
 ---
 
@@ -159,12 +182,16 @@ From the logs, we see Quick Tabs being created multiple times:
 ```
 
 Each Quick Tab gets a **new unique ID** on creation, which means:
+
 - Moving/resizing Quick Tab in Tab 1 → Updates `qt-123` state
 - Switch to Tab 2 → State sync fails (extraction returns empty)
-- User presses keyboard shortcut → **Creates NEW Quick Tab `qt-456`** at default position
-- **Result:** User sees "the same Quick Tab" but it's actually a **different instance**
+- User presses keyboard shortcut → **Creates NEW Quick Tab `qt-456`** at default
+  position
+- **Result:** User sees "the same Quick Tab" but it's actually a **different
+  instance**
 
-This explains why the Quick Tab "appears in default position" — it's not the same Quick Tab being repositioned, it's a **new Quick Tab being created**.
+This explains why the Quick Tab "appears in default position" — it's not the
+same Quick Tab being repositioned, it's a **new Quick Tab being created**.
 
 ---
 
@@ -175,6 +202,7 @@ This explains why the Quick Tab "appears in default position" — it's not the s
 **File:** `src/features/quick-tabs/coordinators/SyncCoordinator.js`
 
 **Current Code (BROKEN):**
+
 ```javascript
 _extractQuickTabsFromStorage(storageValue) {
   // ❌ Missing check for new unified format
@@ -191,6 +219,7 @@ _extractQuickTabsFromStorage(storageValue) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 _extractQuickTabsFromStorage(storageValue) {
   // ✅ CHECK NEW UNIFIED FORMAT FIRST (v1.6.2.2+)
@@ -225,7 +254,7 @@ _extractQuickTabsFromStorage(storageValue) {
     hasContainersKey: 'containers' in storageValue,
     storageKeys: Object.keys(storageValue)
   });
-  
+
   return [];
 }
 ```
@@ -234,43 +263,50 @@ _extractQuickTabsFromStorage(storageValue) {
 
 ### Step 2: Prevent Quick Tab Duplication on Tab Switch
 
-**Problem:** When user switches tabs, Quick Tabs should **appear automatically** in the new tab WITHOUT requiring keyboard shortcut press.
+**Problem:** When user switches tabs, Quick Tabs should **appear automatically**
+in the new tab WITHOUT requiring keyboard shortcut press.
 
 **Current Behavior:**
+
 1. Quick Tab created in Tab 1 → Saved to storage ✓
-2. Switch to Tab 2 → `hydrateSilent()` loads state into memory (but doesn't render) ⚠️
+2. Switch to Tab 2 → `hydrateSilent()` loads state into memory (but doesn't
+   render) ⚠️
 3. `storage.onChanged` fires → Extracts empty state → Deletes Quick Tab ❌
 4. User presses keyboard shortcut → **Creates NEW Quick Tab** ❌
 
 **Expected Behavior:**
+
 1. Quick Tab created in Tab 1 → Saved to storage ✓
 2. Switch to Tab 2 → `hydrateSilent()` loads state into memory ✓
-3. `storage.onChanged` fires → **Extracts correct state → Emits `state:added` → Quick Tab renders** ✓
+3. `storage.onChanged` fires → **Extracts correct state → Emits `state:added` →
+   Quick Tab renders** ✓
 
 **Fix:** Ensure `storage.onChanged` handler properly triggers rendering.
 
 **File:** `src/features/quick-tabs/coordinators/SyncCoordinator.js`
 
 **Current Code:**
+
 ```javascript
 handleStorageChange(newValue) {
   const quickTabData = this._extractQuickTabsFromStorage(newValue);
-  
+
   if (quickTabData.length > 0) {
     const quickTabs = quickTabData.map(data => QuickTab.fromStorage(data));
     this.stateManager.hydrate(quickTabs, { detectChanges: true });
   }
-  
+
   this._recordProcessedMessage(newValue);
 }
 ```
 
 **Enhanced Code:**
+
 ```javascript
 handleStorageChange(newValue) {
   const context = typeof window !== 'undefined' ? 'content-script' : 'background';
   const tabUrl = typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A';
-  
+
   if (!newValue) {
     console.log('[SyncCoordinator] Ignoring null storage change', { context, tabUrl });
     return;
@@ -299,18 +335,18 @@ handleStorageChange(newValue) {
 
   if (quickTabData.length > 0) {
     const quickTabs = quickTabData.map(data => QuickTab.fromStorage(data));
-    
+
     console.log('[SyncCoordinator] Calling StateManager.hydrate()', {
       context,
       tabUrl,
       quickTabCount: quickTabs.length
     });
-    
+
     // ✅ SYNC STATE FROM STORAGE
     // This will trigger state:added, state:updated, state:deleted events
     // Issue #51 Fix: Enable change detection for position/size/zIndex sync
     this.stateManager.hydrate(quickTabs, { detectChanges: true });
-    
+
     console.log('[SyncCoordinator] ✓ State hydration complete', { context, tabUrl });
   } else {
     // ✅ LOG WARNING IF NO QUICK TABS EXTRACTED
@@ -331,11 +367,14 @@ handleStorageChange(newValue) {
 
 ### Step 3: Fix UICoordinator to Render on `state:added`
 
-**Problem:** Even if `storage.onChanged` properly emits `state:added`, the `UICoordinator` might not be rendering Quick Tabs correctly.
+**Problem:** Even if `storage.onChanged` properly emits `state:added`, the
+`UICoordinator` might not be rendering Quick Tabs correctly.
 
-**File:** `src/features/quick-tabs/coordinators/UICoordinator.js` (needs verification)
+**File:** `src/features/quick-tabs/coordinators/UICoordinator.js` (needs
+verification)
 
 **Expected Behavior:**
+
 ```javascript
 // UICoordinator should listen for state:added events
 this.eventBus.on('state:added', ({ quickTab }) => {
@@ -344,7 +383,7 @@ this.eventBus.on('state:added', ({ quickTab }) => {
     position: quickTab.position,
     size: quickTab.size
   });
-  
+
   // ✅ RENDER QUICK TAB WITH STORED POSITION/SIZE
   this.renderQuickTab(quickTab);
 });
@@ -361,6 +400,7 @@ Add logging at key sync points to diagnose the sync pipeline:
 **File:** `src/features/quick-tabs/managers/StateManager.js`
 
 **Enhanced `hydrate()` method:**
+
 ```javascript
 hydrate(quickTabs, options = {}) {
   const { detectChanges = false } = options;
@@ -407,7 +447,8 @@ hydrate(quickTabs, options = {}) {
 
 2. **Create Quick Tab in Tab 1**
    - Press `Ctrl+E` (or configured keyboard shortcut)
-   - Expected: Quick Tab appears at default position (e.g., 100px, 100px, 800px × 600px)
+   - Expected: Quick Tab appears at default position (e.g., 100px, 100px, 800px
+     × 600px)
    - Verify in logs:
      ```
      [CreateHandler] Creating Quick Tab: qt-[timestamp]-[random]
@@ -427,7 +468,8 @@ hydrate(quickTabs, options = {}) {
 
 4. **Switch to new tab (YouTube)**
    - Open new tab, navigate to https://www.youtube.com
-   - Expected: **Quick Tab appears at bottom-right corner with 500px × 400px size**
+   - Expected: **Quick Tab appears at bottom-right corner with 500px × 400px
+     size**
    - Verify in logs:
      ```
      [StorageManager] *** LISTENER FIRED ***
@@ -499,7 +541,8 @@ hydrate(quickTabs, options = {}) {
 
 3. **Reopen browser, navigate to Wikipedia**
    - Launch Firefox, go to Wikipedia
-   - Expected: **Quick Tab appears at (500px, 300px) with 700px × 450px** (persistence confirmed)
+   - Expected: **Quick Tab appears at (500px, 300px) with 700px × 450px**
+     (persistence confirmed)
    - Verify in logs:
      ```
      [StorageManager] Loaded 1 Quick Tabs from background
@@ -512,6 +555,7 @@ hydrate(quickTabs, options = {}) {
 ## Expected Log Output (After Fix)
 
 ### Tab 1: Create Quick Tab
+
 ```
 [CreateHandler] Creating Quick Tab: qt-1764184153664-y6c0t1a4q
 [StorageManager] Saved 1 Quick Tabs (unified format)
@@ -520,6 +564,7 @@ hydrate(quickTabs, options = {}) {
 ```
 
 ### Tab 2: Switch to New Tab
+
 ```
 [StorageManager] *** LISTENER FIRED ***
 [SyncCoordinator] *** PROCESSING STORAGE CHANGE ***
@@ -544,7 +589,8 @@ hydrate(quickTabs, options = {}) {
    - Enhanced logging in `hydrate()` to track incoming vs. existing IDs
    - Log detailed add/update/delete results
 
-3. **`src/features/quick-tabs/coordinators/UICoordinator.js`** (verify implementation)
+3. **`src/features/quick-tabs/coordinators/UICoordinator.js`** (verify
+   implementation)
    - Ensure `state:added` listener properly renders Quick Tabs
    - Verify Quick Tabs use stored position/size, not default values
 
@@ -555,11 +601,13 @@ hydrate(quickTabs, options = {}) {
 ### User Experience
 
 **Before Fix:**
+
 - Create Quick Tab in Tab 1 → Move to right corner
 - Switch to Tab 2 → **Quick Tab appears in default position** (bug)
 - User thinks Quick Tab "forgot" its position
 
 **After Fix:**
+
 - Create Quick Tab in Tab 1 → Move to right corner
 - Switch to Tab 2 → **Quick Tab appears in right corner** (correct)
 - Move Quick Tab in Tab 2 → Position syncs back to Tab 1
@@ -578,14 +626,21 @@ hydrate(quickTabs, options = {}) {
    - Verify position/size changes sync bidirectionally
 
 3. **Add Unit Tests for Storage Extraction**
+
    ```javascript
    test('_extractQuickTabsFromStorage handles unified format', () => {
      const storageValue = {
-       tabs: [{ id: 'qt-123', url: 'https://example.com', position: { left: 100, top: 100 } }],
+       tabs: [
+         {
+           id: 'qt-123',
+           url: 'https://example.com',
+           position: { left: 100, top: 100 }
+         }
+       ],
        timestamp: Date.now(),
        saveId: 'abc-123'
      };
-     
+
      const extracted = coordinator._extractQuickTabsFromStorage(storageValue);
      expect(extracted).toHaveLength(1);
      expect(extracted[0].id).toBe('qt-123');
@@ -601,9 +656,15 @@ hydrate(quickTabs, options = {}) {
 
 ## Conclusion
 
-The root cause of Issue #51 is a **storage format extraction bug** in `SyncCoordinator._extractQuickTabsFromStorage()` which fails to handle the new unified format introduced in v1.6.2.2. This causes `storage.onChanged` handlers to extract **0 Quick Tabs** from storage, which then triggers deletion of existing Quick Tabs via `StateManager.hydrate([])`.
+The root cause of Issue #51 is a **storage format extraction bug** in
+`SyncCoordinator._extractQuickTabsFromStorage()` which fails to handle the new
+unified format introduced in v1.6.2.2. This causes `storage.onChanged` handlers
+to extract **0 Quick Tabs** from storage, which then triggers deletion of
+existing Quick Tabs via `StateManager.hydrate([])`.
 
-The fix is simple: **Add check for `storageValue.tabs` array** before checking legacy formats. This will restore proper cross-tab synchronization and prevent Quick Tab duplication.
+The fix is simple: **Add check for `storageValue.tabs` array** before checking
+legacy formats. This will restore proper cross-tab synchronization and prevent
+Quick Tab duplication.
 
 ---
 

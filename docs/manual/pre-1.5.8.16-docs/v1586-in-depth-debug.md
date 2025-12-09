@@ -181,7 +181,13 @@ Agents.
 - At top-level in content.js add:
   ```js
   window.onerror = function (msg, url, line, col, err) {
-    console.error('Global ERROR:', msg, line, col, err && err.stack ? err.stack : err);
+    console.error(
+      'Global ERROR:',
+      msg,
+      line,
+      col,
+      err && err.stack ? err.stack : err
+    );
     // Optionally: show user notification here
   };
   ```

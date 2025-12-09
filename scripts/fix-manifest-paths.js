@@ -17,7 +17,7 @@
  *
  * USAGE:
  * node scripts/fix-manifest-paths.js [browser]
- * 
+ *
  * browser: optional, 'firefox' or 'chrome' (defaults to 'firefox')
  */
 

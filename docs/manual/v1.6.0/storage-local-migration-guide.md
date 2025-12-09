@@ -1,11 +1,14 @@
 # Implementation Guide: Migrate to browser.storage.local + storage.onChanged
+
 ## Technical Integration Specification for GitHub Copilot Coding Agent
 
 **Target Extension:** copy-URL-on-hover (v1.6.0.11+)  
 **Current Implementation:** BroadcastChannel + browser.storage.sync (dual API)  
-**Target Implementation:** browser.storage.local + storage.onChanged (single API)  
+**Target Implementation:** browser.storage.local + storage.onChanged (single
+API)  
 **Estimated Effort:** 3-5 days  
-**Risk Level:** Medium (requires careful testing of all 20 scenarios in issue #47)
+**Risk Level:** Medium (requires careful testing of all 20 scenarios in issue
+#47)
 
 ---
 
@@ -54,7 +57,8 @@ Tab B, Tab C, Tab D receive { oldValue, newValue }
 
 **Current responsibility:** Manages BroadcastChannel for cross-tab messaging
 
-**Action:** 
+**Action:**
+
 - ❌ **DELETE ENTIRE FILE** after migration complete
 - ⚠️ Keep temporarily during transition for backward compatibility
 - Remove all references to `BroadcastChannel` API
@@ -62,6 +66,7 @@ Tab B, Tab C, Tab D receive { oldValue, newValue }
 - Remove periodic state snapshots (storage handles this automatically)
 
 **Key methods to deprecate:**
+
 - `setupBroadcastChannel()` - Remove channel initialization
 - `broadcastCreate()` - Replace with storage.local.set()
 - `broadcastUpdate()` - Replace with storage.local.set()
@@ -71,6 +76,7 @@ Tab B, Tab C, Tab D receive { oldValue, newValue }
 - `stopPeriodicSnapshots()` - Delete
 
 **Migration strategy:**
+
 - Phase 1: Add storage.onChanged listener alongside BroadcastChannel
 - Phase 2: Switch all broadcasts to storage writes
 - Phase 3: Remove BroadcastChannel completely
@@ -80,7 +86,8 @@ Tab B, Tab C, Tab D receive { oldValue, newValue }
 
 #### `StorageManager.js` - MAJOR REFACTOR
 
-**Current implementation:** 
+**Current implementation:**
+
 - Uses `browser.storage.sync` (100KB quota limit causing QuotaExceededError)
 - Uses `browser.storage.session` (Firefox doesn't support - causing failures)
 - Complex circuit breaker for quota management
@@ -88,8 +95,10 @@ Tab B, Tab C, Tab D receive { oldValue, newValue }
 **Required changes:**
 
 1. **Change storage area from `storage.sync` to `storage.local`:**
-   - Find all `browser.storage.sync` references → replace with `browser.storage.local`
-   - Update storage key from `quick-tabs-${cookieStoreId}` to `quickTabs-${cookieStoreId}`
+   - Find all `browser.storage.sync` references → replace with
+     `browser.storage.local`
+   - Update storage key from `quick-tabs-${cookieStoreId}` to
+     `quickTabs-${cookieStoreId}`
    - No quota concerns (storage.local has 10MB+ vs sync's 100KB)
 
 2. **Remove `storage.session` fallback:**
@@ -109,12 +118,14 @@ Tab B, Tab C, Tab D receive { oldValue, newValue }
 **Critical method changes:**
 
 `loadAll()` - Change storage area:
+
 ```javascript
 // OLD: browser.storage.sync.get(`quick-tabs-${this.cookieStoreId}`)
 // NEW: browser.storage.local.get(`quickTabs-${this.cookieStoreId}`)
 ```
 
 `saveAll(quickTabs)` - Change storage area + simplify:
+
 ```javascript
 // OLD: Complex quota checking, circuit breaker, session fallback
 // NEW: Direct write to storage.local (no quota concerns)
@@ -124,18 +135,19 @@ await browser.storage.local.set({
 ```
 
 `setupStorageListeners()` - COMPLETE REWRITE:
+
 ```javascript
 // OLD: Listen to both storage.sync and storage.session changes
 // NEW: Listen ONLY to storage.local changes
 
 browser.storage.local.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
-  
+
   const quickTabsKey = `quickTabs-${this.cookieStoreId}`;
   if (!changes[quickTabsKey]) return;
-  
+
   const { oldValue, newValue } = changes[quickTabsKey];
-  
+
   // Emit internal event for SyncCoordinator to handle
   this.eventBus.emit('storage:changed', {
     oldValue: oldValue || {},
@@ -166,12 +178,14 @@ browser.storage.local.onChanged.addListener((changes, areaName) => {
 **New methods to add:**
 
 `hasChanged(oldState, newState)` - Deep comparison:
+
 ```javascript
 // Compare two state objects to determine if actual change occurred
 // Returns: { changed: boolean, changedFields: string[] }
 ```
 
 `mergeState(currentState, incomingState)` - Conflict resolution:
+
 ```javascript
 // Merge incoming state changes with current state
 // Use timestamp/version for last-write-wins strategy
@@ -183,7 +197,8 @@ browser.storage.local.onChanged.addListener((changes, areaName) => {
 
 #### `SyncCoordinator.js` - MAJOR REFACTOR
 
-**Current responsibility:** Coordinates state synchronization using BroadcastManager
+**Current responsibility:** Coordinates state synchronization using
+BroadcastManager
 
 **Required changes:**
 
@@ -205,6 +220,7 @@ browser.storage.local.onChanged.addListener((changes, areaName) => {
 **Key method changes:**
 
 `setupListeners()` - COMPLETE REWRITE:
+
 ```javascript
 // OLD: Listen to broadcast events, storage events separately
 // NEW: Listen ONLY to storage events
@@ -215,6 +231,7 @@ this.eventBus.on('storage:changed', ({ oldValue, newValue }) => {
 ```
 
 `_handleStorageChange(oldValue, newValue)` - NEW METHOD:
+
 ```javascript
 // Determine what changed in storage
 // Route to appropriate handlers (create, update, destroy)
@@ -222,6 +239,7 @@ this.eventBus.on('storage:changed', ({ oldValue, newValue }) => {
 ```
 
 `syncCreate(quickTab)` - Simplified:
+
 ```javascript
 // OLD: Save to storage + broadcast to tabs
 // NEW: Save to storage (automatic notification)
@@ -231,6 +249,7 @@ await this.storage.save(quickTab);
 ```
 
 `syncUpdate(id, changes)` - Simplified:
+
 ```javascript
 // OLD: Save to storage + broadcast to tabs
 // NEW: Save to storage (automatic notification)
@@ -242,6 +261,7 @@ await this.storage.saveAll(quickTabs);
 ```
 
 `syncDestroy(id)` - Simplified:
+
 ```javascript
 // OLD: Remove from storage + broadcast deletion
 // NEW: Remove from storage (automatic notification)
@@ -288,9 +308,13 @@ All handlers delegate to SyncCoordinator, so changes are minimal:
 **Required changes:**
 
 1. **Remove BroadcastManager initialization:**
+
 ```javascript
 // DELETE:
-this.broadcast = new BroadcastManager(this.internalEventBus, this.cookieStoreId);
+this.broadcast = new BroadcastManager(
+  this.internalEventBus,
+  this.cookieStoreId
+);
 
 // DELETE from setupComponents():
 this.broadcast.setupBroadcastChannel();
@@ -300,6 +324,7 @@ this.broadcast.startPeriodicSnapshots();
 ```
 
 2. **Update handler initialization:**
+
 ```javascript
 // CreateHandler no longer needs broadcast parameter
 this.createHandler = new CreateHandler(
@@ -317,6 +342,7 @@ this.createHandler = new CreateHandler(
 ```
 
 3. **Update SyncCoordinator initialization:**
+
 ```javascript
 // SyncCoordinator no longer needs broadcast parameter
 this.syncCoordinator = new SyncCoordinator(
@@ -340,16 +366,18 @@ this.syncCoordinator = new SyncCoordinator(
 ### Phase 1: Preparation (Day 1)
 
 1. **Create feature branch:**
+
    ```bash
    git checkout -b feature/storage-local-migration
    ```
 
 2. **Add migration flag to config:**
+
    ```javascript
    // src/core/config.js
    export const CONSTANTS = {
      // ... existing constants
-     USE_STORAGE_LOCAL: true, // Feature flag for migration
+     USE_STORAGE_LOCAL: true // Feature flag for migration
    };
    ```
 
@@ -431,6 +459,7 @@ this.syncCoordinator = new SyncCoordinator(
 ### Phase 6: Cleanup & Documentation (Day 5)
 
 1. **Remove migration flag:**
+
    ```javascript
    // Delete from config.js
    // USE_STORAGE_LOCAL: true,
@@ -453,6 +482,7 @@ this.syncCoordinator = new SyncCoordinator(
 ### Storage Schema Changes
 
 **OLD (storage.sync):**
+
 ```javascript
 {
   "quick-tabs-firefox-default": [
@@ -463,6 +493,7 @@ this.syncCoordinator = new SyncCoordinator(
 ```
 
 **NEW (storage.local):**
+
 ```javascript
 {
   "quickTabs-firefox-default": {
@@ -473,6 +504,7 @@ this.syncCoordinator = new SyncCoordinator(
 ```
 
 **Changes:**
+
 - Key name: `quick-tabs-` → `quickTabs-`
 - Structure: Array → Object (keyed by ID)
 - Add `version` field for conflict resolution
@@ -481,6 +513,7 @@ this.syncCoordinator = new SyncCoordinator(
 ### State Version & Conflict Resolution
 
 **Add to every Quick Tab state object:**
+
 ```javascript
 {
   id: 'qt-1',
@@ -491,6 +524,7 @@ this.syncCoordinator = new SyncCoordinator(
 ```
 
 **Conflict resolution strategy:**
+
 ```javascript
 // In SyncCoordinator._handleStorageChange()
 if (incomingState.version > currentState.version) {
@@ -507,6 +541,7 @@ if (incomingState.version > currentState.version) {
 ### Debouncing Strategy
 
 **For rapid updates (drag/resize):**
+
 ```javascript
 // In UpdateHandler
 let debounceTimer = null;
@@ -514,7 +549,7 @@ let debounceTimer = null;
 function handlePositionChange(id, x, y) {
   // Update local UI immediately (no lag)
   applyToDOM(id, x, y);
-  
+
   // Debounce storage write
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
@@ -534,15 +569,16 @@ function handlePositionChangeEnd(id, x, y) {
 **Problem:** `storage.onChanged` does NOT fire in the tab that made the change.
 
 **Solution:**
+
 ```javascript
 // In SyncCoordinator.syncUpdate()
 async syncUpdate(id, changes) {
   // 1. Update local UI IMMEDIATELY (same-tab responsiveness)
   this._applyLocalUpdate(id, changes);
-  
+
   // 2. Write to storage (triggers onChanged in OTHER tabs)
   await this.storage.saveAll(quickTabs);
-  
+
   // 3. No need to handle same-tab again (already updated in step 1)
 }
 ```
@@ -611,6 +647,7 @@ async syncUpdate(id, changes) {
 **If critical bugs discovered after deployment:**
 
 1. **Immediate rollback (< 5 minutes):**
+
    ```javascript
    // In StorageManager.js, revert to storage.sync:
    const storageArea = browser.storage.sync; // Was: browser.storage.local
@@ -624,7 +661,9 @@ async syncUpdate(id, changes) {
 3. **Data migration (if needed):**
    ```javascript
    // Copy data back from storage.local to storage.sync
-   const localData = await browser.storage.local.get('quickTabs-firefox-default');
+   const localData = await browser.storage.local.get(
+     'quickTabs-firefox-default'
+   );
    await browser.storage.sync.set({ 'quick-tabs-firefox-default': localData });
    ```
 
@@ -646,9 +685,11 @@ async syncUpdate(id, changes) {
 
 After successful migration, consider these enhancements:
 
-1. **State compression:** If Quick Tab count exceeds 50, implement JSON compression
+1. **State compression:** If Quick Tab count exceeds 50, implement JSON
+   compression
 
-2. **Incremental updates:** Instead of saving entire state object, save only changed fields
+2. **Incremental updates:** Instead of saving entire state object, save only
+   changed fields
 
 3. **Storage monitoring:** Add telemetry for storage.local usage
 

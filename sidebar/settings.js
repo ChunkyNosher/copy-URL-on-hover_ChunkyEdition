@@ -174,19 +174,22 @@ function _logCollectionDebugInfo(backgroundLogs, contentLogs) {
 const LOG_VALIDATION_RULES = [
   {
     condition: (_, __, ___, activeTab) => activeTab && activeTab.url.startsWith('about:'),
-    message: 'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
+    message:
+      'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
   },
   {
     condition: (_, __, ___, activeTab) => !activeTab,
     message: 'No active tab found. Try clicking on a webpage tab first.'
   },
   {
-    condition: (_, backgroundLogs, contentLogs) => contentLogs.length === 0 && backgroundLogs.length === 0,
-    message: 'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
+    condition: (_, backgroundLogs, contentLogs) =>
+      contentLogs.length === 0 && backgroundLogs.length === 0,
+    message:
+      'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
   },
   {
     condition: (_, backgroundLogs, contentLogs) => contentLogs.length === 0,
-    messageBuilder: (_, backgroundLogs) => 
+    messageBuilder: (_, backgroundLogs) =>
       `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
   }
 ];
@@ -207,7 +210,7 @@ function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab)
   // Find first matching validation rule and throw appropriate error
   for (const rule of LOG_VALIDATION_RULES) {
     if (rule.condition(allLogs, backgroundLogs, contentLogs, activeTab)) {
-      const errorMessage = rule.messageBuilder 
+      const errorMessage = rule.messageBuilder
         ? rule.messageBuilder(allLogs, backgroundLogs, contentLogs, activeTab)
         : rule.message;
       throw new Error(errorMessage);
@@ -711,7 +714,10 @@ function _gatherQuickTabSettings() {
     quickTabCloseKey: document.getElementById('quickTabCloseKey').value || 'Escape',
     quickTabMaxWindows: safeParseInt(document.getElementById('quickTabMaxWindows').value, 3),
     quickTabDefaultWidth: safeParseInt(document.getElementById('quickTabDefaultWidth').value, 800),
-    quickTabDefaultHeight: safeParseInt(document.getElementById('quickTabDefaultHeight').value, 600),
+    quickTabDefaultHeight: safeParseInt(
+      document.getElementById('quickTabDefaultHeight').value,
+      600
+    ),
     quickTabPosition: document.getElementById('quickTabPosition').value || 'follow-cursor',
     quickTabCustomX: safeParseInt(document.getElementById('quickTabCustomX').value, 100),
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
@@ -900,7 +906,7 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
   const confirmed = confirm(
     'This will clear Quick Tab positions and state. Your settings and keybinds will be preserved. Are you sure?'
   );
-  
+
   if (!confirmed) {
     return;
   }
@@ -957,11 +963,11 @@ function _switchToSettingsTab(secondaryTabsContainer, managerContent) {
   if (secondaryTabsContainer) {
     secondaryTabsContainer.style.display = 'flex';
   }
-  
+
   if (managerContent) {
     managerContent.classList.remove('active');
   }
-  
+
   const lastSecondaryTab = getStoredSecondaryTab() || 'copy-url';
   showSecondaryTab(lastSecondaryTab);
 }
@@ -976,13 +982,13 @@ function _switchToManagerTab(secondaryTabsContainer, managerContent) {
   if (secondaryTabsContainer) {
     secondaryTabsContainer.style.display = 'none';
   }
-  
+
   document.querySelectorAll('.tab-content').forEach(content => {
     if (content.id !== 'manager') {
       content.classList.remove('active');
     }
   });
-  
+
   if (managerContent) {
     managerContent.classList.add('active');
   }
@@ -1006,12 +1012,12 @@ function handlePrimaryTabSwitch(primaryTab) {
 
   const secondaryTabsContainer = document.getElementById('settings-subtabs');
   const managerContent = document.getElementById('manager');
-  
+
   const handler = PRIMARY_TAB_HANDLERS[primaryTab];
   if (handler) {
     handler(secondaryTabsContainer, managerContent);
   }
-  
+
   storePrimaryTab(primaryTab);
 }
 
@@ -1025,7 +1031,7 @@ function showSecondaryTab(secondaryTab) {
     btn.classList.remove('active');
   });
   document.querySelector(`[data-tab="${secondaryTab}"]`)?.classList.add('active');
-  
+
   // Show corresponding content
   document.querySelectorAll('.tab-content').forEach(content => {
     if (content.id === secondaryTab) {
@@ -1034,7 +1040,7 @@ function showSecondaryTab(secondaryTab) {
       content.classList.remove('active');
     }
   });
-  
+
   // Store secondary tab selection
   storeSecondaryTab(secondaryTab);
 }
@@ -1098,13 +1104,13 @@ async function _checkAndApplyRequestedTab() {
   try {
     const result = await browserAPI.storage.local.get('_requestedPrimaryTab');
     const requestedTab = result._requestedPrimaryTab;
-    
+
     if (requestedTab) {
       console.debug('[Settings] Found requested tab from keyboard shortcut:', requestedTab);
-      
+
       // Apply the requested tab
       handlePrimaryTabSwitch(requestedTab);
-      
+
       // Clear the request so it doesn't persist across sessions
       await browserAPI.storage.local.remove('_requestedPrimaryTab');
       console.debug('[Settings] Cleared _requestedPrimaryTab from storage');
@@ -1248,24 +1254,24 @@ function setupButtonHandler(buttonId, handler, options = {}) {
 function initializeTabSwitching() {
   // Primary tab switching
   document.querySelectorAll('.primary-tab-button').forEach(btn => {
-    btn.addEventListener('click', (event) => {
+    btn.addEventListener('click', event => {
       const primaryTab = event.currentTarget.dataset.primaryTab;
       handlePrimaryTabSwitch(primaryTab);
     });
   });
-  
+
   // Secondary tab switching
   document.querySelectorAll('.secondary-tab-button').forEach(btn => {
-    btn.addEventListener('click', (event) => {
+    btn.addEventListener('click', event => {
       const secondaryTab = event.currentTarget.dataset.tab;
       showSecondaryTab(secondaryTab);
     });
   });
-  
+
   // v1.6.3.4-v3 - FIX Bug #3: Check for requested tab from keyboard shortcut
   // Background script sets _requestedPrimaryTab before opening sidebar
   _checkAndApplyRequestedTab();
-  
+
   // Listen for messages from background script to switch tabs
   browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.debug('[Settings] Received message:', message.type);
@@ -1279,7 +1285,7 @@ function initializeTabSwitching() {
       return true; // Keep the message channel open for sendResponse
     }
   });
-  
+
   console.debug('[Settings] Tab switching initialized, message listener registered');
 }
 
@@ -1387,16 +1393,16 @@ function updateGroupCounter(groupElement) {
   // Get filter type from button (more reliable than checkbox)
   const btn = groupElement.querySelector('.group-btn');
   if (!btn) return;
-  
+
   const filter = btn.dataset.filter;
   const checkboxes = groupElement.querySelectorAll(`.category-checkbox[data-filter="${filter}"]`);
   const counter = groupElement.querySelector('.group-counter');
-  
+
   if (!counter) return;
-  
+
   const total = checkboxes.length;
   const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
-  
+
   counter.textContent = `${checked}/${total}`;
 }
 
@@ -1408,24 +1414,24 @@ function updateButtonColors(groupElement) {
   // Get filter type from button (more reliable than checkbox)
   const btn = groupElement.querySelector('.group-btn');
   if (!btn) return;
-  
+
   const filter = btn.dataset.filter;
   const checkboxes = groupElement.querySelectorAll(`.category-checkbox[data-filter="${filter}"]`);
   const selectAllBtn = groupElement.querySelector('[data-action="select-all"]');
   const deselectAllBtn = groupElement.querySelector('[data-action="deselect-all"]');
-  
+
   if (!selectAllBtn || !deselectAllBtn) return;
-  
+
   const total = checkboxes.length;
   const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
-  
+
   // Update Select All button - green when all selected
   if (checked === total) {
     selectAllBtn.classList.add('all-selected');
   } else {
     selectAllBtn.classList.remove('all-selected');
   }
-  
+
   // Update Deselect All button - red when none selected
   if (checked === 0) {
     deselectAllBtn.classList.add('all-deselected');
@@ -1468,13 +1474,13 @@ function initCollapsibleGroups() {
       } else if (action === 'deselect-all') {
         checkboxes.forEach(cb => (cb.checked = false));
       }
-      
+
       // v1.6.0.12 - Update counter and button colors immediately
       updateGroupCounter(groupElement);
       updateButtonColors(groupElement);
     });
   });
-  
+
   // v1.6.0.12 - Add change listeners to all checkboxes for live updates
   document.querySelectorAll('.category-checkbox').forEach(checkbox => {
     checkbox.addEventListener('change', () => {
@@ -1509,7 +1515,7 @@ async function loadFilterSettings() {
       const category = cb.dataset.category;
       cb.checked = exportSettings[category] === true;
     });
-    
+
     // v1.6.0.12 - Update all counters and button colors after loading
     updateAllGroupStates();
   } catch (error) {

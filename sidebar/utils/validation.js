@@ -1,13 +1,13 @@
 /**
  * Validation Utility Module
  * Extracted from quick-tabs-manager.js to reduce code complexity
- * 
+ *
  * Handles:
  * - URL validation
  * - Tab data validation
  * - Host info validation
  * - State validation
- * 
+ *
  * @version 1.6.4.11
  */
 
@@ -26,7 +26,7 @@ export function isValidTabUrl(url) {
  */
 export function filterInvalidTabs(state) {
   if (!state.tabs || !Array.isArray(state.tabs)) return;
-  
+
   const originalCount = state.tabs.length;
   state.tabs = state.tabs.filter(tab => {
     if (!isValidTabUrl(tab.url)) {
@@ -35,7 +35,7 @@ export function filterInvalidTabs(state) {
     }
     return true;
   });
-  
+
   if (state.tabs.length !== originalCount) {
     console.log('[Manager] Filtered', originalCount - state.tabs.length, 'invalid tabs');
   }
@@ -48,17 +48,17 @@ export function filterInvalidTabs(state) {
  */
 export function isValidQuickTabHostInfo(hostInfo) {
   if (!hostInfo) return false;
-  
+
   // Must have a valid hostTabId
   if (hostInfo.hostTabId === null || hostInfo.hostTabId === undefined) {
     return false;
   }
-  
+
   // hostTabId should be a positive number
   if (typeof hostInfo.hostTabId !== 'number' || hostInfo.hostTabId < 0) {
     return false;
   }
-  
+
   return true;
 }
 
@@ -73,12 +73,12 @@ export function shouldProcessTab(tab, currentBrowserTabId) {
   if (currentBrowserTabId === null || currentBrowserTabId === undefined) {
     return true;
   }
-  
+
   // If tab has no originTabId, it's orphaned - process it
   if (tab.originTabId === null || tab.originTabId === undefined) {
     return true;
   }
-  
+
   // Only process tabs belonging to current browser tab
   return tab.originTabId === currentBrowserTabId;
 }
@@ -110,16 +110,16 @@ export function validateStorageState(state) {
   if (!state) {
     return { valid: true }; // Empty state is valid
   }
-  
+
   if (typeof state !== 'object') {
     return { valid: false, error: 'State is not an object' };
   }
-  
+
   // Check for unified format
   if (state.tabs !== undefined && !Array.isArray(state.tabs)) {
     return { valid: false, error: 'State.tabs is not an array' };
   }
-  
+
   return { valid: true };
 }
 
@@ -144,7 +144,7 @@ export function hasValidPosition(tab) {
   if (_isValidNumericPair(tab.left, tab.top)) {
     return true;
   }
-  
+
   // Check nested format
   if (!tab.position) return false;
   const left = tab.position.left ?? tab.position.x;
@@ -162,13 +162,17 @@ export function hasValidSize(tab) {
   if (typeof tab.width === 'number' && typeof tab.height === 'number') {
     return tab.width > 0 && tab.height > 0;
   }
-  
+
   // Check nested format
   if (tab.size) {
-    return typeof tab.size.width === 'number' && typeof tab.size.height === 'number' &&
-           tab.size.width > 0 && tab.size.height > 0;
+    return (
+      typeof tab.size.width === 'number' &&
+      typeof tab.size.height === 'number' &&
+      tab.size.width > 0 &&
+      tab.size.height > 0
+    );
   }
-  
+
   return false;
 }
 
@@ -192,21 +196,21 @@ export function getValue(tab, flatKey, nestedKey, prop) {
 export function formatSizePosition(tab) {
   const width = getValue(tab, 'width', 'size', 'width');
   const height = getValue(tab, 'height', 'size', 'height');
-  
+
   if (!width || !height) {
     return null;
   }
-  
+
   let sizeStr = `${Math.round(width)}×${Math.round(height)}`;
-  
+
   const left = getValue(tab, 'left', 'position', 'left');
   const top = getValue(tab, 'top', 'position', 'top');
-  
+
   // Only show position if both values exist
   if (left != null && top != null) {
     sizeStr += ` at (${Math.round(left)}, ${Math.round(top)})`;
   }
-  
+
   return sizeStr;
 }
 

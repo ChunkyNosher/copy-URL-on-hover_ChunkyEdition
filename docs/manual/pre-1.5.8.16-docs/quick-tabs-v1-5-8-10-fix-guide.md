@@ -204,8 +204,12 @@ function initResize(e) {
     <img class="quicktab-favicon" src="{{faviconUrl}}" alt="icon" />
     <span class="quicktab-title">{{pageTitle}}</span>
     <div class="quicktab-controls">
-      <button class="quicktab-btn quicktab-pin" title="Pin Quick Tab">📌</button>
-      <button class="quicktab-btn quicktab-newtab" title="Open in New Tab">🗗</button>
+      <button class="quicktab-btn quicktab-pin" title="Pin Quick Tab">
+        📌
+      </button>
+      <button class="quicktab-btn quicktab-newtab" title="Open in New Tab">
+        🗗
+      </button>
       <button class="quicktab-btn quicktab-minimize" title="Minimize">−</button>
       <button class="quicktab-btn quicktab-close" title="Close">×</button>
     </div>
@@ -415,7 +419,12 @@ interface
   <h3>Quick Tab Manager Shortcut</h3>
   <label>
     Keyboard Shortcut:
-    <input type="text" id="quicktab-manager-shortcut" placeholder="Ctrl+Shift+Q" readonly />
+    <input
+      type="text"
+      id="quicktab-manager-shortcut"
+      placeholder="Ctrl+Shift+Q"
+      readonly
+    />
   </label>
   <button id="change-shortcut-btn">Change Shortcut</button>
   <p class="hint">Click the button and press your desired key combination</p>
@@ -430,46 +439,49 @@ async function loadShortcut() {
   const commands = await browser.commands.getAll();
   const qtmCommand = commands.find(cmd => cmd.name === 'open-quicktab-manager');
   if (qtmCommand) {
-    document.getElementById('quicktab-manager-shortcut').value = qtmCommand.shortcut || 'Not set';
+    document.getElementById('quicktab-manager-shortcut').value =
+      qtmCommand.shortcut || 'Not set';
   }
 }
 
 // Change shortcut
-document.getElementById('change-shortcut-btn').addEventListener('click', async () => {
-  const input = document.getElementById('quicktab-manager-shortcut');
-  input.readOnly = false;
-  input.focus();
-  input.select();
+document
+  .getElementById('change-shortcut-btn')
+  .addEventListener('click', async () => {
+    const input = document.getElementById('quicktab-manager-shortcut');
+    input.readOnly = false;
+    input.focus();
+    input.select();
 
-  input.addEventListener(
-    'keydown',
-    async e => {
-      e.preventDefault();
-      const keys = [];
-      if (e.ctrlKey) keys.push('Ctrl');
-      if (e.altKey) keys.push('Alt');
-      if (e.shiftKey) keys.push('Shift');
-      if (e.key && !['Control', 'Alt', 'Shift'].includes(e.key)) {
-        keys.push(e.key.toUpperCase());
-      }
+    input.addEventListener(
+      'keydown',
+      async e => {
+        e.preventDefault();
+        const keys = [];
+        if (e.ctrlKey) keys.push('Ctrl');
+        if (e.altKey) keys.push('Alt');
+        if (e.shiftKey) keys.push('Shift');
+        if (e.key && !['Control', 'Alt', 'Shift'].includes(e.key)) {
+          keys.push(e.key.toUpperCase());
+        }
 
-      const shortcut = keys.join('+');
+        const shortcut = keys.join('+');
 
-      try {
-        await browser.commands.update({
-          name: 'open-quicktab-manager',
-          shortcut: shortcut
-        });
-        input.value = shortcut;
-        input.readOnly = true;
-        showNotification('Shortcut updated successfully');
-      } catch (error) {
-        showNotification('Invalid shortcut combination', 'error');
-      }
-    },
-    { once: true }
-  );
-});
+        try {
+          await browser.commands.update({
+            name: 'open-quicktab-manager',
+            shortcut: shortcut
+          });
+          input.value = shortcut;
+          input.readOnly = true;
+          showNotification('Shortcut updated successfully');
+        } catch (error) {
+          showNotification('Invalid shortcut combination', 'error');
+        }
+      },
+      { once: true }
+    );
+  });
 ```
 
 ### 4.2 Quick Tab Manager Persistence
@@ -610,8 +622,12 @@ from extension icon popup.
 
   <div class="setting-group">
     <h3>Settings Interface</h3>
-    <button id="open-full-settings" class="primary-button">Open Settings in Full Page</button>
-    <p class="hint">Opens settings in a dedicated browser tab for easier configuration</p>
+    <button id="open-full-settings" class="primary-button">
+      Open Settings in Full Page
+    </button>
+    <p class="hint">
+      Opens settings in a dedicated browser tab for easier configuration
+    </p>
   </div>
 </div>
 ```

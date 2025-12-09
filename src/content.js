@@ -8,7 +8,7 @@
 /**
  * Check if iframe src indicates it's a Quick Tab iframe
  * v1.6.2.5 - Helper to reduce complexity in _isQuickTabParentFrame
- * 
+ *
  * @private
  * @param {Element} parentFrame - The parent frame element
  * @returns {boolean} - True if iframe src indicates Quick Tab
@@ -27,7 +27,7 @@ function _hasQuickTabSrc(parentFrame) {
 /**
  * Check parent element structure for Quick Tab patterns
  * v1.6.2.5 - Helper to reduce complexity in _isQuickTabParentFrame
- * 
+ *
  * @private
  * @param {Element} parentFrame - The parent frame element
  * @returns {boolean} - True if parent structure indicates Quick Tab
@@ -40,10 +40,12 @@ function _hasQuickTabSrc(parentFrame) {
  * @returns {boolean} - True if element has Quick Tab indicators
  */
 function _hasQuickTabIndicators(element) {
-  return element.hasAttribute('data-quick-tab-id') ||
-         element.classList.contains('quick-tab-content') ||
-         element.classList.contains('quick-tab-body') ||
-         element.classList.contains('quick-tab-window');
+  return (
+    element.hasAttribute('data-quick-tab-id') ||
+    element.classList.contains('quick-tab-content') ||
+    element.classList.contains('quick-tab-body') ||
+    element.classList.contains('quick-tab-window')
+  );
 }
 
 /**
@@ -56,10 +58,10 @@ function _hasQuickTabParentStructure(parentFrame) {
   try {
     const parent = parentFrame.parentElement;
     if (!parent) return false;
-    
+
     // Check parent for Quick Tab indicators
     if (_hasQuickTabIndicators(parent)) return true;
-    
+
     // Check grandparent for Quick Tab container
     const grandparent = parent.parentElement;
     if (grandparent && _hasQuickTabIndicators(grandparent)) return true;
@@ -67,31 +69,31 @@ function _hasQuickTabParentStructure(parentFrame) {
     // DOM access may throw in edge cases - err on side of caution
     return true;
   }
-  
+
   return false;
 }
 
 /**
  * Check if parent frame is a Quick Tab window (helper to reduce nesting)
  * v1.6.2.5 - ISSUE #3 FIX: Added multiple independent checks for defense-in-depth
- * 
+ *
  * @param {Element} parentFrame - The parent frame element
  * @returns {boolean} - True if parent is a Quick Tab window
  */
 function _isQuickTabParentFrame(parentFrame) {
   if (!parentFrame) return false;
-  
+
   // Check 1: CSS selectors (existing, may fail if classes not applied yet)
   const quickTabSelectors = '.quick-tab-window, [data-quick-tab-id], [id^="quick-tab-"]';
   if (parentFrame.closest(quickTabSelectors) !== null) {
     return true;
   }
-  
+
   // Check 2: iframe.src URL pattern check
   if (_hasQuickTabSrc(parentFrame)) {
     return true;
   }
-  
+
   // Check 3: Parent element structure check
   return _hasQuickTabParentStructure(parentFrame);
 }
@@ -168,12 +170,12 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * v1.6.2.3 Changes:
  * - Added critical iframe recursion guard at top of file (Bug #2 fix)
  * - Prevents browser crashes from infinite Quick Tab nesting
- * 
+ *
  * v1.6.3.6 Changes:
  * - FIX Issue #1: Added cross-tab filtering to RESTORE_QUICK_TAB and MINIMIZE_QUICK_TAB handlers
  * - Quick Tabs now only respond to operations from the tab that owns them (originTabId match)
  * - Prevents ghost Quick Tabs from appearing when Manager broadcasts to all tabs
- * 
+ *
  * v1.6.3.7 Changes:
  * - FIX Issue #3: Unified deletion behavior between UI button and Manager close button
  * - CLOSE_QUICK_TAB handler now accepts 'source' parameter for cross-tab broadcast handling
@@ -339,8 +341,10 @@ function _logErrorProperties(qtErr) {
 }
 
 function logQuickTabsInitError(qtErr) {
-  console.error('[Copy-URL-on-Hover] ❌ EXCEPTION during Quick Tabs initialization:', 
-    _formatErrorDetails(qtErr));
+  console.error(
+    '[Copy-URL-on-Hover] ❌ EXCEPTION during Quick Tabs initialization:',
+    _formatErrorDetails(qtErr)
+  );
   _logErrorProperties(qtErr);
 }
 
@@ -349,14 +353,14 @@ function logQuickTabsInitError(qtErr) {
  * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
  * Must send message to background script which has access to sender.tab.id
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
- * 
+ *
  * @returns {Promise<number|null>} Current tab ID or null if unavailable
  */
 async function getCurrentTabIdFromBackground() {
   try {
     console.log('[Content] Requesting current tab ID from background...');
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
-    
+
     // v1.6.3.6-v4 - FIX Issue #1: Enhanced validation logging
     if (response?.success && typeof response.tabId === 'number') {
       console.log('[Content] Got current tab ID from background:', {
@@ -365,7 +369,7 @@ async function getCurrentTabIdFromBackground() {
       });
       return response.tabId;
     }
-    
+
     // v1.6.3.6-v4 - Log detailed error information
     console.warn('[Content] Background returned invalid tab ID response:', {
       response,
@@ -421,23 +425,23 @@ function logContentPortLifecycle(event, details = {}) {
  */
 function connectContentToBackground(tabId) {
   cachedTabId = tabId;
-  
+
   try {
     backgroundPort = browser.runtime.connect({
       name: `quicktabs-content-${tabId}`
     });
-    
+
     logContentPortLifecycle('open', { portName: backgroundPort.name });
-    
+
     // Handle messages from background
     backgroundPort.onMessage.addListener(handleContentPortMessage);
-    
+
     // Handle disconnect
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
-      
+
       // Attempt reconnection after delay (only if tab still active)
       setTimeout(() => {
         if (!backgroundPort && document.visibilityState !== 'hidden') {
@@ -445,7 +449,7 @@ function connectContentToBackground(tabId) {
         }
       }, 2000);
     });
-    
+
     console.log('[Content] v1.6.3.6-v11 Port connection established to background');
   } catch (err) {
     console.error('[Content] Failed to connect to background:', err.message);
@@ -459,17 +463,17 @@ function connectContentToBackground(tabId) {
  * @param {Object} message - Message from background
  */
 function handleContentPortMessage(message) {
-  logContentPortLifecycle('message', { 
-    type: message.type, 
-    action: message.action 
+  logContentPortLifecycle('message', {
+    type: message.type,
+    action: message.action
   });
-  
+
   // Handle broadcasts
   if (message.type === 'BROADCAST') {
     handleContentBroadcast(message);
     return;
   }
-  
+
   // Handle acknowledgments (if content script sends requests)
   if (message.type === 'ACKNOWLEDGMENT') {
     console.log('[Content] Received acknowledgment:', message.correlationId);
@@ -483,7 +487,7 @@ function handleContentPortMessage(message) {
  */
 function handleContentBroadcast(message) {
   const { action } = message;
-  
+
   switch (action) {
     case 'VISIBILITY_CHANGE':
       console.log('[Content] Received visibility change broadcast:', {
@@ -492,7 +496,7 @@ function handleContentBroadcast(message) {
       });
       // Quick Tabs manager will handle this via its own listeners
       break;
-    
+
     case 'TAB_LIFECYCLE_CHANGE':
       console.log('[Content] Received tab lifecycle broadcast:', {
         event: message.event,
@@ -500,7 +504,7 @@ function handleContentBroadcast(message) {
         affectedQuickTabs: message.affectedQuickTabs
       });
       break;
-    
+
     default:
       console.log('[Content] Received broadcast:', message);
   }
@@ -524,26 +528,28 @@ window.addEventListener('unload', () => {
  */
 async function initializeQuickTabsFeature() {
   console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
-  
+
   // v1.6.3.5-v10 - FIX Issue #3: Get tab ID FIRST from background script
   // This is critical for cross-tab scoping - Quick Tabs should only render
   // in the tab they were created in (originTabId must match currentTabId)
   const currentTabId = await getCurrentTabIdFromBackground();
   console.log('[Copy-URL-on-Hover] Current tab ID for Quick Tabs initialization:', currentTabId);
-  
+
   // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
   // This is CRITICAL: content scripts cannot use browser.tabs.getCurrent(), so they must
   // explicitly set the tab ID for storage-utils to validate ownership during writes
   if (currentTabId !== null) {
     setWritingTabId(currentTabId);
     console.log('[Copy-URL-on-Hover] Set writing tab ID for storage ownership:', currentTabId);
-    
+
     // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
     connectContentToBackground(currentTabId);
   } else {
-    console.warn('[Copy-URL-on-Hover] WARNING: Could not set writing tab ID - storage writes may fail ownership validation');
+    console.warn(
+      '[Copy-URL-on-Hover] WARNING: Could not set writing tab ID - storage writes may fail ownership validation'
+    );
   }
-  
+
   // Pass currentTabId as option so UICoordinator can filter by originTabId
   quickTabsManager = await initQuickTabs(eventBus, Events, { currentTabId });
 
@@ -553,10 +559,7 @@ async function initializeQuickTabsFeature() {
       '[Copy-URL-on-Hover] Manager has createQuickTab:',
       typeof quickTabsManager.createQuickTab
     );
-    console.log(
-      '[Copy-URL-on-Hover] Manager currentTabId:',
-      quickTabsManager.currentTabId
-    );
+    console.log('[Copy-URL-on-Hover] Manager currentTabId:', quickTabsManager.currentTabId);
   } else {
     console.error('[Copy-URL-on-Hover] ✗ Quick Tabs manager is null after initialization!');
   }
@@ -616,13 +619,17 @@ function reportInitializationError(err) {
     // This ensures user's filter preferences are active from the very first log
     const settingsResult = await settingsReady;
     if (settingsResult.success) {
-      console.log(`[Copy-URL-on-Hover] ✓ Filter settings loaded (source: ${settingsResult.source})`);
+      console.log(
+        `[Copy-URL-on-Hover] ✓ Filter settings loaded (source: ${settingsResult.source})`
+      );
     } else {
-      console.warn(`[Copy-URL-on-Hover] ⚠ Using default filter settings (${settingsResult.source})`);
+      console.warn(
+        `[Copy-URL-on-Hover] ⚠ Using default filter settings (${settingsResult.source})`
+      );
     }
-    
+
     console.log('[Copy-URL-on-Hover] STEP: Starting extension initialization...');
-    
+
     // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Log content script identity on init
     // This helps track which tab ID owns which Quick Tabs
     try {
@@ -633,7 +640,9 @@ function reportInitializationError(err) {
         timestamp: Date.now()
       });
     } catch (tabErr) {
-      console.log('[Copy-URL-on-Hover] Content Script Identity: tab ID unavailable (running in background context?)');
+      console.log(
+        '[Copy-URL-on-Hover] Content Script Identity: tab ID unavailable (running in background context?)'
+      );
     }
 
     // Load configuration
@@ -747,13 +756,16 @@ function _logUrlDetectionResult(url, element, domainType, detectionDuration) {
   const detectionTime = `${detectionDuration.toFixed(2)}ms`;
   if (url) {
     logNormal('url-detection', 'Success', 'URL found', {
-      url, domainType, detectionTime
+      url,
+      domainType,
+      detectionTime
     });
   } else {
     logNormal('url-detection', 'Failure', 'No URL found', {
       elementTag: element.tagName,
       elementClasses: element.className || '<none>',
-      domainType, detectionTime
+      domainType,
+      detectionTime
     });
   }
 }
@@ -1070,7 +1082,9 @@ async function _performCopyWithLogging(text) {
   const copyDuration = performance.now() - copyStart;
 
   logNormal('clipboard', 'Result', 'Copy operation completed', {
-    success, textLength: text.length, duration: `${copyDuration.toFixed(2)}ms`
+    success,
+    textLength: text.length,
+    duration: `${copyDuration.toFixed(2)}ms`
   });
 
   return success;
@@ -1111,7 +1125,8 @@ function _validateText(text, element) {
 function _handleCopyFailure(text) {
   showNotification('✗ Failed to copy text', 'error');
   console.error('[Copy Text] [Failure] Clipboard operation returned false', {
-    textLength: text.length, timestamp: Date.now()
+    textLength: text.length,
+    timestamp: Date.now()
   });
 }
 
@@ -1136,7 +1151,10 @@ function _buildCopyTextLogData(element) {
  */
 function _handleCopyTextError(err) {
   console.error('[Copy Text] Failed:', {
-    message: err.message, name: err.name, stack: err.stack, error: err
+    message: err.message,
+    name: err.name,
+    stack: err.stack,
+    error: err
   });
   showNotification('✗ Failed to copy text', 'error');
 }
@@ -1167,7 +1185,7 @@ async function handleCopyText(element) {
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab data structure
  * v1.6.3 - Refactored to use options object pattern (4 args max)
- * 
+ *
  * @param {Object} options - Quick Tab configuration
  * @param {string} options.url - URL to load in Quick Tab
  * @param {string} options.id - Unique Quick Tab ID
@@ -1447,12 +1465,12 @@ function _handleQuickTabsCleared(sendResponse) {
     // which would write to storage
     const tabIds = Array.from(quickTabsManager.tabs.keys());
     console.log(`[Content] Clearing ${tabIds.length} Quick Tabs (local only, no storage write)`);
-    
+
     // Destroy each Quick Tab's DOM directly
     for (const id of tabIds) {
       _destroyTabWindow(quickTabsManager.tabs, id);
     }
-    
+
     // Clear minimized manager
     if (quickTabsManager.minimizedManager) {
       quickTabsManager.minimizedManager.clear();
@@ -1510,8 +1528,8 @@ const RESTORE_DEDUP_WINDOW_MS = 2000; // Reject duplicates within 2000ms window
 function _isDuplicateRestoreMessage(quickTabId) {
   const now = Date.now();
   const lastProcessed = recentRestoreMessages.get(quickTabId);
-  
-  if (lastProcessed && (now - lastProcessed) < RESTORE_DEDUP_WINDOW_MS) {
+
+  if (lastProcessed && now - lastProcessed < RESTORE_DEDUP_WINDOW_MS) {
     console.warn('[Content] BLOCKED duplicate RESTORE_QUICK_TAB:', {
       quickTabId,
       timeSinceLastRestore: now - lastProcessed,
@@ -1519,15 +1537,15 @@ function _isDuplicateRestoreMessage(quickTabId) {
     });
     return true;
   }
-  
+
   // Update the timestamp
   recentRestoreMessages.set(quickTabId, now);
-  
+
   // Clean up old entries to prevent memory leak
   if (recentRestoreMessages.size > 50) {
     _cleanupOldRestoreEntries(now);
   }
-  
+
   return false;
 }
 
@@ -1560,10 +1578,13 @@ function _cleanupOldRestoreEntries(now) {
  */
 function _buildActionErrorResponse(options) {
   const { action, quickTabId, currentTabId, error, reason, extra = {} } = options;
-  return { 
-    success: false, action, quickTabId,
+  return {
+    success: false,
+    action,
+    quickTabId,
     originTabId: currentTabId,
-    error, reason,
+    error,
+    reason,
     completedAt: Date.now(),
     ...extra
   };
@@ -1575,8 +1596,10 @@ function _buildActionErrorResponse(options) {
  * @private
  */
 function _buildActionSuccessResponse(action, quickTabId, currentTabId, durationMs) {
-  return { 
-    success: true, action, quickTabId,
+  return {
+    success: true,
+    action,
+    quickTabId,
     originTabId: currentTabId,
     durationMs,
     completedAt: Date.now()
@@ -1606,7 +1629,7 @@ function _validateManagerAction(quickTabId) {
 function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
   const startTime = Date.now();
   const currentTabId = quickTabsManager?.currentTabId;
-  
+
   try {
     // Validate prerequisites
     const validationError = _validateManagerAction(quickTabId);
@@ -1615,26 +1638,54 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
       const reason = isManagerNotReady ? 'manager_not_ready' : 'invalid_params';
       // Log warning only if manager not ready (avoid nested if)
       isManagerNotReady && console.warn('[Content] QuickTabsManager not initialized');
-      sendResponse(_buildActionErrorResponse({ action, quickTabId, currentTabId, error: validationError, reason }));
+      sendResponse(
+        _buildActionErrorResponse({
+          action,
+          quickTabId,
+          currentTabId,
+          error: validationError,
+          reason
+        })
+      );
       return;
     }
 
     // Execute action and check result
     const result = actionFn(quickTabId);
-    
+
     if (_isActionFailure(result)) {
       console.warn(`[Content] ${action} Quick Tab failed (source: Manager): ${quickTabId}`, result);
-      sendResponse(_buildActionErrorResponse({ action, quickTabId, currentTabId, error: _getActionError(result), reason: 'handler_failed', extra: { handlerResult: result } }));
+      sendResponse(
+        _buildActionErrorResponse({
+          action,
+          quickTabId,
+          currentTabId,
+          error: _getActionError(result),
+          reason: 'handler_failed',
+          extra: { handlerResult: result }
+        })
+      );
       return;
     }
-    
+
     // Success
     const durationMs = Date.now() - startTime;
-    console.log(`[Content] ✅ ${action} Quick Tab (source: Manager): ${quickTabId}`, { durationMs, originTabId: currentTabId });
+    console.log(`[Content] ✅ ${action} Quick Tab (source: Manager): ${quickTabId}`, {
+      durationMs,
+      originTabId: currentTabId
+    });
     sendResponse(_buildActionSuccessResponse(action, quickTabId, currentTabId, durationMs));
   } catch (error) {
     console.error(`[Content] Error ${action.toLowerCase()} Quick Tab:`, error);
-    sendResponse(_buildActionErrorResponse({ action, quickTabId, currentTabId, error: error.message, reason: 'exception' }));
+    sendResponse(
+      _buildActionErrorResponse({
+        action,
+        quickTabId,
+        currentTabId,
+        error: error.message,
+        reason: 'exception'
+      })
+    );
   }
 }
 
@@ -1694,14 +1745,14 @@ function _logDeletionApplied(correlationId, quickTabId, currentTabId) {
  */
 function _handleCloseNotPresent(quickTabId, sendResponse, source, ownership) {
   if (source !== 'background-broadcast') return false;
-  
+
   console.log('[Content] CLOSE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
     quickTabId,
     currentTabId: ownership.currentTabId,
     source
   });
-  sendResponse({ 
-    success: true, 
+  sendResponse({
+    success: true,
     message: 'Quick Tab not present in this tab',
     quickTabId,
     reason: 'not-present'
@@ -1721,16 +1772,16 @@ function _handleCloseFromBroadcast(quickTabId, sendResponse, correlationId, owne
     hasInMap: ownership.hasInMap,
     hasSnapshot: ownership.hasSnapshot
   });
-  
+
   _handleManagerAction(
-    quickTabId, 
-    'Closed (from broadcast)', 
+    quickTabId,
+    'Closed (from broadcast)',
     id => {
       if (quickTabsManager?.destroyHandler?.handleDestroy) {
         quickTabsManager.destroyHandler.handleDestroy(id, 'background-broadcast');
       }
       _logDeletionApplied(correlationId, quickTabId, ownership.currentTabId);
-    }, 
+    },
     sendResponse
   );
 }
@@ -1750,22 +1801,27 @@ function _handleCloseFromBroadcast(quickTabId, sendResponse, correlationId, owne
  */
 function _handleCloseQuickTab(quickTabId, sendResponse, source = 'Manager', correlationId = null) {
   const ownership = _getQuickTabOwnership(quickTabId);
-  
+
   _logDeletionReceipt(correlationId, quickTabId, ownership, source);
-  
+
   // Guard: Quick Tab not present - handle for background broadcasts
   if (!ownership.hasInMap && !ownership.hasSnapshot) {
     if (_handleCloseNotPresent(quickTabId, sendResponse, source, ownership)) return;
   }
-  
+
   // Background broadcast path: direct destroy without re-broadcast
   if (source === 'background-broadcast') {
     _handleCloseFromBroadcast(quickTabId, sendResponse, correlationId, ownership);
     return;
   }
-  
+
   // Standard path: closeById() triggers full destroy flow
-  _handleManagerAction(quickTabId, 'Closed', id => quickTabsManager.destroyHandler.closeById(id, source), sendResponse);
+  _handleManagerAction(
+    quickTabId,
+    'Closed',
+    id => quickTabsManager.destroyHandler.closeById(id, source),
+    sendResponse
+  );
 }
 
 /**
@@ -1779,16 +1835,19 @@ function _handleMinimizeQuickTab(quickTabId, sendResponse) {
   // v1.6.3.6 - FIX Issue #1: Cross-tab filtering for minimize requests
   const hasInMap = quickTabsManager?.tabs?.has(quickTabId);
   const currentTabId = quickTabsManager?.currentTabId;
-  
+
   if (!hasInMap) {
-    console.log('[Content] MINIMIZE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
-      quickTabId,
-      currentTabId,
-      hasInMap,
-      reason: 'cross-tab filtering'
-    });
-    sendResponse({ 
-      success: false, 
+    console.log(
+      '[Content] MINIMIZE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:',
+      {
+        quickTabId,
+        currentTabId,
+        hasInMap,
+        reason: 'cross-tab filtering'
+      }
+    );
+    sendResponse({
+      success: false,
       error: 'Quick Tab not owned by this tab',
       quickTabId,
       currentTabId,
@@ -1796,8 +1855,13 @@ function _handleMinimizeQuickTab(quickTabId, sendResponse) {
     });
     return;
   }
-  
-  _handleManagerAction(quickTabId, 'Minimized', id => quickTabsManager.minimizeById(id, 'Manager'), sendResponse);
+
+  _handleManagerAction(
+    quickTabId,
+    'Minimized',
+    id => quickTabsManager.minimizeById(id, 'Manager'),
+    sendResponse
+  );
 }
 
 /**
@@ -1828,7 +1892,7 @@ function _getRestoreOwnership(quickTabId) {
   const ownership = _getQuickTabOwnership(quickTabId);
   const extractedTabId = _extractTabIdFromQuickTabId(quickTabId);
   const matchesIdPattern = extractedTabId !== null && extractedTabId === ownership.currentTabId;
-  
+
   return {
     ...ownership,
     extractedTabId,
@@ -1843,17 +1907,20 @@ function _getRestoreOwnership(quickTabId) {
  * @private
  */
 function _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnership) {
-  console.log('[Content] RESTORE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:', {
-    quickTabId,
-    currentTabId: restoreOwnership.currentTabId,
-    hasInMap: restoreOwnership.hasInMap,
-    hasSnapshot: restoreOwnership.hasSnapshot,
-    extractedTabId: restoreOwnership.extractedTabId,
-    matchesIdPattern: restoreOwnership.matchesIdPattern,
-    reason: 'cross-tab filtering'
-  });
-  sendResponse({ 
-    success: false, 
+  console.log(
+    '[Content] RESTORE_QUICK_TAB: Ignoring broadcast - Quick Tab not owned by this tab:',
+    {
+      quickTabId,
+      currentTabId: restoreOwnership.currentTabId,
+      hasInMap: restoreOwnership.hasInMap,
+      hasSnapshot: restoreOwnership.hasSnapshot,
+      extractedTabId: restoreOwnership.extractedTabId,
+      matchesIdPattern: restoreOwnership.matchesIdPattern,
+      reason: 'cross-tab filtering'
+    }
+  );
+  sendResponse({
+    success: false,
     error: 'Quick Tab not owned by this tab',
     quickTabId,
     currentTabId: restoreOwnership.currentTabId,
@@ -1868,7 +1935,7 @@ function _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnershi
  *   Check if Quick Tab belongs to this tab before attempting restore.
  *   Quick Tabs should only render in the tab that created them (originTabId).
  * v1.6.3.6-v8 - FIX Issue #4: Add ID pattern extraction fallback for Manager restore
- *   When a Quick Tab is minimized and the page is reloaded, quickTabsMap and 
+ *   When a Quick Tab is minimized and the page is reloaded, quickTabsMap and
  *   minimizedManager may be empty - but the Quick Tab still belongs to this tab.
  *   Use the tab ID embedded in the Quick Tab ID pattern as a fallback check.
  * v1.6.4.8 - Refactored to reduce complexity (cc=12 -> cc<9)
@@ -1879,12 +1946,17 @@ function _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnershi
 function _handleRestoreQuickTab(quickTabId, sendResponse) {
   // Guard: Deduplicate restore within window
   if (_isDuplicateRestoreMessage(quickTabId)) {
-    sendResponse({ success: false, error: 'Duplicate restore request rejected', quickTabId, reason: 'deduplication' });
+    sendResponse({
+      success: false,
+      error: 'Duplicate restore request rejected',
+      quickTabId,
+      reason: 'deduplication'
+    });
     return;
   }
-  
+
   const restoreOwnership = _getRestoreOwnership(quickTabId);
-  
+
   console.log('[Content] RESTORE_QUICK_TAB: Ownership check:', {
     quickTabId,
     currentTabId: restoreOwnership.currentTabId,
@@ -1894,21 +1966,26 @@ function _handleRestoreQuickTab(quickTabId, sendResponse) {
     matchesIdPattern: restoreOwnership.matchesIdPattern,
     ownsQuickTab: restoreOwnership.ownsQuickTab
   });
-  
+
   // Guard: Cross-tab filtering
   if (!restoreOwnership.ownsQuickTab) {
     _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnership);
     return;
   }
-  
+
   console.log('[Content] RESTORE_QUICK_TAB: Processing - Quick Tab is owned by this tab:', {
     quickTabId,
     currentTabId: restoreOwnership.currentTabId,
     hasInMap: restoreOwnership.hasInMap,
     hasSnapshot: restoreOwnership.hasSnapshot
   });
-  
-  _handleManagerAction(quickTabId, 'Restored', id => quickTabsManager.restoreById(id, 'Manager'), sendResponse);
+
+  _handleManagerAction(
+    quickTabId,
+    'Restored',
+    id => quickTabsManager.restoreById(id, 'Manager'),
+    sendResponse
+  );
 }
 
 // ==================== MESSAGE HANDLER FUNCTIONS ====================
@@ -2082,20 +2159,23 @@ if (IS_TEST_MODE) {
     return { message: 'Quick Tab pinned', data: { id: data.id, pinnedToUrl: currentUrl } };
   });
 
-  _testHandleUnpinQuickTab = _wrapAsyncTestHandler('TEST_UNPIN_QUICK_TAB', async (manager, data) => {
-    const tab = manager.tabs.get(data.id);
-    if (!tab) throw new Error(`Quick Tab not found: ${data.id}`);
-    tab.pinnedToUrl = null;
-    await manager.storage.saveQuickTab(tab);
-    return { message: 'Quick Tab unpinned', data: { id: data.id } };
-  });
+  _testHandleUnpinQuickTab = _wrapAsyncTestHandler(
+    'TEST_UNPIN_QUICK_TAB',
+    async (manager, data) => {
+      const tab = manager.tabs.get(data.id);
+      if (!tab) throw new Error(`Quick Tab not found: ${data.id}`);
+      tab.pinnedToUrl = null;
+      await manager.storage.saveQuickTab(tab);
+      return { message: 'Quick Tab unpinned', data: { id: data.id } };
+    }
+  );
 
   _testHandleCloseQuickTab = _wrapSyncTestHandler('TEST_CLOSE_QUICK_TAB', (manager, data) => {
     manager.closeById(data.id);
     return { message: 'Quick Tab closed', data: { id: data.id } };
   });
 
-  _testHandleClearAllQuickTabs = _wrapSyncTestHandler('TEST_CLEAR_ALL_QUICK_TAB', (manager) => {
+  _testHandleClearAllQuickTabs = _wrapSyncTestHandler('TEST_CLEAR_ALL_QUICK_TAB', manager => {
     const tabIds = Array.from(manager.tabs.keys());
     manager.closeAll();
     return { message: 'All Quick Tabs cleared', data: { count: tabIds.length } };
@@ -2123,16 +2203,18 @@ if (IS_TEST_MODE) {
     const isNowActive = toggleFn.call(domainTab, tabId);
 
     if (manager.broadcast) {
-      const broadcastData = mode === 'SOLO'
-        ? { id, tabId, isNowSoloed: isNowActive, soloedOnTabs: domainTab.visibility.soloedOnTabs }
-        : { id, tabId, isNowMuted: isNowActive, mutedOnTabs: domainTab.visibility.mutedOnTabs };
+      const broadcastData =
+        mode === 'SOLO'
+          ? { id, tabId, isNowSoloed: isNowActive, soloedOnTabs: domainTab.visibility.soloedOnTabs }
+          : { id, tabId, isNowMuted: isNowActive, mutedOnTabs: domainTab.visibility.mutedOnTabs };
       manager.broadcast.broadcastMessage(mode, broadcastData);
     }
 
     return {
       message: isNowActive ? `${mode} enabled` : `${mode} disabled`,
       data: {
-        id, tabId,
+        id,
+        tabId,
         ...(mode === 'SOLO' ? { isNowSoloed: isNowActive } : { isNowMuted: isNowActive }),
         soloedOnTabs: domainTab.visibility.soloedOnTabs,
         mutedOnTabs: domainTab.visibility.mutedOnTabs
@@ -2167,8 +2249,12 @@ if (IS_TEST_MODE) {
     const isMuted = domainTab.visibility.mutedOnTabs.includes(tabId);
 
     visibilityState.quickTabs[id] = {
-      id, url: domainTab.url, title: domainTab.title,
-      shouldBeVisible, isSoloed, isMuted,
+      id,
+      url: domainTab.url,
+      title: domainTab.title,
+      shouldBeVisible,
+      isSoloed,
+      isMuted,
       soloedOnTabs: domainTab.visibility.soloedOnTabs,
       mutedOnTabs: domainTab.visibility.mutedOnTabs
     };
@@ -2202,8 +2288,10 @@ if (IS_TEST_MODE) {
    * Handle TEST_GET_MANAGER_STATE message (deprecated)
    * @private
    */
-  _testHandleGetManagerState = (sendResponse) => {
-    console.log('[Test Bridge Handler] TEST_GET_MANAGER_STATE (deprecated - floating panel removed)');
+  _testHandleGetManagerState = sendResponse => {
+    console.log(
+      '[Test Bridge Handler] TEST_GET_MANAGER_STATE (deprecated - floating panel removed)'
+    );
     try {
       const manager = _requireQuickTabsManager();
       const minimizedTabs = manager.minimizedManager?.getAll() || [];
@@ -2216,7 +2304,8 @@ if (IS_TEST_MODE) {
           size: null,
           minimizedTabs: minimizedTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
           minimizedCount: minimizedTabs.length,
-          deprecationNotice: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
+          deprecationNotice:
+            'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
         }
       });
     } catch (error) {
@@ -2229,25 +2318,35 @@ if (IS_TEST_MODE) {
    * Handle TEST_SET_MANAGER_POSITION message (deprecated)
    * @private
    */
-  _testHandleSetManagerPosition = (sendResponse) => {
-    console.log('[Test Bridge Handler] TEST_SET_MANAGER_POSITION (deprecated - floating panel removed)');
-    sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
+  _testHandleSetManagerPosition = sendResponse => {
+    console.log(
+      '[Test Bridge Handler] TEST_SET_MANAGER_POSITION (deprecated - floating panel removed)'
+    );
+    sendResponse({
+      success: false,
+      error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
+    });
   };
 
   /**
    * Handle TEST_SET_MANAGER_SIZE message (deprecated)
    * @private
    */
-  _testHandleSetManagerSize = (sendResponse) => {
-    console.log('[Test Bridge Handler] TEST_SET_MANAGER_SIZE (deprecated - floating panel removed)');
-    sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
+  _testHandleSetManagerSize = sendResponse => {
+    console.log(
+      '[Test Bridge Handler] TEST_SET_MANAGER_SIZE (deprecated - floating panel removed)'
+    );
+    sendResponse({
+      success: false,
+      error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
+    });
   };
 
   /**
    * Handle TEST_CLOSE_ALL_MINIMIZED message
    * @private
    */
-  _testHandleCloseAllMinimized = (sendResponse) => {
+  _testHandleCloseAllMinimized = sendResponse => {
     console.log('[Test Bridge Handler] TEST_CLOSE_ALL_MINIMIZED');
     try {
       const manager = _requireQuickTabsManager();
@@ -2284,11 +2383,14 @@ if (IS_TEST_MODE) {
     }
 
     containerInfo.containers[containerId].quickTabs.push({
-      id, url: domainTab.url, title: domainTab.title, cookieStoreId: domainTab.cookieStoreId
+      id,
+      url: domainTab.url,
+      title: domainTab.title,
+      cookieStoreId: domainTab.cookieStoreId
     });
   };
 
-  _testHandleGetContainerInfo = (sendResponse) => {
+  _testHandleGetContainerInfo = sendResponse => {
     console.log('[Test Bridge Handler] TEST_GET_CONTAINER_INFO');
     try {
       const manager = _requireQuickTabsManager();
@@ -2318,7 +2420,11 @@ if (IS_TEST_MODE) {
       const manager = _requireQuickTabsManager();
       const { url, cookieStoreId } = data;
       manager.createQuickTab({ url, title: 'Test Quick Tab', cookieStoreId });
-      sendResponse({ success: true, message: 'Quick Tab created in container', data: { url, cookieStoreId } });
+      sendResponse({
+        success: true,
+        message: 'Quick Tab created in container',
+        data: { url, cookieStoreId }
+      });
     } catch (error) {
       console.error('[Test Bridge Handler] TEST_CREATE_QUICK_TAB_IN_CONTAINER error:', error);
       sendResponse({ success: false, error: error.message });
@@ -2355,7 +2461,7 @@ if (IS_TEST_MODE) {
    * Handle TEST_GET_SLOT_NUMBERING message
    * @private
    */
-  _testHandleGetSlotNumbering = (sendResponse) => {
+  _testHandleGetSlotNumbering = sendResponse => {
     console.log('[Test Bridge Handler] TEST_GET_SLOT_NUMBERING');
     try {
       const manager = _requireQuickTabsManager();
@@ -2403,7 +2509,7 @@ if (IS_TEST_MODE) {
    * Get element geometry data
    * @private
    */
-  const _getElementGeometry = (element) => {
+  const _getElementGeometry = element => {
     const rect = element.getBoundingClientRect();
     const computedStyle = window.getComputedStyle(element);
     return {
@@ -2451,7 +2557,7 @@ if (IS_TEST_MODE) {
    * Verify z-index order is descending
    * @private
    */
-  const _verifyDescendingZIndex = (zIndexData) => {
+  const _verifyDescendingZIndex = zIndexData => {
     for (let i = 0; i < zIndexData.length - 1; i++) {
       if (zIndexData[i].zIndex <= zIndexData[i + 1].zIndex) return false;
     }
@@ -2476,7 +2582,7 @@ if (IS_TEST_MODE) {
       sendResponse({ success: false, error: error.message });
     }
   };
-  
+
   console.log('[Content] TEST_MODE enabled - test bridge handlers loaded');
 }
 // ==================== END TEST BRIDGE HANDLER FUNCTIONS ====================
@@ -2487,46 +2593,50 @@ if (IS_TEST_MODE) {
  * Action handlers map for message.action-based messages
  */
 const ACTION_HANDLERS = {
-  'GET_CONTENT_LOGS': (message, sendResponse) => {
+  GET_CONTENT_LOGS: (message, sendResponse) => {
     _handleGetContentLogs(sendResponse);
     return true;
   },
-  'CLEAR_CONTENT_LOGS': (message, sendResponse) => {
+  CLEAR_CONTENT_LOGS: (message, sendResponse) => {
     _handleClearContentLogs(sendResponse);
     return true;
   },
-  'REFRESH_LIVE_CONSOLE_FILTERS': (message, sendResponse) => {
+  REFRESH_LIVE_CONSOLE_FILTERS: (message, sendResponse) => {
     _handleRefreshLiveConsoleFilters(sendResponse);
     return true;
   },
-  'CLEAR_ALL_QUICK_TABS': (message, sendResponse) => {
+  CLEAR_ALL_QUICK_TABS: (message, sendResponse) => {
     _handleClearAllQuickTabs(sendResponse);
     return true;
   },
-  'QUICK_TABS_CLEARED': (message, sendResponse) => {
+  QUICK_TABS_CLEARED: (message, sendResponse) => {
     _handleQuickTabsCleared(sendResponse);
     return true;
   },
-  'CLOSE_QUICK_TAB': (message, sendResponse) => {
+  CLOSE_QUICK_TAB: (message, sendResponse) => {
     // v1.6.3.7 - FIX Issue #3: Pass source parameter for cross-tab broadcast handling
     // v1.6.3.6-v5 - FIX Issue #4e: Pass correlationId for deletion tracing
     const source = message.source || 'Manager';
     const correlationId = message.correlationId || null;
-    console.log('[Content] Received CLOSE_QUICK_TAB request:', { quickTabId: message.quickTabId, source, correlationId });
+    console.log('[Content] Received CLOSE_QUICK_TAB request:', {
+      quickTabId: message.quickTabId,
+      source,
+      correlationId
+    });
     _handleCloseQuickTab(message.quickTabId, sendResponse, source, correlationId);
     return true;
   },
-  'MINIMIZE_QUICK_TAB': (message, sendResponse) => {
+  MINIMIZE_QUICK_TAB: (message, sendResponse) => {
     console.log('[Content] Received MINIMIZE_QUICK_TAB request:', message.quickTabId);
     _handleMinimizeQuickTab(message.quickTabId, sendResponse);
     return true;
   },
-  'RESTORE_QUICK_TAB': (message, sendResponse) => {
+  RESTORE_QUICK_TAB: (message, sendResponse) => {
     console.log('[Content] Received RESTORE_QUICK_TAB request:', message.quickTabId);
     _handleRestoreQuickTab(message.quickTabId, sendResponse);
     return true;
   },
-  'CLOSE_MINIMIZED_QUICK_TABS': (message, sendResponse) => {
+  CLOSE_MINIMIZED_QUICK_TABS: (message, sendResponse) => {
     _handleCloseMinimizedQuickTabs(sendResponse);
     return true;
   }
@@ -2571,7 +2681,7 @@ function _executeRestoreCommand(quickTabId, source) {
     hasVisibilityHandler: !!quickTabsManager?.visibilityHandler,
     currentTabId: quickTabsManager?.currentTabId
   });
-  
+
   const handler = quickTabsManager?.visibilityHandler?.handleRestore;
   if (!handler) {
     console.warn('[Content] RESTORE_QUICK_TAB command - Handler not available:', {
@@ -2579,33 +2689,48 @@ function _executeRestoreCommand(quickTabId, source) {
       hasManager: !!quickTabsManager,
       hasVisibilityHandler: !!quickTabsManager?.visibilityHandler
     });
-    return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
+    return {
+      success: false,
+      error: 'Quick Tabs manager not initialized or visibility handler not ready'
+    };
   }
-  
+
   _logRestoreStage(2, quickTabId, source);
   const result = handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
   _logRestoreStage(3, quickTabId, source, { result });
-  
+
   return { success: true, action: 'restored', handlerResult: result };
 }
 
 const QUICK_TAB_COMMAND_HANDLERS = {
-  'MINIMIZE_QUICK_TAB': (quickTabId, source) => {
+  MINIMIZE_QUICK_TAB: (quickTabId, source) => {
     const handler = quickTabsManager?.visibilityHandler?.handleMinimize;
-    if (!handler) return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
+    if (!handler)
+      return {
+        success: false,
+        error: 'Quick Tabs manager not initialized or visibility handler not ready'
+      };
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
     return { success: true, action: 'minimized' };
   },
-  'RESTORE_QUICK_TAB': (quickTabId, source) => _executeRestoreCommand(quickTabId, source),
-  'CLOSE_QUICK_TAB': (quickTabId, _source) => {
+  RESTORE_QUICK_TAB: (quickTabId, source) => _executeRestoreCommand(quickTabId, source),
+  CLOSE_QUICK_TAB: (quickTabId, _source) => {
     const handler = quickTabsManager?.closeById;
-    if (!handler) return { success: false, error: 'Quick Tabs manager not initialized - closeById not available' };
+    if (!handler)
+      return {
+        success: false,
+        error: 'Quick Tabs manager not initialized - closeById not available'
+      };
     handler.call(quickTabsManager, quickTabId);
     return { success: true, action: 'closed' };
   },
-  'FOCUS_QUICK_TAB': (quickTabId, source) => {
+  FOCUS_QUICK_TAB: (quickTabId, source) => {
     const handler = quickTabsManager?.visibilityHandler?.handleFocus;
-    if (!handler) return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
+    if (!handler)
+      return {
+        success: false,
+        error: 'Quick Tabs manager not initialized or visibility handler not ready'
+      };
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
     return { success: true, action: 'focused' };
   }
@@ -2625,16 +2750,16 @@ function _executeQuickTabCommand(command, quickTabId, source) {
 const TYPE_HANDLERS = {
   // v1.6.3.5-v3 - FIX Architecture Phase 3: Handle EXECUTE_COMMAND from background
   // This enables Manager sidebar to control Quick Tabs in this tab remotely
-  'EXECUTE_COMMAND': (message, sendResponse) => {
+  EXECUTE_COMMAND: (message, sendResponse) => {
     const { command, quickTabId, source } = message;
     console.log('[Content] EXECUTE_COMMAND received:', { command, quickTabId, source });
-    
+
     if (!quickTabsManager) {
       console.warn('[Content] quickTabsManager not available');
       sendResponse({ success: false, error: 'quickTabsManager not available' });
       return true;
     }
-    
+
     try {
       const result = _executeQuickTabCommand(command, quickTabId, source);
       console.log('[Content] EXECUTE_COMMAND result:', result);
@@ -2643,12 +2768,12 @@ const TYPE_HANDLERS = {
       console.error('[Content] EXECUTE_COMMAND error:', err);
       sendResponse({ success: false, error: err.message });
     }
-    
+
     return true;
   },
-  
+
   // v1.6.3.5-v3 - FIX Architecture Phase 1: Handle state update notifications
-  'QUICK_TAB_STATE_UPDATED': (message, sendResponse) => {
+  QUICK_TAB_STATE_UPDATED: (message, sendResponse) => {
     console.log('[Content] QUICK_TAB_STATE_UPDATED received:', {
       quickTabId: message.quickTabId,
       changes: message.changes
@@ -2664,87 +2789,87 @@ const TYPE_HANDLERS = {
 // This allows Rollup's dead code elimination to remove test handlers in production builds
 if (IS_TEST_MODE) {
   Object.assign(TYPE_HANDLERS, {
-    'TEST_CREATE_QUICK_TAB': (message, sendResponse) => {
+    TEST_CREATE_QUICK_TAB: (message, sendResponse) => {
       _testHandleCreateQuickTab(message.data, sendResponse);
       return true;
     },
-    'TEST_MINIMIZE_QUICK_TAB': (message, sendResponse) => {
+    TEST_MINIMIZE_QUICK_TAB: (message, sendResponse) => {
       _testHandleMinimizeQuickTab(message.data, sendResponse);
       return true;
     },
-    'TEST_RESTORE_QUICK_TAB': (message, sendResponse) => {
+    TEST_RESTORE_QUICK_TAB: (message, sendResponse) => {
       _testHandleRestoreQuickTab(message.data, sendResponse);
       return true;
     },
-    'TEST_PIN_QUICK_TAB': (message, sendResponse) => {
+    TEST_PIN_QUICK_TAB: (message, sendResponse) => {
       _testHandlePinQuickTab(message.data, sendResponse);
       return true;
     },
-    'TEST_UNPIN_QUICK_TAB': (message, sendResponse) => {
+    TEST_UNPIN_QUICK_TAB: (message, sendResponse) => {
       _testHandleUnpinQuickTab(message.data, sendResponse);
       return true;
     },
-    'TEST_CLOSE_QUICK_TAB': (message, sendResponse) => {
+    TEST_CLOSE_QUICK_TAB: (message, sendResponse) => {
       _testHandleCloseQuickTab(message.data, sendResponse);
       return true;
     },
-    'TEST_CLEAR_ALL_QUICK_TAB': (message, sendResponse) => {
+    TEST_CLEAR_ALL_QUICK_TAB: (message, sendResponse) => {
       _testHandleClearAllQuickTabs(sendResponse);
       return true;
     },
-    'TEST_TOGGLE_SOLO': (message, sendResponse) => {
+    TEST_TOGGLE_SOLO: (message, sendResponse) => {
       _testHandleToggleSolo(message.data, sendResponse);
       return true;
     },
-    'TEST_TOGGLE_MUTE': (message, sendResponse) => {
+    TEST_TOGGLE_MUTE: (message, sendResponse) => {
       _testHandleToggleMute(message.data, sendResponse);
       return true;
     },
-    'TEST_GET_VISIBILITY_STATE': (message, sendResponse) => {
+    TEST_GET_VISIBILITY_STATE: (message, sendResponse) => {
       _testHandleGetVisibilityState(message.data, sendResponse);
       return true;
     },
-    'TEST_GET_MANAGER_STATE': (message, sendResponse) => {
+    TEST_GET_MANAGER_STATE: (message, sendResponse) => {
       _testHandleGetManagerState(sendResponse);
       return true;
     },
-    'TEST_SET_MANAGER_POSITION': (message, sendResponse) => {
+    TEST_SET_MANAGER_POSITION: (message, sendResponse) => {
       _testHandleSetManagerPosition(sendResponse);
       return true;
     },
-    'TEST_SET_MANAGER_SIZE': (message, sendResponse) => {
+    TEST_SET_MANAGER_SIZE: (message, sendResponse) => {
       _testHandleSetManagerSize(sendResponse);
       return true;
     },
-    'TEST_CLOSE_ALL_MINIMIZED': (message, sendResponse) => {
+    TEST_CLOSE_ALL_MINIMIZED: (message, sendResponse) => {
       _testHandleCloseAllMinimized(sendResponse);
       return true;
     },
-    'TEST_GET_CONTAINER_INFO': (message, sendResponse) => {
+    TEST_GET_CONTAINER_INFO: (message, sendResponse) => {
       _testHandleGetContainerInfo(sendResponse);
       return true;
     },
-    'TEST_CREATE_QUICK_TAB_IN_CONTAINER': (message, sendResponse) => {
+    TEST_CREATE_QUICK_TAB_IN_CONTAINER: (message, sendResponse) => {
       _testHandleCreateQuickTabInContainer(message.data, sendResponse);
       return true;
     },
-    'TEST_VERIFY_CONTAINER_ISOLATION': (message, sendResponse) => {
+    TEST_VERIFY_CONTAINER_ISOLATION: (message, sendResponse) => {
       _testHandleVerifyContainerIsolation(message.data, sendResponse);
       return true;
     },
-    'TEST_GET_SLOT_NUMBERING': (message, sendResponse) => {
+    TEST_GET_SLOT_NUMBERING: (message, sendResponse) => {
       _testHandleGetSlotNumbering(sendResponse);
       return true;
     },
-    'TEST_SET_DEBUG_MODE': (message, sendResponse) => {
+    TEST_SET_DEBUG_MODE: (message, sendResponse) => {
       _testHandleSetDebugMode(message.data, sendResponse);
       return true;
     },
-    'TEST_GET_QUICK_TAB_GEOMETRY': (message, sendResponse) => {
+    TEST_GET_QUICK_TAB_GEOMETRY: (message, sendResponse) => {
       _testHandleGetQuickTabGeometry(message.data, sendResponse);
       return true;
     },
-    'TEST_VERIFY_ZINDEX_ORDER': (message, sendResponse) => {
+    TEST_VERIFY_ZINDEX_ORDER: (message, sendResponse) => {
       _testHandleVerifyZIndexOrder(message.data, sendResponse);
       return true;
     }
@@ -2760,7 +2885,7 @@ if (IS_TEST_MODE) {
  */
 function _dispatchMessage(message, _sender, sendResponse) {
   // v1.6.3.5-v10 - FIX Issue #3: Log all incoming messages for diagnostic tracing
-  console.log('[Content] Message received:', { 
+  console.log('[Content] Message received:', {
     action: message.action || 'none',
     type: message.type || 'none',
     hasData: !!message.data
@@ -2801,7 +2926,7 @@ function _dispatchMessage(message, _sender, sendResponse) {
  */
 function _handleBeforeUnload() {
   console.log('[Content] beforeunload event - starting cleanup');
-  
+
   if (quickTabsManager?.destroy) {
     console.log('[Content] Calling quickTabsManager.destroy() for resource cleanup');
     quickTabsManager.destroy();

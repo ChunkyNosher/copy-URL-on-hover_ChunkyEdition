@@ -1,4 +1,5 @@
 # Quick Tab Manager Restoration Guide
+
 **PR Branch: copilot/diagnose-and-fix-issues-35-51**  
 **Version: v1.6.2.2**  
 **Date: November 26, 2025**
@@ -7,7 +8,9 @@
 
 ## Executive Summary
 
-This guide provides a comprehensive analysis of the current state of PR #283 (`copilot/diagnose-and-fix-issues-35-51`) and details the steps required to restore **full functionality** to the Quick Tab Manager, including:
+This guide provides a comprehensive analysis of the current state of PR #283
+(`copilot/diagnose-and-fix-issues-35-51`) and details the steps required to
+restore **full functionality** to the Quick Tab Manager, including:
 
 1. Fixing state reading and persistence
 2. Restoring solo/mute functionality
@@ -20,12 +23,15 @@ This guide provides a comprehensive analysis of the current state of PR #283 (`c
 
 ### What Was Changed (v1.6.2.2)
 
-**Primary Goal:** Remove Firefox Container API isolation to enable **global Quick Tab visibility** across all tabs regardless of container context.
+**Primary Goal:** Remove Firefox Container API isolation to enable **global
+Quick Tab visibility** across all tabs regardless of container context.
 
 **Key Changes Made:**
+
 - ✅ Removed `Container.js` domain entity (325 lines)
 - ✅ Removed `container` parameter from QuickTab constructor
-- ✅ Updated `UICoordinator.js` - removed container check (ROOT CAUSE FIX for Issue #35)
+- ✅ Updated `UICoordinator.js` - removed container check (ROOT CAUSE FIX for
+  Issue #35)
 - ✅ Updated `StateManager.js` - removed `getByContainer()` method
 - ✅ Updated `StorageManager.js` - unified format
 - ✅ Updated `background.js` - unified global state format
@@ -65,17 +71,21 @@ This guide provides a comprehensive analysis of the current state of PR #283 (`c
 **Location:** `src/features/quick-tabs/panel/PanelContentManager.js:118-122`
 
 **Problem:**
+
 ```javascript
 // BROKEN CODE - filters by non-existent field
-currentContainerTabs = allQuickTabs.filter(qt => 
-  qt.container === this.currentContainerId || 
-  qt.cookieStoreId === this.currentContainerId
+currentContainerTabs = allQuickTabs.filter(
+  qt =>
+    qt.container === this.currentContainerId ||
+    qt.cookieStoreId === this.currentContainerId
 );
 ```
 
-**Impact:** Manager Panel cannot display Quick Tabs because `container` and `cookieStoreId` fields were removed from QuickTab domain entity.
+**Impact:** Manager Panel cannot display Quick Tabs because `container` and
+`cookieStoreId` fields were removed from QuickTab domain entity.
 
 **Fix Required:**
+
 ```javascript
 // CORRECTED - no filtering needed for global visibility
 currentContainerTabs = allQuickTabs;
@@ -87,13 +97,16 @@ currentContainerTabs = allQuickTabs;
 
 **Location:** `src/background/handlers/QuickTabHandler.js`
 
-**Problem:** The background script's QuickTabHandler is NOT aligned with the v1.6.2.2 unified storage format. It still uses:
+**Problem:** The background script's QuickTabHandler is NOT aligned with the
+v1.6.2.2 unified storage format. It still uses:
+
 ```javascript
 // BROKEN CODE - uses old container format
-globalState.containers[cookieStoreId]
+globalState.containers[cookieStoreId];
 ```
 
-**Impact:** 
+**Impact:**
+
 - Background script cannot read/write Quick Tab state properly
 - Solo/mute updates fail to persist
 - Cross-tab sync broken
@@ -136,17 +149,21 @@ await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
 **Location:** `src/features/quick-tabs/index.js:330-345` (`_hydrateState()`)
 
 **Problem:**
+
 ```javascript
 // BROKEN CODE - defeats global visibility purpose
 const relevantQuickTabs = allQuickTabs.filter(qt => {
-  const qtContainer = qt.container || qt.cookieStoreId || CONSTANTS.DEFAULT_CONTAINER;
+  const qtContainer =
+    qt.container || qt.cookieStoreId || CONSTANTS.DEFAULT_CONTAINER;
   return qtContainer === currentContainer;
 });
 ```
 
-**Impact:** Quick Tabs are filtered out during initialization, preventing global visibility.
+**Impact:** Quick Tabs are filtered out during initialization, preventing global
+visibility.
 
 **Fix Required:**
+
 ```javascript
 // CORRECTED - no container filtering
 async _hydrateState() {
@@ -154,10 +171,10 @@ async _hydrateState() {
   try {
     // Load all Quick Tabs from storage (globally)
     const allQuickTabs = await this.storage.loadAll();
-    
+
     // NO FILTERING - hydrate with all Quick Tabs for global visibility
     this.state.hydrate(allQuickTabs);
-    
+
     console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs from storage`);
   } catch (err) {
     console.error('[QuickTabsManager] Failed to hydrate state:', err);
@@ -171,9 +188,11 @@ async _hydrateState() {
 
 **Location:** `src/features/quick-tabs/panel/PanelUIBuilder.js`
 
-**Problem:** The Manager Panel UI does not display which tabs have solo/mute rules applied.
+**Problem:** The Manager Panel UI does not display which tabs have solo/mute
+rules applied.
 
-**Impact:** Users cannot see the solo/mute state of Quick Tabs, making it impossible to manage visibility rules.
+**Impact:** Users cannot see the solo/mute state of Quick Tabs, making it
+impossible to manage visibility rules.
 
 **Fix Required:** Add visibility indicators to panel tab items:
 
@@ -205,16 +224,16 @@ meta.textContent = metaParts.join(' • ');
 
 ## Functionality Status Matrix
 
-| Component | Status | Issue | Required Fix |
-|-----------|--------|-------|-------------|
-| **Quick Tab Creation** | ✅ Working | None | None |
-| **Quick Tab Storage** | ⚠️ Partial | Background uses old format | Update QuickTabHandler |
-| **Cross-Tab Sync** | ✅ Working | None | None |
-| **Solo/Mute Buttons** | ✅ Working | None | None |
-| **Solo/Mute Storage** | ❌ Broken | Background format mismatch | Update QuickTabHandler |
-| **Panel Display** | ❌ Broken | Filters by removed field | Remove container filter |
-| **Panel Solo/Mute UI** | ❌ Missing | No visibility indicators | Add UI indicators |
-| **Clear Storage Button** | ❌ Missing | Not implemented | See Section 5 |
+| Component                | Status     | Issue                      | Required Fix            |
+| ------------------------ | ---------- | -------------------------- | ----------------------- |
+| **Quick Tab Creation**   | ✅ Working | None                       | None                    |
+| **Quick Tab Storage**    | ⚠️ Partial | Background uses old format | Update QuickTabHandler  |
+| **Cross-Tab Sync**       | ✅ Working | None                       | None                    |
+| **Solo/Mute Buttons**    | ✅ Working | None                       | None                    |
+| **Solo/Mute Storage**    | ❌ Broken  | Background format mismatch | Update QuickTabHandler  |
+| **Panel Display**        | ❌ Broken  | Filters by removed field   | Remove container filter |
+| **Panel Solo/Mute UI**   | ❌ Missing | No visibility indicators   | Add UI indicators       |
+| **Clear Storage Button** | ❌ Missing | Not implemented            | See Section 5           |
 
 ---
 
@@ -228,9 +247,11 @@ meta.textContent = metaParts.join(' • ');
 
 **Changes Required:**
 
-1. **Replace all `globalState.containers[cookieStoreId]` references with `globalState.tabs`**
+1. **Replace all `globalState.containers[cookieStoreId]` references with
+   `globalState.tabs`**
 
 2. **Update `handleCreate()` method:**
+
 ```javascript
 async handleCreate(message, _sender) {
   if (!this.isInitialized) {
@@ -239,7 +260,7 @@ async handleCreate(message, _sender) {
 
   // Find or create tab in unified array
   const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
-  
+
   const tabData = {
     id: message.id,
     url: message.url,
@@ -266,6 +287,7 @@ async handleCreate(message, _sender) {
 ```
 
 3. **Update `handleClose()` method:**
+
 ```javascript
 async handleClose(message, _sender) {
   if (!this.isInitialized) {
@@ -280,6 +302,7 @@ async handleClose(message, _sender) {
 ```
 
 4. **Update `updateQuickTabProperty()` helper:**
+
 ```javascript
 async updateQuickTabProperty(message, updateFn, shouldSave = true) {
   if (!this.isInitialized) {
@@ -303,6 +326,7 @@ async updateQuickTabProperty(message, updateFn, shouldSave = true) {
 ```
 
 5. **Update `saveStateToStorage()` method:**
+
 ```javascript
 async saveStateToStorage() {
   const writeSourceId = this._generateWriteSourceId();
@@ -327,6 +351,7 @@ async saveStateToStorage() {
 ```
 
 6. **Update `handleGetQuickTabsState()` method:**
+
 ```javascript
 async handleGetQuickTabsState(message, _sender) {
   try {
@@ -357,7 +382,8 @@ async handleGetQuickTabsState(message, _sender) {
 
 **File:** `src/features/quick-tabs/panel/PanelContentManager.js`
 
-**Objective:** Remove container-based filtering to enable global visibility in panel
+**Objective:** Remove container-based filtering to enable global visibility in
+panel
 
 **Changes Required:**
 
@@ -374,12 +400,12 @@ async updateContent() {
   if (this.liveStateManager) {
     // Query live state (instant, no I/O)
     allQuickTabs = this.liveStateManager.getAll();
-    
+
     // Get minimized count from MinimizedManager if available
     if (this.minimizedManager) {
       minimizedCount = this.minimizedManager.getCount();
     }
-    
+
     console.log(`[PanelContentManager] Live state: ${allQuickTabs.length} tabs, ${minimizedCount} minimized`);
   } else {
     // Fallback to storage (slower, for backward compatibility)
@@ -419,12 +445,12 @@ async _fetchQuickTabsFromStorage() {
     if (!result || !result.quick_tabs_state_v2) return null;
 
     const state = result.quick_tabs_state_v2;
-    
+
     // v1.6.2.2 - Unified format
     if (state.tabs && Array.isArray(state.tabs)) {
       return { tabs: state.tabs };
     }
-    
+
     // Backward compatibility: migrate from container format
     if (state.containers) {
       const allTabs = [];
@@ -435,7 +461,7 @@ async _fetchQuickTabsFromStorage() {
       }
       return { tabs: allTabs };
     }
-    
+
     return null;
   } catch (err) {
     console.error('[PanelContentManager] Error loading Quick Tabs:', err);
@@ -454,7 +480,7 @@ constructor(panelElement, dependencies) {
   this.stateManager = dependencies.stateManager;
   this.quickTabsManager = dependencies.quickTabsManager;
   // REMOVE: this.currentContainerId = dependencies.currentContainerId;
-  
+
   this.eventBus = dependencies.eventBus;
   this.liveStateManager = dependencies.liveStateManager;
   this.minimizedManager = dependencies.minimizedManager;
@@ -488,13 +514,13 @@ async _hydrateState() {
   try {
     // Load all Quick Tabs from storage (globally)
     const allQuickTabs = await this.storage.loadAll();
-    
+
     // v1.6.2.2 - NO FILTERING - hydrate with all Quick Tabs for global visibility
     console.log(`[QuickTabsManager] Loaded ${allQuickTabs.length} Quick Tabs globally`);
-    
+
     // Hydrate with all Quick Tabs
     this.state.hydrate(allQuickTabs);
-    
+
     console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs from storage`);
   } catch (err) {
     console.error('[QuickTabsManager] Failed to hydrate state:', err);
@@ -535,29 +561,29 @@ static _createInfo(tab, minimized) {
   meta.className = 'panel-tab-meta';
 
   const metaParts = [];
-  
+
   // Minimized status
   if (minimized) metaParts.push('Minimized');
-  
+
   // Tab ID
   if (tab.activeTabId) metaParts.push(`Tab ${tab.activeTabId}`);
-  
+
   // v1.6.2.2 - Solo/Mute visibility indicators
   if (tab.soloedOnTabs && tab.soloedOnTabs.length > 0) {
     const soloCount = tab.soloedOnTabs.length;
     metaParts.push(`🎯 Solo on ${soloCount} tab${soloCount !== 1 ? 's' : ''}`);
   }
-  
+
   if (tab.mutedOnTabs && tab.mutedOnTabs.length > 0) {
     const muteCount = tab.mutedOnTabs.length;
     metaParts.push(`🔇 Muted on ${muteCount} tab${muteCount !== 1 ? 's' : ''}`);
   }
-  
+
   // Dimensions
   if (tab.width && tab.height) {
     metaParts.push(`${Math.round(tab.width)}×${Math.round(tab.height)}`);
   }
-  
+
   meta.textContent = metaParts.join(' • ');
 
   info.appendChild(title);
@@ -577,11 +603,16 @@ static _createInfo(tab, minimized) {
 
 **Implementation:**
 
-1. **Add button to panel HTML template** (`src/features/quick-tabs/panel/PanelUIBuilder.js`):
+1. **Add button to panel HTML template**
+   (`src/features/quick-tabs/panel/PanelUIBuilder.js`):
 
 ```javascript
 // In PANEL_HTML template, add after closeAll button:
-<button id="panel-clearStorage" class="panel-btn-danger" title="Clear Quick Tab Storage (Debug)">
+<button
+  id="panel-clearStorage"
+  class="panel-btn-danger"
+  title="Clear Quick Tab Storage (Debug)"
+>
   Clear Storage
 </button>
 ```
@@ -619,9 +650,9 @@ async handleClearStorage() {
       'This will remove all Quick Tabs and their state.\n' +
       'This action cannot be undone.'
     );
-    
+
     if (!confirmed) return;
-    
+
     // Destroy all Quick Tab DOM elements in current tab FIRST
     if (this.quickTabsManager?.closeAll) {
       console.log('[PanelContentManager] Destroying all Quick Tab DOM elements...');
@@ -636,7 +667,7 @@ async handleClearStorage() {
     };
 
     await browser.storage.local.set({ quick_tabs_state_v2: emptyState });
-    
+
     // Clear session storage if available
     if (typeof browser.storage.session !== 'undefined') {
       await browser.storage.session.set({ quick_tabs_session: emptyState });
@@ -724,12 +755,14 @@ UICoordinator.js
 **Objective:** Verify panel displays all Quick Tabs without container filtering
 
 **Steps:**
+
 1. Clear browser storage
 2. Create 3 Quick Tabs in different tabs
 3. Open Manager Panel
 4. Verify all 3 Quick Tabs are visible
 
 **Expected Result:**
+
 - Panel shows all 3 Quick Tabs
 - No "No Quick Tabs" empty state
 
@@ -740,6 +773,7 @@ UICoordinator.js
 **Objective:** Verify solo state persists across tabs and browser restarts
 
 **Steps:**
+
 1. Create Quick Tab in Tab A
 2. Click solo button (🎯) in Tab A
 3. Switch to Tab B
@@ -750,6 +784,7 @@ UICoordinator.js
 8. Verify solo state persisted
 
 **Expected Result:**
+
 - Solo state persists across tabs and sessions
 - Solo button reflects current state
 
@@ -760,6 +795,7 @@ UICoordinator.js
 **Objective:** Verify mute state persists across tabs
 
 **Steps:**
+
 1. Create Quick Tab in Tab A
 2. Switch to Tab B
 3. Verify Quick Tab is visible in Tab B
@@ -771,6 +807,7 @@ UICoordinator.js
 9. Verify Quick Tab shows "🔇 Muted on 1 tab"
 
 **Expected Result:**
+
 - Mute state persists across tabs
 - Panel displays mute status correctly
 
@@ -781,6 +818,7 @@ UICoordinator.js
 **Objective:** Verify Clear Storage button removes all Quick Tabs
 
 **Steps:**
+
 1. Create 5 Quick Tabs
 2. Open Manager Panel
 3. Click "Clear Storage" button
@@ -789,6 +827,7 @@ UICoordinator.js
 6. Verify storage is empty
 
 **Expected Result:**
+
 - All Quick Tabs destroyed
 - Storage cleared
 - Panel shows empty state
@@ -800,6 +839,7 @@ UICoordinator.js
 **Objective:** Verify solo/mute changes sync to other tabs
 
 **Steps:**
+
 1. Create Quick Tab in Tab A
 2. Open same site in Tab B
 3. In Tab A, click solo button
@@ -811,6 +851,7 @@ UICoordinator.js
 9. Verify Quick Tab reappeared in Tab B
 
 **Expected Result:**
+
 - Solo/mute changes sync across tabs within 1 second
 - No manual refresh required
 
@@ -819,7 +860,9 @@ UICoordinator.js
 ## Implementation Checklist
 
 ### Phase 1: Background Script ✅
-- [ ] Update `QuickTabHandler.js` to use `globalState.tabs` instead of `globalState.containers`
+
+- [ ] Update `QuickTabHandler.js` to use `globalState.tabs` instead of
+      `globalState.containers`
 - [ ] Fix `handleCreate()` method
 - [ ] Fix `handleClose()` method
 - [ ] Fix `updateQuickTabProperty()` helper
@@ -831,26 +874,31 @@ UICoordinator.js
 - [ ] Test solo/mute state persistence
 
 ### Phase 2: Panel Content Manager ✅
+
 - [ ] Remove container filtering in `updateContent()`
 - [ ] Update `_fetchQuickTabsFromStorage()` for unified format
 - [ ] Remove `this.currentContainerId` dependency
 - [ ] Test panel displays all Quick Tabs
 
 ### Phase 3: QuickTabsManager ✅
+
 - [ ] Remove container filtering in `_hydrateState()`
 - [ ] Test Quick Tabs load on initialization
 
 ### Phase 4: Panel UI Builder ✅
+
 - [ ] Add solo/mute indicators to `_createInfo()`
 - [ ] Test indicators show in panel
 
 ### Phase 5: Clear Storage Button ✅
+
 - [ ] Add button to panel HTML
 - [ ] Add event listener
 - [ ] Implement `handleClearStorage()` method
 - [ ] Test button clears storage
 
 ### Integration Testing ✅
+
 - [ ] Test Case 1: Panel Display
 - [ ] Test Case 2: Solo Persistence
 - [ ] Test Case 3: Mute Persistence
@@ -867,29 +915,30 @@ Monitor these key log messages to diagnose issues:
 
 ```javascript
 // 1. QuickTabHandler receiving solo/mute update
-'[QuickTabHandler] Solo Update:'
-'[QuickTabHandler] Mute Update:'
+'[QuickTabHandler] Solo Update:';
+'[QuickTabHandler] Mute Update:';
 
 // 2. Storage write
-'[QuickTabHandler] Error saving state:' // Should NOT appear
+'[QuickTabHandler] Error saving state:'; // Should NOT appear
 
 // 3. Storage change fired in other tabs
-'[SyncCoordinator] *** PROCESSING STORAGE CHANGE ***'
+'[SyncCoordinator] *** PROCESSING STORAGE CHANGE ***';
 
 // 4. State hydration
-'[StateManager] Hydrate called'
-'[StateManager] ✓ Hydrate complete'
+'[StateManager] Hydrate called';
+'[StateManager] ✓ Hydrate complete';
 
 // 5. Panel display
-'[PanelContentManager] Live state: X tabs, Y minimized'
+'[PanelContentManager] Live state: X tabs, Y minimized';
 ```
 
 ### Browser DevTools Inspection
 
 **Check Storage:**
+
 ```javascript
 // In browser console
-browser.storage.local.get('quick_tabs_state_v2').then(console.log)
+browser.storage.local.get('quick_tabs_state_v2').then(console.log);
 
 // Should see:
 // {
@@ -902,9 +951,10 @@ browser.storage.local.get('quick_tabs_state_v2').then(console.log)
 ```
 
 **Check In-Memory State:**
+
 ```javascript
 // In browser console
-window.__quickTabsManager.state.getAll()
+window.__quickTabsManager.state.getAll();
 
 // Should see array of QuickTab instances with soloedOnTabs/mutedOnTabs
 ```
@@ -915,7 +965,8 @@ window.__quickTabsManager.state.getAll()
 
 ### Pitfall #1: Forgetting to Update Background Script
 
-**Symptom:** Solo/mute buttons work locally but don't persist or sync to other tabs
+**Symptom:** Solo/mute buttons work locally but don't persist or sync to other
+tabs
 
 **Cause:** Background script still uses old container format
 
@@ -945,16 +996,23 @@ window.__quickTabsManager.state.getAll()
 
 ## Conclusion
 
-This guide provides a comprehensive roadmap to restore full functionality to the Quick Tab Manager after the Firefox Container API removal in PR #283. By following the phases sequentially and testing at each checkpoint, you will:
+This guide provides a comprehensive roadmap to restore full functionality to the
+Quick Tab Manager after the Firefox Container API removal in PR #283. By
+following the phases sequentially and testing at each checkpoint, you will:
 
 1. ✅ Fix state reading and persistence
 2. ✅ Restore solo/mute functionality
 3. ✅ Make solo/mute state visible in Manager Panel
 4. ✅ Implement Clear Storage button for debugging
 
-The key insight is that **v1.6.2.2 introduced a unified storage format but did NOT update all consumers of that format**. The background script, panel manager, and QuickTabsManager still expect the old container-based format, causing breakage.
+The key insight is that **v1.6.2.2 introduced a unified storage format but did
+NOT update all consumers of that format**. The background script, panel manager,
+and QuickTabsManager still expect the old container-based format, causing
+breakage.
 
-Once all components are aligned with the unified format, the Quick Tab Manager will achieve its goal: **global Quick Tab visibility across all tabs, with working solo/mute controls and proper state persistence.**
+Once all components are aligned with the unified format, the Quick Tab Manager
+will achieve its goal: **global Quick Tab visibility across all tabs, with
+working solo/mute controls and proper state persistence.**
 
 ---
 

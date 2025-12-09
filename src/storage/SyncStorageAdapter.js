@@ -49,7 +49,7 @@ export class SyncStorageAdapter extends StorageAdapter {
   async save(tabs) {
     // Generate save ID for race condition tracking
     const saveId = this._generateSaveId();
-    
+
     const stateToSave = {
       [this.STORAGE_KEY]: {
         tabs: tabs.map(t => t.serialize()),
@@ -62,7 +62,9 @@ export class SyncStorageAdapter extends StorageAdapter {
 
     try {
       await browser.storage.local.set(stateToSave);
-      console.log(`[SyncStorageAdapter] Saved ${tabs.length} tabs (unified format, saveId: ${saveId}, size: ${size} bytes)`);
+      console.log(
+        `[SyncStorageAdapter] Saved ${tabs.length} tabs (unified format, saveId: ${saveId}, size: ${size} bytes)`
+      );
       return saveId;
     } catch (error) {
       console.error('[SyncStorageAdapter] Save failed:', {
@@ -135,11 +137,11 @@ export class SyncStorageAdapter extends StorageAdapter {
    */
   async delete(quickTabId) {
     const state = await this._loadRawState();
-    
+
     // Handle unified format
     if (state.tabs && Array.isArray(state.tabs)) {
       const filteredTabs = state.tabs.filter(t => t.id !== quickTabId);
-      
+
       if (filteredTabs.length === state.tabs.length) {
         console.warn(`[SyncStorageAdapter] Quick Tab ${quickTabId} not found`);
         return;
@@ -159,14 +161,16 @@ export class SyncStorageAdapter extends StorageAdapter {
     if (state.containers) {
       const migratedTabs = this._migrateFromContainerFormat(state.containers);
       const filteredTabs = migratedTabs.filter(t => t.id !== quickTabId);
-      
+
       await this._saveRawState({
         tabs: filteredTabs,
         saveId: this._generateSaveId(),
         timestamp: Date.now()
       });
 
-      console.log(`[SyncStorageAdapter] Deleted Quick Tab ${quickTabId} (migrated from container format)`);
+      console.log(
+        `[SyncStorageAdapter] Deleted Quick Tab ${quickTabId} (migrated from container format)`
+      );
     }
   }
 
@@ -184,22 +188,24 @@ export class SyncStorageAdapter extends StorageAdapter {
   /**
    * Migrate tabs from container format to unified array
    * v1.6.2.2 - Backward compatibility helper
-   * 
+   *
    * @private
    * @param {Object} containers - Container data object
    * @returns {Array} Array of serialized Quick Tab data
    */
   _migrateFromContainerFormat(containers) {
     const allTabs = [];
-    
+
     for (const containerKey of Object.keys(containers)) {
       const tabs = containers[containerKey]?.tabs || [];
       if (tabs.length > 0) {
-        console.log(`[SyncStorageAdapter] Migrating ${tabs.length} tabs from container: ${containerKey}`);
+        console.log(
+          `[SyncStorageAdapter] Migrating ${tabs.length} tabs from container: ${containerKey}`
+        );
         allTabs.push(...tabs);
       }
     }
-    
+
     return allTabs;
   }
 

@@ -1,18 +1,23 @@
 # Playwright Testing Migration Instructions for GitHub Copilot Coding Agent
 
 **Target Repository:** copy-URL-on-hover_ChunkyEdition  
-**Migration Goal:** Replace broken Xvfb+Chrome testing with playwright-webextext Firefox testing  
-**Expected Outcome:** Functional E2E tests that complete in 2-5 minutes instead of timing out
+**Migration Goal:** Replace broken Xvfb+Chrome testing with playwright-webextext
+Firefox testing  
+**Expected Outcome:** Functional E2E tests that complete in 2-5 minutes instead
+of timing out
 
 ---
 
 ## Overview
 
-This document provides step-by-step instructions for migrating the Firefox extension testing infrastructure from a broken Xvfb+Chrome setup to a working playwright-webextext solution.
+This document provides step-by-step instructions for migrating the Firefox
+extension testing infrastructure from a broken Xvfb+Chrome setup to a working
+playwright-webextext solution.
 
 ### Why This Migration Is Needed
 
 **Current Problems:**
+
 1. Tests attempt to load Firefox extension in Chrome (incompatible APIs)
 2. Chrome process hangs waiting for extension that can't load
 3. Xvfb adds unnecessary complexity and failure points
@@ -20,6 +25,7 @@ This document provides step-by-step instructions for migrating the Firefox exten
 5. No meaningful error messages for debugging
 
 **Solution Benefits:**
+
 1. Native Firefox extension support via playwright-webextext
 2. True headless mode (no Xvfb required)
 3. Proper error handling and timeout protection
@@ -61,6 +67,7 @@ This document provides step-by-step instructions for migrating the Firefox exten
 ```
 
 **After modifying, run:**
+
 ```bash
 npm install
 npx playwright install firefox --with-deps
@@ -130,7 +137,7 @@ module.exports = defineConfig({
     viewport: { width: 1920, height: 1080 },
 
     // Action timeout
-    actionTimeout: 10 * 1000, // 10 seconds
+    actionTimeout: 10 * 1000 // 10 seconds
   },
 
   // Projects (browser configurations)
@@ -140,13 +147,13 @@ module.exports = defineConfig({
       use: {
         ...devices['Desktop Firefox'],
         // CRITICAL: Firefox extensions work in true headless mode
-        headless: true,
-      },
-    },
+        headless: true
+      }
+    }
   ],
 
   // Output directories
-  outputDir: 'test-results',
+  outputDir: 'test-results'
 });
 ```
 
@@ -190,15 +197,12 @@ export const test = base.extend({
     // Launch browser in TRUE HEADLESS mode (no Xvfb needed!)
     const browser = await browserTypeWithExt.launch({
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-dev-shm-usage',
-      ],
+      args: ['--no-sandbox', '--disable-dev-shm-usage']
     });
 
     // Create new context
     const context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
+      viewport: { width: 1920, height: 1080 }
     });
 
     // Provide context to test
@@ -229,7 +233,7 @@ export const test = base.extend({
 
     await use(page);
     await page.close();
-  },
+  }
 });
 
 // Re-export expect
@@ -252,13 +256,13 @@ export { expect } from '@playwright/test';
  * @returns {Promise<number>} - Slot number of created Quick Tab
  */
 export async function createQuickTab(page, url) {
-  const slotNumber = await page.evaluate((urlToLoad) => {
+  const slotNumber = await page.evaluate(urlToLoad => {
     return window.__COPILOT_TEST_BRIDGE__.createQuickTab(urlToLoad);
   }, url);
-  
+
   // Wait for creation to complete
   await page.waitForTimeout(100);
-  
+
   return slotNumber;
 }
 
@@ -297,7 +301,7 @@ export async function updateQuickTab(page, slotNumber, updates) {
     },
     { slot: slotNumber, data: updates }
   );
-  
+
   // Wait for update to propagate
   await page.waitForTimeout(100);
 }
@@ -308,10 +312,10 @@ export async function updateQuickTab(page, slotNumber, updates) {
  * @param {number} slotNumber - Slot number to close
  */
 export async function closeQuickTab(page, slotNumber) {
-  await page.evaluate((slot) => {
+  await page.evaluate(slot => {
     return window.__COPILOT_TEST_BRIDGE__.closeQuickTab(slot);
   }, slotNumber);
-  
+
   await page.waitForTimeout(100);
 }
 
@@ -328,7 +332,7 @@ export async function setSoloMode(page, slotNumber, tabId) {
     },
     { slot: slotNumber, tab: tabId }
   );
-  
+
   await page.waitForTimeout(100);
 }
 
@@ -345,7 +349,7 @@ export async function setMuteMode(page, slotNumber, tabId) {
     },
     { slot: slotNumber, tab: tabId }
   );
-  
+
   await page.waitForTimeout(100);
 }
 
@@ -356,7 +360,7 @@ export async function setMuteMode(page, slotNumber, tabId) {
  * @returns {Promise<boolean>} - True if visible
  */
 export async function isQuickTabVisible(page, slotNumber) {
-  return await page.evaluate((slot) => {
+  return await page.evaluate(slot => {
     return window.__COPILOT_TEST_BRIDGE__.getQuickTabVisibility(slot);
   }, slotNumber);
 }
@@ -377,7 +381,8 @@ export async function waitForSync(page, ms = 200) {
 
 ### Task 3.1: Create Scenario 1 Test
 
-**File:** `tests/e2e/scenarios/scenario-01-basic-creation.spec.js` (create new file)
+**File:** `tests/e2e/scenarios/scenario-01-basic-creation.spec.js` (create new
+file)
 
 ```javascript
 import { test, expect } from '../fixtures/extension.js';
@@ -385,26 +390,28 @@ import {
   createQuickTab,
   getQuickTabs,
   updateQuickTab,
-  waitForSync,
+  waitForSync
 } from '../helpers/quick-tabs.js';
 
 /**
  * Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync
- * 
+ *
  * Tests:
  * 1. Quick Tab creation
  * 2. Quick Tab persistence across tabs
  * 3. Position/size synchronization
  */
 test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
-  test('should create Quick Tab and sync across tabs', async ({ extensionContext }) => {
+  test('should create Quick Tab and sync across tabs', async ({
+    extensionContext
+  }) => {
     // Step 1: Open WP 1 (Wikipedia Tab 1)
     const page1 = await extensionContext.newPage();
     await page1.goto('https://en.wikipedia.org/wiki/Main_Page');
-    
+
     // Wait for Test Bridge
-    await page1.waitForFunction(() => 
-      typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined'
+    await page1.waitForFunction(
+      () => typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined'
     );
 
     // Step 2: Open WP QT 1 (create Quick Tab)
@@ -415,21 +422,21 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
     const quickTabs = await getQuickTabs(page1);
     expect(quickTabs).toHaveLength(1);
     expect(quickTabs[0].slotNumber).toBe(1);
-    
+
     const originalPosition = quickTabs[0].position;
     const originalSize = quickTabs[0].size;
 
     // Step 4: Open YT 1 (YouTube Tab 1)
     const page2 = await extensionContext.newPage();
     await page2.goto('https://www.youtube.com');
-    
-    await page2.waitForFunction(() => 
-      typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined'
+
+    await page2.waitForFunction(
+      () => typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined'
     );
 
     // Step 5: Verify QT 1 appears in YT 1 at same position/size
     await waitForSync(page2);
-    
+
     const quickTabsYT = await getQuickTabs(page2);
     expect(quickTabsYT).toHaveLength(1);
     expect(quickTabsYT[0].position.x).toBe(originalPosition.x);
@@ -438,23 +445,23 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
     expect(quickTabsYT[0].size.height).toBe(originalSize.height);
 
     // Step 6: Move/resize QT 1 in YT 1
-    const newPosition = { 
-      x: 100, 
-      y: 200 
+    const newPosition = {
+      x: 100,
+      y: 200
     };
-    const newSize = { 
-      width: 500, 
-      height: 400 
+    const newSize = {
+      width: 500,
+      height: 400
     };
-    
+
     await updateQuickTab(page2, 1, {
       position: newPosition,
-      size: newSize,
+      size: newSize
     });
 
     // Step 7: Switch back to WP 1, verify sync
     await waitForSync(page1);
-    
+
     const quickTabsWPUpdated = await getQuickTabs(page1);
     expect(quickTabsWPUpdated[0].position.x).toBe(newPosition.x);
     expect(quickTabsWPUpdated[0].position.y).toBe(newPosition.y);
@@ -470,7 +477,8 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
 
 ### Task 3.2: Create Scenario 2 Test
 
-**File:** `tests/e2e/scenarios/scenario-02-multiple-quicktabs.spec.js` (create new file)
+**File:** `tests/e2e/scenarios/scenario-02-multiple-quicktabs.spec.js` (create
+new file)
 
 ```javascript
 import { test, expect } from '../fixtures/extension.js';
@@ -478,14 +486,16 @@ import {
   createQuickTab,
   getQuickTabs,
   updateQuickTab,
-  waitForSync,
+  waitForSync
 } from '../helpers/quick-tabs.js';
 
 /**
  * Scenario 2: Multiple Quick Tabs with Cross-Tab Sync
  */
 test.describe('Scenario 2: Multiple Quick Tabs', () => {
-  test('should handle multiple Quick Tabs with independent states', async ({ extensionContext }) => {
+  test('should handle multiple Quick Tabs with independent states', async ({
+    extensionContext
+  }) => {
     // Step 1: Open WP 1
     const page1 = await extensionContext.newPage();
     await page1.goto('https://en.wikipedia.org/wiki/Main_Page');
@@ -498,7 +508,7 @@ test.describe('Scenario 2: Multiple Quick Tabs', () => {
     const page2 = await extensionContext.newPage();
     await page2.goto('https://www.youtube.com');
     await page2.waitForFunction(() => window.__COPILOT_TEST_BRIDGE__);
-    
+
     await waitForSync(page2);
 
     // Step 4: Open YT QT 2 in YT 1
@@ -512,7 +522,7 @@ test.describe('Scenario 2: Multiple Quick Tabs', () => {
 
     // Step 6: Switch to WP 1, verify both QTs synced
     await waitForSync(page1);
-    
+
     const quickTabsWP = await getQuickTabs(page1);
     expect(quickTabsWP).toHaveLength(2);
 
@@ -520,14 +530,14 @@ test.describe('Scenario 2: Multiple Quick Tabs', () => {
     await updateQuickTab(page1, 1, {
       position: { x: 20, y: 20 }
     });
-    
+
     await updateQuickTab(page1, 2, {
       position: { x: 1400, y: 660 }
     });
 
     // Step 8: Switch to YT 1, verify positions synced
     await waitForSync(page2);
-    
+
     const quickTabsYTUpdated = await getQuickTabs(page2);
     expect(quickTabsYTUpdated[0].position.x).toBe(20);
     expect(quickTabsYTUpdated[0].position.y).toBe(20);
@@ -551,14 +561,16 @@ import {
   createQuickTab,
   setSoloMode,
   isQuickTabVisible,
-  waitForSync,
+  waitForSync
 } from '../helpers/quick-tabs.js';
 
 /**
  * Scenario 3: Solo Mode (Pin to Specific Tab)
  */
 test.describe('Scenario 3: Solo Mode', () => {
-  test('should show Quick Tab only on designated tab', async ({ extensionContext }) => {
+  test('should show Quick Tab only on designated tab', async ({
+    extensionContext
+  }) => {
     // Step 1: Open WP 1
     const page1 = await extensionContext.newPage();
     await page1.goto('https://en.wikipedia.org/wiki/Main_Page');
@@ -583,7 +595,7 @@ test.describe('Scenario 3: Solo Mode', () => {
     const page2 = await extensionContext.newPage();
     await page2.goto('https://www.youtube.com');
     await page2.waitForFunction(() => window.__COPILOT_TEST_BRIDGE__);
-    
+
     await waitForSync(page2);
 
     // Step 6: Verify QT 1 does NOT appear in YT 1
@@ -594,7 +606,7 @@ test.describe('Scenario 3: Solo Mode', () => {
     const page3 = await extensionContext.newPage();
     await page3.goto('https://github.com');
     await page3.waitForFunction(() => window.__COPILOT_TEST_BRIDGE__);
-    
+
     await waitForSync(page3);
 
     // Step 8: Verify QT 1 does NOT appear in GH 1
@@ -613,7 +625,8 @@ test.describe('Scenario 3: Solo Mode', () => {
 });
 ```
 
-**Note:** Continue implementing remaining scenarios (4-20) from `docs/manual/v1.6.0/issue-47-revised-scenarios.md` using the same pattern.
+**Note:** Continue implementing remaining scenarios (4-20) from
+`docs/manual/v1.6.0/issue-47-revised-scenarios.md` using the same pattern.
 
 ---
 
@@ -633,7 +646,7 @@ test.describe('Scenario 3: Solo Mode', () => {
 class TestBridge {
   constructor(quickTabsManager) {
     this.manager = quickTabsManager;
-    
+
     // Only expose in test mode
     if (process.env.TEST_MODE === 'true') {
       window.__COPILOT_TEST_BRIDGE__ = this;
@@ -663,7 +676,7 @@ class TestBridge {
       size: { ...qt.size },
       minimized: qt.minimized,
       soloMode: qt.soloMode,
-      muteMode: qt.muteMode,
+      muteMode: qt.muteMode
     }));
   }
 
@@ -710,7 +723,7 @@ class TestBridge {
   getQuickTabVisibility(slotNumber) {
     const qt = this.manager.getQuickTab(slotNumber);
     if (!qt) return false;
-    
+
     return this.manager.isQuickTabVisible(qt);
   }
 
@@ -790,11 +803,13 @@ export default TestBridge;
 import TestBridge from './test-bridge/TestBridge.js';
 ```
 
-**Add this AFTER QuickTabsManager initialization (find where `quickTabsManager` is created):**
+**Add this AFTER QuickTabsManager initialization (find where `quickTabsManager`
+is created):**
 
 ```javascript
 // Existing code:
-const quickTabsManager = new QuickTabsManager(/* ... existing parameters ... */);
+const quickTabsManager =
+  new QuickTabsManager(/* ... existing parameters ... */);
 
 // ADD THIS:
 // Initialize Test Bridge in test mode
@@ -815,10 +830,10 @@ const webpack = require('webpack');
 
 module.exports = {
   // ... existing configuration ...
-  
+
   plugins: [
     // ... existing plugins ...
-    
+
     // ADD THIS:
     new webpack.DefinePlugin({
       'process.env.TEST_MODE': JSON.stringify(process.env.TEST_MODE || 'false')
@@ -835,7 +850,8 @@ module.exports = {
 
 **File:** `.github/workflows/playwright-extension-tests.yml`
 
-**Action:** Rename this file to `.github/workflows/playwright-extension-tests.yml.OLD`
+**Action:** Rename this file to
+`.github/workflows/playwright-extension-tests.yml.OLD`
 
 **Add this comment at the top of the renamed file:**
 
@@ -879,7 +895,7 @@ jobs:
   test-firefox-extension:
     name: 'Test Firefox Extension with Playwright'
     runs-on: ubuntu-latest
-    
+
     steps:
       # ============================================
       # Step 1: Checkout Code
@@ -925,22 +941,22 @@ jobs:
       - name: Validate build output
         run: |
           echo "Validating build output..."
-          
+
           if [ ! -f dist/manifest.json ]; then
             echo "❌ ERROR: dist/manifest.json not found!"
             exit 1
           fi
-          
+
           if [ ! -f dist/content.js ]; then
             echo "❌ ERROR: dist/content.js not found!"
             exit 1
           fi
-          
+
           if [ ! -f dist/background.js ]; then
             echo "❌ ERROR: dist/background.js not found!"
             exit 1
           fi
-          
+
           echo "✅ All required files present in dist/"
 
       # ============================================
@@ -993,27 +1009,27 @@ jobs:
           script: |
             const fs = require('fs');
             const resultsPath = 'test-results/results.json';
-            
+
             if (!fs.existsSync(resultsPath)) {
               console.log('No results file found');
               return;
             }
-            
+
             const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
             const { stats } = results;
-            
+
             const body = `## 🧪 E2E Test Results
-            
+
             - **Total Tests:** ${stats.expected + stats.unexpected + stats.flaky + stats.skipped}
             - **Passed:** ✅ ${stats.expected}
             - **Failed:** ❌ ${stats.unexpected}
             - **Flaky:** ⚠️ ${stats.flaky}
             - **Skipped:** ⏭️ ${stats.skipped}
             - **Duration:** ${(stats.duration / 1000).toFixed(2)}s
-            
+
             [View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
             `;
-            
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -1029,6 +1045,7 @@ jobs:
 **Find and REMOVE these sections entirely:**
 
 1. **Remove Xvfb installation:**
+
 ```yaml
 # DELETE THIS SECTION:
 - name: Install Xvfb
@@ -1036,22 +1053,23 @@ jobs:
 ```
 
 2. **Remove Chrome launch with Xvfb:**
+
 ```yaml
 # DELETE THIS ENTIRE SECTION:
 - name: Launch Chrome with extension
   run: |
     echo "Starting Chrome with extension loaded via Xvfb..."
-    
+
     pkill -f chrome || true
-    
+
     EXTENSION_PATH=$(pwd)/dist
     echo "Extension path: $EXTENSION_PATH"
-    
+
     export DISPLAY=:99
     Xvfb :99 -screen 0 1920x1080x24 &
     sleep 2
     echo "✓ Xvfb started on display :99"
-    
+
     google-chrome \
       --load-extension="$EXTENSION_PATH" \
       --disable-extensions-except="$EXTENSION_PATH" \
@@ -1064,9 +1082,9 @@ jobs:
       --user-data-dir=$(mktemp -d) \
       --display=:99 \
       about:blank &
-    
+
     sleep 5
-    
+
     if pgrep -f chrome > /dev/null; then
       echo "✓ Chrome started successfully with extension"
     else
@@ -1076,6 +1094,7 @@ jobs:
 ```
 
 3. **Remove extension ID retrieval:**
+
 ```yaml
 # DELETE THIS SECTION:
 - name: Get extension ID
@@ -1087,16 +1106,17 @@ jobs:
 ```
 
 4. **Remove Chrome-specific Playwright config creation:**
+
 ```yaml
 # DELETE THIS SECTION:
 - name: Run Playwright tests with extension
   run: |
     echo "Running Playwright tests..."
     echo "Test scenario: ${{ github.event.inputs.test_scenario }}"
-    
+
     cat > playwright.config.extension.js << 'EOF'
     const { defineConfig, devices } = require('@playwright/test');
-    
+
     module.exports = defineConfig({
       testDir: './tests/extension',
       fullyParallel: false,
@@ -1123,7 +1143,7 @@ jobs:
       ],
     });
     EOF
-    
+
     npx playwright test --config=playwright.config.extension.js || true
 ```
 
@@ -1153,7 +1173,9 @@ jobs:
     CI: true
 ```
 
-**Important:** Do NOT modify the `timeout-minutes` setting in copilot-setup-steps.yml. That controls how long the Copilot coding agent works on the entire prompt, not just tests.
+**Important:** Do NOT modify the `timeout-minutes` setting in
+copilot-setup-steps.yml. That controls how long the Copilot coding agent works
+on the entire prompt, not just tests.
 
 ---
 
@@ -1209,6 +1231,7 @@ After pushing changes to GitHub:
 5. Check artifacts for test reports
 
 **Expected CI/CD results:**
+
 - ✅ Workflow starts immediately (no hanging)
 - ✅ Firefox downloads in ~30 seconds
 - ✅ Extension builds successfully
@@ -1240,7 +1263,8 @@ After pushing changes to GitHub:
 
 ### Files to RENAME:
 
-1. `.github/workflows/playwright-extension-tests.yml` → `.github/workflows/playwright-extension-tests.yml.OLD`
+1. `.github/workflows/playwright-extension-tests.yml` →
+   `.github/workflows/playwright-extension-tests.yml.OLD`
 
 ### Sections to DELETE from copilot-setup-steps.yml:
 
@@ -1260,6 +1284,7 @@ After pushing changes to GitHub:
 ## Expected Outcomes
 
 ### Before Migration:
+
 - ❌ Tests hang after 60 minutes
 - ❌ Chrome can't load Firefox extension
 - ❌ Xvfb adds complexity and failure points
@@ -1267,6 +1292,7 @@ After pushing changes to GitHub:
 - ❌ Copilot coding agent can't complete testing tasks
 
 ### After Migration:
+
 - ✅ Tests complete in 2-5 minutes
 - ✅ Native Firefox extension support
 - ✅ True headless mode (no Xvfb)
@@ -1281,7 +1307,8 @@ After pushing changes to GitHub:
 
 ### Test Bridge API Flexibility
 
-The Test Bridge API can be extended with additional methods as needed. Common additions:
+The Test Bridge API can be extended with additional methods as needed. Common
+additions:
 
 ```javascript
 // Add to TestBridge.js if needed:
@@ -1311,7 +1338,8 @@ isManagerOpen() {
 
 ### Implementing Remaining Scenarios
 
-Continue implementing scenarios 4-20 from `docs/manual/v1.6.0/issue-47-revised-scenarios.md` by:
+Continue implementing scenarios 4-20 from
+`docs/manual/v1.6.0/issue-47-revised-scenarios.md` by:
 
 1. Creating new files: `tests/e2e/scenarios/scenario-0X-description.spec.js`
 2. Following the same pattern as scenarios 1-3
@@ -1343,4 +1371,6 @@ npx playwright test --grep "Solo Mode"
 
 **End of Instructions**
 
-This document provides complete instructions for migrating from the broken Xvfb+Chrome testing setup to a working playwright-webextext Firefox solution. All file paths, code snippets, and configurations are ready to implement.
+This document provides complete instructions for migrating from the broken
+Xvfb+Chrome testing setup to a working playwright-webextext Firefox solution.
+All file paths, code snippets, and configurations are ready to implement.

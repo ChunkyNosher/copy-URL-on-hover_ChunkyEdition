@@ -674,19 +674,25 @@ class ExtensionBootstrap {
   async loadCriticalModules() {
     // Load URL handlers on first hover
     this.eventBus.once(Events.HOVER_START, async () => {
-      const handlers = await this.loadModule('./features/url-handlers/index.js');
+      const handlers = await this.loadModule(
+        './features/url-handlers/index.js'
+      );
       handlers.init(this.eventBus, this.config);
     });
 
     // Load clipboard on first copy
     this.eventBus.once(Events.URL_COPIED, async () => {
-      const clipboard = await this.loadModule('./features/clipboard/url-copier.js');
+      const clipboard = await this.loadModule(
+        './features/clipboard/url-copier.js'
+      );
       clipboard.init(this.eventBus, this.config);
     });
 
     // Load Quick Tabs on first creation
     this.eventBus.once(Events.QUICK_TAB_CREATED, async () => {
-      const quickTabs = await this.loadModule('./features/quick-tabs/creator.js');
+      const quickTabs = await this.loadModule(
+        './features/quick-tabs/creator.js'
+      );
       quickTabs.init(this.eventBus, this.config, this.state);
     });
   }
@@ -736,9 +742,12 @@ export class URLHandlerRegistry {
   }
 
   detectCategory(domain) {
-    if (domain.includes('twitter') || domain.includes('reddit')) return 'social';
-    if (domain.includes('github') || domain.includes('gitlab')) return 'developer';
-    if (domain.includes('amazon') || domain.includes('ebay')) return 'ecommerce';
+    if (domain.includes('twitter') || domain.includes('reddit'))
+      return 'social';
+    if (domain.includes('github') || domain.includes('gitlab'))
+      return 'developer';
+    if (domain.includes('amazon') || domain.includes('ebay'))
+      return 'ecommerce';
     return 'generic';
   }
 
@@ -824,7 +833,10 @@ export class QuickTabCreator {
     this.positionContainer(container, left, top);
 
     // Make draggable/resizable
-    this.dragHandler.makeDraggable(container, container.querySelector('.titlebar'));
+    this.dragHandler.makeDraggable(
+      container,
+      container.querySelector('.titlebar')
+    );
     this.dragHandler.makeResizable(container);
 
     // Emit event

@@ -206,16 +206,16 @@ function _shouldRemoveElement(element, validTabIds) {
   if (validTabIds === null) {
     return true;
   }
-  
+
   const elementId = element.id;
-  
+
   // Extract Quick Tab ID from element ID (format: quick-tab-{id})
   if (elementId && elementId.startsWith('quick-tab-')) {
     const quickTabId = elementId.substring('quick-tab-'.length);
     // If this ID is not in the valid set, it's orphaned
     return !validTabIds.has(quickTabId);
   }
-  
+
   // Element has no ID or invalid format - don't remove
   return false;
 }

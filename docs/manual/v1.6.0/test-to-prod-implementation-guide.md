@@ -1,6 +1,7 @@
 # Cross-Tab Sync Production Implementation Guide
 
-**Target:** Transfer robust error handling, fallback mechanisms, and edge case handling from `tests/` to `src/`  
+**Target:** Transfer robust error handling, fallback mechanisms, and edge case
+handling from `tests/` to `src/`  
 **Related Issues:** #35, #47, #51  
 **Priority:** HIGH - Addresses regression prevention for cross-tab sync failures
 
@@ -8,9 +9,14 @@
 
 ## Executive Summary
 
-The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/unit/managers/BroadcastManager.crossTab.test.js` demonstrates significantly more robust error handling, fallback mechanisms, and edge case handling than currently exists in production code (`src/features/quick-tabs/managers/BroadcastManager.js`).
+The test infrastructure in `tests/helpers/cross-tab-simulator.js` and
+`tests/unit/managers/BroadcastManager.crossTab.test.js` demonstrates
+significantly more robust error handling, fallback mechanisms, and edge case
+handling than currently exists in production code
+(`src/features/quick-tabs/managers/BroadcastManager.js`).
 
-**This document provides specific, actionable guidance on what production code needs to be enhanced—WITHOUT explicit code blocks.**
+**This document provides specific, actionable guidance on what production code
+needs to be enhanced—WITHOUT explicit code blocks.**
 
 ---
 
@@ -19,12 +25,16 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ### Gap 1: Missing Storage-Based Fallback When BroadcastChannel Unavailable
 
 **Current Production Behavior:**
-- `BroadcastManager.setupBroadcastChannel()` logs warning if BroadcastChannel unavailable
+
+- `BroadcastManager.setupBroadcastChannel()` logs warning if BroadcastChannel
+  unavailable
 - References "storage-only sync" in console message
 - **Does NOT actually implement storage polling or storage.onChanged fallback**
-- Extension silently fails cross-tab sync in environments without BroadcastChannel
+- Extension silently fails cross-tab sync in environments without
+  BroadcastChannel
 
 **Test Infrastructure Shows:**
+
 - Complete simulation of storage-based cross-tab communication
 - Mock implementation validates messages still propagate via storage events
 - Fallback gracefully maintains sync when broadcast fails
@@ -56,6 +66,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
    - Confirm cross-tab messages still propagate
 
 **Files to Modify:**
+
 - `src/features/quick-tabs/managers/BroadcastManager.js` (primary changes)
 - `src/features/quick-tabs/managers/StorageManager.js` (may need helper methods)
 
@@ -64,12 +75,14 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ### Gap 2: Insufficient Error Recovery and Channel Reconnection
 
 **Current Production Behavior:**
+
 - Errors in `broadcast()` method are logged but not handled
 - If channel becomes null mid-operation, sends fail silently
 - No automatic attempt to recreate channel after failure
 - No health monitoring of broadcast channel
 
 **Test Infrastructure Shows:**
+
 - Forced channel disconnections and immediate recovery
 - Simulation of channel errors with automatic retry logic
 - Graceful degradation and self-healing behavior
@@ -104,6 +117,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
    - Update health status based on success/failure
 
 **Files to Modify:**
+
 - `src/features/quick-tabs/managers/BroadcastManager.js`
 - May need to add reconnection scheduler utility
 
@@ -112,12 +126,14 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ### Gap 3: Missing Malformed Message Validation
 
 **Current Production Behavior:**
+
 - `handleBroadcastMessage()` assumes well-formed messages
 - No validation of message structure or data types
 - Malformed messages passed directly to eventBus
 - Can cause crashes in downstream handlers
 
 **Test Infrastructure Shows:**
+
 - Deliberate injection of null, undefined, wrong-type payloads
 - Validation that system handles corrupted messages gracefully
 - Type checking before processing
@@ -155,6 +171,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
    - Use for both validation and documentation
 
 **Files to Modify:**
+
 - `src/features/quick-tabs/managers/BroadcastManager.js`
 - Consider creating `src/features/quick-tabs/schemas/BroadcastMessageSchema.js`
 
@@ -163,12 +180,14 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ### Gap 4: Missing Delivery Confirmation and Retry Logic
 
 **Current Production Behavior:**
+
 - Messages sent to BroadcastChannel with no confirmation
 - No knowledge of whether other tabs received message
 - No retry if delivery might have failed
 - Fire-and-forget approach
 
 **Test Infrastructure Shows:**
+
 - Simulation of delivery acknowledgment patterns
 - Testing of message ordering and completeness
 - Validation that critical messages (CREATE, UPDATE_POSITION) are received
@@ -204,20 +223,25 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
    - Expose metrics via debug interface
 
 **Files to Modify:**
+
 - `src/features/quick-tabs/managers/BroadcastManager.js`
-- May affect `src/features/quick-tabs/coordinators/SyncCoordinator.js` (ACK handling)
+- May affect `src/features/quick-tabs/coordinators/SyncCoordinator.js` (ACK
+  handling)
 
 ---
 
 ### Gap 5: Inadequate Debounce and Message Loop Prevention
 
 **Current Production Behavior:**
+
 - Basic debounce using timestamp map
 - 50ms debounce window
 - Cleanup triggers after 100 entries
-- **No prevention of echo/loop scenarios where tab receives its own message via storage**
+- **No prevention of echo/loop scenarios where tab receives its own message via
+  storage**
 
 **Test Infrastructure Shows:**
+
 - Advanced loop detection
 - Prevention of same-tab message echo
 - Sophisticated duplicate detection across multiple propagation paths
@@ -250,6 +274,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
    - SOLO/MUTE: 100ms (moderate frequency)
 
 **Files to Modify:**
+
 - `src/features/quick-tabs/managers/BroadcastManager.js`
 
 ---
@@ -257,12 +282,14 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ### Gap 6: Missing Container Boundary Validation in Runtime
 
 **Current Production Behavior:**
+
 - Container isolation enforced by channel naming
 - Assumes BroadcastChannel respects naming
 - No runtime verification that messages are container-scoped
 - No defense against container boundary violations
 
 **Test Infrastructure Shows:**
+
 - Explicit validation that cross-container messages never propagate
 - Testing of container boundary edge cases
 - Validation of storage key scoping
@@ -296,6 +323,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
    - Helps identify browser bugs or extension conflicts
 
 **Files to Modify:**
+
 - `src/features/quick-tabs/managers/BroadcastManager.js`
 - `src/features/quick-tabs/managers/StorageManager.js` (storage key validation)
 
@@ -304,12 +332,14 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ### Gap 7: Insufficient Logging and Observability
 
 **Current Production Behavior:**
+
 - Basic console.log for key operations
 - No structured logging
 - No distinction between debug/info/warn/error levels
 - Difficult to diagnose production issues
 
 **Test Infrastructure Shows:**
+
 - Detailed event tracking and timing
 - Message sequence logging
 - Error state tracking
@@ -347,6 +377,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
    - Rate-limit to avoid spam
 
 **Files to Modify:**
+
 - Create `src/utils/Logger.js` (new structured logger)
 - `src/features/quick-tabs/managers/BroadcastManager.js` (use new logger)
 - All Quick Tabs managers (gradually migrate to structured logging)
@@ -356,6 +387,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ## Implementation Priority
 
 ### Phase 1: Critical Safety (Week 1)
+
 **Impact: Prevents crashes and data loss**
 
 1. **Gap 3: Malformed Message Validation** (2 days)
@@ -375,6 +407,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ---
 
 ### Phase 2: Reliability (Week 2)
+
 **Impact: Handles errors gracefully, maintains sync**
 
 4. **Gap 1: Storage-Based Fallback** (3 days)
@@ -390,6 +423,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ---
 
 ### Phase 3: Observability & Refinement (Week 3)
+
 **Impact: Better debugging and monitoring**
 
 6. **Gap 7: Structured Logging** (2 days)
@@ -433,18 +467,21 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ## Success Criteria
 
 ### Phase 1 (Critical Safety):
+
 - [ ] Zero crashes from malformed messages in test suite
 - [ ] Container boundary violations detected and blocked
 - [ ] No message loops in rapid update scenarios
 - [ ] All existing tests pass
 
 ### Phase 2 (Reliability):
+
 - [ ] Storage fallback activates when BroadcastChannel unavailable
 - [ ] Channel automatically reconnects after failure
 - [ ] Cross-tab sync maintained during error conditions
 - [ ] All integration tests pass with failures injected
 
 ### Phase 3 (Observability):
+
 - [ ] Structured logs provide clear debugging information
 - [ ] Delivery metrics tracked and accessible
 - [ ] Production issues can be diagnosed from logs
@@ -454,17 +491,23 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ## File Modification Checklist
 
 ### Primary Files:
+
 - [ ] `src/features/quick-tabs/managers/BroadcastManager.js` (ALL gaps)
 - [ ] `src/features/quick-tabs/managers/StorageManager.js` (Gap 1, 6)
 
 ### New Files to Create:
+
 - [ ] `src/features/quick-tabs/schemas/BroadcastMessageSchema.js` (Gap 3)
 - [ ] `src/utils/Logger.js` (Gap 7)
 
 ### Files to Update:
-- [ ] `src/features/quick-tabs/coordinators/SyncCoordinator.js` (Gap 4 ACK handling)
-- [ ] `src/features/quick-tabs/managers/StateManager.js` (May need storage fallback awareness)
-- [ ] `src/features/quick-tabs/managers/EventManager.js` (May need new error events)
+
+- [ ] `src/features/quick-tabs/coordinators/SyncCoordinator.js` (Gap 4 ACK
+      handling)
+- [ ] `src/features/quick-tabs/managers/StateManager.js` (May need storage
+      fallback awareness)
+- [ ] `src/features/quick-tabs/managers/EventManager.js` (May need new error
+      events)
 
 ---
 
@@ -499,16 +542,19 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ## Documentation Requirements
 
 ### Code Documentation:
+
 - Add JSDoc comments explaining fallback behavior
 - Document error scenarios and recovery steps
 - Explain debounce logic and timing choices
 
 ### User-Facing Documentation:
+
 - Update README with fallback behavior notes
 - Document known limitations
 - Provide troubleshooting guide
 
 ### Developer Documentation:
+
 - Create architecture diagram showing fallback paths
 - Document message schema and validation rules
 - Explain logging and debugging approaches
@@ -518,11 +564,13 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 ## Validation Approach
 
 ### Automated Testing:
+
 - All unit tests pass (existing + new)
 - All integration tests pass
 - Coverage remains above 80%
 
 ### Manual Testing Checklist:
+
 - [ ] Create Quick Tab in tab A, verify appears in tab B
 - [ ] Update position in tab B, verify updates in tab A
 - [ ] Close tab A, verify Quick Tab persists in tab B
@@ -532,6 +580,7 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 - [ ] Browser restart, verify Quick Tabs persist
 
 ### Performance Testing:
+
 - [ ] Broadcast latency under 100ms in normal conditions
 - [ ] No memory leaks after 1000 messages
 - [ ] Storage size stays reasonable (< 5MB)
@@ -593,9 +642,13 @@ The test infrastructure in `tests/helpers/cross-tab-simulator.js` and `tests/uni
 
 ## Conclusion
 
-This implementation plan provides specific, technical guidance on enhancing production code with the robust patterns demonstrated in tests. **Each gap is actionable without requiring explicit code blocks.**
+This implementation plan provides specific, technical guidance on enhancing
+production code with the robust patterns demonstrated in tests. **Each gap is
+actionable without requiring explicit code blocks.**
 
-The priority order (Safety → Reliability → Observability) ensures that critical issues are addressed first, with enhancements following once the foundation is solid.
+The priority order (Safety → Reliability → Observability) ensures that critical
+issues are addressed first, with enhancements following once the foundation is
+solid.
 
 **Estimated Total Implementation Time:** 15-16 days (3 weeks)  
 **Expected Outcome:** Production code matches test infrastructure robustness  

@@ -9,7 +9,11 @@
 
 ## Executive Summary
 
-When opening a new tab or installing the extension, **all 14 historic Quick Tabs from storage render simultaneously in every tab**, creating visual chaos. Additionally, **Quick Tabs are nesting inside each other** as iframes, causing recursive rendering issues. These are **two separate critical bugs** that need immediate fixes.
+When opening a new tab or installing the extension, **all 14 historic Quick Tabs
+from storage render simultaneously in every tab**, creating visual chaos.
+Additionally, **Quick Tabs are nesting inside each other** as iframes, causing
+recursive rendering issues. These are **two separate critical bugs** that need
+immediate fixes.
 
 ---
 
@@ -33,13 +37,16 @@ From logs at **2025-11-26T00:07:23.178Z**:
 (repeats 14 times)
 ```
 
-**All 14 Quick Tabs from `firefox-default` container are rendered in `firefox-container-9` (current tab).**
+**All 14 Quick Tabs from `firefox-default` container are rendered in
+`firefox-container-9` (current tab).**
 
 ### Root Cause: Broken Container Filtering
 
 **File:** `src/features/quick-tabs/managers/StateManager.js`
 
-**Problem:** The `hydrate()` method **loads all Quick Tabs from ALL containers** and emits `state:added` for every single one, ignoring the current container context.
+**Problem:** The `hydrate()` method **loads all Quick Tabs from ALL containers**
+and emits `state:added` for every single one, ignoring the current container
+context.
 
 **Evidence:**
 
@@ -89,9 +96,13 @@ Result: All 14 Quick Tabs from firefox-default appear in firefox-container-9
 
 **Why It's Wrong:**
 
-Quick Tabs should **ONLY** appear in tabs matching their `container` or `cookieStoreId`:
-- Quick Tab created in `firefox-default` should ONLY render in `firefox-default` tabs
-- Quick Tab created in `firefox-container-9` should ONLY render in `firefox-container-9` tabs
+Quick Tabs should **ONLY** appear in tabs matching their `container` or
+`cookieStoreId`:
+
+- Quick Tab created in `firefox-default` should ONLY render in `firefox-default`
+  tabs
+- Quick Tab created in `firefox-container-9` should ONLY render in
+  `firefox-container-9` tabs
 
 **Current behavior:** All Quick Tabs render in ALL tabs regardless of container.
 
@@ -101,33 +112,35 @@ Quick Tabs should **ONLY** appear in tabs matching their `container` or `cookieS
 
 **Option A: Filter Before Hydration (Recommended)**
 
-**File:** `src/features/quick-tabs/QuickTabsManager.js` (or wherever `hydrate()` is called)
+**File:** `src/features/quick-tabs/QuickTabsManager.js` (or wherever `hydrate()`
+is called)
 
 Filter Quick Tabs BEFORE passing to `hydrate()`:
 
 ```javascript
 async hydrateState() {
   console.log('[QuickTabsManager] Hydrating state from storage...');
-  
+
   // Load all Quick Tabs from storage
   const allQuickTabs = await this.storage.load();
-  
+
   // NEW: Filter to only Quick Tabs for current container
-  const relevantQuickTabs = allQuickTabs.filter(qt => 
+  const relevantQuickTabs = allQuickTabs.filter(qt =>
     qt.container === this.currentContainer ||
     qt.cookieStoreId === this.currentContainer
   );
-  
+
   console.log(`[QuickTabsManager] Filtered ${relevantQuickTabs.length} relevant Quick Tabs from ${allQuickTabs.length} total`);
-  
+
   // Hydrate with filtered Quick Tabs
   this.state.hydrate(relevantQuickTabs);
-  
+
   console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs from storage`);
 }
 ```
 
 **Why This is Better:**
+
 - ✅ Simple - one filter at source
 - ✅ Prevents wrong Quick Tabs from ever entering state
 - ✅ No unnecessary `state:added` events for irrelevant Quick Tabs
@@ -149,13 +162,13 @@ constructor(eventBus, currentTabId = null, currentContainer = null) {
 
 _processNewQuickTab(qt) {
   // NEW: Only add if matches current container
-  if (this.currentContainer && 
-      qt.container !== this.currentContainer && 
+  if (this.currentContainer &&
+      qt.container !== this.currentContainer &&
       qt.cookieStoreId !== this.currentContainer) {
     console.log(`[StateManager] Skipping Quick Tab ${qt.id} - wrong container (${qt.container} vs ${this.currentContainer})`);
     return;
   }
-  
+
   this.quickTabs.set(qt.id, qt);
   console.log('[StateManager] Hydrate: emitting state:added', {
     quickTabId: qt.id,
@@ -166,6 +179,7 @@ _processNewQuickTab(qt) {
 ```
 
 **Why This is Worse:**
+
 - ❌ More complex - filter logic in multiple places
 - ❌ Wrong Quick Tabs still loaded into memory
 - ❌ Wasted processing for irrelevant Quick Tabs
@@ -177,7 +191,8 @@ _processNewQuickTab(qt) {
 
 **File:** `src/features/quick-tabs/coordinators/UICoordinator.js`
 
-Even if `state:added` is emitted for wrong Quick Tabs, **UICoordinator should refuse to render them**:
+Even if `state:added` is emitted for wrong Quick Tabs, **UICoordinator should
+refuse to render them**:
 
 ```javascript
 render(quickTab) {
@@ -189,8 +204,8 @@ render(quickTab) {
 
   // NEW: Skip if Quick Tab doesn't belong to current container
   const currentContainer = this.stateManager.currentContainer;
-  if (currentContainer && 
-      quickTab.container !== currentContainer && 
+  if (currentContainer &&
+      quickTab.container !== currentContainer &&
       quickTab.cookieStoreId !== currentContainer) {
     console.log('[UICoordinator] Skipping render - wrong container:', quickTab.id, {
       quickTabContainer: quickTab.container || quickTab.cookieStoreId,
@@ -230,7 +245,8 @@ Error: NS_BINDING_ABORTED
 (repeated 14 times)
 ```
 
-**Quick Tabs are creating iframes of the SAME URLs they were originally created from**, causing recursive nesting.
+**Quick Tabs are creating iframes of the SAME URLs they were originally created
+from**, causing recursive nesting.
 
 ### Root Cause: Content Script Injected Into Quick Tab Windows
 
@@ -239,15 +255,15 @@ Error: NS_BINDING_ABORTED
 ```
 1. User creates Quick Tab from Wikipedia article
    → Quick Tab window contains <iframe src="wikipedia.org/Article">
-   
+
 2. Content script detects new iframe on page
    → Processes iframe as if it's part of main page
    → Creates ANOTHER Quick Tab for the same URL
-   
+
 3. New Quick Tab contains iframe of same URL
    → Content script detects THAT iframe
    → Creates ANOTHER Quick Tab
-   
+
 4. Infinite recursion (stopped only by browser aborting loads)
 ```
 
@@ -270,7 +286,8 @@ Error: NS_BINDING_ABORTED
 
 ### Why This Happens
 
-**File:** `src/features/quick-tabs/window.js` (or wherever Quick Tab Window is created)
+**File:** `src/features/quick-tabs/window.js` (or wherever Quick Tab Window is
+created)
 
 Quick Tab Windows are rendered as:
 
@@ -281,7 +298,8 @@ Quick Tab Windows are rendered as:
 </div>
 ```
 
-**The iframe is part of the main document DOM**, so when the content script scans for iframes:
+**The iframe is part of the main document DOM**, so when the content script
+scans for iframes:
 
 ```javascript
 // Somewhere in content.js or feature detection:
@@ -311,13 +329,14 @@ for (const iframe of iframes) {
     console.log('[Quick Tabs] Skipping Quick Tab Window iframe:', iframe.src);
     continue;
   }
-  
+
   // Process regular page iframes
   processIframe(iframe);
 }
 ```
 
 **Why This Works:**
+
 - ✅ Simple DOM check
 - ✅ No special attributes needed
 - ✅ Works for all Quick Tab Window iframes
@@ -331,25 +350,29 @@ Add a data attribute to Quick Tab Window iframes:
 // In window.js when creating iframe:
 const iframe = document.createElement('iframe');
 iframe.src = url;
-iframe.setAttribute('data-quick-tab-iframe', 'true');  // NEW: Mark as internal
+iframe.setAttribute('data-quick-tab-iframe', 'true'); // NEW: Mark as internal
 ```
 
 Then filter:
 
 ```javascript
 // In content script:
-const iframes = document.querySelectorAll('iframe:not([data-quick-tab-iframe])');
+const iframes = document.querySelectorAll(
+  'iframe:not([data-quick-tab-iframe])'
+);
 for (const iframe of iframes) {
   processIframe(iframe);
 }
 ```
 
 **Why This is Also Good:**
+
 - ✅ Explicit marking
 - ✅ Fast selector
 - ✅ Clear intent
 
-**Recommended: Use Option A** (parent check) as it doesn't require modifying window creation code.
+**Recommended: Use Option A** (parent check) as it doesn't require modifying
+window creation code.
 
 ---
 
@@ -374,16 +397,19 @@ document.body.appendChild(container);
 ```
 
 **Benefits:**
+
 - ✅ Complete DOM isolation
 - ✅ Content script won't see Quick Tab Window internals
 - ✅ No style conflicts
 - ✅ Better encapsulation
 
 **Drawback:**
+
 - ❌ More complex implementation
 - ❌ Requires refactoring window.js
 
-**Recommendation:** Fix with Option A first, consider Shadow DOM for future enhancement.
+**Recommendation:** Fix with Option A first, consider Shadow DOM for future
+enhancement.
 
 ---
 
@@ -397,50 +423,54 @@ document.body.appendChild(container);
 
 #### Step 1.1: Add Container Filtering to Hydration Call
 
-**File:** `src/features/quick-tabs/QuickTabsManager.js` (or wherever hydration is called)
+**File:** `src/features/quick-tabs/QuickTabsManager.js` (or wherever hydration
+is called)
 
 **Find this code:**
+
 ```javascript
 async hydrateState() {
   console.log('[QuickTabsManager] Hydrating state from storage...');
-  
+
   const allQuickTabs = await this.storage.load();
   this.state.hydrate(allQuickTabs);  // ❌ NO FILTERING
-  
+
   console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs from storage`);
 }
 ```
 
 **Replace with:**
+
 ```javascript
 async hydrateState() {
   console.log('[QuickTabsManager] Hydrating state from storage...');
-  
+
   // Load all Quick Tabs from storage
   const allQuickTabs = await this.storage.load();
-  
+
   // Filter to only Quick Tabs for current container
   const relevantQuickTabs = allQuickTabs.filter(qt => {
     const qtContainer = qt.container || qt.cookieStoreId || 'firefox-default';
     const matches = qtContainer === this.currentContainer;
-    
+
     if (!matches) {
       console.log(`[QuickTabsManager] Filtering out Quick Tab ${qt.id} from ${qtContainer} (current: ${this.currentContainer})`);
     }
-    
+
     return matches;
   });
-  
+
   console.log(`[QuickTabsManager] Filtered ${relevantQuickTabs.length} relevant Quick Tabs from ${allQuickTabs.length} total for container ${this.currentContainer}`);
-  
+
   // Hydrate with filtered Quick Tabs
   this.state.hydrate(relevantQuickTabs);
-  
+
   console.log(`[QuickTabsManager] Hydrated ${this.state.count()} Quick Tabs from storage`);
 }
 ```
 
 **Why This Works:**
+
 - Only Quick Tabs for current container pass through
 - No changes needed to StateManager
 - Clear logging for debugging
@@ -450,6 +480,7 @@ async hydrateState() {
 **File:** `src/features/quick-tabs/coordinators/UICoordinator.js`
 
 **Find this code:**
+
 ```javascript
 render(quickTab) {
   // Skip if already rendered
@@ -464,6 +495,7 @@ render(quickTab) {
 ```
 
 **Add container check at start:**
+
 ```javascript
 render(quickTab) {
   // Skip if already rendered
@@ -492,6 +524,7 @@ render(quickTab) {
 ```
 
 **Why This Works:**
+
 - Defense in depth - catches any Quick Tabs that slip through
 - Clear error messages for debugging
 - Prevents visual chaos even if filtering fails
@@ -501,6 +534,7 @@ render(quickTab) {
 **File:** `src/features/quick-tabs/managers/StateManager.js`
 
 **Current constructor:**
+
 ```javascript
 constructor(eventBus, currentTabId = null) {
   this.eventBus = eventBus;
@@ -511,6 +545,7 @@ constructor(eventBus, currentTabId = null) {
 ```
 
 **Enhanced constructor:**
+
 ```javascript
 constructor(eventBus, currentTabId = null, currentContainer = null) {
   this.eventBus = eventBus;
@@ -526,13 +561,19 @@ constructor(eventBus, currentTabId = null, currentContainer = null) {
 **File:** `src/features/quick-tabs/QuickTabsManager.js`
 
 **Find:**
+
 ```javascript
 this.state = new StateManager(this.internalEventBus, this.currentTabId);
 ```
 
 **Replace with:**
+
 ```javascript
-this.state = new StateManager(this.internalEventBus, this.currentTabId, this.currentContainer);
+this.state = new StateManager(
+  this.internalEventBus,
+  this.currentTabId,
+  this.currentContainer
+);
 ```
 
 ---
@@ -545,9 +586,11 @@ this.state = new StateManager(this.internalEventBus, this.currentTabId, this.cur
 
 #### Step 2.1: Filter Quick Tab Window Iframes
 
-**File:** Content script file that scans for iframes (likely `content.js` or feature initialization)
+**File:** Content script file that scans for iframes (likely `content.js` or
+feature initialization)
 
 **Find code that processes iframes:**
+
 ```javascript
 // Example - actual code may vary
 const iframes = document.querySelectorAll('iframe');
@@ -557,27 +600,31 @@ for (const iframe of iframes) {
 ```
 
 **Add filter to exclude Quick Tab Window iframes:**
+
 ```javascript
 const iframes = document.querySelectorAll('iframe');
 for (const iframe of iframes) {
   // NEW: Skip iframes inside Quick Tab Windows
-  if (iframe.closest('.quick-tab-window, [data-quick-tab-id], [id^="quick-tab-"]')) {
+  if (
+    iframe.closest('.quick-tab-window, [data-quick-tab-id], [id^="quick-tab-"]')
+  ) {
     console.log('[Quick Tabs] Skipping Quick Tab Window iframe:', iframe.src);
     continue;
   }
-  
+
   // Only process regular page iframes
   processIframe(iframe);
 }
 ```
 
 **Selectors to check:**
+
 - `.quick-tab-window` - Main Quick Tab Window class
 - `[data-quick-tab-id]` - Quick Tab ID attribute
 - `[id^="quick-tab-"]` - Quick Tab ID prefix
 
-**Why Multiple Selectors:**
-Different parts of codebase may use different naming - check all.
+**Why Multiple Selectors:** Different parts of codebase may use different
+naming - check all.
 
 ---
 
@@ -586,6 +633,7 @@ Different parts of codebase may use different naming - check all.
 ### Test Case 1: Container Isolation
 
 **Steps:**
+
 1. Create Quick Tab in `firefox-default` container
 2. Create Quick Tab in `firefox-container-1`
 3. Open new tab in `firefox-default`
@@ -594,6 +642,7 @@ Different parts of codebase may use different naming - check all.
 6. **Verify:** Only Quick Tab from `firefox-container-1` appears ✅
 
 **Expected Logs:**
+
 ```
 [QuickTabsManager] Filtered 1 relevant Quick Tabs from 2 total for container firefox-default
 [StateManager] Hydrate: emitting state:added { quickTabId: "qt-default-123" }
@@ -604,6 +653,7 @@ Different parts of codebase may use different naming - check all.
 ### Test Case 2: Mass Rendering Prevention
 
 **Steps:**
+
 1. Create 10 Quick Tabs across different containers
 2. Install extension fresh (or clear storage and reload)
 3. Open tab in `firefox-container-2` (which has 2 Quick Tabs)
@@ -611,6 +661,7 @@ Different parts of codebase may use different naming - check all.
 5. **Verify:** No Quick Tabs from other containers rendered ✅
 
 **Expected Logs:**
+
 ```
 [StorageManager] Loaded 10 Quick Tabs from ALL containers
 [QuickTabsManager] Filtered 2 relevant Quick Tabs from 10 total for container firefox-container-2
@@ -620,14 +671,17 @@ Different parts of codebase may use different naming - check all.
 ### Test Case 3: Iframe Nesting Prevention
 
 **Steps:**
+
 1. Create Quick Tab from Wikipedia article
 2. Open DevTools and inspect Quick Tab Window
 3. **Verify:** Quick Tab Window contains <iframe> with Wikipedia URL ✅
 4. Check extension logs
-5. **Verify:** NO "Processing iframe: wikipedia.org" logs for Quick Tab Window iframe ✅
+5. **Verify:** NO "Processing iframe: wikipedia.org" logs for Quick Tab Window
+   iframe ✅
 6. **Verify:** NO nested Quick Tabs created ✅
 
 **Expected Logs:**
+
 ```
 [QuickTabWindow] Rendered: qt-123
 [Quick Tabs] Skipping Quick Tab Window iframe: https://en.wikipedia.org/wiki/Article
@@ -636,6 +690,7 @@ Different parts of codebase may use different naming - check all.
 ### Test Case 4: Regular Page Iframes Still Work
 
 **Steps:**
+
 1. Navigate to page with embedded YouTube video (iframe)
 2. Content script should process YouTube iframe normally
 3. **Verify:** YouTube iframe detected and processed ✅
@@ -643,6 +698,7 @@ Different parts of codebase may use different naming - check all.
 5. **Verify:** Quick Tab Window iframe NOT processed as page content ✅
 
 **Expected Logs:**
+
 ```
 [Quick Tabs] Processing iframe: https://www.youtube.com/embed/...
 [Quick Tabs] Skipping Quick Tab Window iframe: https://example.com
@@ -661,16 +717,17 @@ If issues arise:
 ```javascript
 async hydrateState() {
   const allQuickTabs = await this.storage.load();
-  
+
   // TEMPORARY: Disable filtering
   // const relevantQuickTabs = allQuickTabs.filter(...);
   // this.state.hydrate(relevantQuickTabs);
-  
+
   this.state.hydrate(allQuickTabs);  // Back to old behavior
 }
 ```
 
-**Result:** All Quick Tabs render in all tabs (original broken behavior, but at least it loads).
+**Result:** All Quick Tabs render in all tabs (original broken behavior, but at
+least it loads).
 
 ### Disable Iframe Filter
 
@@ -681,7 +738,7 @@ const iframes = document.querySelectorAll('iframe');
 for (const iframe of iframes) {
   // TEMPORARY: Disable filter
   // if (iframe.closest('.quick-tab-window')) continue;
-  
+
   processIframe(iframe);
 }
 ```
@@ -695,10 +752,12 @@ for (const iframe of iframes) {
 ### Memory Savings
 
 **Before Fix:**
+
 - All Quick Tabs loaded into every tab's memory
 - 14 Quick Tabs × 4 open tabs = 56 Quick Tab Window instances in memory
 
 **After Fix:**
+
 - Only relevant Quick Tabs loaded per tab
 - Container 1: 3 Quick Tabs × 2 tabs = 6 instances
 - Container 2: 5 Quick Tabs × 2 tabs = 10 instances
@@ -707,11 +766,13 @@ for (const iframe of iframes) {
 ### CPU Savings
 
 **Before Fix:**
+
 - 14 `state:added` events per tab initialization
 - 14 `UICoordinator.render()` calls
 - 14 iframe load attempts
 
 **After Fix:**
+
 - 1-5 `state:added` events per tab (average 3)
 - 3 `UICoordinator.render()` calls
 - 3 iframe loads
@@ -720,11 +781,13 @@ for (const iframe of iframes) {
 ### Network Savings
 
 **Before Fix:**
+
 - 14 Wikipedia pages loaded as iframes per tab
 - Nested Quick Tabs attempt to load more iframes
 - Potential for 50+ iframe load attempts
 
 **After Fix:**
+
 - 3 Wikipedia pages loaded (only relevant Quick Tabs)
 - No nested loads
 - **~85% reduction in network traffic**
@@ -734,6 +797,7 @@ for (const iframe of iframes) {
 ## Related Issues
 
 This diagnostic covers:
+
 - Issue #47 cross-tab sync (partially - container filtering helps)
 - Issue #35 Quick Tab rendering (exacerbated by mass rendering)
 - Issue #51 position sync (less critical when fewer tabs render)
@@ -744,21 +808,28 @@ This diagnostic covers:
 
 **Two critical bugs identified:**
 
-1. **Container Filtering Broken** - All Quick Tabs from all containers render in every tab
-2. **Iframe Nesting** - Quick Tab Windows' iframes are processed as page content, creating recursive Quick Tabs
+1. **Container Filtering Broken** - All Quick Tabs from all containers render in
+   every tab
+2. **Iframe Nesting** - Quick Tab Windows' iframes are processed as page
+   content, creating recursive Quick Tabs
 
 **Root causes:**
-1. No container filtering before `hydrate()` + no safety checks in `UICoordinator`
+
+1. No container filtering before `hydrate()` + no safety checks in
+   `UICoordinator`
 2. Content script doesn't exclude Quick Tab Window iframes when scanning page
 
 **Fixes:**
-1. Filter Quick Tabs by container before hydration + add safety check in UICoordinator
+
+1. Filter Quick Tabs by container before hydration + add safety check in
+   UICoordinator
 2. Exclude Quick Tab Window iframes using `.closest()` check
 
 **Effort Estimate:** 3-5 hours implementation + 2-3 hours testing  
 **Risk Level:** Low (isolated changes, clear rollback path)
 
 Once fixed:
+
 - ✅ Only relevant Quick Tabs render in each tab
 - ✅ No recursive iframe nesting
 - ✅ 70-85% reduction in memory, CPU, and network usage
@@ -769,6 +840,7 @@ Once fixed:
 ## Implementation Checklist
 
 ### Phase 1: Container Filtering
+
 - [ ] Add container filtering to `hydrateState()` in QuickTabsManager
 - [ ] Pass `currentContainer` to StateManager constructor
 - [ ] Add safety check in `UICoordinator.render()`
@@ -776,12 +848,14 @@ Once fixed:
 - [ ] Test Case 2: Verify no mass rendering
 
 ### Phase 2: Iframe Nesting Prevention
+
 - [ ] Find iframe processing code in content script
 - [ ] Add `.closest()` filter to exclude Quick Tab Window iframes
 - [ ] Test Case 3: Verify no nested Quick Tabs
 - [ ] Test Case 4: Verify regular page iframes still work
 
 ### Phase 3: Validation
+
 - [ ] Test with 10+ Quick Tabs across 3+ containers
 - [ ] Test with fresh install
 - [ ] Test with browser restart

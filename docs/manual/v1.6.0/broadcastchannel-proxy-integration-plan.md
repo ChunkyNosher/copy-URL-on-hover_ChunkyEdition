@@ -25,17 +25,21 @@
 ### Objectives
 
 **Primary Goals:**
+
 1. ✅ **Eliminate drag/resize lag** via BroadcastChannel (15-50ms → 2-5ms)
 2. ✅ **Simplify state management** via Proxy reactivity (50% less boilerplate)
 3. ✅ **Maintain 100% backward compatibility** with existing storage-based sync
 4. ✅ **Ensure Issue 47 compliance** across all 20 test scenarios
 
 **Key Strategy: Hybrid Sync Architecture**
+
 - **BroadcastChannel** for ephemeral state (drag, resize, focus)
-- **Storage** for persistent state (creation, deletion, solo/mute, final positions)
+- **Storage** for persistent state (creation, deletion, solo/mute, final
+  positions)
 - **Proxy** for automatic change detection and computed properties
 
 **Implementation Timeline:**
+
 - **Week 1:** BroadcastChannel integration (Phase 1)
 - **Week 2:** Proxy reactivity integration (Phase 2)
 - **Week 3:** Issue 47 validation + bug fixes
@@ -102,34 +106,36 @@ StateManager.hydrate() with new state
 UICoordinator updates DOM in Tab B, C, D
 ```
 
-**Problem:** During drag, **no sync happens at all**. Other tabs only see final position after drag ends (50-200ms latency).
+**Problem:** During drag, **no sync happens at all**. Other tabs only see final
+position after drag ends (50-200ms latency).
 
 ### Issue 47 Scenario Compliance (Current State)
 
-| Scenario | Requirement | Current Status | Issue |
-|----------|-------------|----------------|-------|
-| **Scenario 1** | Cross-tab sync <100ms | ❌ FAIL | Drag updates don't sync until end |
-| **Scenario 2** | Multiple QTs sync independently | ✅ PASS | Each QT has separate saveId |
-| **Scenario 3** | Solo mode restricts visibility | ✅ PASS | VisibilityHandler works correctly |
-| **Scenario 4** | Mute mode hides on specific tabs | ✅ PASS | VisibilityHandler works correctly |
-| **Scenario 5** | Manager minimize/restore syncs | ✅ PASS | Storage-based sync works |
-| **Scenario 6** | Manager state syncs cross-tab | ✅ PASS | Storage-based sync works |
-| **Scenario 7** | Position/size persists | ⚠️ PARTIAL | Final state persists, drag doesn't sync |
-| **Scenario 8** | Container isolation | ✅ PASS | cookieStoreId filtering works |
-| **Scenario 9** | Close All syncs | ✅ PASS | Background handler exists |
-| **Scenario 10** | Quick Tab limit enforced | ✅ PASS | CreateHandler checks limit |
-| **Scenario 11** | Emergency save on tab switch | ✅ PASS | visibilitychange event works |
-| **Scenario 12** | Close Minimized syncs | ✅ PASS | Manager Panel works |
-| **Scenario 13** | Solo/Mute mutual exclusion | ✅ PASS | UI enforces correctly |
-| **Scenario 14** | State persists across restart | ✅ PASS | Storage persistence works |
-| **Scenario 15** | Manager position persists | ✅ PASS | Panel state in storage |
-| **Scenario 16** | Slot numbering debug mode | ✅ PASS | Slot reuse works |
-| **Scenario 17** | Multi-direction resize | ⚠️ PARTIAL | Final size persists, resize doesn't sync |
-| **Scenario 18** | Z-index layering | ✅ PASS | Focus brings to front |
-| **Scenario 19** | Container boundary enforcement | ✅ PASS | Container filtering works |
-| **Scenario 20** | Container cleanup | ✅ PASS | State cleared on container close |
+| Scenario        | Requirement                      | Current Status | Issue                                    |
+| --------------- | -------------------------------- | -------------- | ---------------------------------------- |
+| **Scenario 1**  | Cross-tab sync <100ms            | ❌ FAIL        | Drag updates don't sync until end        |
+| **Scenario 2**  | Multiple QTs sync independently  | ✅ PASS        | Each QT has separate saveId              |
+| **Scenario 3**  | Solo mode restricts visibility   | ✅ PASS        | VisibilityHandler works correctly        |
+| **Scenario 4**  | Mute mode hides on specific tabs | ✅ PASS        | VisibilityHandler works correctly        |
+| **Scenario 5**  | Manager minimize/restore syncs   | ✅ PASS        | Storage-based sync works                 |
+| **Scenario 6**  | Manager state syncs cross-tab    | ✅ PASS        | Storage-based sync works                 |
+| **Scenario 7**  | Position/size persists           | ⚠️ PARTIAL     | Final state persists, drag doesn't sync  |
+| **Scenario 8**  | Container isolation              | ✅ PASS        | cookieStoreId filtering works            |
+| **Scenario 9**  | Close All syncs                  | ✅ PASS        | Background handler exists                |
+| **Scenario 10** | Quick Tab limit enforced         | ✅ PASS        | CreateHandler checks limit               |
+| **Scenario 11** | Emergency save on tab switch     | ✅ PASS        | visibilitychange event works             |
+| **Scenario 12** | Close Minimized syncs            | ✅ PASS        | Manager Panel works                      |
+| **Scenario 13** | Solo/Mute mutual exclusion       | ✅ PASS        | UI enforces correctly                    |
+| **Scenario 14** | State persists across restart    | ✅ PASS        | Storage persistence works                |
+| **Scenario 15** | Manager position persists        | ✅ PASS        | Panel state in storage                   |
+| **Scenario 16** | Slot numbering debug mode        | ✅ PASS        | Slot reuse works                         |
+| **Scenario 17** | Multi-direction resize           | ⚠️ PARTIAL     | Final size persists, resize doesn't sync |
+| **Scenario 18** | Z-index layering                 | ✅ PASS        | Focus brings to front                    |
+| **Scenario 19** | Container boundary enforcement   | ✅ PASS        | Container filtering works                |
+| **Scenario 20** | Container cleanup                | ✅ PASS        | State cleared on container close         |
 
-**Summary:** 15/20 pass, 3/20 partial (lack real-time sync), 2/20 fail (drag/resize latency)
+**Summary:** 15/20 pass, 3/20 partial (lack real-time sync), 2/20 fail
+(drag/resize latency)
 
 ---
 
@@ -138,38 +144,51 @@ UICoordinator updates DOM in Tab B, C, D
 ### Scenario Requirements Needing BroadcastChannel
 
 **Scenario 1:** Basic Quick Tab Creation & Cross-Tab Sync
+
 - **Requirement:** "Cross-tab sync latency: <100ms via BroadcastChannel"
 - **Current Gap:** Drag updates don't sync until drag ends (no broadcast)
 - **Solution:** BroadcastChannel during drag for real-time position updates
 
 **Scenario 7:** Position/Size Persistence Across Tabs
-- **Requirement:** "Move/resize QT 1 in YT 1 ⇨ QT 1 moves/resizes smoothly, position/size saved to storage"
-- **Current Gap:** Other tabs don't see drag/resize in progress, only final state
+
+- **Requirement:** "Move/resize QT 1 in YT 1 ⇨ QT 1 moves/resizes smoothly,
+  position/size saved to storage"
+- **Current Gap:** Other tabs don't see drag/resize in progress, only final
+  state
 - **Solution:** Broadcast ephemeral updates during drag/resize
 
 **Scenario 17:** Multi-Direction Resize Operations
+
 - **Requirement:** "Verify final size persists across tabs"
 - **Current Gap:** Resize doesn't sync in real-time, only on resize end
 - **Solution:** Broadcast ephemeral size updates during resize
 
 **Scenario 11:** Emergency Position/Size Save on Tab Switch
-- **Requirement:** "Rapidly switch to YT 1 (within 100ms) ⇨ Emergency save triggered"
-- **Current Implementation:** Works but could benefit from broadcast for immediate sync
+
+- **Requirement:** "Rapidly switch to YT 1 (within 100ms) ⇨ Emergency save
+  triggered"
+- **Current Implementation:** Works but could benefit from broadcast for
+  immediate sync
 - **Enhancement:** Broadcast emergency save to all tabs immediately
 
 ### Scenario Requirements Needing Proxy Reactivity
 
 **Scenario 3:** Solo Mode (Pin to Specific Tab)
-- **Requirement:** "Solo button state changes to active (highlighted), indicator changes to 🎯"
+
+- **Requirement:** "Solo button state changes to active (highlighted), indicator
+  changes to 🎯"
 - **Current Implementation:** Manual DOM updates
 - **Enhancement:** Proxy watch() auto-updates UI on soloedOnTabs change
 
 **Scenario 4:** Mute Mode (Hide on Specific Tab)
-- **Requirement:** "Mute button activates, QT 1 immediately disappears from YT 1"
+
+- **Requirement:** "Mute button activates, QT 1 immediately disappears from YT
+  1"
 - **Current Implementation:** Manual visibility calculation
 - **Enhancement:** Proxy computed property isVisible auto-hides/shows
 
 **Scenario 13:** Solo/Mute Mutual Exclusion
+
 - **Requirement:** "Enabling one disables the other"
 - **Current Implementation:** Manual button enable/disable logic
 - **Enhancement:** Proxy validation intercepts invalid state combinations
@@ -180,7 +199,8 @@ UICoordinator updates DOM in Tab B, C, D
 
 ### Week 1: Real-Time Sync Implementation
 
-**Objective:** Add BroadcastChannel for real-time drag/resize sync without removing storage sync.
+**Objective:** Add BroadcastChannel for real-time drag/resize sync without
+removing storage sync.
 
 ---
 
@@ -213,17 +233,17 @@ UICoordinator updates DOM in Tab B, C, D
 export class BroadcastSync {
   // Message types
   static MESSAGE_TYPES = {
-    POSITION_UPDATE: 'POSITION_UPDATE',           // During drag
-    POSITION_FINAL: 'POSITION_FINAL',             // Drag end (also saved to storage)
-    SIZE_UPDATE: 'SIZE_UPDATE',                   // During resize
-    SIZE_FINAL: 'SIZE_FINAL',                     // Resize end (also saved to storage)
-    FOCUS: 'FOCUS',                               // Quick Tab brought to front
-    BLUR: 'BLUR',                                 // Quick Tab sent to back
-    MINIMIZE: 'MINIMIZE',                         // Quick Tab minimized
-    RESTORE: 'RESTORE',                           // Quick Tab restored
-    SOLO_TOGGLE: 'SOLO_TOGGLE',                   // Solo mode changed
-    MUTE_TOGGLE: 'MUTE_TOGGLE',                   // Mute mode changed
-    HEARTBEAT: 'HEARTBEAT'                        // Tab alive signal
+    POSITION_UPDATE: 'POSITION_UPDATE', // During drag
+    POSITION_FINAL: 'POSITION_FINAL', // Drag end (also saved to storage)
+    SIZE_UPDATE: 'SIZE_UPDATE', // During resize
+    SIZE_FINAL: 'SIZE_FINAL', // Resize end (also saved to storage)
+    FOCUS: 'FOCUS', // Quick Tab brought to front
+    BLUR: 'BLUR', // Quick Tab sent to back
+    MINIMIZE: 'MINIMIZE', // Quick Tab minimized
+    RESTORE: 'RESTORE', // Quick Tab restored
+    SOLO_TOGGLE: 'SOLO_TOGGLE', // Solo mode changed
+    MUTE_TOGGLE: 'MUTE_TOGGLE', // Mute mode changed
+    HEARTBEAT: 'HEARTBEAT' // Tab alive signal
   };
 
   /**
@@ -233,24 +253,26 @@ export class BroadcastSync {
   constructor(cookieStoreId, tabId) {
     this.cookieStoreId = cookieStoreId;
     this.tabId = tabId;
-    
+
     // Create channel scoped to container
     // Multiple containers = multiple channels (isolation)
     this.channel = new BroadcastChannel(`quick-tabs-${cookieStoreId}`);
-    
+
     // Listener registry: action → [callbacks]
     this.listeners = new Map();
-    
+
     // Message deduplication (prevent echo loops)
     this.processedMessages = new Set();
     this.lastCleanup = Date.now();
-    
+
     // Setup message handler
-    this.channel.onmessage = (event) => {
+    this.channel.onmessage = event => {
       this._handleMessage(event.data);
     };
-    
-    console.log(`[BroadcastSync] Channel opened: quick-tabs-${cookieStoreId} (tab ${tabId})`);
+
+    console.log(
+      `[BroadcastSync] Channel opened: quick-tabs-${cookieStoreId} (tab ${tabId})`
+    );
   }
 
   /**
@@ -266,10 +288,10 @@ export class BroadcastSync {
       timestamp: Date.now(),
       messageId: this._generateMessageId()
     };
-    
+
     // Send to all tabs (including self, but we'll ignore it)
     this.channel.postMessage(message);
-    
+
     // Track sent message to ignore when received
     this._trackMessage(message.messageId);
   }
@@ -308,21 +330,21 @@ export class BroadcastSync {
    */
   _handleMessage(message) {
     const { senderId, action, payload, messageId } = message;
-    
+
     // Ignore own messages
     if (senderId === this.tabId) {
       return;
     }
-    
+
     // Ignore duplicate messages (edge case: rapid sends)
     if (this._isDuplicate(messageId)) {
       console.log(`[BroadcastSync] Ignoring duplicate message ${messageId}`);
       return;
     }
-    
+
     // Track message
     this._trackMessage(messageId);
-    
+
     // Dispatch to registered listeners
     const callbacks = this.listeners.get(action) || [];
     callbacks.forEach(cb => {
@@ -332,7 +354,7 @@ export class BroadcastSync {
         console.error(`[BroadcastSync] Listener error for ${action}:`, err);
       }
     });
-    
+
     // Cleanup old tracked messages periodically
     if (Date.now() - this.lastCleanup > 5000) {
       this._cleanupTrackedMessages();
@@ -384,7 +406,9 @@ export class BroadcastSync {
     this.channel.close();
     this.listeners.clear();
     this.processedMessages.clear();
-    console.log(`[BroadcastSync] Channel closed: quick-tabs-${this.cookieStoreId}`);
+    console.log(
+      `[BroadcastSync] Channel closed: quick-tabs-${this.cookieStoreId}`
+    );
   }
 
   /**
@@ -400,12 +424,13 @@ export class BroadcastSync {
 ```
 
 **Testing (Day 1 end):**
+
 ```javascript
 // Manual test in browser console:
 const sync1 = new BroadcastSync('firefox-default', 'tab-1');
 const sync2 = new BroadcastSync('firefox-default', 'tab-2');
 
-sync2.on('POSITION_UPDATE', (payload) => {
+sync2.on('POSITION_UPDATE', payload => {
   console.log('Tab 2 received:', payload);
 });
 
@@ -441,21 +466,21 @@ export class UpdateHandler {
     eventBus,
     generateSaveId,
     releasePendingSave,
-    cookieStoreId,  // NEW parameter
-    tabId           // NEW parameter
+    cookieStoreId, // NEW parameter
+    tabId // NEW parameter
   ) {
     this.quickTabsMap = quickTabsMap;
     this.storageManager = storageManager;
     this.eventBus = eventBus;
     this.generateSaveId = generateSaveId;
     this.releasePendingSave = releasePendingSave;
-    
+
     // NEW: BroadcastChannel for real-time sync
     this.broadcastSync = new BroadcastSync(cookieStoreId, tabId);
-    
+
     // Setup listeners for broadcasts from other tabs
     this._setupBroadcastListeners();
-    
+
     // Throttle config for broadcast messages (prevent spam)
     this.broadcastThrottle = 16; // 60fps = 16.67ms
     this.lastBroadcastTime = new Map(); // id -> timestamp
@@ -467,25 +492,31 @@ export class UpdateHandler {
    */
   _setupBroadcastListeners() {
     // Listen for position updates during drag from other tabs
-    this.broadcastSync.on(BroadcastSync.MESSAGE_TYPES.POSITION_UPDATE, (payload) => {
-      this._handleRemotePositionUpdate(payload);
-    });
-    
+    this.broadcastSync.on(
+      BroadcastSync.MESSAGE_TYPES.POSITION_UPDATE,
+      payload => {
+        this._handleRemotePositionUpdate(payload);
+      }
+    );
+
     // Listen for size updates during resize from other tabs
-    this.broadcastSync.on(BroadcastSync.MESSAGE_TYPES.SIZE_UPDATE, (payload) => {
+    this.broadcastSync.on(BroadcastSync.MESSAGE_TYPES.SIZE_UPDATE, payload => {
       this._handleRemoteSizeUpdate(payload);
     });
-    
+
     // Listen for final position updates (drag end)
-    this.broadcastSync.on(BroadcastSync.MESSAGE_TYPES.POSITION_FINAL, (payload) => {
-      this._handleRemotePositionUpdate(payload);
-    });
-    
+    this.broadcastSync.on(
+      BroadcastSync.MESSAGE_TYPES.POSITION_FINAL,
+      payload => {
+        this._handleRemotePositionUpdate(payload);
+      }
+    );
+
     // Listen for final size updates (resize end)
-    this.broadcastSync.on(BroadcastSync.MESSAGE_TYPES.SIZE_FINAL, (payload) => {
+    this.broadcastSync.on(BroadcastSync.MESSAGE_TYPES.SIZE_FINAL, payload => {
       this._handleRemoteSizeUpdate(payload);
     });
-    
+
     console.log('[UpdateHandler] Broadcast listeners setup complete');
   }
 
@@ -500,11 +531,13 @@ export class UpdateHandler {
       // Quick Tab doesn't exist locally yet (race condition)
       return;
     }
-    
+
     // Update DOM position only (no storage write)
     tabWindow.updatePosition(left, top);
-    
-    console.log(`[UpdateHandler] Remote position update: ${id} → (${left}, ${top})`);
+
+    console.log(
+      `[UpdateHandler] Remote position update: ${id} → (${left}, ${top})`
+    );
   }
 
   /**
@@ -517,17 +550,19 @@ export class UpdateHandler {
     if (!tabWindow) {
       return;
     }
-    
+
     // Update DOM size only (no storage write)
     tabWindow.updateSize(width, height);
-    
-    console.log(`[UpdateHandler] Remote size update: ${id} → (${width}×${height})`);
+
+    console.log(
+      `[UpdateHandler] Remote size update: ${id} → (${width}×${height})`
+    );
   }
 
   /**
    * Handle position change during drag
    * v1.7.0 - NEW: Broadcasts to other tabs in real-time
-   * 
+   *
    * @param {string} id - Quick Tab ID
    * @param {number} left - Current left position
    * @param {number} top - Current top position
@@ -536,28 +571,28 @@ export class UpdateHandler {
     // Check throttle (prevent 1000+ msgs/sec on fast drag)
     const now = Date.now();
     const lastBroadcast = this.lastBroadcastTime.get(id) || 0;
-    
+
     if (now - lastBroadcast < this.broadcastThrottle) {
       // Too soon, skip broadcast (but DOM updates happen anyway)
       return;
     }
-    
+
     // Broadcast to other tabs (FAST - no storage)
     this.broadcastSync.send(BroadcastSync.MESSAGE_TYPES.POSITION_UPDATE, {
       id,
       left: Math.round(left),
       top: Math.round(top)
     });
-    
+
     this.lastBroadcastTime.set(id, now);
-    
+
     // Local DOM update happens automatically via QuickTabWindow pointer events
   }
 
   /**
    * Handle position change end (drag end)
    * v1.7.0 - HYBRID: Broadcasts + saves to storage
-   * 
+   *
    * @param {string} id - Quick Tab ID
    * @param {number} left - Final left position
    * @param {number} top - Final top position
@@ -565,19 +600,19 @@ export class UpdateHandler {
   async handlePositionChangeEnd(id, left, top) {
     const roundedLeft = Math.round(left);
     const roundedTop = Math.round(top);
-    
+
     // 1. Broadcast final position immediately (other tabs update DOM now)
     this.broadcastSync.send(BroadcastSync.MESSAGE_TYPES.POSITION_FINAL, {
       id,
       left: roundedLeft,
       top: roundedTop
     });
-    
+
     // 2. Save to storage (persistent + fallback for tabs not listening)
     const saveId = this.generateSaveId();
     const tabWindow = this.quickTabsMap.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
-    
+
     if (typeof browser !== 'undefined' && browser.runtime) {
       try {
         await browser.runtime.sendMessage({
@@ -595,23 +630,25 @@ export class UpdateHandler {
         return;
       }
     }
-    
+
     this.releasePendingSave(saveId);
-    
+
     // Emit event for coordinators
     this.eventBus?.emit('tab:position-updated', {
       id,
       left: roundedLeft,
       top: roundedTop
     });
-    
-    console.log(`[UpdateHandler] Position finalized: ${id} → (${roundedLeft}, ${roundedTop})`);
+
+    console.log(
+      `[UpdateHandler] Position finalized: ${id} → (${roundedLeft}, ${roundedTop})`
+    );
   }
 
   /**
    * Handle size change during resize
    * v1.7.0 - NEW: Broadcasts to other tabs in real-time
-   * 
+   *
    * @param {string} id - Quick Tab ID
    * @param {number} width - Current width
    * @param {number} height - Current height
@@ -620,25 +657,25 @@ export class UpdateHandler {
     // Check throttle
     const now = Date.now();
     const lastBroadcast = this.lastBroadcastTime.get(`${id}-size`) || 0;
-    
+
     if (now - lastBroadcast < this.broadcastThrottle) {
       return;
     }
-    
+
     // Broadcast to other tabs
     this.broadcastSync.send(BroadcastSync.MESSAGE_TYPES.SIZE_UPDATE, {
       id,
       width: Math.round(width),
       height: Math.round(height)
     });
-    
+
     this.lastBroadcastTime.set(`${id}-size`, now);
   }
 
   /**
    * Handle size change end (resize end)
    * v1.7.0 - HYBRID: Broadcasts + saves to storage
-   * 
+   *
    * @param {string} id - Quick Tab ID
    * @param {number} width - Final width
    * @param {number} height - Final height
@@ -646,19 +683,19 @@ export class UpdateHandler {
   async handleSizeChangeEnd(id, width, height) {
     const roundedWidth = Math.round(width);
     const roundedHeight = Math.round(height);
-    
+
     // 1. Broadcast final size
     this.broadcastSync.send(BroadcastSync.MESSAGE_TYPES.SIZE_FINAL, {
       id,
       width: roundedWidth,
       height: roundedHeight
     });
-    
+
     // 2. Save to storage
     const saveId = this.generateSaveId();
     const tabWindow = this.quickTabsMap.get(id);
     const cookieStoreId = tabWindow?.cookieStoreId || 'firefox-default';
-    
+
     if (typeof browser !== 'undefined' && browser.runtime) {
       try {
         await browser.runtime.sendMessage({
@@ -676,17 +713,19 @@ export class UpdateHandler {
         return;
       }
     }
-    
+
     this.releasePendingSave(saveId);
-    
+
     // Emit event
     this.eventBus?.emit('tab:size-updated', {
       id,
       width: roundedWidth,
       height: roundedHeight
     });
-    
-    console.log(`[UpdateHandler] Size finalized: ${id} → (${roundedWidth}×${roundedHeight})`);
+
+    console.log(
+      `[UpdateHandler] Size finalized: ${id} → (${roundedWidth}×${roundedHeight})`
+    );
   }
 
   /**
@@ -742,12 +781,12 @@ _initializeHandlers() {
 
 async cleanup() {
   console.log('[QuickTabsManager] Cleaning up...');
-  
+
   // Close BroadcastChannel
   if (this.updateHandler) {
     this.updateHandler.destroy();
   }
-  
+
   // ... other cleanup ...
 }
 
@@ -772,45 +811,49 @@ if (typeof window !== 'undefined') {
    - Load extension with BroadcastChannel code
 
 2. **Test Case 1: Drag Sync**
+
    ```
    WP 1: Create Quick Tab (press Q)
    WP 1: Start dragging Quick Tab
    Expected: YT 1 shows drag in real-time (<5ms latency)
-   
+
    WP 1: Release drag
    Expected: Both tabs show final position
-   
+
    WP 1: Refresh page
    Expected: Quick Tab reloads at final position (storage persistence)
    ```
 
 3. **Test Case 2: Resize Sync**
+
    ```
    YT 1: Grab resize handle on Quick Tab
    YT 1: Drag to resize
    Expected: WP 1 shows resize in real-time
-   
+
    YT 1: Release resize handle
    Expected: Both tabs show final size
    ```
 
 4. **Test Case 3: Container Isolation**
+
    ```
    Open WP 2 in Personal container (FX 2)
    WP 2: Create Quick Tab
    WP 2: Drag Quick Tab
    Expected: WP 1 (default container) does NOT see drag
-   
+
    Verify: BroadcastChannels are scoped per container
    Console: Should see "quick-tabs-firefox-default" and "quick-tabs-personal"
    ```
 
 5. **Test Case 4: Multiple Quick Tabs**
+
    ```
    WP 1: Create QT 1, QT 2, QT 3
    WP 1: Drag QT 2
    Expected: YT 1 updates ONLY QT 2 position, QT 1/3 unchanged
-   
+
    Verify: Each Quick Tab syncs independently
    ```
 
@@ -825,36 +868,36 @@ test('Quick Tab drag syncs across tabs in real-time', async ({ context }) => {
   // Open 2 tabs
   const page1 = await context.newPage();
   const page2 = await context.newPage();
-  
+
   await page1.goto('https://wikipedia.org');
   await page2.goto('https://youtube.com');
-  
+
   // Create Quick Tab in page1
   await page1.keyboard.press('q');
   await page1.waitForSelector('.quick-tab-window');
-  
+
   // Verify Quick Tab appears in page2
   await page2.waitForSelector('.quick-tab-window', { timeout: 5000 });
-  
+
   // Get initial position in page2
   const initialPos = await page2.evaluate(() => {
     const qt = document.querySelector('.quick-tab-window');
     return { left: qt.style.left, top: qt.style.top };
   });
-  
+
   // Drag Quick Tab in page1
   const qtHandle = await page1.$('.quick-tab-window');
   await qtHandle.dragTo(qtHandle, { targetPosition: { x: 500, y: 300 } });
-  
+
   // Wait 100ms for broadcast sync
   await page2.waitForTimeout(100);
-  
+
   // Verify page2 position updated
   const newPos = await page2.evaluate(() => {
     const qt = document.querySelector('.quick-tab-window');
     return { left: qt.style.left, top: qt.style.top };
   });
-  
+
   expect(newPos).not.toEqual(initialPos);
   expect(newPos.left).toContain('500');
   expect(newPos.top).toContain('300');
@@ -877,14 +920,14 @@ test('Quick Tab drag syncs across tabs in real-time', async ({ context }) => {
 async handleFocus(id) {
   const tabWindow = this.quickTabsMap.get(id);
   if (!tabWindow) return;
-  
+
   // Increment z-index
   this.currentZIndex.value++;
   const newZIndex = this.currentZIndex.value;
-  
+
   // Update local DOM
   tabWindow.setZIndex(newZIndex);
-  
+
   // NEW: Broadcast focus event to other tabs
   if (this.broadcastSync) {
     this.broadcastSync.send(BroadcastSync.MESSAGE_TYPES.FOCUS, {
@@ -892,7 +935,7 @@ async handleFocus(id) {
       zIndex: newZIndex
     });
   }
-  
+
   // Save to storage (persistent)
   // ... existing storage save code ...
 }
@@ -903,9 +946,9 @@ async handleFocus(id) {
 ```javascript
 constructor(options) {
   // ... existing code ...
-  
+
   this.broadcastSync = options.broadcastSync; // NEW: Receive from QuickTabsManager
-  
+
   // Setup listener for focus events from other tabs
   if (this.broadcastSync) {
     this.broadcastSync.on(BroadcastSync.MESSAGE_TYPES.FOCUS, ({ id, zIndex }) => {
@@ -935,7 +978,7 @@ this.visibilityHandler = new VisibilityHandler({
   releasePendingSave: this.releasePendingSave.bind(this),
   currentTabId: this.currentTabId,
   Events: this.Events,
-  broadcastSync: this.updateHandler.broadcastSync  // NEW: Share broadcast instance
+  broadcastSync: this.updateHandler.broadcastSync // NEW: Share broadcast instance
 });
 ```
 
@@ -946,6 +989,7 @@ this.visibilityHandler = new VisibilityHandler({
 **Metrics to measure:**
 
 1. **Drag Latency** (before vs after)
+
    ```javascript
    // In UpdateHandler.handlePositionChange()
    const start = performance.now();
@@ -955,26 +999,29 @@ this.visibilityHandler = new VisibilityHandler({
    ```
 
 2. **Storage Writes Reduction**
+
    ```javascript
    // Track storage writes per drag session
    let storageWrites = 0;
-   
+
    // In handlePositionChangeEnd():
    storageWrites++;
    console.log(`Total storage writes this session: ${storageWrites}`);
    ```
 
 3. **Cross-Tab Sync Latency**
+
    ```javascript
    // In BroadcastSync.send():
    const sendTime = Date.now();
-   
+
    // In remote tab listener:
    const receiveTime = Date.now();
    console.log(`Sync latency: ${receiveTime - sendTime}ms`);
    ```
 
 **Expected Results:**
+
 - ✅ Drag latency: 15-50ms → 2-5ms (10x faster)
 - ✅ Storage writes: 60+ per drag → 1 per drag (98% reduction)
 - ✅ Cross-tab sync: Real-time (<5ms) vs delayed (50-200ms)
@@ -1002,7 +1049,8 @@ this.visibilityHandler = new VisibilityHandler({
 
 ### Week 2: Automatic State Management
 
-**Objective:** Replace manual state updates with Proxy-based reactivity for computed properties and auto-sync.
+**Objective:** Replace manual state updates with Proxy-based reactivity for
+computed properties and auto-sync.
 
 ---
 
@@ -1040,17 +1088,17 @@ export class ReactiveQuickTab {
     this.id = data.id;
     this.onSync = onSync;
     this.currentTabId = currentTabId;
-    
+
     // Internal data storage
     this._data = data;
-    
+
     // Watchers: property → [callbacks]
     this._watchers = new Map();
-    
+
     // Computed property cache
     this._computedCache = {};
     this._computedDirty = new Set();
-    
+
     // Create reactive proxy
     this.state = this._createProxy(this._data);
   }
@@ -1066,44 +1114,44 @@ export class ReactiveQuickTab {
         if (this._isComputedProperty(prop)) {
           return this._getComputed(prop);
         }
-        
+
         const value = obj[prop];
-        
+
         // Recursively proxy nested objects
         if (value && typeof value === 'object' && !Array.isArray(value)) {
           return this._createProxy(value, [...path, prop]);
         }
-        
+
         return value;
       },
-      
+
       set: (obj, prop, value) => {
         const oldValue = obj[prop];
-        
+
         // Skip if unchanged
         if (oldValue === value) return true;
-        
+
         // Validate change
         if (!this._validate(prop, value)) {
           console.warn(`[ReactiveQuickTab] Invalid value for ${prop}:`, value);
           return false;
         }
-        
+
         // Apply change
         obj[prop] = value;
-        
+
         // Invalidate computed properties that depend on this property
         this._invalidateComputed(prop);
-        
+
         // Notify watchers
         this._notify(prop, oldValue, value);
-        
+
         // Auto-sync to other tabs
         const fullPath = [...path, prop].join('.');
         if (this.onSync) {
           this.onSync(this.id, fullPath, value);
         }
-        
+
         return true;
       }
     });
@@ -1118,17 +1166,17 @@ export class ReactiveQuickTab {
       case 'left':
       case 'top':
         return typeof value === 'number' && value >= 0;
-      
+
       case 'width':
       case 'height':
         return typeof value === 'number' && value >= 100;
-      
+
       case 'zIndex':
         return typeof value === 'number' && value >= 0;
-      
+
       case 'minimized':
         return typeof value === 'boolean';
-      
+
       case 'soloedOnTabs':
       case 'mutedOnTabs':
         // CRITICAL: Solo and Mute are mutually exclusive
@@ -1140,7 +1188,7 @@ export class ReactiveQuickTab {
           this._data.soloedOnTabs = [];
         }
         return Array.isArray(value);
-      
+
       default:
         return true;
     }
@@ -1162,7 +1210,7 @@ export class ReactiveQuickTab {
     if (!this._computedDirty.has(prop) && prop in this._computedCache) {
       return this._computedCache[prop];
     }
-    
+
     let value;
     switch (prop) {
       case 'isVisible':
@@ -1177,7 +1225,7 @@ export class ReactiveQuickTab {
       default:
         return undefined;
     }
-    
+
     this._computedCache[prop] = value;
     this._computedDirty.delete(prop);
     return value;
@@ -1189,20 +1237,20 @@ export class ReactiveQuickTab {
    */
   _computeVisibility() {
     const { minimized, soloedOnTabs, mutedOnTabs } = this._data;
-    
+
     // Minimized = always hidden
     if (minimized) return false;
-    
+
     // Solo mode = only visible on soloed tabs
     if (soloedOnTabs.length > 0) {
       return soloedOnTabs.includes(this.currentTabId);
     }
-    
+
     // Mute mode = hidden on muted tabs
     if (mutedOnTabs.includes(this.currentTabId)) {
       return false;
     }
-    
+
     // Global mode = always visible
     return true;
   }
@@ -1217,7 +1265,7 @@ export class ReactiveQuickTab {
       soloedOnTabs: ['isVisible', 'isSoloed'],
       mutedOnTabs: ['isVisible', 'isMuted']
     };
-    
+
     const affected = dependencies[changedProp] || [];
     affected.forEach(computed => {
       this._computedDirty.add(computed);
@@ -1250,7 +1298,7 @@ export class ReactiveQuickTab {
       this._watchers.set(prop, []);
     }
     this._watchers.get(prop).push(callback);
-    
+
     // Return unwatch function
     return () => {
       const watchers = this._watchers.get(prop);
@@ -1299,8 +1347,8 @@ export class CreateHandler {
     Events,
     generateId,
     windowFactory,
-    broadcastSync,  // NEW: For auto-sync
-    currentTabId    // NEW: For reactive computed properties
+    broadcastSync, // NEW: For auto-sync
+    currentTabId // NEW: For reactive computed properties
   ) {
     // ... existing fields ...
     this.broadcastSync = broadcastSync;
@@ -1309,7 +1357,7 @@ export class CreateHandler {
 
   create(options) {
     const id = this.generateId();
-    
+
     // Create reactive state wrapper
     const reactiveState = new ReactiveQuickTab(
       {
@@ -1334,38 +1382,38 @@ export class CreateHandler {
       },
       this.currentTabId
     );
-    
+
     // Create QuickTabWindow with reactive state
     const tabWindow = this.windowFactory
       ? this.windowFactory.create({ ...options, id, reactiveState })
       : new QuickTabWindow({ ...options, id, reactiveState });
-    
+
     // Setup visibility watcher (auto-show/hide on isVisible change)
-    reactiveState.watch('isVisible', (visible) => {
+    reactiveState.watch('isVisible', visible => {
       if (visible) {
         tabWindow.show();
       } else {
         tabWindow.hide();
       }
     });
-    
+
     // Setup solo button state watcher
-    reactiveState.watch('soloedOnTabs', (soloedTabs) => {
+    reactiveState.watch('soloedOnTabs', soloedTabs => {
       tabWindow.updateSoloButton(soloedTabs.length > 0);
     });
-    
+
     // Setup mute button state watcher
-    reactiveState.watch('mutedOnTabs', (mutedTabs) => {
+    reactiveState.watch('mutedOnTabs', mutedTabs => {
       const isMuted = mutedTabs.includes(this.currentTabId);
       tabWindow.updateMuteButton(isMuted);
     });
-    
+
     // Add to map
     this.quickTabsMap.set(id, tabWindow);
-    
+
     // Increment z-index
     this.currentZIndex.value++;
-    
+
     return { tabWindow, newZIndex: this.currentZIndex.value };
   }
 
@@ -1375,15 +1423,21 @@ export class CreateHandler {
    */
   _handlePropertyChange(id, prop, value) {
     console.log(`[CreateHandler] Property changed: ${id}.${prop} = ${value}`);
-    
+
     // Broadcast ephemeral properties
     const ephemeralProps = ['left', 'top', 'width', 'height', 'zIndex'];
     if (ephemeralProps.includes(prop)) {
       this.broadcastSync.send('PROPERTY_CHANGED', { id, prop, value });
     }
-    
+
     // Save persistent properties to storage
-    const persistentProps = ['minimized', 'soloedOnTabs', 'mutedOnTabs', 'url', 'title'];
+    const persistentProps = [
+      'minimized',
+      'soloedOnTabs',
+      'mutedOnTabs',
+      'url',
+      'title'
+    ];
     if (persistentProps.includes(prop)) {
       // Trigger storage save via background message
       this._saveToStorage(id, prop, value);
@@ -1430,18 +1484,18 @@ class QuickTabWindow {
     this.minimized = false;
     this.soloedOnTabs = [];
     this.mutedOnTabs = [];
-    
+
     // Manual visibility check
     this.checkVisibility();
   }
-  
+
   updatePosition(left, top) {
     this.left = left;
     this.top = top;
     this.element.style.left = `${left}px`;
     this.element.style.top = `${top}px`;
   }
-  
+
   checkVisibility() {
     // 20+ lines of manual if/else logic
     if (this.minimized) {
@@ -1456,21 +1510,21 @@ class QuickTabWindow {
 class QuickTabWindow {
   constructor(options) {
     this.reactiveState = options.reactiveState; // NEW: Proxy-wrapped state
-    
+
     // Visibility is now automatic via watcher (set in CreateHandler)
     // No manual checkVisibility() needed
   }
-  
+
   updatePosition(left, top) {
     // Just assign to reactive state - sync happens automatically
     this.reactiveState.state.left = left;
     this.reactiveState.state.top = top;
-    
+
     // DOM update still manual (or could use watcher)
     this.element.style.left = `${left}px`;
     this.element.style.top = `${top}px`;
   }
-  
+
   // Remove checkVisibility() - handled by reactive watcher
 }
 ```
@@ -1482,11 +1536,11 @@ export class QuickTabWindow {
   constructor(options) {
     // NEW: Receive reactive state from CreateHandler
     this.reactiveState = options.reactiveState;
-    
+
     // Legacy fields for backward compatibility (read from reactive state)
     this.id = this.reactiveState.id;
     this.cookieStoreId = options.cookieStoreId;
-    
+
     // Callbacks
     this.onDestroy = options.onDestroy;
     this.onMinimize = options.onMinimize;
@@ -1497,19 +1551,19 @@ export class QuickTabWindow {
     this.onSizeChangeEnd = options.onSizeChangeEnd;
     this.onSolo = options.onSolo;
     this.onMute = options.onMute;
-    
+
     // Create DOM
     this.element = this._createWindowElement();
     this.iframe = this.element.querySelector('.quick-tab-iframe');
-    
+
     // Setup drag/resize handlers (unchanged)
     this._setupDragHandlers();
     this._setupResizeHandlers();
     this._setupToolbarHandlers();
-    
+
     // Initial render from reactive state
     this._renderFromState();
-    
+
     // Append to DOM
     document.body.appendChild(this.element);
   }
@@ -1519,22 +1573,23 @@ export class QuickTabWindow {
    * @private
    */
   _renderFromState() {
-    const { left, top, width, height, zIndex, url, title } = this.reactiveState.state;
-    
+    const { left, top, width, height, zIndex, url, title } =
+      this.reactiveState.state;
+
     this.element.style.left = `${left}px`;
     this.element.style.top = `${top}px`;
     this.element.style.width = `${width}px`;
     this.element.style.height = `${height}px`;
     this.element.style.zIndex = zIndex;
-    
+
     if (url) {
       this.iframe.src = url;
     }
-    
+
     if (title) {
       this.element.querySelector('.quick-tab-title').textContent = title;
     }
-    
+
     // Visibility is handled by watcher, but do initial check
     if (!this.reactiveState.state.isVisible) {
       this.element.style.display = 'none';
@@ -1548,7 +1603,7 @@ export class QuickTabWindow {
     // Update reactive state (triggers auto-sync)
     this.reactiveState.state.left = left;
     this.reactiveState.state.top = top;
-    
+
     // Update DOM
     this.element.style.left = `${left}px`;
     this.element.style.top = `${top}px`;
@@ -1561,7 +1616,7 @@ export class QuickTabWindow {
     // Update reactive state (triggers auto-sync)
     this.reactiveState.state.width = width;
     this.reactiveState.state.height = height;
-    
+
     // Update DOM
     this.element.style.width = `${width}px`;
     this.element.style.height = `${height}px`;
@@ -1593,7 +1648,7 @@ export class QuickTabWindow {
       soloBtn.classList.remove('active');
       soloBtn.title = 'Solo (pin to this tab)';
     }
-    
+
     // Disable mute button when solo active (mutual exclusion)
     const muteBtn = this.element.querySelector('.quick-tab-mute-btn');
     muteBtn.disabled = active;
@@ -1611,7 +1666,7 @@ export class QuickTabWindow {
       muteBtn.classList.remove('active');
       muteBtn.title = 'Mute (hide on this tab)';
     }
-    
+
     // Disable solo button when mute active (mutual exclusion)
     const soloBtn = this.element.querySelector('.quick-tab-solo-btn');
     soloBtn.disabled = active;
@@ -1624,9 +1679,9 @@ export class QuickTabWindow {
   _handleSoloClick() {
     const currentTabId = window.quickTabsManager?.currentTabId;
     if (!currentTabId) return;
-    
+
     const { soloedOnTabs } = this.reactiveState.state;
-    
+
     if (soloedOnTabs.includes(currentTabId)) {
       // Unsolo: remove current tab
       this.reactiveState.state.soloedOnTabs = [];
@@ -1634,7 +1689,7 @@ export class QuickTabWindow {
       // Solo: set to current tab only
       this.reactiveState.state.soloedOnTabs = [currentTabId];
     }
-    
+
     // Callback for storage save (if still needed)
     if (this.onSolo) {
       this.onSolo(this.id, this.reactiveState.state.soloedOnTabs);
@@ -1648,17 +1703,19 @@ export class QuickTabWindow {
   _handleMuteClick() {
     const currentTabId = window.quickTabsManager?.currentTabId;
     if (!currentTabId) return;
-    
+
     const { mutedOnTabs } = this.reactiveState.state;
-    
+
     if (mutedOnTabs.includes(currentTabId)) {
       // Unmute: remove current tab
-      this.reactiveState.state.mutedOnTabs = mutedOnTabs.filter(id => id !== currentTabId);
+      this.reactiveState.state.mutedOnTabs = mutedOnTabs.filter(
+        id => id !== currentTabId
+      );
     } else {
       // Mute: add current tab
       this.reactiveState.state.mutedOnTabs = [...mutedOnTabs, currentTabId];
     }
-    
+
     // Callback for storage save
     if (this.onMute) {
       this.onMute(this.id, this.reactiveState.state.mutedOnTabs);
@@ -1749,44 +1806,46 @@ console.timeEnd('isVisible-3'); // ~0.1ms (recomputed)
 browser.runtime.onMessage.addListener(async (message, sender) => {
   switch (message.action) {
     // ... existing handlers ...
-    
+
     case 'UPDATE_QUICK_TAB_PROPERTY':
       return await handlePropertyUpdate(message);
-    
+
     // ... rest of handlers ...
   }
 });
 
 async function handlePropertyUpdate(message) {
   const { id, property, value, cookieStoreId, timestamp } = message;
-  
+
   try {
     // Load current state
     const result = await browser.storage.local.get('quick_tabs_state_v2');
     const state = result.quick_tabs_state_v2 || {};
-    
+
     // Get container state
     const containerState = state[cookieStoreId] || {};
-    
+
     // Find Quick Tab
     const quickTab = containerState[id];
     if (!quickTab) {
-      console.warn(`[Background] Quick Tab ${id} not found for property update`);
+      console.warn(
+        `[Background] Quick Tab ${id} not found for property update`
+      );
       return { success: false, error: 'Quick Tab not found' };
     }
-    
+
     // Update property
     quickTab[property] = value;
     quickTab.lastModified = timestamp;
-    
+
     // Save back to storage
     containerState[id] = quickTab;
     state[cookieStoreId] = containerState;
-    
+
     await browser.storage.local.set({ quick_tabs_state_v2: state });
-    
+
     console.log(`[Background] Property updated: ${id}.${property} = ${value}`);
-    
+
     return { success: true };
   } catch (err) {
     console.error('[Background] Property update error:', err);
@@ -1824,6 +1883,7 @@ async function handlePropertyUpdate(message) {
 **Week 3: Full validation against Issue 47**
 
 #### Scenario 1: Basic Cross-Tab Sync (BroadcastChannel validation)
+
 ```
 PASS: Drag latency < 100ms ✅
 PASS: Position syncs to YT 1 in real-time ✅
@@ -1831,6 +1891,7 @@ PASS: Final position persists after refresh ✅
 ```
 
 #### Scenario 3: Solo Mode (Proxy reactivity validation)
+
 ```
 PASS: Solo button highlights automatically ✅
 PASS: Quick Tab hides on other tabs instantly ✅
@@ -1838,6 +1899,7 @@ PASS: Indicator changes to 🎯 via watcher ✅
 ```
 
 #### Scenario 4: Mute Mode (Proxy reactivity validation)
+
 ```
 PASS: Mute button activates automatically ✅
 PASS: Quick Tab disappears immediately via watcher ✅
@@ -1845,6 +1907,7 @@ PASS: Visibility computed property correct ✅
 ```
 
 #### Scenario 7: Position/Size Persistence (Hybrid validation)
+
 ```
 PASS: Drag updates broadcast in real-time ✅
 PASS: Final position saved to storage ✅
@@ -1852,6 +1915,7 @@ PASS: Resize updates broadcast in real-time ✅
 ```
 
 #### Scenario 13: Solo/Mute Mutual Exclusion (Proxy validation)
+
 ```
 PASS: Setting solo clears mute ✅
 PASS: Setting mute clears solo ✅
@@ -1869,19 +1933,19 @@ test.describe('BroadcastChannel + Proxy Integration', () => {
   test('Drag syncs across tabs with <100ms latency', async ({ context }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage();
-    
+
     await page1.goto('https://wikipedia.org');
     await page2.goto('https://youtube.com');
-    
+
     // Create Quick Tab in page1
     await page1.keyboard.press('q');
     await page1.waitForSelector('.quick-tab-window');
-    
+
     // Start drag in page1
     const startTime = Date.now();
     const qt1 = await page1.$('.quick-tab-window');
     await qt1.dragTo(qt1, { targetPosition: { x: 500, y: 300 } });
-    
+
     // Check page2 received update
     await page2.waitForFunction(
       () => {
@@ -1890,37 +1954,37 @@ test.describe('BroadcastChannel + Proxy Integration', () => {
       },
       { timeout: 200 }
     );
-    
+
     const endTime = Date.now();
     const latency = endTime - startTime;
-    
+
     expect(latency).toBeLessThan(100); // Issue 47 requirement
   });
 
   test('Solo mode auto-hides on other tabs', async ({ context }) => {
     const page1 = await context.newPage();
     const page2 = await context.newPage();
-    
+
     await page1.goto('https://wikipedia.org');
     await page2.goto('https://youtube.com');
-    
+
     // Create Quick Tab in page1
     await page1.keyboard.press('q');
     await page1.waitForSelector('.quick-tab-window');
-    
+
     // Verify visible in page2
     const visible1 = await page2.evaluate(() => {
       const qt = document.querySelector('.quick-tab-window');
       return qt && qt.style.display !== 'none';
     });
     expect(visible1).toBe(true);
-    
+
     // Click solo button in page1
     await page1.click('.quick-tab-solo-btn');
-    
+
     // Wait for broadcast + reactive hide
     await page2.waitForTimeout(100);
-    
+
     // Verify hidden in page2 (reactive watcher hid it)
     const visible2 = await page2.evaluate(() => {
       const qt = document.querySelector('.quick-tab-window');
@@ -1931,32 +1995,32 @@ test.describe('BroadcastChannel + Proxy Integration', () => {
 
   test('Mute/Solo mutual exclusion enforced', async ({ page }) => {
     await page.goto('https://wikipedia.org');
-    
+
     // Create Quick Tab
     await page.keyboard.press('q');
     await page.waitForSelector('.quick-tab-window');
-    
+
     // Click solo
     await page.click('.quick-tab-solo-btn');
-    
+
     // Check mute button disabled
     const muteDisabled1 = await page.evaluate(() => {
       return document.querySelector('.quick-tab-mute-btn').disabled;
     });
     expect(muteDisabled1).toBe(true);
-    
+
     // Click solo again (unsolo)
     await page.click('.quick-tab-solo-btn');
-    
+
     // Check mute button enabled
     const muteDisabled2 = await page.evaluate(() => {
       return document.querySelector('.quick-tab-mute-btn').disabled;
     });
     expect(muteDisabled2).toBe(false);
-    
+
     // Click mute
     await page.click('.quick-tab-mute-btn');
-    
+
     // Check solo button disabled (mutual exclusion)
     const soloDisabled = await page.evaluate(() => {
       return document.querySelector('.quick-tab-solo-btn').disabled;
@@ -1973,11 +2037,13 @@ test.describe('BroadcastChannel + Proxy Integration', () => {
 ### If Phase 1 (BroadcastChannel) Fails
 
 **Symptoms:**
+
 - Messages not received in other tabs
 - Container isolation broken
 - Excessive message spam
 
 **Rollback Steps:**
+
 1. Revert `UpdateHandler.js` to v1.6.2 (no broadcast calls)
 2. Remove `BroadcastSync.js`
 3. Revert `QuickTabsManager.js` parameter passing
@@ -1988,11 +2054,13 @@ test.describe('BroadcastChannel + Proxy Integration', () => {
 ### If Phase 2 (Proxy Reactivity) Fails
 
 **Symptoms:**
+
 - Computed properties incorrect
 - Watchers not firing
 - Performance regression
 
 **Rollback Steps:**
+
 1. Revert `window.js` to manual state
 2. Remove `ReactiveQuickTab.js`
 3. Revert `CreateHandler.js` to plain state objects
@@ -2006,11 +2074,13 @@ test.describe('BroadcastChannel + Proxy Integration', () => {
 ## Summary
 
 **Timeline:**
+
 - **Week 1 (Days 1-4):** Phase 1 - BroadcastChannel
 - **Week 2 (Days 5-8):** Phase 2 - Proxy Reactivity
 - **Week 3 (Days 9-11):** Issue 47 validation + bug fixes
 
 **Expected Benefits:**
+
 - ✅ **10x faster** drag/resize sync (15-50ms → 2-5ms)
 - ✅ **98% fewer** storage writes during drag/resize
 - ✅ **50% less** boilerplate code (auto-sync via Proxy)
@@ -2019,6 +2089,7 @@ test.describe('BroadcastChannel + Proxy Integration', () => {
 - ✅ **100%** Issue 47 compliance (all 20 scenarios pass)
 
 **Risk Mitigation:**
+
 - ✅ Phased rollout (alpha.1 → alpha.2 → beta.1 → stable)
 - ✅ Backward compatibility (storage sync kept as fallback)
 - ✅ Container isolation maintained (scoped BroadcastChannels)
@@ -2034,4 +2105,5 @@ test.describe('BroadcastChannel + Proxy Integration', () => {
 
 **Document Maintainer:** Perplexity AI  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Updated:** November 26, 2025
+**Last
+Updated:** November 26, 2025

@@ -53,7 +53,7 @@ export class QuickTab {
    * Create a new QuickTab instance
    * v1.6.2.2 - ISSUE #35/#51 FIX: Removed container parameter for global visibility
    * v1.6.3 - Added slot property for global ID persistence
-   * 
+   *
    * @param {Object} params - QuickTab parameters
    * @param {string} params.id - Unique identifier
    * @param {string} params.url - URL of the Quick Tab
@@ -398,14 +398,14 @@ export class QuickTab {
    * v1.6.1.5 - Extract to reduce complexity
    * v1.6.2.2 - Removed container field for global visibility
    * v1.6.3 - Include slot for global ID persistence
-   * 
+   *
    * @private
    * @param {Object} data - Raw storage data
    * @returns {Object} - Normalized parameters
    */
   static _normalizeStorageData(data) {
     const now = Date.now();
-    
+
     // Extract timestamp values with fallbacks
     const createdAt = data.createdAt ?? now;
     const lastModified = data.lastModified ?? createdAt;

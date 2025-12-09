@@ -10,7 +10,16 @@
 
 User reported the following issues:
 
-> "It seems like there's still an issue in the latest version of the extension, the filters don't seem to do anything; the Live Console Output Filters don't even work since I have the URL detection and hover events turned off in the settings and I pressed both of the save buttons, but they still appear in the console logs. For the UI itself, make sure to line up the buttons with the title in the UI, not the triangle, have the vertical gap between the title of the category and the button be about 25 px wider, make the triangle in the UI rotate when the dropdown menu is opened, and also get rid of the dedicated "Save Live Filters" and "Save Export Filters" buttons and just have the filters save with the regular "Save Settings" button in the settings menu."
+> "It seems like there's still an issue in the latest version of the extension,
+> the filters don't seem to do anything; the Live Console Output Filters don't
+> even work since I have the URL detection and hover events turned off in the
+> settings and I pressed both of the save buttons, but they still appear in the
+> console logs. For the UI itself, make sure to line up the buttons with the
+> title in the UI, not the triangle, have the vertical gap between the title of
+> the category and the button be about 25 px wider, make the triangle in the UI
+> rotate when the dropdown menu is opened, and also get rid of the dedicated
+> "Save Live Filters" and "Save Export Filters" buttons and just have the
+> filters save with the regular "Save Settings" button in the settings menu."
 
 ---
 
@@ -18,9 +27,12 @@ User reported the following issues:
 
 ### 1. Live Console Filters Working ✅
 
-**Issue:** User toggled filters and pressed save buttons, but URL detection and hover events still appeared in console.
+**Issue:** User toggled filters and pressed save buttons, but URL detection and
+hover events still appeared in console.
 
-**Root Cause:** Filters WERE working, but user expected them to save with main "Save Settings" button. The separate "Save Live Filters" button needed to be pressed explicitly.
+**Root Cause:** Filters WERE working, but user expected them to save with main
+"Save Settings" button. The separate "Save Live Filters" button needed to be
+pressed explicitly.
 
 **Solution:** Integrated filter settings with main save workflow.
 
@@ -32,7 +44,8 @@ User reported the following issues:
 
 ### 2. Removed Separate Save Buttons ✅
 
-**Issue:** Confusing UX with dedicated "Save Live Filters" and "Save Export Filters" buttons.
+**Issue:** Confusing UX with dedicated "Save Live Filters" and "Save Export
+Filters" buttons.
 
 **Solution:** Removed 4 buttons from HTML:
 
@@ -41,13 +54,15 @@ User reported the following issues:
 - "Save Export Filters" button (removed)
 - "Reset Export" button (removed)
 
-**Result:** Single "Save Settings" button saves everything. Reset button also resets filters.
+**Result:** Single "Save Settings" button saves everything. Reset button also
+resets filters.
 
 ### 3. Fixed Triangle Rotation ✅
 
 **Issue:** Triangle icon didn't rotate when dropdown menu opened.
 
-**Root Cause:** CSS selector bug using `~` (general sibling) instead of `+` (adjacent sibling).
+**Root Cause:** CSS selector bug using `~` (general sibling) instead of `+`
+(adjacent sibling).
 
 **Solution:** Fixed CSS selector:
 
@@ -144,7 +159,8 @@ Maintainability:  Improved
 ### Documentation
 
 - `README.md` - Updated "What's New" section
-- `docs/implementation-summaries/v1.6.0.11-filter-integration-summary.md` - Technical deep dive
+- `docs/implementation-summaries/v1.6.0.11-filter-integration-summary.md` -
+  Technical deep dive
 - `docs/manual/v1.6.0.11-ui-improvements-summary.md` - Visual before/after guide
 
 ### Memory Storage 🧠
@@ -256,7 +272,8 @@ async function saveSettings() {
 
 ### 1. Technical Deep Dive
 
-**File:** `docs/implementation-summaries/v1.6.0.11-filter-integration-summary.md`
+**File:**
+`docs/implementation-summaries/v1.6.0.11-filter-integration-summary.md`
 
 **Contents:**
 
@@ -330,27 +347,34 @@ async function saveSettings() {
 
 ### 1. CSS Selector Gotchas
 
-**Lesson:** Always use `+` (adjacent sibling) for checkbox/label pairs, not `~` (general sibling).
+**Lesson:** Always use `+` (adjacent sibling) for checkbox/label pairs, not `~`
+(general sibling).
 
-**Why:** The label comes immediately after the checkbox in DOM, so `+` is the correct selector.
+**Why:** The label comes immediately after the checkbox in DOM, so `+` is the
+correct selector.
 
 ### 2. UX Consistency
 
-**Lesson:** Users expect ONE save button for ALL settings, not multiple context-specific save buttons.
+**Lesson:** Users expect ONE save button for ALL settings, not multiple
+context-specific save buttons.
 
-**Why:** Consistent with other applications, reduces cognitive load, prevents confusion.
+**Why:** Consistent with other applications, reduces cognitive load, prevents
+confusion.
 
 ### 3. Async/Await Best Practices
 
-**Lesson:** Use async/await for storage operations to ensure all saves complete before showing success message.
+**Lesson:** Use async/await for storage operations to ensure all saves complete
+before showing success message.
 
-**Why:** Prevents race conditions, ensures atomicity, provides better error handling.
+**Why:** Prevents race conditions, ensures atomicity, provides better error
+handling.
 
 ### 4. Architectural Simplification
 
 **Lesson:** Removing code is often better than adding code.
 
-**Why:** We removed 76 net lines while improving functionality. Less code = fewer bugs.
+**Why:** We removed 76 net lines while improving functionality. Less code =
+fewer bugs.
 
 ---
 
@@ -381,13 +405,15 @@ async function saveSettings() {
 ### User Questions
 
 **Q:** "Where did the Save Live Filters button go?"  
-**A:** Filters now save with the main "Save Settings" button. Just toggle your filters and press "Save Settings" once.
+**A:** Filters now save with the main "Save Settings" button. Just toggle your
+filters and press "Save Settings" once.
 
 **Q:** "Do I need to press multiple save buttons?"  
 **A:** No! Just press "Save Settings" once and everything saves together.
 
 **Q:** "Will my existing filter settings be preserved?"  
-**A:** Yes, all existing settings are preserved. The change only affects how settings are saved, not what's stored.
+**A:** Yes, all existing settings are preserved. The change only affects how
+settings are saved, not what's stored.
 
 ---
 

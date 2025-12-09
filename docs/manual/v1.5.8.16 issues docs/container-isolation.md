@@ -1,8 +1,14 @@
 # Firefox Container Tabs Integration for Quick Tabs
+
 ## Complete Implementation Guide v1.5.8.17+
 
 ### Document Purpose
-This document provides a comprehensive implementation plan for integrating Firefox Container Tabs API into the copy-URL-on-hover extension to achieve complete Quick Tab and Quick Tab Manager isolation by container. This document is optimized for GitHub Copilot Agent implementation while remaining human-readable.
+
+This document provides a comprehensive implementation plan for integrating
+Firefox Container Tabs API into the copy-URL-on-hover extension to achieve
+complete Quick Tab and Quick Tab Manager isolation by container. This document
+is optimized for GitHub Copilot Agent implementation while remaining
+human-readable.
 
 ---
 
@@ -23,9 +29,14 @@ This document provides a comprehensive implementation plan for integrating Firef
 
 ## Overview
 
-Firefox Container Tabs allow users to separate their browsing contexts using different "containers" (e.g., Personal, Work, Shopping). Each container has a unique `cookieStoreId` and maintains completely isolated cookies, localStorage, and session data.
+Firefox Container Tabs allow users to separate their browsing contexts using
+different "containers" (e.g., Personal, Work, Shopping). Each container has a
+unique `cookieStoreId` and maintains completely isolated cookies, localStorage,
+and session data.
 
-**Goal**: Extend Quick Tabs functionality to respect container boundaries, ensuring:
+**Goal**: Extend Quick Tabs functionality to respect container boundaries,
+ensuring:
+
 - Quick Tabs opened in Container 1 only appear in tabs within Container 1
 - Quick Tab Manager shows only Quick Tabs from the current container
 - Cross-tab synchronization works within containers but not across them
@@ -35,14 +46,22 @@ Firefox Container Tabs allow users to separate their browsing contexts using dif
 ## Requirements Summary
 
 ### Requirement 1: Quick Tab Container Isolation
-**User Story**: When I have a Quick Tab open in Tab A (Firefox Container 1) and switch to Tab B (Firefox Container 2), the Quick Tab from Container 1 should NOT appear in Tab B.
 
-**Technical Translation**: Quick Tabs must be namespaced by `cookieStoreId` in storage and filtered during restoration.
+**User Story**: When I have a Quick Tab open in Tab A (Firefox Container 1) and
+switch to Tab B (Firefox Container 2), the Quick Tab from Container 1 should NOT
+appear in Tab B.
+
+**Technical Translation**: Quick Tabs must be namespaced by `cookieStoreId` in
+storage and filtered during restoration.
 
 ### Requirement 2: Quick Tab Manager Container Filtering
-**User Story**: If I have 4 Quick Tabs in Container 1 and 6 Quick Tabs in Container 2, opening the Quick Tab Manager in Container 1 should show only the 4 Quick Tabs from Container 1.
 
-**Technical Translation**: Quick Tab Manager must query the current tab's `cookieStoreId` and filter the displayed list accordingly.
+**User Story**: If I have 4 Quick Tabs in Container 1 and 6 Quick Tabs in
+Container 2, opening the Quick Tab Manager in Container 1 should show only the 4
+Quick Tabs from Container 1.
+
+**Technical Translation**: Quick Tab Manager must query the current tab's
+`cookieStoreId` and filter the displayed list accordingly.
 
 ---
 
@@ -51,10 +70,12 @@ Firefox Container Tabs allow users to separate their browsing contexts using dif
 ### Current Behavior (v1.5.8.16)
 
 **Scenario**: User opens Quick Tab in Firefox Container "Personal"
+
 1. User hovers over link in tab with `cookieStoreId: "firefox-container-1"`
 2. User presses Quick Tab shortcut
 3. Quick Tab is created and stored in `browser.storage.sync.quicktabs_state_v2`
 4. Storage structure:
+
 ```javascript
 {
   "quicktabs_state_v2": [
@@ -68,17 +89,21 @@ Firefox Container Tabs allow users to separate their browsing contexts using dif
   ]
 }
 ```
-5. User switches to tab in Firefox Container "Work" (`cookieStoreId: "firefox-container-2"`)
+
+5. User switches to tab in Firefox Container "Work"
+   (`cookieStoreId: "firefox-container-2"`)
 6. Extension loads ALL Quick Tabs from storage
 7. **Problem**: Quick Tab from Container 1 appears in Container 2 tab ❌
 
 ### Desired Behavior (v1.5.8.17+)
 
 **Scenario**: User opens Quick Tab in Firefox Container "Personal"
+
 1. User hovers over link in tab with `cookieStoreId: "firefox-container-1"`
 2. User presses Quick Tab shortcut
-3. Extension detects current `cookieStoreId` 
+3. Extension detects current `cookieStoreId`
 4. Quick Tab is created with container tracking:
+
 ```javascript
 {
   "quicktabs_state_v3": {
@@ -105,8 +130,11 @@ Firefox Container Tabs allow users to separate their browsing contexts using dif
   }
 }
 ```
-5. User switches to tab in Firefox Container "Work" (`cookieStoreId: "firefox-container-2"`)
-6. Extension loads ONLY Quick Tabs with matching `cookieStoreId: "firefox-container-2"`
+
+5. User switches to tab in Firefox Container "Work"
+   (`cookieStoreId: "firefox-container-2"`)
+6. Extension loads ONLY Quick Tabs with matching
+   `cookieStoreId: "firefox-container-2"`
 7. **Result**: No Quick Tabs appear (none exist for Container 2) ✅
 
 ---
@@ -115,31 +143,29 @@ Firefox Container Tabs allow users to separate their browsing contexts using dif
 
 ### Container Identification
 
-Every tab in Firefox has a `cookieStoreId` property accessible via `browser.tabs.query()`:
+Every tab in Firefox has a `cookieStoreId` property accessible via
+`browser.tabs.query()`:
 
-| Container Type | cookieStoreId Value |
-|---|---|
-| Default (no container) | `"firefox-default"` |
-| Private Browsing | `"firefox-private"` |
-| Container 1 | `"firefox-container-1"` |
-| Container 2 | `"firefox-container-2"` |
-| Container N | `"firefox-container-N"` |
+| Container Type         | cookieStoreId Value     |
+| ---------------------- | ----------------------- |
+| Default (no container) | `"firefox-default"`     |
+| Private Browsing       | `"firefox-private"`     |
+| Container 1            | `"firefox-container-1"` |
+| Container 2            | `"firefox-container-2"` |
+| Container N            | `"firefox-container-N"` |
 
 ### Required Permissions
 
 Add to `manifest.json`:
+
 ```json
 {
-  "permissions": [
-    "contextualIdentities",
-    "cookies",
-    "tabs",
-    "storage"
-  ]
+  "permissions": ["contextualIdentities", "cookies", "tabs", "storage"]
 }
 ```
 
-**Note**: 
+**Note**:
+
 - `contextualIdentities`: Enables container management
 - `cookies`: Required for accessing `cookieStoreId` property
 - Existing permissions `tabs` and `storage` remain unchanged
@@ -156,14 +182,15 @@ async function getCurrentCookieStoreId() {
     active: true,
     currentWindow: true
   });
-  
-  return tabs[0]?.cookieStoreId || "firefox-default";
+
+  return tabs[0]?.cookieStoreId || 'firefox-default';
 }
 ```
 
 ### Container Metadata
 
 Get container display information:
+
 ```javascript
 /**
  * Get container details for display purposes
@@ -174,24 +201,25 @@ async function getContainerInfo(cookieStoreId) {
   try {
     const container = await browser.contextualIdentities.get(cookieStoreId);
     return {
-      name: container.name,       // e.g., "Personal"
-      color: container.color,     // e.g., "blue"
-      icon: container.icon,       // e.g., "fingerprint"
-      iconUrl: container.iconUrl  // Data URL of icon
+      name: container.name, // e.g., "Personal"
+      color: container.color, // e.g., "blue"
+      icon: container.icon, // e.g., "fingerprint"
+      iconUrl: container.iconUrl // Data URL of icon
     };
   } catch (e) {
     // Default or private container
-    if (cookieStoreId === "firefox-default") {
-      return { name: "Default", color: "gray", icon: "circle" };
-    } else if (cookieStoreId === "firefox-private") {
-      return { name: "Private", color: "purple", icon: "briefcase" };
+    if (cookieStoreId === 'firefox-default') {
+      return { name: 'Default', color: 'gray', icon: 'circle' };
+    } else if (cookieStoreId === 'firefox-private') {
+      return { name: 'Private', color: 'purple', icon: 'briefcase' };
     }
-    return { name: "Unknown", color: "gray", icon: "circle" };
+    return { name: 'Unknown', color: 'gray', icon: 'circle' };
   }
 }
 ```
 
 ### Documentation References
+
 - [Work with contextual identities - MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Work_with_contextual_identities)
 - [contextualIdentities API - MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/contextualIdentities)
 - [tabs.query() - MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/query)
@@ -278,12 +306,10 @@ browser.storage.sync {
 **File**: `manifest.json`
 
 Add missing permissions:
+
 ```json
 {
-  "permissions": [
-    "contextualIdentities",
-    "cookies"
-  ]
+  "permissions": ["contextualIdentities", "cookies"]
 }
 ```
 
@@ -307,11 +333,11 @@ export async function getCurrentCookieStoreId() {
       active: true,
       currentWindow: true
     });
-    
-    return tabs[0]?.cookieStoreId || "firefox-default";
+
+    return tabs[0]?.cookieStoreId || 'firefox-default';
   } catch (error) {
-    console.error("[Container Utils] Failed to get cookieStoreId:", error);
-    return "firefox-default";
+    console.error('[Container Utils] Failed to get cookieStoreId:', error);
+    return 'firefox-default';
   }
 }
 
@@ -322,24 +348,24 @@ export async function getCurrentCookieStoreId() {
  */
 export async function getContainerInfo(cookieStoreId) {
   // Handle default and private containers
-  if (cookieStoreId === "firefox-default") {
+  if (cookieStoreId === 'firefox-default') {
     return {
-      name: "Default",
-      color: "#7c7c7d",
-      icon: "circle",
-      cookieStoreId: "firefox-default"
+      name: 'Default',
+      color: '#7c7c7d',
+      icon: 'circle',
+      cookieStoreId: 'firefox-default'
     };
   }
-  
-  if (cookieStoreId === "firefox-private") {
+
+  if (cookieStoreId === 'firefox-private') {
     return {
-      name: "Private",
-      color: "#9400ff",
-      icon: "briefcase",
-      cookieStoreId: "firefox-private"
+      name: 'Private',
+      color: '#9400ff',
+      icon: 'briefcase',
+      cookieStoreId: 'firefox-private'
     };
   }
-  
+
   // Query contextualIdentities API for container details
   try {
     const container = await browser.contextualIdentities.get(cookieStoreId);
@@ -351,11 +377,11 @@ export async function getContainerInfo(cookieStoreId) {
       cookieStoreId: container.cookieStoreId
     };
   } catch (error) {
-    console.error("[Container Utils] Failed to get container info:", error);
+    console.error('[Container Utils] Failed to get container info:', error);
     return {
-      name: "Unknown",
-      color: "#7c7c7d",
-      icon: "circle",
+      name: 'Unknown',
+      color: '#7c7c7d',
+      icon: 'circle',
       cookieStoreId: cookieStoreId
     };
   }
@@ -370,7 +396,7 @@ export async function isContainersEnabled() {
     await browser.contextualIdentities.query({});
     return true;
   } catch (error) {
-    console.warn("[Container Utils] Containers not enabled:", error);
+    console.warn('[Container Utils] Containers not enabled:', error);
     return false;
   }
 }
@@ -382,27 +408,27 @@ export async function isContainersEnabled() {
 export async function getAllContainers() {
   try {
     const containers = await browser.contextualIdentities.query({});
-    
+
     // Always include default container
     const all = [
       {
-        name: "Default",
-        color: "#7c7c7d",
-        icon: "circle",
-        cookieStoreId: "firefox-default"
+        name: 'Default',
+        color: '#7c7c7d',
+        icon: 'circle',
+        cookieStoreId: 'firefox-default'
       },
       ...containers
     ];
-    
+
     return all;
   } catch (error) {
-    console.error("[Container Utils] Failed to get all containers:", error);
+    console.error('[Container Utils] Failed to get all containers:', error);
     return [
       {
-        name: "Default",
-        color: "#7c7c7d",
-        icon: "circle",
-        cookieStoreId: "firefox-default"
+        name: 'Default',
+        color: '#7c7c7d',
+        icon: 'circle',
+        cookieStoreId: 'firefox-default'
       }
     ];
   }
@@ -410,8 +436,13 @@ export async function getAllContainers() {
 ```
 
 **Import in content.js**:
+
 ```javascript
-import { getCurrentCookieStoreId, getContainerInfo, isContainersEnabled } from './utils/container-utils.js';
+import {
+  getCurrentCookieStoreId,
+  getContainerInfo,
+  isContainersEnabled
+} from './utils/container-utils.js';
 ```
 
 ---
@@ -425,6 +456,7 @@ import { getCurrentCookieStoreId, getContainerInfo, isContainersEnabled } from '
 Change the storage key and structure:
 
 **Before** (v1.5.8.16):
+
 ```javascript
 const STATE_KEY = 'quicktabs_state_v2';
 
@@ -437,6 +469,7 @@ const STATE_KEY = 'quicktabs_state_v2';
 ```
 
 **After** (v1.5.8.17+):
+
 ```javascript
 const STATE_KEY = 'quicktabs_state_v3';
 
@@ -480,26 +513,28 @@ export class ContainerStateManager {
    */
   async saveQuickTabs(quickTabsData) {
     const cookieStoreId = await getCurrentCookieStoreId();
-    
+
     // Retrieve entire state object
     const result = await browser.storage.sync.get(this.stateKey);
     const allContainerStates = result[this.stateKey] || {};
-    
+
     // Update state for current container
     allContainerStates[cookieStoreId] = {
       tabs: quickTabsData.map(tab => ({
         ...tab,
-        cookieStoreId: cookieStoreId  // Ensure cookieStoreId is always set
+        cookieStoreId: cookieStoreId // Ensure cookieStoreId is always set
       })),
       timestamp: Date.now()
     };
-    
+
     // Save back to storage
     await browser.storage.sync.set({
       [this.stateKey]: allContainerStates
     });
-    
-    console.log(`[Container State] Saved ${quickTabsData.length} Quick Tabs for ${cookieStoreId}`);
+
+    console.log(
+      `[Container State] Saved ${quickTabsData.length} Quick Tabs for ${cookieStoreId}`
+    );
   }
 
   /**
@@ -508,18 +543,20 @@ export class ContainerStateManager {
    */
   async loadQuickTabs() {
     const cookieStoreId = await getCurrentCookieStoreId();
-    
+
     const result = await browser.storage.sync.get(this.stateKey);
     const allContainerStates = result[this.stateKey] || {};
-    
+
     const containerState = allContainerStates[cookieStoreId];
-    
+
     if (!containerState || !containerState.tabs) {
       console.log(`[Container State] No Quick Tabs found for ${cookieStoreId}`);
       return [];
     }
-    
-    console.log(`[Container State] Loaded ${containerState.tabs.length} Quick Tabs for ${cookieStoreId}`);
+
+    console.log(
+      `[Container State] Loaded ${containerState.tabs.length} Quick Tabs for ${cookieStoreId}`
+    );
     return containerState.tabs || [];
   }
 
@@ -537,19 +574,19 @@ export class ContainerStateManager {
    */
   async clearCurrentContainer() {
     const cookieStoreId = await getCurrentCookieStoreId();
-    
+
     const result = await browser.storage.sync.get(this.stateKey);
     const allContainerStates = result[this.stateKey] || {};
-    
+
     allContainerStates[cookieStoreId] = {
       tabs: [],
       timestamp: Date.now()
     };
-    
+
     await browser.storage.sync.set({
       [this.stateKey]: allContainerStates
     });
-    
+
     console.log(`[Container State] Cleared Quick Tabs for ${cookieStoreId}`);
   }
 
@@ -559,24 +596,26 @@ export class ContainerStateManager {
    */
   async removeQuickTab(quickTabId) {
     const cookieStoreId = await getCurrentCookieStoreId();
-    
+
     const result = await browser.storage.sync.get(this.stateKey);
     const allContainerStates = result[this.stateKey] || {};
-    
+
     if (!allContainerStates[cookieStoreId]) {
       return;
     }
-    
-    allContainerStates[cookieStoreId].tabs = allContainerStates[cookieStoreId].tabs.filter(
-      tab => tab.id !== quickTabId
-    );
+
+    allContainerStates[cookieStoreId].tabs = allContainerStates[
+      cookieStoreId
+    ].tabs.filter(tab => tab.id !== quickTabId);
     allContainerStates[cookieStoreId].timestamp = Date.now();
-    
+
     await browser.storage.sync.set({
       [this.stateKey]: allContainerStates
     });
-    
-    console.log(`[Container State] Removed Quick Tab ${quickTabId} from ${cookieStoreId}`);
+
+    console.log(
+      `[Container State] Removed Quick Tab ${quickTabId} from ${cookieStoreId}`
+    );
   }
 
   /**
@@ -595,11 +634,11 @@ export class ContainerStateManager {
   async getTotalQuickTabCount() {
     const allStates = await this.loadAllContainerStates();
     let total = 0;
-    
+
     for (const containerId in allStates) {
       total += allStates[containerId].tabs?.length || 0;
     }
-    
+
     return total;
   }
 }
@@ -613,6 +652,7 @@ export const containerStateManager = new ContainerStateManager();
 **File**: `src/content.js` or wherever Quick Tabs are managed
 
 **Import**:
+
 ```javascript
 import { containerStateManager } from './core/container-state-manager.js';
 import { getCurrentCookieStoreId } from './utils/container-utils.js';
@@ -621,6 +661,7 @@ import { getCurrentCookieStoreId } from './utils/container-utils.js';
 **Replace all state operations**:
 
 **Before**:
+
 ```javascript
 // Loading Quick Tabs
 const allQuickTabs = await StateManager.loadQuickTabs();
@@ -630,6 +671,7 @@ await StateManager.saveQuickTabs(quickTabsArray);
 ```
 
 **After**:
+
 ```javascript
 // Loading Quick Tabs (only for current container)
 const containerQuickTabs = await containerStateManager.loadQuickTabs();
@@ -642,17 +684,19 @@ await containerStateManager.saveQuickTabs(quickTabsArray);
 
 ### Phase 3: Container-Aware BroadcastChannel
 
-Currently, BroadcastChannel synchronizes Quick Tab state across ALL tabs. We need to filter messages by `cookieStoreId`.
+Currently, BroadcastChannel synchronizes Quick Tab state across ALL tabs. We
+need to filter messages by `cookieStoreId`.
 
 #### Step 3.1: Add Container ID to Broadcast Messages
 
 **File**: `src/content.js` or Quick Tab management module
 
 **Before**:
+
 ```javascript
 // Broadcasting Quick Tab creation
 quickTabsBroadcast.postMessage({
-  type: "CREATE",
+  type: 'CREATE',
   data: {
     id: quickTab.id,
     url: quickTab.url,
@@ -663,19 +707,20 @@ quickTabsBroadcast.postMessage({
 ```
 
 **After**:
+
 ```javascript
 // Broadcasting Quick Tab creation with container ID
 const cookieStoreId = await getCurrentCookieStoreId();
 
 quickTabsBroadcast.postMessage({
-  type: "CREATE",
-  cookieStoreId: cookieStoreId,  // NEW: Include container ID
+  type: 'CREATE',
+  cookieStoreId: cookieStoreId, // NEW: Include container ID
   data: {
     id: quickTab.id,
     url: quickTab.url,
     left: quickTab.left,
     top: quickTab.top,
-    cookieStoreId: cookieStoreId  // Also in data for consistency
+    cookieStoreId: cookieStoreId // Also in data for consistency
   }
 });
 ```
@@ -685,11 +730,12 @@ quickTabsBroadcast.postMessage({
 **File**: `src/content.js` or Quick Tab management module
 
 **Before**:
+
 ```javascript
-quickTabsBroadcast.addEventListener("message", (event) => {
+quickTabsBroadcast.addEventListener('message', event => {
   const { type, data } = event.data;
-  
-  if (type === "CREATE") {
+
+  if (type === 'CREATE') {
     createQuickTabFromBroadcast(data);
   }
   // ... handle other types
@@ -697,20 +743,23 @@ quickTabsBroadcast.addEventListener("message", (event) => {
 ```
 
 **After**:
+
 ```javascript
-quickTabsBroadcast.addEventListener("message", async (event) => {
+quickTabsBroadcast.addEventListener('message', async event => {
   const { type, cookieStoreId, data } = event.data;
-  
+
   // FILTER: Ignore broadcasts from different containers
   const currentCookieStoreId = await getCurrentCookieStoreId();
-  
+
   if (cookieStoreId !== currentCookieStoreId) {
-    console.log(`[Broadcast] Ignoring message from ${cookieStoreId} (current: ${currentCookieStoreId})`);
-    return;  // Ignore messages from other containers
+    console.log(
+      `[Broadcast] Ignoring message from ${cookieStoreId} (current: ${currentCookieStoreId})`
+    );
+    return; // Ignore messages from other containers
   }
-  
+
   // Process message if container matches
-  if (type === "CREATE") {
+  if (type === 'CREATE') {
     createQuickTabFromBroadcast(data);
   }
   // ... handle other types
@@ -718,6 +767,7 @@ quickTabsBroadcast.addEventListener("message", async (event) => {
 ```
 
 **Apply this pattern to ALL broadcast message types**:
+
 - `CREATE`
 - `UPDATE`
 - `MOVE`
@@ -744,13 +794,13 @@ class QuickTabsManager {
     // Detect current container
     this.cookieStoreId = await getCurrentCookieStoreId();
     this.containerInfo = await getContainerInfo(this.cookieStoreId);
-    
+
     // Load Quick Tabs for this container ONLY
     this.quickTabs = await containerStateManager.loadQuickTabs();
-    
+
     // Render UI
     this.render();
-    
+
     // Listen for storage changes
     browser.storage.onChanged.addListener(this.handleStorageChange.bind(this));
   }
@@ -758,10 +808,10 @@ class QuickTabsManager {
   async render() {
     // Clear existing content
     this.container.innerHTML = '';
-    
+
     // Show container badge/header
     this.renderContainerHeader();
-    
+
     // Show Quick Tabs list
     if (this.quickTabs.length === 0) {
       this.renderEmptyState();
@@ -788,10 +838,10 @@ class QuickTabsManager {
   renderEmptyState() {
     const emptyState = document.createElement('div');
     emptyState.className = 'manager-empty-state';
-    
+
     // Get user's configured Quick Tab shortcut
     const shortcut = await this.getQuickTabShortcut();
-    
+
     emptyState.innerHTML = `
       <p>No Quick Tabs in this container.</p>
       <p class="hint">Press <kbd>${shortcut}</kbd> while hovering over a link to create one.</p>
@@ -803,7 +853,7 @@ class QuickTabsManager {
     // Fetch from settings or use default
     const settings = await browser.storage.sync.get('quickTabShortcut');
     const shortcut = settings.quickTabShortcut || { key: 'q', ctrl: false, alt: false, shift: false };
-    
+
     return this.formatShortcut(shortcut);
   }
 
@@ -832,7 +882,8 @@ class QuickTabsManager {
 
 #### Step 4.2: Add "Show All Containers" Toggle (Optional Enhancement)
 
-Allow users to optionally view Quick Tabs from all containers with visual distinction:
+Allow users to optionally view Quick Tabs from all containers with visual
+distinction:
 
 ```javascript
 class QuickTabsManager {
@@ -842,13 +893,13 @@ class QuickTabsManager {
 
   async toggleShowAllContainers() {
     this.showAllContainers = !this.showAllContainers;
-    
+
     if (this.showAllContainers) {
       this.allContainerStates = await containerStateManager.loadAllContainerStates();
     } else {
       this.quickTabs = await containerStateManager.loadQuickTabs();
     }
-    
+
     this.render();
   }
 
@@ -865,7 +916,7 @@ class QuickTabsManager {
     for (const containerId in this.allContainerStates) {
       const containerState = this.allContainerStates[containerId];
       const containerInfo = await getContainerInfo(containerId);
-      
+
       const section = document.createElement('div');
       section.className = 'container-section';
       section.innerHTML = `
@@ -879,7 +930,7 @@ class QuickTabsManager {
           ${this.renderTabsList(containerState.tabs, containerId)}
         </div>
       `;
-      
+
       this.container.appendChild(section);
     }
   }
@@ -895,6 +946,7 @@ class QuickTabsManager {
 **File**: Quick Tab creation function
 
 **Before**:
+
 ```javascript
 function createQuickTab(url, position) {
   const quickTab = {
@@ -904,20 +956,21 @@ function createQuickTab(url, position) {
     top: position.top,
     width: 800,
     height: 600,
-    title: "Quick Tab",
+    title: 'Quick Tab',
     minimized: false,
     pinnedToUrl: null
   };
-  
+
   return quickTab;
 }
 ```
 
 **After**:
+
 ```javascript
 async function createQuickTab(url, position) {
   const cookieStoreId = await getCurrentCookieStoreId();
-  
+
   const quickTab = {
     id: `qt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     url: url,
@@ -925,12 +978,12 @@ async function createQuickTab(url, position) {
     top: position.top,
     width: 800,
     height: 600,
-    title: "Quick Tab",
-    cookieStoreId: cookieStoreId,  // NEW: Track container
+    title: 'Quick Tab',
+    cookieStoreId: cookieStoreId, // NEW: Track container
     minimized: false,
     pinnedToUrl: null
   };
-  
+
   console.log(`[Quick Tab] Created in container ${cookieStoreId}`);
   return quickTab;
 }
@@ -945,6 +998,7 @@ Update storage listeners to handle the new v3 schema:
 **File**: `src/content.js` or background script
 
 **Before**:
+
 ```javascript
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'sync' && changes.quicktabs_state_v2) {
@@ -955,20 +1009,25 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ```
 
 **After**:
+
 ```javascript
 browser.storage.onChanged.addListener(async (changes, areaName) => {
   if (areaName === 'sync' && changes.quicktabs_state_v3) {
     const currentCookieStoreId = await getCurrentCookieStoreId();
-    
+
     // Check if our container's state changed
     const oldState = changes.quicktabs_state_v3.oldValue || {};
     const newState = changes.quicktabs_state_v3.newValue || {};
-    
+
     const oldContainerState = oldState[currentCookieStoreId];
     const newContainerState = newState[currentCookieStoreId];
-    
-    if (JSON.stringify(oldContainerState) !== JSON.stringify(newContainerState)) {
-      console.log(`[Storage] Container ${currentCookieStoreId} state changed, reloading`);
+
+    if (
+      JSON.stringify(oldContainerState) !== JSON.stringify(newContainerState)
+    ) {
+      console.log(
+        `[Storage] Container ${currentCookieStoreId} state changed, reloading`
+      );
       reloadQuickTabs();
     } else {
       console.log(`[Storage] Change in other container, ignoring`);
@@ -983,15 +1042,15 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
 
 ### Summary Table
 
-| File | Change Type | Lines Added | Lines Modified | Description |
-|------|-------------|-------------|----------------|-------------|
-| `manifest.json` | Update | 2 | 0 | Add `contextualIdentities` and `cookies` permissions |
-| `src/utils/container-utils.js` | New File | 120 | 0 | Container detection and info utilities |
-| `src/core/container-state-manager.js` | New File | 180 | 0 | Container-aware state management |
-| `src/content.js` | Update | 50 | 80 | Integrate container detection and filtering |
-| `src/ui/quick-tabs-manager.js` | Update | 100 | 60 | Container-specific manager view |
-| `background.js` | Update | 20 | 30 | Update message handling for containers |
-| **Total** | - | **472** | **170** | **~640 lines total** |
+| File                                  | Change Type | Lines Added | Lines Modified | Description                                          |
+| ------------------------------------- | ----------- | ----------- | -------------- | ---------------------------------------------------- |
+| `manifest.json`                       | Update      | 2           | 0              | Add `contextualIdentities` and `cookies` permissions |
+| `src/utils/container-utils.js`        | New File    | 120         | 0              | Container detection and info utilities               |
+| `src/core/container-state-manager.js` | New File    | 180         | 0              | Container-aware state management                     |
+| `src/content.js`                      | Update      | 50          | 80             | Integrate container detection and filtering          |
+| `src/ui/quick-tabs-manager.js`        | Update      | 100         | 60             | Container-specific manager view                      |
+| `background.js`                       | Update      | 20          | 30             | Update message handling for containers               |
+| **Total**                             | -           | **472**     | **170**        | **~640 lines total**                                 |
 
 ---
 
@@ -1000,6 +1059,7 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
 ### Test Suite 1: Basic Container Isolation
 
 **Test 1.1**: Create Quick Tab in Container 1
+
 1. Open tab in Firefox Container "Personal" (Container 1)
 2. Navigate to https://example.com
 3. Hover over a link
@@ -1008,12 +1068,14 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
 6. **Verify**: Quick Tab has `cookieStoreId: "firefox-container-1"`
 
 **Test 1.2**: Switch to Container 2
+
 1. With Quick Tab still open from Test 1.1
 2. Switch to a tab in Firefox Container "Work" (Container 2)
 3. **Expected**: Quick Tab from Container 1 does NOT appear
 4. **Verify**: No Quick Tabs visible in Container 2 tab
 
 **Test 1.3**: Return to Container 1
+
 1. Switch back to the tab in Container 1
 2. **Expected**: Quick Tab from Test 1.1 is still visible
 3. **Expected**: Quick Tab position and size unchanged
@@ -1023,13 +1085,16 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
 ### Test Suite 2: Quick Tab Manager Container Filtering
 
 **Test 2.1**: Manager Shows Only Current Container
+
 1. Create 3 Quick Tabs in Container "Personal"
 2. Create 2 Quick Tabs in Container "Work"
 3. Open Quick Tab Manager in a tab within Container "Personal"
 4. **Expected**: Manager shows exactly 3 Quick Tabs
-5. **Expected**: Container header displays "Personal" with appropriate color/icon
+5. **Expected**: Container header displays "Personal" with appropriate
+   color/icon
 
 **Test 2.2**: Manager Updates When Switching Containers
+
 1. With Manager open from Test 2.1
 2. Switch to a tab in Container "Work"
 3. Open Quick Tab Manager
@@ -1037,6 +1102,7 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
 5. **Expected**: Container header updates to "Work"
 
 **Test 2.3**: Empty State Message Shows Correct Shortcut
+
 1. Open Quick Tab Manager in a container with no Quick Tabs
 2. **Expected**: Message displays "Press [SHORTCUT] while hovering over a link"
 3. Change Quick Tab shortcut in settings (e.g., to Ctrl+E)
@@ -1047,26 +1113,31 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
 ### Test Suite 3: BroadcastChannel Container Filtering
 
 **Test 3.1**: Same Container Cross-Tab Sync
+
 1. Open two tabs (Tab A and Tab B) in Container "Personal"
 2. Create Quick Tab in Tab A
 3. **Expected**: Quick Tab appears in Tab B (same container sync works)
 
 **Test 3.2**: Different Container Isolation
+
 1. Open Tab C in Container "Work"
 2. With Quick Tab from Test 3.1 still in Container "Personal"
 3. **Expected**: Quick Tab does NOT appear in Tab C (different container)
 
 **Test 3.3**: Broadcast Filtering Logs
+
 1. Open browser console
 2. Create Quick Tab in Container 1
 3. Switch to tab in Container 2
-4. **Expected**: Console shows "[Broadcast] Ignoring message from firefox-container-1"
+4. **Expected**: Console shows "[Broadcast] Ignoring message from
+   firefox-container-1"
 
 ---
 
 ### Test Suite 4: Migration from v1.5.8.16
 
 **Test 4.1**: Automatic Migration
+
 1. Install v1.5.8.16 with existing Quick Tabs
 2. Create 5 Quick Tabs
 3. Upgrade to v1.5.8.17+
@@ -1075,6 +1146,7 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
 6. **Expected**: No data loss
 
 **Test 4.2**: Migration Preserves All Properties
+
 1. After migration from Test 4.1
 2. Verify each Quick Tab retains:
    - Original URL
@@ -1089,18 +1161,21 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
 ### Test Suite 5: Edge Cases
 
 **Test 5.1**: Default Container Behavior
+
 1. Open tab in default container (no container assigned)
 2. Create Quick Tab
 3. **Expected**: Quick Tab has `cookieStoreId: "firefox-default"`
 4. **Expected**: Behaves identically to container tabs
 
 **Test 5.2**: Private Browsing Container
+
 1. Open private browsing window
 2. Create Quick Tab
 3. **Expected**: Quick Tab has `cookieStoreId: "firefox-private"`
 4. **Expected**: Isolated from normal containers
 
 **Test 5.3**: Container Deletion Handling
+
 1. Create 3 Quick Tabs in a custom container (e.g., "Shopping")
 2. Delete the "Shopping" container via Firefox settings
 3. Reopen extension
@@ -1111,19 +1186,22 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
 
 ## Compatibility with Other v1.5.8.16+ Changes
 
-This implementation must integrate smoothly with the following features documented in the "v1.5.8.16 issues docs" folder:
+This implementation must integrate smoothly with the following features
+documented in the "v1.5.8.16 issues docs" folder:
 
 ### Integration Point 1: Quick Tab Flash Fix
 
 **Document**: `quick-tab-bugs-fixes.md` (from current conversation)
 
 **Compatibility Check**:
+
 - ✅ Container isolation does NOT conflict with flash fix
 - ✅ Both features operate at different layers:
   - Flash fix: DOM positioning timing
   - Container isolation: Data storage and filtering
 
 **Code Coordination**:
+
 - Container detection happens BEFORE Quick Tab creation
 - Flash fix applies AFTER position calculation
 - No shared code paths
@@ -1133,10 +1211,12 @@ This implementation must integrate smoothly with the following features document
 **Document**: `quick-tab-bugs-fixes.md` (from current conversation)
 
 **Compatibility Check**:
+
 - ✅ Container isolation does NOT conflict with notification system
 - ⚠️ **Enhancement Opportunity**: Add container name to notification text
 
 **Suggested Enhancement**:
+
 ```javascript
 // When creating Quick Tab
 const containerInfo = await getContainerInfo(cookieStoreId);
@@ -1151,6 +1231,7 @@ showNotification(
 **Document**: `quick-tab-bugs-fixes.md` (from current conversation)
 
 **Compatibility Check**:
+
 - ✅ No conflicts - completely separate feature
 - Container isolation affects runtime behavior
 - Color picker affects settings UI
@@ -1160,6 +1241,7 @@ showNotification(
 **Document**: `quick-tab-bugs-fixes.md` (from current conversation)
 
 **Compatibility Check**:
+
 - ✅ Already integrated in this document (see Phase 4.1)
 - Empty state message now shows correct shortcut AND container name
 
@@ -1168,11 +1250,13 @@ showNotification(
 **If documented in v1.5.8.16 issues docs folder**:
 
 **Compatibility Check**:
+
 - ⚠️ **Requires Coordination**: Both features filter Quick Tab visibility
 - Split View filters by browser pane
 - Container isolation filters by cookieStoreId
 
 **Resolution Strategy**:
+
 ```javascript
 // Combined filtering logic
 async function shouldShowQuickTab(quickTab) {
@@ -1181,7 +1265,7 @@ async function shouldShowQuickTab(quickTab) {
   if (quickTab.cookieStoreId !== currentCookieStoreId) {
     return false;
   }
-  
+
   // Filter 2: Split View isolation (if enabled)
   if (isZenBrowserSplitView()) {
     const splitPaneId = await getCurrentSplitPaneId();
@@ -1189,7 +1273,7 @@ async function shouldShowQuickTab(quickTab) {
       return false;
     }
   }
-  
+
   return true;
 }
 ```
@@ -1215,52 +1299,54 @@ const NEW_STATE_KEY = 'quicktabs_state_v3';
 
 export async function migrateToContainerAwareState() {
   console.log('[Migration] Starting migration from v2 to v3...');
-  
+
   // Check if already migrated
   const existingV3 = await browser.storage.sync.get(NEW_STATE_KEY);
   if (existingV3[NEW_STATE_KEY]) {
     console.log('[Migration] Already migrated to v3, skipping.');
     return;
   }
-  
+
   // Load v2 state
   const oldStateResult = await browser.storage.sync.get(OLD_STATE_KEY);
   const oldQuickTabs = oldStateResult[OLD_STATE_KEY] || [];
-  
+
   if (oldQuickTabs.length === 0) {
     console.log('[Migration] No Quick Tabs to migrate.');
-    
+
     // Initialize empty v3 state
     await browser.storage.sync.set({
       [NEW_STATE_KEY]: {
-        "firefox-default": {
+        'firefox-default': {
           tabs: [],
           timestamp: Date.now()
         }
       }
     });
-    
+
     return;
   }
-  
+
   // Migrate all tabs to "firefox-default" container
   const migratedState = {
-    "firefox-default": {
+    'firefox-default': {
       tabs: oldQuickTabs.map(tab => ({
         ...tab,
-        cookieStoreId: "firefox-default"  // Assign default container
+        cookieStoreId: 'firefox-default' // Assign default container
       })),
       timestamp: Date.now()
     }
   };
-  
+
   // Save v3 state
   await browser.storage.sync.set({
     [NEW_STATE_KEY]: migratedState
   });
-  
-  console.log(`[Migration] Migrated ${oldQuickTabs.length} Quick Tabs to firefox-default container.`);
-  
+
+  console.log(
+    `[Migration] Migrated ${oldQuickTabs.length} Quick Tabs to firefox-default container.`
+  );
+
   // Optional: Remove v2 state to free storage space
   // await browser.storage.sync.remove(OLD_STATE_KEY);
 }
@@ -1274,7 +1360,7 @@ export async function migrateToContainerAwareState() {
 import { migrateToContainerAwareState } from './core/migration.js';
 
 // On extension install/update
-browser.runtime.onInstalled.addListener(async (details) => {
+browser.runtime.onInstalled.addListener(async details => {
   if (details.reason === 'install' || details.reason === 'update') {
     console.log('[Extension] Performing migration check...');
     await migrateToContainerAwareState();
@@ -1290,9 +1376,12 @@ migrateToContainerAwareState();
 If container isolation causes issues:
 
 1. **Emergency Disable Flag**:
+
 ```javascript
 // Add to settings
-const CONTAINER_ISOLATION_ENABLED = await browser.storage.sync.get('containerIsolationEnabled');
+const CONTAINER_ISOLATION_ENABLED = await browser.storage.sync.get(
+  'containerIsolationEnabled'
+);
 if (!CONTAINER_ISOLATION_ENABLED) {
   // Fall back to v2 behavior
   useGlobalStateManager();
@@ -1300,17 +1389,18 @@ if (!CONTAINER_ISOLATION_ENABLED) {
 ```
 
 2. **Reverse Migration Script**:
+
 ```javascript
 export async function revertToGlobalState() {
   const v3State = await browser.storage.sync.get(NEW_STATE_KEY);
   const allContainerStates = v3State[NEW_STATE_KEY] || {};
-  
+
   // Flatten all containers into single array
   const allQuickTabs = [];
   for (const containerId in allContainerStates) {
     allQuickTabs.push(...allContainerStates[containerId].tabs);
   }
-  
+
   await browser.storage.sync.set({
     [OLD_STATE_KEY]: allQuickTabs
   });
@@ -1324,12 +1414,14 @@ export async function revertToGlobalState() {
 ### Storage Size Impact
 
 **Before** (v2):
+
 ```javascript
 // ~100 bytes per Quick Tab × 10 tabs = 1KB
 { quicktabs_state_v2: [ ... 10 tabs ... ] }
 ```
 
 **After** (v3):
+
 ```javascript
 // ~100 bytes per Quick Tab × 10 tabs × 5 containers = 5KB
 // Plus container metadata overhead: ~1KB
@@ -1352,6 +1444,7 @@ export async function revertToGlobalState() {
 **Container Detection**: ~1-2ms per operation (async tab query)
 
 **Optimization**: Cache `cookieStoreId` at tab activation:
+
 ```javascript
 let cachedCookieStoreId = null;
 
@@ -1364,12 +1457,12 @@ browser.tabs.onActivated.addListener(async () => {
 
 ## Browser Compatibility
 
-| Browser | Containers Support | Implementation Notes |
-|---------|-------------------|---------------------|
-| **Firefox** | ✅ Full Support | Native contextualIdentities API |
-| **Firefox ESR** | ✅ Full Support | Since Firefox 60+ |
-| **Chrome/Edge** | ❌ Not Supported | No container tabs feature |
-| **Zen Browser** | ✅ Full Support | Firefox-based, inherits support |
+| Browser         | Containers Support | Implementation Notes            |
+| --------------- | ------------------ | ------------------------------- |
+| **Firefox**     | ✅ Full Support    | Native contextualIdentities API |
+| **Firefox ESR** | ✅ Full Support    | Since Firefox 60+               |
+| **Chrome/Edge** | ❌ Not Supported   | No container tabs feature       |
+| **Zen Browser** | ✅ Full Support    | Firefox-based, inherits support |
 
 ### Graceful Degradation for Non-Firefox Browsers
 
@@ -1394,10 +1487,13 @@ if (!hasContainers) {
 ### Screen Reader Support
 
 Add ARIA labels to container badges:
+
 ```html
-<div class="container-badge" 
-     aria-label="Container: Personal" 
-     style="background-color: blue">
+<div
+  class="container-badge"
+  aria-label="Container: Personal"
+  style="background-color: blue"
+>
   <span class="container-icon">🔹</span>
   <span class="container-name">Personal</span>
 </div>
@@ -1406,9 +1502,10 @@ Add ARIA labels to container badges:
 ### Keyboard Navigation
 
 Ensure container selection is keyboard accessible:
+
 ```javascript
 containerBadge.setAttribute('tabindex', '0');
-containerBadge.addEventListener('keypress', (e) => {
+containerBadge.addEventListener('keypress', e => {
   if (e.key === 'Enter' || e.key === ' ') {
     toggleShowAllContainers();
   }
@@ -1443,22 +1540,27 @@ function sanitizeContainerName(name) {
 ### Enhancement 1: Cross-Container Quick Tab Transfer
 
 Allow users to explicitly move Quick Tabs between containers:
+
 ```javascript
 async function transferQuickTab(quickTabId, targetCookieStoreId) {
   const sourceCookieStoreId = await getCurrentCookieStoreId();
-  
+
   // Remove from source container
   await containerStateManager.removeQuickTab(quickTabId);
-  
+
   // Add to target container
   const quickTab = { ...originalQuickTab, cookieStoreId: targetCookieStoreId };
-  await containerStateManager.saveQuickTabToContainer(quickTab, targetCookieStoreId);
+  await containerStateManager.saveQuickTabToContainer(
+    quickTab,
+    targetCookieStoreId
+  );
 }
 ```
 
 ### Enhancement 2: Container-Specific Settings
 
 Different Quick Tab behaviors per container:
+
 ```javascript
 {
   containerSettings: {
@@ -1479,6 +1581,7 @@ Different Quick Tab behaviors per container:
 ### Enhancement 3: Visual Container Indicators
 
 Show container color on Quick Tab border:
+
 ```javascript
 const containerInfo = await getContainerInfo(quickTab.cookieStoreId);
 quickTabElement.style.borderColor = containerInfo.color;
@@ -1489,9 +1592,13 @@ quickTabElement.style.borderWidth = '3px';
 
 ## Conclusion
 
-This implementation provides complete Firefox Container Tabs isolation for Quick Tabs while maintaining backward compatibility and all existing functionality. The modular architecture allows for incremental implementation and easy testing of each component.
+This implementation provides complete Firefox Container Tabs isolation for Quick
+Tabs while maintaining backward compatibility and all existing functionality.
+The modular architecture allows for incremental implementation and easy testing
+of each component.
 
 **Estimated Development Time**: 12-16 hours
+
 - Phase 1-2: 4 hours
 - Phase 3-4: 4 hours
 - Phase 5-6: 2 hours
@@ -1505,7 +1612,7 @@ This implementation provides complete Firefox Container Tabs isolation for Quick
 
 ---
 
-*Document Version: 1.0*  
-*Last Updated: 2025-11-15*  
-*Target Version: v1.5.8.17+*  
-*Compatibility: Firefox 60+, Zen Browser*
+_Document Version: 1.0_  
+_Last Updated: 2025-11-15_  
+_Target Version: v1.5.8.17+_  
+_Compatibility: Firefox 60+, Zen Browser_

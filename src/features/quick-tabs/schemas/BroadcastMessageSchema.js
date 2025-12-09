@@ -1,12 +1,12 @@
 /**
  * BroadcastMessageSchema - Message validation schemas and utilities
- * 
+ *
  * Responsibilities:
  * - Define expected structure for each message type
  * - Validate message structure and data types
  * - Sanitize and coerce message fields
  * - Provide detailed validation error reporting
- * 
+ *
  * Related: Gap 3 - Malformed Message Validation
  */
 
@@ -22,12 +22,12 @@ export const MESSAGE_TYPES = {
   CLOSE: 'CLOSE',
   SOLO: 'SOLO',
   MUTE: 'MUTE',
-  DELETE: 'DELETE',                     // Remove Quick Tab (used in tests)
-  CLOSE_ALL: 'CLOSE_ALL',               // Close all Quick Tabs
-  CLOSE_MINIMIZED: 'CLOSE_MINIMIZED',   // Close only minimized Quick Tabs
-  UPDATE_MUTE: 'UPDATE_MUTE',           // Update mute state (used in scenario-04)
-  UPDATE_MINIMIZE: 'UPDATE_MINIMIZE',   // Update minimize state (used in scenario-13)
-  DESTROY: 'DESTROY'                    // Destroy Quick Tab (used in scenario-15)
+  DELETE: 'DELETE', // Remove Quick Tab (used in tests)
+  CLOSE_ALL: 'CLOSE_ALL', // Close all Quick Tabs
+  CLOSE_MINIMIZED: 'CLOSE_MINIMIZED', // Close only minimized Quick Tabs
+  UPDATE_MUTE: 'UPDATE_MUTE', // Update mute state (used in scenario-04)
+  UPDATE_MINIMIZE: 'UPDATE_MINIMIZE', // Update minimize state (used in scenario-13)
+  DESTROY: 'DESTROY' // Destroy Quick Tab (used in scenario-15)
 };
 
 /**
@@ -77,7 +77,11 @@ const validators = {
     }
     if (value.length > maxLength) {
       // Truncate oversized arrays
-      return { valid: true, value: value.slice(0, maxLength), warning: `${field} truncated to ${maxLength} items` };
+      return {
+        valid: true,
+        value: value.slice(0, maxLength),
+        warning: `${field} truncated to ${maxLength} items`
+      };
     }
     return { valid: true, value };
   },
@@ -97,9 +101,9 @@ const validators = {
  * Common optional fields for all message types (Gap 6, Gap 5)
  */
 const commonOptionalFields = {
-  cookieStoreId: validators.string,  // Gap 6: Container boundary validation
-  senderId: validators.string,       // Gap 5: Loop prevention
-  sequence: validators.number        // Gap 5: Sequence tracking
+  cookieStoreId: validators.string, // Gap 6: Container boundary validation
+  senderId: validators.string, // Gap 5: Loop prevention
+  sequence: validators.number // Gap 5: Sequence tracking
 };
 
 /**
@@ -117,7 +121,7 @@ export const MESSAGE_SCHEMAS = {
     },
     optional: {
       ...commonOptionalFields,
-      isMinimized: (v) => ({ valid: true, value: Boolean(v) }),
+      isMinimized: v => ({ valid: true, value: Boolean(v) }),
       soloedOnTabs: (v, f) => validators.array(v, f),
       mutedOnTabs: (v, f) => validators.array(v, f)
     }
@@ -238,7 +242,7 @@ export const MESSAGE_SCHEMAS = {
   [MESSAGE_TYPES.UPDATE_MINIMIZE]: {
     required: {
       id: validators.string,
-      minimized: (v) => ({ valid: true, value: Boolean(v) })
+      minimized: v => ({ valid: true, value: Boolean(v) })
     },
     optional: {
       ...commonOptionalFields
@@ -282,7 +286,7 @@ function validateMessageStructure(message, result) {
   }
 
   const { type, data } = message;
-  
+
   if (!type || typeof type !== 'string') {
     result.addError('Message must have a "type" field (string)');
     return null;
@@ -313,7 +317,7 @@ function validateMessageStructure(message, result) {
  */
 function validateField(data, field, validator, result) {
   const validationResult = validator(data[field], field);
-  
+
   if (!validationResult.valid) {
     result.addError(validationResult.error);
     return null;
@@ -332,7 +336,7 @@ function validateField(data, field, validator, result) {
  */
 function validateRequiredFields(data, schema, result) {
   const sanitizedData = {};
-  
+
   for (const [field, validator] of Object.entries(schema.required)) {
     if (!(field in data)) {
       result.addError(`Missing required field: ${field}`);
@@ -403,7 +407,7 @@ export function validateMessage(message) {
  */
 export function validateMessageStrict(message) {
   const result = validateMessage(message);
-  
+
   if (!result.isValid()) {
     const errorMsg = `Message validation failed: ${result.errors.join(', ')}`;
     throw new Error(errorMsg);

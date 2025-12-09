@@ -129,16 +129,16 @@ describe('DestroyHandler', () => {
 
       // Second call should skip (ID already in _destroyedIds)
       destroyHandler.handleDestroy('qt-123', 'UICoordinator');
-      
+
       // state:deleted should NOT be emitted again
       expect(eventSpy).toHaveBeenCalledTimes(1);
     });
 
     test('wasRecentlyDestroyed() should return true after handleDestroy()', () => {
       expect(destroyHandler.wasRecentlyDestroyed('qt-123')).toBe(false);
-      
+
       destroyHandler.handleDestroy('qt-123');
-      
+
       expect(destroyHandler.wasRecentlyDestroyed('qt-123')).toBe(true);
     });
   });

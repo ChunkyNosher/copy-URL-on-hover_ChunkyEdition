@@ -16,9 +16,7 @@ export async function createQuickTab(page, url) {
     if (typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined') {
       return window.__COPILOT_TEST_BRIDGE__.createQuickTab(urlToLoad);
     }
-    throw new Error(
-      'Test Bridge API not available. Ensure extension is built with TEST_MODE=true'
-    );
+    throw new Error('Test Bridge API not available. Ensure extension is built with TEST_MODE=true');
   }, url);
 
   // Wait for creation to complete

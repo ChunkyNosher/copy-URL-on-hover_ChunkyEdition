@@ -2,7 +2,10 @@
 
 ## Executive Summary
 
-The Live Console Filter and Export Filter features are **not working as intended** due to fundamental architectural issues in how console interception and filtering are implemented. Despite filter settings being disabled, logs still appear in both the browser console and exported files.
+The Live Console Filter and Export Filter features are **not working as
+intended** due to fundamental architectural issues in how console interception
+and filtering are implemented. Despite filter settings being disabled, logs
+still appear in both the browser console and exported files.
 
 ---
 
@@ -10,14 +13,19 @@ The Live Console Filter and Export Filter features are **not working as intended
 
 ### Root Cause
 
-The `console-interceptor.js` module **unconditionally intercepts ALL console calls** and both:
-1. Buffers them to `CONSOLE_LOG_BUFFER` 
+The `console-interceptor.js` module **unconditionally intercepts ALL console
+calls** and both:
+
+1. Buffers them to `CONSOLE_LOG_BUFFER`
 2. **Passes them through to the original console methods**
 
-The Live Console Filter implemented in `logger.js` only controls whether the **new logging functions** (`logNormal`, `logError`, etc.) emit logs, but:
+The Live Console Filter implemented in `logger.js` only controls whether the
+**new logging functions** (`logNormal`, `logError`, etc.) emit logs, but:
+
 - These functions still call `console.log()` internally
 - `console.log()` is intercepted by `console-interceptor.js`
-- The interceptor **always calls the original console method**, bypassing the filter
+- The interceptor **always calls the original console method**, bypassing the
+  filter
 
 ### Current Implementation (Broken)
 
@@ -31,7 +39,7 @@ export function logNormal(category, action, message, context = {}) {
   }
 
   const formattedMessage = formatLogMessage(category, action, message);
-  console.log(formattedMessage, { ... }); 
+  console.log(formattedMessage, { ... });
   // ❌ PROBLEM: This STILL gets intercepted and logged by console-interceptor.js!
 }
 ```
@@ -40,12 +48,13 @@ export function logNormal(category, action, message, context = {}) {
 // src/utils/console-interceptor.js
 
 console.log = function (...args) {
-  addToLogBuffer('LOG', args);  // ✅ Captured to buffer
-  originalConsole.log.apply(console, args);  // ❌ ALWAYS logs to actual console
+  addToLogBuffer('LOG', args); // ✅ Captured to buffer
+  originalConsole.log.apply(console, args); // ❌ ALWAYS logs to actual console
 };
 ```
 
 **Flow diagram:**
+
 ```
 logNormal('hover', 'Start', 'Mouse entered') called
     ↓
@@ -70,7 +79,8 @@ originalConsole.log()  ← ❌ ALWAYS LOGGED (no filter check!)
 
 ### Evidence from Exported Logs
 
-In the provided log file `copy-url-extension-logs_v1.6.0.12_2025-11-21T18-18-29.txt`, we see:
+In the provided log file
+`copy-url-extension-logs_v1.6.0.12_2025-11-21T18-18-29.txt`, we see:
 
 ```
 [2025-11-21T18:17:24.938Z] [LOG  ] [Copy-URL-on-Hover] Live console filters refreshed: {
@@ -86,12 +96,14 @@ In the provided log file `copy-url-extension-logs_v1.6.0.12_2025-11-21T18-18-29.
 ```
 
 **Yet the logs still appear in the export** because:
+
 1. The console-interceptor doesn't check filter settings
 2. All background script logs bypass `logger.js` entirely
 
 ### Background Script Logs Bypass Filtering Entirely
 
-The background script (`background.js`) contains **hundreds of direct `console.log()` calls** that don't use the category-based logging functions:
+The background script (`background.js`) contains **hundreds of direct
+`console.log()` calls** that don't use the category-based logging functions:
 
 ```javascript
 // background.js - These bypass the filter completely
@@ -103,6 +115,7 @@ console.log('[StorageManager] Storage changed:', keys);
 ```
 
 **These logs:**
+
 - ❌ Don't use `logNormal()` or other filter-aware functions
 - ❌ Get intercepted by `console-interceptor.js`
 - ❌ Are ALWAYS logged to console
@@ -117,8 +130,10 @@ console.log('[StorageManager] Storage changed:', keys);
 
 The Export Filter in `popup.js` attempts to filter logs by category, but:
 
-1. **Category extraction is fragile** - Relies on parsing `[Category Display Name]` from message text
-2. **Many logs don't have category prefixes** - Background script logs use various formats
+1. **Category extraction is fragile** - Relies on parsing
+   `[Category Display Name]` from message text
+2. **Many logs don't have category prefixes** - Background script logs use
+   various formats
 3. **Filter is applied AFTER collection** - Logs are already in the buffer
 
 ### Current Implementation (Broken)
@@ -136,12 +151,12 @@ console.log(`[Popup] Logs after export filter: ${filteredLogs.length}`);
 function filterLogsByExportSettings(allLogs, exportSettings) {
   return allLogs.filter(log => {
     const category = extractCategoryFromLogEntry(log);
-    
+
     // Always include uncategorized logs (fail-safe)
     if (category === 'uncategorized') {
-      return true;  // ❌ PROBLEM: Most logs fall through to uncategorized!
+      return true; // ❌ PROBLEM: Most logs fall through to uncategorized!
     }
-    
+
     // Check if category is enabled for export
     return exportSettings[category] === true;
   });
@@ -150,7 +165,8 @@ function filterLogsByExportSettings(allLogs, exportSettings) {
 
 ### Category Extraction Failures
 
-The `extractCategoryFromLogEntry()` function tries to parse category from log messages:
+The `extractCategoryFromLogEntry()` function tries to parse category from log
+messages:
 
 ```javascript
 // popup.js
@@ -162,7 +178,7 @@ function extractCategoryFromLogEntry(logEntry) {
   const match = message.match(/^\[([^\]]+)\]/);
 
   if (!match) {
-    return 'uncategorized';  // ❌ Fails for most background logs
+    return 'uncategorized'; // ❌ Fails for most background logs
   }
 
   const displayName = match[1];
@@ -175,7 +191,7 @@ function extractCategoryFromLogEntry(logEntry) {
   // Category mapping
   const mapping = {
     'url detection': 'url-detection',
-    'hover': 'hover',
+    hover: 'hover'
     // ... mappings
   };
 
@@ -184,6 +200,7 @@ function extractCategoryFromLogEntry(logEntry) {
 ```
 
 **Problem:** Background script logs use inconsistent prefixes:
+
 ```
 [Background] Tab activated: ...          → 'uncategorized' (no mapping)
 [QuickTabHandler] Create: ...            → 'uncategorized' (no mapping)
@@ -191,12 +208,14 @@ function extractCategoryFromLogEntry(logEntry) {
 [DEBUG] ...                              → 'uncategorized' (no mapping)
 ```
 
-**Result:** Even with ALL export categories disabled, logs are still included because they're categorized as 'uncategorized', which has a **fail-safe to always export**:
+**Result:** Even with ALL export categories disabled, logs are still included
+because they're categorized as 'uncategorized', which has a **fail-safe to
+always export**:
 
 ```javascript
 // Always include uncategorized logs (fail-safe)
 if (category === 'uncategorized') {
-  return true;  // ❌ Bypasses filter!
+  return true; // ❌ Bypasses filter!
 }
 ```
 
@@ -205,29 +224,33 @@ if (category === 'uncategorized') {
 ## Evidence from User Screenshot & Export
 
 **User Screenshot Shows:**
+
 - Live Console Filter: `URL Detection` = **OFF**
 - Live Console Filter: `Hover Events` = **OFF**
 - Export Filter: **ALL categories disabled**
 
 **Expected Behavior:**
+
 - No hover/URL detection logs in console
 - Export file should have ~0 logs (only uncategorized system logs)
 
 **Actual Behavior (from export file):**
+
 - **346 total logs** exported
-- Contains `[Background]`, `[QuickTabHandler]`, `[StorageManager]`, `[DEBUG]` logs
+- Contains `[Background]`, `[QuickTabHandler]`, `[StorageManager]`, `[DEBUG]`
+  logs
 - All categorized as 'uncategorized' → bypassed filter
 
 ---
 
 ## Root Cause Summary
 
-| Issue | Root Cause | Impact |
-|-------|------------|--------|
-| **Live Console Filter doesn't work** | `console-interceptor.js` ALWAYS calls `originalConsole.log()` regardless of filter settings | Filtered categories still appear in browser console |
-| **Background logs bypass filter** | Background script uses direct `console.log()` calls instead of `logNormal()` | Cannot filter background logs by category |
-| **Export filter fails** | Category extraction relies on fragile message parsing; most logs categorized as 'uncategorized' | Export includes logs even when all categories disabled |
-| **Fail-safe defeats filter** | Uncategorized logs always exported "for safety" | Cannot actually filter anything |
+| Issue                                | Root Cause                                                                                      | Impact                                                 |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| **Live Console Filter doesn't work** | `console-interceptor.js` ALWAYS calls `originalConsole.log()` regardless of filter settings     | Filtered categories still appear in browser console    |
+| **Background logs bypass filter**    | Background script uses direct `console.log()` calls instead of `logNormal()`                    | Cannot filter background logs by category              |
+| **Export filter fails**              | Category extraction relies on fragile message parsing; most logs categorized as 'uncategorized' | Export includes logs even when all categories disabled |
+| **Fail-safe defeats filter**         | Uncategorized logs always exported "for safety"                                                 | Cannot actually filter anything                        |
 
 ---
 
@@ -267,7 +290,7 @@ function addToLogBuffer(type, args, category = null) {
     type: type,
     timestamp: Date.now(),
     message: message,
-    category: extractedCategory,  // NEW: Store category
+    category: extractedCategory, // NEW: Store category
     context: getExecutionContext()
   });
 }
@@ -282,7 +305,7 @@ function extractCategoryFromMessage(message) {
   // Pattern 1: [Category Display Name] [Action] Message
   const categoryPattern = /^\[([^\]]+)\]\s*\[([^\]]+)\]/;
   const match = message.match(categoryPattern);
-  
+
   if (match) {
     const displayName = match[1];
     return getCategoryIdFromDisplayName(displayName);
@@ -291,23 +314,23 @@ function extractCategoryFromMessage(message) {
   // Pattern 2: [Component] Message (e.g., [Background], [QuickTabHandler])
   const componentPattern = /^\[([^\]]+)\]/;
   const componentMatch = message.match(componentPattern);
-  
+
   if (componentMatch) {
     const component = componentMatch[1].toLowerCase();
-    
+
     // Map component names to categories
     const componentMapping = {
-      'background': 'state',
-      'quicktabhandler': 'quick-tab-manager',
-      'quicktabsmanager': 'quick-tab-manager',
-      'storagemanager': 'storage',
-      'statecoordinator': 'state',
-      'eventbus': 'event-bus',
-      'popup': 'config',
-      'content': 'messaging',
-      'debug': 'quick-tabs'
+      background: 'state',
+      quicktabhandler: 'quick-tab-manager',
+      quicktabsmanager: 'quick-tab-manager',
+      storagemanager: 'storage',
+      statecoordinator: 'state',
+      eventbus: 'event-bus',
+      popup: 'config',
+      content: 'messaging',
+      debug: 'quick-tabs'
     };
-    
+
     return componentMapping[component] || 'uncategorized';
   }
 
@@ -319,35 +342,39 @@ function extractCategoryFromMessage(message) {
  * (Extracted from logger.js for reuse)
  */
 function getCategoryIdFromDisplayName(displayName) {
-  const normalized = displayName.trim().toLowerCase().replace(/[^\w\s-]/g, '').trim();
+  const normalized = displayName
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .trim();
 
   const mapping = {
     'url detection': 'url-detection',
-    'hover': 'hover',
+    hover: 'hover',
     'hover events': 'hover',
-    'clipboard': 'clipboard',
+    clipboard: 'clipboard',
     'clipboard operations': 'clipboard',
-    'keyboard': 'keyboard',
+    keyboard: 'keyboard',
     'keyboard shortcuts': 'keyboard',
     'quick tabs': 'quick-tabs',
     'quick tab actions': 'quick-tabs',
     'quick tab manager': 'quick-tab-manager',
     'event bus': 'event-bus',
-    'config': 'config',
-    'configuration': 'config',
-    'state': 'state',
+    config: 'config',
+    configuration: 'config',
+    state: 'state',
     'state management': 'state',
-    'storage': 'storage',
+    storage: 'storage',
     'browser storage': 'storage',
-    'messaging': 'messaging',
+    messaging: 'messaging',
     'message passing': 'messaging',
-    'webrequest': 'webrequest',
+    webrequest: 'webrequest',
     'web requests': 'webrequest',
-    'tabs': 'tabs',
+    tabs: 'tabs',
     'tab management': 'tabs',
-    'performance': 'performance',
-    'errors': 'errors',
-    'initialization': 'initialization'
+    performance: 'performance',
+    errors: 'errors',
+    initialization: 'initialization'
   };
 
   return mapping[normalized] || 'uncategorized';
@@ -359,12 +386,14 @@ function getCategoryIdFromDisplayName(displayName) {
  * Override console.log to capture logs AND respect live console filter
  */
 console.log = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
-  
+
   // Always add to buffer (for export)
   addToLogBuffer('LOG', args, category);
-  
+
   // NEW: Check live console filter before logging
   if (isCategoryEnabledForLiveConsole(category)) {
     originalConsole.log.apply(console, args);
@@ -376,11 +405,13 @@ console.log = function (...args) {
  * Override console.error - ALWAYS show errors regardless of filter
  */
 console.error = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
-  
+
   addToLogBuffer('ERROR', args, category);
-  
+
   // ✅ Errors ALWAYS logged to console (critical for debugging)
   originalConsole.error.apply(console, args);
 };
@@ -389,11 +420,13 @@ console.error = function (...args) {
  * Override console.warn - ALWAYS show warnings regardless of filter
  */
 console.warn = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
-  
+
   addToLogBuffer('WARN', args, category);
-  
+
   // ✅ Warnings ALWAYS logged to console
   originalConsole.warn.apply(console, args);
 };
@@ -402,11 +435,13 @@ console.warn = function (...args) {
  * Override console.info - respect filter
  */
 console.info = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
-  
+
   addToLogBuffer('INFO', args, category);
-  
+
   if (isCategoryEnabledForLiveConsole(category)) {
     originalConsole.info.apply(console, args);
   }
@@ -416,24 +451,30 @@ console.info = function (...args) {
  * Override console.debug - respect filter
  */
 console.debug = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
-  
+
   addToLogBuffer('DEBUG', args, category);
-  
+
   if (isCategoryEnabledForLiveConsole(category)) {
     originalConsole.debug.apply(console, args);
   }
 };
 ```
 
-**Critical Note:** The `import { isCategoryEnabledForLiveConsole }` will cause a **circular dependency** (`console-interceptor.js` → `logger.js` → `console-interceptor.js`). This needs architectural refactoring (see Fix #1B).
+**Critical Note:** The `import { isCategoryEnabledForLiveConsole }` will cause a
+**circular dependency** (`console-interceptor.js` → `logger.js` →
+`console-interceptor.js`). This needs architectural refactoring (see Fix #1B).
 
 ---
 
 ### Fix #1B: Refactor to Avoid Circular Dependency
 
-**Problem:** `console-interceptor.js` needs filter settings from `logger.js`, but `logger.js` imports `console-interceptor.js` first to ensure console is intercepted.
+**Problem:** `console-interceptor.js` needs filter settings from `logger.js`,
+but `logger.js` imports `console-interceptor.js` first to ensure console is
+intercepted.
 
 **Solution:** Extract filter settings into a separate module.
 
@@ -451,42 +492,42 @@ console.debug = function (...args) {
 export function getDefaultLiveConsoleSettings() {
   return {
     'url-detection': false,
-    'hover': false,
-    'clipboard': true,
-    'keyboard': true,
+    hover: false,
+    clipboard: true,
+    keyboard: true,
     'quick-tabs': true,
     'quick-tab-manager': true,
     'event-bus': false,
-    'config': true,
-    'state': false,
-    'storage': true,
-    'messaging': false,
-    'webrequest': true,
-    'tabs': true,
-    'performance': false,
-    'errors': true,
-    'initialization': true
+    config: true,
+    state: false,
+    storage: true,
+    messaging: false,
+    webrequest: true,
+    tabs: true,
+    performance: false,
+    errors: true,
+    initialization: true
   };
 }
 
 export function getDefaultExportSettings() {
   return {
     'url-detection': true,
-    'hover': true,
-    'clipboard': true,
-    'keyboard': true,
+    hover: true,
+    clipboard: true,
+    keyboard: true,
     'quick-tabs': true,
     'quick-tab-manager': true,
     'event-bus': true,
-    'config': true,
-    'state': true,
-    'storage': true,
-    'messaging': true,
-    'webrequest': true,
-    'tabs': true,
-    'performance': true,
-    'errors': true,
-    'initialization': true
+    config: true,
+    state: true,
+    storage: true,
+    messaging: true,
+    webrequest: true,
+    tabs: true,
+    performance: true,
+    errors: true,
+    initialization: true
   };
 }
 
@@ -540,10 +581,10 @@ export function getExportSettings() {
 
 export function isCategoryEnabledForLiveConsole(category) {
   const settings = getLiveConsoleSettings();
-  
+
   // Errors always enabled (critical)
   if (category === 'errors') return true;
-  
+
   // Default to true if category not in settings (fail-safe)
   if (!(category in settings)) {
     return true;
@@ -555,7 +596,9 @@ export function isCategoryEnabledForLiveConsole(category) {
 export async function refreshLiveConsoleSettings() {
   try {
     if (typeof browser !== 'undefined' && browser.storage) {
-      const result = await browser.storage.local.get('liveConsoleCategoriesEnabled');
+      const result = await browser.storage.local.get(
+        'liveConsoleCategoriesEnabled'
+      );
       liveConsoleSettingsCache =
         result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
     }
@@ -567,7 +610,9 @@ export async function refreshLiveConsoleSettings() {
 export async function refreshExportSettings() {
   try {
     if (typeof browser !== 'undefined' && browser.storage) {
-      const result = await browser.storage.local.get('exportLogCategoriesEnabled');
+      const result = await browser.storage.local.get(
+        'exportLogCategoriesEnabled'
+      );
       exportLogSettingsCache =
         result.exportLogCategoriesEnabled || getDefaultExportSettings();
     }
@@ -587,8 +632,8 @@ initializeFilterSettings();
 import { isCategoryEnabledForLiveConsole } from './filter-settings.js';
 
 // src/utils/logger.js
-import { 
-  getLiveConsoleSettings, 
+import {
+  getLiveConsoleSettings,
   getExportSettings,
   isCategoryEnabledForLiveConsole,
   refreshLiveConsoleSettings,
@@ -620,20 +665,22 @@ import { refreshLiveConsoleSettings } from './utils/filter-settings.js';
 function filterLogsByExportSettings(allLogs, exportSettings) {
   return allLogs.filter(log => {
     const category = extractCategoryFromLogEntry(log);
-    
+
     // NEW: Check if uncategorized export is enabled
     if (category === 'uncategorized') {
       // If user has disabled ALL categories, respect that choice
-      const allDisabled = Object.values(exportSettings).every(enabled => enabled === false);
-      
+      const allDisabled = Object.values(exportSettings).every(
+        enabled => enabled === false
+      );
+
       if (allDisabled) {
         return false; // ✅ Don't export uncategorized when all disabled
       }
-      
+
       // Otherwise, include uncategorized as fail-safe
       return true;
     }
-    
+
     // Check if category is enabled for export
     return exportSettings[category] === true;
   });
@@ -655,7 +702,7 @@ function filterLogsByExportSettings(allLogs, exportSettings) {
 function filterLogsByExportSettings(allLogs, exportSettings) {
   return allLogs.filter(log => {
     const category = extractCategoryFromLogEntry(log);
-    
+
     // Check if category is enabled (including uncategorized)
     return exportSettings[category] === true;
   });
@@ -679,7 +726,9 @@ export function getDefaultExportSettings() {
 **Problem:** Background script logs don't have category-aware prefixes.
 
 **Solution:** Either:
-1. **Option A (Recommended):** Refactor background.js to use `logNormal()` functions
+
+1. **Option A (Recommended):** Refactor background.js to use `logNormal()`
+   functions
 2. **Option B:** Enhance category extraction to recognize component names
 
 **Option A - Refactor background.js:**
@@ -706,20 +755,21 @@ logNormal('quick-tab-manager', 'Create', 'Quick Tab created', { url, id });
 
 **Solution:** Hardcode error category to always be enabled.
 
-**Location:** `src/utils/console-interceptor.js` and `src/utils/filter-settings.js`
+**Location:** `src/utils/console-interceptor.js` and
+`src/utils/filter-settings.js`
 
 ```javascript
 // filter-settings.js
 
 export function isCategoryEnabledForLiveConsole(category) {
   const settings = getLiveConsoleSettings();
-  
+
   // ✅ CRITICAL CATEGORIES ALWAYS ENABLED
   const criticalCategories = ['errors', 'initialization'];
   if (criticalCategories.includes(category)) {
     return true;
   }
-  
+
   // Default to true if category not in settings (fail-safe)
   if (!(category in settings)) {
     return true;
@@ -736,8 +786,10 @@ export function isCategoryEnabledForLiveConsole(category) {
 ### Phase 1: Immediate Fixes (Critical)
 
 1. ✅ Create `src/utils/filter-settings.js` to avoid circular dependency
-2. ✅ Update `console-interceptor.js` to check live console filter before logging
-3. ✅ Update `console-interceptor.js` to extract and store category with each log
+2. ✅ Update `console-interceptor.js` to check live console filter before
+   logging
+3. ✅ Update `console-interceptor.js` to extract and store category with each
+   log
 4. ✅ Update `logger.js` to import from `filter-settings.js`
 5. ✅ Update `content.js` import order to use new module structure
 
@@ -754,7 +806,8 @@ export function isCategoryEnabledForLiveConsole(category) {
 
 ### Phase 3: Background Script Refactoring (Medium Priority)
 
-1. ⚠️ Refactor background.js to use `logNormal()` instead of direct `console.log()`
+1. ⚠️ Refactor background.js to use `logNormal()` instead of direct
+   `console.log()`
 2. ⚠️ Add category prefixes to all background logs
 3. ⚠️ Test filter with refactored background logs
 
@@ -782,7 +835,8 @@ export function isCategoryEnabledForLiveConsole(category) {
 
 ### Export Filter
 
-- [ ] Disable all export categories → Export file contains ~0 logs (or only errors)
+- [ ] Disable all export categories → Export file contains ~0 logs (or only
+      errors)
 - [ ] Disable `Quick Tabs` → No Quick Tab logs in export
 - [ ] Enable only `Errors` → Export contains only error logs
 - [ ] Export with all enabled → All logs present
@@ -799,9 +853,11 @@ export function isCategoryEnabledForLiveConsole(category) {
 
 ## Breaking Changes
 
-**None** - These fixes are backwards-compatible. Existing logs will continue to work, and the filters will simply start functioning correctly.
+**None** - These fixes are backwards-compatible. Existing logs will continue to
+work, and the filters will simply start functioning correctly.
 
 **Migration Notes:**
+
 - Filter settings storage keys unchanged
 - Log format unchanged
 - Export format unchanged
@@ -811,7 +867,8 @@ export function isCategoryEnabledForLiveConsole(category) {
 
 ## Conclusion
 
-The Live Console Filter and Export Filter are currently **non-functional** due to:
+The Live Console Filter and Export Filter are currently **non-functional** due
+to:
 
 1. **Console interceptor always logs** regardless of filter settings
 2. **Background logs bypass category system** (direct console.log calls)
@@ -822,17 +879,19 @@ The fixes outlined in this report will:
 ✅ Make Live Console Filter actually prevent logs from appearing in console  
 ✅ Make Export Filter correctly exclude disabled categories  
 ✅ Improve category extraction to handle background script logs  
-✅ Maintain backwards compatibility  
+✅ Maintain backwards compatibility
 
 **Recommended Implementation Order:**
+
 1. **Phase 1** (Immediate) - Fix console interceptor filtering
 2. **Phase 2** (High Priority) - Fix export filter uncategorized handling
 3. **Phase 3** (Medium Priority) - Refactor background.js logging
 4. **Phase 4** (Required) - Comprehensive testing
 
 **Estimated Effort:**
+
 - Phase 1: ~2 hours
-- Phase 2: ~1 hour  
+- Phase 2: ~1 hour
 - Phase 3: ~4-6 hours (refactoring all background logs)
 - Phase 4: ~2 hours testing
 

@@ -3,7 +3,8 @@
 **Document Version:** 1.0.0  
 **Date:** November 26, 2025  
 **Extension:** Copy URL on Hover v1.6.2.0 → v1.7.0.0  
-**Historical Context:** Previous BroadcastChannel implementation (pre-v1.6.0) caused critical memory leaks leading to browser crashes
+**Historical Context:** Previous BroadcastChannel implementation (pre-v1.6.0)
+caused critical memory leaks leading to browser crashes
 
 ---
 
@@ -25,12 +26,14 @@
 ### The Problem (Pre-v1.6.0)
 
 **What Happened:**
+
 - Extension used BroadcastChannel for cross-tab Quick Tab sync
 - After ~10 button clicks, browser would freeze with 100% CPU usage
 - Memory usage spiraled from 100MB → 1GB+ in seconds
 - Required killing entire browser to recover
 
 **Root Causes (3 Critical Issues):**
+
 1. **Broadcast Message Loops:** Messages echoed infinitely between tabs
 2. **Unclosed Channels:** BroadcastChannel instances never cleaned up
 3. **Storage Write Storms:** Feedback loops caused 500-1000 writes/sec
@@ -40,6 +43,7 @@
 ### The Goal (v1.7.0.0)
 
 **Re-introduce BroadcastChannel AND Proxy Reactivity with:**
+
 - ✅ **Zero memory leaks** - Guaranteed cleanup on all code paths
 - ✅ **Zero browser freezes** - Rate limiting prevents runaway processes
 - ✅ **Zero infinite loops** - Message deduplication prevents echoes
@@ -47,14 +51,14 @@
 
 ### Six-Layer Protection Strategy
 
-| Layer | Purpose | Leak Type Prevented |
-|-------|---------|---------------------|
-| **Layer 1** | Rate Limiting | Storage write storms |
-| **Layer 2** | Message Deduplication | Broadcast echo loops |
-| **Layer 3** | Lifecycle Management | Unclosed channels/listeners |
-| **Layer 4** | WeakRef/WeakMap Usage | Circular references |
-| **Layer 5** | Circuit Breaker | Runaway processes |
-| **Layer 6** | Memory Monitoring | Early detection |
+| Layer       | Purpose               | Leak Type Prevented         |
+| ----------- | --------------------- | --------------------------- |
+| **Layer 1** | Rate Limiting         | Storage write storms        |
+| **Layer 2** | Message Deduplication | Broadcast echo loops        |
+| **Layer 3** | Lifecycle Management  | Unclosed channels/listeners |
+| **Layer 4** | WeakRef/WeakMap Usage | Circular references         |
+| **Layer 5** | Circuit Breaker       | Runaway processes           |
+| **Layer 6** | Memory Monitoring     | Early detection             |
 
 ---
 
@@ -77,22 +81,25 @@ Tab B: Receives Tab A's message → Updates state → Sends ANOTHER message
 ```
 
 **Evidence:**
+
 - Console log showed 1000+ messages/second
 - Each message created new closures holding memory
 - Garbage collector couldn't keep up with creation rate
 
 **Root Cause:**
+
 ```javascript
 // ❌ BAD CODE (Pre-v1.6.0):
-channel.onmessage = (event) => {
+channel.onmessage = event => {
   updateQuickTab(event.data);
-  
+
   // ❌ PROBLEM: Broadcasts back to sender, creating echo
   channel.postMessage({ ...event.data, updated: true });
 };
 ```
 
 **Why It Leaked:**
+
 1. Each message created new function closure
 2. Closures captured local variables (holding memory)
 3. Messages generated faster than GC could collect
@@ -107,11 +114,11 @@ channel.onmessage = (event) => {
 function createQuickTab() {
   // New channel created on EVERY Quick Tab creation
   const channel = new BroadcastChannel('quick-tabs');
-  
-  channel.onmessage = (event) => {
+
+  channel.onmessage = event => {
     console.log(event.data);
   };
-  
+
   // ❌ PROBLEM: Channel NEVER closed
   // Each Quick Tab holds a persistent channel instance
 }
@@ -124,14 +131,17 @@ function createQuickTab() {
 ```
 
 **Why It Leaked:**
+
 1. BroadcastChannel instances never garbage collected (active listeners)
 2. Each channel held strong references to callback closures
 3. Callbacks captured DOM elements and state objects
-4. Multiple channels created message amplification (O(n) channels → O(n²) messages)
+4. Multiple channels created message amplification (O(n) channels → O(n²)
+   messages)
 
 **Stack Overflow Evidence:**
 
-From research: "Creating multiple instances of the same BroadcastChannel leads to browser freeze" (web:115)[115]
+From research: "Creating multiple instances of the same BroadcastChannel leads
+to browser freeze" (web:115)[115]
 
 ### Issue 3: Storage Write Storms (High Severity)
 
@@ -148,17 +158,19 @@ storage.onChanged fires AGAIN in all tabs → Each writes AGAIN
 ```
 
 **Evidence:**
+
 - DevTools showed 500-1000 storage writes/sec during drag
 - Each write triggered 4-5 storage.onChanged events
 - Storage writes blocked main thread (synchronous serialization)
 - Browser Task Manager showed 100% CPU usage
 
 **Root Cause:**
+
 ```javascript
 // ❌ BAD CODE (Pre-v1.6.0):
-storage.onChanged.addListener((changes) => {
+storage.onChanged.addListener(changes => {
   const newQuickTabs = changes.quickTabs.newValue;
-  
+
   // ❌ PROBLEM: Writes back to storage immediately
   // This triggers ANOTHER storage.onChanged event
   browser.storage.local.set({ quickTabs: newQuickTabs });
@@ -166,6 +178,7 @@ storage.onChanged.addListener((changes) => {
 ```
 
 **Why It Leaked:**
+
 1. Storage writes not rate-limited
 2. No tracking of write originator (tabs wrote back to themselves)
 3. Storage writes caused full JSON serialization (CPU intensive)
@@ -181,20 +194,22 @@ function setupQuickTab() {
   // Called on every Quick Tab creation AND state change
   document.addEventListener('mousemove', handleDrag);
   document.addEventListener('mouseup', handleDragEnd);
-  
+
   // ❌ PROBLEM: Listeners NEVER removed
   // After 100 state changes: 200 duplicate listeners
 }
 ```
 
 **Evidence:**
+
 - Chrome DevTools → Memory → Event Listeners showed 500+ listeners
 - Each listener held closure referencing Quick Tab state
 - State objects couldn't be garbage collected (listeners held references)
 
 **MDN Documentation Evidence:**
 
-"Event listeners not removed properly lead to memory leaks. Each listener retains a reference to the function and any variables it uses" (web:106)[106]
+"Event listeners not removed properly lead to memory leaks. Each listener
+retains a reference to the function and any variables it uses" (web:106)[106]
 
 ### Issue 5: Circular References (Low-Medium Severity)
 
@@ -220,13 +235,16 @@ windowElement.onDragStart = function() {
 ```
 
 **Why It Leaked:**
+
 - Modern GC handles most circular references
 - BUT: Active event listeners prevent GC cycle detection
 - WeakMap/WeakRef would have prevented this
 
 **WebExtension Documentation Evidence:**
 
-"Holding onto references to window objects and DOM nodes for too long. Store them in an object specific to that document, and cleaned up when document is unloaded" (web:107)[107]
+"Holding onto references to window objects and DOM nodes for too long. Store
+them in an object specific to that document, and cleaned up when document is
+unloaded" (web:107)[107]
 
 ---
 
@@ -247,14 +265,14 @@ export class BroadcastSync {
   constructor(cookieStoreId, tabId) {
     this.cookieStoreId = cookieStoreId;
     this.tabId = tabId;
-    
+
     // Rate limiter: action type → last send time
     this.rateLimiter = new Map();
     this.MAX_MESSAGES_PER_SECOND = 60; // 60fps = 16.67ms between messages
     this.MIN_MESSAGE_INTERVAL_MS = 1000 / this.MAX_MESSAGES_PER_SECOND;
-    
+
     this.channel = new BroadcastChannel(`quick-tabs-${cookieStoreId}`);
-    this.channel.onmessage = (event) => this._handleMessage(event.data);
+    this.channel.onmessage = event => this._handleMessage(event.data);
   }
 
   /**
@@ -268,16 +286,16 @@ export class BroadcastSync {
     const rateLimitKey = `${action}-${payload.id || 'global'}`;
     const now = Date.now();
     const lastSend = this.rateLimiter.get(rateLimitKey) || 0;
-    
+
     if (now - lastSend < this.MIN_MESSAGE_INTERVAL_MS) {
       // Rate limited - skip this message
       console.debug(`[BroadcastSync] Rate limited: ${action}`);
       return false;
     }
-    
+
     // Update rate limiter
     this.rateLimiter.set(rateLimitKey, now);
-    
+
     // Clean up old entries (prevent Map growth)
     if (this.rateLimiter.size > 100) {
       const cutoff = now - 5000;
@@ -287,7 +305,7 @@ export class BroadcastSync {
         }
       }
     }
-    
+
     // Send message
     const message = {
       senderId: this.tabId,
@@ -296,7 +314,7 @@ export class BroadcastSync {
       timestamp: now,
       messageId: this._generateMessageId()
     };
-    
+
     this.channel.postMessage(message);
     return true;
   }
@@ -308,12 +326,14 @@ export class BroadcastSync {
 ```
 
 **Key Points:**
+
 - ✅ Max 60 messages/sec (16.67ms throttle for smooth drag)
 - ✅ Per-action rate limiting (position updates don't block focus events)
 - ✅ Automatic cleanup (Map doesn't grow unbounded)
 - ✅ Debug logging for visibility
 
 **Why It Prevents Leaks:**
+
 - Caps message creation rate (GC can keep up)
 - Prevents exponential message growth
 - Reduces CPU usage (fewer messages to process)
@@ -332,7 +352,7 @@ export class BroadcastSync {
 export class BroadcastSync {
   constructor(cookieStoreId, tabId) {
     // ... rate limiter setup ...
-    
+
     // LAYER 2: Deduplication tracking
     this.processedMessages = new Map(); // messageId → timestamp
     this.MESSAGE_TTL_MS = 30000; // 30 second TTL
@@ -342,21 +362,21 @@ export class BroadcastSync {
 
   _handleMessage(message) {
     const { senderId, action, payload, messageId } = message;
-    
+
     // LAYER 2A: Ignore own messages (prevent self-echo)
     if (senderId === this.tabId) {
       return;
     }
-    
+
     // LAYER 2B: Check if already processed (prevent duplicate processing)
     if (this._isDuplicate(messageId)) {
       console.debug(`[BroadcastSync] Ignoring duplicate message: ${messageId}`);
       return;
     }
-    
+
     // Record message as processed
     this._recordMessage(messageId);
-    
+
     // Dispatch to listeners
     const callbacks = this.listeners.get(action) || [];
     callbacks.forEach(cb => {
@@ -366,7 +386,7 @@ export class BroadcastSync {
         console.error(`[BroadcastSync] Listener error for ${action}:`, err);
       }
     });
-    
+
     // Periodic cleanup
     if (Date.now() - this.lastCleanup > this.CLEANUP_INTERVAL_MS) {
       this._cleanupProcessedMessages();
@@ -384,27 +404,31 @@ export class BroadcastSync {
   _cleanupProcessedMessages() {
     const now = Date.now();
     const cutoff = now - this.MESSAGE_TTL_MS;
-    
+
     for (const [messageId, timestamp] of this.processedMessages.entries()) {
       if (timestamp < cutoff) {
         this.processedMessages.delete(messageId);
       }
     }
-    
+
     this.lastCleanup = now;
-    
-    console.debug(`[BroadcastSync] Cleanup: ${this.processedMessages.size} messages tracked`);
+
+    console.debug(
+      `[BroadcastSync] Cleanup: ${this.processedMessages.size} messages tracked`
+    );
   }
 }
 ```
 
 **Key Points:**
+
 - ✅ Ignores own messages (prevents self-echo)
 - ✅ Tracks processed message IDs (prevents duplicate processing)
 - ✅ 30-second TTL (balances memory vs. detection window)
 - ✅ Periodic cleanup (prevents Map growth)
 
 **Why It Prevents Leaks:**
+
 - Breaks infinite message loops
 - Caps Map size (bounded memory growth)
 - Fast lookup (O(1) hash check)
@@ -423,7 +447,7 @@ export class BroadcastSync {
 export class BroadcastSync {
   constructor(cookieStoreId, tabId) {
     // ... setup ...
-    
+
     // LAYER 3: Register cleanup handlers
     this._setupLifecycleHooks();
   }
@@ -434,7 +458,7 @@ export class BroadcastSync {
       window.addEventListener('beforeunload', () => {
         this.close();
       });
-      
+
       // Hook 2: Visibility change (tab hidden - optional cleanup)
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
@@ -446,7 +470,7 @@ export class BroadcastSync {
         }
       });
     }
-    
+
     // Hook 3: Extension unload (rare, but critical)
     if (typeof browser !== 'undefined' && browser.runtime) {
       browser.runtime.onSuspend?.addListener(() => {
@@ -461,33 +485,35 @@ export class BroadcastSync {
    */
   close() {
     if (this._closed) return; // Already closed
-    
-    console.log(`[BroadcastSync] Closing channel: quick-tabs-${this.cookieStoreId}`);
-    
+
+    console.log(
+      `[BroadcastSync] Closing channel: quick-tabs-${this.cookieStoreId}`
+    );
+
     // Close BroadcastChannel (stops receiving messages)
     if (this.channel) {
       this.channel.close();
       this.channel = null;
     }
-    
+
     // Clear all listeners (break references)
     if (this.listeners) {
       this.listeners.clear();
       this.listeners = null;
     }
-    
+
     // Clear rate limiter (free Map memory)
     if (this.rateLimiter) {
       this.rateLimiter.clear();
       this.rateLimiter = null;
     }
-    
+
     // Clear processed messages (free Map memory)
     if (this.processedMessages) {
       this.processedMessages.clear();
       this.processedMessages = null;
     }
-    
+
     // Mark as closed (prevent double-close)
     this._closed = true;
   }
@@ -515,12 +541,12 @@ export class BroadcastSync {
 export class QuickTabsManager {
   async cleanup() {
     console.log('[QuickTabsManager] Cleaning up...');
-    
+
     // Close BroadcastChannel
     if (this.updateHandler?.broadcastSync) {
       this.updateHandler.broadcastSync.close();
     }
-    
+
     // Close all Quick Tab windows
     for (const [id, tabWindow] of this.tabs.entries()) {
       try {
@@ -529,9 +555,9 @@ export class QuickTabsManager {
         console.error(`[QuickTabsManager] Error destroying ${id}:`, err);
       }
     }
-    
+
     this.tabs.clear();
-    
+
     console.log('[QuickTabsManager] Cleanup complete');
   }
 }
@@ -547,12 +573,14 @@ if (typeof window !== 'undefined') {
 ```
 
 **Key Points:**
+
 - ✅ Multiple cleanup hooks (beforeunload, visibilitychange, onSuspend)
 - ✅ Idempotent close() (safe to call multiple times)
 - ✅ Clears ALL Maps and references
 - ✅ Pauses broadcasting when tab hidden (reduces resource usage)
 
 **Why It Prevents Leaks:**
+
 - Guarantees channel closure (no lingering onmessage handlers)
 - Breaks all reference cycles (Maps cleared)
 - Reduces resource usage when tab hidden
@@ -573,14 +601,14 @@ export class ReactiveQuickTab {
     this.id = data.id;
     this.onSync = onSync;
     this.currentTabId = currentTabId;
-    
+
     // LAYER 4: Use WeakMap for watchers
     // If the watched property is deleted, watchers can be GC'd
     this._watchers = new WeakMap(); // property → WeakSet of callbacks
-    
+
     // Internal data storage (regular object - OK because small)
     this._data = data;
-    
+
     // Create reactive proxy
     this.state = this._createProxy(this._data);
   }
@@ -593,11 +621,11 @@ export class ReactiveQuickTab {
     if (!this._watchers.has(prop)) {
       this._watchers.set(prop, new Set());
     }
-    
+
     // LAYER 4: Store callback in Set (allows removal)
     const callbacks = this._watchers.get(prop);
     callbacks.add(callback);
-    
+
     // Return unwatch function
     return () => {
       callbacks.delete(callback);
@@ -616,7 +644,7 @@ export class QuickTabsManager {
     // LAYER 4: Use WeakMap for DOM element → Quick Tab mapping
     // When DOM element is removed, mapping is auto-GC'd
     this.elementToQuickTab = new WeakMap(); // DOM element → Quick Tab
-    
+
     // Regular Map for Quick Tab management (needed for iteration)
     this.tabs = new Map(); // id → Quick Tab
   }
@@ -639,18 +667,21 @@ export class QuickTabsManager {
 ```
 
 **Key Points:**
+
 - ✅ WeakMap for DOM → Quick Tab mapping (auto-GC when element removed)
 - ✅ Set for callback storage (allows removal without keeping references)
 - ✅ WeakRef could be used for computed property cache (future optimization)
 
 **Why It Prevents Leaks:**
+
 - DOM elements can be GC'd even if referenced in WeakMap
 - Callback functions can be GC'd when removed from Set
 - No strong references prevent GC
 
 **MDN Documentation Evidence:**
 
-"WeakMap does not prevent garbage collection, which eventually removes references to the key object" (web:122)[122]
+"WeakMap does not prevent garbage collection, which eventually removes
+references to the key object" (web:122)[122]
 
 ### Layer 5: Circuit Breaker
 
@@ -669,7 +700,7 @@ export class CircuitBreaker {
     this.maxOperationsPerSecond = options.maxOperationsPerSecond || 100;
     this.maxFailures = options.maxFailures || 10;
     this.resetTimeout = options.resetTimeout || 60000; // 60 seconds
-    
+
     // State
     this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
     this.failureCount = 0;
@@ -692,52 +723,61 @@ export class CircuitBreaker {
         this.failureCount = 0;
         console.log(`[CircuitBreaker:${this.name}] Entering HALF_OPEN state`);
       } else {
-        throw new Error(`CircuitBreaker:${this.name} is OPEN - operation rejected`);
+        throw new Error(
+          `CircuitBreaker:${this.name} is OPEN - operation rejected`
+        );
       }
     }
-    
+
     // Reset operation counter if 1 second passed
     const now = Date.now();
     if (now - this.lastReset > 1000) {
       this.operationCount = 0;
       this.lastReset = now;
     }
-    
+
     // LAYER 5A: Check operation rate
     this.operationCount++;
     if (this.operationCount > this.maxOperationsPerSecond) {
-      if (now - this.lastWarning > 5000) { // Log warning max once per 5 seconds
-        console.warn(`[CircuitBreaker:${this.name}] Operation rate exceeded: ${this.operationCount}/sec`);
+      if (now - this.lastWarning > 5000) {
+        // Log warning max once per 5 seconds
+        console.warn(
+          `[CircuitBreaker:${this.name}] Operation rate exceeded: ${this.operationCount}/sec`
+        );
         this.lastWarning = now;
       }
-      
+
       // Open circuit if rate VERY high (10x threshold)
       if (this.operationCount > this.maxOperationsPerSecond * 10) {
         this._openCircuit('Operation rate exceeded 10x threshold');
-        throw new Error(`CircuitBreaker:${this.name} is OPEN due to excessive operations`);
+        throw new Error(
+          `CircuitBreaker:${this.name} is OPEN due to excessive operations`
+        );
       }
     }
-    
+
     // Execute operation
     try {
       const result = await operation();
-      
+
       // Success - reset failure count if in HALF_OPEN
       if (this.state === 'HALF_OPEN') {
         this.state = 'CLOSED';
         this.failureCount = 0;
         console.log(`[CircuitBreaker:${this.name}] Returning to CLOSED state`);
       }
-      
+
       return result;
     } catch (err) {
       // LAYER 5B: Track failures
       this.failureCount++;
-      
+
       if (this.failureCount >= this.maxFailures) {
-        this._openCircuit(`Failure threshold reached: ${this.failureCount} failures`);
+        this._openCircuit(
+          `Failure threshold reached: ${this.failureCount} failures`
+        );
       }
-      
+
       throw err;
     }
   }
@@ -746,12 +786,14 @@ export class CircuitBreaker {
     this.state = 'OPEN';
     this.lastReset = Date.now();
     console.error(`[CircuitBreaker:${this.name}] Circuit OPENED: ${reason}`);
-    
+
     // Emit event for monitoring
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('circuit-breaker-open', {
-        detail: { name: this.name, reason }
-      }));
+      window.dispatchEvent(
+        new CustomEvent('circuit-breaker-open', {
+          detail: { name: this.name, reason }
+        })
+      );
     }
   }
 
@@ -768,7 +810,7 @@ export class CircuitBreaker {
 export class BroadcastSync {
   constructor(cookieStoreId, tabId) {
     // ... setup ...
-    
+
     // LAYER 5: Add circuit breaker for broadcast operations
     this.circuitBreaker = new CircuitBreaker('BroadcastSync', {
       maxOperationsPerSecond: 100,
@@ -783,7 +825,7 @@ export class BroadcastSync {
       if (!this._checkRateLimit(action, payload)) {
         return false;
       }
-      
+
       // Send message
       this.channel.postMessage({
         senderId: this.tabId,
@@ -792,7 +834,7 @@ export class BroadcastSync {
         timestamp: Date.now(),
         messageId: this._generateMessageId()
       });
-      
+
       return true;
     });
   }
@@ -800,12 +842,14 @@ export class BroadcastSync {
 ```
 
 **Key Points:**
+
 - ✅ Three states: CLOSED (normal), OPEN (stopped), HALF_OPEN (testing recovery)
 - ✅ Rate-based tripping (10x normal rate opens circuit)
 - ✅ Failure-based tripping (10 failures opens circuit)
 - ✅ Automatic reset after 60 seconds
 
 **Why It Prevents Leaks:**
+
 - Stops runaway processes before crash
 - Provides early warning (logs when rate high)
 - Allows recovery (HALF_OPEN state)
@@ -826,77 +870,89 @@ export class MemoryMonitor {
     this.warningThresholdMB = options.warningThresholdMB || 100;
     this.criticalThresholdMB = options.criticalThresholdMB || 200;
     this.checkIntervalMs = options.checkIntervalMs || 10000; // 10 seconds
-    
+
     // State
     this.baseline = null;
     this.lastCheck = 0;
     this.warningCount = 0;
-    
+
     // Start monitoring
     this._startMonitoring();
   }
 
   _startMonitoring() {
     if (typeof window === 'undefined' || !window.performance?.memory) {
-      console.warn('[MemoryMonitor] performance.memory not available (Chrome only)');
+      console.warn(
+        '[MemoryMonitor] performance.memory not available (Chrome only)'
+      );
       return;
     }
-    
+
     // Set baseline on first check
     this.baseline = this._getMemoryUsageMB();
-    
+
     // Periodic monitoring
     this.monitorInterval = setInterval(() => {
       this._checkMemory();
     }, this.checkIntervalMs);
-    
-    console.log(`[MemoryMonitor] Started monitoring (baseline: ${this.baseline.toFixed(2)}MB)`);
+
+    console.log(
+      `[MemoryMonitor] Started monitoring (baseline: ${this.baseline.toFixed(2)}MB)`
+    );
   }
 
   _getMemoryUsageMB() {
     if (!window.performance?.memory) return 0;
-    
+
     return window.performance.memory.usedJSHeapSize / (1024 * 1024);
   }
 
   _checkMemory() {
     const currentMB = this._getMemoryUsageMB();
     const growthMB = currentMB - this.baseline;
-    
+
     // LAYER 6A: Warning threshold
     if (growthMB > this.warningThresholdMB) {
       this.warningCount++;
-      console.warn(`[MemoryMonitor] Memory growth: ${growthMB.toFixed(2)}MB above baseline`);
-      
+      console.warn(
+        `[MemoryMonitor] Memory growth: ${growthMB.toFixed(2)}MB above baseline`
+      );
+
       // LAYER 6B: Critical threshold
       if (growthMB > this.criticalThresholdMB) {
-        console.error(`[MemoryMonitor] CRITICAL: Memory growth ${growthMB.toFixed(2)}MB exceeds critical threshold`);
-        
+        console.error(
+          `[MemoryMonitor] CRITICAL: Memory growth ${growthMB.toFixed(2)}MB exceeds critical threshold`
+        );
+
         // Emit event for emergency cleanup
-        window.dispatchEvent(new CustomEvent('memory-critical', {
-          detail: { currentMB, growthMB }
-        }));
-        
+        window.dispatchEvent(
+          new CustomEvent('memory-critical', {
+            detail: { currentMB, growthMB }
+          })
+        );
+
         // Log detailed info
         this._logDetailedMemoryInfo();
       }
     } else if (this.warningCount > 0) {
       // Memory returned to normal
-      console.log(`[MemoryMonitor] Memory returned to normal: ${currentMB.toFixed(2)}MB`);
+      console.log(
+        `[MemoryMonitor] Memory returned to normal: ${currentMB.toFixed(2)}MB`
+      );
       this.warningCount = 0;
     }
   }
 
   _logDetailedMemoryInfo() {
     if (!window.performance?.memory) return;
-    
+
     const mem = window.performance.memory;
     console.log('[MemoryMonitor] Detailed memory info:', {
       usedMB: (mem.usedJSHeapSize / (1024 * 1024)).toFixed(2),
       totalMB: (mem.totalJSHeapSize / (1024 * 1024)).toFixed(2),
       limitMB: (mem.jsHeapSizeLimit / (1024 * 1024)).toFixed(2),
       baselineMB: this.baseline.toFixed(2),
-      growthMB: ((mem.usedJSHeapSize / (1024 * 1024)) - this.baseline).toFixed(2)
+      growthMB: (mem.usedJSHeapSize / (1024 * 1024) - this.baseline).toFixed(2)
     });
   }
 
@@ -912,24 +968,26 @@ export class MemoryMonitor {
 export class QuickTabsManager {
   constructor() {
     // ... setup ...
-    
+
     // LAYER 6: Start memory monitoring
     this.memoryMonitor = new MemoryMonitor({
       warningThresholdMB: 100,
       criticalThresholdMB: 200,
       checkIntervalMs: 10000
     });
-    
+
     // Register emergency cleanup handler
-    window.addEventListener('memory-critical', (event) => {
-      console.error('[QuickTabsManager] Memory critical - triggering emergency cleanup');
+    window.addEventListener('memory-critical', event => {
+      console.error(
+        '[QuickTabsManager] Memory critical - triggering emergency cleanup'
+      );
       this._emergencyCleanup();
     });
   }
 
   _emergencyCleanup() {
     console.log('[QuickTabsManager] Emergency cleanup triggered');
-    
+
     // Close all Quick Tab windows
     for (const [id, tabWindow] of this.tabs.entries()) {
       try {
@@ -938,31 +996,33 @@ export class QuickTabsManager {
         console.error(`Error destroying ${id}:`, err);
       }
     }
-    
+
     this.tabs.clear();
-    
+
     // Close broadcast channel
     if (this.updateHandler?.broadcastSync) {
       this.updateHandler.broadcastSync.close();
     }
-    
+
     // Force garbage collection (Chrome only, requires --expose-gc flag)
     if (typeof window.gc === 'function') {
       window.gc();
     }
-    
+
     console.log('[QuickTabsManager] Emergency cleanup complete');
   }
 }
 ```
 
 **Key Points:**
+
 - ✅ Chrome-only (performance.memory API)
 - ✅ Warning threshold (100MB growth)
 - ✅ Critical threshold (200MB growth)
 - ✅ Emergency cleanup on critical threshold
 
 **Why It Prevents Leaks:**
+
 - Early detection (before crash)
 - Automatic cleanup (emergency mode)
 - Detailed logging (for debugging)
@@ -973,7 +1033,8 @@ export class QuickTabsManager {
 
 ### Protection 1: Single Channel Instance Per Container
 
-**Problem:** Creating multiple BroadcastChannel instances with same name causes message amplification
+**Problem:** Creating multiple BroadcastChannel instances with same name causes
+message amplification
 
 **Solution:**
 
@@ -994,7 +1055,7 @@ class BroadcastChannelFactory {
     if (this.channels.has(cookieStoreId)) {
       return this.channels.get(cookieStoreId);
     }
-    
+
     const channel = new BroadcastSync(cookieStoreId, tabId);
     this.channels.set(cookieStoreId, channel);
     return channel;
@@ -1043,13 +1104,15 @@ export class QuickTabsManager {
 ```
 
 **Why It Helps:**
+
 - ✅ Prevents message amplification (N channels → N² messages)
 - ✅ Reduces memory (1 channel per container vs. N channels per container)
 - ✅ Simplifies cleanup (close one channel vs. tracking many)
 
 ### Protection 2: Message Payload Size Limiting
 
-**Problem:** Large payloads (>1MB) cause serialization overhead and memory spikes
+**Problem:** Large payloads (>1MB) cause serialization overhead and memory
+spikes
 
 **Solution:**
 
@@ -1057,22 +1120,24 @@ export class QuickTabsManager {
 export class BroadcastSync {
   constructor(cookieStoreId, tabId) {
     // ... setup ...
-    
+
     this.MAX_PAYLOAD_SIZE_BYTES = 100 * 1024; // 100KB max payload
   }
 
   send(action, payload) {
     // Check payload size
     const payloadSize = this._estimatePayloadSize(payload);
-    
+
     if (payloadSize > this.MAX_PAYLOAD_SIZE_BYTES) {
-      console.error(`[BroadcastSync] Payload too large: ${payloadSize} bytes (max ${this.MAX_PAYLOAD_SIZE_BYTES})`);
-      
+      console.error(
+        `[BroadcastSync] Payload too large: ${payloadSize} bytes (max ${this.MAX_PAYLOAD_SIZE_BYTES})`
+      );
+
       // Fall back to storage (can handle large payloads)
       this._fallbackToStorage(action, payload);
       return false;
     }
-    
+
     // ... send message ...
   }
 
@@ -1089,7 +1154,7 @@ export class BroadcastSync {
 
   async _fallbackToStorage(action, payload) {
     console.warn('[BroadcastSync] Falling back to storage for large payload');
-    
+
     // Write to storage instead (slower but can handle large data)
     await browser.storage.local.set({
       [`quick_tabs_large_message_${this.cookieStoreId}`]: {
@@ -1103,6 +1168,7 @@ export class BroadcastSync {
 ```
 
 **Why It Helps:**
+
 - ✅ Prevents memory spikes from large payloads
 - ✅ Graceful fallback to storage
 - ✅ Catches circular references early
@@ -1131,6 +1197,7 @@ channel.postMessage(data);
 ```
 
 **Why It Helps:**
+
 - ✅ Faster (structured clone is optimized C++ code)
 - ✅ Less memory (no temporary strings)
 - ✅ More data types supported
@@ -1149,14 +1216,17 @@ channel.postMessage(data);
 export class ReactiveQuickTab {
   constructor(data, onSync, currentTabId) {
     // ... setup ...
-    
+
     // Computed property cache
     this._computedCache = new Map();
     this._computedDirty = new Set();
-    
+
     // Track dependencies (which computed properties depend on which data properties)
     this._dependencies = new Map();
-    this._dependencies.set('isVisible', new Set(['minimized', 'soloedOnTabs', 'mutedOnTabs']));
+    this._dependencies.set(
+      'isVisible',
+      new Set(['minimized', 'soloedOnTabs', 'mutedOnTabs'])
+    );
     this._dependencies.set('isSoloed', new Set(['soloedOnTabs']));
     this._dependencies.set('isMuted', new Set(['mutedOnTabs']));
   }
@@ -1166,7 +1236,7 @@ export class ReactiveQuickTab {
     if (!this._computedDirty.has(prop) && this._computedCache.has(prop)) {
       return this._computedCache.get(prop);
     }
-    
+
     // Compute value
     let value;
     switch (prop) {
@@ -1182,11 +1252,11 @@ export class ReactiveQuickTab {
       default:
         return undefined;
     }
-    
+
     // Cache result
     this._computedCache.set(prop, value);
     this._computedDirty.delete(prop);
-    
+
     return value;
   }
 
@@ -1203,13 +1273,15 @@ export class ReactiveQuickTab {
 ```
 
 **Why It Helps:**
+
 - ✅ O(1) cache lookup vs. O(n) recomputation
 - ✅ Only recomputes when dependencies change
 - ✅ Explicit dependency tracking (fast invalidation)
 
 ### Protection 2: Validation Without Exceptions
 
-**Problem:** Throwing exceptions in Proxy set() trap can cause cascading failures
+**Problem:** Throwing exceptions in Proxy set() trap can cause cascading
+failures
 
 **Solution:**
 
@@ -1219,21 +1291,25 @@ export class ReactiveQuickTab {
     return new Proxy(target, {
       set: (obj, prop, value) => {
         const oldValue = obj[prop];
-        
+
         // Skip if unchanged
         if (oldValue === value) return true;
-        
+
         // VALIDATE without throwing
         if (!this._validate(prop, value)) {
-          console.warn(`[ReactiveQuickTab] Invalid value for ${prop}:`, value, '(ignoring)');
+          console.warn(
+            `[ReactiveQuickTab] Invalid value for ${prop}:`,
+            value,
+            '(ignoring)'
+          );
           return true; // Return true to prevent TypeError, but don't apply change
         }
-        
+
         // Apply change
         obj[prop] = value;
-        
+
         // ... rest of logic ...
-        
+
         return true;
       }
     });
@@ -1245,15 +1321,17 @@ export class ReactiveQuickTab {
       case 'left':
       case 'top':
         return typeof value === 'number' && value >= 0 && value < 10000;
-      
+
       case 'width':
       case 'height':
         return typeof value === 'number' && value >= 100 && value < 5000;
-      
+
       case 'soloedOnTabs':
       case 'mutedOnTabs':
-        return Array.isArray(value) && value.every(id => typeof id === 'number');
-      
+        return (
+          Array.isArray(value) && value.every(id => typeof id === 'number')
+        );
+
       default:
         return true; // Allow unknown properties
     }
@@ -1262,13 +1340,15 @@ export class ReactiveQuickTab {
 ```
 
 **Why It Helps:**
+
 - ✅ Graceful degradation (log warning, don't crash)
 - ✅ Prevents cascading failures
 - ✅ Easier debugging (logs show what was rejected)
 
 ### Protection 3: Deep Proxy Limits
 
-**Problem:** Recursively proxying nested objects creates deep proxy chains, slowing access
+**Problem:** Recursively proxying nested objects creates deep proxy chains,
+slowing access
 
 **Solution:**
 
@@ -1276,28 +1356,35 @@ export class ReactiveQuickTab {
 export class ReactiveQuickTab {
   constructor(data, onSync, currentTabId) {
     // ... setup ...
-    
+
     this.MAX_PROXY_DEPTH = 3; // Limit recursion depth
   }
 
   _createProxy(target, path = []) {
     // LIMIT: Stop recursing after 3 levels
     if (path.length >= this.MAX_PROXY_DEPTH) {
-      console.warn('[ReactiveQuickTab] Max proxy depth reached, returning plain object');
+      console.warn(
+        '[ReactiveQuickTab] Max proxy depth reached, returning plain object'
+      );
       return target;
     }
-    
+
     return new Proxy(target, {
       get: (obj, prop) => {
         const value = obj[prop];
-        
+
         // Only proxy plain objects, not arrays or special objects
-        if (value && typeof value === 'object' && !Array.isArray(value) && !this._isSpecialObject(value)) {
+        if (
+          value &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          !this._isSpecialObject(value)
+        ) {
           return this._createProxy(value, [...path, prop]);
         }
-        
+
         return value;
-      },
+      }
       // ... set trap ...
     });
   }
@@ -1317,6 +1404,7 @@ export class ReactiveQuickTab {
 ```
 
 **Why It Helps:**
+
 - ✅ Prevents deep proxy chains (O(depth) access time)
 - ✅ Avoids proxying special objects (Date, Map, etc.)
 - ✅ Limits memory overhead (fewer Proxy objects)
@@ -1347,20 +1435,20 @@ export class ReactiveQuickTab {
 export class QuickTabsManager {
   async cleanup() {
     console.log('[QuickTabsManager] Starting cleanup...');
-    
+
     try {
       // 1. Close BroadcastChannel
       if (this.updateHandler?.broadcastSync) {
         this.updateHandler.broadcastSync.close();
         this.updateHandler.broadcastSync = null;
       }
-      
+
       // 2. Stop memory monitor
       if (this.memoryMonitor) {
         this.memoryMonitor.stop();
         this.memoryMonitor = null;
       }
-      
+
       // 3. Remove event listeners
       if (this._eventListeners) {
         for (const { target, event, handler } of this._eventListeners) {
@@ -1368,7 +1456,7 @@ export class QuickTabsManager {
         }
         this._eventListeners = [];
       }
-      
+
       // 4. Destroy all Quick Tab windows
       const destroyPromises = [];
       for (const [id, tabWindow] of this.tabs.entries()) {
@@ -1379,25 +1467,24 @@ export class QuickTabsManager {
         );
       }
       await Promise.all(destroyPromises);
-      
+
       // 5. Clear all Maps
       if (this.tabs) {
         this.tabs.clear();
         this.tabs = null;
       }
-      
+
       if (this.elementToQuickTab) {
         this.elementToQuickTab = null; // WeakMap, just clear reference
       }
-      
+
       // 6. Clear other managers
       this.storage = null;
       this.stateManager = null;
       this.syncCoordinator = null;
       this.uiCoordinator = null;
-      
+
       console.log('[QuickTabsManager] Cleanup complete');
-      
     } catch (err) {
       console.error('[QuickTabsManager] Cleanup error:', err);
     }
@@ -1410,7 +1497,7 @@ export class QuickTabsManager {
     if (!this._eventListeners) {
       this._eventListeners = [];
     }
-    
+
     target.addEventListener(event, handler);
     this._eventListeners.push({ target, event, handler });
   }
@@ -1420,36 +1507,36 @@ export class QuickTabsManager {
 export class QuickTabWindow {
   async destroy() {
     console.log(`[QuickTabWindow:${this.id}] Destroying...`);
-    
+
     // 1. Remove event listeners
     if (this._dragHandler) {
       document.removeEventListener('pointermove', this._dragHandler);
       this._dragHandler = null;
     }
-    
+
     if (this._dragEndHandler) {
       document.removeEventListener('pointerup', this._dragEndHandler);
       this._dragEndHandler = null;
     }
-    
+
     // 2. Remove DOM element
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }
     this.element = null;
-    
+
     // 3. Clear reactive state watchers
     if (this.reactiveState && this.reactiveState._watchers) {
       this.reactiveState._watchers.clear();
     }
     this.reactiveState = null;
-    
+
     // 4. Clear callbacks
     this.onDestroy = null;
     this.onFocus = null;
     this.onPositionChange = null;
     this.onSizeChange = null;
-    
+
     console.log(`[QuickTabWindow:${this.id}] Destroyed`);
   }
 }
@@ -1488,7 +1575,10 @@ console.log(`[BroadcastSync] Closed channel: quick-tabs-${cookieStoreId}`);
 
 // On page unload, check for unclosed channels:
 window.addEventListener('beforeunload', () => {
-  console.log('[Debug] Channels still open:', broadcastChannelFactory.channels.size);
+  console.log(
+    '[Debug] Channels still open:',
+    broadcastChannelFactory.channels.size
+  );
   // Expected: 0 (all closed)
 });
 ```
@@ -1518,12 +1608,12 @@ export class MemoryMonitorDashboard {
       z-index: 999999999;
       border-radius: 5px;
     `;
-    
+
     this.memoryDisplay = document.createElement('div');
     dashboard.appendChild(this.memoryDisplay);
-    
+
     document.body.appendChild(dashboard);
-    
+
     // Update every second
     setInterval(() => {
       this.update();
@@ -1532,14 +1622,14 @@ export class MemoryMonitorDashboard {
 
   update() {
     if (!window.performance?.memory) return;
-    
+
     const mem = window.performance.memory;
     const usedMB = (mem.usedJSHeapSize / (1024 * 1024)).toFixed(2);
     const limitMB = (mem.jsHeapSizeLimit / (1024 * 1024)).toFixed(2);
     const pct = ((mem.usedJSHeapSize / mem.jsHeapSizeLimit) * 100).toFixed(1);
-    
+
     const color = pct > 80 ? '#f00' : pct > 60 ? '#ff0' : '#0f0';
-    
+
     this.memoryDisplay.innerHTML = `
       <div>Memory: ${usedMB}MB / ${limitMB}MB</div>
       <div style="color: ${color}">Usage: ${pct}%</div>
@@ -1567,19 +1657,19 @@ if (DEBUG_MODE) {
 describe('BroadcastSync - Echo Prevention', () => {
   it('should not process own messages', async () => {
     const sync = new BroadcastSync('firefox-default', 'tab-1');
-    
+
     let messageCount = 0;
     sync.on('POSITION_UPDATE', () => {
       messageCount++;
     });
-    
+
     // Send 10 messages
     for (let i = 0; i < 10; i++) {
       sync.send('POSITION_UPDATE', { id: 'qt-1', left: i, top: i });
     }
-    
+
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     // Should not receive own messages
     expect(messageCount).toBe(0);
   });
@@ -1592,20 +1682,20 @@ describe('BroadcastSync - Echo Prevention', () => {
 describe('BroadcastSync - Rate Limiting', () => {
   it('should limit to 60 messages/sec', async () => {
     const sync = new BroadcastSync('firefox-default', 'tab-1');
-    
+
     const startTime = Date.now();
     let sentCount = 0;
-    
+
     // Try to send 1000 messages rapidly
     for (let i = 0; i < 1000; i++) {
       if (sync.send('POSITION_UPDATE', { id: 'qt-1', left: i, top: i })) {
         sentCount++;
       }
     }
-    
+
     const elapsedMs = Date.now() - startTime;
     const messagesPerSec = (sentCount / elapsedMs) * 1000;
-    
+
     // Should be limited to ~60/sec
     expect(messagesPerSec).toBeLessThan(70);
   });
@@ -1618,16 +1708,16 @@ describe('BroadcastSync - Rate Limiting', () => {
 describe('BroadcastSync - Cleanup', () => {
   it('should close channel on cleanup', () => {
     const sync = new BroadcastSync('firefox-default', 'tab-1');
-    
+
     expect(sync.channel).toBeDefined();
     expect(sync.listeners).toBeDefined();
-    
+
     sync.close();
-    
+
     expect(sync.channel).toBeNull();
     expect(sync.listeners).toBeNull();
     expect(sync._closed).toBe(true);
-    
+
     // Should not throw on double-close
     expect(() => sync.close()).not.toThrow();
   });
@@ -1644,26 +1734,26 @@ describe('MemoryMonitor - Leak Detection', () => {
       criticalThresholdMB: 20,
       checkIntervalMs: 100
     });
-    
+
     // Baseline memory
     await new Promise(resolve => setTimeout(resolve, 200));
-    
+
     // Simulate memory leak (create large objects)
     const leaks = [];
     for (let i = 0; i < 100; i++) {
       leaks.push(new Array(100000).fill(Math.random()));
     }
-    
+
     // Wait for monitor to detect
     let warningEmitted = false;
     window.addEventListener('memory-critical', () => {
       warningEmitted = true;
     });
-    
+
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     expect(warningEmitted).toBe(true);
-    
+
     monitor.stop();
   });
 });
@@ -1679,19 +1769,19 @@ describe('ReactiveQuickTab - No Leaks', () => {
       () => {},
       12345
     );
-    
+
     // Add 100 watchers
     const unwatch = [];
     for (let i = 0; i < 100; i++) {
       unwatch.push(reactive.watch('left', () => {}));
     }
-    
+
     // Verify watchers exist
     expect(reactive._watchers.get('left').size).toBe(100);
-    
+
     // Unwatch all
     unwatch.forEach(fn => fn());
-    
+
     // Verify watchers removed
     expect(reactive._watchers.has('left')).toBe(false);
   });
@@ -1786,7 +1876,8 @@ FAIL conditions:
 
 ## Conclusion
 
-This guide provides **six layers of protection** against memory leaks when reintroducing BroadcastChannel and Proxy reactivity:
+This guide provides **six layers of protection** against memory leaks when
+reintroducing BroadcastChannel and Proxy reactivity:
 
 1. **Rate Limiting** - Prevents write/broadcast storms
 2. **Deduplication** - Prevents infinite message loops
@@ -1796,11 +1887,13 @@ This guide provides **six layers of protection** against memory leaks when reint
 6. **Memory Monitoring** - Early detection and emergency cleanup
 
 **Historical Context:**
+
 - Pre-v1.6.0: BroadcastChannel caused critical memory leaks → browser crashes
 - v1.6.0: BroadcastChannel completely disabled to prevent crashes
 - v1.7.0: BroadcastChannel reintroduced with **6-layer protection system**
 
 **Expected Results:**
+
 - ✅ Zero browser freezes
 - ✅ Memory usage < 200MB under normal load
 - ✅ Stable memory usage over time (no leaks)
@@ -1808,6 +1901,7 @@ This guide provides **six layers of protection** against memory leaks when reint
 - ✅ Graceful degradation on errors
 
 **Key Innovations:**
+
 1. Singleton BroadcastChannel pattern (prevents amplification)
 2. Hash-based deduplication (prevents echoes)
 3. Multi-hook lifecycle cleanup (guarantees cleanup)
@@ -1815,7 +1909,9 @@ This guide provides **six layers of protection** against memory leaks when reint
 5. Real-time memory monitoring (early detection)
 6. Comprehensive test suite (validation)
 
-By following this guide, the extension can safely use BroadcastChannel and Proxy reactivity **without risking the memory leaks that caused the original implementation to be disabled**.
+By following this guide, the extension can safely use BroadcastChannel and Proxy
+reactivity **without risking the memory leaks that caused the original
+implementation to be disabled**.
 
 ---
 

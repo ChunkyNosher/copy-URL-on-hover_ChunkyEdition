@@ -1,6 +1,6 @@
 /**
  * Scenario 4: Mute Mode (Hide on Specific Tab)
- * 
+ *
  * Tests that Quick Tabs can be "muted" to be hidden on specific tabs.
  * When a Quick Tab is muted, it should:
  * - Be visible on all tabs EXCEPT those in the mutedOnTabs array
@@ -8,11 +8,11 @@
  * - Mute state should sync across all tabs
  * - Broadcast should propagate mute changes within 100ms
  * - Mute and Solo are mutually exclusive (muting clears solo, soloing clears mute)
- * 
+ *
  * Related Documentation:
  * - docs/issue-47-revised-scenarios.md (Scenario 4)
  * - docs/manual/v1.6.0/remaining-testing-work.md (Priority 1)
- * 
+ *
  * Covers Issues: #47 (Solo/Mute feature)
  */
 
@@ -89,11 +89,11 @@ describe('Scenario 4: Mute Mode Protocol', () => {
 
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
-        
+
         setTimeout(() => {
           channels.forEach((targetChannel, targetIndex) => {
             if (sourceIndex !== targetIndex && targetChannel.onmessage) {
@@ -126,17 +126,21 @@ describe('Scenario 4: Mute Mode Protocol', () => {
         }
       });
 
-      stateManagers.forEach(sm => sm.add(new QuickTab({
-        id: quickTab.id,
-        url: quickTab.url,
-        position: quickTab.position,
-        size: quickTab.size,
-        container: quickTab.container,
-        visibility: quickTab.visibility
-      })));
+      stateManagers.forEach(sm =>
+        sm.add(
+          new QuickTab({
+            id: quickTab.id,
+            url: quickTab.url,
+            position: quickTab.position,
+            size: quickTab.size,
+            container: quickTab.container,
+            visibility: quickTab.visibility
+          })
+        )
+      );
 
       eventBuses.forEach((bus, index) => {
-        bus.on('broadcast:received', (message) => {
+        bus.on('broadcast:received', message => {
           if (message.type === 'MUTE') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
@@ -165,8 +169,8 @@ describe('Scenario 4: Mute Mode Protocol', () => {
       const qtInTabC = stateManagers[2].get(quickTab.id);
 
       expect(qtInTabA.shouldBeVisible(tabs[0].tabId)).toBe(false); // Muted on Tab A
-      expect(qtInTabB.shouldBeVisible(tabs[1].tabId)).toBe(true);  // Visible on Tab B
-      expect(qtInTabC.shouldBeVisible(tabs[2].tabId)).toBe(true);  // Visible on Tab C
+      expect(qtInTabB.shouldBeVisible(tabs[1].tabId)).toBe(true); // Visible on Tab B
+      expect(qtInTabC.shouldBeVisible(tabs[2].tabId)).toBe(true); // Visible on Tab C
     });
 
     test('muting Quick Tab on multiple tabs makes it hidden on all muted tabs', async () => {
@@ -183,17 +187,21 @@ describe('Scenario 4: Mute Mode Protocol', () => {
         }
       });
 
-      stateManagers.forEach(sm => sm.add(new QuickTab({
-        id: quickTab.id,
-        url: quickTab.url,
-        position: quickTab.position,
-        size: quickTab.size,
-        container: quickTab.container,
-        visibility: quickTab.visibility
-      })));
+      stateManagers.forEach(sm =>
+        sm.add(
+          new QuickTab({
+            id: quickTab.id,
+            url: quickTab.url,
+            position: quickTab.position,
+            size: quickTab.size,
+            container: quickTab.container,
+            visibility: quickTab.visibility
+          })
+        )
+      );
 
       eventBuses.forEach((bus, index) => {
-        bus.on('broadcast:received', (message) => {
+        bus.on('broadcast:received', message => {
           if (message.type === 'MUTE') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
@@ -221,7 +229,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
       const qtC = stateManagers[2].get(quickTab.id);
 
       expect(qtA.shouldBeVisible(tabs[0].tabId)).toBe(false); // Muted
-      expect(qtB.shouldBeVisible(tabs[1].tabId)).toBe(true);  // Visible
+      expect(qtB.shouldBeVisible(tabs[1].tabId)).toBe(true); // Visible
       expect(qtC.shouldBeVisible(tabs[2].tabId)).toBe(false); // Muted
     });
 
@@ -234,16 +242,20 @@ describe('Scenario 4: Mute Mode Protocol', () => {
         container: 'firefox-default'
       });
 
-      stateManagers.forEach(sm => sm.add(new QuickTab({
-        id: quickTab.id,
-        url: quickTab.url,
-        position: quickTab.position,
-        size: quickTab.size,
-        container: quickTab.container
-      })));
+      stateManagers.forEach(sm =>
+        sm.add(
+          new QuickTab({
+            id: quickTab.id,
+            url: quickTab.url,
+            position: quickTab.position,
+            size: quickTab.size,
+            container: quickTab.container
+          })
+        )
+      );
 
       let messageReceived = false;
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'MUTE') {
           messageReceived = true;
         }
@@ -281,17 +293,21 @@ describe('Scenario 4: Mute Mode Protocol', () => {
         }
       });
 
-      stateManagers.forEach(sm => sm.add(new QuickTab({
-        id: quickTab.id,
-        url: quickTab.url,
-        position: quickTab.position,
-        size: quickTab.size,
-        container: quickTab.container,
-        visibility: { ...quickTab.visibility }
-      })));
+      stateManagers.forEach(sm =>
+        sm.add(
+          new QuickTab({
+            id: quickTab.id,
+            url: quickTab.url,
+            position: quickTab.position,
+            size: quickTab.size,
+            container: quickTab.container,
+            visibility: { ...quickTab.visibility }
+          })
+        )
+      );
 
       eventBuses.forEach((bus, index) => {
-        bus.on('broadcast:received', (message) => {
+        bus.on('broadcast:received', message => {
           if (message.type === 'MUTE') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
@@ -343,7 +359,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
 
       stateManagers[0].add(quickTab);
 
-      eventBuses[0].on('broadcast:received', (message) => {
+      eventBuses[0].on('broadcast:received', message => {
         if (message.type === 'MUTE') {
           const qt = stateManagers[0].get(message.data.id);
           if (qt) {
@@ -390,7 +406,7 @@ describe('Scenario 4: Mute Mode Protocol', () => {
 
       stateManagers[0].add(quickTab);
 
-      eventBuses[0].on('broadcast:received', (message) => {
+      eventBuses[0].on('broadcast:received', message => {
         if (message.type === 'SOLO') {
           const qt = stateManagers[0].get(message.data.id);
           if (qt) {

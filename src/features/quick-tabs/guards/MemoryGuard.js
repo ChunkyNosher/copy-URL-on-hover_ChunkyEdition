@@ -1,9 +1,9 @@
 /**
  * MemoryGuard - Emergency shutdown mechanism for Quick Tab system
- * 
+ *
  * Monitors JS heap memory usage and triggers emergency shutdown
  * when memory thresholds are exceeded to prevent browser freeze.
- * 
+ *
  * Created to fix catastrophic memory leak in broadcast history persistence.
  * See: docs/manual/v1.6.0/quick-tab-memory-leak-catastrophic-analysis.md
  */
@@ -22,7 +22,7 @@ export class MemoryGuard {
     this.extensionThresholdMB = options.extensionThresholdMB || 1000;
     this.browserThresholdMB = options.browserThresholdMB || 20000;
     this.checkIntervalMs = options.checkIntervalMs || 1000;
-    
+
     // Internal state
     this.monitoringInterval = null;
     this.isMonitoring = false;
@@ -31,11 +31,11 @@ export class MemoryGuard {
     this.checkCount = 0;
     this.warningCount = 0;
     this.shutdownTriggered = false;
-    
+
     // Memory API availability
-    this.hasPerformanceMemory = typeof performance !== 'undefined' && 
-                                  performance.memory !== undefined;
-    
+    this.hasPerformanceMemory =
+      typeof performance !== 'undefined' && performance.memory !== undefined;
+
     // Callbacks for custom shutdown logic
     this.onEmergencyShutdown = null;
   }
@@ -65,7 +65,7 @@ export class MemoryGuard {
 
     this.isMonitoring = true;
     this.shutdownTriggered = false;
-    
+
     this.monitoringInterval = setInterval(() => {
       this.checkMemoryLimits();
     }, this.checkIntervalMs);
@@ -82,12 +82,12 @@ export class MemoryGuard {
     }
 
     console.log('[MemoryGuard] Stopping memory monitoring');
-    
+
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
       this.monitoringInterval = null;
     }
-    
+
     this.isMonitoring = false;
   }
 
@@ -108,7 +108,7 @@ export class MemoryGuard {
       const usedHeapMB = memory.usedJSHeapSize / (1024 * 1024);
       const totalHeapMB = memory.totalJSHeapSize / (1024 * 1024);
       const limitMB = memory.jsHeapSizeLimit / (1024 * 1024);
-      
+
       // Track peak memory
       if (usedHeapMB > this.peakMemoryMB) {
         this.peakMemoryMB = usedHeapMB;
@@ -122,7 +122,7 @@ export class MemoryGuard {
           thresholdMB: this.extensionThresholdMB,
           warningCount: this.warningCount
         });
-        
+
         this.triggerEmergencyShutdown('Extension memory threshold exceeded', usedHeapMB);
         return { exceeded: true, reason: 'extension_threshold', memoryMB: usedHeapMB };
       }
@@ -135,7 +135,7 @@ export class MemoryGuard {
           thresholdMB: this.browserThresholdMB,
           warningCount: this.warningCount
         });
-        
+
         this.triggerEmergencyShutdown('Browser memory threshold exceeded', totalHeapMB);
         return { exceeded: true, reason: 'browser_threshold', memoryMB: totalHeapMB };
       }

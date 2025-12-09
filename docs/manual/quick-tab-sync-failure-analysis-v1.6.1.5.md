@@ -3,26 +3,39 @@
 **Document Version:** 1.0  
 **Extension Version:** v1.6.1.5  
 **Date:** November 24, 2025  
-**Severity:** CRITICAL - Quick Tabs do not sync across tabs of different domains  
+**Severity:** CRITICAL - Quick Tabs do not sync across tabs of different
+domains  
 **Impact:** Breaks core global sync functionality described in Scenarios 1 and 2
 
 ---
 
 ## Executive Summary
 
-Testing of v1.6.1.5 reveals **Quick Tabs are NOT syncing globally across different domains** as specified in issue #47 test scenarios. Quick Tabs created on Wikipedia only appear on other Wikipedia tabs, not on tabs of different domains (YouTube, GitHub, etc.). Additionally, **position and size changes do not sync between tabs**.
+Testing of v1.6.1.5 reveals **Quick Tabs are NOT syncing globally across
+different domains** as specified in issue #47 test scenarios. Quick Tabs created
+on Wikipedia only appear on other Wikipedia tabs, not on tabs of different
+domains (YouTube, GitHub, etc.). Additionally, **position and size changes do
+not sync between tabs**.
 
 **Critical Findings:**
 
-1. **Domain-Isolated Sync**: Quick Tabs only appear on tabs of the same domain/URL
-2. **No Cross-Domain Visibility**: Quick Tab created on Wikipedia doesn't appear on YouTube tab
-3. **Position/Size Not Syncing**: Dragging or resizing Quick Tab in one tab doesn't update other tabs
-4. **BroadcastChannel Isolation**: Container-specific channels isolate broadcasts within same-domain tabs
-5. **Storage Loading Issue**: Tab visibility refresh uses wrong container context
+1. **Domain-Isolated Sync**: Quick Tabs only appear on tabs of the same
+   domain/URL
+2. **No Cross-Domain Visibility**: Quick Tab created on Wikipedia doesn't appear
+   on YouTube tab
+3. **Position/Size Not Syncing**: Dragging or resizing Quick Tab in one tab
+   doesn't update other tabs
+4. **BroadcastChannel Isolation**: Container-specific channels isolate
+   broadcasts within same-domain tabs
+5. **Storage Loading Issue**: Tab visibility refresh uses wrong container
+   context
 
 **Root Cause:**
 
-The v1.6.1.5 architecture uses **container-specific BroadcastChannels** (`quick-tabs-sync-{cookieStoreId}`) which are **domain-isolated**. Each tab listens only to broadcasts from tabs in the same container AND same domain due to BroadcastChannel's same-origin policy.
+The v1.6.1.5 architecture uses **container-specific BroadcastChannels**
+(`quick-tabs-sync-{cookieStoreId}`) which are **domain-isolated**. Each tab
+listens only to broadcasts from tabs in the same container AND same domain due
+to BroadcastChannel's same-origin policy.
 
 ---
 
@@ -31,6 +44,7 @@ The v1.6.1.5 architecture uses **container-specific BroadcastChannels** (`quick-
 ### Test Scenario Walkthrough
 
 **Environment from Logs:**
+
 - **Tab 12** (container `firefox-container-9`): Unknown domain (test tab)
 - **Tab 11** (container `firefox-default`): Wikipedia tab with Quick Tab created
 
@@ -52,6 +66,7 @@ The v1.6.1.5 architecture uses **container-specific BroadcastChannels** (`quick-
 ```
 
 **Analysis:**
+
 - Quick Tab created successfully in `firefox-default` container on Wikipedia tab
 - Position: (667, 790), Size: 960x540
 - Tab is active and rendering Quick Tab
@@ -76,10 +91,13 @@ The v1.6.1.5 architecture uses **container-specific BroadcastChannels** (`quick-
 ```
 
 **Analysis:**
+
 - Broadcast was received by the OTHER tab
-- **CRITICAL**: `cookieStoreId` changed from `firefox-default` to `firefox-container-9`
+- **CRITICAL**: `cookieStoreId` changed from `firefox-default` to
+  `firefox-container-9`
 - CreateHandler correctly rejects: "Quick Tab already exists and is rendered"
-- This indicates cross-container broadcast was received but rejected due to container mismatch
+- This indicates cross-container broadcast was received but rejected due to
+  container mismatch
 
 ### Evidence 3: Tab Switch to Container-9 Tab Shows NO Quick Tabs
 
@@ -92,8 +110,11 @@ The v1.6.1.5 architecture uses **container-specific BroadcastChannels** (`quick-
 ```
 
 **Analysis:**
-- When switching to Tab 12 (`firefox-container-9`), system looks for Quick Tabs in `firefox-container-9` storage
-- Finds **ZERO Quick Tabs** because Quick Tab was created in `firefox-default` storage
+
+- When switching to Tab 12 (`firefox-container-9`), system looks for Quick Tabs
+  in `firefox-container-9` storage
+- Finds **ZERO Quick Tabs** because Quick Tab was created in `firefox-default`
+  storage
 - Tab visibility refresh loads from **wrong container context**
 - **0 in-memory, 0 from storage** = No Quick Tabs visible at all
 
@@ -108,6 +129,7 @@ The v1.6.1.5 architecture uses **container-specific BroadcastChannels** (`quick-
 ```
 
 **Analysis:**
+
 - Background script detects position update and broadcasts
 - Storage change triggers broadcast to "all tabs"
 - **But**: "container-aware: 1 containers" shows isolation
@@ -131,14 +153,14 @@ setupBroadcastChannel() {
   try {
     // ❌ PROBLEM: Container-specific channel name
     const channelName = `quick-tabs-sync-${this.cookieStoreId}`;
-    
+
     // ❌ CRITICAL PROBLEM: BroadcastChannel is SAME-ORIGIN only
     // Each domain creates its own isolated channel
     // Wikipedia tabs: new BroadcastChannel('quick-tabs-sync-firefox-default')
     // YouTube tabs: new BroadcastChannel('quick-tabs-sync-firefox-default')
     // BUT these are SEPARATE channels because different origins!
     this.broadcastChannel = new BroadcastChannel(channelName);
-    
+
     this.broadcastChannel.onmessage = event => {
       this.handleBroadcastMessage(event.data);
     };
@@ -152,20 +174,29 @@ setupBroadcastChannel() {
 
 **BroadcastChannel API is Same-Origin Policy Restricted:**
 
-From [MDN BroadcastChannel documentation](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API):
+From
+[MDN BroadcastChannel documentation](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API):
 
-> "The Broadcast Channel API allows simple communication between browsing contexts (that is windows, tabs, frames, or iframes) **and workers on the same origin**."
+> "The Broadcast Channel API allows simple communication between browsing
+> contexts (that is windows, tabs, frames, or iframes) **and workers on the same
+> origin**."
 
 **This means:**
-- `https://en.wikipedia.org` tabs create channel `quick-tabs-sync-firefox-default` on Wikipedia origin
-- `https://www.youtube.com` tabs create channel `quick-tabs-sync-firefox-default` on YouTube origin
+
+- `https://en.wikipedia.org` tabs create channel
+  `quick-tabs-sync-firefox-default` on Wikipedia origin
+- `https://www.youtube.com` tabs create channel
+  `quick-tabs-sync-firefox-default` on YouTube origin
 - **These are SEPARATE channels** - messages don't cross origins
 - Quick Tabs created on Wikipedia broadcast ONLY to other Wikipedia tabs
 - YouTube tabs never receive Wikipedia's broadcasts
 
 **The False Assumption:**
 
-The code assumes `BroadcastChannel('quick-tabs-sync-firefox-default')` is a **global channel** shared across all tabs regardless of domain. This is **fundamentally incorrect** - BroadcastChannel is origin-isolated by design for security.
+The code assumes `BroadcastChannel('quick-tabs-sync-firefox-default')` is a
+**global channel** shared across all tabs regardless of domain. This is
+**fundamentally incorrect** - BroadcastChannel is origin-isolated by design for
+security.
 
 **Diagram of Current (Broken) Behavior:**
 
@@ -196,11 +227,11 @@ async handleTabVisible() {
 
   try {
     const currentState = this.stateManager.getAll();
-    
+
     // ❌ PROBLEM: Loads from storage using tab's OWN container context
     // StorageManager loads from: quick_tabs_state_v2.containers[this.cookieStoreId]
     const storageState = await this.storageManager.loadAll();
-    
+
     // This returns EMPTY if tab's container doesn't match Quick Tab's container
     const mergedState = this._mergeQuickTabStates(currentState, storageState);
     this.stateManager.hydrate(mergedState);
@@ -216,16 +247,21 @@ async handleTabVisible() {
 **What's Wrong:**
 
 When tab becomes visible:
+
 1. System calls `storageManager.loadAll()`
-2. StorageManager loads from `quick_tabs_state_v2.containers[this.cookieStoreId]`
-3. If tab is in `firefox-container-9` and Quick Tab was created in `firefox-default`:
+2. StorageManager loads from
+   `quick_tabs_state_v2.containers[this.cookieStoreId]`
+3. If tab is in `firefox-container-9` and Quick Tab was created in
+   `firefox-default`:
    - `storageState` returns `[]` (no data for container-9)
    - `currentState` is also `[]` (no broadcasts received due to Problem 1)
    - **Result: 0 Quick Tabs visible**
 
 **The Wrong Assumption:**
 
-The code assumes each tab should only load Quick Tabs from its **own container context**. This makes Quick Tabs container-isolated, which contradicts the **global sync requirement** in Scenarios 1 and 2.
+The code assumes each tab should only load Quick Tabs from its **own container
+context**. This makes Quick Tabs container-isolated, which contradicts the
+**global sync requirement** in Scenarios 1 and 2.
 
 ### Problem Location 3: Container-Specific Storage Keys
 
@@ -252,11 +288,16 @@ The code assumes each tab should only load Quick Tabs from its **own container c
 
 **What's Wrong:**
 
-Storage structure is **container-partitioned**. Each container has its own isolated Quick Tab storage. When a tab in a different container loads Quick Tabs, it only loads from its own container key.
+Storage structure is **container-partitioned**. Each container has its own
+isolated Quick Tab storage. When a tab in a different container loads Quick
+Tabs, it only loads from its own container key.
 
 **This Breaks Global Sync:**
-- Quick Tab created on Wikipedia (firefox-default) stored in `containers.firefox-default`
-- YouTube tab (firefox-default but different origin) loads from `containers.firefox-default`
+
+- Quick Tab created on Wikipedia (firefox-default) stored in
+  `containers.firefox-default`
+- YouTube tab (firefox-default but different origin) loads from
+  `containers.firefox-default`
 - **But** broadcasts never reach YouTube tab due to same-origin restriction
 - **Result:** Quick Tabs appear to be container-isolated
 
@@ -267,6 +308,7 @@ Storage structure is **container-partitioned**. Each container has its own isola
 ### Issue 1: BroadcastChannel Can't Be Used for Cross-Origin Sync
 
 **Current Design:**
+
 - Uses `BroadcastChannel` for real-time cross-tab messaging
 - Assumes channels work globally across all browser tabs
 - **Reality:** Channels are same-origin isolated
@@ -274,6 +316,7 @@ Storage structure is **container-partitioned**. Each container has its own isola
 **Why This Breaks:**
 
 BroadcastChannel was designed for **intra-origin communication**:
+
 - Chat applications where all users are on `chat.example.com`
 - Multi-tab games on same domain
 - Syncing UI state within a web app
@@ -283,6 +326,7 @@ It was **NOT designed** for extension cross-origin sync.
 **Browser Extension Context:**
 
 Content scripts run in **each page's origin context**:
+
 - Content script on Wikipedia runs in Wikipedia origin
 - Content script on YouTube runs in YouTube origin
 - They **cannot share BroadcastChannels**
@@ -290,29 +334,38 @@ Content scripts run in **each page's origin context**:
 ### Issue 2: No Background Script Relay
 
 **Current Design:**
+
 - Content scripts communicate via BroadcastChannel directly
 - Background script observes storage changes and re-broadcasts
 - **But:** Background broadcasts also use BroadcastChannel
 
 **Why This Doesn't Work:**
 
-Background scripts in Firefox extensions **don't have a BroadcastChannel context** that spans all tabs. The background page has its own origin (moz-extension://...), which is **separate from content script origins**.
+Background scripts in Firefox extensions **don't have a BroadcastChannel
+context** that spans all tabs. The background page has its own origin
+(moz-extension://...), which is **separate from content script origins**.
 
 **Even if background script posts to BroadcastChannel:**
-- Background: `BroadcastChannel('quick-tabs-sync-firefox-default')` in `moz-extension://` origin
-- Wikipedia tab: `BroadcastChannel('quick-tabs-sync-firefox-default')` in `https://en.wikipedia.org` origin
+
+- Background: `BroadcastChannel('quick-tabs-sync-firefox-default')` in
+  `moz-extension://` origin
+- Wikipedia tab: `BroadcastChannel('quick-tabs-sync-firefox-default')` in
+  `https://en.wikipedia.org` origin
 - **These are DIFFERENT channels** - messages don't relay
 
 ### Issue 3: Container-Aware Storage Defeats Global Sync
 
 **Current Design:**
+
 - Storage partitioned by container: `containers.firefox-default.tabs`
 - Each tab loads only from its own container
 - Broadcasts (if they worked) would still be container-specific
 
 **Why This Breaks Global Sync:**
 
-Scenarios 1 and 2 require Quick Tabs to be **globally visible** across all tabs **regardless of domain or container** (unless Solo/Mute applied). Current design treats each container as isolated storage namespace.
+Scenarios 1 and 2 require Quick Tabs to be **globally visible** across all tabs
+**regardless of domain or container** (unless Solo/Mute applied). Current design
+treats each container as isolated storage namespace.
 
 ---
 
@@ -338,7 +391,9 @@ Scenarios 1 and 2 require Quick Tabs to be **globally visible** across all tabs 
 
 **Result:**
 
-Position/size updates only sync **within same-domain tabs** due to BroadcastChannel isolation. This is the same root cause as Quick Tab creation not syncing.
+Position/size updates only sync **within same-domain tabs** due to
+BroadcastChannel isolation. This is the same root cause as Quick Tab creation
+not syncing.
 
 ---
 
@@ -395,11 +450,14 @@ To fix these issues and meet Scenario 1 & 2 requirements, the system needs:
 
 **Replace BroadcastChannel with browser extension messaging:**
 
-Firefox extensions have access to `browser.runtime.sendMessage()` and `browser.tabs.sendMessage()`, which **DO work cross-origin** because they're part of the WebExtensions API.
+Firefox extensions have access to `browser.runtime.sendMessage()` and
+`browser.tabs.sendMessage()`, which **DO work cross-origin** because they're
+part of the WebExtensions API.
 
 **Required Changes:**
 
-Stop using BroadcastChannel entirely. Use background script as central message relay:
+Stop using BroadcastChannel entirely. Use background script as central message
+relay:
 
 ```
 Content Script (Wikipedia) → browser.runtime.sendMessage() → Background Script
@@ -407,17 +465,21 @@ Content Script (Wikipedia) → browser.runtime.sendMessage() → Background Scri
 Background Script → browser.tabs.sendMessage() → Content Script (YouTube)
 ```
 
-This works across all origins because WebExtensions API is not subject to same-origin policy.
+This works across all origins because WebExtensions API is not subject to
+same-origin policy.
 
 ### Requirement 2: Global Storage Loading
 
 **Remove container-partitioned storage loading:**
 
-When tab becomes visible, system should load **ALL Quick Tabs from ALL containers**, not just its own container. The global Quick Tab list should be filtered based on Solo/Mute rules, not container boundaries.
+When tab becomes visible, system should load **ALL Quick Tabs from ALL
+containers**, not just its own container. The global Quick Tab list should be
+filtered based on Solo/Mute rules, not container boundaries.
 
 **Required Changes:**
 
 Change `StorageManager.loadAll()` to:
+
 - Load from ALL container keys in storage
 - Return flat array of ALL Quick Tabs
 - Let visibility rules (Solo/Mute) determine which Quick Tabs are rendered
@@ -428,6 +490,7 @@ Change `StorageManager.loadAll()` to:
 **Restructure storage to have global Quick Tab list:**
 
 Instead of:
+
 ```javascript
 {
   "containers": {
@@ -438,6 +501,7 @@ Instead of:
 ```
 
 Use:
+
 ```javascript
 {
   "quickTabs": [
@@ -447,7 +511,8 @@ Use:
 }
 ```
 
-**Keep `cookieStoreId` as metadata**, but don't partition storage by it. All Quick Tabs live in one flat list.
+**Keep `cookieStoreId` as metadata**, but don't partition storage by it. All
+Quick Tabs live in one flat list.
 
 ### Requirement 4: Background Script as Sync Authority
 
@@ -460,6 +525,7 @@ Use:
 - No peer-to-peer messaging between content scripts
 
 **This ensures:**
+
 - All tabs see same global state
 - Position/size updates relay through background
 - Cross-origin sync works correctly
@@ -471,7 +537,9 @@ Use:
 ### Phase 1: Replace BroadcastChannel with Extension Messaging (CRITICAL - P0)
 
 **Files to Change:**
-- `src/features/quick-tabs/managers/BroadcastManager.js` - Remove BroadcastChannel, add browser.runtime messaging
+
+- `src/features/quick-tabs/managers/BroadcastManager.js` - Remove
+  BroadcastChannel, add browser.runtime messaging
 - `background.js` - Add message relay logic to broadcast to all tabs
 
 **Changes Required:**
@@ -535,13 +603,17 @@ browser.runtime.onMessage.addListener((message, sender) => {
 });
 ```
 
-**Impact:** Fixes cross-origin broadcast issue. Quick Tabs will now appear across different domains.
+**Impact:** Fixes cross-origin broadcast issue. Quick Tabs will now appear
+across different domains.
 
 ### Phase 2: Fix Storage Loading to Be Global (HIGH PRIORITY - P1)
 
 **Files to Change:**
-- `src/features/quick-tabs/managers/StorageManager.js` - Change `loadAll()` to load from all containers
-- `src/features/quick-tabs/coordinators/SyncCoordinator.js` - Update `handleTabVisible()` to expect global state
+
+- `src/features/quick-tabs/managers/StorageManager.js` - Change `loadAll()` to
+  load from all containers
+- `src/features/quick-tabs/coordinators/SyncCoordinator.js` - Update
+  `handleTabVisible()` to expect global state
 
 **Changes Required:**
 
@@ -559,23 +631,25 @@ async loadAll() {
 async loadAll() {
   const data = await browser.storage.local.get('quick_tabs_state_v2');
   const containers = data?.quick_tabs_state_v2?.containers || {};
-  
+
   // Flatten all containers into single array
   const allQuickTabs = [];
   for (const containerKey of Object.keys(containers)) {
     const tabs = containers[containerKey]?.tabs || [];
     allQuickTabs.push(...tabs);
   }
-  
+
   return allQuickTabs;
 }
 ```
 
-**Impact:** Tabs will load Quick Tabs from all containers, not just their own. Combined with Phase 1, this completes global sync.
+**Impact:** Tabs will load Quick Tabs from all containers, not just their own.
+Combined with Phase 1, this completes global sync.
 
 ### Phase 3: Unified Storage Structure (MEDIUM PRIORITY - P2)
 
 **Files to Change:**
+
 - All storage read/write locations
 - Migration logic to convert old structure to new structure
 
@@ -614,30 +688,33 @@ Add migration logic on extension update to convert old data:
 ```javascript
 async function migrateStorageStructure() {
   const data = await browser.storage.local.get('quick_tabs_state_v2');
-  
+
   if (data?.quick_tabs_state_v2?.containers) {
     // Old structure detected, migrate
     const containers = data.quick_tabs_state_v2.containers;
     const quickTabs = [];
-    
+
     for (const [containerId, containerData] of Object.entries(containers)) {
       for (const tab of containerData.tabs || []) {
         tab.cookieStoreId = containerId; // Add container metadata
         quickTabs.push(tab);
       }
     }
-    
+
     // Write new structure
     await browser.storage.local.set({
       quick_tabs_state_v2: { quickTabs }
     });
-    
-    console.log('[Migration] Converted container-partitioned storage to global structure');
+
+    console.log(
+      '[Migration] Converted container-partitioned storage to global structure'
+    );
   }
 }
 ```
 
-**Impact:** Cleaner storage model, easier to reason about. Reduces complexity in storage manager.
+**Impact:** Cleaner storage model, easier to reason about. Reduces complexity in
+storage manager.
 
 ---
 
@@ -646,6 +723,7 @@ async function migrateStorageStructure() {
 ### Test Scenario 1: Cross-Domain Quick Tab Creation
 
 **Steps:**
+
 1. Open Wikipedia tab, create Quick Tab
 2. Verify Quick Tab appears on Wikipedia tab
 3. Open YouTube tab
@@ -653,12 +731,14 @@ async function migrateStorageStructure() {
 5. **Verify:** Quick Tab visible on YouTube tab
 
 **Success Criteria:**
+
 - Quick Tab appears on YouTube tab immediately (within 100ms)
 - Position and size match Wikipedia tab exactly
 
 ### Test Scenario 2: Cross-Domain Position Sync
 
 **Steps:**
+
 1. Open Wikipedia tab with Quick Tab
 2. Open YouTube tab (Quick Tab syncs)
 3. Drag Quick Tab to bottom-right in YouTube tab
@@ -667,12 +747,14 @@ async function migrateStorageStructure() {
 6. **Verify:** Position synced correctly
 
 **Success Criteria:**
+
 - Position updates sync within 100ms
 - Final position identical across both tabs
 
 ### Test Scenario 3: Cross-Domain Size Sync
 
 **Steps:**
+
 1. Open Wikipedia tab with Quick Tab
 2. Open GitHub tab (Quick Tab syncs)
 3. Resize Quick Tab to 700x500 in GitHub tab
@@ -681,12 +763,14 @@ async function migrateStorageStructure() {
 6. **Verify:** Size synced correctly
 
 **Success Criteria:**
+
 - Size updates sync within 100ms
 - Final dimensions identical across both tabs
 
 ### Test Scenario 4: Multiple Quick Tabs Across Domains
 
 **Steps:**
+
 1. Open Wikipedia tab, create Quick Tab 1
 2. Open YouTube tab (Quick Tab 1 syncs)
 3. Create Quick Tab 2 in YouTube tab
@@ -696,6 +780,7 @@ async function migrateStorageStructure() {
 7. **Verify:** All Quick Tabs synced globally
 
 **Success Criteria:**
+
 - Quick Tab 1 appears on YouTube tab
 - Quick Tab 2 appears on Wikipedia tab after switching
 - Both tabs show 2 Quick Tabs total
@@ -704,21 +789,29 @@ async function migrateStorageStructure() {
 
 ## Root Cause Summary
 
-The v1.6.1.5 cross-domain sync failure is caused by **fundamental misuse of the BroadcastChannel API**:
+The v1.6.1.5 cross-domain sync failure is caused by **fundamental misuse of the
+BroadcastChannel API**:
 
 ### The Core Problem
 
-**BroadcastChannel is same-origin restricted** - messages cannot cross origins (domains). Quick Tabs created on Wikipedia broadcast only to other Wikipedia tabs, never reaching YouTube or other domains.
+**BroadcastChannel is same-origin restricted** - messages cannot cross origins
+(domains). Quick Tabs created on Wikipedia broadcast only to other Wikipedia
+tabs, never reaching YouTube or other domains.
 
 ### The Amplifiers
 
-1. **Container-Partitioned Storage**: Each container has isolated storage, preventing tabs from loading Quick Tabs from other containers
-2. **Container-Specific Loading**: `handleTabVisible()` loads only from tab's own container, returning empty arrays for cross-container Quick Tabs
-3. **No Background Relay**: Background script doesn't properly relay messages cross-origin
+1. **Container-Partitioned Storage**: Each container has isolated storage,
+   preventing tabs from loading Quick Tabs from other containers
+2. **Container-Specific Loading**: `handleTabVisible()` loads only from tab's
+   own container, returning empty arrays for cross-container Quick Tabs
+3. **No Background Relay**: Background script doesn't properly relay messages
+   cross-origin
 
 ### The Result
 
-A **perfect storm** of architecture issues that **completely breaks global sync**:
+A **perfect storm** of architecture issues that **completely breaks global
+sync**:
+
 - Quick Tabs isolated to same-domain tabs
 - Position/size updates don't propagate cross-domain
 - Each domain effectively has its own isolated Quick Tab namespace
@@ -728,12 +821,17 @@ A **perfect storm** of architecture issues that **completely breaks global sync*
 
 ## Conclusion
 
-The v1.6.1.5 Quick Tab sync system is **fundamentally broken for cross-domain use** due to incorrect BroadcastChannel usage. BroadcastChannel was never designed for cross-origin extension messaging - it's a **same-origin API** for intra-app communication.
+The v1.6.1.5 Quick Tab sync system is **fundamentally broken for cross-domain
+use** due to incorrect BroadcastChannel usage. BroadcastChannel was never
+designed for cross-origin extension messaging - it's a **same-origin API** for
+intra-app communication.
 
 **The fix requires:**
 
-1. **Phase 1** (Critical): Replace BroadcastChannel with `browser.runtime` messaging and background script relay
-2. **Phase 2** (High Priority): Fix storage loading to be global across all containers
+1. **Phase 1** (Critical): Replace BroadcastChannel with `browser.runtime`
+   messaging and background script relay
+2. **Phase 2** (High Priority): Fix storage loading to be global across all
+   containers
 3. **Phase 3** (Medium Priority): Restructure storage to unified global list
 
 **Estimated Total Implementation Time:** 8-12 hours (1-1.5 days)

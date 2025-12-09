@@ -20,8 +20,12 @@ export function isValidQuickTabUrl(url) {
   if (!url || url === 'undefined') return false;
   if (String(url).includes('/undefined')) return false;
   if (url === 'about:blank') return true;
-  return url.startsWith('http://') || url.startsWith('https://') || 
-         url.startsWith('moz-extension://') || url.startsWith('chrome-extension://');
+  return (
+    url.startsWith('http://') ||
+    url.startsWith('https://') ||
+    url.startsWith('moz-extension://') ||
+    url.startsWith('chrome-extension://')
+  );
 }
 
 export function shouldProcessStorageChange(_transactionId) {

@@ -8,7 +8,7 @@ import { UICoordinator } from '../../../src/features/quick-tabs/coordinators/UIC
 // v1.6.3.6-v5 - FIX: Helper to create QuickTab with originTabId for cross-tab filtering tests
 // QuickTab.create() doesn't support originTabId, so we add it as a runtime property
 // This mimics the behavior of CreateHandler which sets originTabId during creation
-const createQuickTabWithOriginTabId = (params) => {
+const createQuickTabWithOriginTabId = params => {
   // Extract originTabId from params (it's not supported by QuickTab.create)
   const { originTabId, ...quickTabParams } = params;
   const quickTab = QuickTab.create(quickTabParams);
@@ -92,7 +92,7 @@ describe('UICoordinator', () => {
   describe('init()', () => {
     // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
     const MOCK_TAB_ID = 12345;
-    
+
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
@@ -140,7 +140,7 @@ describe('UICoordinator', () => {
   describe('render()', () => {
     // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
     const MOCK_TAB_ID = 12345;
-    
+
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
@@ -290,7 +290,7 @@ describe('UICoordinator', () => {
   describe('update()', () => {
     // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
     const MOCK_TAB_ID = 12345;
-    
+
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
@@ -361,7 +361,7 @@ describe('UICoordinator', () => {
   describe('destroy()', () => {
     // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
     const MOCK_TAB_ID = 12345;
-    
+
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
@@ -439,7 +439,7 @@ describe('UICoordinator', () => {
   describe('renderAll()', () => {
     // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
     const MOCK_TAB_ID = 12345;
-    
+
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
@@ -488,7 +488,7 @@ describe('UICoordinator', () => {
   describe('setupStateListeners()', () => {
     // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
     const MOCK_TAB_ID = 12345;
-    
+
     beforeEach(() => {
       uiCoordinator = new UICoordinator(
         mockStateManager,
@@ -545,7 +545,7 @@ describe('UICoordinator', () => {
   describe('Integration', () => {
     // v1.6.3.6-v5 - FIX: Add currentTabId for cross-tab isolation tests
     const MOCK_TAB_ID = 12345;
-    
+
     test('should handle full lifecycle', async () => {
       uiCoordinator = new UICoordinator(
         mockStateManager,

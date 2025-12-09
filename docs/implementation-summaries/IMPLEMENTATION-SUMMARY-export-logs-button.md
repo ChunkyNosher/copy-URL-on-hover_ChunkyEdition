@@ -3,13 +3,16 @@
 **Date:** November 15, 2025  
 **Version:** 1.5.9  
 **Issue:** Missing Export Logs button in Advanced tab  
-**Implementation Guide:** `docs/manual/1.5.9 docs/export-logs-button-implementation.md`
+**Implementation Guide:**
+`docs/manual/1.5.9 docs/export-logs-button-implementation.md`
 
 ---
 
 ## Overview
 
-Successfully implemented the Export Console Logs feature in the Advanced tab of the extension popup, allowing users to download all extension console logs as a `.txt` file for debugging and support purposes.
+Successfully implemented the Export Console Logs feature in the Advanced tab of
+the extension popup, allowing users to download all extension console logs as a
+`.txt` file for debugging and support purposes.
 
 ## Changes Made
 
@@ -40,10 +43,14 @@ Successfully implemented the Export Console Logs feature in the Advanced tab of 
 
 **Functions Added:**
 
-1. **`getBackgroundLogs()`** - Requests logs from background script via `GET_BACKGROUND_LOGS` message
-2. **`getContentScriptLogs()`** - Requests logs from active tab's content script via `GET_CONTENT_LOGS` message
-3. **`formatLogsAsText(logs, version)`** - Formats log entries as plain text with header/footer
-4. **`generateLogFilename(version)`** - Generates filename with version and ISO 8601 timestamp
+1. **`getBackgroundLogs()`** - Requests logs from background script via
+   `GET_BACKGROUND_LOGS` message
+2. **`getContentScriptLogs()`** - Requests logs from active tab's content script
+   via `GET_CONTENT_LOGS` message
+3. **`formatLogsAsText(logs, version)`** - Formats log entries as plain text
+   with header/footer
+4. **`generateLogFilename(version)`** - Generates filename with version and ISO
+   8601 timestamp
 5. **`exportAllLogs(version)`** - Main export function that:
    - Collects logs from all sources (background + content)
    - Merges and sorts by timestamp
@@ -166,7 +173,8 @@ End of Logs
 ### Scenarios Handled
 
 1. **No logs available:**
-   - Error: "No logs found. Try enabling debug mode and using the extension first."
+   - Error: "No logs found. Try enabling debug mode and using the extension
+     first."
    - Button shows error state for 3 seconds
 
 2. **Content script not loaded (restricted page):**
@@ -295,7 +303,8 @@ End of Logs
 - [ ] Update `.github/copilot-instructions.md` with Export Logs feature
 - [ ] Update all agent files in `.github/agents/` if architecture changed
 
-**Note:** These documentation updates should be done as a follow-up task if this feature is part of a new release.
+**Note:** These documentation updates should be done as a follow-up task if this
+feature is part of a new release.
 
 ---
 
@@ -303,7 +312,8 @@ End of Logs
 
 ✅ **Implementation Status:** COMPLETE
 
-The Export Console Logs button has been successfully implemented in the Advanced tab with:
+The Export Console Logs button has been successfully implemented in the Advanced
+tab with:
 
 - Full context-aware architecture respecting Firefox security model
 - Comprehensive error handling
@@ -312,9 +322,9 @@ The Export Console Logs button has been successfully implemented in the Advanced
 - Proper file formatting with version and timestamp
 - All validation checks passing
 
-The implementation follows the guide in `export-logs-button-implementation.md` exactly, with no deviations or issues encountered.
+The implementation follows the guide in `export-logs-button-implementation.md`
+exactly, with no deviations or issues encountered.
 
-**Total Lines Changed:** 278 lines added across 3 files
-**Build Status:** ✅ Successful
-**Test Status:** ✅ All tests passing (68/68)
-**Lint Status:** ✅ No new errors (only pre-existing warnings)
+**Total Lines Changed:** 278 lines added across 3 files **Build Status:** ✅
+Successful **Test Status:** ✅ All tests passing (68/68) **Lint Status:** ✅ No
+new errors (only pre-existing warnings)

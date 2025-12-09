@@ -1,7 +1,7 @@
 /**
  * Firefox Container API shim for browsers that don't support it
  * Provides a graceful fallback for Chrome/Edge/etc.
- * 
+ *
  * Firefox has contextualIdentities API for container isolation.
  * Chrome has no equivalent, so we provide a shim that returns a default container.
  */
@@ -59,7 +59,7 @@ export function getContainerAPI() {
       isSupported: () => true
     };
   }
-  
+
   // Return shim for Chrome/Edge/etc.
   return new ContainerShim();
 }

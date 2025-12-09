@@ -1,13 +1,13 @@
 /**
  * Scenario 10: Quick Tab Limit Enforcement
- * 
+ *
  * Tests that the maximum Quick Tab limit (configured in settings) is properly
  * enforced with user-friendly notification.
- * 
+ *
  * Related Documentation:
  * - docs/issue-47-revised-scenarios.md (Scenario 10)
  * - docs/manual/v1.6.0/remaining-testing-work.md (Phase 2)
- * 
+ *
  * Covers Issues: #47
  */
 
@@ -95,7 +95,7 @@ describe('Scenario 10: Quick Tab Limit Enforcement', () => {
       }
 
       expect(stateManagers[0].getAll().length).toBe(MAX_QTS);
-      
+
       // Check if at limit
       const atLimit = stateManagers[0].getAll().length >= MAX_QTS;
       expect(atLimit).toBe(true);
@@ -172,21 +172,25 @@ describe('Scenario 10: Quick Tab Limit Enforcement', () => {
       stateManagers[0].add(qt2);
 
       // Simulate sync to Tab B
-      stateManagers[1].add(new QuickTab({
-        id: qt1.id,
-        url: qt1.url,
-        position: qt1.position,
-        size: qt1.size,
-        container: qt1.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt1.id,
+          url: qt1.url,
+          position: qt1.position,
+          size: qt1.size,
+          container: qt1.container
+        })
+      );
 
-      stateManagers[1].add(new QuickTab({
-        id: qt2.id,
-        url: qt2.url,
-        position: qt2.position,
-        size: qt2.size,
-        container: qt2.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt2.id,
+          url: qt2.url,
+          position: qt2.position,
+          size: qt2.size,
+          container: qt2.container
+        })
+      );
 
       // Verify count in both tabs
       expect(stateManagers[0].getAll().length).toBe(2);
@@ -217,21 +221,25 @@ describe('Scenario 10: Quick Tab Limit Enforcement', () => {
       stateManagers[0].add(qt2);
 
       // Sync to Tab B
-      stateManagers[1].add(new QuickTab({
-        id: qt1.id,
-        url: qt1.url,
-        position: qt1.position,
-        size: qt1.size,
-        container: qt1.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt1.id,
+          url: qt1.url,
+          position: qt1.position,
+          size: qt1.size,
+          container: qt1.container
+        })
+      );
 
-      stateManagers[1].add(new QuickTab({
-        id: qt2.id,
-        url: qt2.url,
-        position: qt2.position,
-        size: qt2.size,
-        container: qt2.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt2.id,
+          url: qt2.url,
+          position: qt2.position,
+          size: qt2.size,
+          container: qt2.container
+        })
+      );
 
       // At limit in both tabs
       expect(stateManagers[0].getAll().length).toBe(MAX_QTS);
@@ -386,7 +394,7 @@ describe('Scenario 10: Quick Tab Limit Enforcement', () => {
         id: 'qt-container-2',
         url: 'https://example2.com',
         position: { left: 200, top: 200 },
-        size: { width: 800, height: 600 },
+        size: { width: 800, height: 600 }
       });
 
       stateManagers[0].add(qt1);

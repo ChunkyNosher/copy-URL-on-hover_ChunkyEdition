@@ -2,7 +2,10 @@
 
 ## Overview
 
-The extension uses a MessageRouter pattern in the background script to handle cross-context communication between content scripts, popup, sidebar, and background script. This document explains the routing architecture, message flow, and security validation.
+The extension uses a MessageRouter pattern in the background script to handle
+cross-context communication between content scripts, popup, sidebar, and
+background script. This document explains the routing architecture, message
+flow, and security validation.
 
 ## Message Router Architecture
 
@@ -156,12 +159,21 @@ router.register(
 
 const tabHandler = new TabHandler();
 router.register(
-  ['OPEN_TAB', 'GET_TAB_INFO', 'SAVE_TAB_STATE', 'GET_TAB_STATE', 'CLEAR_TAB_STATE'],
+  [
+    'OPEN_TAB',
+    'GET_TAB_INFO',
+    'SAVE_TAB_STATE',
+    'GET_TAB_STATE',
+    'CLEAR_TAB_STATE'
+  ],
   tabHandler
 );
 
 const logHandler = new LogHandler();
-router.register(['CLEAR_CONSOLE_LOGS', 'GET_BACKGROUND_LOGS', 'EXPORT_LOGS'], logHandler);
+router.register(
+  ['CLEAR_CONSOLE_LOGS', 'GET_BACKGROUND_LOGS', 'EXPORT_LOGS'],
+  logHandler
+);
 
 // Install listener
 browser.runtime.onMessage.addListener(router.createListener());
@@ -235,7 +247,8 @@ sequenceDiagram
 
 ### Pattern 3: Background → Content (Broadcast-style)
 
-**Note**: Background script cannot initiate messages to content scripts. Instead, it uses storage changes + BroadcastChannel.
+**Note**: Background script cannot initiate messages to content scripts.
+Instead, it uses storage changes + BroadcastChannel.
 
 ```mermaid
 sequenceDiagram

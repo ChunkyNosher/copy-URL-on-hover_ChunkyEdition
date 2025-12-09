@@ -43,7 +43,9 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
     if (ready) {
       console.log('✓ Test Bridge API is available');
     } else {
-      console.log('⚠ Test Bridge API not available (extension may not be built with TEST_MODE=true)');
+      console.log(
+        '⚠ Test Bridge API not available (extension may not be built with TEST_MODE=true)'
+      );
     }
 
     // Verify page is accessible
@@ -88,11 +90,7 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
     const page = await extensionContext.newPage();
 
     // Visit multiple sites
-    const sites = [
-      'https://example.com',
-      'https://www.google.com',
-      'https://github.com',
-    ];
+    const sites = ['https://example.com', 'https://www.google.com', 'https://github.com'];
 
     for (const site of sites) {
       try {

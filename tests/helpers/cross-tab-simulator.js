@@ -1,13 +1,13 @@
 /**
  * Cross-Tab Simulation Framework
- * 
+ *
  * Provides utilities for simulating multiple browser tabs in unit tests
  * to validate cross-tab synchronization behaviors.
- * 
+ *
  * Related Documentation:
  * - docs/manual/comprehensive-unit-testing-strategy.md (Section 7.2)
  * - docs/issue-47-revised-scenarios.md
- * 
+ *
  * Note: Uses pure mocks instead of JSDOM to avoid dependency issues
  */
 
@@ -46,7 +46,7 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
   const storage = new Map();
   const storageAPI = {
     sync: {
-      get: jest.fn(async (keys) => {
+      get: jest.fn(async keys => {
         const result = {};
         if (Array.isArray(keys)) {
           keys.forEach(key => {
@@ -66,12 +66,12 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
         }
         return result;
       }),
-      set: jest.fn(async (items) => {
+      set: jest.fn(async items => {
         Object.entries(items).forEach(([key, value]) => {
           storage.set(key, value);
         });
       }),
-      remove: jest.fn(async (keys) => {
+      remove: jest.fn(async keys => {
         const keysArray = Array.isArray(keys) ? keys : [keys];
         keysArray.forEach(key => storage.delete(key));
       }),
@@ -80,7 +80,7 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
       })
     },
     local: {
-      get: jest.fn(async (keys) => {
+      get: jest.fn(async keys => {
         const result = {};
         if (Array.isArray(keys)) {
           keys.forEach(key => {
@@ -95,12 +95,12 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
         }
         return result;
       }),
-      set: jest.fn(async (items) => {
+      set: jest.fn(async items => {
         Object.entries(items).forEach(([key, value]) => {
           storage.set(key, value);
         });
       }),
-      remove: jest.fn(async (keys) => {
+      remove: jest.fn(async keys => {
         const keysArray = Array.isArray(keys) ? keys : [keys];
         keysArray.forEach(key => storage.delete(key));
       }),
@@ -113,7 +113,7 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
   // Create isolated broadcast channel mock
   const broadcastListeners = [];
   const broadcastChannel = {
-    postMessage: jest.fn((message) => {
+    postMessage: jest.fn(message => {
       // Simulate async delivery with small delay
       setTimeout(() => {
         broadcastListeners.forEach(listener => listener({ data: message }));
@@ -154,18 +154,20 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
 
   // Mock browser.tabs API
   const tabsAPI = {
-    query: jest.fn(async (query) => {
+    query: jest.fn(async query => {
       if (query.active && query.currentWindow) {
-        return [{
-          id: tabId,
-          url,
-          cookieStoreId: containerId,
-          active: true
-        }];
+        return [
+          {
+            id: tabId,
+            url,
+            cookieStoreId: containerId,
+            active: true
+          }
+        ];
       }
       return [];
     }),
-    get: jest.fn(async (id) => {
+    get: jest.fn(async id => {
       if (id === tabId) {
         return {
           id: tabId,
@@ -210,7 +212,7 @@ export async function switchToTab(fromTab, toTab) {
     // Trigger visibilitychange on previous tab
     fromTab.document.hidden = true;
     fromTab.document.visibilityState = 'hidden';
-    
+
     // Call all visibility change listeners
     if (fromTab.document.addEventListener.mock) {
       const calls = fromTab.document.addEventListener.mock.calls;
@@ -226,7 +228,7 @@ export async function switchToTab(fromTab, toTab) {
     // Trigger focus events on new tab
     toTab.document.hidden = false;
     toTab.document.visibilityState = 'visible';
-    
+
     // Call all visibility change listeners
     if (toTab.document.addEventListener.mock) {
       const calls = toTab.document.addEventListener.mock.calls;
@@ -236,7 +238,7 @@ export async function switchToTab(fromTab, toTab) {
         }
       });
     }
-    
+
     // Call all focus listeners
     if (toTab.window.addEventListener.mock) {
       const calls = toTab.window.addEventListener.mock.calls;
@@ -290,7 +292,7 @@ export async function propagateBroadcast(sourceTab, message, targetTabs, delay =
  */
 export async function createMultiTabScenario(configs) {
   const tabs = [];
-  
+
   for (const config of configs) {
     const tab = await createSimulatedTab(config.url, config.containerId);
     tabs.push(tab);
@@ -298,7 +300,7 @@ export async function createMultiTabScenario(configs) {
 
   // Setup broadcast channel connections between tabs in same container
   tabs.forEach((sourceTab, sourceIndex) => {
-    sourceTab.broadcastChannel.postMessage = jest.fn((message) => {
+    sourceTab.broadcastChannel.postMessage = jest.fn(message => {
       setTimeout(() => {
         tabs.forEach((targetTab, targetIndex) => {
           // Skip self and different containers
@@ -326,14 +328,14 @@ export async function createMultiTabScenario(configs) {
  */
 export async function waitForCondition(condition, timeout = 1000, interval = 50) {
   const startTime = Date.now();
-  
+
   while (Date.now() - startTime < timeout) {
     if (condition()) {
       return true;
     }
     await new Promise(resolve => setTimeout(resolve, interval));
   }
-  
+
   return false;
 }
 
@@ -344,13 +346,13 @@ export async function waitForCondition(condition, timeout = 1000, interval = 50)
  */
 export function simulateBrowserRestart(tabs) {
   const persistedStorage = {};
-  
+
   tabs.forEach(tab => {
     tab._storage.forEach((value, key) => {
       persistedStorage[key] = value;
     });
   });
-  
+
   return persistedStorage;
 }
 
