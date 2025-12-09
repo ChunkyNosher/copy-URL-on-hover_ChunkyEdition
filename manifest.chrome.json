@@ -11,7 +11,9 @@
     "webRequestBlocking",
     "<all_urls>",
     "cookies",
-    "downloads"
+    "downloads",
+    "notifications",
+    "alarms"
   ],
 
   "commands": {
