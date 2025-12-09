@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7-v2** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7** (Build v2) - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, and Persistent Floating Panel
 Manager.
@@ -9,13 +9,13 @@ Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v2 Status:** Single Writer Authority, Unified Render Pipeline, Orphaned Tab Recovery ✅
+**🔧 Build v2 Status:** Single Writer Authority, Unified Render Pipeline, Orphaned Tab Recovery ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7-v2
+## 🎉 What's New in v1.6.3.7 (Build v2)
 
 **🚀 Architecture & Reliability Improvements (December 2025) ✅**
 

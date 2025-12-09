@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.7-v2), ownership validation, unified
+  sync with Single Writer Authority (v1.6.3.7 (Build v2)), ownership validation, unified
   render pipeline, orphaned tab recovery
 tools: ['*']
 ---
@@ -46,7 +46,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, background writes storage
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
 
-**v1.6.3.7-v2 Features (NEW):**
+**v1.6.3.7 (Build v2) Features (NEW):**
 
 - **New Permissions** - `notifications`, `clipboardRead/Write` (Firefox), `alarms`
 - **Single Writer Authority** - Manager sends ADOPT_TAB, CLOSE_MINIMIZED_TABS to background
@@ -70,7 +70,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Port Registry** - Background tracks all active port connections
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
 
-**Key Functions (v1.6.3.7-v2):**
+**Key Functions (v1.6.3.7 (Build v2)):**
 
 | Function | Location | Purpose |
 |----------|----------|---------|
@@ -95,10 +95,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Single Writer Authority - Manager sends commands, not storage writes (v1.6.3.7-v2)
-- [ ] `scheduleRender()` prevents redundant renders via hash comparison (v1.6.3.7-v2)
-- [ ] Orphaned tabs preserved with `orphaned: true` flag (v1.6.3.7-v2)
-- [ ] `REQUEST_FULL_STATE_SYNC` restores state on reconnection (v1.6.3.7-v2)
+- [ ] Single Writer Authority - Manager sends commands, not storage writes (v1.6.3.7 (Build v2))
+- [ ] `scheduleRender()` prevents redundant renders via hash comparison (v1.6.3.7 (Build v2))
+- [ ] Orphaned tabs preserved with `orphaned: true` flag (v1.6.3.7 (Build v2))
+- [ ] `REQUEST_FULL_STATE_SYNC` restores state on reconnection (v1.6.3.7 (Build v2))
 - [ ] Background keepalive keeps Firefox background alive (v1.6.3.7)
 - [ ] Circuit breaker handles port disconnections with backoff (v1.6.3.7)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
@@ -107,5 +107,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.7-v2 Single Writer Authority,
+**Your strength: Complete Quick Tab system with v1.6.3.7 (Build v2) Single Writer Authority,
 unified render pipeline, and orphaned tab recovery.**

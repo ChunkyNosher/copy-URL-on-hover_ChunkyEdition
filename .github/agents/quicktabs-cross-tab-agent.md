@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v2), Per-Tab Ownership Validation, unified render pipeline, state sync
+  (v1.6.3.7 (Build v2)), Per-Tab Ownership Validation, unified render pipeline, state sync
 tools: ['*']
 ---
 
@@ -39,7 +39,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Version:** 1.6.3.7-v2 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v2 Features (NEW):**
+**v1.6.3.7 (Build v2) Features (NEW):**
 
 - **Single Writer Authority** - Manager sends commands, background writes storage
   - Commands: `ADOPT_TAB`, `CLOSE_MINIMIZED_TABS` sent to background
@@ -64,7 +64,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Persistent Connections** - `browser.runtime.onConnect` for persistent ports
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
 
-**Key Functions (v1.6.3.7-v2):**
+**Key Functions (v1.6.3.7 (Build v2)):**
 
 | Function | Location | Purpose |
 |----------|----------|---------|
@@ -89,10 +89,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Single Writer Authority - Manager sends commands, not storage writes (v1.6.3.7-v2)
-- [ ] `scheduleRender()` prevents redundant renders via hash comparison (v1.6.3.7-v2)
-- [ ] `REQUEST_FULL_STATE_SYNC` restores state on reconnection (v1.6.3.7-v2)
-- [ ] `writeStateWithVerificationAndRetry()` confirms writes (v1.6.3.7-v2)
+- [ ] Single Writer Authority - Manager sends commands, not storage writes (v1.6.3.7 (Build v2))
+- [ ] `scheduleRender()` prevents redundant renders via hash comparison (v1.6.3.7 (Build v2))
+- [ ] `REQUEST_FULL_STATE_SYNC` restores state on reconnection (v1.6.3.7 (Build v2))
+- [ ] `writeStateWithVerificationAndRetry()` confirms writes (v1.6.3.7 (Build v2))
 - [ ] Background keepalive keeps Firefox background alive (v1.6.3.7)
 - [ ] Circuit breaker handles port disconnections with backoff (v1.6.3.7)
 - [ ] Strict tab isolation rejects null originTabId
@@ -101,5 +101,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.7-v2 Single Writer Authority,
+**Your strength: Reliable cross-tab sync with v1.6.3.7 (Build v2) Single Writer Authority,
 unified render pipeline, state sync, and storage write verification.**

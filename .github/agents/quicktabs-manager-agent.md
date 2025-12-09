@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v2), unified render pipeline, storage storm protection, in-memory
+  (v1.6.3.7 (Build v2)), unified render pipeline, storage storm protection, in-memory
   cache, orphaned tab recovery, cross-tab grouping UI
 tools: ['*']
 ---
@@ -47,7 +47,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Cross-Tab Grouping UI** - Groups Quick Tabs by originTabId in collapsible sections
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 
-**v1.6.3.7-v2 Features (NEW):**
+**v1.6.3.7 (Build v2) Features (NEW):**
 
 - **Single Writer Authority** - Manager sends ADOPT_TAB, CLOSE_MINIMIZED_TABS to background
 - **Unified Render Pipeline** - `scheduleRender(source)` replaces direct `renderUI()` calls
@@ -69,7 +69,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **CorrelationId Tracking** - Every message includes unique correlationId
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
 
-**Key Functions (v1.6.3.7-v2):**
+**Key Functions (v1.6.3.7 (Build v2)):**
 
 | Function | Purpose |
 |----------|---------|
@@ -101,10 +101,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Single Writer Authority - Manager sends commands, not storage writes (v1.6.3.7-v2)
-- [ ] `scheduleRender()` prevents redundant renders via hash comparison (v1.6.3.7-v2)
-- [ ] `_requestFullStateSync()` restores state on reconnection (v1.6.3.7-v2)
-- [ ] Orphaned tabs show adoption UI with `orphaned: true` flag (v1.6.3.7-v2)
+- [ ] Single Writer Authority - Manager sends commands, not storage writes (v1.6.3.7 (Build v2))
+- [ ] `scheduleRender()` prevents redundant renders via hash comparison (v1.6.3.7 (Build v2))
+- [ ] `_requestFullStateSync()` restores state on reconnection (v1.6.3.7 (Build v2))
+- [ ] Orphaned tabs show adoption UI with `orphaned: true` flag (v1.6.3.7 (Build v2))
 - [ ] Background keepalive keeps Firefox background alive (v1.6.3.7)
 - [ ] Circuit breaker handles port disconnections with backoff (v1.6.3.7)
 - [ ] Orphan detection shows ⚠️ icon and warning colors
@@ -114,5 +114,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.7-v2 Single Writer Authority,
+**Your strength: Manager coordination with v1.6.3.7 (Build v2) Single Writer Authority,
 unified render pipeline, and orphaned tab recovery.**

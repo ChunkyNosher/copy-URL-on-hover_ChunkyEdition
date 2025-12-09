@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7-v2.
+  documentation. Current version: v1.6.3.7 (Build v2).
 tools: ['*']
 ---
 
@@ -69,9 +69,9 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7-v2)
+## Current Extension State (v1.6.3.7 (Build v2))
 
-### v1.6.3.7-v2 Features (NEW)
+### v1.6.3.7 (Build v2) Features (NEW)
 
 - **New Permissions** - `notifications`, `clipboardRead/Write` (Firefox), `alarms`
 - **Single Writer Authority** - Manager sends commands to background (ADOPT_TAB, CLOSE_MINIMIZED_TABS)
@@ -100,7 +100,7 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.7-v2)
+### Key Functions (v1.6.3.7 (Build v2))
 
 | Function | Location | Purpose |
 |----------|----------|---------|
@@ -117,10 +117,10 @@ nothing.
 
 - [ ] All files under 15KB
 - [ ] Version numbers match 1.6.3.7-v2
-- [ ] **v1.6.3.7-v2:** New permissions documented
-- [ ] **v1.6.3.7-v2:** Single Writer Authority documented
-- [ ] **v1.6.3.7-v2:** Unified render pipeline documented
-- [ ] **v1.6.3.7-v2:** Orphaned tab recovery documented
+- [ ] **v1.6.3.7 (Build v2):** New permissions documented
+- [ ] **v1.6.3.7 (Build v2):** Single Writer Authority documented
+- [ ] **v1.6.3.7 (Build v2):** Unified render pipeline documented
+- [ ] **v1.6.3.7 (Build v2):** Orphaned tab recovery documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 

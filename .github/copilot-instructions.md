@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.7-v2  
+**Version:** 1.6.3.7 (Build v2)  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -19,7 +19,7 @@ Tabs Manager
 - **Cross-tab isolation via `originTabId`** with strict per-tab scoping
 - **Lifecycle resilience** with keepalive & circuit breaker
 
-**v1.6.3.7-v2 Features (NEW):**
+**Build v2 Features (NEW):**
 
 - **New Permissions** - `notifications`, `clipboardRead/Write` (Firefox), `alarms`
 - **Single Writer Authority** - Manager sends commands (ADOPT_TAB, CLOSE_MINIMIZED_TABS) to background
@@ -29,7 +29,7 @@ Tabs Manager
 - **Port Reconnection Sync** - `REQUEST_FULL_STATE_SYNC` on port reconnection
 - **Storage Write Verification** - `writeStateWithVerificationAndRetry()` with read-back confirmation
 
-**v1.6.3.7 Features (Retained):**
+**v1.6.3.7 Base Features (Retained):**
 
 - **Background Keepalive** - `_startKeepalive()` resets Firefox 30s idle timer every 20s
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
