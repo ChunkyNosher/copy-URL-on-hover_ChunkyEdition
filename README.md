@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7** (Build v2) - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, and Persistent Floating Panel
 Manager.
@@ -9,34 +9,35 @@ Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7 Status:** Firefox 30-second timeout workaround, port circuit breaker, UI performance improvements ✅
+**🔧 Build v2 Status:** Single Writer Authority, Unified Render Pipeline, Orphaned Tab Recovery ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7
+## 🎉 What's New in v1.6.3.7 (Build v2)
 
-**🚀 Performance & Reliability Improvements (December 2025) ✅**
+**🚀 Architecture & Reliability Improvements (December 2025) ✅**
 
-- ✅ **Firefox 30-Second Timeout Workaround** - Background script stays alive
-  - `_startKeepalive()` uses `browser.runtime.sendMessage()` and `browser.tabs.query()` every 20s
-  - Resets Firefox's idle timer to prevent background script termination (Bug 1851373)
-- ✅ **Port Circuit Breaker** - Handles port disconnections gracefully
-  - State machine: closed → open → half-open with exponential backoff
-  - Reconnection attempts: 100ms → 200ms → 500ms → ... → 10s max
-- ✅ **UI Performance** - Faster, more responsive Quick Tabs Manager
-  - Debounced `renderUI()` to max once per 300ms with state hash comparison
-  - `_analyzeStorageChange()` detects differential updates - skips renderUI for z-index-only changes
-  - Resize operations wrapped in `requestAnimationFrame` callbacks
-- ✅ **originTabId Validation** - More robust tab tracking
-  - `_isValidOriginTabId()` validates positive integers only
-  - Enhanced `groupQuickTabsByOriginTab()` with comprehensive logging
-- ✅ **Package Optimization** - Smaller extension files
-  - ZIP compression -9 for Firefox XPI (~40% size reduction)
-  - ZIP compression -6 for Chrome ZIP packages
+- ✅ **New Permissions** - Rich notifications, clipboard API, scheduled alarms
+  - `notifications` - Rich notification types (Firefox + Chrome)
+  - `clipboardRead`, `clipboardWrite` - Clipboard API (Firefox only)
+  - `alarms` - Scheduled tasks (Firefox + Chrome)
+- ✅ **Single Writer Authority** - Manager no longer writes to storage directly
+  - Commands: `ADOPT_TAB`, `CLOSE_MINIMIZED_TABS` sent to background
+  - Background handlers: `handleFullStateSyncRequest()`, `handleCloseMinimizedTabsCommand()`
+- ✅ **Unified Render Pipeline** - New `scheduleRender(source)` entry point
+  - Hash-based deduplication prevents redundant renders
+  - `_checkAndReloadStaleState()` for state staleness detection
+- ✅ **Orphaned Tab Recovery** - Hydration preserves orphaned tabs
+  - `orphaned: true` flag for adoption UI display
+  - Improved cross-tab recovery UX
+- ✅ **Port Reconnection Sync** - `REQUEST_FULL_STATE_SYNC` on reconnection
+  - `_requestFullStateSync()` ensures state consistency
+- ✅ **Storage Write Verification** - `writeStateWithVerificationAndRetry()`
+  - Read-back confirmation with retry logic
 
-**Why This Matters:** Firefox aggressively suspends background scripts after 30 seconds of inactivity, causing Quick Tab state to be lost. The keepalive mechanism prevents this. The circuit breaker ensures graceful recovery from port disconnections.
+**Why This Matters:** These systemic fixes eliminate race conditions, state desync, and orphaned tab issues that occurred during cross-tab operations.
 
 ---
 
@@ -44,10 +45,9 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history including:
 
-- **v1.6.3.6-v5** - Cross-tab isolation fixes, deletion loop fixes, logging infrastructure
+- **v1.6.3.7** - Firefox keepalive, port circuit breaker, UI performance
+- **v1.6.3.6-v5** - Cross-tab isolation fixes, deletion loop fixes
 - **v1.6.2** - Firefox sidebar integration with unified settings
-- **v1.6.0.11** - Console filter integration & UI polish
-- **v1.6.0.8** - Live console output & export filtering
 - **v1.6.0** - Domain-Driven Design architecture refactoring
 
 ---
@@ -223,6 +223,6 @@ for details.
 
 ---
 
-**Version 1.6.3.7** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.7-v2** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

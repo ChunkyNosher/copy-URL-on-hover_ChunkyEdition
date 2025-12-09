@@ -2,9 +2,9 @@
 name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
-  port-based messaging (v1.6.3.6-v12), Background-as-Coordinator, storage storm
-  protection, in-memory cache, real-time state updates, animation lifecycle logging,
-  Single Writer Model, cross-tab grouping UI
+  port-based messaging, Background-as-Coordinator with Single Writer Authority
+  (v1.6.3.7 (Build v2)), unified render pipeline, storage storm protection, in-memory
+  cache, orphaned tab recovery, cross-tab grouping UI
 tools: ['*']
 ---
 
@@ -36,70 +36,53 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v2 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
 - **Global Display** - All Quick Tabs shown (no container grouping)
-- **Port-Based Messaging** - Persistent connections via
-  `browser.runtime.onConnect`
-- **Cross-Tab Grouping UI** - Groups Quick Tabs by originTabId in collapsible
-  sections
-- **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
-- **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
-- **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
+- **Port-Based Messaging** - Persistent connections via `browser.runtime.onConnect`
+- **Single Writer Authority** - Manager sends commands, never writes storage
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based deduplication
+- **Cross-Tab Grouping UI** - Groups Quick Tabs by originTabId in collapsible sections
+- **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 
-**v1.6.3.7 Features (NEW):**
+**v1.6.3.7 (Build v2) Features (NEW):**
+
+- **Single Writer Authority** - Manager sends ADOPT_TAB, CLOSE_MINIMIZED_TABS to background
+- **Unified Render Pipeline** - `scheduleRender(source)` replaces direct `renderUI()` calls
+- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based detection
+- **Port Reconnection Sync** - `_requestFullStateSync()` on port reconnection
+- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with `orphaned: true` flag
+
+**v1.6.3.7 Features (Retained):**
 
 - **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
-- **UI Performance** - Debounced renderUI (300ms), `_analyzeStorageChange()` skips z-index-only changes
+- **UI Performance** - Debounced renderUI (300ms), differential storage updates
 - **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
 
 **v1.6.3.6-v12 Port-Based Messaging (Retained):**
 
-- **Port Registry** -
-  `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount } }`
-- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`,
-  `ERROR`, `BROADCAST`
-- **CorrelationId Tracking** - Every message includes unique correlationId for
-  acknowledgment
-- **Port Lifecycle Logging** - `[Manager] PORT_LIFECYCLE: CONNECT/DISCONNECT`
-  prefix
+- **Port Registry** - `{ portId -> { port, origin, tabId, type, ... } }`
+- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`, `ERROR`, `BROADCAST`, `REQUEST_FULL_STATE_SYNC`
+- **CorrelationId Tracking** - Every message includes unique correlationId
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
-- **Atomic Adoption** - Single storage write for `adoptQuickTabToCurrentTab()`
-- **Visibility Sync** - Broadcasts to all ports on visibility changes
-- **Count Badge Animation** - `.updated` CSS class for animation
 
-**v1.6.3.6-v12 Animation/Logging (Retained):**
+**Key Functions (v1.6.3.7 (Build v2)):**
 
-- **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
-  ERROR)
-- **State Constants** - `STATE_OPEN`, `STATE_CLOSED` for consistent terminology
-- **CSS-Only Styling** - No inline maxHeight, rely on CSS defaults
-- **Adoption Verification** - 2-second timeout for adoption confirmation
-- **Section Header Logging** - Logs count of active/minimized tabs
-
-**v1.6.3.6-v12 Build Optimization (Retained):**
-
-- **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
-- **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
-- **sideEffects: false** - In package.json for better tree-shaking
-
-**v1.6.3.6-v10 Fixes (Retained):**
-
-- **Orphan Detection & Adoption** - ⚠️ icon, `adoptQuickTabToCurrentTab()`
-  button
-- **Tab Switch Detection** - `browser.tabs.onActivated` auto-refresh
-- **Smooth Animations** - 0.35s duration, `animate()` API
-- **Responsive Design** - 250/300/400/500px breakpoints
+| Function | Purpose |
+|----------|---------|
+| `scheduleRender(source)` | Unified render entry point |
+| `_checkAndReloadStaleState()` | State staleness detection |
+| `_requestFullStateSync()` | Port reconnection sync |
 
 **Manager as Pure Consumer:**
 
 - `inMemoryTabsCache` is fallback protection only
-- All writes go through Background-as-Coordinator
+- All commands go through Background-as-Coordinator
 - `closeAllTabs()` uses `CLEAR_ALL_QUICK_TABS` message
-- `forceEmpty: true` allows Close All to write empty state
+- Adoption uses `ADOPT_TAB` command to background
 
 **CRITICAL:** Use `storage.local` for Quick Tab state (NOT `storage.sync`)
 
@@ -116,23 +99,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-## MCP Server Integration
-
-**MANDATORY:** Context7, Perplexity, ESLint, CodeScene, Agentic-Tools
-
----
-
 ## Testing Requirements
 
+- [ ] Single Writer Authority - Manager sends commands, not storage writes (v1.6.3.7 (Build v2))
+- [ ] `scheduleRender()` prevents redundant renders via hash comparison (v1.6.3.7 (Build v2))
+- [ ] `_requestFullStateSync()` restores state on reconnection (v1.6.3.7 (Build v2))
+- [ ] Orphaned tabs show adoption UI with `orphaned: true` flag (v1.6.3.7 (Build v2))
 - [ ] Background keepalive keeps Firefox background alive (v1.6.3.7)
 - [ ] Circuit breaker handles port disconnections with backoff (v1.6.3.7)
-- [ ] Debounced renderUI prevents excessive renders (v1.6.3.7)
-- [ ] `_analyzeStorageChange()` skips z-index-only updates (v1.6.3.7)
-- [ ] Port connection established on Manager open
-- [ ] Port lifecycle logged with `[Manager] PORT_LIFECYCLE` prefix
-- [ ] Message acknowledgments include correlationId
-- [ ] Animation lifecycle logs START/CALC/TRANSITION/COMPLETE
-- [ ] Count badge animates with `.updated` class
 - [ ] Orphan detection shows ⚠️ icon and warning colors
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
@@ -140,5 +114,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.7 keepalive, circuit breaker,
-debounced UI rendering, and v12 port-based messaging.**
+**Your strength: Manager coordination with v1.6.3.7 (Build v2) Single Writer Authority,
+unified render pipeline, and orphaned tab recovery.**

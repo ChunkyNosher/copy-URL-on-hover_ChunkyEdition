@@ -14,7 +14,11 @@
     "downloads",
     "unlimitedStorage",
     "sessions",
-    "contextualIdentities"
+    "contextualIdentities",
+    "notifications",
+    "clipboardRead",
+    "clipboardWrite",
+    "alarms"
   ],
 
   "commands": {
