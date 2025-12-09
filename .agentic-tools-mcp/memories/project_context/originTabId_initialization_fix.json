@@ -1,0 +1,8 @@
+{
+  "id": "67569ea7-1540-4722-a26e-d72f5fe7dad1",
+  "title": "originTabId initialization fix",
+  "details": "QuickTabWindow class must initialize originTabId from constructor options in _initializeVisibility() method. Without this initialization, originTabId becomes undefined on instances and then null when serialized to storage, breaking cross-tab isolation. The fix is: this.originTabId = options.originTabId ?? null; following the same pattern as currentTabId. This was identified in v1.6.3.7-v3. Related file: src/features/quick-tabs/window.js",
+  "category": "project_context",
+  "dateCreated": "2025-12-09T18:24:58.517Z",
+  "dateUpdated": "2025-12-09T18:24:58.517Z"
+}

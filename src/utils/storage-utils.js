@@ -1200,6 +1200,45 @@ function _getArrayValue(tab, flatKey, nestedKey) {
 }
 
 /**
+ * Log when originTabId is undefined on instance (will become null)
+ * v1.6.3.7-v3 - FIX Issue #4: Helper for adoption flow diagnostic logging
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @param {*} rawOriginTabId - Raw value from instance
+ * @param {*} rawActiveTabId - Fallback value from instance
+ */
+function _logOriginTabIdUndefined(tab, rawOriginTabId, rawActiveTabId) {
+  if (rawOriginTabId !== undefined) return;
+  console.log('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId read from instance:', {
+    quickTabId: tab.id,
+    rawOriginTabId: 'undefined',
+    rawActiveTabId: rawActiveTabId !== undefined ? rawActiveTabId : 'undefined',
+    willFallbackTo: rawActiveTabId ?? 'null'
+  });
+}
+
+/**
+ * Log when final extracted originTabId is null
+ * v1.6.3.7-v3 - FIX Issue #4: Helper for adoption flow diagnostic logging
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @param {*} extractedOriginTabId - Final extracted value
+ * @param {*} rawOriginTabId - Raw value from instance
+ * @param {*} rawActiveTabId - Fallback value from instance
+ */
+function _logOriginTabIdNull(tab, extractedOriginTabId, rawOriginTabId, rawActiveTabId) {
+  if (extractedOriginTabId !== null) return;
+  console.warn('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId is NULL', {
+    quickTabId: tab.id,
+    originTabId: extractedOriginTabId,
+    hasOriginTabId: rawOriginTabId !== undefined && rawOriginTabId !== null,
+    hasActiveTabId: rawActiveTabId !== undefined && rawActiveTabId !== null,
+    action: 'serialize',
+    result: 'null'
+  });
+}
+
+/**
  * Serialize a single Quick Tab to storage format
  * v1.6.3.4-v2 - FIX Bug #1: Extracted to reduce complexity
  * v1.6.3.4-v3 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
@@ -1208,6 +1247,9 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  * v1.6.3.7 - FIX Issue #2, #7: Enhanced originTabId preservation with logging
  *   - Issue #2: Preserve originTabId during ALL state changes (minimize, resize, move)
  *   - Issue #7: Log originTabId extraction for debugging adoption data flow
+ * v1.6.3.7-v3 - FIX Issue #4: Enhanced diagnostic logging for originTabId adoption flow
+ *   - Log raw instance value BEFORE fallback chain to detect undefined → null conversion
+ *   - Extracted logging helpers to reduce function complexity
  * v1.6.4.8 - FIX CodeScene: Updated to use options object for _getNumericValue
  * @private
  * @param {Object} tab - Quick Tab instance
@@ -1215,21 +1257,19 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  * @returns {Object} Serialized tab data for storage
  */
 function serializeTabForStorage(tab, isMinimized) {
-  // v1.6.3.7 - FIX Issue #7: Log originTabId extraction
-  const extractedOriginTabId = tab.originTabId ?? tab.activeTabId ?? null;
+  // v1.6.3.7-v3 - FIX Issue #4: Enhanced logging to trace originTabId extraction
+  // Log the raw instance value BEFORE the fallback chain to detect undefined → null conversion
+  const rawOriginTabId = tab.originTabId;
+  const rawActiveTabId = tab.activeTabId;
+  
+  // v1.6.3.7-v3 - FIX Issue #4: Log when undefined is being converted to null
+  _logOriginTabIdUndefined(tab, rawOriginTabId, rawActiveTabId);
+
+  // v1.6.3.7 - FIX Issue #7: Extract originTabId with fallback chain
+  const extractedOriginTabId = rawOriginTabId ?? rawActiveTabId ?? null;
   
   // v1.6.3.7 - FIX Issue #7: Adoption flow logging - only log when originTabId is problematic (null)
-  // This prevents excessive logging in normal operation while still catching adoption failures
-  if (extractedOriginTabId === null) {
-    console.warn('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId is NULL', {
-      quickTabId: tab.id,
-      originTabId: extractedOriginTabId,
-      hasOriginTabId: tab.originTabId !== undefined && tab.originTabId !== null,
-      hasActiveTabId: tab.activeTabId !== undefined && tab.activeTabId !== null,
-      action: 'serialize',
-      result: 'null'
-    });
-  }
+  _logOriginTabIdNull(tab, extractedOriginTabId, rawOriginTabId, rawActiveTabId);
 
   return {
     id: String(tab.id),
