@@ -553,7 +553,41 @@ export function isTabMinimized(tab) {
 }
 
 /**
+ * v1.6.3.7 - FIX Issue #1, #5: Validate originTabId is a valid positive integer
+ * Only classify as orphaned if: (1) no originTabId field, (2) not a valid integer
+ * Note: We cannot check for browser tab existence here (async), that's done in fetchBrowserTabInfo
+ * 
+ * Tab IDs in Firefox/Chrome are always positive integers (1, 2, 3, ...).
+ * An ID of 0 or negative is invalid because:
+ * - browser.tabs.get(0) throws an error
+ * - Tab IDs are assigned by the browser starting from 1
+ * 
+ * @private
+ * @param {*} originTabId - The originTabId value to validate
+ * @returns {boolean} True if originTabId is a valid positive integer
+ */
+function _isValidOriginTabId(originTabId) {
+  // Check for null, undefined, or missing
+  if (originTabId === null || originTabId === undefined) {
+    return false;
+  }
+  
+  // Convert to number if string
+  const numericId = Number(originTabId);
+  
+  // Must be a valid positive integer (Tab IDs are always >= 1 in Firefox/Chrome)
+  if (isNaN(numericId) || !Number.isInteger(numericId) || numericId <= 0) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * Group Quick Tabs by their originTabId
+ * v1.6.3.7 - FIX Issue #1, #5: Enhanced grouping with proper originTabId validation
+ *   - Issue #1: Only classify as orphaned if originTabId is missing/invalid
+ *   - Issue #5: Added comprehensive logging for debugging grouping decisions
  * @param {Array} quickTabs - Array of Quick Tab objects
  * @returns {Map} Map with originTabId keys and group objects
  */
@@ -561,14 +595,33 @@ export function groupQuickTabsByOriginTab(quickTabs) {
   const groups = new Map();
 
   if (!quickTabs || !Array.isArray(quickTabs)) {
+    console.log('[Manager] GROUPING: No tabs to group (empty or invalid array)');
     return groups;
   }
 
+  // v1.6.3.7 - FIX Issue #5: Log extraction start
+  console.log('[Manager] GROUPING_START:', {
+    totalTabsToGroup: quickTabs.length,
+    tabIds: quickTabs.map(t => t.id)
+  });
+
   for (const tab of quickTabs) {
     const originTabId = tab.originTabId;
+    
+    // v1.6.3.7 - FIX Issue #1: Use validator to determine if originTabId is valid
+    const isValid = _isValidOriginTabId(originTabId);
+    
+    // v1.6.3.7 - FIX Issue #1, #5: Log each tab's originTabId extraction and grouping decision
+    console.log('[Manager] GROUPING_TAB:', {
+      quickTabId: tab.id,
+      originTabId: originTabId,
+      originTabIdType: typeof originTabId,
+      isValidOriginTabId: isValid,
+      assignedGroup: isValid ? originTabId : 'orphaned'
+    });
 
-    // Determine group key - use 'orphaned' for null/undefined originTabId
-    const groupKey = originTabId != null ? originTabId : 'orphaned';
+    // Determine group key - use 'orphaned' only for invalid originTabId
+    const groupKey = isValid ? originTabId : 'orphaned';
 
     if (!groups.has(groupKey)) {
       groups.set(groupKey, {
@@ -580,10 +633,20 @@ export function groupQuickTabsByOriginTab(quickTabs) {
     groups.get(groupKey).quickTabs.push(tab);
   }
 
-  console.log('[Manager] Grouped Quick Tabs by origin:', {
+  // v1.6.3.7 - FIX Issue #5: Log grouping results with tabs per group
+  const groupSummary = {};
+  for (const [key, group] of groups.entries()) {
+    groupSummary[String(key)] = {
+      tabCount: group.quickTabs.length,
+      tabIds: group.quickTabs.map(t => t.id)
+    };
+  }
+
+  console.log('[Manager] GROUPING_COMPLETE:', {
     totalTabs: quickTabs.length,
     groupCount: groups.size,
-    groupKeys: [...groups.keys()]
+    groupKeys: [...groups.keys()],
+    groupSummary
   });
 
   return groups;

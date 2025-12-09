@@ -1604,6 +1604,11 @@ function renderUI() {
       return;
     }
     
+    // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
+    // This ensures consistent state even on render failure
+    lastRenderedHash = currentHash;
+    lastRenderedStateHash = currentHash;
+    
     // Synchronize DOM mutation with requestAnimationFrame
     requestAnimationFrame(() => {
       _renderUIImmediate();
@@ -1629,10 +1634,19 @@ function _renderUIImmediate_force() {
 /**
  * Internal render function - performs actual DOM manipulation
  * v1.6.3.7 - FIX Issue #3: Renamed from renderUI, now called via debounce wrapper
+ * v1.6.3.7 - FIX Issue #8: Enhanced render logging for debugging
  */
 async function _renderUIImmediate() {
   const renderStartTime = Date.now();
   const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
+  
+  // v1.6.3.7 - FIX Issue #8: Log render entry with trigger reason
+  const triggerReason = pendingRenderUI ? 'debounced' : 'direct';
+  console.log('[Manager] RENDER_UI: entry', {
+    triggerReason,
+    tabCount: allTabs.length,
+    timestamp: renderStartTime
+  });
 
   _logRenderStart(allTabs);
   updateUIStats(allTabs.length, latestTimestamp);
@@ -1641,6 +1655,14 @@ async function _renderUIImmediate() {
     _showEmptyState();
     // v1.6.3.6-v11 - FIX Issue #20: Clean up count tracking when empty
     previousGroupCounts.clear();
+    
+    // v1.6.3.7 - FIX Issue #8: Log render exit
+    console.log('[Manager] RENDER_UI: exit (empty state)', {
+      triggerReason,
+      tabsRendered: 0,
+      groupsCreated: 0,
+      durationMs: Date.now() - renderStartTime
+    });
     return;
   }
 
@@ -1663,6 +1685,15 @@ async function _renderUIImmediate() {
   // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
   lastRenderedHash = computeStateHash(quickTabsState);
   lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
+  
+  // v1.6.3.7 - FIX Issue #8: Log render exit with summary
+  console.log('[Manager] RENDER_UI: exit', {
+    triggerReason,
+    tabsRendered: allTabs.length,
+    groupsCreated: groups.size,
+    durationMs: Date.now() - renderStartTime
+  });
+  
   _logRenderComplete(allTabs, groups, renderStartTime);
 }
 
@@ -2539,12 +2570,23 @@ function setupTabSwitchListener() {
  * Handle storage change event
  * v1.6.3.5-v2 - Extracted to reduce setupEventListeners complexity
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Added comprehensive logging
+ * v1.6.3.7 - FIX Issue #3: Skip renderUI() if only z-index changed (flicker prevention)
+ * v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime on storage.onChanged
+ * v1.6.3.7 - FIX Issue #8: Enhanced storage synchronization logging
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
  * v1.6.4.11 - Refactored to reduce cyclomatic complexity from 23 to <9
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
   const context = _buildStorageChangeContext(change);
+
+  // v1.6.3.7 - FIX Issue #8: Log storage listener entry
+  console.log('[Manager] STORAGE_LISTENER:', {
+    event: 'storage.onChanged',
+    oldSaveId: context.oldValue?.saveId || 'none',
+    newSaveId: context.newValue?.saveId || 'none',
+    timestamp: Date.now()
+  });
 
   // Log the storage change
   _logStorageChangeEvent(context);
@@ -2561,7 +2603,183 @@ function _handleStorageChange(change) {
     return;
   }
 
+  // v1.6.3.7 - FIX Issue #3: Check if only metadata changed (z-index, etc.)
+  const changeAnalysis = _analyzeStorageChange(context.oldValue, context.newValue);
+  
+  // v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime for ANY real data change
+  if (changeAnalysis.hasDataChange) {
+    lastLocalUpdateTime = Date.now();
+    console.log('[Manager] STORAGE_LISTENER: lastLocalUpdateTime updated', {
+      newTimestamp: lastLocalUpdateTime,
+      reason: changeAnalysis.changeReason
+    });
+  }
+  
+  // v1.6.3.7 - FIX Issue #3: Skip renderUI if only metadata changed
+  if (!changeAnalysis.requiresRender) {
+    console.log('[Manager] STORAGE_LISTENER: Skipping renderUI (metadata-only change)', {
+      changeType: changeAnalysis.changeType,
+      reason: changeAnalysis.skipReason
+    });
+    // Still update local state cache but don't re-render
+    _updateLocalStateCache(context.newValue);
+    return;
+  }
+
   _scheduleStorageUpdate();
+}
+
+/**
+ * Analyze storage change to determine if renderUI() is needed
+ * v1.6.3.7 - FIX Issue #3: Differential update detection
+ * Refactored to reduce complexity by extracting helper functions
+ * @private
+ * @param {Object} oldValue - Previous storage value
+ * @param {Object} newValue - New storage value
+ * @returns {{ requiresRender: boolean, hasDataChange: boolean, changeType: string, changeReason: string, skipReason: string }}
+ */
+function _analyzeStorageChange(oldValue, newValue) {
+  const oldTabs = oldValue?.tabs || [];
+  const newTabs = newValue?.tabs || [];
+  
+  // Tab count change always requires render
+  if (oldTabs.length !== newTabs.length) {
+    return {
+      requiresRender: true,
+      hasDataChange: true,
+      changeType: 'tab-count',
+      changeReason: `Tab count changed: ${oldTabs.length} → ${newTabs.length}`,
+      skipReason: null
+    };
+  }
+  
+  // Check for structural changes using helper
+  const changeResults = _checkTabChanges(oldTabs, newTabs);
+  
+  // If only z-index changed, skip render
+  if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
+    return {
+      requiresRender: false,
+      hasDataChange: false,
+      changeType: 'metadata-only',
+      changeReason: 'z-index only',
+      skipReason: `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`
+    };
+  }
+  
+  // If there are data changes, render is required
+  if (changeResults.hasDataChange) {
+    return {
+      requiresRender: true,
+      hasDataChange: true,
+      changeType: 'data',
+      changeReason: changeResults.dataChangeReasons.join('; '),
+      skipReason: null
+    };
+  }
+  
+  // No changes detected
+  return {
+    requiresRender: false,
+    hasDataChange: false,
+    changeType: 'none',
+    changeReason: 'no changes',
+    skipReason: 'No detectable changes between old and new state'
+  };
+}
+
+/**
+ * Check a single tab for data changes
+ * v1.6.3.7 - FIX Issue #3: Helper to reduce _analyzeStorageChange complexity
+ * @private
+ * @param {Object} oldTab - Previous tab state
+ * @param {Object} newTab - New tab state
+ * @returns {{ hasDataChange: boolean, reasons: Array<string> }}
+ */
+function _checkSingleTabDataChanges(oldTab, newTab) {
+  const reasons = [];
+  
+  if (oldTab.originTabId !== newTab.originTabId) {
+    reasons.push(`originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`);
+  }
+  if (oldTab.minimized !== newTab.minimized) {
+    reasons.push(`minimized changed for ${newTab.id}`);
+  }
+  if (oldTab.left !== newTab.left || oldTab.top !== newTab.top) {
+    reasons.push(`position changed for ${newTab.id}`);
+  }
+  if (oldTab.width !== newTab.width || oldTab.height !== newTab.height) {
+    reasons.push(`size changed for ${newTab.id}`);
+  }
+  if (oldTab.title !== newTab.title || oldTab.url !== newTab.url) {
+    reasons.push(`title/url changed for ${newTab.id}`);
+  }
+  
+  return {
+    hasDataChange: reasons.length > 0,
+    reasons
+  };
+}
+
+/**
+ * Check all tabs for data and metadata changes
+ * v1.6.3.7 - FIX Issue #3: Helper to reduce _analyzeStorageChange complexity
+ * @private
+ * @param {Array} oldTabs - Previous tabs array
+ * @param {Array} newTabs - New tabs array
+ * @returns {{ hasDataChange: boolean, hasMetadataOnlyChange: boolean, zIndexChanges: Array, dataChangeReasons: Array }}
+ */
+function _checkTabChanges(oldTabs, newTabs) {
+  const oldTabMap = new Map(oldTabs.map(t => [t.id, t]));
+  
+  let hasDataChange = false;
+  let hasMetadataOnlyChange = false;
+  const zIndexChanges = [];
+  const dataChangeReasons = [];
+  
+  for (const newTab of newTabs) {
+    const oldTab = oldTabMap.get(newTab.id);
+    
+    if (!oldTab) {
+      // New tab ID - requires render
+      hasDataChange = true;
+      dataChangeReasons.push(`New tab: ${newTab.id}`);
+      continue;
+    }
+    
+    // Check for data changes
+    const dataResult = _checkSingleTabDataChanges(oldTab, newTab);
+    if (dataResult.hasDataChange) {
+      hasDataChange = true;
+      dataChangeReasons.push(...dataResult.reasons);
+    }
+    
+    // Check for metadata-only changes (z-index)
+    if (oldTab.zIndex !== newTab.zIndex) {
+      hasMetadataOnlyChange = true;
+      zIndexChanges.push({ id: newTab.id, old: oldTab.zIndex, new: newTab.zIndex });
+    }
+  }
+  
+  return {
+    hasDataChange,
+    hasMetadataOnlyChange,
+    zIndexChanges,
+    dataChangeReasons
+  };
+}
+
+/**
+ * Update local state cache without triggering renderUI()
+ * v1.6.3.7 - FIX Issue #3: Keep local state in sync during metadata-only updates
+ * @private
+ * @param {Object} newValue - New storage value
+ */
+function _updateLocalStateCache(newValue) {
+  if (newValue?.tabs) {
+    quickTabsState = newValue;
+    _updateInMemoryCache(newValue.tabs);
+  }
 }
 
 /**
@@ -3726,9 +3944,20 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
 
 /**
  * Log adopt request
+ * v1.6.3.7 - FIX Issue #7: Enhanced adoption data flow logging
  * @private
  */
 function _logAdoptRequest(quickTabId, targetTabId) {
+  // v1.6.3.7 - FIX Issue #7: Use standardized format for adoption flow tracking
+  console.log('[Manager] ADOPTION_FLOW:', {
+    quickTabId,
+    originTabId: targetTabId,
+    action: 'adopt_button_clicked',
+    result: 'pending',
+    currentBrowserTabId,
+    timestamp: Date.now()
+  });
+  
   console.log('[Manager] 📥 ADOPT_TO_CURRENT_TAB:', {
     quickTabId,
     targetTabId,
@@ -3749,32 +3978,98 @@ function _isValidTargetTabId(targetTabId) {
  * Perform the adoption operation
  * Issue #9: Enhanced with storage verification logging
  * v1.6.3.6-v11 - FIX Issue #9: Adoption verification logging
+ * v1.6.3.7 - FIX Issue #7: Added adoption data flow logging throughout
+ * Refactored to reduce function length by extracting helpers
  * @private
  * @returns {Promise<{ oldOriginTabId: number, saveId: string, writeTimestamp: number }|null>} Result or null if failed
  */
 async function _performAdoption(quickTabId, targetTabId) {
   const writeStartTime = Date.now();
+  
+  // Read current state
+  const stateResult = await _readStorageForAdoption(quickTabId, targetTabId);
+  if (!stateResult.success) {
+    return null;
+  }
+  
+  const { state, quickTab, tabIndex: _tabIndex, oldOriginTabId } = stateResult;
+  
+  // Update and persist
+  quickTab.originTabId = targetTabId;
+  _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId);
+  
+  const persistResult = await _persistAdoption(quickTabId, targetTabId, state, oldOriginTabId, writeStartTime);
+  return persistResult;
+}
+
+/**
+ * Read storage state for adoption
+ * v1.6.3.7 - FIX Issue #7: Helper for adoption with logging
+ * @private
+ */
+async function _readStorageForAdoption(quickTabId, targetTabId) {
   const result = await browser.storage.local.get(STATE_KEY);
   const state = result?.[STATE_KEY];
 
   if (!state?.tabs?.length) {
     console.warn('[Manager] No Quick Tabs in storage to adopt');
-    return null;
+    console.log('[Manager] ADOPTION_FLOW:', {
+      quickTabId,
+      originTabId: targetTabId,
+      action: 'storage_read',
+      result: 'failed_no_tabs'
+    });
+    return { success: false };
   }
 
   const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
   if (tabIndex === -1) {
     console.warn('[Manager] Quick Tab not found for adopt:', quickTabId);
-    return null;
+    console.log('[Manager] ADOPTION_FLOW:', {
+      quickTabId,
+      originTabId: targetTabId,
+      action: 'find_tab',
+      result: 'failed_tab_not_found'
+    });
+    return { success: false };
   }
 
   const quickTab = state.tabs[tabIndex];
   const oldOriginTabId = quickTab.originTabId;
 
-  // Update originTabId
-  quickTab.originTabId = targetTabId;
+  console.log('[Manager] ADOPTION_FLOW:', {
+    quickTabId,
+    originTabId: oldOriginTabId,
+    action: 'before_update',
+    result: 'read_existing',
+    existingOriginTabId: oldOriginTabId
+  });
 
-  // Persist the change
+  return { success: true, state, quickTab, tabIndex, oldOriginTabId };
+}
+
+/**
+ * Log adoption update (before persist)
+ * v1.6.3.7 - FIX Issue #7: Helper for adoption logging
+ * @private
+ */
+function _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId) {
+  console.log('[Manager] ADOPTION_FLOW:', {
+    quickTabId,
+    originTabId: targetTabId,
+    action: 'after_update',
+    result: 'updated_in_memory',
+    oldOriginTabId,
+    newOriginTabId: targetTabId
+  });
+}
+
+/**
+ * Persist adoption to storage
+ * v1.6.3.7 - FIX Issue #7: Helper for adoption persistence with logging
+ * @private
+ */
+async function _persistAdoption(quickTabId, targetTabId, state, oldOriginTabId, writeStartTime) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeTimestamp = Date.now();
   const stateToWrite = {
@@ -3785,7 +4080,6 @@ async function _performAdoption(quickTabId, targetTabId) {
     writingInstanceId: `manager-adopt-${writeTimestamp}`
   };
 
-  // Issue #9: Log exact data being written
   console.log('[Manager] 📝 ADOPT_STORAGE_WRITE:', {
     quickTabId,
     oldOriginTabId,
@@ -3795,9 +4089,26 @@ async function _performAdoption(quickTabId, targetTabId) {
     tabCount: state.tabs.length
   });
 
+  console.log('[Manager] ADOPTION_FLOW:', {
+    quickTabId,
+    originTabId: targetTabId,
+    action: 'before_persist',
+    result: 'pending',
+    saveId
+  });
+
   await browser.storage.local.set({ [STATE_KEY]: stateToWrite });
 
   const writeEndTime = Date.now();
+
+  console.log('[Manager] ADOPTION_FLOW:', {
+    quickTabId,
+    originTabId: targetTabId,
+    action: 'after_persist',
+    result: 'success',
+    saveId,
+    durationMs: writeEndTime - writeStartTime
+  });
 
   console.log('[Manager] ✅ ADOPT_COMPLETED:', {
     quickTabId,

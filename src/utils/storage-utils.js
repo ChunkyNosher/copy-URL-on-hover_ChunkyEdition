@@ -948,6 +948,7 @@ function _handleEscalationWarning(transactionId, scheduleTime) {
 
 /**
  * Handle transaction timeout - cleanup and log error
+ * v1.6.3.7 - FIX Issue #6: Enhanced diagnostic logging with recent storage events
  * v1.6.4.8 - FIX CodeScene: Extract from scheduleFallbackCleanup
  * @private
  * @param {string} transactionId - Transaction ID
@@ -962,14 +963,38 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
 
   if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
     const elapsedMs = Date.now() - scheduleTime;
+    
+    // v1.6.3.7 - FIX Issue #6: Enhanced diagnostic logging
     console.error('[StorageUtils] ⚠️ TRANSACTION TIMEOUT - possible infinite loop:', {
       transactionId,
       expectedEvent: 'storage.onChanged never fired',
       elapsedMs,
       triggerModule: 'storage-utils (fallback timer)',
+      pendingTransactions: IN_PROGRESS_TRANSACTIONS.size,
+      pendingTransactionIds: [...IN_PROGRESS_TRANSACTIONS],
+      pendingWriteCount,
+      lastCompletedTransactionId,
+      recentWriteCount: saveIdWriteTracker.size,
+      // v1.6.3.7 - FIX Issue #6: List recent storage events for diagnosis
+      diagnosticHint: 'Check browser devtools Network tab for storage.local operations',
       suggestion:
         'If this repeats, self-write detection may be broken. Check isSelfWrite() function.'
     });
+    
+    // v1.6.3.7 - FIX Issue #6: Log whether transaction should have matched
+    console.warn('[StorageUtils] TRANSACTION_TIMEOUT diagnostic:', {
+      transactionId,
+      timeoutThresholdMs: TRANSACTION_FALLBACK_CLEANUP_MS,
+      actualDelayMs: elapsedMs,
+      expectedBehavior: 'storage.onChanged should fire within 100-200ms of write',
+      possibleCauses: [
+        'Firefox extension storage delay (normal: 50-100ms)',
+        'Self-write detection failed in storage.onChanged handler',
+        'Storage write never completed',
+        'storage.onChanged listener not registered'
+      ]
+    });
+    
     IN_PROGRESS_TRANSACTIONS.delete(transactionId);
   }
   TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
@@ -1180,6 +1205,9 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  * v1.6.3.4-v3 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
  * v1.6.3.4 - FIX Issue #3: Include zIndex in serialized data for persistence
  * v1.6.3.5-v2 - FIX Report 1 Issue #2: Include originTabId for cross-tab filtering
+ * v1.6.3.7 - FIX Issue #2, #7: Enhanced originTabId preservation with logging
+ *   - Issue #2: Preserve originTabId during ALL state changes (minimize, resize, move)
+ *   - Issue #7: Log originTabId extraction for debugging adoption data flow
  * v1.6.4.8 - FIX CodeScene: Updated to use options object for _getNumericValue
  * @private
  * @param {Object} tab - Quick Tab instance
@@ -1187,6 +1215,22 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  * @returns {Object} Serialized tab data for storage
  */
 function serializeTabForStorage(tab, isMinimized) {
+  // v1.6.3.7 - FIX Issue #7: Log originTabId extraction
+  const extractedOriginTabId = tab.originTabId ?? tab.activeTabId ?? null;
+  
+  // v1.6.3.7 - FIX Issue #7: Adoption flow logging - only log when originTabId is problematic (null)
+  // This prevents excessive logging in normal operation while still catching adoption failures
+  if (extractedOriginTabId === null) {
+    console.warn('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId is NULL', {
+      quickTabId: tab.id,
+      originTabId: extractedOriginTabId,
+      hasOriginTabId: tab.originTabId !== undefined && tab.originTabId !== null,
+      hasActiveTabId: tab.activeTabId !== undefined && tab.activeTabId !== null,
+      action: 'serialize',
+      result: 'null'
+    });
+  }
+
   return {
     id: String(tab.id),
     url: String(tab.url || ''),
@@ -1220,7 +1264,8 @@ function serializeTabForStorage(tab, isMinimized) {
     soloedOnTabs: _getArrayValue(tab, 'soloedOnTabs', 'soloedOnTabs'),
     mutedOnTabs: _getArrayValue(tab, 'mutedOnTabs', 'mutedOnTabs'),
     // v1.6.3.5-v2 - FIX Report 1 Issue #2: Track originating tab ID for cross-tab filtering
-    originTabId: tab.originTabId ?? tab.activeTabId ?? null
+    // v1.6.3.7 - FIX Issue #2: This value MUST be preserved across all operations
+    originTabId: extractedOriginTabId
   };
 }
 
