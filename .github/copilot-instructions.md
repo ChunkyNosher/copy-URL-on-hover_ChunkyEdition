@@ -183,7 +183,7 @@ Promise sequencing, debounced drag, orphan recovery, per-tab scoping, transactio
 | File                      | Max Size |
 | ------------------------- | -------- |
 | `copilot-instructions.md` | **15KB** |
-| `.github/agents/*.md`     | **15KB** |
+| `.github/agents/*.md`     | **10KB** |
 | README.md                 | **10KB** |
 
 **PROHIBITED:** `docs/manual/`, root markdown (except README.md)
